@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { generateKeyPairSync } from "node:crypto";
 import { describe, it } from "node:test";
 
 import { loadConfig } from "../src/config.ts";
@@ -10,6 +11,14 @@ describe("loadConfig", () => {
     PERPAY_API_SECRET: validApiSecret,
     PERPAY_COLLECTION_CODE_PAYLOAD: "https://qr.alipay.com/fkx-test-code-2026",
   } as const;
+  const applicationKeys = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const platformKeys = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const applicationPrivateKey = applicationKeys.privateKey
+    .export({ type: "pkcs8", format: "pem" })
+    .toString();
+  const platformPublicKey = platformKeys.publicKey
+    .export({ type: "spki", format: "pem" })
+    .toString();
 
   it("requires the initial administrator password and does not accept the old variable", () => {
     assert.throws(() => loadConfig({}), /PERPAY_INITIAL_ADMIN_PASSWORD/);
@@ -159,5 +168,90 @@ describe("loadConfig", () => {
     assert.equal(config.secureCookies, true);
     assert.equal(config.orderTtlSeconds, 300);
     assert.equal(config.amountOffsetMaximumCents, 99);
+    assert.deepEqual(config.alipay, {
+      enabled: false,
+      endpoint: "https://openapi.alipay.com",
+    });
+  });
+
+  it("requires strong RSA platform configuration only when collection is enabled", () => {
+    assert.throws(
+      () => loadConfig({ ...validEnvironment, PERPAY_ALIPAY_ENABLED: "true" }),
+      /PERPAY_ALIPAY_APP_ID.*PERPAY_ALIPAY_PRIVATE_KEY.*PERPAY_ALIPAY_PUBLIC_KEY/,
+    );
+
+    const config = loadConfig({
+      ...validEnvironment,
+      PERPAY_ALIPAY_ENABLED: "true",
+      PERPAY_ALIPAY_APP_ID: "2026000000000000",
+      PERPAY_ALIPAY_PRIVATE_KEY: applicationPrivateKey,
+      PERPAY_ALIPAY_PUBLIC_KEY: platformPublicKey,
+      PERPAY_ALIPAY_ENDPOINT: "https://openapi-sandbox.dl.alipaydev.com",
+      PERPAY_ALIPAY_TIMEOUT_MILLISECONDS: "9000",
+      PERPAY_ALIPAY_SCAN_INTERVAL_SECONDS: "15",
+    });
+    assert.equal(config.alipay.enabled, true);
+    if (!config.alipay.enabled) throw new Error("provider collection should be enabled");
+    assert.equal(config.alipay.privateKey.type, "private");
+    assert.equal(config.alipay.alipayPublicKey.type, "public");
+    assert.equal(config.alipay.timeoutMilliseconds, 9_000);
+    assert.equal(config.alipay.scanIntervalMilliseconds, 15_000);
+    assert.match(config.alipay.applicationKeyFingerprint, /^[0-9a-f]{64}$/);
+    assert.match(config.alipay.alipayKeyFingerprint, /^[0-9a-f]{64}$/);
+  });
+
+  it("accepts the unarmored key format supplied by the platform tools", () => {
+    const unarmored = (pem: string): string => pem
+      .replace(/-----BEGIN [^-]+-----|-----END [^-]+-----|\s/g, "");
+    const config = loadConfig({
+      ...validEnvironment,
+      PERPAY_ALIPAY_ENABLED: "true",
+      PERPAY_ALIPAY_APP_ID: "2026000000000000",
+      PERPAY_ALIPAY_PRIVATE_KEY: unarmored(applicationPrivateKey),
+      PERPAY_ALIPAY_PUBLIC_KEY: unarmored(platformPublicKey),
+    });
+    assert.equal(config.alipay.enabled, true);
+  });
+
+  it("rejects arbitrary endpoints, placeholder IDs, and weak provider keys", () => {
+    const weakPrivateKey = generateKeyPairSync("rsa", { modulusLength: 1024 }).privateKey
+      .export({ type: "pkcs8", format: "pem" })
+      .toString();
+    const enabled = {
+      ...validEnvironment,
+      PERPAY_ALIPAY_ENABLED: "true",
+      PERPAY_ALIPAY_APP_ID: "2026000000000000",
+      PERPAY_ALIPAY_PRIVATE_KEY: applicationPrivateKey,
+      PERPAY_ALIPAY_PUBLIC_KEY: platformPublicKey,
+    } as const;
+    assert.throws(
+      () => loadConfig({ ...enabled, PERPAY_ALIPAY_ENDPOINT: "https://openapi.alipay.com:444" }),
+      /PERPAY_ALIPAY_ENDPOINT/,
+    );
+    assert.throws(
+      () => loadConfig({ ...enabled, PERPAY_ALIPAY_APP_ID: "CHANGE_ME_APP_ID" }),
+      /PERPAY_ALIPAY_APP_ID.*示例值/,
+    );
+    assert.throws(
+      () => loadConfig({ ...enabled, PERPAY_ALIPAY_PRIVATE_KEY: weakPrivateKey }),
+      /至少需要 2048 位 RSA/,
+    );
+    assert.throws(
+      () => loadConfig({ ...enabled, PERPAY_ALIPAY_PUBLIC_KEY: applicationPrivateKey }),
+      /PERPAY_ALIPAY_PUBLIC_KEY 不能包含私钥/,
+    );
+    assert.throws(
+      () => loadConfig({
+        ...enabled,
+        PERPAY_ALIPAY_PUBLIC_KEY: applicationKeys.publicKey
+          .export({ type: "spki", format: "pem" })
+          .toString(),
+      }),
+      /PERPAY_ALIPAY_PUBLIC_KEY 不能填写应用公钥/,
+    );
+    assert.throws(
+      () => loadConfig({ ...enabled, PERPAY_ALIPAY_APP_ID: "unsafe,app" }),
+      /PERPAY_ALIPAY_APP_ID/,
+    );
   });
 });

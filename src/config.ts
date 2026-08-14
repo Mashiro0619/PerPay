@@ -1,3 +1,4 @@
+import { createHash, createPrivateKey, createPublicKey, type KeyObject } from "node:crypto";
 import { isIP } from "node:net";
 import { resolve } from "node:path";
 
@@ -10,6 +11,9 @@ const canonicalBase64UrlPattern = /^[A-Za-z0-9_-]{43}$/;
 const maximumPasswordBytes = 1024;
 const apiSecretBytes = 32;
 const maximumCollectionCodeBytes = 4096;
+const maximumProviderKeyBytes = 16 * 1024;
+const productionProviderEndpoint = "https://openapi.alipay.com" as const;
+const sandboxProviderEndpoint = "https://openapi-sandbox.dl.alipaydev.com" as const;
 
 function isCanonicalApiSecret(value: string): boolean {
   if (!canonicalBase64UrlPattern.test(value)) return false;
@@ -52,7 +56,35 @@ const rawConfigSchema = z.object({
     }),
   PERPAY_ORDER_TTL_SECONDS: z.coerce.number().int().min(60).max(1800).default(300),
   PERPAY_AMOUNT_OFFSET_MAX_CENTS: z.coerce.number().int().min(1).max(99).default(99),
+  PERPAY_ALIPAY_ENABLED: z.enum(["true", "false"]).default("false"),
+  PERPAY_ALIPAY_APP_ID: z.string().trim().regex(/^[A-Za-z0-9._-]{1,64}$/).optional(),
+  PERPAY_ALIPAY_PRIVATE_KEY: z.string().min(1).max(maximumProviderKeyBytes).optional(),
+  PERPAY_ALIPAY_PUBLIC_KEY: z.string().min(1).max(maximumProviderKeyBytes).optional(),
+  PERPAY_ALIPAY_ENDPOINT: z
+    .enum([productionProviderEndpoint, sandboxProviderEndpoint])
+    .default(productionProviderEndpoint),
+  PERPAY_ALIPAY_TIMEOUT_MILLISECONDS: z.coerce.number().int().min(1_000).max(120_000).default(8_000),
+  PERPAY_ALIPAY_SCAN_INTERVAL_SECONDS: z.coerce.number().int().min(5).max(3_600).default(10),
 });
+
+export type ProviderEndpoint = typeof productionProviderEndpoint | typeof sandboxProviderEndpoint;
+
+export type AlipayRuntimeConfig =
+  | {
+      readonly enabled: false;
+      readonly endpoint: ProviderEndpoint;
+    }
+  | {
+      readonly enabled: true;
+      readonly appId: string;
+      readonly privateKey: KeyObject;
+      readonly alipayPublicKey: KeyObject;
+      readonly endpoint: ProviderEndpoint;
+      readonly timeoutMilliseconds: number;
+      readonly scanIntervalMilliseconds: number;
+      readonly applicationKeyFingerprint: string;
+      readonly alipayKeyFingerprint: string;
+    };
 
 export interface AppConfig {
   readonly host: string;
@@ -69,6 +101,7 @@ export interface AppConfig {
   readonly collectionCodePayload: string;
   readonly orderTtlSeconds: number;
   readonly amountOffsetMaximumCents: number;
+  readonly alipay: AlipayRuntimeConfig;
 }
 
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -98,6 +131,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
   }
 
   const publicUrl = parsePublicUrl(parsed.data.PERPAY_PUBLIC_URL);
+  const alipay = loadAlipayConfig(parsed.data);
 
   const dataDir = resolve(parsed.data.PERPAY_DATA_DIR);
   return Object.freeze({
@@ -114,7 +148,95 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     collectionCodePayload: parsed.data.PERPAY_COLLECTION_CODE_PAYLOAD,
     orderTtlSeconds: parsed.data.PERPAY_ORDER_TTL_SECONDS,
     amountOffsetMaximumCents: parsed.data.PERPAY_AMOUNT_OFFSET_MAX_CENTS,
+    alipay,
   });
+}
+
+function loadAlipayConfig(parsed: z.infer<typeof rawConfigSchema>): AlipayRuntimeConfig {
+  const endpoint = parsed.PERPAY_ALIPAY_ENDPOINT;
+  if (parsed.PERPAY_ALIPAY_ENABLED === "false") {
+    return Object.freeze({ enabled: false, endpoint });
+  }
+
+  if (
+    parsed.PERPAY_ALIPAY_APP_ID === undefined ||
+    parsed.PERPAY_ALIPAY_PRIVATE_KEY === undefined ||
+    parsed.PERPAY_ALIPAY_PUBLIC_KEY === undefined
+  ) {
+    throw new Error(
+      "配置校验失败: 启用账务采集时必须填写 PERPAY_ALIPAY_APP_ID、PERPAY_ALIPAY_PRIVATE_KEY 和 PERPAY_ALIPAY_PUBLIC_KEY",
+    );
+  }
+  if (placeholderPattern.test(parsed.PERPAY_ALIPAY_APP_ID)) {
+    throw new Error("配置校验失败: PERPAY_ALIPAY_APP_ID 不能使用示例值");
+  }
+
+  const privateKey = parseRsaKey(parsed.PERPAY_ALIPAY_PRIVATE_KEY, "private");
+  const alipayPublicKey = parseRsaKey(parsed.PERPAY_ALIPAY_PUBLIC_KEY, "public");
+  const applicationKeyFingerprint = publicKeyFingerprint(createPublicKey(privateKey));
+  const alipayKeyFingerprint = publicKeyFingerprint(alipayPublicKey);
+  if (applicationKeyFingerprint === alipayKeyFingerprint) {
+    throw new Error("配置校验失败: PERPAY_ALIPAY_PUBLIC_KEY 不能填写应用公钥");
+  }
+  return Object.freeze({
+    enabled: true,
+    appId: parsed.PERPAY_ALIPAY_APP_ID,
+    privateKey,
+    alipayPublicKey,
+    endpoint,
+    timeoutMilliseconds: parsed.PERPAY_ALIPAY_TIMEOUT_MILLISECONDS,
+    scanIntervalMilliseconds: parsed.PERPAY_ALIPAY_SCAN_INTERVAL_SECONDS * 1_000,
+    applicationKeyFingerprint,
+    alipayKeyFingerprint,
+  });
+}
+
+function parseRsaKey(value: string, kind: "private" | "public"): KeyObject {
+  const normalized = normalizeProviderKey(value, kind);
+  let key: KeyObject;
+  try {
+    key = kind === "private" ? createPrivateKey(normalized) : createPublicKey(normalized);
+  } catch (error) {
+    throw new Error(
+      `配置校验失败: PERPAY_ALIPAY_${kind === "private" ? "PRIVATE" : "PUBLIC"}_KEY 不是有效的 RSA 密钥`,
+      { cause: error },
+    );
+  }
+  if (key.type !== kind || key.asymmetricKeyType !== "rsa") {
+    throw new Error(
+      `配置校验失败: PERPAY_ALIPAY_${kind === "private" ? "PRIVATE" : "PUBLIC"}_KEY 必须是 RSA ${kind === "private" ? "私钥" : "公钥"}`,
+    );
+  }
+  const modulusLength = key.asymmetricKeyDetails?.modulusLength;
+  if (modulusLength === undefined || modulusLength < 2_048) {
+    throw new Error(
+      `配置校验失败: PERPAY_ALIPAY_${kind === "private" ? "PRIVATE" : "PUBLIC"}_KEY 至少需要 2048 位 RSA`,
+    );
+  }
+  return key;
+}
+
+function normalizeProviderKey(value: string, kind: "private" | "public"): string {
+  const trimmed = value.trim();
+  if (kind === "public" && /-----BEGIN (?:RSA )?PRIVATE KEY-----/.test(trimmed)) {
+    throw new Error("配置校验失败: PERPAY_ALIPAY_PUBLIC_KEY 不能包含私钥");
+  }
+  if (trimmed.includes("-----BEGIN")) return trimmed;
+  if (!/^[A-Za-z0-9+/=\r\n]+$/.test(trimmed)) {
+    throw new Error(
+      `配置校验失败: PERPAY_ALIPAY_${kind === "private" ? "PRIVATE" : "PUBLIC"}_KEY 格式无效`,
+    );
+  }
+  const body = trimmed.replace(/\s+/g, "");
+  const lines = body.match(/.{1,64}/g)?.join("\n") ?? "";
+  const label = kind === "private" ? "PRIVATE KEY" : "PUBLIC KEY";
+  return `-----BEGIN ${label}-----\n${lines}\n-----END ${label}-----`;
+}
+
+function publicKeyFingerprint(key: KeyObject): string {
+  return createHash("sha256")
+    .update(key.export({ type: "spki", format: "der" }))
+    .digest("hex");
 }
 
 function parsePublicUrl(value: string): URL {
