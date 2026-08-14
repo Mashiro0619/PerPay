@@ -14,6 +14,7 @@ import {
   parseAmountCents,
   parseDirection,
   parseOccurredAt,
+  parseOccurredAtWithPrecision,
   payloadFingerprint,
   requestFingerprint,
   responseFingerprint,
@@ -127,6 +128,7 @@ interface LedgerEntryRow {
   readonly external_event_id: string;
   readonly semantic_fingerprint: string;
   readonly occurred_at: bigint | number;
+  readonly occurred_at_precision_ms: bigint | number;
   readonly amount_cents: bigint | number;
   readonly direction: LedgerEntry["direction"];
   readonly currency: "CNY";
@@ -728,7 +730,7 @@ const RAW_PAGE_COLUMNS = `
 
 const LEDGER_ENTRY_COLUMNS = `
   ledger_entry_id, provider_account_key, raw_event_id, external_event_id,
-  semantic_fingerprint, occurred_at, amount_cents, direction, currency,
+  semantic_fingerprint, occurred_at, occurred_at_precision_ms, amount_cents, direction, currency,
   alipay_order_no, merchant_order_no, trans_memo, other_account, state,
   created_at, updated_at
 `;
@@ -1131,10 +1133,13 @@ function normalizeAndInsert(
   }
 
   let occurredAt: number;
+  let occurredAtPrecisionMilliseconds: LedgerEntry["occurredAtPrecisionMilliseconds"];
   let amountCents: number;
   let direction: LedgerEntry["direction"];
   try {
-    occurredAt = parseOccurredAt(rawEvent.occurredAtText);
+    const parsedOccurrence = parseOccurredAtWithPrecision(rawEvent.occurredAtText);
+    occurredAt = parsedOccurrence.milliseconds;
+    occurredAtPrecisionMilliseconds = parsedOccurrence.precisionMilliseconds;
     amountCents = parseAmountCents(rawEvent.amountText);
     direction = parseDirection(rawEvent.directionText);
   } catch (error) {
@@ -1155,6 +1160,7 @@ function normalizeAndInsert(
   const semantics = semanticFingerprint({
     externalEventId: rawEvent.externalEventId,
     occurredAt,
+    occurredAtPrecisionMilliseconds,
     amountCents,
     direction,
     alipayOrderNo: rawEvent.alipayOrderNo,
@@ -1168,7 +1174,20 @@ function normalizeAndInsert(
     rawEvent.externalEventId,
   );
   if (existing) {
-    if (existing.semanticFingerprint === semantics) {
+    const precisionOnlyDifference =
+      existing.occurredAt === occurredAt &&
+      existing.occurredAtPrecisionMilliseconds !== occurredAtPrecisionMilliseconds &&
+      existing.amountCents === amountCents &&
+      existing.direction === direction &&
+      existing.currency === "CNY" &&
+      existing.alipayOrderNo === rawEvent.alipayOrderNo &&
+      existing.merchantOrderNo === merchantOrderNo &&
+      existing.transMemo === rawEvent.transMemo &&
+      existing.otherAccount === rawEvent.otherAccount;
+    if (
+      existing.semanticFingerprint === semantics &&
+      existing.occurredAtPrecisionMilliseconds === occurredAtPrecisionMilliseconds
+    ) {
       return { kind: "duplicate", entry: existing, rawEventId: rawEvent.rawEventId };
     }
     if (existing.state !== "CONFLICT") {
@@ -1190,12 +1209,20 @@ function normalizeAndInsert(
       externalEventId: rawEvent.externalEventId,
       existingSemanticFingerprint: existing.semanticFingerprint,
       incomingSemanticFingerprint: semantics,
-      details: { reason: "same external ID has a different normalized semantic fingerprint" },
+      details: {
+        reason: precisionOnlyDifference
+          ? "same external ID has a different declared timestamp precision"
+          : "same external ID has a different normalized semantic fingerprint",
+        existing_occurred_at_precision_milliseconds: existing.occurredAtPrecisionMilliseconds,
+        incoming_occurred_at_precision_milliseconds: occurredAtPrecisionMilliseconds,
+      },
       fingerprintParts: [
         "DUPLICATE_EXTERNAL_ID",
         rawEvent.externalEventId,
         existing.semanticFingerprint,
         semantics,
+        existing.occurredAtPrecisionMilliseconds,
+        occurredAtPrecisionMilliseconds,
       ],
       now,
     });
@@ -1207,10 +1234,10 @@ function normalizeAndInsert(
     .prepare(
       `INSERT INTO ledger_entries(
          ledger_entry_id, provider_account_key, raw_event_id, external_event_id,
-         semantic_fingerprint, occurred_at, amount_cents, direction, currency,
+         semantic_fingerprint, occurred_at, occurred_at_precision_ms, amount_cents, direction, currency,
          alipay_order_no, merchant_order_no, trans_memo, other_account, state,
          created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'CNY', ?, ?, ?, ?, 'UNALLOCATED', ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'CNY', ?, ?, ?, ?, 'UNALLOCATED', ?, ?)`,
     )
     .run(
       ledgerEntryId,
@@ -1219,6 +1246,7 @@ function normalizeAndInsert(
       rawEvent.externalEventId,
       semantics,
       occurredAt,
+      occurredAtPrecisionMilliseconds,
       amountCents,
       direction,
       rawEvent.alipayOrderNo,
@@ -1341,6 +1369,10 @@ function mapLedgerEntry(row: LedgerEntryRow): LedgerEntry {
     externalEventId: row.external_event_id,
     semanticFingerprint: row.semantic_fingerprint,
     occurredAt: toSafeInteger(row.occurred_at, "ledger occurred-at"),
+    occurredAtPrecisionMilliseconds: toTimestampPrecision(
+      row.occurred_at_precision_ms,
+      "ledger occurrence precision",
+    ),
     amountCents: toSafeInteger(row.amount_cents, "ledger amount"),
     direction: row.direction,
     currency: row.currency,
@@ -1352,6 +1384,17 @@ function mapLedgerEntry(row: LedgerEntryRow): LedgerEntry {
     createdAt: toSafeInteger(row.created_at, "ledger created-at"),
     updatedAt: toSafeInteger(row.updated_at, "ledger updated-at"),
   };
+}
+
+function toTimestampPrecision(
+  value: bigint | number,
+  label: string,
+): LedgerEntry["occurredAtPrecisionMilliseconds"] {
+  const precision = toSafeInteger(value, label);
+  if (precision !== 1 && precision !== 10 && precision !== 100 && precision !== 1_000) {
+    throw new Error(`${label} is invalid`);
+  }
+  return precision;
 }
 
 function requireConflict(connection: DatabaseSync, conflictId: string): LedgerConflict {

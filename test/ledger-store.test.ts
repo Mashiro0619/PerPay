@@ -587,6 +587,41 @@ describe("LedgerStore segment ingestion", () => {
     });
   });
 
+  it("treats a same-millisecond external event with different declared precision as a conflict", async () => {
+    await withLedgerStore(async ({ store }) => {
+      const firstRun = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT });
+      const first = store.recordPage({
+        ingestRunId: firstRun.ingestRunId,
+        page: page(1, 1, false, [
+          detail("precision-id", "10.00", "CREDIT", "2026-08-14 00:01:00.1"),
+        ]),
+        evidence: evidence('{"precision":1}'),
+        now: STARTED_AT + 1_000,
+      });
+      assert.equal(first.normalized[0]?.kind, "created");
+      assert.equal(store.getLedgerEntry("primary", "precision-id")?.occurredAtPrecisionMilliseconds, 100);
+
+      const secondRun = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT + 2_000 });
+      const conflicting = store.recordPage({
+        ingestRunId: secondRun.ingestRunId,
+        page: page(1, 1, false, [
+          detail("precision-id", "10.00", "CREDIT", "2026-08-14 00:01:00.100"),
+        ]),
+        evidence: evidence('{"precision":2}'),
+        now: STARTED_AT + 3_000,
+      });
+      assert.equal(conflicting.normalized[0]?.kind, "conflict");
+      assert.equal(store.getLedgerEntry("primary", "precision-id")?.state, "CONFLICT");
+      assert.equal(
+        store.listOpenConflicts().some((item) =>
+          item.conflictType === "DUPLICATE_EXTERNAL_ID" &&
+          item.details.reason === "same external ID has a different declared timestamp precision",
+        ),
+        true,
+      );
+    });
+  });
+
   it("keeps raw probes immutable and records a terminal provider error", async () => {
     await withLedgerStore(async ({ database, store }) => {
       const run = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT });
@@ -791,7 +826,11 @@ describe("LedgerStore segment ingestion", () => {
                 CASE substr(semantic_fingerprint, 1, 1)
                   WHEN '0' THEN '1' || substr(semantic_fingerprint, 2)
                   ELSE '0' || substr(semantic_fingerprint, 2)
-                END`,
+                END,
+                  occurred_at_precision_ms = CASE occurred_at_precision_ms
+                    WHEN 1 THEN 10
+                    ELSE 1
+                  END`,
         ).run();
         connection.prepare("UPDATE ingest_errors SET raw_body = x'00'").run();
         for (const trigger of triggerSql) connection.exec(trigger.sql);
@@ -800,7 +839,7 @@ describe("LedgerStore segment ingestion", () => {
       const integrity = database.integrityCheck();
       assert.equal(integrity.schema, "ok");
       assert.equal(integrity.foreignKeyViolations, 0);
-      assert.equal(integrity.domainViolations, 5);
+      assert.equal(integrity.domainViolations, 6);
       assert.equal(integrity.ok, false);
     });
   });

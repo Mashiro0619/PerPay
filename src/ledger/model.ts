@@ -174,6 +174,7 @@ export interface LedgerEntry {
   readonly externalEventId: string;
   readonly semanticFingerprint: string;
   readonly occurredAt: number;
+  readonly occurredAtPrecisionMilliseconds: 1 | 10 | 100 | 1_000;
   readonly amountCents: number;
   readonly direction: LedgerDirection;
   readonly currency: "CNY";
@@ -422,7 +423,7 @@ export function conflictFingerprint(parts: readonly unknown[]): string {
   return sha256(JSON.stringify(["perpay:ledger-conflict:v1", ...parts]));
 }
 
-export function semanticFingerprint(input: {
+export interface SemanticFingerprintFacts {
   readonly externalEventId: string;
   readonly occurredAt: number;
   readonly amountCents: number;
@@ -432,12 +433,38 @@ export function semanticFingerprint(input: {
   readonly merchantOrderNo: string | null;
   readonly transMemo: string | null;
   readonly otherAccount: string | null;
-}): string {
+}
+
+/**
+ * The v4 ledger did not persist timestamp precision. Keep its identity
+ * algorithm available solely for validating and backing up those databases.
+ */
+export function legacySemanticFingerprintV1(input: SemanticFingerprintFacts): string {
   return sha256(
     JSON.stringify([
       "perpay:ledger-semantic:v1",
       input.externalEventId,
       input.occurredAt,
+      input.amountCents,
+      input.direction,
+      input.currency ?? "CNY",
+      input.alipayOrderNo,
+      input.merchantOrderNo,
+      input.transMemo,
+      input.otherAccount,
+    ]),
+  );
+}
+
+export function semanticFingerprint(input: SemanticFingerprintFacts & {
+  readonly occurredAtPrecisionMilliseconds: 1 | 10 | 100 | 1_000;
+}): string {
+  return sha256(
+    JSON.stringify([
+      "perpay:ledger-semantic:v2",
+      input.externalEventId,
+      input.occurredAt,
+      input.occurredAtPrecisionMilliseconds,
       input.amountCents,
       input.direction,
       input.currency ?? "CNY",
@@ -473,7 +500,12 @@ function isProviderTimestamp(value: string): boolean {
   }
 }
 
-export function parseOccurredAt(value: string | null): number {
+export interface ParsedOccurredAt {
+  readonly milliseconds: number;
+  readonly precisionMilliseconds: 1 | 10 | 100 | 1_000;
+}
+
+export function parseOccurredAtWithPrecision(value: string | null): ParsedOccurredAt {
   if (value === null || value.trim().length === 0) {
     throw new LedgerNormalizationError("INVALID_TIMESTAMP", "occurred time is missing");
   }
@@ -482,6 +514,7 @@ export function parseOccurredAt(value: string | null): number {
     trimmed,
   );
   let milliseconds: number;
+  let precisionMilliseconds: ParsedOccurredAt["precisionMilliseconds"];
   if (local) {
     const [, yearText, monthText, dayText, hourText, minuteText, secondText, fractionText] =
       local;
@@ -508,15 +541,42 @@ export function parseOccurredAt(value: string | null): number {
     }
     // Account-log timestamps without an offset are documented in China Standard Time.
     milliseconds = calendar.getTime() - 8 * 60 * 60 * 1000;
+    precisionMilliseconds = precisionFromFraction(fractionText);
   } else if (/T.*(?:Z|[+-]\d{2}:\d{2})$/.test(trimmed)) {
+    const fraction = /\.(\d+)(?:Z|[+-]\d{2}:\d{2})$/.exec(trimmed)?.[1];
+    if (fraction !== undefined && (fraction.length < 1 || fraction.length > 3)) {
+      throw new LedgerNormalizationError(
+        "INVALID_TIMESTAMP",
+        "occurred time precision exceeds milliseconds",
+      );
+    }
     milliseconds = Date.parse(trimmed);
+    precisionMilliseconds = precisionFromFraction(fraction);
   } else {
     milliseconds = Number.NaN;
+    precisionMilliseconds = 1_000;
   }
-  if (!Number.isSafeInteger(milliseconds) || milliseconds < 0) {
+  if (
+    !Number.isSafeInteger(milliseconds) ||
+    milliseconds < 0 ||
+    !Number.isSafeInteger(milliseconds + precisionMilliseconds)
+  ) {
     throw new LedgerNormalizationError("INVALID_TIMESTAMP", "occurred time is invalid");
   }
-  return milliseconds;
+  return Object.freeze({ milliseconds, precisionMilliseconds });
+}
+
+export function parseOccurredAt(value: string | null): number {
+  return parseOccurredAtWithPrecision(value).milliseconds;
+}
+
+function precisionFromFraction(
+  fraction: string | undefined,
+): ParsedOccurredAt["precisionMilliseconds"] {
+  if (fraction === undefined) return 1_000;
+  if (fraction.length === 1) return 100;
+  if (fraction.length === 2) return 10;
+  return 1;
 }
 
 function formatProviderTimestamp(milliseconds: number): string {

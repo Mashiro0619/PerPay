@@ -6,6 +6,7 @@ import {
   parseAmountCents,
   parseDirection,
   parseOccurredAt,
+  parseOccurredAtWithPrecision,
   rewindProviderWindowStart,
   requestFingerprint,
   semanticFingerprint,
@@ -53,6 +54,19 @@ describe("ledger normalization model", () => {
       Date.parse("2026-08-14T12:34:56+08:00"),
     );
     assert.equal(parseOccurredAt("2026-08-14T12:34:56+08:00"), Date.parse("2026-08-14T12:34:56+08:00"));
+    assert.deepEqual(parseOccurredAtWithPrecision("2026-08-14 12:34:56"), {
+      milliseconds: Date.parse("2026-08-14T12:34:56+08:00"),
+      precisionMilliseconds: 1_000,
+    });
+    assert.deepEqual(parseOccurredAtWithPrecision("2026-08-14T12:34:56.12+08:00"), {
+      milliseconds: Date.parse("2026-08-14T12:34:56.12+08:00"),
+      precisionMilliseconds: 10,
+    });
+    assert.throws(
+      () => parseOccurredAtWithPrecision("2026-08-14T12:34:56.1234+08:00"),
+      (error: unknown) =>
+        error instanceof LedgerNormalizationError && error.code === "INVALID_TIMESTAMP",
+    );
     assert.throws(
       () => parseOccurredAt("2026-02-30 12:34:56"),
       (error: unknown) =>
@@ -73,6 +87,7 @@ describe("ledger normalization model", () => {
     const facts = {
       externalEventId: "event-1",
       occurredAt: 1_797_033_600_000,
+      occurredAtPrecisionMilliseconds: 1_000 as const,
       amountCents: 1_001,
       direction: "CREDIT" as const,
       alipayOrderNo: "alipay-1",
@@ -83,6 +98,10 @@ describe("ledger normalization model", () => {
     const semantic = semanticFingerprint(facts);
     assert.equal(semantic, semanticFingerprint(facts));
     assert.notEqual(semantic, semanticFingerprint({ ...facts, amountCents: 1_002 }));
+    assert.notEqual(
+      semantic,
+      semanticFingerprint({ ...facts, occurredAtPrecisionMilliseconds: 1 }),
+    );
   });
 
   it("computes a deterministic China-time overlap lower bound", () => {
