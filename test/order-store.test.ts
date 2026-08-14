@@ -16,6 +16,7 @@ import {
   digestIdempotencyKey,
   fingerprintCollectionCodeProfile,
 } from "../src/orders/service.ts";
+import { prepareWebhookTarget } from "../src/notifications/model.ts";
 
 const API_CLIENT_ID = "default";
 const TEST_START_MS = 2_000_000_000_000;
@@ -78,6 +79,87 @@ describe("OrderStore", () => {
         store.createOrder(createInput(duplicateMerchant)).kind,
         "merchant_order_conflict",
       );
+    });
+  });
+
+  it("persists one immutable notification target and binds it to idempotent replay", async () => {
+    await withStore(async ({ database, store }) => {
+      syncProfile(store, "https://qr.example.test/profile-a");
+      const allowedOrigin = "https://hooks.example.test";
+      const targetUrl = `${allowedOrigin}/orders/paid?tenant=personal`;
+      const request = createOrderRequestSchema.parse({
+        idempotency_key: "idem-webhook-target",
+        merchant_order_no: "merchant-webhook-target",
+        amount_cents: 800,
+        notify_url: targetUrl,
+      });
+      const input = {
+        ...createInput(request),
+        webhookTarget: prepareWebhookTarget(targetUrl, allowedOrigin),
+      };
+
+      const created = store.createOrder(input);
+      assert.equal(created.kind, "created");
+      if (created.kind !== "created") return;
+      assert.equal(created.aggregate.webhookTarget?.targetUrl, targetUrl);
+      assert.equal(created.aggregate.webhookTarget?.orderId, created.aggregate.order.orderId);
+
+      const replay = store.createOrder(input);
+      assert.equal(replay.kind, "existing");
+      if (replay.kind !== "existing") return;
+      assert.equal(
+        replay.aggregate.webhookTarget?.targetId,
+        created.aggregate.webhookTarget?.targetId,
+      );
+
+      assert.equal(
+        store.createOrder(createInput(createOrderRequestSchema.parse({
+          idempotency_key: request.idempotency_key,
+          merchant_order_no: request.merchant_order_no,
+          amount_cents: request.amount_cents,
+        }))).kind,
+        "idempotency_conflict",
+      );
+      assert.equal(
+        store.createOrder({
+          ...createInput(request),
+          webhookTargetRejection: {
+            url: targetUrl,
+            code: "webhook_disabled",
+          },
+        }).kind,
+        "existing",
+      );
+      const changedTargetUrl = `${allowedOrigin}/orders/paid?tenant=changed`;
+      assert.equal(
+        store.createOrder({
+          ...createInput({ ...request, notify_url: changedTargetUrl }),
+          webhookTarget: prepareWebhookTarget(changedTargetUrl, allowedOrigin),
+        }).kind,
+        "idempotency_conflict",
+      );
+      assert.deepEqual(
+        store.createOrder({
+          ...createInput(createOrderRequestSchema.parse({
+            idempotency_key: "idem-webhook-rejected-new",
+            merchant_order_no: "merchant-webhook-rejected-new",
+            amount_cents: 900,
+            notify_url: targetUrl,
+          })),
+          webhookTargetRejection: {
+            url: targetUrl,
+            code: "webhook_disabled",
+          },
+        }),
+        { kind: "webhook_target_rejected", code: "webhook_disabled" },
+      );
+
+      database.read((connection) => {
+        const row = connection
+          .prepare("SELECT COUNT(*) AS count FROM webhook_targets")
+          .get() as { count: bigint | number };
+        assert.equal(Number(row.count), 1);
+      });
     });
   });
 

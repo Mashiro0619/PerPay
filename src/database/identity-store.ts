@@ -547,54 +547,66 @@ export class IdentityTransaction extends IdentityReadTransaction {
   }
 
   appendAudit(input: AuditInput): AuditEvent {
-    validateAuditInput(input);
-    const detailsJson = serializeAuditDetails(input.details ?? {});
-    const previous = this.connection
-      .prepare("SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1")
-      .get() as { event_hash: string } | undefined;
-    const previousHash = previous?.event_hash ?? null;
-    const eventId = randomUUID();
-    const eventHash = calculateAuditHash({
+    return appendAuditEvent(this.connection, input);
+  }
+}
+
+/**
+ * Appends one audit-chain entry inside an existing database transaction.
+ * Domain stores use this helper when their state change and its audit fact
+ * must commit or roll back together.
+ */
+export function appendAuditEvent(
+  connection: DatabaseSync,
+  input: AuditInput,
+): AuditEvent {
+  validateAuditInput(input);
+  const detailsJson = serializeAuditDetails(input.details ?? {});
+  const previous = connection
+    .prepare("SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1")
+    .get() as { event_hash: string } | undefined;
+  const previousHash = previous?.event_hash ?? null;
+  const eventId = randomUUID();
+  const eventHash = calculateAuditHash({
+    eventId,
+    occurredAt: input.occurredAt,
+    actorType: input.actorType,
+    actorId: input.actorId ?? null,
+    action: input.action,
+    outcome: input.outcome,
+    subjectType: input.subjectType ?? null,
+    subjectId: input.subjectId ?? null,
+    requestId: input.requestId ?? null,
+    remoteAddressHash: input.remoteAddressHash ?? null,
+    detailsJson,
+    previousHash,
+  });
+  const result = connection
+    .prepare(
+      `INSERT INTO audit_events(
+         event_id, occurred_at, actor_type, actor_id, action, outcome,
+         subject_type, subject_id, request_id, remote_address_hash,
+         details_json, previous_hash, event_hash
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
       eventId,
-      occurredAt: input.occurredAt,
-      actorType: input.actorType,
-      actorId: input.actorId ?? null,
-      action: input.action,
-      outcome: input.outcome,
-      subjectType: input.subjectType ?? null,
-      subjectId: input.subjectId ?? null,
-      requestId: input.requestId ?? null,
-      remoteAddressHash: input.remoteAddressHash ?? null,
+      input.occurredAt,
+      input.actorType,
+      input.actorId ?? null,
+      input.action,
+      input.outcome,
+      input.subjectType ?? null,
+      input.subjectId ?? null,
+      input.requestId ?? null,
+      input.remoteAddressHash ?? null,
       detailsJson,
       previousHash,
-    });
-    const result = this.connection
-      .prepare(
-        `INSERT INTO audit_events(
-           event_id, occurred_at, actor_type, actor_id, action, outcome,
-           subject_type, subject_id, request_id, remote_address_hash,
-           details_json, previous_hash, event_hash
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        eventId,
-        input.occurredAt,
-        input.actorType,
-        input.actorId ?? null,
-        input.action,
-        input.outcome,
-        input.subjectType ?? null,
-        input.subjectId ?? null,
-        input.requestId ?? null,
-        input.remoteAddressHash ?? null,
-        detailsJson,
-        previousHash,
-        eventHash,
-      );
-    if (Number(result.changes) !== 1) throw new Error("audit event was not appended");
-    const sequence = Number(result.lastInsertRowid);
-    return { sequence, eventId, eventHash, previousHash };
-  }
+      eventHash,
+    );
+  if (Number(result.changes) !== 1) throw new Error("audit event was not appended");
+  const sequence = Number(result.lastInsertRowid);
+  return { sequence, eventId, eventHash, previousHash };
 }
 
 interface AuditEventRow {

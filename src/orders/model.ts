@@ -6,6 +6,7 @@ export const MAX_REQUESTED_AMOUNT_CENTS = 9_999_999_998;
 export const MAX_IDEMPOTENCY_KEY_BYTES = 256;
 export const MAX_ORDER_DESCRIPTION_CHARACTERS = 200;
 export const MAX_ORDER_DESCRIPTION_BYTES = MAX_ORDER_DESCRIPTION_CHARACTERS * 4;
+export const MAX_NOTIFY_URL_BYTES = 4096;
 export const IDEMPOTENCY_KEY_DIGEST_VERSION = 1;
 export const CREATE_ORDER_REQUEST_FINGERPRINT_VERSION = 1;
 export const MAX_ORDER_CLOCK_AHEAD_MILLISECONDS = 5 * 60 * 1000;
@@ -45,6 +46,22 @@ const orderDescriptionSchema = z
     message: `must contain at most ${MAX_ORDER_DESCRIPTION_BYTES} UTF-8 bytes`,
   });
 
+const notifyUrlSchema = z
+  .string()
+  .min(1)
+  .refine((value) => value === value.trim(), {
+    message: "must not contain leading or trailing whitespace",
+  })
+  .refine((value) => hasOnlyUnicodeScalarValues(value), {
+    message: "must contain only valid Unicode characters",
+  })
+  .refine((value) => !controlCharacterPattern.test(value), {
+    message: "must not contain control characters",
+  })
+  .refine((value) => Buffer.byteLength(value, "utf8") <= MAX_NOTIFY_URL_BYTES, {
+    message: `must contain at most ${MAX_NOTIFY_URL_BYTES} UTF-8 bytes`,
+  });
+
 export const merchantOrderNumberSchema = z
   .string()
   .min(1)
@@ -65,6 +82,7 @@ export const createOrderRequestSchema = z
     merchant_order_no: merchantOrderNumberSchema,
     amount_cents: z.number().int().min(1).max(MAX_REQUESTED_AMOUNT_CENTS),
     description: orderDescriptionSchema.optional(),
+    notify_url: notifyUrlSchema.optional(),
   })
   .strict();
 
@@ -157,6 +175,9 @@ export interface OrderProjection {
   readonly checkout: CheckoutStateProjection;
   readonly payment: PaymentStateProjection;
   readonly refund: RefundStateProjection;
+  readonly notification: {
+    readonly notifyUrl: string | null;
+  };
   readonly createdAt: number;
   readonly updatedAt: number;
   readonly version: number;
@@ -175,8 +196,9 @@ export interface PublicCheckoutProjection {
 }
 
 /**
- * Fingerprints a request after it has passed createOrderRequestSchema.
- * The fixed tuple layout is the versioned canonical format; changing it requires a new version.
+ * Fingerprints the immutable order core after createOrderRequestSchema.
+ * Notification target evidence has its own versioned fingerprint and is
+ * checked alongside this value by the same idempotent creation transaction.
  */
 export function fingerprintCreateOrderRequest(request: CreateOrderRequest): string {
   const description = Object.hasOwn(request, "description")

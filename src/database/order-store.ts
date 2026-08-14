@@ -17,6 +17,13 @@ import {
 } from "../orders/model.ts";
 import { deriveCheckoutToken, digestCheckoutToken } from "../orders/checkout-token.ts";
 import { fingerprintCollectionCodeProfile } from "../orders/collection-profile.ts";
+import {
+  prepareWebhookTarget,
+  WEBHOOK_TARGET_FINGERPRINT_VERSION,
+  type PreparedWebhookTarget,
+  type WebhookTargetErrorCode,
+  type WebhookTargetFormat,
+} from "../notifications/model.ts";
 import type { AppDatabase } from "./database.ts";
 
 const MAX_PAYABLE_AMOUNT_CENTS = MAX_REQUESTED_AMOUNT_CENTS + 1;
@@ -39,7 +46,21 @@ export interface StoredOrderAggregate {
   readonly order: PaymentOrder;
   readonly checkout: CheckoutSession;
   readonly collectionProfile: CollectionProfile;
+  readonly webhookTarget: StoredWebhookTarget | null;
   readonly checkoutToken: string;
+}
+
+export interface StoredWebhookTarget {
+  readonly targetId: string;
+  readonly orderId: string;
+  readonly apiClientId: string;
+  readonly format: WebhookTargetFormat;
+  readonly targetUrl: string;
+  readonly allowedOrigin: string;
+  readonly urlFingerprint: string;
+  readonly requestFingerprint: string;
+  readonly requestFingerprintVersion: typeof WEBHOOK_TARGET_FINGERPRINT_VERSION;
+  readonly createdAt: number;
 }
 
 export interface SyncCollectionProfileInput {
@@ -63,6 +84,11 @@ export interface CreateStoredOrderInput {
   readonly requestFingerprint: string;
   readonly ttlMilliseconds: number;
   readonly amountOffsetMaximumCents: number;
+  readonly webhookTarget?: PreparedWebhookTarget | null;
+  readonly webhookTargetRejection?: {
+    readonly url: string;
+    readonly code: WebhookTargetErrorCode;
+  } | undefined;
 }
 
 export type CreateStoredOrderResult =
@@ -70,6 +96,10 @@ export type CreateStoredOrderResult =
   | { readonly kind: "existing"; readonly aggregate: StoredOrderAggregate }
   | { readonly kind: "idempotency_conflict"; readonly orderId: string }
   | { readonly kind: "merchant_order_conflict"; readonly orderId: string }
+  | {
+      readonly kind: "webhook_target_rejected";
+      readonly code: WebhookTargetErrorCode;
+    }
   | { readonly kind: "amount_slots_exhausted" };
 
 export class OrderClockError extends Error {
@@ -186,6 +216,7 @@ export class OrderStore {
   }
 
   createOrder(input: CreateStoredOrderInput): CreateStoredOrderResult {
+    validateWebhookTargetInput(input);
     return this.#database.write((connection) => {
       const now = this.#logicalNow(connection);
       expireDueOrders(connection, now, EXPIRY_SWEEP_LIMIT);
@@ -211,11 +242,23 @@ export class OrderStore {
         if (
           idempotent.order.requestFingerprint !== input.requestFingerprint ||
           idempotent.order.requestFingerprintVersion !==
-            CREATE_ORDER_REQUEST_FINGERPRINT_VERSION
+            CREATE_ORDER_REQUEST_FINGERPRINT_VERSION ||
+          !sameWebhookTargetRequest(
+            idempotent.webhookTarget,
+            input.webhookTarget ?? null,
+            input.webhookTargetRejection,
+          )
         ) {
           return { kind: "idempotency_conflict", orderId: idempotent.order.orderId };
         }
         return { kind: "existing", aggregate: withCheckoutToken(connection, idempotent) };
+      }
+
+      if (input.webhookTargetRejection) {
+        return {
+          kind: "webhook_target_rejected",
+          code: input.webhookTargetRejection.code,
+        };
       }
 
       const merchantOrder = readAggregateByMerchantOrderNumber(
@@ -256,13 +299,14 @@ export class OrderStore {
              order_id, api_client_id, merchant_order_no, idempotency_key_digest,
              idempotency_key_digest_version,
              request_fingerprint, request_fingerprint_version,
+             webhook_target_request_fingerprint,
              requested_amount_cents, payable_amount_cents,
              allocation_offset_max_cents, received_amount_cents, currency,
              description, collection_profile_id, checkout_status, payment_status,
              refund_status, payment_basis, eligible_from, created_at, expires_at,
              closed_at, updated_at, version
            ) VALUES (
-             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'CNY', ?, ?,
+             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'CNY', ?, ?,
              'OPEN', 'UNPAID', 'NONE', 'NONE', ?, ?, ?, NULL, ?, 1
            )`,
         )
@@ -274,6 +318,7 @@ export class OrderStore {
           IDEMPOTENCY_KEY_DIGEST_VERSION,
           input.requestFingerprint,
           CREATE_ORDER_REQUEST_FINGERPRINT_VERSION,
+          input.webhookTarget?.requestFingerprint ?? null,
           input.request.amount_cents,
           allocation.payableAmountCents,
           input.amountOffsetMaximumCents,
@@ -285,6 +330,30 @@ export class OrderStore {
           now,
         );
       assertChangedOnce(orderInsert.changes, "payment order insert");
+
+      if (input.webhookTarget) {
+        const targetInsert = connection
+          .prepare(
+            `INSERT INTO webhook_targets(
+               target_id, order_id, api_client_id, target_format, target_url,
+               allowed_origin, url_fingerprint, request_fingerprint,
+               request_fingerprint_version, created_at
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            randomUUID(),
+            orderId,
+            input.apiClientId,
+            input.webhookTarget.format,
+            input.webhookTarget.url,
+            input.webhookTarget.allowedOrigin,
+            input.webhookTarget.urlFingerprint,
+            input.webhookTarget.requestFingerprint,
+            input.webhookTarget.requestFingerprintVersion,
+            now,
+          );
+        assertChangedOnce(targetInsert.changes, "webhook target insert");
+      }
 
       const checkoutInsert = connection
         .prepare(
@@ -649,6 +718,15 @@ type AggregateRow = {
   profile_fingerprint: string;
   evidence_policy: "UNIQUE_AMOUNT_AUTO";
   profile_created_at: bigint | number;
+  webhook_target_request_fingerprint: string | null;
+  target_id: string | null;
+  target_format: WebhookTargetFormat | null;
+  target_url: string | null;
+  target_allowed_origin: string | null;
+  target_url_fingerprint: string | null;
+  target_request_fingerprint: string | null;
+  target_request_fingerprint_version: bigint | number | null;
+  target_created_at: bigint | number | null;
 };
 
 const AGGREGATE_SELECT = `
@@ -685,10 +763,20 @@ const AGGREGATE_SELECT = `
     profile.payload_fingerprint,
     profile.profile_fingerprint,
     profile.evidence_policy,
-    profile.created_at AS profile_created_at
+    profile.created_at AS profile_created_at,
+    orders.webhook_target_request_fingerprint,
+    target.target_id,
+    target.target_format,
+    target.target_url,
+    target.allowed_origin AS target_allowed_origin,
+    target.url_fingerprint AS target_url_fingerprint,
+    target.request_fingerprint AS target_request_fingerprint,
+    target.request_fingerprint_version AS target_request_fingerprint_version,
+    target.created_at AS target_created_at
   FROM payment_orders AS orders
   JOIN checkout_sessions AS checkout ON checkout.order_id = orders.order_id
   JOIN collection_profiles AS profile ON profile.profile_id = orders.collection_profile_id
+  LEFT JOIN webhook_targets AS target ON target.order_id = orders.order_id
 `;
 
 function readAggregateById(
@@ -801,7 +889,122 @@ function mapAggregate(row: AggregateRow): Omit<StoredOrderAggregate, "checkoutTo
       evidencePolicy: row.evidence_policy,
       createdAt: toSafeInteger(row.profile_created_at, "collection profile creation time"),
     },
+    webhookTarget: mapWebhookTarget(row),
   };
+}
+
+function mapWebhookTarget(row: AggregateRow): StoredWebhookTarget | null {
+  const values = [
+    row.target_id,
+    row.target_format,
+    row.target_url,
+    row.target_allowed_origin,
+    row.target_url_fingerprint,
+    row.target_request_fingerprint,
+    row.target_request_fingerprint_version,
+    row.target_created_at,
+  ];
+  if (values.every((value) => value === null)) {
+    if (row.webhook_target_request_fingerprint !== null) {
+      throw new Error("webhook target commitment has no target");
+    }
+    return null;
+  }
+  if (row.webhook_target_request_fingerprint === null) {
+    throw new Error("webhook target has no order commitment");
+  }
+  if (values.some((value) => value === null)) {
+    throw new Error("webhook target projection is incomplete");
+  }
+  const prepared = prepareWebhookTarget(
+    row.target_url as string,
+    row.target_allowed_origin as string,
+  );
+  if (
+    row.target_format !== prepared.format ||
+    row.target_url_fingerprint !== prepared.urlFingerprint ||
+    row.target_request_fingerprint !== prepared.requestFingerprint ||
+    row.webhook_target_request_fingerprint !== prepared.requestFingerprint ||
+    toSafeInteger(
+      row.target_request_fingerprint_version as bigint | number,
+      "webhook target fingerprint version",
+    ) !== prepared.requestFingerprintVersion
+  ) {
+    throw new Error("webhook target fingerprints do not match its URL");
+  }
+  return {
+    targetId: row.target_id as string,
+    orderId: row.order_id,
+    apiClientId: row.api_client_id,
+    format: prepared.format,
+    targetUrl: prepared.url,
+    allowedOrigin: prepared.allowedOrigin,
+    urlFingerprint: prepared.urlFingerprint,
+    requestFingerprint: prepared.requestFingerprint,
+    requestFingerprintVersion: prepared.requestFingerprintVersion,
+    createdAt: toSafeInteger(row.target_created_at as bigint | number, "webhook target time"),
+  };
+}
+
+function sameWebhookTarget(
+  stored: StoredWebhookTarget | null,
+  requested: PreparedWebhookTarget | null,
+): boolean {
+  if (!stored || !requested) return stored === null && requested === null;
+  return stored.format === requested.format &&
+    stored.targetUrl === requested.url &&
+    stored.allowedOrigin === requested.allowedOrigin &&
+    stored.urlFingerprint === requested.urlFingerprint &&
+    stored.requestFingerprint === requested.requestFingerprint &&
+    stored.requestFingerprintVersion === requested.requestFingerprintVersion;
+}
+
+function sameWebhookTargetRequest(
+  stored: StoredWebhookTarget | null,
+  requested: PreparedWebhookTarget | null,
+  rejected: CreateStoredOrderInput["webhookTargetRejection"],
+): boolean {
+  if (!rejected) return sameWebhookTarget(stored, requested);
+  if (!stored || requested) return false;
+  try {
+    return sameWebhookTarget(
+      stored,
+      prepareWebhookTarget(rejected.url, stored.allowedOrigin),
+    );
+  } catch {
+    return false;
+  }
+}
+
+function validateWebhookTargetInput(input: CreateStoredOrderInput): void {
+  const requestedUrl = input.request.notify_url ?? null;
+  const target = input.webhookTarget ?? null;
+  const rejected = input.webhookTargetRejection;
+  if (target && rejected) {
+    throw new RangeError("order webhook target input is ambiguous");
+  }
+  if (requestedUrl === null) {
+    if (target || rejected) throw new RangeError("order webhook target has no request URL");
+    return;
+  }
+  if (rejected) {
+    if (rejected.url !== requestedUrl) {
+      throw new RangeError("rejected order webhook target does not match the request");
+    }
+    return;
+  }
+  if (!target) throw new RangeError("order webhook target is missing");
+  const prepared = prepareWebhookTarget(requestedUrl, target.allowedOrigin);
+  if (
+    target.format !== prepared.format ||
+    target.url !== prepared.url ||
+    target.allowedOrigin !== prepared.allowedOrigin ||
+    target.urlFingerprint !== prepared.urlFingerprint ||
+    target.requestFingerprint !== prepared.requestFingerprint ||
+    target.requestFingerprintVersion !== prepared.requestFingerprintVersion
+  ) {
+    throw new RangeError("order webhook target does not match the request");
+  }
 }
 
 function withCheckoutToken(

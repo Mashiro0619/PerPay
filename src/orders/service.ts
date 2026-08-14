@@ -11,6 +11,12 @@ import {
 import { digestCheckoutToken, isCanonicalCheckoutToken } from "./checkout-token.ts";
 import { fingerprintCollectionCodeProfile } from "./collection-profile.ts";
 import {
+  prepareWebhookTarget,
+  WebhookTargetError,
+  type PreparedWebhookTarget,
+  type WebhookTargetErrorCode,
+} from "../notifications/model.ts";
+import {
   IDEMPOTENCY_KEY_DIGEST_VERSION,
   fingerprintCreateOrderRequest,
   type CreateOrderRequest,
@@ -30,7 +36,10 @@ export type OrderErrorCode =
   | "merchant_order_no_conflict"
   | "amount_slots_exhausted"
   | "checkout_not_found"
-  | "order_clock_unavailable";
+  | "order_clock_unavailable"
+  | "webhook_disabled"
+  | "webhook_target_invalid"
+  | "webhook_target_not_allowed";
 
 export class OrderError extends Error {
   readonly code: OrderErrorCode;
@@ -47,6 +56,14 @@ export class OrderError extends Error {
 export interface CreateOrderResult {
   readonly created: boolean;
   readonly order: OrderProjection;
+}
+
+interface WebhookTargetDecision {
+  readonly target: PreparedWebhookTarget | null;
+  readonly rejection?: {
+    readonly url: string;
+    readonly code: WebhookTargetErrorCode;
+  } | undefined;
 }
 
 export class OrderService {
@@ -76,6 +93,7 @@ export class OrderService {
   }
 
   create(apiClientId: string, request: CreateOrderRequest): CreateOrderResult {
+    const webhookTarget = this.#prepareWebhookTarget(request);
     const result = this.#runStoreOperation(() =>
       this.#store.createOrder({
         apiClientId,
@@ -84,6 +102,8 @@ export class OrderService {
         requestFingerprint: fingerprintCreateOrderRequest(request),
         ttlMilliseconds: this.#config.orderTtlSeconds * 1000,
         amountOffsetMaximumCents: this.#config.amountOffsetMaximumCents,
+        webhookTarget: webhookTarget.target,
+        webhookTargetRejection: webhookTarget.rejection,
       }),
     );
     switch (result.kind) {
@@ -101,6 +121,8 @@ export class OrderService {
           "merchant_order_no_conflict",
           "商户订单号已经存在",
         );
+      case "webhook_target_rejected":
+        throw webhookTargetOrderError(result.code);
       case "amount_slots_exhausted":
         throw new OrderError(
           "amount_slots_exhausted",
@@ -168,6 +190,9 @@ export class OrderService {
       checkout: checkoutProjection(aggregate),
       payment: paymentProjection(aggregate),
       refund: { status: aggregate.order.refundStatus },
+      notification: {
+        notifyUrl: aggregate.webhookTarget?.targetUrl ?? null,
+      },
       createdAt: aggregate.order.createdAt,
       updatedAt: aggregate.order.updatedAt,
       version: aggregate.order.version,
@@ -187,6 +212,44 @@ export class OrderService {
       }
       throw error;
     }
+  }
+
+  #prepareWebhookTarget(request: CreateOrderRequest): WebhookTargetDecision {
+    if (request.notify_url === undefined) return { target: null };
+    if (!this.#config.webhook.enabled) {
+      return {
+        target: null,
+        rejection: { url: request.notify_url, code: "webhook_disabled" },
+      };
+    }
+    try {
+      return {
+        target: prepareWebhookTarget(request.notify_url, this.#config.webhook.allowedOrigin),
+      };
+    } catch (error) {
+      if (!(error instanceof WebhookTargetError)) throw error;
+      return {
+        target: null,
+        rejection: { url: request.notify_url, code: error.code },
+      };
+    }
+  }
+}
+
+function webhookTargetOrderError(code: WebhookTargetErrorCode): OrderError {
+  switch (code) {
+    case "webhook_disabled":
+      return new OrderError(
+        code,
+        "通知功能未启用，不能为新订单设置 notify_url",
+      );
+    case "webhook_target_not_allowed":
+      return new OrderError(
+        code,
+        "notify_url 必须位于部署配置允许的 HTTPS origin",
+      );
+    case "webhook_target_invalid":
+      return new OrderError(code, "notify_url 格式无效");
   }
 }
 

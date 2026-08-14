@@ -6,6 +6,7 @@ import { loadConfig } from "../src/config.ts";
 
 describe("loadConfig", () => {
   const validApiSecret = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
+  const validWebhookSecret = Buffer.alloc(32, 61).toString("base64url");
   const validEnvironment = {
     PERPAY_INITIAL_ADMIN_PASSWORD: "a-secure-local-password",
     PERPAY_API_SECRET: validApiSecret,
@@ -172,6 +173,68 @@ describe("loadConfig", () => {
       enabled: false,
       endpoint: "https://openapi.alipay.com",
     });
+    assert.deepEqual(config.webhook, { enabled: false });
+  });
+
+  it("requires an isolated secret and one canonical HTTPS DNS origin for notifications", () => {
+    const enabled = {
+      ...validEnvironment,
+      PERPAY_WEBHOOK_ENABLED: "true",
+      PERPAY_WEBHOOK_ALLOWED_ORIGIN: "https://Hooks.PerPay.dev:8443",
+      PERPAY_WEBHOOK_SECRET: validWebhookSecret,
+      PERPAY_WEBHOOK_TIMEOUT_MILLISECONDS: "7000",
+      PERPAY_WEBHOOK_MAX_ATTEMPTS: "9",
+      PERPAY_WEBHOOK_RETRY_BASE_SECONDS: "3",
+      PERPAY_WEBHOOK_RETRY_MAX_SECONDS: "600",
+    } as const;
+    const config = loadConfig(enabled);
+    assert.equal(config.webhook.enabled, true);
+    if (!config.webhook.enabled) throw new Error("notifications should be enabled");
+    assert.equal(config.webhook.allowedOrigin, "https://hooks.perpay.dev:8443");
+    assert.equal(config.webhook.secret, validWebhookSecret);
+    assert.equal(config.webhook.timeoutMilliseconds, 7_000);
+    assert.equal(config.webhook.maximumAttempts, 9);
+    assert.equal(config.webhook.retryBaseMilliseconds, 3_000);
+    assert.equal(config.webhook.retryMaximumMilliseconds, 600_000);
+    assert.match(config.webhook.allowedOriginFingerprint, /^[0-9a-f]{64}$/);
+    assert.match(config.webhook.signingKeyFingerprint, /^[0-9a-f]{64}$/);
+
+    assert.throws(
+      () => loadConfig({ ...validEnvironment, PERPAY_WEBHOOK_ENABLED: "true" }),
+      /PERPAY_WEBHOOK_ALLOWED_ORIGIN.*PERPAY_WEBHOOK_SECRET/,
+    );
+    assert.throws(
+      () => loadConfig({ ...enabled, PERPAY_WEBHOOK_SECRET: validApiSecret }),
+      /不能复用管理员密码或 API 密钥/,
+    );
+    assert.throws(
+      () => loadConfig({ ...enabled, PERPAY_WEBHOOK_SECRET: "too-short" }),
+      /恰好 32 字节/,
+    );
+    assert.throws(
+      () => loadConfig({ ...enabled, PERPAY_WEBHOOK_RETRY_BASE_SECONDS: "601" }),
+      /不能小于 PERPAY_WEBHOOK_RETRY_BASE_SECONDS/,
+    );
+
+    for (const origin of [
+      "http://hooks.perpay.dev",
+      "https://user@hooks.perpay.dev",
+      "https://hooks.perpay.dev/path",
+      "https://hooks.perpay.dev?mode=1",
+      "https://hooks.perpay.dev?",
+      "https://hooks.perpay.dev#",
+      "https://127.0.0.1",
+      "https://hooks.perpay.dev.",
+      " https://hooks.perpay.dev",
+      "https://example.com",
+      `https://${"a".repeat(64)}.perpay.dev`,
+      `https://${Array.from({ length: 5 }, () => "a".repeat(63)).join(".")}`,
+    ]) {
+      assert.throws(
+        () => loadConfig({ ...enabled, PERPAY_WEBHOOK_ALLOWED_ORIGIN: origin }),
+        /PERPAY_WEBHOOK_ALLOWED_ORIGIN/,
+      );
+    }
   });
 
   it("requires strong RSA platform configuration only when collection is enabled", () => {

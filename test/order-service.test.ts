@@ -112,4 +112,113 @@ describe("order service fingerprints", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("validates configured notification targets and preserves their idempotent identity", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-order-service-webhook-"));
+    const baseEnvironment = {
+      PERPAY_INITIAL_ADMIN_PASSWORD: "order-service-webhook-password",
+      PERPAY_API_SECRET: "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+      PERPAY_COLLECTION_CODE_PAYLOAD: "https://qr.local.invalid/service-webhook",
+      PERPAY_DATA_DIR: directory,
+    } as const;
+    const allowedOrigin = "https://hooks.local.invalid";
+    const rotatedAllowedOrigin = "https://rotated-hooks.local.invalid";
+    const config = loadConfig({
+      ...baseEnvironment,
+      PERPAY_WEBHOOK_ENABLED: "true",
+      PERPAY_WEBHOOK_ALLOWED_ORIGIN: allowedOrigin,
+      PERPAY_WEBHOOK_SECRET: Buffer.alloc(32, 55).toString("base64url"),
+    });
+    const database = await AppDatabase.open(config.databasePath);
+    try {
+      await new IdentityService(database, config).initialize();
+      const orders = new OrderService(database, config);
+      orders.initialize();
+      const request = createOrderRequestSchema.parse({
+        idempotency_key: "service-webhook-idempotency",
+        merchant_order_no: "service-webhook-order",
+        amount_cents: 3_000,
+        notify_url: `${allowedOrigin}/paid?source=api`,
+      });
+      const created = orders.create("default", request);
+      assert.equal(created.created, true);
+      assert.equal(created.order.notification.notifyUrl, request.notify_url);
+      assert.deepEqual(readWebhookOrderCounts(database), {
+        orders: 1,
+        targets: 1,
+        deliveries: 0,
+      });
+
+      const disabled = new OrderService(database, loadConfig(baseEnvironment));
+      const replayedWhileDisabled = disabled.create("default", request);
+      assert.equal(replayedWhileDisabled.created, false);
+      assert.equal(replayedWhileDisabled.order.orderId, created.order.orderId);
+
+      const rotatedOrigin = new OrderService(database, loadConfig({
+        ...baseEnvironment,
+        PERPAY_WEBHOOK_ENABLED: "true",
+        PERPAY_WEBHOOK_ALLOWED_ORIGIN: rotatedAllowedOrigin,
+        PERPAY_WEBHOOK_SECRET: Buffer.alloc(32, 55).toString("base64url"),
+      }));
+      const replayedAfterOriginRotation = rotatedOrigin.create("default", request);
+      assert.equal(replayedAfterOriginRotation.created, false);
+      assert.equal(replayedAfterOriginRotation.order.orderId, created.order.orderId);
+
+      assert.throws(
+        () => rotatedOrigin.create("default", {
+          ...request,
+          notify_url: `${allowedOrigin}/paid?source=changed`,
+        }),
+        (error: unknown) => error instanceof OrderError && error.code === "idempotency_conflict",
+      );
+      assert.throws(
+        () => rotatedOrigin.create("default", createOrderRequestSchema.parse({
+          idempotency_key: "service-webhook-wrong-origin",
+          merchant_order_no: "service-webhook-wrong-origin",
+          amount_cents: 3_100,
+          notify_url: `${allowedOrigin}/paid`,
+        })),
+        (error: unknown) =>
+          error instanceof OrderError && error.code === "webhook_target_not_allowed",
+      );
+
+      assert.throws(
+        () => disabled.create("default", createOrderRequestSchema.parse({
+          idempotency_key: "service-webhook-disabled",
+          merchant_order_no: "service-webhook-disabled",
+          amount_cents: 3_200,
+          notify_url: `${allowedOrigin}/paid`,
+        })),
+        (error: unknown) => error instanceof OrderError && error.code === "webhook_disabled",
+      );
+      assert.deepEqual(readWebhookOrderCounts(database), {
+        orders: 1,
+        targets: 1,
+        deliveries: 0,
+      });
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });
+
+function readWebhookOrderCounts(database: AppDatabase): {
+  readonly orders: number;
+  readonly targets: number;
+  readonly deliveries: number;
+} {
+  return database.read((connection) => {
+    const row = connection.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM payment_orders) AS orders,
+         (SELECT COUNT(*) FROM webhook_targets) AS targets,
+         (SELECT COUNT(*) FROM webhook_deliveries) AS deliveries`,
+    ).get() as Record<"orders" | "targets" | "deliveries", bigint | number>;
+    return {
+      orders: Number(row.orders),
+      targets: Number(row.targets),
+      deliveries: Number(row.deliveries),
+    };
+  });
+}

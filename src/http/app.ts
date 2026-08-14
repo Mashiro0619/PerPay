@@ -651,7 +651,7 @@ function identityStatus(code: IdentityError["code"]): 401 | 403 | 409 | 429 | 50
   }
 }
 
-function orderStatus(code: OrderErrorCode): 404 | 409 | 503 {
+function orderStatus(code: OrderErrorCode): 404 | 409 | 422 | 503 {
   switch (code) {
     case "order_not_found":
     case "checkout_not_found":
@@ -662,6 +662,10 @@ function orderStatus(code: OrderErrorCode): 404 | 409 | 503 {
     case "amount_slots_exhausted":
     case "order_clock_unavailable":
       return 503;
+    case "webhook_disabled":
+    case "webhook_target_invalid":
+    case "webhook_target_not_allowed":
+      return 422;
   }
 }
 

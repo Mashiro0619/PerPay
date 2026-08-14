@@ -40,6 +40,16 @@ services:
       PERPAY_ALIPAY_ENDPOINT: "https://openapi.alipay.com"
       PERPAY_ALIPAY_TIMEOUT_MILLISECONDS: "8000"
       PERPAY_ALIPAY_SCAN_INTERVAL_SECONDS: "10"
+      # 订单通知默认关闭。启用前将下一项改为 true，并填写唯一允许的 HTTPS DNS origin
+      # 与独立的 32 字节无填充 base64url 密钥；每笔订单的 notify_url 必须属于该 origin。
+      PERPAY_WEBHOOK_ENABLED: "false"
+      PERPAY_WEBHOOK_ALLOWED_ORIGIN: "https://CHANGE_ME_TO_YOUR_WEBHOOK_HOST"
+      PERPAY_WEBHOOK_SECRET: "CHANGE_ME_TO_ANOTHER_43_CHARACTER_BASE64URL_SECRET"
+      # 单次超时 1-30 秒；自动投递最多 1-100 次，指数退避受下列上下界约束。
+      PERPAY_WEBHOOK_TIMEOUT_MILLISECONDS: "5000"
+      PERPAY_WEBHOOK_MAX_ATTEMPTS: "12"
+      PERPAY_WEBHOOK_RETRY_BASE_SECONDS: "5"
+      PERPAY_WEBHOOK_RETRY_MAX_SECONDS: "3600"
     ports:
       # 默认仅本机可访问；修改中间端口，公网访问应由 HTTPS 反向代理提供。
       - "127.0.0.1:8080:8080"
