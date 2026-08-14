@@ -41,6 +41,9 @@ export interface DatabaseBackup {
   readonly sha256: string;
 }
 
+export type DatabaseReadOperation<T> = (connection: DatabaseSync) => T;
+export type DatabaseWriteOperation<T> = (connection: DatabaseSync) => T;
+
 interface AppliedMigration {
   readonly version: number;
   readonly name: string;
@@ -122,6 +125,33 @@ export class AppDatabase {
     }
   }
 
+  /** Runs a synchronous read through the single application connection. */
+  read<T>(operation: DatabaseReadOperation<T>): T {
+    this.assertAvailable();
+    return operation(this.#connection);
+  }
+
+  /** Runs a short synchronous write transaction. Async callbacks are forbidden. */
+  write<T>(operation: DatabaseWriteOperation<T>): T {
+    this.assertAvailable();
+    if (this.#connection.isTransaction) {
+      throw new Error("nested database transactions are not supported");
+    }
+
+    this.#connection.exec("BEGIN IMMEDIATE");
+    try {
+      const result = operation(this.#connection);
+      if (isPromiseLike(result)) {
+        throw new Error("database write callbacks must be synchronous");
+      }
+      this.#connection.exec("COMMIT");
+      return result;
+    } catch (error) {
+      if (this.#connection.isTransaction) this.#connection.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   /** Expensive integrity checks are explicit, rather than part of /readyz. */
   integrityCheck(): DatabaseIntegrity {
     if (this.#closed) {
@@ -180,6 +210,20 @@ export class AppDatabase {
       this.#leaseLost = true;
     }
   }
+
+  #assertAvailable(): void {
+    if (this.#closed || this.#leaseLost) {
+      throw new Error(this.#leaseLost ? "database lease lost" : "database is closed");
+    }
+  }
+
+  private assertAvailable(): void {
+    this.#assertAvailable();
+  }
+}
+
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return typeof value === "object" && value !== null && "then" in value && typeof value.then === "function";
 }
 
 function configurePragmas(connection: DatabaseSync): void {

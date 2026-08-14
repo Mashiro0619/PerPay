@@ -3,12 +3,21 @@ import { serve } from "@hono/node-server";
 import { loadConfig } from "./config.ts";
 import { AppDatabase } from "./database/database.ts";
 import { createApp } from "./http/app.ts";
+import { IdentityService } from "./identity/service.ts";
 import { APP_VERSION } from "./version.ts";
 
 const startedAt = new Date();
 const config = loadConfig();
 const database = await AppDatabase.open(config.databasePath);
-const app = createApp({ config, database, startedAt });
+const identity = new IdentityService(database, config);
+try {
+  await identity.initialize();
+} catch (error) {
+  database.close();
+  throw error;
+}
+const app = createApp({ config, database, identity, startedAt });
+let shuttingDown = false;
 
 const server = serve(
   {
@@ -30,7 +39,38 @@ const server = serve(
   },
 );
 
-let shuttingDown = false;
+if ("requestTimeout" in server) server.requestTimeout = 30_000;
+if ("headersTimeout" in server) server.headersTimeout = 10_000;
+if ("keepAliveTimeout" in server) server.keepAliveTimeout = 5_000;
+if ("keepAliveTimeoutBuffer" in server) server.keepAliveTimeoutBuffer = 1_000;
+if ("maxRequestsPerSocket" in server) server.maxRequestsPerSocket = 1_000;
+if ("maxHeadersCount" in server) server.maxHeadersCount = 100;
+server.setTimeout(30_000);
+
+server.once("error", (error) => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.error(
+    JSON.stringify({
+      level: "error",
+      event: "server_failed",
+      message: error.message,
+    }),
+  );
+  try {
+    database.close();
+  } catch (closeError) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        event: "database_close_failed",
+        message: closeError instanceof Error ? closeError.message : "unknown_error",
+      }),
+    );
+  }
+  process.exitCode = 1;
+});
+
 function shutdown(signal: NodeJS.Signals): void {
   if (shuttingDown) {
     return;
