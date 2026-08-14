@@ -1,0 +1,26 @@
+{
+  "name": "perpay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.15.0 <25"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "npm run typecheck && npm test && npm run build",
+    "dev": "node --experimental-strip-types --watch src/main.ts",
+    "start": "node dist/main.js",
+    "test": "node --experimental-strip-types --test --test-isolation=process test/**/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.0",
+    "hono": "4.13.2",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "6.0.3"
+  }
+}

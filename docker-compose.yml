@@ -1,0 +1,34 @@
+name: perpay
+
+services:
+  app:
+    # 正式发布后替换为带版本与摘要的预构建镜像。
+    image: perpay:0.1.0-dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      # 必填：至少 12 个字符，不要保留示例值。
+      PERPAY_ADMIN_PASSWORD: "CHANGE_ME_TO_A_LONG_RANDOM_PASSWORD"
+      PERPAY_TIMEZONE: "Asia/Shanghai"
+      PERPAY_LOG_LEVEL: "info"
+    ports:
+      # 修改左侧端口；右侧 8080 是容器内部固定端口。
+      - "8080:8080"
+    volumes:
+      - perpay-data:/data
+    user: "1000:1000"
+    # 正式版本默认保活；调试确定性配置错误时用 `docker compose logs app` 查看原因。
+    restart: unless-stopped
+    stop_grace_period: 30s
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    init: true
+
+volumes:
+  perpay-data:

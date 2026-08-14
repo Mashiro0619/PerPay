@@ -1,0 +1,34 @@
+# Local reference project and internal planning documents
+/a/
+/REFERENCE_PROJECT_ANALYSIS.md
+/NEW_PROJECT_PLAN.md
+/PRE_DEVELOPMENT_AUDIT.md
+/UI_LIBRARY_REQUIREMENTS.md
+
+# Build output and local tooling
+node_modules/
+dist/
+coverage/
+*.log
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+
+# Runtime data
+data/
+backups/
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
