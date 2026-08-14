@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
   chmodSync,
   closeSync,
@@ -13,9 +13,13 @@ import {
   statSync,
 } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { performance } from "node:perf_hooks";
 import { DatabaseSync, backup as sqliteBackup } from "node:sqlite";
 
 import { migrations, migrationChecksum, type Migration } from "./migrations.ts";
+import { deriveCheckoutToken, digestCheckoutToken } from "../orders/checkout-token.ts";
+import { fingerprintCollectionCodeProfile } from "../orders/collection-profile.ts";
+import { MAX_ORDER_CLOCK_AHEAD_MILLISECONDS } from "../orders/model.ts";
 import { APP_VERSION, DATABASE_COMPATIBILITY } from "../version.ts";
 
 const SQLITE_TIMEOUT_MS = 5_000;
@@ -32,6 +36,7 @@ export interface DatabaseIntegrity {
   readonly ok: boolean;
   readonly quickCheck: string;
   readonly foreignKeyViolations: number;
+  readonly domainViolations: number;
   readonly schema: string;
 }
 
@@ -60,6 +65,8 @@ export class AppDatabase {
   readonly #databasePath: string;
   readonly #leaseToken: string;
   readonly #leaseHeartbeat: NodeJS.Timeout;
+  readonly #wallClockAnchorMs: number;
+  readonly #monotonicAnchorMs: number;
   #closed = false;
   #leaseLost = false;
 
@@ -67,6 +74,8 @@ export class AppDatabase {
     this.#connection = connection;
     this.#databasePath = databasePath;
     this.#leaseToken = leaseToken;
+    this.#wallClockAnchorMs = Date.now();
+    this.#monotonicAnchorMs = performance.now();
     this.#leaseHeartbeat = setInterval(() => this.#renewLease(), LEASE_HEARTBEAT_MS);
     this.#leaseHeartbeat.unref();
   }
@@ -89,6 +98,18 @@ export class AppDatabase {
       ensureLeaseTable(connection);
       acquireLease(connection, leaseToken);
       await migrate(connection, resolvedPath, existed);
+      if (!validateSchema(connection)) {
+        throw new Error("database schema integrity check failed: schema=invalid");
+      }
+      initializeRuntimeSecrets(connection);
+      const integrity = inspectIntegrity(connection);
+      if (!integrity.ok) {
+        throw new Error(
+          `database integrity check failed: quick_check=${integrity.quickCheck}, ` +
+          `foreign_key_violations=${integrity.foreignKeyViolations}, ` +
+          `domain_violations=${integrity.domainViolations}, schema=${integrity.schema}`,
+        );
+      }
       recordApplicationVersion(connection);
       return new AppDatabase(connection, resolvedPath, leaseToken);
     } catch (error) {
@@ -118,6 +139,25 @@ export class AppDatabase {
         .get(LEASE_KEY) as LeaseRow | undefined;
       if (!lease || lease.owner_token !== this.#leaseToken || Number(lease.expires_at) <= Date.now()) {
         return { ok: false, result: "database_lease_lost" };
+      }
+      if (tableExists(this.#connection, "order_clock")) {
+        const row = this.#connection
+          .prepare("SELECT last_now_ms FROM order_clock WHERE singleton_key = 1")
+          .get() as { last_now_ms: bigint | number } | undefined;
+        const logicalNow = row ? Number(row.last_now_ms) : Number.NaN;
+        if (
+          !Number.isSafeInteger(logicalNow) ||
+          logicalNow - databaseTimeMilliseconds(this.#connection) >
+            MAX_ORDER_CLOCK_AHEAD_MILLISECONDS
+        ) {
+          return { ok: false, result: "order_clock_ahead" };
+        }
+        const currentPhysical = databaseTimeMilliseconds(this.#connection);
+        const expectedPhysical =
+          this.#wallClockAnchorMs + (performance.now() - this.#monotonicAnchorMs);
+        if (Math.abs(currentPhysical - expectedPhysical) > MAX_ORDER_CLOCK_AHEAD_MILLISECONDS) {
+          return { ok: false, result: "system_clock_changed" };
+        }
       }
       return { ok: true, result: "ok" };
     } catch (error) {
@@ -155,7 +195,13 @@ export class AppDatabase {
   /** Expensive integrity checks are explicit, rather than part of /readyz. */
   integrityCheck(): DatabaseIntegrity {
     if (this.#closed) {
-      return { ok: false, quickCheck: "database_closed", foreignKeyViolations: -1, schema: "error" };
+      return {
+        ok: false,
+        quickCheck: "database_closed",
+        foreignKeyViolations: -1,
+        domainViolations: -1,
+        schema: "error",
+      };
     }
     return inspectIntegrity(this.#connection);
   }
@@ -256,6 +302,17 @@ function assertPragmaNumber(connection: DatabaseSync, name: string, expected: nu
   }
 }
 
+function databaseTimeMilliseconds(connection: DatabaseSync): number {
+  const row = connection
+    .prepare("SELECT CAST(unixepoch('subsec') * 1000 AS INTEGER) AS now_ms")
+    .get() as { now_ms: bigint | number };
+  const value = Number(row.now_ms);
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error("database clock is outside the safe integer range");
+  }
+  return value;
+}
+
 function ensureLeaseTable(connection: DatabaseSync): void {
   connection.exec(`
     CREATE TABLE IF NOT EXISTS app_lease (
@@ -313,11 +370,18 @@ async function migrate(connection: DatabaseSync, databasePath: string, existed: 
   const before = hasTable ? readAppliedMigrations(connection, false) : [];
   validateAppliedMigrationNames(before);
   const pending = migrations.some((migration) => !before.some((row) => row.version === migration.version));
+  const newestAppliedBeforeMigration = Math.max(0, ...before.map((row) => row.version));
+  const newestKnown = Math.max(0, ...migrations.map((migration) => migration.version));
   if (existed && pending && !hasTable) {
     throw new Error("existing SQLite database has no migration metadata; refusing unverified migration");
   }
   if (existed && pending) {
-    await createVerifiedBackup(connection, databasePath, `${databasePath}.pre-migration-${Date.now()}-${randomUUID()}.sqlite3`);
+    await createPreMigrationBackup(
+      connection,
+      databasePath,
+      newestAppliedBeforeMigration,
+      newestKnown,
+    );
   }
   connection.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -340,7 +404,6 @@ async function migrate(connection: DatabaseSync, databasePath: string, existed: 
     if (!row.checksum) connection.prepare("UPDATE schema_migrations SET checksum = ? WHERE version = ?").run(expected, row.version);
   }
   const newestApplied = Math.max(0, ...rows.map((row) => row.version));
-  const newestKnown = Math.max(0, ...migrations.map((migration) => migration.version));
   if (newestApplied > newestKnown) throw new Error("database schema is newer than this application; refusing startup");
   const insert = connection.prepare("INSERT INTO schema_migrations(version, name, checksum, applied_at) VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))");
   const versions = new Set(rows.map((row) => row.version));
@@ -355,6 +418,23 @@ async function migrate(connection: DatabaseSync, databasePath: string, existed: 
       if (connection.isTransaction) connection.exec("ROLLBACK");
       throw new Error(`database migration ${migration.version} (${migration.name}) failed`, { cause: error });
     }
+  }
+}
+
+async function createPreMigrationBackup(
+  connection: DatabaseSync,
+  databasePath: string,
+  fromVersion: number,
+  toVersion: number,
+): Promise<void> {
+  const target = `${databasePath}.pre-migration-v${fromVersion}-to-v${toVersion}.sqlite3`;
+  const staging = `${target}.staging-${randomUUID()}`;
+  try {
+    await createVerifiedBackup(connection, databasePath, staging);
+    replaceFileAtomically(staging, target);
+  } catch (error) {
+    removeSqliteArtifacts(staging);
+    throw error;
   }
 }
 
@@ -378,8 +458,9 @@ function readAppliedMigrations(connection: DatabaseSync, includeChecksum: boolea
 function validateAppliedMigrationNames(rows: readonly AppliedMigration[]): void {
   const versions = new Set<number>();
   const names = new Set<string>();
-  for (const row of rows) {
+  for (const [index, row] of rows.entries()) {
     if (!Number.isSafeInteger(row.version) || row.version < 1 || versions.has(row.version) || names.has(row.name)) throw new Error("invalid schema migration metadata");
+    if (row.version !== index + 1) throw new Error("schema migrations must form a contiguous prefix");
     versions.add(row.version); names.add(row.name);
     const migration = migrations.find((candidate) => candidate.version === row.version);
     if (!migration || migration.name !== row.name) throw new Error(`database contains unknown or renamed migration ${row.version} ${row.name}`);
@@ -393,16 +474,185 @@ function recordApplicationVersion(connection: DatabaseSync): void {
   connection.prepare("INSERT INTO system_metadata(key, value, updated_at) VALUES ('last_started_version', ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").run(APP_VERSION);
 }
 
+function initializeRuntimeSecrets(connection: DatabaseSync): void {
+  if (!tableExists(connection, "checkout_token_key")) return;
+  const existing = connection
+    .prepare("SELECT key_material FROM checkout_token_key WHERE singleton_key = 1")
+    .get() as { key_material: Uint8Array } | undefined;
+  if (existing) {
+    if (!(existing.key_material instanceof Uint8Array) || existing.key_material.byteLength !== 32) {
+      throw new Error("checkout token key is invalid");
+    }
+    assertCheckoutTokenKeyMatchesSessions(connection, existing.key_material);
+    return;
+  }
+
+  if (!tableExists(connection, "payment_orders") || !tableExists(connection, "checkout_sessions")) {
+    return;
+  }
+  const state = connection
+    .prepare(
+      `SELECT
+         EXISTS(SELECT 1 FROM payment_orders) AS has_orders,
+         EXISTS(SELECT 1 FROM checkout_sessions) AS has_checkouts`,
+    )
+    .get() as { has_orders: bigint | number; has_checkouts: bigint | number };
+  if (Number(state.has_orders) !== 0 || Number(state.has_checkouts) !== 0) {
+    throw new Error("checkout token key is missing from a database that already contains orders");
+  }
+
+  connection.exec("BEGIN IMMEDIATE");
+  try {
+    const result = connection
+      .prepare(
+        `INSERT INTO checkout_token_key(singleton_key, key_material, created_at)
+         VALUES (1, ?, CAST(unixepoch('subsec') * 1000 AS INTEGER))`,
+      )
+      .run(randomBytes(32));
+    if (Number(result.changes) !== 1) {
+      throw new Error("checkout token key was not initialized");
+    }
+    connection.exec("COMMIT");
+  } catch (error) {
+    if (connection.isTransaction) connection.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 function inspectIntegrity(connection: DatabaseSync): DatabaseIntegrity {
   try {
     const quick = connection.prepare("PRAGMA quick_check").get() as { quick_check: string } | undefined;
     const quickCheck = quick?.quick_check ?? "missing_result";
     const foreignKeys = connection.prepare("PRAGMA foreign_key_check").all();
+    const domainViolations =
+      countDomainViolations(connection) + countCryptographicDomainViolations(connection);
     const schema = validateSchema(connection) ? "ok" : "invalid";
-    return { ok: quickCheck === "ok" && foreignKeys.length === 0 && schema === "ok", quickCheck, foreignKeyViolations: foreignKeys.length, schema };
+    return {
+      ok:
+        quickCheck === "ok" &&
+        foreignKeys.length === 0 &&
+        domainViolations === 0 &&
+        schema === "ok",
+      quickCheck,
+      foreignKeyViolations: foreignKeys.length,
+      domainViolations,
+      schema,
+    };
   } catch (error) {
-    return { ok: false, quickCheck: error instanceof Error ? error.message : "integrity_check_failed", foreignKeyViolations: -1, schema: "error" };
+    return {
+      ok: false,
+      quickCheck: error instanceof Error ? error.message : "integrity_check_failed",
+      foreignKeyViolations: -1,
+      domainViolations: -1,
+      schema: "error",
+    };
   }
+}
+
+function countDomainViolations(connection: DatabaseSync): number {
+  if (!tableExists(connection, "payment_orders")) return 0;
+  const row = connection
+    .prepare(
+      `SELECT COUNT(*) AS violations
+         FROM (
+           SELECT orders.order_id AS subject
+             FROM payment_orders AS orders
+             LEFT JOIN checkout_sessions AS checkout ON checkout.order_id = orders.order_id
+             LEFT JOIN amount_slots AS slot ON slot.order_id = orders.order_id
+            WHERE checkout.order_id IS NULL
+               OR slot.order_id IS NULL
+               OR slot.collection_profile_id != orders.collection_profile_id
+               OR slot.payable_amount_cents != orders.payable_amount_cents
+               OR slot.occupied_from != orders.eligible_from
+               OR (
+                 orders.checkout_status = 'OPEN' AND
+                 (slot.released_at IS NOT NULL OR slot.release_reason IS NOT NULL)
+               )
+               OR (
+                 orders.checkout_status IN ('CLOSED', 'EXPIRED') AND
+                 (
+                   slot.released_at IS NOT orders.closed_at OR
+                   slot.release_reason != orders.checkout_status
+                 )
+               )
+
+           UNION ALL
+
+           SELECT orders.order_id AS subject
+             FROM payment_orders AS orders
+             LEFT JOIN order_events AS event ON event.order_id = orders.order_id
+            GROUP BY orders.order_id, orders.version
+           HAVING COUNT(event.event_id) != orders.version
+               OR MIN(event.sequence) != 1
+               OR MAX(event.sequence) != orders.version
+
+           UNION ALL
+
+           SELECT ordered.slot_id AS subject
+             FROM (
+               SELECT
+                 slot_id,
+                 generation,
+                 occupied_from,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY payable_amount_cents ORDER BY generation
+                 ) AS position,
+                 LAG(generation) OVER (
+                   PARTITION BY payable_amount_cents ORDER BY generation
+                 ) AS previous_generation,
+                 LAG(released_at) OVER (
+                   PARTITION BY payable_amount_cents ORDER BY generation
+                 ) AS previous_released_at
+               FROM amount_slots
+             ) AS ordered
+            WHERE
+              (ordered.position = 1 AND ordered.generation != 1) OR
+              (
+                ordered.position > 1 AND
+                (
+                  ordered.generation != ordered.previous_generation + 1 OR
+                  ordered.previous_released_at IS NULL OR
+                  ordered.previous_released_at > ordered.occupied_from
+                )
+              )
+
+           UNION ALL
+
+           SELECT 'active_profile' AS subject
+            WHERE EXISTS (SELECT 1 FROM collection_profiles)
+              AND NOT EXISTS (SELECT 1 FROM active_collection_profile WHERE singleton_key = 1)
+
+           UNION ALL
+
+           SELECT 'activation_head' AS subject
+             FROM active_collection_profile AS active
+            WHERE NOT EXISTS (
+              SELECT 1
+                FROM collection_profile_activations AS activation
+               WHERE activation.sequence = (
+                 SELECT MAX(sequence) FROM collection_profile_activations
+               )
+                 AND activation.profile_id = active.profile_id
+                 AND activation.activated_at = active.activated_at
+            )
+
+           UNION ALL
+
+           SELECT 'checkout_token_key' AS subject
+            WHERE (SELECT COUNT(*) FROM checkout_token_key WHERE singleton_key = 1) != 1
+
+           UNION ALL
+
+           SELECT 'order_clock' AS subject
+            WHERE (SELECT COUNT(*) FROM order_clock WHERE singleton_key = 1) != 1
+         )`,
+    )
+    .get() as { violations: bigint | number };
+  const violations = Number(row.violations);
+  if (!Number.isSafeInteger(violations) || violations < 0) {
+    throw new Error("domain integrity violation count is invalid");
+  }
+  return violations;
 }
 
 function validateSchema(connection: DatabaseSync): boolean {
@@ -410,12 +660,124 @@ function validateSchema(connection: DatabaseSync): boolean {
   try {
     const migrationColumns = connection.prepare("PRAGMA table_info(schema_migrations)").all() as Array<{ name: string }>;
     const hasChecksum = migrationColumns.some((column) => column.name === "checksum");
-    for (const row of readAppliedMigrations(connection, hasChecksum)) {
+    const applied = readAppliedMigrations(connection, hasChecksum);
+    validateAppliedMigrationNames(applied);
+    for (const row of applied) {
       const migration = migrations.find((candidate) => candidate.version === row.version) as Migration | undefined;
       if (!migration || (row.checksum !== null && row.checksum !== migrationChecksum(migration))) return false;
     }
-    return true;
+    return migrationSchemaCatalog(connection) === expectedMigrationSchemaCatalog(applied.length);
   } catch { return false; }
+}
+
+interface SchemaCatalogRow {
+  readonly type: string;
+  readonly name: string;
+  readonly table_name: string;
+  readonly sql: string;
+}
+
+const expectedMigrationSchemaCatalogs = new Map<number, string>();
+
+function expectedMigrationSchemaCatalog(appliedCount: number): string {
+  const cached = expectedMigrationSchemaCatalogs.get(appliedCount);
+  if (cached !== undefined) return cached;
+  const expected = new DatabaseSync(":memory:", {
+    enableForeignKeyConstraints: true,
+    readBigInts: true,
+    defensive: true,
+  });
+  try {
+    ensureLeaseTable(expected);
+    for (const migration of migrations.slice(0, appliedCount)) expected.exec(migration.sql);
+    const catalog = migrationSchemaCatalog(expected);
+    expectedMigrationSchemaCatalogs.set(appliedCount, catalog);
+    return catalog;
+  } finally {
+    expected.close();
+  }
+}
+
+function migrationSchemaCatalog(connection: DatabaseSync): string {
+  const rows = connection
+    .prepare(
+      `SELECT type, name, tbl_name AS table_name, sql
+         FROM sqlite_schema
+        WHERE sql IS NOT NULL
+          AND name NOT GLOB 'sqlite_*'
+          AND name != 'schema_migrations'
+        ORDER BY type, name`,
+    )
+    .all() as unknown as SchemaCatalogRow[];
+  return JSON.stringify(rows);
+}
+
+function countCryptographicDomainViolations(connection: DatabaseSync): number {
+  if (
+    !tableExists(connection, "collection_profiles") ||
+    !tableExists(connection, "checkout_sessions") ||
+    !tableExists(connection, "checkout_token_key")
+  ) {
+    return 0;
+  }
+
+  let violations = 0;
+  for (const row of connection
+    .prepare(
+      `SELECT code_payload, payload_fingerprint, profile_fingerprint
+         FROM collection_profiles`,
+    )
+    .iterate() as Iterable<{
+      code_payload: string;
+      payload_fingerprint: string;
+      profile_fingerprint: string;
+    }>) {
+    const expected = fingerprintCollectionCodeProfile(row.code_payload);
+    if (
+      row.payload_fingerprint !== expected.payloadFingerprint ||
+      row.profile_fingerprint !== expected.profileFingerprint
+    ) {
+      violations += 1;
+    }
+  }
+
+  const keyRow = connection
+    .prepare("SELECT key_material FROM checkout_token_key WHERE singleton_key = 1")
+    .get() as { key_material: Uint8Array } | undefined;
+  if (!keyRow || !(keyRow.key_material instanceof Uint8Array) || keyRow.key_material.byteLength !== 32) {
+    return violations;
+  }
+  for (const row of connection
+    .prepare("SELECT checkout_id, token_digest FROM checkout_sessions")
+    .iterate() as Iterable<{ checkout_id: string; token_digest: string }>) {
+    try {
+      const token = deriveCheckoutToken(keyRow.key_material, row.checkout_id);
+      if (digestCheckoutToken(token) !== row.token_digest) violations += 1;
+    } catch {
+      violations += 1;
+    }
+  }
+  return violations;
+}
+
+function assertCheckoutTokenKeyMatchesSessions(
+  connection: DatabaseSync,
+  key: Uint8Array,
+): void {
+  if (!tableExists(connection, "checkout_sessions")) return;
+  for (const row of connection
+    .prepare("SELECT checkout_id, token_digest FROM checkout_sessions")
+    .iterate() as Iterable<{ checkout_id: string; token_digest: string }>) {
+    let digest: string;
+    try {
+      digest = digestCheckoutToken(deriveCheckoutToken(key, row.checkout_id));
+    } catch {
+      throw new Error("checkout token key does not match persisted checkout sessions");
+    }
+    if (digest !== row.token_digest) {
+      throw new Error("checkout token key does not match persisted checkout sessions");
+    }
+  }
 }
 
 async function createVerifiedBackup(sourceConnection: DatabaseSync, sourcePath: string, targetPath: string): Promise<DatabaseBackup> {
@@ -431,7 +793,7 @@ async function createVerifiedBackup(sourceConnection: DatabaseSync, sourcePath: 
     const verification = new DatabaseSync(tempPath, { readOnly: true, enableForeignKeyConstraints: true, timeout: SQLITE_TIMEOUT_MS, readBigInts: true, defensive: true });
     try {
       const integrity = inspectIntegrity(verification);
-      if (!integrity.ok) throw new Error(`backup verification failed: quick_check=${integrity.quickCheck}, foreign_key_violations=${integrity.foreignKeyViolations}, schema=${integrity.schema}`);
+      if (!integrity.ok) throw new Error(`backup verification failed: quick_check=${integrity.quickCheck}, foreign_key_violations=${integrity.foreignKeyViolations}, domain_violations=${integrity.domainViolations}, schema=${integrity.schema}`);
     } finally { verification.close(); }
     // The lease is process identity, not application data. A copied live lease
     // would make a restored database reject its first legitimate owner, so
@@ -444,9 +806,22 @@ async function createVerifiedBackup(sourceConnection: DatabaseSync, sourcePath: 
     });
     try {
       writable.exec("DELETE FROM app_lease");
+      const checkpoint = writable.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get() as
+        | { busy: bigint | number; log: bigint | number; checkpointed: bigint | number }
+        | undefined;
+      if (!checkpoint || Number(checkpoint.busy) !== 0) {
+        throw new Error("backup WAL checkpoint did not complete");
+      }
+      const journal = writable.prepare("PRAGMA journal_mode = DELETE").get() as
+        | { journal_mode: string }
+        | undefined;
+      if (journal?.journal_mode.toLowerCase() !== "delete") {
+        throw new Error("backup could not switch to a self-contained journal mode");
+      }
     } finally {
       writable.close();
     }
+    removeSqliteSidecars(tempPath);
     const finalVerification = new DatabaseSync(tempPath, {
       readOnly: true,
       enableForeignKeyConstraints: true,
@@ -456,14 +831,48 @@ async function createVerifiedBackup(sourceConnection: DatabaseSync, sourcePath: 
     });
     try {
       const integrity = inspectIntegrity(finalVerification);
-      if (!integrity.ok) throw new Error(`final backup verification failed: quick_check=${integrity.quickCheck}, foreign_key_violations=${integrity.foreignKeyViolations}, schema=${integrity.schema}`);
+      if (!integrity.ok) throw new Error(`final backup verification failed: quick_check=${integrity.quickCheck}, foreign_key_violations=${integrity.foreignKeyViolations}, domain_violations=${integrity.domainViolations}, schema=${integrity.schema}`);
     } finally { finalVerification.close(); }
+    removeSqliteSidecars(tempPath);
     const hash = await sha256File(tempPath);
     const file = openSync(tempPath, "r+"); try { fsyncSync(file); } finally { closeSync(file); }
     renameSync(tempPath, target);
     try { const dir = openSync(directory, "r"); try { fsyncSync(dir); } finally { closeSync(dir); } } catch { /* Unsupported by some filesystems. */ }
     return { pages, targetPath: target, sha256: hash };
-  } catch (error) { rmSync(tempPath, { force: true }); throw error; }
+  } catch (error) { removeSqliteArtifacts(tempPath); throw error; }
+}
+
+function replaceFileAtomically(source: string, target: string): void {
+  try {
+    renameSync(source, target);
+  } catch (error) {
+    if (!existsSync(target)) throw error;
+    const displaced = `${target}.replaced-${randomUUID()}`;
+    renameSync(target, displaced);
+    try {
+      renameSync(source, target);
+      removeSqliteArtifacts(displaced);
+    } catch (replacementError) {
+      if (!existsSync(target) && existsSync(displaced)) renameSync(displaced, target);
+      throw replacementError;
+    }
+  }
+  try {
+    const directory = openSync(dirname(target), "r");
+    try { fsyncSync(directory); } finally { closeSync(directory); }
+  } catch {
+    // Directory fsync is not supported on every platform.
+  }
+}
+
+function removeSqliteSidecars(path: string): void {
+  rmSync(`${path}-wal`, { force: true });
+  rmSync(`${path}-shm`, { force: true });
+}
+
+function removeSqliteArtifacts(path: string): void {
+  rmSync(path, { force: true });
+  removeSqliteSidecars(path);
 }
 
 async function sha256File(path: string): Promise<string> {

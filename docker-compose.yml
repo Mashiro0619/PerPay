@@ -9,6 +9,7 @@ services:
       dockerfile: Dockerfile
     environment:
       # 必填：仅在首次初始化数据库时用于创建管理员；至少 12 个字符、最多 1024 UTF-8 字节。
+      # 推荐使用无填充 base64url 随机值；若自行填写包含 $ 的密码，Compose 中必须写成 $$。
       PERPAY_INITIAL_ADMIN_PASSWORD: "CHANGE_ME_TO_A_LONG_RANDOM_PASSWORD"
       PERPAY_ADMIN_USERNAME: "admin"
       # 浏览器实际访问的 origin；修改宿主端口时一并修改这里。
@@ -16,11 +17,14 @@ services:
       # 必填：32 个随机字节的无填充 base64url 编码（恰好 43 字符），不得复用初始管理员密码。
       PERPAY_API_CLIENT_ID: "default"
       PERPAY_API_SECRET: "CHANGE_ME_TO_A_43_CHARACTER_BASE64URL_SECRET"
-      PERPAY_TIMEZONE: "Asia/Shanghai"
-      PERPAY_LOG_LEVEL: "info"
+      # 必填：经营码二维码解码后的原始内容。订单会冻结其版本，修改后只影响新订单。
+      PERPAY_COLLECTION_CODE_PAYLOAD: "CHANGE_ME_TO_COLLECTION_CODE_PAYLOAD"
+      # 订单有效期 60-1800 秒；尾差范围 1-99 分，新订单从 +0.01 元开始分配唯一应付金额。
+      PERPAY_ORDER_TTL_SECONDS: "300"
+      PERPAY_AMOUNT_OFFSET_MAX_CENTS: "99"
     ports:
-      # 修改左侧端口；右侧 8080 是容器内部固定端口。
-      - "8080:8080"
+      # 默认仅本机可访问；修改中间端口，公网访问应由 HTTPS 反向代理提供。
+      - "127.0.0.1:8080:8080"
     volumes:
       - perpay-data:/data
     user: "1000:1000"
@@ -35,6 +39,11 @@ services:
     cap_drop:
       - ALL
     init: true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   perpay-data:

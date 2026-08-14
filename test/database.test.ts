@@ -14,11 +14,18 @@ describe("AppDatabase", () => {
     try {
       const first = await AppDatabase.open(databasePath);
       const instanceId = first.instanceId();
+      const checkoutTokenKey = first.read((connection) =>
+        (connection
+          .prepare("SELECT hex(key_material) AS value FROM checkout_token_key WHERE singleton_key = 1")
+          .get() as { value: string }).value,
+      );
+      assert.match(checkoutTokenKey, /^[0-9A-F]{64}$/);
       assert.deepEqual(first.health(), { ok: true, result: "ok" });
       assert.deepEqual(first.integrityCheck(), {
         ok: true,
         quickCheck: "ok",
         foreignKeyViolations: 0,
+        domainViolations: 0,
         schema: "ok",
       });
 
@@ -27,6 +34,14 @@ describe("AppDatabase", () => {
 
       const reopened = await AppDatabase.open(databasePath);
       assert.equal(reopened.instanceId(), instanceId);
+      assert.equal(
+        reopened.read((connection) =>
+          (connection
+            .prepare("SELECT hex(key_material) AS value FROM checkout_token_key WHERE singleton_key = 1")
+            .get() as { value: string }).value,
+        ),
+        checkoutTokenKey,
+      );
       assert.deepEqual(reopened.health(), { ok: true, result: "ok" });
       reopened.close();
     } finally {
@@ -46,7 +61,9 @@ describe("AppDatabase", () => {
       assert.match(backup.sha256, /^[0-9a-f]{64}$/);
       assert.equal(backup.targetPath, backupPath);
       assert.equal(
-        readdirSync(join(directory, "backup")).some((name) => name.endsWith(".tmp")),
+        readdirSync(join(directory, "backup")).some(
+          (name) => name.includes(".tmp") || name.endsWith("-wal") || name.endsWith("-shm"),
+        ),
         false,
       );
       source.close();
@@ -80,6 +97,23 @@ describe("AppDatabase", () => {
     }
   });
 
+  it("reports not ready when the persisted order clock is too far ahead", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-order-clock-health-"));
+    const databasePath = join(directory, "database.sqlite3");
+    try {
+      const database = await AppDatabase.open(databasePath);
+      database.write((connection) => {
+        connection
+          .prepare("UPDATE order_clock SET last_now_ms = ? WHERE singleton_key = 1")
+          .run(Date.now() + 10 * 60 * 1000);
+      });
+      assert.deepEqual(database.health(), { ok: false, result: "order_clock_ahead" });
+      database.close();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("rejects a changed applied migration checksum", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-checksum-"));
     const databasePath = join(directory, "database.sqlite3");
@@ -91,6 +125,26 @@ describe("AppDatabase", () => {
       raw.close();
       await assert.rejects(() => AppDatabase.open(databasePath), /migration checksum mismatch/);
       assert.equal(existsSync(`${databasePath}-wal`), false);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses startup when cross-table domain state has been externally damaged", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-domain-integrity-"));
+    const databasePath = join(directory, "database.sqlite3");
+    try {
+      const database = await AppDatabase.open(databasePath);
+      database.close();
+      const raw = new DatabaseSync(databasePath);
+      raw.exec("DROP TRIGGER order_clock_no_delete");
+      raw.exec("DELETE FROM order_clock");
+      raw.close();
+
+      await assert.rejects(
+        () => AppDatabase.open(databasePath),
+        /schema=invalid/,
+      );
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

@@ -1,0 +1,936 @@
+import { randomUUID } from "node:crypto";
+import { performance } from "node:perf_hooks";
+import type { DatabaseSync } from "node:sqlite";
+
+import {
+  CREATE_ORDER_REQUEST_FINGERPRINT_VERSION,
+  IDEMPOTENCY_KEY_DIGEST_VERSION,
+  MAX_REQUESTED_AMOUNT_CENTS,
+  MAX_ORDER_CLOCK_AHEAD_MILLISECONDS,
+  type CheckoutSession,
+  type CheckoutStatus,
+  type CreateOrderRequest,
+  type PaymentBasis,
+  type PaymentOrder,
+  type PaymentStatus,
+  type RefundStatus,
+} from "../orders/model.ts";
+import { deriveCheckoutToken, digestCheckoutToken } from "../orders/checkout-token.ts";
+import { fingerprintCollectionCodeProfile } from "../orders/collection-profile.ts";
+import type { AppDatabase } from "./database.ts";
+
+const MAX_PAYABLE_AMOUNT_CENTS = MAX_REQUESTED_AMOUNT_CENTS + 1;
+const EXPIRY_SWEEP_LIMIT = 256;
+
+type DatabaseOwner = Pick<AppDatabase, "read" | "write">;
+
+export interface CollectionProfile {
+  readonly profileId: string;
+  readonly version: number;
+  readonly providerAccountKey: "primary";
+  readonly codePayload: string;
+  readonly payloadFingerprint: string;
+  readonly profileFingerprint: string;
+  readonly evidencePolicy: "UNIQUE_AMOUNT_AUTO";
+  readonly createdAt: number;
+}
+
+export interface StoredOrderAggregate {
+  readonly order: PaymentOrder;
+  readonly checkout: CheckoutSession;
+  readonly collectionProfile: CollectionProfile;
+  readonly checkoutToken: string;
+}
+
+export interface SyncCollectionProfileInput {
+  readonly codePayload: string;
+  readonly payloadFingerprint: string;
+  readonly profileFingerprint: string;
+}
+
+export interface SyncCollectionProfileResult {
+  readonly profile: CollectionProfile;
+  readonly changed: boolean;
+  readonly created: boolean;
+  readonly previousProfileId: string | null;
+  readonly activatedAt: number;
+}
+
+export interface CreateStoredOrderInput {
+  readonly apiClientId: string;
+  readonly request: CreateOrderRequest;
+  readonly idempotencyKeyDigest: string;
+  readonly requestFingerprint: string;
+  readonly ttlMilliseconds: number;
+  readonly amountOffsetMaximumCents: number;
+}
+
+export type CreateStoredOrderResult =
+  | { readonly kind: "created"; readonly aggregate: StoredOrderAggregate }
+  | { readonly kind: "existing"; readonly aggregate: StoredOrderAggregate }
+  | { readonly kind: "idempotency_conflict"; readonly orderId: string }
+  | { readonly kind: "merchant_order_conflict"; readonly orderId: string }
+  | { readonly kind: "amount_slots_exhausted" };
+
+export class OrderClockError extends Error {
+  constructor() {
+    super("the persisted order clock is too far ahead of the system clock");
+    this.name = "OrderClockError";
+  }
+}
+
+export class OrderStore {
+  readonly #database: DatabaseOwner;
+  readonly #physicalClock: (() => number) | undefined;
+  readonly #wallClockAnchorMs: number;
+  readonly #monotonicAnchorMs: number;
+
+  constructor(database: DatabaseOwner, physicalClock?: () => number) {
+    this.#database = database;
+    this.#physicalClock = physicalClock;
+    this.#wallClockAnchorMs = Date.now();
+    this.#monotonicAnchorMs = performance.now();
+  }
+
+  syncCollectionProfile(input: SyncCollectionProfileInput): SyncCollectionProfileResult {
+    return this.#database.write((connection) => {
+      const now = this.#logicalNow(connection);
+      const active = readActiveCollectionProfile(connection);
+      if (active?.profileFingerprint === input.profileFingerprint) {
+        return {
+          profile: active,
+          changed: false,
+          created: false,
+          previousProfileId: active.profileId,
+          activatedAt: now,
+        };
+      }
+
+      let profile = readCollectionProfileByFingerprint(connection, input.profileFingerprint);
+      let created = false;
+      if (!profile) {
+        const versionRow = connection
+          .prepare("SELECT COALESCE(MAX(version), 0) + 1 AS version FROM collection_profiles")
+          .get() as { version: bigint | number };
+        const version = toSafeInteger(versionRow.version, "collection profile version");
+        const profileId = randomUUID();
+        const inserted = connection
+          .prepare(
+            `INSERT INTO collection_profiles(
+               profile_id, version, provider_account_key, code_payload,
+               payload_fingerprint, profile_fingerprint, evidence_policy, created_at
+             ) VALUES (?, ?, 'primary', ?, ?, ?, 'UNIQUE_AMOUNT_AUTO', ?)`,
+          )
+          .run(
+            profileId,
+            version,
+            input.codePayload,
+            input.payloadFingerprint,
+            input.profileFingerprint,
+            now,
+          );
+        assertChangedOnce(inserted.changes, "collection profile insert");
+        profile = readCollectionProfileById(connection, profileId);
+        if (!profile) throw new Error("inserted collection profile cannot be read");
+        created = true;
+      }
+
+      const activationTime = Math.max(now, active?.createdAt ?? 0);
+      if (active) {
+        const updated = connection
+          .prepare(
+            `UPDATE active_collection_profile
+                SET profile_id = ?, activated_at = ?
+              WHERE singleton_key = 1`,
+          )
+          .run(profile.profileId, activationTime);
+        assertChangedOnce(updated.changes, "collection profile activation");
+      } else {
+        const inserted = connection
+          .prepare(
+            `INSERT INTO active_collection_profile(singleton_key, profile_id, activated_at)
+             VALUES (1, ?, ?)`,
+          )
+          .run(profile.profileId, activationTime);
+        assertChangedOnce(inserted.changes, "initial collection profile activation");
+      }
+
+      const activationSequenceRow = connection
+        .prepare(
+          "SELECT COALESCE(MAX(sequence), 0) + 1 AS sequence FROM collection_profile_activations",
+        )
+        .get() as { sequence: bigint | number };
+      const activationInsert = connection
+        .prepare(
+          `INSERT INTO collection_profile_activations(
+             activation_id, sequence, profile_id, previous_profile_id, activated_at, reason
+           ) VALUES (?, ?, ?, ?, ?, 'CONFIG_SYNC')`,
+        )
+        .run(
+          randomUUID(),
+          toSafeInteger(activationSequenceRow.sequence, "profile activation sequence"),
+          profile.profileId,
+          active?.profileId ?? null,
+          activationTime,
+        );
+      assertChangedOnce(activationInsert.changes, "collection profile activation history insert");
+
+      return {
+        profile,
+        changed: true,
+        created,
+        previousProfileId: active?.profileId ?? null,
+        activatedAt: activationTime,
+      };
+    });
+  }
+
+  createOrder(input: CreateStoredOrderInput): CreateStoredOrderResult {
+    return this.#database.write((connection) => {
+      const now = this.#logicalNow(connection);
+      expireDueOrders(connection, now, EXPIRY_SWEEP_LIMIT);
+
+      let idempotent = readAggregateByIdempotencyDigest(
+        connection,
+        input.apiClientId,
+        input.idempotencyKeyDigest,
+      );
+      if (idempotent) {
+        if (
+          idempotent.order.checkoutStatus === "OPEN" &&
+          idempotent.order.expiresAt <= now
+        ) {
+          expireOrder(connection, idempotent.order.orderId, now);
+          idempotent = readAggregateByIdempotencyDigest(
+            connection,
+            input.apiClientId,
+            input.idempotencyKeyDigest,
+          );
+          if (!idempotent) throw new Error("expired idempotent order cannot be read");
+        }
+        if (
+          idempotent.order.requestFingerprint !== input.requestFingerprint ||
+          idempotent.order.requestFingerprintVersion !==
+            CREATE_ORDER_REQUEST_FINGERPRINT_VERSION
+        ) {
+          return { kind: "idempotency_conflict", orderId: idempotent.order.orderId };
+        }
+        return { kind: "existing", aggregate: withCheckoutToken(connection, idempotent) };
+      }
+
+      const merchantOrder = readAggregateByMerchantOrderNumber(
+        connection,
+        input.apiClientId,
+        input.request.merchant_order_no,
+      );
+      if (merchantOrder) {
+        return { kind: "merchant_order_conflict", orderId: merchantOrder.order.orderId };
+      }
+
+      const profile = readActiveCollectionProfile(connection);
+      if (!profile) throw new Error("collection profile is not initialized");
+
+      const allocation = allocateAmountSlot(
+        connection,
+        input.request.amount_cents,
+        input.amountOffsetMaximumCents,
+        now,
+      );
+      if (!allocation) return { kind: "amount_slots_exhausted" };
+
+      const expiresAt = now + input.ttlMilliseconds;
+      if (!Number.isSafeInteger(expiresAt) || expiresAt <= now) {
+        throw new RangeError("order expiry is outside the safe integer range");
+      }
+
+      const orderId = randomUUID();
+      const checkoutId = randomUUID();
+      const slotId = randomUUID();
+      const key = readCheckoutTokenKey(connection);
+      const checkoutToken = deriveCheckoutToken(key, checkoutId);
+      const tokenDigest = digestCheckoutToken(checkoutToken);
+
+      const orderInsert = connection
+        .prepare(
+          `INSERT INTO payment_orders(
+             order_id, api_client_id, merchant_order_no, idempotency_key_digest,
+             idempotency_key_digest_version,
+             request_fingerprint, request_fingerprint_version,
+             requested_amount_cents, payable_amount_cents,
+             allocation_offset_max_cents, received_amount_cents, currency,
+             description, collection_profile_id, checkout_status, payment_status,
+             refund_status, payment_basis, eligible_from, created_at, expires_at,
+             closed_at, updated_at, version
+           ) VALUES (
+             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'CNY', ?, ?,
+             'OPEN', 'UNPAID', 'NONE', 'NONE', ?, ?, ?, NULL, ?, 1
+           )`,
+        )
+        .run(
+          orderId,
+          input.apiClientId,
+          input.request.merchant_order_no,
+          input.idempotencyKeyDigest,
+          IDEMPOTENCY_KEY_DIGEST_VERSION,
+          input.requestFingerprint,
+          CREATE_ORDER_REQUEST_FINGERPRINT_VERSION,
+          input.request.amount_cents,
+          allocation.payableAmountCents,
+          input.amountOffsetMaximumCents,
+          input.request.description ?? null,
+          profile.profileId,
+          now,
+          now,
+          expiresAt,
+          now,
+        );
+      assertChangedOnce(orderInsert.changes, "payment order insert");
+
+      const checkoutInsert = connection
+        .prepare(
+          `INSERT INTO checkout_sessions(checkout_id, order_id, token_digest)
+           VALUES (?, ?, ?)`,
+        )
+        .run(checkoutId, orderId, tokenDigest);
+      assertChangedOnce(checkoutInsert.changes, "checkout session insert");
+
+      const slotInsert = connection
+        .prepare(
+          `INSERT INTO amount_slots(
+             slot_id, order_id, collection_profile_id, payable_amount_cents,
+             generation, occupied_from, released_at, release_reason
+           ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)`,
+        )
+        .run(
+          slotId,
+          orderId,
+          profile.profileId,
+          allocation.payableAmountCents,
+          allocation.generation,
+          now,
+        );
+      assertChangedOnce(slotInsert.changes, "amount slot insert");
+
+      insertOrderEvent(connection, {
+        orderId,
+        sequence: 1,
+        type: "CREATED",
+        occurredAt: now,
+        details: {
+          amount_offset_cents: allocation.payableAmountCents - input.request.amount_cents,
+          slot_generation: allocation.generation,
+        },
+      });
+
+      const aggregate = readAggregateById(connection, input.apiClientId, orderId);
+      if (!aggregate) throw new Error("inserted order aggregate cannot be read");
+      return {
+        kind: "created",
+        aggregate: { ...aggregate, checkoutToken },
+      };
+    });
+  }
+
+  orderById(apiClientId: string, orderId: string): StoredOrderAggregate | undefined {
+    return this.#database.write((connection) => {
+      const now = this.#logicalNow(connection);
+      expireOrderByIdIfDue(connection, apiClientId, orderId, now);
+      const aggregate = readAggregateById(connection, apiClientId, orderId);
+      return aggregate ? withCheckoutToken(connection, aggregate) : undefined;
+    });
+  }
+
+  orderByMerchantOrderNumber(
+    apiClientId: string,
+    merchantOrderNo: string,
+  ): StoredOrderAggregate | undefined {
+    return this.#database.write((connection) => {
+      const now = this.#logicalNow(connection);
+      const current = readAggregateByMerchantOrderNumber(connection, apiClientId, merchantOrderNo);
+      if (!current) return undefined;
+      expireOrderByIdIfDue(connection, apiClientId, current.order.orderId, now);
+      const aggregate = readAggregateById(connection, apiClientId, current.order.orderId);
+      return aggregate ? withCheckoutToken(connection, aggregate) : undefined;
+    });
+  }
+
+  closeOrder(apiClientId: string, orderId: string): StoredOrderAggregate | undefined {
+    return this.#database.write((connection) => {
+      const now = this.#logicalNow(connection);
+      let aggregate = readAggregateById(connection, apiClientId, orderId);
+      if (!aggregate) return undefined;
+
+      if (aggregate.order.checkoutStatus === "OPEN") {
+        if (aggregate.order.expiresAt <= now) {
+          expireOrder(connection, aggregate.order.orderId, now);
+        } else {
+          const result = connection
+            .prepare(
+              `UPDATE payment_orders
+                  SET checkout_status = 'CLOSED',
+                      closed_at = ?,
+                      updated_at = ?,
+                      version = version + 1
+                WHERE order_id = ?
+                  AND api_client_id = ?
+                  AND checkout_status = 'OPEN'
+                  AND expires_at > ?`,
+            )
+            .run(now, now, orderId, apiClientId, now);
+          assertChangedOnce(result.changes, "checkout close");
+          insertOrderEvent(connection, {
+            orderId,
+            sequence: aggregate.order.version + 1,
+            type: "CHECKOUT_CLOSED",
+            occurredAt: now,
+            details: { reason: "api_request" },
+          });
+        }
+        aggregate = readAggregateById(connection, apiClientId, orderId);
+        if (!aggregate) throw new Error("closed order aggregate cannot be read");
+      }
+      return withCheckoutToken(connection, aggregate);
+    });
+  }
+
+  publicCheckoutByTokenDigest(tokenDigest: string): StoredOrderAggregate | undefined {
+    const current = this.#database.read((connection) => {
+      const aggregate = readAggregateByTokenDigest(connection, tokenDigest);
+      if (!aggregate) return { kind: "missing" } as const;
+      if (aggregate.order.checkoutStatus !== "OPEN") {
+        return { kind: "current", aggregate: withCheckoutToken(connection, aggregate) } as const;
+      }
+      const physicalNow = this.#readPhysicalTime(connection);
+      const logicalNow = readOrderClock(connection);
+      assertOrderClockIsUsable(logicalNow, physicalNow);
+      const now = Math.max(logicalNow, physicalNow);
+      if (aggregate.order.expiresAt > now) {
+        return { kind: "current", aggregate: withCheckoutToken(connection, aggregate) } as const;
+      }
+      return { kind: "expired" } as const;
+    });
+    if (current.kind === "missing") return undefined;
+    if (current.kind === "current") return current.aggregate;
+
+    return this.#database.write((connection) => {
+      const now = this.#logicalNow(connection);
+      let aggregate = readAggregateByTokenDigest(connection, tokenDigest);
+      if (!aggregate) return undefined;
+      if (aggregate.order.checkoutStatus === "OPEN" && aggregate.order.expiresAt <= now) {
+        expireOrder(connection, aggregate.order.orderId, now);
+        aggregate = readAggregateByTokenDigest(connection, tokenDigest);
+        if (!aggregate) throw new Error("expired checkout aggregate cannot be read");
+      }
+      return withCheckoutToken(connection, aggregate);
+    });
+  }
+
+  #logicalNow(connection: DatabaseSync): number {
+    const physicalNow = this.#readPhysicalTime(connection);
+    assertOrderClockIsUsable(readOrderClock(connection), physicalNow);
+    const row = connection
+      .prepare(
+        `UPDATE order_clock
+            SET last_now_ms = max(last_now_ms, ?)
+          WHERE singleton_key = 1
+          RETURNING last_now_ms`,
+      )
+      .get(physicalNow) as { last_now_ms: bigint | number } | undefined;
+    if (!row) throw new Error("order clock is not initialized");
+    return toSafeInteger(row.last_now_ms, "logical order time");
+  }
+
+  #readPhysicalTime(connection: DatabaseSync): number {
+    const physicalNow = this.#physicalClock ? this.#physicalClock() : readDatabaseTime(connection);
+    if (!Number.isSafeInteger(physicalNow) || physicalNow < 0) {
+      throw new RangeError("order clock must return a non-negative safe integer");
+    }
+    if (!this.#physicalClock) {
+      const expectedPhysical =
+        this.#wallClockAnchorMs + (performance.now() - this.#monotonicAnchorMs);
+      if (Math.abs(physicalNow - expectedPhysical) > MAX_ORDER_CLOCK_AHEAD_MILLISECONDS) {
+        throw new OrderClockError();
+      }
+    }
+    return physicalNow;
+  }
+}
+
+function assertOrderClockIsUsable(logicalNow: number, physicalNow: number): void {
+  if (logicalNow - physicalNow > MAX_ORDER_CLOCK_AHEAD_MILLISECONDS) {
+    throw new OrderClockError();
+  }
+}
+
+interface AmountAllocation {
+  readonly payableAmountCents: number;
+  readonly generation: number;
+}
+
+function allocateAmountSlot(
+  connection: DatabaseSync,
+  requestedAmountCents: number,
+  maximumOffsetCents: number,
+  now: number,
+): AmountAllocation | undefined {
+  for (let offset = 1; offset <= maximumOffsetCents; offset += 1) {
+    const payableAmountCents = requestedAmountCents + offset;
+    if (payableAmountCents > MAX_PAYABLE_AMOUNT_CENTS) break;
+
+    const open = connection
+      .prepare(
+        `SELECT order_id, expires_at
+           FROM payment_orders
+          WHERE payable_amount_cents = ? AND checkout_status = 'OPEN'`,
+      )
+      .get(payableAmountCents) as
+      | { order_id: string; expires_at: bigint | number }
+      | undefined;
+    if (open) {
+      if (toSafeInteger(open.expires_at, "order expiry") <= now) {
+        expireOrder(connection, open.order_id, now);
+      } else {
+        continue;
+      }
+    }
+
+    const latest = connection
+      .prepare(
+        `SELECT generation, released_at
+           FROM amount_slots
+          WHERE payable_amount_cents = ?
+          ORDER BY generation DESC
+          LIMIT 1`,
+      )
+      .get(payableAmountCents) as
+      | { generation: bigint | number; released_at: bigint | number | null }
+      | undefined;
+    if (latest?.released_at === null) continue;
+    if (
+      latest !== undefined &&
+      toSafeInteger(latest.released_at, "amount slot release time") > now
+    ) {
+      continue;
+    }
+    const generation = latest
+      ? toSafeInteger(latest.generation, "amount slot generation") + 1
+      : 1;
+    if (!Number.isSafeInteger(generation)) {
+      throw new Error("amount slot generation is outside the safe integer range");
+    }
+    return { payableAmountCents, generation };
+  }
+  return undefined;
+}
+
+function expireDueOrders(connection: DatabaseSync, now: number, limit: number): void {
+  const rows = connection
+    .prepare(
+      `SELECT order_id
+         FROM payment_orders
+        WHERE checkout_status = 'OPEN' AND expires_at <= ?
+        ORDER BY expires_at, order_id
+        LIMIT ?`,
+    )
+    .all(now, limit) as Array<{ order_id: string }>;
+  for (const row of rows) expireOrder(connection, row.order_id, now);
+}
+
+function expireOrderByIdIfDue(
+  connection: DatabaseSync,
+  apiClientId: string,
+  orderId: string,
+  now: number,
+): void {
+  const row = connection
+    .prepare(
+      `SELECT expires_at
+         FROM payment_orders
+        WHERE order_id = ? AND api_client_id = ? AND checkout_status = 'OPEN'`,
+    )
+    .get(orderId, apiClientId) as { expires_at: bigint | number } | undefined;
+  if (row && toSafeInteger(row.expires_at, "order expiry") <= now) {
+    expireOrder(connection, orderId, now);
+  }
+}
+
+function expireOrder(connection: DatabaseSync, orderId: string, now: number): void {
+  const row = connection
+    .prepare(
+      `SELECT version, expires_at
+         FROM payment_orders
+        WHERE order_id = ? AND checkout_status = 'OPEN'`,
+    )
+    .get(orderId) as
+    | { version: bigint | number; expires_at: bigint | number }
+    | undefined;
+  if (!row || toSafeInteger(row.expires_at, "order expiry") > now) return;
+  const sequence = toSafeInteger(row.version, "order version") + 1;
+  const result = connection
+    .prepare(
+      `UPDATE payment_orders
+          SET checkout_status = 'EXPIRED',
+              closed_at = ?,
+              updated_at = ?,
+              version = version + 1
+        WHERE order_id = ?
+          AND checkout_status = 'OPEN'
+          AND expires_at <= ?`,
+    )
+    .run(now, now, orderId, now);
+  assertChangedOnce(result.changes, "checkout expiry");
+  insertOrderEvent(connection, {
+    orderId,
+    sequence,
+    type: "CHECKOUT_EXPIRED",
+    occurredAt: now,
+    details: { reason: "ttl_elapsed" },
+  });
+}
+
+function insertOrderEvent(
+  connection: DatabaseSync,
+  input: {
+    readonly orderId: string;
+    readonly sequence: number;
+    readonly type: "CREATED" | "CHECKOUT_CLOSED" | "CHECKOUT_EXPIRED";
+    readonly occurredAt: number;
+    readonly details: Readonly<Record<string, unknown>>;
+  },
+): void {
+  const result = connection
+    .prepare(
+      `INSERT INTO order_events(
+         event_id, order_id, sequence, event_type, occurred_at, details_json
+       ) VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      randomUUID(),
+      input.orderId,
+      input.sequence,
+      input.type,
+      input.occurredAt,
+      JSON.stringify(input.details),
+    );
+  assertChangedOnce(result.changes, "order event insert");
+}
+
+type AggregateRow = {
+  order_id: string;
+  api_client_id: string;
+  merchant_order_no: string;
+  idempotency_key_digest: string;
+  idempotency_key_digest_version: bigint | number;
+  request_fingerprint: string;
+  request_fingerprint_version: bigint | number;
+  requested_amount_cents: bigint | number;
+  payable_amount_cents: bigint | number;
+  allocation_offset_max_cents: bigint | number;
+  received_amount_cents: bigint | number | null;
+  currency: "CNY";
+  description: string | null;
+  collection_profile_id: string;
+  checkout_status: CheckoutStatus;
+  payment_status: PaymentStatus;
+  refund_status: RefundStatus;
+  payment_basis: PaymentBasis;
+  eligible_from: bigint | number;
+  created_at: bigint | number;
+  expires_at: bigint | number;
+  closed_at: bigint | number | null;
+  updated_at: bigint | number;
+  order_version: bigint | number;
+  checkout_id: string;
+  token_digest: string;
+  profile_version: bigint | number;
+  provider_account_key: "primary";
+  code_payload: string;
+  payload_fingerprint: string;
+  profile_fingerprint: string;
+  evidence_policy: "UNIQUE_AMOUNT_AUTO";
+  profile_created_at: bigint | number;
+};
+
+const AGGREGATE_SELECT = `
+  SELECT
+    orders.order_id,
+    orders.api_client_id,
+    orders.merchant_order_no,
+    orders.idempotency_key_digest,
+    orders.idempotency_key_digest_version,
+    orders.request_fingerprint,
+    orders.request_fingerprint_version,
+    orders.requested_amount_cents,
+    orders.payable_amount_cents,
+    orders.allocation_offset_max_cents,
+    orders.received_amount_cents,
+    orders.currency,
+    orders.description,
+    orders.collection_profile_id,
+    orders.checkout_status,
+    orders.payment_status,
+    orders.refund_status,
+    orders.payment_basis,
+    orders.eligible_from,
+    orders.created_at,
+    orders.expires_at,
+    orders.closed_at,
+    orders.updated_at,
+    orders.version AS order_version,
+    checkout.checkout_id,
+    checkout.token_digest,
+    profile.version AS profile_version,
+    profile.provider_account_key,
+    profile.code_payload,
+    profile.payload_fingerprint,
+    profile.profile_fingerprint,
+    profile.evidence_policy,
+    profile.created_at AS profile_created_at
+  FROM payment_orders AS orders
+  JOIN checkout_sessions AS checkout ON checkout.order_id = orders.order_id
+  JOIN collection_profiles AS profile ON profile.profile_id = orders.collection_profile_id
+`;
+
+function readAggregateById(
+  connection: DatabaseSync,
+  apiClientId: string,
+  orderId: string,
+): Omit<StoredOrderAggregate, "checkoutToken"> | undefined {
+  const row = connection
+    .prepare(`${AGGREGATE_SELECT} WHERE orders.api_client_id = ? AND orders.order_id = ?`)
+    .get(apiClientId, orderId) as AggregateRow | undefined;
+  return row ? mapAggregate(row) : undefined;
+}
+
+function readAggregateByMerchantOrderNumber(
+  connection: DatabaseSync,
+  apiClientId: string,
+  merchantOrderNo: string,
+): Omit<StoredOrderAggregate, "checkoutToken"> | undefined {
+  const row = connection
+    .prepare(
+      `${AGGREGATE_SELECT}
+       WHERE orders.api_client_id = ? AND orders.merchant_order_no = ?`,
+    )
+    .get(apiClientId, merchantOrderNo) as AggregateRow | undefined;
+  return row ? mapAggregate(row) : undefined;
+}
+
+function readAggregateByIdempotencyDigest(
+  connection: DatabaseSync,
+  apiClientId: string,
+  digest: string,
+): Omit<StoredOrderAggregate, "checkoutToken"> | undefined {
+  const row = connection
+    .prepare(
+      `${AGGREGATE_SELECT}
+       WHERE orders.api_client_id = ? AND orders.idempotency_key_digest = ?`,
+    )
+    .get(apiClientId, digest) as AggregateRow | undefined;
+  return row ? mapAggregate(row) : undefined;
+}
+
+function readAggregateByTokenDigest(
+  connection: DatabaseSync,
+  digest: string,
+): Omit<StoredOrderAggregate, "checkoutToken"> | undefined {
+  const row = connection
+    .prepare(`${AGGREGATE_SELECT} WHERE checkout.token_digest = ?`)
+    .get(digest) as AggregateRow | undefined;
+  return row ? mapAggregate(row) : undefined;
+}
+
+function mapAggregate(row: AggregateRow): Omit<StoredOrderAggregate, "checkoutToken"> {
+  const idempotencyDigestVersion = toSafeInteger(
+    row.idempotency_key_digest_version,
+    "idempotency key digest version",
+  );
+  if (idempotencyDigestVersion !== IDEMPOTENCY_KEY_DIGEST_VERSION) {
+    throw new Error(`unsupported idempotency key digest version ${idempotencyDigestVersion}`);
+  }
+  const fingerprintVersion = toSafeInteger(
+    row.request_fingerprint_version,
+    "request fingerprint version",
+  );
+  if (fingerprintVersion !== CREATE_ORDER_REQUEST_FINGERPRINT_VERSION) {
+    throw new Error(`unsupported request fingerprint version ${fingerprintVersion}`);
+  }
+  const order: PaymentOrder = {
+    orderId: row.order_id,
+    apiClientId: row.api_client_id,
+    merchantOrderNo: row.merchant_order_no,
+    idempotencyKeyDigest: row.idempotency_key_digest,
+    idempotencyKeyDigestVersion: IDEMPOTENCY_KEY_DIGEST_VERSION,
+    requestFingerprint: row.request_fingerprint,
+    requestFingerprintVersion: CREATE_ORDER_REQUEST_FINGERPRINT_VERSION,
+    requestedAmountCents: toSafeInteger(row.requested_amount_cents, "requested amount"),
+    payableAmountCents: toSafeInteger(row.payable_amount_cents, "payable amount"),
+    allocationOffsetMaximumCents: toSafeInteger(
+      row.allocation_offset_max_cents,
+      "allocation offset maximum",
+    ),
+    receivedAmountCents: nullableSafeInteger(row.received_amount_cents, "received amount"),
+    currency: row.currency,
+    description: row.description,
+    collectionProfileId: row.collection_profile_id,
+    checkoutStatus: row.checkout_status,
+    paymentStatus: row.payment_status,
+    refundStatus: row.refund_status,
+    paymentBasis: row.payment_basis,
+    eligibleFrom: toSafeInteger(row.eligible_from, "eligible time"),
+    createdAt: toSafeInteger(row.created_at, "created time"),
+    expiresAt: toSafeInteger(row.expires_at, "expiry time"),
+    closedAt: nullableSafeInteger(row.closed_at, "checkout end time"),
+    updatedAt: toSafeInteger(row.updated_at, "updated time"),
+    version: toSafeInteger(row.order_version, "order version"),
+  };
+  return {
+    order,
+    checkout: {
+      checkoutId: row.checkout_id,
+      orderId: row.order_id,
+      tokenDigest: row.token_digest,
+    },
+    collectionProfile: {
+      profileId: row.collection_profile_id,
+      version: toSafeInteger(row.profile_version, "collection profile version"),
+      providerAccountKey: row.provider_account_key,
+      codePayload: row.code_payload,
+      payloadFingerprint: row.payload_fingerprint,
+      profileFingerprint: row.profile_fingerprint,
+      evidencePolicy: row.evidence_policy,
+      createdAt: toSafeInteger(row.profile_created_at, "collection profile creation time"),
+    },
+  };
+}
+
+function withCheckoutToken(
+  connection: DatabaseSync,
+  aggregate: Omit<StoredOrderAggregate, "checkoutToken">,
+): StoredOrderAggregate {
+  const checkoutToken = deriveCheckoutToken(
+    readCheckoutTokenKey(connection),
+    aggregate.checkout.checkoutId,
+  );
+  if (digestCheckoutToken(checkoutToken) !== aggregate.checkout.tokenDigest) {
+    throw new Error("checkout token key does not match the persisted token digest");
+  }
+  return {
+    ...aggregate,
+    checkoutToken,
+  };
+}
+
+function readCheckoutTokenKey(connection: DatabaseSync): Buffer {
+  const row = connection
+    .prepare("SELECT key_material FROM checkout_token_key WHERE singleton_key = 1")
+    .get() as { key_material: Uint8Array } | undefined;
+  if (!row || !(row.key_material instanceof Uint8Array) || row.key_material.byteLength !== 32) {
+    throw new Error("checkout token key is missing or invalid");
+  }
+  return Buffer.from(row.key_material);
+}
+
+function readActiveCollectionProfile(connection: DatabaseSync): CollectionProfile | undefined {
+  const row = connection
+    .prepare(
+      `SELECT profile.profile_id, profile.version, profile.provider_account_key,
+              profile.code_payload, profile.payload_fingerprint,
+              profile.profile_fingerprint, profile.evidence_policy, profile.created_at
+         FROM active_collection_profile AS active
+         JOIN collection_profiles AS profile ON profile.profile_id = active.profile_id
+        WHERE active.singleton_key = 1`,
+    )
+    .get() as CollectionProfileRow | undefined;
+  return row ? mapCollectionProfile(row) : undefined;
+}
+
+function readCollectionProfileByFingerprint(
+  connection: DatabaseSync,
+  fingerprint: string,
+): CollectionProfile | undefined {
+  const row = connection
+    .prepare(
+      `SELECT profile_id, version, provider_account_key, code_payload,
+              payload_fingerprint, profile_fingerprint, evidence_policy, created_at
+         FROM collection_profiles
+        WHERE profile_fingerprint = ?`,
+    )
+    .get(fingerprint) as CollectionProfileRow | undefined;
+  return row ? mapCollectionProfile(row) : undefined;
+}
+
+function readCollectionProfileById(
+  connection: DatabaseSync,
+  profileId: string,
+): CollectionProfile | undefined {
+  const row = connection
+    .prepare(
+      `SELECT profile_id, version, provider_account_key, code_payload,
+              payload_fingerprint, profile_fingerprint, evidence_policy, created_at
+         FROM collection_profiles
+        WHERE profile_id = ?`,
+    )
+    .get(profileId) as CollectionProfileRow | undefined;
+  return row ? mapCollectionProfile(row) : undefined;
+}
+
+interface CollectionProfileRow {
+  readonly profile_id: string;
+  readonly version: bigint | number;
+  readonly provider_account_key: "primary";
+  readonly code_payload: string;
+  readonly payload_fingerprint: string;
+  readonly profile_fingerprint: string;
+  readonly evidence_policy: "UNIQUE_AMOUNT_AUTO";
+  readonly created_at: bigint | number;
+}
+
+function mapCollectionProfile(row: CollectionProfileRow): CollectionProfile {
+  const expected = fingerprintCollectionCodeProfile(row.code_payload);
+  if (
+    row.payload_fingerprint !== expected.payloadFingerprint ||
+    row.profile_fingerprint !== expected.profileFingerprint
+  ) {
+    throw new Error("collection profile fingerprints do not match its code payload");
+  }
+  return {
+    profileId: row.profile_id,
+    version: toSafeInteger(row.version, "collection profile version"),
+    providerAccountKey: row.provider_account_key,
+    codePayload: row.code_payload,
+    payloadFingerprint: row.payload_fingerprint,
+    profileFingerprint: row.profile_fingerprint,
+    evidencePolicy: row.evidence_policy,
+    createdAt: toSafeInteger(row.created_at, "collection profile creation time"),
+  };
+}
+
+function readDatabaseTime(connection: DatabaseSync): number {
+  const row = connection
+    .prepare("SELECT CAST(unixepoch('subsec') * 1000 AS INTEGER) AS now_ms")
+    .get() as { now_ms: bigint | number };
+  return toSafeInteger(row.now_ms, "database time");
+}
+
+function readOrderClock(connection: DatabaseSync): number {
+  const row = connection
+    .prepare("SELECT last_now_ms FROM order_clock WHERE singleton_key = 1")
+    .get() as { last_now_ms: bigint | number } | undefined;
+  if (!row) throw new Error("order clock is not initialized");
+  return toSafeInteger(row.last_now_ms, "logical order time");
+}
+
+function assertChangedOnce(changes: bigint | number, action: string): void {
+  if (Number(changes) !== 1) throw new Error(`${action} changed ${String(changes)} rows`);
+}
+
+function nullableSafeInteger(value: bigint | number | null, label: string): number | null {
+  return value === null ? null : toSafeInteger(value, label);
+}
+
+function toSafeInteger(value: bigint | number, label: string): number {
+  const number = Number(value);
+  if (!Number.isSafeInteger(number)) throw new Error(`${label} is outside the safe integer range`);
+  return number;
+}

@@ -8,6 +8,7 @@ describe("loadConfig", () => {
   const validEnvironment = {
     PERPAY_INITIAL_ADMIN_PASSWORD: "a-secure-local-password",
     PERPAY_API_SECRET: validApiSecret,
+    PERPAY_COLLECTION_CODE_PAYLOAD: "https://qr.alipay.com/fkx-test-code-2026",
   } as const;
 
   it("requires the initial administrator password and does not accept the old variable", () => {
@@ -17,6 +18,7 @@ describe("loadConfig", () => {
         loadConfig({
           PERPAY_ADMIN_PASSWORD: validEnvironment.PERPAY_INITIAL_ADMIN_PASSWORD,
           PERPAY_API_SECRET: validApiSecret,
+          PERPAY_COLLECTION_CODE_PAYLOAD: validEnvironment.PERPAY_COLLECTION_CODE_PAYLOAD,
         }),
       /PERPAY_INITIAL_ADMIN_PASSWORD/,
     );
@@ -28,6 +30,7 @@ describe("loadConfig", () => {
         loadConfig({
           PERPAY_INITIAL_ADMIN_PASSWORD: "CHANGE_ME_TO_A_LONG_RANDOM_PASSWORD",
           PERPAY_API_SECRET: validApiSecret,
+          PERPAY_COLLECTION_CODE_PAYLOAD: validEnvironment.PERPAY_COLLECTION_CODE_PAYLOAD,
         }),
       /PERPAY_API_SECRET|不能使用示例值/,
     );
@@ -93,8 +96,40 @@ describe("loadConfig", () => {
         loadConfig({
           PERPAY_INITIAL_ADMIN_PASSWORD: validApiSecret,
           PERPAY_API_SECRET: validApiSecret,
+          PERPAY_COLLECTION_CODE_PAYLOAD: validEnvironment.PERPAY_COLLECTION_CODE_PAYLOAD,
         }),
       /不能与 PERPAY_INITIAL_ADMIN_PASSWORD 相同/,
+    );
+  });
+
+  it("validates the collection code payload and bounded order settings", () => {
+    for (const payload of [
+      "short",
+      "😀".repeat(4),
+      `valid-code-${"\ud800"}`,
+      " CHANGE_ME_TO_COLLECTION_CODE_PAYLOAD",
+      "https://qr.alipay.com/code\n",
+      "x".repeat(4097),
+    ]) {
+      assert.throws(
+        () => loadConfig({ ...validEnvironment, PERPAY_COLLECTION_CODE_PAYLOAD: payload }),
+        /PERPAY_COLLECTION_CODE_PAYLOAD|at most 4096 UTF-8 bytes|control characters|whitespace/,
+      );
+    }
+    assert.throws(
+      () => loadConfig({ ...validEnvironment, PERPAY_ORDER_TTL_SECONDS: "59" }),
+      /PERPAY_ORDER_TTL_SECONDS/,
+    );
+    assert.throws(
+      () => loadConfig({ ...validEnvironment, PERPAY_AMOUNT_OFFSET_MAX_CENTS: "100" }),
+      /PERPAY_AMOUNT_OFFSET_MAX_CENTS/,
+    );
+    assert.equal(
+      loadConfig({
+        ...validEnvironment,
+        PERPAY_COLLECTION_CODE_PAYLOAD: "😀".repeat(8),
+      }).collectionCodePayload,
+      "😀".repeat(8),
     );
   });
 
@@ -115,7 +150,6 @@ describe("loadConfig", () => {
       PERPAY_HOST: "127.0.0.1",
       PERPAY_PORT: "19080",
       PERPAY_DATA_DIR: "./runtime-test",
-      PERPAY_TIMEZONE: "Asia/Shanghai",
       PERPAY_PUBLIC_URL: "https://pay.local:8443",
     });
     assert.equal(config.port, 19080);
@@ -123,5 +157,7 @@ describe("loadConfig", () => {
     assert.match(config.databasePath, /perpay\.sqlite3$/);
     assert.equal(config.publicOrigin, "https://pay.local:8443");
     assert.equal(config.secureCookies, true);
+    assert.equal(config.orderTtlSeconds, 300);
+    assert.equal(config.amountOffsetMaximumCents, 99);
   });
 });

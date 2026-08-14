@@ -1,0 +1,479 @@
+openapi: 3.1.1
+info:
+  title: PerPay Native API
+  version: 0.1.0
+  summary: Self-hosted collection-code payment order API
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+  description: |
+    Development contract for the native order and public checkout APIs.
+    This version creates collection-code orders only. It does not accept callback URLs
+    and it does not claim that an amount-based match is provider-confirmed payment proof.
+servers:
+  - url: /
+tags:
+  - name: Orders
+    description: Authenticated order creation and lifecycle operations.
+  - name: Checkout
+    description: Public token-scoped checkout state.
+  - name: System
+    description: Authenticated instance status.
+paths:
+  /api/v1/orders:
+    post:
+      tags: [Orders]
+      operationId: createOrder
+      summary: Create or replay an idempotent order
+      description: |
+        The idempotency key is part of the signed JSON body. An exact replay returns
+        the original order with HTTP 200. Reusing the key for different request data
+        returns HTTP 409.
+      security:
+        - ApiClientId: []
+          ApiTimestamp: []
+          ApiNonce: []
+          ApiSignatureVersion: []
+          ApiSignature: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          description: Order created
+          headers:
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderEnvelope'
+        '200':
+          description: Exact idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderEnvelope'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/v1/orders/by-merchant-no/{merchantOrderNo}:
+    get:
+      tags: [Orders]
+      operationId: getOrderByMerchantNumber
+      summary: Get an order by merchant order number
+      security:
+        - ApiClientId: []
+          ApiTimestamp: []
+          ApiNonce: []
+          ApiSignatureVersion: []
+          ApiSignature: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - name: merchantOrderNo
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/MerchantOrderNumber'
+      responses:
+        '200':
+          description: Order projection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderEnvelope'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/v1/orders/{orderId}:
+    get:
+      tags: [Orders]
+      operationId: getOrder
+      summary: Get an order by internal order ID
+      security:
+        - ApiClientId: []
+          ApiTimestamp: []
+          ApiNonce: []
+          ApiSignatureVersion: []
+          ApiSignature: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Order projection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderEnvelope'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/v1/orders/{orderId}/actions/close:
+    post:
+      tags: [Orders]
+      operationId: closeOrder
+      summary: Close an open checkout
+      description: No request body is accepted. Repeated calls return the current terminal state.
+      security:
+        - ApiClientId: []
+          ApiTimestamp: []
+          ApiNonce: []
+          ApiSignatureVersion: []
+          ApiSignature: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Current order projection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderEnvelope'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/public/v1/checkouts/{token}:
+    get:
+      tags: [Checkout]
+      operationId: getPublicCheckout
+      summary: Read the public checkout projection
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^pct1_[A-Za-z0-9_-]{43}$'
+            minLength: 48
+            maxLength: 48
+      responses:
+        '200':
+          description: Public checkout projection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicCheckoutEnvelope'
+        '404': { $ref: '#/components/responses/CheckoutNotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/v1/system/status:
+    get:
+      tags: [System]
+      operationId: getSystemStatus
+      summary: Read authenticated instance status
+      security:
+        - ApiClientId: []
+          ApiTimestamp: []
+          ApiNonce: []
+          ApiSignatureVersion: []
+          ApiSignature: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: System status
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: false
+                    required: [status, version, instance_id]
+                    properties:
+                      status: { const: ready }
+                      version: { type: string }
+                      instance_id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+components:
+  securitySchemes:
+    ApiClientId:
+      type: apiKey
+      in: header
+      name: X-PerPay-Client-Id
+    ApiTimestamp:
+      type: apiKey
+      in: header
+      name: X-PerPay-Timestamp
+      description: Canonical Unix time in whole seconds, within five minutes of the server.
+    ApiNonce:
+      type: apiKey
+      in: header
+      name: X-PerPay-Nonce
+      description: A fresh unpadded base64url encoding of exactly 32 random bytes.
+    ApiSignatureVersion:
+      type: apiKey
+      in: header
+      name: X-PerPay-Signature-Version
+      description: Must be v1.
+    ApiSignature:
+      type: apiKey
+      in: header
+      name: X-PerPay-Signature
+      description: Lowercase hexadecimal HMAC-SHA256 over the versioned canonical request.
+  parameters:
+    RequestId:
+      name: X-Request-Id
+      in: header
+      required: false
+      schema:
+        type: string
+        pattern: '^[A-Za-z0-9._-]{1,128}$'
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+        pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+  schemas:
+    MerchantOrderNumber:
+      type: string
+      minLength: 1
+      maxLength: 64
+      pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
+    CreateOrderRequest:
+      type: object
+      additionalProperties: false
+      required: [idempotency_key, merchant_order_no, amount_cents]
+      properties:
+        idempotency_key:
+          type: string
+          minLength: 1
+          maxLength: 256
+          x-perpay-max-utf8-bytes: 256
+          description: At most 256 UTF-8 bytes; leading/trailing whitespace and controls are rejected.
+        merchant_order_no:
+          $ref: '#/components/schemas/MerchantOrderNumber'
+        amount_cents:
+          type: integer
+          minimum: 1
+          maximum: 9999999998
+        description:
+          type: string
+          minLength: 1
+          maxLength: 200
+    OrderEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Order'
+    Order:
+      type: object
+      additionalProperties: false
+      required:
+        - order_id
+        - merchant_order_no
+        - requested_amount_cents
+        - payable_amount_cents
+        - received_amount_cents
+        - currency
+        - description
+        - checkout
+        - payment
+        - refund
+        - created_at
+        - updated_at
+        - version
+      properties:
+        order_id: { type: string, format: uuid }
+        merchant_order_no: { $ref: '#/components/schemas/MerchantOrderNumber' }
+        requested_amount_cents: { type: integer, minimum: 1, maximum: 9999999998 }
+        payable_amount_cents: { type: integer, minimum: 2, maximum: 9999999999 }
+        received_amount_cents:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 9999999999
+        currency: { const: CNY }
+        description: { type: [string, 'null'], maxLength: 200 }
+        checkout:
+          $ref: '#/components/schemas/AuthenticatedCheckoutState'
+        payment:
+          $ref: '#/components/schemas/PaymentState'
+        refund:
+          $ref: '#/components/schemas/RefundState'
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        version: { type: integer, minimum: 1 }
+    AuthenticatedCheckoutState:
+      type: object
+      additionalProperties: false
+      required: [status, token, state_url, expires_at, closed_at]
+      properties:
+        status: { $ref: '#/components/schemas/CheckoutStatus' }
+        token: { type: string, pattern: '^pct1_[A-Za-z0-9_-]{43}$' }
+        state_url: { type: string, format: uri }
+        expires_at: { type: string, format: date-time }
+        closed_at: { type: [string, 'null'], format: date-time }
+    CheckoutState:
+      type: object
+      additionalProperties: false
+      required: [status, expires_at, closed_at]
+      properties:
+        status: { $ref: '#/components/schemas/CheckoutStatus' }
+        expires_at: { type: string, format: date-time }
+        closed_at: { type: [string, 'null'], format: date-time }
+    CheckoutStatus:
+      type: string
+      enum: [OPEN, EXPIRED, CLOSED]
+    PaymentState:
+      type: object
+      additionalProperties: false
+      required: [status, basis, received_amount_cents]
+      properties:
+        status:
+          type: string
+          enum: [UNPAID, CONFIRMED, DISPUTED]
+        basis:
+          type: string
+          enum: [NONE, INFERRED, MANUAL]
+        received_amount_cents:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 9999999999
+    RefundState:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [NONE, PARTIAL, FULL]
+    PublicCheckoutEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required:
+            - merchant_order_no
+            - requested_amount_cents
+            - currency
+            - description
+            - payment_instructions
+            - checkout
+            - payment
+            - refund
+          properties:
+            merchant_order_no: { $ref: '#/components/schemas/MerchantOrderNumber' }
+            requested_amount_cents: { type: integer }
+            currency: { const: CNY }
+            description: { type: [string, 'null'] }
+            payment_instructions:
+              description: Null after the checkout closes or expires, so a terminal link cannot initiate payment.
+              oneOf:
+                - $ref: '#/components/schemas/PublicPaymentInstructions'
+                - type: 'null'
+            checkout: { $ref: '#/components/schemas/CheckoutState' }
+            payment: { $ref: '#/components/schemas/PaymentState' }
+            refund: { $ref: '#/components/schemas/RefundState' }
+    PublicPaymentInstructions:
+      type: object
+      additionalProperties: false
+      required: [payable_amount_cents, currency, collection_code_payload]
+      properties:
+        payable_amount_cents: { type: integer, minimum: 2, maximum: 9999999999 }
+        currency: { const: CNY }
+        collection_code_payload:
+          type: string
+          minLength: 8
+          maxLength: 4096
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, request_id]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            request_id: { type: string }
+  responses:
+    BadRequest:
+      description: Malformed or ambiguous request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Unauthorized:
+      description: API authentication failed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    NotFound:
+      description: Order does not exist in the authenticated client scope
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    CheckoutNotFound:
+      description: Checkout token is invalid or unknown
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Conflict:
+      description: Idempotency, merchant order number, or nonce conflict
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    TooLarge:
+      description: Request body exceeds the route limit
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    UnsupportedMediaType:
+      description: JSON endpoint requires application/json
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    ValidationFailed:
+      description: Request fields violate the contract
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    RateLimited:
+      description: Public checkout request budget is exhausted
+      headers:
+        Retry-After:
+          schema: { type: integer, minimum: 1 }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Unavailable:
+      description: No amount slot is available or the order clock is unsafe
+      headers:
+        Retry-After:
+          schema: { type: integer, minimum: 1 }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }

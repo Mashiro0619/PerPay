@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { isUtf8 } from "node:buffer";
+import { performance } from "node:perf_hooks";
 
 import type { HttpBindings } from "@hono/node-server";
 import { getConnInfo } from "@hono/node-server/conninfo";
@@ -10,8 +10,16 @@ import { z } from "zod";
 import type { AppConfig } from "../config.ts";
 import type { AppDatabase } from "../database/database.ts";
 import { IdentityError, IdentityService, type AuthenticatedSession } from "../identity/service.ts";
+import {
+  createOrderRequestSchema,
+  merchantOrderNumberSchema,
+  type OrderProjection,
+  type PublicCheckoutProjection,
+} from "../orders/model.ts";
+import { OrderError, type OrderErrorCode, type OrderService } from "../orders/service.ts";
 import { verifyApiRequestSignature, type ApiRequestAuthentication } from "../security/api-signature.ts";
 import { APP_VERSION } from "../version.ts";
+import { parseStrictJson, StrictJsonError } from "./strict-json.ts";
 
 const SESSION_COOKIE = "perpay_session";
 const SECURE_SESSION_COOKIE = "__Host-perpay_session";
@@ -19,8 +27,10 @@ const CSRF_COOKIE = "perpay_csrf";
 const SECURE_CSRF_COOKIE = "__Host-perpay_csrf";
 const SESSION_COOKIE_MAX_AGE_SECONDS = 12 * 60 * 60;
 const MAX_JSON_BODY_BYTES = 16 * 1024;
-const API_MAX_BODY_BYTES = 1024 * 1024;
 const MAX_PASSWORD_BYTES = 1024;
+const PUBLIC_CHECKOUT_BURST = 120;
+const PUBLIC_CHECKOUT_REQUESTS_PER_SECOND = 20;
+const ORDER_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 type AppEnvironment = {
   Bindings: Partial<HttpBindings>;
@@ -28,6 +38,7 @@ type AppEnvironment = {
     requestId: string;
     adminSession: AuthenticatedSession;
     apiRawBody: Buffer;
+    apiClientId: string;
   };
 };
 
@@ -55,6 +66,7 @@ export interface AppDependencies {
   readonly config: AppConfig;
   readonly database: AppDatabase;
   readonly identity: IdentityService;
+  readonly orders: OrderService;
   readonly startedAt: Date;
 }
 
@@ -182,7 +194,63 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     return context.body(null, 204);
   });
 
-  app.get("/api/v1/system/status", requireApiClient(dependencies), (context) =>
+  const apiFailureAuditLimiter = new ApiFailureAuditLimiter();
+  const publicCheckoutBudget = new FixedTokenBucket(
+    PUBLIC_CHECKOUT_BURST,
+    PUBLIC_CHECKOUT_REQUESTS_PER_SECOND,
+  );
+  const signedApi = (maximumBodyBytes: number) =>
+    requireApiClient(dependencies, maximumBodyBytes, apiFailureAuditLimiter);
+
+  app.post("/api/v1/orders", signedApi(MAX_JSON_BODY_BYTES), (context) => {
+    requireJsonContentType(context);
+    const request = parseJsonBytes(context.get("apiRawBody"), createOrderRequestSchema);
+    const result = dependencies.orders.create(context.get("apiClientId"), request);
+    const data = serializeOrder(result.order, dependencies.config.publicOrigin);
+    context.header("location", `/api/v1/orders/${encodeURIComponent(result.order.orderId)}`);
+    return context.json({ data }, result.created ? 201 : 200);
+  });
+
+  app.get(
+    "/api/v1/orders/by-merchant-no/:merchantOrderNo",
+    signedApi(0),
+    (context) => {
+      const parsed = merchantOrderNumberSchema.safeParse(context.req.param("merchantOrderNo"));
+      if (!parsed.success) throw orderNotFoundHttpError();
+      const order = dependencies.orders.getByMerchantOrderNumber(
+        context.get("apiClientId"),
+        parsed.data,
+      );
+      return context.json({ data: serializeOrder(order, dependencies.config.publicOrigin) });
+    },
+  );
+
+  app.get("/api/v1/orders/:orderId", signedApi(0), (context) => {
+    const orderId = requireOrderId(context.req.param("orderId"));
+    const order = dependencies.orders.get(context.get("apiClientId"), orderId);
+    return context.json({ data: serializeOrder(order, dependencies.config.publicOrigin) });
+  });
+
+  app.post("/api/v1/orders/:orderId/actions/close", signedApi(0), (context) => {
+    const orderId = requireOrderId(context.req.param("orderId"));
+    const order = dependencies.orders.close(context.get("apiClientId"), orderId);
+    return context.json({ data: serializeOrder(order, dependencies.config.publicOrigin) });
+  });
+
+  app.get("/api/public/v1/checkouts/:token", (context) => {
+    if (!publicCheckoutBudget.take()) {
+      throw new HttpApiError(
+        429,
+        "public_checkout_rate_limited",
+        "公开收银台请求过于频繁",
+        1,
+      );
+    }
+    const checkout = dependencies.orders.publicCheckout(context.req.param("token"));
+    return context.json({ data: serializePublicCheckout(checkout) });
+  });
+
+  app.get("/api/v1/system/status", signedApi(0), (context) =>
     context.json({
       data: {
         status: "ready",
@@ -210,6 +278,12 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       const status = identityStatus(error.code);
       return errorResponse(context, status, error.code, error.message);
     }
+    if (error instanceof OrderError) {
+      if (error.retryAfterSeconds !== undefined) {
+        context.header("retry-after", String(error.retryAfterSeconds));
+      }
+      return errorResponse(context, orderStatus(error.code), error.code, error.message);
+    }
 
     console.error(
       JSON.stringify({
@@ -235,13 +309,16 @@ function requireAdminSession(identity: IdentityService, secureCookies: boolean):
   };
 }
 
-function requireApiClient(dependencies: AppDependencies): MiddlewareHandler<AppEnvironment> {
-  const failureAuditLimiter = new ApiFailureAuditLimiter();
+function requireApiClient(
+  dependencies: AppDependencies,
+  maximumBodyBytes: number,
+  failureAuditLimiter: ApiFailureAuditLimiter,
+): MiddlewareHandler<AppEnvironment> {
   return async (context, next) => {
     const authentication = readApiAuthentication(context);
     const client = dependencies.identity.apiClient(authentication.clientId);
     if (!client) throw new HttpApiError(401, "api_authentication_failed", "API 认证失败");
-    const body = await readBodyLimited(context, API_MAX_BODY_BYTES);
+    const body = await readBodyLimited(context, maximumBodyBytes);
     context.set("apiRawBody", body);
 
     let verified;
@@ -283,6 +360,7 @@ function requireApiClient(dependencies: AppDependencies): MiddlewareHandler<AppE
       );
       throw new HttpApiError(409, "api_nonce_replayed", "请求 nonce 已被使用");
     }
+    context.set("apiClientId", client.clientId);
     await next();
   };
 }
@@ -338,6 +416,33 @@ class ApiFailureAuditLimiter {
   }
 }
 
+class FixedTokenBucket {
+  readonly #capacity: number;
+  readonly #refillPerMillisecond: number;
+  #tokens: number;
+  #lastRefillAt: number;
+
+  constructor(capacity: number, refillPerSecond: number) {
+    this.#capacity = capacity;
+    this.#tokens = capacity;
+    this.#refillPerMillisecond = refillPerSecond / 1000;
+    this.#lastRefillAt = performance.now();
+  }
+
+  take(): boolean {
+    const now = performance.now();
+    const elapsed = Math.max(0, now - this.#lastRefillAt);
+    this.#tokens = Math.min(
+      this.#capacity,
+      this.#tokens + elapsed * this.#refillPerMillisecond,
+    );
+    this.#lastRefillAt = now;
+    if (this.#tokens < 1) return false;
+    this.#tokens -= 1;
+    return true;
+  }
+}
+
 function requireSameOrigin(context: Context<AppEnvironment>, expectedOrigin: string): void {
   const origin = context.req.header("origin");
   if (origin !== expectedOrigin) {
@@ -379,13 +484,17 @@ async function readJson<T>(
   maximumBytes: number,
 ): Promise<T> {
   const bytes = await readBodyLimited(context, maximumBytes);
-  if (!isUtf8(bytes)) {
-    throw new HttpApiError(400, "invalid_json", "请求体不是有效 UTF-8 JSON");
-  }
+  return parseJsonBytes(bytes, schema);
+}
+
+function parseJsonBytes<T>(bytes: Uint8Array, schema: z.ZodType<T>): T {
   let value: unknown;
   try {
-    value = JSON.parse(bytes.toString("utf8")) as unknown;
-  } catch {
+    value = parseStrictJson(bytes);
+  } catch (error) {
+    if (error instanceof StrictJsonError && error.code === "DUPLICATE_KEY") {
+      throw new HttpApiError(400, "duplicate_json_key", "请求体包含重复 JSON 字段");
+    }
     throw new HttpApiError(400, "invalid_json", "请求体不是有效 JSON");
   }
   const parsed = schema.safeParse(value);
@@ -542,6 +651,92 @@ function identityStatus(code: IdentityError["code"]): 401 | 403 | 409 | 429 | 50
   }
 }
 
+function orderStatus(code: OrderErrorCode): 404 | 409 | 503 {
+  switch (code) {
+    case "order_not_found":
+    case "checkout_not_found":
+      return 404;
+    case "idempotency_conflict":
+    case "merchant_order_no_conflict":
+      return 409;
+    case "amount_slots_exhausted":
+    case "order_clock_unavailable":
+      return 503;
+  }
+}
+
+function requireOrderId(value: string): string {
+  if (!ORDER_ID_PATTERN.test(value)) throw orderNotFoundHttpError();
+  return value;
+}
+
+function orderNotFoundHttpError(): HttpApiError {
+  return new HttpApiError(404, "order_not_found", "订单不存在");
+}
+
+function serializeOrder(order: OrderProjection, publicOrigin: string) {
+  return {
+    order_id: order.orderId,
+    merchant_order_no: order.merchantOrderNo,
+    requested_amount_cents: order.requestedAmountCents,
+    payable_amount_cents: order.payableAmountCents,
+    received_amount_cents: order.receivedAmountCents,
+    currency: order.currency,
+    description: order.description,
+    checkout: {
+      status: order.checkout.status,
+      token: order.checkoutToken,
+      state_url: new URL(
+        `/api/public/v1/checkouts/${encodeURIComponent(order.checkoutToken)}`,
+        publicOrigin,
+      ).toString(),
+      expires_at: new Date(order.checkout.expiresAt).toISOString(),
+      closed_at: nullableIsoTime(order.checkout.closedAt),
+    },
+    payment: {
+      status: order.payment.status,
+      basis: order.payment.basis,
+      received_amount_cents: order.payment.receivedAmountCents,
+    },
+    refund: { status: order.refund.status },
+    created_at: new Date(order.createdAt).toISOString(),
+    updated_at: new Date(order.updatedAt).toISOString(),
+    version: order.version,
+  };
+}
+
+function serializePublicCheckout(checkout: PublicCheckoutProjection) {
+  return {
+    merchant_order_no: checkout.merchantOrderNo,
+    requested_amount_cents: checkout.requestedAmountCents,
+    currency: checkout.currency,
+    description: checkout.description,
+    payment_instructions:
+      checkout.paymentInstructions === null
+        ? null
+        : {
+            payable_amount_cents: checkout.paymentInstructions.payableAmountCents,
+            currency: checkout.paymentInstructions.currency,
+            collection_code_payload: checkout.paymentInstructions.collectionCodePayload,
+          },
+    checkout: {
+      status: checkout.checkout.status,
+      expires_at: new Date(checkout.checkout.expiresAt).toISOString(),
+      closed_at: nullableIsoTime(checkout.checkout.closedAt),
+    },
+    payment: {
+      status: checkout.payment.status,
+      basis: checkout.payment.basis,
+      received_amount_cents: checkout.payment.receivedAmountCents,
+    },
+    refund: { status: checkout.refund.status },
+  };
+}
+
+function nullableIsoTime(value: number | null): string | null {
+  return value === null ? null : new Date(value).toISOString();
+}
+
 function errorResponse(
   context: Context<AppEnvironment>,
   status: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 429 | 500 | 503,
@@ -561,12 +756,12 @@ function errorResponse(
 }
 
 class HttpApiError extends Error {
-  readonly status: 400 | 401 | 403 | 409 | 413 | 415 | 422 | 429 | 503;
+  readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 429 | 503;
   readonly code: string;
   readonly retryAfterSeconds: number | undefined;
 
   constructor(
-    status: 400 | 401 | 403 | 409 | 413 | 415 | 422 | 429 | 503,
+    status: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 429 | 503,
     code: string,
     message: string,
     retryAfterSeconds?: number,

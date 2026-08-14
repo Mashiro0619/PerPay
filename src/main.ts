@@ -4,19 +4,22 @@ import { loadConfig } from "./config.ts";
 import { AppDatabase } from "./database/database.ts";
 import { createApp } from "./http/app.ts";
 import { IdentityService } from "./identity/service.ts";
+import { OrderService } from "./orders/service.ts";
 import { APP_VERSION } from "./version.ts";
 
 const startedAt = new Date();
 const config = loadConfig();
 const database = await AppDatabase.open(config.databasePath);
 const identity = new IdentityService(database, config);
+const orders = new OrderService(database, config);
 try {
   await identity.initialize();
+  orders.initialize();
 } catch (error) {
   database.close();
   throw error;
 }
-const app = createApp({ config, database, identity, startedAt });
+const app = createApp({ config, database, identity, orders, startedAt });
 let shuttingDown = false;
 
 const server = serve(

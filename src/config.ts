@@ -9,6 +9,7 @@ const apiClientIdPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/;
 const canonicalBase64UrlPattern = /^[A-Za-z0-9_-]{43}$/;
 const maximumPasswordBytes = 1024;
 const apiSecretBytes = 32;
+const maximumCollectionCodeBytes = 4096;
 
 function isCanonicalApiSecret(value: string): boolean {
   if (!canonicalBase64UrlPattern.test(value)) return false;
@@ -35,8 +36,22 @@ const rawConfigSchema = z.object({
     .refine(isCanonicalApiSecret, {
       message: "must be the canonical unpadded base64url encoding of exactly 32 bytes",
     }),
-  PERPAY_TIMEZONE: z.string().trim().min(1).default("Asia/Shanghai"),
-  PERPAY_LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+  PERPAY_COLLECTION_CODE_PAYLOAD: z
+    .string()
+    .refine((value) => hasOnlyUnicodeScalarValues(value) && Array.from(value).length >= 8, {
+      message: "must contain at least 8 Unicode characters",
+    })
+    .refine((value) => value === value.trim(), {
+      message: "must not contain leading or trailing whitespace",
+    })
+    .refine((value) => !/[\u0000-\u001f\u007f]/.test(value), {
+      message: "must not contain control characters",
+    })
+    .refine((value) => Buffer.byteLength(value, "utf8") <= maximumCollectionCodeBytes, {
+      message: `must contain at most ${maximumCollectionCodeBytes} UTF-8 bytes`,
+    }),
+  PERPAY_ORDER_TTL_SECONDS: z.coerce.number().int().min(60).max(1800).default(300),
+  PERPAY_AMOUNT_OFFSET_MAX_CENTS: z.coerce.number().int().min(1).max(99).default(99),
 });
 
 export interface AppConfig {
@@ -51,8 +66,9 @@ export interface AppConfig {
   readonly secureCookies: boolean;
   readonly apiClientId: string;
   readonly apiSecret: string;
-  readonly timezone: string;
-  readonly logLevel: "debug" | "info" | "warn" | "error";
+  readonly collectionCodePayload: string;
+  readonly orderTtlSeconds: number;
+  readonly amountOffsetMaximumCents: number;
 }
 
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -69,18 +85,16 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     throw new Error("配置校验失败: PERPAY_API_SECRET 不能使用示例值");
   }
 
+  if (placeholderPattern.test(parsed.data.PERPAY_COLLECTION_CODE_PAYLOAD)) {
+    throw new Error("配置校验失败: PERPAY_COLLECTION_CODE_PAYLOAD 不能使用示例值");
+  }
+
   if (parsed.data.PERPAY_API_SECRET === parsed.data.PERPAY_INITIAL_ADMIN_PASSWORD) {
     throw new Error("配置校验失败: PERPAY_API_SECRET 不能与 PERPAY_INITIAL_ADMIN_PASSWORD 相同");
   }
 
   if (isIP(parsed.data.PERPAY_HOST) === 0 && parsed.data.PERPAY_HOST !== "localhost") {
     throw new Error("配置校验失败: PERPAY_HOST 必须是 IP 地址或 localhost");
-  }
-
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: parsed.data.PERPAY_TIMEZONE });
-  } catch {
-    throw new Error("配置校验失败: PERPAY_TIMEZONE 不是有效的 IANA 时区");
   }
 
   const publicUrl = parsePublicUrl(parsed.data.PERPAY_PUBLIC_URL);
@@ -97,8 +111,9 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     secureCookies: publicUrl.protocol === "https:",
     apiClientId: parsed.data.PERPAY_API_CLIENT_ID,
     apiSecret: parsed.data.PERPAY_API_SECRET,
-    timezone: parsed.data.PERPAY_TIMEZONE,
-    logLevel: parsed.data.PERPAY_LOG_LEVEL,
+    collectionCodePayload: parsed.data.PERPAY_COLLECTION_CODE_PAYLOAD,
+    orderTtlSeconds: parsed.data.PERPAY_ORDER_TTL_SECONDS,
+    amountOffsetMaximumCents: parsed.data.PERPAY_AMOUNT_OFFSET_MAX_CENTS,
   });
 }
 
@@ -126,4 +141,12 @@ function parsePublicUrl(value: string): URL {
     throw new Error("配置校验失败: PERPAY_PUBLIC_URL 不能使用示例域名");
   }
   return url;
+}
+
+function hasOnlyUnicodeScalarValues(value: string): boolean {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0);
+    if (codePoint !== undefined && codePoint >= 0xd800 && codePoint <= 0xdfff) return false;
+  }
+  return true;
 }

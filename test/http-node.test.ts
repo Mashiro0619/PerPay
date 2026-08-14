@@ -12,22 +12,27 @@ import { loadConfig } from "../src/config.ts";
 import { AppDatabase } from "../src/database/database.ts";
 import { createApp } from "../src/http/app.ts";
 import { IdentityService } from "../src/identity/service.ts";
+import { OrderService } from "../src/orders/service.ts";
 import { signApiRequest } from "../src/security/api-signature.ts";
 
 const apiSecret = Buffer.alloc(32, 11).toString("base64url");
+const collectionCodePayload = "https://qr.alipay.com/fkx-test-code-2026";
 
 async function fixture() {
   const directory = mkdtempSync(join(tmpdir(), "perpay-http-node-"));
   const config = loadConfig({
     PERPAY_INITIAL_ADMIN_PASSWORD: "a-secure-local-password",
     PERPAY_API_SECRET: apiSecret,
+    PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
     PERPAY_DATA_DIR: directory,
     PERPAY_PUBLIC_URL: "http://127.0.0.1:8080",
   });
   const database = await AppDatabase.open(config.databasePath);
   const identity = new IdentityService(database, config);
   await identity.initialize();
-  const app = createApp({ config, database, identity, startedAt: new Date() });
+  const orders = new OrderService(database, config);
+  orders.initialize();
+  const app = createApp({ config, database, identity, orders, startedAt: new Date() });
   const listening = Promise.withResolvers<AddressInfo>();
   const server = serve(
     { fetch: app.fetch, hostname: "127.0.0.1", port: 0 },

@@ -10,6 +10,7 @@ import { IDENTITY_LIMITS, IdentityError, IdentityService, fingerprintApiSecret }
 
 const adminPassword = "a-secure-local-password";
 const apiSecret = Buffer.alloc(32, 7).toString("base64url");
+const collectionCodePayload = "https://qr.alipay.com/fkx-test-code-2026";
 
 async function fixture(clock = { now: Date.parse("2026-08-14T12:00:00Z") }) {
   const directory = mkdtempSync(join(tmpdir(), "perpay-identity-"));
@@ -18,6 +19,7 @@ async function fixture(clock = { now: Date.parse("2026-08-14T12:00:00Z") }) {
     PERPAY_INITIAL_ADMIN_PASSWORD: adminPassword,
     PERPAY_API_CLIENT_ID: "default",
     PERPAY_API_SECRET: apiSecret,
+    PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
     PERPAY_DATA_DIR: directory,
   });
   const database = await AppDatabase.open(config.databasePath);
@@ -247,6 +249,7 @@ describe("IdentityService", () => {
         PERPAY_INITIAL_ADMIN_PASSWORD: "different-bootstrap-password",
         PERPAY_API_CLIENT_ID: "default",
         PERPAY_API_SECRET: apiSecret,
+        PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
         PERPAY_DATA_DIR: test.directory,
       });
       const restarted = new IdentityService(test.database, replacementConfig, () => test.clock.now);
@@ -275,6 +278,7 @@ describe("IdentityService", () => {
         PERPAY_INITIAL_ADMIN_PASSWORD: adminPassword,
         PERPAY_API_CLIENT_ID: "default",
         PERPAY_API_SECRET: rotatedSecret,
+        PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
         PERPAY_DATA_DIR: test.directory,
       });
       const rotated = new IdentityService(test.database, rotatedConfig, () => test.clock.now);
