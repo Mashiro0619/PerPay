@@ -1,12 +1,12 @@
+# 同一主机部署多个实例时，必须为每个实例改成唯一且长期不变的小写名称。
+# 单实例保持默认值即可；改名会选择另一份命名卷。
 name: perpay
 
 services:
   app:
-    # 正式发布后替换为带版本与摘要的预构建镜像。
-    image: perpay:0.1.0-dev
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # 固定版本标签，不使用 latest。升级或回滚时只修改这一行。
+    # 正式发布说明同时给出 OCI digest；严格固定字节时使用 tag@sha256:... 完整引用。
+    image: ghcr.io/mashiro0619/perpay:0.1.0
     environment:
       # Compose 会对所有字符串执行变量插值；任何人工填写值中的 $ 都必须写成 $$。
       # 必填：仅在首次初始化数据库时用于创建管理员；至少 12 个字符、最多 1024 UTF-8 字节。
@@ -67,6 +67,17 @@ services:
     cap_drop:
       - ALL
     init: true
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8080/readyz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      # 大库启动时会先完成在线备份、完整性检查和 migration。
+      start_period: 5m
+      retries: 3
     logging:
       driver: json-file
       options:
