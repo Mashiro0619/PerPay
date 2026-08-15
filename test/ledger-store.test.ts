@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { DatabaseSync } from "node:sqlite";
 import { describe, it } from "node:test";
 
 import { AppDatabase } from "../src/database/database.ts";
 import type { AccountLogDetail } from "../src/infrastructure/alipay/types.ts";
 import {
+  payloadFingerprint,
   requestFingerprint,
   responseFingerprint,
   type AccountLogPageInput,
@@ -399,6 +401,48 @@ describe("LedgerStore segment ingestion", () => {
     });
   });
 
+  it("rejects a changed oversized probe before splitting or advancing progress", async () => {
+    await withLedgerStore(async ({ database, store }) => {
+      const baselineRun = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT });
+      recordOnlyLeaf(
+        store,
+        baselineRun.ingestRunId,
+        page(1, 1, false, [detail("probe-baseline", "1.00", "CREDIT", WINDOW.start)]),
+        '{"probe":"baseline"}',
+        STARTED_AT + 1_000,
+      );
+
+      const variantRun = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT + 2_000 });
+      const root = requiredSegment(store.getNextPendingSegment(variantRun.ingestRunId));
+      const rejected = store.recordSegmentPage({
+        ingestRunId: variantRun.ingestRunId,
+        ingestSegmentId: root.ingestSegmentId,
+        page: page(1, 2, true, [
+          detail("probe-new", "2.00", "CREDIT", "2026-08-14 00:20:00"),
+        ]),
+        evidence: evidence('{"probe":"changed","has_more":true}'),
+        now: STARTED_AT + 3_000,
+      });
+
+      assert.equal(rejected.kind, "variant");
+      assert.equal(rejected.run.status, "FAILED");
+      assert.equal(rejected.run.failureCode, "pagination_variant");
+      assert.equal(rejected.run.pagesReceived, 0);
+      assert.equal(rejected.run.detailsReceived, 0);
+      assert.equal(rejected.segment.state, "PENDING");
+      assert.deepEqual(rejected.children, []);
+      assert.equal(store.listIngestSegments(variantRun.ingestRunId).length, 1);
+      assert.equal(store.getLedgerEntry("primary", "probe-new"), null);
+      assert.equal(
+        database.read((connection) => Number((connection.prepare(
+          "SELECT COUNT(*) AS count FROM provider_raw_events WHERE raw_page_id = ?",
+        ).get(rejected.page.rawPageId) as { count: bigint }).count)),
+        0,
+      );
+      assert.equal(database.integrityCheck().ok, true);
+    });
+  });
+
   it("rolls back the leaf, cursor, and run together when final completion aborts", async () => {
     await withLedgerStore(async ({ database, store }) => {
       const run = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT });
@@ -493,7 +537,7 @@ describe("LedgerStore segment ingestion", () => {
     });
   });
 
-  it("reuses exact leaf evidence across runs and isolates changed variants", async () => {
+  it("rejects a changed leaf until the same signed response is observed twice", async () => {
     await withLedgerStore(async ({ database, store }) => {
       const event = detail("overlap-event", "88.88", "CREDIT", "2026-08-14 00:10:00");
       const body = '{"event":"overlap-event","version":1}';
@@ -531,23 +575,529 @@ describe("LedgerStore segment ingestion", () => {
         ],
       );
 
+      const cursorBeforeVariant = store.getCursor();
+      const variantEvent = detail(
+        "variant-new-event",
+        "99.99",
+        "CREDIT",
+        "2026-08-14 00:20:00",
+      );
+      const variantBody = '{"event":"variant-new-event","version":2}';
       const variantRun = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT + 4_000 });
       const variant = recordOnlyLeaf(
         store,
         variantRun.ingestRunId,
-        page(1, 1, false, [event]),
-        '{"event":"overlap-event","version":2}',
+        page(1, 1, false, [variantEvent]),
+        variantBody,
         STARTED_AT + 5_000,
       );
+      assert.equal(variant.kind, "variant");
       assert.equal(variant.observation, "variant");
+      assert.deepEqual(variant.normalized, []);
+      assert.equal(variant.run.status, "FAILED");
+      assert.equal(variant.run.failureCode, "pagination_variant");
+      assert.equal(variant.run.pagesReceived, 0);
+      assert.equal(variant.run.detailsReceived, 0);
+      assert.equal(variant.segment.state, "PENDING");
+      assert.equal(variant.cursor.complete, false);
+      assert.equal(variant.cursor.nextPageNo, 1);
+      assert.equal(variant.cursor.lastEventOccurredAt, cursorBeforeVariant?.lastEventOccurredAt);
+      assert.equal(store.getLedgerEntry("primary", "variant-new-event"), null);
       assert.equal(store.listOpenConflicts()[0]?.conflictType, "RAW_PAGE_VARIANT");
+      assert.equal(Buffer.from(store.getRawPageBody(variant.page.rawPageId) ?? []).toString(), variantBody);
+      assert.deepEqual(
+        database.read((connection) => (connection.prepare(
+          `SELECT disposition
+             FROM ingest_run_page_observations
+            ORDER BY observation_sequence`,
+        ).all() as Array<{ disposition: string }>).map((row) => row.disposition)),
+        ["PROCESSED", "PROCESSED", "REJECTED_VARIANT"],
+      );
+      assert.equal(
+        database.read((connection) => Number((connection.prepare(
+          `SELECT COUNT(*) AS count
+             FROM ingest_errors
+            WHERE ingest_run_id = ?
+              AND error_code = 'pagination_variant'
+              AND retryable = 1`,
+        ).get(variantRun.ingestRunId) as { count: bigint }).count)),
+        1,
+      );
       assert.deepEqual(databaseCounts(database), {
         pages: 2,
-        events: 2,
+        events: 1,
         entries: 1,
         observations: 3,
         segments: 3,
       });
+      assert.equal(database.integrityCheck().ok, true);
+
+      const confirmationRun = store.startIngestRun({
+        ...WINDOW,
+        pageSize: 1,
+        now: STARTED_AT + 6_000,
+      });
+      const confirmed = recordOnlyLeaf(
+        store,
+        confirmationRun.ingestRunId,
+        page(1, 1, false, [variantEvent]),
+        variantBody,
+        STARTED_AT + 7_000,
+      );
+      assert.equal(confirmed.kind, "accepted");
+      assert.equal(confirmed.observation, "confirmed_variant");
+      assert.equal(confirmed.normalized[0]?.kind, "created");
+      assert.equal(confirmed.run.status, "COMPLETED");
+      assert.equal(store.getLedgerEntry("primary", "variant-new-event")?.amountCents, 9_999);
+      assert.deepEqual(databaseCounts(database), {
+        pages: 2,
+        events: 2,
+        entries: 2,
+        observations: 4,
+        segments: 4,
+      });
+      assert.equal(database.integrityCheck().ok, true);
+    });
+  });
+
+  it("requires consecutive equality instead of trusting an older matching response", async () => {
+    await withLedgerStore(async ({ database, store }) => {
+      const eventA = detail("sequence-A", "1.00", "CREDIT", "2026-08-14 00:10:00");
+      const eventB = detail("sequence-B", "2.00", "CREDIT", "2026-08-14 00:20:00");
+      const eventC = detail("sequence-C", "3.00", "CREDIT", "2026-08-14 00:30:00");
+      const scan = (
+        event: AccountLogDetail,
+        body: string,
+        offset: number,
+      ) => {
+        const run = store.startIngestRun({
+          ...WINDOW,
+          pageSize: 1,
+          now: STARTED_AT + offset,
+        });
+        return recordOnlyLeaf(
+          store,
+          run.ingestRunId,
+          page(1, 1, false, [event]),
+          body,
+          STARTED_AT + offset + 1_000,
+        );
+      };
+
+      assert.equal(scan(eventA, '{"sequence":"A"}', 0).kind, "accepted");
+      assert.equal(scan(eventB, '{"sequence":"B"}', 2_000).kind, "variant");
+
+      const historicalA = scan(eventA, '{"sequence":"A"}', 4_000);
+      assert.equal(historicalA.kind, "variant");
+      assert.equal(historicalA.run.status, "FAILED");
+      assert.equal(historicalA.cursor.complete, false);
+
+      const confirmedA = scan(eventA, '{"sequence":"A"}', 6_000);
+      assert.equal(confirmedA.kind, "accepted");
+      assert.equal(confirmedA.observation, "confirmed_variant");
+      assert.deepEqual(confirmedA.normalized, []);
+
+      assert.equal(scan(eventB, '{"sequence":"B"}', 8_000).kind, "variant");
+      assert.equal(scan(eventC, '{"sequence":"C"}', 10_000).kind, "variant");
+      const nonConsecutiveB = scan(eventB, '{"sequence":"B"}', 12_000);
+      assert.equal(nonConsecutiveB.kind, "variant");
+      assert.equal(store.getLedgerEntry("primary", "sequence-B"), null);
+      assert.equal(store.getLedgerEntry("primary", "sequence-C"), null);
+
+      const confirmedB = scan(eventB, '{"sequence":"B"}', 14_000);
+      assert.equal(confirmedB.kind, "accepted");
+      assert.equal(confirmedB.observation, "confirmed_variant");
+      assert.equal(confirmedB.normalized[0]?.kind, "created");
+      assert.equal(store.getLedgerEntry("primary", "sequence-B")?.amountCents, 200);
+      assert.equal(store.getLedgerEntry("primary", "sequence-C"), null);
+      assert.deepEqual(
+        database.read((connection) => (connection.prepare(
+          `SELECT observation_sequence
+             FROM ingest_run_page_observations
+            ORDER BY observation_sequence`,
+        ).all() as Array<{ observation_sequence: bigint }>).map((row) =>
+          Number(row.observation_sequence))),
+        [1, 2, 3, 4, 5, 6, 7, 8],
+      );
+      assert.equal(database.integrityCheck().ok, true);
+    });
+  });
+
+  it("enforces response transitions and raw-event admission below the store", async () => {
+    await withLedgerStore(async ({ database, store }) => {
+      const baselineRun = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT });
+      recordOnlyLeaf(
+        store,
+        baselineRun.ingestRunId,
+        page(1, 0, false, []),
+        '{"transition":"A"}',
+        STARTED_AT + 1_000,
+      );
+
+      const changedRun = store.startIngestRun({
+        ...WINDOW,
+        pageSize: 1,
+        now: STARTED_AT + 2_000,
+      });
+      const changedSegment = requiredSegment(store.getNextPendingSegment(changedRun.ingestRunId));
+      assert.throws(
+        () => database.write((connection) => {
+          const rawPageId = "10000000-0000-4000-8000-000000000001";
+          insertSyntheticRawPage(connection, {
+            rawPageId,
+            ingestRunId: changedRun.ingestRunId,
+            windowStart: changedSegment.windowStart,
+            windowEnd: changedSegment.windowEnd,
+            body: '{"transition":"B"}',
+            now: STARTED_AT + 3_000,
+          });
+          insertSyntheticObservation(connection, {
+            ingestRunId: changedRun.ingestRunId,
+            ingestSegmentId: changedSegment.ingestSegmentId,
+            rawPageId,
+            disposition: "PROCESSED",
+            sequence: 2,
+            now: STARTED_AT + 3_000,
+          });
+        }),
+        /observation transition is invalid/,
+      );
+
+      const rejected = store.recordSegmentPage({
+        ingestRunId: changedRun.ingestRunId,
+        ingestSegmentId: changedSegment.ingestSegmentId,
+        page: page(1, 0, false, []),
+        evidence: evidence('{"transition":"B"}'),
+        now: STARTED_AT + 4_000,
+      });
+      assert.equal(rejected.kind, "variant");
+
+      const rawPayload = Buffer.from('{"injected":true}', "utf8");
+      assert.throws(
+        () => database.write((connection) => connection.prepare(
+          `INSERT INTO provider_raw_events(
+             raw_event_id, raw_page_id, provider_account_key, ordinal,
+             external_event_id, occurred_at_text, amount_text, direction_text,
+             alipay_order_no, merchant_order_no, trans_memo, other_account,
+             payload_fingerprint, raw_payload, observed_at
+           ) VALUES (?, ?, 'primary', 0, NULL, NULL, NULL, NULL,
+                     NULL, NULL, NULL, NULL, ?, ?, ?)`,
+        ).run(
+          "20000000-0000-4000-8000-000000000001",
+          rejected.page.rawPageId,
+          payloadFingerprint(rawPayload),
+          rawPayload,
+          STARTED_AT + 5_000,
+        )),
+        /raw events require a processed accepted leaf/,
+      );
+
+      const confirmationRun = store.startIngestRun({
+        ...WINDOW,
+        pageSize: 1,
+        now: STARTED_AT + 6_000,
+      });
+      const confirmationSegment = requiredSegment(
+        store.getNextPendingSegment(confirmationRun.ingestRunId),
+      );
+      assert.throws(
+        () => database.write((connection) => insertSyntheticObservation(connection, {
+          ingestRunId: confirmationRun.ingestRunId,
+          ingestSegmentId: confirmationSegment.ingestSegmentId,
+          rawPageId: rejected.page.rawPageId,
+          disposition: "REJECTED_VARIANT",
+          sequence: 3,
+          now: STARTED_AT + 7_000,
+        })),
+        /observation transition is invalid/,
+      );
+
+      const confirmed = store.recordSegmentPage({
+        ingestRunId: confirmationRun.ingestRunId,
+        ingestSegmentId: confirmationSegment.ingestSegmentId,
+        page: page(1, 0, false, []),
+        evidence: evidence('{"transition":"B"}'),
+        now: STARTED_AT + 8_000,
+      });
+      assert.equal(confirmed.kind, "accepted");
+      assert.equal(confirmed.observation, "confirmed_variant");
+      assert.equal(database.integrityCheck().ok, true);
+    });
+  });
+
+  it("detects a processed response that bypassed the consecutive transition", async () => {
+    await withLedgerStore(async ({ database, store }) => {
+      const baselineRun = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT });
+      recordOnlyLeaf(
+        store,
+        baselineRun.ingestRunId,
+        page(1, 0, false, []),
+        '{"integrity-transition":"A"}',
+        STARTED_AT + 1_000,
+      );
+      const rejectedRun = store.startIngestRun({
+        ...WINDOW,
+        pageSize: 1,
+        now: STARTED_AT + 2_000,
+      });
+      const rejected = recordOnlyLeaf(
+        store,
+        rejectedRun.ingestRunId,
+        page(1, 0, false, []),
+        '{"integrity-transition":"B"}',
+        STARTED_AT + 3_000,
+      );
+      assert.equal(rejected.kind, "variant");
+
+      const corruptRun = store.startIngestRun({
+        ...WINDOW,
+        pageSize: 1,
+        now: STARTED_AT + 4_000,
+      });
+      const corruptSegment = requiredSegment(store.getNextPendingSegment(corruptRun.ingestRunId));
+      const transitionTrigger = database.read((connection) => connection.prepare(
+        `SELECT sql FROM sqlite_schema
+          WHERE type = 'trigger'
+            AND name = 'ingest_run_page_observations_transition_valid_insert'`,
+      ).get() as { sql: string });
+
+      database.write((connection) => {
+        connection.exec("DROP TRIGGER ingest_run_page_observations_transition_valid_insert");
+        const rawPageId = "30000000-0000-4000-8000-000000000001";
+        insertSyntheticRawPage(connection, {
+          rawPageId,
+          ingestRunId: corruptRun.ingestRunId,
+          windowStart: corruptSegment.windowStart,
+          windowEnd: corruptSegment.windowEnd,
+          body: '{"integrity-transition":"C"}',
+          now: STARTED_AT + 5_000,
+        });
+        insertSyntheticObservation(connection, {
+          ingestRunId: corruptRun.ingestRunId,
+          ingestSegmentId: corruptSegment.ingestSegmentId,
+          rawPageId,
+          disposition: "PROCESSED",
+          sequence: 3,
+          now: STARTED_AT + 5_000,
+        });
+        connection.prepare(
+          "UPDATE ingest_runs SET pages_received = 1 WHERE ingest_run_id = ?",
+        ).run(corruptRun.ingestRunId);
+        connection.prepare(
+          `UPDATE ingest_runs
+              SET status = 'FAILED', completed_at = ?, failure_code = 'injected_failure'
+            WHERE ingest_run_id = ?`,
+        ).run(STARTED_AT + 5_000, corruptRun.ingestRunId);
+        connection.exec(transitionTrigger.sql);
+      });
+
+      const integrity = database.integrityCheck();
+      assert.equal(integrity.schema, "ok");
+      assert.equal(integrity.foreignKeyViolations, 0);
+      assert.ok(integrity.domainViolations >= 1);
+      assert.equal(integrity.ok, false);
+    });
+  });
+
+  it("detects a gap in the global observation sequence", async () => {
+    await withLedgerStore(async ({ database, store }) => {
+      const run = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT });
+      recordOnlyLeaf(
+        store,
+        run.ingestRunId,
+        page(1, 0, false, []),
+        '{"integrity-sequence":"A"}',
+        STARTED_AT + 1_000,
+      );
+      const immutableTrigger = database.read((connection) => connection.prepare(
+        `SELECT sql FROM sqlite_schema
+          WHERE type = 'trigger'
+            AND name = 'ingest_run_page_observations_no_update'`,
+      ).get() as { sql: string });
+      database.write((connection) => {
+        connection.exec("DROP TRIGGER ingest_run_page_observations_no_update");
+        connection.exec(
+          "UPDATE ingest_run_page_observations SET observation_sequence = 2",
+        );
+        connection.exec(immutableTrigger.sql);
+      });
+
+      const integrity = database.integrityCheck();
+      assert.equal(integrity.schema, "ok");
+      assert.equal(integrity.foreignKeyViolations, 0);
+      assert.ok(integrity.domainViolations >= 1);
+      assert.equal(integrity.ok, false);
+    });
+  });
+
+  it("detects rejected variant evidence with its retryable error removed", async () => {
+    await withLedgerStore(async ({ database, store }) => {
+      const baselineRun = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT });
+      recordOnlyLeaf(
+        store,
+        baselineRun.ingestRunId,
+        page(1, 0, false, []),
+        '{"integrity-evidence":"A"}',
+        STARTED_AT + 1_000,
+      );
+      const variantRun = store.startIngestRun({
+        ...WINDOW,
+        pageSize: 1,
+        now: STARTED_AT + 2_000,
+      });
+      const variant = recordOnlyLeaf(
+        store,
+        variantRun.ingestRunId,
+        page(1, 0, false, []),
+        '{"integrity-evidence":"B"}',
+        STARTED_AT + 3_000,
+      );
+      assert.equal(variant.kind, "variant");
+      const noDeleteTrigger = database.read((connection) => connection.prepare(
+        `SELECT sql FROM sqlite_schema
+          WHERE type = 'trigger'
+            AND name = 'ingest_errors_no_delete'`,
+      ).get() as { sql: string });
+      database.write((connection) => {
+        connection.exec("DROP TRIGGER ingest_errors_no_delete");
+        connection.prepare("DELETE FROM ingest_errors WHERE ingest_run_id = ?")
+          .run(variantRun.ingestRunId);
+        connection.exec(noDeleteTrigger.sql);
+      });
+
+      const integrity = database.integrityCheck();
+      assert.equal(integrity.schema, "ok");
+      assert.equal(integrity.foreignKeyViolations, 0);
+      assert.ok(integrity.domainViolations >= 1);
+      assert.equal(integrity.ok, false);
+    });
+  });
+
+  it("detects forged rejected-variant conflict evidence and its fingerprint", async () => {
+    await withLedgerStore(async ({ database, store }) => {
+      const baselineRun = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT });
+      recordOnlyLeaf(
+        store,
+        baselineRun.ingestRunId,
+        page(1, 0, false, []),
+        '{"integrity-conflict":"A"}',
+        STARTED_AT + 1_000,
+      );
+      const variantRun = store.startIngestRun({
+        ...WINDOW,
+        pageSize: 1,
+        now: STARTED_AT + 2_000,
+      });
+      const variant = recordOnlyLeaf(
+        store,
+        variantRun.ingestRunId,
+        page(1, 0, false, []),
+        '{"integrity-conflict":"B"}',
+        STARTED_AT + 3_000,
+      );
+      assert.equal(variant.kind, "variant");
+
+      const immutableTrigger = database.read((connection) => connection.prepare(
+        `SELECT sql FROM sqlite_schema
+          WHERE type = 'trigger' AND name = 'ledger_conflicts_evidence_immutable'`,
+      ).get() as { sql: string });
+      database.write((connection) => {
+        connection.exec("DROP TRIGGER ledger_conflicts_evidence_immutable");
+        connection.prepare(
+          `UPDATE ledger_conflicts
+              SET details_json = json_set(
+                    details_json,
+                    '$.existing_raw_page_id',
+                    '00000000-0000-4000-8000-000000000001'
+                  ),
+                  conflict_fingerprint =
+                    CASE substr(conflict_fingerprint, 1, 1)
+                      WHEN '0' THEN '1' || substr(conflict_fingerprint, 2)
+                      ELSE '0' || substr(conflict_fingerprint, 2)
+                    END
+            WHERE conflict_type = 'RAW_PAGE_VARIANT'`,
+        ).run();
+        connection.exec(immutableTrigger.sql);
+      });
+
+      const integrity = database.integrityCheck();
+      assert.equal(integrity.schema, "ok");
+      assert.equal(integrity.foreignKeyViolations, 0);
+      assert.ok(integrity.domainViolations >= 2);
+      assert.equal(integrity.ok, false);
+    });
+  });
+
+  it("rolls back every variant artifact when the terminal failure transition aborts", async () => {
+    await withLedgerStore(async ({ database, store }) => {
+      const baselineRun = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT });
+      recordOnlyLeaf(
+        store,
+        baselineRun.ingestRunId,
+        page(1, 1, false, [
+          detail("variant-atomic-A", "1.00", "CREDIT", "2026-08-14 00:10:00"),
+        ]),
+        '{"atomic":"A"}',
+        STARTED_AT + 1_000,
+      );
+
+      const variantRun = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT + 2_000 });
+      const root = requiredSegment(store.getNextPendingSegment(variantRun.ingestRunId));
+      const cursorVersion = store.getCursor()?.version;
+      database.write((connection) => connection.exec(`
+        CREATE TRIGGER test_abort_pagination_variant_failure
+        BEFORE UPDATE OF status ON ingest_runs
+        WHEN NEW.failure_code = 'pagination_variant'
+        BEGIN
+          SELECT RAISE(ABORT, 'injected pagination variant failure');
+        END;
+      `));
+      assert.throws(
+        () => store.recordSegmentPage({
+          ingestRunId: variantRun.ingestRunId,
+          ingestSegmentId: root.ingestSegmentId,
+          page: page(1, 1, false, [
+            detail("variant-atomic-B", "2.00", "CREDIT", "2026-08-14 00:20:00"),
+          ]),
+          evidence: evidence('{"atomic":"B"}'),
+          now: STARTED_AT + 3_000,
+        }),
+        /injected pagination variant failure/,
+      );
+      database.write((connection) => connection.exec(
+        "DROP TRIGGER test_abort_pagination_variant_failure",
+      ));
+
+      assert.equal(store.getRun(variantRun.ingestRunId)?.status, "RUNNING");
+      assert.equal(store.getRootSegment(variantRun.ingestRunId)?.state, "PENDING");
+      assert.equal(store.getCursor()?.version, cursorVersion);
+      assert.equal(store.listOpenConflicts().length, 0);
+      assert.deepEqual(databaseCounts(database), {
+        pages: 1,
+        events: 1,
+        entries: 1,
+        observations: 1,
+        segments: 2,
+      });
+      assert.equal(
+        database.read((connection) => Number((connection.prepare(
+          "SELECT COUNT(*) AS count FROM ingest_errors",
+        ).get() as { count: bigint }).count)),
+        0,
+      );
+
+      const retry = store.recordSegmentPage({
+        ingestRunId: variantRun.ingestRunId,
+        ingestSegmentId: root.ingestSegmentId,
+        page: page(1, 1, false, [
+          detail("variant-atomic-B", "2.00", "CREDIT", "2026-08-14 00:20:00"),
+        ]),
+        evidence: evidence('{"atomic":"B"}'),
+        now: STARTED_AT + 4_000,
+      });
+      assert.equal(retry.kind, "variant");
+      assert.equal(retry.run.status, "FAILED");
+      assert.equal(database.integrityCheck().ok, true);
     });
   });
 
@@ -561,17 +1111,32 @@ describe("LedgerStore segment ingestion", () => {
         now: STARTED_AT + 1_000,
       });
       const secondRun = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT + 2_000 });
-      const conflicting = store.recordPage({
+      const rejected = store.recordPage({
         ingestRunId: secondRun.ingestRunId,
         page: page(1, 1, false, [detail("same-id", "11.00", "CREDIT", "2026-08-14 00:01:00")]),
         evidence: evidence('{"amount":"11.00"}'),
         now: STARTED_AT + 3_000,
       });
+      assert.equal(rejected.kind, "variant");
+      assert.deepEqual(rejected.normalized, []);
+
+      const confirmationRun = store.startIngestRun({
+        ...WINDOW,
+        pageSize: 1,
+        now: STARTED_AT + 4_000,
+      });
+      const conflicting = store.recordPage({
+        ingestRunId: confirmationRun.ingestRunId,
+        page: page(1, 1, false, [detail("same-id", "11.00", "CREDIT", "2026-08-14 00:01:00")]),
+        evidence: evidence('{"amount":"11.00"}'),
+        now: STARTED_AT + 5_000,
+      });
+      assert.equal(conflicting.kind, "confirmed_variant");
       assert.equal(conflicting.normalized[0]?.kind, "conflict");
       assert.equal(store.getLedgerEntry("primary", "same-id")?.amountCents, 1_000);
       assert.equal(store.getLedgerEntry("primary", "same-id")?.state, "CONFLICT");
 
-      const malformedRun = store.startIngestRun({ ...WINDOW, pageSize: 2, now: STARTED_AT + 4_000 });
+      const malformedRun = store.startIngestRun({ ...WINDOW, pageSize: 2, now: STARTED_AT + 6_000 });
       const malformed = store.recordPage({
         ingestRunId: malformedRun.ingestRunId,
         page: page(1, 2, false, [
@@ -579,7 +1144,7 @@ describe("LedgerStore segment ingestion", () => {
           detail("bad-amount", "1.001", "CREDIT", "2026-08-14 00:02:00"),
         ], 2),
         evidence: evidence('{"malformed":true}'),
-        now: STARTED_AT + 5_000,
+        now: STARTED_AT + 7_000,
       });
       assert.deepEqual(malformed.normalized.map((item) => item.kind), ["isolated", "isolated"]);
       assert.equal(store.listOpenConflicts().some((item) => item.conflictType === "MISSING_EXTERNAL_ID"), true);
@@ -602,7 +1167,7 @@ describe("LedgerStore segment ingestion", () => {
       assert.equal(store.getLedgerEntry("primary", "precision-id")?.occurredAtPrecisionMilliseconds, 100);
 
       const secondRun = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT + 2_000 });
-      const conflicting = store.recordPage({
+      const rejected = store.recordPage({
         ingestRunId: secondRun.ingestRunId,
         page: page(1, 1, false, [
           detail("precision-id", "10.00", "CREDIT", "2026-08-14 00:01:00.100"),
@@ -610,6 +1175,22 @@ describe("LedgerStore segment ingestion", () => {
         evidence: evidence('{"precision":2}'),
         now: STARTED_AT + 3_000,
       });
+      assert.equal(rejected.kind, "variant");
+
+      const confirmationRun = store.startIngestRun({
+        ...WINDOW,
+        pageSize: 1,
+        now: STARTED_AT + 4_000,
+      });
+      const conflicting = store.recordPage({
+        ingestRunId: confirmationRun.ingestRunId,
+        page: page(1, 1, false, [
+          detail("precision-id", "10.00", "CREDIT", "2026-08-14 00:01:00.100"),
+        ]),
+        evidence: evidence('{"precision":2}'),
+        now: STARTED_AT + 5_000,
+      });
+      assert.equal(conflicting.kind, "confirmed_variant");
       assert.equal(conflicting.normalized[0]?.kind, "conflict");
       assert.equal(store.getLedgerEntry("primary", "precision-id")?.state, "CONFLICT");
       assert.equal(
@@ -931,6 +1512,64 @@ function databaseCounts(database: AppDatabase) {
       segments: Number(row.segments),
     };
   });
+}
+
+function insertSyntheticRawPage(
+  connection: DatabaseSync,
+  input: {
+    readonly rawPageId: string;
+    readonly ingestRunId: string;
+    readonly windowStart: string;
+    readonly windowEnd: string;
+    readonly body: string;
+    readonly now: number;
+  },
+): void {
+  const body = Buffer.from(input.body, "utf8");
+  connection.prepare(
+    `INSERT INTO provider_raw_pages(
+       raw_page_id, ingest_run_id, provider_account_key, window_start,
+       window_end, page_no, page_size, total_size, has_more,
+       request_fingerprint, response_fingerprint, http_status,
+       headers_json, raw_body, trace_id, signature_verified, received_at
+     ) VALUES (?, ?, 'primary', ?, ?, 1, 1, 0, 0, ?, ?, 200, '{}', ?, NULL, 1, ?)`,
+  ).run(
+    input.rawPageId,
+    input.ingestRunId,
+    input.windowStart,
+    input.windowEnd,
+    requestFingerprint("primary", input.windowStart, input.windowEnd, 1, 1),
+    responseFingerprint(body),
+    body,
+    input.now,
+  );
+}
+
+function insertSyntheticObservation(
+  connection: DatabaseSync,
+  input: {
+    readonly ingestRunId: string;
+    readonly ingestSegmentId: string;
+    readonly rawPageId: string;
+    readonly disposition: "PROCESSED" | "REJECTED_VARIANT";
+    readonly sequence: number;
+    readonly now: number;
+  },
+): void {
+  connection.prepare(
+    `INSERT INTO ingest_run_page_observations(
+       ingest_run_id, ingest_segment_id, raw_page_id, observation_kind,
+       http_status, headers_json, trace_id, signature_verified, observed_at,
+       disposition, observation_sequence, transition_enforced
+     ) VALUES (?, ?, ?, 'ACCEPTED_LEAF', 200, '{}', NULL, 1, ?, ?, ?, 1)`,
+  ).run(
+    input.ingestRunId,
+    input.ingestSegmentId,
+    input.rawPageId,
+    input.now,
+    input.disposition,
+    input.sequence,
+  );
 }
 
 type LedgerStoreTestOperation = (

@@ -218,16 +218,22 @@ export type RecordPageResult =
       readonly cursor: LedgerCursor;
     }
   | {
-      readonly kind: "variant";
+      readonly kind: "confirmed_variant";
       readonly page: RawPageRecord;
       readonly normalized: readonly PageNormalizationResult[];
+      readonly cursor: LedgerCursor;
+    }
+  | {
+      readonly kind: "variant";
+      readonly page: RawPageRecord;
+      readonly normalized: readonly [];
       readonly cursor: LedgerCursor;
     };
 
 export type RecordSegmentPageResult =
   | {
       readonly kind: "split";
-      readonly observation: "inserted" | "duplicate" | "variant";
+      readonly observation: "inserted" | "duplicate" | "confirmed_variant";
       readonly page: RawPageRecord;
       readonly segment: IngestSegment;
       readonly children: readonly [IngestSegment, IngestSegment];
@@ -237,7 +243,17 @@ export type RecordSegmentPageResult =
     }
   | {
       readonly kind: "density_exceeded";
-      readonly observation: "inserted" | "duplicate" | "variant";
+      readonly observation: "inserted" | "duplicate" | "confirmed_variant";
+      readonly page: RawPageRecord;
+      readonly segment: IngestSegment;
+      readonly children: readonly [];
+      readonly normalized: readonly [];
+      readonly cursor: LedgerCursor;
+      readonly run: IngestRun;
+    }
+  | {
+      readonly kind: "variant";
+      readonly observation: "variant";
       readonly page: RawPageRecord;
       readonly segment: IngestSegment;
       readonly children: readonly [];
@@ -247,7 +263,7 @@ export type RecordSegmentPageResult =
     }
   | {
       readonly kind: "accepted";
-      readonly observation: "inserted" | "duplicate" | "variant";
+      readonly observation: "inserted" | "duplicate" | "confirmed_variant";
       readonly page: RawPageRecord;
       readonly segment: IngestSegment;
       readonly children: readonly [];

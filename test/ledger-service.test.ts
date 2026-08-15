@@ -76,6 +76,108 @@ describe("LedgerIngestService", () => {
     });
   });
 
+  it("fails a changed page without counting its details and accepts it only after confirmation", async () => {
+    await withDatabase(async ({ database, store }) => {
+      const firstPage = providerPage(
+        1,
+        1,
+        1,
+        false,
+        [detail("stable-service-event", "1.01", "2026-08-14 11:01:00")],
+      );
+      const first = await serviceFor(
+        new ScriptedProvider([{
+          ...firstPage,
+          rawResponse: { ...firstPage.rawResponse, body: '{"view":"A"}' },
+        }]),
+        store,
+        { maxRequestsPerRun: 1, overlapMilliseconds: 60 * 60 * 1_000 },
+      ).run("variant-baseline");
+      assert.equal(first.status, "COMPLETED");
+
+      const changedPage = providerPage(
+        1,
+        1,
+        1,
+        false,
+        [detail("changed-service-event", "2.02", "2026-08-14 11:02:00")],
+      );
+      const changedResponse = {
+        ...changedPage,
+        rawResponse: { ...changedPage.rawResponse, body: '{"view":"B"}' },
+      };
+      const rejected = await serviceFor(
+        new ScriptedProvider([changedResponse]),
+        store,
+        { maxRequestsPerRun: 1, overlapMilliseconds: 60 * 60 * 1_000 },
+      ).run("variant-rejected");
+      assert.deepEqual(
+        {
+          status: rejected.status,
+          pages: rejected.pages,
+          details: rejected.details,
+          createdEntries: rejected.createdEntries,
+          conflicts: rejected.conflicts,
+          errorCode: rejected.errorCode,
+        },
+        {
+          status: "FAILED",
+          pages: 1,
+          details: 0,
+          createdEntries: 0,
+          conflicts: 0,
+          errorCode: "pagination_variant",
+        },
+      );
+      assert.equal(store.getLedgerEntry("primary", "changed-service-event"), null);
+      assert.equal(store.getCursor()?.complete, false);
+      assert.equal(store.getCursor()?.nextPageNo, 1);
+      assert.deepEqual(
+        database.read((connection) => {
+          const run = connection.prepare(
+            `SELECT status, pages_received, details_received, failure_code
+               FROM ingest_runs
+              WHERE ingest_run_id = ?`,
+          ).get(rejected.ingestRunId) as {
+            status: string;
+            pages_received: bigint;
+            details_received: bigint;
+            failure_code: string;
+          };
+          const errorCount = Number((connection.prepare(
+            "SELECT COUNT(*) AS count FROM ingest_errors WHERE ingest_run_id = ?",
+          ).get(rejected.ingestRunId) as { count: bigint }).count);
+          return {
+            status: run.status,
+            pages: Number(run.pages_received),
+            details: Number(run.details_received),
+            failureCode: run.failure_code,
+            errorCount,
+          };
+        }),
+        {
+          status: "FAILED",
+          pages: 0,
+          details: 0,
+          failureCode: "pagination_variant",
+          errorCount: 1,
+        },
+      );
+      assert.equal(database.integrityCheck().ok, true);
+
+      const confirmed = await serviceFor(
+        new ScriptedProvider([changedResponse]),
+        store,
+        { maxRequestsPerRun: 1, overlapMilliseconds: 60 * 60 * 1_000 },
+      ).run("variant-confirmed");
+      assert.equal(confirmed.status, "COMPLETED");
+      assert.equal(confirmed.details, 1);
+      assert.equal(confirmed.createdEntries, 1);
+      assert.equal(store.getLedgerEntry("primary", "changed-service-event")?.amountCents, 202);
+      assert.equal(database.integrityCheck().ok, true);
+    });
+  });
+
   it("splits an oversized mutable result into complete single-page time windows", async () => {
     await withDatabase(async ({ store }) => {
       const provider = new ScriptedProvider([
@@ -497,6 +599,7 @@ function serviceFor(
   options: {
     readonly maxRequestsPerRun: number;
     readonly pageSize?: number;
+    readonly overlapMilliseconds?: number;
     readonly clock?: () => number;
   },
 ): LedgerIngestService {
@@ -504,7 +607,7 @@ function serviceFor(
     provider,
     store,
     pageSize: options.pageSize ?? 1,
-    overlapMilliseconds: 5 * 60 * 1000,
+    overlapMilliseconds: options.overlapMilliseconds ?? 5 * 60 * 1000,
     windowMilliseconds: 60 * 60 * 1000,
     safetyLagMilliseconds: 0,
     maxRequestsPerRun: options.maxRequestsPerRun,

@@ -121,6 +121,11 @@ interface RawPageRow {
   readonly received_at: bigint | number;
 }
 
+interface LatestPageObservationRow extends RawPageRow {
+  readonly disposition: PageObservationDisposition;
+  readonly observation_sequence: bigint | number;
+}
+
 interface LedgerEntryRow {
   readonly ledger_entry_id: string;
   readonly provider_account_key: string;
@@ -191,9 +196,20 @@ interface PreparedSegmentPage {
 }
 
 interface RetainedSegmentPage {
-  readonly observation: "inserted" | "duplicate" | "variant";
+  readonly observation: "inserted" | "duplicate" | "confirmed_variant" | "variant";
   readonly newlyObserved: boolean;
   readonly page: RawPageRecord;
+  /** True only when this response has not yet been accepted by a terminal segment. */
+  readonly shouldNormalize: boolean;
+  readonly previousVariantRawPageId: string | null;
+}
+
+type PageObservationDisposition = "PROCESSED" | "REJECTED_VARIANT";
+
+interface LatestPageObservation {
+  readonly page: RawPageRecord;
+  readonly disposition: PageObservationDisposition;
+  readonly sequence: number;
 }
 
 /**
@@ -358,6 +374,14 @@ export class LedgerStore {
     const segment = this.getNextPendingSegment(input.ingestRunId);
     if (!segment) throw new Error("ingest run has no pending segment");
     const result = this.recordSegmentPage({ ...input, ingestSegmentId: segment.ingestSegmentId });
+    if (result.kind === "variant") {
+      return {
+        kind: "variant",
+        page: result.page,
+        normalized: [],
+        cursor: result.cursor,
+      };
+    }
     if (result.kind !== "accepted") throw new Error("provider leaf was not accepted");
     return {
       kind: result.observation,
@@ -407,6 +431,26 @@ export class LedgerStore {
       );
       if (!retained.newlyObserved) {
         throw new Error("pending ingest segment already observed this provider page");
+      }
+
+      if (retained.observation === "variant") {
+        failPaginationVariant(
+          connection,
+          run,
+          segment,
+          retained,
+          prepared.now,
+        );
+        return {
+          kind: "variant",
+          observation: "variant",
+          page: retained.page,
+          segment: requireSegment(connection, segment.ingestSegmentId),
+          children: [],
+          normalized: [],
+          cursor: requireCursor(connection, run.providerAccountKey),
+          run: requireRun(connection, run.ingestRunId),
+        };
       }
 
       if (input.page.hasMore) {
@@ -461,7 +505,7 @@ export class LedgerStore {
       }
 
       const normalized: PageNormalizationResult[] = [];
-      if (retained.observation === "duplicate") {
+      if (!retained.shouldNormalize) {
         const storedDetailCount = rawEventCountForPage(connection, retained.page.rawPageId);
         if (storedDetailCount !== input.page.details.length) {
           throw new Error("duplicate accepted leaf does not contain its stored raw events");
@@ -954,21 +998,36 @@ function readRawPageByFingerprints(
   return row ? mapRawPage(row) : null;
 }
 
-function readFirstRawPageForRequest(
+function readLatestPageObservation(
   connection: DatabaseSync,
   providerAccountKey: string,
   requestHash: string,
-): RawPageRecord | null {
+): LatestPageObservation | null {
   const row = connection
     .prepare(
-      `SELECT ${RAW_PAGE_COLUMNS}
-         FROM provider_raw_pages
-        WHERE provider_account_key = ? AND request_fingerprint = ?
-        ORDER BY received_at, raw_page_id
+      `SELECT
+         page.raw_page_id, page.ingest_run_id, page.provider_account_key,
+         page.window_start, page.window_end, page.page_no, page.page_size,
+         page.total_size, page.has_more, page.request_fingerprint,
+         page.response_fingerprint, page.http_status, page.signature_verified,
+         page.trace_id, page.received_at,
+         observation.disposition, observation.observation_sequence
+         FROM ingest_run_page_observations AS observation
+         JOIN provider_raw_pages AS page ON page.raw_page_id = observation.raw_page_id
+        WHERE page.provider_account_key = ? AND page.request_fingerprint = ?
+        ORDER BY observation.observation_sequence DESC
         LIMIT 1`,
     )
-    .get(providerAccountKey, requestHash) as RawPageRow | undefined;
-  return row ? mapRawPage(row) : null;
+    .get(providerAccountKey, requestHash) as LatestPageObservationRow | undefined;
+  if (!row) return null;
+  if (row.disposition !== "PROCESSED" && row.disposition !== "REJECTED_VARIANT") {
+    throw new Error("provider page observation disposition is invalid");
+  }
+  return {
+    page: mapRawPage(row),
+    disposition: row.disposition,
+    sequence: toSafeInteger(row.observation_sequence, "provider page observation sequence"),
+  };
 }
 
 function requireRawPage(connection: DatabaseSync, rawPageId: string): RawPageRecord {
@@ -1533,13 +1592,14 @@ function retainSegmentPage(
     1,
     page.pageSize,
   );
+  const latest = readLatestPageObservation(connection, run.providerAccountKey, requestHash);
   const existingExact = readRawPageByFingerprints(
     connection,
     run.providerAccountKey,
     requestHash,
     prepared.responseHash,
   );
-  if (existingExact) {
+  if (existingExact !== null) {
     if (
       existingExact.windowStart !== segment.windowStart ||
       existingExact.windowEnd !== segment.windowEnd ||
@@ -1552,96 +1612,138 @@ function retainSegmentPage(
     ) {
       throw new Error("duplicate provider segment metadata does not match stored evidence");
     }
-    const storedDetails = rawEventCountForPage(connection, existingExact.rawPageId);
-    if (
-      (observationKind === "OVERSIZED_PROBE" && storedDetails !== 0) ||
-      (observationKind === "ACCEPTED_LEAF" && storedDetails !== page.details.length)
-    ) {
-      throw new Error("duplicate provider segment raw event count is inconsistent");
-    }
-    return {
-      observation: "duplicate",
-      newlyObserved: insertPageObservation(
-        connection,
+  }
+
+  let retainedPage = existingExact;
+  if (retainedPage === null) {
+    const rawPageId = randomUUID();
+    const inserted = connection
+      .prepare(
+        `INSERT INTO provider_raw_pages(
+           raw_page_id, ingest_run_id, provider_account_key, window_start,
+           window_end, page_no, page_size, total_size, has_more,
+           request_fingerprint, response_fingerprint, http_status,
+           headers_json, raw_body, trace_id, signature_verified, received_at
+         ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        rawPageId,
         run.ingestRunId,
-        segment.ingestSegmentId,
-        existingExact.rawPageId,
-        observationKind,
-        prepared,
-      ),
-      page: existingExact,
+        run.providerAccountKey,
+        segment.windowStart,
+        segment.windowEnd,
+        page.pageSize,
+        page.totalSize,
+        page.hasMore ? 1 : 0,
+        requestHash,
+        prepared.responseHash,
+        prepared.evidence.httpStatus,
+        prepared.headersJson,
+        prepared.rawBody,
+        prepared.evidence.traceId,
+        1,
+        prepared.now,
+      );
+    assertChangedOnce(inserted.changes, "provider raw segment page insert");
+    retainedPage = requireRawPage(connection, rawPageId);
+  }
+
+  if (latest === null) {
+    if (existingExact !== null) {
+      throw new Error("stored provider page has no ordered observation evidence");
+    }
+    const newlyObserved = insertPageObservation(
+      connection,
+      run.ingestRunId,
+      segment.ingestSegmentId,
+      retainedPage.rawPageId,
+      observationKind,
+      prepared,
+      "PROCESSED",
+    );
+    return {
+      observation: "inserted",
+      newlyObserved,
+      page: retainedPage,
+      shouldNormalize: observationKind === "ACCEPTED_LEAF",
+      previousVariantRawPageId: null,
     };
   }
 
-  const previousVariant = readFirstRawPageForRequest(connection, run.providerAccountKey, requestHash);
-  const rawPageId = randomUUID();
-  const inserted = connection
-    .prepare(
-      `INSERT INTO provider_raw_pages(
-         raw_page_id, ingest_run_id, provider_account_key, window_start,
-         window_end, page_no, page_size, total_size, has_more,
-         request_fingerprint, response_fingerprint, http_status,
-         headers_json, raw_body, trace_id, signature_verified, received_at
-       ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(
-      rawPageId,
-      run.ingestRunId,
-      run.providerAccountKey,
-      segment.windowStart,
-      segment.windowEnd,
-      page.pageSize,
-      page.totalSize,
-      page.hasMore ? 1 : 0,
-      requestHash,
-      prepared.responseHash,
-      prepared.evidence.httpStatus,
-      prepared.headersJson,
-      prepared.rawBody,
-      prepared.evidence.traceId,
-      1,
-      prepared.now,
-    );
-  assertChangedOnce(inserted.changes, "provider raw segment page insert");
-  if (!insertPageObservation(
-    connection,
-    run.ingestRunId,
-    segment.ingestSegmentId,
-    rawPageId,
-    observationKind,
-    prepared,
-  )) {
-    throw new Error("new provider segment page was already observed");
-  }
-  if (previousVariant) {
+  if (latest.page.responseFingerprint !== prepared.responseHash) {
     insertConflict(connection, {
       providerAccountKey: run.providerAccountKey,
       conflictType: "RAW_PAGE_VARIANT",
-      rawPageId,
+      rawPageId: retainedPage.rawPageId,
       rawEventId: null,
       existingLedgerEntryId: null,
       externalEventId: null,
-      existingSemanticFingerprint: previousVariant.responseFingerprint,
+      existingSemanticFingerprint: latest.page.responseFingerprint,
       incomingSemanticFingerprint: prepared.responseHash,
       details: {
         request_fingerprint: requestHash,
         ingest_segment_id: segment.ingestSegmentId,
-        existing_raw_page_id: previousVariant.rawPageId,
-        incoming_raw_page_id: rawPageId,
+        previous_observation_sequence: latest.sequence,
+        existing_raw_page_id: latest.page.rawPageId,
+        incoming_raw_page_id: retainedPage.rawPageId,
       },
       fingerprintParts: [
         "RAW_PAGE_VARIANT",
         requestHash,
-        previousVariant.responseFingerprint,
+        latest.page.responseFingerprint,
         prepared.responseHash,
+        latest.sequence,
+        retainedPage.rawPageId,
       ],
       now: prepared.now,
     });
+    const newlyObserved = insertPageObservation(
+      connection,
+      run.ingestRunId,
+      segment.ingestSegmentId,
+      retainedPage.rawPageId,
+      observationKind,
+      prepared,
+      "REJECTED_VARIANT",
+    );
+    return {
+      observation: "variant",
+      newlyObserved,
+      page: retainedPage,
+      shouldNormalize: false,
+      previousVariantRawPageId: latest.page.rawPageId,
+    };
   }
+
+  if (existingExact === null) {
+    throw new Error("ordered provider observation references missing exact evidence");
+  }
+  const wasEverProcessed = hasProcessedPageObservation(connection, retainedPage.rawPageId);
+  const storedDetails = rawEventCountForPage(connection, retainedPage.rawPageId);
+  if (observationKind === "OVERSIZED_PROBE" && storedDetails !== 0) {
+    throw new Error("duplicate provider segment raw event count is inconsistent");
+  }
+  if (observationKind === "ACCEPTED_LEAF" &&
+      ((wasEverProcessed && storedDetails !== page.details.length) ||
+        (!wasEverProcessed && storedDetails !== 0))) {
+    throw new Error("duplicate provider segment raw event count is inconsistent");
+  }
+  const confirmedVariant = latest.disposition === "REJECTED_VARIANT";
+  const newlyObserved = insertPageObservation(
+    connection,
+    run.ingestRunId,
+    segment.ingestSegmentId,
+    retainedPage.rawPageId,
+    observationKind,
+    prepared,
+    "PROCESSED",
+  );
   return {
-    observation: previousVariant ? "variant" : "inserted",
-    newlyObserved: true,
-    page: requireRawPage(connection, rawPageId),
+    observation: confirmedVariant ? "confirmed_variant" : "duplicate",
+    newlyObserved,
+    page: retainedPage,
+    shouldNormalize: confirmedVariant && !wasEverProcessed && observationKind === "ACCEPTED_LEAF",
+    previousVariantRawPageId: null,
   };
 }
 
@@ -1652,13 +1754,16 @@ function insertPageObservation(
   rawPageId: string,
   observationKind: SegmentObservationKind,
   prepared: PreparedSegmentPage,
+  disposition: PageObservationDisposition,
 ): boolean {
+  const sequence = nextPageObservationSequence(connection);
   const inserted = connection
     .prepare(
       `INSERT INTO ingest_run_page_observations(
          ingest_run_id, ingest_segment_id, raw_page_id, observation_kind,
-         http_status, headers_json, trace_id, signature_verified, observed_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         http_status, headers_json, trace_id, signature_verified, observed_at,
+         disposition, observation_sequence, transition_enforced
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
        ON CONFLICT(ingest_segment_id, raw_page_id) DO NOTHING`,
     )
     .run(
@@ -1671,12 +1776,28 @@ function insertPageObservation(
       prepared.evidence.traceId,
       prepared.evidence.signatureVerified ? 1 : 0,
       prepared.now,
+      disposition,
+      sequence,
     );
   const changes = Number(inserted.changes);
   if (changes !== 0 && changes !== 1) {
     throw new Error("ingest page observation changed an unexpected number of rows");
   }
   return changes === 1;
+}
+
+function nextPageObservationSequence(connection: DatabaseSync): number {
+  const row = connection
+    .prepare(
+      `SELECT COALESCE(MAX(observation_sequence), 0) AS latest_sequence
+         FROM ingest_run_page_observations`,
+    )
+    .get() as { latest_sequence: bigint | number };
+  const latest = toSafeInteger(row.latest_sequence, "latest provider page observation sequence");
+  if (latest >= Number.MAX_SAFE_INTEGER) {
+    throw new Error("provider page observation sequence is exhausted");
+  }
+  return latest + 1;
 }
 
 function insertChildSegment(
@@ -1717,6 +1838,60 @@ function hasPendingSegments(connection: DatabaseSync, ingestRunId: string): bool
     )
     .get(ingestRunId) as { pending: bigint | number };
   return Number(row.pending) === 1;
+}
+
+function failPaginationVariant(
+  connection: DatabaseSync,
+  run: IngestRun,
+  segment: IngestSegment,
+  retained: RetainedSegmentPage,
+  now: number,
+): void {
+  if (retained.observation !== "variant" || retained.previousVariantRawPageId === null) {
+    throw new Error("pagination variant failure requires conflicting page evidence");
+  }
+  const errorInserted = connection
+    .prepare(
+      `INSERT INTO ingest_errors(
+         ingest_error_id, ingest_run_id, provider_account_key, page_no,
+         error_kind, error_code, retryable, details_json, occurred_at
+       ) VALUES (?, ?, ?, 1, 'pagination', 'pagination_variant', 1, ?, ?)`,
+    )
+    .run(
+      randomUUID(),
+      run.ingestRunId,
+      run.providerAccountKey,
+      serializeDetails({
+        ingest_segment_id: segment.ingestSegmentId,
+        window_start: segment.windowStart,
+        window_end: segment.windowEnd,
+        request_fingerprint: retained.page.requestFingerprint,
+        existing_raw_page_id: retained.previousVariantRawPageId,
+        incoming_raw_page_id: retained.page.rawPageId,
+        incoming_response_fingerprint: retained.page.responseFingerprint,
+      }),
+      now,
+    );
+  assertChangedOnce(errorInserted.changes, "pagination variant error insert");
+  const failed = connection
+    .prepare(
+      `UPDATE ingest_runs
+          SET status = 'FAILED', completed_at = ?, failure_code = 'pagination_variant'
+        WHERE ingest_run_id = ? AND status = 'RUNNING'`,
+    )
+    .run(now, run.ingestRunId);
+  assertChangedOnce(failed.changes, "pagination variant run failure");
+
+  const cursor = requireCursor(connection, run.providerAccountKey);
+  const rewound = connection
+    .prepare(
+      `UPDATE ledger_cursors
+          SET next_page_no = 1, expected_total_size = NULL, complete = 0,
+              updated_at = ?, version = version + 1
+        WHERE provider_account_key = ? AND version = ? AND complete = 0`,
+    )
+    .run(Math.max(now, cursor.updatedAt), cursor.providerAccountKey, cursor.version);
+  assertChangedOnce(rewound.changes, "ledger cursor rewind after pagination variant");
 }
 
 function failDensityExceeded(
@@ -1782,7 +1957,8 @@ function latestOccurredAtForRun(connection: DatabaseSync, ingestRunId: string): 
          JOIN provider_raw_events AS raw ON raw.raw_page_id = observation.raw_page_id
          JOIN ledger_entries AS entry ON entry.raw_event_id = raw.raw_event_id
         WHERE observation.ingest_run_id = ?
-          AND observation.observation_kind = 'ACCEPTED_LEAF'`,
+          AND observation.observation_kind = 'ACCEPTED_LEAF'
+          AND observation.disposition = 'PROCESSED'`,
     )
     .get(ingestRunId) as { occurred_at: bigint | number | null };
   return toNullableInteger(row.occurred_at, "ledger run latest event");
@@ -1793,6 +1969,24 @@ function rawEventCountForPage(connection: DatabaseSync, rawPageId: string): numb
     .prepare("SELECT COUNT(*) AS count FROM provider_raw_events WHERE raw_page_id = ?")
     .get(rawPageId) as { count: bigint | number };
   return toSafeInteger(row.count, "provider raw event count");
+}
+
+function hasProcessedPageObservation(connection: DatabaseSync, rawPageId: string): boolean {
+  const row = connection
+    .prepare(
+      `SELECT COUNT(*) AS observation_count,
+              COALESCE(MAX(disposition = 'PROCESSED'), 0) AS was_processed
+         FROM ingest_run_page_observations
+        WHERE raw_page_id = ?`,
+    )
+    .get(rawPageId) as {
+      observation_count: bigint | number;
+      was_processed: bigint | number;
+    };
+  if (toSafeInteger(row.observation_count, "provider page observation count") < 1) {
+    throw new Error("stored provider page has no observation evidence");
+  }
+  return toSafeInteger(row.was_processed, "provider page processed state") === 1;
 }
 
 function completeSegmentRun(

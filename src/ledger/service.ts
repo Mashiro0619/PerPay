@@ -181,6 +181,20 @@ export class LedgerIngestService {
           page,
           now: safeNow(this.#clock()),
         });
+        if (recorded.kind === "variant") {
+          return {
+            status: "FAILED",
+            reason,
+            ingestRunId: run.ingestRunId,
+            pages,
+            details,
+            createdEntries,
+            duplicateEntries,
+            isolatedDetails,
+            conflicts,
+            errorCode: "pagination_variant",
+          };
+        }
         if (recorded.kind === "density_exceeded") {
           return {
             status: "FAILED",
