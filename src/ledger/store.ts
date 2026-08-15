@@ -11,6 +11,7 @@ import {
   conflictFingerprint,
   normalizeProviderIdentity,
   normalizeProviderAccountKey,
+  pageVariantConflictFingerprintParts,
   parseAmountCents,
   parseDirection,
   parseOccurredAt,
@@ -1687,14 +1688,15 @@ function retainSegmentPage(
         existing_raw_page_id: latest.page.rawPageId,
         incoming_raw_page_id: retainedPage.rawPageId,
       },
-      fingerprintParts: [
-        "RAW_PAGE_VARIANT",
-        requestHash,
-        latest.page.responseFingerprint,
-        prepared.responseHash,
-        latest.sequence,
-        retainedPage.rawPageId,
-      ],
+      fingerprintParts: pageVariantConflictFingerprintParts({
+        requestFingerprint: requestHash,
+        ingestSegmentId: segment.ingestSegmentId,
+        previousObservationSequence: latest.sequence,
+        existingRawPageId: latest.page.rawPageId,
+        existingResponseFingerprint: latest.page.responseFingerprint,
+        incomingRawPageId: retainedPage.rawPageId,
+        incomingResponseFingerprint: prepared.responseHash,
+      }),
       now: prepared.now,
     });
     const newlyObserved = insertPageObservation(

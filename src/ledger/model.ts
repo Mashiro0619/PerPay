@@ -439,6 +439,35 @@ export function conflictFingerprint(parts: readonly unknown[]): string {
   return sha256(JSON.stringify(["perpay:ledger-conflict:v1", ...parts]));
 }
 
+export interface PageVariantConflictEvidence {
+  readonly requestFingerprint: string;
+  readonly ingestSegmentId: string;
+  readonly previousObservationSequence: number;
+  readonly existingRawPageId: string;
+  readonly existingResponseFingerprint: string;
+  readonly incomingRawPageId: string;
+  readonly incomingResponseFingerprint: string;
+}
+
+export function pageVariantConflictFingerprintParts(
+  evidence: PageVariantConflictEvidence,
+): readonly unknown[] {
+  return [
+    "RAW_PAGE_VARIANT",
+    evidence.requestFingerprint,
+    evidence.ingestSegmentId,
+    evidence.previousObservationSequence,
+    evidence.existingRawPageId,
+    evidence.existingResponseFingerprint,
+    evidence.incomingRawPageId,
+    evidence.incomingResponseFingerprint,
+  ];
+}
+
+export function pageVariantConflictFingerprint(evidence: PageVariantConflictEvidence): string {
+  return conflictFingerprint(pageVariantConflictFingerprintParts(evidence));
+}
+
 export interface SemanticFingerprintFacts {
   readonly externalEventId: string;
   readonly occurredAt: number;

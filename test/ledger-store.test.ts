@@ -8,6 +8,7 @@ import { describe, it } from "node:test";
 import { AppDatabase } from "../src/database/database.ts";
 import type { AccountLogDetail } from "../src/infrastructure/alipay/types.ts";
 import {
+  pageVariantConflictFingerprint,
   payloadFingerprint,
   requestFingerprint,
   responseFingerprint,
@@ -1024,6 +1025,83 @@ describe("LedgerStore segment ingestion", () => {
       assert.equal(integrity.schema, "ok");
       assert.equal(integrity.foreignKeyViolations, 0);
       assert.ok(integrity.domainViolations >= 2);
+      assert.equal(integrity.ok, false);
+    });
+  });
+
+  it("detects a self-consistent variant conflict detached from its observation", async () => {
+    await withLedgerStore(async ({ database, store }) => {
+      const baselineRun = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT });
+      recordOnlyLeaf(
+        store,
+        baselineRun.ingestRunId,
+        page(1, 0, false, []),
+        '{"integrity-orphan":"A"}',
+        STARTED_AT + 1_000,
+      );
+      const variantRun = store.startIngestRun({
+        ...WINDOW,
+        pageSize: 1,
+        now: STARTED_AT + 2_000,
+      });
+      const variant = recordOnlyLeaf(
+        store,
+        variantRun.ingestRunId,
+        page(1, 0, false, []),
+        '{"integrity-orphan":"B"}',
+        STARTED_AT + 3_000,
+      );
+      assert.equal(variant.kind, "variant");
+
+      const evidence = database.read((connection) => connection.prepare(
+        `SELECT details_json, existing_semantic_fingerprint,
+                incoming_semantic_fingerprint
+           FROM ledger_conflicts
+          WHERE conflict_type = 'RAW_PAGE_VARIANT'`,
+      ).get() as {
+        details_json: string;
+        existing_semantic_fingerprint: string;
+        incoming_semantic_fingerprint: string;
+      });
+      const details = JSON.parse(evidence.details_json) as {
+        request_fingerprint: string;
+        ingest_segment_id: string;
+        previous_observation_sequence: number;
+        existing_raw_page_id: string;
+        incoming_raw_page_id: string;
+      };
+      const detachedSegmentId = "00000000-0000-4000-8000-000000000001";
+      const detachedDetails = {
+        ...details,
+        ingest_segment_id: detachedSegmentId,
+      };
+      const detachedFingerprint = pageVariantConflictFingerprint({
+        requestFingerprint: details.request_fingerprint,
+        ingestSegmentId: detachedSegmentId,
+        previousObservationSequence: details.previous_observation_sequence,
+        existingRawPageId: details.existing_raw_page_id,
+        existingResponseFingerprint: evidence.existing_semantic_fingerprint,
+        incomingRawPageId: details.incoming_raw_page_id,
+        incomingResponseFingerprint: evidence.incoming_semantic_fingerprint,
+      });
+      const immutableTrigger = database.read((connection) => connection.prepare(
+        `SELECT sql FROM sqlite_schema
+          WHERE type = 'trigger' AND name = 'ledger_conflicts_evidence_immutable'`,
+      ).get() as { sql: string });
+      database.write((connection) => {
+        connection.exec("DROP TRIGGER ledger_conflicts_evidence_immutable");
+        connection.prepare(
+          `UPDATE ledger_conflicts
+              SET details_json = ?, conflict_fingerprint = ?
+            WHERE conflict_type = 'RAW_PAGE_VARIANT'`,
+        ).run(JSON.stringify(detachedDetails), detachedFingerprint);
+        connection.exec(immutableTrigger.sql);
+      });
+
+      const integrity = database.integrityCheck();
+      assert.equal(integrity.schema, "ok");
+      assert.equal(integrity.foreignKeyViolations, 0);
+      assert.ok(integrity.domainViolations >= 1);
       assert.equal(integrity.ok, false);
     });
   });
