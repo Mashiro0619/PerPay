@@ -85,6 +85,30 @@ describe("AppDatabase", () => {
     }
   });
 
+  it("does not amplify a valid long backup target into an overlong temporary path", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-long-backup-"));
+    const databasePath = join(directory, "database.sqlite3");
+    const backupDirectory = join(directory, "backup");
+    const targetLength = 230;
+    const suffix = ".sqlite3";
+    const nameLength = targetLength - backupDirectory.length - 1;
+    assert.ok(nameLength > suffix.length);
+    const name = `${"b".repeat(nameLength - suffix.length)}${suffix}`;
+    const backupPath = join(backupDirectory, name);
+    assert.equal(backupPath.length, targetLength);
+    assert.ok(join(backupDirectory, `.${name}.${"0".repeat(36)}.tmp`).length >= 260);
+
+    const database = await AppDatabase.open(databasePath);
+    try {
+      const backup = await database.backupDetailed(backupPath);
+      assert.equal(backup.targetPath, backupPath);
+      assert.equal(existsSync(backupPath), true);
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("recovers an expired lease left by a crashed process", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-stale-lease-"));
     const databasePath = join(directory, "database.sqlite3");

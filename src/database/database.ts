@@ -3506,8 +3506,7 @@ export async function createVerifiedDatabaseBackup(sourceConnection: DatabaseSyn
   if (source === target) throw new Error("backup target must differ from the source database");
   const directory = ensurePrivateDirectory(dirname(target));
   assertBackupStorageHeadroom(source, directory);
-  const name = target.split(/[\\/]/).pop() ?? "backup.sqlite3";
-  const tempPath = resolve(directory, `.${name}.${randomUUID()}.tmp`);
+  const tempPath = resolve(directory, `.backup-${randomUUID()}.tmp`);
   const reservation = openSync(tempPath, "wx", 0o600); closeSync(reservation);
   try {
     const pages = await sqliteBackup(sourceConnection, tempPath, { rate: 100 });

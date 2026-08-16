@@ -41,12 +41,17 @@ const DATABASE_NAME = "perpay.sqlite3";
 const BACKUP_NAME_PATTERN =
   /^perpay\.sqlite3\.pre-migration-v(0|[1-9]\d*)-to-v([1-9]\d*)\.sqlite3$/;
 const OPERATIONAL_BACKUP_NAME_PATTERN =
-  /^perpay\.sqlite3\.backup-(?:\d{4}|[+-]\d{6})-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}Z-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.sqlite3$/u;
+  /^perpay\.sqlite3\.backup-((?:\d{4}|[+-]\d{6})-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}Z)-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.sqlite3$/u;
+const PRE_RESTORE_QUARANTINE_NAME_PATTERN =
+  /^perpay\.sqlite3\.before-restore-((?:\d{4}|[+-]\d{6})-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}Z)-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const RESTORE_STAGING_NAME_PATTERN =
   /^\.perpay\.sqlite3\.restore-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.tmp$/u;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const SQLITE_TIMEOUT_MILLISECONDS = 5_000;
 const RESTORE_CONFIRMATION_ARGUMENT = "--confirm-replace-current-database";
+const DELETE_CONFIRMATION_ARGUMENT = "--confirm-delete-backup-artifact";
+const PRUNE_CONFIRMATION_ARGUMENT = "--confirm-prune-operational-backups";
+const MAX_LISTED_BACKUP_ARTIFACTS = 4_096;
 
 class MaintenanceLeaseClaimedError extends Error {
   readonly leaseClaimed = true;
@@ -102,6 +107,44 @@ export interface OperationalBackupResult {
   readonly sha256: string;
 }
 
+export type BackupArtifactClassification =
+  | "operational"
+  | "migration"
+  | "pre-restore-quarantine";
+
+export interface BackupArtifact {
+  readonly name: string;
+  readonly classification: BackupArtifactClassification;
+  readonly schemaVersion: number;
+  readonly sizeBytes: number;
+  readonly modifiedAt: string;
+  readonly sha256: string;
+}
+
+export interface DeleteBackupArtifactOptions {
+  readonly dataDirectory: string;
+  readonly artifactName: string;
+  readonly expectedSha256: string;
+  readonly confirmDeleteBackupArtifact: boolean;
+  readonly now?: number | undefined;
+}
+
+export interface DeleteBackupArtifactResult {
+  readonly deleted: BackupArtifact;
+}
+
+export interface PruneOperationalBackupsOptions {
+  readonly dataDirectory: string;
+  readonly keepCount: number;
+  readonly confirmPruneOperationalBackups: boolean;
+  readonly now?: number | undefined;
+}
+
+export interface PruneOperationalBackupsResult {
+  readonly kept: readonly BackupArtifact[];
+  readonly deleted: readonly BackupArtifact[];
+}
+
 export interface ClearStaleMaintenanceLockOptions {
   readonly dataDirectory: string;
   readonly lockToken?: string | undefined;
@@ -119,6 +162,18 @@ interface FileIdentity {
   readonly modifiedAtNanoseconds: bigint;
 }
 
+interface ParsedBackupArtifactName {
+  readonly classification: BackupArtifactClassification;
+  readonly timestampMilliseconds: number | null;
+}
+
+interface InspectedBackupArtifact {
+  readonly path: string;
+  readonly identity: FileIdentity;
+  readonly parsed: ParsedBackupArtifactName;
+  readonly artifact: BackupArtifact;
+}
+
 export function listMigrationBackups(dataDirectory: string): readonly MigrationBackup[] {
   const directory = inspectDataDirectory(dataDirectory);
   const backups: MigrationBackup[] = [];
@@ -132,8 +187,98 @@ export function listMigrationBackups(dataDirectory: string): readonly MigrationB
   }
   return Object.freeze(backups.sort((left, right) =>
     left.toVersion - right.toVersion || left.fromVersion - right.fromVersion ||
-    left.name.localeCompare(right.name)
+    compareCodeUnits(left.name, right.name)
   ));
+}
+
+/** Lists every application-recognized backup or recovery artifact with bounded metadata. */
+export function listBackupArtifacts(dataDirectory: string): readonly BackupArtifact[] {
+  const directory = inspectDataDirectory(dataDirectory);
+  const artifacts = inspectBackupArtifacts(directory, Date.now());
+  return Object.freeze(artifacts.map((entry) => entry.artifact));
+}
+
+/** Deletes one exact, independently verified backup or recovery artifact. */
+export function deleteBackupArtifact(
+  options: DeleteBackupArtifactOptions,
+): DeleteBackupArtifactResult {
+  if (!options.confirmDeleteBackupArtifact) {
+    throw new Error("deleting a backup artifact requires explicit confirmation");
+  }
+  assertExpectedSha256(options.expectedSha256);
+  const parsed = parseBackupArtifactName(options.artifactName);
+  if (parsed === null || basename(options.artifactName) !== options.artifactName) {
+    throw new TypeError("backup artifact name is invalid");
+  }
+  const now = inspectMaintenanceNow(options.now);
+  const directory = inspectDataDirectory(options.dataDirectory);
+  const target = resolve(directory, options.artifactName);
+  if (dirname(target) !== directory || target === resolve(directory, DATABASE_NAME)) {
+    throw new Error("backup artifact escaped the data directory");
+  }
+
+  const lock = acquireDatabaseMaintenanceLock(
+    resolve(directory, DATABASE_NAME),
+    `delete-backup-artifact:${options.artifactName}`,
+    now,
+  );
+  try {
+    const inspected = inspectBackupArtifact(directory, options.artifactName, parsed, now);
+    if (inspected.artifact.sha256 !== options.expectedSha256) {
+      throw new Error("backup artifact SHA-256 does not match the expected value");
+    }
+    unlinkInspectedBackupArtifact(directory, inspected, options.expectedSha256);
+    return Object.freeze({ deleted: inspected.artifact });
+  } finally {
+    lock.release();
+  }
+}
+
+/** Keeps the newest N operational backups and safely removes older ones. */
+export function pruneOperationalBackups(
+  options: PruneOperationalBackupsOptions,
+): PruneOperationalBackupsResult {
+  if (!options.confirmPruneOperationalBackups) {
+    throw new Error("pruning operational backups requires explicit confirmation");
+  }
+  if (
+    !Number.isSafeInteger(options.keepCount) ||
+    options.keepCount < 1 ||
+    options.keepCount > MAX_LISTED_BACKUP_ARTIFACTS
+  ) {
+    throw new RangeError(
+      `operational backup keep count must be an integer from 1 to ${MAX_LISTED_BACKUP_ARTIFACTS}`,
+    );
+  }
+  const now = inspectMaintenanceNow(options.now);
+  const directory = inspectDataDirectory(options.dataDirectory);
+  const lock = acquireDatabaseMaintenanceLock(
+    resolve(directory, DATABASE_NAME),
+    `prune-operational-backups:${options.keepCount}`,
+    now,
+  );
+  try {
+    const operational = inspectBackupArtifacts(directory, now)
+      .filter((entry) => entry.parsed.classification === "operational")
+      .sort(compareOperationalArtifactsNewestFirst);
+    const kept = operational.slice(0, options.keepCount);
+    const candidates = operational.slice(options.keepCount);
+
+    // Complete preflight before the first unlink so malformed or changed files
+    // fail without partially applying an otherwise predictable retention set.
+    for (const entry of candidates) {
+      assertInspectedBackupArtifactUnchanged(entry, entry.artifact.sha256);
+    }
+    for (const entry of candidates) {
+      unlinkInspectedBackupArtifact(directory, entry, entry.artifact.sha256);
+    }
+    return Object.freeze({
+      kept: Object.freeze(kept.map((entry) => entry.artifact)),
+      deleted: Object.freeze(candidates.map((entry) => entry.artifact)),
+    });
+  } finally {
+    lock.release();
+  }
 }
 
 /** Creates and verifies a current-state online backup while the application may be running. */
@@ -152,6 +297,7 @@ export async function createOperationalBackup(
 
   const name = `${DATABASE_NAME}.backup-${timestamp.toISOString().replaceAll(":", "-")}-${randomUUID()}.sqlite3`;
   const target = resolve(directory, name);
+  const staging = resolve(directory, `.creating-${randomUUID()}.tmp`);
   const database = new DatabaseSync(source, {
     readOnly: true,
     enableForeignKeyConstraints: true,
@@ -161,22 +307,39 @@ export async function createOperationalBackup(
   });
   let databaseClosed = false;
   try {
-    const backup = await createVerifiedDatabaseBackup(database, source, target);
+    const backup = await createVerifiedDatabaseBackup(database, source, staging);
     database.close();
     databaseClosed = true;
-    inspectOrdinaryFile(target, "operational backup");
-    assertSelfContainedSqlite(target, "operational backup");
-    const schemaVersion = inspectDatabase(target, now, true, "operational backup");
-    assertDatabaseMaintenanceIdle(source);
-    assertFilePathIdentity(source, sourceIdentity, "application database");
-    return Object.freeze({
-      name,
-      schemaVersion,
-      pages: backup.pages,
-      sha256: backup.sha256,
-    });
+    const stagingIdentity = inspectOrdinaryFile(staging, "operational backup staging file");
+    assertSelfContainedSqlite(staging, "operational backup staging file");
+    const schemaVersion = inspectDatabase(
+      staging,
+      now,
+      true,
+      "operational backup staging file",
+    );
+
+    // Publish only while destructive maintenance is excluded. The lock is held
+    // for the short rename/fsync window, not while SQLite creates the backup.
+    const lock = acquireDatabaseMaintenanceLock(source, "publish-operational-backup", now);
+    try {
+      assertFilePathIdentity(source, sourceIdentity, "application database");
+      assertFileIdentity(staging, stagingIdentity, "operational backup staging file");
+      assertSelfContainedSqlite(staging, "operational backup staging file");
+      renameSync(staging, target);
+      inspectOrdinaryFile(target, "operational backup");
+      syncDirectory(directory);
+      return Object.freeze({
+        name,
+        schemaVersion,
+        pages: backup.pages,
+        sha256: backup.sha256,
+      });
+    } finally {
+      lock.release();
+    }
   } catch (error) {
-    removeSqliteArtifacts(target);
+    removeSqliteArtifacts(staging);
     throw error;
   } finally {
     if (!databaseClosed) database.close();
@@ -587,6 +750,211 @@ export function restoreOperationalBackup(
     if (!retainMaintenanceLock && (!targetPublished || replacementDurable)) {
       lock.release();
     }
+  }
+}
+
+function inspectBackupArtifacts(
+  directory: string,
+  now: number,
+): readonly InspectedBackupArtifact[] {
+  const artifacts: InspectedBackupArtifact[] = [];
+  for (const name of readdirSync(directory)) {
+    const parsed = parseBackupArtifactName(name);
+    if (parsed === null) continue;
+    if (artifacts.length >= MAX_LISTED_BACKUP_ARTIFACTS) {
+      throw new Error(
+        `data directory contains more than ${MAX_LISTED_BACKUP_ARTIFACTS} recognized backup artifacts`,
+      );
+    }
+    artifacts.push(inspectBackupArtifact(directory, name, parsed, now));
+  }
+  return Object.freeze(artifacts.sort(compareBackupArtifacts));
+}
+
+function inspectBackupArtifact(
+  directory: string,
+  name: string,
+  parsed: ParsedBackupArtifactName,
+  now: number,
+): InspectedBackupArtifact {
+  const path = resolve(directory, name);
+  if (basename(name) !== name || dirname(path) !== directory || path === resolve(directory, DATABASE_NAME)) {
+    throw new Error("backup artifact escaped the data directory");
+  }
+  const identity = inspectOrdinaryFile(path, `${parsed.classification} backup artifact`);
+  assertSelfContainedSqlite(path, `${parsed.classification} backup artifact`);
+  const schemaVersion = inspectDatabase(
+    path,
+    now,
+    parsed.classification !== "pre-restore-quarantine",
+    `${parsed.classification} backup artifact`,
+  );
+  const migration = parseMigrationBackupName(name);
+  if (migration !== null && schemaVersion !== migration.fromVersion) {
+    throw new Error("migration backup artifact schema does not match its filename");
+  }
+  const sha256 = sha256File(path);
+  assertFileIdentity(path, identity, `${parsed.classification} backup artifact`);
+  const sizeBytes = Number(identity.size);
+  const modifiedAtMilliseconds = Number(identity.modifiedAtNanoseconds / 1_000_000n);
+  if (!Number.isSafeInteger(sizeBytes) || !Number.isSafeInteger(modifiedAtMilliseconds)) {
+    throw new Error("backup artifact metadata is outside the safe integer range");
+  }
+  const modifiedAt = new Date(modifiedAtMilliseconds);
+  if (Number.isNaN(modifiedAt.getTime())) {
+    throw new Error("backup artifact modification time is invalid");
+  }
+  return Object.freeze({
+    path,
+    identity,
+    parsed,
+    artifact: Object.freeze({
+      name,
+      classification: parsed.classification,
+      schemaVersion,
+      sizeBytes,
+      modifiedAt: modifiedAt.toISOString(),
+      sha256,
+    }),
+  });
+}
+
+function unlinkInspectedBackupArtifact(
+  directory: string,
+  inspected: InspectedBackupArtifact,
+  expectedSha256: string,
+): void {
+  assertInspectedBackupArtifactUnchanged(inspected, expectedSha256);
+  unlinkSync(inspected.path);
+  syncDirectory(directory);
+}
+
+function assertInspectedBackupArtifactUnchanged(
+  inspected: InspectedBackupArtifact,
+  expectedSha256: string,
+): void {
+  assertSelfContainedSqlite(
+    inspected.path,
+    `${inspected.parsed.classification} backup artifact`,
+  );
+  assertFileIdentity(
+    inspected.path,
+    inspected.identity,
+    `${inspected.parsed.classification} backup artifact`,
+  );
+  if (sha256File(inspected.path) !== expectedSha256) {
+    throw new Error("backup artifact SHA-256 changed before deletion");
+  }
+  assertSelfContainedSqlite(
+    inspected.path,
+    `${inspected.parsed.classification} backup artifact`,
+  );
+  assertFileIdentity(
+    inspected.path,
+    inspected.identity,
+    `${inspected.parsed.classification} backup artifact`,
+  );
+}
+
+function parseBackupArtifactName(name: string): ParsedBackupArtifactName | null {
+  const operational = OPERATIONAL_BACKUP_NAME_PATTERN.exec(name);
+  if (operational !== null && operational[1] !== undefined) {
+    return Object.freeze({
+      classification: "operational",
+      timestampMilliseconds: parseFilenameTimestamp(operational[1]),
+    });
+  }
+  if (parseMigrationBackupName(name) !== null) {
+    return Object.freeze({ classification: "migration", timestampMilliseconds: null });
+  }
+  const quarantine = PRE_RESTORE_QUARANTINE_NAME_PATTERN.exec(name);
+  if (quarantine !== null && quarantine[1] !== undefined) {
+    return Object.freeze({
+      classification: "pre-restore-quarantine",
+      timestampMilliseconds: parseFilenameTimestamp(quarantine[1]),
+    });
+  }
+  return null;
+}
+
+function parseFilenameTimestamp(value: string): number {
+  const iso = value.replace(
+    /T(\d{2})-(\d{2})-(\d{2})\.(\d{3})Z$/u,
+    "T$1:$2:$3.$4Z",
+  );
+  const timestamp = Date.parse(iso);
+  if (!Number.isSafeInteger(timestamp) || timestamp < 0) {
+    throw new Error("backup artifact timestamp is invalid");
+  }
+  if (new Date(timestamp).toISOString().replaceAll(":", "-") !== value) {
+    throw new Error("backup artifact timestamp is not canonical");
+  }
+  return timestamp;
+}
+
+function compareOperationalArtifactsNewestFirst(
+  left: InspectedBackupArtifact,
+  right: InspectedBackupArtifact,
+): number {
+  const leftTimestamp = left.parsed.timestampMilliseconds;
+  const rightTimestamp = right.parsed.timestampMilliseconds;
+  if (leftTimestamp === null || rightTimestamp === null) {
+    throw new Error("operational backup timestamp is missing");
+  }
+  return rightTimestamp - leftTimestamp ||
+    compareCodeUnits(right.artifact.name, left.artifact.name);
+}
+
+function compareBackupArtifacts(
+  left: InspectedBackupArtifact,
+  right: InspectedBackupArtifact,
+): number {
+  const classificationOrder: Readonly<Record<BackupArtifactClassification, number>> = {
+    operational: 0,
+    migration: 1,
+    "pre-restore-quarantine": 2,
+  };
+  const classDifference =
+    classificationOrder[left.parsed.classification] -
+    classificationOrder[right.parsed.classification];
+  if (classDifference !== 0) return classDifference;
+  if (left.parsed.classification === "operational") {
+    return compareOperationalArtifactsNewestFirst(left, right);
+  }
+  if (left.parsed.classification === "pre-restore-quarantine") {
+    const leftTimestamp = left.parsed.timestampMilliseconds ?? 0;
+    const rightTimestamp = right.parsed.timestampMilliseconds ?? 0;
+    return rightTimestamp - leftTimestamp ||
+      compareCodeUnits(right.artifact.name, left.artifact.name);
+  }
+  const leftMigration = parseMigrationBackupName(left.artifact.name);
+  const rightMigration = parseMigrationBackupName(right.artifact.name);
+  if (leftMigration === null || rightMigration === null) {
+    throw new Error("migration backup metadata is invalid");
+  }
+  return rightMigration.toVersion - leftMigration.toVersion ||
+    rightMigration.fromVersion - leftMigration.fromVersion ||
+    compareCodeUnits(rightMigration.name, leftMigration.name);
+}
+
+function compareCodeUnits(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+function inspectMaintenanceNow(input: number | undefined): number {
+  const now = input ?? Date.now();
+  const timestamp = new Date(now);
+  if (!Number.isSafeInteger(now) || now < 0 || Number.isNaN(timestamp.getTime())) {
+    throw new RangeError("maintenance clock is invalid");
+  }
+  return now;
+}
+
+function assertExpectedSha256(value: string): void {
+  if (!SHA256_PATTERN.test(value)) {
+    throw new TypeError("expected backup SHA-256 must be 64 lowercase hexadecimal characters");
   }
 }
 
@@ -1061,6 +1429,39 @@ async function runCommand(arguments_: readonly string[]): Promise<void> {
     process.stdout.write(`${JSON.stringify({ backups: listMigrationBackups(dataDirectory) })}\n`);
     return;
   }
+  if (arguments_.length === 1 && arguments_[0] === "list-backup-artifacts") {
+    process.stdout.write(`${JSON.stringify({ artifacts: listBackupArtifacts(dataDirectory) })}\n`);
+    return;
+  }
+  if (
+    arguments_.length === 4 &&
+    arguments_[0] === "delete-backup-artifact" &&
+    arguments_[1] !== undefined &&
+    arguments_[2] !== undefined &&
+    arguments_[3] === DELETE_CONFIRMATION_ARGUMENT
+  ) {
+    process.stdout.write(`${JSON.stringify(deleteBackupArtifact({
+      dataDirectory,
+      artifactName: arguments_[1],
+      expectedSha256: arguments_[2],
+      confirmDeleteBackupArtifact: true,
+    }))}\n`);
+    return;
+  }
+  if (
+    arguments_.length === 3 &&
+    arguments_[0] === "prune-operational-backups" &&
+    arguments_[1] !== undefined &&
+    /^(?:[1-9]\d*)$/u.test(arguments_[1]) &&
+    arguments_[2] === PRUNE_CONFIRMATION_ARGUMENT
+  ) {
+    process.stdout.write(`${JSON.stringify(pruneOperationalBackups({
+      dataDirectory,
+      keepCount: Number(arguments_[1]),
+      confirmPruneOperationalBackups: true,
+    }))}\n`);
+    return;
+  }
   if (
     arguments_.length === 3 &&
     arguments_[0] === "restore-migration-backup" &&
@@ -1090,7 +1491,10 @@ async function runCommand(arguments_: readonly string[]): Promise<void> {
     return;
   }
   throw new Error(
-    `usage: maintenance <create-backup|list-migration-backups|inspect-maintenance-lock|` +
+    `usage: maintenance <create-backup|list-backup-artifacts|list-migration-backups|` +
+    `delete-backup-artifact BACKUP_NAME EXPECTED_SHA256 ${DELETE_CONFIRMATION_ARGUMENT}|` +
+    `prune-operational-backups KEEP_COUNT ${PRUNE_CONFIRMATION_ARGUMENT}|` +
+    `inspect-maintenance-lock|` +
     `clear-stale-maintenance-lock LOCK_TOKEN --confirm-no-maintenance-process ` +
     `[--force-abandon-maintenance-lease|--finalize-interrupted-fresh-restore]|` +
     `clear-stale-maintenance-lock --force-unreadable-lock --confirm-no-maintenance-process|` +

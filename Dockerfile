@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
 
-ARG NODE_IMAGE=node:24.19.0-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03
+ARG NODE_IMAGE=node:24.19.0-alpine3.24@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43
 ARG APP_VERSION=0.1.0
 
 FROM ${NODE_IMAGE} AS dependencies
@@ -31,13 +31,24 @@ COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chown=node:node package.json ./package.json
 COPY --chown=node:node LICENSE NOTICE ./
-RUN install -d -o node -g node -m 0700 /data
+RUN rm -rf /usr/local/lib/node_modules /opt/yarn-* \
+    && rm -f \
+      /usr/local/bin/corepack \
+      /usr/local/bin/npm \
+      /usr/local/bin/npx \
+      /usr/local/bin/pnpm \
+      /usr/local/bin/pnpx \
+      /usr/local/bin/yarn \
+      /usr/local/bin/yarnpkg \
+    && mkdir -p /data /backups \
+    && chown node:node /data /backups \
+    && chmod 0700 /data /backups
 
 USER node
 EXPOSE 8080
-VOLUME ["/data"]
+VOLUME ["/data", "/backups"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5m --retries=3 \
-  CMD ["node", "-e", "fetch('http://127.0.0.1:8080/readyz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+  CMD ["node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
 
 CMD ["node", "dist/main.js"]
