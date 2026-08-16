@@ -1212,7 +1212,7 @@ describe("LedgerStore segment ingestion", () => {
       assert.equal(conflicting.kind, "confirmed_variant");
       assert.equal(conflicting.normalized[0]?.kind, "conflict");
       assert.equal(store.getLedgerEntry("primary", "same-id")?.amountCents, 1_000);
-      assert.equal(store.getLedgerEntry("primary", "same-id")?.state, "CONFLICT");
+      assert.equal(store.getLedgerEntry("primary", "same-id")?.state, "UNALLOCATED");
 
       const malformedRun = store.startIngestRun({ ...WINDOW, pageSize: 2, now: STARTED_AT + 6_000 });
       const malformed = store.recordPage({
@@ -1270,7 +1270,7 @@ describe("LedgerStore segment ingestion", () => {
       });
       assert.equal(conflicting.kind, "confirmed_variant");
       assert.equal(conflicting.normalized[0]?.kind, "conflict");
-      assert.equal(store.getLedgerEntry("primary", "precision-id")?.state, "CONFLICT");
+      assert.equal(store.getLedgerEntry("primary", "precision-id")?.state, "UNALLOCATED");
       assert.equal(
         store.listOpenConflicts().some((item) =>
           item.conflictType === "DUPLICATE_EXTERNAL_ID" &&

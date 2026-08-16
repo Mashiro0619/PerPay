@@ -1250,16 +1250,6 @@ function normalizeAndInsert(
     ) {
       return { kind: "duplicate", entry: existing, rawEventId: rawEvent.rawEventId };
     }
-    if (existing.state !== "CONFLICT") {
-      const isolated = connection
-        .prepare(
-          `UPDATE ledger_entries
-              SET state = 'CONFLICT', updated_at = ?
-            WHERE ledger_entry_id = ? AND state != 'CONFLICT'`,
-        )
-        .run(Math.max(now, existing.updatedAt), existing.ledgerEntryId);
-      assertChangedOnce(isolated.changes, "ledger entry conflict isolation");
-    }
     const conflict = insertConflict(connection, {
       providerAccountKey: rawEvent.providerAccountKey,
       conflictType: "DUPLICATE_EXTERNAL_ID",
