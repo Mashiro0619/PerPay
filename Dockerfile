@@ -31,7 +31,7 @@ COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chown=node:node package.json ./package.json
 COPY --chown=node:node LICENSE NOTICE ./
-RUN mkdir -p /data && chown node:node /data
+RUN install -d -o node -g node -m 0700 /data
 
 USER node
 EXPOSE 8080

@@ -7,6 +7,7 @@ import {
   MAX_REQUESTED_AMOUNT_CENTS,
   createOrderRequestSchema,
   fingerprintCreateOrderRequest,
+  orderEventDetailsFingerprint,
   type CreateOrderRequest,
 } from "../src/orders/model.ts";
 
@@ -201,5 +202,19 @@ describe("create order request fingerprint", () => {
       ...variants.map((request) => fingerprintCreateOrderRequest(request)),
     ]);
     assert.equal(fingerprints.size, variants.length + 1);
+  });
+});
+
+describe("order event evidence fingerprint", () => {
+  it("binds the exact persisted JSON bytes to a versioned domain", () => {
+    const details = '{"amount_offset_cents":1,"slot_generation":1}';
+    assert.equal(
+      orderEventDetailsFingerprint(details),
+      "6c56b74e0e2a8d8714d943b7ba5c2b400e080641b5b0ea79faa42b7ac410a17a",
+    );
+    assert.notEqual(
+      orderEventDetailsFingerprint(details),
+      orderEventDetailsFingerprint('{"slot_generation":1,"amount_offset_cents":1}'),
+    );
   });
 });

@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 
 import { loadConfig } from "../src/config.ts";
 import { AppDatabase } from "../src/database/database.ts";
+import { appendAuditEvent } from "../src/database/identity-store.ts";
 import { PasswordInputError } from "../src/identity/crypto.ts";
 import { IDENTITY_LIMITS, IdentityError, IdentityService, fingerprintApiSecret } from "../src/identity/service.ts";
 
@@ -416,7 +417,7 @@ describe("IdentityService", () => {
     }
   });
 
-  it("detects a deleted audit tail through the durable anchor and rejects its backup", async () => {
+  it("detects a deleted audit tail through the database checkpoint and rejects its backup", async () => {
     const test = await fixture();
     try {
       test.database.write((connection) => {
@@ -446,6 +447,77 @@ describe("IdentityService", () => {
         test.database.backupDetailed(join(test.directory, "tampered-audit.sqlite3")),
         /backup verification failed/,
       );
+    } finally {
+      test.close();
+    }
+  });
+
+  it("enforces the audit checkpoint transition and rolls back a failed append", async () => {
+    const test = await fixture();
+    try {
+      const before = test.database.read((connection) => ({
+        events: Number((connection.prepare(
+          "SELECT COUNT(*) AS count FROM audit_events",
+        ).get() as { count: bigint | number }).count),
+        anchor: { ...(connection.prepare(
+          `SELECT event_count, last_sequence, last_event_hash
+             FROM audit_chain_state WHERE singleton_key = 1`,
+        ).get() as Record<string, unknown>) },
+      }));
+
+      assert.throws(
+        () => test.database.write((connection) => connection.exec(
+          `INSERT INTO audit_chain_state(
+             singleton_key, event_count, last_sequence, last_event_hash
+           ) VALUES (1, 0, NULL, NULL)`,
+        )),
+        /audit chain state is a singleton/,
+      );
+      assert.throws(
+        () => test.database.write((connection) =>
+          connection.exec("DELETE FROM audit_chain_state WHERE singleton_key = 1")),
+        /audit chain state cannot be deleted/,
+      );
+      assert.throws(
+        () => test.database.write((connection) =>
+          connection.exec("UPDATE audit_chain_state SET event_count = event_count")),
+        /audit chain state transition is invalid/,
+      );
+
+      test.database.write((connection) => connection.exec(`
+        CREATE TRIGGER injected_audit_checkpoint_failure
+        BEFORE UPDATE ON audit_chain_state
+        BEGIN
+          SELECT RAISE(ABORT, 'injected audit checkpoint failure');
+        END;
+      `));
+      try {
+        assert.throws(
+          () => test.database.write((connection) => appendAuditEvent(connection, {
+            occurredAt: test.clock.now + 1,
+            actorType: "SYSTEM",
+            action: "audit.checkpoint.failure_probe",
+            outcome: "FAILURE",
+            details: { injected: true },
+          })),
+          /injected audit checkpoint failure/,
+        );
+      } finally {
+        test.database.write((connection) =>
+          connection.exec("DROP TRIGGER injected_audit_checkpoint_failure"));
+      }
+
+      const after = test.database.read((connection) => ({
+        events: Number((connection.prepare(
+          "SELECT COUNT(*) AS count FROM audit_events",
+        ).get() as { count: bigint | number }).count),
+        anchor: { ...(connection.prepare(
+          `SELECT event_count, last_sequence, last_event_hash
+             FROM audit_chain_state WHERE singleton_key = 1`,
+        ).get() as Record<string, unknown>) },
+      }));
+      assert.deepEqual(after, before);
+      assert.equal(test.database.integrityCheck().ok, true);
     } finally {
       test.close();
     }

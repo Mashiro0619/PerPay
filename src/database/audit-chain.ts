@@ -78,16 +78,18 @@ export function inspectAuditChain(connection: DatabaseSync): AuditChainIntegrity
             details_json, previous_hash, event_hash
        FROM audit_events
       ORDER BY sequence`,
-  ).all() as unknown as AuditEventRow[];
+  ).iterate() as unknown as Iterable<AuditEventRow>;
 
+  let eventCount = 0;
   let linkViolations = 0;
   let hashViolations = 0;
   let previousHash: string | null = null;
   let lastSequence: number | null = null;
-  for (const [index, row] of rows.entries()) {
+  for (const row of rows) {
+    eventCount += 1;
     const sequence = Number(row.sequence);
     const occurredAt = Number(row.occurred_at);
-    if (!Number.isSafeInteger(sequence) || sequence !== index + 1) linkViolations += 1;
+    if (!Number.isSafeInteger(sequence) || sequence !== eventCount) linkViolations += 1;
     if (row.previous_hash !== previousHash) linkViolations += 1;
     if (!Number.isSafeInteger(occurredAt) || occurredAt < 0) {
       hashViolations += 1;
@@ -113,12 +115,12 @@ export function inspectAuditChain(connection: DatabaseSync): AuditChainIntegrity
 
   const anchorViolations = inspectAuditAnchor(
     connection,
-    rows.length,
+    eventCount,
     lastSequence,
     previousHash,
   );
   return {
-    eventCount: rows.length,
+    eventCount,
     linkViolations,
     hashViolations,
     anchorViolations,

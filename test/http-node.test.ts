@@ -18,7 +18,7 @@ import { signApiRequest } from "../src/security/api-signature.ts";
 const apiSecret = Buffer.alloc(32, 11).toString("base64url");
 const collectionCodePayload = "https://qr.alipay.com/fkx-test-code-2026";
 
-async function fixture() {
+async function fixture(environment: NodeJS.ProcessEnv = {}) {
   const directory = mkdtempSync(join(tmpdir(), "perpay-http-node-"));
   const config = loadConfig({
     PERPAY_INITIAL_ADMIN_PASSWORD: "a-secure-local-password",
@@ -26,6 +26,7 @@ async function fixture() {
     PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
     PERPAY_DATA_DIR: directory,
     PERPAY_PUBLIC_URL: "http://127.0.0.1:8080",
+    ...environment,
   });
   const database = await AppDatabase.open(config.databasePath);
   const identity = new IdentityService(database, config);
@@ -44,6 +45,7 @@ async function fixture() {
     address,
     database,
     directory,
+    identity,
     server,
     async close() {
       await closeServer(server);
@@ -105,6 +107,96 @@ describe("Node HTTP adapter boundaries", () => {
         (JSON.parse(response.body) as { error: { code: string } }).error.code,
         "request_body_too_large",
       );
+    } finally {
+      await test.close();
+    }
+  });
+
+  it("uses forwarding headers only through an explicitly trusted direct peer", async () => {
+    const test = await fixture({ PERPAY_TRUSTED_PROXY_CIDRS: "127.0.0.0/8" });
+    try {
+      const clientAddress = "198.51.100.23";
+      const failed = await request(test.address, {
+        method: "POST",
+        path: "/api/admin/v1/session/login",
+        headers: {
+          "content-type": "application/json",
+          origin: "http://127.0.0.1:8080",
+          "x-forwarded-for": `${clientAddress}, 127.0.0.2`,
+        },
+        chunks: [Buffer.from(JSON.stringify({ username: "admin", password: "wrong-password" }))],
+      });
+      assert.equal(failed.status, 401);
+      const remoteAddressHash = test.database.read((connection) => (
+        connection.prepare(
+          `SELECT remote_address_hash
+             FROM audit_events
+            WHERE action = 'admin.login'
+              AND outcome = 'FAILURE'
+            ORDER BY sequence DESC
+            LIMIT 1`,
+        ).get() as { remote_address_hash: string }
+      ).remote_address_hash);
+      assert.equal(remoteAddressHash, test.identity.sourceHash(clientAddress));
+
+      const malformed = await request(test.address, {
+        method: "POST",
+        path: "/api/admin/v1/session/login",
+        headers: {
+          "content-type": "application/json",
+          origin: "http://127.0.0.1:8080",
+          "x-forwarded-for": "198.51.100.23:443",
+        },
+        chunks: [Buffer.from(JSON.stringify({ username: "admin", password: "wrong-password" }))],
+      });
+      assert.equal(malformed.status, 400);
+      assert.equal(
+        (JSON.parse(malformed.body) as { error: { code: string } }).error.code,
+        "forwarded_header_invalid",
+      );
+    } finally {
+      await test.close();
+    }
+  });
+
+  it("isolates public checkout polling by the client resolved through trusted proxies", async () => {
+    const test = await fixture({ PERPAY_TRUSTED_PROXY_CIDRS: "127.0.0.0/8" });
+    const target = `/api/public/v1/checkouts/pct1_${"A".repeat(43)}`;
+    try {
+      const firstSourceResponses = await Promise.all(
+        Array.from({ length: 160 }, () => request(test.address, {
+          path: target,
+          headers: { "x-forwarded-for": "198.51.100.23, 127.0.0.2" },
+        })),
+      );
+      const limited = firstSourceResponses.find((response) => response.status === 429);
+      assert.ok(limited);
+      assert.equal(
+        (JSON.parse(limited.body) as { error: { code: string } }).error.code,
+        "public_checkout_rate_limited",
+      );
+
+      const independentSource = await request(test.address, {
+        path: target,
+        headers: { "x-forwarded-for": "203.0.113.17, 127.0.0.2" },
+      });
+      assert.equal(independentSource.status, 404);
+    } finally {
+      await test.close();
+    }
+  });
+
+  it("does not let an untrusted forwarding header select a fresh checkout budget", async () => {
+    const test = await fixture();
+    const target = `/api/public/v1/checkouts/pct1_${"A".repeat(43)}`;
+    try {
+      const responses = await Promise.all(
+        Array.from({ length: 160 }, (_, index) => request(test.address, {
+          path: target,
+          headers: { "x-forwarded-for": `198.51.100.${index + 1}` },
+        })),
+      );
+      assert.ok(responses.some((response) => response.status === 429));
     } finally {
       await test.close();
     }
