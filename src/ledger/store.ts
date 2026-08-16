@@ -1049,7 +1049,7 @@ function prepareRawEvent(detail: AccountLogDetail): PreparedRawEvent {
   const amountText = boundedString(detail.amount, 128);
   const directionText = boundedString(detail.direction, 64);
   const alipayOrderNo = boundedString(detail.alipayOrderNo, 128);
-  const merchantOrderValue = detail.merchantOrderNo ?? readMerchantOrderNumberValue(detail.raw);
+  const merchantOrderValue = detail.merchantOrderNo;
   const merchantOrderNo = boundedString(merchantOrderValue, 128);
   const transMemo = boundedString(detail.transMemo, 1024);
   const otherAccount = boundedString(detail.otherAccount, 256);
@@ -1874,12 +1874,6 @@ function boundedString(value: unknown, maximum: number): string | null {
 
 function invalidBoundedValue(original: unknown, normalized: string | null): boolean {
   return original !== null && original !== undefined && normalized === null;
-}
-
-function readMerchantOrderNumberValue(raw: unknown): unknown {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-  const record = raw as Record<string, unknown>;
-  return record.merchant_order_no ?? record.merchantOrderNo ?? record.out_biz_no ?? record.outBizNo;
 }
 
 function validateErrorLabel(value: string, label: string, maximum: number): void {

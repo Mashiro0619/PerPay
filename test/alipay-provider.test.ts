@@ -343,6 +343,7 @@ describe("Alipay ledger provider", () => {
           trans_amount: "1.23",
           direction: "income",
           alipay_order_no: "trade-1",
+          merchant_order_no: "merchant-1",
           trans_memo: "memo",
           other_account: "buyer@example",
           unknown_future_field: { preserved: true },
@@ -371,6 +372,7 @@ describe("Alipay ledger provider", () => {
     assert.equal(page.rawResponse.signatureVerified, true);
     assert.equal(page.details[0]?.accountLogId, "log-1");
     assert.equal(page.details[0]?.amount, "1.23");
+    assert.equal(page.details[0]?.merchantOrderNo, "merchant-1");
     assert.deepEqual((page.details[0]?.raw as Record<string, unknown>).unknown_future_field, { preserved: true });
     assert.equal(transport.requests[0]?.path, `/v3/alipay/data/bill/accountlog/query?end_time=${encodeURIComponent(endTime)}&page_no=1&page_size=2&start_time=${encodeURIComponent(startTime)}`);
     assert.equal(transport.options[0]?.timeoutMilliseconds, 1234);
@@ -447,7 +449,29 @@ describe("Alipay ledger provider", () => {
     assert.equal(page.rawResponse.signatureVerified, true);
   });
 
-  it("accepts one camel-case representation of page and detail fields", async () => {
+  it("preserves an unknown out_biz_no without assigning merchant-order semantics", async () => {
+    const body = JSON.stringify({
+      page_no: 1,
+      page_size: 1,
+      total_size: 1,
+      detail_list: [{
+        account_log_id: "unknown-field-log",
+        merchant_order_no: "official-merchant-order",
+        out_biz_no: "unrecognized-order-value",
+      }],
+    });
+    const page = await makeProvider(
+      new FakeV3Transport([signedResponse(body, "trace-out-biz-no")]),
+    ).queryPage({ startTime, endTime, pageNo: 1, pageSize: 1 });
+
+    assert.equal(page.details[0]?.merchantOrderNo, "official-merchant-order");
+    assert.equal(
+      (page.details[0]?.raw as Record<string, unknown>).out_biz_no,
+      "unrecognized-order-value",
+    );
+  });
+
+  it("rejects a camel-case-only response representation", async () => {
     const body = JSON.stringify({
       pageNo: 1,
       pageSize: 1,
@@ -462,16 +486,18 @@ describe("Alipay ledger provider", () => {
         otherAccount: "camel-account",
       }],
     });
-    const page = await makeProvider(
-      new FakeV3Transport([signedResponse(body, "trace-camel-fields")]),
-    ).queryPage({ startTime, endTime, pageNo: 1, pageSize: 1 });
-
-    assert.equal(page.details[0]?.accountLogId, "camel-log");
-    assert.equal(page.details[0]?.amount, "2.34");
-    assert.equal(page.details[0]?.merchantOrderNo, "camel-merchant-order");
+    await assert.rejects(
+      makeProvider(
+        new FakeV3Transport([signedResponse(body, "trace-camel-fields")]),
+      ).queryPage({ startTime, endTime, pageNo: 1, pageSize: 1 }),
+      (error: unknown) =>
+        error instanceof AlipayProviderError &&
+        error.code === "response_invalid_shape" &&
+        error.signatureVerified === true,
+    );
   });
 
-  it("rejects dual representations of every page field", async () => {
+  it("rejects camel-case page fields even beside the wire representation", async () => {
     const conflictingPages: readonly Record<string, unknown>[] = [
       { page_no: 1, pageNo: 1, page_size: 1, total_size: 0, detail_list: [] },
       { page_no: 1, page_size: 1, pageSize: 1, total_size: 0, detail_list: [] },
@@ -493,16 +519,13 @@ describe("Alipay ledger provider", () => {
     }
   });
 
-  it("rejects dual representations of every normalized detail field", async () => {
+  it("rejects camel-case representations of official detail fields", async () => {
     const conflictingFields: readonly (readonly [string, string, unknown])[] = [
       ["account_log_id", "accountLogId", "same-log"],
       ["trans_dt", "transDt", "2026-08-14 12:00:00"],
       ["trans_amount", "transAmount", "1.00"],
       ["alipay_order_no", "alipayOrderNo", "same-provider-order"],
       ["merchant_order_no", "merchantOrderNo", "same-merchant-order"],
-      ["out_biz_no", "outBizNo", "same-out-biz-order"],
-      ["merchant_order_no", "out_biz_no", "same-merchant-alias"],
-      ["merchantOrderNo", "outBizNo", "same-camel-merchant-alias"],
       ["trans_memo", "transMemo", "same-memo"],
       ["other_account", "otherAccount", "same-account"],
     ];

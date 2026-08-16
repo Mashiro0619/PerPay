@@ -196,6 +196,8 @@ function requestAddresses(
     let deadlineTimer: NodeJS.Timeout | null = null;
     let requestHandle: ClientRequest | null = null;
     let responseHandle: IncomingMessage | null = null;
+    let responseStatus: number | null = null;
+    let responseHeaders: V3Headers | null = null;
     let requestDestroyed = false;
     let responseDestroyed = false;
     let pendingRequestDestroyError: Error | null = null;
@@ -209,6 +211,7 @@ function requestAddresses(
       if (settled) return false;
       settled = true;
       chunks.length = 0;
+      responseBytes = 0;
       cleanup();
       reject(error);
       return true;
@@ -239,7 +242,37 @@ function requestAddresses(
       destroyResponse();
       destroyRequest(error);
     };
-    const abortFromCaller = () => failAndDestroy(abortError());
+    const responseFailure = (
+      kind: "timeout" | "cancelled" | "network" | "invalid_response",
+      code: "transport_timeout" | "transport_cancelled" | "transport_network" | "response_body_too_large",
+      message: string,
+      cause?: unknown,
+    ) => new AlipayProviderError({
+      kind,
+      code,
+      message,
+      ...(responseStatus === null ? {} : { status: responseStatus }),
+      ...(responseHeaders === null ? {} : { responseHeaders }),
+      ...(responseHandle === null ? {} : { rawBody: Buffer.concat(chunks, responseBytes) }),
+      signatureVerified: null,
+      ...(cause === undefined ? {} : { cause }),
+    });
+    const failResponse = (
+      kind: "timeout" | "cancelled" | "network" | "invalid_response",
+      code: "transport_timeout" | "transport_cancelled" | "transport_network" | "response_body_too_large",
+      message: string,
+      cause?: unknown,
+    ) => {
+      if (settled) return;
+      failAndDestroy(responseFailure(kind, code, message, cause));
+    };
+    const abortFromCaller = () => {
+      if (responseHandle) {
+        failResponse("cancelled", "transport_cancelled", "provider response was cancelled");
+        return;
+      }
+      failAndDestroy(abortError());
+    };
 
     if (callerSignal?.aborted) {
       abortFromCaller();
@@ -253,7 +286,13 @@ function requestAddresses(
       return;
     }
     deadlineTimer = dependencies.scheduleTimeout(
-      () => failAndDestroy(timeoutError()),
+      () => {
+        if (responseHandle) {
+          failResponse("timeout", "transport_timeout", "provider response timed out");
+          return;
+        }
+        failAndDestroy(timeoutError());
+      },
       remainingMilliseconds,
     );
     deadlineTimer.unref();
@@ -290,12 +329,23 @@ function requestAddresses(
             return;
           }
           responseHandle = response;
-          response.once("error", settleError);
+          responseStatus = Number.isInteger(response.statusCode) ? response.statusCode ?? null : null;
+          response.once("error", (cause) => {
+            failResponse(
+              "network",
+              "transport_network",
+              "provider response stream failed",
+              cause,
+            );
+          });
           response.once("aborted", () => {
-            settleError(new Error("provider response was aborted"));
+            failResponse(
+              "network",
+              "transport_network",
+              "provider response was aborted",
+            );
           });
 
-          let responseHeaders: V3Headers | null = null;
           let responseHeadersInvalid = false;
           let responseHeadersError: unknown;
           try {
@@ -307,15 +357,20 @@ function requestAddresses(
           response.on("data", (chunk: Buffer | string) => {
             if (settled) return;
             const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-            responseBytes += bytes.byteLength;
-            if (responseBytes > MAX_PROVIDER_RESPONSE_BYTES) {
-              failAndDestroy(new AlipayProviderError({
-                kind: "invalid_response",
-                code: "response_body_too_large",
-                message: "provider response body exceeds the configured limit",
-              }));
+            const remaining = MAX_PROVIDER_RESPONSE_BYTES - responseBytes;
+            if (bytes.byteLength > remaining) {
+              if (remaining > 0) {
+                chunks.push(Buffer.from(bytes.subarray(0, remaining)));
+                responseBytes += remaining;
+              }
+              failResponse(
+                "invalid_response",
+                "response_body_too_large",
+                "provider response body exceeds the configured limit",
+              );
               return;
             }
+            responseBytes += bytes.byteLength;
             chunks.push(bytes);
           });
           response.once("end", () => {
@@ -340,7 +395,18 @@ function requestAddresses(
           });
         },
       );
-      requestHandle.once("error", settleError);
+      requestHandle.once("error", (cause) => {
+        if (responseHandle) {
+          failResponse(
+            "network",
+            "transport_network",
+            "provider connection failed while receiving a response",
+            cause,
+          );
+          return;
+        }
+        settleError(cause);
+      });
       if (pendingRequestDestroyError) {
         destroyRequest(pendingRequestDestroyError);
         return;

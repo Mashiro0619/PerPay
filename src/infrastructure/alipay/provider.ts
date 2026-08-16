@@ -23,6 +23,22 @@ import {
 } from "./types.ts";
 import { signV3Request, validateV3Keys, verifyV3Response } from "./v3.ts";
 
+const UNSUPPORTED_PAGE_FIELD_REPRESENTATIONS = [
+  "pageNo",
+  "pageSize",
+  "totalSize",
+  "detailList",
+] as const;
+const UNSUPPORTED_DETAIL_FIELD_REPRESENTATIONS = [
+  "accountLogId",
+  "transDt",
+  "transAmount",
+  "alipayOrderNo",
+  "merchantOrderNo",
+  "transMemo",
+  "otherAccount",
+] as const;
+
 export class AlipayLedgerProvider implements LedgerProvider {
   readonly #appId: string;
   readonly #privateKey: AlipayLedgerProviderOptions["privateKey"];
@@ -144,10 +160,15 @@ function parseAccountLogPage(
     throw invalidShape("response root must be an object", verified);
   }
   const record = value as Record<string, unknown>;
-  const returnedPageNo = integerField(record, ["page_no", "pageNo"], "page number", verified);
-  const pageSize = integerField(record, ["page_size", "pageSize"], "page size", verified);
-  const totalSize = integerField(record, ["total_size", "totalSize"], "total size", verified);
-  const returnedDetails = aliasedField(record, ["detail_list", "detailList"], "detail list", verified);
+  rejectUnsupportedRepresentations(
+    record,
+    UNSUPPORTED_PAGE_FIELD_REPRESENTATIONS,
+    verified,
+  );
+  const returnedPageNo = integerField(record, ["page_no"], "page number", verified);
+  const pageSize = integerField(record, ["page_size"], "page size", verified);
+  const totalSize = integerField(record, ["total_size"], "total size", verified);
+  const returnedDetails = aliasedField(record, ["detail_list"], "detail list", verified);
   const detailsValue = returnedDetails === undefined && totalSize === 0
     ? []
     : returnedDetails;
@@ -222,34 +243,39 @@ function normalizeDetail(
     };
   }
   const record = value as Record<string, unknown>;
+  rejectUnsupportedRepresentations(
+    record,
+    UNSUPPORTED_DETAIL_FIELD_REPRESENTATIONS,
+    verified,
+  );
   return {
     raw: value,
     accountLogId: identifierField(
-      aliasedField(record, ["account_log_id", "accountLogId"], "account log ID", verified),
+      aliasedField(record, ["account_log_id"], "account log ID", verified),
     ),
     occurredAt: stringField(
-      aliasedField(record, ["trans_dt", "transDt"], "transaction time", verified),
+      aliasedField(record, ["trans_dt"], "transaction time", verified),
     ),
     amount: amountField(
-      aliasedField(record, ["trans_amount", "transAmount"], "transaction amount", verified),
+      aliasedField(record, ["trans_amount"], "transaction amount", verified),
     ),
     direction: stringField(record.direction),
     alipayOrderNo: identifierField(
-      aliasedField(record, ["alipay_order_no", "alipayOrderNo"], "provider order number", verified),
+      aliasedField(record, ["alipay_order_no"], "provider order number", verified),
     ),
     merchantOrderNo: identifierField(
       aliasedField(
         record,
-        ["merchant_order_no", "merchantOrderNo", "out_biz_no", "outBizNo"],
+        ["merchant_order_no"],
         "merchant order number",
         verified,
       ),
     ),
     transMemo: stringField(
-      aliasedField(record, ["trans_memo", "transMemo"], "transaction memo", verified),
+      aliasedField(record, ["trans_memo"], "transaction memo", verified),
     ),
     otherAccount: stringField(
-      aliasedField(record, ["other_account", "otherAccount"], "other account", verified),
+      aliasedField(record, ["other_account"], "other account", verified),
     ),
   };
 }
@@ -300,6 +326,16 @@ function aliasedField(
     value = record[key];
   }
   return value;
+}
+
+function rejectUnsupportedRepresentations(
+  record: Record<string, unknown>,
+  keys: readonly string[],
+  verified: ReturnType<typeof verifyV3Response>,
+): void {
+  if (keys.some((key) => Object.hasOwn(record, key))) {
+    throw invalidShape("response contains unsupported field representations", verified);
+  }
 }
 
 function validatePageRequest(input: AccountLogPageRequest, defaultPageSize: number): void {

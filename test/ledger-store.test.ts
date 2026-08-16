@@ -211,12 +211,24 @@ describe("LedgerStore segment ingestion", () => {
 
       const right = requiredSegment(store.getNextPendingSegment(run.ingestRunId));
       assert.equal(right.ingestSegmentId, split.children[1].ingestSegmentId);
+      const detailWithUnknownOrderField = detail(
+        "event-credit-2",
+        "3.00",
+        "CREDIT",
+        "2026-08-14 00:31:00",
+      );
       const rightResult = store.recordSegmentPage({
         ingestRunId: run.ingestRunId,
         ingestSegmentId: right.ingestSegmentId,
         page: page(1, 2, false, [
           detail("event-debit", "2.50", "DEBIT", "2026-08-14 00:30:00"),
-          detail("event-credit-2", "3.00", "CREDIT", "2026-08-14 00:31:00"),
+          {
+            ...detailWithUnknownOrderField,
+            raw: {
+              ...(detailWithUnknownOrderField.raw as Record<string, unknown>),
+              out_biz_no: "unknown-order-value",
+            },
+          },
         ], 2),
         evidence: evidence('{"leaf":"right"}'),
         now: STARTED_AT + 3_000,
@@ -231,6 +243,7 @@ describe("LedgerStore segment ingestion", () => {
       assert.equal(rightResult.cursor.lastCompletedAt, STARTED_AT + 3_000);
       assert.equal(store.getNextPendingSegment(run.ingestRunId), null);
       assert.equal(store.getLedgerEntry("primary", "event-credit")?.merchantOrderNo, "merchant-credit");
+      assert.equal(store.getLedgerEntry("primary", "event-credit-2")?.merchantOrderNo, null);
       assert.deepEqual(
         store.listLedgerEntries().map((entry) => [entry.externalEventId, entry.amountCents, entry.direction]),
         [

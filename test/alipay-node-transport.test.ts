@@ -162,16 +162,21 @@ describe("Node V3 transport network behavior", () => {
   it("enforces the body limit while response headers are invalid", async () => {
     const harness = createHarness();
     const responsePromise = harness.transport.request(request, { timeoutMilliseconds: 1_000 });
-    const rejection = assert.rejects(
-      responsePromise,
-      (error: unknown) =>
-        error instanceof AlipayProviderError && error.code === "response_body_too_large",
-    );
+    const rejection = assert.rejects(responsePromise, (error: unknown) => {
+      assert.ok(error instanceof AlipayProviderError);
+      assert.equal(error.code, "response_body_too_large");
+      assert.equal(error.status, 502);
+      assert.equal(error.responseHeaders, null);
+      assert.ok(error.rawBody instanceof Uint8Array);
+      assert.equal(error.rawBody.byteLength, MAX_PROVIDER_RESPONSE_BYTES);
+      assert.equal(error.signatureVerified, null);
+      return true;
+    });
     await harness.created;
 
     const response = new FakeIncomingResponse(Object.freeze({
       "x-many": Object.freeze(Array.from({ length: 129 }, () => "")),
-    }));
+    }), 502);
     harness.respond(response);
     response.emit("data", Buffer.alloc(MAX_PROVIDER_RESPONSE_BYTES + 1));
 
@@ -240,13 +245,41 @@ describe("Node V3 transport network behavior", () => {
     assert.equal(response.destroyCount, 0);
   });
 
+  it("preserves partial response evidence when cancellation arrives after response headers", async () => {
+    const harness = createHarness();
+    const controller = new AbortController();
+    const responsePromise = harness.transport.request(request, {
+      timeoutMilliseconds: 1_000,
+      signal: controller.signal,
+    });
+    const rejection = assert.rejects(responsePromise, (error: unknown) => {
+      assertResponseFailureEvidence(error, "transport_cancelled", 502, "partial-cancelled");
+      assert.equal(error.kind, "cancelled");
+      assert.equal(error.retryable, false);
+      assert.deepEqual({ ...error.responseHeaders }, { "x-trace": "cancelled" });
+      return true;
+    });
+    await harness.created;
+
+    const response = new FakeIncomingResponse({ "x-trace": "cancelled" }, 502);
+    harness.respond(response);
+    response.emit("data", Buffer.from("partial-cancelled", "utf8"));
+    controller.abort();
+
+    await rejection;
+    assert.equal(response.destroyCount, 1);
+    assert.equal(harness.client.destroyErrors.length, 1);
+  });
+
   it("drops response events that arrive after the deadline", async () => {
     const harness = createHarness();
     const responsePromise = harness.transport.request(request, { timeoutMilliseconds: 1_000 });
     const rejection = assert.rejects(
       responsePromise,
-      (error: unknown) =>
-        error instanceof AlipayProviderError && error.code === "transport_timeout",
+      (error: unknown) => {
+        assertResponseFailureEvidence(error, "transport_timeout", 200, "partial");
+        return true;
+      },
     );
     await harness.created;
 
@@ -336,15 +369,69 @@ describe("Node V3 transport network behavior", () => {
     const responsePromise = harness.transport.request(request, { timeoutMilliseconds: 1_000 });
     const rejection = assert.rejects(
       responsePromise,
-      (error: unknown) =>
-        error instanceof AlipayProviderError && error.code === "response_body_too_large",
+      (error: unknown) => {
+        assert.ok(error instanceof AlipayProviderError);
+        assert.equal(error.code, "response_body_too_large");
+        assert.equal(error.status, 502);
+        assert.deepEqual({ ...error.responseHeaders }, { "x-trace": "oversized" });
+        assert.ok(error.rawBody instanceof Uint8Array);
+        assert.equal(error.rawBody.byteLength, MAX_PROVIDER_RESPONSE_BYTES);
+        assert.equal(error.signatureVerified, null);
+        return true;
+      },
     );
     await harness.created;
 
-    const response = new FakeIncomingResponse();
+    const response = new FakeIncomingResponse({ "x-trace": "oversized" }, 502);
     harness.respond(response);
     response.emit("data", Buffer.alloc(MAX_PROVIDER_RESPONSE_BYTES + 1));
     await rejection;
+    assert.equal(response.destroyCount, 1);
+    assert.equal(harness.client.destroyErrors.length, 1);
+  });
+
+  it("preserves partial response evidence when the response or connection fails", async () => {
+    for (const failure of ["response-aborted", "response-error", "request-error"] as const) {
+      const harness = createHarness();
+      const responsePromise = harness.transport.request(request, { timeoutMilliseconds: 1_000 });
+      const rejection = assert.rejects(responsePromise, (error: unknown) => {
+        assertResponseFailureEvidence(error, "transport_network", 502, `partial-${failure}`);
+        assert.deepEqual({ ...(error as AlipayProviderError).responseHeaders }, { "x-trace": failure });
+        return true;
+      });
+      await harness.created;
+
+      const response = new FakeIncomingResponse({ "x-trace": failure }, 502);
+      harness.respond(response);
+      response.emit("data", Buffer.from(`partial-${failure}`, "utf8"));
+      if (failure === "response-aborted") response.emit("aborted");
+      else if (failure === "response-error") response.emit("error", new Error("stream failed"));
+      else harness.client.emit("error", new Error("connection failed"));
+
+      await rejection;
+      assert.equal(response.destroyCount, 1);
+      assert.equal(harness.client.destroyErrors.length, 1);
+    }
+  });
+
+  it("ignores every late failure after preserving the first response failure", async () => {
+    const harness = createHarness();
+    const responsePromise = harness.transport.request(request, { timeoutMilliseconds: 1_000 });
+    const rejection = assert.rejects(responsePromise, (error: unknown) => {
+      assertResponseFailureEvidence(error, "transport_network", 502, "first-failure");
+      return true;
+    });
+    await harness.created;
+
+    const response = new FakeIncomingResponse({ "x-trace": "late-failures" }, 502);
+    harness.respond(response);
+    response.emit("data", Buffer.from("first-failure", "utf8"));
+    response.emit("aborted");
+    await rejection;
+
+    assert.doesNotThrow(() => response.emit("error", new Error("late stream error")));
+    assert.doesNotThrow(() => harness.client.emit("error", new Error("late request error")));
+    assert.doesNotThrow(() => harness.timers.fireAll());
     assert.equal(response.destroyCount, 1);
     assert.equal(harness.client.destroyErrors.length, 1);
   });
@@ -526,4 +613,18 @@ function deferred<T>() {
     rejectPromise = reject;
   });
   return { promise, resolve: resolvePromise, reject: rejectPromise };
+}
+
+function assertResponseFailureEvidence(
+  error: unknown,
+  code: AlipayProviderError["code"],
+  status: number,
+  body: string,
+): asserts error is AlipayProviderError {
+  assert.ok(error instanceof AlipayProviderError);
+  assert.equal(error.code, code);
+  assert.equal(error.status, status);
+  assert.ok(error.rawBody instanceof Uint8Array);
+  assert.equal(Buffer.from(error.rawBody).toString("utf8"), body);
+  assert.equal(error.signatureVerified, null);
 }
