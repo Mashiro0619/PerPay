@@ -334,6 +334,27 @@ async function withNotificationFixture(
       orders: ordersService,
       webhookStore: webhooks,
       startedAt: new Date(0),
+      clock: () => orderClock,
+      ledgerHealth: () => ({
+        enabled: true,
+        state: "healthy" as const,
+        inFlight: false,
+        lastAttemptAt: orderClock,
+        lastSuccessAt: orderClock,
+        lastErrorCode: null,
+        consecutiveFailures: 0,
+      }),
+      reconciliationHealth: () => ({
+        enabled: true,
+        state: "healthy" as const,
+        inFlight: false,
+        lastAttemptAt: orderClock,
+        lastSuccessAt: orderClock,
+        lastErrorCode: null,
+        consecutiveFailures: 0,
+        pendingOrders: 0,
+        continuationPending: false,
+      }),
     });
 
     const orders: FixtureOrder[] = [];
@@ -423,6 +444,27 @@ function createFixtureApp(
     orders: fixture.ordersService,
     webhookStore: fixture.webhooks,
     startedAt: new Date(0),
+    clock: () => Date.now(),
+    ledgerHealth: () => ({
+      enabled: true,
+      state: "healthy" as const,
+      inFlight: false,
+      lastAttemptAt: Date.now(),
+      lastSuccessAt: Date.now(),
+      lastErrorCode: null,
+      consecutiveFailures: 0,
+    }),
+    reconciliationHealth: () => ({
+      enabled: true,
+      state: "healthy" as const,
+      inFlight: false,
+      lastAttemptAt: Date.now(),
+      lastSuccessAt: Date.now(),
+      lastErrorCode: null,
+      consecutiveFailures: 0,
+      pendingOrders: 0,
+      continuationPending: false,
+    }),
   });
 }
 

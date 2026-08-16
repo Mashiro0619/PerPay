@@ -56,6 +56,7 @@ describe("ledger conflict HTTP operations", () => {
       ledger.bindProviderIdentity(PROVIDER_IDENTITY, BASE_TIME);
       const reconciliation = new ReconciliationStore(database);
       const conflict = createInvalidAmountConflict(ledger);
+      let ledgerState: "degraded" | "healthy" = "degraded";
       const app = createApp({
         config,
         database,
@@ -65,6 +66,26 @@ describe("ledger conflict HTTP operations", () => {
         reconciliation,
         startedAt: new Date(0),
         clock: () => BASE_TIME,
+        ledgerHealth: () => ({
+          enabled: true,
+          state: ledgerState,
+          inFlight: false,
+          lastAttemptAt: BASE_TIME,
+          lastSuccessAt: BASE_TIME - 1_000,
+          lastErrorCode: "provider_conflict" as string | null,
+          consecutiveFailures: 1,
+        }),
+        reconciliationHealth: () => ({
+          enabled: true,
+          state: "healthy" as const,
+          inFlight: false,
+          lastAttemptAt: BASE_TIME,
+          lastSuccessAt: BASE_TIME,
+          lastErrorCode: null,
+          consecutiveFailures: 0,
+          pendingOrders: 0,
+          continuationPending: false,
+        }),
       });
 
       const anonymous = await app.request("/api/admin/v1/ledger/conflicts");
@@ -187,6 +208,7 @@ describe("ledger conflict HTTP operations", () => {
       assert.equal(resolvedBody.operation.conflict_operation_id, operationId);
       assert.equal(resolvedBody.operation.actor_id, "admin");
       assert.equal(resolvedBody.replayed, false);
+      ledgerState = "healthy";
 
       const replay = await app.request(
         `/api/admin/v1/ledger/conflicts/${conflict.conflictId}/actions/resolve`,

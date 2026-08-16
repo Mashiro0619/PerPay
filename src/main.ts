@@ -224,10 +224,14 @@ function createReconciliationScheduler(): ReconciliationScheduler {
         reason: result.reason,
         processed_entries: result.processedEntries,
         processed_orders: result.processedOrders,
+        auto_settled: result.autoSettled,
         failures: result.failures,
         continuation_pending: result.continuationPending,
         consecutive_failures: health.consecutiveFailures,
       }));
+    },
+    onAutoSettled: () => {
+      void triggerWebhookDelivery("auto_settlement");
     },
     onEntryError: (error, ledgerEntryId) => {
       console.error(JSON.stringify({

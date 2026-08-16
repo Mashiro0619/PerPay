@@ -15,6 +15,7 @@ export interface ReconciliationRunResult {
   readonly reason: string;
   readonly processedEntries: number;
   readonly processedOrders: number;
+  readonly autoSettled: number;
   readonly failures: number;
   readonly continuationPending: boolean;
 }
@@ -44,6 +45,7 @@ export interface ReconciliationSchedulerOptions {
   ) => void;
   readonly onEntryError?: ((error: unknown, ledgerEntryId: string) => void) | undefined;
   readonly onOrderError?: ((error: unknown, orderId: string) => void) | undefined;
+  readonly onAutoSettled?: ((count: number) => void) | undefined;
 }
 
 const DEFAULT_INTERVAL_MILLISECONDS = 60_000;
@@ -72,6 +74,7 @@ export class ReconciliationScheduler {
   readonly #onResult: ReconciliationSchedulerOptions["onResult"];
   readonly #onEntryError: ReconciliationSchedulerOptions["onEntryError"];
   readonly #onOrderError: ReconciliationSchedulerOptions["onOrderError"];
+  readonly #onAutoSettled: ReconciliationSchedulerOptions["onAutoSettled"];
   readonly #pendingOrders = new Map<string, number>();
   readonly #scheduledOrderRetries = new Map<
     string,
@@ -102,6 +105,7 @@ export class ReconciliationScheduler {
     this.#onResult = options.onResult;
     this.#onEntryError = options.onEntryError;
     this.#onOrderError = options.onOrderError;
+    this.#onAutoSettled = options.onAutoSettled;
     if (
       !Number.isSafeInteger(this.#intervalMilliseconds) ||
       this.#intervalMilliseconds < 1_000 ||
@@ -226,6 +230,7 @@ export class ReconciliationScheduler {
     this.#state = "running";
     let processedEntries = 0;
     let processedOrders = 0;
+    let autoSettled = 0;
     let failures = 0;
     let runErrorCode: string | null = null;
 
@@ -233,7 +238,10 @@ export class ReconciliationScheduler {
     for (const [orderId, previousFailures] of orders) {
       this.#pendingOrders.delete(orderId);
       try {
-        this.#store.reconcileOrder(orderId, this.#batchSize);
+        const result = this.#store.reconcileOrder(orderId, this.#batchSize);
+        const settled = result.results.filter((item) => item.kind === "auto_settled").length;
+        autoSettled += settled;
+        if (settled > 0) notifyObserver(this.#onAutoSettled, settled);
         processedOrders += 1;
       } catch (error) {
         failures += 1;
@@ -262,7 +270,11 @@ export class ReconciliationScheduler {
         }
         for (const ledgerEntryId of page.ledgerEntryIds) {
           try {
-            this.#store.reconcileEntry(ledgerEntryId);
+            const result = this.#store.reconcileEntry(ledgerEntryId);
+            if (result.kind === "auto_settled") {
+              autoSettled += 1;
+              notifyObserver(this.#onAutoSettled, 1);
+            }
           } catch (error) {
             failures += 1;
             runErrorCode ??= "reconciliation_item_failed";
@@ -297,6 +309,7 @@ export class ReconciliationScheduler {
       reason,
       processedEntries,
       processedOrders,
+      autoSettled,
       failures,
       continuationPending:
         this.#sweepRequested ||

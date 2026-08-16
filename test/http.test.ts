@@ -38,8 +38,8 @@ describe("health endpoints", () => {
       assert.equal(liveBody.status, "alive");
 
       const ready = await app.request("/readyz");
-      assert.equal(ready.status, 200);
-      assert.deepEqual(await ready.json(), { status: "ready" });
+      assert.equal(ready.status, 503);
+      assert.deepEqual(await ready.json(), { status: "not_ready" });
 
       const firstScanPending = createApp({
         config,
@@ -48,6 +48,7 @@ describe("health endpoints", () => {
         orders,
         startedAt: new Date(0),
         clock: () => collectionNow,
+        ...readyPaymentRuntime(collectionNow),
         ledgerHealth: () => ({
           enabled: true,
           state: "running",
@@ -72,6 +73,7 @@ describe("health endpoints", () => {
         orders,
         startedAt: new Date(0),
         clock: () => collectionNow,
+        ...readyPaymentRuntime(collectionNow),
         ledgerHealth: () => ({
           enabled: true,
           state: "degraded",
@@ -93,6 +95,7 @@ describe("health endpoints", () => {
         orders,
         startedAt: new Date(0),
         clock: () => collectionNow,
+        ...readyPaymentRuntime(collectionNow),
         ledgerHealth: () => ({
           enabled: true,
           state: "catching_up",
@@ -114,6 +117,7 @@ describe("health endpoints", () => {
         orders,
         startedAt: new Date(0),
         clock: () => collectionNow,
+        ...readyPaymentRuntime(collectionNow),
         ledgerHealth: () => ({
           enabled: true,
           state: "healthy",
@@ -135,6 +139,7 @@ describe("health endpoints", () => {
         orders,
         startedAt: new Date(0),
         clock: () => collectionNow,
+        ...readyPaymentRuntime(collectionNow),
         ledgerHealth: () => ({
           enabled: true,
           state: "healthy",
@@ -156,6 +161,7 @@ describe("health endpoints", () => {
         orders,
         startedAt: new Date(0),
         clock: () => collectionNow,
+        ...readyPaymentRuntime(collectionNow),
         ledgerHealth: () => ({
           enabled: true,
           state: "degraded",
@@ -176,12 +182,14 @@ describe("health endpoints", () => {
         identity,
         orders,
         startedAt: new Date(0),
+        clock: () => collectionNow,
+        ...readyPaymentRuntime(collectionNow),
         reconciliationHealth: () => ({
           enabled: true,
           state: "degraded",
           inFlight: false,
           lastAttemptAt: 1_700_000_001_000,
-          lastSuccessAt: null,
+          lastSuccessAt: collectionNow - 10_000,
           lastErrorCode: "reconciliation_item_failed",
           consecutiveFailures: 2,
           pendingOrders: 1,
@@ -199,6 +207,8 @@ describe("health endpoints", () => {
         identity,
         orders,
         startedAt: new Date(0),
+        clock: () => collectionNow,
+        ...readyPaymentRuntime(collectionNow),
         backupHealth: () => ({
           ok: true,
           status: "healthy",
@@ -259,6 +269,8 @@ describe("health endpoints", () => {
         identity,
         orders,
         startedAt: new Date(0),
+        clock: () => collectionNow,
+        ...readyPaymentRuntime(collectionNow),
         backupHealth() {
           throw new Error("backup state is unreadable");
         },
@@ -709,6 +721,8 @@ describe("identity HTTP contract", () => {
       identity,
       orders,
       startedAt: new Date(0),
+      clock: () => 1_700_000_000_000,
+      ...readyPaymentRuntime(1_700_000_000_000),
       backupHealth: () => signedBackupHealth,
     });
     try {
@@ -740,6 +754,11 @@ describe("identity HTTP contract", () => {
             last_success_age_milliseconds: number | null;
             maximum_success_age_milliseconds: number;
           };
+          reconciliation: {
+            confirmation_ready: boolean;
+            last_success_age_milliseconds: number | null;
+            maximum_success_age_milliseconds: number;
+          };
           backup: Record<string, unknown>;
         };
       };
@@ -754,7 +773,21 @@ describe("identity HTTP contract", () => {
         },
         {
           collection_ready: true,
-          last_success_age_milliseconds: null,
+          last_success_age_milliseconds: 0,
+          maximum_success_age_milliseconds: 60_000,
+        },
+      );
+      assert.deepEqual(
+        {
+          confirmation_ready: parsedFirst.data.reconciliation.confirmation_ready,
+          last_success_age_milliseconds:
+            parsedFirst.data.reconciliation.last_success_age_milliseconds,
+          maximum_success_age_milliseconds:
+            parsedFirst.data.reconciliation.maximum_success_age_milliseconds,
+        },
+        {
+          confirmation_ready: true,
+          last_success_age_milliseconds: 0,
           maximum_success_age_milliseconds: 60_000,
         },
       );
@@ -801,6 +834,10 @@ describe("order HTTP contract", () => {
     let collectionLastSuccessAt = collectionNow;
     let collectionLastErrorCode: string | null = null;
     let collectionConsecutiveFailures = 0;
+    let reconciliationState: "healthy" | "degraded" | "stopped" = "healthy";
+    let reconciliationLastSuccessAt: number | null = collectionNow;
+    let reconciliationLastErrorCode: string | null = null;
+    let reconciliationConsecutiveFailures = 0;
     try {
       const pending = createApp({
         config,
@@ -809,6 +846,7 @@ describe("order HTTP contract", () => {
         orders,
         startedAt: new Date(0),
         clock: () => collectionNow,
+        ...readyPaymentRuntime(collectionNow),
         ledgerHealth: () => ({
           enabled: true,
           state: "degraded",
@@ -847,6 +885,7 @@ describe("order HTTP contract", () => {
         orders,
         startedAt: new Date(0),
         clock: () => collectionNow,
+        ...readyPaymentRuntime(collectionNow),
         ledgerHealth: () => ({
           enabled: true,
           state: collectionState,
@@ -855,6 +894,17 @@ describe("order HTTP contract", () => {
           lastSuccessAt: collectionLastSuccessAt,
           lastErrorCode: collectionLastErrorCode,
           consecutiveFailures: collectionConsecutiveFailures,
+        }),
+        reconciliationHealth: () => ({
+          enabled: true,
+          state: reconciliationState,
+          inFlight: false,
+          lastAttemptAt: collectionNow,
+          lastSuccessAt: reconciliationLastSuccessAt,
+          lastErrorCode: reconciliationLastErrorCode,
+          consecutiveFailures: reconciliationConsecutiveFailures,
+          pendingOrders: 0,
+          continuationPending: false,
         }),
       });
       const created = await ready.request(target, {
@@ -904,6 +954,7 @@ describe("order HTTP contract", () => {
       collectionLastSuccessAt = collectionNow;
       collectionLastErrorCode = null;
       collectionConsecutiveFailures = 0;
+      reconciliationLastSuccessAt = collectionNow;
       const recoveredCreate = await ready.request(target, {
         method: "POST",
         headers: {
@@ -913,6 +964,117 @@ describe("order HTTP contract", () => {
         body: staleRequestBody,
       });
       assert.equal(recoveredCreate.status, 201);
+
+      const reconciliationBody = Buffer.from(JSON.stringify({
+        idempotency_key: "reconciliation-readiness-gate",
+        merchant_order_no: "reconciliation-readiness-gate",
+        amount_cents: 3_000,
+      }));
+      reconciliationState = "degraded";
+      reconciliationLastSuccessAt = null;
+      reconciliationLastErrorCode = "reconciliation_item_failed";
+      reconciliationConsecutiveFailures = 1;
+      const reconciliationPending = await ready.request(target, {
+        method: "POST",
+        headers: {
+          ...apiHeaders("POST", target, reconciliationBody, 42),
+          "content-type": "application/json",
+        },
+        body: reconciliationBody,
+      });
+      assert.equal(reconciliationPending.status, 503);
+      assert.equal(
+        ((await reconciliationPending.json()) as { error: { code: string } }).error.code,
+        "reconciliation_not_ready",
+      );
+
+      reconciliationLastSuccessAt = collectionNow;
+      const degradedButFresh = await ready.request(target, {
+        method: "POST",
+        headers: {
+          ...apiHeaders("POST", target, reconciliationBody, 43),
+          "content-type": "application/json",
+        },
+        body: reconciliationBody,
+      });
+      assert.equal(degradedButFresh.status, 201);
+      const degradedReady = await ready.request("/readyz");
+      assert.equal(degradedReady.status, 200);
+      assert.deepEqual(await degradedReady.json(), { status: "degraded" });
+
+      reconciliationState = "stopped";
+      const stoppedBody = Buffer.from(JSON.stringify({
+        idempotency_key: "reconciliation-stopped-gate",
+        merchant_order_no: "reconciliation-stopped-gate",
+        amount_cents: 4_000,
+      }));
+      const stopped = await ready.request(target, {
+        method: "POST",
+        headers: {
+          ...apiHeaders("POST", target, stoppedBody, 44),
+          "content-type": "application/json",
+        },
+        body: stoppedBody,
+      });
+      assert.equal(stopped.status, 503);
+      assert.equal(
+        ((await stopped.json()) as { error: { code: string } }).error.code,
+        "reconciliation_not_ready",
+      );
+
+      const replayWhileStopped = await ready.request(target, {
+        method: "POST",
+        headers: {
+          ...apiHeaders("POST", target, requestBody, 46),
+          "content-type": "application/json",
+        },
+        body: requestBody,
+      });
+      assert.equal(replayWhileStopped.status, 200);
+      assert.equal(
+        database.read((connection) => Number((connection.prepare(
+          "SELECT COUNT(*) AS count FROM payment_orders",
+        ).get() as { count: bigint | number }).count)),
+        3,
+      );
+
+      const terminal = orders.create("default", {
+        idempotency_key: "terminal-checkout-readiness",
+        merchant_order_no: "terminal-checkout-readiness",
+        amount_cents: 5_000,
+      }).order;
+      orders.close("default", terminal.orderId);
+      const terminalResponse = await ready.request(
+        `/api/public/v1/checkouts/${encodeURIComponent(terminal.checkoutToken)}`,
+      );
+      assert.equal(terminalResponse.status, 200);
+      assert.equal(
+        ((await terminalResponse.json()) as { data: { payment_instructions: unknown } })
+          .data.payment_instructions,
+        null,
+      );
+
+      reconciliationState = "degraded";
+      reconciliationLastSuccessAt =
+        collectionNow - config.alipay.maximumSuccessAgeMilliseconds - 1;
+      const staleReconciliation = await ready.request(target, {
+        method: "POST",
+        headers: {
+          ...apiHeaders("POST", target, stoppedBody, 45),
+          "content-type": "application/json",
+        },
+        body: stoppedBody,
+      });
+      assert.equal(staleReconciliation.status, 503);
+      assert.equal(
+        ((await staleReconciliation.json()) as { error: { code: string } }).error.code,
+        "reconciliation_not_ready",
+      );
+
+      reconciliationState = "healthy";
+      reconciliationLastSuccessAt = collectionNow;
+      reconciliationLastErrorCode = null;
+      reconciliationConsecutiveFailures = 0;
 
       const originalStatfsSync = fs.statfsSync;
       const noHeadroomStatfsSync = ((...arguments_: unknown[]) => {
@@ -969,7 +1131,7 @@ describe("order HTTP contract", () => {
       assert.equal(unsafeCheckout.status, 503);
       assert.equal(
         ((await unsafeCheckout.json()) as { error: { code: string } }).error.code,
-        "system_not_ready",
+        "order_clock_unavailable",
       );
 
       const unsafeRequestBody = Buffer.from(JSON.stringify({
@@ -1017,6 +1179,7 @@ describe("order HTTP contract", () => {
       identity,
       orders,
       startedAt: new Date(0),
+      ...readyPaymentRuntime(Date.now()),
       onOrderAvailable: (orderId) => reconciliationTriggers.push(orderId),
     });
     try {
@@ -1189,7 +1352,14 @@ describe("order HTTP contract", () => {
     await identity.initialize();
     const orders = new OrderService(database, config);
     orders.initialize();
-    const app = createApp({ config, database, identity, orders, startedAt: new Date(0) });
+    const app = createApp({
+      config,
+      database,
+      identity,
+      orders,
+      startedAt: new Date(0),
+      ...readyPaymentRuntime(Date.now()),
+    });
     try {
       const target = "/api/v1/orders";
       const original = Buffer.from(
@@ -1297,5 +1467,30 @@ function apiHeaders(
     "x-perpay-timestamp": signed.timestamp,
     "x-perpay-nonce": signed.nonce,
     "x-perpay-signature": signed.signature,
+  };
+}
+
+function readyPaymentRuntime(now: number) {
+  return {
+    ledgerHealth: () => ({
+      enabled: true,
+      state: "healthy" as const,
+      inFlight: false,
+      lastAttemptAt: now,
+      lastSuccessAt: now,
+      lastErrorCode: null,
+      consecutiveFailures: 0,
+    }),
+    reconciliationHealth: () => ({
+      enabled: true,
+      state: "healthy" as const,
+      inFlight: false,
+      lastAttemptAt: now,
+      lastSuccessAt: now,
+      lastErrorCode: null,
+      consecutiveFailures: 0,
+      pendingOrders: 0,
+      continuationPending: false,
+    }),
   };
 }

@@ -265,8 +265,9 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const reconciliation = dependencies.reconciliationHealth?.() ?? disabledReconciliationHealth;
     const webhook = dependencies.webhookHealth?.() ?? disabledWebhookHealth;
     const collection = collectionFreshness(dependencies, ledger);
+    const confirmation = confirmationFreshness(dependencies, reconciliation);
     const operations = operationalSummaries(dependencies, database.ok);
-    const ready = database.ok && collection.ready;
+    const ready = database.ok && collection.ready && confirmation.ready;
     const degraded = ready && (
       (ledger.enabled && (ledger.state === "degraded" || ledger.state === "catching_up")) ||
       (reconciliation.enabled && reconciliation.state === "degraded") ||
@@ -725,10 +726,14 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     requireApiClient(dependencies, maximumBodyBytes, apiFailureAuditLimiter);
 
   app.post("/api/v1/orders", signedApi(MAX_JSON_BODY_BYTES), (context) => {
-    requirePaymentEntryReady(dependencies);
+    requirePaymentDatabaseReady(dependencies);
     requireJsonContentType(context);
     const request = parseJsonBytes(context.get("apiRawBody"), createOrderRequestSchema);
-    const result = dependencies.orders.create(context.get("apiClientId"), request);
+    const result = dependencies.orders.create(
+      context.get("apiClientId"),
+      request,
+      () => requirePaymentBackgroundReady(dependencies),
+    );
     try {
       dependencies.onOrderAvailable?.(result.order.orderId);
     } catch (error) {
@@ -794,8 +799,8 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         1,
       );
     }
-    requirePaymentEntryReady(dependencies);
     const checkout = dependencies.orders.publicCheckout(context.req.param("token"));
+    if (checkout.paymentInstructions !== null) requirePaymentEntryReady(dependencies);
     return context.json({ data: serializePublicCheckout(checkout) });
   });
 
@@ -1307,9 +1312,10 @@ function systemStatus(dependencies: AppDependencies) {
   const reconciliation = dependencies.reconciliationHealth?.() ?? disabledReconciliationHealth;
   const webhook = dependencies.webhookHealth?.() ?? disabledWebhookHealth;
   const collection = collectionFreshness(dependencies, ledger);
+  const confirmation = confirmationFreshness(dependencies, reconciliation);
   const operations = operationalSummaries(dependencies, database.ok);
   const backup = currentBackupHealth(dependencies);
-  const ready = database.ok && collection.ready;
+  const ready = database.ok && collection.ready && confirmation.ready;
   const degraded = ready && (
     (ledger.enabled && (ledger.state === "degraded" || ledger.state === "catching_up")) ||
     (reconciliation.enabled && reconciliation.state === "degraded") ||
@@ -1329,7 +1335,7 @@ function systemStatus(dependencies: AppDependencies) {
       conflicts: serializeLedgerConflictSummary(operations.conflicts),
     },
     reconciliation: {
-      ...serializeReconciliationHealth(reconciliation),
+      ...serializeReconciliationHealth(reconciliation, confirmation),
       exceptions: serializeFinancialExceptionSummary(operations.exceptions),
     },
     webhook: serializeWebhookHealth(webhook),
@@ -1377,12 +1383,51 @@ function collectionFreshness(
     dependencies.config.alipay.maximumSuccessAgeMilliseconds;
   if (!health.enabled) {
     return {
-      ready: true,
+      ready: false,
       lastSuccessAgeMilliseconds: null,
       maximumSuccessAgeMilliseconds,
     };
   }
   if (health.lastSuccessAt === null) {
+    return {
+      ready: false,
+      lastSuccessAgeMilliseconds: null,
+      maximumSuccessAgeMilliseconds,
+    };
+  }
+  const now = dependencies.clock?.() ?? Date.now();
+  if (!Number.isSafeInteger(now) || now < 0) {
+    return {
+      ready: false,
+      lastSuccessAgeMilliseconds: null,
+      maximumSuccessAgeMilliseconds,
+    };
+  }
+  const successAge = now - health.lastSuccessAt;
+  const validAge = Number.isSafeInteger(successAge) && successAge >= 0;
+  return {
+    ready:
+      health.state !== "stopped" &&
+      validAge &&
+      successAge <= maximumSuccessAgeMilliseconds,
+    lastSuccessAgeMilliseconds: validAge ? successAge : null,
+    maximumSuccessAgeMilliseconds,
+  };
+}
+
+interface ConfirmationFreshness {
+  readonly ready: boolean;
+  readonly lastSuccessAgeMilliseconds: number | null;
+  readonly maximumSuccessAgeMilliseconds: number;
+}
+
+function confirmationFreshness(
+  dependencies: AppDependencies,
+  health: ReconciliationSchedulerHealth & { readonly enabled: boolean },
+): ConfirmationFreshness {
+  const maximumSuccessAgeMilliseconds =
+    dependencies.config.alipay.maximumSuccessAgeMilliseconds;
+  if (!health.enabled || health.state === "stopped" || health.lastSuccessAt === null) {
     return {
       ready: false,
       lastSuccessAgeMilliseconds: null,
@@ -1407,6 +1452,11 @@ function collectionFreshness(
 }
 
 function requirePaymentEntryReady(dependencies: AppDependencies): void {
+  requirePaymentDatabaseReady(dependencies);
+  requirePaymentBackgroundReady(dependencies);
+}
+
+function requirePaymentDatabaseReady(dependencies: AppDependencies): void {
   if (!dependencies.database.health().ok) {
     throw new HttpApiError(
       503,
@@ -1415,15 +1465,27 @@ function requirePaymentEntryReady(dependencies: AppDependencies): void {
       5,
     );
   }
-  if (collectionFreshness(dependencies, currentLedgerHealth(dependencies)).ready) return;
+}
+
+function requirePaymentBackgroundReady(dependencies: AppDependencies): void {
   const retryAfterSeconds = Math.max(
     1,
     Math.ceil(dependencies.config.alipay.scanIntervalMilliseconds / 1_000),
   );
+  if (!collectionFreshness(dependencies, currentLedgerHealth(dependencies)).ready) {
+    throw new HttpApiError(
+      503,
+      "collection_not_ready",
+      "账务采集没有近期成功扫描记录",
+      retryAfterSeconds,
+    );
+  }
+  const reconciliation = dependencies.reconciliationHealth?.() ?? disabledReconciliationHealth;
+  if (confirmationFreshness(dependencies, reconciliation).ready) return;
   throw new HttpApiError(
     503,
-    "collection_not_ready",
-    "账务采集没有近期成功扫描记录",
+    "reconciliation_not_ready",
+    "自动对账没有近期成功运行记录",
     retryAfterSeconds,
   );
 }
@@ -2311,6 +2373,7 @@ function serializeLedgerHealth(
 
 function serializeReconciliationHealth(
   health: ReconciliationSchedulerHealth & { readonly enabled: boolean },
+  freshness: ConfirmationFreshness,
 ) {
   return {
     enabled: health.enabled,
@@ -2322,6 +2385,9 @@ function serializeReconciliationHealth(
     consecutive_failures: health.consecutiveFailures,
     pending_orders: health.pendingOrders,
     continuation_pending: health.continuationPending,
+    confirmation_ready: freshness.ready,
+    last_success_age_milliseconds: freshness.lastSuccessAgeMilliseconds,
+    maximum_success_age_milliseconds: freshness.maximumSuccessAgeMilliseconds,
   };
 }
 

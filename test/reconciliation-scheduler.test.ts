@@ -77,6 +77,60 @@ describe("ReconciliationScheduler", () => {
     await scheduler.stop();
   });
 
+  it("counts automatic settlements and wakes delivery after store transactions return", async () => {
+    const orderId = randomUUID();
+    const ledgerEntryId = randomUUID();
+    const orderSettlements = [autoSettledResult(orderId), autoSettledResult(orderId)];
+    const wakeCounts: number[] = [];
+    const fake = {
+      pendingLedgerPage() {
+        return {
+          ledgerEntryIds: [ledgerEntryId],
+          nextCursor: null,
+          hasMore: false,
+        };
+      },
+      reconcileEntry() {
+        return autoSettledResult(orderId, ledgerEntryId);
+      },
+      reconcileOrder() {
+        return { processed: 2, results: orderSettlements, hasMore: false } as const;
+      },
+    } as unknown as ReconciliationStore;
+    const scheduler = new ReconciliationScheduler({
+      store: fake,
+      intervalMilliseconds: 60_000,
+      batchSize: 2,
+      maximumEntriesPerRun: 2,
+      clock: incrementingClock(2_000_000_125_000),
+      onAutoSettled: (count) => wakeCounts.push(count),
+    });
+
+    const orderRun = await scheduler.triggerOrder(orderId);
+    assert.equal(orderRun.autoSettled, 2);
+    assert.deepEqual(wakeCounts, [2]);
+
+    const sweep = await scheduler.triggerSweep("auto_settlement_test");
+    assert.equal(sweep.autoSettled, 1);
+    assert.deepEqual(wakeCounts, [2, 1]);
+    await scheduler.stop();
+
+    const observerFailure = new ReconciliationScheduler({
+      store: fake,
+      intervalMilliseconds: 60_000,
+      batchSize: 1,
+      maximumEntriesPerRun: 1,
+      clock: incrementingClock(2_000_000_126_000),
+      onAutoSettled: () => {
+        throw new Error("delivery wake failed");
+      },
+    });
+    const unaffected = await observerFailure.triggerSweep("observer_failure");
+    assert.equal(unaffected.autoSettled, 1);
+    assert.equal(unaffected.failures, 0);
+    await observerFailure.stop();
+  });
+
   it("retries a transient targeted-order failure without waiting for the periodic sweep", async () => {
     const orderId = randomUUID();
     const reasons: string[] = [];
@@ -392,6 +446,16 @@ function createFakeStore(
 function incrementingClock(initial: number): () => number {
   let current = initial;
   return () => current++;
+}
+
+function autoSettledResult(orderId: string, ledgerEntryId = randomUUID()) {
+  return {
+    kind: "auto_settled" as const,
+    ledgerEntryId,
+    candidateId: randomUUID(),
+    paymentMatchId: randomUUID(),
+    orderId,
+  };
 }
 
 async function waitUntil(predicate: () => boolean): Promise<void> {

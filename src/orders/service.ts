@@ -97,19 +97,26 @@ export class OrderService {
     );
   }
 
-  create(apiClientId: string, request: CreateOrderRequest): CreateOrderResult {
+  create(
+    apiClientId: string,
+    request: CreateOrderRequest,
+    beforeCreate?: (() => void) | undefined,
+  ): CreateOrderResult {
     const webhookTarget = this.#prepareWebhookTarget(request);
     const result = this.#runStoreOperation(() =>
-      this.#store.createOrder({
-        apiClientId,
-        request,
-        idempotencyKeyDigest: digestIdempotencyKey(apiClientId, request.idempotency_key),
-        requestFingerprint: fingerprintCreateOrderRequest(request),
-        ttlMilliseconds: this.#config.orderTtlSeconds * 1000,
-        amountOffsetMaximumCents: this.#config.amountOffsetMaximumCents,
-        webhookTarget: webhookTarget.target,
-        webhookTargetRejection: webhookTarget.rejection,
-      }),
+      this.#store.createOrder(
+        {
+          apiClientId,
+          request,
+          idempotencyKeyDigest: digestIdempotencyKey(apiClientId, request.idempotency_key),
+          requestFingerprint: fingerprintCreateOrderRequest(request),
+          ttlMilliseconds: this.#config.orderTtlSeconds * 1000,
+          amountOffsetMaximumCents: this.#config.amountOffsetMaximumCents,
+          webhookTarget: webhookTarget.target,
+          webhookTargetRejection: webhookTarget.rejection,
+        },
+        beforeCreate,
+      ),
     );
     switch (result.kind) {
       case "created":
