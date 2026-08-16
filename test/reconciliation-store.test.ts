@@ -13,7 +13,12 @@ import { LedgerStore } from "../src/ledger/store.ts";
 import {
   ReconciliationStore,
 } from "../src/reconciliation/index.ts";
-import { financialExceptionResolutionFingerprint } from "../src/reconciliation/model.ts";
+import {
+  financialExceptionResolutionFingerprint,
+  financialOperationEvidence,
+  financialOperationFingerprint,
+  type FinancialOperationFingerprintInput,
+} from "../src/reconciliation/model.ts";
 import {
   createOrderRequestSchema,
   fingerprintCreateOrderRequest,
@@ -154,6 +159,223 @@ describe("automatic reconciliation settlement", () => {
       } finally {
         reopened.close();
       }
+    });
+  });
+
+  it("settles a later exact order and supersedes the earlier amount inference", async () => {
+    await withStores(async ({ database, orders, reconciliation, recordCredit, setNow }) => {
+      const firstOrder = createOrder(orders, "cross-order-exception-first", 999);
+      const entry = recordCredit("cross-order-exception-entry", 1_500, BASE_TIME);
+      const unmatched = reconciliation.reconcileEntry(entry.ledgerEntryId, BASE_TIME + 200);
+      assert.equal(unmatched.kind, "unmatched");
+      if (unmatched.kind !== "unmatched") throw new Error("expected an amount exception");
+      const originalException = reconciliation.exception(unmatched.exceptionId);
+      assert.equal(originalException?.exceptionType, "AMOUNT_MISMATCH");
+      assert.equal(originalException?.orderId, firstOrder.order.orderId);
+
+      setNow(BASE_TIME + 500);
+      const secondOrder = createOrder(orders, "cross-order-exception-second", 1_499);
+      assert.equal(secondOrder.order.payableAmountCents, entry.amountCents);
+      const settled = reconciliation.reconcileEntry(entry.ledgerEntryId, BASE_TIME + 3_000);
+      assert.equal(settled.kind, "auto_settled");
+
+      assert.equal(
+        orders.orderById(API_CLIENT_ID, firstOrder.order.orderId)?.order.paymentStatus,
+        "UNPAID",
+      );
+      assert.equal(
+        orders.orderById(API_CLIENT_ID, secondOrder.order.orderId)?.order.paymentStatus,
+        "CONFIRMED",
+      );
+      const supersededException = reconciliation.exception(unmatched.exceptionId);
+      assert.equal(supersededException?.status, "RESOLVED");
+      assert.equal(supersededException?.resolution?.resolution, "superseded_by_settlement");
+      assert.equal(
+        supersededException?.resolution?.payment_match_id,
+        settled.paymentMatchId,
+      );
+      database.read((connection) => {
+        assert.equal(readCountWhere(connection, "financial_operations", "operation_type = 'AUTO_SETTLEMENT'"), 1);
+        assert.equal(readCount(connection, "payment_matches"), 1);
+        assert.equal(readCount(connection, "outbox_events"), 1);
+      });
+      assert.equal(database.integrityCheck().ok, true);
+    });
+  });
+
+  it("does not auto-settle an amount reused inside a settled slot's timestamp interval", async () => {
+    await withStores(async ({ database, orders, reconciliation, recordCredit, setNow }) => {
+      const firstOrder = createOrder(orders, "settled-overlap-first", 999);
+      const firstEntry = recordCredit(
+        "settled-overlap-first-entry",
+        firstOrder.order.payableAmountCents,
+        BASE_TIME,
+      );
+      assert.equal(
+        reconciliation.reconcileEntry(firstEntry.ledgerEntryId, BASE_TIME + 200).kind,
+        "auto_settled",
+      );
+
+      setNow(BASE_TIME + 400);
+      assert.ok(orders.closeOrder(API_CLIENT_ID, firstOrder.order.orderId));
+      setNow(BASE_TIME + 600);
+      const secondOrder = createOrder(orders, "settled-overlap-second", 999);
+      assert.equal(secondOrder.order.payableAmountCents, firstOrder.order.payableAmountCents);
+      const secondEntry = recordCredit(
+        "settled-overlap-second-entry",
+        secondOrder.order.payableAmountCents,
+        BASE_TIME,
+      );
+
+      const result = reconciliation.reconcileEntry(secondEntry.ledgerEntryId, BASE_TIME + 3_000);
+      assert.equal(result.kind, "unmatched");
+      if (result.kind !== "unmatched") throw new Error("expected a duplicate-payment exception");
+      const exception = reconciliation.exception(result.exceptionId);
+      assert.equal(exception?.exceptionType, "DUPLICATE_PAYMENT");
+      assert.equal(exception?.orderId, firstOrder.order.orderId);
+      assert.equal(exception?.details.overlapping_settled_order_count, 1);
+      assert.equal(reconciliation.ledgerEntry(secondEntry.ledgerEntryId)?.state, "UNALLOCATED");
+      assert.equal(
+        orders.orderById(API_CLIENT_ID, secondOrder.order.orderId)?.order.paymentStatus,
+        "UNPAID",
+      );
+      const candidate = reconciliation
+        .listCandidates(secondEntry.ledgerEntryId)
+        .find((item) => item.orderId === secondOrder.order.orderId);
+      assert.equal(candidate?.status, "ELIGIBLE");
+      if (!candidate) throw new Error("expected the unpaid order candidate");
+
+      const repeated = reconciliation.reconcileEntry(secondEntry.ledgerEntryId, BASE_TIME + 3_001);
+      assert.deepEqual(repeated, result);
+      assert.throws(
+        () => insertUnsafeAutomaticMatch(
+          database,
+          candidate,
+          secondEntry.ledgerEntryId,
+          secondOrder.order.orderId,
+          BASE_TIME + 3_002,
+        ),
+        /payment match is not supported by its operation and facts/,
+      );
+      assert.equal(reconciliation.candidate(candidate.candidateId)?.status, "ELIGIBLE");
+      database.read((connection) => {
+        assert.equal(readCountWhere(connection, "financial_operations", "operation_type = 'AUTO_SETTLEMENT'"), 1);
+        assert.equal(readCount(connection, "payment_matches"), 1);
+        assert.equal(readCountWhere(connection, "financial_exceptions", "exception_type = 'DUPLICATE_PAYMENT'"), 1);
+        assert.equal(readCount(connection, "outbox_events"), 1);
+      });
+
+      const manual = reconciliation.settleManually({
+        financialOperationId: randomUUID(),
+        orderId: secondOrder.order.orderId,
+        ledgerEntryId: secondEntry.ledgerEntryId,
+        actorId: "admin",
+        reason: "reviewed overlapping historical amount slot",
+        now: BASE_TIME + 4_000,
+      });
+      assert.equal(manual.paymentMatch.evidenceType, "MANUAL");
+      assert.equal(reconciliation.exception(result.exceptionId)?.status, "RESOLVED");
+      assert.equal(
+        reconciliation.exception(result.exceptionId)?.resolution?.resolution,
+        "superseded_by_settlement",
+      );
+      assert.equal(
+        orders.orderById(API_CLIENT_ID, secondOrder.order.orderId)?.order.paymentBasis,
+        "MANUAL",
+      );
+      assert.equal(database.integrityCheck().ok, true);
+    });
+  });
+
+  it("does not bind a duplicate exception to one of several historical slots", async () => {
+    await withStores(async ({ database, orders, reconciliation, recordCredit, setNow }) => {
+      const firstOrder = createOrder(orders, "multiple-overlap-first", 999);
+      const firstEntry = recordCredit(
+        "multiple-overlap-first-entry",
+        firstOrder.order.payableAmountCents,
+        EVENT_TIME,
+      );
+      assert.equal(
+        reconciliation.reconcileEntry(firstEntry.ledgerEntryId, EVENT_TIME + 100).kind,
+        "auto_settled",
+      );
+      setNow(EVENT_TIME + 200);
+      assert.ok(orders.closeOrder(API_CLIENT_ID, firstOrder.order.orderId));
+
+      setNow(EVENT_TIME + 400);
+      const secondOrder = createOrder(orders, "multiple-overlap-second", 999);
+      const secondEntry = recordCredit(
+        "multiple-overlap-second-entry",
+        secondOrder.order.payableAmountCents,
+        EVENT_TIME,
+      );
+      reconciliation.settleManually({
+        financialOperationId: randomUUID(),
+        orderId: secondOrder.order.orderId,
+        ledgerEntryId: secondEntry.ledgerEntryId,
+        actorId: "admin",
+        reason: "verified second payment inside provider timestamp precision",
+        now: EVENT_TIME + 500,
+      });
+      setNow(EVENT_TIME + 700);
+      assert.ok(orders.closeOrder(API_CLIENT_ID, secondOrder.order.orderId));
+
+      setNow(EVENT_TIME + 900);
+      const thirdOrder = createOrder(orders, "multiple-overlap-third", 999);
+      const broadEntry = recordCredit(
+        "multiple-overlap-third-entry",
+        thirdOrder.order.payableAmountCents,
+        EVENT_TIME,
+      );
+      const result = reconciliation.reconcileEntry(broadEntry.ledgerEntryId, EVENT_TIME + 2_000);
+      assert.equal(result.kind, "unmatched");
+      if (result.kind !== "unmatched") throw new Error("expected a duplicate-payment exception");
+
+      const exception = reconciliation.exception(result.exceptionId);
+      assert.equal(exception?.exceptionType, "DUPLICATE_PAYMENT");
+      assert.equal(exception?.orderId, null);
+      assert.equal(exception?.details.overlapping_settled_order_count, 2);
+      assert.equal(exception?.details.overlapping_settled_order_count_is_lower_bound, true);
+      assert.equal(
+        orders.orderById(API_CLIENT_ID, thirdOrder.order.orderId)?.order.paymentStatus,
+        "UNPAID",
+      );
+      assert.equal(reconciliation.ledgerEntry(broadEntry.ledgerEntryId)?.state, "UNALLOCATED");
+      assert.equal(database.integrityCheck().ok, true);
+    });
+  });
+
+  it("allows amount reuse when the new timestamp interval no longer overlaps the settled slot", async () => {
+    await withStores(async ({ database, orders, reconciliation, recordCredit, setNow }) => {
+      const firstOrder = createOrder(orders, "settled-boundary-first", 999);
+      const firstEntry = recordCredit(
+        "settled-boundary-first-entry",
+        firstOrder.order.payableAmountCents,
+        BASE_TIME,
+      );
+      assert.equal(
+        reconciliation.reconcileEntry(firstEntry.ledgerEntryId, BASE_TIME + 200).kind,
+        "auto_settled",
+      );
+      setNow(BASE_TIME + 400);
+      assert.ok(orders.closeOrder(API_CLIENT_ID, firstOrder.order.orderId));
+
+      setNow(BASE_TIME + 1_000);
+      const secondOrder = createOrder(orders, "settled-boundary-second", 999);
+      const secondEntry = recordCredit(
+        "settled-boundary-second-entry",
+        secondOrder.order.payableAmountCents,
+        BASE_TIME + 1_000,
+      );
+      assert.equal(
+        reconciliation.reconcileEntry(secondEntry.ledgerEntryId, BASE_TIME + 3_000).kind,
+        "auto_settled",
+      );
+      assert.equal(
+        orders.orderById(API_CLIENT_ID, secondOrder.order.orderId)?.order.paymentStatus,
+        "CONFIRMED",
+      );
+      assert.equal(database.integrityCheck().ok, true);
     });
   });
 
@@ -659,6 +881,70 @@ function readOrderEventTypes(connection: import("node:sqlite").DatabaseSync, ord
     "SELECT event_type FROM order_events WHERE order_id = ? ORDER BY sequence",
   ).all(orderId) as Array<{ event_type: string }>;
   return rows.map((row) => row.event_type);
+}
+
+function insertUnsafeAutomaticMatch(
+  database: AppDatabase,
+  candidate: NonNullable<ReturnType<ReconciliationStore["candidate"]>>,
+  ledgerEntryId: string,
+  orderId: string,
+  now: number,
+): void {
+  const financialOperationId = randomUUID();
+  const paymentMatchId = randomUUID();
+  const fingerprintInput: FinancialOperationFingerprintInput = {
+    operationType: "AUTO_SETTLEMENT",
+    actorType: "SYSTEM",
+    actorId: null,
+    orderId,
+    ledgerEntryId,
+    candidateId: candidate.candidateId,
+    paymentMatchId,
+    reversesOperationId: null,
+    reason: null,
+  };
+  database.write((connection) => {
+    connection.prepare(
+      `INSERT INTO financial_operations(
+         financial_operation_id, operation_key, request_fingerprint, request_json,
+         operation_type, actor_type, actor_id, order_id, ledger_entry_id,
+         reverses_operation_id, reason, created_at
+       ) VALUES (?, ?, ?, ?, 'AUTO_SETTLEMENT', 'SYSTEM', NULL, ?, ?, NULL, NULL, ?)`,
+    ).run(
+      financialOperationId,
+      `test-auto:${candidate.candidateId}`,
+      financialOperationFingerprint(fingerprintInput),
+      JSON.stringify(financialOperationEvidence(fingerprintInput)),
+      orderId,
+      ledgerEntryId,
+      now,
+    );
+    connection.prepare(
+      `UPDATE match_candidates
+          SET status = 'SELECTED', decided_by_operation_id = ?, updated_at = ?, decided_at = ?
+        WHERE candidate_id = ? AND status = 'ELIGIBLE'`,
+    ).run(financialOperationId, now, now, candidate.candidateId);
+    connection.prepare(
+      `INSERT INTO payment_matches(
+         payment_match_id, ledger_entry_id, order_id, candidate_id,
+         match_role, evidence_type, evidence_json, status,
+         created_by_operation_id, resolved_by_operation_id,
+         created_at, updated_at, resolved_at
+       ) VALUES (?, ?, ?, ?, 'PRIMARY_SETTLEMENT', 'AMOUNT_INFERRED', ?,
+                 'SETTLED', ?, ?, ?, ?, ?)`,
+    ).run(
+      paymentMatchId,
+      ledgerEntryId,
+      orderId,
+      candidate.candidateId,
+      JSON.stringify(candidate.evidence),
+      financialOperationId,
+      financialOperationId,
+      now,
+      now,
+      now,
+    );
+  });
 }
 
 function formatProviderTimestamp(milliseconds: number): string {

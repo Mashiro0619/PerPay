@@ -72,8 +72,8 @@ describe("ledger conflict HTTP operations", () => {
           inFlight: false,
           lastAttemptAt: BASE_TIME,
           lastSuccessAt: BASE_TIME - 1_000,
-          lastErrorCode: "provider_conflict" as string | null,
-          consecutiveFailures: 1,
+          lastErrorCode: ledgerState === "degraded" ? "provider_conflict" : null,
+          consecutiveFailures: ledgerState === "degraded" ? 1 : 0,
         }),
         reconciliationHealth: () => ({
           enabled: true,

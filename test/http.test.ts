@@ -88,6 +88,28 @@ describe("health endpoints", () => {
       assert.equal(degradedReady.status, 200);
       assert.deepEqual(await degradedReady.json(), { status: "degraded" });
 
+      const collectionRetryRunning = createApp({
+        config,
+        database,
+        identity,
+        orders,
+        startedAt: new Date(0),
+        clock: () => collectionNow,
+        ...readyPaymentRuntime(collectionNow),
+        ledgerHealth: () => ({
+          enabled: true,
+          state: "running",
+          inFlight: true,
+          lastAttemptAt: collectionNow,
+          lastSuccessAt: collectionNow - 10_000,
+          lastErrorCode: "remote_authorization_failed",
+          consecutiveFailures: 1,
+        }),
+      });
+      const collectionRetryReady = await collectionRetryRunning.request("/readyz");
+      assert.equal(collectionRetryReady.status, 200);
+      assert.deepEqual(await collectionRetryReady.json(), { status: "degraded" });
+
       const catchingUp = createApp({
         config,
         database,
@@ -201,6 +223,78 @@ describe("health endpoints", () => {
       const reconciliationReadyBody = (await reconciliationReady.json()) as { status: string };
       assert.equal(reconciliationReadyBody.status, "degraded");
 
+      const reconciliationRetryRunning = createApp({
+        config,
+        database,
+        identity,
+        orders,
+        startedAt: new Date(0),
+        clock: () => collectionNow,
+        ...readyPaymentRuntime(collectionNow),
+        reconciliationHealth: () => ({
+          enabled: true,
+          state: "running",
+          inFlight: true,
+          lastAttemptAt: collectionNow,
+          lastSuccessAt: collectionNow - 10_000,
+          lastErrorCode: "reconciliation_item_failed",
+          consecutiveFailures: 1,
+          pendingOrders: 1,
+          continuationPending: true,
+        }),
+      });
+      const reconciliationRetryReady = await reconciliationRetryRunning.request("/readyz");
+      assert.equal(reconciliationRetryReady.status, 200);
+      assert.deepEqual(await reconciliationRetryReady.json(), { status: "degraded" });
+
+      const webhookRetryRunning = createApp({
+        config,
+        database,
+        identity,
+        orders,
+        startedAt: new Date(0),
+        clock: () => collectionNow,
+        ...readyPaymentRuntime(collectionNow),
+        webhookHealth: () => ({
+          enabled: true,
+          state: "running",
+          inFlight: true,
+          lastAttemptAt: collectionNow,
+          lastSuccessAt: collectionNow - 10_000,
+          lastErrorCode: "delivery_network_error",
+          consecutiveFailures: 1,
+          pendingDeliveries: 1,
+          deadLetters: 0,
+        }),
+      });
+      const webhookRetryReady = await webhookRetryRunning.request("/readyz");
+      assert.equal(webhookRetryReady.status, 200);
+      assert.deepEqual(await webhookRetryReady.json(), { status: "degraded" });
+
+      const webhookStopped = createApp({
+        config,
+        database,
+        identity,
+        orders,
+        startedAt: new Date(0),
+        clock: () => collectionNow,
+        ...readyPaymentRuntime(collectionNow),
+        webhookHealth: () => ({
+          enabled: true,
+          state: "stopped",
+          inFlight: false,
+          lastAttemptAt: collectionNow,
+          lastSuccessAt: collectionNow,
+          lastErrorCode: null,
+          consecutiveFailures: 0,
+          pendingDeliveries: 0,
+          deadLetters: 0,
+        }),
+      });
+      const webhookStoppedReady = await webhookStopped.request("/readyz");
+      assert.equal(webhookStoppedReady.status, 200);
+      assert.deepEqual(await webhookStoppedReady.json(), { status: "degraded" });
+
       const backupUnhealthy = createApp({
         config,
         database,
@@ -243,6 +337,16 @@ describe("health endpoints", () => {
       const backupCookie = backupLogin.headers.getSetCookie()
         .map((value) => value.split(";", 1)[0])
         .join("; ");
+      const webhookStoppedStatus = await webhookStopped.request("/api/admin/v1/system/status", {
+        headers: { cookie: backupCookie },
+      });
+      assert.equal(webhookStoppedStatus.status, 200);
+      const webhookStoppedStatusBody = (await webhookStoppedStatus.json()) as {
+        data: { status: string; webhook: { state: string } };
+      };
+      assert.equal(webhookStoppedStatusBody.data.status, "degraded");
+      assert.equal(webhookStoppedStatusBody.data.webhook.state, "stopped");
+
       const backupStatus = await backupUnhealthy.request("/api/admin/v1/system/status", {
         headers: { cookie: backupCookie },
       });

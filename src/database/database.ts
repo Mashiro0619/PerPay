@@ -1694,6 +1694,48 @@ function countReconciliationDomainViolations(connection: DatabaseSync): number {
       )
     : 0;
 
+  const automaticOverlapViolations = tableExists(connection, "payment_match_events")
+    ? readViolationCount(
+        connection,
+        `SELECT COUNT(*) AS violations
+           FROM payment_matches AS current_match
+           JOIN ledger_entries AS entry
+             ON entry.ledger_entry_id = current_match.ledger_entry_id
+           JOIN payment_match_events AS current_event
+             ON current_event.payment_match_id = current_match.payment_match_id
+            AND current_event.status = 'SETTLED'
+          WHERE current_match.evidence_type = 'AMOUNT_INFERRED'
+            AND EXISTS (
+              SELECT 1
+                FROM amount_slots AS prior_slot
+                JOIN payment_orders AS prior_orders
+                  ON prior_orders.order_id = prior_slot.order_id
+                 AND prior_orders.collection_profile_id = prior_slot.collection_profile_id
+                 AND prior_orders.payable_amount_cents = prior_slot.payable_amount_cents
+                JOIN payment_matches AS prior_match
+                  ON prior_match.order_id = prior_orders.order_id
+                JOIN payment_match_events AS prior_event
+                  ON prior_event.payment_match_id = prior_match.payment_match_id
+                 AND prior_event.status = 'SETTLED'
+               WHERE prior_match.payment_match_id != current_match.payment_match_id
+                 AND prior_event.event_sequence < current_event.event_sequence
+                 AND prior_slot.collection_profile_id IN (
+                   SELECT profile_id
+                     FROM collection_profiles
+                    WHERE provider_account_key = entry.provider_account_key
+                 )
+                 AND prior_slot.payable_amount_cents = entry.amount_cents
+                 AND prior_orders.currency = entry.currency
+                 AND entry.occurred_at + entry.occurred_at_precision_ms > prior_orders.eligible_from
+                 AND entry.occurred_at + entry.occurred_at_precision_ms > prior_slot.occupied_from
+                 AND entry.occurred_at < prior_orders.expires_at
+                 AND (prior_slot.released_at IS NULL OR entry.occurred_at < prior_slot.released_at)
+                 AND prior_orders.payment_status IN ('CONFIRMED', 'DISPUTED')
+            )`,
+        "automatic settlement historical overlap",
+      )
+    : 0;
+
   const effectiveStateViolations = readViolationCount(
     connection,
     `SELECT COUNT(*) AS violations
@@ -1983,7 +2025,27 @@ function countReconciliationDomainViolations(connection: DatabaseSync): number {
                       'AUTO_SETTLEMENT', 'MANUAL_SETTLEMENT', 'RECORD_REFUND'
                     ) OR
                     (exception.ledger_entry_id IS NOT NULL AND resolution.ledger_entry_id IS NOT exception.ledger_entry_id) OR
-                    (exception.order_id IS NOT NULL AND resolution.order_id IS NOT exception.order_id) OR
+                    (
+                      exception.order_id IS NOT NULL AND
+                      resolution.order_id IS NOT exception.order_id AND
+                      NOT (
+                        resolution.operation_type IN ('AUTO_SETTLEMENT', 'MANUAL_SETTLEMENT') AND
+                        json_type(exception.resolution_json, '$.resolution') = 'text' AND
+                        json_extract(exception.resolution_json, '$.resolution') =
+                          'superseded_by_settlement' AND
+                        json_type(exception.resolution_json, '$.payment_match_id') = 'text' AND
+                        EXISTS (
+                          SELECT 1
+                            FROM payment_matches AS resolution_match
+                           WHERE resolution_match.payment_match_id =
+                                 json_extract(exception.resolution_json, '$.payment_match_id')
+                             AND resolution_match.ledger_entry_id IS resolution.ledger_entry_id
+                             AND resolution_match.order_id IS resolution.order_id
+                             AND resolution_match.created_by_operation_id =
+                                 resolution.financial_operation_id
+                        )
+                      )
+                    ) OR
                     resolution.created_at != exception.resolved_at
                   ))
 
@@ -2061,7 +2123,8 @@ function countReconciliationDomainViolations(connection: DatabaseSync): number {
     "refund aggregate",
   );
 
-  return candidateViolations + matchViolations + paymentMatchEventViolations + effectiveStateViolations +
+  return candidateViolations + matchViolations + paymentMatchEventViolations +
+    automaticOverlapViolations + effectiveStateViolations +
     accountingViolations + operationViolations + orderEventOperationViolations +
     exceptionAndOutboxViolations + refundViolations + refundAggregateViolations;
 }

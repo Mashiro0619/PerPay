@@ -1915,6 +1915,30 @@ export const migrations: readonly Migration[] = [
                     AND active_candidate.status IN ('ELIGIBLE', 'SELECTED')
                ) = 1 AND
                entry.amount_cents = orders.payable_amount_cents AND
+               NOT EXISTS (
+                 SELECT 1
+                   FROM amount_slots AS settled_slot
+                   JOIN payment_orders AS settled_orders
+                     ON settled_orders.order_id = settled_slot.order_id
+                    AND settled_orders.collection_profile_id = settled_slot.collection_profile_id
+                    AND settled_orders.payable_amount_cents = settled_slot.payable_amount_cents
+                  WHERE settled_orders.order_id != orders.order_id
+                    AND settled_slot.collection_profile_id IN (
+                      SELECT profile_id
+                        FROM collection_profiles
+                       WHERE provider_account_key = entry.provider_account_key
+                    )
+                    AND settled_slot.payable_amount_cents = entry.amount_cents
+                    AND settled_orders.currency = entry.currency
+                    AND entry.occurred_at + entry.occurred_at_precision_ms > settled_orders.eligible_from
+                    AND entry.occurred_at + entry.occurred_at_precision_ms > settled_slot.occupied_from
+                    AND entry.occurred_at < settled_orders.expires_at
+                    AND (
+                      settled_slot.released_at IS NULL OR
+                      entry.occurred_at < settled_slot.released_at
+                    )
+                    AND settled_orders.payment_status IN ('CONFIRMED', 'DISPUTED')
+               ) AND
                operation.operation_type = 'AUTO_SETTLEMENT' AND
                NEW.evidence_type = 'AMOUNT_INFERRED' AND
                NEW.candidate_id IS NOT NULL AND
@@ -2339,7 +2363,25 @@ export const migrations: readonly Migration[] = [
             FROM financial_operations AS operation
            WHERE operation.financial_operation_id = NEW.resolution_operation_id
              AND operation.ledger_entry_id IS NEW.ledger_entry_id
-             AND (NEW.order_id IS NULL OR operation.order_id IS NEW.order_id)
+             AND (
+               NEW.order_id IS NULL OR
+               operation.order_id IS NEW.order_id OR
+               (
+                 operation.operation_type IN ('AUTO_SETTLEMENT', 'MANUAL_SETTLEMENT') AND
+                 json_type(NEW.resolution_json, '$.resolution') = 'text' AND
+                 json_extract(NEW.resolution_json, '$.resolution') = 'superseded_by_settlement' AND
+                 json_type(NEW.resolution_json, '$.payment_match_id') = 'text' AND
+                 EXISTS (
+                   SELECT 1
+                     FROM payment_matches AS payment_match
+                    WHERE payment_match.payment_match_id =
+                          json_extract(NEW.resolution_json, '$.payment_match_id')
+                      AND payment_match.ledger_entry_id IS operation.ledger_entry_id
+                      AND payment_match.order_id IS operation.order_id
+                      AND payment_match.created_by_operation_id = operation.financial_operation_id
+                 )
+               )
+             )
              AND operation.created_at = NEW.resolved_at
              AND operation.operation_type IN (
                'AUTO_SETTLEMENT', 'MANUAL_SETTLEMENT', 'RECORD_REFUND'
@@ -3158,7 +3200,25 @@ export const migrations: readonly Migration[] = [
             FROM financial_operations AS operation
            WHERE operation.financial_operation_id = NEW.resolution_operation_id
              AND operation.ledger_entry_id IS NEW.ledger_entry_id
-             AND (NEW.order_id IS NULL OR operation.order_id IS NEW.order_id)
+             AND (
+               NEW.order_id IS NULL OR
+               operation.order_id IS NEW.order_id OR
+               (
+                 operation.operation_type IN ('AUTO_SETTLEMENT', 'MANUAL_SETTLEMENT') AND
+                 json_type(NEW.resolution_json, '$.resolution') = 'text' AND
+                 json_extract(NEW.resolution_json, '$.resolution') = 'superseded_by_settlement' AND
+                 json_type(NEW.resolution_json, '$.payment_match_id') = 'text' AND
+                 EXISTS (
+                   SELECT 1
+                     FROM payment_matches AS payment_match
+                    WHERE payment_match.payment_match_id =
+                          json_extract(NEW.resolution_json, '$.payment_match_id')
+                      AND payment_match.ledger_entry_id IS operation.ledger_entry_id
+                      AND payment_match.order_id IS operation.order_id
+                      AND payment_match.created_by_operation_id = operation.financial_operation_id
+                 )
+               )
+             )
              AND operation.created_at = NEW.resolved_at
              AND operation.operation_type IN (
                'AUTO_SETTLEMENT', 'MANUAL_SETTLEMENT', 'RECORD_REFUND'

@@ -397,6 +397,7 @@ export class ReconciliationStore {
         return { kind: "unmatched", ledgerEntryId, exceptionId: exception.exceptionId };
       }
 
+      const settledOrderOverlap = readSettledOrderOverlap(connection, entry);
       const facts = readCandidateFacts(connection, entry);
       const candidates = facts
         .map((fact) => ensureCandidate(connection, entry, fact, now))
@@ -405,7 +406,7 @@ export class ReconciliationStore {
 
       if (candidates.length === 0) {
         setLedgerState(connection, entry, "UNALLOCATED", now);
-        const classification = classifyUnmatchedCredit(connection, entry);
+        const classification = classifyUnmatchedCredit(connection, entry, settledOrderOverlap);
         const exception = ensureException(connection, {
           providerAccountKey: entry.provider_account_key,
           exceptionType: classification.exceptionType,
@@ -441,6 +442,21 @@ export class ReconciliationStore {
 
       const candidate = candidates[0];
       if (!candidate) throw new Error("candidate disappeared");
+      if (settledOrderOverlap.count > 0) {
+        setLedgerState(connection, entry, "UNALLOCATED", now);
+        const classification = duplicatePaymentClassification(settledOrderOverlap);
+        const exception = ensureException(connection, {
+          providerAccountKey: entry.provider_account_key,
+          exceptionType: classification.exceptionType,
+          ledgerEntryId,
+          orderId: classification.orderId,
+          candidateId: null,
+          contextKey: classification.contextKey,
+          details: classification.details,
+          now,
+        });
+        return { kind: "unmatched", ledgerEntryId, exceptionId: exception.exceptionId };
+      }
       return autoSettleCandidate(connection, entry, candidate, now);
     });
   }
@@ -1351,37 +1367,59 @@ function readCandidateFacts(connection: DatabaseSync, entry: LedgerEntryRow): Ca
     ) as unknown as CandidateFactRow[];
 }
 
-function readDuplicateOrderId(connection: DatabaseSync, entry: LedgerEntryRow): string | null {
-  const rows = connection
+interface SettledOrderOverlap {
+  readonly count: number;
+  readonly orderId: string | null;
+}
+
+function readSettledOrderOverlap(
+  connection: DatabaseSync,
+  entry: LedgerEntryRow,
+): SettledOrderOverlap {
+  const row = connection
     .prepare(
-      `SELECT orders.order_id
-         FROM payment_orders AS orders
-         JOIN collection_profiles AS profile
-           ON profile.profile_id = orders.collection_profile_id
-         JOIN amount_slots AS slot ON slot.order_id = orders.order_id
-        WHERE profile.provider_account_key = ?
-          AND orders.currency = ?
-          AND orders.payable_amount_cents = ?
-          AND ? + ? > orders.eligible_from
-          AND ? + ? > slot.occupied_from
-          AND ? < orders.expires_at
-          AND (slot.released_at IS NULL OR ? < slot.released_at)
-          AND orders.payment_status IN ('CONFIRMED', 'DISPUTED')
-        ORDER BY orders.order_id
-        LIMIT 2`,
+      `SELECT COUNT(*) AS overlap_count,
+              CASE
+                WHEN COUNT(*) = 1 THEN MIN(overlap.order_id)
+                ELSE NULL
+              END AS order_id
+         FROM (
+           SELECT orders.order_id
+             FROM amount_slots AS slot
+             JOIN payment_orders AS orders
+               ON orders.order_id = slot.order_id
+              AND orders.collection_profile_id = slot.collection_profile_id
+              AND orders.payable_amount_cents = slot.payable_amount_cents
+            WHERE slot.collection_profile_id IN (
+                    SELECT profile_id
+                      FROM collection_profiles
+                     WHERE provider_account_key = ?
+                  )
+              AND slot.payable_amount_cents = ?
+              AND orders.currency = ?
+              AND ? + ? > orders.eligible_from
+              AND ? + ? > slot.occupied_from
+              AND ? < orders.expires_at
+              AND (slot.released_at IS NULL OR ? < slot.released_at)
+              AND orders.payment_status IN ('CONFIRMED', 'DISPUTED')
+            LIMIT 2
+         ) AS overlap`,
     )
-    .all(
+    .get(
       entry.provider_account_key,
-      entry.currency,
       entry.amount_cents,
+      entry.currency,
       entry.occurred_at,
       entry.occurred_at_precision_ms,
       entry.occurred_at,
       entry.occurred_at_precision_ms,
       entry.occurred_at,
       entry.occurred_at,
-    ) as Array<{ order_id: string }>;
-  return rows.length === 1 ? rows[0]?.order_id ?? null : null;
+    ) as { overlap_count: bigint | number; order_id: string | null };
+  return Object.freeze({
+    count: toSafeInteger(row.overlap_count, "settled order overlap count"),
+    orderId: row.order_id,
+  });
 }
 
 interface UnmatchedCreditClassification {
@@ -1397,16 +1435,11 @@ interface UnmatchedCreditClassification {
 function classifyUnmatchedCredit(
   connection: DatabaseSync,
   entry: LedgerEntryRow,
+  settledOrderOverlap: SettledOrderOverlap,
 ): UnmatchedCreditClassification {
   const previousContext = latestMatchContext(connection, entry.ledger_entry_id);
-  const duplicateOrderId = readDuplicateOrderId(connection, entry);
-  if (duplicateOrderId) {
-    return {
-      exceptionType: "DUPLICATE_PAYMENT",
-      orderId: duplicateOrderId,
-      contextKey: `order:${duplicateOrderId}`,
-      details: { reason: "order_already_has_primary_settlement" },
-    };
+  if (settledOrderOverlap.count > 0) {
+    return duplicatePaymentClassification(settledOrderOverlap);
   }
 
   const ended = connection
@@ -1518,6 +1551,24 @@ function classifyUnmatchedCredit(
     orderId: null,
     contextKey: previousContext,
     details: { reason: "no_exact_amount_slot_interval" },
+  };
+}
+
+function duplicatePaymentClassification(
+  overlap: SettledOrderOverlap,
+): UnmatchedCreditClassification {
+  if (overlap.count < 1) throw new Error("settled order overlap is missing");
+  return {
+    exceptionType: "DUPLICATE_PAYMENT",
+    orderId: overlap.orderId,
+    contextKey: overlap.orderId === null
+      ? `settled-orders:${RECONCILIATION_RULE_VERSION}:${overlap.count}`
+      : `order:${overlap.orderId}`,
+    details: {
+      reason: "order_already_has_primary_settlement",
+      overlapping_settled_order_count: overlap.count,
+      overlapping_settled_order_count_is_lower_bound: overlap.count > 1,
+    },
   };
 }
 
@@ -1923,7 +1974,8 @@ function resolveEntryExceptions(
       `UPDATE financial_exceptions
           SET status = 'RESOLVED', resolution_operation_id = ?,
               resolution_json = ?, resolution_fingerprint = ?, resolved_at = ?
-        WHERE ledger_entry_id = ? AND status = 'OPEN'`,
+        WHERE ledger_entry_id = ? AND status = 'OPEN'
+          AND (order_id IS NULL OR order_id = ?)`,
     )
     .run(
       operation.financialOperationId,
@@ -1931,6 +1983,40 @@ function resolveEntryExceptions(
       financialExceptionResolutionFingerprint(resolutionJson),
       now,
       ledgerEntryId,
+      operation.orderId,
+    );
+
+  if (
+    operation.operationType !== "AUTO_SETTLEMENT" &&
+    operation.operationType !== "MANUAL_SETTLEMENT"
+  ) {
+    return;
+  }
+  if (operation.orderId === null || paymentMatchId === null) {
+    throw new ReconciliationError(
+      "match_state_conflict",
+      "settlement exception resolution has incomplete operation facts",
+    );
+  }
+  const supersededResolutionJson = JSON.stringify({
+    resolution: "superseded_by_settlement",
+    payment_match_id: paymentMatchId,
+  });
+  connection
+    .prepare(
+      `UPDATE financial_exceptions
+          SET status = 'RESOLVED', resolution_operation_id = ?,
+              resolution_json = ?, resolution_fingerprint = ?, resolved_at = ?
+        WHERE ledger_entry_id = ? AND status = 'OPEN'
+          AND order_id IS NOT NULL AND order_id != ?`,
+    )
+    .run(
+      operation.financialOperationId,
+      supersededResolutionJson,
+      financialExceptionResolutionFingerprint(supersededResolutionJson),
+      now,
+      ledgerEntryId,
+      operation.orderId,
     );
 }
 

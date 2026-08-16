@@ -269,9 +269,9 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const operations = operationalSummaries(dependencies, database.ok);
     const ready = database.ok && collection.ready && confirmation.ready;
     const degraded = ready && (
-      (ledger.enabled && (ledger.state === "degraded" || ledger.state === "catching_up")) ||
-      (reconciliation.enabled && reconciliation.state === "degraded") ||
-      (webhook.enabled && webhook.state === "degraded") ||
+      isBackgroundHealthDegraded(ledger) ||
+      isBackgroundHealthDegraded(reconciliation) ||
+      isBackgroundHealthDegraded(webhook) ||
       operations.unavailable ||
       (operations.conflicts?.open ?? 0) > 0 ||
       (operations.exceptions?.open ?? 0) > 0
@@ -1317,9 +1317,9 @@ function systemStatus(dependencies: AppDependencies) {
   const backup = currentBackupHealth(dependencies);
   const ready = database.ok && collection.ready && confirmation.ready;
   const degraded = ready && (
-    (ledger.enabled && (ledger.state === "degraded" || ledger.state === "catching_up")) ||
-    (reconciliation.enabled && reconciliation.state === "degraded") ||
-    (webhook.enabled && webhook.state === "degraded") ||
+    isBackgroundHealthDegraded(ledger) ||
+    isBackgroundHealthDegraded(reconciliation) ||
+    isBackgroundHealthDegraded(webhook) ||
     (backup.enabled && !backup.ok) ||
     operations.unavailable ||
     (operations.conflicts?.open ?? 0) > 0 ||
@@ -1341,6 +1341,21 @@ function systemStatus(dependencies: AppDependencies) {
     webhook: serializeWebhookHealth(webhook),
     backup,
   };
+}
+
+function isBackgroundHealthDegraded(health: {
+  readonly enabled: boolean;
+  readonly state: string;
+  readonly lastErrorCode: string | null;
+  readonly consecutiveFailures: number;
+}): boolean {
+  return health.enabled && (
+    health.state === "degraded" ||
+    health.state === "catching_up" ||
+    health.state === "stopped" ||
+    health.lastErrorCode !== null ||
+    health.consecutiveFailures > 0
+  );
 }
 
 function currentBackupHealth(dependencies: AppDependencies) {
