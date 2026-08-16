@@ -21,17 +21,13 @@ describe("loadConfig", () => {
     .export({ type: "spki", format: "pem" })
     .toString();
 
-  it("requires the initial administrator password and does not accept the old variable", () => {
-    assert.throws(() => loadConfig({}), /PERPAY_INITIAL_ADMIN_PASSWORD/);
-    assert.throws(
-      () =>
-        loadConfig({
-          PERPAY_ADMIN_PASSWORD: validEnvironment.PERPAY_INITIAL_ADMIN_PASSWORD,
-          PERPAY_API_SECRET: validApiSecret,
-          PERPAY_COLLECTION_CODE_PAYLOAD: validEnvironment.PERPAY_COLLECTION_CODE_PAYLOAD,
-        }),
-      /PERPAY_INITIAL_ADMIN_PASSWORD/,
-    );
+  it("allows the initial administrator password to be retired after initialization", () => {
+    const withoutInitialPassword = loadConfig({
+      PERPAY_ADMIN_PASSWORD: validEnvironment.PERPAY_INITIAL_ADMIN_PASSWORD,
+      PERPAY_API_SECRET: validApiSecret,
+      PERPAY_COLLECTION_CODE_PAYLOAD: validEnvironment.PERPAY_COLLECTION_CODE_PAYLOAD,
+    });
+    assert.equal(withoutInitialPassword.adminPassword, null);
   });
 
   it("rejects placeholder passwords", () => {
@@ -64,6 +60,16 @@ describe("loadConfig", () => {
           PERPAY_INITIAL_ADMIN_PASSWORD: `${maximumLengthPassword}a`,
         }),
       /at most 1024 UTF-8 bytes/,
+    );
+  });
+
+  it("rejects isolated UTF-16 surrogates in the initial password", () => {
+    assert.throws(
+      () => loadConfig({
+        ...validEnvironment,
+        PERPAY_INITIAL_ADMIN_PASSWORD: "long-enough-\ud800-password",
+      }),
+      /only Unicode scalar values/,
     );
   });
 

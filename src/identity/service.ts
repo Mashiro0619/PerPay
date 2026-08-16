@@ -13,6 +13,7 @@ import {
   type AdminSession,
 } from "../database/identity-store.ts";
 import {
+  PasswordInputError,
   digestToken,
   hashPassword,
   issueCsrfToken,
@@ -103,7 +104,13 @@ export class IdentityService {
     this.#store.read((transaction) => transaction.assertAuditChain());
     const existing = this.#store.read((transaction) => transaction.adminIdentity());
     if (!existing) {
-      const passwordHash = await hashPassword(this.#config.adminPassword);
+      const initialPassword = this.#config.adminPassword;
+      if (initialPassword === null) {
+        throw new Error(
+          "database has no administrator; PERPAY_INITIAL_ADMIN_PASSWORD is required for first initialization",
+        );
+      }
+      const passwordHash = await hashPassword(initialPassword);
       this.#store.transaction((transaction) => {
         const inserted = transaction.initializeAdmin(this.#config.adminUsername, passwordHash, now);
         if (!inserted) return;
@@ -162,7 +169,7 @@ export class IdentityService {
     if (!identity) throw new IdentityError("identity_not_initialized", "管理员身份尚未初始化");
 
     // A wrong username still performs the same password work to avoid a username oracle.
-    let valid = await this.#runPasswordWork(() => verifyPassword(password, identity.passwordHash));
+    let valid = await this.#verifyCredentialPassword(password, identity.passwordHash);
     valid = valid && username === identity.username;
 
     if (!valid) {
@@ -260,7 +267,9 @@ export class IdentityService {
   }
 
   verifyCsrf(session: AuthenticatedSession, csrfToken: string | undefined): boolean {
-    return csrfToken !== undefined && tokenMatchesDigest(csrfToken, session.session.csrfDigest);
+    if (csrfToken === undefined) return false;
+    const current = this.#currentSession(session, this.#clock());
+    return current !== undefined && tokenMatchesDigest(csrfToken, current.csrfDigest);
   }
 
   async stepUp(
@@ -279,7 +288,7 @@ export class IdentityService {
     }
     const identity = this.#store.read((transaction) => transaction.adminIdentity());
     if (!identity) throw new IdentityError("identity_not_initialized", "管理员身份尚未初始化");
-    const valid = await this.#runPasswordWork(() => verifyPassword(password, identity.passwordHash));
+    const valid = await this.#verifyCredentialPassword(password, identity.passwordHash);
     if (!valid) {
       const failureAt = this.#clock();
       this.#store.transaction((transaction) => {
@@ -407,9 +416,7 @@ export class IdentityService {
     }
     const identity = this.#store.read((transaction) => transaction.adminIdentity());
     if (!identity) throw new IdentityError("identity_not_initialized", "管理员身份尚未初始化");
-    const valid = await this.#runPasswordWork(() =>
-      verifyPassword(currentPassword, identity.passwordHash),
-    );
+    const valid = await this.#verifyCredentialPassword(currentPassword, identity.passwordHash);
     if (!valid) {
       const failureAt = this.#clock();
       this.#store.transaction((transaction) => {
@@ -507,7 +514,10 @@ export class IdentityService {
   }
 
   isStepUp(session: AuthenticatedSession, now = this.#clock()): boolean {
-    return session.session.stepUpExpiresAt !== null && session.session.stepUpExpiresAt > now;
+    const current = this.#currentSession(session, now);
+    return current !== undefined &&
+      current.stepUpExpiresAt !== null &&
+      current.stepUpExpiresAt > now;
   }
 
   sourceHash(sourceAddress: string | undefined): string {
@@ -527,6 +537,30 @@ export class IdentityService {
         "密码验证请求过于频繁，请稍后重试",
         Math.max(1, Math.ceil((limit.blockedUntil - now) / 1000)),
       );
+    }
+  }
+
+  #currentSession(session: AuthenticatedSession, now: number): AdminSession | undefined {
+    let tokenDigest: string;
+    try {
+      tokenDigest = digestSessionToken(session.token);
+    } catch {
+      return undefined;
+    }
+    if (tokenDigest !== session.session.tokenDigest) return undefined;
+
+    const current = this.#store.read((transaction) =>
+      transaction.activeSession(tokenDigest, now),
+    );
+    return current?.sessionId === session.session.sessionId ? current : undefined;
+  }
+
+  async #verifyCredentialPassword(password: string, encodedHash: string): Promise<boolean> {
+    try {
+      return await this.#runPasswordWork(() => verifyPassword(password, encodedHash));
+    } catch (error) {
+      if (error instanceof PasswordInputError) return false;
+      throw error;
     }
   }
 

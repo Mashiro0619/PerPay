@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 
 import { loadConfig } from "../src/config.ts";
 import { AppDatabase } from "../src/database/database.ts";
+import { PasswordInputError } from "../src/identity/crypto.ts";
 import { IDENTITY_LIMITS, IdentityError, IdentityService, fingerprintApiSecret } from "../src/identity/service.ts";
 
 const adminPassword = "a-secure-local-password";
@@ -39,6 +40,30 @@ async function fixture(clock = { now: Date.parse("2026-08-14T12:00:00Z") }) {
 }
 
 describe("IdentityService", () => {
+  it("refuses to initialize a new database without an initial administrator password", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-identity-uninitialized-"));
+    const config = loadConfig({
+      PERPAY_ADMIN_USERNAME: "admin",
+      PERPAY_API_CLIENT_ID: "default",
+      PERPAY_API_SECRET: apiSecret,
+      PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
+      PERPAY_DATA_DIR: directory,
+    });
+    const database = await AppDatabase.open(config.databasePath);
+    try {
+      const identity = new IdentityService(database, config);
+      await assert.rejects(
+        identity.initialize(),
+        /PERPAY_INITIAL_ADMIN_PASSWORD is required for first initialization/,
+      );
+      assert.equal(identity.store.read((transaction) => transaction.adminIdentity()), undefined);
+      assert.equal(identity.apiClient("default"), undefined);
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("initializes one administrator and the configured API client without storing secrets", async () => {
     const test = await fixture();
     try {
@@ -79,6 +104,7 @@ describe("IdentityService", () => {
 
       test.identity.logout(authenticated, { requestId: "request-logout" });
       assert.equal(test.identity.authenticate(login.sessionToken), undefined);
+      assert.equal(test.identity.verifyCsrf(authenticated, login.csrfToken), false);
 
       const second = await test.identity.login("admin", adminPassword, { sourceAddress: "127.0.0.2" });
       test.clock.now += IDENTITY_LIMITS.sessionIdleMs + 1;
@@ -138,6 +164,76 @@ describe("IdentityService", () => {
     }
   });
 
+  it("counts and audits malformed existing credential inputs", async () => {
+    const test = await fixture();
+    try {
+      const malformedPassword = "malformed-\ud800-password";
+      const loginSource = "192.0.2.40";
+      await assert.rejects(
+        test.identity.login("admin", malformedPassword, { sourceAddress: loginSource }),
+        (error: unknown) => error instanceof IdentityError && error.code === "invalid_credentials",
+      );
+
+      const login = await test.identity.login("admin", adminPassword, {
+        sourceAddress: "192.0.2.41",
+      });
+      const authenticated = test.identity.authenticate(login.sessionToken);
+      assert.ok(authenticated);
+
+      const stepUpSource = "192.0.2.42";
+      await assert.rejects(
+        test.identity.stepUp(authenticated, malformedPassword, { sourceAddress: stepUpSource }),
+        (error: unknown) => error instanceof IdentityError && error.code === "invalid_credentials",
+      );
+      await test.identity.stepUp(authenticated, adminPassword, { sourceAddress: "192.0.2.43" });
+      const steppedUp = test.identity.authenticate(login.sessionToken);
+      assert.ok(steppedUp);
+
+      const changeSource = "192.0.2.44";
+      await assert.rejects(
+        test.identity.changePassword(
+          steppedUp,
+          malformedPassword,
+          "next-well-formed-password",
+          { sourceAddress: changeSource },
+        ),
+        (error: unknown) => error instanceof IdentityError && error.code === "invalid_credentials",
+      );
+
+      const malformedNewPasswordSource = "192.0.2.45";
+      await assert.rejects(
+        test.identity.changePassword(
+          steppedUp,
+          adminPassword,
+          malformedPassword,
+          { sourceAddress: malformedNewPasswordSource },
+        ),
+        PasswordInputError,
+      );
+      const malformedNewPasswordSourceHash = test.identity.sourceHash(malformedNewPasswordSource);
+      assert.equal(
+        test.identity.store.read((transaction) =>
+          transaction.authLimit(malformedNewPasswordSourceHash),
+        ),
+        undefined,
+      );
+
+      for (const source of [loginSource, stepUpSource, changeSource]) {
+        const sourceHash = test.identity.sourceHash(source);
+        const limit = test.identity.store.read((transaction) => transaction.authLimit(sourceHash));
+        assert.equal(limit?.failureCount, 1);
+      }
+      const failedActions = test.database.read((connection) =>
+        connection.prepare(
+          "SELECT action FROM audit_events WHERE outcome = 'FAILURE' ORDER BY sequence",
+        ).all() as Array<{ action: string }>,
+      ).map((event) => event.action);
+      assert.deepEqual(failedActions, ["admin.login", "admin.step_up", "admin.password_change"]);
+    } finally {
+      test.close();
+    }
+  });
+
   it("requires recent step-up before revoking every session", async () => {
     const test = await fixture();
     try {
@@ -153,8 +249,15 @@ describe("IdentityService", () => {
       assert.equal(stepUpExpiresAt, test.clock.now + IDENTITY_LIMITS.stepUpMs);
       const steppedUp = test.identity.authenticate(login.sessionToken);
       assert.ok(steppedUp);
+      assert.equal(test.identity.isStepUp(steppedUp), true);
+      test.clock.now += IDENTITY_LIMITS.stepUpMs + 1;
+      assert.equal(test.identity.isStepUp(steppedUp), false);
+      await test.identity.stepUp(steppedUp, adminPassword);
+      assert.equal(test.identity.isStepUp(steppedUp), true);
       assert.equal(test.identity.revokeAllSessions(steppedUp), 1);
       assert.equal(test.identity.authenticate(login.sessionToken), undefined);
+      assert.equal(test.identity.isStepUp(steppedUp), false);
+      assert.equal(test.identity.verifyCsrf(steppedUp, login.csrfToken), false);
     } finally {
       test.close();
     }
@@ -241,12 +344,11 @@ describe("IdentityService", () => {
     }
   });
 
-  it("uses the configured initial password only when creating the administrator", async () => {
+  it("restarts without the retired initial password and preserves the administrator password", async () => {
     const test = await fixture();
     try {
       const replacementConfig = loadConfig({
         PERPAY_ADMIN_USERNAME: "admin",
-        PERPAY_INITIAL_ADMIN_PASSWORD: "different-bootstrap-password",
         PERPAY_API_CLIENT_ID: "default",
         PERPAY_API_SECRET: apiSecret,
         PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
@@ -254,10 +356,6 @@ describe("IdentityService", () => {
       });
       const restarted = new IdentityService(test.database, replacementConfig, () => test.clock.now);
       await restarted.initialize();
-      await assert.rejects(
-        restarted.login("admin", "different-bootstrap-password", { sourceAddress: "203.0.113.20" }),
-        (error: unknown) => error instanceof IdentityError && error.code === "invalid_credentials",
-      );
       const login = await restarted.login("admin", adminPassword, { sourceAddress: "203.0.113.21" });
       assert.ok(restarted.authenticate(login.sessionToken));
     } finally {

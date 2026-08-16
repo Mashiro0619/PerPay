@@ -9,8 +9,8 @@ services:
     image: ghcr.io/mashiro0619/perpay:0.1.0
     environment:
       # Compose 会对所有字符串执行变量插值；任何人工填写值中的 $ 都必须写成 $$。
-      # 必填：仅在首次初始化数据库时用于创建管理员；至少 12 个字符、最多 1024 UTF-8 字节。
-      # 推荐使用无填充 base64url 随机值。
+      # 首次初始化新数据卷时必填；管理员创建成功后删除这一整项并重建容器。
+      # 至少 12 个字符、最多 1024 UTF-8 字节；推荐使用无填充 base64url 随机值。
       PERPAY_INITIAL_ADMIN_PASSWORD: "CHANGE_ME_TO_A_LONG_RANDOM_PASSWORD"
       PERPAY_ADMIN_USERNAME: "admin"
       # 浏览器实际访问的 origin；修改宿主端口时一并修改这里。

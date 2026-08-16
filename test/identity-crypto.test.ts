@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, scryptSync } from "node:crypto";
 import { describe, it } from "node:test";
 
 import {
+  PasswordInputError,
   digestToken,
   hashPassword,
   issueCsrfToken,
@@ -34,6 +35,29 @@ describe("password hashing", () => {
     assert.notEqual(first, second);
   });
 
+  it("continues to verify the existing v1 hash format for well-formed passwords", async () => {
+    const password = "existing-\u{1f512}-password";
+    const salt = Buffer.from("00112233445566778899aabbccddeeff", "hex");
+    const derivedKey = scryptSync(Buffer.from(password, "utf8"), salt, 32, {
+      N: 65_536,
+      r: 8,
+      p: 2,
+      maxmem: 96 * 1024 * 1024,
+    });
+    const encodedHash = [
+      "",
+      "perpay",
+      "scrypt",
+      "v=1",
+      "N=65536,r=8,p=2,dk=32",
+      salt.toString("base64url"),
+      derivedKey.toString("base64url"),
+    ].join("$");
+    derivedKey.fill(0);
+
+    assert.equal(await verifyPassword(password, encodedHash), true);
+  });
+
   it("rejects malformed, non-canonical, and excessive work-factor hashes", async () => {
     const valid = await hashPassword("parser fixture password");
     const malformed = [
@@ -59,9 +83,19 @@ describe("password hashing", () => {
   });
 
   it("rejects empty and excessively large password inputs", async () => {
-    await assert.rejects(hashPassword(""), RangeError);
-    await assert.rejects(hashPassword("x".repeat(1025)), RangeError);
-    await assert.rejects(verifyPassword("", "invalid"), RangeError);
+    await assert.rejects(hashPassword(""), PasswordInputError);
+    await assert.rejects(hashPassword("x".repeat(1025)), PasswordInputError);
+    await assert.rejects(verifyPassword("", "invalid"), PasswordInputError);
+  });
+
+  it("rejects isolated UTF-16 surrogates instead of normalizing distinct passwords", async () => {
+    const replacementHash = await hashPassword("valid-\u{1f512}-\ufffd-password");
+    assert.equal(await verifyPassword("valid-\u{1f512}-\ufffd-password", replacementHash), true);
+
+    for (const malformed of ["\ud800", "\udfff", "prefix-\ud800-suffix"]) {
+      await assert.rejects(hashPassword(malformed), PasswordInputError);
+      await assert.rejects(verifyPassword(malformed, replacementHash), PasswordInputError);
+    }
   });
 });
 

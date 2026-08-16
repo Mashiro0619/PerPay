@@ -47,18 +47,31 @@ export interface IssuedToken {
   readonly digest: string;
 }
 
-function assertPassword(password: string): void {
+export class PasswordInputError extends RangeError {
+  constructor(message: string) {
+    super(message);
+    this.name = "PasswordInputError";
+  }
+}
+
+function encodePassword(password: string): Buffer {
   if (typeof password !== "string") {
-    throw new TypeError("Password must be a string.");
+    throw new PasswordInputError("Password must be a string.");
+  }
+  if (!password.isWellFormed()) {
+    throw new PasswordInputError("Password must contain only Unicode scalar values.");
   }
 
   const byteLength = Buffer.byteLength(password, "utf8");
   if (byteLength === 0 || byteLength > MAX_PASSWORD_BYTES) {
-    throw new RangeError(`Password must contain between 1 and ${MAX_PASSWORD_BYTES} UTF-8 bytes.`);
+    throw new PasswordInputError(
+      `Password must contain between 1 and ${MAX_PASSWORD_BYTES} UTF-8 bytes.`,
+    );
   }
+  return Buffer.from(password, "utf8");
 }
 
-function derivePasswordKey(password: string, salt: Uint8Array): Promise<Buffer> {
+function derivePasswordKey(password: Uint8Array, salt: Uint8Array): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     scrypt(
       password,
@@ -180,21 +193,37 @@ function serializePasswordHash(salt: Uint8Array, derivedKey: Uint8Array): string
 }
 
 export async function hashPassword(password: string): Promise<string> {
-  assertPassword(password);
-
-  const salt = randomBytes(PASSWORD_SALT_BYTES);
-  const derivedKey = await derivePasswordKey(password, salt);
-  return serializePasswordHash(salt, derivedKey);
+  const encodedPassword = encodePassword(password);
+  try {
+    const salt = randomBytes(PASSWORD_SALT_BYTES);
+    const derivedKey = await derivePasswordKey(encodedPassword, salt);
+    try {
+      return serializePasswordHash(salt, derivedKey);
+    } finally {
+      derivedKey.fill(0);
+    }
+  } finally {
+    encodedPassword.fill(0);
+  }
 }
 
 export async function verifyPassword(password: string, encodedHash: string): Promise<boolean> {
-  assertPassword(password);
+  const encodedPassword = encodePassword(password);
+  try {
+    const parsedHash = parsePasswordHash(encodedHash);
+    if (parsedHash === undefined) return false;
 
-  const parsedHash = parsePasswordHash(encodedHash);
-  if (parsedHash === undefined) return false;
-
-  const candidate = await derivePasswordKey(password, parsedHash.salt);
-  return timingSafeEqual(candidate, parsedHash.derivedKey);
+    let candidate: Buffer | undefined;
+    try {
+      candidate = await derivePasswordKey(encodedPassword, parsedHash.salt);
+      return timingSafeEqual(candidate, parsedHash.derivedKey);
+    } finally {
+      candidate?.fill(0);
+      parsedHash.derivedKey.fill(0);
+    }
+  } finally {
+    encodedPassword.fill(0);
+  }
 }
 
 function tokenPrefix(kind: "session" | "csrf"): string {

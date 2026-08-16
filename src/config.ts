@@ -32,9 +32,13 @@ const rawConfigSchema = z.object({
   PERPAY_INITIAL_ADMIN_PASSWORD: z
     .string()
     .min(12)
+    .refine((value) => hasOnlyUnicodeScalarValues(value), {
+      message: "must contain only Unicode scalar values",
+    })
     .refine((value) => Buffer.byteLength(value, "utf8") <= maximumPasswordBytes, {
       message: `must contain at most ${maximumPasswordBytes} UTF-8 bytes`,
-    }),
+    })
+    .optional(),
   PERPAY_ADMIN_USERNAME: z.string().trim().regex(adminUsernamePattern).default("admin"),
   PERPAY_PUBLIC_URL: z.string().trim().min(1).default("http://localhost:8080"),
   PERPAY_API_CLIENT_ID: z.string().trim().regex(apiClientIdPattern).default("default"),
@@ -118,7 +122,7 @@ export interface AppConfig {
   readonly dataDir: string;
   readonly databasePath: string;
   /** Used only to create the administrator when the database has no administrator yet. */
-  readonly adminPassword: string;
+  readonly adminPassword: string | null;
   readonly adminUsername: string;
   readonly publicOrigin: string;
   readonly secureCookies: boolean;
@@ -137,7 +141,10 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     throw new Error(`配置校验失败: ${z.prettifyError(parsed.error)}`);
   }
 
-  if (placeholderPattern.test(parsed.data.PERPAY_INITIAL_ADMIN_PASSWORD)) {
+  if (
+    parsed.data.PERPAY_INITIAL_ADMIN_PASSWORD !== undefined &&
+    placeholderPattern.test(parsed.data.PERPAY_INITIAL_ADMIN_PASSWORD)
+  ) {
     throw new Error("配置校验失败: PERPAY_INITIAL_ADMIN_PASSWORD 不能使用示例值");
   }
 
@@ -149,7 +156,10 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     throw new Error("配置校验失败: PERPAY_COLLECTION_CODE_PAYLOAD 不能使用示例值");
   }
 
-  if (parsed.data.PERPAY_API_SECRET === parsed.data.PERPAY_INITIAL_ADMIN_PASSWORD) {
+  if (
+    parsed.data.PERPAY_INITIAL_ADMIN_PASSWORD !== undefined &&
+    parsed.data.PERPAY_API_SECRET === parsed.data.PERPAY_INITIAL_ADMIN_PASSWORD
+  ) {
     throw new Error("配置校验失败: PERPAY_API_SECRET 不能与 PERPAY_INITIAL_ADMIN_PASSWORD 相同");
   }
 
@@ -160,7 +170,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
   const publicUrl = parsePublicUrl(parsed.data.PERPAY_PUBLIC_URL);
   const alipay = loadAlipayConfig(parsed.data);
   const webhook = loadWebhookConfig(parsed.data, {
-    adminPassword: parsed.data.PERPAY_INITIAL_ADMIN_PASSWORD,
+    adminPassword: parsed.data.PERPAY_INITIAL_ADMIN_PASSWORD ?? null,
     apiSecret: parsed.data.PERPAY_API_SECRET,
   });
 
@@ -170,7 +180,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     port: parsed.data.PERPAY_PORT,
     dataDir,
     databasePath: resolve(dataDir, "perpay.sqlite3"),
-    adminPassword: parsed.data.PERPAY_INITIAL_ADMIN_PASSWORD,
+    adminPassword: parsed.data.PERPAY_INITIAL_ADMIN_PASSWORD ?? null,
     adminUsername: parsed.data.PERPAY_ADMIN_USERNAME,
     publicOrigin: publicUrl.origin,
     secureCookies: publicUrl.protocol === "https:",
@@ -186,7 +196,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
 
 function loadWebhookConfig(
   parsed: z.infer<typeof rawConfigSchema>,
-  secrets: { readonly adminPassword: string; readonly apiSecret: string },
+  secrets: { readonly adminPassword: string | null; readonly apiSecret: string },
 ): WebhookRuntimeConfig {
   if (parsed.PERPAY_WEBHOOK_ENABLED === "false") {
     return Object.freeze({ enabled: false });
@@ -208,7 +218,7 @@ function loadWebhookConfig(
     throw new Error("配置校验失败: PERPAY_WEBHOOK_SECRET 不能使用示例值");
   }
   if (
-    parsed.PERPAY_WEBHOOK_SECRET === secrets.adminPassword ||
+    (secrets.adminPassword !== null && parsed.PERPAY_WEBHOOK_SECRET === secrets.adminPassword) ||
     parsed.PERPAY_WEBHOOK_SECRET === secrets.apiSecret
   ) {
     throw new Error("配置校验失败: PERPAY_WEBHOOK_SECRET 不能复用管理员密码或 API 密钥");
