@@ -149,6 +149,31 @@ describe("loadConfig", () => {
     );
   });
 
+  it("uses the backup schedule as the bounded application health policy", () => {
+    assert.equal(loadConfig(validEnvironment).backupIntervalMilliseconds, 86_400_000);
+    for (const [seconds, expectedMilliseconds] of [
+      ["3600", 3_600_000],
+      ["604800", 604_800_000],
+    ] as const) {
+      assert.equal(
+        loadConfig({
+          ...validEnvironment,
+          PERPAY_BACKUP_INTERVAL_SECONDS: seconds,
+        }).backupIntervalMilliseconds,
+        expectedMilliseconds,
+      );
+    }
+    for (const seconds of ["3599", "604801", "3600.5"]) {
+      assert.throws(
+        () => loadConfig({
+          ...validEnvironment,
+          PERPAY_BACKUP_INTERVAL_SECONDS: seconds,
+        }),
+        /PERPAY_BACKUP_INTERVAL_SECONDS/u,
+      );
+    }
+  });
+
   it("accepts only an origin as the public URL", () => {
     assert.throws(
       () => loadConfig({ ...validEnvironment, PERPAY_PUBLIC_URL: "https://pay.example.com/path" }),
@@ -160,6 +185,66 @@ describe("loadConfig", () => {
     );
   });
 
+  it("rejects cleartext public URLs outside loopback", () => {
+    for (const value of [
+      "http://pay.internal",
+      "http://192.0.2.10:8080",
+      "http://[2001:db8::1]:8080",
+    ]) {
+      assert.throws(
+        () => loadConfig({ ...validEnvironment, PERPAY_PUBLIC_URL: value }),
+        /PERPAY_PUBLIC_URL/u,
+      );
+    }
+    for (const value of [
+      "http://localhost:8080",
+      "http://127.0.0.2:8080",
+      "http://[::1]:8080",
+    ]) {
+      assert.equal(loadConfig({ ...validEnvironment, PERPAY_PUBLIC_URL: value }).secureCookies, false);
+    }
+  });
+
+  it("requires an explicit trusted proxy for HTTPS deployments", () => {
+    assert.throws(
+      () => loadConfig({ ...validEnvironment, PERPAY_PUBLIC_URL: "https://pay.local" }),
+      /PERPAY_TRUSTED_PROXY_CIDRS/u,
+    );
+    const configured = loadConfig({
+      ...validEnvironment,
+      PERPAY_PUBLIC_URL: "https://pay.local",
+      PERPAY_TRUSTED_PROXY_CIDRS: "127.0.0.1",
+    });
+    assert.equal(configured.secureCookies, true);
+    assert.deepEqual(configured.trustedProxy.cidrs, ["127.0.0.1"]);
+  });
+
+  it("accepts only explicit IP addresses and CIDRs as trusted proxies", () => {
+    const configured = loadConfig({
+      ...validEnvironment,
+      PERPAY_TRUSTED_PROXY_CIDRS: "127.0.0.1, 10.0.0.0/8, 2001:db8::/32",
+    });
+    assert.deepEqual(configured.trustedProxy.cidrs, [
+      "127.0.0.1",
+      "10.0.0.0/8",
+      "2001:db8::/32",
+    ]);
+
+    for (const value of [
+      "proxy.internal",
+      "127.0.0.1:8080",
+      "10.0.0.0/33",
+      "0.0.0.0/0",
+      "::/0",
+      "127.0.0.1,",
+    ]) {
+      assert.throws(
+        () => loadConfig({ ...validEnvironment, PERPAY_TRUSTED_PROXY_CIDRS: value }),
+        /PERPAY_TRUSTED_PROXY_CIDRS/,
+      );
+    }
+  });
+
   it("normalizes valid configuration", () => {
     const config = loadConfig({
       ...validEnvironment,
@@ -167,17 +252,24 @@ describe("loadConfig", () => {
       PERPAY_PORT: "19080",
       PERPAY_DATA_DIR: "./runtime-test",
       PERPAY_PUBLIC_URL: "https://pay.local:8443",
+      PERPAY_TRUSTED_PROXY_CIDRS: "127.0.0.1",
     });
     assert.equal(config.port, 19080);
     assert.equal(config.host, "127.0.0.1");
     assert.match(config.databasePath, /perpay\.sqlite3$/);
     assert.equal(config.publicOrigin, "https://pay.local:8443");
     assert.equal(config.secureCookies, true);
+    assert.deepEqual(config.trustedProxy.cidrs, ["127.0.0.1"]);
     assert.equal(config.orderTtlSeconds, 300);
     assert.equal(config.amountOffsetMaximumCents, 99);
+    assert.equal(config.checkoutKeyRotationMilliseconds, 90 * 24 * 60 * 60 * 1_000);
+    assert.equal(config.checkoutTerminalObservationMilliseconds, 24 * 60 * 60 * 1_000);
+    assert.equal(config.backupIntervalMilliseconds, 24 * 60 * 60 * 1_000);
     assert.deepEqual(config.alipay, {
       enabled: false,
       endpoint: "https://openapi.alipay.com",
+      scanIntervalMilliseconds: 10_000,
+      maximumSuccessAgeMilliseconds: 60_000,
     });
     assert.deepEqual(config.webhook, { enabled: false });
   });
@@ -258,6 +350,7 @@ describe("loadConfig", () => {
       PERPAY_ALIPAY_ENDPOINT: "https://openapi-sandbox.dl.alipaydev.com",
       PERPAY_ALIPAY_TIMEOUT_MILLISECONDS: "9000",
       PERPAY_ALIPAY_SCAN_INTERVAL_SECONDS: "15",
+      PERPAY_ALIPAY_MAX_SUCCESS_AGE_SECONDS: "45",
     });
     assert.equal(config.alipay.enabled, true);
     if (!config.alipay.enabled) throw new Error("provider collection should be enabled");
@@ -265,8 +358,32 @@ describe("loadConfig", () => {
     assert.equal(config.alipay.alipayPublicKey.type, "public");
     assert.equal(config.alipay.timeoutMilliseconds, 9_000);
     assert.equal(config.alipay.scanIntervalMilliseconds, 15_000);
+    assert.equal(config.alipay.maximumSuccessAgeMilliseconds, 45_000);
     assert.match(config.alipay.applicationKeyFingerprint, /^[0-9a-f]{64}$/);
     assert.match(config.alipay.alipayKeyFingerprint, /^[0-9a-f]{64}$/);
+
+    assert.throws(
+      () => loadConfig({
+        ...validEnvironment,
+        PERPAY_ALIPAY_ENABLED: "true",
+        PERPAY_ALIPAY_APP_ID: "2026000000000000",
+        PERPAY_ALIPAY_PRIVATE_KEY: applicationPrivateKey,
+        PERPAY_ALIPAY_PUBLIC_KEY: platformPublicKey,
+        PERPAY_ALIPAY_SCAN_INTERVAL_SECONDS: "15",
+        PERPAY_ALIPAY_MAX_SUCCESS_AGE_SECONDS: "29",
+      }),
+      /PERPAY_ALIPAY_MAX_SUCCESS_AGE_SECONDS/u,
+    );
+
+    const disabled = loadConfig({
+      ...validEnvironment,
+      PERPAY_ALIPAY_ENABLED: "false",
+      PERPAY_ALIPAY_SCAN_INTERVAL_SECONDS: "60",
+      PERPAY_ALIPAY_MAX_SUCCESS_AGE_SECONDS: "10",
+    });
+    assert.equal(disabled.alipay.enabled, false);
+    assert.equal(disabled.alipay.scanIntervalMilliseconds, 60_000);
+    assert.equal(disabled.alipay.maximumSuccessAgeMilliseconds, 10_000);
   });
 
   it("accepts the unarmored key format supplied by the platform tools", () => {

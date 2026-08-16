@@ -75,7 +75,12 @@ export class OrderService {
     config: AppConfig,
     physicalClock?: () => number,
   ) {
-    this.#store = new OrderStore(database, physicalClock);
+    this.#store = new OrderStore(
+      database,
+      physicalClock,
+      config.checkoutKeyRotationMilliseconds,
+      config.checkoutTerminalObservationMilliseconds,
+    );
     this.#config = config;
   }
 
@@ -127,7 +132,7 @@ export class OrderService {
         throw new OrderError(
           "amount_slots_exhausted",
           "当前请求金额的可用尾差已经耗尽，请稍后重试",
-          1,
+          result.retryAfterSeconds,
         );
     }
   }
@@ -164,7 +169,7 @@ export class OrderService {
       currency: aggregate.order.currency,
       description: aggregate.order.description,
       paymentInstructions:
-        aggregate.order.checkoutStatus === "OPEN"
+        aggregate.order.checkoutStatus === "OPEN" && aggregate.order.paymentStatus === "UNPAID"
           ? {
               payableAmountCents: aggregate.order.payableAmountCents,
               currency: aggregate.order.currency,

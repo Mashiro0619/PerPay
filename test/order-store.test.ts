@@ -56,11 +56,370 @@ describe("OrderStore", () => {
           Object.fromEntries(Object.entries(counts).map(([key, value]) => [key, Number(value)])),
           { orders: 1, checkouts: 1, slots: 1, events: 1 },
         );
-        const persisted = JSON.stringify(
-          connection.prepare("SELECT * FROM checkout_sessions").get(),
-        );
-        assert.equal(persisted.includes(first.aggregate.checkoutToken), false);
+        const persisted = connection.prepare("SELECT * FROM checkout_sessions").get() as
+          Record<string, unknown>;
+        assert.equal(Object.values(persisted).includes(first.aggregate.checkoutToken), false);
       });
+    });
+  });
+
+  it("rotates checkout token keys at the configured boundary and preserves historical tokens", async () => {
+    const rotationMilliseconds = 60_000;
+    await withStore(
+      async ({ database, databasePath, store, setNow, close }) => {
+        const initial = database.read((connection) => {
+          const key = connection
+            .prepare(
+              `SELECT key_version, activated_at
+                 FROM checkout_token_keys
+                WHERE retired_at IS NULL`,
+            )
+            .get() as { key_version: bigint | number; activated_at: bigint | number };
+          const clock = connection
+            .prepare("SELECT last_now_ms FROM order_clock WHERE singleton_key = 1")
+            .get() as { last_now_ms: bigint | number };
+          return {
+            version: Number(key.key_version),
+            activatedAt: Number(key.activated_at),
+            baseline: Math.max(Number(key.activated_at), Number(clock.last_now_ms)),
+          };
+        });
+        assert.equal(initial.version, 1);
+        assert.ok(initial.baseline - initial.activatedAt < rotationMilliseconds);
+
+        setNow(initial.baseline);
+        syncProfile(store, "https://qr.example.test/profile-key-rotation");
+        const firstRequest = requestFor("idem-key-1", "merchant-key-1", 1_000);
+        const first = store.createOrder(
+          createInput(firstRequest),
+        );
+        assert.equal(first.kind, "created");
+        if (first.kind !== "created") return;
+
+        setNow(initial.activatedAt + rotationMilliseconds - 1);
+        const beforeBoundary = store.createOrder(
+          createInput(requestFor("idem-key-2", "merchant-key-2", 2_000)),
+        );
+        assert.equal(beforeBoundary.kind, "created");
+        if (beforeBoundary.kind !== "created") return;
+
+        setNow(initial.activatedAt + rotationMilliseconds);
+        const rotated = store.createOrder(
+          createInput(requestFor("idem-key-3", "merchant-key-3", 3_000)),
+        );
+        assert.equal(rotated.kind, "created");
+        if (rotated.kind !== "created") return;
+
+        const versions = database.read((connection) =>
+          connection
+            .prepare(
+              `SELECT orders.merchant_order_no, checkout.token_key_version
+                 FROM payment_orders AS orders
+                 JOIN checkout_sessions AS checkout ON checkout.order_id = orders.order_id
+                ORDER BY orders.merchant_order_no`,
+            )
+            .all() as unknown as Array<{
+              merchant_order_no: string;
+              token_key_version: bigint | number;
+            }>,
+        );
+        assert.deepEqual(
+          versions.map((row) => [row.merchant_order_no, Number(row.token_key_version)]),
+          [
+            ["merchant-key-1", 1],
+            ["merchant-key-2", 1],
+            ["merchant-key-3", 2],
+          ],
+        );
+        assert.equal(
+          store.orderById(API_CLIENT_ID, first.aggregate.order.orderId)?.checkoutToken,
+          first.aggregate.checkoutToken,
+        );
+
+        setNow(initial.activatedAt + 2 * rotationMilliseconds);
+        const replay = store.createOrder(createInput(firstRequest));
+        assert.equal(replay.kind, "existing");
+        if (replay.kind !== "existing") return;
+        assert.equal(replay.aggregate.order.orderId, first.aggregate.order.orderId);
+        assert.equal(replay.aggregate.checkoutToken, first.aggregate.checkoutToken);
+        assert.deepEqual(
+          database.read((connection) => {
+            const row = connection
+              .prepare(
+                `SELECT COUNT(*) AS key_count,
+                        MAX(key_version) AS maximum_version,
+                        SUM(CASE WHEN retired_at IS NULL THEN 1 ELSE 0 END) AS active_count
+                   FROM checkout_token_keys`,
+              )
+              .get() as Record<string, bigint | number>;
+            return Object.fromEntries(
+              Object.entries(row).map(([key, value]) => [key, Number(value)]),
+            );
+          }),
+          { key_count: 2, maximum_version: 2, active_count: 1 },
+        );
+
+        const backupPath = join(databasePath, "..", "rotated-backup.sqlite3");
+        await database.backupDetailed(backupPath);
+        close();
+        const reopened = await AppDatabase.open(databasePath);
+        try {
+          const restartedStore = new OrderStore(
+            reopened,
+            () => initial.activatedAt + rotationMilliseconds,
+            rotationMilliseconds,
+          );
+          assert.equal(
+            restartedStore.orderById(API_CLIENT_ID, first.aggregate.order.orderId)?.checkoutToken,
+            first.aggregate.checkoutToken,
+          );
+          assert.equal(
+            restartedStore.orderById(API_CLIENT_ID, rotated.aggregate.order.orderId)?.checkoutToken,
+            rotated.aggregate.checkoutToken,
+          );
+        } finally {
+          reopened.close();
+        }
+
+        const restored = await AppDatabase.open(backupPath);
+        try {
+          const restoredStore = new OrderStore(
+            restored,
+            () => initial.activatedAt + rotationMilliseconds,
+            rotationMilliseconds,
+          );
+          assert.equal(
+            restoredStore.orderById(API_CLIENT_ID, first.aggregate.order.orderId)?.checkoutToken,
+            first.aggregate.checkoutToken,
+          );
+          assert.equal(
+            restoredStore.orderById(API_CLIENT_ID, rotated.aggregate.order.orderId)?.checkoutToken,
+            rotated.aggregate.checkoutToken,
+          );
+        } finally {
+          restored.close();
+        }
+      },
+      { checkoutKeyRotationMilliseconds: rotationMilliseconds },
+    );
+  });
+
+  it("serializes concurrent boundary creates into one checkout key rotation", async () => {
+    const rotationMilliseconds = 60_000;
+    await withStore(
+      async ({ database, store, setNow }) => {
+        const initial = database.read((connection) => {
+          const key = connection
+            .prepare(
+              `SELECT key_version, activated_at
+                 FROM checkout_token_keys
+                WHERE retired_at IS NULL`,
+            )
+            .get() as { key_version: bigint | number; activated_at: bigint | number };
+          const clock = connection
+            .prepare("SELECT last_now_ms FROM order_clock WHERE singleton_key = 1")
+            .get() as { last_now_ms: bigint | number };
+          return {
+            version: Number(key.key_version),
+            activatedAt: Number(key.activated_at),
+            baseline: Math.max(Number(key.activated_at), Number(clock.last_now_ms)),
+          };
+        });
+        assert.equal(initial.version, 1);
+
+        setNow(initial.baseline);
+        syncProfile(store, "https://qr.example.test/profile-key-boundary");
+        setNow(initial.activatedAt + rotationMilliseconds);
+
+        const results = await Promise.all(
+          Array.from({ length: 24 }, (_, index) =>
+            Promise.resolve().then(() =>
+              store.createOrder(
+                createInput(
+                  requestFor(
+                    `idem-key-boundary-${index}`,
+                    `merchant-key-boundary-${index}`,
+                    10_000 + index * 100,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        assert.equal(results.every((result) => result.kind === "created"), true);
+
+        const keyHistory = database.read((connection) =>
+          connection
+            .prepare(
+              `SELECT key_version, activated_at, retired_at
+                 FROM checkout_token_keys
+                ORDER BY key_version`,
+            )
+            .all() as unknown as Array<{
+              key_version: bigint | number;
+              activated_at: bigint | number;
+              retired_at: bigint | number | null;
+            }>,
+        );
+        assert.deepEqual(
+          keyHistory.map((row) => ({
+            version: Number(row.key_version),
+            activatedAt: Number(row.activated_at),
+            retiredAt: row.retired_at === null ? null : Number(row.retired_at),
+          })),
+          [
+            {
+              version: 1,
+              activatedAt: initial.activatedAt,
+              retiredAt: initial.activatedAt + rotationMilliseconds,
+            },
+            {
+              version: 2,
+              activatedAt: initial.activatedAt + rotationMilliseconds,
+              retiredAt: null,
+            },
+          ],
+        );
+        assert.deepEqual(
+          database.read((connection) =>
+            connection
+              .prepare(
+                `SELECT token_key_version, COUNT(*) AS session_count
+                   FROM checkout_sessions
+                  GROUP BY token_key_version
+                  ORDER BY token_key_version`,
+              )
+              .all()
+              .map((row) => {
+                const typed = row as Record<string, bigint | number>;
+                return {
+                  version: Number(typed.token_key_version),
+                  count: Number(typed.session_count),
+                };
+              }),
+          ),
+          [{ version: 2, count: 24 }],
+        );
+      },
+      { checkoutKeyRotationMilliseconds: rotationMilliseconds },
+    );
+  });
+
+  it("irreversibly revokes terminal checkout links after the observation window", async () => {
+    const observationMilliseconds = 10 * 60 * 1_000;
+    await withStore(
+      async ({ databasePath, store, setNow, close }) => {
+        syncProfile(store, "https://qr.example.test/profile-terminal-link");
+        const created = store.createOrder(
+          createInput(requestFor("idem-terminal-link", "merchant-terminal-link", 1_000)),
+        );
+        assert.equal(created.kind, "created");
+        if (created.kind !== "created") return;
+
+        const tokenDigest = digestCheckoutToken(created.aggregate.checkoutToken);
+        const closedAt = TEST_START_MS + 1_000;
+        setNow(closedAt);
+        assert.equal(
+          store.closeOrder(API_CLIENT_ID, created.aggregate.order.orderId)?.order.checkoutStatus,
+          "CLOSED",
+        );
+
+        setNow(closedAt + observationMilliseconds - 1);
+        assert.equal(store.publicCheckoutByTokenDigest(tokenDigest)?.order.checkoutStatus, "CLOSED");
+
+        setNow(closedAt + observationMilliseconds);
+        assert.equal(store.publicCheckoutByTokenDigest(tokenDigest), undefined);
+
+        setNow(closedAt + 100);
+        assert.equal(store.publicCheckoutByTokenDigest(tokenDigest), undefined);
+
+        close();
+        const reopened = await AppDatabase.open(databasePath);
+        try {
+          const expandedWindowStore = new OrderStore(
+            reopened,
+            () => closedAt + 100,
+            undefined,
+            observationMilliseconds * 2,
+          );
+          assert.equal(expandedWindowStore.publicCheckoutByTokenDigest(tokenDigest), undefined);
+        } finally {
+          reopened.close();
+        }
+      },
+      { checkoutTerminalObservationMilliseconds: observationMilliseconds },
+    );
+  });
+
+  it("anchors lazily expired checkout observation to the scheduled expiry", async () => {
+    const observationMilliseconds = 60_000;
+    await withStore(
+      async ({ store, setNow }) => {
+        syncProfile(store, "https://qr.example.test/profile-expired-link");
+        const createExpiringOrder = (suffix: string) => {
+          const created = store.createOrder(
+            createInput(
+              requestFor(`idem-expired-link-${suffix}`, `merchant-expired-link-${suffix}`, 1_000),
+              99,
+              1_000,
+            ),
+          );
+          assert.equal(created.kind, "created");
+          if (created.kind !== "created") throw new Error("order creation failed");
+          return created.aggregate;
+        };
+
+        const justInside = createExpiringOrder("inside");
+        setNow(justInside.order.expiresAt + observationMilliseconds - 1);
+        const expired = store.publicCheckoutByTokenDigest(
+          digestCheckoutToken(justInside.checkoutToken),
+        );
+        assert.equal(expired?.order.checkoutStatus, "EXPIRED");
+        assert.equal(expired?.order.closedAt, justInside.order.expiresAt + observationMilliseconds - 1);
+
+        const atBoundary = createExpiringOrder("boundary");
+        setNow(atBoundary.order.expiresAt + observationMilliseconds);
+        assert.equal(
+          store.publicCheckoutByTokenDigest(digestCheckoutToken(atBoundary.checkoutToken)),
+          undefined,
+        );
+
+        const longExpired = createExpiringOrder("long-expired");
+        setNow(longExpired.order.expiresAt + 7 * 24 * 60 * 60 * 1_000);
+        assert.equal(
+          store.publicCheckoutByTokenDigest(digestCheckoutToken(longExpired.checkoutToken)),
+          undefined,
+        );
+      },
+      { checkoutTerminalObservationMilliseconds: observationMilliseconds },
+    );
+  });
+
+  it("rejects an order event whose persisted evidence has no fingerprint", async () => {
+    await withStore(async ({ database, store }) => {
+      syncProfile(store, "https://qr.example.test/profile-a");
+      const created = store.createOrder(
+        createInput(requestFor("idem-event-fingerprint", "merchant-event-fingerprint", 100)),
+      );
+      assert.equal(created.kind, "created");
+      if (created.kind !== "created") return;
+
+      assert.throws(
+        () => database.write((connection) => {
+          connection.exec("DROP TRIGGER order_events_valid_insert");
+          connection.prepare(
+            `INSERT INTO order_events(
+               event_id, order_id, sequence, event_type, occurred_at, details_json
+             ) VALUES (?, ?, 2, 'CHECKOUT_CLOSED', ?, '{}')`,
+          ).run(
+            "99999999-9999-4999-8999-999999999999",
+            created.aggregate.order.orderId,
+            TEST_START_MS + 1,
+          );
+        }),
+        /order event details fingerprint is required/,
+      );
+      assert.equal(database.integrityCheck().ok, true);
     });
   });
 
@@ -166,8 +525,12 @@ describe("OrderStore", () => {
   it("allocates distinct active amounts, exhausts the configured range, and reuses by generation", async () => {
     await withStore(async ({ database, store }) => {
       syncProfile(store, "https://qr.example.test/profile-a");
-      const first = store.createOrder(createInput(requestFor("idem-a", "merchant-a", 100), 2));
-      const second = store.createOrder(createInput(requestFor("idem-b", "merchant-b", 100), 2));
+      const first = store.createOrder(
+        createInput(requestFor("idem-a", "merchant-a", 100), 2, 120_000),
+      );
+      const second = store.createOrder(
+        createInput(requestFor("idem-b", "merchant-b", 100), 2, 60_000),
+      );
       assert.equal(first.kind, "created");
       assert.equal(second.kind, "created");
       if (first.kind !== "created" || second.kind !== "created") return;
@@ -177,7 +540,10 @@ describe("OrderStore", () => {
       const exhausted = store.createOrder(
         createInput(requestFor("idem-c", "merchant-c", 100), 2),
       );
-      assert.deepEqual(exhausted, { kind: "amount_slots_exhausted" });
+      assert.deepEqual(exhausted, {
+        kind: "amount_slots_exhausted",
+        retryAfterSeconds: 60,
+      });
 
       const closed = store.closeOrder(API_CLIENT_ID, first.aggregate.order.orderId);
       assert.equal(closed?.order.checkoutStatus, "CLOSED");
@@ -395,13 +761,26 @@ describe("OrderStore", () => {
 async function withStore(
   operation: (context: {
     readonly database: AppDatabase;
+    readonly databasePath: string;
     readonly store: OrderStore;
     readonly setNow: (value: number) => void;
+    readonly close: () => void;
   }) => Promise<void> | void,
+  options: {
+    readonly checkoutKeyRotationMilliseconds?: number;
+    readonly checkoutTerminalObservationMilliseconds?: number;
+  } = {},
 ): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), "perpay-order-store-"));
-  const database = await AppDatabase.open(join(directory, "database.sqlite3"));
+  const databasePath = join(directory, "database.sqlite3");
+  const database = await AppDatabase.open(databasePath);
   let now = TEST_START_MS;
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    database.close();
+  };
   try {
     database.write((connection) => {
       connection
@@ -412,16 +791,30 @@ async function withStore(
            ) VALUES (1, ?, ?, 1, 1, ?, ?)`,
         )
         .run(API_CLIENT_ID, "a".repeat(64), now, now);
+      connection
+        .prepare(
+          `INSERT INTO api_client_keys(
+             client_id, key_version, secret_fingerprint, activated_at, retired_at
+           ) VALUES (?, 1, ?, ?, NULL)`,
+        )
+        .run(API_CLIENT_ID, "a".repeat(64), now);
     });
     await operation({
       database,
-      store: new OrderStore(database, () => now),
+      databasePath,
+      store: new OrderStore(
+        database,
+        () => now,
+        options.checkoutKeyRotationMilliseconds,
+        options.checkoutTerminalObservationMilliseconds,
+      ),
       setNow(value) {
         now = value;
       },
+      close,
     });
   } finally {
-    database.close();
+    close();
     rmSync(directory, { recursive: true, force: true });
   }
 }

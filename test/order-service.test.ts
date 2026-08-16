@@ -18,10 +18,10 @@ import { createOrderRequestSchema } from "../src/orders/model.ts";
 
 describe("order service fingerprints", () => {
   it("keeps the versioned collection profile fingerprints stable", () => {
-    assert.equal(COLLECTION_PROFILE_FINGERPRINT_VERSION, 1);
+    assert.equal(COLLECTION_PROFILE_FINGERPRINT_VERSION, 2);
     assert.deepEqual(fingerprintCollectionCodeProfile("https://qr.example.test/profile-a"), {
       payloadFingerprint: "b1d6dcd20b3d44fabecddb945555e1c9280ba20d32397d0e526ae1a8812c2519",
-      profileFingerprint: "ff9c5bea0f2c8cb18065804a8f3d53aa6671ef3fb1598b95627126e01c6e1b6d",
+      profileFingerprint: "d55fcc773d5fbb63e8118e083e8e26320a81a46f68b1999e6948dbcf8a8dcf10",
     });
   });
 
@@ -106,6 +106,50 @@ describe("order service fingerprints", () => {
           error instanceof OrderError &&
           error.code === "order_clock_unavailable" &&
           error.retryAfterSeconds === 30,
+      );
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("reports when the earliest occupied amount slot can be retried", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-order-service-slots-"));
+    const config = loadConfig({
+      PERPAY_INITIAL_ADMIN_PASSWORD: "order-service-slots-password",
+      PERPAY_API_SECRET: "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+      PERPAY_COLLECTION_CODE_PAYLOAD: "https://qr.local.invalid/service-slots",
+      PERPAY_DATA_DIR: directory,
+      PERPAY_AMOUNT_OFFSET_MAX_CENTS: "1",
+      PERPAY_ORDER_TTL_SECONDS: "60",
+    });
+    const database = await AppDatabase.open(config.databasePath);
+    try {
+      await new IdentityService(database, config).initialize();
+      const orders = new OrderService(database, config, () => 2_000_000_000_000);
+      orders.initialize();
+      orders.create(
+        "default",
+        createOrderRequestSchema.parse({
+          idempotency_key: "service-slots-first",
+          merchant_order_no: "service-slots-first",
+          amount_cents: 2_300,
+        }),
+      );
+
+      assert.throws(
+        () => orders.create(
+          "default",
+          createOrderRequestSchema.parse({
+            idempotency_key: "service-slots-second",
+            merchant_order_no: "service-slots-second",
+            amount_cents: 2_300,
+          }),
+        ),
+        (error: unknown) =>
+          error instanceof OrderError &&
+          error.code === "amount_slots_exhausted" &&
+          error.retryAfterSeconds === 60,
       );
     } finally {
       database.close();

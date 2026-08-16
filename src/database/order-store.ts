@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import type { DatabaseSync } from "node:sqlite";
 
@@ -7,6 +7,7 @@ import {
   IDEMPOTENCY_KEY_DIGEST_VERSION,
   MAX_REQUESTED_AMOUNT_CENTS,
   MAX_ORDER_CLOCK_AHEAD_MILLISECONDS,
+  orderEventDetailsFingerprint,
   type CheckoutSession,
   type CheckoutStatus,
   type CreateOrderRequest,
@@ -28,6 +29,8 @@ import type { AppDatabase } from "./database.ts";
 
 const MAX_PAYABLE_AMOUNT_CENTS = MAX_REQUESTED_AMOUNT_CENTS + 1;
 const EXPIRY_SWEEP_LIMIT = 256;
+const DEFAULT_CHECKOUT_KEY_ROTATION_MILLISECONDS = 90 * 24 * 60 * 60 * 1_000;
+const DEFAULT_CHECKOUT_TERMINAL_OBSERVATION_MILLISECONDS = 24 * 60 * 60 * 1_000;
 
 type DatabaseOwner = Pick<AppDatabase, "read" | "write">;
 
@@ -100,7 +103,10 @@ export type CreateStoredOrderResult =
       readonly kind: "webhook_target_rejected";
       readonly code: WebhookTargetErrorCode;
     }
-  | { readonly kind: "amount_slots_exhausted" };
+  | {
+      readonly kind: "amount_slots_exhausted";
+      readonly retryAfterSeconds: number;
+    };
 
 export class OrderClockError extends Error {
   constructor() {
@@ -112,12 +118,30 @@ export class OrderClockError extends Error {
 export class OrderStore {
   readonly #database: DatabaseOwner;
   readonly #physicalClock: (() => number) | undefined;
+  readonly #checkoutKeyRotationMilliseconds: number;
+  readonly #checkoutTerminalObservationMilliseconds: number;
   readonly #wallClockAnchorMs: number;
   readonly #monotonicAnchorMs: number;
 
-  constructor(database: DatabaseOwner, physicalClock?: () => number) {
+  constructor(
+    database: DatabaseOwner,
+    physicalClock?: () => number,
+    checkoutKeyRotationMilliseconds = DEFAULT_CHECKOUT_KEY_ROTATION_MILLISECONDS,
+    checkoutTerminalObservationMilliseconds =
+      DEFAULT_CHECKOUT_TERMINAL_OBSERVATION_MILLISECONDS,
+  ) {
+    assertPositiveSafeInteger(
+      checkoutKeyRotationMilliseconds,
+      "checkout token key rotation interval",
+    );
+    assertPositiveSafeInteger(
+      checkoutTerminalObservationMilliseconds,
+      "checkout terminal observation interval",
+    );
     this.#database = database;
     this.#physicalClock = physicalClock;
+    this.#checkoutKeyRotationMilliseconds = checkoutKeyRotationMilliseconds;
+    this.#checkoutTerminalObservationMilliseconds = checkoutTerminalObservationMilliseconds;
     this.#wallClockAnchorMs = Date.now();
     this.#monotonicAnchorMs = performance.now();
   }
@@ -215,7 +239,10 @@ export class OrderStore {
     });
   }
 
-  createOrder(input: CreateStoredOrderInput): CreateStoredOrderResult {
+  createOrder(
+    input: CreateStoredOrderInput,
+    beforeCreate?: (() => void) | undefined,
+  ): CreateStoredOrderResult {
     validateWebhookTargetInput(input);
     return this.#database.write((connection) => {
       const now = this.#logicalNow(connection);
@@ -254,6 +281,8 @@ export class OrderStore {
         return { kind: "existing", aggregate: withCheckoutToken(connection, idempotent) };
       }
 
+      beforeCreate?.();
+
       if (input.webhookTargetRejection) {
         return {
           kind: "webhook_target_rejected",
@@ -279,7 +308,12 @@ export class OrderStore {
         input.amountOffsetMaximumCents,
         now,
       );
-      if (!allocation) return { kind: "amount_slots_exhausted" };
+      if (allocation.kind === "exhausted") {
+        return {
+          kind: "amount_slots_exhausted",
+          retryAfterSeconds: allocation.retryAfterSeconds,
+        };
+      }
 
       const expiresAt = now + input.ttlMilliseconds;
       if (!Number.isSafeInteger(expiresAt) || expiresAt <= now) {
@@ -289,8 +323,12 @@ export class OrderStore {
       const orderId = randomUUID();
       const checkoutId = randomUUID();
       const slotId = randomUUID();
-      const key = readCheckoutTokenKey(connection);
-      const checkoutToken = deriveCheckoutToken(key, checkoutId);
+      const key = readOrRotateActiveCheckoutTokenKey(
+        connection,
+        now,
+        this.#checkoutKeyRotationMilliseconds,
+      );
+      const checkoutToken = deriveCheckoutToken(key.material, checkoutId);
       const tokenDigest = digestCheckoutToken(checkoutToken);
 
       const orderInsert = connection
@@ -357,10 +395,18 @@ export class OrderStore {
 
       const checkoutInsert = connection
         .prepare(
-          `INSERT INTO checkout_sessions(checkout_id, order_id, token_digest)
-           VALUES (?, ?, ?)`,
+          `INSERT INTO checkout_sessions(
+             checkout_id, order_id, token_digest, token_key_version,
+             terminal_observation_milliseconds
+           ) VALUES (?, ?, ?, ?, ?)`,
         )
-        .run(checkoutId, orderId, tokenDigest);
+        .run(
+          checkoutId,
+          orderId,
+          tokenDigest,
+          key.version,
+          this.#checkoutTerminalObservationMilliseconds,
+        );
       assertChangedOnce(checkoutInsert.changes, "checkout session insert");
 
       const slotInsert = connection
@@ -466,13 +512,21 @@ export class OrderStore {
     const current = this.#database.read((connection) => {
       const aggregate = readAggregateByTokenDigest(connection, tokenDigest);
       if (!aggregate) return { kind: "missing" } as const;
-      if (aggregate.order.checkoutStatus !== "OPEN") {
-        return { kind: "current", aggregate: withCheckoutToken(connection, aggregate) } as const;
+      const logicalNow = readOrderClock(connection);
+      if (
+        aggregate.order.checkoutStatus !== "OPEN" &&
+        !isTerminalCheckoutObservable(aggregate, logicalNow)
+      ) {
+        return { kind: "missing" } as const;
       }
       const physicalNow = this.#readPhysicalTime(connection);
-      const logicalNow = readOrderClock(connection);
       assertOrderClockIsUsable(logicalNow, physicalNow);
       const now = Math.max(logicalNow, physicalNow);
+      if (aggregate.order.checkoutStatus !== "OPEN") {
+        return isTerminalCheckoutObservable(aggregate, now)
+          ? { kind: "current", aggregate: withCheckoutToken(connection, aggregate) } as const
+          : { kind: "terminal" } as const;
+      }
       if (aggregate.order.expiresAt > now) {
         return { kind: "current", aggregate: withCheckoutToken(connection, aggregate) } as const;
       }
@@ -481,6 +535,8 @@ export class OrderStore {
     if (current.kind === "missing") return undefined;
     if (current.kind === "current") return current.aggregate;
 
+    // Terminal reads advance the persisted logical clock. Once the observation
+    // window has elapsed, a later system-clock rollback cannot revive the link.
     return this.#database.write((connection) => {
       const now = this.#logicalNow(connection);
       let aggregate = readAggregateByTokenDigest(connection, tokenDigest);
@@ -489,6 +545,12 @@ export class OrderStore {
         expireOrder(connection, aggregate.order.orderId, now);
         aggregate = readAggregateByTokenDigest(connection, tokenDigest);
         if (!aggregate) throw new Error("expired checkout aggregate cannot be read");
+      }
+      if (
+        aggregate.order.checkoutStatus !== "OPEN" &&
+        !isTerminalCheckoutObservable(aggregate, now)
+      ) {
+        return undefined;
       }
       return withCheckoutToken(connection, aggregate);
     });
@@ -531,17 +593,24 @@ function assertOrderClockIsUsable(logicalNow: number, physicalNow: number): void
   }
 }
 
-interface AmountAllocation {
-  readonly payableAmountCents: number;
-  readonly generation: number;
-}
+type AmountAllocationResult =
+  | {
+      readonly kind: "allocated";
+      readonly payableAmountCents: number;
+      readonly generation: number;
+    }
+  | {
+      readonly kind: "exhausted";
+      readonly retryAfterSeconds: number;
+    };
 
 function allocateAmountSlot(
   connection: DatabaseSync,
   requestedAmountCents: number,
   maximumOffsetCents: number,
   now: number,
-): AmountAllocation | undefined {
+): AmountAllocationResult {
+  let earliestAvailableAt: number | undefined;
   for (let offset = 1; offset <= maximumOffsetCents; offset += 1) {
     const payableAmountCents = requestedAmountCents + offset;
     if (payableAmountCents > MAX_PAYABLE_AMOUNT_CENTS) break;
@@ -556,9 +625,11 @@ function allocateAmountSlot(
       | { order_id: string; expires_at: bigint | number }
       | undefined;
     if (open) {
-      if (toSafeInteger(open.expires_at, "order expiry") <= now) {
+      const expiresAt = toSafeInteger(open.expires_at, "order expiry");
+      if (expiresAt <= now) {
         expireOrder(connection, open.order_id, now);
       } else {
+        earliestAvailableAt = minimumDefined(earliestAvailableAt, expiresAt);
         continue;
       }
     }
@@ -574,12 +645,15 @@ function allocateAmountSlot(
       .get(payableAmountCents) as
       | { generation: bigint | number; released_at: bigint | number | null }
       | undefined;
-    if (latest?.released_at === null) continue;
-    if (
-      latest !== undefined &&
-      toSafeInteger(latest.released_at, "amount slot release time") > now
-    ) {
-      continue;
+    if (latest?.released_at === null) {
+      throw new Error("active amount slot is detached from its open order");
+    }
+    if (latest !== undefined) {
+      const releasedAt = toSafeInteger(latest.released_at, "amount slot release time");
+      if (releasedAt > now) {
+        earliestAvailableAt = minimumDefined(earliestAvailableAt, releasedAt);
+        continue;
+      }
     }
     const generation = latest
       ? toSafeInteger(latest.generation, "amount slot generation") + 1
@@ -587,9 +661,19 @@ function allocateAmountSlot(
     if (!Number.isSafeInteger(generation)) {
       throw new Error("amount slot generation is outside the safe integer range");
     }
-    return { payableAmountCents, generation };
+    return { kind: "allocated", payableAmountCents, generation };
   }
-  return undefined;
+  if (earliestAvailableAt === undefined || earliestAvailableAt <= now) {
+    throw new Error("exhausted amount slots have no future release time");
+  }
+  return {
+    kind: "exhausted",
+    retryAfterSeconds: Math.max(1, Math.ceil((earliestAvailableAt - now) / 1_000)),
+  };
+}
+
+function minimumDefined(current: number | undefined, candidate: number): number {
+  return current === undefined ? candidate : Math.min(current, candidate);
 }
 
 function expireDueOrders(connection: DatabaseSync, now: number, limit: number): void {
@@ -667,11 +751,13 @@ function insertOrderEvent(
     readonly details: Readonly<Record<string, unknown>>;
   },
 ): void {
+  const detailsJson = JSON.stringify(input.details);
   const result = connection
     .prepare(
       `INSERT INTO order_events(
-         event_id, order_id, sequence, event_type, occurred_at, details_json
-       ) VALUES (?, ?, ?, ?, ?, ?)`,
+         event_id, order_id, sequence, event_type, occurred_at,
+         details_json, details_fingerprint
+       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       randomUUID(),
@@ -679,7 +765,8 @@ function insertOrderEvent(
       input.sequence,
       input.type,
       input.occurredAt,
-      JSON.stringify(input.details),
+      detailsJson,
+      orderEventDetailsFingerprint(detailsJson),
     );
   assertChangedOnce(result.changes, "order event insert");
 }
@@ -711,6 +798,8 @@ type AggregateRow = {
   order_version: bigint | number;
   checkout_id: string;
   token_digest: string;
+  token_key_version: bigint | number;
+  terminal_observation_milliseconds: bigint | number;
   profile_version: bigint | number;
   provider_account_key: "primary";
   code_payload: string;
@@ -757,6 +846,8 @@ const AGGREGATE_SELECT = `
     orders.version AS order_version,
     checkout.checkout_id,
     checkout.token_digest,
+    checkout.token_key_version,
+    checkout.terminal_observation_milliseconds,
     profile.version AS profile_version,
     profile.provider_account_key,
     profile.code_payload,
@@ -878,6 +969,11 @@ function mapAggregate(row: AggregateRow): Omit<StoredOrderAggregate, "checkoutTo
       checkoutId: row.checkout_id,
       orderId: row.order_id,
       tokenDigest: row.token_digest,
+      tokenKeyVersion: toSafeInteger(row.token_key_version, "checkout token key version"),
+      terminalObservationMilliseconds: toSafeInteger(
+        row.terminal_observation_milliseconds,
+        "checkout terminal observation interval",
+      ),
     },
     collectionProfile: {
       profileId: row.collection_profile_id,
@@ -1012,7 +1108,7 @@ function withCheckoutToken(
   aggregate: Omit<StoredOrderAggregate, "checkoutToken">,
 ): StoredOrderAggregate {
   const checkoutToken = deriveCheckoutToken(
-    readCheckoutTokenKey(connection),
+    readCheckoutTokenKey(connection, aggregate.checkout.tokenKeyVersion),
     aggregate.checkout.checkoutId,
   );
   if (digestCheckoutToken(checkoutToken) !== aggregate.checkout.tokenDigest) {
@@ -1024,14 +1120,94 @@ function withCheckoutToken(
   };
 }
 
-function readCheckoutTokenKey(connection: DatabaseSync): Buffer {
+interface CheckoutTokenKey {
+  readonly version: number;
+  readonly material: Buffer;
+  readonly activatedAt: number;
+}
+
+function readCheckoutTokenKey(connection: DatabaseSync, version: number): Buffer {
   const row = connection
-    .prepare("SELECT key_material FROM checkout_token_key WHERE singleton_key = 1")
-    .get() as { key_material: Uint8Array } | undefined;
+    .prepare("SELECT key_material FROM checkout_token_keys WHERE key_version = ?")
+    .get(version) as { key_material: Uint8Array } | undefined;
   if (!row || !(row.key_material instanceof Uint8Array) || row.key_material.byteLength !== 32) {
-    throw new Error("checkout token key is missing or invalid");
+    throw new Error(`checkout token key version ${version} is missing or invalid`);
   }
   return Buffer.from(row.key_material);
+}
+
+function readOrRotateActiveCheckoutTokenKey(
+  connection: DatabaseSync,
+  now: number,
+  rotationMilliseconds: number,
+): CheckoutTokenKey {
+  const row = connection
+    .prepare(
+      `SELECT key_version, key_material, activated_at
+         FROM checkout_token_keys
+        WHERE retired_at IS NULL`,
+    )
+    .get() as
+      | {
+          key_version: bigint | number;
+          key_material: Uint8Array;
+          activated_at: bigint | number;
+        }
+      | undefined;
+  if (!row || !(row.key_material instanceof Uint8Array) || row.key_material.byteLength !== 32) {
+    throw new Error("active checkout token key is missing or invalid");
+  }
+
+  const current: CheckoutTokenKey = {
+    version: toSafeInteger(row.key_version, "checkout token key version"),
+    material: Buffer.from(row.key_material),
+    activatedAt: toSafeInteger(row.activated_at, "checkout token key activation time"),
+  };
+  if (now - current.activatedAt < rotationMilliseconds) return current;
+
+  const nextVersion = current.version + 1;
+  if (!Number.isSafeInteger(nextVersion)) {
+    throw new Error("checkout token key version is outside the safe integer range");
+  }
+  const retired = connection
+    .prepare(
+      `UPDATE checkout_token_keys
+          SET retired_at = ?
+        WHERE key_version = ? AND retired_at IS NULL`,
+    )
+    .run(now, current.version);
+  assertChangedOnce(retired.changes, "checkout token key retirement");
+
+  const material = randomBytes(32);
+  const inserted = connection
+    .prepare(
+      `INSERT INTO checkout_token_keys(
+         key_version, key_material, activated_at, retired_at
+       ) VALUES (?, ?, ?, NULL)`,
+    )
+    .run(nextVersion, material, now);
+  assertChangedOnce(inserted.changes, "checkout token key rotation");
+  return { version: nextVersion, material, activatedAt: now };
+}
+
+function isTerminalCheckoutObservable(
+  aggregate: Omit<StoredOrderAggregate, "checkoutToken">,
+  now: number,
+): boolean {
+  const closedAt = aggregate.order.closedAt;
+  if (closedAt === null) {
+    throw new Error("terminal checkout is missing its close time");
+  }
+  const terminalAt = aggregate.order.checkoutStatus === "EXPIRED"
+    ? aggregate.order.expiresAt
+    : closedAt;
+  return now - terminalAt < aggregate.checkout.terminalObservationMilliseconds;
+}
+
+function assertPositiveSafeInteger(value: number, label: string): void {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new RangeError(`${label} must be a positive safe integer`);
+  }
 }
 
 function readActiveCollectionProfile(connection: DatabaseSync): CollectionProfile | undefined {

@@ -11,6 +11,13 @@ export const IDEMPOTENCY_KEY_DIGEST_VERSION = 1;
 export const CREATE_ORDER_REQUEST_FINGERPRINT_VERSION = 1;
 export const MAX_ORDER_CLOCK_AHEAD_MILLISECONDS = 5 * 60 * 1000;
 
+export function orderEventDetailsFingerprint(detailsJson: string): string {
+  return createHash("sha256")
+    .update("perpay:order-event-details:v1\0", "utf8")
+    .update(detailsJson, "utf8")
+    .digest("hex");
+}
+
 const merchantOrderNumberFirstCharacterPattern = /^[A-Za-z0-9]/;
 const merchantOrderNumberInvalidCharacterPattern = /[^A-Za-z0-9._-]/;
 const controlCharacterPattern = /\p{Cc}/u;
@@ -94,11 +101,7 @@ export type Currency = z.infer<typeof currencySchema>;
 export const checkoutStatusSchema = z.enum(["OPEN", "EXPIRED", "CLOSED"]);
 export type CheckoutStatus = z.infer<typeof checkoutStatusSchema>;
 
-export const paymentStatusSchema = z.enum([
-  "UNPAID",
-  "CONFIRMED",
-  "DISPUTED",
-]);
+export const paymentStatusSchema = z.enum(["UNPAID", "CONFIRMED", "DISPUTED"]);
 export type PaymentStatus = z.infer<typeof paymentStatusSchema>;
 
 export const refundStatusSchema = z.enum(["NONE", "PARTIAL", "FULL"]);
@@ -138,6 +141,8 @@ export interface CheckoutSession {
   readonly checkoutId: string;
   readonly orderId: string;
   readonly tokenDigest: string;
+  readonly tokenKeyVersion: number;
+  readonly terminalObservationMilliseconds: number;
 }
 
 export interface CheckoutStateProjection {

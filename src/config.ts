@@ -5,6 +5,10 @@ import { resolve } from "node:path";
 import { z } from "zod";
 
 import { isValidWebhookDnsHostname } from "./infrastructure/network/public-address.ts";
+import {
+  parseTrustedProxyPolicy,
+  type TrustedProxyPolicy,
+} from "./infrastructure/network/trusted-proxy.ts";
 
 const placeholderPattern = /(change[_-]?me|example)/i;
 const adminUsernamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -41,6 +45,7 @@ const rawConfigSchema = z.object({
     .optional(),
   PERPAY_ADMIN_USERNAME: z.string().trim().regex(adminUsernamePattern).default("admin"),
   PERPAY_PUBLIC_URL: z.string().trim().min(1).default("http://localhost:8080"),
+  PERPAY_TRUSTED_PROXY_CIDRS: z.string().default(""),
   PERPAY_API_CLIENT_ID: z.string().trim().regex(apiClientIdPattern).default("default"),
   PERPAY_API_SECRET: z
     .string()
@@ -63,6 +68,19 @@ const rawConfigSchema = z.object({
     }),
   PERPAY_ORDER_TTL_SECONDS: z.coerce.number().int().min(60).max(1800).default(300),
   PERPAY_AMOUNT_OFFSET_MAX_CENTS: z.coerce.number().int().min(1).max(99).default(99),
+  PERPAY_CHECKOUT_KEY_ROTATION_DAYS: z.coerce.number().int().min(1).max(3_650).default(90),
+  PERPAY_CHECKOUT_TERMINAL_OBSERVATION_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(60)
+    .max(7 * 24 * 60 * 60)
+    .default(24 * 60 * 60),
+  PERPAY_BACKUP_INTERVAL_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(60 * 60)
+    .max(7 * 24 * 60 * 60)
+    .default(24 * 60 * 60),
   PERPAY_ALIPAY_ENABLED: z.enum(["true", "false"]).default("false"),
   PERPAY_ALIPAY_APP_ID: z.string().trim().regex(/^[A-Za-z0-9._-]{1,64}$/).optional(),
   PERPAY_ALIPAY_PRIVATE_KEY: z.string().min(1).max(maximumProviderKeyBytes).optional(),
@@ -72,6 +90,7 @@ const rawConfigSchema = z.object({
     .default(productionProviderEndpoint),
   PERPAY_ALIPAY_TIMEOUT_MILLISECONDS: z.coerce.number().int().min(1_000).max(120_000).default(8_000),
   PERPAY_ALIPAY_SCAN_INTERVAL_SECONDS: z.coerce.number().int().min(5).max(3_600).default(10),
+  PERPAY_ALIPAY_MAX_SUCCESS_AGE_SECONDS: z.coerce.number().int().min(10).max(86_400).default(60),
   PERPAY_WEBHOOK_ENABLED: z.enum(["true", "false"]).default("false"),
   PERPAY_WEBHOOK_ALLOWED_ORIGIN: z.string().optional(),
   PERPAY_WEBHOOK_SECRET: z.string().optional(),
@@ -87,6 +106,8 @@ export type AlipayRuntimeConfig =
   | {
       readonly enabled: false;
       readonly endpoint: ProviderEndpoint;
+      readonly scanIntervalMilliseconds: number;
+      readonly maximumSuccessAgeMilliseconds: number;
     }
   | {
       readonly enabled: true;
@@ -96,6 +117,7 @@ export type AlipayRuntimeConfig =
       readonly endpoint: ProviderEndpoint;
       readonly timeoutMilliseconds: number;
       readonly scanIntervalMilliseconds: number;
+      readonly maximumSuccessAgeMilliseconds: number;
       readonly applicationKeyFingerprint: string;
       readonly alipayKeyFingerprint: string;
     };
@@ -126,11 +148,15 @@ export interface AppConfig {
   readonly adminUsername: string;
   readonly publicOrigin: string;
   readonly secureCookies: boolean;
+  readonly trustedProxy: TrustedProxyPolicy;
   readonly apiClientId: string;
   readonly apiSecret: string;
   readonly collectionCodePayload: string;
   readonly orderTtlSeconds: number;
   readonly amountOffsetMaximumCents: number;
+  readonly checkoutKeyRotationMilliseconds: number;
+  readonly checkoutTerminalObservationMilliseconds: number;
+  readonly backupIntervalMilliseconds: number;
   readonly alipay: AlipayRuntimeConfig;
   readonly webhook: WebhookRuntimeConfig;
 }
@@ -168,6 +194,20 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
   }
 
   const publicUrl = parsePublicUrl(parsed.data.PERPAY_PUBLIC_URL);
+  let trustedProxy: TrustedProxyPolicy;
+  try {
+    trustedProxy = parseTrustedProxyPolicy(parsed.data.PERPAY_TRUSTED_PROXY_CIDRS);
+  } catch (error) {
+    throw new Error(
+      `配置校验失败: ${error instanceof Error ? error.message : "PERPAY_TRUSTED_PROXY_CIDRS 无效"}`,
+      { cause: error },
+    );
+  }
+  if (publicUrl.protocol === "https:" && trustedProxy.cidrs.length === 0) {
+    throw new Error(
+      "配置校验失败: HTTPS 部署必须通过 PERPAY_TRUSTED_PROXY_CIDRS 声明实际直连的受信代理",
+    );
+  }
   const alipay = loadAlipayConfig(parsed.data);
   const webhook = loadWebhookConfig(parsed.data, {
     adminPassword: parsed.data.PERPAY_INITIAL_ADMIN_PASSWORD ?? null,
@@ -184,11 +224,17 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     adminUsername: parsed.data.PERPAY_ADMIN_USERNAME,
     publicOrigin: publicUrl.origin,
     secureCookies: publicUrl.protocol === "https:",
+    trustedProxy,
     apiClientId: parsed.data.PERPAY_API_CLIENT_ID,
     apiSecret: parsed.data.PERPAY_API_SECRET,
     collectionCodePayload: parsed.data.PERPAY_COLLECTION_CODE_PAYLOAD,
     orderTtlSeconds: parsed.data.PERPAY_ORDER_TTL_SECONDS,
     amountOffsetMaximumCents: parsed.data.PERPAY_AMOUNT_OFFSET_MAX_CENTS,
+    checkoutKeyRotationMilliseconds:
+      parsed.data.PERPAY_CHECKOUT_KEY_ROTATION_DAYS * 24 * 60 * 60 * 1_000,
+    checkoutTerminalObservationMilliseconds:
+      parsed.data.PERPAY_CHECKOUT_TERMINAL_OBSERVATION_SECONDS * 1_000,
+    backupIntervalMilliseconds: parsed.data.PERPAY_BACKUP_INTERVAL_SECONDS * 1_000,
     alipay,
     webhook,
   });
@@ -250,8 +296,20 @@ function loadWebhookConfig(
 
 function loadAlipayConfig(parsed: z.infer<typeof rawConfigSchema>): AlipayRuntimeConfig {
   const endpoint = parsed.PERPAY_ALIPAY_ENDPOINT;
+  const scanIntervalMilliseconds = parsed.PERPAY_ALIPAY_SCAN_INTERVAL_SECONDS * 1_000;
+  const maximumSuccessAgeMilliseconds = parsed.PERPAY_ALIPAY_MAX_SUCCESS_AGE_SECONDS * 1_000;
   if (parsed.PERPAY_ALIPAY_ENABLED === "false") {
-    return Object.freeze({ enabled: false, endpoint });
+    return Object.freeze({
+      enabled: false,
+      endpoint,
+      scanIntervalMilliseconds,
+      maximumSuccessAgeMilliseconds,
+    });
+  }
+  if (maximumSuccessAgeMilliseconds < scanIntervalMilliseconds * 2) {
+    throw new Error(
+      "配置校验失败: PERPAY_ALIPAY_MAX_SUCCESS_AGE_SECONDS 必须至少是扫描间隔的两倍",
+    );
   }
 
   if (
@@ -281,7 +339,8 @@ function loadAlipayConfig(parsed: z.infer<typeof rawConfigSchema>): AlipayRuntim
     alipayPublicKey,
     endpoint,
     timeoutMilliseconds: parsed.PERPAY_ALIPAY_TIMEOUT_MILLISECONDS,
-    scanIntervalMilliseconds: parsed.PERPAY_ALIPAY_SCAN_INTERVAL_SECONDS * 1_000,
+    scanIntervalMilliseconds,
+    maximumSuccessAgeMilliseconds,
     applicationKeyFingerprint,
     alipayKeyFingerprint,
   });
@@ -346,6 +405,9 @@ function parsePublicUrl(value: string): URL {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error("配置校验失败: PERPAY_PUBLIC_URL 只支持 http 或 https");
   }
+  if (url.protocol === "http:" && !isLoopbackHostname(url.hostname)) {
+    throw new Error("配置校验失败: PERPAY_PUBLIC_URL 仅允许回环地址使用明文 HTTP");
+  }
   if (
     url.username !== "" ||
     url.password !== "" ||
@@ -359,6 +421,16 @@ function parsePublicUrl(value: string): URL {
     throw new Error("配置校验失败: PERPAY_PUBLIC_URL 不能使用示例域名");
   }
   return url;
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  if (hostname === "localhost") return true;
+  const address = hostname.startsWith("[") && hostname.endsWith("]")
+    ? hostname.slice(1, -1)
+    : hostname;
+  const family = isIP(address);
+  if (family === 4) return address.startsWith("127.");
+  return family === 6 && address === "::1";
 }
 
 function parseWebhookOrigin(value: string): string {
