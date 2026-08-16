@@ -395,12 +395,57 @@ describe("IdentityService", () => {
     const test = await fixture();
     try {
       test.database.write((connection) => {
+        const trigger = connection.prepare(
+          `SELECT sql FROM sqlite_schema
+            WHERE type = 'trigger' AND name = 'audit_events_no_update'`,
+        ).get() as { sql: string } | undefined;
+        assert.ok(trigger?.sql);
         connection.exec("DROP TRIGGER audit_events_no_update");
         connection
           .prepare("UPDATE audit_events SET details_json = ? WHERE sequence = 1")
           .run('{"tampered":true}');
+        connection.exec(trigger.sql);
       });
+      const integrity = test.database.integrityCheck();
+      assert.equal(integrity.schema, "ok");
+      assert.ok(integrity.domainViolations >= 1);
+      assert.equal(integrity.ok, false);
       await assert.rejects(test.identity.initialize(), /audit event hash verification failed/);
+    } finally {
+      test.close();
+    }
+  });
+
+  it("detects a deleted audit tail through the durable anchor and rejects its backup", async () => {
+    const test = await fixture();
+    try {
+      test.database.write((connection) => {
+        const trigger = connection.prepare(
+          `SELECT sql FROM sqlite_schema
+            WHERE type = 'trigger' AND name = 'audit_events_no_delete'`,
+        ).get() as { sql: string } | undefined;
+        assert.ok(trigger?.sql);
+        connection.exec("DROP TRIGGER audit_events_no_delete");
+        const deleted = connection.prepare(
+          "DELETE FROM audit_events WHERE sequence = (SELECT MAX(sequence) FROM audit_events)",
+        ).run();
+        assert.equal(Number(deleted.changes), 1);
+        connection.exec(trigger.sql);
+      });
+
+      const integrity = test.database.integrityCheck();
+      assert.equal(integrity.schema, "ok");
+      assert.equal(integrity.foreignKeyViolations, 0);
+      assert.ok(integrity.domainViolations >= 1);
+      assert.equal(integrity.ok, false);
+      await assert.rejects(
+        test.identity.initialize(),
+        /audit chain anchor verification failed/,
+      );
+      await assert.rejects(
+        test.database.backupDetailed(join(test.directory, "tampered-audit.sqlite3")),
+        /backup verification failed/,
+      );
     } finally {
       test.close();
     }

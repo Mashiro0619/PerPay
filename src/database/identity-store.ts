@@ -1,7 +1,11 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 
 import type { AppDatabase } from "./database.ts";
+import {
+  assertAuditChainIntegrity,
+  calculateAuditEventHash,
+} from "./audit-chain.ts";
 
 const MAX_AUDIT_DETAILS_BYTES = 8 * 1024;
 
@@ -199,39 +203,7 @@ export class IdentityReadTransaction {
   }
 
   assertAuditChain(): void {
-    const rows = this.connection
-      .prepare(
-        `SELECT event_id, occurred_at, actor_type, actor_id, action, outcome,
-                subject_type, subject_id, request_id, remote_address_hash,
-                details_json, previous_hash, event_hash
-           FROM audit_events
-          ORDER BY sequence`,
-      )
-      .all() as unknown as AuditEventRow[];
-    let previousHash: string | null = null;
-    for (const row of rows) {
-      if (row.previous_hash !== previousHash) {
-        throw new Error("audit chain link verification failed");
-      }
-      const expected = calculateAuditHash({
-        eventId: row.event_id,
-        occurredAt: Number(row.occurred_at),
-        actorType: row.actor_type,
-        actorId: row.actor_id,
-        action: row.action,
-        outcome: row.outcome,
-        subjectType: row.subject_type,
-        subjectId: row.subject_id,
-        requestId: row.request_id,
-        remoteAddressHash: row.remote_address_hash,
-        detailsJson: row.details_json,
-        previousHash,
-      });
-      if (row.event_hash !== expected) {
-        throw new Error("audit event hash verification failed");
-      }
-      previousHash = row.event_hash;
-    }
+    assertAuditChainIntegrity(this.connection);
   }
 }
 
@@ -567,7 +539,7 @@ export function appendAuditEvent(
     .get() as { event_hash: string } | undefined;
   const previousHash = previous?.event_hash ?? null;
   const eventId = randomUUID();
-  const eventHash = calculateAuditHash({
+  const eventHash = calculateAuditEventHash({
     eventId,
     occurredAt: input.occurredAt,
     actorType: input.actorType,
@@ -607,54 +579,6 @@ export function appendAuditEvent(
   if (Number(result.changes) !== 1) throw new Error("audit event was not appended");
   const sequence = Number(result.lastInsertRowid);
   return { sequence, eventId, eventHash, previousHash };
-}
-
-interface AuditEventRow {
-  readonly event_id: string;
-  readonly occurred_at: bigint | number;
-  readonly actor_type: AuditInput["actorType"];
-  readonly actor_id: string | null;
-  readonly action: string;
-  readonly outcome: AuditInput["outcome"];
-  readonly subject_type: string | null;
-  readonly subject_id: string | null;
-  readonly request_id: string | null;
-  readonly remote_address_hash: string | null;
-  readonly details_json: string;
-  readonly previous_hash: string | null;
-  readonly event_hash: string;
-}
-
-function calculateAuditHash(input: {
-  readonly eventId: string;
-  readonly occurredAt: number;
-  readonly actorType: AuditInput["actorType"];
-  readonly actorId: string | null;
-  readonly action: string;
-  readonly outcome: AuditInput["outcome"];
-  readonly subjectType: string | null;
-  readonly subjectId: string | null;
-  readonly requestId: string | null;
-  readonly remoteAddressHash: string | null;
-  readonly detailsJson: string;
-  readonly previousHash: string | null;
-}): string {
-  const payload = [
-    "perpay-audit-v1",
-    input.eventId,
-    String(input.occurredAt),
-    input.actorType,
-    input.actorId ?? "",
-    input.action,
-    input.outcome,
-    input.subjectType ?? "",
-    input.subjectId ?? "",
-    input.requestId ?? "",
-    input.remoteAddressHash ?? "",
-    input.detailsJson,
-    input.previousHash ?? "",
-  ].join("\0");
-  return createHash("sha256").update(payload, "utf8").digest("hex");
 }
 
 function validateAuditInput(input: AuditInput): void {
