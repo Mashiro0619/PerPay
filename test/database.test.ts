@@ -16,7 +16,11 @@ describe("AppDatabase", () => {
       const instanceId = first.instanceId();
       const checkoutTokenKey = first.read((connection) =>
         (connection
-          .prepare("SELECT hex(key_material) AS value FROM checkout_token_key WHERE singleton_key = 1")
+          .prepare(
+            `SELECT hex(key_material) AS value
+               FROM checkout_token_keys
+              WHERE retired_at IS NULL`,
+          )
           .get() as { value: string }).value,
       );
       assert.match(checkoutTokenKey, /^[0-9A-F]{64}$/);
@@ -37,7 +41,11 @@ describe("AppDatabase", () => {
       assert.equal(
         reopened.read((connection) =>
           (connection
-            .prepare("SELECT hex(key_material) AS value FROM checkout_token_key WHERE singleton_key = 1")
+            .prepare(
+              `SELECT hex(key_material) AS value
+                 FROM checkout_token_keys
+                WHERE retired_at IS NULL`,
+            )
             .get() as { value: string }).value,
         ),
         checkoutTokenKey,
@@ -97,6 +105,24 @@ describe("AppDatabase", () => {
     }
   });
 
+  it("renews its lease before committing a long synchronous write", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-write-lease-"));
+    const databasePath = join(directory, "database.sqlite3");
+    try {
+      const database = await AppDatabase.open(databasePath);
+      database.write((connection) => {
+        connection.prepare(
+          "UPDATE app_lease SET expires_at = ? WHERE lease_key = 1",
+        ).run(Date.now() - 1);
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+      });
+      assert.deepEqual(database.health(), { ok: true, result: "ok" });
+      database.close();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("reports not ready when the persisted order clock is too far ahead", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-order-clock-health-"));
     const databasePath = join(directory, "database.sqlite3");
@@ -109,6 +135,30 @@ describe("AppDatabase", () => {
       });
       assert.deepEqual(database.health(), { ok: false, result: "order_clock_ahead" });
       database.close();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("returns a stable code instead of exposing database probe errors", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-database-health-error-"));
+    const databasePath = join(directory, "database.sqlite3");
+    try {
+      const database = await AppDatabase.open(databasePath);
+      database.read((connection) => {
+        connection.exec("ALTER TABLE app_lease RENAME TO app_lease_probe_failure");
+      });
+      try {
+        assert.deepEqual(database.health(), { ok: false, result: "database_probe_failed" });
+      } finally {
+        const repair = new DatabaseSync(databasePath);
+        try {
+          repair.exec("ALTER TABLE app_lease_probe_failure RENAME TO app_lease");
+        } finally {
+          repair.close();
+          database.close();
+        }
+      }
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

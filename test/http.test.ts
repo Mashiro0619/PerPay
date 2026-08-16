@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import fs, { mkdtempSync, rmSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -28,6 +29,7 @@ describe("health endpoints", () => {
     await identity.initialize();
     const orders = new OrderService(database, config);
     orders.initialize();
+    const collectionNow = 1_700_000_005_000;
     const app = createApp({ config, database, identity, orders, startedAt: new Date(0) });
     try {
       const live = await app.request("/livez");
@@ -37,9 +39,259 @@ describe("health endpoints", () => {
 
       const ready = await app.request("/readyz");
       assert.equal(ready.status, 200);
-      assert.deepEqual(await ready.json(), {
-        status: "ready",
-        checks: { database: { ok: true, result: "ok" } },
+      assert.deepEqual(await ready.json(), { status: "ready" });
+
+      const firstScanPending = createApp({
+        config,
+        database,
+        identity,
+        orders,
+        startedAt: new Date(0),
+        clock: () => collectionNow,
+        ledgerHealth: () => ({
+          enabled: true,
+          state: "running",
+          inFlight: true,
+          lastAttemptAt: 1_700_000_000_000,
+          lastSuccessAt: null,
+          lastErrorCode: null,
+          consecutiveFailures: 0,
+        }),
+      });
+      const firstScanPendingReady = await firstScanPending.request("/readyz");
+      assert.equal(firstScanPendingReady.status, 503);
+      assert.equal(
+        ((await firstScanPendingReady.json()) as { status: string }).status,
+        "not_ready",
+      );
+
+      const degraded = createApp({
+        config,
+        database,
+        identity,
+        orders,
+        startedAt: new Date(0),
+        clock: () => collectionNow,
+        ledgerHealth: () => ({
+          enabled: true,
+          state: "degraded",
+          inFlight: false,
+          lastAttemptAt: 1_700_000_000_000,
+          lastSuccessAt: 1_699_999_990_000,
+          lastErrorCode: "remote_authorization_failed",
+          consecutiveFailures: 1,
+        }),
+      });
+      const degradedReady = await degraded.request("/readyz");
+      assert.equal(degradedReady.status, 200);
+      assert.deepEqual(await degradedReady.json(), { status: "degraded" });
+
+      const catchingUp = createApp({
+        config,
+        database,
+        identity,
+        orders,
+        startedAt: new Date(0),
+        clock: () => collectionNow,
+        ledgerHealth: () => ({
+          enabled: true,
+          state: "catching_up",
+          inFlight: false,
+          lastAttemptAt: collectionNow,
+          lastSuccessAt: collectionNow - 1_000,
+          lastErrorCode: "provider_page_limit_reached",
+          consecutiveFailures: 0,
+        }),
+      });
+      const catchingUpReady = await catchingUp.request("/readyz");
+      assert.equal(catchingUpReady.status, 200);
+      assert.deepEqual(await catchingUpReady.json(), { status: "degraded" });
+
+      const exactFreshnessBoundary = createApp({
+        config,
+        database,
+        identity,
+        orders,
+        startedAt: new Date(0),
+        clock: () => collectionNow,
+        ledgerHealth: () => ({
+          enabled: true,
+          state: "healthy",
+          inFlight: false,
+          lastAttemptAt: collectionNow,
+          lastSuccessAt: collectionNow - config.alipay.maximumSuccessAgeMilliseconds,
+          lastErrorCode: null,
+          consecutiveFailures: 0,
+        }),
+      });
+      const exactBoundaryReady = await exactFreshnessBoundary.request("/readyz");
+      assert.equal(exactBoundaryReady.status, 200);
+      assert.deepEqual(await exactBoundaryReady.json(), { status: "ready" });
+
+      const futureSuccess = createApp({
+        config,
+        database,
+        identity,
+        orders,
+        startedAt: new Date(0),
+        clock: () => collectionNow,
+        ledgerHealth: () => ({
+          enabled: true,
+          state: "healthy",
+          inFlight: false,
+          lastAttemptAt: collectionNow,
+          lastSuccessAt: collectionNow + 1,
+          lastErrorCode: null,
+          consecutiveFailures: 0,
+        }),
+      });
+      const futureSuccessReady = await futureSuccess.request("/readyz");
+      assert.equal(futureSuccessReady.status, 503);
+      assert.deepEqual(await futureSuccessReady.json(), { status: "not_ready" });
+
+      const stale = createApp({
+        config,
+        database,
+        identity,
+        orders,
+        startedAt: new Date(0),
+        clock: () => collectionNow,
+        ledgerHealth: () => ({
+          enabled: true,
+          state: "degraded",
+          inFlight: false,
+          lastAttemptAt: collectionNow,
+          lastSuccessAt: collectionNow - config.alipay.maximumSuccessAgeMilliseconds - 1,
+          lastErrorCode: "remote_authorization_failed",
+          consecutiveFailures: 4,
+        }),
+      });
+      const staleReady = await stale.request("/readyz");
+      assert.equal(staleReady.status, 503);
+      assert.deepEqual(await staleReady.json(), { status: "not_ready" });
+
+      const reconciliationDegraded = createApp({
+        config,
+        database,
+        identity,
+        orders,
+        startedAt: new Date(0),
+        reconciliationHealth: () => ({
+          enabled: true,
+          state: "degraded",
+          inFlight: false,
+          lastAttemptAt: 1_700_000_001_000,
+          lastSuccessAt: null,
+          lastErrorCode: "reconciliation_item_failed",
+          consecutiveFailures: 2,
+          pendingOrders: 1,
+          continuationPending: true,
+        }),
+      });
+      const reconciliationReady = await reconciliationDegraded.request("/readyz");
+      assert.equal(reconciliationReady.status, 200);
+      const reconciliationReadyBody = (await reconciliationReady.json()) as { status: string };
+      assert.equal(reconciliationReadyBody.status, "degraded");
+
+      const backupUnhealthy = createApp({
+        config,
+        database,
+        identity,
+        orders,
+        startedAt: new Date(0),
+        backupHealth: () => ({
+          ok: true,
+          status: "healthy",
+          last_attempt_at: collectionNow,
+          last_success_at: collectionNow,
+          last_error_at: null,
+          last_error_stage: null,
+          backup_name:
+            "perpay.sqlite3.backup-2026-08-16T04-00-00.000Z-12345678-1234-4123-8123-123456789abc.sqlite3",
+          snapshot_id: "a".repeat(64),
+          instance_id: "f".repeat(32),
+          repository_id: "b".repeat(64),
+          interval_milliseconds: 86_400_000,
+          maximum_age_milliseconds: 95_040_000,
+          clock_moved_backwards: false,
+          configuration_mismatch: false,
+        }),
+      });
+      const backupReady = await backupUnhealthy.request("/readyz");
+      assert.equal(backupReady.status, 200);
+      assert.deepEqual(await backupReady.json(), { status: "ready" });
+
+      const backupLogin = await backupUnhealthy.request("/api/admin/v1/session/login", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: config.publicOrigin,
+        },
+        body: JSON.stringify({ username: "admin", password: "a-secure-local-password" }),
+      });
+      assert.equal(backupLogin.status, 200);
+      const backupCookie = backupLogin.headers.getSetCookie()
+        .map((value) => value.split(";", 1)[0])
+        .join("; ");
+      const backupStatus = await backupUnhealthy.request("/api/admin/v1/system/status", {
+        headers: { cookie: backupCookie },
+      });
+      assert.equal(backupStatus.status, 200);
+      const backupStatusBody = (await backupStatus.json()) as {
+        data: {
+          status: string;
+          backup: { enabled: boolean; status: string; instance_matches: boolean | null };
+        };
+      };
+      assert.equal(backupStatusBody.data.status, "degraded");
+      assert.deepEqual(
+        {
+          enabled: backupStatusBody.data.backup.enabled,
+          status: backupStatusBody.data.backup.status,
+          instance_matches: backupStatusBody.data.backup.instance_matches,
+        },
+        { enabled: true, status: "unhealthy", instance_matches: false },
+      );
+
+      const backupUnavailable = createApp({
+        config,
+        database,
+        identity,
+        orders,
+        startedAt: new Date(0),
+        backupHealth() {
+          throw new Error("backup state is unreadable");
+        },
+      });
+      const unavailableReady = await backupUnavailable.request("/readyz");
+      assert.equal(unavailableReady.status, 200);
+      assert.deepEqual(await unavailableReady.json(), { status: "ready" });
+      const unavailableStatus = await backupUnavailable.request(
+        "/api/admin/v1/system/status",
+        { headers: { cookie: backupCookie } },
+      );
+      assert.equal(unavailableStatus.status, 200);
+      const unavailableStatusBody = await unavailableStatus.json() as {
+        data: { status: string; backup: Record<string, unknown> };
+      };
+      assert.equal(unavailableStatusBody.data.status, "degraded");
+      assert.deepEqual(unavailableStatusBody.data.backup, {
+        enabled: true,
+        ok: false,
+        status: "unavailable",
+        last_attempt_at: null,
+        last_success_at: null,
+        last_error_at: null,
+        last_error_stage: null,
+        backup_name: null,
+        snapshot_id: null,
+        instance_id: null,
+        repository_id: null,
+        interval_milliseconds: null,
+        maximum_age_milliseconds: null,
+        clock_moved_backwards: false,
+        configuration_mismatch: false,
+        instance_matches: null,
       });
 
       const missing = await app.request("/missing");
@@ -178,6 +430,203 @@ describe("identity HTTP contract", () => {
         body: JSON.stringify({ username: "admin", password: "密".repeat(342) }),
       });
       assert.equal(oversizedPassword.status, 422);
+
+      const malformedExistingPassword = await app.request("/api/admin/v1/session/login", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost:8080",
+        },
+        body: JSON.stringify({ username: "admin", password: "malformed-\ud800-password" }),
+      });
+      assert.equal(malformedExistingPassword.status, 401);
+      assert.equal(
+        (await malformedExistingPassword.json() as { error: { code: string } }).error.code,
+        "invalid_credentials",
+      );
+
+      const login = await app.request("/api/admin/v1/session/login", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost:8080",
+        },
+        body: JSON.stringify({ username: "admin", password: "a-secure-local-password" }),
+      });
+      assert.equal(login.status, 200);
+      const loginBody = await login.json() as { data: { csrf_token: string } };
+      const cookie = login.headers.getSetCookie()
+        .map((value) => value.split(";", 1)[0])
+        .join("; ");
+      const authenticatedHeaders = {
+        "content-type": "application/json",
+        origin: "http://localhost:8080",
+        cookie,
+        "x-csrf-token": loginBody.data.csrf_token,
+      };
+      const stepUp = await app.request("/api/admin/v1/session/step-up", {
+        method: "POST",
+        headers: authenticatedHeaders,
+        body: JSON.stringify({ password: "a-secure-local-password" }),
+      });
+      assert.equal(stepUp.status, 200);
+      const stepUpBody = await stepUp.json() as { data: { csrf_token: string } };
+      const elevatedHeaders = {
+        ...authenticatedHeaders,
+        cookie: stepUp.headers.getSetCookie()
+          .map((value) => value.split(";", 1)[0])
+          .join("; "),
+        "x-csrf-token": stepUpBody.data.csrf_token,
+      };
+
+      const malformedNewPassword = await app.request("/api/admin/v1/password", {
+        method: "POST",
+        headers: elevatedHeaders,
+        body: JSON.stringify({
+          current_password: "a-secure-local-password",
+          new_password: "malformed-\ud800-new-password",
+        }),
+      });
+      assert.equal(malformedNewPassword.status, 422);
+      assert.equal(
+        (await malformedNewPassword.json() as { error: { code: string } }).error.code,
+        "validation_failed",
+      );
+
+      const failedActions = database.read((connection) =>
+        connection.prepare(
+          "SELECT action FROM audit_events WHERE outcome = 'FAILURE' ORDER BY sequence",
+        ).all() as Array<{ action: string }>,
+      ).map((event) => event.action);
+      assert.deepEqual(failedActions, ["admin.login"]);
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rotates credentials on step-up and preserves them when an identical password is rejected", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-http-step-up-rotation-"));
+    const config = loadConfig({
+      PERPAY_INITIAL_ADMIN_PASSWORD: "a-secure-local-password",
+      PERPAY_API_SECRET: apiSecret,
+      PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
+      PERPAY_DATA_DIR: directory,
+      PERPAY_PUBLIC_URL: "http://localhost:8080",
+    });
+    const database = await AppDatabase.open(config.databasePath);
+    const clock = { now: Date.parse("2026-08-16T12:00:00Z") };
+    const identity = new IdentityService(database, config, () => clock.now);
+    await identity.initialize();
+    const orders = new OrderService(database, config);
+    orders.initialize();
+    const app = createApp({ config, database, identity, orders, startedAt: new Date(0) });
+    try {
+      const login = await app.request("/api/admin/v1/session/login", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost:8080",
+        },
+        body: JSON.stringify({ username: "admin", password: "a-secure-local-password" }),
+      });
+      assert.equal(login.status, 200);
+      const loginBody = await login.json() as {
+        data: { csrf_token: string; absolute_expires_at: string };
+      };
+      const loginCookie = login.headers.getSetCookie()
+        .map((value) => value.split(";", 1)[0])
+        .join("; ");
+      clock.now += 60_000;
+
+      const stepUp = await app.request("/api/admin/v1/session/step-up", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost:8080",
+          cookie: loginCookie,
+          "x-csrf-token": loginBody.data.csrf_token,
+        },
+        body: JSON.stringify({ password: "a-secure-local-password" }),
+      });
+      assert.equal(stepUp.status, 200);
+      const stepUpCookies = stepUp.headers.getSetCookie();
+      const replacementSessionCookie = stepUpCookies.find((value) =>
+        value.startsWith("perpay_session=")
+      );
+      const replacementCsrfCookie = stepUpCookies.find((value) =>
+        value.startsWith("perpay_csrf=")
+      );
+      assert.ok(replacementSessionCookie);
+      assert.ok(replacementCsrfCookie);
+      assert.match(replacementSessionCookie, /Max-Age=43140/);
+      assert.match(replacementCsrfCookie, /Max-Age=43140/);
+      const stepUpBody = await stepUp.json() as {
+        data: {
+          csrf_token: string;
+          step_up_expires_at: string;
+          absolute_expires_at: string;
+        };
+      };
+      assert.notEqual(stepUpBody.data.csrf_token, loginBody.data.csrf_token);
+      assert.equal(stepUpBody.data.absolute_expires_at, loginBody.data.absolute_expires_at);
+      const replacementCookie = [replacementSessionCookie, replacementCsrfCookie]
+        .map((value) => value.split(";", 1)[0])
+        .join("; ");
+      assert.notEqual(replacementCookie, loginCookie);
+
+      const oldSession = await app.request("/api/admin/v1/session", {
+        headers: { cookie: loginCookie },
+      });
+      assert.equal(oldSession.status, 401);
+      const replacementSession = await app.request("/api/admin/v1/session", {
+        headers: { cookie: replacementCookie },
+      });
+      assert.equal(replacementSession.status, 200);
+      assert.equal(
+        (await replacementSession.json() as { data: { step_up_active: boolean } }).data
+          .step_up_active,
+        true,
+      );
+
+      const identityBefore = identity.store.read((transaction) => transaction.adminIdentity());
+      const auditBefore = identity.store.read((transaction) => transaction.auditEvents());
+      const unchanged = await app.request("/api/admin/v1/password", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost:8080",
+          cookie: replacementCookie,
+          "x-csrf-token": stepUpBody.data.csrf_token,
+        },
+        body: JSON.stringify({
+          current_password: "a-secure-local-password",
+          new_password: "a-secure-local-password",
+        }),
+      });
+      assert.equal(unchanged.status, 409);
+      assert.equal(
+        (await unchanged.json() as { error: { code: string } }).error.code,
+        "password_unchanged",
+      );
+      assert.deepEqual(
+        identity.store.read((transaction) => transaction.adminIdentity()),
+        identityBefore,
+      );
+      assert.deepEqual(
+        identity.store.read((transaction) => transaction.auditEvents()),
+        auditBefore,
+      );
+      assert.deepEqual(unchanged.headers.getSetCookie(), []);
+
+      const stillElevated = await app.request("/api/admin/v1/session", {
+        headers: { cookie: replacementCookie },
+      });
+      assert.equal(stillElevated.status, 200);
+      assert.equal(
+        (await stillElevated.json() as { data: { step_up_active: boolean } }).data.step_up_active,
+        true,
+      );
     } finally {
       database.close();
       rmSync(directory, { recursive: true, force: true });
@@ -192,6 +641,7 @@ describe("identity HTTP contract", () => {
       PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
       PERPAY_DATA_DIR: directory,
       PERPAY_PUBLIC_URL: "https://pay.local",
+      PERPAY_TRUSTED_PROXY_CIDRS: "127.0.0.1",
     });
     const database = await AppDatabase.open(config.databasePath);
     const identity = new IdentityService(database, config);
@@ -236,7 +686,31 @@ describe("identity HTTP contract", () => {
     await identity.initialize();
     const orders = new OrderService(database, config);
     orders.initialize();
-    const app = createApp({ config, database, identity, orders, startedAt: new Date(0) });
+    const signedBackupHealth = Object.freeze({
+      ok: true,
+      status: "healthy" as const,
+      last_attempt_at: 1_700_000_000_000,
+      last_success_at: 1_700_000_000_000,
+      last_error_at: null,
+      last_error_stage: null,
+      backup_name:
+        "perpay.sqlite3.backup-2026-08-16T04-00-00.000Z-12345678-1234-4123-8123-123456789abc.sqlite3",
+      snapshot_id: "a".repeat(64),
+      instance_id: database.instanceId(),
+      repository_id: "b".repeat(64),
+      interval_milliseconds: 86_400_000,
+      maximum_age_milliseconds: 95_040_000,
+      clock_moved_backwards: false,
+      configuration_mismatch: false,
+    });
+    const app = createApp({
+      config,
+      database,
+      identity,
+      orders,
+      startedAt: new Date(0),
+      backupHealth: () => signedBackupHealth,
+    });
     try {
       const body = Buffer.alloc(0);
       const timestamp = String(Math.floor(Date.now() / 1000));
@@ -258,7 +732,38 @@ describe("identity HTTP contract", () => {
       };
       const first = await app.request("/api/v1/system/status", { headers });
       assert.equal(first.status, 200);
-      const firstBody = JSON.stringify(await first.json());
+      const parsedFirst = await first.json() as {
+        data: {
+          database: { ok: boolean; result: string };
+          ledger: {
+            collection_ready: boolean;
+            last_success_age_milliseconds: number | null;
+            maximum_success_age_milliseconds: number;
+          };
+          backup: Record<string, unknown>;
+        };
+      };
+      assert.deepEqual(parsedFirst.data.database, { ok: true, result: "ok" });
+      assert.deepEqual(
+        {
+          collection_ready: parsedFirst.data.ledger.collection_ready,
+          last_success_age_milliseconds:
+            parsedFirst.data.ledger.last_success_age_milliseconds,
+          maximum_success_age_milliseconds:
+            parsedFirst.data.ledger.maximum_success_age_milliseconds,
+        },
+        {
+          collection_ready: true,
+          last_success_age_milliseconds: null,
+          maximum_success_age_milliseconds: 60_000,
+        },
+      );
+      assert.deepEqual(parsedFirst.data.backup, {
+        enabled: true,
+        ...signedBackupHealth,
+        instance_matches: true,
+      });
+      const firstBody = JSON.stringify(parsedFirst);
       assert.equal(firstBody.includes(apiSecret), false);
 
       const replay = await app.request("/api/v1/system/status", { headers });
@@ -272,6 +777,225 @@ describe("identity HTTP contract", () => {
 });
 
 describe("order HTTP contract", () => {
+  it("blocks new orders until the first provider scan succeeds", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-http-first-scan-"));
+    const config = loadConfig({
+      PERPAY_INITIAL_ADMIN_PASSWORD: "a-secure-local-password",
+      PERPAY_API_SECRET: apiSecret,
+      PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
+      PERPAY_DATA_DIR: directory,
+    });
+    const database = await AppDatabase.open(config.databasePath);
+    const identity = new IdentityService(database, config);
+    await identity.initialize();
+    const orders = new OrderService(database, config);
+    orders.initialize();
+    const requestBody = Buffer.from(JSON.stringify({
+      idempotency_key: "first-scan-gate",
+      merchant_order_no: "first-scan-gate",
+      amount_cents: 1_000,
+    }));
+    const target = "/api/v1/orders";
+    let collectionNow = 1_700_000_001_000;
+    let collectionState: "degraded" | "healthy" = "healthy";
+    let collectionLastSuccessAt = collectionNow;
+    let collectionLastErrorCode: string | null = null;
+    let collectionConsecutiveFailures = 0;
+    try {
+      const pending = createApp({
+        config,
+        database,
+        identity,
+        orders,
+        startedAt: new Date(0),
+        clock: () => collectionNow,
+        ledgerHealth: () => ({
+          enabled: true,
+          state: "degraded",
+          inFlight: false,
+          lastAttemptAt: 1_700_000_000_000,
+          lastSuccessAt: null,
+          lastErrorCode: "remote_authorization_failed",
+          consecutiveFailures: 1,
+        }),
+      });
+      const blocked = await pending.request(target, {
+        method: "POST",
+        headers: {
+          ...apiHeaders("POST", target, requestBody, 18),
+          "content-type": "application/json",
+        },
+        body: requestBody,
+      });
+      assert.equal(blocked.status, 503);
+      assert.equal(blocked.headers.get("retry-after"), "10");
+      assert.equal(
+        ((await blocked.json()) as { error: { code: string } }).error.code,
+        "collection_not_ready",
+      );
+      assert.equal(
+        database.read((connection) => Number((connection.prepare(
+          "SELECT COUNT(*) AS count FROM payment_orders",
+        ).get() as { count: bigint | number }).count)),
+        0,
+      );
+
+      const ready = createApp({
+        config,
+        database,
+        identity,
+        orders,
+        startedAt: new Date(0),
+        clock: () => collectionNow,
+        ledgerHealth: () => ({
+          enabled: true,
+          state: collectionState,
+          inFlight: false,
+          lastAttemptAt: collectionNow,
+          lastSuccessAt: collectionLastSuccessAt,
+          lastErrorCode: collectionLastErrorCode,
+          consecutiveFailures: collectionConsecutiveFailures,
+        }),
+      });
+      const created = await ready.request(target, {
+        method: "POST",
+        headers: {
+          ...apiHeaders("POST", target, requestBody, 19),
+          "content-type": "application/json",
+        },
+        body: requestBody,
+      });
+      assert.equal(created.status, 201);
+      const createdBody = (await created.json()) as {
+        data: { checkout: { state_url: string } };
+      };
+      const publicTarget = new URL(createdBody.data.checkout.state_url).pathname;
+      const blockedCheckout = await pending.request(publicTarget);
+      assert.equal(blockedCheckout.status, 503);
+      assert.equal(
+        ((await blockedCheckout.json()) as { error: { code: string } }).error.code,
+        "collection_not_ready",
+      );
+
+      collectionNow += config.alipay.maximumSuccessAgeMilliseconds + 1;
+      collectionState = "degraded";
+      collectionLastErrorCode = "remote_authorization_failed";
+      collectionConsecutiveFailures = 4;
+      const staleRequestBody = Buffer.from(JSON.stringify({
+        idempotency_key: "stale-scan-gate",
+        merchant_order_no: "stale-scan-gate",
+        amount_cents: 2_000,
+      }));
+      const staleCreate = await ready.request(target, {
+        method: "POST",
+        headers: {
+          ...apiHeaders("POST", target, staleRequestBody, 40),
+          "content-type": "application/json",
+        },
+        body: staleRequestBody,
+      });
+      assert.equal(staleCreate.status, 503);
+      assert.equal(
+        ((await staleCreate.json()) as { error: { code: string } }).error.code,
+        "collection_not_ready",
+      );
+
+      collectionState = "healthy";
+      collectionLastSuccessAt = collectionNow;
+      collectionLastErrorCode = null;
+      collectionConsecutiveFailures = 0;
+      const recoveredCreate = await ready.request(target, {
+        method: "POST",
+        headers: {
+          ...apiHeaders("POST", target, staleRequestBody, 41),
+          "content-type": "application/json",
+        },
+        body: staleRequestBody,
+      });
+      assert.equal(recoveredCreate.status, 201);
+
+      const originalStatfsSync = fs.statfsSync;
+      const noHeadroomStatfsSync = ((...arguments_: unknown[]) => {
+        const result = Reflect.apply(originalStatfsSync, fs, arguments_) as {
+          bavail: bigint | number;
+          [key: string]: unknown;
+        };
+        return { ...result, bavail: typeof result.bavail === "bigint" ? 0n : 0 };
+      }) as typeof fs.statfsSync;
+      assert.equal(Reflect.set(fs, "statfsSync", noHeadroomStatfsSync), true);
+      syncBuiltinESMExports();
+      try {
+        const storageReady = await ready.request("/readyz");
+        assert.equal(storageReady.status, 503);
+        assert.deepEqual(await storageReady.json(), { status: "not_ready" });
+        assert.equal(database.health().result, "database_storage_low");
+
+        const storageCheckout = await ready.request(publicTarget);
+        assert.equal(storageCheckout.status, 503);
+        assert.equal(
+          ((await storageCheckout.json()) as { error: { code: string } }).error.code,
+          "system_not_ready",
+        );
+
+        const storageRequestBody = Buffer.from(JSON.stringify({
+          idempotency_key: "storage-core-gate",
+          merchant_order_no: "storage-core-gate",
+          amount_cents: 1_000,
+        }));
+        const storageCreate = await ready.request(target, {
+          method: "POST",
+          headers: {
+            ...apiHeaders("POST", target, storageRequestBody, 20),
+            "content-type": "application/json",
+          },
+          body: storageRequestBody,
+        });
+        assert.equal(storageCreate.status, 503);
+        assert.equal(
+          ((await storageCreate.json()) as { error: { code: string } }).error.code,
+          "system_not_ready",
+        );
+      } finally {
+        assert.equal(Reflect.set(fs, "statfsSync", originalStatfsSync), true);
+        syncBuiltinESMExports();
+      }
+
+      database.write((connection) => {
+        connection.prepare(
+          "UPDATE order_clock SET last_now_ms = ? WHERE singleton_key = 1",
+        ).run(Date.now() + 10 * 60 * 1_000);
+      });
+      const unsafeCheckout = await ready.request(publicTarget);
+      assert.equal(unsafeCheckout.status, 503);
+      assert.equal(
+        ((await unsafeCheckout.json()) as { error: { code: string } }).error.code,
+        "system_not_ready",
+      );
+
+      const unsafeRequestBody = Buffer.from(JSON.stringify({
+        idempotency_key: "unsafe-core-gate",
+        merchant_order_no: "unsafe-core-gate",
+        amount_cents: 1_000,
+      }));
+      const unsafeCreate = await ready.request(target, {
+        method: "POST",
+        headers: {
+          ...apiHeaders("POST", target, unsafeRequestBody, 21),
+          "content-type": "application/json",
+        },
+        body: unsafeRequestBody,
+      });
+      assert.equal(unsafeCreate.status, 503);
+      assert.equal(
+        ((await unsafeCreate.json()) as { error: { code: string } }).error.code,
+        "system_not_ready",
+      );
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("creates, replays, queries, closes, and publicly projects an order", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-http-orders-"));
     const config = loadConfig({
@@ -286,7 +1010,15 @@ describe("order HTTP contract", () => {
     await identity.initialize();
     const orders = new OrderService(database, config);
     orders.initialize();
-    const app = createApp({ config, database, identity, orders, startedAt: new Date(0) });
+    const reconciliationTriggers: string[] = [];
+    const app = createApp({
+      config,
+      database,
+      identity,
+      orders,
+      startedAt: new Date(0),
+      onOrderAvailable: (orderId) => reconciliationTriggers.push(orderId),
+    });
     try {
       const target = "/api/v1/orders";
       const requestBody = Buffer.from(
@@ -322,6 +1054,7 @@ describe("order HTTP contract", () => {
       assert.equal(createdBody.data.payable_amount_cents, 1_001);
       assert.match(createdBody.data.checkout.token, /^pct1_[A-Za-z0-9_-]{43}$/);
       assert.equal(createdBody.data.checkout.status, "OPEN");
+      assert.deepEqual(reconciliationTriggers, [createdBody.data.order_id]);
       assert.equal(
         created.headers.get("location"),
         `/api/v1/orders/${createdBody.data.order_id}`,
@@ -339,6 +1072,10 @@ describe("order HTTP contract", () => {
       const replayBody = (await replay.json()) as typeof createdBody;
       assert.equal(replayBody.data.order_id, createdBody.data.order_id);
       assert.equal(replayBody.data.checkout.token, createdBody.data.checkout.token);
+      assert.deepEqual(reconciliationTriggers, [
+        createdBody.data.order_id,
+        createdBody.data.order_id,
+      ]);
 
       const byIdTarget = `/api/v1/orders/${createdBody.data.order_id}`;
       const byId = await app.request(byIdTarget, {
@@ -417,11 +1154,18 @@ describe("order HTTP contract", () => {
         body: replacementBody,
       });
       assert.equal(replacement.status, 201);
+      const replacementBodyResponse = (await replacement.json()) as {
+        data: { order_id: string; payable_amount_cents: number };
+      };
       assert.equal(
-        ((await replacement.json()) as { data: { payable_amount_cents: number } }).data
-          .payable_amount_cents,
+        replacementBodyResponse.data.payable_amount_cents,
         1_001,
       );
+      assert.deepEqual(reconciliationTriggers, [
+        createdBody.data.order_id,
+        createdBody.data.order_id,
+        replacementBodyResponse.data.order_id,
+      ]);
       const terminalAfterReuse = (await (await app.request(publicTarget)).json()) as {
         data: { payment_instructions: unknown };
       };

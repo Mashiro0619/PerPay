@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,11 +13,13 @@ import {
   payloadFingerprint,
   requestFingerprint,
   responseFingerprint,
+  LedgerConflictError,
   type AccountLogPageInput,
   type IngestSegment,
   type RawPageEvidence,
 } from "../src/ledger/model.ts";
 import { LedgerStore } from "../src/ledger/store.ts";
+import { ReconciliationStore } from "../src/reconciliation/store.ts";
 
 const WINDOW = { start: "2026-08-14 00:00:00", end: "2026-08-14 01:00:00" } as const;
 const STARTED_AT = 1_800_000_000_000;
@@ -650,6 +653,28 @@ describe("LedgerStore segment ingestion", () => {
       assert.equal(confirmed.normalized[0]?.kind, "created");
       assert.equal(confirmed.run.status, "COMPLETED");
       assert.equal(store.getLedgerEntry("primary", "variant-new-event")?.amountCents, 9_999);
+      const resolvedVariant = store.conflictPage("primary", "RESOLVED").conflicts.find(
+        (conflict) => conflict.conflictType === "RAW_PAGE_VARIANT",
+      );
+      assert.ok(resolvedVariant);
+      assert.equal(resolvedVariant.resolutionAction, "CONFIRM_VARIANT");
+      assert.equal(resolvedVariant.resolvedAt, STARTED_AT + 7_000);
+      assert.equal(
+        store.listOpenConflicts().some((conflict) => conflict.conflictType === "RAW_PAGE_VARIANT"),
+        false,
+      );
+      const resolvedDetail = store.conflict(resolvedVariant.conflictId);
+      assert.equal(resolvedDetail?.resolutionOperation?.actorType, "SYSTEM");
+      assert.equal(resolvedDetail?.resolutionOperation?.action, "CONFIRM_VARIANT");
+      assert.equal(
+        database.read((connection) => Number((connection.prepare(
+          `SELECT COUNT(*) AS count
+             FROM audit_events
+            WHERE action = 'ledger.conflict_variant_confirmed'
+              AND subject_id = ?`,
+        ).get(resolvedVariant.conflictId) as { count: bigint }).count)),
+        1,
+      );
       assert.deepEqual(databaseCounts(database), {
         pages: 2,
         events: 2,
@@ -719,6 +744,30 @@ describe("LedgerStore segment ingestion", () => {
         ).all() as Array<{ observation_sequence: bigint }>).map((row) =>
           Number(row.observation_sequence))),
         [1, 2, 3, 4, 5, 6, 7, 8],
+      );
+      const variantConflicts = store.conflictPage("primary", "ALL", null, 100).conflicts
+        .filter((conflict) => conflict.conflictType === "RAW_PAGE_VARIANT");
+      assert.deepEqual(
+        variantConflicts
+          .filter((conflict) => conflict.status === "RESOLVED")
+          .map((conflict) => conflict.details.previous_observation_sequence)
+          .sort(),
+        [2, 6],
+      );
+      assert.deepEqual(
+        variantConflicts
+          .filter((conflict) => conflict.status === "OPEN")
+          .map((conflict) => conflict.details.previous_observation_sequence)
+          .sort(),
+        [1, 4, 5],
+      );
+      assert.equal(
+        database.read((connection) => Number((connection.prepare(
+          `SELECT COUNT(*) AS count
+             FROM audit_events
+            WHERE action = 'ledger.conflict_variant_confirmed'`,
+        ).get() as { count: bigint }).count)),
+        2,
       );
       assert.equal(database.integrityCheck().ok, true);
     });
@@ -1227,6 +1276,414 @@ describe("LedgerStore segment ingestion", () => {
       assert.deepEqual(malformed.normalized.map((item) => item.kind), ["isolated", "isolated"]);
       assert.equal(store.listOpenConflicts().some((item) => item.conflictType === "MISSING_EXTERNAL_ID"), true);
       assert.equal(store.listOpenConflicts().some((item) => item.conflictType === "INVALID_AMOUNT"), true);
+    });
+  });
+
+  it("provides stable conflict pagination, structured detail, and complete summary counts", async () => {
+    await withLedgerStore(async ({ store }) => {
+      const run = store.startIngestRun({ ...WINDOW, pageSize: 3, now: STARTED_AT });
+      const isolated = store.recordPage({
+        ingestRunId: run.ingestRunId,
+        page: page(1, 3, false, [
+          detail("invalid-amount-page", "1.001", "CREDIT", "2026-08-14 00:01:00"),
+          detail(null, "2.00", "CREDIT", "2026-08-14 00:02:00"),
+          detail("invalid-direction-page", "3.00", "SIDEWAYS", "2026-08-14 00:03:00"),
+        ], 3),
+        evidence: evidence('{"conflicts":"page"}'),
+        now: STARTED_AT + 1_000,
+      });
+      assert.deepEqual(isolated.normalized.map((item) => item.kind), ["isolated", "isolated", "isolated"]);
+
+      const expected = store.listOpenConflicts("primary", 100);
+      assert.equal(expected.length, 3);
+      assert.equal(new Set(expected.map((conflict) => conflict.createdAt)).size, 1);
+      const paged: string[] = [];
+      let cursor = null;
+      do {
+        const result = store.conflictPage("primary", "OPEN", cursor, 1);
+        paged.push(...result.conflicts.map((conflict) => conflict.conflictId));
+        cursor = result.nextCursor;
+      } while (cursor !== null);
+      assert.deepEqual(paged, expected.map((conflict) => conflict.conflictId));
+
+      const amountConflict = expected.find((conflict) => conflict.conflictType === "INVALID_AMOUNT");
+      assert.ok(amountConflict);
+      const conflictDetail = store.conflict(amountConflict.conflictId);
+      assert.equal(conflictDetail?.incomingEvent?.amountText, "1.001");
+      assert.equal(conflictDetail?.incomingEvent?.externalEventId, "invalid-amount-page");
+      assert.equal(conflictDetail?.rawPage?.httpStatus, 200);
+      assert.equal(conflictDetail?.existingLedgerEntry, null);
+      assert.equal(conflictDetail?.resolutionOperation, null);
+      assert.equal(Object.hasOwn(conflictDetail?.rawPage ?? {}, "body"), false);
+      assert.equal(Object.hasOwn(conflictDetail?.incomingEvent ?? {}, "rawPayload"), false);
+
+      const summary = store.conflictSummary();
+      assert.deepEqual(
+        { open: summary.open, resolved: summary.resolved, ignored: summary.ignored, total: summary.total },
+        { open: 3, resolved: 0, ignored: 0, total: 3 },
+      );
+      assert.equal(
+        summary.byType.find((item) => item.conflictType === "INVALID_AMOUNT")?.open,
+        1,
+      );
+      assert.equal(
+        summary.byType.find((item) => item.conflictType === "MISSING_EXTERNAL_ID")?.open,
+        1,
+      );
+      assert.equal(
+        summary.byType.find((item) => item.conflictType === "INVALID_DIRECTION")?.open,
+        1,
+      );
+      assert.equal(store.conflict(randomUUID()), null);
+    });
+  });
+
+  it("resolves isolated evidence once with exact replay and immutable operation history", async () => {
+    await withLedgerStore(async ({ database, store }) => {
+      const run = store.startIngestRun({ ...WINDOW, pageSize: 2, now: STARTED_AT });
+      store.recordPage({
+        ingestRunId: run.ingestRunId,
+        page: page(1, 2, false, [
+          detail("isolated-resolution-a", "1.001", "CREDIT", "2026-08-14 00:01:00"),
+          detail("isolated-resolution-b", "2.001", "CREDIT", "2026-08-14 00:02:00"),
+        ], 2),
+        evidence: evidence('{"conflicts":"resolution"}'),
+        now: STARTED_AT + 1_000,
+      });
+      const [first, second] = store.listOpenConflicts().filter(
+        (conflict) => conflict.conflictType === "INVALID_AMOUNT",
+      );
+      assert.ok(first);
+      assert.ok(second);
+
+      assert.throws(
+        () => store.resolveConflict({
+          conflictOperationId: randomUUID(),
+          conflictId: first.conflictId,
+          action: "KEEP_EXISTING",
+          actorId: "admin",
+          reason: "wrong action",
+          now: STARTED_AT + 2_000,
+        }),
+        (error: unknown) =>
+          error instanceof LedgerConflictError && error.code === "ledger_conflict_action_not_allowed",
+      );
+
+      const conflictOperationId = randomUUID();
+      const input = {
+        conflictOperationId,
+        conflictId: first.conflictId,
+        action: "ACKNOWLEDGE_ISOLATED" as const,
+        actorId: "admin",
+        reason: "provider evidence is malformed and intentionally isolated",
+        requestId: "request-ledger-conflict-1",
+        remoteAddressHash: "a".repeat(64),
+        now: STARTED_AT + 2_000,
+      };
+      const resolved = store.resolveConflict(input);
+      assert.equal(resolved.replayed, false);
+      assert.equal(resolved.operation.action, "ACKNOWLEDGE_ISOLATED");
+      assert.equal(resolved.conflict.status, "IGNORED");
+      assert.equal(resolved.conflict.resolutionAction, "ACKNOWLEDGE_ISOLATED");
+      assert.equal(resolved.conflict.resolutionOperationId, conflictOperationId);
+      assert.equal(store.getLedgerEntry("primary", "isolated-resolution-a"), null);
+
+      const replay = store.resolveConflict({
+        ...input,
+        requestId: "different-transport-request",
+        remoteAddressHash: "b".repeat(64),
+        now: STARTED_AT + 9_000,
+      });
+      assert.equal(replay.replayed, true);
+      assert.deepEqual(replay.operation, resolved.operation);
+      assert.equal(
+        database.read((connection) => Number((connection.prepare(
+          `SELECT COUNT(*) AS count FROM audit_events
+            WHERE action = 'ledger.conflict_isolation_acknowledged'
+              AND subject_id = ?`,
+        ).get(first.conflictId) as { count: bigint }).count)),
+        1,
+      );
+
+      assert.throws(
+        () => store.resolveConflict({ ...input, reason: "different reason" }),
+        (error: unknown) =>
+          error instanceof LedgerConflictError && error.code === "ledger_conflict_operation_conflict",
+      );
+      assert.throws(
+        () => store.resolveConflict({
+          ...input,
+          conflictOperationId: randomUUID(),
+        }),
+        (error: unknown) =>
+          error instanceof LedgerConflictError && error.code === "ledger_conflict_state_conflict",
+      );
+      assert.throws(
+        () => store.resolveConflict({
+          ...input,
+          conflictId: second.conflictId,
+        }),
+        (error: unknown) =>
+          error instanceof LedgerConflictError && error.code === "ledger_conflict_operation_conflict",
+      );
+
+      assert.throws(
+        () => database.write((connection) => connection.prepare(
+          "UPDATE ledger_conflict_operations SET reason = 'rewritten' WHERE conflict_operation_id = ?",
+        ).run(conflictOperationId)),
+        /immutable/,
+      );
+      assert.throws(
+        () => database.write((connection) => connection.prepare(
+          "DELETE FROM ledger_conflict_operations WHERE conflict_operation_id = ?",
+        ).run(conflictOperationId)),
+        /cannot be deleted/,
+      );
+      assert.throws(
+        () => database.write((connection) => connection.prepare(
+          `UPDATE ledger_conflicts
+              SET status = 'OPEN', resolution_json = NULL, resolved_at = NULL,
+                  resolution_operation_id = NULL, resolution_fingerprint = NULL
+            WHERE conflict_id = ?`,
+        ).run(first.conflictId)),
+        /transition is invalid/,
+      );
+      assert.equal(database.integrityCheck().ok, true);
+    });
+  });
+
+  it("rolls conflict operations back when state transition or audit append fails", async () => {
+    await withLedgerStore(async ({ database, store }) => {
+      const run = store.startIngestRun({ ...WINDOW, pageSize: 2, now: STARTED_AT });
+      store.recordPage({
+        ingestRunId: run.ingestRunId,
+        page: page(1, 2, false, [
+          detail("rollback-state", "1.001", "CREDIT", "2026-08-14 00:01:00"),
+          detail("rollback-audit", "2.001", "CREDIT", "2026-08-14 00:02:00"),
+        ], 2),
+        evidence: evidence('{"conflicts":"rollback"}'),
+        now: STARTED_AT + 1_000,
+      });
+      const [stateConflict, auditConflict] = store.listOpenConflicts().filter(
+        (conflict) => conflict.conflictType === "INVALID_AMOUNT",
+      );
+      assert.ok(stateConflict);
+      assert.ok(auditConflict);
+
+      const stateOperationId = randomUUID();
+      database.write((connection) => connection.exec(`
+        CREATE TRIGGER test_block_ledger_conflict_resolution
+        BEFORE UPDATE OF status ON ledger_conflicts
+        WHEN OLD.conflict_id = '${stateConflict.conflictId}'
+        BEGIN
+          SELECT RAISE(ABORT, 'blocked ledger conflict state update');
+        END;
+      `));
+      assert.throws(
+        () => store.resolveConflict({
+          conflictOperationId: stateOperationId,
+          conflictId: stateConflict.conflictId,
+          action: "ACKNOWLEDGE_ISOLATED",
+          actorId: "admin",
+          reason: "test state rollback",
+          now: STARTED_AT + 2_000,
+        }),
+        /blocked ledger conflict state update/,
+      );
+      database.write((connection) => connection.exec(
+        "DROP TRIGGER test_block_ledger_conflict_resolution",
+      ));
+      assert.equal(store.conflict(stateConflict.conflictId)?.conflict.status, "OPEN");
+      assert.equal(
+        database.read((connection) => Number((connection.prepare(
+          "SELECT COUNT(*) AS count FROM ledger_conflict_operations WHERE conflict_operation_id = ?",
+        ).get(stateOperationId) as { count: bigint }).count)),
+        0,
+      );
+
+      const auditOperationId = randomUUID();
+      database.write((connection) => connection.exec(`
+        CREATE TRIGGER test_block_ledger_conflict_audit
+        BEFORE INSERT ON audit_events
+        BEGIN
+          SELECT RAISE(ABORT, 'blocked ledger conflict audit');
+        END;
+      `));
+      assert.throws(
+        () => store.resolveConflict({
+          conflictOperationId: auditOperationId,
+          conflictId: auditConflict.conflictId,
+          action: "ACKNOWLEDGE_ISOLATED",
+          actorId: "admin",
+          reason: "test audit rollback",
+          now: STARTED_AT + 3_000,
+        }),
+        /blocked ledger conflict audit/,
+      );
+      database.write((connection) => connection.exec(
+        "DROP TRIGGER test_block_ledger_conflict_audit",
+      ));
+      assert.equal(store.conflict(auditConflict.conflictId)?.conflict.status, "OPEN");
+      assert.equal(
+        database.read((connection) => Number((connection.prepare(
+          "SELECT COUNT(*) AS count FROM ledger_conflict_operations WHERE conflict_operation_id = ?",
+        ).get(auditOperationId) as { count: bigint }).count)),
+        0,
+      );
+      assert.equal(database.integrityCheck().ok, true);
+    });
+  });
+
+  it("keeps the immutable existing entry and unblocks reconciliation after duplicate resolution", async () => {
+    await withLedgerStore(async ({ database, store }) => {
+      const firstRun = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT });
+      store.recordPage({
+        ingestRunId: firstRun.ingestRunId,
+        page: page(1, 1, false, [
+          detail("duplicate-resolution", "10.00", "CREDIT", "2026-08-14 00:01:00"),
+        ]),
+        evidence: evidence('{"duplicate":1}'),
+        now: STARTED_AT + 1_000,
+      });
+      const secondRun = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT + 2_000 });
+      assert.equal(store.recordPage({
+        ingestRunId: secondRun.ingestRunId,
+        page: page(1, 1, false, [
+          detail("duplicate-resolution", "11.00", "CREDIT", "2026-08-14 00:01:00"),
+        ]),
+        evidence: evidence('{"duplicate":2}'),
+        now: STARTED_AT + 3_000,
+      }).kind, "variant");
+      const confirmationRun = store.startIngestRun({
+        ...WINDOW,
+        pageSize: 1,
+        now: STARTED_AT + 4_000,
+      });
+      const confirmation = store.recordPage({
+        ingestRunId: confirmationRun.ingestRunId,
+        page: page(1, 1, false, [
+          detail("duplicate-resolution", "11.00", "CREDIT", "2026-08-14 00:01:00"),
+        ]),
+        evidence: evidence('{"duplicate":2}'),
+        now: STARTED_AT + 5_000,
+      });
+      assert.equal(confirmation.normalized[0]?.kind, "conflict");
+      const thirdRun = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT + 6_000 });
+      assert.equal(store.recordPage({
+        ingestRunId: thirdRun.ingestRunId,
+        page: page(1, 1, false, [
+          detail("duplicate-resolution", "12.00", "CREDIT", "2026-08-14 00:01:00"),
+        ]),
+        evidence: evidence('{"duplicate":3}'),
+        now: STARTED_AT + 7_000,
+      }).kind, "variant");
+      const finalConfirmationRun = store.startIngestRun({
+        ...WINDOW,
+        pageSize: 1,
+        now: STARTED_AT + 8_000,
+      });
+      const finalConfirmation = store.recordPage({
+        ingestRunId: finalConfirmationRun.ingestRunId,
+        page: page(1, 1, false, [
+          detail("duplicate-resolution", "12.00", "CREDIT", "2026-08-14 00:01:00"),
+        ]),
+        evidence: evidence('{"duplicate":3}'),
+        now: STARTED_AT + 9_000,
+      });
+      assert.equal(finalConfirmation.normalized[0]?.kind, "conflict");
+      const duplicates = store.listOpenConflicts()
+        .filter((conflict) => conflict.conflictType === "DUPLICATE_EXTERNAL_ID");
+      assert.equal(duplicates.length, 2);
+      const firstDuplicate = duplicates[0];
+      const lastDuplicate = duplicates[1];
+      assert.ok(firstDuplicate);
+      assert.ok(lastDuplicate);
+      const existing = store.getLedgerEntry("primary", "duplicate-resolution");
+      assert.ok(existing);
+      const reconciliation = new ReconciliationStore(database);
+      assert.equal(reconciliation.reconcileEntry(existing.ledgerEntryId, STARTED_AT + 10_000).kind, "ignored");
+
+      assert.throws(
+        () => store.resolveConflict({
+          conflictOperationId: randomUUID(),
+          conflictId: firstDuplicate.conflictId,
+          action: "ACKNOWLEDGE_ISOLATED",
+          actorId: "admin",
+          reason: "wrong duplicate action",
+          now: STARTED_AT + 11_000,
+        }),
+        (error: unknown) =>
+          error instanceof LedgerConflictError && error.code === "ledger_conflict_action_not_allowed",
+      );
+      const resolution = store.resolveConflict({
+        conflictOperationId: randomUUID(),
+        conflictId: firstDuplicate.conflictId,
+        action: "KEEP_EXISTING",
+        actorId: "admin",
+        reason: "retain the first immutable platform fact",
+        now: STARTED_AT + 11_000,
+      });
+      assert.equal(resolution.conflict.status, "RESOLVED");
+      assert.equal(resolution.operation.action, "KEEP_EXISTING");
+      assert.deepEqual(store.getLedgerEntry("primary", "duplicate-resolution"), existing);
+      assert.equal(
+        database.read((connection) => Number((connection.prepare(
+          "SELECT COUNT(*) AS count FROM ledger_entries WHERE external_event_id = ?",
+        ).get("duplicate-resolution") as { count: bigint }).count)),
+        1,
+      );
+      assert.equal(
+        reconciliation.reconcileEntry(existing.ledgerEntryId, STARTED_AT + 12_000).kind,
+        "ignored",
+      );
+      store.resolveConflict({
+        conflictOperationId: randomUUID(),
+        conflictId: lastDuplicate.conflictId,
+        action: "KEEP_EXISTING",
+        actorId: "admin",
+        reason: "retain the first immutable platform fact",
+        now: STARTED_AT + 13_000,
+      });
+      assert.notEqual(
+        reconciliation.reconcileEntry(existing.ledgerEntryId, STARTED_AT + 14_000).kind,
+        "ignored",
+      );
+      assert.equal(database.integrityCheck().ok, true);
+    });
+  });
+
+  it("rejects administrator resolution of an open raw-page variant", async () => {
+    await withLedgerStore(async ({ store }) => {
+      const baseline = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT });
+      store.recordPage({
+        ingestRunId: baseline.ingestRunId,
+        page: page(1, 1, false, [detail("raw-admin-a", "1.00", "CREDIT", "2026-08-14 00:01:00")]),
+        evidence: evidence('{"raw-admin":"A"}'),
+        now: STARTED_AT + 1_000,
+      });
+      const changed = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT + 2_000 });
+      assert.equal(store.recordPage({
+        ingestRunId: changed.ingestRunId,
+        page: page(1, 1, false, [detail("raw-admin-b", "2.00", "CREDIT", "2026-08-14 00:02:00")]),
+        evidence: evidence('{"raw-admin":"B"}'),
+        now: STARTED_AT + 3_000,
+      }).kind, "variant");
+      const conflict = store.listOpenConflicts().find(
+        (item) => item.conflictType === "RAW_PAGE_VARIANT",
+      );
+      assert.ok(conflict);
+      assert.throws(
+        () => store.resolveConflict({
+          conflictOperationId: randomUUID(),
+          conflictId: conflict.conflictId,
+          action: "ACKNOWLEDGE_ISOLATED",
+          actorId: "admin",
+          reason: "administrator cannot confirm platform page evidence",
+          now: STARTED_AT + 4_000,
+        }),
+        (error: unknown) =>
+          error instanceof LedgerConflictError && error.code === "ledger_conflict_action_not_allowed",
+      );
     });
   });
 

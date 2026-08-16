@@ -12,7 +12,7 @@ import {
   financialOperationFingerprint,
   outboxPayloadFingerprint,
   type CandidateFingerprintInput,
-} from "../src/reconciliation/model.ts";
+} from "../src/reconciliation/index.ts";
 
 const candidateInput: CandidateFingerprintInput = {
   providerAccountKey: "primary",

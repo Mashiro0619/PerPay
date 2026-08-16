@@ -97,4 +97,5 @@ describe("sensitive storage permissions", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
 });
