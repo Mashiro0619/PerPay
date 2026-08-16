@@ -23,6 +23,8 @@ import {
 } from "./crypto.ts";
 
 const PASSWORD_WORK_QUEUE_LIMIT = 2;
+const PASSWORD_WORK_TOTAL_LIMIT = PASSWORD_WORK_QUEUE_LIMIT + 1;
+const PASSWORD_WORK_ANONYMOUS_LIMIT = 1;
 const SESSION_TOUCH_INTERVAL_MS = 60 * 1000;
 const SOURCE_MAX_LENGTH = 256;
 
@@ -34,6 +36,7 @@ export type IdentityErrorCode =
   | "session_invalid"
   | "csrf_invalid"
   | "step_up_required"
+  | "password_unchanged"
   | "api_client_invalid"
   | "api_nonce_replayed";
 
@@ -66,6 +69,15 @@ export interface LoginResult {
 export interface AuthenticatedSession {
   readonly session: AdminSession;
   readonly token: string;
+}
+
+export interface StepUpResult {
+  readonly sessionToken: string;
+  readonly csrfToken: string;
+  readonly createdAt: number;
+  readonly stepUpExpiresAt: number;
+  readonly idleExpiresAt: number;
+  readonly absoluteExpiresAt: number;
 }
 
 export interface ApiClientAuthentication {
@@ -169,7 +181,11 @@ export class IdentityService {
     if (!identity) throw new IdentityError("identity_not_initialized", "管理员身份尚未初始化");
 
     // A wrong username still performs the same password work to avoid a username oracle.
-    let valid = await this.#verifyCredentialPassword(password, identity.passwordHash);
+    let valid = await this.#verifyCredentialPassword(
+      password,
+      identity.passwordHash,
+      "anonymous",
+    );
     valid = valid && username === identity.username;
 
     if (!valid) {
@@ -276,7 +292,7 @@ export class IdentityService {
     session: AuthenticatedSession,
     password: string,
     context: IdentityContext = {},
-  ): Promise<number> {
+  ): Promise<StepUpResult> {
     const now = this.#clock();
     const sourceHash = this.sourceHash(context.sourceAddress);
     this.#assertAuthAttemptAllowed(sourceHash, now);
@@ -288,7 +304,11 @@ export class IdentityService {
     }
     const identity = this.#store.read((transaction) => transaction.adminIdentity());
     if (!identity) throw new IdentityError("identity_not_initialized", "管理员身份尚未初始化");
-    const valid = await this.#verifyCredentialPassword(password, identity.passwordHash);
+    const valid = await this.#verifyCredentialPassword(
+      password,
+      identity.passwordHash,
+      "authenticated",
+    );
     if (!valid) {
       const failureAt = this.#clock();
       this.#store.transaction((transaction) => {
@@ -317,6 +337,13 @@ export class IdentityService {
 
     const verifiedAt = this.#clock();
     const expiresAt = Math.min(verifiedAt + STEP_UP_TTL_MS, sessionBeforeWork.absoluteExpiresAt);
+    const idleExpiresAt = Math.min(
+      verifiedAt + SESSION_IDLE_TTL_MS,
+      sessionBeforeWork.absoluteExpiresAt,
+    );
+    const replacementSessionToken = issueSessionToken();
+    const replacementCsrfToken = issueCsrfToken();
+    const replacementSessionId = randomUUID();
     this.#store.transaction((transaction) => {
       const current = transaction.activeSession(session.session.tokenDigest, verifiedAt);
       const currentIdentity = transaction.adminIdentity();
@@ -329,9 +356,19 @@ export class IdentityService {
       ) {
         throw new IdentityError("session_invalid", "会话或管理员凭据已发生变化");
       }
-      if (!transaction.setStepUp(current.sessionId, expiresAt, verifiedAt)) {
+      if (!transaction.revokeSession(current.sessionId, "step_up_replaced", verifiedAt)) {
         throw new IdentityError("session_invalid", "会话已失效");
       }
+      transaction.createSession({
+        sessionId: replacementSessionId,
+        tokenDigest: replacementSessionToken.digest,
+        csrfDigest: replacementCsrfToken.digest,
+        generation: current.generation,
+        createdAt: verifiedAt,
+        idleExpiresAt,
+        absoluteExpiresAt: current.absoluteExpiresAt,
+        stepUpExpiresAt: expiresAt,
+      });
       transaction.resetAuthLimit(sourceHash);
       transaction.appendAudit({
         occurredAt: verifiedAt,
@@ -340,13 +377,20 @@ export class IdentityService {
         action: "admin.step_up",
         outcome: "SUCCESS",
         subjectType: "admin_session",
-        subjectId: current.sessionId,
+        subjectId: replacementSessionId,
         requestId: context.requestId,
         remoteAddressHash: sourceHash,
-        details: { expires_at: expiresAt },
+        details: { expires_at: expiresAt, replaced_session_id: current.sessionId },
       });
     });
-    return expiresAt;
+    return {
+      sessionToken: replacementSessionToken.token,
+      csrfToken: replacementCsrfToken.token,
+      createdAt: verifiedAt,
+      stepUpExpiresAt: expiresAt,
+      idleExpiresAt,
+      absoluteExpiresAt: sessionBeforeWork.absoluteExpiresAt,
+    };
   }
 
   logout(session: AuthenticatedSession, context: IdentityContext = {}): void {
@@ -416,7 +460,11 @@ export class IdentityService {
     }
     const identity = this.#store.read((transaction) => transaction.adminIdentity());
     if (!identity) throw new IdentityError("identity_not_initialized", "管理员身份尚未初始化");
-    const valid = await this.#verifyCredentialPassword(currentPassword, identity.passwordHash);
+    const valid = await this.#verifyCredentialPassword(
+      currentPassword,
+      identity.passwordHash,
+      "authenticated",
+    );
     if (!valid) {
       const failureAt = this.#clock();
       this.#store.transaction((transaction) => {
@@ -441,7 +489,13 @@ export class IdentityService {
       });
       throw new IdentityError("invalid_credentials", "当前密码错误");
     }
-    const nextHash = await this.#runPasswordWork(() => hashPassword(nextPassword));
+    if (currentPassword === nextPassword) {
+      throw new IdentityError("password_unchanged", "新密码不能与当前密码相同");
+    }
+    const nextHash = await this.#runPasswordWork(
+      "authenticated",
+      () => hashPassword(nextPassword),
+    );
     const changedAt = this.#clock();
     this.#store.transaction((transaction) => {
       const generation = transaction.updatePassword({
@@ -555,18 +609,22 @@ export class IdentityService {
     return current?.sessionId === session.session.sessionId ? current : undefined;
   }
 
-  async #verifyCredentialPassword(password: string, encodedHash: string): Promise<boolean> {
+  async #verifyCredentialPassword(
+    password: string,
+    encodedHash: string,
+    lane: PasswordWorkLane,
+  ): Promise<boolean> {
     try {
-      return await this.#runPasswordWork(() => verifyPassword(password, encodedHash));
+      return await this.#runPasswordWork(lane, () => verifyPassword(password, encodedHash));
     } catch (error) {
       if (error instanceof PasswordInputError) return false;
       throw error;
     }
   }
 
-  async #runPasswordWork<T>(operation: () => Promise<T>): Promise<T> {
+  async #runPasswordWork<T>(lane: PasswordWorkLane, operation: () => Promise<T>): Promise<T> {
     try {
-      return await this.#passwordGate.run(operation);
+      return await this.#passwordGate.run(lane, operation);
     } catch (error) {
       if (error instanceof PasswordWorkBusyError) {
         throw new IdentityError("password_work_busy", "密码验证服务当前繁忙，请稍后重试", 1);
@@ -600,23 +658,33 @@ class PasswordWorkBusyError extends Error {
   }
 }
 
+type PasswordWorkLane = "anonymous" | "authenticated";
+
 class PasswordWorkGate {
   #tail: Promise<void> = Promise.resolve();
-  #queued = 0;
+  #outstanding = 0;
+  #anonymousOutstanding = 0;
 
-  async run<T>(operation: () => Promise<T>): Promise<T> {
-    if (this.#queued >= PASSWORD_WORK_QUEUE_LIMIT) throw new PasswordWorkBusyError();
-    this.#queued += 1;
+  async run<T>(lane: PasswordWorkLane, operation: () => Promise<T>): Promise<T> {
+    if (
+      this.#outstanding >= PASSWORD_WORK_TOTAL_LIMIT ||
+      (lane === "anonymous" && this.#anonymousOutstanding >= PASSWORD_WORK_ANONYMOUS_LIMIT)
+    ) {
+      throw new PasswordWorkBusyError();
+    }
+    this.#outstanding += 1;
+    if (lane === "anonymous") this.#anonymousOutstanding += 1;
     let release!: () => void;
     const previous = this.#tail;
     this.#tail = new Promise<void>((resolve) => {
       release = resolve;
     });
     await previous;
-    this.#queued -= 1;
     try {
       return await operation();
     } finally {
+      this.#outstanding -= 1;
+      if (lane === "anonymous") this.#anonymousOutstanding -= 1;
       release();
     }
   }

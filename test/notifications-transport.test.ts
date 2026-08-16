@@ -45,9 +45,9 @@ describe("webhook outbound transport", () => {
   it("rejects fragment and empty-query delimiters before DNS", async () => {
     let resolverCalls = 0;
     const transport = new NodeWebhookTransport("https://hooks.example.test", {
-      resolveHostname: async () => {
+      startHostnameResolution: () => {
         resolverCalls += 1;
-        return publicAddresses;
+        return resolvedResolution(publicAddresses);
       },
     });
     for (const targetUrl of [
@@ -78,7 +78,7 @@ describe("webhook outbound transport", () => {
     ] as const) {
       let requestCalls = 0;
       const transport = new NodeWebhookTransport("https://hooks.example.test", {
-        resolveHostname: async () => addresses,
+        startHostnameResolution: () => resolvedResolution(addresses),
         request: () => {
           requestCalls += 1;
           return new FakeClientRequest() as unknown as ClientRequest;
@@ -208,11 +208,11 @@ describe("webhook outbound transport", () => {
     let resolverCalls = 0;
     let requestCalls = 0;
     const transport = new NodeWebhookTransport("https://hooks.example.test", {
-      resolveHostname: async () => {
+      startHostnameResolution: () => {
         resolverCalls += 1;
-        return resolverCalls === 1
+        return resolvedResolution(resolverCalls === 1
           ? publicAddresses
-          : [{ address: "127.0.0.1", family: 4 }];
+          : [{ address: "127.0.0.1", family: 4 }]);
       },
       request: (_options, onResponse) => {
         requestCalls += 1;
@@ -248,16 +248,17 @@ describe("webhook outbound transport", () => {
       addresses: readonly { readonly address: string; readonly family: number }[],
     ) => void> = [];
     const transport = new NodeWebhookTransport("https://hooks.example.test", {
-      resolveHostname: () => {
+      startHostnameResolution: () => {
         resolverCalls += 1;
         activeResolvers += 1;
         maximumActiveResolvers = Math.max(maximumActiveResolvers, activeResolvers);
-        return new Promise((resolve) => {
+        const result = new Promise<readonly ResolverAddress[]>((resolve) => {
           pendingResolvers.push((addresses) => {
             activeResolvers -= 1;
             resolve(addresses);
           });
         });
+        return resolutionTask(result);
       },
       request: (_options, onResponse) => {
         const client = new FakeClientRequest();
@@ -284,12 +285,88 @@ describe("webhook outbound transport", () => {
     assert.equal(activeResolvers, 0);
   });
 
+  it("cancels hung DNS work, restores capacity, and preserves the hard limit", async () => {
+    let resolverCalls = 0;
+    let activeResolvers = 0;
+    let maximumActiveResolvers = 0;
+    const jobs: Array<{
+      complete(addresses: readonly ResolverAddress[]): void;
+    }> = [];
+    const transport = new NodeWebhookTransport("https://hooks.example.test", {
+      startHostnameResolution: () => {
+        resolverCalls += 1;
+        activeResolvers += 1;
+        maximumActiveResolvers = Math.max(maximumActiveResolvers, activeResolvers);
+        const pending = deferred<readonly ResolverAddress[]>();
+        let active = true;
+        const stop = () => {
+          if (!active) return;
+          active = false;
+          activeResolvers -= 1;
+        };
+        jobs.push({
+          complete(addresses) {
+            stop();
+            pending.resolve(addresses);
+          },
+        });
+        return resolutionTask(pending.promise, () => {
+          stop();
+          pending.reject(new Error("DNS resolution cancelled"));
+        });
+      },
+      request: (_options, onResponse) => {
+        const client = new FakeClientRequest();
+        queueMicrotask(() => {
+          const response = new FakeIncomingResponse({
+            "content-type": ["application/json"],
+          });
+          onResponse(response as unknown as IncomingMessage);
+          response.emit("end");
+        });
+        return client as unknown as ClientRequest;
+      },
+    });
+    const controllers = Array.from({ length: 4 }, () => new AbortController());
+    const cancelledAttempts = controllers.map((controller) => assert.rejects(
+      transport.post({ ...postInput(), signal: controller.signal }),
+      (error: unknown) =>
+        error instanceof WebhookTransportError && error.code === "transport_cancelled",
+    ));
+    const survivors = [transport.post(postInput()), transport.post(postInput())];
+
+    await waitFor(() => resolverCalls === 4);
+    assert.equal(activeResolvers, 4);
+    for (const controller of controllers) controller.abort();
+    await Promise.all(cancelledAttempts);
+    await waitFor(() => resolverCalls === 6);
+    assert.equal(activeResolvers, 2);
+    assert.equal(maximumActiveResolvers, 4);
+    const fifth = jobs[4];
+    const sixth = jobs[5];
+    assert.ok(fifth);
+    assert.ok(sixth);
+    fifth.complete(publicAddresses);
+    sixth.complete(publicAddresses);
+    await Promise.all(survivors);
+    assert.equal(activeResolvers, 0);
+    assert.equal(maximumActiveResolvers, 4);
+  });
+
   it("cancels or times out during DNS without opening HTTPS", async () => {
     let requestCalls = 0;
+    let resolverCalls = 0;
+    let cancelCalls = 0;
     const transport = new NodeWebhookTransport("https://hooks.example.test", {
-      resolveHostname: async () => {
-        await new Promise((resolve) => setTimeout(resolve, 40));
-        return publicAddresses;
+      startHostnameResolution: () => {
+        resolverCalls += 1;
+        const pending = deferred<readonly ResolverAddress[]>();
+        const timer = setTimeout(() => pending.resolve(publicAddresses), 40);
+        return resolutionTask(pending.promise, () => {
+          cancelCalls += 1;
+          clearTimeout(timer);
+          pending.reject(new Error("DNS resolution cancelled"));
+        });
       },
       request: () => {
         requestCalls += 1;
@@ -302,6 +379,8 @@ describe("webhook outbound transport", () => {
       (error: unknown) =>
         error instanceof WebhookTransportError && error.code === "transport_timeout",
     );
+    assert.equal(resolverCalls, 1);
+    assert.equal(cancelCalls, 1);
 
     const controller = new AbortController();
     const cancelled = transport.post({ ...postInput(), signal: controller.signal });
@@ -311,6 +390,8 @@ describe("webhook outbound transport", () => {
       (error: unknown) =>
         error instanceof WebhookTransportError && error.code === "transport_cancelled",
     );
+    assert.equal(resolverCalls, 2);
+    assert.equal(cancelCalls, 2);
     await new Promise((resolve) => setTimeout(resolve, 50));
     assert.equal(requestCalls, 0);
   });
@@ -418,7 +499,7 @@ function createHarness() {
     resolveCreated = resolve;
   });
   const dependencies: WebhookTransportTestDependencies = {
-    resolveHostname: async () => publicAddresses,
+    startHostnameResolution: () => resolvedResolution(publicAddresses),
     request: (captured, callback) => {
       options = captured;
       onResponse = callback;
@@ -438,6 +519,36 @@ function createHarness() {
       onResponse(response as unknown as IncomingMessage);
     },
   };
+}
+
+interface ResolverAddress {
+  readonly address: string;
+  readonly family: number;
+}
+
+type ResolverFactory = NonNullable<
+  WebhookTransportTestDependencies["startHostnameResolution"]
+>;
+
+function resolvedResolution(addresses: readonly ResolverAddress[]) {
+  return resolutionTask(Promise.resolve(addresses));
+}
+
+function resolutionTask(
+  result: Promise<readonly ResolverAddress[]>,
+  cancel: () => void = () => undefined,
+): ReturnType<ResolverFactory> {
+  return { result, cancel };
+}
+
+function deferred<T>() {
+  let resolvePromise!: (value: T | PromiseLike<T>) => void;
+  let rejectPromise!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+  return { promise, resolve: resolvePromise, reject: rejectPromise };
 }
 
 function invokeAllLookup(

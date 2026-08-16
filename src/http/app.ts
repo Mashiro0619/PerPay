@@ -160,12 +160,25 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     requireSameOrigin(context, dependencies.config.publicOrigin);
     requireCsrf(context, dependencies.identity, dependencies.config.secureCookies);
     const body = await readJson(context, passwordSchema, MAX_JSON_BODY_BYTES);
-    const expiresAt = await dependencies.identity.stepUp(
+    const result = await dependencies.identity.stepUp(
       context.get("adminSession"),
       body.password,
       identityContext(context),
     );
-    return context.json({ data: { step_up_expires_at: new Date(expiresAt).toISOString() } });
+    setAuthenticationCookies(
+      context,
+      result.sessionToken,
+      result.csrfToken,
+      dependencies.config.secureCookies,
+    );
+    return context.json({
+      data: {
+        csrf_token: result.csrfToken,
+        step_up_expires_at: new Date(result.stepUpExpiresAt).toISOString(),
+        idle_expires_at: new Date(result.idleExpiresAt).toISOString(),
+        absolute_expires_at: new Date(result.absoluteExpiresAt).toISOString(),
+      },
+    });
   });
 
   app.post("/api/admin/v1/sessions/revoke-all", adminSession, (context) => {
@@ -641,6 +654,7 @@ function identityStatus(code: IdentityError["code"]): 401 | 403 | 409 | 429 | 50
     case "csrf_invalid":
     case "step_up_required":
       return 403;
+    case "password_unchanged":
     case "api_nonce_replayed":
       return 409;
     case "auth_rate_limited":

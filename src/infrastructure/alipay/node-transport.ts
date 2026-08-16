@@ -1,4 +1,3 @@
-import { lookup } from "node:dns/promises";
 import type { ClientRequest, IncomingMessage } from "node:http";
 import { request as httpsRequest, type RequestOptions } from "node:https";
 import { BlockList, isIP } from "node:net";
@@ -6,6 +5,11 @@ import { performance } from "node:perf_hooks";
 
 import { AlipayProviderError } from "./errors.ts";
 import { normalizeV3Headers } from "./headers.ts";
+import {
+  startHostnameResolution,
+  type HostnameResolution,
+  type StartHostnameResolution,
+} from "../network/cancellable-dns.ts";
 import {
   MAX_PROVIDER_RESPONSE_BYTES,
   type RawV3Response,
@@ -39,11 +43,10 @@ const blockedIpv6Addresses = createBlockedIpv6AddressList();
 const globalIpv6Addresses = new BlockList();
 globalIpv6Addresses.addSubnet("2000::", 3, "ipv6");
 const pendingAddressLookups = new WeakMap<
-  HostnameResolver,
-  Map<string, Promise<readonly ResolvedAddress[]>>
+  StartHostnameResolution,
+  Map<string, PendingAddressLookup>
 >();
 
-type HostnameResolver = (hostname: string) => Promise<readonly ResolverAddress[]>;
 interface AutoSelectingRequestOptions extends RequestOptions {
   readonly autoSelectFamily: true;
   readonly agent: false;
@@ -53,13 +56,8 @@ type HttpsRequestFactory = (
   onResponse: (response: IncomingMessage) => void,
 ) => ClientRequest;
 
-interface ResolverAddress {
-  readonly address: string;
-  readonly family: number;
-}
-
 interface NodeV3TransportDependencies {
-  readonly resolveHostname: HostnameResolver;
+  readonly startHostnameResolution: StartHostnameResolution;
   readonly request: HttpsRequestFactory;
   readonly now: () => number;
   readonly scheduleTimeout: (callback: () => void, delay: number) => NodeJS.Timeout;
@@ -67,7 +65,7 @@ interface NodeV3TransportDependencies {
 }
 
 const defaultDependencies: NodeV3TransportDependencies = Object.freeze({
-  resolveHostname: (hostname: string) => lookup(hostname, { all: true, verbatim: true }),
+  startHostnameResolution,
   request: httpsRequest,
   now: () => performance.now(),
   scheduleTimeout: (callback: () => void, delay: number) => setTimeout(callback, delay),
@@ -82,7 +80,7 @@ export interface NodeV3TransportOptions {
 
 /** @internal Test-only dependency seam. Production callers must omit this argument. */
 export interface NodeV3TransportTestDependencies {
-  readonly resolveHostname?: HostnameResolver;
+  readonly startHostnameResolution?: StartHostnameResolution;
   readonly request?: HttpsRequestFactory;
   readonly now?: () => number;
   readonly scheduleTimeout?: (callback: () => void, delay: number) => NodeJS.Timeout;
@@ -124,7 +122,8 @@ export class NodeV3Transport implements V3Transport {
       });
     }
     this.#dependencies = Object.freeze({
-      resolveHostname: testingDependencies.resolveHostname ?? defaultDependencies.resolveHostname,
+      startHostnameResolution: testingDependencies.startHostnameResolution ??
+        defaultDependencies.startHostnameResolution,
       request: testingDependencies.request ?? defaultDependencies.request,
       now: testingDependencies.now ?? defaultDependencies.now,
       scheduleTimeout: testingDependencies.scheduleTimeout ?? defaultDependencies.scheduleTimeout,
@@ -179,6 +178,13 @@ interface PreparedRequest {
 interface ResolvedAddress {
   readonly address: string;
   readonly family: 4 | 6;
+}
+
+interface PendingAddressLookup {
+  readonly resolution: HostnameResolution;
+  readonly result: Promise<readonly ResolvedAddress[]>;
+  waiters: number;
+  settled: boolean;
 }
 
 function requestAddresses(
@@ -461,15 +467,17 @@ async function resolvePublicAddresses(
   signal: AbortSignal | undefined,
   dependencies: NodeV3TransportDependencies,
 ): Promise<readonly ResolvedAddress[]> {
-  let resolverLookups = pendingAddressLookups.get(dependencies.resolveHostname);
+  let resolverLookups = pendingAddressLookups.get(dependencies.startHostnameResolution);
   if (!resolverLookups) {
-    resolverLookups = new Map<string, Promise<readonly ResolvedAddress[]>>();
-    pendingAddressLookups.set(dependencies.resolveHostname, resolverLookups);
+    resolverLookups = new Map<string, PendingAddressLookup>();
+    pendingAddressLookups.set(dependencies.startHostnameResolution, resolverLookups);
   }
   let pending = resolverLookups.get(hostname);
   if (!pending) {
-    pending = Promise.resolve()
-      .then(() => dependencies.resolveHostname(hostname))
+    const resolution = dependencies.startHostnameResolution(hostname);
+    pending = {
+      resolution,
+      result: Promise.resolve(resolution.result)
       .then((records) => {
         const seen = new Set<string>();
         const addresses: ResolvedAddress[] = [];
@@ -486,11 +494,24 @@ async function resolvePublicAddresses(
         return Object.freeze(addresses);
       })
       .finally(() => {
-        resolverLookups?.delete(hostname);
-      });
+        if (pending) pending.settled = true;
+        if (resolverLookups?.get(hostname) === pending) resolverLookups.delete(hostname);
+      }),
+      waiters: 0,
+      settled: false,
+    };
     resolverLookups.set(hostname, pending);
   }
-  return withDeadline(pending, deadline, signal, dependencies);
+  pending.waiters += 1;
+  try {
+    return await withDeadline(pending.result, deadline, signal, dependencies);
+  } finally {
+    pending.waiters -= 1;
+    if (pending.waiters === 0 && !pending.settled) {
+      pending.resolution.cancel();
+      if (resolverLookups.get(hostname) === pending) resolverLookups.delete(hostname);
+    }
+  }
 }
 
 function withDeadline<T>(

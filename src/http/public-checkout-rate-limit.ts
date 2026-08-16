@@ -1,4 +1,5 @@
 import { performance } from "node:perf_hooks";
+import { isIP } from "node:net";
 
 export interface PublicCheckoutRateLimiterOptions {
   readonly sourceBurst: number;
@@ -28,7 +29,6 @@ interface SourceBucket {
 export class PublicCheckoutRateLimiter {
   readonly #options: PublicCheckoutRateLimiterOptions;
   readonly #globalBudget: FixedTokenBucket;
-  readonly #overflowSourceBudget: FixedTokenBucket;
   readonly #sourceBuckets = new Map<string, SourceBucket>();
   #lastCleanupAt: number | undefined;
 
@@ -42,10 +42,6 @@ export class PublicCheckoutRateLimiter {
       this.#options.globalBurst,
       this.#options.globalRequestsPerSecond,
     );
-    this.#overflowSourceBudget = new FixedTokenBucket(
-      this.#options.sourceBurst,
-      this.#options.sourceRequestsPerSecond,
-    );
   }
 
   get trackedSourceCount(): number {
@@ -58,10 +54,14 @@ export class PublicCheckoutRateLimiter {
     }
     this.#cleanupExpiredSources(now);
 
-    let source = this.#sourceBuckets.get(sourceAddress);
+    const sourceKey = aggregateSourceAddress(sourceAddress);
+    let source = this.#sourceBuckets.get(sourceKey);
     if (source) {
       source.lastSeenAt = now;
-    } else if (this.#sourceBuckets.size < this.#options.maximumTrackedSources) {
+    } else {
+      if (this.#sourceBuckets.size >= this.#options.maximumTrackedSources) {
+        this.#evictLeastRecentlySeenSource();
+      }
       source = {
         budget: new FixedTokenBucket(
           this.#options.sourceBurst,
@@ -69,12 +69,26 @@ export class PublicCheckoutRateLimiter {
         ),
         lastSeenAt: now,
       };
-      this.#sourceBuckets.set(sourceAddress, source);
+      this.#sourceBuckets.set(sourceKey, source);
     }
 
-    const sourceBudget = source?.budget ?? this.#overflowSourceBudget;
-    if (!sourceBudget.take(now)) return false;
+    if (!source.budget.take(now)) return false;
     return this.#globalBudget.take(now);
+  }
+
+  #evictLeastRecentlySeenSource(): void {
+    let oldestKey: string | undefined;
+    let oldestSeenAt = Number.POSITIVE_INFINITY;
+    for (const [sourceKey, source] of this.#sourceBuckets) {
+      if (source.lastSeenAt < oldestSeenAt) {
+        oldestKey = sourceKey;
+        oldestSeenAt = source.lastSeenAt;
+      }
+    }
+    if (oldestKey === undefined) {
+      throw new Error("tracked source capacity is inconsistent");
+    }
+    this.#sourceBuckets.delete(oldestKey);
   }
 
   #cleanupExpiredSources(now: number): void {
@@ -96,6 +110,57 @@ export class PublicCheckoutRateLimiter {
       }
     }
   }
+}
+
+function aggregateSourceAddress(sourceAddress: string): string {
+  if (isIP(sourceAddress) !== 6) return sourceAddress;
+  const groups = parseIpv6Groups(sourceAddress);
+  if (groups === undefined) return sourceAddress;
+  if (
+    groups.slice(0, 5).every((group) => group === 0) &&
+    groups[5] === 0xffff
+  ) {
+    return [
+      groups[6]! >> 8,
+      groups[6]! & 0xff,
+      groups[7]! >> 8,
+      groups[7]! & 0xff,
+    ].join(".");
+  }
+  return `${groups.slice(0, 4).map((group) => group.toString(16)).join(":")}::/64`;
+}
+
+function parseIpv6Groups(address: string): readonly number[] | undefined {
+  const halves = address.split("::");
+  if (halves.length > 2) return undefined;
+  const left = parseIpv6Half(halves[0] ?? "");
+  const right = parseIpv6Half(halves[1] ?? "");
+  if (left === undefined || right === undefined) return undefined;
+  if (halves.length === 1) return left.length === 8 ? left : undefined;
+  const missing = 8 - left.length - right.length;
+  if (missing < 1) return undefined;
+  return [...left, ...Array.from({ length: missing }, () => 0), ...right];
+}
+
+function parseIpv6Half(value: string): readonly number[] | undefined {
+  if (value === "") return [];
+  const groups: number[] = [];
+  for (const part of value.split(":")) {
+    if (part.includes(".")) {
+      const octets = part.split(".").map(Number);
+      if (
+        octets.length !== 4 ||
+        octets.some((octet) => !Number.isSafeInteger(octet) || octet < 0 || octet > 255)
+      ) {
+        return undefined;
+      }
+      groups.push((octets[0]! << 8) | octets[1]!, (octets[2]! << 8) | octets[3]!);
+      continue;
+    }
+    if (!/^[0-9a-f]{1,4}$/i.test(part)) return undefined;
+    groups.push(Number.parseInt(part, 16));
+  }
+  return groups;
 }
 
 class FixedTokenBucket {

@@ -30,6 +30,13 @@ export type LedgerConflictType =
   | "INVALID_TIMESTAMP"
   | "INVALID_DIRECTION"
   | "INVALID_SHAPE";
+export type LedgerConflictStatus = "OPEN" | "RESOLVED" | "IGNORED";
+export type LedgerConflictAction =
+  | "CONFIRM_VARIANT"
+  | "KEEP_EXISTING"
+  | "ACKNOWLEDGE_ISOLATED";
+export type LedgerConflictAdminAction = Exclude<LedgerConflictAction, "CONFIRM_VARIANT">;
+export type LedgerConflictActorType = "SYSTEM" | "ADMIN";
 
 export interface ProviderIdentityInput {
   readonly providerAccountKey?: string;
@@ -198,10 +205,120 @@ export interface LedgerConflict {
   readonly existingSemanticFingerprint: string | null;
   readonly incomingSemanticFingerprint: string | null;
   readonly details: Record<string, unknown>;
-  readonly status: "OPEN" | "RESOLVED" | "IGNORED";
+  readonly status: LedgerConflictStatus;
+  readonly resolution: Readonly<Record<string, unknown>> | null;
+  readonly resolutionAction: LedgerConflictAction | null;
+  readonly resolutionOperationId: string | null;
+  readonly resolutionFingerprint: string | null;
   readonly createdAt: number;
   readonly resolvedAt: number | null;
   readonly conflictFingerprint: string;
+}
+
+export interface LedgerConflictOperationRequest {
+  readonly conflictId: string;
+  readonly action: LedgerConflictAction;
+  readonly actorType: LedgerConflictActorType;
+  readonly actorId: string | null;
+  readonly reason: string;
+}
+
+export interface LedgerConflictOperation {
+  readonly conflictOperationId: string;
+  readonly operationKey: string;
+  readonly conflictId: string;
+  readonly requestFingerprint: string;
+  readonly request: LedgerConflictOperationRequest;
+  readonly action: LedgerConflictAction;
+  readonly actorType: LedgerConflictActorType;
+  readonly actorId: string | null;
+  readonly reason: string;
+  readonly createdAt: number;
+}
+
+export interface LedgerConflictIncomingEvent {
+  readonly rawEventId: string;
+  readonly rawPageId: string;
+  readonly providerAccountKey: string;
+  readonly ordinal: number;
+  readonly externalEventId: string | null;
+  readonly occurredAtText: string | null;
+  readonly amountText: string | null;
+  readonly directionText: string | null;
+  readonly alipayOrderNo: string | null;
+  readonly merchantOrderNo: string | null;
+  readonly transMemo: string | null;
+  readonly otherAccount: string | null;
+  readonly payloadFingerprint: string;
+  readonly observedAt: number;
+}
+
+export interface LedgerConflictDetail {
+  readonly conflict: LedgerConflict;
+  readonly rawPage: RawPageRecord | null;
+  readonly incomingEvent: LedgerConflictIncomingEvent | null;
+  readonly existingLedgerEntry: LedgerEntry | null;
+  readonly resolutionOperation: LedgerConflictOperation | null;
+}
+
+export interface LedgerConflictCursor {
+  readonly createdAt: number;
+  readonly conflictId: string;
+}
+
+export interface LedgerConflictPage {
+  readonly conflicts: readonly LedgerConflict[];
+  readonly nextCursor: LedgerConflictCursor | null;
+}
+
+export interface LedgerConflictTypeSummary {
+  readonly conflictType: LedgerConflictType;
+  readonly open: number;
+  readonly resolved: number;
+  readonly ignored: number;
+  readonly total: number;
+}
+
+export interface LedgerConflictSummary {
+  readonly providerAccountKey: string;
+  readonly open: number;
+  readonly resolved: number;
+  readonly ignored: number;
+  readonly total: number;
+  readonly byType: readonly LedgerConflictTypeSummary[];
+}
+
+export interface ResolveLedgerConflictInput {
+  readonly conflictOperationId: string;
+  readonly conflictId: string;
+  readonly action: LedgerConflictAdminAction;
+  readonly actorId: string;
+  readonly reason: string;
+  readonly requestId?: string | undefined;
+  readonly remoteAddressHash?: string | undefined;
+  readonly now?: number | undefined;
+}
+
+export interface ResolveLedgerConflictResult {
+  readonly operation: LedgerConflictOperation;
+  readonly conflict: LedgerConflict;
+  readonly replayed: boolean;
+}
+
+export type LedgerConflictErrorCode =
+  | "ledger_conflict_not_found"
+  | "ledger_conflict_state_conflict"
+  | "ledger_conflict_action_not_allowed"
+  | "ledger_conflict_operation_conflict";
+
+export class LedgerConflictError extends Error {
+  readonly code: LedgerConflictErrorCode;
+
+  constructor(code: LedgerConflictErrorCode, message: string) {
+    super(message);
+    this.name = "LedgerConflictError";
+    this.code = code;
+  }
 }
 
 export type RecordPageResult =
@@ -437,6 +554,38 @@ export function payloadFingerprint(payload: string | Uint8Array): string {
 
 export function conflictFingerprint(parts: readonly unknown[]): string {
   return sha256(JSON.stringify(["perpay:ledger-conflict:v1", ...parts]));
+}
+
+export function ledgerConflictOperationRequest(
+  input: LedgerConflictOperationRequest,
+): LedgerConflictOperationRequest {
+  return Object.freeze({
+    conflictId: input.conflictId,
+    action: input.action,
+    actorType: input.actorType,
+    actorId: input.actorId,
+    reason: input.reason,
+  });
+}
+
+export function ledgerConflictOperationEvidence(
+  input: LedgerConflictOperationRequest,
+): Readonly<Record<string, unknown>> {
+  const request = ledgerConflictOperationRequest(input);
+  return Object.freeze({
+    schema: "perpay:ledger-conflict-operation:v1",
+    conflict_id: request.conflictId,
+    action: request.action,
+    actor_type: request.actorType,
+    actor_id: request.actorId,
+    reason: request.reason,
+  });
+}
+
+export function ledgerConflictOperationFingerprint(
+  input: LedgerConflictOperationRequest,
+): string {
+  return sha256(JSON.stringify(ledgerConflictOperationEvidence(input)));
 }
 
 export interface PageVariantConflictEvidence {

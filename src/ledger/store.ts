@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 
 import type { AppDatabase } from "../database/database.ts";
+import { appendAuditEvent } from "../database/identity-store.ts";
 import type { AccountLogDetail } from "../infrastructure/alipay/types.ts";
 import {
   LEDGER_CURSOR_DEFAULT_OVERLAP_MILLISECONDS,
@@ -9,6 +10,9 @@ import {
   LEDGER_MAX_RAW_PAGE_BYTES,
   LedgerNormalizationError,
   conflictFingerprint,
+  ledgerConflictOperationEvidence,
+  ledgerConflictOperationFingerprint,
+  ledgerConflictOperationRequest,
   normalizeProviderIdentity,
   normalizeProviderAccountKey,
   pageVariantConflictFingerprintParts,
@@ -30,6 +34,17 @@ import {
   type IngestRun,
   type IngestSegment,
   type LedgerConflict,
+  type LedgerConflictAction,
+  type LedgerConflictActorType,
+  type LedgerConflictCursor,
+  type LedgerConflictDetail,
+  LedgerConflictError,
+  type LedgerConflictIncomingEvent,
+  type LedgerConflictOperation,
+  type LedgerConflictOperationRequest,
+  type LedgerConflictPage,
+  type LedgerConflictStatus,
+  type LedgerConflictSummary,
   type LedgerConflictType,
   type LedgerCursor,
   type LedgerEntry,
@@ -45,6 +60,8 @@ import {
   type RecordPageResult,
   type RecordSegmentPageInput,
   type RecordSegmentPageResult,
+  type ResolveLedgerConflictInput,
+  type ResolveLedgerConflictResult,
   type SegmentObservationKind,
   type StartIngestRunInput,
 } from "./model.ts";
@@ -125,6 +142,7 @@ interface RawPageRow {
 interface LatestPageObservationRow extends RawPageRow {
   readonly disposition: PageObservationDisposition;
   readonly observation_sequence: bigint | number;
+  readonly ingest_segment_id: string;
 }
 
 interface LedgerEntryRow {
@@ -159,9 +177,49 @@ interface ConflictRow {
   readonly incoming_semantic_fingerprint: string | null;
   readonly details_json: string;
   readonly status: LedgerConflict["status"];
+  readonly resolution_json: string | null;
+  readonly resolution_action: LedgerConflictAction | null;
+  readonly resolution_operation_id: string | null;
+  readonly resolution_fingerprint: string | null;
   readonly created_at: bigint | number;
   readonly resolved_at: bigint | number | null;
   readonly conflict_fingerprint: string;
+}
+
+interface ConflictOperationRow {
+  readonly conflict_operation_id: string;
+  readonly operation_key: string;
+  readonly conflict_id: string;
+  readonly request_fingerprint: string;
+  readonly request_json: string;
+  readonly action: LedgerConflictAction;
+  readonly actor_type: LedgerConflictActorType;
+  readonly actor_id: string | null;
+  readonly reason: string;
+  readonly created_at: bigint | number;
+}
+
+interface ConflictIncomingEventRow {
+  readonly raw_event_id: string;
+  readonly raw_page_id: string;
+  readonly provider_account_key: string;
+  readonly ordinal: bigint | number;
+  readonly external_event_id: string | null;
+  readonly occurred_at_text: string | null;
+  readonly amount_text: string | null;
+  readonly direction_text: string | null;
+  readonly alipay_order_no: string | null;
+  readonly merchant_order_no: string | null;
+  readonly trans_memo: string | null;
+  readonly other_account: string | null;
+  readonly payload_fingerprint: string;
+  readonly observed_at: bigint | number;
+}
+
+interface ConflictSummaryRow {
+  readonly conflict_type: LedgerConflictType;
+  readonly status: LedgerConflictStatus;
+  readonly conflict_count: bigint | number;
 }
 
 interface PreparedRawEvent {
@@ -211,6 +269,7 @@ interface LatestPageObservation {
   readonly page: RawPageRecord;
   readonly disposition: PageObservationDisposition;
   readonly sequence: number;
+  readonly ingestSegmentId: string;
 }
 
 /**
@@ -737,23 +796,148 @@ export class LedgerStore {
     });
   }
 
-  listOpenConflicts(providerAccountKey = "primary", limit = 100): readonly LedgerConflict[] {
+  conflict(conflictId: string): LedgerConflictDetail | null {
+    requireUuid(conflictId, "ledger conflict ID");
+    return this.#database.read((connection) => {
+      const conflict = readConflict(connection, conflictId);
+      return conflict === null ? null : readConflictDetail(connection, conflict);
+    });
+  }
+
+  conflictPage(
+    providerAccountKey = "primary",
+    status: LedgerConflictStatus | "ALL" = "OPEN",
+    cursor: LedgerConflictCursor | null = null,
+    limit = 100,
+  ): LedgerConflictPage {
     const account = normalizeProviderAccountKey(providerAccountKey);
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) {
       throw new RangeError("ledger conflict list limit is invalid");
+    }
+    if (status !== "ALL" && !LEDGER_CONFLICT_STATUSES.has(status)) {
+      throw new RangeError("ledger conflict status is invalid");
+    }
+    if (cursor !== null) {
+      requireUuid(cursor.conflictId, "ledger conflict cursor ID");
+      safeTimestamp(cursor.createdAt, "ledger conflict cursor time");
     }
     return this.#database.read((connection) => {
       const rows = connection
         .prepare(
           `SELECT ${CONFLICT_COLUMNS}
              FROM ledger_conflicts
-            WHERE provider_account_key = ? AND status = 'OPEN'
+            WHERE provider_account_key = ?
+              AND (? = 'ALL' OR status = ?)
+              AND (
+                ? IS NULL OR created_at > ? OR
+                (created_at = ? AND conflict_id > ?)
+              )
             ORDER BY created_at, conflict_id
             LIMIT ?`,
         )
-        .all(account, limit) as unknown as ConflictRow[];
-      return rows.map(mapConflict);
+        .all(
+          account,
+          status,
+          status,
+          cursor?.createdAt ?? null,
+          cursor?.createdAt ?? null,
+          cursor?.createdAt ?? null,
+          cursor?.conflictId ?? null,
+          limit + 1,
+        ) as unknown as ConflictRow[];
+      const selected = rows.slice(0, limit);
+      const last = selected.at(-1);
+      return Object.freeze({
+        conflicts: Object.freeze(selected.map(mapConflict)),
+        nextCursor: rows.length > limit && last
+          ? Object.freeze({
+              createdAt: toSafeInteger(last.created_at, "ledger conflict cursor time"),
+              conflictId: last.conflict_id,
+            })
+          : null,
+      });
     });
+  }
+
+  conflictSummary(providerAccountKey = "primary"): LedgerConflictSummary {
+    const account = normalizeProviderAccountKey(providerAccountKey);
+    return this.#database.read((connection) => {
+      const rows = connection
+        .prepare(
+          `SELECT conflict_type, status, COUNT(*) AS conflict_count
+             FROM ledger_conflicts
+            WHERE provider_account_key = ?
+            GROUP BY conflict_type, status`,
+        )
+        .all(account) as unknown as ConflictSummaryRow[];
+      return summarizeConflicts(account, rows);
+    });
+  }
+
+  resolveConflict(input: ResolveLedgerConflictInput): ResolveLedgerConflictResult {
+    validateResolveConflictInput(input);
+    const requestedNow = safeNow(input.now);
+    const request = ledgerConflictOperationRequest({
+      conflictId: input.conflictId,
+      action: input.action,
+      actorType: "ADMIN",
+      actorId: input.actorId,
+      reason: input.reason,
+    });
+    const fingerprint = ledgerConflictOperationFingerprint(request);
+    return this.#database.write((connection) => {
+      const replay = readConflictOperation(connection, input.conflictOperationId);
+      if (replay !== null) {
+        assertConflictOperationReplay(
+          replay,
+          `admin:${input.conflictOperationId}`,
+          request,
+          fingerprint,
+        );
+        return Object.freeze({
+          operation: replay,
+          conflict: requireConflict(connection, replay.conflictId),
+          replayed: true,
+        });
+      }
+
+      const conflict = readConflict(connection, input.conflictId);
+      if (conflict === null) {
+        throw new LedgerConflictError(
+          "ledger_conflict_not_found",
+          "ledger conflict does not exist",
+        );
+      }
+      if (conflict.status !== "OPEN") {
+        throw new LedgerConflictError(
+          "ledger_conflict_state_conflict",
+          "ledger conflict is already terminal",
+        );
+      }
+      assertAdministratorConflictAction(conflict, input.action);
+      const now = Math.max(requestedNow, conflict.createdAt);
+      const operation = insertConflictOperation(connection, {
+        conflictOperationId: input.conflictOperationId,
+        operationKey: `admin:${input.conflictOperationId}`,
+        request,
+        now,
+      });
+      const resolved = requireConflict(connection, conflict.conflictId);
+      if (resolved.status === "OPEN" || resolved.resolutionOperationId !== operation.conflictOperationId) {
+        throw new Error("ledger conflict operation did not reach a terminal state");
+      }
+      appendConflictResolutionAudit(connection, {
+        operation,
+        conflict: resolved,
+        requestId: input.requestId,
+        remoteAddressHash: input.remoteAddressHash,
+      });
+      return Object.freeze({ operation, conflict: resolved, replayed: false });
+    });
+  }
+
+  listOpenConflicts(providerAccountKey = "primary", limit = 100): readonly LedgerConflict[] {
+    return this.conflictPage(providerAccountKey, "OPEN", null, limit).conflicts;
   }
 }
 
@@ -780,11 +964,43 @@ const LEDGER_ENTRY_COLUMNS = `
   created_at, updated_at
 `;
 
+const LEDGER_CONFLICT_TYPES = [
+  "RAW_PAGE_VARIANT",
+  "DUPLICATE_EXTERNAL_ID",
+  "MISSING_EXTERNAL_ID",
+  "INVALID_AMOUNT",
+  "INVALID_TIMESTAMP",
+  "INVALID_DIRECTION",
+  "INVALID_SHAPE",
+] as const satisfies readonly LedgerConflictType[];
+
+const LEDGER_CONFLICT_STATUSES = new Set<LedgerConflictStatus>([
+  "OPEN",
+  "RESOLVED",
+  "IGNORED",
+]);
+
 const CONFLICT_COLUMNS = `
   conflict_id, provider_account_key, conflict_type, raw_page_id, raw_event_id,
   existing_ledger_entry_id, external_event_id, existing_semantic_fingerprint,
-  incoming_semantic_fingerprint, details_json, status, created_at, resolved_at,
+  incoming_semantic_fingerprint, details_json, status, resolution_json,
+  (SELECT operation.action
+     FROM ledger_conflict_operations AS operation
+    WHERE operation.conflict_operation_id = ledger_conflicts.resolution_operation_id)
+    AS resolution_action,
+  resolution_operation_id, resolution_fingerprint, created_at, resolved_at,
   conflict_fingerprint
+`;
+
+const CONFLICT_OPERATION_COLUMNS = `
+  conflict_operation_id, operation_key, conflict_id, request_fingerprint,
+  request_json, action, actor_type, actor_id, reason, created_at
+`;
+
+const CONFLICT_INCOMING_EVENT_COLUMNS = `
+  raw_event_id, raw_page_id, provider_account_key, ordinal, external_event_id,
+  occurred_at_text, amount_text, direction_text, alipay_order_no,
+  merchant_order_no, trans_memo, other_account, payload_fingerprint, observed_at
 `;
 
 function readProviderIdentityBinding(
@@ -1012,7 +1228,8 @@ function readLatestPageObservation(
          page.total_size, page.has_more, page.request_fingerprint,
          page.response_fingerprint, page.http_status, page.signature_verified,
          page.trace_id, page.received_at,
-         observation.disposition, observation.observation_sequence
+         observation.disposition, observation.observation_sequence,
+         observation.ingest_segment_id
          FROM ingest_run_page_observations AS observation
          JOIN provider_raw_pages AS page ON page.raw_page_id = observation.raw_page_id
         WHERE page.provider_account_key = ? AND page.request_fingerprint = ?
@@ -1028,6 +1245,7 @@ function readLatestPageObservation(
     page: mapRawPage(row),
     disposition: row.disposition,
     sequence: toSafeInteger(row.observation_sequence, "provider page observation sequence"),
+    ingestSegmentId: row.ingest_segment_id,
   };
 }
 
@@ -1447,19 +1665,22 @@ function toTimestampPrecision(
   return precision;
 }
 
-function requireConflict(connection: DatabaseSync, conflictId: string): LedgerConflict {
+function readConflict(connection: DatabaseSync, conflictId: string): LedgerConflict | null {
   const row = connection
     .prepare(`SELECT ${CONFLICT_COLUMNS} FROM ledger_conflicts WHERE conflict_id = ?`)
     .get(conflictId) as ConflictRow | undefined;
-  if (!row) throw new Error("ledger conflict cannot be read");
-  return mapConflict(row);
+  return row ? mapConflict(row) : null;
+}
+
+function requireConflict(connection: DatabaseSync, conflictId: string): LedgerConflict {
+  return readConflict(connection, conflictId) ?? invalidState("ledger conflict cannot be read");
 }
 
 function mapConflict(row: ConflictRow): LedgerConflict {
-  const parsed = JSON.parse(row.details_json) as unknown;
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("ledger conflict details are invalid");
-  }
+  const details = parseJsonObject(row.details_json, "ledger conflict details");
+  const resolution = row.resolution_json === null
+    ? null
+    : parseJsonObject(row.resolution_json, "ledger conflict resolution");
   return {
     conflictId: row.conflict_id,
     providerAccountKey: row.provider_account_key,
@@ -1470,12 +1691,328 @@ function mapConflict(row: ConflictRow): LedgerConflict {
     externalEventId: row.external_event_id,
     existingSemanticFingerprint: row.existing_semantic_fingerprint,
     incomingSemanticFingerprint: row.incoming_semantic_fingerprint,
-    details: parsed as Record<string, unknown>,
+    details,
     status: row.status,
+    resolution,
+    resolutionAction: row.resolution_action,
+    resolutionOperationId: row.resolution_operation_id,
+    resolutionFingerprint: row.resolution_fingerprint,
     createdAt: toSafeInteger(row.created_at, "ledger conflict created-at"),
     resolvedAt: toNullableInteger(row.resolved_at, "ledger conflict resolved-at"),
     conflictFingerprint: row.conflict_fingerprint,
   };
+}
+
+function readConflictDetail(
+  connection: DatabaseSync,
+  conflict: LedgerConflict,
+): LedgerConflictDetail {
+  const rawPage = conflict.rawPageId === null
+    ? null
+    : requireRawPage(connection, conflict.rawPageId);
+  const incomingEvent = conflict.rawEventId === null
+    ? null
+    : readConflictIncomingEvent(connection, conflict.rawEventId);
+  if (conflict.rawEventId !== null && incomingEvent === null) {
+    throw new Error("ledger conflict incoming event cannot be read");
+  }
+  const existingLedgerEntry = conflict.existingLedgerEntryId === null
+    ? null
+    : requireLedgerEntry(connection, conflict.existingLedgerEntryId);
+  const resolutionOperation = conflict.resolutionOperationId === null
+    ? null
+    : readConflictOperation(connection, conflict.resolutionOperationId);
+  if (conflict.resolutionOperationId !== null && resolutionOperation === null) {
+    throw new Error("ledger conflict resolution operation cannot be read");
+  }
+  return Object.freeze({
+    conflict,
+    rawPage,
+    incomingEvent,
+    existingLedgerEntry,
+    resolutionOperation,
+  });
+}
+
+function readConflictIncomingEvent(
+  connection: DatabaseSync,
+  rawEventId: string,
+): LedgerConflictIncomingEvent | null {
+  const row = connection
+    .prepare(
+      `SELECT ${CONFLICT_INCOMING_EVENT_COLUMNS}
+         FROM provider_raw_events
+        WHERE raw_event_id = ?`,
+    )
+    .get(rawEventId) as ConflictIncomingEventRow | undefined;
+  return row ? mapConflictIncomingEvent(row) : null;
+}
+
+function mapConflictIncomingEvent(row: ConflictIncomingEventRow): LedgerConflictIncomingEvent {
+  return Object.freeze({
+    rawEventId: row.raw_event_id,
+    rawPageId: row.raw_page_id,
+    providerAccountKey: row.provider_account_key,
+    ordinal: toSafeInteger(row.ordinal, "ledger conflict event ordinal"),
+    externalEventId: row.external_event_id,
+    occurredAtText: row.occurred_at_text,
+    amountText: row.amount_text,
+    directionText: row.direction_text,
+    alipayOrderNo: row.alipay_order_no,
+    merchantOrderNo: row.merchant_order_no,
+    transMemo: row.trans_memo,
+    otherAccount: row.other_account,
+    payloadFingerprint: row.payload_fingerprint,
+    observedAt: toSafeInteger(row.observed_at, "ledger conflict event observation time"),
+  });
+}
+
+function readConflictOperation(
+  connection: DatabaseSync,
+  conflictOperationId: string,
+): LedgerConflictOperation | null {
+  const row = connection
+    .prepare(
+      `SELECT ${CONFLICT_OPERATION_COLUMNS}
+         FROM ledger_conflict_operations
+        WHERE conflict_operation_id = ?`,
+    )
+    .get(conflictOperationId) as ConflictOperationRow | undefined;
+  return row ? mapConflictOperation(row) : null;
+}
+
+function mapConflictOperation(row: ConflictOperationRow): LedgerConflictOperation {
+  parseJsonObject(row.request_json, "ledger conflict operation request");
+  const request = ledgerConflictOperationRequest({
+    conflictId: row.conflict_id,
+    action: row.action,
+    actorType: row.actor_type,
+    actorId: row.actor_id,
+    reason: row.reason,
+  });
+  return Object.freeze({
+    conflictOperationId: row.conflict_operation_id,
+    operationKey: row.operation_key,
+    conflictId: row.conflict_id,
+    requestFingerprint: row.request_fingerprint,
+    request,
+    action: row.action,
+    actorType: row.actor_type,
+    actorId: row.actor_id,
+    reason: row.reason,
+    createdAt: toSafeInteger(row.created_at, "ledger conflict operation creation time"),
+  });
+}
+
+function insertConflictOperation(
+  connection: DatabaseSync,
+  input: {
+    readonly conflictOperationId: string;
+    readonly operationKey: string;
+    readonly request: LedgerConflictOperationRequest;
+    readonly now: number;
+  },
+): LedgerConflictOperation {
+  const requestJson = JSON.stringify(ledgerConflictOperationEvidence(input.request));
+  if (Buffer.byteLength(requestJson, "utf8") > 8192) {
+    throw new RangeError("ledger conflict operation request exceeds the persistence limit");
+  }
+  const inserted = connection
+    .prepare(
+      `INSERT INTO ledger_conflict_operations(
+         conflict_operation_id, operation_key, conflict_id, request_fingerprint,
+         request_json, action, actor_type, actor_id, reason, created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      input.conflictOperationId,
+      input.operationKey,
+      input.request.conflictId,
+      ledgerConflictOperationFingerprint(input.request),
+      requestJson,
+      input.request.action,
+      input.request.actorType,
+      input.request.actorId,
+      input.request.reason,
+      input.now,
+    );
+  assertChangedOnce(inserted.changes, "ledger conflict operation insert");
+  return readConflictOperation(connection, input.conflictOperationId) ??
+    invalidState("inserted ledger conflict operation cannot be read");
+}
+
+function assertConflictOperationReplay(
+  existing: LedgerConflictOperation,
+  operationKey: string,
+  request: LedgerConflictOperationRequest,
+  requestFingerprint: string,
+): void {
+  if (
+    existing.operationKey !== operationKey ||
+    existing.requestFingerprint !== requestFingerprint ||
+    existing.conflictId !== request.conflictId ||
+    existing.action !== request.action ||
+    existing.actorType !== request.actorType ||
+    existing.actorId !== request.actorId ||
+    existing.reason !== request.reason
+  ) {
+    throw new LedgerConflictError(
+      "ledger_conflict_operation_conflict",
+      "ledger conflict operation ID was reused with different input",
+    );
+  }
+}
+
+function assertAdministratorConflictAction(
+  conflict: LedgerConflict,
+  action: ResolveLedgerConflictInput["action"],
+): void {
+  const allowed =
+    (conflict.conflictType === "DUPLICATE_EXTERNAL_ID" && action === "KEEP_EXISTING") ||
+    (conflict.conflictType !== "RAW_PAGE_VARIANT" &&
+      conflict.conflictType !== "DUPLICATE_EXTERNAL_ID" &&
+      action === "ACKNOWLEDGE_ISOLATED");
+  if (!allowed) {
+    throw new LedgerConflictError(
+      "ledger_conflict_action_not_allowed",
+      "ledger conflict action is not allowed for this conflict type",
+    );
+  }
+}
+
+function appendConflictResolutionAudit(
+  connection: DatabaseSync,
+  input: {
+    readonly operation: LedgerConflictOperation;
+    readonly conflict: LedgerConflict;
+    readonly requestId: string | undefined;
+    readonly remoteAddressHash: string | undefined;
+  },
+): void {
+  const action = input.operation.action === "CONFIRM_VARIANT"
+    ? "ledger.conflict_variant_confirmed"
+    : input.operation.action === "KEEP_EXISTING"
+      ? "ledger.conflict_existing_kept"
+      : "ledger.conflict_isolation_acknowledged";
+  appendAuditEvent(connection, {
+    occurredAt: input.operation.createdAt,
+    actorType: input.operation.actorType,
+    actorId: input.operation.actorId ?? undefined,
+    action,
+    outcome: "SUCCESS",
+    subjectType: "ledger_conflict",
+    subjectId: input.conflict.conflictId,
+    requestId: input.requestId,
+    remoteAddressHash: input.remoteAddressHash,
+    details: {
+      conflict_operation_id: input.operation.conflictOperationId,
+      conflict_type: input.conflict.conflictType,
+      resolution_action: input.operation.action,
+      terminal_status: input.conflict.status,
+    },
+  });
+}
+
+function confirmPageVariantConflict(
+  connection: DatabaseSync,
+  latest: LatestPageObservation,
+  retainedPage: RawPageRecord,
+  now: number,
+): void {
+  if (
+    latest.disposition !== "REJECTED_VARIANT" ||
+    latest.page.rawPageId !== retainedPage.rawPageId ||
+    latest.page.requestFingerprint !== retainedPage.requestFingerprint ||
+    latest.page.responseFingerprint !== retainedPage.responseFingerprint
+  ) {
+    throw new Error("confirmed page variant evidence is inconsistent");
+  }
+  const rows = connection
+    .prepare(
+      `SELECT ${CONFLICT_COLUMNS}
+         FROM ledger_conflicts
+        WHERE provider_account_key = ?
+          AND status = 'OPEN'
+          AND conflict_type = 'RAW_PAGE_VARIANT'
+          AND raw_page_id = ?
+          AND incoming_semantic_fingerprint = ?
+          AND json_extract(details_json, '$.request_fingerprint') = ?
+          AND json_extract(details_json, '$.ingest_segment_id') = ?
+          AND json_extract(details_json, '$.incoming_raw_page_id') = ?`,
+    )
+    .all(
+      retainedPage.providerAccountKey,
+      retainedPage.rawPageId,
+      retainedPage.responseFingerprint,
+      retainedPage.requestFingerprint,
+      latest.ingestSegmentId,
+      retainedPage.rawPageId,
+    ) as unknown as ConflictRow[];
+  if (rows.length !== 1) {
+    throw new Error("confirmed page variant does not identify exactly one open conflict");
+  }
+  const conflict = mapConflict(rows[0] as ConflictRow);
+  const request = ledgerConflictOperationRequest({
+    conflictId: conflict.conflictId,
+    action: "CONFIRM_VARIANT",
+    actorType: "SYSTEM",
+    actorId: null,
+    reason: "consecutive signed response confirmed the retained page variant",
+  });
+  const operation = insertConflictOperation(connection, {
+    conflictOperationId: randomUUID(),
+    operationKey: `system:confirm_variant:${conflict.conflictId}`,
+    request,
+    now: Math.max(now, conflict.createdAt),
+  });
+  const resolved = requireConflict(connection, conflict.conflictId);
+  if (resolved.status !== "RESOLVED" || resolved.resolutionOperationId !== operation.conflictOperationId) {
+    throw new Error("confirmed page variant conflict was not resolved");
+  }
+  appendConflictResolutionAudit(connection, {
+    operation,
+    conflict: resolved,
+    requestId: undefined,
+    remoteAddressHash: undefined,
+  });
+}
+
+function summarizeConflicts(
+  providerAccountKey: string,
+  rows: readonly ConflictSummaryRow[],
+): LedgerConflictSummary {
+  const counts = new Map<LedgerConflictType, Record<"OPEN" | "RESOLVED" | "IGNORED", number>>();
+  for (const type of LEDGER_CONFLICT_TYPES) {
+    counts.set(type, { OPEN: 0, RESOLVED: 0, IGNORED: 0 });
+  }
+  for (const row of rows) {
+    const byStatus = counts.get(row.conflict_type);
+    if (!byStatus || !LEDGER_CONFLICT_STATUSES.has(row.status)) {
+      throw new Error("ledger conflict summary row is invalid");
+    }
+    byStatus[row.status] = toSafeInteger(row.conflict_count, "ledger conflict summary count");
+  }
+  const byType = LEDGER_CONFLICT_TYPES.map((conflictType) => {
+    const values = counts.get(conflictType) ?? invalidState("ledger conflict summary type is missing");
+    return Object.freeze({
+      conflictType,
+      open: values.OPEN,
+      resolved: values.RESOLVED,
+      ignored: values.IGNORED,
+      total: values.OPEN + values.RESOLVED + values.IGNORED,
+    });
+  });
+  const open = byType.reduce((sum, item) => sum + item.open, 0);
+  const resolved = byType.reduce((sum, item) => sum + item.resolved, 0);
+  const ignored = byType.reduce((sum, item) => sum + item.ignored, 0);
+  return Object.freeze({
+    providerAccountKey,
+    open,
+    resolved,
+    ignored,
+    total: open + resolved + ignored,
+    byType: Object.freeze(byType),
+  });
 }
 
 function prepareSegmentPage(input: RecordSegmentPageInput): PreparedSegmentPage {
@@ -1730,6 +2267,9 @@ function retainSegmentPage(
     prepared,
     "PROCESSED",
   );
+  if (confirmedVariant && newlyObserved) {
+    confirmPageVariantConflict(connection, latest, retainedPage, prepared.now);
+  }
   return {
     observation: confirmedVariant ? "confirmed_variant" : "duplicate",
     newlyObserved,
@@ -2093,6 +2633,14 @@ function serializeDetails(details: Record<string, unknown>): string {
   return json;
 }
 
+function parseJsonObject(value: string, label: string): Record<string, unknown> {
+  const parsed = JSON.parse(value) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`${label} is invalid`);
+  }
+  return parsed as Record<string, unknown>;
+}
+
 function boundedString(value: unknown, maximum: number): string | null {
   if (value === null || value === undefined) return null;
   if (typeof value !== "string") return null;
@@ -2107,6 +2655,44 @@ function invalidBoundedValue(original: unknown, normalized: string | null): bool
 
 function validateErrorLabel(value: string, label: string, maximum: number): void {
   if (value.length < 1 || value.length > maximum || !/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(value)) {
+    throw new RangeError(`${label} is invalid`);
+  }
+}
+
+function validateResolveConflictInput(input: ResolveLedgerConflictInput): void {
+  requireUuid(input.conflictOperationId, "ledger conflict operation ID");
+  requireUuid(input.conflictId, "ledger conflict ID");
+  if (input.action !== "KEEP_EXISTING" && input.action !== "ACKNOWLEDGE_ISOLATED") {
+    throw new RangeError("ledger conflict action is invalid");
+  }
+  if (
+    input.actorId.length < 1 ||
+    input.actorId.length > 128 ||
+    input.actorId.includes("\0") ||
+    input.reason.length < 1 ||
+    input.reason.length > 512 ||
+    Buffer.byteLength(input.reason, "utf8") > 2048 ||
+    input.reason !== input.reason.trim() ||
+    /\p{Cc}/u.test(input.reason)
+  ) {
+    throw new RangeError("ledger conflict resolution input is invalid");
+  }
+  if (
+    input.requestId !== undefined &&
+    (input.requestId.length < 1 || input.requestId.length > 128 || /[\u0000-\u001f\u007f]/.test(input.requestId))
+  ) {
+    throw new RangeError("ledger conflict request ID is invalid");
+  }
+  if (
+    input.remoteAddressHash !== undefined &&
+    !/^[0-9a-f]{64}$/.test(input.remoteAddressHash)
+  ) {
+    throw new RangeError("ledger conflict remote address hash is invalid");
+  }
+}
+
+function requireUuid(value: string, label: string): void {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value)) {
     throw new RangeError(`${label} is invalid`);
   }
 }
@@ -2132,4 +2718,8 @@ function toNullableInteger(value: bigint | number | null, label: string): number
 
 function assertChangedOnce(changes: bigint | number, label: string): void {
   if (Number(changes) !== 1) throw new Error(`${label} did not change exactly one row`);
+}
+
+function invalidState(message: string): never {
+  throw new Error(message);
 }

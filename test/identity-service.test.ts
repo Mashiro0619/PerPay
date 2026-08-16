@@ -186,8 +186,10 @@ describe("IdentityService", () => {
         test.identity.stepUp(authenticated, malformedPassword, { sourceAddress: stepUpSource }),
         (error: unknown) => error instanceof IdentityError && error.code === "invalid_credentials",
       );
-      await test.identity.stepUp(authenticated, adminPassword, { sourceAddress: "192.0.2.43" });
-      const steppedUp = test.identity.authenticate(login.sessionToken);
+      const stepUp = await test.identity.stepUp(authenticated, adminPassword, {
+        sourceAddress: "192.0.2.43",
+      });
+      const steppedUp = test.identity.authenticate(stepUp.sessionToken);
       assert.ok(steppedUp);
 
       const changeSource = "192.0.2.44";
@@ -246,19 +248,29 @@ describe("IdentityService", () => {
         (error: unknown) => error instanceof IdentityError && error.code === "step_up_required",
       );
 
-      const stepUpExpiresAt = await test.identity.stepUp(authenticated, adminPassword);
-      assert.equal(stepUpExpiresAt, test.clock.now + IDENTITY_LIMITS.stepUpMs);
-      const steppedUp = test.identity.authenticate(login.sessionToken);
+      const firstStepUp = await test.identity.stepUp(authenticated, adminPassword);
+      assert.equal(firstStepUp.stepUpExpiresAt, test.clock.now + IDENTITY_LIMITS.stepUpMs);
+      assert.equal(firstStepUp.absoluteExpiresAt, login.absoluteExpiresAt);
+      assert.notEqual(firstStepUp.sessionToken, login.sessionToken);
+      assert.notEqual(firstStepUp.csrfToken, login.csrfToken);
+      assert.equal(test.identity.authenticate(login.sessionToken), undefined);
+      assert.equal(test.identity.verifyCsrf(authenticated, login.csrfToken), false);
+      const steppedUp = test.identity.authenticate(firstStepUp.sessionToken);
       assert.ok(steppedUp);
       assert.equal(test.identity.isStepUp(steppedUp), true);
+      assert.equal(test.identity.verifyCsrf(steppedUp, firstStepUp.csrfToken), true);
       test.clock.now += IDENTITY_LIMITS.stepUpMs + 1;
       assert.equal(test.identity.isStepUp(steppedUp), false);
-      await test.identity.stepUp(steppedUp, adminPassword);
-      assert.equal(test.identity.isStepUp(steppedUp), true);
-      assert.equal(test.identity.revokeAllSessions(steppedUp), 1);
-      assert.equal(test.identity.authenticate(login.sessionToken), undefined);
-      assert.equal(test.identity.isStepUp(steppedUp), false);
-      assert.equal(test.identity.verifyCsrf(steppedUp, login.csrfToken), false);
+      const secondStepUp = await test.identity.stepUp(steppedUp, adminPassword);
+      assert.equal(secondStepUp.absoluteExpiresAt, login.absoluteExpiresAt);
+      assert.equal(test.identity.authenticate(firstStepUp.sessionToken), undefined);
+      const refreshed = test.identity.authenticate(secondStepUp.sessionToken);
+      assert.ok(refreshed);
+      assert.equal(test.identity.isStepUp(refreshed), true);
+      assert.equal(test.identity.revokeAllSessions(refreshed), 1);
+      assert.equal(test.identity.authenticate(secondStepUp.sessionToken), undefined);
+      assert.equal(test.identity.isStepUp(refreshed), false);
+      assert.equal(test.identity.verifyCsrf(refreshed, secondStepUp.csrfToken), false);
     } finally {
       test.close();
     }
@@ -280,6 +292,45 @@ describe("IdentityService", () => {
         pending,
         (error: unknown) => error instanceof IdentityError && error.code === "session_invalid",
       );
+    } finally {
+      test.close();
+    }
+  });
+
+  it("reserves password work capacity for authenticated operations during anonymous login load", async () => {
+    const test = await fixture();
+    try {
+      const login = await test.identity.login("admin", adminPassword, {
+        sourceAddress: "192.0.2.50",
+      });
+      const authenticated = test.identity.authenticate(login.sessionToken);
+      assert.ok(authenticated);
+
+      const anonymousAttempts = [51, 52, 53].map((suffix) =>
+        test.identity.login("admin", "wrong-password-value", {
+          sourceAddress: `192.0.2.${suffix}`,
+        })
+      );
+      const stepUp = test.identity.stepUp(authenticated, adminPassword, {
+        sourceAddress: "192.0.2.54",
+      });
+      const [anonymousResults, replacement] = await Promise.all([
+        Promise.allSettled(anonymousAttempts),
+        stepUp,
+      ]);
+
+      const rejectedCodes = anonymousResults
+        .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+        .map((result) => (result.reason as IdentityError).code)
+        .sort();
+      assert.deepEqual(rejectedCodes, [
+        "invalid_credentials",
+        "password_work_busy",
+        "password_work_busy",
+      ]);
+      const elevated = test.identity.authenticate(replacement.sessionToken);
+      assert.ok(elevated);
+      assert.equal(test.identity.isStepUp(elevated), true);
     } finally {
       test.close();
     }
@@ -308,8 +359,10 @@ describe("IdentityService", () => {
       });
       const authenticated = test.identity.authenticate(login.sessionToken);
       assert.ok(authenticated);
-      await test.identity.stepUp(authenticated, adminPassword, { sourceAddress: "192.0.2.10" });
-      const steppedUp = test.identity.authenticate(login.sessionToken);
+      const stepUp = await test.identity.stepUp(authenticated, adminPassword, {
+        sourceAddress: "192.0.2.10",
+      });
+      const steppedUp = test.identity.authenticate(stepUp.sessionToken);
       assert.ok(steppedUp);
 
       const results = await Promise.allSettled([
@@ -325,7 +378,7 @@ describe("IdentityService", () => {
       assert.ok(rejected && rejected.status === "rejected");
       assert.equal(rejected.reason instanceof IdentityError, true);
       assert.equal((rejected.reason as IdentityError).code, "step_up_required");
-      assert.equal(test.identity.authenticate(login.sessionToken), undefined);
+      assert.equal(test.identity.authenticate(stepUp.sessionToken), undefined);
 
       const acceptedPasswords = await Promise.all(
         ["next-password-value-one", "next-password-value-two"].map(async (password, index) => {
@@ -340,6 +393,51 @@ describe("IdentityService", () => {
         }),
       );
       assert.equal(acceptedPasswords.filter((password) => password !== undefined).length, 1);
+    } finally {
+      test.close();
+    }
+  });
+
+  it("rejects an identical replacement password without changing identity or session state", async () => {
+    const test = await fixture();
+    try {
+      const login = await test.identity.login("admin", adminPassword, {
+        sourceAddress: "198.51.100.60",
+      });
+      const authenticated = test.identity.authenticate(login.sessionToken);
+      assert.ok(authenticated);
+      const stepUp = await test.identity.stepUp(authenticated, adminPassword, {
+        sourceAddress: "198.51.100.60",
+      });
+      const elevated = test.identity.authenticate(stepUp.sessionToken);
+      assert.ok(elevated);
+
+      const before = {
+        identity: test.identity.store.read((transaction) => transaction.adminIdentity()),
+        audit: test.identity.store.read((transaction) => transaction.auditEvents()),
+      };
+      await assert.rejects(
+        test.identity.changePassword(
+          elevated,
+          adminPassword,
+          adminPassword,
+          { sourceAddress: "198.51.100.60" },
+        ),
+        (error: unknown) => error instanceof IdentityError && error.code === "password_unchanged",
+      );
+
+      assert.deepEqual(
+        test.identity.store.read((transaction) => transaction.adminIdentity()),
+        before.identity,
+      );
+      assert.deepEqual(
+        test.identity.store.read((transaction) => transaction.auditEvents()),
+        before.audit,
+      );
+      const stillElevated = test.identity.authenticate(stepUp.sessionToken);
+      assert.ok(stillElevated);
+      assert.equal(test.identity.isStepUp(stillElevated), true);
+      assert.equal(test.identity.verifyCsrf(stillElevated, stepUp.csrfToken), true);
     } finally {
       test.close();
     }
@@ -364,7 +462,7 @@ describe("IdentityService", () => {
     }
   });
 
-  it("rotates the single configured API secret and starts a fresh nonce space", async () => {
+  it("rotates API secrets, isolates nonce versions, and rejects retired-secret reuse", async () => {
     const test = await fixture();
     try {
       const timestamp = Math.floor(test.clock.now / 1000);
@@ -387,6 +485,49 @@ describe("IdentityService", () => {
       assert.equal(rotated.apiClient("default")?.keyVersion, 2);
       assert.equal(rotated.apiClient("default")?.secretFingerprint, fingerprintApiSecret(rotatedSecret));
       assert.equal(rotated.consumeApiNonce("default", nonce, timestamp), true);
+
+      const keyHistory = test.database.read((connection) =>
+        connection.prepare(
+          `SELECT key_version, secret_fingerprint, retired_at
+             FROM api_client_keys
+            ORDER BY key_version`,
+        ).all() as Array<{
+          key_version: bigint | number;
+          secret_fingerprint: string;
+          retired_at: bigint | number | null;
+        }>,
+      );
+      assert.deepEqual(keyHistory.map((row) => ({
+        keyVersion: Number(row.key_version),
+        secretFingerprint: row.secret_fingerprint,
+        retired: row.retired_at !== null,
+      })), [
+        {
+          keyVersion: 1,
+          secretFingerprint: fingerprintApiSecret(apiSecret),
+          retired: true,
+        },
+        {
+          keyVersion: 2,
+          secretFingerprint: fingerprintApiSecret(rotatedSecret),
+          retired: false,
+        },
+      ]);
+
+      const rollbackConfig = loadConfig({
+        PERPAY_ADMIN_USERNAME: "admin",
+        PERPAY_INITIAL_ADMIN_PASSWORD: adminPassword,
+        PERPAY_API_CLIENT_ID: "default",
+        PERPAY_API_SECRET: apiSecret,
+        PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
+        PERPAY_DATA_DIR: test.directory,
+      });
+      const rollback = new IdentityService(test.database, rollbackConfig, () => test.clock.now);
+      await assert.rejects(
+        rollback.initialize(),
+        /previously retired and cannot be reused/u,
+      );
+      assert.equal(rotated.apiClient("default")?.keyVersion, 2);
     } finally {
       test.close();
     }

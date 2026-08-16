@@ -284,13 +284,14 @@ export class IdentityTransaction extends IdentityReadTransaction {
     readonly createdAt: number;
     readonly idleExpiresAt: number;
     readonly absoluteExpiresAt: number;
+    readonly stepUpExpiresAt?: number | null;
   }): void {
     this.connection
       .prepare(
         `INSERT INTO admin_sessions(
            session_id, token_digest, csrf_digest, generation, created_at,
-           last_seen_at, idle_expires_at, absolute_expires_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           last_seen_at, idle_expires_at, absolute_expires_at, step_up_expires_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.sessionId,
@@ -301,6 +302,7 @@ export class IdentityTransaction extends IdentityReadTransaction {
         input.createdAt,
         input.idleExpiresAt,
         input.absoluteExpiresAt,
+        input.stepUpExpiresAt ?? null,
       );
   }
 
@@ -316,22 +318,6 @@ export class IdentityTransaction extends IdentityReadTransaction {
             AND absolute_expires_at > ?`,
       )
       .run(now, now + SESSION_IDLE_TTL_MS, sessionId, now, now);
-  }
-
-  setStepUp(sessionId: string, expiresAt: number, now: number): boolean {
-    const result = this.connection
-      .prepare(
-        `UPDATE admin_sessions
-            SET step_up_expires_at = ?
-          WHERE session_id = ?
-            AND revoked_at IS NULL
-            AND absolute_expires_at > ?`,
-      )
-      .run(expiresAt, sessionId, now);
-    if (Number(result.changes) !== 1) {
-      return false;
-    }
-    return true;
   }
 
   revokeSession(sessionId: string, reason: string, now: number): boolean {
@@ -458,25 +444,75 @@ export class IdentityTransaction extends IdentityReadTransaction {
            ) VALUES (1, ?, ?, 1, 1, ?, ?)`,
         )
         .run(clientId, fingerprint, now, now);
+      this.connection
+        .prepare(
+          `INSERT INTO api_client_keys(
+             client_id, key_version, secret_fingerprint, activated_at, retired_at
+           ) VALUES (?, 1, ?, ?, NULL)`,
+        )
+        .run(clientId, fingerprint, now);
       return { clientId, keyVersion: 1, secretFingerprint: fingerprint, enabled: true };
     }
 
     if (existing.secretFingerprint === fingerprint) {
+      const active = this.connection
+        .prepare(
+          `SELECT 1
+             FROM api_client_keys
+            WHERE client_id = ? AND key_version = ?
+              AND secret_fingerprint = ? AND retired_at IS NULL`,
+        )
+        .get(clientId, existing.keyVersion, fingerprint);
+      if (!active) throw new Error("active API client key history is inconsistent");
       this.connection
         .prepare("UPDATE api_client_config SET enabled = 1, updated_at = ? WHERE singleton_key = 1")
         .run(now);
       return { ...existing, enabled: true };
     }
 
+    const historical = this.connection
+      .prepare("SELECT key_version FROM api_client_keys WHERE secret_fingerprint = ?")
+      .get(fingerprint) as { key_version: bigint | number } | undefined;
+    if (historical) {
+      throw new Error("configured API secret was previously retired and cannot be reused");
+    }
+    const active = this.connection
+      .prepare(
+        `SELECT activated_at
+           FROM api_client_keys
+          WHERE client_id = ? AND key_version = ?
+            AND secret_fingerprint = ? AND retired_at IS NULL`,
+      )
+      .get(clientId, existing.keyVersion, existing.secretFingerprint) as
+      | { activated_at: bigint | number }
+      | undefined;
+    if (!active) throw new Error("active API client key history is inconsistent");
+    const activatedAt = Math.max(now, Number(active.activated_at));
+    const retired = this.connection
+      .prepare(
+        `UPDATE api_client_keys
+            SET retired_at = ?
+          WHERE client_id = ? AND key_version = ? AND retired_at IS NULL`,
+      )
+      .run(activatedAt, clientId, existing.keyVersion);
+    if (Number(retired.changes) !== 1) {
+      throw new Error("active API client key could not be retired");
+    }
     const keyVersion = existing.keyVersion + 1;
-    this.connection.prepare("DELETE FROM api_nonces WHERE client_id = ?").run(clientId);
+    this.connection
+      .prepare(
+        `INSERT INTO api_client_keys(
+           client_id, key_version, secret_fingerprint, activated_at, retired_at
+         ) VALUES (?, ?, ?, ?, NULL)`,
+      )
+      .run(clientId, keyVersion, fingerprint, activatedAt);
     this.connection
       .prepare(
         `UPDATE api_client_config
             SET secret_fingerprint = ?, key_version = ?, enabled = 1, updated_at = ?
           WHERE singleton_key = 1`,
       )
-      .run(fingerprint, keyVersion, now);
+      .run(fingerprint, keyVersion, activatedAt);
     return { clientId, keyVersion, secretFingerprint: fingerprint, enabled: true };
   }
 
@@ -504,12 +540,13 @@ export class IdentityTransaction extends IdentityReadTransaction {
     const result = this.connection
       .prepare(
         `INSERT INTO api_nonces(
-           client_id, nonce, request_timestamp_seconds, expires_at, created_at
-         ) VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(client_id, nonce) DO NOTHING`,
+           client_id, key_version, nonce, request_timestamp_seconds, expires_at, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(client_id, key_version, nonce) DO NOTHING`,
       )
       .run(
         clientId,
+        client.keyVersion,
         nonce,
         requestTimestamp,
         (requestTimestamp * 1000) + API_SIGNATURE_SKEW_MS + 1000,

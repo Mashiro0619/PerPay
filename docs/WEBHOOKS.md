@@ -195,4 +195,4 @@ GET /api/v1/events/{eventId}
 
 管理员会话可读取 delivery 列表、详情和 attempts。人工补发还要求同源、CSRF 和近期密码 step-up。attempt 投影包含签名 key ID、请求体指纹、解析地址指纹、连接地址、HTTP/ACK 结果和时间，但永远不返回内部租约 token。
 
-`/readyz` 和签名的 `/api/v1/system/status` 都返回通知健康状态。持续 `degraded`、`dead_letters > 0`、`pending_deliveries` 长期不下降或 `last_success_at` 长期不更新都需要人工检查。
+匿名 `/readyz` 只返回顶层状态；签名的 `/api/v1/system/status` 返回完整通知健康。持续 `degraded`、`dead_letters > 0`、`pending_deliveries` 长期不下降或 `last_success_at` 长期不更新都需要人工检查。

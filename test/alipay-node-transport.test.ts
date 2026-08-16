@@ -30,9 +30,9 @@ describe("Node V3 transport network behavior", () => {
   it("rejects unsafe custom user agents before resolving DNS", () => {
     let resolverCalls = 0;
     const dependencies: NodeV3TransportTestDependencies = {
-      resolveHostname: async () => {
+      startHostnameResolution: () => {
         resolverCalls += 1;
-        return publicAddresses;
+        return resolvedResolution(publicAddresses);
       },
     };
     for (const userAgent of [
@@ -82,9 +82,9 @@ describe("Node V3 transport network behavior", () => {
   it("rejects request header arrays before resolving DNS", async () => {
     let resolverCalls = 0;
     const transport = new NodeV3Transport({}, {
-      resolveHostname: async () => {
+      startHostnameResolution: () => {
         resolverCalls += 1;
-        return publicAddresses;
+        return resolvedResolution(publicAddresses);
       },
     });
 
@@ -311,7 +311,11 @@ describe("Node V3 transport network behavior", () => {
   it("does not open HTTPS after DNS loses a timeout or cancellation race", async () => {
     for (const outcome of ["timeout", "cancel"] as const) {
       const resolution = deferred<readonly ResolverAddress[]>();
-      const harness = createHarness(() => resolution.promise);
+      let cancelCalls = 0;
+      const harness = createHarness(() => resolutionTask(resolution.promise, () => {
+        cancelCalls += 1;
+        resolution.reject(new Error("DNS resolution cancelled"));
+      }));
       const controller = new AbortController();
       const responsePromise = harness.transport.request(request, {
         timeoutMilliseconds: 1_000,
@@ -327,6 +331,7 @@ describe("Node V3 transport network behavior", () => {
       if (outcome === "cancel") controller.abort();
       else harness.timers.onlyActive().fire();
       await rejection;
+      assert.equal(cancelCalls, 1);
       resolution.resolve(publicAddresses);
       await new Promise<void>((resolve) => setImmediate(resolve));
       assert.equal(harness.requestCalls, 0, outcome);
@@ -336,9 +341,13 @@ describe("Node V3 transport network behavior", () => {
   it("keeps one shared in-flight DNS task after an individual caller times out", async () => {
     const resolution = deferred<readonly ResolverAddress[]>();
     let resolverCalls = 0;
-    const resolver = async () => {
+    let cancelCalls = 0;
+    const resolver: ResolverFactory = () => {
       resolverCalls += 1;
-      return resolution.promise;
+      return resolutionTask(resolution.promise, () => {
+        cancelCalls += 1;
+        resolution.reject(new Error("DNS resolution cancelled"));
+      });
     };
     const first = createHarness(resolver);
     const second = createHarness(resolver);
@@ -348,12 +357,14 @@ describe("Node V3 transport network behavior", () => {
 
     first.timers.onlyActive().fire();
     await firstRejection;
+    assert.equal(cancelCalls, 0);
     const third = createHarness(resolver);
     const thirdPromise = third.transport.request(request, { timeoutMilliseconds: 1_000 });
     resolution.resolve(publicAddresses);
     await Promise.all([second.created, third.created]);
 
     assert.equal(resolverCalls, 1);
+    assert.equal(cancelCalls, 0);
     assert.equal(first.requestCalls, 0);
     const secondResponse = new FakeIncomingResponse();
     const thirdResponse = new FakeIncomingResponse();
@@ -362,6 +373,84 @@ describe("Node V3 transport network behavior", () => {
     secondResponse.emit("end");
     thirdResponse.emit("end");
     await Promise.all([secondPromise, thirdPromise]);
+  });
+
+  it("cancels an orphaned shared DNS task and replaces it without overlapping", async () => {
+    let resolverCalls = 0;
+    let cancelCalls = 0;
+    let activeResolvers = 0;
+    let maximumActiveResolvers = 0;
+    const jobs: Array<{
+      complete(addresses: readonly ResolverAddress[]): void;
+    }> = [];
+    const resolver: ResolverFactory = () => {
+      resolverCalls += 1;
+      activeResolvers += 1;
+      maximumActiveResolvers = Math.max(maximumActiveResolvers, activeResolvers);
+      const pending = deferred<readonly ResolverAddress[]>();
+      let active = true;
+      const stop = () => {
+        if (!active) return;
+        active = false;
+        activeResolvers -= 1;
+      };
+      jobs.push({
+        complete(addresses) {
+          stop();
+          pending.resolve(addresses);
+        },
+      });
+      return resolutionTask(pending.promise, () => {
+        cancelCalls += 1;
+        stop();
+        setImmediate(() => pending.reject(new Error("DNS resolution cancelled")));
+      });
+    };
+
+    const first = createHarness(resolver);
+    const second = createHarness(resolver);
+    const firstRejection = assert.rejects(
+      first.transport.request(request, { timeoutMilliseconds: 1_000 }),
+      (error: unknown) => error instanceof AlipayProviderError && error.code === "transport_timeout",
+    );
+    const secondRejection = assert.rejects(
+      second.transport.request(request, { timeoutMilliseconds: 1_000 }),
+      (error: unknown) => error instanceof AlipayProviderError && error.code === "transport_timeout",
+    );
+    assert.equal(resolverCalls, 1);
+    assert.equal(activeResolvers, 1);
+
+    first.timers.onlyActive().fire();
+    await firstRejection;
+    assert.equal(cancelCalls, 0);
+    assert.equal(activeResolvers, 1);
+    second.timers.onlyActive().fire();
+    await secondRejection;
+    assert.equal(cancelCalls, 1);
+    assert.equal(activeResolvers, 0);
+
+    const third = createHarness(resolver);
+    const thirdPromise = third.transport.request(request, { timeoutMilliseconds: 1_000 });
+    assert.equal(resolverCalls, 2);
+    assert.equal(activeResolvers, 1);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    const fourth = createHarness(resolver);
+    const fourthPromise = fourth.transport.request(request, { timeoutMilliseconds: 1_000 });
+    assert.equal(resolverCalls, 2);
+    assert.equal(maximumActiveResolvers, 1);
+    const replacement = jobs[1];
+    assert.ok(replacement);
+    replacement.complete(publicAddresses);
+    await Promise.all([third.created, fourth.created]);
+    const thirdResponse = new FakeIncomingResponse();
+    const fourthResponse = new FakeIncomingResponse();
+    third.respond(thirdResponse);
+    fourth.respond(fourthResponse);
+    thirdResponse.emit("end");
+    fourthResponse.emit("end");
+    await Promise.all([thirdPromise, fourthPromise]);
+    assert.equal(activeResolvers, 0);
   });
 
   it("destroys an oversized response immediately", async () => {
@@ -550,7 +639,7 @@ class ManualTimer {
 }
 
 function createHarness(
-  resolver: (hostname: string) => Promise<readonly ResolverAddress[]> = async () => publicAddresses,
+  resolver: ResolverFactory = () => resolvedResolution(publicAddresses),
 ) {
   const client = new FakeClientRequest();
   const timers = new ManualTimers();
@@ -559,7 +648,7 @@ function createHarness(
   let options: (RequestOptions & { readonly autoSelectFamily?: boolean }) | undefined;
   let onResponse: ((response: IncomingMessage) => void) | undefined;
   const dependencies: NodeV3TransportTestDependencies = {
-    resolveHostname: resolver,
+    startHostnameResolution: resolver,
     request: (capturedOptions, callback) => {
       requestCalls += 1;
       options = capturedOptions;
@@ -585,6 +674,21 @@ function createHarness(
       onResponse(response as unknown as IncomingMessage);
     },
   };
+}
+
+type ResolverFactory = NonNullable<
+  NodeV3TransportTestDependencies["startHostnameResolution"]
+>;
+
+function resolvedResolution(addresses: readonly ResolverAddress[]) {
+  return resolutionTask(Promise.resolve(addresses));
+}
+
+function resolutionTask(
+  result: Promise<readonly ResolverAddress[]>,
+  cancel: () => void = () => undefined,
+): ReturnType<ResolverFactory> {
+  return { result, cancel };
 }
 
 function invokeAllLookup(

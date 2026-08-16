@@ -1,4 +1,3 @@
-import { lookup } from "node:dns/promises";
 import { createHash } from "node:crypto";
 import {
   validateHeaderName,
@@ -15,6 +14,10 @@ import {
   isPublicWebhookAddress,
   isValidWebhookDnsHostname,
 } from "../infrastructure/network/public-address.ts";
+import {
+  startHostnameResolution,
+  type StartHostnameResolution,
+} from "../infrastructure/network/cancellable-dns.ts";
 import { MAX_WEBHOOK_REQUEST_BYTES, MAX_WEBHOOK_RESPONSE_BYTES } from "./model.ts";
 
 const MAX_HEADER_BYTES = 16 * 1024;
@@ -113,14 +116,13 @@ interface RequestOptionsWithLookup extends RequestOptions {
   readonly agent: false;
 }
 
-type ResolveHostname = (hostname: string) => Promise<readonly ResolverAddress[]>;
 type RequestFactory = (
   options: RequestOptionsWithLookup,
   onResponse: (response: IncomingMessage) => void,
 ) => ClientRequest;
 
 interface Dependencies {
-  readonly resolveHostname: ResolveHostname;
+  readonly startHostnameResolution: StartHostnameResolution;
   readonly request: RequestFactory;
   readonly now: () => number;
   readonly scheduleTimeout: (callback: () => void, delay: number) => NodeJS.Timeout;
@@ -128,7 +130,7 @@ interface Dependencies {
 }
 
 const defaultDependencies: Dependencies = Object.freeze({
-  resolveHostname: (hostname: string) => lookup(hostname, { all: true, verbatim: true }),
+  startHostnameResolution,
   request: httpsRequest,
   now: () => performance.now(),
   scheduleTimeout: (callback: () => void, delay: number) => setTimeout(callback, delay),
@@ -136,7 +138,7 @@ const defaultDependencies: Dependencies = Object.freeze({
 });
 
 export interface WebhookTransportTestDependencies {
-  readonly resolveHostname?: ResolveHostname;
+  readonly startHostnameResolution?: StartHostnameResolution;
   readonly request?: RequestFactory;
   readonly now?: () => number;
   readonly scheduleTimeout?: (callback: () => void, delay: number) => NodeJS.Timeout;
@@ -182,7 +184,8 @@ export class NodeWebhookTransport implements WebhookTransport {
     }
     this.#allowedOrigin = parsed;
     this.#dependencies = Object.freeze({
-      resolveHostname: testingDependencies.resolveHostname ?? defaultDependencies.resolveHostname,
+      startHostnameResolution: testingDependencies.startHostnameResolution ??
+        defaultDependencies.startHostnameResolution,
       request: testingDependencies.request ?? defaultDependencies.request,
       now: testingDependencies.now ?? defaultDependencies.now,
       scheduleTimeout: testingDependencies.scheduleTimeout ?? defaultDependencies.scheduleTimeout,
@@ -282,7 +285,7 @@ export class NodeWebhookTransport implements WebhookTransport {
     let records: readonly ResolverAddress[];
     try {
       records = await this.#dnsGate.run(
-        () => this.#dependencies.resolveHostname(hostname),
+        () => this.#dependencies.startHostnameResolution(hostname),
         deadline,
         signal,
         this.#dependencies,
@@ -609,6 +612,11 @@ interface DnsWaiter {
   grant(): boolean;
 }
 
+interface CancellableOperation<T> {
+  readonly result: Promise<T>;
+  cancel(): void;
+}
+
 class DnsResolutionGate {
   readonly #maximum: number;
   readonly #waiters: DnsWaiter[] = [];
@@ -622,20 +630,20 @@ class DnsResolutionGate {
   }
 
   async run<T>(
-    operation: () => Promise<T>,
+    operation: () => CancellableOperation<T>,
     deadline: number,
     signal: AbortSignal | undefined,
     dependencies: Dependencies,
   ): Promise<T> {
     await this.#acquire(deadline, signal, dependencies);
-    let pending: Promise<T>;
+    let resolution: CancellableOperation<T>;
     try {
-      pending = operation();
+      resolution = operation();
     } catch (error) {
       this.#release();
       throw error;
     }
-    const tracked = pending.then(
+    const tracked = resolution.result.then(
       (value) => {
         this.#release();
         return value;
@@ -645,7 +653,7 @@ class DnsResolutionGate {
         throw error;
       },
     );
-    return withDeadline(tracked, deadline, signal, dependencies);
+    return withDeadline(tracked, deadline, signal, dependencies, () => resolution.cancel());
   }
 
   #acquire(
@@ -716,6 +724,7 @@ async function withDeadline<T>(
   deadline: number,
   signal: AbortSignal | undefined,
   dependencies: Dependencies,
+  cancelOperation?: (() => void) | undefined,
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     let settled = false;
@@ -727,13 +736,17 @@ async function withDeadline<T>(
       signal?.removeEventListener("abort", onAbort);
       callback();
     };
-    const onAbort = () => finish(() => reject(cancelledError()));
+    const stop = (error: WebhookTransportError) => finish(() => {
+      cancelOperation?.();
+      reject(error);
+    });
+    const onAbort = () => stop(cancelledError());
     const remaining = Math.floor(deadline - dependencies.now());
     if (remaining < 1) {
-      finish(() => reject(timeoutError()));
+      stop(timeoutError());
       return;
     }
-    timer = dependencies.scheduleTimeout(() => finish(() => reject(timeoutError())), remaining);
+    timer = dependencies.scheduleTimeout(() => stop(timeoutError()), remaining);
     timer.unref();
     operation.then(
       (value) => finish(() => resolve(value)),
