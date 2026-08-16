@@ -2,14 +2,17 @@ openapi: 3.1.1
 info:
   title: PerPay Native API
   version: 0.1.0
-  summary: Self-hosted collection-code payment order API
+  summary: Self-hosted collection-code payment and reconciliation API
   license:
     name: Apache-2.0
     identifier: Apache-2.0
   description: |
-    Development contract for the native order and public checkout APIs.
-    This version creates collection-code orders only. It does not accept callback URLs
-    and it does not claim that an amount-based match is provider-confirmed payment proof.
+    Development contract for the native order, public checkout, automatic
+    reconciliation, administrator exception handling, and reliable notification APIs.
+    This version creates collection-code orders only. An order may opt into a notification
+    URL under the single HTTPS origin configured by the operator. A strictly unique,
+    conflict-free amount and time inference confirms an order automatically with basis
+    `INFERRED`; it is never represented as provider-confirmed payment proof.
 servers:
   - url: /
 tags:
@@ -17,9 +20,817 @@ tags:
     description: Authenticated order creation and lifecycle operations.
   - name: Checkout
     description: Public token-scoped checkout state.
+  - name: Admin Session
+    description: Same-origin administrator login, session, and recent-password verification.
+  - name: Ledger Operations
+    description: Administrator inspection and one-time disposition of retained ledger conflicts.
+  - name: Reconciliation
+    description: Automatic unique matching plus administrator handling of exceptional ledger facts.
+  - name: Notifications
+    description: |
+      API clients read their own immutable events with request HMAC authentication. Administrator
+      reads require the session cookie; manual redelivery additionally requires same-origin and
+      CSRF checks plus recent password verification. Outbound deliveries use the independently
+      configured webhook secret and the signed protocol described under `webhooks`.
   - name: System
-    description: Authenticated instance status.
+    description: Public application probes and authenticated instance status.
 paths:
+  /healthz:
+    get:
+      tags: [System]
+      operationId: getHealth
+      summary: Check application and database health
+      description: >-
+        Used by the container runtime and backup service. Provider collection and automatic
+        confirmation readiness do not affect this endpoint.
+      security: []
+      responses:
+        '200':
+          description: The process and database are healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          description: The database, lease, schema, clock, maintenance state, or storage is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /readyz:
+    get:
+      tags: [System]
+      operationId: getReadiness
+      summary: Check core readiness without exposing operational details
+      description: |
+        Database safety, a recent successful provider scan, and a recent successful reconciliation
+        run control the HTTP status. Readiness remains HTTP 503 until both background paths have
+        succeeded and returns to HTTP 503 if either last success exceeds the configured maximum age.
+        A transient scan or reconciliation failure while the previous success remains fresh returns
+        HTTP 200 with `status: degraded`; notification delivery failures also degrade without making
+        core payment confirmation unready. Detailed diagnostics are available only from the
+        authenticated system status endpoint.
+      security: []
+      responses:
+        '200':
+          description: Core storage is ready; background processing may be degraded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Readiness'
+              example:
+                status: degraded
+        '503':
+          description: >-
+            Database access, lease, schema, clock safety, or storage headroom is not ready, or
+            collection or reconciliation has no sufficiently recent successful run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Readiness'
+  /api/admin/v1/session/login:
+    post:
+      tags: [Admin Session]
+      operationId: loginAdministrator
+      summary: Start an administrator session
+      description: |
+        The request `Origin` must exactly equal the configured public origin. A successful
+        response sets an HttpOnly session cookie and a script-readable CSRF cookie; only
+        their digests are stored by the server.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminLoginRequest'
+      responses:
+        '200':
+          description: Administrator authenticated and session cookies issued
+          headers:
+            Set-Cookie:
+              description: >-
+                Sets the administrator session and CSRF cookies. Production HTTPS uses
+                the `__Host-perpay_session` and `__Host-perpay_csrf` names.
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminLoginEnvelope'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/AdminForbidden' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/AdminRateLimited' }
+        '503': { $ref: '#/components/responses/AdminUnavailable' }
+  /api/admin/v1/session:
+    get:
+      tags: [Admin Session]
+      operationId: getAdministratorSession
+      summary: Read the active administrator session
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: Active administrator session state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSessionEnvelope'
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+  /api/admin/v1/system/status:
+    get:
+      tags: [System]
+      operationId: getAdministratorSystemStatus
+      summary: Read instance health and unresolved operational counts
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: >-
+            System status, including backup health, ledger conflicts, and financial exceptions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemStatusEnvelope'
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+  /api/admin/v1/session/step-up:
+    post:
+      tags: [Admin Session]
+      operationId: stepUpAdministratorSession
+      summary: Verify the administrator password for sensitive financial actions
+      description: |
+        Successful verification activates step-up for at most ten minutes and never past
+        the session's absolute expiry. The server atomically revokes the presented session and
+        issues replacement session and CSRF cookies; only the replacement session is elevated.
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminStepUpRequest'
+      responses:
+        '200':
+          description: Recent-password verification is active on replacement credentials
+          headers:
+            Set-Cookie:
+              description: >-
+                Replaces both administrator authentication cookies. The previously presented
+                session and CSRF credentials are invalid after this response.
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminStepUpEnvelope'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/AdminForbidden' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/AdminRateLimited' }
+        '503': { $ref: '#/components/responses/AdminUnavailable' }
+  /api/admin/v1/session/logout:
+    post:
+      tags: [Admin Session]
+      operationId: logoutAdministratorSession
+      summary: Revoke the active administrator session
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      responses:
+        '204': { description: Active session revoked and authentication cookies cleared }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/AdminForbidden' }
+        '503': { $ref: '#/components/responses/AdminUnavailable' }
+  /api/admin/v1/sessions/revoke-all:
+    post:
+      tags: [Admin Session]
+      operationId: revokeAllAdministratorSessions
+      summary: Revoke every administrator session generation
+      x-perpay-requires-same-origin: true
+      x-perpay-requires-recent-step-up: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      responses:
+        '200':
+          description: All sessions revoked and authentication cookies cleared
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminRevokeAllEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/AdminForbidden' }
+        '503': { $ref: '#/components/responses/AdminUnavailable' }
+  /api/admin/v1/password:
+    post:
+      tags: [Admin Session]
+      operationId: changeAdministratorPassword
+      summary: Change the administrator password and revoke every session
+      description: Successful password replacement clears the active authentication cookies.
+      x-perpay-requires-same-origin: true
+      x-perpay-requires-recent-step-up: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminPasswordChangeRequest' }
+      responses:
+        '204': { description: 'Password changed, all sessions revoked, and cookies cleared' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '409': { $ref: '#/components/responses/PasswordUnchanged' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/AdminRateLimited' }
+        '503': { $ref: '#/components/responses/AdminUnavailable' }
+  /api/admin/v1/ledger/conflicts:
+    get:
+      tags: [Ledger Operations]
+      operationId: listLedgerConflicts
+      summary: Page through retained ledger conflicts
+      description: Cursors are bound to the selected status and cannot be reused with another filter.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [OPEN, RESOLVED, IGNORED, ALL]
+            default: OPEN
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque canonical base64url cursor returned by the previous page.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+            pattern: '^[A-Za-z0-9_-]+$'
+      responses:
+        '200':
+          description: Stable page ordered by creation time and conflict identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerConflictPageEnvelope'
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/LedgerUnavailable' }
+  /api/admin/v1/ledger/conflicts/{conflictId}:
+    get:
+      tags: [Ledger Operations]
+      operationId: getLedgerConflict
+      summary: Read sanitized evidence and resolution state for one ledger conflict
+      description: Raw provider bodies and raw event payloads are never returned.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/ConflictId'
+      responses:
+        '200':
+          description: Sanitized conflict evidence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerConflictDetailEnvelope'
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '404': { $ref: '#/components/responses/LedgerConflictNotFound' }
+        '503': { $ref: '#/components/responses/LedgerUnavailable' }
+  /api/admin/v1/ledger/conflicts/{conflictId}/actions/resolve:
+    post:
+      tags: [Ledger Operations]
+      operationId: resolveLedgerConflict
+      summary: Apply the one allowed administrator disposition to an open conflict
+      description: |
+        Duplicate external identifiers may use `KEEP_EXISTING`; isolated malformed evidence may
+        use `ACKNOWLEDGE_ISOLATED`. Raw-page variants are confirmed only by repeated signed provider
+        evidence and cannot be resolved by an administrator. Exact operation replay returns HTTP 200.
+      x-perpay-requires-same-origin: true
+      x-perpay-requires-recent-step-up: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+        - $ref: '#/components/parameters/ConflictId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LedgerConflictResolutionRequest'
+      responses:
+        '200':
+          description: Exact replay of the original operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerConflictResolutionEnvelope'
+        '201':
+          description: Conflict disposition recorded atomically with its audit event
+          headers:
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerConflictResolutionEnvelope'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '404': { $ref: '#/components/responses/LedgerConflictNotFound' }
+        '409': { $ref: '#/components/responses/LedgerConflictConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/LedgerUnavailable' }
+  /api/admin/v1/reconciliation/candidates/{candidateId}:
+    get:
+      tags: [Reconciliation]
+      operationId: getReconciliationCandidate
+      summary: Read one amount-inferred match candidate
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CandidateId'
+      responses:
+        '200':
+          description: Match candidate and immutable evidence snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchCandidateEnvelope'
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '404': { $ref: '#/components/responses/ReconciliationNotFound' }
+        '503': { $ref: '#/components/responses/ReconciliationUnavailable' }
+  /api/admin/v1/reconciliation/ledger-entries/{ledgerEntryId}:
+    get:
+      tags: [Reconciliation]
+      operationId: getReconciliationLedgerEntry
+      summary: Read one normalized ledger entry for administrator review
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/LedgerEntryId'
+      responses:
+        '200':
+          description: Normalized ledger facts and declared transaction-time precision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReconciliationLedgerEntryEnvelope'
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '404': { $ref: '#/components/responses/ReconciliationNotFound' }
+        '503': { $ref: '#/components/responses/ReconciliationUnavailable' }
+  /api/admin/v1/reconciliation/ledger-entries/{ledgerEntryId}/candidates:
+    get:
+      tags: [Reconciliation]
+      operationId: listLedgerEntryCandidates
+      summary: List candidates generated for one ledger entry
+      description: A well-formed unknown ledger entry identifier returns HTTP 404.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/LedgerEntryId'
+      responses:
+        '200':
+          description: Candidates ordered by creation time and identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchCandidateListEnvelope'
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '404': { $ref: '#/components/responses/ReconciliationNotFound' }
+        '503': { $ref: '#/components/responses/ReconciliationUnavailable' }
+  /api/admin/v1/reconciliation/matches:
+    get:
+      tags: [Reconciliation]
+      operationId: listPaymentMatches
+      summary: Page through settled payment associations
+      description: |
+        Defaults to `SETTLED`. Each item includes immutable association evidence, normalized
+        ledger facts, and the order summary. Cursors are bound to the selected status and cannot
+        be reused with another filter. Open anomalies are exposed by the exceptions endpoint.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [SETTLED, REVERSED]
+            default: SETTLED
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque canonical base64url cursor returned by the previous page.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+            pattern: '^[A-Za-z0-9_-]+$'
+      responses:
+        '200':
+          description: Stable page ordered by the monotonic payment-match transition sequence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentMatchPageEnvelope'
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ReconciliationUnavailable' }
+  /api/admin/v1/reconciliation/matches/{paymentMatchId}:
+    get:
+      tags: [Reconciliation]
+      operationId: getPaymentMatch
+      summary: Read one settled or reversed payment association
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/PaymentMatchId'
+      responses:
+        '200':
+          description: Payment association, candidate evidence, ledger entry, order summary, and state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentMatchEnvelope'
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '404': { $ref: '#/components/responses/ReconciliationNotFound' }
+        '503': { $ref: '#/components/responses/ReconciliationUnavailable' }
+  /api/admin/v1/reconciliation/exceptions:
+    get:
+      tags: [Reconciliation]
+      operationId: listOpenFinancialExceptions
+      summary: Page through open financial exceptions
+      description: Returns only open exceptions for the configured primary provider account.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque canonical base64url cursor returned by the previous page.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: '^[A-Za-z0-9_-]+$'
+      responses:
+        '200':
+          description: Stable page ordered by creation time and exception identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinancialExceptionPageEnvelope'
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ReconciliationUnavailable' }
+  /api/admin/v1/reconciliation/exceptions/{exceptionId}:
+    get:
+      tags: [Reconciliation]
+      operationId: getFinancialException
+      summary: Read one financial exception
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/ExceptionId'
+      responses:
+        '200':
+          description: Financial exception and resolution state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinancialExceptionEnvelope'
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '404': { $ref: '#/components/responses/ReconciliationNotFound' }
+        '503': { $ref: '#/components/responses/ReconciliationUnavailable' }
+  /api/admin/v1/reconciliation/matches/{paymentMatchId}/actions/reverse:
+    post:
+      tags: [Reconciliation]
+      operationId: reversePaymentSettlement
+      summary: Reverse an incorrect settled association
+      description: Posts reversing entries, marks the order disputed, and opens a reconciliation exception.
+      x-perpay-requires-same-origin: true
+      x-perpay-requires-recent-step-up: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+        - $ref: '#/components/parameters/PaymentMatchId'
+      requestBody:
+        $ref: '#/components/requestBodies/FinancialDecision'
+      responses:
+        '200':
+          description: Settlement reversed or exactly replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinancialDecisionEnvelope'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '404': { $ref: '#/components/responses/ReconciliationNotFound' }
+        '409': { $ref: '#/components/responses/FinancialConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ReconciliationUnavailable' }
+  /api/admin/v1/reconciliation/settlements/manual:
+    post:
+      tags: [Reconciliation]
+      operationId: createManualSettlement
+      summary: Explicitly associate a collected credit with an unpaid order
+      description: |
+        The server does not require the credit amount to equal the requested or payable amount.
+        The administrator must have independently reviewed sufficient payer evidence.
+      x-perpay-requires-same-origin: true
+      x-perpay-requires-recent-step-up: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        $ref: '#/components/requestBodies/LinkedFinancialDecision'
+      responses:
+        '200':
+          description: Credit associated with the order or exactly replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinancialDecisionEnvelope'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '404': { $ref: '#/components/responses/ReconciliationNotFound' }
+        '409': { $ref: '#/components/responses/FinancialConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ReconciliationUnavailable' }
+  /api/admin/v1/reconciliation/refunds:
+    post:
+      tags: [Reconciliation]
+      operationId: recordCollectedRefundDebit
+      summary: Explicitly register a collected debit as an order refund
+      description: |
+        This records an already observed provider debit; it does not initiate a provider refund.
+        Debits are never linked automatically. The cumulative registered amount may not exceed
+        the order's confirmed received amount; an over-refund returns HTTP 409 atomically.
+      x-perpay-requires-same-origin: true
+      x-perpay-requires-recent-step-up: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        $ref: '#/components/requestBodies/LinkedFinancialDecision'
+      responses:
+        '200':
+          description: Refund debit registered or exactly replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefundDecisionEnvelope'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '404': { $ref: '#/components/responses/ReconciliationNotFound' }
+        '409': { $ref: '#/components/responses/FinancialConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ReconciliationUnavailable' }
+  /api/admin/v1/webhooks/deliveries:
+    get:
+      tags: [Notifications]
+      operationId: listWebhookDeliveries
+      summary: Page through notification deliveries
+      description: |
+        Results are ordered by creation time and delivery ID. A cursor is bound to the exact
+        `status` filter used to create it and is rejected if reused with another filter.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/WebhookDeliveryStatus'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque, canonical base64url cursor returned by the preceding page.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+            pattern: '^[A-Za-z0-9_-]+$'
+      responses:
+        '200':
+          description: Notification delivery page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookDeliveryPageEnvelope'
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/WebhookUnavailable' }
+  /api/admin/v1/webhooks/deliveries/{deliveryId}:
+    get:
+      tags: [Notifications]
+      operationId: getWebhookDelivery
+      summary: Read one notification delivery
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/WebhookDeliveryId'
+      responses:
+        '200':
+          description: Delivery, immutable event, and target details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookDeliveryDetailEnvelope'
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '404': { $ref: '#/components/responses/WebhookDeliveryNotFound' }
+        '503': { $ref: '#/components/responses/WebhookUnavailable' }
+  /api/admin/v1/webhooks/deliveries/{deliveryId}/attempts:
+    get:
+      tags: [Notifications]
+      operationId: listWebhookDeliveryAttempts
+      summary: List persisted attempts for one notification delivery
+      description: |
+        Returns at most 100 attempts in attempt-number order. The internal delivery lease token
+        is deliberately excluded from every HTTP projection.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/WebhookDeliveryId'
+      responses:
+        '200':
+          description: Delivery attempts and diagnostic evidence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookAttemptListEnvelope'
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '404': { $ref: '#/components/responses/WebhookDeliveryNotFound' }
+        '503': { $ref: '#/components/responses/WebhookUnavailable' }
+  /api/admin/v1/webhooks/deliveries/{deliveryId}/actions/redeliver:
+    post:
+      tags: [Notifications]
+      operationId: redeliverWebhookDelivery
+      summary: Create or replay an administrative redelivery
+      description: |
+        Only the latest acknowledged or dead-letter delivery in an event-target generation chain
+        can be redelivered. An exact replay of the same `redelivery_id`, actor, source delivery,
+        and reason returns HTTP 200 with the same delivery and `replayed: true`. Reuse with
+        different input or after the source state changes returns HTTP 409. An already-created
+        exact replay remains readable after delivery is disabled or the allowed origin changes;
+        only creation of a new generation is constrained by the current configuration.
+      x-perpay-requires-same-origin: true
+      x-perpay-requires-recent-step-up: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+        - $ref: '#/components/parameters/WebhookDeliveryId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookRedeliveryRequest'
+      responses:
+        '201':
+          description: A new pending redelivery generation was created
+          headers:
+            Location:
+              description: Administrative detail URL for the created delivery.
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookRedeliveryEnvelope'
+        '200':
+          description: Exact idempotent replay of an existing redelivery
+          headers:
+            Location:
+              description: Administrative detail URL for the existing delivery.
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookRedeliveryEnvelope'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '404': { $ref: '#/components/responses/WebhookDeliveryNotFound' }
+        '409': { $ref: '#/components/responses/WebhookConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/WebhookUnavailable' }
   /api/v1/orders:
     post:
       tags: [Orders]
@@ -28,7 +839,13 @@ paths:
       description: |
         The idempotency key is part of the signed JSON body. An exact replay returns
         the original order with HTTP 200. Reusing the key for different request data
-        returns HTTP 409.
+        returns HTTP 409. `notify_url`, when present, is immutable and participates in
+        idempotency matching. New orders require notification delivery to be enabled and
+        the URL to be under the currently configured allowed HTTPS origin. A historical
+        exact replay still returns the original order after notifications are disabled or
+        the allowed origin changes; the current configuration is not used to rewrite it. No new
+        order is accepted unless collection and automatic reconciliation both have a sufficiently
+        recent successful run.
       security:
         - ApiClientId: []
           ApiTimestamp: []
@@ -64,7 +881,7 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '413': { $ref: '#/components/responses/TooLarge' }
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
-        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '422': { $ref: '#/components/responses/OrderValidationFailed' }
         '503': { $ref: '#/components/responses/Unavailable' }
   /api/v1/orders/by-merchant-no/{merchantOrderNo}:
     get:
@@ -149,11 +966,45 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '413': { $ref: '#/components/responses/TooLarge' }
         '503': { $ref: '#/components/responses/Unavailable' }
+  /api/v1/events/{eventId}:
+    get:
+      tags: [Notifications]
+      operationId: getWebhookEvent
+      summary: Read an immutable notification event
+      description: |
+        The event must belong to an order owned by the signed API client. A malformed, unknown,
+        or differently owned identifier returns the same HTTP 404 response. The full canonical
+        request target and the SHA-256 digest of an empty body participate in request HMAC.
+      security:
+        - ApiClientId: []
+          ApiTimestamp: []
+          ApiNonce: []
+          ApiSignatureVersion: []
+          ApiSignature: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/WebhookEventId'
+      responses:
+        '200':
+          description: Immutable event, parsed payload, and fingerprint of the persisted payload bytes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookEventEnvelope'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/WebhookEventNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '503': { $ref: '#/components/responses/WebhookUnavailable' }
   /api/public/v1/checkouts/{token}:
     get:
       tags: [Checkout]
       operationId: getPublicCheckout
       summary: Read the public checkout projection
+      description: >-
+        A checkout that can still accept payment requires collection and automatic reconciliation
+        readiness. Terminal checkouts remain readable during a background outage and never expose
+        payment instructions.
       security: []
       parameters:
         - $ref: '#/components/parameters/RequestId'
@@ -190,25 +1041,53 @@ paths:
         - $ref: '#/components/parameters/RequestId'
       responses:
         '200':
-          description: System status
+          description: System status, including persisted backup health
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: false
-                required: [data]
-                properties:
-                  data:
-                    type: object
-                    additionalProperties: false
-                    required: [status, version, instance_id]
-                    properties:
-                      status: { const: ready }
-                      version: { type: string }
-                      instance_id: { type: string, pattern: '^[0-9a-f]{32}$' }
+                $ref: '#/components/schemas/SystemStatusEnvelope'
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/Conflict' }
         '413': { $ref: '#/components/responses/TooLarge' }
+webhooks:
+  paymentOrderStateChanged:
+    post:
+      tags: [Notifications]
+      operationId: receivePaymentOrderWebhook
+      summary: Receive a signed payment-order event
+      description: |
+        PerPay sends the exact persisted event payload as the request body. The signature value is
+        `v1=` followed by lowercase hexadecimal HMAC-SHA256 over these LF-separated UTF-8 fields:
+        `perpay:webhook:v1`, key ID, Unix epoch timestamp in milliseconds, delivery ID, event ID,
+        attempt number, and the lowercase SHA-256 digest of the body. Recipients should select the
+        secret by key ID, verify the signature over the raw body before parsing JSON, and make event
+        handling idempotent because an unknown outcome may be retried.
+
+        A delivery is acknowledged only by HTTP 200, an absent or `identity` Content-Encoding,
+        `application/json` optionally followed by `charset=utf-8`, and the exact strict ACK object
+        below. Redirects are not followed and any additional ACK field is rejected.
+      security:
+        - WebhookSignature: []
+      parameters:
+        - $ref: '#/components/parameters/WebhookProtocolVersionHeader'
+        - $ref: '#/components/parameters/WebhookKeyIdHeader'
+        - $ref: '#/components/parameters/WebhookTimestampHeader'
+        - $ref: '#/components/parameters/WebhookDeliveryIdHeader'
+        - $ref: '#/components/parameters/WebhookEventIdHeader'
+        - $ref: '#/components/parameters/WebhookAttemptHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookPayload'
+      responses:
+        '200':
+          description: Strict acknowledgement for this exact event and delivery
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookAcknowledgement'
 components:
   securitySchemes:
     ApiClientId:
@@ -234,7 +1113,39 @@ components:
       type: apiKey
       in: header
       name: X-PerPay-Signature
-      description: Lowercase hexadecimal HMAC-SHA256 over the versioned canonical request.
+      description: |
+        Lowercase hexadecimal HMAC-SHA256 over these LF-separated UTF-8 fields:
+        `PERPAY-HMAC-SHA256`, `v1`, uppercase method, canonical origin-form target,
+        timestamp, nonce, client ID, and lowercase SHA-256 body digest. Query names are
+        unique and sorted in the canonical target. The secret is never sent with a request.
+    WebhookSignature:
+      type: apiKey
+      in: header
+      name: X-PerPay-Webhook-Signature
+      description: |
+        `v1=` plus lowercase hexadecimal HMAC-SHA256 of the outbound webhook canonical
+        fields documented on the OpenAPI webhook operation. This uses the dedicated webhook
+        secret, never the API client secret or administrator password.
+    AdminSessionCookie:
+      type: apiKey
+      in: cookie
+      name: __Host-perpay_session
+      description: >-
+        HttpOnly administrator session cookie used with production HTTPS. Development
+        configurations without secure cookies use the `perpay_session` name instead.
+    AdminCsrfCookie:
+      type: apiKey
+      in: cookie
+      name: __Host-perpay_csrf
+      description: >-
+        Script-readable CSRF cookie used with production HTTPS. Development configurations
+        without secure cookies use the `perpay_csrf` name instead. Its value must also be
+        sent in `X-CSRF-Token`.
+    AdminCsrfHeader:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+      description: Must exactly equal the active session's CSRF cookie and stored token digest.
   parameters:
     RequestId:
       name: X-Request-Id
@@ -248,15 +1159,588 @@ components:
       in: path
       required: true
       schema:
+        $ref: '#/components/schemas/ResourceId'
+    AdminOrigin:
+      name: Origin
+      in: header
+      required: true
+      description: >-
+        Must exactly equal the configured public origin. If `Sec-Fetch-Site` is sent,
+        the server additionally requires `same-origin` or `none`.
+      schema:
         type: string
-        format: uuid
-        pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+        format: uri
+    CandidateId:
+      name: candidateId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ResourceId'
+    LedgerEntryId:
+      name: ledgerEntryId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ResourceId'
+    PaymentMatchId:
+      name: paymentMatchId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ResourceId'
+    ExceptionId:
+      name: exceptionId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ResourceId'
+    ConflictId:
+      name: conflictId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ResourceId'
+    WebhookEventId:
+      name: eventId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ResourceId'
+    WebhookDeliveryId:
+      name: deliveryId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ResourceId'
+    WebhookProtocolVersionHeader:
+      name: X-PerPay-Webhook-Version
+      in: header
+      required: true
+      schema:
+        type: string
+        const: '1'
+    WebhookKeyIdHeader:
+      name: X-PerPay-Webhook-Key-Id
+      in: header
+      required: true
+      description: Identifies the configured secret version used for this attempt.
+      schema:
+        $ref: '#/components/schemas/ResourceId'
+    WebhookTimestampHeader:
+      name: X-PerPay-Webhook-Timestamp
+      in: header
+      required: true
+      description: Unix epoch milliseconds captured when the persisted attempt starts.
+      schema:
+        type: string
+        pattern: '^(0|[1-9][0-9]*)$'
+    WebhookDeliveryIdHeader:
+      name: X-PerPay-Webhook-Delivery-Id
+      in: header
+      required: true
+      schema:
+        $ref: '#/components/schemas/ResourceId'
+    WebhookEventIdHeader:
+      name: X-PerPay-Webhook-Event-Id
+      in: header
+      required: true
+      schema:
+        $ref: '#/components/schemas/ResourceId'
+    WebhookAttemptHeader:
+      name: X-PerPay-Webhook-Attempt
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: '^[1-9][0-9]*$'
+  requestBodies:
+    FinancialDecision:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/FinancialDecisionRequest'
+    LinkedFinancialDecision:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LinkedFinancialDecisionRequest'
   schemas:
+    Health:
+      type: object
+      additionalProperties: false
+      required: [status, version, uptime_seconds, database]
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+        version: { type: string }
+        uptime_seconds: { type: integer, minimum: 0 }
+        database:
+          $ref: '#/components/schemas/DatabaseHealth'
+    Readiness:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ready, degraded, not_ready]
+          description: Degraded still uses HTTP 200; not_ready uses HTTP 503.
+    DatabaseHealth:
+      type: object
+      additionalProperties: false
+      required: [ok, result]
+      properties:
+        ok: { type: boolean }
+        result:
+          type: string
+          description: >-
+            Stable machine-readable reason: `ok`, `database_closed`,
+            `database_lease_lost`, `database_maintenance_in_progress`, `probe_failed`,
+            `database_probe_failed`, `database_schema_invalid`, `order_clock_ahead`,
+            `system_clock_changed`, or `database_storage_low`. Clients must tolerate unknown
+            future codes.
+    SystemStatusEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/SystemStatus'
+    SystemStatus:
+      type: object
+      additionalProperties: false
+      required: [status, version, instance_id, database, ledger, reconciliation, webhook, backup]
+      properties:
+        status:
+          type: string
+          enum: [ready, degraded, not_ready]
+          description: >-
+            Open ledger conflicts, financial exceptions, or an unhealthy backup degrade the
+            status without making the core service unready.
+        version: { type: string }
+        instance_id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        database:
+          $ref: '#/components/schemas/DatabaseHealth'
+        ledger:
+          $ref: '#/components/schemas/LedgerHealth'
+        reconciliation:
+          $ref: '#/components/schemas/ReconciliationHealth'
+        webhook:
+          $ref: '#/components/schemas/WebhookHealth'
+        backup:
+          $ref: '#/components/schemas/BackupHealth'
+    LedgerConflictSummary:
+      type: [object, 'null']
+      additionalProperties: false
+      required: [provider_account_key, open, resolved, ignored, total, by_type]
+      properties:
+        provider_account_key: { type: string }
+        open: { type: integer, minimum: 0 }
+        resolved: { type: integer, minimum: 0 }
+        ignored: { type: integer, minimum: 0 }
+        total: { type: integer, minimum: 0 }
+        by_type:
+          type: array
+          items:
+            $ref: '#/components/schemas/LedgerConflictTypeSummary'
+    LedgerConflictTypeSummary:
+      type: object
+      additionalProperties: false
+      required: [conflict_type, open, resolved, ignored, total]
+      properties:
+        conflict_type:
+          $ref: '#/components/schemas/LedgerConflictType'
+        open: { type: integer, minimum: 0 }
+        resolved: { type: integer, minimum: 0 }
+        ignored: { type: integer, minimum: 0 }
+        total: { type: integer, minimum: 0 }
+    FinancialExceptionSummary:
+      type: [object, 'null']
+      additionalProperties: false
+      required: [provider_account_key, open, resolved, total]
+      properties:
+        provider_account_key: { type: string }
+        open: { type: integer, minimum: 0 }
+        resolved: { type: integer, minimum: 0 }
+        total: { type: integer, minimum: 0 }
+    LedgerHealth:
+      type: object
+      additionalProperties: false
+      required:
+        - enabled
+        - state
+        - in_flight
+        - last_attempt_at
+        - last_success_at
+        - last_error_code
+        - consecutive_failures
+        - collection_ready
+        - last_success_age_milliseconds
+        - maximum_success_age_milliseconds
+        - conflicts
+      properties:
+        enabled:
+          type: boolean
+          description: False means provider ingestion is disabled and no outbound request is made.
+        state:
+          type: string
+          enum: [idle, running, healthy, catching_up, degraded, stopped]
+        in_flight: { type: boolean }
+        last_attempt_at:
+          type: [integer, 'null']
+          minimum: 0
+          description: Unix epoch milliseconds for the latest scan attempt.
+        last_success_at:
+          type: [integer, 'null']
+          minimum: 0
+          description: Unix epoch milliseconds for the latest completed or skipped scan.
+        last_error_code:
+          type: [string, 'null']
+          description: >-
+            Stable scanner or provider-boundary error code. Current values are
+            documented in README; clients must tolerate unknown future codes.
+        consecutive_failures:
+          type: integer
+          minimum: 0
+        collection_ready:
+          type: boolean
+          description: Whether enabled collection freshness currently permits new payment entry.
+        last_success_age_milliseconds:
+          type: [integer, 'null']
+          minimum: 0
+          description: Null when collection is disabled, has never succeeded, or reports a future time.
+        maximum_success_age_milliseconds:
+          type: integer
+          minimum: 10000
+        conflicts:
+          $ref: '#/components/schemas/LedgerConflictSummary'
+    ReconciliationHealth:
+      type: object
+      additionalProperties: false
+      required:
+        - enabled
+        - state
+        - in_flight
+        - last_attempt_at
+        - last_success_at
+        - last_error_code
+        - consecutive_failures
+        - pending_orders
+        - continuation_pending
+        - confirmation_ready
+        - last_success_age_milliseconds
+        - maximum_success_age_milliseconds
+        - exceptions
+      properties:
+        enabled:
+          type: boolean
+          description: False means the reconciliation scheduler was not started.
+        state:
+          type: string
+          enum: [idle, running, healthy, degraded, stopped]
+        in_flight: { type: boolean }
+        last_attempt_at:
+          type: [integer, 'null']
+          minimum: 0
+          description: Unix epoch milliseconds for the latest reconciliation run attempt.
+        last_success_at:
+          type: [integer, 'null']
+          minimum: 0
+          description: Unix epoch milliseconds for the latest run without item failures.
+        last_error_code:
+          type: [string, 'null']
+          description: >-
+            Stable reconciliation scheduler error code. Current values are documented in
+            README; clients must tolerate unknown future codes.
+        consecutive_failures:
+          type: integer
+          minimum: 0
+        pending_orders:
+          type: integer
+          minimum: 0
+          description: Newly created orders queued for targeted reconsideration.
+        continuation_pending:
+          type: boolean
+          description: True while a bounded compensation sweep still has work to continue.
+        confirmation_ready:
+          type: boolean
+          description: Whether reconciliation freshness currently permits payment entry.
+        last_success_age_milliseconds:
+          type: [integer, 'null']
+          minimum: 0
+          description: Null when reconciliation has never succeeded or reports a future time.
+        maximum_success_age_milliseconds:
+          type: integer
+          minimum: 10000
+          description: The same deployment freshness window used for provider collection.
+        exceptions:
+          $ref: '#/components/schemas/FinancialExceptionSummary'
+    WebhookHealth:
+      type: object
+      additionalProperties: false
+      required:
+        - enabled
+        - state
+        - in_flight
+        - last_attempt_at
+        - last_success_at
+        - last_error_code
+        - consecutive_failures
+        - pending_deliveries
+        - dead_letters
+      properties:
+        enabled:
+          type: boolean
+          description: False means notification delivery is disabled by deployment configuration.
+        state:
+          type: string
+          enum: [idle, running, healthy, degraded, stopped]
+        in_flight: { type: boolean }
+        last_attempt_at:
+          type: [integer, 'null']
+          minimum: 0
+          description: Unix epoch milliseconds for the latest scheduler run attempt.
+        last_success_at:
+          type: [integer, 'null']
+          minimum: 0
+          description: Unix epoch milliseconds for the latest run without delivery failures.
+        last_error_code:
+          type: [string, 'null']
+          description: Stable scheduler or delivery error code; clients must tolerate future values.
+        consecutive_failures:
+          type: integer
+          minimum: 0
+        pending_deliveries:
+          type: integer
+          minimum: 0
+          description: Deliveries currently pending, leased, or waiting for retry.
+        dead_letters:
+          type: integer
+          minimum: 0
+          description: Latest-generation dead letters that have no administrative successor.
+    BackupHealth:
+      type: object
+      additionalProperties: false
+      required:
+        - enabled
+        - ok
+        - status
+        - last_attempt_at
+        - last_success_at
+        - last_error_at
+        - last_error_stage
+        - backup_name
+        - backup_sha256
+        - backup_size_bytes
+        - instance_id
+        - schema_version
+        - interval_milliseconds
+        - keep_count
+        - retained_count
+        - maximum_age_milliseconds
+        - backup_required
+        - backup_in_progress
+        - backup_available
+        - recovery_required
+        - clock_moved_backwards
+        - configuration_mismatch
+        - instance_matches
+      properties:
+        enabled:
+          type: boolean
+          description: False only when the backup health source is absent from an embedded runtime.
+        ok: { type: boolean }
+        status:
+          type: string
+          enum: [disabled, healthy, unhealthy, unavailable]
+        last_attempt_at:
+          type: [integer, 'null']
+          minimum: 0
+        last_success_at:
+          type: [integer, 'null']
+          minimum: 0
+        last_error_at:
+          type: [integer, 'null']
+          minimum: 0
+        last_error_stage:
+          type: [string, 'null']
+          enum: [state, database_backup, verification, retention, restore, unknown, null]
+        backup_name:
+          type: [string, 'null']
+          minLength: 1
+          maxLength: 255
+        backup_sha256:
+          type: [string, 'null']
+          pattern: '^[0-9a-f]{64}$'
+        backup_size_bytes:
+          type: [integer, 'null']
+          minimum: 1
+        instance_id:
+          type: [string, 'null']
+          pattern: '^[0-9a-f]{32}$'
+        schema_version:
+          type: [integer, 'null']
+          minimum: 1
+        interval_milliseconds:
+          type: [integer, 'null']
+          minimum: 3600000
+          maximum: 604800000
+        keep_count:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 365
+        retained_count:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 4096
+        maximum_age_milliseconds:
+          type: [integer, 'null']
+          minimum: 4500000
+          maximum: 665280000
+        backup_required:
+          type: boolean
+          description: True after a restore attempt protects a selected recovery point, until a new verified backup is published.
+        backup_in_progress:
+          type: boolean
+          description: True while a fresh backup-cycle lock identifies a live backup or retention operation.
+        backup_available: { type: boolean }
+        recovery_required:
+          type: boolean
+          description: >-
+            True when a backup lock is beyond its six-hour execution window, future-dated,
+            unreadable, or otherwise unsafe, or when an identified backup or state publication
+            temporary file remains without a live cycle owner.
+        clock_moved_backwards: { type: boolean }
+        configuration_mismatch: { type: boolean }
+        instance_matches:
+          type: [boolean, 'null']
+          description: Null until a verified backup records its application instance identity.
+    ResourceId:
+      type: string
+      format: uuid
+      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+    AdminLoginRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 64
+        password:
+          type: string
+          minLength: 1
+          x-perpay-max-utf8-bytes: 1024
+    AdminLoginEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [username, csrf_token, idle_expires_at, absolute_expires_at]
+          properties:
+            username: { type: string }
+            csrf_token:
+              type: string
+              pattern: '^pc1_[A-Za-z0-9_-]{43}$'
+              description: Same value set in the CSRF cookie; never place it in URLs or logs.
+            idle_expires_at: { type: string, format: date-time }
+            absolute_expires_at: { type: string, format: date-time }
+    AdminSessionEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required:
+            - username
+            - csrf_token_required
+            - step_up_active
+            - idle_expires_at
+            - absolute_expires_at
+          properties:
+            username: { type: string }
+            csrf_token_required: { const: true }
+            step_up_active: { type: boolean }
+            idle_expires_at: { type: string, format: date-time }
+            absolute_expires_at: { type: string, format: date-time }
+    AdminStepUpRequest:
+      type: object
+      additionalProperties: false
+      required: [password]
+      properties:
+        password:
+          type: string
+          minLength: 1
+          x-perpay-max-utf8-bytes: 1024
+    AdminStepUpEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [csrf_token, step_up_expires_at, idle_expires_at, absolute_expires_at]
+          properties:
+            csrf_token:
+              type: string
+              pattern: '^pc1_[A-Za-z0-9_-]{43}$'
+              description: Same value set in the replacement CSRF cookie.
+            step_up_expires_at: { type: string, format: date-time }
+            idle_expires_at: { type: string, format: date-time }
+            absolute_expires_at:
+              type: string
+              format: date-time
+              description: Preserved from the revoked session; step-up never extends it.
+    AdminPasswordChangeRequest:
+      type: object
+      additionalProperties: false
+      required: [current_password, new_password]
+      properties:
+        current_password:
+          type: string
+          minLength: 1
+          x-perpay-max-utf8-bytes: 1024
+        new_password:
+          type: string
+          minLength: 12
+          x-perpay-max-utf8-bytes: 1024
+    AdminRevokeAllEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [revoked_sessions]
+          properties:
+            revoked_sessions: { type: integer, minimum: 1 }
     MerchantOrderNumber:
       type: string
       minLength: 1
       maxLength: 64
       pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
+    NotifyUrl:
+      type: string
+      format: uri
+      minLength: 1
+      maxLength: 4096
+      pattern: '^[Hh][Tt][Tt][Pp][Ss]://'
+      x-perpay-max-utf8-bytes: 4096
+      description: |
+        Absolute HTTPS URL under the one DNS origin enabled by deployment configuration.
+        User information, fragments, control characters, trailing-dot hosts, and encoded
+        control bytes are rejected. Paths and existing query parameters are preserved.
     CreateOrderRequest:
       type: object
       additionalProperties: false
@@ -278,6 +1762,8 @@ components:
           type: string
           minLength: 1
           maxLength: 200
+        notify_url:
+          $ref: '#/components/schemas/NotifyUrl'
     OrderEnvelope:
       type: object
       additionalProperties: false
@@ -299,6 +1785,7 @@ components:
         - checkout
         - payment
         - refund
+        - notification
         - created_at
         - updated_at
         - version
@@ -319,9 +1806,21 @@ components:
           $ref: '#/components/schemas/PaymentState'
         refund:
           $ref: '#/components/schemas/RefundState'
+        notification:
+          $ref: '#/components/schemas/OrderNotification'
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
         version: { type: integer, minimum: 1 }
+    OrderNotification:
+      type: object
+      additionalProperties: false
+      required: [notify_url]
+      properties:
+        notify_url:
+          description: Null when the order did not opt into reliable notification delivery.
+          oneOf:
+            - $ref: '#/components/schemas/NotifyUrl'
+            - type: 'null'
     AuthenticatedCheckoutState:
       type: object
       additionalProperties: false
@@ -389,7 +1888,11 @@ components:
             currency: { const: CNY }
             description: { type: [string, 'null'] }
             payment_instructions:
-              description: Null after the checkout closes or expires, so a terminal link cannot initiate payment.
+              description: >-
+                Present only while checkout status is OPEN and payment status is UNPAID. It is
+                null after CONFIRMED or DISPUTED and after checkout closure or expiry. While an
+                active checkout cannot be confirmed safely because collection or reconciliation
+                is not ready, the checkout request returns HTTP 503 instead of this projection.
               oneOf:
                 - $ref: '#/components/schemas/PublicPaymentInstructions'
                 - type: 'null'
@@ -407,6 +1910,1114 @@ components:
           type: string
           minLength: 8
           maxLength: 4096
+    FinancialDecisionRequest:
+      type: object
+      additionalProperties: false
+      required: [financial_operation_id, reason]
+      properties:
+        financial_operation_id:
+          allOf:
+            - $ref: '#/components/schemas/ResourceId'
+          description: >-
+            Client-generated idempotency identifier. Exact replay is accepted; reuse for
+            different input returns `operation_conflict` with HTTP 409.
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 512
+          x-perpay-max-utf8-bytes: 2048
+          description: Must be trimmed and contain no Unicode control characters.
+    LinkedFinancialDecisionRequest:
+      type: object
+      additionalProperties: false
+      required: [financial_operation_id, reason, order_id, ledger_entry_id]
+      properties:
+        financial_operation_id:
+          allOf:
+            - $ref: '#/components/schemas/ResourceId'
+          description: >-
+            Client-generated idempotency identifier. Exact replay is accepted; reuse for
+            different input returns `operation_conflict` with HTTP 409.
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 512
+          x-perpay-max-utf8-bytes: 2048
+          description: Must be trimmed and contain no Unicode control characters.
+        order_id: { $ref: '#/components/schemas/ResourceId' }
+        ledger_entry_id: { $ref: '#/components/schemas/ResourceId' }
+    LedgerConflictType:
+      type: string
+      enum:
+        - RAW_PAGE_VARIANT
+        - DUPLICATE_EXTERNAL_ID
+        - MISSING_EXTERNAL_ID
+        - INVALID_AMOUNT
+        - INVALID_TIMESTAMP
+        - INVALID_DIRECTION
+        - INVALID_SHAPE
+    LedgerConflictResolutionRequest:
+      type: object
+      additionalProperties: false
+      required: [conflict_operation_id, action, reason]
+      properties:
+        conflict_operation_id:
+          allOf:
+            - $ref: '#/components/schemas/ResourceId'
+          description: Client-generated idempotency identifier.
+        action:
+          type: string
+          enum: [KEEP_EXISTING, ACKNOWLEDGE_ISOLATED]
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 512
+          x-perpay-max-utf8-bytes: 2048
+          description: Must be trimmed and contain no Unicode control characters.
+    LedgerConflictPageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/LedgerConflict' }
+        page:
+          type: object
+          additionalProperties: false
+          required: [next_cursor]
+          properties:
+            next_cursor: { type: [string, 'null'] }
+    LedgerConflictDetailEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/LedgerConflictDetail' }
+    LedgerConflictResolutionEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [conflict, operation, replayed]
+          properties:
+            conflict: { $ref: '#/components/schemas/LedgerConflict' }
+            operation: { $ref: '#/components/schemas/LedgerConflictOperation' }
+            replayed: { type: boolean }
+    LedgerConflict:
+      type: object
+      additionalProperties: false
+      required:
+        - conflict_id
+        - provider_account_key
+        - conflict_type
+        - raw_page_id
+        - raw_event_id
+        - existing_ledger_entry_id
+        - external_event_id
+        - existing_semantic_fingerprint
+        - incoming_semantic_fingerprint
+        - details
+        - status
+        - resolution
+        - resolution_action
+        - resolution_operation_id
+        - resolution_fingerprint
+        - conflict_fingerprint
+        - created_at
+        - resolved_at
+      properties:
+        conflict_id: { $ref: '#/components/schemas/ResourceId' }
+        provider_account_key: { type: string }
+        conflict_type: { $ref: '#/components/schemas/LedgerConflictType' }
+        raw_page_id:
+          oneOf:
+            - $ref: '#/components/schemas/ResourceId'
+            - type: 'null'
+        raw_event_id:
+          oneOf:
+            - $ref: '#/components/schemas/ResourceId'
+            - type: 'null'
+        existing_ledger_entry_id:
+          oneOf:
+            - $ref: '#/components/schemas/ResourceId'
+            - type: 'null'
+        external_event_id: { type: [string, 'null'] }
+        existing_semantic_fingerprint:
+          oneOf:
+            - $ref: '#/components/schemas/Sha256Fingerprint'
+            - type: 'null'
+        incoming_semantic_fingerprint:
+          oneOf:
+            - $ref: '#/components/schemas/Sha256Fingerprint'
+            - type: 'null'
+        details:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          enum: [OPEN, RESOLVED, IGNORED]
+        resolution:
+          type: [object, 'null']
+          additionalProperties: true
+        resolution_action:
+          type: [string, 'null']
+          enum: [CONFIRM_VARIANT, KEEP_EXISTING, ACKNOWLEDGE_ISOLATED, null]
+        resolution_operation_id:
+          oneOf:
+            - $ref: '#/components/schemas/ResourceId'
+            - type: 'null'
+        resolution_fingerprint:
+          oneOf:
+            - $ref: '#/components/schemas/Sha256Fingerprint'
+            - type: 'null'
+        conflict_fingerprint: { $ref: '#/components/schemas/Sha256Fingerprint' }
+        created_at: { type: string, format: date-time }
+        resolved_at: { type: [string, 'null'], format: date-time }
+    LedgerConflictDetail:
+      type: object
+      additionalProperties: false
+      required: [conflict, raw_page, incoming_event, existing_ledger_entry, resolution_operation]
+      properties:
+        conflict: { $ref: '#/components/schemas/LedgerConflict' }
+        raw_page:
+          oneOf:
+            - $ref: '#/components/schemas/LedgerConflictRawPage'
+            - type: 'null'
+        incoming_event:
+          oneOf:
+            - $ref: '#/components/schemas/LedgerConflictIncomingEvent'
+            - type: 'null'
+        existing_ledger_entry:
+          oneOf:
+            - $ref: '#/components/schemas/LedgerConflictExistingEntry'
+            - type: 'null'
+        resolution_operation:
+          oneOf:
+            - $ref: '#/components/schemas/LedgerConflictOperation'
+            - type: 'null'
+    LedgerConflictRawPage:
+      type: object
+      additionalProperties: false
+      required:
+        - raw_page_id
+        - ingest_run_id
+        - provider_account_key
+        - window_start
+        - window_end
+        - page_no
+        - page_size
+        - total_size
+        - has_more
+        - request_fingerprint
+        - response_fingerprint
+        - http_status
+        - signature_verified
+        - trace_id
+        - received_at
+      properties:
+        raw_page_id: { $ref: '#/components/schemas/ResourceId' }
+        ingest_run_id: { $ref: '#/components/schemas/ResourceId' }
+        provider_account_key: { type: string }
+        window_start: { type: string }
+        window_end: { type: string }
+        page_no: { type: integer, minimum: 1 }
+        page_size: { type: integer, minimum: 1 }
+        total_size: { type: integer, minimum: 0 }
+        has_more: { type: boolean }
+        request_fingerprint: { $ref: '#/components/schemas/Sha256Fingerprint' }
+        response_fingerprint: { $ref: '#/components/schemas/Sha256Fingerprint' }
+        http_status: { type: integer, minimum: 100, maximum: 599 }
+        signature_verified: { type: boolean }
+        trace_id: { type: [string, 'null'] }
+        received_at: { type: string, format: date-time }
+    LedgerConflictIncomingEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - raw_event_id
+        - raw_page_id
+        - provider_account_key
+        - ordinal
+        - external_event_id
+        - occurred_at_text
+        - amount_text
+        - direction_text
+        - alipay_order_no
+        - merchant_order_no
+        - trans_memo
+        - other_account
+        - payload_fingerprint
+        - observed_at
+      properties:
+        raw_event_id: { $ref: '#/components/schemas/ResourceId' }
+        raw_page_id: { $ref: '#/components/schemas/ResourceId' }
+        provider_account_key: { type: string }
+        ordinal: { type: integer, minimum: 0 }
+        external_event_id: { type: [string, 'null'] }
+        occurred_at_text: { type: [string, 'null'] }
+        amount_text: { type: [string, 'null'] }
+        direction_text: { type: [string, 'null'] }
+        alipay_order_no: { type: [string, 'null'] }
+        merchant_order_no: { type: [string, 'null'] }
+        trans_memo: { type: [string, 'null'] }
+        other_account: { type: [string, 'null'] }
+        payload_fingerprint: { $ref: '#/components/schemas/Sha256Fingerprint' }
+        observed_at: { type: string, format: date-time }
+    LedgerConflictExistingEntry:
+      type: object
+      additionalProperties: false
+      required:
+        - ledger_entry_id
+        - provider_account_key
+        - raw_event_id
+        - external_event_id
+        - semantic_fingerprint
+        - occurred_at
+        - occurred_at_precision_milliseconds
+        - amount_cents
+        - direction
+        - currency
+        - alipay_order_no
+        - merchant_order_no
+        - trans_memo
+        - other_account
+        - state
+        - created_at
+        - updated_at
+      properties:
+        ledger_entry_id: { $ref: '#/components/schemas/ResourceId' }
+        provider_account_key: { type: string }
+        raw_event_id: { $ref: '#/components/schemas/ResourceId' }
+        external_event_id: { type: string }
+        semantic_fingerprint: { $ref: '#/components/schemas/Sha256Fingerprint' }
+        occurred_at: { type: string, format: date-time }
+        occurred_at_precision_milliseconds: { type: integer, enum: [1, 10, 100, 1000] }
+        amount_cents: { type: integer, minimum: 1 }
+        direction: { type: string, enum: [CREDIT, DEBIT] }
+        currency: { const: CNY }
+        alipay_order_no: { type: [string, 'null'] }
+        merchant_order_no: { type: [string, 'null'] }
+        trans_memo: { type: [string, 'null'] }
+        other_account: { type: [string, 'null'] }
+        state:
+          type: string
+          enum: [UNALLOCATED, CANDIDATE, ALLOCATED, CONFLICT, ISOLATED, IGNORED]
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    LedgerConflictOperation:
+      type: object
+      additionalProperties: false
+      required:
+        - conflict_operation_id
+        - operation_key
+        - conflict_id
+        - request_fingerprint
+        - action
+        - actor_type
+        - actor_id
+        - reason
+        - created_at
+      properties:
+        conflict_operation_id: { $ref: '#/components/schemas/ResourceId' }
+        operation_key: { type: string }
+        conflict_id: { $ref: '#/components/schemas/ResourceId' }
+        request_fingerprint: { $ref: '#/components/schemas/Sha256Fingerprint' }
+        action:
+          type: string
+          enum: [CONFIRM_VARIANT, KEEP_EXISTING, ACKNOWLEDGE_ISOLATED]
+        actor_type: { type: string, enum: [SYSTEM, ADMIN] }
+        actor_id: { type: [string, 'null'] }
+        reason: { type: string }
+        created_at: { type: string, format: date-time }
+    MatchCandidateEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/MatchCandidate' }
+    MatchCandidateListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/MatchCandidate' }
+    MatchCandidate:
+      type: object
+      additionalProperties: false
+      required:
+        - candidate_id
+        - ledger_entry_id
+        - order_id
+        - slot_id
+        - evidence_type
+        - rule_version
+        - evidence
+        - candidate_fingerprint
+        - status
+        - decided_by_operation_id
+        - created_at
+        - updated_at
+        - decided_at
+      properties:
+        candidate_id: { $ref: '#/components/schemas/ResourceId' }
+        ledger_entry_id: { $ref: '#/components/schemas/ResourceId' }
+        order_id: { $ref: '#/components/schemas/ResourceId' }
+        slot_id: { $ref: '#/components/schemas/ResourceId' }
+        evidence_type: { const: AMOUNT_INFERRED }
+        rule_version: { const: 3 }
+        evidence:
+          type: object
+          additionalProperties: true
+          description: Immutable rule input snapshot; clients must tolerate additional fields.
+        candidate_fingerprint: { $ref: '#/components/schemas/Sha256Fingerprint' }
+        status:
+          type: string
+          enum: [ELIGIBLE, SELECTED, SUPERSEDED]
+        decided_by_operation_id:
+          oneOf:
+            - $ref: '#/components/schemas/ResourceId'
+            - type: 'null'
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        decided_at: { type: [string, 'null'], format: date-time }
+    PaymentMatchEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/PaymentMatchDetail' }
+    PaymentMatchPageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/PaymentMatchDetail' }
+        page:
+          type: object
+          additionalProperties: false
+          required: [next_cursor]
+          properties:
+            next_cursor:
+              type: [string, 'null']
+              minLength: 1
+              maxLength: 256
+              pattern: '^[A-Za-z0-9_-]+$'
+    PaymentMatch:
+      type: object
+      additionalProperties: false
+      required:
+        - payment_match_id
+        - ledger_entry_id
+        - order_id
+        - candidate_id
+        - evidence_type
+        - evidence
+        - status
+        - created_by_operation_id
+        - resolved_by_operation_id
+        - created_at
+        - updated_at
+        - resolved_at
+      properties:
+        payment_match_id: { $ref: '#/components/schemas/ResourceId' }
+        ledger_entry_id: { $ref: '#/components/schemas/ResourceId' }
+        order_id: { $ref: '#/components/schemas/ResourceId' }
+        candidate_id:
+          oneOf:
+            - $ref: '#/components/schemas/ResourceId'
+            - type: 'null'
+        evidence_type:
+          type: string
+          enum: [AMOUNT_INFERRED, MANUAL]
+        evidence:
+          type: object
+          additionalProperties: true
+          description: Immutable association evidence; clients must tolerate additional fields.
+        status:
+          type: string
+          enum: [SETTLED, REVERSED]
+        created_by_operation_id: { $ref: '#/components/schemas/ResourceId' }
+        resolved_by_operation_id:
+          oneOf:
+            - $ref: '#/components/schemas/ResourceId'
+            - type: 'null'
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        resolved_at: { type: [string, 'null'], format: date-time }
+    PaymentMatchDetail:
+      type: object
+      additionalProperties: false
+      required:
+        - payment_match_id
+        - ledger_entry_id
+        - order_id
+        - candidate_id
+        - evidence_type
+        - evidence
+        - status
+        - created_by_operation_id
+        - resolved_by_operation_id
+        - created_at
+        - updated_at
+        - resolved_at
+        - candidate
+        - ledger_entry
+        - order
+      properties:
+        payment_match_id: { $ref: '#/components/schemas/ResourceId' }
+        ledger_entry_id: { $ref: '#/components/schemas/ResourceId' }
+        order_id: { $ref: '#/components/schemas/ResourceId' }
+        candidate_id:
+          oneOf:
+            - $ref: '#/components/schemas/ResourceId'
+            - type: 'null'
+        evidence_type:
+          type: string
+          enum: [AMOUNT_INFERRED, MANUAL]
+        evidence:
+          type: object
+          additionalProperties: true
+          description: Immutable association evidence; clients must tolerate additional fields.
+        status:
+          type: string
+          enum: [SETTLED, REVERSED]
+        created_by_operation_id: { $ref: '#/components/schemas/ResourceId' }
+        resolved_by_operation_id:
+          oneOf:
+            - $ref: '#/components/schemas/ResourceId'
+            - type: 'null'
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        resolved_at: { type: [string, 'null'], format: date-time }
+        candidate:
+          oneOf:
+            - $ref: '#/components/schemas/MatchCandidate'
+            - type: 'null'
+        ledger_entry: { $ref: '#/components/schemas/ReconciliationLedgerEntry' }
+        order: { $ref: '#/components/schemas/ReconciliationOrder' }
+    ReconciliationLedgerEntryEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/ReconciliationLedgerEntry' }
+    ReconciliationLedgerEntry:
+      type: object
+      additionalProperties: false
+      required:
+        - ledger_entry_id
+        - external_event_id
+        - semantic_fingerprint
+        - occurred_at
+        - occurred_at_precision_milliseconds
+        - occurred_at_interval_end_exclusive
+        - amount_cents
+        - direction
+        - currency
+        - provider_order_no
+        - merchant_order_no
+        - memo
+        - other_account
+        - state
+        - created_at
+        - updated_at
+      properties:
+        ledger_entry_id: { $ref: '#/components/schemas/ResourceId' }
+        external_event_id: { type: string, minLength: 1, maxLength: 256 }
+        semantic_fingerprint: { $ref: '#/components/schemas/Sha256Fingerprint' }
+        occurred_at:
+          type: string
+          format: date-time
+          description: Inclusive lower bound of the provider-reported transaction time.
+        occurred_at_precision_milliseconds:
+          type: integer
+          enum: [1, 10, 100, 1000]
+        occurred_at_interval_end_exclusive:
+          type: string
+          format: date-time
+          description: Exclusive upper bound derived from the declared timestamp precision.
+        amount_cents: { type: integer, minimum: 1, maximum: 999999999999 }
+        direction: { type: string, enum: [CREDIT, DEBIT] }
+        currency: { const: CNY }
+        provider_order_no: { type: [string, 'null'], maxLength: 128 }
+        merchant_order_no: { type: [string, 'null'], maxLength: 128 }
+        memo: { type: [string, 'null'], maxLength: 1024 }
+        other_account: { type: [string, 'null'], maxLength: 256 }
+        state:
+          type: string
+          enum: [UNALLOCATED, CANDIDATE, ALLOCATED, CONFLICT, ISOLATED, IGNORED]
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ReconciliationOrder:
+      type: object
+      additionalProperties: false
+      required:
+        - order_id
+        - merchant_order_no
+        - requested_amount_cents
+        - payable_amount_cents
+        - received_amount_cents
+        - currency
+        - description
+        - checkout_status
+        - payment_status
+        - payment_basis
+        - refund_status
+        - eligible_from
+        - created_at
+        - expires_at
+        - closed_at
+        - updated_at
+        - version
+      properties:
+        order_id: { $ref: '#/components/schemas/ResourceId' }
+        merchant_order_no: { type: string, minLength: 1, maxLength: 128 }
+        requested_amount_cents: { type: integer, minimum: 1, maximum: 9999999999 }
+        payable_amount_cents: { type: integer, minimum: 2, maximum: 9999999999 }
+        received_amount_cents: { type: [integer, 'null'], minimum: 1, maximum: 999999999999 }
+        currency: { const: CNY }
+        description: { type: [string, 'null'], maxLength: 256 }
+        checkout_status: { type: string, enum: [OPEN, EXPIRED, CLOSED] }
+        payment_status: { type: string, enum: [UNPAID, CONFIRMED, DISPUTED] }
+        payment_basis: { type: string, enum: [NONE, INFERRED, MANUAL] }
+        refund_status: { type: string, enum: [NONE, PARTIAL, FULL] }
+        eligible_from: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        closed_at: { type: [string, 'null'], format: date-time }
+        updated_at: { type: string, format: date-time }
+        version: { type: integer, minimum: 1 }
+    FinancialOperation:
+      type: object
+      additionalProperties: false
+      required:
+        - financial_operation_id
+        - operation_type
+        - actor_type
+        - actor_id
+        - order_id
+        - ledger_entry_id
+        - reverses_operation_id
+        - reason
+        - request_fingerprint
+        - created_at
+      properties:
+        financial_operation_id: { $ref: '#/components/schemas/ResourceId' }
+        operation_type:
+          type: string
+          enum:
+            - AUTO_SETTLEMENT
+            - SUPERSEDE_CANDIDATE
+            - MANUAL_SETTLEMENT
+            - REVERSE_SETTLEMENT
+            - RECORD_REFUND
+        actor_type:
+          type: string
+          enum: [SYSTEM, ADMIN]
+        actor_id: { type: [string, 'null'] }
+        order_id:
+          oneOf:
+            - $ref: '#/components/schemas/ResourceId'
+            - type: 'null'
+        ledger_entry_id:
+          oneOf:
+            - $ref: '#/components/schemas/ResourceId'
+            - type: 'null'
+        reverses_operation_id:
+          oneOf:
+            - $ref: '#/components/schemas/ResourceId'
+            - type: 'null'
+        reason: { type: [string, 'null'], maxLength: 512 }
+        request_fingerprint: { $ref: '#/components/schemas/Sha256Fingerprint' }
+        created_at: { type: string, format: date-time }
+    FinancialDecisionEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required:
+            - operation
+            - payment_match
+            - order_id
+            - ledger_entry_id
+            - order_version
+            - replayed
+          properties:
+            operation: { $ref: '#/components/schemas/FinancialOperation' }
+            payment_match: { $ref: '#/components/schemas/PaymentMatch' }
+            order_id: { $ref: '#/components/schemas/ResourceId' }
+            ledger_entry_id: { $ref: '#/components/schemas/ResourceId' }
+            order_version: { type: integer, minimum: 1 }
+            replayed: { type: boolean }
+    RefundDecisionEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required:
+            - operation
+            - refund_record_id
+            - order_id
+            - ledger_entry_id
+            - refund_status
+            - order_version
+            - replayed
+          properties:
+            operation: { $ref: '#/components/schemas/FinancialOperation' }
+            refund_record_id: { $ref: '#/components/schemas/ResourceId' }
+            order_id: { $ref: '#/components/schemas/ResourceId' }
+            ledger_entry_id: { $ref: '#/components/schemas/ResourceId' }
+            refund_status:
+              type: string
+              enum: [PARTIAL, FULL]
+            order_version: { type: integer, minimum: 1 }
+            replayed: { type: boolean }
+    FinancialExceptionEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/FinancialException' }
+    FinancialExceptionPageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/FinancialException' }
+        page:
+          type: object
+          additionalProperties: false
+          required: [next_cursor]
+          properties:
+            next_cursor:
+              type: [string, 'null']
+              minLength: 1
+              maxLength: 128
+              pattern: '^[A-Za-z0-9_-]+$'
+    FinancialException:
+      type: object
+      additionalProperties: false
+      required:
+        - exception_id
+        - provider_account_key
+        - exception_type
+        - ledger_entry_id
+        - order_id
+        - candidate_id
+        - context_key
+        - details
+        - exception_fingerprint
+        - status
+        - resolution_operation_id
+        - resolution
+        - created_at
+        - resolved_at
+      properties:
+        exception_id: { $ref: '#/components/schemas/ResourceId' }
+        provider_account_key:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'
+        exception_type:
+          type: string
+          enum:
+            - UNMATCHED_CREDIT
+            - UNMATCHED_DEBIT
+            - AMBIGUOUS_MATCH
+            - CHECKOUT_ENDED_PAYMENT
+            - DUPLICATE_PAYMENT
+            - AMOUNT_MISMATCH
+            - UNLINKED_REFUND
+            - RECONCILIATION_CONFLICT
+        ledger_entry_id:
+          oneOf:
+            - $ref: '#/components/schemas/ResourceId'
+            - type: 'null'
+        order_id:
+          oneOf:
+            - $ref: '#/components/schemas/ResourceId'
+            - type: 'null'
+        candidate_id:
+          oneOf:
+            - $ref: '#/components/schemas/ResourceId'
+            - type: 'null'
+        context_key: { type: string }
+        details:
+          type: object
+          additionalProperties: true
+        exception_fingerprint: { $ref: '#/components/schemas/Sha256Fingerprint' }
+        status:
+          type: string
+          enum: [OPEN, RESOLVED]
+        resolution_operation_id:
+          oneOf:
+            - $ref: '#/components/schemas/ResourceId'
+            - type: 'null'
+        resolution:
+          type: [object, 'null']
+          additionalProperties: true
+        created_at: { type: string, format: date-time }
+        resolved_at: { type: [string, 'null'], format: date-time }
+    WebhookDeliveryStatus:
+      type: string
+      enum: [PENDING, LEASED, RETRY_WAIT, ACKNOWLEDGED, DEAD_LETTER]
+    WebhookAttemptOutcome:
+      type: string
+      enum: [STARTED, ACKNOWLEDGED, RETRYABLE_FAILURE, PERMANENT_FAILURE, OUTCOME_UNKNOWN]
+    WebhookPayload:
+      type: object
+      additionalProperties: true
+      x-perpay-max-utf8-bytes: 131072
+      required: [schema, event_id, event_type, order_id, order_version]
+      properties:
+        schema:
+          type: string
+          pattern: '^perpay:outbox-event:v[1-9][0-9]*$'
+        event_id: { $ref: '#/components/schemas/ResourceId' }
+        event_type:
+          type: string
+          description: Current values include PAYMENT_CONFIRMED, PAYMENT_DISPUTED, and REFUND_UPDATED.
+        financial_operation_id:
+          $ref: '#/components/schemas/ResourceId'
+        order_id: { $ref: '#/components/schemas/ResourceId' }
+        merchant_order_no: { $ref: '#/components/schemas/MerchantOrderNumber' }
+        requested_amount_cents: { type: integer, minimum: 1, maximum: 9999999998 }
+        payable_amount_cents: { type: integer, minimum: 2, maximum: 9999999999 }
+        received_amount_cents: { type: integer, minimum: 1, maximum: 9999999999 }
+        currency: { const: CNY }
+        payment_status:
+          type: string
+          enum: [UNPAID, CONFIRMED, DISPUTED]
+        payment_basis:
+          type: string
+          enum: [NONE, INFERRED, MANUAL]
+        refund_status:
+          type: string
+          enum: [NONE, PARTIAL, FULL]
+        event_details:
+          type: object
+          additionalProperties: true
+        order_version: { type: integer, minimum: 1 }
+        occurred_at:
+          type: integer
+          minimum: 0
+          description: Unix epoch milliseconds when the immutable event was committed.
+      description: |
+        Exact persisted JSON used as the outbound request body. Consumers must use `schema`
+        for version dispatch and tolerate additive fields and future event types.
+    WebhookAcknowledgement:
+      type: object
+      additionalProperties: false
+      x-perpay-max-utf8-bytes: 16384
+      required: [schema, ack, event_id, delivery_id]
+      properties:
+        schema: { const: 'perpay:webhook-ack:v1' }
+        ack: { const: true }
+        event_id: { $ref: '#/components/schemas/ResourceId' }
+        delivery_id: { $ref: '#/components/schemas/ResourceId' }
+    WebhookEventEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/WebhookEvent'
+    WebhookEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - event_id
+        - event_type
+        - order_id
+        - order_version
+        - payload
+        - payload_fingerprint
+        - created_at
+      properties:
+        event_id: { $ref: '#/components/schemas/ResourceId' }
+        event_type: { type: string }
+        order_id: { $ref: '#/components/schemas/ResourceId' }
+        order_version: { type: integer, minimum: 1 }
+        payload:
+          $ref: '#/components/schemas/WebhookPayload'
+        payload_fingerprint:
+          $ref: '#/components/schemas/Sha256Fingerprint'
+        created_at: { type: string, format: date-time }
+    WebhookDeliveryFields:
+      type: object
+      required:
+        - delivery_id
+        - event_id
+        - target_id
+        - generation
+        - predecessor_delivery_id
+        - request_key
+        - requested_by_type
+        - requested_by_actor_id
+        - reason
+        - status
+        - attempt_count
+        - next_attempt_at
+        - lease_expires_at
+        - acknowledged_at
+        - dead_lettered_at
+        - last_error_code
+        - created_at
+        - updated_at
+      properties:
+        delivery_id: { $ref: '#/components/schemas/ResourceId' }
+        event_id: { $ref: '#/components/schemas/ResourceId' }
+        target_id: { $ref: '#/components/schemas/ResourceId' }
+        generation: { type: integer, minimum: 1 }
+        predecessor_delivery_id:
+          oneOf:
+            - $ref: '#/components/schemas/ResourceId'
+            - type: 'null'
+        request_key:
+          allOf:
+            - $ref: '#/components/schemas/ResourceId'
+          description: Event ID for generation one; administrator-supplied redelivery ID thereafter.
+        requested_by_type:
+          type: string
+          enum: [SYSTEM, ADMIN]
+        requested_by_actor_id:
+          type: [string, 'null']
+          minLength: 1
+          maxLength: 128
+        reason:
+          type: [string, 'null']
+          minLength: 1
+          maxLength: 500
+        status:
+          $ref: '#/components/schemas/WebhookDeliveryStatus'
+        attempt_count: { type: integer, minimum: 0 }
+        next_attempt_at:
+          type: [string, 'null']
+          format: date-time
+          description: Present only while pending or waiting for retry.
+        lease_expires_at:
+          type: [string, 'null']
+          format: date-time
+          description: Present only while an attempt holds the delivery lease.
+        acknowledged_at: { type: [string, 'null'], format: date-time }
+        dead_lettered_at: { type: [string, 'null'], format: date-time }
+        last_error_code:
+          type: [string, 'null']
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-z][a-z0-9_]*$'
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    WebhookDelivery:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/WebhookDeliveryFields'
+      unevaluatedProperties: false
+    WebhookDeliverySummary:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/WebhookDeliveryFields'
+        - type: object
+          required: [event, target]
+          properties:
+            event:
+              type: object
+              additionalProperties: false
+              required: [event_type, order_id]
+              properties:
+                event_type: { type: string }
+                order_id: { $ref: '#/components/schemas/ResourceId' }
+            target:
+              type: object
+              additionalProperties: false
+              required: [format, url_fingerprint]
+              properties:
+                format: { const: NATIVE_JSON_V1 }
+                url_fingerprint: { $ref: '#/components/schemas/Sha256Fingerprint' }
+      unevaluatedProperties: false
+    WebhookDeliveryPageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookDeliverySummary'
+        page:
+          type: object
+          additionalProperties: false
+          required: [next_cursor]
+          properties:
+            next_cursor:
+              type: [string, 'null']
+              maxLength: 256
+              pattern: '^[A-Za-z0-9_-]+$'
+    WebhookTarget:
+      type: object
+      additionalProperties: false
+      required:
+        - target_id
+        - order_id
+        - api_client_id
+        - format
+        - target_url
+        - allowed_origin
+        - url_fingerprint
+        - created_at
+      properties:
+        target_id: { $ref: '#/components/schemas/ResourceId' }
+        order_id: { $ref: '#/components/schemas/ResourceId' }
+        api_client_id:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$'
+        format: { const: NATIVE_JSON_V1 }
+        target_url: { $ref: '#/components/schemas/NotifyUrl' }
+        allowed_origin:
+          type: string
+          format: uri
+          maxLength: 2048
+          pattern: '^https://'
+        url_fingerprint: { $ref: '#/components/schemas/Sha256Fingerprint' }
+        created_at: { type: string, format: date-time }
+    WebhookDeliveryDetail:
+      type: object
+      additionalProperties: false
+      required: [delivery, event, target]
+      properties:
+        delivery: { $ref: '#/components/schemas/WebhookDelivery' }
+        event: { $ref: '#/components/schemas/WebhookEvent' }
+        target: { $ref: '#/components/schemas/WebhookTarget' }
+    WebhookDeliveryDetailEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/WebhookDeliveryDetail' }
+    WebhookAttempt:
+      type: object
+      additionalProperties: false
+      description: Persisted attempt evidence. Internal lease credentials are never projected.
+      required:
+        - attempt_id
+        - delivery_id
+        - attempt_number
+        - key_version
+        - key_id
+        - request_timestamp
+        - request_body_fingerprint
+        - outcome
+        - resolved_addresses_fingerprint
+        - connected_address
+        - http_status
+        - response_bytes
+        - response_fingerprint
+        - ack_code
+        - error_code
+        - started_at
+        - finished_at
+      properties:
+        attempt_id: { $ref: '#/components/schemas/ResourceId' }
+        delivery_id: { $ref: '#/components/schemas/ResourceId' }
+        attempt_number: { type: integer, minimum: 1 }
+        key_version: { type: integer, minimum: 1 }
+        key_id: { $ref: '#/components/schemas/ResourceId' }
+        request_timestamp:
+          type: integer
+          minimum: 0
+          description: Unix epoch milliseconds included in the signed delivery headers.
+        request_body_fingerprint: { $ref: '#/components/schemas/Sha256Fingerprint' }
+        outcome: { $ref: '#/components/schemas/WebhookAttemptOutcome' }
+        resolved_addresses_fingerprint:
+          oneOf:
+            - $ref: '#/components/schemas/Sha256Fingerprint'
+            - type: 'null'
+        connected_address:
+          type: [string, 'null']
+          minLength: 2
+          maxLength: 64
+          description: Public IP address selected from the pinned DNS result, when connected.
+        http_status:
+          type: [integer, 'null']
+          minimum: 100
+          maximum: 599
+        response_bytes:
+          type: [integer, 'null']
+          minimum: 0
+          maximum: 16384
+        response_fingerprint:
+          oneOf:
+            - $ref: '#/components/schemas/Sha256Fingerprint'
+            - type: 'null'
+        ack_code:
+          type: [string, 'null']
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-z][a-z0-9_]*$'
+        error_code:
+          type: [string, 'null']
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-z][a-z0-9_]*$'
+        started_at: { type: string, format: date-time }
+        finished_at: { type: [string, 'null'], format: date-time }
+    WebhookAttemptListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/WebhookAttempt'
+    WebhookRedeliveryRequest:
+      type: object
+      additionalProperties: false
+      required: [redelivery_id, reason]
+      properties:
+        redelivery_id:
+          allOf:
+            - $ref: '#/components/schemas/ResourceId'
+          description: Client-generated idempotency identifier for this administrative action.
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          x-perpay-max-unicode-characters: 500
+          description: Trimmed Unicode text without control characters or isolated surrogates.
+    WebhookRedeliveryEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [delivery, replayed]
+          properties:
+            delivery: { $ref: '#/components/schemas/WebhookDelivery' }
+            replayed: { type: boolean }
+    Sha256Fingerprint:
+      type: string
+      pattern: '^[0-9a-f]{64}$'
     ErrorEnvelope:
       type: object
       additionalProperties: false
@@ -422,12 +3033,33 @@ components:
             request_id: { type: string }
   responses:
     BadRequest:
-      description: Malformed or ambiguous request
+      description: >-
+        Malformed or ambiguous request, including an invalid `X-Forwarded-For` chain supplied
+        by a configured trusted proxy (`forwarded_header_invalid`).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     Unauthorized:
       description: API authentication failed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    AdminUnauthorized:
+      description: >-
+        Administrator credentials are invalid, or the session is missing, expired, or revoked
+        (`invalid_credentials` or `session_invalid`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    AdminForbidden:
+      description: Same-origin or CSRF validation failed (`origin_not_allowed` or `csrf_invalid`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    FinancialWriteForbidden:
+      description: >-
+        Same-origin or CSRF validation failed, or recent-password verification is not active
+        (`origin_not_allowed`, `csrf_invalid`, or `step_up_required`).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
@@ -446,6 +3078,41 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    FinancialConflict:
+      description: >-
+        Financial facts or state changed, the candidate set changed, the cumulative refund
+        would exceed the received amount, or the operation identifier was reused with different
+        input (`match_state_conflict`, `candidate_set_changed`, or `operation_conflict`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    PasswordUnchanged:
+      description: The replacement password is identical to the verified current password (`password_unchanged`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    ReconciliationNotFound:
+      description: >-
+        The requested candidate, payment association, order, exception, or path resource does
+        not exist (`candidate_not_found`, `match_not_found`, `financial_exception_not_found`,
+        or `ledger_entry_not_found`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    LedgerConflictNotFound:
+      description: The requested ledger conflict does not exist (`ledger_conflict_not_found`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    LedgerConflictConflict:
+      description: >-
+        The conflict is already terminal, the requested action is not allowed for its evidence
+        type, or the operation identifier was reused with different input
+        (`ledger_conflict_state_conflict`, `ledger_conflict_action_not_allowed`, or
+        `ledger_conflict_operation_conflict`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     TooLarge:
       description: Request body exceeds the route limit
       content:
@@ -461,6 +3128,14 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    OrderValidationFailed:
+      description: >-
+        Order fields violate the contract, notification delivery is disabled, or `notify_url`
+        is invalid or outside the configured allowed origin (`validation_failed`,
+        `webhook_disabled`, `webhook_target_invalid`, or `webhook_target_not_allowed`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     RateLimited:
       description: Public checkout request budget is exhausted
       headers:
@@ -469,8 +3144,74 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    AdminRateLimited:
+      description: Administrator password attempts are temporarily rate limited.
+      headers:
+        Retry-After:
+          schema: { type: integer, minimum: 1 }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    AdminUnavailable:
+      description: Administrator identity is not initialized or password verification capacity is busy.
+      headers:
+        Retry-After:
+          schema: { type: integer, minimum: 1 }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    LedgerUnavailable:
+      description: >-
+        Ledger conflict storage is unavailable, or administrator password verification capacity
+        is busy (`ledger_unavailable` or `password_work_busy`).
+      headers:
+        Retry-After:
+          schema: { type: integer, minimum: 1 }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    ReconciliationUnavailable:
+      description: >-
+        Reconciliation is unavailable or the persistent financial clock is unsafe
+        (`reconciliation_unavailable` or `financial_clock_unavailable`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    WebhookEventNotFound:
+      description: >-
+        The event identifier is malformed, unknown, or belongs to another API client
+        (`event_not_found`). These cases are intentionally indistinguishable.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    WebhookDeliveryNotFound:
+      description: The delivery identifier is malformed or unknown (`webhook_delivery_not_found`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    WebhookConflict:
+      description: >-
+        Notification delivery is disabled, the historical target is no longer active, the
+        delivery state changed, or a redelivery identifier was reused with different input
+        (`webhook_disabled`, `webhook_target_inactive`, `webhook_delivery_state_conflict`,
+        or `webhook_operation_conflict`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    WebhookUnavailable:
+      description: >-
+        Notification storage or its active signing-key state is unavailable
+        (`webhook_unavailable`, `webhook_signing_key_unavailable`, or
+        `webhook_signing_key_rollback`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     Unavailable:
-      description: No amount slot is available or the order clock is unsafe
+      description: >-
+        No amount slot is available, core storage or the order clock is unsafe
+        (`system_not_ready`), provider collection has no sufficiently recent successful scan
+        (`collection_not_ready`), or automatic reconciliation has no sufficiently recent successful
+        run (`reconciliation_not_ready`).
       headers:
         Retry-After:
           schema: { type: integer, minimum: 1 }

@@ -2,7 +2,7 @@
 
 # 订单事件通知接收契约
 
-本文定义当前原生通知格式 `NATIVE_JSON_V1`。接收方必须按原始字节验签，并按事件 ID 实现幂等处理。通知采用至少一次投递，不承诺恰好一次，也不承诺不同订单之间的全局顺序。
+本文定义当前原生通知格式 `NATIVE_JSON_V1`。接收方必须按原始字节验签，并按事件 ID 实现幂等处理。每个可投递事件至少会尝试一次；失败或结果不确定时可能重复，但永久失败或达到尝试上限后会进入死信，因此不保证最终送达，也不承诺恰好一次。任何事件之间都不保证顺序，包括同一订单；接收方应结合 `order_version` 防止旧事件回退业务状态。
 
 ## 启用
 
@@ -14,7 +14,7 @@ PERPAY_WEBHOOK_ALLOWED_ORIGIN: "https://hooks.your-domain.test"
 PERPAY_WEBHOOK_SECRET: "一份独立的 32 字节无填充 base64url 密钥"
 ```
 
-`PERPAY_WEBHOOK_ALLOWED_ORIGIN` 只允许 HTTPS DNS origin，不能包含路径、query、fragment、凭据、IP 地址或尾点域名。创建订单时的 `notify_url` 必须精确属于这个 origin，可以包含路径和已有 query。例如允许 origin 为 `https://hooks.your-domain.test` 时，可以使用：
+`PERPAY_WEBHOOK_ALLOWED_ORIGIN` 只允许 HTTPS DNS origin，不能包含路径、query、fragment、凭据、IP 地址或尾点域名。创建订单时的 `notify_url` 必须精确属于这个 origin，可以包含路径和已有 query；完整值最多 4096 个 UTF-8 字节，并拒绝凭据、fragment、控制字符和编码后的控制字节。机器可读约束以 [OpenAPI](../openapi.yaml) 为准。例如允许 origin 为 `https://hooks.your-domain.test` 时，可以使用：
 
 ```text
 https://hooks.your-domain.test/perpay/events?tenant=personal
@@ -42,7 +42,7 @@ X-PerPay-Webhook-Signature: v1=<64 位小写十六进制 HMAC>
 
 所有 `X-PerPay-*` 头都只发送一次。接收方应拒绝重复头、未知签名版本、非法整数和非规范 UUID，不应依赖 HTTP 头名称的大小写。
 
-请求体是 Outbox 中持久化的原始 UTF-8 JSON 字节。验签前不能重新序列化、改变空白、字段顺序或 Unicode 表示。当前请求体上限为 128 KiB。
+请求体是 Outbox 中持久化的原始 UTF-8 JSON 字节。验签前不能重新序列化、改变空白、字段顺序或 Unicode 表示。协议传输上限为 128 KiB；当前数据库生成的新 Outbox payload 另受 64 KiB 持久化上限约束。接收器应按协议上限防御性读取。
 
 ## 验签
 
@@ -117,21 +117,26 @@ export function verifyWebhook({ secret, rawBody, keyId, timestamp, deliveryId, e
   "received_amount_cents": 1001,
   "currency": "CNY",
   "payment_status": "CONFIRMED",
-  "payment_basis": "MANUAL",
+  "payment_basis": "INFERRED",
   "refund_status": "NONE",
-  "event_details": {},
-  "order_version": 3,
+  "event_details": {
+    "payment_match_id": "UUID v4",
+    "evidence_type": "AMOUNT_INFERRED"
+  },
+  "order_version": 2,
   "occurred_at": 1786700000000
 }
 ```
 
 金额单位均为整数分，时间为 Unix 毫秒。`event_details` 随事件类型变化：
 
+正常经营码付款在严格唯一且无冲突时自动确认，因此使用 `payment_basis: INFERRED` 和 `evidence_type: AMOUNT_INFERRED`。只有管理员直接指定流水与订单的显式认领才使用 `MANUAL`。
+
 | `event_type` | `event_details` |
 | --- | --- |
-| `PAYMENT_CONFIRMED` | `payment_match_id`、`evidence_type` |
-| `PAYMENT_DISPUTED` | `payment_match_id` |
-| `REFUND_UPDATED` | `refund_record_id`、`refund_amount_cents`、`refunded_amount_cents` |
+| `PAYMENT_CONFIRMED` | `payment_match_id` 为 UUID v4；`evidence_type` 为 `AMOUNT_INFERRED` 或 `MANUAL` |
+| `PAYMENT_DISPUTED` | `payment_match_id` 为 UUID v4 |
+| `REFUND_UPDATED` | `refund_record_id` 为 UUID v4；`refund_amount_cents`、`refunded_amount_cents` 为整数分 |
 
 数据库升级不会改写历史 Outbox 字节，因此恢复自旧版本的数据卷时仍可能读取到 `perpay:outbox-event:v1`。接收方和 `GET /api/v1/events/{eventId}` 的调用方必须按 `schema` 分派，保留未知字段，并容忍未来出现新的事件类型；不能把未知事件当成支付成功。
 
@@ -162,18 +167,20 @@ export function verifyWebhook({ secret, rawBody, keyId, timestamp, deliveryId, e
 自动投递保持 `event_id`、`delivery_id` 和 generation 不变，`attempt` 每次增加。默认最多尝试 12 次，使用带确定性抖动的指数退避；默认基础为 5 秒、上限为 3600 秒。
 
 - HTTP `408`、`425`、`429` 和 `5xx` 会重试。
-- HTTP 200 但 ACK 缺失、JSON/字段/ID 不匹配通常会重试。
-- 其他 `4xx`、不支持的响应编码、非公网 DNS、TLS 证书失败、重定向目标或超大响应属于永久失败。
+- HTTP 200 下，除不支持的 `Content-Encoding` 外，ACK 缺失、JSON/字段/ID 不匹配等校验失败会重试。
+- 其他状态码，包括非 200 的 `2xx`、所有 `3xx` 和剩余 `4xx`，属于永久失败。
+- DNS 失败或没有地址会重试；任一地址不是公网地址或地址超过 16 个会永久失败。
+- 重复或非法响应协议头、不支持的响应编码、已识别的 TLS 证书校验失败和超大响应属于永久失败。
 - 进程退出或请求结果无法确定时记录 `OUTCOME_UNKNOWN`，并按至少一次语义重试。
 - 达到尝试上限或发生永久失败后进入 `DEAD_LETTER`。
 
-管理员只能对最新一代、状态为 `ACKNOWLEDGED` 或 `DEAD_LETTER` 的 delivery 发起人工补发。补发使用调用方生成的 UUID v4 `redelivery_id` 作为幂等键，创建下一 generation 和新的 `delivery_id`；完全相同的请求重放返回既有结果，即使通知随后被关闭或允许 origin 已轮换也不会创建或重新激活 delivery。同一编号改动理由或目标 delivery 返回冲突；新的补发代次始终按当前通知配置校验。
+管理员只能对最新一代、状态为 `ACKNOWLEDGED` 或 `DEAD_LETTER` 的 delivery 发起人工补发。补发使用调用方生成的 UUID v4 `redelivery_id` 作为幂等键，创建下一 generation 和新的 `delivery_id`；完全相同的请求重放返回既有结果，即使通知随后被关闭或允许 origin 已轮换也不会创建或重新激活 delivery。同一编号必须保持源 delivery、理由和操作管理员完全相同，否则返回冲突。理由必须是去除首尾空白、无控制字符且最多 500 个 Unicode 字符的文本；新的补发代次始终按当前通知配置校验。
 
 业务去重应以 `event_id` 为主，而不是 `delivery_id` 或 `attempt`。`delivery_id` 用于对一次自动重试链返回 ACK，generation 和 attempt 用于诊断。
 
 ## 出站安全边界
 
-每次尝试都会重新解析目标域名，最多接受 16 个地址，且所有 A/AAAA 结果都必须是全局公网地址。系统将经过检查的结果固定到 TLS 连接，并在响应时复核实际远端地址。DNS 解析并发有界，单次总超时同时覆盖 DNS 与 HTTPS。
+每次尝试都会重新解析目标域名，最多接受 16 个地址，且所有 A/AAAA 结果都必须是全局公网地址。系统将经过检查的结果固定到 TLS 连接，并在响应时复核实际远端地址。DNS 解析并发有界，单次总超时同时覆盖 DNS 与 HTTPS。接收端必须支持 TLS 1.2 或更高版本，并提供由系统信任链验证且与域名匹配的证书。
 
 系统不会读取 `HTTP_PROXY`、`HTTPS_PROXY` 或类似代理环境变量，不会跟随 `3xx`，不会执行协议升级，不接受压缩响应，并为每次请求关闭连接。这些限制用于阻止通知配置成为内网访问或开放代理通道。
 
@@ -195,4 +202,4 @@ GET /api/v1/events/{eventId}
 
 管理员会话可读取 delivery 列表、详情和 attempts。人工补发还要求同源、CSRF 和近期密码 step-up。attempt 投影包含签名 key ID、请求体指纹、解析地址指纹、连接地址、HTTP/ACK 结果和时间，但永远不返回内部租约 token。
 
-匿名 `/readyz` 只返回顶层状态；签名的 `/api/v1/system/status` 返回完整通知健康。持续 `degraded`、`dead_letters > 0`、`pending_deliveries` 长期不下降或 `last_success_at` 长期不更新都需要人工检查。
+匿名 `/readyz` 只返回顶层状态；签名的 `/api/v1/system/status` 返回采集、自动确认和通知的完整健康信息。`confirmation_ready: false`、持续 `degraded`、`dead_letters > 0`、`pending_deliveries` 长期不下降或任一 `last_success_at` 长期不更新都需要人工检查。
