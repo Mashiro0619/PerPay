@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 
 import { loadConfig } from "../src/config.ts";
@@ -174,6 +177,44 @@ describe("loadConfig", () => {
     }
   });
 
+  it("requires live data and backups to use separate directory trees", () => {
+    for (const [dataDirectory, backupDirectory] of [
+      ["./runtime", "./runtime"],
+      ["./runtime", "./runtime/backups"],
+      ["./storage/data", "./storage"],
+      ["./data", "./data/..backups"],
+    ] as const) {
+      assert.throws(
+        () => loadConfig({
+          ...validEnvironment,
+          PERPAY_DATA_DIR: dataDirectory,
+          PERPAY_BACKUP_DIR: backupDirectory,
+        }),
+        /PERPAY_DATA_DIR and PERPAY_BACKUP_DIR must be separate/u,
+      );
+    }
+  });
+
+  it("resolves existing parent links before checking storage separation", () => {
+    const root = mkdtempSync(join(tmpdir(), "perpay-config-paths-"));
+    const actual = join(root, "actual");
+    const alias = join(root, "alias");
+    mkdirSync(actual);
+    symlinkSync(actual, alias, process.platform === "win32" ? "junction" : "dir");
+    try {
+      assert.throws(
+        () => loadConfig({
+          ...validEnvironment,
+          PERPAY_DATA_DIR: join(alias, "future-data"),
+          PERPAY_BACKUP_DIR: join(actual, "future-data", "backups"),
+        }),
+        /PERPAY_DATA_DIR and PERPAY_BACKUP_DIR must be separate/u,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("accepts only an origin as the public URL", () => {
     assert.throws(
       () => loadConfig({ ...validEnvironment, PERPAY_PUBLIC_URL: "https://pay.example.com/path" }),
@@ -251,12 +292,14 @@ describe("loadConfig", () => {
       PERPAY_HOST: "127.0.0.1",
       PERPAY_PORT: "19080",
       PERPAY_DATA_DIR: "./runtime-test",
+      PERPAY_BACKUP_DIR: "./backup-test",
       PERPAY_PUBLIC_URL: "https://pay.local:8443",
       PERPAY_TRUSTED_PROXY_CIDRS: "127.0.0.1",
     });
     assert.equal(config.port, 19080);
     assert.equal(config.host, "127.0.0.1");
     assert.match(config.databasePath, /perpay\.sqlite3$/);
+    assert.match(config.backupDir, /backup-test$/);
     assert.equal(config.publicOrigin, "https://pay.local:8443");
     assert.equal(config.secureCookies, true);
     assert.deepEqual(config.trustedProxy.cidrs, ["127.0.0.1"]);

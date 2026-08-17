@@ -3,6 +3,7 @@ import { basename, dirname, join, resolve } from "node:path";
 
 export const PRIVATE_DIRECTORY_MODE = 0o700;
 export const PRIVATE_FILE_MODE = 0o600;
+const POSIX_MODE_MASK = 0o777;
 
 /** Keeps newly created sensitive files private without weakening a stricter umask. */
 export function hardenProcessFileCreation(): void {
@@ -24,7 +25,12 @@ export function hardenExistingPrivateDirectory(path: string): string {
   if (stat.isSymbolicLink() || !stat.isDirectory()) {
     throw new Error("sensitive data directory must be an ordinary directory");
   }
-  if (process.platform !== "win32") chmodSync(directory, PRIVATE_DIRECTORY_MODE);
+  if (
+    process.platform !== "win32" &&
+    (stat.mode & POSIX_MODE_MASK) !== PRIVATE_DIRECTORY_MODE
+  ) {
+    chmodSync(directory, PRIVATE_DIRECTORY_MODE);
+  }
   return directory;
 }
 
@@ -40,7 +46,12 @@ export function hardenExistingPrivateFile(path: string): boolean {
   if (stat.isSymbolicLink() || !stat.isFile()) {
     throw new Error("sensitive data file must be an ordinary file");
   }
-  if (process.platform !== "win32") chmodSync(path, PRIVATE_FILE_MODE);
+  if (
+    process.platform !== "win32" &&
+    (stat.mode & POSIX_MODE_MASK) !== PRIVATE_FILE_MODE
+  ) {
+    chmodSync(path, PRIVATE_FILE_MODE);
+  }
   return true;
 }
 

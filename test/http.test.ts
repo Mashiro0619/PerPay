@@ -16,7 +16,7 @@ const apiSecret = Buffer.alloc(32, 7).toString("base64url");
 const collectionCodePayload = "https://qr.alipay.com/fkx-test-code-2026";
 
 describe("health endpoints", () => {
-  it("reports process liveness and database readiness", async () => {
+  it("separates application health from payment readiness", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-http-"));
     const config = loadConfig({
       PERPAY_INITIAL_ADMIN_PASSWORD: "a-secure-local-password",
@@ -32,10 +32,14 @@ describe("health endpoints", () => {
     const collectionNow = 1_700_000_005_000;
     const app = createApp({ config, database, identity, orders, startedAt: new Date(0) });
     try {
-      const live = await app.request("/livez");
-      assert.equal(live.status, 200);
-      const liveBody = (await live.json()) as { status: string };
-      assert.equal(liveBody.status, "alive");
+      const health = await app.request("/healthz");
+      assert.equal(health.status, 200);
+      const healthBody = (await health.json()) as {
+        status: string;
+        database: { ok: boolean; result: string };
+      };
+      assert.equal(healthBody.status, "healthy");
+      assert.deepEqual(healthBody.database, { ok: true, result: "ok" });
 
       const ready = await app.request("/readyz");
       assert.equal(ready.status, 503);
@@ -303,23 +307,33 @@ describe("health endpoints", () => {
         startedAt: new Date(0),
         clock: () => collectionNow,
         ...readyPaymentRuntime(collectionNow),
-        backupHealth: () => ({
-          ok: true,
-          status: "healthy",
-          last_attempt_at: collectionNow,
-          last_success_at: collectionNow,
-          last_error_at: null,
-          last_error_stage: null,
-          backup_name:
-            "perpay.sqlite3.backup-2026-08-16T04-00-00.000Z-12345678-1234-4123-8123-123456789abc.sqlite3",
-          snapshot_id: "a".repeat(64),
-          instance_id: "f".repeat(32),
-          repository_id: "b".repeat(64),
-          interval_milliseconds: 86_400_000,
+        backupHealth: async () => {
+          await Promise.resolve();
+          return {
+            ok: true,
+            status: "healthy",
+            last_attempt_at: collectionNow,
+            last_success_at: collectionNow,
+            last_error_at: null,
+            last_error_stage: null,
+            backup_name:
+              "perpay.sqlite3.backup-2026-08-16T04-00-00.000Z-12345678-1234-4123-8123-123456789abc.sqlite3",
+            backup_sha256: "a".repeat(64),
+            backup_size_bytes: 4096,
+            instance_id: "f".repeat(32),
+            schema_version: 13,
+            interval_milliseconds: 86_400_000,
+            keep_count: 7,
+            retained_count: 7,
           maximum_age_milliseconds: 95_040_000,
-          clock_moved_backwards: false,
-          configuration_mismatch: false,
-        }),
+          backup_required: false,
+          backup_in_progress: false,
+          backup_available: true,
+            recovery_required: false,
+            clock_moved_backwards: false,
+            configuration_mismatch: false,
+          };
+        },
       });
       const backupReady = await backupUnhealthy.request("/readyz");
       assert.equal(backupReady.status, 200);
@@ -375,7 +389,8 @@ describe("health endpoints", () => {
         startedAt: new Date(0),
         clock: () => collectionNow,
         ...readyPaymentRuntime(collectionNow),
-        backupHealth() {
+        async backupHealth() {
+          await Promise.resolve();
           throw new Error("backup state is unreadable");
         },
       });
@@ -400,11 +415,18 @@ describe("health endpoints", () => {
         last_error_at: null,
         last_error_stage: null,
         backup_name: null,
-        snapshot_id: null,
+        backup_sha256: null,
+        backup_size_bytes: null,
         instance_id: null,
-        repository_id: null,
+        schema_version: null,
         interval_milliseconds: null,
+        keep_count: null,
+        retained_count: null,
         maximum_age_milliseconds: null,
+        backup_required: false,
+        backup_in_progress: false,
+        backup_available: false,
+        recovery_required: false,
         clock_moved_backwards: false,
         configuration_mismatch: false,
         instance_matches: null,
@@ -811,11 +833,18 @@ describe("identity HTTP contract", () => {
       last_error_stage: null,
       backup_name:
         "perpay.sqlite3.backup-2026-08-16T04-00-00.000Z-12345678-1234-4123-8123-123456789abc.sqlite3",
-      snapshot_id: "a".repeat(64),
+      backup_sha256: "a".repeat(64),
+      backup_size_bytes: 4096,
       instance_id: database.instanceId(),
-      repository_id: "b".repeat(64),
+      schema_version: 13,
       interval_milliseconds: 86_400_000,
+      keep_count: 7,
+      retained_count: 7,
       maximum_age_milliseconds: 95_040_000,
+      backup_required: false,
+      backup_in_progress: false,
+      backup_available: true,
+      recovery_required: false,
       clock_moved_backwards: false,
       configuration_mismatch: false,
     });
@@ -1191,6 +1220,18 @@ describe("order HTTP contract", () => {
       assert.equal(Reflect.set(fs, "statfsSync", noHeadroomStatfsSync), true);
       syncBuiltinESMExports();
       try {
+        const storageHealth = await ready.request("/healthz");
+        assert.equal(storageHealth.status, 503);
+        const storageHealthBody = await storageHealth.json() as {
+          status: string;
+          database: { ok: boolean; result: string };
+        };
+        assert.equal(storageHealthBody.status, "unhealthy");
+        assert.deepEqual(storageHealthBody.database, {
+          ok: false,
+          result: "database_storage_low",
+        });
+
         const storageReady = await ready.request("/readyz");
         assert.equal(storageReady.status, 503);
         assert.deepEqual(await storageReady.json(), { status: "not_ready" });

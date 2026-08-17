@@ -6,6 +6,7 @@ import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
 
+import type { BackupHealth } from "../backup/runner.ts";
 import type { AppConfig } from "../config.ts";
 import type { AppDatabase } from "../database/database.ts";
 import { IdentityError, IdentityService, type AuthenticatedSession } from "../identity/service.ts";
@@ -140,23 +141,6 @@ const ledgerConflictResolutionSchema = z.object({
   ),
 }).strict();
 
-interface BackupHealth {
-  readonly ok: boolean;
-  readonly status: "healthy" | "unhealthy";
-  readonly last_attempt_at: number | null;
-  readonly last_success_at: number | null;
-  readonly last_error_at: number | null;
-  readonly last_error_stage: string | null;
-  readonly backup_name: string | null;
-  readonly snapshot_id: string | null;
-  readonly instance_id: string | null;
-  readonly repository_id: string | null;
-  readonly interval_milliseconds: number | null;
-  readonly maximum_age_milliseconds: number | null;
-  readonly clock_moved_backwards: boolean;
-  readonly configuration_mismatch: boolean;
-}
-
 export interface AppDependencies {
   readonly config: AppConfig;
   readonly database: AppDatabase;
@@ -164,7 +148,7 @@ export interface AppDependencies {
   readonly orders: OrderService;
   readonly startedAt: Date;
   readonly clock?: (() => number) | undefined;
-  readonly backupHealth?: (() => BackupHealth) | undefined;
+  readonly backupHealth?: (() => BackupHealth | PromiseLike<BackupHealth>) | undefined;
   readonly ledger?: LedgerStore | undefined;
   readonly ledgerHealth?: (() => LedgerSchedulerHealth & { readonly enabled: boolean }) | undefined;
   readonly reconciliation?: ReconciliationStore | undefined;
@@ -220,11 +204,18 @@ const disabledBackupHealth = Object.freeze({
   last_error_at: null,
   last_error_stage: null,
   backup_name: null,
-  snapshot_id: null,
+  backup_sha256: null,
+  backup_size_bytes: null,
   instance_id: null,
-  repository_id: null,
+  schema_version: null,
   interval_milliseconds: null,
+  keep_count: null,
+  retained_count: null,
   maximum_age_milliseconds: null,
+  backup_required: false,
+  backup_in_progress: false,
+  backup_available: false,
+  recovery_required: false,
   clock_moved_backwards: false,
   configuration_mismatch: false,
   instance_matches: null,
@@ -251,13 +242,15 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     await next();
   });
 
-  app.get("/livez", (context) =>
-    context.json({
-      status: "alive",
+  app.get("/healthz", (context) => {
+    const database = dependencies.database.health();
+    return context.json({
+      status: database.ok ? "healthy" : "unhealthy",
       version: APP_VERSION,
       uptime_seconds: Math.floor((Date.now() - dependencies.startedAt.getTime()) / 1000),
-    }),
-  );
+      database,
+    }, database.ok ? 200 : 503);
+  });
 
   app.get("/readyz", (context) => {
     const database = dependencies.database.health();
@@ -325,8 +318,8 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     });
   });
 
-  app.get("/api/admin/v1/system/status", adminSession, (context) =>
-    context.json({ data: systemStatus(dependencies) }),
+  app.get("/api/admin/v1/system/status", adminSession, async (context) =>
+    context.json({ data: await systemStatus(dependencies) }),
   );
 
   app.post("/api/admin/v1/session/logout", adminSession, (context) => {
@@ -804,8 +797,8 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     return context.json({ data: serializePublicCheckout(checkout) });
   });
 
-  app.get("/api/v1/system/status", signedApi(0), (context) => {
-    return context.json({ data: systemStatus(dependencies) });
+  app.get("/api/v1/system/status", signedApi(0), async (context) => {
+    return context.json({ data: await systemStatus(dependencies) });
   });
 
   app.notFound((context) =>
@@ -1306,7 +1299,7 @@ function operationalSummaries(
   return { conflicts, exceptions, unavailable };
 }
 
-function systemStatus(dependencies: AppDependencies) {
+async function systemStatus(dependencies: AppDependencies) {
   const database = dependencies.database.health();
   const ledger = currentLedgerHealth(dependencies);
   const reconciliation = dependencies.reconciliationHealth?.() ?? disabledReconciliationHealth;
@@ -1314,7 +1307,7 @@ function systemStatus(dependencies: AppDependencies) {
   const collection = collectionFreshness(dependencies, ledger);
   const confirmation = confirmationFreshness(dependencies, reconciliation);
   const operations = operationalSummaries(dependencies, database.ok);
-  const backup = currentBackupHealth(dependencies);
+  const backup = await currentBackupHealth(dependencies);
   const ready = database.ok && collection.ready && confirmation.ready;
   const degraded = ready && (
     isBackgroundHealthDegraded(ledger) ||
@@ -1358,10 +1351,10 @@ function isBackgroundHealthDegraded(health: {
   );
 }
 
-function currentBackupHealth(dependencies: AppDependencies) {
+async function currentBackupHealth(dependencies: AppDependencies) {
   if (!dependencies.backupHealth) return disabledBackupHealth;
   try {
-    const health = dependencies.backupHealth();
+    const health = await dependencies.backupHealth();
     const applicationInstanceId = dependencies.database.instanceId();
     const instanceMatches = health.instance_id === null
       ? null

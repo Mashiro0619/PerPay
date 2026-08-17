@@ -236,6 +236,9 @@ export class AppDatabase {
       if (hasDatabaseMaintenanceLock(this.#databasePath)) {
         return { ok: false, result: "database_maintenance_in_progress" };
       }
+      if (!validateSchema(this.#connection)) {
+        return { ok: false, result: "database_schema_invalid" };
+      }
       if (tableExists(this.#connection, "order_clock")) {
         const row = this.#connection
           .prepare("SELECT last_now_ms FROM order_clock WHERE singleton_key = 1")
@@ -3500,8 +3503,14 @@ function assertCheckoutTokenKeysMatchSessions(
   }
 }
 
-export async function createVerifiedDatabaseBackup(sourceConnection: DatabaseSync, sourcePath: string, targetPath: string): Promise<DatabaseBackup> {
+export async function createVerifiedDatabaseBackup(
+  sourceConnection: DatabaseSync,
+  sourcePath: string,
+  targetPath: string,
+  signal?: AbortSignal,
+): Promise<DatabaseBackup> {
   hardenProcessFileCreation();
+  signal?.throwIfAborted();
   const source = resolve(sourcePath); const target = resolve(targetPath);
   if (source === target) throw new Error("backup target must differ from the source database");
   const directory = ensurePrivateDirectory(dirname(target));
@@ -3509,7 +3518,11 @@ export async function createVerifiedDatabaseBackup(sourceConnection: DatabaseSyn
   const tempPath = resolve(directory, `.backup-${randomUUID()}.tmp`);
   const reservation = openSync(tempPath, "wx", 0o600); closeSync(reservation);
   try {
-    const pages = await sqliteBackup(sourceConnection, tempPath, { rate: 100 });
+    const pages = await sqliteBackup(sourceConnection, tempPath, {
+      rate: 100,
+      progress: () => signal?.throwIfAborted(),
+    });
+    signal?.throwIfAborted();
     hardenExistingPrivateFile(tempPath);
     const verification = new DatabaseSync(tempPath, { readOnly: true, enableForeignKeyConstraints: true, timeout: SQLITE_TIMEOUT_MS, readBigInts: true, defensive: true });
     try {
@@ -3555,7 +3568,9 @@ export async function createVerifiedDatabaseBackup(sourceConnection: DatabaseSyn
       if (!integrity.ok) throw new Error(`final backup verification failed: quick_check=${integrity.quickCheck}, foreign_key_violations=${integrity.foreignKeyViolations}, domain_violations=${integrity.domainViolations}, schema=${integrity.schema}`);
     } finally { finalVerification.close(); }
     removeSqliteSidecars(tempPath);
-    const hash = await sha256File(tempPath);
+    signal?.throwIfAborted();
+    const hash = await sha256File(tempPath, signal);
+    signal?.throwIfAborted();
     const file = openSync(tempPath, "r+"); try { fsyncSync(file); } finally { closeSync(file); }
     renameSync(tempPath, target);
     hardenExistingPrivateFile(target);
@@ -3592,9 +3607,12 @@ function removeSqliteArtifacts(path: string): void {
   removeSqliteSidecars(path);
 }
 
-async function sha256File(path: string): Promise<string> {
+async function sha256File(path: string, signal?: AbortSignal): Promise<string> {
   const hash = createHash("sha256");
-  for await (const chunk of createReadStream(path)) hash.update(chunk);
+  for await (const chunk of createReadStream(path, { signal })) {
+    signal?.throwIfAborted();
+    hash.update(chunk);
+  }
   return hash.digest("hex");
 }
 

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs, {
   closeSync,
   copyFileSync,
@@ -79,7 +80,7 @@ describe("database migration backup maintenance", () => {
     }
   });
 
-  it("rejects and removes an online backup if restore replaces the database between lock checks", async () => {
+  it("rejects and removes an unpublished online backup if restore replaces the database", async () => {
     const directory = temporaryDirectory();
     const databasePath = join(directory, "perpay.sqlite3");
     const database = await AppDatabase.open(databasePath);
@@ -100,30 +101,27 @@ describe("database migration backup maintenance", () => {
       .filter((name) => name.startsWith("perpay.sqlite3.backup-"))
       .sort();
     const lockPath = databaseMaintenanceLockPath(databasePath);
-    const originalLstatSync = fs.lstatSync;
-    let lockChecks = 0;
+    const originalOpenSync = fs.openSync;
     let restoreCompleted = false;
-    const hookedLstatSync = ((...arguments_: unknown[]) => {
+    const hookedOpenSync = ((...arguments_: Parameters<typeof fs.openSync>) => {
       const requestedPath = arguments_[0];
       if (
         !restoreCompleted &&
         typeof requestedPath === "string" &&
-        resolve(requestedPath) === lockPath
+        resolve(requestedPath) === lockPath &&
+        arguments_[1] === "wx"
       ) {
-        lockChecks += 1;
-        if (lockChecks === 2) {
-          restoreCompleted = true;
-          restoreOperationalBackup({
-            dataDirectory: directory,
-            backupName: restoreSource.name,
-            expectedSha256: restoreSource.sha256,
-            confirmReplaceCurrentDatabase: true,
-          });
-        }
+        restoreCompleted = true;
+        restoreOperationalBackup({
+          dataDirectory: directory,
+          backupName: restoreSource.name,
+          expectedSha256: restoreSource.sha256,
+          confirmReplaceCurrentDatabase: true,
+        });
       }
-      return Reflect.apply(originalLstatSync, fs, arguments_);
-    }) as typeof fs.lstatSync;
-    assert.equal(Reflect.set(fs, "lstatSync", hookedLstatSync), true);
+      return Reflect.apply(originalOpenSync, fs, arguments_);
+    }) as typeof fs.openSync;
+    assert.equal(Reflect.set(fs, "openSync", hookedOpenSync), true);
     syncBuiltinESMExports();
     try {
       await assert.rejects(
@@ -131,12 +129,11 @@ describe("database migration backup maintenance", () => {
         /path identity changed while the online backup was being created/,
       );
     } finally {
-      assert.equal(Reflect.set(fs, "lstatSync", originalLstatSync), true);
+      assert.equal(Reflect.set(fs, "openSync", originalOpenSync), true);
       syncBuiltinESMExports();
     }
 
     assert.equal(restoreCompleted, true);
-    assert.equal(lockChecks, 2);
     assert.deepEqual(
       readdirSync(directory)
         .filter((name) => name.startsWith("perpay.sqlite3.backup-"))
@@ -743,7 +740,8 @@ describe("database migration backup maintenance", () => {
     }
 
     const targetDirectory = temporaryDirectory();
-    const backupPath = join(targetDirectory, backup.name);
+    const backupDirectory = temporaryDirectory();
+    const backupPath = join(backupDirectory, backup.name);
     const databasePath = join(targetDirectory, "perpay.sqlite3");
     const stagingPath = join(
       targetDirectory,
@@ -770,12 +768,27 @@ describe("database migration backup maintenance", () => {
     assert.equal(existsSync(databaseMaintenanceLockPath(databasePath)), true);
     assert.equal(existsSync(stagingPath), true);
 
-    const cleared = clearStaleMaintenanceLock({
-      dataDirectory: targetDirectory,
-      lockToken: lock.token,
-      confirmNoMaintenanceProcess: true,
-      finalizeInterruptedFreshRestore: true,
-    });
+    const finalized = spawnSync(
+      process.execPath,
+      [
+        "--experimental-strip-types",
+        resolve("src/database/maintenance.ts"),
+        "clear-stale-maintenance-lock",
+        lock.token,
+        "--confirm-no-maintenance-process",
+        "--finalize-interrupted-fresh-restore",
+      ],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PERPAY_DATA_DIR: targetDirectory,
+          PERPAY_BACKUP_DIR: backupDirectory,
+        },
+      },
+    );
+    assert.equal(finalized.status, 0, finalized.stderr);
+    const cleared = JSON.parse(finalized.stdout) as { token: string };
     assert.equal(cleared.token, lock.token);
     assert.equal(lstatSync(databasePath).nlink, 1);
     assert.equal(existsSync(stagingPath), false);

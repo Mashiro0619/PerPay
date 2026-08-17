@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 
+import { createAsyncBackupHealthProvider } from "./backup/health.ts";
 import { loadConfig } from "./config.ts";
 import { AppDatabase } from "./database/database.ts";
 import { createApp } from "./http/app.ts";
@@ -37,6 +38,10 @@ import { hardenProcessFileCreation } from "./infrastructure/storage/permissions.
 hardenProcessFileCreation();
 const startedAt = new Date();
 const config = loadConfig();
+const backupHealth = createAsyncBackupHealthProvider({
+  backupDirectory: config.backupDir,
+  intervalMilliseconds: config.backupIntervalMilliseconds,
+});
 const database = await AppDatabase.open(config.databasePath);
 const identity = new IdentityService(database, config);
 const orders = new OrderService(database, config);
@@ -64,6 +69,7 @@ const app = createApp({
   ledger,
   reconciliation,
   startedAt,
+  backupHealth,
   ledgerHealth: () => ledgerHealth(ledgerScheduler),
   reconciliationHealth: () => reconciliationHealth(reconciliationScheduler),
   webhookStore: webhooks,

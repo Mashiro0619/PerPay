@@ -49,9 +49,9 @@ const RESTORE_STAGING_NAME_PATTERN =
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const SQLITE_TIMEOUT_MILLISECONDS = 5_000;
 const RESTORE_CONFIRMATION_ARGUMENT = "--confirm-replace-current-database";
-const DELETE_CONFIRMATION_ARGUMENT = "--confirm-delete-backup-artifact";
-const PRUNE_CONFIRMATION_ARGUMENT = "--confirm-prune-operational-backups";
 const MAX_LISTED_BACKUP_ARTIFACTS = 4_096;
+const MAX_PRE_RESTORE_QUARANTINES = 4_096;
+const MAX_QUARANTINE_ERROR_LENGTH = 256;
 
 class MaintenanceLeaseClaimedError extends Error {
   readonly leaseClaimed = true;
@@ -82,6 +82,7 @@ export interface RestoreMigrationBackupResult {
 
 export interface RestoreOperationalBackupOptions {
   readonly dataDirectory: string;
+  readonly backupDirectory?: string | undefined;
   readonly backupName: string;
   readonly expectedSha256: string;
   readonly confirmReplaceCurrentDatabase: boolean;
@@ -97,7 +98,9 @@ export interface RestoreOperationalBackupResult {
 
 export interface CreateOperationalBackupOptions {
   readonly dataDirectory: string;
+  readonly backupDirectory?: string | undefined;
   readonly now?: number | undefined;
+  readonly signal?: AbortSignal | undefined;
 }
 
 export interface OperationalBackupResult {
@@ -145,8 +148,49 @@ export interface PruneOperationalBackupsResult {
   readonly deleted: readonly BackupArtifact[];
 }
 
+/**
+ * Metadata for a database displaced by a restore.  Quarantine files are
+ * intentionally inspectable even when their SQLite contents are damaged: the
+ * name, ordinary-file identity, and digest are enough to make an explicit
+ * operator deletion safe.
+ */
+export interface PreRestoreQuarantine {
+  readonly name: string;
+  readonly status: "verified" | "invalid";
+  readonly schemaVersion: number | null;
+  readonly sizeBytes: number | null;
+  readonly modifiedAt: string | null;
+  readonly sha256: string | null;
+  readonly error: string | null;
+}
+
+export interface DeletePreRestoreQuarantineOptions {
+  readonly dataDirectory: string;
+  readonly quarantineName: string;
+  readonly expectedSha256: string;
+  readonly confirmDeletePreRestoreQuarantine: boolean;
+  readonly now?: number | undefined;
+}
+
+export interface DeletePreRestoreQuarantineResult {
+  readonly deleted: PreRestoreQuarantine;
+}
+
+export interface PrunePreRestoreQuarantinesOptions {
+  readonly dataDirectory: string;
+  readonly keepCount: number;
+  readonly confirmPrunePreRestoreQuarantines: boolean;
+  readonly now?: number | undefined;
+}
+
+export interface PrunePreRestoreQuarantinesResult {
+  readonly kept: readonly PreRestoreQuarantine[];
+  readonly deleted: readonly PreRestoreQuarantine[];
+}
+
 export interface ClearStaleMaintenanceLockOptions {
   readonly dataDirectory: string;
+  readonly backupDirectory?: string | undefined;
   readonly lockToken?: string | undefined;
   readonly confirmNoMaintenanceProcess: boolean;
   readonly forceAbandonMaintenanceLease?: boolean | undefined;
@@ -258,8 +302,9 @@ export function pruneOperationalBackups(
     now,
   );
   try {
-    const operational = inspectBackupArtifacts(directory, now)
-      .filter((entry) => entry.parsed.classification === "operational")
+    // Retention must remain usable when an unrelated migration or quarantine
+    // artifact is damaged.  Only operational names participate in this scan.
+    const operational = [...inspectOperationalBackupArtifacts(directory, now)]
       .sort(compareOperationalArtifactsNewestFirst);
     const kept = operational.slice(0, options.keepCount);
     const candidates = operational.slice(options.keepCount);
@@ -281,6 +326,133 @@ export function pruneOperationalBackups(
   }
 }
 
+/** Lists restore quarantines without allowing one corrupt file to hide the rest. */
+export function listPreRestoreQuarantines(
+  dataDirectory: string,
+  now: number = Date.now(),
+): readonly PreRestoreQuarantine[] {
+  const clock = inspectMaintenanceNow(now);
+  const directory = inspectDataDirectory(dataDirectory);
+  const names = readdirSync(directory).filter((name) =>
+    PRE_RESTORE_QUARANTINE_NAME_PATTERN.test(name),
+  );
+  if (names.length > MAX_PRE_RESTORE_QUARANTINES) {
+    throw new Error(
+      `data directory contains more than ${MAX_PRE_RESTORE_QUARANTINES} restore quarantines`,
+    );
+  }
+  return Object.freeze(
+    names
+      .map((name) => inspectPreRestoreQuarantine(directory, name, clock))
+      .sort(comparePreRestoreQuarantinesNewestFirst),
+  );
+}
+
+/** Deletes one exact quarantine after an operator supplies its observed digest. */
+export function deletePreRestoreQuarantine(
+  options: DeletePreRestoreQuarantineOptions,
+): DeletePreRestoreQuarantineResult {
+  if (!options.confirmDeletePreRestoreQuarantine) {
+    throw new Error("deleting a restore quarantine requires explicit confirmation");
+  }
+  assertExpectedSha256(options.expectedSha256);
+  if (
+    basename(options.quarantineName) !== options.quarantineName ||
+    !PRE_RESTORE_QUARANTINE_NAME_PATTERN.test(options.quarantineName)
+  ) {
+    throw new TypeError("restore quarantine name is invalid");
+  }
+  const now = inspectMaintenanceNow(options.now);
+  const directory = inspectDataDirectory(options.dataDirectory);
+  const target = resolve(directory, DATABASE_NAME);
+  const quarantinePath = resolve(directory, options.quarantineName);
+  if (dirname(quarantinePath) !== directory || quarantinePath === target) {
+    throw new Error("restore quarantine escaped the data directory");
+  }
+
+  const lock = acquireDatabaseMaintenanceLock(
+    target,
+    `delete-pre-restore-quarantine:${options.quarantineName}`,
+    now,
+  );
+  try {
+    const inspected = inspectDeletablePreRestoreQuarantine(
+      directory,
+      options.quarantineName,
+      now,
+    );
+    if (inspected.sha256 !== options.expectedSha256) {
+      throw new Error("restore quarantine SHA-256 does not match the expected value");
+    }
+    unlinkPreRestoreQuarantine(directory, inspected, options.expectedSha256);
+    return Object.freeze({ deleted: inspected });
+  } finally {
+    lock.release();
+  }
+}
+
+/** Keeps the newest N restore quarantines and removes older verified files. */
+export function prunePreRestoreQuarantines(
+  options: PrunePreRestoreQuarantinesOptions,
+): PrunePreRestoreQuarantinesResult {
+  if (!options.confirmPrunePreRestoreQuarantines) {
+    throw new Error("pruning restore quarantines requires explicit confirmation");
+  }
+  if (
+    !Number.isSafeInteger(options.keepCount) ||
+    options.keepCount < 1 ||
+    options.keepCount > MAX_PRE_RESTORE_QUARANTINES
+  ) {
+    throw new RangeError(
+      `restore quarantine keep count must be an integer from 1 to ${MAX_PRE_RESTORE_QUARANTINES}`,
+    );
+  }
+  const now = inspectMaintenanceNow(options.now);
+  const directory = inspectDataDirectory(options.dataDirectory);
+  const target = resolve(directory, DATABASE_NAME);
+  const lock = acquireDatabaseMaintenanceLock(
+    target,
+    `prune-pre-restore-quarantines:${options.keepCount}`,
+    now,
+  );
+  try {
+    const quarantines = listPreRestoreQuarantines(directory, now);
+    // Invalid quarantines are never part of count-based deletion.  Preserve
+    // them for the exact name/digest cleanup path, and keep N independently
+    // verified recovery points even when a newer invalid file exists.
+    const invalid = quarantines.filter((candidate) => candidate.status === "invalid");
+    const verified = quarantines.filter((candidate) => candidate.status === "verified");
+    const candidates = verified.slice(options.keepCount);
+    const kept = [...invalid, ...verified.slice(0, options.keepCount)]
+      .sort(comparePreRestoreQuarantinesNewestFirst);
+    // Preflight every deletion before unlinking the first file.  This keeps a
+    // race or unsafe artifact from producing a partially applied retention set.
+    const deletable = candidates.map((candidate) => {
+      const expectedSha256 = candidate.sha256;
+      if (expectedSha256 === null) {
+        throw new Error(`restore quarantine ${candidate.name} cannot be verified for deletion`);
+      }
+      const inspected = inspectDeletablePreRestoreQuarantine(directory, candidate.name, now);
+      if (inspected.status !== "verified" || inspected.sha256 !== expectedSha256) {
+        throw new Error("restore quarantine SHA-256 changed before retention deletion");
+      }
+      return inspected;
+    });
+    for (const candidate of deletable) {
+      if (candidate.sha256 === null) {
+        throw new Error(`restore quarantine ${candidate.name} cannot be verified for deletion`);
+      }
+      unlinkPreRestoreQuarantine(directory, candidate, candidate.sha256);
+    }
+    return Object.freeze({
+      kept: Object.freeze(kept),
+      deleted: Object.freeze(deletable),
+    });
+  } finally {
+    lock.release();
+  }
+}
+
 /** Creates and verifies a current-state online backup while the application may be running. */
 export async function createOperationalBackup(
   options: CreateOperationalBackupOptions,
@@ -290,14 +462,18 @@ export async function createOperationalBackup(
   if (!Number.isSafeInteger(now) || now < 0 || Number.isNaN(timestamp.getTime())) {
     throw new RangeError("maintenance clock is invalid");
   }
-  const directory = inspectDataDirectory(options.dataDirectory);
+  const sourceReadOnly = options.backupDirectory !== undefined;
+  const directory = inspectDataDirectory(options.dataDirectory, sourceReadOnly);
+  const backupDirectory = options.backupDirectory === undefined
+    ? directory
+    : inspectBackupDirectory(options.backupDirectory);
   const source = resolve(directory, DATABASE_NAME);
-  const sourceIdentity = inspectOrdinaryFile(source, "application database");
+  const sourceIdentity = inspectOrdinaryFile(source, "application database", !sourceReadOnly);
   assertDatabaseMaintenanceIdle(source);
 
   const name = `${DATABASE_NAME}.backup-${timestamp.toISOString().replaceAll(":", "-")}-${randomUUID()}.sqlite3`;
-  const target = resolve(directory, name);
-  const staging = resolve(directory, `.creating-${randomUUID()}.tmp`);
+  const target = resolve(backupDirectory, name);
+  const staging = resolve(backupDirectory, `.creating-${randomUUID()}.tmp`);
   const database = new DatabaseSync(source, {
     readOnly: true,
     enableForeignKeyConstraints: true,
@@ -306,8 +482,15 @@ export async function createOperationalBackup(
     defensive: true,
   });
   let databaseClosed = false;
+  let targetPublished = false;
   try {
-    const backup = await createVerifiedDatabaseBackup(database, source, staging);
+    const backup = await createVerifiedDatabaseBackup(
+      database,
+      source,
+      staging,
+      options.signal,
+    );
+    options.signal?.throwIfAborted();
     database.close();
     databaseClosed = true;
     const stagingIdentity = inspectOrdinaryFile(staging, "operational backup staging file");
@@ -319,16 +502,26 @@ export async function createOperationalBackup(
       "operational backup staging file",
     );
 
-    // Publish only while destructive maintenance is excluded. The lock is held
-    // for the short rename/fsync window, not while SQLite creates the backup.
-    const lock = acquireDatabaseMaintenanceLock(source, "publish-operational-backup", now);
+    // Publish only while destructive maintenance is excluded. The hard link is
+    // a same-filesystem, no-replace operation; unlinking staging leaves exactly
+    // one durable name for the verified bytes.
+    const lock = options.backupDirectory === undefined
+      ? acquireDatabaseMaintenanceLock(source, "publish-operational-backup", now)
+      : null;
     try {
-      assertFilePathIdentity(source, sourceIdentity, "application database");
+      // A backup service receives the live-data volume read-only. The initial
+      // idle check plus source identity check provide a read-only publication
+      // barrier; same-volume maintenance keeps its stronger writable lease.
+      if (lock === null) assertDatabaseMaintenanceIdle(source);
+      assertFilePathIdentity(source, sourceIdentity, "application database", !sourceReadOnly);
       assertFileIdentity(staging, stagingIdentity, "operational backup staging file");
       assertSelfContainedSqlite(staging, "operational backup staging file");
-      renameSync(staging, target);
+      options.signal?.throwIfAborted();
+      linkSync(staging, target);
+      targetPublished = true;
+      unlinkSync(staging);
       inspectOrdinaryFile(target, "operational backup");
-      syncDirectory(directory);
+      syncDirectory(backupDirectory);
       return Object.freeze({
         name,
         schemaVersion,
@@ -336,10 +529,14 @@ export async function createOperationalBackup(
         sha256: backup.sha256,
       });
     } finally {
-      lock.release();
+      lock?.release();
     }
   } catch (error) {
     removeSqliteArtifacts(staging);
+    if (targetPublished) {
+      removeSqliteArtifacts(target);
+      syncDirectory(backupDirectory);
+    }
     throw error;
   } finally {
     if (!databaseClosed) database.close();
@@ -395,7 +592,16 @@ export function clearStaleMaintenanceLock(
   }
 
   if (options.finalizeInterruptedFreshRestore) {
-    finalizeInterruptedFreshRestorePublication(directory, target, record, now);
+    const backupDirectory = options.backupDirectory === undefined
+      ? directory
+      : inspectBackupDirectory(options.backupDirectory);
+    finalizeInterruptedFreshRestorePublication(
+      directory,
+      backupDirectory,
+      target,
+      record,
+      now,
+    );
   }
 
   if (!pathEntryExists(target)) {
@@ -522,8 +728,7 @@ export function restoreMigrationBackup(
     inspectOrdinaryFile(quarantine, "quarantined application database");
     syncDirectory(directory);
 
-    // rename() atomically replaces the old path on supported filesystems.
-    // The verified quarantine copy already preserves the displaced database.
+    // The atomic rename replaces the active path after preserving a verified quarantine copy.
     renameSync(staging, target);
     targetReplaced = true;
     syncDirectory(directory);
@@ -590,16 +795,19 @@ export function restoreOperationalBackup(
   }
 
   const directory = inspectDataDirectory(options.dataDirectory);
+  const backupDirectory = options.backupDirectory === undefined
+    ? directory
+    : inspectBackupDirectory(options.backupDirectory);
   if (
     basename(options.backupName) !== options.backupName ||
     !OPERATIONAL_BACKUP_NAME_PATTERN.test(options.backupName)
   ) {
     throw new TypeError("operational backup name is invalid");
   }
-  const source = resolve(directory, options.backupName);
+  const source = resolve(backupDirectory, options.backupName);
   const target = resolve(directory, DATABASE_NAME);
-  if (dirname(source) !== directory || source === target) {
-    throw new Error("operational backup escaped the data directory");
+  if (dirname(source) !== backupDirectory || source === target) {
+    throw new Error("operational backup escaped the backup directory");
   }
 
   const lock = acquireDatabaseMaintenanceLock(
@@ -769,6 +977,181 @@ function inspectBackupArtifacts(
     artifacts.push(inspectBackupArtifact(directory, name, parsed, now));
   }
   return Object.freeze(artifacts.sort(compareBackupArtifacts));
+}
+
+function inspectOperationalBackupArtifacts(
+  directory: string,
+  now: number,
+): readonly InspectedBackupArtifact[] {
+  const artifacts: InspectedBackupArtifact[] = [];
+  for (const name of readdirSync(directory)) {
+    const parsed = parseBackupArtifactName(name);
+    if (parsed?.classification !== "operational") continue;
+    if (artifacts.length >= MAX_LISTED_BACKUP_ARTIFACTS) {
+      throw new Error(
+        `data directory contains more than ${MAX_LISTED_BACKUP_ARTIFACTS} operational backups`,
+      );
+    }
+    artifacts.push(inspectBackupArtifact(directory, name, parsed, now));
+  }
+  return Object.freeze(artifacts);
+}
+
+function inspectPreRestoreQuarantine(
+  directory: string,
+  name: string,
+  now: number,
+): PreRestoreQuarantine {
+  const parsed = PRE_RESTORE_QUARANTINE_NAME_PATTERN.exec(name);
+  if (parsed === null || parsed[1] === undefined || basename(name) !== name) {
+    throw new TypeError("restore quarantine name is invalid");
+  }
+  parseFilenameTimestamp(parsed[1]);
+  const path = resolve(directory, name);
+  if (dirname(path) !== directory) {
+    throw new Error("restore quarantine escaped the data directory");
+  }
+
+  let identity: FileIdentity | null = null;
+  let sizeBytes: number | null = null;
+  let modifiedAt: string | null = null;
+  let sha256: string | null = null;
+  let schemaVersion: number | null = null;
+  const errors: string[] = [];
+  try {
+    identity = inspectOrdinaryFile(path, "restore quarantine");
+    sizeBytes = Number(identity.size);
+    if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 1) {
+      throw new Error("restore quarantine size is outside the safe integer range");
+    }
+    const modifiedAtMilliseconds = Number(identity.modifiedAtNanoseconds / 1_000_000n);
+    const modifiedDate = new Date(modifiedAtMilliseconds);
+    if (!Number.isSafeInteger(modifiedAtMilliseconds) || Number.isNaN(modifiedDate.getTime())) {
+      throw new Error("restore quarantine modification time is invalid");
+    }
+    modifiedAt = modifiedDate.toISOString();
+    assertSelfContainedSqlite(path, "restore quarantine");
+    sha256 = sha256File(path);
+    assertFileIdentity(path, identity, "restore quarantine");
+    schemaVersion = inspectDatabase(path, now, false, "restore quarantine");
+    return Object.freeze({
+      name,
+      status: "verified",
+      schemaVersion,
+      sizeBytes,
+      modifiedAt,
+      sha256,
+      error: null,
+    });
+  } catch (error) {
+    errors.push(formatQuarantineError(error));
+  }
+
+  // A corrupt SQLite payload is still safely removable when it is an ordinary
+  // one-link file and its digest can be recorded.  Best-effort metadata keeps
+  // the cleanup command usable without weakening its deletion preflight.
+  if (identity !== null) {
+    try {
+      sha256 = sha256File(path);
+      assertFileIdentity(path, identity, "restore quarantine");
+    } catch (error) {
+      errors.push(formatQuarantineError(error));
+      sha256 = null;
+    }
+  }
+  return Object.freeze({
+    name,
+    status: "invalid",
+    schemaVersion,
+    sizeBytes,
+    modifiedAt,
+    sha256,
+    error: errors.join("; ").slice(0, MAX_QUARANTINE_ERROR_LENGTH),
+  });
+}
+
+function inspectDeletablePreRestoreQuarantine(
+  directory: string,
+  name: string,
+  now: number,
+): PreRestoreQuarantine {
+  const parsed = PRE_RESTORE_QUARANTINE_NAME_PATTERN.exec(name);
+  if (parsed === null || parsed[1] === undefined || basename(name) !== name) {
+    throw new TypeError("restore quarantine name is invalid");
+  }
+  const path = resolve(directory, name);
+  if (dirname(path) !== directory) {
+    throw new Error("restore quarantine escaped the data directory");
+  }
+  const identity = inspectOrdinaryFile(path, "restore quarantine");
+  const sizeBytes = Number(identity.size);
+  if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 1) {
+    throw new Error("restore quarantine size is outside the safe integer range");
+  }
+  const modifiedAtMilliseconds = Number(identity.modifiedAtNanoseconds / 1_000_000n);
+  const modifiedDate = new Date(modifiedAtMilliseconds);
+  if (!Number.isSafeInteger(modifiedAtMilliseconds) || Number.isNaN(modifiedDate.getTime())) {
+    throw new Error("restore quarantine modification time is invalid");
+  }
+  assertSelfContainedSqlite(path, "restore quarantine");
+  const sha256 = sha256File(path);
+  assertFileIdentity(path, identity, "restore quarantine");
+  let schemaVersion: number | null = null;
+  let status: "verified" | "invalid" = "verified";
+  let error: string | null = null;
+  try {
+    schemaVersion = inspectDatabase(path, now, false, "restore quarantine");
+  } catch (inspectionError) {
+    status = "invalid";
+    error = formatQuarantineError(inspectionError);
+  }
+  return Object.freeze({
+    name,
+    status,
+    schemaVersion,
+    sizeBytes,
+    modifiedAt: modifiedDate.toISOString(),
+    sha256,
+    error,
+  });
+}
+
+function unlinkPreRestoreQuarantine(
+  directory: string,
+  quarantine: PreRestoreQuarantine,
+  expectedSha256: string,
+): void {
+  const path = resolve(directory, quarantine.name);
+  if (dirname(path) !== directory) {
+    throw new Error("restore quarantine escaped the data directory");
+  }
+  const identity = inspectOrdinaryFile(path, "restore quarantine");
+  assertSelfContainedSqlite(path, "restore quarantine");
+  if (sha256File(path) !== expectedSha256) {
+    throw new Error("restore quarantine SHA-256 changed before deletion");
+  }
+  assertFileIdentity(path, identity, "restore quarantine");
+  unlinkSync(path);
+  syncDirectory(directory);
+}
+
+function comparePreRestoreQuarantinesNewestFirst(
+  left: PreRestoreQuarantine,
+  right: PreRestoreQuarantine,
+): number {
+  const leftMatch = PRE_RESTORE_QUARANTINE_NAME_PATTERN.exec(left.name);
+  const rightMatch = PRE_RESTORE_QUARANTINE_NAME_PATTERN.exec(right.name);
+  if (leftMatch === null || rightMatch === null ||
+      leftMatch[1] === undefined || rightMatch[1] === undefined) {
+    throw new Error("restore quarantine name is invalid");
+  }
+  return parseFilenameTimestamp(rightMatch[1]) - parseFilenameTimestamp(leftMatch[1]) ||
+    compareCodeUnits(right.name, left.name);
+}
+
+function formatQuarantineError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(/\s+/gu, " ").slice(0, MAX_QUARANTINE_ERROR_LENGTH);
 }
 
 function inspectBackupArtifact(
@@ -958,24 +1341,67 @@ function assertExpectedSha256(value: string): void {
   }
 }
 
-function inspectDataDirectory(input: string): string {
+function inspectDataDirectory(input: string, readOnly = false): string {
   hardenProcessFileCreation();
   const directory = resolve(input);
   const stat = lstatSync(directory);
   if (stat.isSymbolicLink() || !stat.isDirectory()) {
     throw new Error("data directory must be an ordinary directory");
   }
-  hardenExistingPrivateDirectory(directory);
-  hardenSqliteArtifacts(join(directory, DATABASE_NAME));
+  if (readOnly) {
+    assertPrivateMode(stat.mode, "data directory");
+    validateReadOnlySqliteArtifacts(join(directory, DATABASE_NAME));
+  } else {
+    hardenExistingPrivateDirectory(directory);
+    hardenSqliteArtifacts(join(directory, DATABASE_NAME));
+  }
   return directory;
 }
 
-function inspectOrdinaryFile(path: string, label: string): FileIdentity {
+function validateReadOnlySqliteArtifacts(databasePath: string): void {
+  const directory = dirname(databasePath);
+  const databaseName = basename(databasePath);
+  for (const entry of readdirSync(directory)) {
+    if (
+      entry !== databaseName &&
+      !entry.startsWith(`${databaseName}.`) &&
+      !entry.startsWith(`${databaseName}-`) &&
+      !entry.startsWith(`.${databaseName}.`)
+    ) {
+      continue;
+    }
+    const path = join(directory, entry);
+    const stat = lstatSync(path);
+    if (stat.isSymbolicLink() || !stat.isFile() || stat.nlink !== 1) {
+      throw new Error("SQLite artifacts must be ordinary files with one link");
+    }
+    assertPrivateMode(stat.mode, "SQLite artifact");
+  }
+}
+
+function assertPrivateMode(mode: number, label: string): void {
+  if (process.platform !== "win32" && (mode & 0o077) !== 0) {
+    throw new Error(`${label} permissions are too broad`);
+  }
+}
+
+function inspectBackupDirectory(input: string): string {
+  hardenProcessFileCreation();
+  const directory = resolve(input);
+  const stat = lstatSync(directory);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new Error("backup directory must be an ordinary directory");
+  }
+  hardenExistingPrivateDirectory(directory);
+  return directory;
+}
+
+function inspectOrdinaryFile(path: string, label: string, harden = true): FileIdentity {
   const stat = lstatSync(path, { bigint: true });
   if (stat.isSymbolicLink() || !stat.isFile() || stat.size < 1n || stat.nlink !== 1n) {
     throw new Error(`${label} must be a non-empty ordinary file with one link`);
   }
-  hardenExistingPrivateFile(path);
+  if (harden) hardenExistingPrivateFile(path);
   return Object.freeze({
     device: stat.dev,
     inode: stat.ino,
@@ -996,8 +1422,13 @@ function assertFileIdentity(path: string, expected: FileIdentity, label: string)
   }
 }
 
-function assertFilePathIdentity(path: string, expected: FileIdentity, label: string): void {
-  const actual = inspectOrdinaryFile(path, label);
+function assertFilePathIdentity(
+  path: string,
+  expected: FileIdentity,
+  label: string,
+  harden = true,
+): void {
+  const actual = inspectOrdinaryFile(path, label, harden);
   if (actual.device !== expected.device || actual.inode !== expected.inode) {
     throw new Error(`${label} path identity changed while the online backup was being created`);
   }
@@ -1005,6 +1436,7 @@ function assertFilePathIdentity(path: string, expected: FileIdentity, label: str
 
 function finalizeInterruptedFreshRestorePublication(
   directory: string,
+  backupDirectory: string,
   target: string,
   record: DatabaseMaintenanceLockRecord,
   now: number,
@@ -1037,7 +1469,7 @@ function finalizeInterruptedFreshRestorePublication(
     throw new Error("interrupted fresh restore staging file is not linked to the active database");
   }
 
-  const source = join(directory, backupName);
+  const source = join(backupDirectory, backupName);
   const sourceIdentity = inspectOrdinaryFile(source, "operational backup");
   assertSelfContainedSqlite(source, "operational backup");
   assertSelfContainedSqlite(target, "interrupted restored database");
@@ -1360,6 +1792,7 @@ function removeSqliteArtifacts(path: string): void {
 async function runCommand(arguments_: readonly string[]): Promise<void> {
   hardenProcessFileCreation();
   const dataDirectory = process.env.PERPAY_DATA_DIR ?? "/data";
+  const backupDirectory = process.env.PERPAY_BACKUP_DIR ?? "/backups";
   if (arguments_.length === 1 && arguments_[0] === "inspect-maintenance-lock") {
     process.stdout.write(`${JSON.stringify(inspectMaintenanceLock(dataDirectory))}\n`);
     return;
@@ -1372,6 +1805,7 @@ async function runCommand(arguments_: readonly string[]): Promise<void> {
   ) {
     process.stdout.write(`${JSON.stringify(clearStaleMaintenanceLock({
       dataDirectory,
+      backupDirectory,
       lockToken: arguments_[1],
       confirmNoMaintenanceProcess: true,
       forceAbandonMaintenanceLease: false,
@@ -1387,6 +1821,7 @@ async function runCommand(arguments_: readonly string[]): Promise<void> {
   ) {
     process.stdout.write(`${JSON.stringify(clearStaleMaintenanceLock({
       dataDirectory,
+      backupDirectory,
       lockToken: arguments_[1],
       confirmNoMaintenanceProcess: true,
       forceAbandonMaintenanceLease: true,
@@ -1402,6 +1837,7 @@ async function runCommand(arguments_: readonly string[]): Promise<void> {
   ) {
     process.stdout.write(`${JSON.stringify(clearStaleMaintenanceLock({
       dataDirectory,
+      backupDirectory,
       lockToken: arguments_[1],
       confirmNoMaintenanceProcess: true,
       finalizeInterruptedFreshRestore: true,
@@ -1416,49 +1852,49 @@ async function runCommand(arguments_: readonly string[]): Promise<void> {
   ) {
     process.stdout.write(`${JSON.stringify(clearStaleMaintenanceLock({
       dataDirectory,
+      backupDirectory,
       confirmNoMaintenanceProcess: true,
       forceUnreadableLock: true,
     }))}\n`);
-    return;
-  }
-  if (arguments_.length === 1 && arguments_[0] === "create-backup") {
-    process.stdout.write(`${JSON.stringify(await createOperationalBackup({ dataDirectory }))}\n`);
     return;
   }
   if (arguments_.length === 1 && arguments_[0] === "list-migration-backups") {
     process.stdout.write(`${JSON.stringify({ backups: listMigrationBackups(dataDirectory) })}\n`);
     return;
   }
-  if (arguments_.length === 1 && arguments_[0] === "list-backup-artifacts") {
-    process.stdout.write(`${JSON.stringify({ artifacts: listBackupArtifacts(dataDirectory) })}\n`);
+  if (arguments_.length === 1 && arguments_[0] === "list-pre-restore-quarantines") {
+    process.stdout.write(`${JSON.stringify({
+      quarantines: listPreRestoreQuarantines(dataDirectory),
+    })}\n`);
     return;
   }
   if (
     arguments_.length === 4 &&
-    arguments_[0] === "delete-backup-artifact" &&
+    arguments_[0] === "delete-pre-restore-quarantine" &&
     arguments_[1] !== undefined &&
     arguments_[2] !== undefined &&
-    arguments_[3] === DELETE_CONFIRMATION_ARGUMENT
+    arguments_[3] === "--confirm-delete-pre-restore-quarantine"
   ) {
-    process.stdout.write(`${JSON.stringify(deleteBackupArtifact({
+    process.stdout.write(`${JSON.stringify(deletePreRestoreQuarantine({
       dataDirectory,
-      artifactName: arguments_[1],
+      quarantineName: arguments_[1],
       expectedSha256: arguments_[2],
-      confirmDeleteBackupArtifact: true,
+      confirmDeletePreRestoreQuarantine: true,
     }))}\n`);
     return;
   }
   if (
     arguments_.length === 3 &&
-    arguments_[0] === "prune-operational-backups" &&
+    arguments_[0] === "prune-pre-restore-quarantines" &&
     arguments_[1] !== undefined &&
     /^(?:[1-9]\d*)$/u.test(arguments_[1]) &&
-    arguments_[2] === PRUNE_CONFIRMATION_ARGUMENT
+    arguments_[2] === "--confirm-prune-pre-restore-quarantines"
   ) {
-    process.stdout.write(`${JSON.stringify(pruneOperationalBackups({
+    const keepCount = Number(arguments_[1]);
+    process.stdout.write(`${JSON.stringify(prunePreRestoreQuarantines({
       dataDirectory,
-      keepCount: Number(arguments_[1]),
-      confirmPruneOperationalBackups: true,
+      keepCount,
+      confirmPrunePreRestoreQuarantines: true,
     }))}\n`);
     return;
   }
@@ -1475,30 +1911,14 @@ async function runCommand(arguments_: readonly string[]): Promise<void> {
     }))}\n`);
     return;
   }
-  if (
-    arguments_.length === 4 &&
-    arguments_[0] === "restore-backup" &&
-    arguments_[1] !== undefined &&
-    arguments_[2] !== undefined &&
-    arguments_[3] === RESTORE_CONFIRMATION_ARGUMENT
-  ) {
-    process.stdout.write(`${JSON.stringify(restoreOperationalBackup({
-      dataDirectory,
-      backupName: arguments_[1],
-      expectedSha256: arguments_[2],
-      confirmReplaceCurrentDatabase: true,
-    }))}\n`);
-    return;
-  }
   throw new Error(
-    `usage: maintenance <create-backup|list-backup-artifacts|list-migration-backups|` +
-    `delete-backup-artifact BACKUP_NAME EXPECTED_SHA256 ${DELETE_CONFIRMATION_ARGUMENT}|` +
-    `prune-operational-backups KEEP_COUNT ${PRUNE_CONFIRMATION_ARGUMENT}|` +
-    `inspect-maintenance-lock|` +
+    `usage: maintenance <list-migration-backups|inspect-maintenance-lock|` +
+    `list-pre-restore-quarantines|delete-pre-restore-quarantine NAME SHA256 ` +
+    `--confirm-delete-pre-restore-quarantine|prune-pre-restore-quarantines KEEP_COUNT ` +
+    `--confirm-prune-pre-restore-quarantines|` +
     `clear-stale-maintenance-lock LOCK_TOKEN --confirm-no-maintenance-process ` +
     `[--force-abandon-maintenance-lease|--finalize-interrupted-fresh-restore]|` +
     `clear-stale-maintenance-lock --force-unreadable-lock --confirm-no-maintenance-process|` +
-    `restore-backup BACKUP_NAME EXPECTED_SHA256 ${RESTORE_CONFIRMATION_ARGUMENT}|` +
     `restore-migration-backup BACKUP_NAME ${RESTORE_CONFIRMATION_ARGUMENT}>`,
   );
 }

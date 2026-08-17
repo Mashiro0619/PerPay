@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { z } from "zod";
 
 import { isValidWebhookDnsHostname } from "./infrastructure/network/public-address.ts";
+import { pathsOverlap } from "./infrastructure/storage/path-separation.ts";
 import {
   parseTrustedProxyPolicy,
   type TrustedProxyPolicy,
@@ -33,6 +34,7 @@ const rawConfigSchema = z.object({
   PERPAY_HOST: z.string().trim().min(1).default("0.0.0.0"),
   PERPAY_PORT: z.coerce.number().int().min(1).max(65535).default(8080),
   PERPAY_DATA_DIR: z.string().trim().min(1).default("./data"),
+  PERPAY_BACKUP_DIR: z.string().trim().min(1).default("/backups"),
   PERPAY_INITIAL_ADMIN_PASSWORD: z
     .string()
     .min(12)
@@ -142,6 +144,7 @@ export interface AppConfig {
   readonly host: string;
   readonly port: number;
   readonly dataDir: string;
+  readonly backupDir: string;
   readonly databasePath: string;
   /** Used only to create the administrator when the database has no administrator yet. */
   readonly adminPassword: string | null;
@@ -215,10 +218,17 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
   });
 
   const dataDir = resolve(parsed.data.PERPAY_DATA_DIR);
+  const backupDir = resolve(parsed.data.PERPAY_BACKUP_DIR);
+  if (pathsOverlap(dataDir, backupDir)) {
+    throw new Error(
+      "configuration validation failed: PERPAY_DATA_DIR and PERPAY_BACKUP_DIR must be separate",
+    );
+  }
   return Object.freeze({
     host: parsed.data.PERPAY_HOST,
     port: parsed.data.PERPAY_PORT,
     dataDir,
+    backupDir,
     databasePath: resolve(dataDir, "perpay.sqlite3"),
     adminPassword: parsed.data.PERPAY_INITIAL_ADMIN_PASSWORD ?? null,
     adminUsername: parsed.data.PERPAY_ADMIN_USERNAME,
