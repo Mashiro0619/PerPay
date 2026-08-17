@@ -1,0 +1,143 @@
+name: Container validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-validation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Build the application image
+        env:
+          IMAGE: perpay-validation:${{ github.sha }}
+        run: docker build --build-arg "APP_VERSION=$(node -p 'require("./package.json").version')" --tag "$IMAGE" .
+
+      - name: Scan the application image for high-risk vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: perpay-validation:${{ github.sha }}
+          version: v0.70.0
+          cache: false
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          exit-code: 1
+          format: table
+          timeout: 10m0s
+
+      - name: Exercise Compose, backup, restore, and persistence
+        env:
+          IMAGE: perpay-validation:${{ github.sha }}
+        run: |
+          set -euo pipefail
+          project="perpay-validation-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          override="${RUNNER_TEMP}/perpay-validation.override.yml"
+          cat > "$override" <<EOF
+          services:
+            app:
+              image: ${IMAGE}
+              environment:
+                PERPAY_INITIAL_ADMIN_PASSWORD: "validation-only-admin-password"
+                PERPAY_API_SECRET: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                PERPAY_COLLECTION_CODE_PAYLOAD: "https://qr.invalid/validation-collection-code"
+                PERPAY_ALIPAY_ENABLED: "false"
+                PERPAY_WEBHOOK_ENABLED: "false"
+              healthcheck:
+                test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+            backup:
+              image: ${IMAGE}
+            maintenance:
+              image: ${IMAGE}
+          EOF
+          compose() {
+            docker compose --project-name "$project" \
+              -f docker-compose.yml -f "$override" "$@"
+          }
+          compose_with_maintenance() {
+            compose --profile maintenance "$@"
+          }
+          cleanup() {
+            compose down --volumes --remove-orphans >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          compose config --quiet
+          test "$(compose config --services)" = "$(printf '%s\n%s' app backup)"
+          test "$(compose_with_maintenance config --services)" = "$(printf '%s\n%s\n%s' app backup maintenance)"
+          expected_images="$(printf '%s\n%s\n%s' "$IMAGE" "$IMAGE" "$IMAGE")"
+          test "$(compose_with_maintenance config --images)" = "$expected_images"
+          compose up -d --wait --wait-timeout 900 app
+
+          app_container="$(compose ps -q app)"
+          test -n "$app_container"
+          test "$(compose exec -T app id -u | tr -d '\r')" = 1000
+          test "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' "$app_container")" = true
+          test "$(docker inspect --format '{{join .HostConfig.CapDrop ","}}' "$app_container")" = ALL
+          security_options="$(docker inspect --format '{{join .HostConfig.SecurityOpt ","}}' "$app_container")"
+          case ",${security_options}," in
+            *,no-new-privileges:true,*) ;;
+            *) exit 1 ;;
+          esac
+          compose exec -T app node -e \
+            "fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+          compose exec -T app node -e \
+            "fetch('http://127.0.0.1:8080/readyz').then(async r=>{const value=await r.json();if(r.status!==503||value.status!=='not_ready')process.exit(1)}).catch(()=>process.exit(1))"
+
+          instance_before="$(compose exec -T app node --input-type=module -e \
+            "import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync('/data/perpay.sqlite3',{readOnly:true});try{console.log(db.prepare(\"SELECT value FROM system_metadata WHERE key = 'instance_id'\").get().value)}finally{db.close()}" | tr -d '\r')"
+          compose exec -T app node --input-type=module -e \
+            "import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync('/data/perpay.sqlite3',{timeout:5000});try{const result=db.prepare(\"INSERT INTO system_metadata(key,value,updated_at) VALUES ('validation_restore_marker','backup-state',strftime('%Y-%m-%dT%H:%M:%fZ','now'))\").run();if(Number(result.changes)!==1)process.exit(1)}finally{db.close()}"
+          marker="validation-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          compose exec -T app sh -ceu 'printf "%s" "$1" > /data/validation-volume-marker' sh "$marker"
+
+          backup_json="$(compose run --rm --no-deps backup node dist/backup/runner.js run-once | tr -d '\r')"
+          backup_name="$(jq -er '.backup.name' <<<"$backup_json")"
+          backup_sha="$(jq -er '.backup.sha256 | select(test("^[0-9a-f]{64}$"))' <<<"$backup_json")"
+          list_json="$(compose run --rm --no-deps backup node dist/backup/runner.js list-backups | tr -d '\r')"
+          jq -e --arg name "$backup_name" --arg sha "$backup_sha" \
+            'any(.backups[]; .name == $name and .sha256 == $sha)' <<<"$list_json" >/dev/null
+
+          compose up -d --wait --wait-timeout 900 backup
+          backup_container="$(compose ps -q backup)"
+          test -n "$backup_container"
+          test "$(compose exec -T backup id -u | tr -d '\r')" = 1000
+          test "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' "$backup_container")" = true
+          test "$(docker inspect --format '{{join .HostConfig.CapDrop ","}}' "$backup_container")" = ALL
+          test "$(docker inspect --format '{{.HostConfig.NetworkMode}}' "$backup_container")" = none
+          compose exec -T backup node dist/backup/runner.js health | jq -e '.ok == true' >/dev/null
+
+          compose exec -T app node --input-type=module -e \
+            "import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync('/data/perpay.sqlite3',{timeout:5000});try{const result=db.prepare(\"UPDATE system_metadata SET value='post-backup-state',updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE key='validation_restore_marker'\").run();if(Number(result.changes)!==1)process.exit(1)}finally{db.close()}"
+          compose stop backup
+          compose stop app
+          compose run --rm --no-deps maintenance \
+            restore "$backup_name" "$backup_sha" --confirm-replace-current-database >/dev/null
+
+          compose up -d --wait --wait-timeout 900 app backup
+          restored_marker="$(compose exec -T app node --input-type=module -e \
+            "import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync('/data/perpay.sqlite3',{readOnly:true});try{console.log(db.prepare(\"SELECT value FROM system_metadata WHERE key = 'validation_restore_marker'\").get().value)}finally{db.close()}" | tr -d '\r')"
+          test "$restored_marker" = backup-state
+          compose exec -T backup node dist/backup/runner.js health >/dev/null
+
+          compose down --remove-orphans
+          compose up -d --wait --wait-timeout 900 app backup
+          compose exec -T app sh -ceu 'test "$(cat /data/validation-volume-marker)" = "$1"' sh "$marker"
+          instance_after="$(compose exec -T app node --input-type=module -e \
+            "import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync('/data/perpay.sqlite3',{readOnly:true});try{console.log(db.prepare(\"SELECT value FROM system_metadata WHERE key = 'instance_id'\").get().value)}finally{db.close()}" | tr -d '\r')"
+          test "$instance_after" = "$instance_before"
+
+          cleanup
+          trap - EXIT

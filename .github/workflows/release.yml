@@ -1,0 +1,439 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: ghcr.io/mashiro0619/perpay
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      release_commit: ${{ steps.release.outputs.commit }}
+      version: ${{ steps.release.outputs.version }}
+      database_minimum: ${{ steps.release.outputs.database_minimum }}
+      database_maximum: ${{ steps.release.outputs.database_maximum }}
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Use the pinned Node.js release
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Verify version and release commit
+        id: release
+        run: |
+          set -euo pipefail
+          if ! [[ "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Release tags must use vX.Y.Z without prerelease or build suffixes"
+            exit 1
+          fi
+          npm run check:version -- "$GITHUB_REF_NAME"
+          node scripts/release-metadata.mjs >> "$GITHUB_OUTPUT"
+
+          release_commit="$(git rev-parse HEAD)"
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$release_commit" origin/main; then
+            echo "::error::The release commit must be reachable from main"
+            exit 1
+          fi
+
+          remote_commit="$(git ls-remote origin "refs/tags/${GITHUB_REF_NAME}^{}" | awk 'NR == 1 { print $1 }')"
+          if [ -z "$remote_commit" ]; then
+            remote_commit="$(git ls-remote origin "refs/tags/${GITHUB_REF_NAME}" | awk 'NR == 1 { print $1 }')"
+          fi
+          if [ "$remote_commit" != "$release_commit" ]; then
+            echo "::error::The remote release tag does not resolve to the checked-out commit"
+            exit 1
+          fi
+          echo "commit=${release_commit}" >> "$GITHUB_OUTPUT"
+
+      - name: Run release checks
+        run: |
+          npm run typecheck
+          npm test
+          npm run build
+          npm audit --audit-level=high
+
+      - name: Require versioned release notes
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: test -s "docs/releases/v${RELEASE_VERSION}.md"
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Check out the verified release commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ needs.verify.outputs.release_commit }}
+
+      - name: Use the pinned Node.js release
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: npm
+
+      - name: Install release tooling dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+        with:
+          image: tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+          platforms: arm64
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          version: v0.36.1
+          cache-binary: false
+          driver-opts: image=moby/buildkit:v0.32.2@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build the untagged amd64 image
+        id: build_amd64
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true
+          build-args: APP_VERSION=${{ needs.verify.outputs.version }}
+          labels: |
+            org.opencontainers.image.version=${{ needs.verify.outputs.version }}
+            org.opencontainers.image.revision=${{ needs.verify.outputs.release_commit }}
+          cache-from: type=gha,scope=release-amd64
+          cache-to: type=gha,mode=max,scope=release-amd64
+          provenance: false
+
+      - name: Build the untagged arm64 image
+        id: build_arm64
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true
+          build-args: APP_VERSION=${{ needs.verify.outputs.version }}
+          labels: |
+            org.opencontainers.image.version=${{ needs.verify.outputs.version }}
+            org.opencontainers.image.revision=${{ needs.verify.outputs.release_commit }}
+          cache-from: type=gha,scope=release-arm64
+          cache-to: type=gha,mode=max,scope=release-arm64
+          provenance: false
+
+      - name: Select the platform image digests
+        id: platform_images
+        env:
+          BUILT_AMD64_DIGEST: ${{ steps.build_amd64.outputs.digest }}
+          BUILT_ARM64_DIGEST: ${{ steps.build_arm64.outputs.digest }}
+          RELEASE_COMMIT: ${{ needs.verify.outputs.release_commit }}
+          RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          amd64_digest="$BUILT_AMD64_DIGEST"
+          arm64_digest="$BUILT_ARM64_DIGEST"
+          for architecture in amd64 arm64; do
+            if [ "$architecture" = amd64 ]; then
+              platform_digest="$amd64_digest"
+            else
+              platform_digest="$arm64_digest"
+            fi
+            if ! [[ "$platform_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::The ${architecture} build did not produce a canonical digest"
+              exit 1
+            fi
+            image="$(docker buildx imagetools inspect "${IMAGE_NAME}@${platform_digest}" --format '{{json .Image}}')"
+            jq -e \
+              --arg architecture "$architecture" \
+              --arg version "$RELEASE_VERSION" \
+              --arg revision "$RELEASE_COMMIT" '
+                .os == "linux"
+                and .architecture == $architecture
+                and .config.Labels["org.opencontainers.image.version"] == $version
+                and .config.Labels["org.opencontainers.image.revision"] == $revision
+              ' <<<"$image" >/dev/null
+          done
+          echo "amd64_digest=${amd64_digest}" >> "$GITHUB_OUTPUT"
+          echo "arm64_digest=${arm64_digest}" >> "$GITHUB_OUTPUT"
+
+      - name: Scan the amd64 image for high-risk vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}@${{ steps.platform_images.outputs.amd64_digest }}
+          version: v0.70.0
+          cache: false
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          exit-code: 1
+          format: table
+          timeout: 10m0s
+
+      - name: Scan the arm64 image for high-risk vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}@${{ steps.platform_images.outputs.arm64_digest }}
+          version: v0.70.0
+          cache: false
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          exit-code: 1
+          format: table
+          timeout: 10m0s
+
+      - name: Publish or verify the fixed version image
+        id: release_image
+        env:
+          RELEASE_AMD64_DIGEST: ${{ steps.platform_images.outputs.amd64_digest }}
+          RELEASE_ARM64_DIGEST: ${{ steps.platform_images.outputs.arm64_digest }}
+          RELEASE_COMMIT: ${{ needs.verify.outputs.release_commit }}
+          RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          final_image="${IMAGE_NAME}:${RELEASE_VERSION}"
+          remote_commit="$(git ls-remote origin "refs/tags/${GITHUB_REF_NAME}^{}" | awk 'NR == 1 { print $1 }')"
+          if [ -z "$remote_commit" ]; then
+            remote_commit="$(git ls-remote origin "refs/tags/${GITHUB_REF_NAME}" | awk 'NR == 1 { print $1 }')"
+          fi
+          if [ "$remote_commit" != "$RELEASE_COMMIT" ]; then
+            echo "::error::The release tag changed before image publication"
+            exit 1
+          fi
+
+          if ! tag_state="$(node scripts/registry-manifest-status.mjs "$IMAGE_NAME" "$RELEASE_VERSION")"; then
+            echo "::error::Make the GHCR package public in GitHub package settings, then rerun this release"
+            exit 1
+          fi
+          if [ "$tag_state" = exists ]; then
+            # A rerun may reuse a formal tag only after rebuilding this checkout
+            # and proving that both existing platform manifests are byte-identical.
+            manifest="$(docker buildx imagetools inspect "$final_image" --format '{{json .Manifest}}')"
+            image_digest="$(jq -er '.digest | select(test("^sha256:[0-9a-f]{64}$"))' <<<"$manifest")"
+          elif [ "$tag_state" = missing ]; then
+            docker buildx imagetools create \
+              --tag "$final_image" \
+              "${IMAGE_NAME}@${RELEASE_AMD64_DIGEST}" \
+              "${IMAGE_NAME}@${RELEASE_ARM64_DIGEST}"
+
+            manifest=""
+            for _ in $(seq 1 12); do
+              if manifest="$(docker buildx imagetools inspect "$final_image" --format '{{json .Manifest}}' 2>/dev/null)"; then
+                break
+              fi
+              sleep 5
+            done
+            if [ -z "$manifest" ]; then
+              echo "::error::The fixed version image did not become readable"
+              exit 1
+            fi
+            image_digest="$(jq -er '.digest | select(test("^sha256:[0-9a-f]{64}$"))' <<<"$manifest")"
+          else
+            echo "::error::The registry returned an unsupported version-tag state"
+            exit 1
+          fi
+
+          jq -e \
+            --arg amd64 "$RELEASE_AMD64_DIGEST" \
+            --arg arm64 "$RELEASE_ARM64_DIGEST" '
+              (.manifests | length) == 2
+              and ([.manifests[] | [.platform.os, .platform.architecture]] | sort)
+                == [["linux", "amd64"], ["linux", "arm64"]]
+              and ([.manifests[].digest] | sort) == ([$amd64, $arm64] | sort)
+            ' <<<"$manifest" >/dev/null
+
+          echo "RELEASE_IMAGE_DIGEST=${image_digest}" >> "$GITHUB_ENV"
+          echo "RELEASE_AMD64_DIGEST=${RELEASE_AMD64_DIGEST}" >> "$GITHUB_ENV"
+          echo "RELEASE_ARM64_DIGEST=${RELEASE_ARM64_DIGEST}" >> "$GITHUB_ENV"
+          echo "RELEASE_IMAGE=${final_image}" >> "$GITHUB_ENV"
+          echo "image_digest=${image_digest}" >> "$GITHUB_OUTPUT"
+          echo "image=${final_image}" >> "$GITHUB_OUTPUT"
+
+      - name: Require the fixed version image to be public
+        env:
+          RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          if ! public_digest="$(node scripts/registry-manifest-status.mjs "${IMAGE_NAME}" "${RELEASE_VERSION}" --digest)"; then
+            echo "::error::Make the GHCR package public in GitHub package settings, then rerun this release"
+            exit 1
+          fi
+          test "$public_digest" = "$RELEASE_IMAGE_DIGEST"
+
+      - name: Render and validate the digest-pinned release Compose
+        run: |
+          set -euo pipefail
+          node scripts/render-release-compose.mjs "$RELEASE_IMAGE_DIGEST" release-assets/docker-compose.yml
+          docker compose -f release-assets/docker-compose.yml config --quiet
+          expected_image="${RELEASE_IMAGE}@${RELEASE_IMAGE_DIGEST}"
+          expected_images="$(printf '%s\n%s\n%s' "$expected_image" "$expected_image" "$expected_image")"
+          test "$(docker compose --profile maintenance -f release-assets/docker-compose.yml config --images)" = "$expected_images"
+
+      - name: Exercise Linux Compose, backup, restore, and persistence
+        env:
+          PINNED_IMAGE: ${{ steps.release_image.outputs.image }}@${{ steps.release_image.outputs.image_digest }}
+        run: |
+          set -euo pipefail
+          project="perpay-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          override="${RUNNER_TEMP}/perpay-release.override.yml"
+          cat > "$override" <<EOF
+          services:
+            app:
+              image: ${PINNED_IMAGE}
+              environment:
+                PERPAY_INITIAL_ADMIN_PASSWORD: "release-only-admin-password"
+                PERPAY_API_SECRET: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                PERPAY_COLLECTION_CODE_PAYLOAD: "https://qr.invalid/release-collection-code"
+                PERPAY_ALIPAY_ENABLED: "false"
+                PERPAY_WEBHOOK_ENABLED: "false"
+              healthcheck:
+                test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+            backup:
+              image: ${PINNED_IMAGE}
+            maintenance:
+              image: ${PINNED_IMAGE}
+          EOF
+          compose() {
+            docker compose --project-name "$project" \
+              -f release-assets/docker-compose.yml -f "$override" "$@"
+          }
+          compose_with_maintenance() {
+            compose --profile maintenance "$@"
+          }
+          cleanup() {
+            compose down --volumes --remove-orphans >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          compose config --quiet
+          test "$(compose config --services)" = "$(printf '%s\n%s' app backup)"
+          test "$(compose_with_maintenance config --services)" = "$(printf '%s\n%s\n%s' app backup maintenance)"
+          expected_images="$(printf '%s\n%s\n%s' "$PINNED_IMAGE" "$PINNED_IMAGE" "$PINNED_IMAGE")"
+          test "$(compose_with_maintenance config --images)" = "$expected_images"
+          compose up -d --wait --wait-timeout 900 app
+
+          app_container="$(compose ps -q app)"
+          test -n "$app_container"
+          test "$(compose exec -T app id -u | tr -d '\r')" = 1000
+          test "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' "$app_container")" = true
+          test "$(docker inspect --format '{{join .HostConfig.CapDrop ","}}' "$app_container")" = ALL
+          compose exec -T app node -e \
+            "fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+          compose exec -T app node -e \
+            "fetch('http://127.0.0.1:8080/readyz').then(async r=>{const value=await r.json();if(r.status!==503||value.status!=='not_ready')process.exit(1)}).catch(()=>process.exit(1))"
+
+          instance_before="$(compose exec -T app node --input-type=module -e \
+            "import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync('/data/perpay.sqlite3',{readOnly:true});try{console.log(db.prepare(\"SELECT value FROM system_metadata WHERE key = 'instance_id'\").get().value)}finally{db.close()}" | tr -d '\r')"
+          compose exec -T app node --input-type=module -e \
+            "import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync('/data/perpay.sqlite3',{timeout:5000});try{const result=db.prepare(\"INSERT INTO system_metadata(key,value,updated_at) VALUES ('release_restore_marker','backup-state',strftime('%Y-%m-%dT%H:%M:%fZ','now'))\").run();if(Number(result.changes)!==1)process.exit(1)}finally{db.close()}"
+          marker="release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          compose exec -T app sh -ceu 'printf "%s" "$1" > /data/release-volume-marker' sh "$marker"
+
+          backup_json="$(compose run --rm --no-deps backup node dist/backup/runner.js run-once | tr -d '\r')"
+          backup_name="$(jq -er '.backup.name' <<<"$backup_json")"
+          backup_sha="$(jq -er '.backup.sha256 | select(test("^[0-9a-f]{64}$"))' <<<"$backup_json")"
+          list_json="$(compose run --rm --no-deps backup node dist/backup/runner.js list-backups | tr -d '\r')"
+          jq -e --arg name "$backup_name" --arg sha "$backup_sha" \
+            'any(.backups[]; .name == $name and .sha256 == $sha)' <<<"$list_json" >/dev/null
+
+          compose up -d --wait --wait-timeout 900 backup
+          compose exec -T backup node dist/backup/runner.js health | jq -e '.ok == true' >/dev/null
+          compose exec -T app node --input-type=module -e \
+            "import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync('/data/perpay.sqlite3',{timeout:5000});try{const result=db.prepare(\"UPDATE system_metadata SET value='post-backup-state',updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE key='release_restore_marker'\").run();if(Number(result.changes)!==1)process.exit(1)}finally{db.close()}"
+
+          compose stop backup
+          compose stop app
+          compose run --rm --no-deps maintenance \
+            restore "$backup_name" "$backup_sha" --confirm-replace-current-database >/dev/null
+          compose up -d --wait --wait-timeout 900 app backup
+          restored_marker="$(compose exec -T app node --input-type=module -e \
+            "import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync('/data/perpay.sqlite3',{readOnly:true});try{console.log(db.prepare(\"SELECT value FROM system_metadata WHERE key = 'release_restore_marker'\").get().value)}finally{db.close()}" | tr -d '\r')"
+          test "$restored_marker" = backup-state
+          compose exec -T backup node dist/backup/runner.js health >/dev/null
+
+          compose down --remove-orphans
+          compose up -d --wait --wait-timeout 900 app backup
+          compose exec -T app sh -ceu 'test "$(cat /data/release-volume-marker)" = "$1"' sh "$marker"
+          instance_after="$(compose exec -T app node --input-type=module -e \
+            "import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync('/data/perpay.sqlite3',{readOnly:true});try{console.log(db.prepare(\"SELECT value FROM system_metadata WHERE key = 'instance_id'\").get().value)}finally{db.close()}" | tr -d '\r')"
+          test "$instance_after" = "$instance_before"
+
+          cleanup
+          trap - EXIT
+
+      - name: Publish the GitHub Release
+        env:
+          DATABASE_MAXIMUM: ${{ needs.verify.outputs.database_maximum }}
+          DATABASE_MINIMUM: ${{ needs.verify.outputs.database_minimum }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_COMMIT: ${{ needs.verify.outputs.release_commit }}
+          RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          remote_commit="$(git ls-remote origin "refs/tags/${GITHUB_REF_NAME}^{}" | awk 'NR == 1 { print $1 }')"
+          if [ -z "$remote_commit" ]; then
+            remote_commit="$(git ls-remote origin "refs/tags/${GITHUB_REF_NAME}" | awk 'NR == 1 { print $1 }')"
+          fi
+          if [ "$remote_commit" != "$RELEASE_COMMIT" ]; then
+            echo "::error::The release tag changed before GitHub Release publication"
+            exit 1
+          fi
+
+          public_digest="$(node scripts/registry-manifest-status.mjs "${IMAGE_NAME}" "${RELEASE_VERSION}" --digest)"
+          test "$public_digest" = "$RELEASE_IMAGE_DIGEST"
+
+          compose_sha256="$(sha256sum release-assets/docker-compose.yml | cut -d ' ' -f1)"
+          cat > release-notes.md <<EOF
+          ## Container image
+
+          - Image: \`${RELEASE_IMAGE}@${RELEASE_IMAGE_DIGEST}\`
+          - Platforms: \`linux/amd64\`, \`linux/arm64\`
+          - Supported database schema range: \`${DATABASE_MINIMUM}..${DATABASE_MAXIMUM}\`
+          - Compose SHA-256: \`${compose_sha256}\`
+
+          Download the attached \`docker-compose.yml\`, fill its placeholders, and run \`docker compose up -d\`. The two long-running services and the maintenance profile are pinned to the image digest above.
+
+          Verify the attachment on Linux with \`echo "${compose_sha256}  docker-compose.yml" | sha256sum -c -\`.
+
+          EOF
+          cat "docs/releases/v${RELEASE_VERSION}.md" >> release-notes.md
+          gh release create "$GITHUB_REF_NAME" release-assets/docker-compose.yml \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
+            --latest=false
