@@ -532,9 +532,11 @@ export class ReconciliationStore {
              FROM payment_orders AS orders
              JOIN collection_profiles AS profile
                ON profile.profile_id = orders.collection_profile_id
+             JOIN collection_profile_provider_accounts AS profile_provider
+               ON profile_provider.profile_id = profile.profile_id
              JOIN amount_slots AS slot ON slot.order_id = orders.order_id
              JOIN ledger_entries AS entry
-               ON entry.provider_account_key = profile.provider_account_key
+               ON entry.provider_account_key = profile_provider.provider_account_key
               AND entry.direction = 'CREDIT'
               AND entry.currency = orders.currency
               AND entry.amount_cents = orders.payable_amount_cents
@@ -1343,8 +1345,10 @@ function readCandidateFacts(connection: DatabaseSync, entry: LedgerEntryRow): Ca
          FROM payment_orders AS orders
          JOIN collection_profiles AS profile
            ON profile.profile_id = orders.collection_profile_id
+         JOIN collection_profile_provider_accounts AS profile_provider
+           ON profile_provider.profile_id = profile.profile_id
          JOIN amount_slots AS slot ON slot.order_id = orders.order_id
-        WHERE profile.provider_account_key = ?
+        WHERE profile_provider.provider_account_key = ?
           AND orders.currency = ?
           AND orders.payable_amount_cents = ?
           AND ? + ? > orders.eligible_from
@@ -1385,14 +1389,16 @@ function readSettledOrderOverlap(
               END AS order_id
          FROM (
            SELECT orders.order_id
-             FROM amount_slots AS slot
-             JOIN payment_orders AS orders
-               ON orders.order_id = slot.order_id
+            FROM amount_slots AS slot
+            JOIN payment_orders AS orders
+              ON orders.order_id = slot.order_id
               AND orders.collection_profile_id = slot.collection_profile_id
               AND orders.payable_amount_cents = slot.payable_amount_cents
+            JOIN collection_profile_provider_accounts AS profile_provider
+              ON profile_provider.profile_id = slot.collection_profile_id
             WHERE slot.collection_profile_id IN (
                     SELECT profile_id
-                      FROM collection_profiles
+                      FROM collection_profile_provider_accounts
                      WHERE provider_account_key = ?
                   )
               AND slot.payable_amount_cents = ?
@@ -1456,8 +1462,10 @@ function classifyUnmatchedCredit(
          FROM payment_orders AS orders
          JOIN collection_profiles AS profile
            ON profile.profile_id = orders.collection_profile_id
+         JOIN collection_profile_provider_accounts AS profile_provider
+           ON profile_provider.profile_id = profile.profile_id
          JOIN amount_slots AS slot ON slot.order_id = orders.order_id
-        WHERE profile.provider_account_key = ?
+        WHERE profile_provider.provider_account_key = ?
           AND orders.currency = ?
           AND orders.payable_amount_cents = ?
           AND ? >= min(
@@ -1503,8 +1511,10 @@ function classifyUnmatchedCredit(
          FROM payment_orders AS orders
          JOIN collection_profiles AS profile
            ON profile.profile_id = orders.collection_profile_id
+         JOIN collection_profile_provider_accounts AS profile_provider
+           ON profile_provider.profile_id = profile.profile_id
          JOIN amount_slots AS slot ON slot.order_id = orders.order_id
-        WHERE profile.provider_account_key = ?
+        WHERE profile_provider.provider_account_key = ?
           AND orders.currency = ?
           AND orders.payable_amount_cents != ?
           AND orders.payment_status = 'UNPAID'
@@ -2188,7 +2198,9 @@ function orderUsesProviderAccount(
          FROM payment_orders AS orders
          JOIN collection_profiles AS profile
            ON profile.profile_id = orders.collection_profile_id
-        WHERE orders.order_id = ? AND profile.provider_account_key = ?`,
+         JOIN collection_profile_provider_accounts AS profile_provider
+           ON profile_provider.profile_id = profile.profile_id
+        WHERE orders.order_id = ? AND profile_provider.provider_account_key = ?`,
     )
     .get(orderId, providerAccountKey) !== undefined;
 }

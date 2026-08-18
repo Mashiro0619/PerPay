@@ -51,6 +51,7 @@ import {
   type LedgerListFilter,
   type PageNormalizationResult,
   type ProviderIdentityBinding,
+  type ProviderIdentityActivation,
   type ProviderIdentityInput,
   type RawPageEvidence,
   type RawErrorEvidence,
@@ -105,6 +106,14 @@ interface ProviderIdentityRow {
   readonly identity_fingerprint_version: bigint | number;
   readonly identity_fingerprint: string;
   readonly bound_at: bigint | number;
+}
+
+interface ProviderIdentityActivationRow extends ProviderIdentityRow {
+  readonly activation_id: string;
+  readonly sequence: bigint | number;
+  readonly previous_provider_account_key: string | null;
+  readonly activated_at: bigint | number;
+  readonly reason: ProviderIdentityActivation["reason"];
 }
 
 interface IngestSegmentRow {
@@ -286,48 +295,35 @@ export class LedgerStore {
     this.#database = database;
   }
 
-  /**
-   * Permanently binds the logical ledger namespace to one platform account.
-   * Repeating the same identity is idempotent; changing endpoint or external
-   * account identity requires a fresh database rather than silent reuse.
-   */
+  /** Permanently binds and activates one immutable ledger source generation. */
   bindProviderIdentity(input: ProviderIdentityInput, nowInput?: number): ProviderIdentityBinding {
-    const identity = normalizeProviderIdentity(input);
     const now = safeNow(nowInput);
-    return this.#database.write((connection) => {
-      const existing = readProviderIdentityBinding(connection, identity.providerAccountKey);
-      if (existing === null) {
-        const inserted = connection.prepare(
-          `INSERT INTO provider_account_bindings(
-             provider_account_key, provider_kind, provider_endpoint,
-             external_account_id, identity_fingerprint_version,
-             identity_fingerprint, bound_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        ).run(
-          identity.providerAccountKey,
-          identity.providerKind,
-          identity.endpoint,
-          identity.externalAccountId,
-          identity.identityFingerprintVersion,
-          identity.identityFingerprint,
-          now,
-        );
-        assertChangedOnce(inserted.changes, "provider identity binding insert");
-      }
+    return this.#database.write((connection) =>
+      bindProviderIdentityInTransaction(connection, input, now),
+    );
+  }
 
-      const binding = requireProviderIdentityBinding(connection, identity.providerAccountKey);
-      assertProviderIdentityBindingIntegrity(binding);
-      if (
-        binding.providerKind !== identity.providerKind ||
-        binding.endpoint !== identity.endpoint ||
-        binding.externalAccountId !== identity.externalAccountId ||
-        binding.identityFingerprintVersion !== identity.identityFingerprintVersion ||
-        binding.identityFingerprint !== identity.identityFingerprint
-      ) {
-        throw new Error("provider identity does not match the existing account binding");
-      }
-      return binding;
-    });
+  activeProviderIdentity(): ProviderIdentityActivation | null {
+    return this.#database.read((connection) => readActiveProviderIdentity(connection));
+  }
+
+  providerIdentityHistory(): readonly ProviderIdentityActivation[] {
+    return this.#database.read((connection) => Object.freeze(
+      (connection.prepare(
+        `SELECT activation.activation_id, activation.sequence,
+                activation.provider_account_key,
+                activation.previous_provider_account_key,
+                activation.activated_at, activation.reason,
+                binding.provider_kind, binding.provider_endpoint,
+                binding.external_account_id,
+                binding.identity_fingerprint_version,
+                binding.identity_fingerprint, binding.bound_at
+           FROM provider_account_activations AS activation
+           JOIN provider_account_bindings AS binding
+             ON binding.provider_account_key = activation.provider_account_key
+          ORDER BY activation.sequence DESC`,
+      ).all() as unknown as ProviderIdentityActivationRow[]).map(mapProviderIdentityActivation),
+    ));
   }
 
   startIngestRun(input: StartIngestRunInput): IngestRun {
@@ -345,6 +341,10 @@ export class LedgerStore {
         throw new Error("provider account must be bound before ledger ingestion");
       }
       assertProviderIdentityBindingIntegrity(binding);
+      const active = readActiveProviderIdentity(connection);
+      if (active === null || active.providerAccountKey !== providerAccountKey) {
+        throw new Error("provider account must be active before ledger ingestion");
+      }
       const running = readRunningRun(connection, providerAccountKey);
       const cursor = readCursor(connection, providerAccountKey);
       if (running) {
@@ -941,6 +941,49 @@ export class LedgerStore {
   }
 }
 
+/** Bind and activate a provider generation inside a caller-owned write transaction. */
+export function bindProviderIdentityInTransaction(
+  connection: DatabaseSync,
+  input: ProviderIdentityInput,
+  nowInput: number,
+): ProviderIdentityBinding {
+  const identity = normalizeProviderIdentity(input);
+  const now = safeNow(nowInput);
+  const existing = readProviderIdentityBinding(connection, identity.providerAccountKey);
+  if (existing === null) {
+    const inserted = connection.prepare(
+      `INSERT INTO provider_account_bindings(
+         provider_account_key, provider_kind, provider_endpoint,
+         external_account_id, identity_fingerprint_version,
+         identity_fingerprint, bound_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      identity.providerAccountKey,
+      identity.providerKind,
+      identity.endpoint,
+      identity.externalAccountId,
+      identity.identityFingerprintVersion,
+      identity.identityFingerprint,
+      now,
+    );
+    assertChangedOnce(inserted.changes, "provider identity binding insert");
+  }
+
+  const binding = requireProviderIdentityBinding(connection, identity.providerAccountKey);
+  assertProviderIdentityBindingIntegrity(binding);
+  if (
+    binding.providerKind !== identity.providerKind ||
+    binding.endpoint !== identity.endpoint ||
+    binding.externalAccountId !== identity.externalAccountId ||
+    binding.identityFingerprintVersion !== identity.identityFingerprintVersion ||
+    binding.identityFingerprint !== identity.identityFingerprint
+  ) {
+    throw new Error("provider identity does not match the existing account binding");
+  }
+  activateProviderIdentity(connection, binding, now);
+  return binding;
+}
+
 const INGEST_RUN_COLUMNS = `
   ingest_run_id, provider_account_key, window_start, window_end, page_size,
   status, started_at, completed_at, pages_received, details_received, failure_code
@@ -1017,6 +1060,76 @@ function readProviderIdentityBinding(
   return row ? mapProviderIdentityBinding(row) : null;
 }
 
+function readActiveProviderIdentity(
+  connection: DatabaseSync,
+): ProviderIdentityActivation | null {
+  const row = connection.prepare(
+    `SELECT activation_id, sequence, provider_account_key,
+            previous_provider_account_key, activated_at, reason,
+            provider_kind, provider_endpoint, external_account_id,
+            identity_fingerprint_version, identity_fingerprint, bound_at
+       FROM active_provider_account`,
+  ).get() as ProviderIdentityActivationRow | undefined;
+  return row ? mapProviderIdentityActivation(row) : null;
+}
+
+function mapProviderIdentityActivation(
+  row: ProviderIdentityActivationRow,
+): ProviderIdentityActivation {
+  const binding = mapProviderIdentityBinding(row);
+  assertProviderIdentityBindingIntegrity(binding);
+  return {
+    ...binding,
+    activationId: row.activation_id,
+    sequence: toSafeInteger(row.sequence, "provider activation sequence"),
+    previousProviderAccountKey: row.previous_provider_account_key,
+    activatedAt: toSafeInteger(row.activated_at, "provider activation time"),
+    reason: row.reason,
+  };
+}
+
+function activateProviderIdentity(
+  connection: DatabaseSync,
+  binding: ProviderIdentityBinding,
+  requestedAt: number,
+): void {
+  const active = readActiveProviderIdentity(connection);
+  if (active?.providerAccountKey === binding.providerAccountKey) return;
+  if (active) {
+    const running = readRunningRun(connection, active.providerAccountKey);
+    if (running) {
+      throw new Error("active provider ingestion must finish before changing account generation");
+    }
+  }
+  const activatedAt = Math.max(
+    requestedAt,
+    binding.boundAt,
+    active?.activatedAt ?? 0,
+  );
+  const sequence = (active?.sequence ?? 0) + 1;
+  const inserted = connection.prepare(
+    `INSERT INTO provider_account_activations(
+       activation_id, sequence, provider_account_key,
+       previous_provider_account_key, activated_at, reason
+     ) VALUES (?, ?, ?, ?, ?, 'CONFIG_SYNC')`,
+  ).run(
+    randomUUID(),
+    sequence,
+    binding.providerAccountKey,
+    active?.providerAccountKey ?? null,
+    activatedAt,
+  );
+  assertChangedOnce(inserted.changes, "provider account activation insert");
+  const activated = readActiveProviderIdentity(connection);
+  if (
+    activated === null ||
+    activated.providerAccountKey !== binding.providerAccountKey ||
+    activated.sequence !== sequence
+  ) {
+    throw new Error("provider account activation was not published");
+  }
+}
+
 function requireProviderIdentityBinding(
   connection: DatabaseSync,
   providerAccountKey: string,
@@ -1027,7 +1140,7 @@ function requireProviderIdentityBinding(
 }
 
 function mapProviderIdentityBinding(row: ProviderIdentityRow): ProviderIdentityBinding {
-  if (row.provider_account_key !== "primary" || row.provider_kind !== "alipay") {
+  if (row.provider_kind !== "alipay") {
     throw new Error("provider identity binding has an invalid namespace");
   }
   const fingerprintVersion = toSafeInteger(

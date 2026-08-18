@@ -5,31 +5,22 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { loadConfig } from "../src/config.ts";
-import { AppDatabase } from "../src/database/database.ts";
+import type { AppDatabase } from "../src/database/database.ts";
 import { createApp } from "../src/http/app.ts";
-import { IdentityService } from "../src/identity/service.ts";
 import type { AccountLogDetail } from "../src/infrastructure/alipay/types.ts";
 import type { LedgerEntry } from "../src/ledger/model.ts";
 import { LedgerStore } from "../src/ledger/store.ts";
 import { createOrderRequestSchema, type OrderProjection } from "../src/orders/model.ts";
-import { OrderService } from "../src/orders/service.ts";
 import {
   ReconciliationStore,
   type ReconcileEntryResult,
 } from "../src/reconciliation/index.ts";
+import { createConfiguredHttpServices, HTTP_TEST_ADMIN_PASSWORD } from "./http-fixture.ts";
 
-const ADMIN_PASSWORD = "strong-local-admin-password";
-const PUBLIC_ORIGIN = "http://localhost:8080";
+const ADMIN_PASSWORD = HTTP_TEST_ADMIN_PASSWORD;
+const PUBLIC_ORIGIN = "http://localhost:6190";
 const API_SECRET = Buffer.alloc(32, 13).toString("base64url");
 const COLLECTION_CODE = "https://qr.alipay.com/fkx-http-contract-2026";
-const PROVIDER_IDENTITY = {
-  providerAccountKey: "primary",
-  providerKind: "alipay",
-  endpoint: "https://openapi.alipay.com",
-  externalAccountId: "2026000000000000",
-} as const;
-
 describe("reconciliation HTTP contract", () => {
   it("automatically confirms a unique payment and exposes only settlement history", async () => {
     await withHttpFixture(async (fixture) => {
@@ -400,21 +391,18 @@ async function withHttpFixture(
 ): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), "perpay-reconciliation-http-"));
   const baseTime = Date.now();
-  const config = loadConfig({
-    PERPAY_INITIAL_ADMIN_PASSWORD: ADMIN_PASSWORD,
-    PERPAY_API_SECRET: API_SECRET,
-    PERPAY_COLLECTION_CODE_PAYLOAD: COLLECTION_CODE,
-    PERPAY_DATA_DIR: directory,
-    PERPAY_PUBLIC_URL: PUBLIC_ORIGIN,
+  const services = await createConfiguredHttpServices({
+    directory,
+    apiSecret: API_SECRET,
+    collectionCodePayload: COLLECTION_CODE,
+    publicUrl: PUBLIC_ORIGIN,
+    identityClock: () => baseTime,
   });
-  const database = await AppDatabase.open(config.databasePath);
+  const { config, database, identity, settings, orders } = services;
   try {
-    const identity = new IdentityService(database, config, () => baseTime);
-    await identity.initialize();
-    const orders = new OrderService(database, config, () => baseTime);
-    orders.initialize();
     const ledger = new LedgerStore(database);
-    ledger.bindProviderIdentity(PROVIDER_IDENTITY, baseTime);
+    const providerAccountKey = settings.snapshot().activeProviderAccountKey;
+    if (!providerAccountKey) throw new Error("provider account is not configured");
     const reconciliation = new ReconciliationStore(database);
     const window = {
       start: formatProviderTimestamp(baseTime - 60_000),
@@ -424,7 +412,7 @@ async function withHttpFixture(
     let ingestSequence = 0;
     const createOrder = (suffix: string, requestedAmountCents: number): OrderProjection => {
       orderSequence += 1;
-      return orders.create("default", createOrderRequestSchema.parse({
+      return orders.create(createOrderRequestSchema.parse({
         idempotency_key: `http-idem-${suffix}-${orderSequence}`,
         merchant_order_no: `http-merchant-${suffix}-${orderSequence}`,
         amount_cents: requestedAmountCents,
@@ -447,6 +435,7 @@ async function withHttpFixture(
         occurredAt,
         startedAt,
         direction,
+        providerAccountKey,
       );
     };
     const fixture: ReconciliationHttpFixture = {
@@ -454,6 +443,7 @@ async function withHttpFixture(
         config,
         database,
         identity,
+        settings,
         orders,
         reconciliation,
         startedAt: new Date(0),
@@ -483,7 +473,7 @@ async function withHttpFixture(
       reconciliation,
       createOrder,
       closeOrder(orderId) {
-        return orders.close("default", orderId);
+        return orders.close(orderId);
       },
       createSettlement(suffix, requestedAmountCents) {
         const order = createOrder(suffix, requestedAmountCents);
@@ -517,7 +507,7 @@ async function login(app: ReturnType<typeof createApp>): Promise<SessionAuth> {
   const response = await app.request("/api/admin/v1/session/login", {
     method: "POST",
     headers: { "content-type": "application/json", origin: PUBLIC_ORIGIN },
-    body: JSON.stringify({ username: "admin", password: ADMIN_PASSWORD }),
+    body: JSON.stringify({ password: ADMIN_PASSWORD }),
   });
   assert.equal(response.status, 200);
   const cookies = response.headers.getSetCookie();
@@ -587,6 +577,7 @@ function recordLedgerEntry(
   occurredAt: number,
   startedAt: number,
   direction: "CREDIT" | "DEBIT",
+  providerAccountKey: string,
 ): LedgerEntry {
   const occurredAtText = formatProviderTimestamp(occurredAt);
   const amount = (amountCents / 100).toFixed(2);
@@ -607,7 +598,12 @@ function recordLedgerEntry(
     otherAccount: null,
   };
   const record = (runStartedAt: number, observedAt: number) => {
-    const run = store.startIngestRun({ ...window, pageSize: 1, now: runStartedAt });
+    const run = store.startIngestRun({
+      ...window,
+      providerAccountKey,
+      pageSize: 1,
+      now: runStartedAt,
+    });
     return store.recordPage({
       ingestRunId: run.ingestRunId,
       page: {

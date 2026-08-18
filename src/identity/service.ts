@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import type { AppConfig } from "../config.ts";
 import type { AppDatabase } from "../database/database.ts";
 import {
+  ADMIN_USERNAME,
   AUTH_FAILURE_THRESHOLD,
   AUTH_WINDOW_MS,
   API_SIGNATURE_SKEW_MS,
@@ -11,6 +11,7 @@ import {
   SESSION_IDLE_TTL_MS,
   STEP_UP_TTL_MS,
   type AdminSession,
+  type AuthLimit,
 } from "../database/identity-store.ts";
 import {
   PasswordInputError,
@@ -30,6 +31,7 @@ const SOURCE_MAX_LENGTH = 256;
 
 export type IdentityErrorCode =
   | "identity_not_initialized"
+  | "identity_already_initialized"
   | "invalid_credentials"
   | "auth_rate_limited"
   | "password_work_busy"
@@ -66,6 +68,11 @@ export interface LoginResult {
   readonly absoluteExpiresAt: number;
 }
 
+export interface SetupAdminResult {
+  readonly username: typeof ADMIN_USERNAME;
+  readonly initializedAt: number;
+}
+
 export interface AuthenticatedSession {
   readonly session: AdminSession;
   readonly token: string;
@@ -96,80 +103,94 @@ export interface ApiAuditInput {
 
 export class IdentityService {
   readonly #store: IdentityStore;
-  readonly #config: AppConfig;
   readonly #clock: () => number;
   readonly #passwordGate = new PasswordWorkGate();
 
-  constructor(database: AppDatabase, config: AppConfig, clock: () => number = Date.now) {
+  constructor(
+    database: AppDatabase,
+    clockOrLegacyConfig: (() => number) | unknown = Date.now,
+    legacyClock?: (() => number) | undefined,
+  ) {
     this.#store = new IdentityStore(database);
-    this.#config = config;
-    this.#clock = clock;
+    this.#clock = typeof clockOrLegacyConfig === "function"
+      ? clockOrLegacyConfig as () => number
+      : legacyClock ?? Date.now;
   }
 
   get store(): IdentityStore {
     return this.#store;
   }
 
-  /** Seeds the administrator exactly once before HTTP starts and syncs the configured API key fingerprint. */
+  /** Verifies persisted identity state without requiring first-run setup to be complete. */
   async initialize(): Promise<void> {
-    const now = this.#clock();
     this.#store.read((transaction) => transaction.assertAuditChain());
     const existing = this.#store.read((transaction) => transaction.adminIdentity());
-    if (!existing) {
-      const initialPassword = this.#config.adminPassword;
-      if (initialPassword === null) {
-        throw new Error(
-          "database has no administrator; PERPAY_INITIAL_ADMIN_PASSWORD is required for first initialization",
-        );
-      }
-      const passwordHash = await hashPassword(initialPassword);
+    if (existing && existing.username !== ADMIN_USERNAME) {
+      throw new Error("initialized administrator username is invalid");
+    }
+  }
+
+  isInitialized(): boolean {
+    return this.#store.read((transaction) => transaction.adminIdentity() !== undefined);
+  }
+
+  async setupAdmin(
+    password: string,
+    context: IdentityContext = {},
+  ): Promise<SetupAdminResult> {
+    if (this.isInitialized()) throw identityAlreadyInitialized();
+    if (typeof password !== "string" || Array.from(password).length < 12) {
+      throw new PasswordInputError("Password must contain at least 12 Unicode characters.");
+    }
+
+    const sourceHash = this.sourceHash(context.sourceAddress);
+    const attemptedAt = this.#clock();
+    const setupAttempt = this.#recordSetupAttempt(sourceHash, attemptedAt);
+    try {
+      // Another process may have completed setup after the initial fast-path
+      // check. Preserve this request's persisted attempt, but avoid needless
+      // password work once an administrator now exists.
+      if (this.isInitialized()) throw identityAlreadyInitialized();
+
+      const passwordHash = await this.#runPasswordWork(
+        "anonymous",
+        () => hashPassword(password),
+      );
+      const initializedAt = this.#clock();
       this.#store.transaction((transaction) => {
-        const inserted = transaction.initializeAdmin(this.#config.adminUsername, passwordHash, now);
-        if (!inserted) return;
+        if (!transaction.initializeAdmin(passwordHash, initializedAt)) {
+          throw identityAlreadyInitialized();
+        }
+        transaction.resetAuthLimitThrough(sourceHash, setupAttempt, initializedAt);
         transaction.appendAudit({
-          occurredAt: now,
-          actorType: "SYSTEM",
+          occurredAt: initializedAt,
+          actorType: "ANONYMOUS",
           action: "admin.initialized",
           outcome: "SUCCESS",
           subjectType: "admin_identity",
-          subjectId: this.#config.adminUsername,
+          subjectId: ADMIN_USERNAME,
+          requestId: context.requestId,
+          remoteAddressHash: sourceHash,
           details: { session_generation: 1 },
         });
       });
-    } else if (existing.username !== this.#config.adminUsername) {
-      throw new Error("configured administrator username does not match the initialized identity");
-    }
-
-    const fingerprint = fingerprintApiSecret(this.#config.apiSecret);
-    this.#store.transaction((transaction) => {
-      const before = transaction.activeApiClient(this.#config.apiClientId);
-      const current = transaction.syncApiClient(this.#config.apiClientId, fingerprint, now);
-      if (!before) {
-        transaction.appendAudit({
-          occurredAt: now,
-          actorType: "SYSTEM",
-          action: "api_client.initialized",
-          outcome: "SUCCESS",
-          subjectType: "api_client",
-          subjectId: current.clientId,
-          details: { key_version: current.keyVersion },
-        });
-      } else if (before.secretFingerprint !== current.secretFingerprint) {
-        transaction.appendAudit({
-          occurredAt: now,
-          actorType: "SYSTEM",
-          action: "api_client.rotated",
-          outcome: "SUCCESS",
-          subjectType: "api_client",
-          subjectId: current.clientId,
-          details: { key_version: current.keyVersion },
-        });
+      return { username: ADMIN_USERNAME, initializedAt };
+    } catch (error) {
+      // The attempt was committed before hashing. A successful competing
+      // setup from the same source can clear that row while this request is
+      // still running, so restore one persisted attempt for the loser without
+      // double-counting ordinary hash or transaction failures.
+      try {
+        this.#retainSetupAttempt(sourceHash, this.#clock());
+      } catch {
+        // Preserve the setup failure. The original attempt normally remains;
+        // this fallback is only needed when a competing success cleared it.
       }
-    });
+      throw error;
+    }
   }
 
   async login(
-    username: string,
     password: string,
     context: IdentityContext = {},
   ): Promise<LoginResult> {
@@ -180,13 +201,11 @@ export class IdentityService {
     const identity = this.#store.read((transaction) => transaction.adminIdentity());
     if (!identity) throw new IdentityError("identity_not_initialized", "管理员身份尚未初始化");
 
-    // A wrong username still performs the same password work to avoid a username oracle.
-    let valid = await this.#verifyCredentialPassword(
+    const valid = await this.#verifyCredentialPassword(
       password,
       identity.passwordHash,
       "anonymous",
     );
-    valid = valid && username === identity.username;
 
     if (!valid) {
       const failureAt = this.#clock();
@@ -529,9 +548,7 @@ export class IdentityService {
 
   apiClient(clientId: string): ApiClientAuthentication | undefined {
     const configured = this.#store.read((transaction) => transaction.activeApiClient(clientId));
-    if (!configured || !configured.enabled || clientId !== this.#config.apiClientId) return undefined;
-    const expected = fingerprintApiSecret(this.#config.apiSecret);
-    if (configured.secretFingerprint !== expected) return undefined;
+    if (!configured || !configured.enabled) return undefined;
     return {
       clientId: configured.clientId,
       keyVersion: configured.keyVersion,
@@ -543,10 +560,19 @@ export class IdentityService {
     clientId: string,
     nonce: string,
     timestampSeconds: number,
+    expectedKeyVersion: number,
+    expectedSecretFingerprint: string,
     verifiedAt = this.#clock(),
   ): boolean {
     return this.#store.transaction((transaction) =>
-      transaction.consumeApiNonce(clientId, nonce, timestampSeconds, verifiedAt),
+      transaction.consumeApiNonce(
+        clientId,
+        nonce,
+        timestampSeconds,
+        expectedKeyVersion,
+        expectedSecretFingerprint,
+        verifiedAt,
+      ),
     );
   }
 
@@ -585,6 +611,28 @@ export class IdentityService {
 
   #assertAuthAttemptAllowed(sourceHash: string, now: number): void {
     const limit = this.#store.read((transaction) => transaction.authLimit(sourceHash));
+    this.#assertAuthLimitAllowed(limit, now);
+  }
+
+  #recordSetupAttempt(sourceHash: string, now: number): AuthLimit {
+    return this.#store.transaction((transaction) => {
+      this.#assertAuthLimitAllowed(transaction.authLimit(sourceHash), now);
+      return transaction.recordAuthFailure(sourceHash, now);
+    });
+  }
+
+  #retainSetupAttempt(sourceHash: string, now: number): void {
+    this.#store.transaction((transaction) => {
+      if (transaction.authLimit(sourceHash) === undefined) {
+        transaction.recordAuthFailure(sourceHash, now);
+      }
+    });
+  }
+
+  #assertAuthLimitAllowed(
+    limit: { readonly blockedUntil: number } | undefined,
+    now: number,
+  ): void {
     if (limit && limit.blockedUntil > now) {
       throw new IdentityError(
         "auth_rate_limited",
@@ -639,6 +687,13 @@ export function fingerprintApiSecret(secret: string): string {
     .update("perpay-api-secret-v1\0", "utf8")
     .update(Buffer.from(secret, "base64url"))
     .digest("hex");
+}
+
+function identityAlreadyInitialized(): IdentityError {
+  return new IdentityError(
+    "identity_already_initialized",
+    "administrator setup has already been completed",
+  );
 }
 
 function digestSessionToken(token: string): string {

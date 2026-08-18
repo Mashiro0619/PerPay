@@ -12,21 +12,26 @@ import { IDENTITY_LIMITS, IdentityError, IdentityService, fingerprintApiSecret }
 
 const adminPassword = "a-secure-local-password";
 const apiSecret = Buffer.alloc(32, 7).toString("base64url");
-const collectionCodePayload = "https://qr.alipay.com/fkx-test-code-2026";
+const masterKey = "0123456789abcdef".repeat(4);
 
-async function fixture(clock = { now: Date.parse("2026-08-14T12:00:00Z") }) {
+async function fixture(
+  clock = { now: Date.parse("2026-08-14T12:00:00Z") },
+  setup = true,
+) {
   const directory = mkdtempSync(join(tmpdir(), "perpay-identity-"));
   const config = loadConfig({
-    PERPAY_ADMIN_USERNAME: "admin",
-    PERPAY_INITIAL_ADMIN_PASSWORD: adminPassword,
-    PERPAY_API_CLIENT_ID: "default",
-    PERPAY_API_SECRET: apiSecret,
-    PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
+    PERPAY_MASTER_KEY: masterKey,
     PERPAY_DATA_DIR: directory,
   });
   const database = await AppDatabase.open(config.databasePath);
-  const identity = new IdentityService(database, config, () => clock.now);
+  const identity = new IdentityService(database, () => clock.now);
   await identity.initialize();
+  if (setup) {
+    await identity.setupAdmin(adminPassword, { sourceAddress: "127.0.0.1" });
+    identity.store.transaction((transaction) => {
+      transaction.syncApiClient("default", fingerprintApiSecret(apiSecret), clock.now);
+    });
+  }
   return {
     directory,
     database,
@@ -41,49 +46,162 @@ async function fixture(clock = { now: Date.parse("2026-08-14T12:00:00Z") }) {
 }
 
 describe("IdentityService", () => {
-  it("refuses to initialize a new database without an initial administrator password", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "perpay-identity-uninitialized-"));
-    const config = loadConfig({
-      PERPAY_ADMIN_USERNAME: "admin",
-      PERPAY_API_CLIENT_ID: "default",
-      PERPAY_API_SECRET: apiSecret,
-      PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
-      PERPAY_DATA_DIR: directory,
-    });
-    const database = await AppDatabase.open(config.databasePath);
+  it("starts with an uninitialized administrator and keeps login closed", async () => {
+    const test = await fixture(undefined, false);
     try {
-      const identity = new IdentityService(database, config);
-      await assert.rejects(
-        identity.initialize(),
-        /PERPAY_INITIAL_ADMIN_PASSWORD is required for first initialization/,
+      await test.identity.initialize();
+      assert.equal(test.identity.isInitialized(), false);
+      assert.equal(
+        test.identity.store.read((transaction) => transaction.adminIdentity()),
+        undefined,
       );
-      assert.equal(identity.store.read((transaction) => transaction.adminIdentity()), undefined);
-      assert.equal(identity.apiClient("default"), undefined);
+      await assert.rejects(
+        test.identity.login(adminPassword),
+        (error: unknown) =>
+          error instanceof IdentityError && error.code === "identity_not_initialized",
+      );
     } finally {
-      database.close();
-      rmSync(directory, { recursive: true, force: true });
+      test.close();
     }
   });
 
-  it("initializes one administrator and the configured API client without storing secrets", async () => {
-    const test = await fixture();
+  it("allows exactly one concurrent first-time setup and permanently closes setup", async () => {
+    const test = await fixture(undefined, false);
     try {
-      await test.identity.initialize();
+      const sources = ["192.0.2.10", "192.0.2.11"] as const;
+      const competing = new IdentityService(test.database, () => test.clock.now + 1);
+      const results = await Promise.allSettled([
+        test.identity.setupAdmin(adminPassword, {
+          requestId: "setup-one",
+          sourceAddress: sources[0],
+        }),
+        competing.setupAdmin("another-secure-password", {
+          requestId: "setup-two",
+          sourceAddress: sources[1],
+        }),
+      ]);
+      assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+      const rejectedIndex = results.findIndex((result) => result.status === "rejected");
+      const fulfilledIndex = results.findIndex((result) => result.status === "fulfilled");
+      const rejected = results[rejectedIndex];
+      assert.ok(rejected);
+      assert.equal(rejected.status, "rejected");
+      assert.ok(rejected.reason instanceof IdentityError);
+      assert.equal(rejected.reason.code, "identity_already_initialized");
+
+      const losingLimit = test.identity.store.read((transaction) =>
+        transaction.authLimit(test.identity.sourceHash(sources[rejectedIndex]!))
+      );
+      assert.equal(losingLimit?.failureCount, 1);
+      assert.equal(
+        test.identity.store.read((transaction) =>
+          transaction.authLimit(test.identity.sourceHash(sources[fulfilledIndex]!))
+        ),
+        undefined,
+      );
+
+      assert.equal(test.identity.isInitialized(), true);
       const admin = test.identity.store.read((transaction) => transaction.adminIdentity());
       assert.equal(admin?.username, "admin");
-      assert.notEqual(admin?.passwordHash, adminPassword);
-      assert.equal(admin?.passwordHash.includes(adminPassword), false);
-
-      const client = test.identity.apiClient("default");
-      assert.equal(client?.secretFingerprint, fingerprintApiSecret(apiSecret));
-      assert.equal(client?.secretFingerprint.includes(apiSecret), false);
-      assert.equal(test.identity.apiClient("other"), undefined);
+      assert.ok(admin?.passwordHash.startsWith("$perpay$scrypt$"));
 
       const audit = test.identity.store.read((transaction) => transaction.auditEvents());
-      assert.equal(audit.length, 2);
+      assert.equal(audit.length, 1);
       assert.equal(audit[0]?.previousHash, null);
-      assert.equal(audit[1]?.previousHash, audit[0]?.eventHash);
+      const closedSource = "192.0.2.12";
+      await assert.rejects(
+        test.identity.setupAdmin("\ud800".repeat(12), { sourceAddress: closedSource }),
+        (error: unknown) =>
+          error instanceof IdentityError && error.code === "identity_already_initialized",
+      );
+      assert.equal(
+        test.identity.store.read((transaction) =>
+          transaction.authLimit(test.identity.sourceHash(closedSource))
+        ),
+        undefined,
+      );
     } finally {
+      test.close();
+    }
+  });
+
+  it("persists a setup attempt before password hashing and clears it after success", async () => {
+    const test = await fixture(undefined, false);
+    try {
+      const sourceAddress = "192.0.2.20";
+      const sourceHash = test.identity.sourceHash(sourceAddress);
+      await assert.rejects(
+        test.identity.setupAdmin("\ud800".repeat(12), { sourceAddress }),
+        (error: unknown) => error instanceof PasswordInputError,
+      );
+      assert.equal(
+        test.identity.store.read((transaction) => transaction.authLimit(sourceHash))?.failureCount,
+        1,
+      );
+
+      await test.identity.setupAdmin(adminPassword, { sourceAddress });
+      assert.equal(
+        test.identity.store.read((transaction) => transaction.authLimit(sourceHash)),
+        undefined,
+      );
+    } finally {
+      test.close();
+    }
+  });
+
+  it("counts a same-source concurrent setup loser after the winner clears its own attempt", async () => {
+    const test = await fixture(undefined, false);
+    try {
+      const sourceAddress = "192.0.2.22";
+      const sourceHash = test.identity.sourceHash(sourceAddress);
+      const competing = new IdentityService(test.database, () => test.clock.now + 1);
+      const results = await Promise.allSettled([
+        test.identity.setupAdmin(adminPassword, { sourceAddress }),
+        competing.setupAdmin("another-secure-password", { sourceAddress }),
+      ]);
+      assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+      assert.equal(results.filter((result) => result.status === "rejected").length, 1);
+      assert.equal(
+        test.identity.store.read((transaction) => transaction.authLimit(sourceHash))?.failureCount,
+        1,
+      );
+    } finally {
+      test.close();
+    }
+  });
+
+  it("keeps the persisted setup attempt when the identity transaction rolls back", async () => {
+    const test = await fixture(undefined, false);
+    const sourceAddress = "192.0.2.21";
+    const sourceHash = test.identity.sourceHash(sourceAddress);
+    try {
+      test.database.write((connection) => connection.exec(`
+        CREATE TRIGGER injected_setup_identity_failure
+        BEFORE INSERT ON admin_identity
+        BEGIN
+          SELECT RAISE(ABORT, 'injected setup identity failure');
+        END;
+      `));
+      await assert.rejects(
+        test.identity.setupAdmin(adminPassword, { sourceAddress }),
+        /injected setup identity failure/,
+      );
+      assert.equal(test.identity.isInitialized(), false);
+      assert.equal(
+        test.identity.store.read((transaction) => transaction.authLimit(sourceHash))?.failureCount,
+        1,
+      );
+
+      test.database.write((connection) =>
+        connection.exec("DROP TRIGGER injected_setup_identity_failure"));
+      await test.identity.setupAdmin(adminPassword, { sourceAddress });
+      assert.equal(
+        test.identity.store.read((transaction) => transaction.authLimit(sourceHash)),
+        undefined,
+      );
+    } finally {
+      test.database.write((connection) =>
+        connection.exec("DROP TRIGGER IF EXISTS injected_setup_identity_failure"));
       test.close();
     }
   });
@@ -91,7 +209,7 @@ describe("IdentityService", () => {
   it("creates an opaque session, enforces CSRF, idle expiry, and logout revocation", async () => {
     const test = await fixture();
     try {
-      const login = await test.identity.login("admin", adminPassword, {
+      const login = await test.identity.login(adminPassword, {
         requestId: "request-login",
         sourceAddress: "127.0.0.1",
       });
@@ -107,7 +225,7 @@ describe("IdentityService", () => {
       assert.equal(test.identity.authenticate(login.sessionToken), undefined);
       assert.equal(test.identity.verifyCsrf(authenticated, login.csrfToken), false);
 
-      const second = await test.identity.login("admin", adminPassword, { sourceAddress: "127.0.0.2" });
+      const second = await test.identity.login(adminPassword, { sourceAddress: "127.0.0.2" });
       test.clock.now += IDENTITY_LIMITS.sessionIdleMs + 1;
       assert.equal(test.identity.authenticate(second.sessionToken), undefined);
     } finally {
@@ -120,19 +238,19 @@ describe("IdentityService", () => {
     try {
       for (let attempt = 0; attempt < 5; attempt += 1) {
         await assert.rejects(
-          test.identity.login("admin", "wrong-password-value", { sourceAddress: "203.0.113.8" }),
+          test.identity.login("wrong-password-value", { sourceAddress: "203.0.113.8" }),
           (error: unknown) => error instanceof IdentityError && error.code === "invalid_credentials",
         );
       }
       await assert.rejects(
-        test.identity.login("admin", adminPassword, { sourceAddress: "203.0.113.8" }),
+        test.identity.login(adminPassword, { sourceAddress: "203.0.113.8" }),
         (error: unknown) =>
           error instanceof IdentityError &&
           error.code === "auth_rate_limited" &&
           error.retryAfterSeconds !== undefined,
       );
       assert.equal(
-        await test.identity.login("admin", adminPassword, { sourceAddress: "203.0.113.9" }).then(() => true),
+        await test.identity.login(adminPassword, { sourceAddress: "203.0.113.9" }).then(() => true),
         true,
       );
     } finally {
@@ -143,7 +261,7 @@ describe("IdentityService", () => {
   it("applies the same source limit to repeated step-up failures", async () => {
     const test = await fixture();
     try {
-      const login = await test.identity.login("admin", adminPassword, {
+      const login = await test.identity.login(adminPassword, {
         sourceAddress: "198.51.100.4",
       });
       const authenticated = test.identity.authenticate(login.sessionToken);
@@ -171,11 +289,11 @@ describe("IdentityService", () => {
       const malformedPassword = "malformed-\ud800-password";
       const loginSource = "192.0.2.40";
       await assert.rejects(
-        test.identity.login("admin", malformedPassword, { sourceAddress: loginSource }),
+        test.identity.login(malformedPassword, { sourceAddress: loginSource }),
         (error: unknown) => error instanceof IdentityError && error.code === "invalid_credentials",
       );
 
-      const login = await test.identity.login("admin", adminPassword, {
+      const login = await test.identity.login(adminPassword, {
         sourceAddress: "192.0.2.41",
       });
       const authenticated = test.identity.authenticate(login.sessionToken);
@@ -240,7 +358,7 @@ describe("IdentityService", () => {
   it("requires recent step-up before revoking every session", async () => {
     const test = await fixture();
     try {
-      const login = await test.identity.login("admin", adminPassword, { sourceAddress: "127.0.0.1" });
+      const login = await test.identity.login(adminPassword, { sourceAddress: "127.0.0.1" });
       const authenticated = test.identity.authenticate(login.sessionToken);
       assert.ok(authenticated);
       assert.throws(
@@ -279,7 +397,7 @@ describe("IdentityService", () => {
   it("rechecks session expiry after asynchronous password verification", async () => {
     const test = await fixture();
     try {
-      const login = await test.identity.login("admin", adminPassword, {
+      const login = await test.identity.login(adminPassword, {
         sourceAddress: "192.0.2.30",
       });
       const authenticated = test.identity.authenticate(login.sessionToken);
@@ -300,14 +418,14 @@ describe("IdentityService", () => {
   it("reserves password work capacity for authenticated operations during anonymous login load", async () => {
     const test = await fixture();
     try {
-      const login = await test.identity.login("admin", adminPassword, {
+      const login = await test.identity.login(adminPassword, {
         sourceAddress: "192.0.2.50",
       });
       const authenticated = test.identity.authenticate(login.sessionToken);
       assert.ok(authenticated);
 
       const anonymousAttempts = [51, 52, 53].map((suffix) =>
-        test.identity.login("admin", "wrong-password-value", {
+        test.identity.login("wrong-password-value", {
           sourceAddress: `192.0.2.${suffix}`,
         })
       );
@@ -340,12 +458,87 @@ describe("IdentityService", () => {
     const test = await fixture();
     try {
       const nonce = "A".repeat(43);
+      const generationBoundNonce = Buffer.alloc(32, 4).toString("base64url");
       const timestamp = Math.floor(test.clock.now / 1000);
-      assert.equal(test.identity.consumeApiNonce("default", nonce, timestamp), true);
-      assert.equal(test.identity.consumeApiNonce("default", nonce, timestamp), false);
-      assert.equal(test.identity.consumeApiNonce("default", "not-a-nonce", timestamp), false);
-      assert.equal(test.identity.consumeApiNonce("default", "B".repeat(43), timestamp - 301), false);
-      assert.equal(test.identity.consumeApiNonce("default", "C".repeat(43), timestamp + 301), false);
+      const credential = test.identity.apiClient("default");
+      assert.ok(credential);
+      assert.equal(
+        test.identity.consumeApiNonce(
+          "default",
+          generationBoundNonce,
+          timestamp,
+          credential.keyVersion + 1,
+          credential.secretFingerprint,
+          test.clock.now,
+        ),
+        false,
+      );
+      assert.equal(
+        test.identity.consumeApiNonce(
+          "default",
+          generationBoundNonce,
+          timestamp,
+          credential.keyVersion,
+          credential.secretFingerprint,
+          test.clock.now,
+        ),
+        true,
+      );
+      assert.equal(
+        test.identity.consumeApiNonce(
+          "default",
+          nonce,
+          timestamp,
+          credential.keyVersion,
+          credential.secretFingerprint,
+          test.clock.now,
+        ),
+        true,
+      );
+      assert.equal(
+        test.identity.consumeApiNonce(
+          "default",
+          nonce,
+          timestamp,
+          credential.keyVersion,
+          credential.secretFingerprint,
+          test.clock.now,
+        ),
+        false,
+      );
+      assert.equal(
+        test.identity.consumeApiNonce(
+          "default",
+          "not-a-nonce",
+          timestamp,
+          credential.keyVersion,
+          credential.secretFingerprint,
+          test.clock.now,
+        ),
+        false,
+      );
+      assert.equal(
+        test.identity.consumeApiNonce(
+          "default",
+          "B".repeat(43),
+          timestamp - 301,
+          credential.keyVersion,
+          credential.secretFingerprint,
+          test.clock.now,
+        ),
+        false,
+      );
+      assert.equal(
+        test.identity.consumeApiNonce(
+          "default",
+          "C".repeat(43),
+          timestamp + 301,
+          credential.keyVersion,
+          credential.secretFingerprint,
+          test.clock.now,
+        ),
+        false,
+      );
     } finally {
       test.close();
     }
@@ -354,7 +547,7 @@ describe("IdentityService", () => {
   it("allows only one concurrent password change from the same stepped-up session", async () => {
     const test = await fixture();
     try {
-      const login = await test.identity.login("admin", adminPassword, {
+      const login = await test.identity.login(adminPassword, {
         sourceAddress: "192.0.2.10",
       });
       const authenticated = test.identity.authenticate(login.sessionToken);
@@ -383,7 +576,7 @@ describe("IdentityService", () => {
       const acceptedPasswords = await Promise.all(
         ["next-password-value-one", "next-password-value-two"].map(async (password, index) => {
           try {
-            await test.identity.login("admin", password, {
+            await test.identity.login(password, {
               sourceAddress: `192.0.2.${20 + index}`,
             });
             return password;
@@ -401,7 +594,7 @@ describe("IdentityService", () => {
   it("rejects an identical replacement password without changing identity or session state", async () => {
     const test = await fixture();
     try {
-      const login = await test.identity.login("admin", adminPassword, {
+      const login = await test.identity.login(adminPassword, {
         sourceAddress: "198.51.100.60",
       });
       const authenticated = test.identity.authenticate(login.sessionToken);
@@ -443,91 +636,19 @@ describe("IdentityService", () => {
     }
   });
 
-  it("restarts without the retired initial password and preserves the administrator password", async () => {
+  it("restarts without any bootstrap password and preserves the administrator password", async () => {
     const test = await fixture();
     try {
       const replacementConfig = loadConfig({
-        PERPAY_ADMIN_USERNAME: "admin",
-        PERPAY_API_CLIENT_ID: "default",
-        PERPAY_API_SECRET: apiSecret,
-        PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
+        PERPAY_MASTER_KEY: masterKey,
         PERPAY_DATA_DIR: test.directory,
       });
-      const restarted = new IdentityService(test.database, replacementConfig, () => test.clock.now);
+      assert.equal(replacementConfig.databasePath, test.config.databasePath);
+      const restarted = new IdentityService(test.database, () => test.clock.now);
       await restarted.initialize();
-      const login = await restarted.login("admin", adminPassword, { sourceAddress: "203.0.113.21" });
+      assert.equal(restarted.isInitialized(), true);
+      const login = await restarted.login(adminPassword, { sourceAddress: "203.0.113.21" });
       assert.ok(restarted.authenticate(login.sessionToken));
-    } finally {
-      test.close();
-    }
-  });
-
-  it("rotates API secrets, isolates nonce versions, and rejects retired-secret reuse", async () => {
-    const test = await fixture();
-    try {
-      const timestamp = Math.floor(test.clock.now / 1000);
-      const nonce = Buffer.alloc(32, 4).toString("base64url");
-      assert.equal(test.identity.consumeApiNonce("default", nonce, timestamp), true);
-
-      const rotatedSecret = Buffer.alloc(32, 9).toString("base64url");
-      const rotatedConfig = loadConfig({
-        PERPAY_ADMIN_USERNAME: "admin",
-        PERPAY_INITIAL_ADMIN_PASSWORD: adminPassword,
-        PERPAY_API_CLIENT_ID: "default",
-        PERPAY_API_SECRET: rotatedSecret,
-        PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
-        PERPAY_DATA_DIR: test.directory,
-      });
-      const rotated = new IdentityService(test.database, rotatedConfig, () => test.clock.now);
-      await rotated.initialize();
-
-      assert.equal(test.identity.apiClient("default"), undefined);
-      assert.equal(rotated.apiClient("default")?.keyVersion, 2);
-      assert.equal(rotated.apiClient("default")?.secretFingerprint, fingerprintApiSecret(rotatedSecret));
-      assert.equal(rotated.consumeApiNonce("default", nonce, timestamp), true);
-
-      const keyHistory = test.database.read((connection) =>
-        connection.prepare(
-          `SELECT key_version, secret_fingerprint, retired_at
-             FROM api_client_keys
-            ORDER BY key_version`,
-        ).all() as Array<{
-          key_version: bigint | number;
-          secret_fingerprint: string;
-          retired_at: bigint | number | null;
-        }>,
-      );
-      assert.deepEqual(keyHistory.map((row) => ({
-        keyVersion: Number(row.key_version),
-        secretFingerprint: row.secret_fingerprint,
-        retired: row.retired_at !== null,
-      })), [
-        {
-          keyVersion: 1,
-          secretFingerprint: fingerprintApiSecret(apiSecret),
-          retired: true,
-        },
-        {
-          keyVersion: 2,
-          secretFingerprint: fingerprintApiSecret(rotatedSecret),
-          retired: false,
-        },
-      ]);
-
-      const rollbackConfig = loadConfig({
-        PERPAY_ADMIN_USERNAME: "admin",
-        PERPAY_INITIAL_ADMIN_PASSWORD: adminPassword,
-        PERPAY_API_CLIENT_ID: "default",
-        PERPAY_API_SECRET: apiSecret,
-        PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
-        PERPAY_DATA_DIR: test.directory,
-      });
-      const rollback = new IdentityService(test.database, rollbackConfig, () => test.clock.now);
-      await assert.rejects(
-        rollback.initialize(),
-        /previously retired and cannot be reused/u,
-      );
-      assert.equal(rotated.apiClient("default")?.keyVersion, 2);
     } finally {
       test.close();
     }

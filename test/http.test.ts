@@ -5,13 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { loadConfig } from "../src/config.ts";
-import { AppDatabase } from "../src/database/database.ts";
 import { createApp } from "../src/http/app.ts";
 import { WEB_ASSET_URLS } from "../src/http/web/assets.ts";
-import { IdentityService } from "../src/identity/service.ts";
-import { OrderService } from "../src/orders/service.ts";
 import { signApiRequest } from "../src/security/api-signature.ts";
+import {
+  createConfiguredHttpServices,
+  HTTP_TEST_ADMIN_PASSWORD,
+} from "./http-fixture.ts";
 
 const apiSecret = Buffer.alloc(32, 7).toString("base64url");
 const collectionCodePayload = "https://qr.alipay.com/fkx-test-code-2026";
@@ -19,19 +19,13 @@ const collectionCodePayload = "https://qr.alipay.com/fkx-test-code-2026";
 describe("health endpoints", () => {
   it("separates application health from payment readiness", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-http-"));
-    const config = loadConfig({
-      PERPAY_INITIAL_ADMIN_PASSWORD: "a-secure-local-password",
-      PERPAY_API_SECRET: apiSecret,
-      PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
-      PERPAY_DATA_DIR: directory,
+    const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
+      directory,
+      apiSecret,
+      collectionCodePayload,
     });
-    const database = await AppDatabase.open(config.databasePath);
-    const identity = new IdentityService(database, config);
-    await identity.initialize();
-    const orders = new OrderService(database, config);
-    orders.initialize();
     const collectionNow = 1_700_000_005_000;
-    const app = createApp({ config, database, identity, orders, startedAt: new Date(0) });
+    const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
     try {
       const health = await app.request("/healthz");
       assert.equal(health.status, 200);
@@ -44,12 +38,16 @@ describe("health endpoints", () => {
 
       const ready = await app.request("/readyz");
       assert.equal(ready.status, 503);
-      assert.deepEqual(await ready.json(), { status: "not_ready" });
+      assert.deepEqual(await ready.json(), {
+        status: "not_ready",
+        code: "reconciliation_not_ready",
+      });
 
       const firstScanPending = createApp({
         config,
         database,
         identity,
+        settings,
         orders,
         startedAt: new Date(0),
         clock: () => collectionNow,
@@ -75,6 +73,7 @@ describe("health endpoints", () => {
         config,
         database,
         identity,
+        settings,
         orders,
         startedAt: new Date(0),
         clock: () => collectionNow,
@@ -91,12 +90,13 @@ describe("health endpoints", () => {
       });
       const degradedReady = await degraded.request("/readyz");
       assert.equal(degradedReady.status, 200);
-      assert.deepEqual(await degradedReady.json(), { status: "degraded" });
+      assert.deepEqual(await degradedReady.json(), { status: "degraded", code: null });
 
       const collectionRetryRunning = createApp({
         config,
         database,
         identity,
+        settings,
         orders,
         startedAt: new Date(0),
         clock: () => collectionNow,
@@ -113,12 +113,13 @@ describe("health endpoints", () => {
       });
       const collectionRetryReady = await collectionRetryRunning.request("/readyz");
       assert.equal(collectionRetryReady.status, 200);
-      assert.deepEqual(await collectionRetryReady.json(), { status: "degraded" });
+      assert.deepEqual(await collectionRetryReady.json(), { status: "degraded", code: null });
 
       const catchingUp = createApp({
         config,
         database,
         identity,
+        settings,
         orders,
         startedAt: new Date(0),
         clock: () => collectionNow,
@@ -135,12 +136,13 @@ describe("health endpoints", () => {
       });
       const catchingUpReady = await catchingUp.request("/readyz");
       assert.equal(catchingUpReady.status, 200);
-      assert.deepEqual(await catchingUpReady.json(), { status: "degraded" });
+      assert.deepEqual(await catchingUpReady.json(), { status: "degraded", code: null });
 
       const exactFreshnessBoundary = createApp({
         config,
         database,
         identity,
+        settings,
         orders,
         startedAt: new Date(0),
         clock: () => collectionNow,
@@ -150,19 +152,21 @@ describe("health endpoints", () => {
           state: "healthy",
           inFlight: false,
           lastAttemptAt: collectionNow,
-          lastSuccessAt: collectionNow - config.alipay.maximumSuccessAgeMilliseconds,
+          lastSuccessAt:
+            collectionNow - settings.snapshot().provider!.maximumSuccessAgeMilliseconds,
           lastErrorCode: null,
           consecutiveFailures: 0,
         }),
       });
       const exactBoundaryReady = await exactFreshnessBoundary.request("/readyz");
       assert.equal(exactBoundaryReady.status, 200);
-      assert.deepEqual(await exactBoundaryReady.json(), { status: "ready" });
+      assert.deepEqual(await exactBoundaryReady.json(), { status: "ready", code: null });
 
       const futureSuccess = createApp({
         config,
         database,
         identity,
+        settings,
         orders,
         startedAt: new Date(0),
         clock: () => collectionNow,
@@ -179,12 +183,16 @@ describe("health endpoints", () => {
       });
       const futureSuccessReady = await futureSuccess.request("/readyz");
       assert.equal(futureSuccessReady.status, 503);
-      assert.deepEqual(await futureSuccessReady.json(), { status: "not_ready" });
+      assert.deepEqual(await futureSuccessReady.json(), {
+        status: "not_ready",
+        code: "reconciliation_not_ready",
+      });
 
       const stale = createApp({
         config,
         database,
         identity,
+        settings,
         orders,
         startedAt: new Date(0),
         clock: () => collectionNow,
@@ -194,19 +202,24 @@ describe("health endpoints", () => {
           state: "degraded",
           inFlight: false,
           lastAttemptAt: collectionNow,
-          lastSuccessAt: collectionNow - config.alipay.maximumSuccessAgeMilliseconds - 1,
+          lastSuccessAt:
+            collectionNow - settings.snapshot().provider!.maximumSuccessAgeMilliseconds - 1,
           lastErrorCode: "remote_authorization_failed",
           consecutiveFailures: 4,
         }),
       });
       const staleReady = await stale.request("/readyz");
       assert.equal(staleReady.status, 503);
-      assert.deepEqual(await staleReady.json(), { status: "not_ready" });
+      assert.deepEqual(await staleReady.json(), {
+        status: "not_ready",
+        code: "reconciliation_not_ready",
+      });
 
       const reconciliationDegraded = createApp({
         config,
         database,
         identity,
+        settings,
         orders,
         startedAt: new Date(0),
         clock: () => collectionNow,
@@ -232,6 +245,7 @@ describe("health endpoints", () => {
         config,
         database,
         identity,
+        settings,
         orders,
         startedAt: new Date(0),
         clock: () => collectionNow,
@@ -250,12 +264,13 @@ describe("health endpoints", () => {
       });
       const reconciliationRetryReady = await reconciliationRetryRunning.request("/readyz");
       assert.equal(reconciliationRetryReady.status, 200);
-      assert.deepEqual(await reconciliationRetryReady.json(), { status: "degraded" });
+      assert.deepEqual(await reconciliationRetryReady.json(), { status: "degraded", code: null });
 
       const webhookRetryRunning = createApp({
         config,
         database,
         identity,
+        settings,
         orders,
         startedAt: new Date(0),
         clock: () => collectionNow,
@@ -274,12 +289,13 @@ describe("health endpoints", () => {
       });
       const webhookRetryReady = await webhookRetryRunning.request("/readyz");
       assert.equal(webhookRetryReady.status, 200);
-      assert.deepEqual(await webhookRetryReady.json(), { status: "degraded" });
+      assert.deepEqual(await webhookRetryReady.json(), { status: "degraded", code: null });
 
       const webhookStopped = createApp({
         config,
         database,
         identity,
+        settings,
         orders,
         startedAt: new Date(0),
         clock: () => collectionNow,
@@ -298,12 +314,13 @@ describe("health endpoints", () => {
       });
       const webhookStoppedReady = await webhookStopped.request("/readyz");
       assert.equal(webhookStoppedReady.status, 200);
-      assert.deepEqual(await webhookStoppedReady.json(), { status: "degraded" });
+      assert.deepEqual(await webhookStoppedReady.json(), { status: "degraded", code: null });
 
       const backupUnhealthy = createApp({
         config,
         database,
         identity,
+        settings,
         orders,
         startedAt: new Date(0),
         clock: () => collectionNow,
@@ -338,7 +355,7 @@ describe("health endpoints", () => {
       });
       const backupReady = await backupUnhealthy.request("/readyz");
       assert.equal(backupReady.status, 200);
-      assert.deepEqual(await backupReady.json(), { status: "ready" });
+      assert.deepEqual(await backupReady.json(), { status: "ready", code: null });
 
       const backupLogin = await backupUnhealthy.request("/api/admin/v1/session/login", {
         method: "POST",
@@ -346,7 +363,7 @@ describe("health endpoints", () => {
           "content-type": "application/json",
           origin: config.publicOrigin,
         },
-        body: JSON.stringify({ username: "admin", password: "a-secure-local-password" }),
+        body: JSON.stringify({ password: HTTP_TEST_ADMIN_PASSWORD }),
       });
       assert.equal(backupLogin.status, 200);
       const backupCookie = backupLogin.headers.getSetCookie()
@@ -386,6 +403,7 @@ describe("health endpoints", () => {
         config,
         database,
         identity,
+        settings,
         orders,
         startedAt: new Date(0),
         clock: () => collectionNow,
@@ -397,7 +415,7 @@ describe("health endpoints", () => {
       });
       const unavailableReady = await backupUnavailable.request("/readyz");
       assert.equal(unavailableReady.status, 200);
-      assert.deepEqual(await unavailableReady.json(), { status: "ready" });
+      assert.deepEqual(await unavailableReady.json(), { status: "ready", code: null });
       const unavailableStatus = await backupUnavailable.request(
         "/api/admin/v1/system/status",
         { headers: { cookie: backupCookie } },
@@ -446,24 +464,18 @@ describe("health endpoints", () => {
 describe("identity HTTP contract", () => {
   it("requires same-origin JSON login and protects state-changing routes with CSRF", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-http-identity-"));
-    const config = loadConfig({
-      PERPAY_INITIAL_ADMIN_PASSWORD: "a-secure-local-password",
-      PERPAY_API_SECRET: apiSecret,
-      PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
-      PERPAY_DATA_DIR: directory,
-      PERPAY_PUBLIC_URL: "http://localhost:8080",
+    const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
+      directory,
+      apiSecret,
+      collectionCodePayload,
+      publicUrl: "http://localhost:6190",
     });
-    const database = await AppDatabase.open(config.databasePath);
-    const identity = new IdentityService(database, config);
-    await identity.initialize();
-    const orders = new OrderService(database, config);
-    orders.initialize();
-    const app = createApp({ config, database, identity, orders, startedAt: new Date(0) });
+    const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
     try {
       const missingOrigin = await app.request("/api/admin/v1/session/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ username: "admin", password: "a-secure-local-password" }),
+        body: JSON.stringify({ password: HTTP_TEST_ADMIN_PASSWORD }),
       });
       assert.equal(missingOrigin.status, 403);
 
@@ -471,9 +483,9 @@ describe("identity HTTP contract", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          origin: "http://localhost:8080",
+          origin: "http://localhost:6190",
         },
-        body: JSON.stringify({ username: "admin", password: "a-secure-local-password" }),
+        body: JSON.stringify({ password: HTTP_TEST_ADMIN_PASSWORD }),
       });
       assert.equal(login.status, 200);
       const setCookies = login.headers.getSetCookie();
@@ -501,7 +513,7 @@ describe("identity HTTP contract", () => {
       const headerWithoutCsrfCookie = await app.request("/api/admin/v1/session/logout", {
         method: "POST",
         headers: {
-          origin: "http://localhost:8080",
+          origin: "http://localhost:6190",
           cookie: sessionCookie.split(";", 1)[0],
           "x-csrf-token": loginBody.data.csrf_token,
         },
@@ -510,7 +522,7 @@ describe("identity HTTP contract", () => {
 
       const noCsrf = await app.request("/api/admin/v1/session/logout", {
         method: "POST",
-        headers: { origin: "http://localhost:8080", cookie },
+        headers: { origin: "http://localhost:6190", cookie },
       });
       assert.equal(noCsrf.status, 403);
       assert.equal((await noCsrf.json() as { error: { code: string } }).error.code, "csrf_invalid");
@@ -518,7 +530,7 @@ describe("identity HTTP contract", () => {
       const logout = await app.request("/api/admin/v1/session/logout", {
         method: "POST",
         headers: {
-          origin: "http://localhost:8080",
+          origin: "http://localhost:6190",
           cookie,
           "x-csrf-token": loginBody.data.csrf_token,
         },
@@ -532,25 +544,19 @@ describe("identity HTTP contract", () => {
 
   it("rejects invalid UTF-8 and passwords over the byte limit before password work", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-http-validation-"));
-    const config = loadConfig({
-      PERPAY_INITIAL_ADMIN_PASSWORD: "a-secure-local-password",
-      PERPAY_API_SECRET: apiSecret,
-      PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
-      PERPAY_DATA_DIR: directory,
-      PERPAY_PUBLIC_URL: "http://localhost:8080",
+    const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
+      directory,
+      apiSecret,
+      collectionCodePayload,
+      publicUrl: "http://localhost:6190",
     });
-    const database = await AppDatabase.open(config.databasePath);
-    const identity = new IdentityService(database, config);
-    await identity.initialize();
-    const orders = new OrderService(database, config);
-    orders.initialize();
-    const app = createApp({ config, database, identity, orders, startedAt: new Date(0) });
+    const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
     try {
       const invalidUtf8 = await app.request("/api/admin/v1/session/login", {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          origin: "http://localhost:8080",
+          origin: "http://localhost:6190",
         },
         body: new Uint8Array([0xff]),
       });
@@ -564,9 +570,9 @@ describe("identity HTTP contract", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          origin: "http://localhost:8080",
+          origin: "http://localhost:6190",
         },
-        body: JSON.stringify({ username: "admin", password: "密".repeat(342) }),
+        body: JSON.stringify({ password: "密".repeat(342) }),
       });
       assert.equal(oversizedPassword.status, 422);
 
@@ -574,9 +580,9 @@ describe("identity HTTP contract", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          origin: "http://localhost:8080",
+          origin: "http://localhost:6190",
         },
-        body: JSON.stringify({ username: "admin", password: "malformed-\ud800-password" }),
+        body: JSON.stringify({ password: "malformed-\ud800-password" }),
       });
       assert.equal(malformedExistingPassword.status, 401);
       assert.equal(
@@ -588,9 +594,9 @@ describe("identity HTTP contract", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          origin: "http://localhost:8080",
+          origin: "http://localhost:6190",
         },
-        body: JSON.stringify({ username: "admin", password: "a-secure-local-password" }),
+        body: JSON.stringify({ password: HTTP_TEST_ADMIN_PASSWORD }),
       });
       assert.equal(login.status, 200);
       const loginBody = await login.json() as { data: { csrf_token: string } };
@@ -599,7 +605,7 @@ describe("identity HTTP contract", () => {
         .join("; ");
       const authenticatedHeaders = {
         "content-type": "application/json",
-        origin: "http://localhost:8080",
+        origin: "http://localhost:6190",
         cookie,
         "x-csrf-token": loginBody.data.csrf_token,
       };
@@ -646,28 +652,23 @@ describe("identity HTTP contract", () => {
 
   it("rotates credentials on step-up and preserves them when an identical password is rejected", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-http-step-up-rotation-"));
-    const config = loadConfig({
-      PERPAY_INITIAL_ADMIN_PASSWORD: "a-secure-local-password",
-      PERPAY_API_SECRET: apiSecret,
-      PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
-      PERPAY_DATA_DIR: directory,
-      PERPAY_PUBLIC_URL: "http://localhost:8080",
-    });
-    const database = await AppDatabase.open(config.databasePath);
     const clock = { now: Date.parse("2026-08-16T12:00:00Z") };
-    const identity = new IdentityService(database, config, () => clock.now);
-    await identity.initialize();
-    const orders = new OrderService(database, config);
-    orders.initialize();
-    const app = createApp({ config, database, identity, orders, startedAt: new Date(0) });
+    const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
+      directory,
+      apiSecret,
+      collectionCodePayload,
+      publicUrl: "http://localhost:6190",
+      identityClock: () => clock.now,
+    });
+    const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
     try {
       const login = await app.request("/api/admin/v1/session/login", {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          origin: "http://localhost:8080",
+          origin: "http://localhost:6190",
         },
-        body: JSON.stringify({ username: "admin", password: "a-secure-local-password" }),
+        body: JSON.stringify({ password: HTTP_TEST_ADMIN_PASSWORD }),
       });
       assert.equal(login.status, 200);
       const loginBody = await login.json() as {
@@ -682,7 +683,7 @@ describe("identity HTTP contract", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          origin: "http://localhost:8080",
+          origin: "http://localhost:6190",
           cookie: loginCookie,
           "x-csrf-token": loginBody.data.csrf_token,
         },
@@ -734,7 +735,7 @@ describe("identity HTTP contract", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          origin: "http://localhost:8080",
+          origin: "http://localhost:6190",
           cookie: replacementCookie,
           "x-csrf-token": stepUpBody.data.csrf_token,
         },
@@ -774,20 +775,14 @@ describe("identity HTTP contract", () => {
 
   it("uses __Host cookies and HSTS for an HTTPS public origin", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-http-secure-cookie-"));
-    const config = loadConfig({
-      PERPAY_INITIAL_ADMIN_PASSWORD: "a-secure-local-password",
-      PERPAY_API_SECRET: apiSecret,
-      PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
-      PERPAY_DATA_DIR: directory,
-      PERPAY_PUBLIC_URL: "https://pay.local",
-      PERPAY_TRUSTED_PROXY_CIDRS: "127.0.0.1",
+    const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
+      directory,
+      apiSecret,
+      collectionCodePayload,
+      publicUrl: "https://pay.local",
+      environment: { PERPAY_TRUSTED_PROXY_CIDRS: "127.0.0.1" },
     });
-    const database = await AppDatabase.open(config.databasePath);
-    const identity = new IdentityService(database, config);
-    await identity.initialize();
-    const orders = new OrderService(database, config);
-    orders.initialize();
-    const app = createApp({ config, database, identity, orders, startedAt: new Date(0) });
+    const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
     try {
       const login = await app.request("/api/admin/v1/session/login", {
         method: "POST",
@@ -795,7 +790,7 @@ describe("identity HTTP contract", () => {
           "content-type": "application/json",
           origin: "https://pay.local",
         },
-        body: JSON.stringify({ username: "admin", password: "a-secure-local-password" }),
+        body: JSON.stringify({ password: HTTP_TEST_ADMIN_PASSWORD }),
       });
       assert.equal(login.status, 200);
       assert.equal(
@@ -813,18 +808,12 @@ describe("identity HTTP contract", () => {
 
   it("authenticates API requests, consumes nonce once, and does not expose secrets", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-http-api-"));
-    const config = loadConfig({
-      PERPAY_INITIAL_ADMIN_PASSWORD: "a-secure-local-password",
-      PERPAY_API_SECRET: apiSecret,
-      PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
-      PERPAY_DATA_DIR: directory,
-      PERPAY_PUBLIC_URL: "http://localhost:8080",
+    const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
+      directory,
+      apiSecret,
+      collectionCodePayload,
+      publicUrl: "http://localhost:6190",
     });
-    const database = await AppDatabase.open(config.databasePath);
-    const identity = new IdentityService(database, config);
-    await identity.initialize();
-    const orders = new OrderService(database, config);
-    orders.initialize();
     const signedBackupHealth = Object.freeze({
       ok: true,
       status: "healthy" as const,
@@ -853,6 +842,7 @@ describe("identity HTTP contract", () => {
       config,
       database,
       identity,
+      settings,
       orders,
       startedAt: new Date(0),
       clock: () => 1_700_000_000_000,
@@ -946,17 +936,11 @@ describe("identity HTTP contract", () => {
 describe("order HTTP contract", () => {
   it("blocks new orders until the first provider scan succeeds", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-http-first-scan-"));
-    const config = loadConfig({
-      PERPAY_INITIAL_ADMIN_PASSWORD: "a-secure-local-password",
-      PERPAY_API_SECRET: apiSecret,
-      PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
-      PERPAY_DATA_DIR: directory,
+    const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
+      directory,
+      apiSecret,
+      collectionCodePayload,
     });
-    const database = await AppDatabase.open(config.databasePath);
-    const identity = new IdentityService(database, config);
-    await identity.initialize();
-    const orders = new OrderService(database, config);
-    orders.initialize();
     const requestBody = Buffer.from(JSON.stringify({
       idempotency_key: "first-scan-gate",
       merchant_order_no: "first-scan-gate",
@@ -977,6 +961,7 @@ describe("order HTTP contract", () => {
         config,
         database,
         identity,
+        settings,
         orders,
         startedAt: new Date(0),
         clock: () => collectionNow,
@@ -1003,7 +988,7 @@ describe("order HTTP contract", () => {
       assert.equal(blocked.headers.get("retry-after"), "10");
       assert.equal(
         ((await blocked.json()) as { error: { code: string } }).error.code,
-        "collection_not_ready",
+        "reconciliation_not_ready",
       );
       assert.equal(
         database.read((connection) => Number((connection.prepare(
@@ -1016,6 +1001,7 @@ describe("order HTTP contract", () => {
         config,
         database,
         identity,
+        settings,
         orders,
         startedAt: new Date(0),
         clock: () => collectionNow,
@@ -1058,10 +1044,10 @@ describe("order HTTP contract", () => {
       assert.equal(blockedCheckout.status, 503);
       assert.equal(
         ((await blockedCheckout.json()) as { error: { code: string } }).error.code,
-        "collection_not_ready",
+        "reconciliation_not_ready",
       );
 
-      collectionNow += config.alipay.maximumSuccessAgeMilliseconds + 1;
+      collectionNow += settings.snapshot().provider!.maximumSuccessAgeMilliseconds + 1;
       collectionState = "degraded";
       collectionLastErrorCode = "remote_authorization_failed";
       collectionConsecutiveFailures = 4;
@@ -1081,7 +1067,7 @@ describe("order HTTP contract", () => {
       assert.equal(staleCreate.status, 503);
       assert.equal(
         ((await staleCreate.json()) as { error: { code: string } }).error.code,
-        "collection_not_ready",
+        "reconciliation_not_ready",
       );
 
       collectionState = "healthy";
@@ -1134,7 +1120,7 @@ describe("order HTTP contract", () => {
       assert.equal(degradedButFresh.status, 201);
       const degradedReady = await ready.request("/readyz");
       assert.equal(degradedReady.status, 200);
-      assert.deepEqual(await degradedReady.json(), { status: "degraded" });
+      assert.deepEqual(await degradedReady.json(), { status: "degraded", code: null });
 
       reconciliationState = "stopped";
       const stoppedBody = Buffer.from(JSON.stringify({
@@ -1172,12 +1158,12 @@ describe("order HTTP contract", () => {
         3,
       );
 
-      const terminal = orders.create("default", {
+      const terminal = orders.create({
         idempotency_key: "terminal-checkout-readiness",
         merchant_order_no: "terminal-checkout-readiness",
         amount_cents: 5_000,
       }).order;
-      orders.close("default", terminal.orderId);
+      orders.close(terminal.orderId);
       const terminalResponse = await ready.request(
         `/api/public/v1/checkouts/${encodeURIComponent(terminal.checkoutToken)}`,
       );
@@ -1190,7 +1176,7 @@ describe("order HTTP contract", () => {
 
       reconciliationState = "degraded";
       reconciliationLastSuccessAt =
-        collectionNow - config.alipay.maximumSuccessAgeMilliseconds - 1;
+        collectionNow - settings.snapshot().provider!.maximumSuccessAgeMilliseconds - 1;
       const staleReconciliation = await ready.request(target, {
         method: "POST",
         headers: {
@@ -1235,7 +1221,10 @@ describe("order HTTP contract", () => {
 
         const storageReady = await ready.request("/readyz");
         assert.equal(storageReady.status, 503);
-        assert.deepEqual(await storageReady.json(), { status: "not_ready" });
+        assert.deepEqual(await storageReady.json(), {
+          status: "not_ready",
+          code: "system_not_ready",
+        });
         assert.equal(database.health().result, "database_storage_low");
 
         const storageCheckout = await ready.request(publicTarget);
@@ -1314,23 +1303,18 @@ describe("order HTTP contract", () => {
 
   it("creates, replays, queries, closes, and publicly projects an order", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-http-orders-"));
-    const config = loadConfig({
-      PERPAY_INITIAL_ADMIN_PASSWORD: "a-secure-local-password",
-      PERPAY_API_SECRET: apiSecret,
-      PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
-      PERPAY_DATA_DIR: directory,
-      PERPAY_PUBLIC_URL: "http://localhost:8080",
+    const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
+      directory,
+      apiSecret,
+      collectionCodePayload,
+      publicUrl: "http://localhost:6190",
     });
-    const database = await AppDatabase.open(config.databasePath);
-    const identity = new IdentityService(database, config);
-    await identity.initialize();
-    const orders = new OrderService(database, config);
-    orders.initialize();
     const reconciliationTriggers: string[] = [];
     const app = createApp({
       config,
       database,
       identity,
+      settings,
       orders,
       startedAt: new Date(0),
       ...readyPaymentRuntime(Date.now()),
@@ -1541,21 +1525,16 @@ describe("order HTTP contract", () => {
 
   it("rejects changed idempotent requests and duplicate JSON keys after authentication", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-http-order-errors-"));
-    const config = loadConfig({
-      PERPAY_INITIAL_ADMIN_PASSWORD: "a-secure-local-password",
-      PERPAY_API_SECRET: apiSecret,
-      PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
-      PERPAY_DATA_DIR: directory,
+    const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
+      directory,
+      apiSecret,
+      collectionCodePayload,
     });
-    const database = await AppDatabase.open(config.databasePath);
-    const identity = new IdentityService(database, config);
-    await identity.initialize();
-    const orders = new OrderService(database, config);
-    orders.initialize();
     const app = createApp({
       config,
       database,
       identity,
+      settings,
       orders,
       startedAt: new Date(0),
       ...readyPaymentRuntime(Date.now()),

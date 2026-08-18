@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 
 import { AppDatabase } from "../src/database/database.ts";
 import { OrderClockError, OrderStore } from "../src/database/order-store.ts";
+import { LedgerStore } from "../src/ledger/store.ts";
 import { digestCheckoutToken, isCanonicalCheckoutToken } from "../src/orders/checkout-token.ts";
 import {
   createOrderRequestSchema,
@@ -753,6 +754,59 @@ describe("OrderStore", () => {
     });
   });
 
+  it("snapshots the provider generation even when the QR payload stays unchanged", async () => {
+    await withStore(async ({ database, store }) => {
+      const ledger = new LedgerStore(database);
+      ledger.bindProviderIdentity({
+        providerAccountKey: "primary",
+        providerKind: "alipay",
+        endpoint: "https://openapi.alipay.com",
+        externalAccountId: "2026000000000000",
+      }, TEST_START_MS);
+      const codePayload = "https://qr.example.test/shared-code";
+      const firstProfile = syncProfile(store, codePayload, "primary");
+      const firstOrder = store.createOrder(
+        createInput(requestFor("idem-generation-a", "merchant-generation-a", 1_000)),
+      );
+
+      const nextProviderAccountKey = "account:next";
+      ledger.bindProviderIdentity({
+        providerAccountKey: nextProviderAccountKey,
+        providerKind: "alipay",
+        endpoint: "https://openapi-sandbox.dl.alipaydev.com",
+        externalAccountId: "2026000000000001",
+      }, TEST_START_MS + 1_000);
+      const secondProfile = syncProfile(store, codePayload, nextProviderAccountKey);
+      const secondOrder = store.createOrder(
+        createInput(requestFor("idem-generation-b", "merchant-generation-b", 2_000)),
+      );
+
+      assert.notEqual(firstProfile.profile.profileId, secondProfile.profile.profileId);
+      assert.notEqual(
+        firstProfile.profile.profileFingerprint,
+        secondProfile.profile.profileFingerprint,
+      );
+      assert.equal(firstOrder.kind, "created");
+      assert.equal(secondOrder.kind, "created");
+      if (firstOrder.kind !== "created" || secondOrder.kind !== "created") return;
+      assert.equal(firstOrder.aggregate.collectionProfile.providerAccountKey, "primary");
+      assert.equal(
+        secondOrder.aggregate.collectionProfile.providerAccountKey,
+        nextProviderAccountKey,
+      );
+      assert.deepEqual(
+        database.read((connection) => connection.prepare(
+          `SELECT link.provider_account_key
+             FROM collection_profile_provider_accounts AS link
+             JOIN collection_profiles AS profile ON profile.profile_id = link.profile_id
+            ORDER BY profile.version`,
+        ).all().map((row) => row.provider_account_key)),
+        ["primary", nextProviderAccountKey],
+      );
+      assert.equal(database.integrityCheck().ok, true);
+    });
+  });
+
   it("does not reveal whether an order belongs to another API client", async () => {
     await withStore(async ({ store }) => {
       syncProfile(store, "https://qr.example.test/profile-a");
@@ -1041,9 +1095,21 @@ async function withStore(
   }
 }
 
-function syncProfile(store: OrderStore, codePayload: string) {
-  const { payloadFingerprint, profileFingerprint } = fingerprintCollectionCodeProfile(codePayload);
-  return store.syncCollectionProfile({ codePayload, payloadFingerprint, profileFingerprint });
+function syncProfile(
+  store: OrderStore,
+  codePayload: string,
+  providerAccountKey = "primary",
+) {
+  const { payloadFingerprint, profileFingerprint } = fingerprintCollectionCodeProfile(
+    codePayload,
+    providerAccountKey,
+  );
+  return store.syncCollectionProfile({
+    providerAccountKey,
+    codePayload,
+    payloadFingerprint,
+    profileFingerprint,
+  });
 }
 
 function requestFor(

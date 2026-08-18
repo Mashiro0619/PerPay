@@ -33,10 +33,12 @@ describe("storage capacity policy", () => {
       assert.equal(headroom.requiredBytes, 1n);
       assert.equal(headroom.sufficient, true);
       assert.equal(Object.isFrozen(headroom), true);
+      const impossibleRequirement = headroom.availableBytes + (1n << 64n);
       const insufficient = inspectStorageHeadroom(
         directory,
-        headroom.availableBytes + 1n,
+        impossibleRequirement,
       );
+      assert.equal(insufficient.requiredBytes, impossibleRequirement);
       assert.equal(insufficient.sufficient, false);
     } finally {
       rmSync(directory, { recursive: true, force: true });

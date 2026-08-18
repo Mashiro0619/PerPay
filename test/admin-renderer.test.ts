@@ -6,7 +6,7 @@ import { WEB_ASSET_URLS } from "../src/http/web/assets.ts";
 
 describe("admin page renderer", () => {
   it("uses a POST fallback for credentials and only same-origin external scripts", () => {
-    const html = renderAdminPage(true);
+    const html = renderAdminPage("login");
 
     assert.match(
       html,
@@ -18,12 +18,21 @@ describe("admin page renderer", () => {
   });
 
   it("renders the application shell separately from the login form", () => {
-    const html = renderAdminPage(false);
+    const html = renderAdminPage("application");
 
     assert.match(html, /data-perpay-admin-page="application"/);
     assert.match(html, /id="admin-main"/);
     assert.match(html, /id="step-up-dialog"/);
     assert.doesNotMatch(html, /id="login-form"/);
+  });
+
+  it("renders first-time password setup without a setup code or username", () => {
+    const html = renderAdminPage("setup");
+
+    assert.match(html, /data-perpay-admin-page="setup"/);
+    assert.match(html, /id="setup-password"/);
+    assert.match(html, /id="setup-password-confirmation"/);
+    assert.doesNotMatch(html, /setup-code|setup-token|login-username/i);
   });
 });
 

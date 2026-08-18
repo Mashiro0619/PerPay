@@ -46,7 +46,7 @@ export interface ProviderIdentityInput {
 }
 
 export interface ProviderIdentity {
-  readonly providerAccountKey: typeof LEDGER_PROVIDER_ACCOUNT_KEY;
+  readonly providerAccountKey: string;
   readonly providerKind: typeof LEDGER_PROVIDER_KIND;
   readonly endpoint: string;
   readonly externalAccountId: string;
@@ -56,6 +56,14 @@ export interface ProviderIdentity {
 
 export interface ProviderIdentityBinding extends ProviderIdentity {
   readonly boundAt: number;
+}
+
+export interface ProviderIdentityActivation extends ProviderIdentityBinding {
+  readonly activationId: string;
+  readonly sequence: number;
+  readonly previousProviderAccountKey: string | null;
+  readonly activatedAt: number;
+  readonly reason: "MIGRATION" | "CONFIG_SYNC";
 }
 
 export interface LedgerWindow {
@@ -434,9 +442,6 @@ export function normalizeProviderAccountKey(value: string | undefined): string {
 /** Canonical, secret-independent identity used to bind the logical ledger namespace. */
 export function normalizeProviderIdentity(input: ProviderIdentityInput): ProviderIdentity {
   const providerAccountKey = normalizeProviderAccountKey(input.providerAccountKey);
-  if (providerAccountKey !== LEDGER_PROVIDER_ACCOUNT_KEY) {
-    throw new RangeError("provider identity can only bind the primary account");
-  }
   if (input.providerKind !== LEDGER_PROVIDER_KIND) {
     throw new RangeError("provider identity kind is invalid");
   }

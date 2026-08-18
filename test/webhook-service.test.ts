@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash, createHmac } from "node:crypto";
 import { describe, it } from "node:test";
 
-import type { WebhookRuntimeConfig } from "../src/config.ts";
+import type { WebhookDeliveryConfig } from "../src/notifications/service.ts";
 import type { WebhookDelivery } from "../src/notifications/model.ts";
 import {
   WebhookDeliveryService,
@@ -36,12 +36,8 @@ const PAYLOAD_JSON = JSON.stringify({
 });
 const WEBHOOK_SECRET = Buffer.alloc(32, 0x5a).toString("base64url");
 
-const config: Extract<WebhookRuntimeConfig, { readonly enabled: true }> = Object.freeze({
-  enabled: true,
-  allowedOrigin: "https://hooks.example.test",
-  allowedOriginFingerprint: "a".repeat(64),
+const config: WebhookDeliveryConfig = Object.freeze({
   secret: WEBHOOK_SECRET,
-  signingKeyFingerprint: "b".repeat(64),
   timeoutMilliseconds: 5_000,
   maximumAttempts: 5,
   retryBaseMilliseconds: 1_000,
@@ -460,7 +456,7 @@ function claimedAttempt(): ClaimedWebhookAttempt {
     key: {
       keyVersion: 1,
       keyId: KEY_ID,
-      secretFingerprint: config.signingKeyFingerprint,
+       secretFingerprint: "b".repeat(64),
       activatedAt: 500,
       retiredAt: null,
     },

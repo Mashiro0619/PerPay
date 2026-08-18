@@ -8,8 +8,19 @@ export const MAX_ORDER_DESCRIPTION_CHARACTERS = 200;
 export const MAX_ORDER_DESCRIPTION_BYTES = MAX_ORDER_DESCRIPTION_CHARACTERS * 4;
 export const MAX_NOTIFY_URL_BYTES = 4096;
 export const IDEMPOTENCY_KEY_DIGEST_VERSION = 1;
+export const IDEMPOTENCY_KEY_DIGEST_ALGORITHM = "sha256";
 export const CREATE_ORDER_REQUEST_FINGERPRINT_VERSION = 1;
 export const MAX_ORDER_CLOCK_AHEAD_MILLISECONDS = 5 * 60 * 1000;
+
+export function digestIdempotencyKey(apiClientId: string, idempotencyKey: string): string {
+  return createHash(IDEMPOTENCY_KEY_DIGEST_ALGORITHM)
+    .update(`perpay:idempotency-key:v${IDEMPOTENCY_KEY_DIGEST_VERSION}`, "ascii")
+    .update("\0", "ascii")
+    .update(apiClientId, "utf8")
+    .update("\0", "ascii")
+    .update(idempotencyKey, "utf8")
+    .digest("hex");
+}
 
 export function orderEventDetailsFingerprint(detailsJson: string): string {
   return createHash("sha256")

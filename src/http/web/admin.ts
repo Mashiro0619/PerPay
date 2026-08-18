@@ -1,8 +1,14 @@
 import { WEB_ASSET_URLS } from "./assets.ts";
 
-export function renderAdminPage(login = false): string {
-  const title = login ? "管理员登录 - PerPay" : "管理后台 - PerPay";
-  const body = login ? loginBody() : applicationBody();
+export type AdminPageMode = "setup" | "login" | "application";
+
+export function renderAdminPage(mode: AdminPageMode = "application"): string {
+  const title = mode === "setup"
+    ? "设置管理员密码 - PerPay"
+    : mode === "login"
+      ? "管理员登录 - PerPay"
+      : "管理后台 - PerPay";
+  const body = mode === "setup" ? setupBody() : mode === "login" ? loginBody() : applicationBody();
   return `<!doctype html>
 <html class="uzu-root" lang="zh-CN" data-theme="light" data-uzu-theme-key="perpay-admin-theme">
 <head>
@@ -16,10 +22,44 @@ export function renderAdminPage(login = false): string {
   <script src="${WEB_ASSET_URLS.usuzumiScript}" defer></script>
   <script src="${WEB_ASSET_URLS.adminScript}" defer></script>
 </head>
-<body class="uzu-app" data-perpay-admin-page="${login ? "login" : "application"}">
+<body class="uzu-app" data-perpay-admin-page="${mode}">
 ${body}
 </body>
 </html>`;
+}
+
+function setupBody(): string {
+  return `
+  <main class="uzu-center perpay-auth-shell">
+    <section class="uzu-card perpay-auth-panel" aria-labelledby="setup-title">
+      <a class="uzu-brand-link perpay-wordmark" href="/admin/setup" aria-label="PerPay 管理后台">PerPay</a>
+      <div class="uzu-title-pair">
+        <h1 id="setup-title">设置管理员密码</h1>
+        <p>这是首次启动。设置完成后会转到登录页，请使用刚设置的密码登录。</p>
+      </div>
+      <div class="uzu-alert uzu-alert-danger" id="setup-error" role="alert" hidden></div>
+      <form class="uzu-form" id="setup-form" action="/api/admin/v1/setup" method="post" data-uzu-form novalidate>
+        <label class="uzu-field" data-uzu-field>
+          <span class="uzu-label">管理员密码</span>
+          <span class="uzu-password" data-uzu-password>
+            <input class="uzu-input uzu-password-input" id="setup-password" name="password" type="password" autocomplete="new-password" minlength="12" required autofocus>
+            <button class="uzu-icon-button uzu-password-toggle" type="button" data-uzu-password-toggle aria-label="显示密码"></button>
+          </span>
+          <span class="uzu-help">至少 12 个字符。</span>
+          <span class="uzu-form-error" data-uzu-form-error hidden>请输入至少 12 个字符的密码。</span>
+        </label>
+        <label class="uzu-field" data-uzu-field>
+          <span class="uzu-label">确认密码</span>
+          <span class="uzu-password" data-uzu-password>
+            <input class="uzu-input uzu-password-input" id="setup-password-confirmation" type="password" autocomplete="new-password" minlength="12" required>
+            <button class="uzu-icon-button uzu-password-toggle" type="button" data-uzu-password-toggle aria-label="显示密码"></button>
+          </span>
+          <span class="uzu-form-error" data-uzu-form-error hidden>请再次输入相同的密码。</span>
+        </label>
+        <button class="uzu-button uzu-button-primary perpay-full-button" id="setup-submit" type="submit">完成设置</button>
+      </form>
+    </section>
+  </main>`;
 }
 
 function loginBody(): string {
@@ -34,14 +74,9 @@ function loginBody(): string {
       <div class="uzu-alert uzu-alert-danger" id="login-error" role="alert" hidden></div>
       <form class="uzu-form" id="login-form" action="/api/admin/v1/session/login" method="post" data-uzu-form novalidate>
         <label class="uzu-field" data-uzu-field>
-          <span class="uzu-label">用户名</span>
-          <input class="uzu-input" id="login-username" name="username" autocomplete="username" maxlength="64" required autofocus>
-          <span class="uzu-form-error" data-uzu-form-error hidden>请输入用户名。</span>
-        </label>
-        <label class="uzu-field" data-uzu-field>
           <span class="uzu-label">密码</span>
           <span class="uzu-password" data-uzu-password>
-            <input class="uzu-input uzu-password-input" id="login-password" name="password" type="password" autocomplete="current-password" required>
+            <input class="uzu-input uzu-password-input" id="login-password" name="password" type="password" autocomplete="current-password" required autofocus>
             <button class="uzu-icon-button uzu-password-toggle" type="button" data-uzu-password-toggle aria-label="显示密码"></button>
           </span>
           <span class="uzu-form-error" data-uzu-form-error hidden>请输入密码。</span>
@@ -78,6 +113,7 @@ function applicationBody(): string {
         <a href="/admin/settlements" data-admin-nav="settlements">结算历史</a>
         <a href="/admin/ledger-conflicts" data-admin-nav="ledger-conflicts"><span>账务冲突</span><span class="uzu-badge uzu-badge-danger" id="nav-conflict-count" hidden></span></a>
         <a href="/admin/notifications" data-admin-nav="notifications">通知投递</a>
+        <a href="/admin/settings" data-admin-nav="settings">设置</a>
         <a href="/admin/security" data-admin-nav="security">安全</a>
       </nav>
       <div class="perpay-session-summary">

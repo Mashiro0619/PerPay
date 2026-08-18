@@ -1,6 +1,3 @@
-import { createHash } from "node:crypto";
-
-import type { AppConfig } from "../config.ts";
 import type { AppDatabase } from "../database/database.ts";
 import {
   OrderClockError,
@@ -19,7 +16,12 @@ import {
   type WebhookTargetErrorCode,
 } from "../notifications/model.ts";
 import {
-  IDEMPOTENCY_KEY_DIGEST_VERSION,
+  API_CLIENT_ID,
+  type CollectionSettings,
+  type RuntimeSettingsSnapshot,
+} from "../settings/model.ts";
+import {
+  digestIdempotencyKey,
   fingerprintCreateOrderRequest,
   type AdminOrderCursor,
   type AdminOrderDetailProjection,
@@ -31,11 +33,14 @@ import {
   type PublicCheckoutProjection,
 } from "./model.ts";
 
-export const IDEMPOTENCY_KEY_DIGEST_ALGORITHM = "sha256";
 export {
   COLLECTION_PROFILE_FINGERPRINT_VERSION,
   fingerprintCollectionCodeProfile,
 } from "./collection-profile.ts";
+export {
+  IDEMPOTENCY_KEY_DIGEST_ALGORITHM,
+  digestIdempotencyKey,
+} from "./model.ts";
 
 export type OrderErrorCode =
   | "order_not_found"
@@ -44,6 +49,7 @@ export type OrderErrorCode =
   | "amount_slots_exhausted"
   | "checkout_not_found"
   | "order_clock_unavailable"
+  | "system_not_configured"
   | "webhook_disabled"
   | "webhook_target_invalid"
   | "webhook_target_not_allowed";
@@ -75,29 +81,35 @@ interface WebhookTargetDecision {
 
 export class OrderService {
   readonly #store: OrderStore;
-  readonly #config: AppConfig;
+  readonly #settings: () => RuntimeSettingsSnapshot;
 
   constructor(
     database: AppDatabase,
-    config: AppConfig,
+    settings: () => RuntimeSettingsSnapshot,
     physicalClock?: () => number,
   ) {
-    this.#store = new OrderStore(
-      database,
-      physicalClock,
-      config.checkoutKeyRotationMilliseconds,
-      config.checkoutTerminalObservationMilliseconds,
-    );
-    this.#config = config;
+    this.#store = new OrderStore(database, physicalClock);
+    this.#settings = settings;
   }
 
-  initialize(): SyncCollectionProfileResult {
+  initialize(): SyncCollectionProfileResult | null {
+    const settings = this.#settings();
+    if (settings.collection === null || settings.activeProviderAccountKey === null) return null;
+    return this.syncCollectionProfile(settings.collection, settings.activeProviderAccountKey);
+  }
+
+  syncCollectionProfile(
+    collection: CollectionSettings,
+    providerAccountKey: string,
+  ): SyncCollectionProfileResult {
     const { payloadFingerprint, profileFingerprint } = fingerprintCollectionCodeProfile(
-      this.#config.collectionCodePayload,
+      collection.codePayload,
+      providerAccountKey,
     );
     return this.#runStoreOperation(() =>
       this.#store.syncCollectionProfile({
-        codePayload: this.#config.collectionCodePayload,
+        providerAccountKey,
+        codePayload: collection.codePayload,
         payloadFingerprint,
         profileFingerprint,
       }),
@@ -105,20 +117,25 @@ export class OrderService {
   }
 
   create(
-    apiClientId: string,
     request: CreateOrderRequest,
     beforeCreate?: (() => void) | undefined,
   ): CreateOrderResult {
-    const webhookTarget = this.#prepareWebhookTarget(request);
+    const settings = this.#configuredSettings();
+    this.syncCollectionProfile(settings.collection, settings.providerAccountKey);
+    const webhookTarget = this.#prepareWebhookTarget(request, settings.webhook);
     const result = this.#runStoreOperation(() =>
       this.#store.createOrder(
         {
-          apiClientId,
+          apiClientId: API_CLIENT_ID,
           request,
-          idempotencyKeyDigest: digestIdempotencyKey(apiClientId, request.idempotency_key),
+          idempotencyKeyDigest: digestIdempotencyKey(API_CLIENT_ID, request.idempotency_key),
           requestFingerprint: fingerprintCreateOrderRequest(request),
-          ttlMilliseconds: this.#config.orderTtlSeconds * 1000,
-          amountOffsetMaximumCents: this.#config.amountOffsetMaximumCents,
+          ttlMilliseconds: settings.collection.orderTtlSeconds * 1000,
+          amountOffsetMaximumCents: settings.collection.amountOffsetMaximumCents,
+          checkoutKeyRotationMilliseconds: settings.advanced.checkoutKeyRotationDays *
+            24 * 60 * 60 * 1_000,
+          checkoutTerminalObservationMilliseconds: settings.advanced
+            .checkoutTerminalObservationSeconds * 1_000,
           webhookTarget: webhookTarget.target,
           webhookTargetRejection: webhookTarget.rejection,
         },
@@ -151,15 +168,17 @@ export class OrderService {
     }
   }
 
-  get(apiClientId: string, orderId: string): OrderProjection {
-    const aggregate = this.#runStoreOperation(() => this.#store.orderById(apiClientId, orderId));
+  get(orderId: string): OrderProjection {
+    const aggregate = this.#runStoreOperation(() =>
+      this.#store.orderById(API_CLIENT_ID, orderId)
+    );
     if (!aggregate) throw orderNotFound();
     return this.#projectOrder(aggregate);
   }
 
-  getByMerchantOrderNumber(apiClientId: string, merchantOrderNo: string): OrderProjection {
+  getByMerchantOrderNumber(merchantOrderNo: string): OrderProjection {
     const aggregate = this.#runStoreOperation(() =>
-      this.#store.orderByMerchantOrderNumber(apiClientId, merchantOrderNo),
+      this.#store.orderByMerchantOrderNumber(API_CLIENT_ID, merchantOrderNo),
     );
     if (!aggregate) throw orderNotFound();
     return this.#projectOrder(aggregate);
@@ -187,14 +206,16 @@ export class OrderService {
 
   adminGetByMerchantOrderNumber(merchantOrderNo: string): AdminOrderDetailProjection {
     const order = this.#runStoreOperation(() =>
-      this.#store.adminOrderByMerchantOrderNumber(this.#config.apiClientId, merchantOrderNo),
+      this.#store.adminOrderByMerchantOrderNumber(API_CLIENT_ID, merchantOrderNo),
     );
     if (!order) throw orderNotFound();
     return this.#projectAdminOrderDetail(order);
   }
 
-  close(apiClientId: string, orderId: string): OrderProjection {
-    const aggregate = this.#runStoreOperation(() => this.#store.closeOrder(apiClientId, orderId));
+  close(orderId: string): OrderProjection {
+    const aggregate = this.#runStoreOperation(() =>
+      this.#store.closeOrder(API_CLIENT_ID, orderId)
+    );
     if (!aggregate) throw orderNotFound();
     return this.#projectOrder(aggregate);
   }
@@ -289,17 +310,52 @@ export class OrderService {
     }
   }
 
-  #prepareWebhookTarget(request: CreateOrderRequest): WebhookTargetDecision {
+  #configuredSettings(): {
+    readonly collection: CollectionSettings;
+    readonly providerAccountKey: string;
+    readonly webhook: RuntimeSettingsSnapshot["webhook"];
+    readonly advanced: RuntimeSettingsSnapshot["advanced"];
+  } {
+    const settings = this.#settings();
+    if (
+      settings.collection === null ||
+      settings.provider === null ||
+      settings.apiSecret === null ||
+      settings.activeProviderAccountKey === null
+    ) {
+      throw new OrderError(
+        "system_not_configured",
+        "收款系统尚未完成配置",
+      );
+    }
+    return {
+      collection: settings.collection,
+      providerAccountKey: settings.activeProviderAccountKey,
+      webhook: settings.webhook,
+      advanced: settings.advanced,
+    };
+  }
+
+  #prepareWebhookTarget(
+    request: CreateOrderRequest,
+    webhook: RuntimeSettingsSnapshot["webhook"],
+  ): WebhookTargetDecision {
     if (request.notify_url === undefined) return { target: null };
-    if (!this.#config.webhook.enabled) {
+    if (!webhook.enabled) {
       return {
         target: null,
         rejection: { url: request.notify_url, code: "webhook_disabled" },
       };
     }
+    if (webhook.allowedOrigin === null || webhook.secret === null) {
+      throw new OrderError(
+        "system_not_configured",
+        "通知功能尚未完成配置",
+      );
+    }
     try {
       return {
-        target: prepareWebhookTarget(request.notify_url, this.#config.webhook.allowedOrigin),
+        target: prepareWebhookTarget(request.notify_url, webhook.allowedOrigin),
       };
     } catch (error) {
       if (!(error instanceof WebhookTargetError)) throw error;
@@ -326,16 +382,6 @@ function webhookTargetOrderError(code: WebhookTargetErrorCode): OrderError {
     case "webhook_target_invalid":
       return new OrderError(code, "notify_url 格式无效");
   }
-}
-
-export function digestIdempotencyKey(apiClientId: string, idempotencyKey: string): string {
-  return createHash(IDEMPOTENCY_KEY_DIGEST_ALGORITHM)
-    .update(`perpay:idempotency-key:v${IDEMPOTENCY_KEY_DIGEST_VERSION}`, "ascii")
-    .update("\0", "ascii")
-    .update(apiClientId, "utf8")
-    .update("\0", "ascii")
-    .update(idempotencyKey, "utf8")
-    .digest("hex");
 }
 
 function checkoutProjection(aggregate: Pick<StoredOrderAggregate, "order">) {

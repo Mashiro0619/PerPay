@@ -398,6 +398,12 @@ async function withWebhookContext(
          ) VALUES (?, 1, ?, ?, NULL)`,
       ).run(API_CLIENT_ID, "a".repeat(64), now);
     });
+    // Bind the provider generation before creating the collection profile. Schema v14
+    // records an immutable profile-to-provider link at profile creation time; creating
+    // the profile first would leave the legacy `primary` profile without that link and
+    // correctly make later manual settlement ineligible.
+    const ledger = new LedgerStore(database);
+    ledger.bindProviderIdentity(PROVIDER_IDENTITY, now);
     const orders = new OrderStore(database, () => now);
     const { payloadFingerprint, profileFingerprint } = fingerprintCollectionCodeProfile(
       "https://qr.example.test/personal",
@@ -426,8 +432,6 @@ async function withWebhookContext(
       throw new Error(`expected a created order, received ${created.kind}`);
     }
 
-    const ledger = new LedgerStore(database);
-    ledger.bindProviderIdentity(PROVIDER_IDENTITY, now);
     const entry = recordLedgerEntry(
       ledger,
       "webhook-store-credit",

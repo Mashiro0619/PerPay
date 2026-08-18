@@ -9,6 +9,8 @@ import {
 
 const MAX_AUDIT_DETAILS_BYTES = 8 * 1024;
 
+export const ADMIN_USERNAME = "admin" as const;
+
 export const SESSION_IDLE_TTL_MS = 30 * 60 * 1000;
 export const SESSION_ABSOLUTE_TTL_MS = 12 * 60 * 60 * 1000;
 export const STEP_UP_TTL_MS = 10 * 60 * 1000;
@@ -208,11 +210,11 @@ export class IdentityReadTransaction {
 }
 
 export class IdentityTransaction extends IdentityReadTransaction {
-  initializeAdmin(username: string, passwordHash: string, now: number): boolean {
+  initializeAdmin(passwordHash: string, now: number): boolean {
     const existing = this.adminIdentity();
     if (existing) {
-      if (existing.username !== username) {
-        throw new Error("configured administrator username does not match the initialized identity");
+      if (existing.username !== ADMIN_USERNAME) {
+        throw new Error("initialized administrator username is invalid");
       }
       return false;
     }
@@ -224,7 +226,7 @@ export class IdentityTransaction extends IdentityReadTransaction {
            password_changed_at, created_at, updated_at
          ) VALUES (1, ?, ?, 1, ?, ?, ?)`,
       )
-      .run(username, passwordHash, now, now, now);
+      .run(ADMIN_USERNAME, passwordHash, now, now, now);
     return true;
   }
 
@@ -370,10 +372,7 @@ export class IdentityTransaction extends IdentityReadTransaction {
     const inWindow = existing !== undefined && now - existing.windowStartedAt < AUTH_WINDOW_MS;
     const failureCount = inWindow ? existing.failureCount + 1 : 1;
     const windowStartedAt = inWindow ? existing.windowStartedAt : now;
-    const exponent = Math.max(0, failureCount - AUTH_FAILURE_THRESHOLD);
-    const delay = failureCount >= AUTH_FAILURE_THRESHOLD
-      ? Math.min(AUTH_WINDOW_MS, 30_000 * 2 ** Math.min(exponent, 5))
-      : 0;
+    const delay = authFailureDelay(failureCount);
     const blockedUntil = now + delay;
     this.connection
       .prepare(
@@ -392,6 +391,29 @@ export class IdentityTransaction extends IdentityReadTransaction {
 
   resetAuthLimit(sourceHash: string): void {
     this.connection.prepare("DELETE FROM admin_auth_limits WHERE source_hash = ?").run(sourceHash);
+  }
+
+  resetAuthLimitThrough(sourceHash: string, observed: AuthLimit, now: number): AuthLimit | undefined {
+    const current = this.authLimit(sourceHash);
+    if (
+      current === undefined ||
+      current.windowStartedAt !== observed.windowStartedAt ||
+      current.failureCount < observed.failureCount
+    ) {
+      return current;
+    }
+    const remaining = current.failureCount - observed.failureCount;
+    if (remaining === 0) {
+      this.resetAuthLimit(sourceHash);
+      return undefined;
+    }
+    const blockedUntil = now + authFailureDelay(remaining);
+    this.connection.prepare(
+      `UPDATE admin_auth_limits
+          SET window_started_at = ?, failure_count = ?, blocked_until = ?, updated_at = ?
+        WHERE source_hash = ?`,
+    ).run(now, remaining, blockedUntil, now, sourceHash);
+    return { failureCount: remaining, blockedUntil, windowStartedAt: now };
   }
 
   pruneIdentityState(now: number): void {
@@ -516,7 +538,14 @@ export class IdentityTransaction extends IdentityReadTransaction {
     return { clientId, keyVersion, secretFingerprint: fingerprint, enabled: true };
   }
 
-  consumeApiNonce(clientId: string, nonce: string, requestTimestamp: number, now: number): boolean {
+  consumeApiNonce(
+    clientId: string,
+    nonce: string,
+    requestTimestamp: number,
+    expectedKeyVersion: number,
+    expectedSecretFingerprint: string,
+    now: number,
+  ): boolean {
     if (
       !Number.isSafeInteger(requestTimestamp) ||
       requestTimestamp < 1 ||
@@ -536,6 +565,12 @@ export class IdentityTransaction extends IdentityReadTransaction {
     }
     const client = this.activeApiClient(clientId);
     if (!client || !client.enabled) return false;
+    if (
+      client.keyVersion !== expectedKeyVersion ||
+      client.secretFingerprint !== expectedSecretFingerprint
+    ) {
+      return false;
+    }
     this.connection.prepare("DELETE FROM api_nonces WHERE expires_at <= ?").run(now);
     const result = this.connection
       .prepare(
@@ -616,6 +651,13 @@ export function appendAuditEvent(
   if (Number(result.changes) !== 1) throw new Error("audit event was not appended");
   const sequence = Number(result.lastInsertRowid);
   return { sequence, eventId, eventHash, previousHash };
+}
+
+function authFailureDelay(failureCount: number): number {
+  const exponent = Math.max(0, failureCount - AUTH_FAILURE_THRESHOLD);
+  return failureCount >= AUTH_FAILURE_THRESHOLD
+    ? Math.min(AUTH_WINDOW_MS, 30_000 * 2 ** Math.min(exponent, 5))
+    : 0;
 }
 
 function validateAuditInput(input: AuditInput): void {

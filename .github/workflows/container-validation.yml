@@ -50,13 +50,9 @@ jobs:
             app:
               image: ${IMAGE}
               environment:
-                PERPAY_INITIAL_ADMIN_PASSWORD: "validation-only-admin-password"
-                PERPAY_API_SECRET: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-                PERPAY_COLLECTION_CODE_PAYLOAD: "https://qr.invalid/validation-collection-code"
-                PERPAY_ALIPAY_ENABLED: "false"
-                PERPAY_WEBHOOK_ENABLED: "false"
+                PERPAY_MASTER_KEY: "2222222222222222222222222222222222222222222222222222222222222222"
               healthcheck:
-                test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+                test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:6190/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
             backup:
               image: ${IMAGE}
             maintenance:
@@ -92,9 +88,9 @@ jobs:
             *) exit 1 ;;
           esac
           compose exec -T app node -e \
-            "fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+            "fetch('http://127.0.0.1:6190/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
           compose exec -T app node -e \
-            "fetch('http://127.0.0.1:8080/readyz').then(async r=>{const value=await r.json();if(r.status!==503||value.status!=='not_ready')process.exit(1)}).catch(()=>process.exit(1))"
+            "fetch('http://127.0.0.1:6190/readyz').then(async r=>{const value=await r.json();if(r.status!==503||value.status!=='not_ready')process.exit(1)}).catch(()=>process.exit(1))"
 
           instance_before="$(compose exec -T app node --input-type=module -e \
             "import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync('/data/perpay.sqlite3',{readOnly:true});try{console.log(db.prepare(\"SELECT value FROM system_metadata WHERE key = 'instance_id'\").get().value)}finally{db.close()}" | tr -d '\r')"

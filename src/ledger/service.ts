@@ -28,6 +28,7 @@ export interface LedgerIngestServiceOptions {
   readonly windowMilliseconds?: number;
   readonly safetyLagMilliseconds?: number;
   readonly maxRequestsPerRun?: number;
+  readonly initialWindowStartMilliseconds?: number;
   readonly clock?: () => number;
 }
 
@@ -58,6 +59,7 @@ export class LedgerIngestService {
   readonly #windowMilliseconds: number;
   readonly #safetyLagMilliseconds: number;
   readonly #maxRequestsPerRun: number;
+  readonly #initialWindowStartMilliseconds: number | undefined;
   readonly #clock: () => number;
   #inFlight: Promise<LedgerScanResult> | null = null;
   #abortController: AbortController | null = null;
@@ -71,6 +73,7 @@ export class LedgerIngestService {
     this.#windowMilliseconds = options.windowMilliseconds ?? DEFAULT_WINDOW_MILLISECONDS;
     this.#safetyLagMilliseconds = options.safetyLagMilliseconds ?? DEFAULT_SAFETY_LAG_MILLISECONDS;
     this.#maxRequestsPerRun = options.maxRequestsPerRun ?? DEFAULT_MAX_REQUESTS_PER_RUN;
+    this.#initialWindowStartMilliseconds = options.initialWindowStartMilliseconds;
     this.#clock = options.clock ?? (() => Date.now());
     if (!Number.isSafeInteger(this.#pageSize) || this.#pageSize < 1 || this.#pageSize > 2_000) {
       throw new RangeError("ledger scanner page size is invalid");
@@ -90,6 +93,13 @@ export class LedgerIngestService {
       this.#maxRequestsPerRun > 100_000
     ) {
       throw new RangeError("ledger scanner request budget is invalid");
+    }
+    if (
+      this.#initialWindowStartMilliseconds !== undefined &&
+      (!Number.isSafeInteger(this.#initialWindowStartMilliseconds) ||
+        this.#initialWindowStartMilliseconds < 0)
+    ) {
+      throw new RangeError("ledger scanner initial window start is invalid");
     }
   }
 
@@ -126,7 +136,13 @@ export class LedgerIngestService {
   async #run(reason: string, signal: AbortSignal): Promise<LedgerScanResult> {
     const now = safeNow(this.#clock());
     const cursor = this.#store.getCursor(this.#providerAccountKey);
-    const window = chooseWindow(cursor, now, this.#windowMilliseconds, this.#safetyLagMilliseconds);
+    const window = chooseWindow(
+      cursor,
+      now,
+      this.#windowMilliseconds,
+      this.#safetyLagMilliseconds,
+      this.#initialWindowStartMilliseconds,
+    );
     if (window === null) {
       return emptyResult("SKIPPED", reason);
     }
@@ -331,6 +347,7 @@ function chooseWindow(
   now: number,
   windowMilliseconds: number,
   safetyLagMilliseconds: number,
+  initialWindowStartMilliseconds?: number,
 ): ScanWindow | null {
   const endMilliseconds = now - safetyLagMilliseconds;
   if (!Number.isSafeInteger(endMilliseconds) || endMilliseconds <= 0) return null;
@@ -347,7 +364,10 @@ function chooseWindow(
     : Math.min(endMilliseconds, anchor + windowMilliseconds);
   const boundedEnd = formatShanghai(boundedEndMilliseconds);
   const startMilliseconds = anchor === null
-    ? boundedEndMilliseconds - windowMilliseconds
+    ? Math.max(
+        boundedEndMilliseconds - windowMilliseconds,
+        initialWindowStartMilliseconds ?? 0,
+      )
     : anchor - cursor!.overlapMilliseconds;
   const start = formatShanghai(Math.max(0, startMilliseconds));
   if (start >= boundedEnd) return null;

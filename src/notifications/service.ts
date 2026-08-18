@@ -1,4 +1,3 @@
-import type { WebhookRuntimeConfig } from "../config.ts";
 import {
   assessWebhookAck,
   webhookSignature,
@@ -14,6 +13,14 @@ import {
   type WebhookTransportErrorCode,
 } from "./transport.ts";
 
+export interface WebhookDeliveryConfig {
+  readonly secret: string;
+  readonly timeoutMilliseconds: number;
+  readonly maximumAttempts: number;
+  readonly retryBaseMilliseconds: number;
+  readonly retryMaximumMilliseconds: number;
+}
+
 export interface WebhookProcessResult {
   readonly processed: boolean;
   readonly deliveryId: string | null;
@@ -24,7 +31,7 @@ export interface WebhookProcessResult {
 
 export interface WebhookDeliveryServiceOptions {
   readonly store: WebhookDeliveryStore;
-  readonly config: Extract<WebhookRuntimeConfig, { readonly enabled: true }>;
+  readonly config: WebhookDeliveryConfig;
   readonly transport: WebhookTransport;
   readonly clock?: (() => number) | undefined;
   readonly leaseMilliseconds?: number | undefined;
@@ -42,7 +49,7 @@ export interface WebhookDeliveryStore {
 
 export class WebhookDeliveryService {
   readonly #store: WebhookDeliveryStore;
-  readonly #config: Extract<WebhookRuntimeConfig, { readonly enabled: true }>;
+  readonly #config: WebhookDeliveryConfig;
   readonly #transport: WebhookTransport;
   readonly #clock: () => number;
   readonly #leaseMilliseconds: number;

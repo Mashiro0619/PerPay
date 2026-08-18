@@ -24,7 +24,7 @@ LABEL org.opencontainers.image.title="PerPay" \
 
 ENV NODE_ENV=production \
     PERPAY_HOST=0.0.0.0 \
-    PERPAY_PORT=8080 \
+    PERPAY_PORT=6190 \
     PERPAY_DATA_DIR=/data
 
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
@@ -46,10 +46,10 @@ RUN rm -rf /usr/local/lib/node_modules /opt/yarn-* \
     && chmod 0700 /data /backups
 
 USER node
-EXPOSE 8080
+EXPOSE 6190
 VOLUME ["/data", "/backups"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5m --retries=3 \
-  CMD ["node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+  CMD ["node", "-e", "fetch('http://127.0.0.1:6190/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
 
 CMD ["node", "dist/main.js"]

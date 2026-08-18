@@ -8,32 +8,25 @@ import { describe, it } from "node:test";
 
 import { serve, type ServerType } from "@hono/node-server";
 
-import { loadConfig } from "../src/config.ts";
-import { AppDatabase } from "../src/database/database.ts";
 import { createApp } from "../src/http/app.ts";
-import { IdentityService } from "../src/identity/service.ts";
-import { OrderService } from "../src/orders/service.ts";
 import { signApiRequest } from "../src/security/api-signature.ts";
+import {
+  createConfiguredHttpServices,
+} from "./http-fixture.ts";
 
 const apiSecret = Buffer.alloc(32, 11).toString("base64url");
 const collectionCodePayload = "https://qr.alipay.com/fkx-test-code-2026";
 
 async function fixture(environment: NodeJS.ProcessEnv = {}) {
   const directory = mkdtempSync(join(tmpdir(), "perpay-http-node-"));
-  const config = loadConfig({
-    PERPAY_INITIAL_ADMIN_PASSWORD: "a-secure-local-password",
-    PERPAY_API_SECRET: apiSecret,
-    PERPAY_COLLECTION_CODE_PAYLOAD: collectionCodePayload,
-    PERPAY_DATA_DIR: directory,
-    PERPAY_PUBLIC_URL: "http://127.0.0.1:8080",
-    ...environment,
+  const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
+    directory,
+    apiSecret,
+    collectionCodePayload,
+    publicUrl: "http://127.0.0.1:6190",
+    environment,
   });
-  const database = await AppDatabase.open(config.databasePath);
-  const identity = new IdentityService(database, config);
-  await identity.initialize();
-  const orders = new OrderService(database, config);
-  orders.initialize();
-  const app = createApp({ config, database, identity, orders, startedAt: new Date() });
+  const app = createApp({ config, database, identity, settings, orders, startedAt: new Date() });
   const listening = Promise.withResolvers<AddressInfo>();
   const server = serve(
     { fetch: app.fetch, hostname: "127.0.0.1", port: 0 },
@@ -98,7 +91,7 @@ describe("Node HTTP adapter boundaries", () => {
         path: "/api/admin/v1/session/login",
         headers: {
           "content-type": "application/json",
-          origin: "http://127.0.0.1:8080",
+          origin: "http://127.0.0.1:6190",
         },
         chunks: [Buffer.alloc(16 * 1024), Buffer.from("x")],
       });
@@ -121,10 +114,10 @@ describe("Node HTTP adapter boundaries", () => {
         path: "/api/admin/v1/session/login",
         headers: {
           "content-type": "application/json",
-          origin: "http://127.0.0.1:8080",
+          origin: "http://127.0.0.1:6190",
           "x-forwarded-for": `${clientAddress}, 127.0.0.2`,
         },
-        chunks: [Buffer.from(JSON.stringify({ username: "admin", password: "wrong-password" }))],
+        chunks: [Buffer.from(JSON.stringify({ password: "wrong-password" }))],
       });
       assert.equal(failed.status, 401);
       const remoteAddressHash = test.database.read((connection) => (
@@ -144,10 +137,10 @@ describe("Node HTTP adapter boundaries", () => {
         path: "/api/admin/v1/session/login",
         headers: {
           "content-type": "application/json",
-          origin: "http://127.0.0.1:8080",
+          origin: "http://127.0.0.1:6190",
           "x-forwarded-for": "198.51.100.23:443",
         },
-        chunks: [Buffer.from(JSON.stringify({ username: "admin", password: "wrong-password" }))],
+        chunks: [Buffer.from(JSON.stringify({ password: "wrong-password" }))],
       });
       assert.equal(malformed.status, 400);
       assert.equal(

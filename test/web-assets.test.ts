@@ -31,6 +31,15 @@ describe("web asset manifest", () => {
     assert.equal(webAsset("/assets/vendor/usuzumi/2.3.0/usuzumi.min.css"), null);
   });
 
+  it("exposes the advanced checkout settings form through the admin asset", () => {
+    const adminScript = webAsset(WEB_ASSET_URLS.adminScript)?.body;
+    assert.ok(adminScript);
+    assert.match(adminScript, /settings-advanced-form/);
+    assert.match(adminScript, /\/settings\/advanced/);
+    assert.match(adminScript, /checkout_key_rotation_days/);
+    assert.match(adminScript, /checkout_terminal_observation_seconds/);
+  });
+
   it("keeps a final not-found checkout inert across browser lifecycle events", () => {
     const checkoutScript = webAsset(WEB_ASSET_URLS.checkoutScript)?.body;
     assert.ok(checkoutScript);

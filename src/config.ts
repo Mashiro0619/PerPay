@@ -1,199 +1,58 @@
-import { createHash, createPrivateKey, createPublicKey, type KeyObject } from "node:crypto";
 import { isIP } from "node:net";
 import { resolve } from "node:path";
 
 import { z } from "zod";
 
-import { isValidWebhookDnsHostname } from "./infrastructure/network/public-address.ts";
-import { pathsOverlap } from "./infrastructure/storage/path-separation.ts";
-import { MAX_COLLECTION_CODE_PAYLOAD_BYTES } from "./orders/collection-profile.ts";
 import {
   parseTrustedProxyPolicy,
   type TrustedProxyPolicy,
 } from "./infrastructure/network/trusted-proxy.ts";
+import { pathsOverlap } from "./infrastructure/storage/path-separation.ts";
 
-const placeholderPattern = /(change[_-]?me|example)/i;
-const adminUsernamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
-const apiClientIdPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/;
-const canonicalBase64UrlPattern = /^[A-Za-z0-9_-]{43}$/;
-const maximumPasswordBytes = 1024;
-const apiSecretBytes = 32;
-const maximumProviderKeyBytes = 16 * 1024;
-const maximumWebhookUrlBytes = 4096;
-const productionProviderEndpoint = "https://openapi.alipay.com" as const;
-const sandboxProviderEndpoint = "https://openapi-sandbox.dl.alipaydev.com" as const;
+const MASTER_KEY_BYTES = 32;
+const MASTER_KEY_HEX_LENGTH = MASTER_KEY_BYTES * 2;
+const masterKeyHexPattern = /^[0-9a-fA-F]{64}$/;
 
-function isCanonicalApiSecret(value: string): boolean {
-  if (!canonicalBase64UrlPattern.test(value)) return false;
-
-  const decoded = Buffer.from(value, "base64url");
-  return decoded.byteLength === apiSecretBytes && decoded.toString("base64url") === value;
-}
-
-const rawConfigSchema = z.object({
+const rawDeploymentConfigSchema = z.object({
   PERPAY_HOST: z.string().trim().min(1).default("0.0.0.0"),
-  PERPAY_PORT: z.coerce.number().int().min(1).max(65535).default(8080),
+  PERPAY_PORT: z.coerce.number().int().min(1).max(65535).default(6190),
   PERPAY_DATA_DIR: z.string().trim().min(1).default("./data"),
   PERPAY_BACKUP_DIR: z.string().trim().min(1).default("/backups"),
-  PERPAY_INITIAL_ADMIN_PASSWORD: z
-    .string()
-    .min(12)
-    .refine((value) => hasOnlyUnicodeScalarValues(value), {
-      message: "must contain only Unicode scalar values",
-    })
-    .refine((value) => Buffer.byteLength(value, "utf8") <= maximumPasswordBytes, {
-      message: `must contain at most ${maximumPasswordBytes} UTF-8 bytes`,
-    })
-    .optional(),
-  PERPAY_ADMIN_USERNAME: z.string().trim().regex(adminUsernamePattern).default("admin"),
-  PERPAY_PUBLIC_URL: z.string().trim().min(1).default("http://localhost:8080"),
+  PERPAY_MASTER_KEY: z.string().length(MASTER_KEY_HEX_LENGTH).regex(masterKeyHexPattern),
+  PERPAY_PUBLIC_URL: z.string().trim().min(1).default("http://localhost:6190"),
   PERPAY_TRUSTED_PROXY_CIDRS: z.string().default(""),
-  PERPAY_API_CLIENT_ID: z.string().trim().regex(apiClientIdPattern).default("default"),
-  PERPAY_API_SECRET: z
-    .string()
-    .refine(isCanonicalApiSecret, {
-      message: "must be the canonical unpadded base64url encoding of exactly 32 bytes",
-    }),
-  PERPAY_COLLECTION_CODE_PAYLOAD: z
-    .string()
-    .refine((value) => hasOnlyUnicodeScalarValues(value) && Array.from(value).length >= 8, {
-      message: "must contain at least 8 Unicode characters",
-    })
-    .refine((value) => value === value.trim(), {
-      message: "must not contain leading or trailing whitespace",
-    })
-    .refine((value) => !/[\u0000-\u001f\u007f]/.test(value), {
-      message: "must not contain control characters",
-    })
-    .refine((value) => Buffer.byteLength(value, "utf8") <= MAX_COLLECTION_CODE_PAYLOAD_BYTES, {
-      message: `must contain at most ${MAX_COLLECTION_CODE_PAYLOAD_BYTES} UTF-8 bytes`,
-    }),
-  PERPAY_ORDER_TTL_SECONDS: z.coerce.number().int().min(60).max(1800).default(300),
-  PERPAY_AMOUNT_OFFSET_MAX_CENTS: z.coerce.number().int().min(1).max(99).default(99),
-  PERPAY_CHECKOUT_KEY_ROTATION_DAYS: z.coerce.number().int().min(1).max(3_650).default(90),
-  PERPAY_CHECKOUT_TERMINAL_OBSERVATION_SECONDS: z.coerce
-    .number()
-    .int()
-    .min(60)
-    .max(7 * 24 * 60 * 60)
-    .default(24 * 60 * 60),
   PERPAY_BACKUP_INTERVAL_SECONDS: z.coerce
     .number()
     .int()
     .min(60 * 60)
     .max(7 * 24 * 60 * 60)
     .default(24 * 60 * 60),
-  PERPAY_ALIPAY_ENABLED: z.enum(["true", "false"]).default("false"),
-  PERPAY_ALIPAY_APP_ID: z.string().trim().regex(/^[A-Za-z0-9._-]{1,64}$/).optional(),
-  PERPAY_ALIPAY_PRIVATE_KEY: z.string().min(1).max(maximumProviderKeyBytes).optional(),
-  PERPAY_ALIPAY_PUBLIC_KEY: z.string().min(1).max(maximumProviderKeyBytes).optional(),
-  PERPAY_ALIPAY_ENDPOINT: z
-    .enum([productionProviderEndpoint, sandboxProviderEndpoint])
-    .default(productionProviderEndpoint),
-  PERPAY_ALIPAY_TIMEOUT_MILLISECONDS: z.coerce.number().int().min(1_000).max(120_000).default(8_000),
-  PERPAY_ALIPAY_SCAN_INTERVAL_SECONDS: z.coerce.number().int().min(5).max(3_600).default(10),
-  PERPAY_ALIPAY_MAX_SUCCESS_AGE_SECONDS: z.coerce.number().int().min(10).max(86_400).default(60),
-  PERPAY_WEBHOOK_ENABLED: z.enum(["true", "false"]).default("false"),
-  PERPAY_WEBHOOK_ALLOWED_ORIGIN: z.string().optional(),
-  PERPAY_WEBHOOK_SECRET: z.string().optional(),
-  PERPAY_WEBHOOK_TIMEOUT_MILLISECONDS: z.coerce.number().int().min(1_000).max(30_000).default(5_000),
-  PERPAY_WEBHOOK_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(100).default(12),
-  PERPAY_WEBHOOK_RETRY_BASE_SECONDS: z.coerce.number().int().min(1).max(3_600).default(5),
-  PERPAY_WEBHOOK_RETRY_MAX_SECONDS: z.coerce.number().int().min(1).max(86_400).default(3_600),
 });
 
-export type ProviderEndpoint = typeof productionProviderEndpoint | typeof sandboxProviderEndpoint;
-
-export type AlipayRuntimeConfig =
-  | {
-      readonly enabled: false;
-      readonly endpoint: ProviderEndpoint;
-      readonly scanIntervalMilliseconds: number;
-      readonly maximumSuccessAgeMilliseconds: number;
-    }
-  | {
-      readonly enabled: true;
-      readonly appId: string;
-      readonly privateKey: KeyObject;
-      readonly alipayPublicKey: KeyObject;
-      readonly endpoint: ProviderEndpoint;
-      readonly timeoutMilliseconds: number;
-      readonly scanIntervalMilliseconds: number;
-      readonly maximumSuccessAgeMilliseconds: number;
-      readonly applicationKeyFingerprint: string;
-      readonly alipayKeyFingerprint: string;
-    };
-
-export type WebhookRuntimeConfig =
-  | {
-      readonly enabled: false;
-    }
-  | {
-      readonly enabled: true;
-      readonly allowedOrigin: string;
-      readonly allowedOriginFingerprint: string;
-      readonly secret: string;
-      readonly signingKeyFingerprint: string;
-      readonly timeoutMilliseconds: number;
-      readonly maximumAttempts: number;
-      readonly retryBaseMilliseconds: number;
-      readonly retryMaximumMilliseconds: number;
-    };
-
-export interface AppConfig {
+export interface DeploymentConfig {
   readonly host: string;
   readonly port: number;
   readonly dataDir: string;
   readonly backupDir: string;
   readonly databasePath: string;
-  /** Used only to create the administrator when the database has no administrator yet. */
-  readonly adminPassword: string | null;
-  readonly adminUsername: string;
+  readonly masterKey: Buffer;
   readonly publicOrigin: string;
   readonly secureCookies: boolean;
   readonly trustedProxy: TrustedProxyPolicy;
-  readonly apiClientId: string;
-  readonly apiSecret: string;
-  readonly collectionCodePayload: string;
-  readonly orderTtlSeconds: number;
-  readonly amountOffsetMaximumCents: number;
-  readonly checkoutKeyRotationMilliseconds: number;
-  readonly checkoutTerminalObservationMilliseconds: number;
   readonly backupIntervalMilliseconds: number;
-  readonly alipay: AlipayRuntimeConfig;
-  readonly webhook: WebhookRuntimeConfig;
 }
 
-export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppConfig {
-  const parsed = rawConfigSchema.safeParse(environment);
+/** Temporary name retained while callers migrate to DeploymentConfig. */
+export type AppConfig = DeploymentConfig;
+
+export function loadConfig(environment: NodeJS.ProcessEnv = process.env): DeploymentConfig {
+  const parsed = rawDeploymentConfigSchema.safeParse(environment);
   if (!parsed.success) {
-    throw new Error(`配置校验失败: ${z.prettifyError(parsed.error)}`);
-  }
-
-  if (
-    parsed.data.PERPAY_INITIAL_ADMIN_PASSWORD !== undefined &&
-    placeholderPattern.test(parsed.data.PERPAY_INITIAL_ADMIN_PASSWORD)
-  ) {
-    throw new Error("配置校验失败: PERPAY_INITIAL_ADMIN_PASSWORD 不能使用示例值");
-  }
-
-  if (placeholderPattern.test(parsed.data.PERPAY_API_SECRET)) {
-    throw new Error("配置校验失败: PERPAY_API_SECRET 不能使用示例值");
-  }
-
-  if (placeholderPattern.test(parsed.data.PERPAY_COLLECTION_CODE_PAYLOAD)) {
-    throw new Error("配置校验失败: PERPAY_COLLECTION_CODE_PAYLOAD 不能使用示例值");
-  }
-
-  if (
-    parsed.data.PERPAY_INITIAL_ADMIN_PASSWORD !== undefined &&
-    parsed.data.PERPAY_API_SECRET === parsed.data.PERPAY_INITIAL_ADMIN_PASSWORD
-  ) {
-    throw new Error("配置校验失败: PERPAY_API_SECRET 不能与 PERPAY_INITIAL_ADMIN_PASSWORD 相同");
+    throw new Error(`configuration validation failed: ${z.prettifyError(parsed.error)}`);
   }
 
   if (isIP(parsed.data.PERPAY_HOST) === 0 && parsed.data.PERPAY_HOST !== "localhost") {
-    throw new Error("配置校验失败: PERPAY_HOST 必须是 IP 地址或 localhost");
+    throw new Error("configuration validation failed: PERPAY_HOST must be an IP address or localhost");
   }
 
   const publicUrl = parsePublicUrl(parsed.data.PERPAY_PUBLIC_URL);
@@ -202,20 +61,17 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     trustedProxy = parseTrustedProxyPolicy(parsed.data.PERPAY_TRUSTED_PROXY_CIDRS);
   } catch (error) {
     throw new Error(
-      `配置校验失败: ${error instanceof Error ? error.message : "PERPAY_TRUSTED_PROXY_CIDRS 无效"}`,
+      `configuration validation failed: ${
+        error instanceof Error ? error.message : "PERPAY_TRUSTED_PROXY_CIDRS is invalid"
+      }`,
       { cause: error },
     );
   }
   if (publicUrl.protocol === "https:" && trustedProxy.cidrs.length === 0) {
     throw new Error(
-      "配置校验失败: HTTPS 部署必须通过 PERPAY_TRUSTED_PROXY_CIDRS 声明实际直连的受信代理",
+      "configuration validation failed: HTTPS deployments must declare their directly connected trusted proxy with PERPAY_TRUSTED_PROXY_CIDRS",
     );
   }
-  const alipay = loadAlipayConfig(parsed.data);
-  const webhook = loadWebhookConfig(parsed.data, {
-    adminPassword: parsed.data.PERPAY_INITIAL_ADMIN_PASSWORD ?? null,
-    apiSecret: parsed.data.PERPAY_API_SECRET,
-  });
 
   const dataDir = resolve(parsed.data.PERPAY_DATA_DIR);
   const backupDir = resolve(parsed.data.PERPAY_BACKUP_DIR);
@@ -224,184 +80,24 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
       "configuration validation failed: PERPAY_DATA_DIR and PERPAY_BACKUP_DIR must be separate",
     );
   }
+
+  const masterKey = Buffer.from(parsed.data.PERPAY_MASTER_KEY, "hex");
+  if (masterKey.byteLength !== MASTER_KEY_BYTES) {
+    throw new Error("configuration validation failed: PERPAY_MASTER_KEY must encode exactly 32 bytes");
+  }
+
   return Object.freeze({
     host: parsed.data.PERPAY_HOST,
     port: parsed.data.PERPAY_PORT,
     dataDir,
     backupDir,
     databasePath: resolve(dataDir, "perpay.sqlite3"),
-    adminPassword: parsed.data.PERPAY_INITIAL_ADMIN_PASSWORD ?? null,
-    adminUsername: parsed.data.PERPAY_ADMIN_USERNAME,
+    masterKey,
     publicOrigin: publicUrl.origin,
     secureCookies: publicUrl.protocol === "https:",
     trustedProxy,
-    apiClientId: parsed.data.PERPAY_API_CLIENT_ID,
-    apiSecret: parsed.data.PERPAY_API_SECRET,
-    collectionCodePayload: parsed.data.PERPAY_COLLECTION_CODE_PAYLOAD,
-    orderTtlSeconds: parsed.data.PERPAY_ORDER_TTL_SECONDS,
-    amountOffsetMaximumCents: parsed.data.PERPAY_AMOUNT_OFFSET_MAX_CENTS,
-    checkoutKeyRotationMilliseconds:
-      parsed.data.PERPAY_CHECKOUT_KEY_ROTATION_DAYS * 24 * 60 * 60 * 1_000,
-    checkoutTerminalObservationMilliseconds:
-      parsed.data.PERPAY_CHECKOUT_TERMINAL_OBSERVATION_SECONDS * 1_000,
     backupIntervalMilliseconds: parsed.data.PERPAY_BACKUP_INTERVAL_SECONDS * 1_000,
-    alipay,
-    webhook,
   });
-}
-
-function loadWebhookConfig(
-  parsed: z.infer<typeof rawConfigSchema>,
-  secrets: { readonly adminPassword: string | null; readonly apiSecret: string },
-): WebhookRuntimeConfig {
-  if (parsed.PERPAY_WEBHOOK_ENABLED === "false") {
-    return Object.freeze({ enabled: false });
-  }
-  if (
-    parsed.PERPAY_WEBHOOK_ALLOWED_ORIGIN === undefined ||
-    parsed.PERPAY_WEBHOOK_SECRET === undefined
-  ) {
-    throw new Error(
-      "配置校验失败: 启用通知时必须填写 PERPAY_WEBHOOK_ALLOWED_ORIGIN 和 PERPAY_WEBHOOK_SECRET",
-    );
-  }
-  if (!isCanonicalApiSecret(parsed.PERPAY_WEBHOOK_SECRET)) {
-    throw new Error(
-      "配置校验失败: PERPAY_WEBHOOK_SECRET 必须是恰好 32 字节的规范无填充 base64url",
-    );
-  }
-  if (placeholderPattern.test(parsed.PERPAY_WEBHOOK_SECRET)) {
-    throw new Error("配置校验失败: PERPAY_WEBHOOK_SECRET 不能使用示例值");
-  }
-  if (
-    (secrets.adminPassword !== null && parsed.PERPAY_WEBHOOK_SECRET === secrets.adminPassword) ||
-    parsed.PERPAY_WEBHOOK_SECRET === secrets.apiSecret
-  ) {
-    throw new Error("配置校验失败: PERPAY_WEBHOOK_SECRET 不能复用管理员密码或 API 密钥");
-  }
-  if (parsed.PERPAY_WEBHOOK_RETRY_MAX_SECONDS < parsed.PERPAY_WEBHOOK_RETRY_BASE_SECONDS) {
-    throw new Error(
-      "配置校验失败: PERPAY_WEBHOOK_RETRY_MAX_SECONDS 不能小于 PERPAY_WEBHOOK_RETRY_BASE_SECONDS",
-    );
-  }
-
-  const allowedOrigin = parseWebhookOrigin(parsed.PERPAY_WEBHOOK_ALLOWED_ORIGIN);
-  return Object.freeze({
-    enabled: true,
-    allowedOrigin,
-    allowedOriginFingerprint: createHash("sha256")
-      .update(allowedOrigin, "utf8")
-      .digest("hex"),
-    secret: parsed.PERPAY_WEBHOOK_SECRET,
-    signingKeyFingerprint: createHash("sha256")
-      .update("perpay:webhook-signing-key:v1\0", "utf8")
-      .update(Buffer.from(parsed.PERPAY_WEBHOOK_SECRET, "base64url"))
-      .digest("hex"),
-    timeoutMilliseconds: parsed.PERPAY_WEBHOOK_TIMEOUT_MILLISECONDS,
-    maximumAttempts: parsed.PERPAY_WEBHOOK_MAX_ATTEMPTS,
-    retryBaseMilliseconds: parsed.PERPAY_WEBHOOK_RETRY_BASE_SECONDS * 1_000,
-    retryMaximumMilliseconds: parsed.PERPAY_WEBHOOK_RETRY_MAX_SECONDS * 1_000,
-  });
-}
-
-function loadAlipayConfig(parsed: z.infer<typeof rawConfigSchema>): AlipayRuntimeConfig {
-  const endpoint = parsed.PERPAY_ALIPAY_ENDPOINT;
-  const scanIntervalMilliseconds = parsed.PERPAY_ALIPAY_SCAN_INTERVAL_SECONDS * 1_000;
-  const maximumSuccessAgeMilliseconds = parsed.PERPAY_ALIPAY_MAX_SUCCESS_AGE_SECONDS * 1_000;
-  if (parsed.PERPAY_ALIPAY_ENABLED === "false") {
-    return Object.freeze({
-      enabled: false,
-      endpoint,
-      scanIntervalMilliseconds,
-      maximumSuccessAgeMilliseconds,
-    });
-  }
-  if (maximumSuccessAgeMilliseconds < scanIntervalMilliseconds * 2) {
-    throw new Error(
-      "配置校验失败: PERPAY_ALIPAY_MAX_SUCCESS_AGE_SECONDS 必须至少是扫描间隔的两倍",
-    );
-  }
-
-  if (
-    parsed.PERPAY_ALIPAY_APP_ID === undefined ||
-    parsed.PERPAY_ALIPAY_PRIVATE_KEY === undefined ||
-    parsed.PERPAY_ALIPAY_PUBLIC_KEY === undefined
-  ) {
-    throw new Error(
-      "配置校验失败: 启用账务采集时必须填写 PERPAY_ALIPAY_APP_ID、PERPAY_ALIPAY_PRIVATE_KEY 和 PERPAY_ALIPAY_PUBLIC_KEY",
-    );
-  }
-  if (placeholderPattern.test(parsed.PERPAY_ALIPAY_APP_ID)) {
-    throw new Error("配置校验失败: PERPAY_ALIPAY_APP_ID 不能使用示例值");
-  }
-
-  const privateKey = parseRsaKey(parsed.PERPAY_ALIPAY_PRIVATE_KEY, "private");
-  const alipayPublicKey = parseRsaKey(parsed.PERPAY_ALIPAY_PUBLIC_KEY, "public");
-  const applicationKeyFingerprint = publicKeyFingerprint(createPublicKey(privateKey));
-  const alipayKeyFingerprint = publicKeyFingerprint(alipayPublicKey);
-  if (applicationKeyFingerprint === alipayKeyFingerprint) {
-    throw new Error("配置校验失败: PERPAY_ALIPAY_PUBLIC_KEY 不能填写应用公钥");
-  }
-  return Object.freeze({
-    enabled: true,
-    appId: parsed.PERPAY_ALIPAY_APP_ID,
-    privateKey,
-    alipayPublicKey,
-    endpoint,
-    timeoutMilliseconds: parsed.PERPAY_ALIPAY_TIMEOUT_MILLISECONDS,
-    scanIntervalMilliseconds,
-    maximumSuccessAgeMilliseconds,
-    applicationKeyFingerprint,
-    alipayKeyFingerprint,
-  });
-}
-
-function parseRsaKey(value: string, kind: "private" | "public"): KeyObject {
-  const normalized = normalizeProviderKey(value, kind);
-  let key: KeyObject;
-  try {
-    key = kind === "private" ? createPrivateKey(normalized) : createPublicKey(normalized);
-  } catch (error) {
-    throw new Error(
-      `配置校验失败: PERPAY_ALIPAY_${kind === "private" ? "PRIVATE" : "PUBLIC"}_KEY 不是有效的 RSA 密钥`,
-      { cause: error },
-    );
-  }
-  if (key.type !== kind || key.asymmetricKeyType !== "rsa") {
-    throw new Error(
-      `配置校验失败: PERPAY_ALIPAY_${kind === "private" ? "PRIVATE" : "PUBLIC"}_KEY 必须是 RSA ${kind === "private" ? "私钥" : "公钥"}`,
-    );
-  }
-  const modulusLength = key.asymmetricKeyDetails?.modulusLength;
-  if (modulusLength === undefined || modulusLength < 2_048) {
-    throw new Error(
-      `配置校验失败: PERPAY_ALIPAY_${kind === "private" ? "PRIVATE" : "PUBLIC"}_KEY 至少需要 2048 位 RSA`,
-    );
-  }
-  return key;
-}
-
-function normalizeProviderKey(value: string, kind: "private" | "public"): string {
-  const trimmed = value.trim();
-  if (kind === "public" && /-----BEGIN (?:RSA )?PRIVATE KEY-----/.test(trimmed)) {
-    throw new Error("配置校验失败: PERPAY_ALIPAY_PUBLIC_KEY 不能包含私钥");
-  }
-  if (trimmed.includes("-----BEGIN")) return trimmed;
-  if (!/^[A-Za-z0-9+/=\r\n]+$/.test(trimmed)) {
-    throw new Error(
-      `配置校验失败: PERPAY_ALIPAY_${kind === "private" ? "PRIVATE" : "PUBLIC"}_KEY 格式无效`,
-    );
-  }
-  const body = trimmed.replace(/\s+/g, "");
-  const lines = body.match(/.{1,64}/g)?.join("\n") ?? "";
-  const label = kind === "private" ? "PRIVATE KEY" : "PUBLIC KEY";
-  return `-----BEGIN ${label}-----\n${lines}\n-----END ${label}-----`;
-}
-
-function publicKeyFingerprint(key: KeyObject): string {
-  return createHash("sha256")
-    .update(key.export({ type: "spki", format: "der" }))
-    .digest("hex");
 }
 
 function parsePublicUrl(value: string): URL {
@@ -409,14 +105,16 @@ function parsePublicUrl(value: string): URL {
   try {
     url = new URL(value);
   } catch {
-    throw new Error("配置校验失败: PERPAY_PUBLIC_URL 必须是有效的绝对 URL");
+    throw new Error("configuration validation failed: PERPAY_PUBLIC_URL must be an absolute URL");
   }
 
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("配置校验失败: PERPAY_PUBLIC_URL 只支持 http 或 https");
+    throw new Error("configuration validation failed: PERPAY_PUBLIC_URL must use HTTP or HTTPS");
   }
   if (url.protocol === "http:" && !isLoopbackHostname(url.hostname)) {
-    throw new Error("配置校验失败: PERPAY_PUBLIC_URL 仅允许回环地址使用明文 HTTP");
+    throw new Error(
+      "configuration validation failed: plain HTTP is only allowed for a loopback PERPAY_PUBLIC_URL",
+    );
   }
   if (
     url.username !== "" ||
@@ -425,10 +123,9 @@ function parsePublicUrl(value: string): URL {
     url.search !== "" ||
     url.hash !== ""
   ) {
-    throw new Error("配置校验失败: PERPAY_PUBLIC_URL 只能包含 origin，不能包含凭据、路径、查询或片段");
-  }
-  if (placeholderPattern.test(url.hostname)) {
-    throw new Error("配置校验失败: PERPAY_PUBLIC_URL 不能使用示例域名");
+    throw new Error(
+      "configuration validation failed: PERPAY_PUBLIC_URL must contain only an origin",
+    );
   }
   return url;
 }
@@ -441,54 +138,4 @@ function isLoopbackHostname(hostname: string): boolean {
   const family = isIP(address);
   if (family === 4) return address.startsWith("127.");
   return family === 6 && address === "::1";
-}
-
-function parseWebhookOrigin(value: string): string {
-  if (Buffer.byteLength(value, "utf8") > maximumWebhookUrlBytes) {
-    throw new Error(
-      `配置校验失败: PERPAY_WEBHOOK_ALLOWED_ORIGIN 最多允许 ${maximumWebhookUrlBytes} 个 UTF-8 字节`,
-    );
-  }
-  if (value !== value.trim()) {
-    throw new Error("配置校验失败: PERPAY_WEBHOOK_ALLOWED_ORIGIN 不能包含首尾空白");
-  }
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new Error("配置校验失败: PERPAY_WEBHOOK_ALLOWED_ORIGIN 必须是有效的绝对 URL");
-  }
-  if (url.protocol !== "https:") {
-    throw new Error("配置校验失败: PERPAY_WEBHOOK_ALLOWED_ORIGIN 只支持 HTTPS");
-  }
-  if (
-    value.includes("#") ||
-    value.endsWith("?") ||
-    url.username !== "" ||
-    url.password !== "" ||
-    url.pathname !== "/" ||
-    url.search !== "" ||
-    url.hash !== ""
-  ) {
-    throw new Error(
-      "配置校验失败: PERPAY_WEBHOOK_ALLOWED_ORIGIN 只能包含 HTTPS origin",
-    );
-  }
-  if (placeholderPattern.test(url.hostname)) {
-    throw new Error("配置校验失败: PERPAY_WEBHOOK_ALLOWED_ORIGIN 不能使用示例域名");
-  }
-  if (!isValidWebhookDnsHostname(url.hostname)) {
-    throw new Error(
-      "配置校验失败: PERPAY_WEBHOOK_ALLOWED_ORIGIN 必须使用不带尾点的 DNS 域名",
-    );
-  }
-  return url.origin;
-}
-
-function hasOnlyUnicodeScalarValues(value: string): boolean {
-  for (const character of value) {
-    const codePoint = character.codePointAt(0);
-    if (codePoint !== undefined && codePoint >= 0xd800 && codePoint <= 0xdfff) return false;
-  }
-  return true;
 }

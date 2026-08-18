@@ -22,6 +22,8 @@ tags:
     description: Public token-scoped checkout state.
   - name: Admin Session
     description: Same-origin administrator login, session, and recent-password verification.
+  - name: Admin Settings
+    description: Runtime payment, provider, API credential, and notification configuration.
   - name: Admin Orders
     description: Session-authenticated order lookup for exception handling and operational inspection.
   - name: Ledger Operations
@@ -90,6 +92,38 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Readiness'
+  /api/admin/v1/setup:
+    post:
+      tags: [Admin Session]
+      operationId: setupAdministrator
+      summary: Set the administrator password on an uninitialized instance
+      description: |
+        This endpoint is available only until the first administrator password is stored.
+        The administrator name is fixed as `admin`; the request contains only the password.
+        A successful setup closes this endpoint permanently but does not create a session. The
+        administrator must then use the regular login endpoint. The request `Origin` must exactly
+        equal the configured public origin.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminSetupRequest'
+      responses:
+        '204':
+          description: Administrator password stored and setup permanently closed; no session is created
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/AdminForbidden' }
+        '409': { $ref: '#/components/responses/SetupAlreadyInitialized' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/AdminRateLimited' }
+        '503': { $ref: '#/components/responses/SetupUnavailable' }
   /api/admin/v1/session/login:
     post:
       tags: [Admin Session]
@@ -283,6 +317,275 @@ paths:
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '429': { $ref: '#/components/responses/AdminRateLimited' }
         '503': { $ref: '#/components/responses/AdminUnavailable' }
+  /api/admin/v1/settings:
+    get:
+      tags: [Admin Settings]
+      operationId: getRuntimeSettings
+      summary: Read runtime configuration and masked secret metadata
+      description: >-
+        Returns only non-secret values, completion state, and masked secret metadata. Secret
+        plaintext is never included. All responses use `Cache-Control: no-store`.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: Current runtime settings
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RuntimeSettingsEnvelope' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '503': { $ref: '#/components/responses/SettingsUnavailable' }
+  /api/admin/v1/settings/collection:
+    put:
+      tags: [Admin Settings]
+      operationId: updateCollectionSettings
+      summary: Save the collection code and unique-amount policy
+      description: >-
+        The supplied revision must equal the current settings revision. This payment-affecting
+        mutation pauses payment readiness while the runtime is replaced. All responses use
+        `Cache-Control: no-store`.
+      x-perpay-requires-same-origin: true
+      x-perpay-requires-recent-step-up: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CollectionSettingsRequest' }
+      responses:
+        '200':
+          description: Collection settings saved and runtime settings returned
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RuntimeSettingsEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '409': { $ref: '#/components/responses/SettingsConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/SettingsValidationFailed' }
+        '503': { $ref: '#/components/responses/SettingsUnavailable' }
+  /api/admin/v1/settings/provider:
+    put:
+      tags: [Admin Settings]
+      operationId: updateProviderSettings
+      summary: Save provider application credentials and collection timing
+      description: |
+        The supplied revision must equal the current settings revision. Private and platform
+        public keys may be omitted only when retaining the same provider application identity;
+        switching environment or application ID requires both keys. A switch is rejected while
+        unsafe open payment work exists. Plaintext keys are encrypted at rest and are not returned.
+        All responses use `Cache-Control: no-store`.
+      x-perpay-requires-same-origin: true
+      x-perpay-requires-recent-step-up: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProviderSettingsRequest' }
+      responses:
+        '200':
+          description: Provider settings saved and runtime settings returned
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RuntimeSettingsEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '409': { $ref: '#/components/responses/SettingsConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/SettingsValidationFailed' }
+        '503': { $ref: '#/components/responses/SettingsUnavailable' }
+  /api/admin/v1/settings/notifications:
+    put:
+      tags: [Admin Settings]
+      operationId: updateNotificationSettings
+      summary: Save outbound notification policy
+      description: >-
+        Enabling notifications requires one public HTTPS origin. The server creates a signing
+        secret when enabling notifications for the first time, stores it encrypted, and returns
+        only masked metadata. The supplied revision must be current. All responses use
+        `Cache-Control: no-store`.
+      x-perpay-requires-same-origin: true
+      x-perpay-requires-recent-step-up: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationSettingsRequest' }
+      responses:
+        '200':
+          description: Notification settings saved and runtime settings returned
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RuntimeSettingsEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '409': { $ref: '#/components/responses/SettingsConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/SettingsValidationFailed' }
+        '503': { $ref: '#/components/responses/SettingsUnavailable' }
+  /api/admin/v1/settings/advanced:
+    put:
+      tags: [Admin Settings]
+      operationId: updateAdvancedSettings
+      summary: Save checkout lifecycle policy for new orders
+      description: >-
+        Updates the checkout token-key rotation interval and the terminal checkout observation
+        period. The supplied revision must equal the current settings revision. This change is
+        applied when a new order is created, does not change existing checkout sessions, does not
+        advance `payment_revision`, and does not restart provider or notification schedulers. All
+        responses use `Cache-Control: no-store`.
+      x-perpay-requires-same-origin: true
+      x-perpay-requires-recent-step-up: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdvancedSettingsRequest' }
+            example:
+              revision: 4
+              checkout_key_rotation_days: 90
+              checkout_terminal_observation_seconds: 86400
+      responses:
+        '200':
+          description: Advanced settings saved and runtime settings returned
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RuntimeSettingsEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '409': { $ref: '#/components/responses/SettingsConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/SettingsValidationFailed' }
+        '503': { $ref: '#/components/responses/SettingsUnavailable' }
+  /api/admin/v1/settings/api-key/actions/rotate:
+    post:
+      tags: [Admin Settings]
+      operationId: rotateApiClientSecret
+      summary: Rotate the API client secret
+      description: >-
+        Rotates the fixed `default` API client to a new key generation. The old secret becomes
+        invalid immediately. The new plaintext secret is returned only by this response; later
+        settings reads expose masked metadata only. The supplied revision must be current. Never
+        cache, log, or place this response in a URL. All responses use `Cache-Control: no-store`.
+      x-perpay-requires-same-origin: true
+      x-perpay-requires-recent-step-up: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SettingsRevisionRequest' }
+      responses:
+        '201':
+          description: API secret rotated and returned once
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiSecretRotationEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '409': { $ref: '#/components/responses/SettingsConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/SettingsValidationFailed' }
+        '503': { $ref: '#/components/responses/SettingsUnavailable' }
+  /api/admin/v1/settings/secrets/{name}/actions/reveal:
+    post:
+      tags: [Admin Settings]
+      operationId: revealRuntimeSecret
+      summary: Reveal one configured runtime secret
+      description: >-
+        Returns plaintext only after recent password verification and records an audit event.
+        The JSON request body must be an empty object. Never cache, log, or place the result in a
+        URL. All responses use `Cache-Control: no-store`.
+      x-perpay-requires-same-origin: true
+      x-perpay-requires-recent-step-up: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+        - $ref: '#/components/parameters/RuntimeSecretName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+      responses:
+        '200':
+          description: Secret plaintext returned for this response only
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SecretRevealEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '404': { $ref: '#/components/responses/SecretNotFound' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/SettingsValidationFailed' }
+        '503': { $ref: '#/components/responses/SettingsUnavailable' }
   /api/admin/v1/orders:
     get:
       tags: [Admin Orders]
@@ -1274,6 +1577,12 @@ components:
       in: header
       name: X-CSRF-Token
       description: Must exactly equal the active session's CSRF cookie and stored token digest.
+  headers:
+    NoStore:
+      description: Sensitive administrator responses must not be stored by browsers or intermediaries.
+      schema:
+        type: string
+        const: no-store
   parameters:
     RequestId:
       name: X-Request-Id
@@ -1298,6 +1607,12 @@ components:
       schema:
         type: string
         format: uri
+    RuntimeSecretName:
+      name: name
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/RuntimeSecretName'
     CandidateId:
       name: candidateId
       in: path
@@ -1410,12 +1725,16 @@ components:
     Readiness:
       type: object
       additionalProperties: false
-      required: [status]
+      required: [status, code]
       properties:
         status:
           type: string
           enum: [ready, degraded, not_ready]
           description: Degraded still uses HTTP 200; not_ready uses HTTP 503.
+        code:
+          type: [string, 'null']
+          enum: [system_not_ready, system_not_configured, reconciliation_not_ready, null]
+          description: Null when status is ready or degraded.
     DatabaseHealth:
       type: object
       additionalProperties: false
@@ -1440,7 +1759,20 @@ components:
     SystemStatus:
       type: object
       additionalProperties: false
-      required: [status, version, instance_id, database, ledger, reconciliation, webhook, backup]
+      required:
+        - status
+        - version
+        - instance_id
+        - initialized
+        - configured
+        - settings_revision
+        - payment_revision
+        - provider_account_key
+        - database
+        - ledger
+        - reconciliation
+        - webhook
+        - backup
       properties:
         status:
           type: string
@@ -1450,6 +1782,16 @@ components:
             status without making the core service unready.
         version: { type: string }
         instance_id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        initialized: { type: boolean }
+        configured: { type: boolean }
+        settings_revision:
+          type: [integer, 'null']
+          minimum: 0
+        payment_revision:
+          type: integer
+          minimum: 0
+        provider_account_key:
+          type: [string, 'null']
         database:
           $ref: '#/components/schemas/DatabaseHealth'
         ledger:
@@ -1541,8 +1883,9 @@ components:
           minimum: 0
           description: Null when collection is disabled, has never succeeded, or reports a future time.
         maximum_success_age_milliseconds:
-          type: integer
+          type: [integer, 'null']
           minimum: 10000
+          description: Null while payment collection has not been configured.
         conflicts:
           $ref: '#/components/schemas/LedgerConflictSummary'
     ReconciliationHealth:
@@ -1601,9 +1944,11 @@ components:
           minimum: 0
           description: Null when reconciliation has never succeeded or reports a future time.
         maximum_success_age_milliseconds:
-          type: integer
+          type: [integer, 'null']
           minimum: 10000
-          description: The same deployment freshness window used for provider collection.
+          description: >-
+            The same deployment freshness window used for provider collection, or null while
+            payment collection has not been configured.
         exceptions:
           $ref: '#/components/schemas/FinancialExceptionSummary'
     WebhookHealth:
@@ -1753,15 +2098,20 @@ components:
     AdminLoginRequest:
       type: object
       additionalProperties: false
-      required: [username, password]
+      required: [password]
       properties:
-        username:
-          type: string
-          minLength: 1
-          maxLength: 64
         password:
           type: string
           minLength: 1
+          x-perpay-max-utf8-bytes: 1024
+    AdminSetupRequest:
+      type: object
+      additionalProperties: false
+      required: [password]
+      properties:
+        password:
+          type: string
+          minLength: 12
           x-perpay-max-utf8-bytes: 1024
     AdminLoginEnvelope:
       type: object
@@ -1853,6 +2203,288 @@ components:
           required: [revoked_sessions]
           properties:
             revoked_sessions: { type: integer, minimum: 1 }
+    RuntimeSettingsEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/RuntimeSettings' }
+    RuntimeSettings:
+      type: object
+      additionalProperties: false
+      required:
+        - revision
+        - payment_revision
+        - updated_at
+        - completion
+        - collection
+        - provider
+        - provider_generations
+        - notifications
+        - advanced
+        - secrets
+      properties:
+        revision: { type: integer, minimum: 0 }
+        payment_revision:
+          type: integer
+          minimum: 0
+          description: Changes only when collection or provider settings affect payment processing.
+        updated_at: { type: string, format: date-time }
+        completion:
+          $ref: '#/components/schemas/SettingsCompletion'
+        collection:
+          anyOf:
+            - $ref: '#/components/schemas/CollectionSettings'
+            - type: 'null'
+        provider:
+          anyOf:
+            - $ref: '#/components/schemas/ProviderSettings'
+            - type: 'null'
+        provider_generations:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderGeneration' }
+        notifications:
+          $ref: '#/components/schemas/NotificationSettings'
+        advanced:
+          $ref: '#/components/schemas/AdvancedSettings'
+        secrets:
+          $ref: '#/components/schemas/RuntimeSecretMetadataMap'
+    SettingsCompletion:
+      type: object
+      additionalProperties: false
+      required: [complete, collection, provider, api, notifications]
+      properties:
+        complete: { type: boolean }
+        collection: { type: boolean }
+        provider: { type: boolean }
+        api: { type: boolean }
+        notifications: { type: boolean }
+    CollectionSettings:
+      type: object
+      additionalProperties: false
+      required: [code_payload, order_ttl_seconds, amount_offset_maximum_cents]
+      properties:
+        code_payload:
+          type: string
+          minLength: 8
+          x-perpay-max-utf8-bytes: 2331
+        order_ttl_seconds: { type: integer, minimum: 60, maximum: 1800 }
+        amount_offset_maximum_cents: { type: integer, minimum: 1, maximum: 99 }
+    ProviderSettings:
+      type: object
+      additionalProperties: false
+      required:
+        - environment
+        - app_id
+        - provider_account_key
+        - timeout_milliseconds
+        - scan_interval_seconds
+        - maximum_success_age_seconds
+      properties:
+        environment: { type: string, enum: [PRODUCTION, SANDBOX] }
+        app_id: { type: string, pattern: '^[A-Za-z0-9._-]{1,64}$' }
+        provider_account_key:
+          type: string
+          description: Internal immutable account-generation identifier; not a provider credential.
+        timeout_milliseconds: { type: integer, minimum: 1000, maximum: 120000 }
+        scan_interval_seconds: { type: integer, minimum: 5, maximum: 3600 }
+        maximum_success_age_seconds: { type: integer, minimum: 10, maximum: 86400 }
+    ProviderGeneration:
+      type: object
+      additionalProperties: false
+      required: [provider_account_key, app_id, environment, activated_at, active]
+      properties:
+        provider_account_key:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'
+        app_id: { type: string, pattern: '^[A-Za-z0-9._-]{1,64}$' }
+        environment: { type: string, enum: [PRODUCTION, SANDBOX] }
+        activated_at: { type: string, format: date-time }
+        active: { type: boolean }
+    NotificationSettings:
+      type: object
+      additionalProperties: false
+      required:
+        - enabled
+        - allowed_origin
+        - timeout_milliseconds
+        - maximum_attempts
+        - retry_base_seconds
+        - retry_maximum_seconds
+      properties:
+        enabled: { type: boolean }
+        allowed_origin:
+          type: [string, 'null']
+          format: uri
+        timeout_milliseconds: { type: integer, minimum: 1000, maximum: 30000 }
+        maximum_attempts: { type: integer, minimum: 1, maximum: 100 }
+        retry_base_seconds: { type: integer, minimum: 1, maximum: 3600 }
+        retry_maximum_seconds: { type: integer, minimum: 1, maximum: 86400 }
+    AdvancedSettings:
+      type: object
+      additionalProperties: false
+      required: [checkout_key_rotation_days, checkout_terminal_observation_seconds]
+      properties:
+        checkout_key_rotation_days:
+          type: integer
+          minimum: 1
+          maximum: 3650
+          description: Days between checkout token-key rotations for newly created orders.
+        checkout_terminal_observation_seconds:
+          type: integer
+          minimum: 60
+          maximum: 604800
+          description: How long a newly created checkout remains readable after reaching a terminal state.
+    RuntimeSecretName:
+      type: string
+      enum: [api_secret, provider_private_key, provider_public_key, webhook_secret]
+    RuntimeSecretMetadataMap:
+      type: object
+      additionalProperties: false
+      required: [api_secret, provider_private_key, provider_public_key, webhook_secret]
+      properties:
+        api_secret: { $ref: '#/components/schemas/RuntimeSecretMetadata' }
+        provider_private_key: { $ref: '#/components/schemas/RuntimeSecretMetadata' }
+        provider_public_key: { $ref: '#/components/schemas/RuntimeSecretMetadata' }
+        webhook_secret: { $ref: '#/components/schemas/RuntimeSecretMetadata' }
+    RuntimeSecretMetadata:
+      type: object
+      additionalProperties: false
+      required: [configured, version, fingerprint, masked, updatedAt]
+      properties:
+        configured: { type: boolean }
+        version: { type: [integer, 'null'], minimum: 1 }
+        fingerprint:
+          anyOf:
+            - $ref: '#/components/schemas/Sha256Fingerprint'
+            - type: 'null'
+        masked:
+          type: [string, 'null']
+          description: Non-secret display value containing only the final four plaintext characters.
+        updatedAt:
+          type: [integer, 'null']
+          minimum: 0
+          description: Unix epoch milliseconds; null when the secret is not configured.
+    CollectionSettingsRequest:
+      type: object
+      additionalProperties: false
+      required: [revision, code_payload, order_ttl_seconds, amount_offset_maximum_cents]
+      properties:
+        revision: { type: integer, minimum: 0 }
+        code_payload:
+          type: string
+          minLength: 8
+          x-perpay-max-utf8-bytes: 2331
+        order_ttl_seconds: { type: integer, minimum: 60, maximum: 1800 }
+        amount_offset_maximum_cents: { type: integer, minimum: 1, maximum: 99 }
+    ProviderSettingsRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - revision
+        - environment
+        - app_id
+        - timeout_milliseconds
+        - scan_interval_seconds
+        - maximum_success_age_seconds
+      properties:
+        revision: { type: integer, minimum: 0 }
+        environment: { type: string, enum: [PRODUCTION, SANDBOX] }
+        app_id: { type: string, pattern: '^[A-Za-z0-9._-]{1,64}$' }
+        private_key:
+          type: string
+          minLength: 1
+          maxLength: 16384
+          description: Required when changing environment or application ID; omitted to retain the current key.
+        platform_public_key:
+          type: string
+          minLength: 1
+          maxLength: 16384
+          description: Required when changing environment or application ID; omitted to retain the current key.
+        timeout_milliseconds: { type: integer, minimum: 1000, maximum: 120000 }
+        scan_interval_seconds: { type: integer, minimum: 5, maximum: 3600 }
+        maximum_success_age_seconds:
+          type: integer
+          minimum: 10
+          maximum: 86400
+          description: Must be at least twice `scan_interval_seconds`.
+    NotificationSettingsRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - revision
+        - enabled
+        - timeout_milliseconds
+        - maximum_attempts
+        - retry_base_seconds
+        - retry_maximum_seconds
+      properties:
+        revision: { type: integer, minimum: 0 }
+        enabled: { type: boolean }
+        allowed_origin:
+          type: string
+          format: uri
+          description: Required when enabled; must be a public HTTPS origin without a port.
+        timeout_milliseconds: { type: integer, minimum: 1000, maximum: 30000 }
+        maximum_attempts: { type: integer, minimum: 1, maximum: 100 }
+        retry_base_seconds: { type: integer, minimum: 1, maximum: 3600 }
+        retry_maximum_seconds:
+          type: integer
+          minimum: 1
+          maximum: 86400
+          description: Must not be less than `retry_base_seconds`.
+    AdvancedSettingsRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - revision
+        - checkout_key_rotation_days
+        - checkout_terminal_observation_seconds
+      properties:
+        revision: { type: integer, minimum: 0 }
+        checkout_key_rotation_days: { type: integer, minimum: 1, maximum: 3650 }
+        checkout_terminal_observation_seconds:
+          type: integer
+          minimum: 60
+          maximum: 604800
+    SettingsRevisionRequest:
+      type: object
+      additionalProperties: false
+      required: [revision]
+      properties:
+        revision: { type: integer, minimum: 0 }
+    ApiSecretRotationEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [settings, client_id, secret]
+          properties:
+            settings: { $ref: '#/components/schemas/RuntimeSettings' }
+            client_id: { type: string, const: default }
+            secret:
+              type: string
+              pattern: '^[A-Za-z0-9_-]{43}$'
+              description: Returned once; exactly 32 random bytes encoded as unpadded base64url.
+    SecretRevealEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [name, value]
+          properties:
+            name: { $ref: '#/components/schemas/RuntimeSecretName' }
+            value:
+              type: string
+              minLength: 1
+              maxLength: 16384
+              description: Plaintext returned only by this audited response.
     AdminOrderPageEnvelope:
       type: object
       additionalProperties: false
@@ -3368,6 +4000,37 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    SettingsConflict:
+      description: >-
+        The supplied settings revision is stale, or a provider identity switch is unsafe while
+        open payment work exists (`settings_revision_conflict` or `provider_switch_blocked`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    SecretNotFound:
+      description: >-
+        The secret name is unknown or the selected secret has not been configured
+        (`secret_not_found`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    SettingsValidationFailed:
+      description: >-
+        Request fields, provider keys, timing relationships, or notification origin violate the
+        runtime settings contract (`validation_failed` or `settings_validation_failed`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    SettingsUnavailable:
+      description: >-
+        Runtime settings storage is unavailable or required settings state cannot be read
+        (`settings_unavailable` or `settings_not_configured`).
+      headers:
+        Retry-After:
+          schema: { type: integer, minimum: 1 }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     ReconciliationNotFound:
       description: >-
         The requested candidate, payment association, order, exception, or path resource does
@@ -3423,6 +4086,23 @@ components:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     AdminRateLimited:
       description: Administrator password attempts are temporarily rate limited.
+      headers:
+        Retry-After:
+          schema: { type: integer, minimum: 1 }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    SetupAlreadyInitialized:
+      description: >-
+        The administrator password has already been stored and first-run setup is permanently
+        closed (`identity_already_initialized`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    SetupUnavailable:
+      description: >-
+        The instance cannot complete first-run setup because password verification capacity is
+        temporarily unavailable (`password_work_busy`).
       headers:
         Retry-After:
           schema: { type: integer, minimum: 1 }
@@ -3486,11 +4166,30 @@ components:
     Unavailable:
       description: >-
         No amount slot is available, core storage or the order clock is unsafe
-        (`system_not_ready` or `order_clock_unavailable`), provider collection has no sufficiently
-        recent successful scan
-        (`collection_not_ready`), or automatic reconciliation has no sufficiently recent successful
-        run (`reconciliation_not_ready`).
+        (`system_not_ready` or `order_clock_unavailable`), provider collection or automatic
+        reconciliation has no sufficiently recent successful run (`reconciliation_not_ready`),
+        or the payment runtime has not been configured (`system_not_configured`).
         QR rendering may also fail closed with `checkout_code_generation_failed`.
+      headers:
+        Retry-After:
+          schema: { type: integer, minimum: 1 }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    SystemNotConfigured:
+      description: >-
+        Required payment runtime settings have not been saved, so new payment entry is disabled
+        (`system_not_configured`).
+      headers:
+        Retry-After:
+          schema: { type: integer, minimum: 1 }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    ReconciliationNotReady:
+      description: >-
+        Provider collection or automatic reconciliation has not completed a sufficiently recent
+        successful run, so new payment entry is temporarily disabled (`reconciliation_not_ready`).
       headers:
         Retry-After:
           schema: { type: integer, minimum: 1 }

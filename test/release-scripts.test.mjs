@@ -32,6 +32,24 @@ const checkVersionText = readFileSync(
   "utf8",
 );
 
+function replaceServiceValue(source, service, key, replacement) {
+  const serviceMarker = `  ${service}:\n`;
+  const serviceStart = source.indexOf(serviceMarker);
+  assert.notEqual(serviceStart, -1, `missing Compose service ${service}`);
+  const remainderStart = serviceStart + serviceMarker.length;
+  const nextServiceOffset = source.slice(remainderStart).search(/\n  [A-Za-z0-9_-]+:\n/u);
+  const serviceEnd = nextServiceOffset === -1
+    ? source.length
+    : remainderStart + nextServiceOffset;
+  const serviceSource = source.slice(serviceStart, serviceEnd);
+  const pattern = new RegExp(`^( {6}${key}:).+$`, "mu");
+  assert.match(serviceSource, pattern);
+  return `${source.slice(0, serviceStart)}${serviceSource.replace(
+    pattern,
+    `$1 ${replacement}`,
+  )}${source.slice(serviceEnd)}`;
+}
+
 test("Compose contract accepts the default services and profile-gated maintenance topology", () => {
   const contract = inspectComposeContract(validCompose);
   assert.equal(contract.image, "ghcr.io/mashiro0619/perpay:latest");
@@ -44,9 +62,17 @@ test("Compose contract accepts the default services and profile-gated maintenanc
 
   const parsed = parse(validCompose);
   assert.equal(parsed["x-perpay-backup-interval-seconds"], "86400");
+  assert.equal(parsed["x-perpay-backup-keep-count"], "7");
+  assert.equal(
+    parsed.services.app.environment.PERPAY_MASTER_KEY,
+    "CHANGE_ME_TO_64_HEX_CHARACTERS",
+  );
+  assert.equal(parsed.services.app.environment.PERPAY_PUBLIC_URL, "http://localhost:6190");
   assert.equal(parsed.services.app.environment.PERPAY_BACKUP_INTERVAL_SECONDS, "86400");
   assert.equal(parsed.services.backup.environment.PERPAY_BACKUP_INTERVAL_SECONDS, "86400");
   assert.equal(parsed.services.backup.environment.PERPAY_BACKUP_KEEP_COUNT, "7");
+  assert.equal(parsed.services.maintenance.environment.PERPAY_BACKUP_INTERVAL_SECONDS, "86400");
+  assert.equal(parsed.services.maintenance.environment.PERPAY_BACKUP_KEEP_COUNT, "7");
   assert.equal(parsed.services.backup.healthcheck.interval, "5m");
   assert.equal(parsed.services.backup.healthcheck.timeout, "10s");
   assert.deepEqual(parsed.services.app.volumes, [
@@ -81,19 +107,12 @@ test("Compose contract rejects duplicate keys, unexpected services, and renamed 
 
 test("Compose release template rejects locally filled configuration", () => {
   for (const [placeholder, configured] of [
-    ["CHANGE_ME_TO_A_LONG_RANDOM_PASSWORD", "a-private-administrator-password"],
-    ["http://localhost:8080", "https://pay.example.test"],
-    ["CHANGE_ME_TO_A_43_CHARACTER_BASE64URL_SECRET", "A".repeat(43)],
-    ["CHANGE_ME_TO_COLLECTION_CODE_PAYLOAD", "https://qr.example.test/private"],
-    ["CHANGE_ME_TO_ALIPAY_APP_ID", "2026000000000000"],
-    ["CHANGE_ME_TO_ALIPAY_APPLICATION_PRIVATE_KEY", "PRIVATE_KEY_MATERIAL"],
-    ["CHANGE_ME_TO_ALIPAY_PLATFORM_PUBLIC_KEY", "PLATFORM_PUBLIC_KEY_MATERIAL"],
-    ["https://CHANGE_ME_TO_YOUR_WEBHOOK_HOST", "https://hooks.example.test"],
-    ["CHANGE_ME_TO_ANOTHER_43_CHARACTER_BASE64URL_SECRET", "B".repeat(43)],
+    ["CHANGE_ME_TO_64_HEX_CHARACTERS", "1".repeat(64)],
+    ["http://localhost:6190", "https://pay.example.test"],
   ]) {
     assert.throws(
       () => inspectComposeContract(validCompose.replace(placeholder, configured)),
-      /must retain its release template value/u,
+      /must retain its anchored template value/u,
     );
   }
   assert.throws(
@@ -101,8 +120,22 @@ test("Compose release template rejects locally filled configuration", () => {
       '&perpay-backup-interval-seconds "86400"',
       '&perpay-backup-interval-seconds "7200"',
     )),
-    /backup interval extension must retain its anchored template value/u,
+    /x-perpay-backup-interval-seconds must retain its anchored template value/u,
   );
+});
+
+test("Compose backup and maintenance services must reference the shared backup policy anchors", () => {
+  for (const [service, key, scalar, anchor] of [
+    ["backup", "PERPAY_BACKUP_INTERVAL_SECONDS", '"86400"', "perpay-backup-interval-seconds"],
+    ["backup", "PERPAY_BACKUP_KEEP_COUNT", '"7"', "perpay-backup-keep-count"],
+    ["maintenance", "PERPAY_BACKUP_INTERVAL_SECONDS", '"86400"', "perpay-backup-interval-seconds"],
+    ["maintenance", "PERPAY_BACKUP_KEEP_COUNT", '"7"', "perpay-backup-keep-count"],
+  ]) {
+    assert.throws(
+      () => inspectComposeContract(replaceServiceValue(validCompose, service, key, scalar)),
+      new RegExp(`Compose ${service}\\.environment\\.${key} must reference the ${anchor} anchor`, "u"),
+    );
+  }
 });
 
 test("Compose contract rejects privilege and volume-boundary escapes", () => {
@@ -126,7 +159,7 @@ test("Compose contract rejects privilege and volume-boundary escapes", () => {
     validCompose.replace('    user: "1000:1000"', '    user: "0:0"'),
     validCompose.replace("    read_only: true", "    read_only: false"),
     validCompose.replace("      - ALL", "      - NET_RAW"),
-    validCompose.replace(/      PERPAY_API_SECRET:.*\n/u, ""),
+    validCompose.replace(/      PERPAY_MASTER_KEY:.*\n/u, ""),
   ]) {
     assert.throws(() => inspectComposeContract(mutated));
   }
@@ -163,7 +196,7 @@ test("the application image contains only the pinned Node runtime and applicatio
   assert.match(dockerfileText, /org\.opencontainers\.image\.licenses="MIT"/u);
   assert.match(dockerfileText, /mkdir -p \/data \/backups/u);
   assert.match(dockerfileText, /VOLUME \["\/data", "\/backups"\]/u);
-  assert.match(dockerfileText, /http:\/\/127\.0\.0\.1:8080\/healthz/u);
+  assert.match(dockerfileText, /http:\/\/127\.0\.0\.1:6190\/healthz/u);
   assert.doesNotMatch(dockerfileText, /\/readyz/u);
   assert.doesNotMatch(noticeText, /restic|Go toolchain|golang/iu);
   assert.equal(existsSync(new URL("../third_party/restic/LICENSE", import.meta.url)), false);
@@ -250,7 +283,7 @@ test("release builds, scans, verifies, and publishes fixed and latest images", (
     "compose config --services",
     "compose_with_maintenance config --services",
     "compose_with_maintenance config --images",
-    "http://127.0.0.1:8080/healthz",
+    "http://127.0.0.1:6190/healthz",
     "value.status!=='not_ready'",
     "node dist/backup/runner.js run-once",
     "node dist/backup/runner.js list-backups",
@@ -316,7 +349,7 @@ test("container validation is manual and exercises the real deployment lifecycle
     "compose config --services",
     "compose_with_maintenance config --services",
     "compose_with_maintenance config --images",
-    "http://127.0.0.1:8080/healthz",
+    "http://127.0.0.1:6190/healthz",
     "node dist/backup/runner.js run-once",
     "node dist/backup/runner.js list-backups",
     "node dist/backup/runner.js health",

@@ -3,9 +3,15 @@ import { isAlias, isScalar, parseDocument } from "yaml";
 // The release template intentionally has a stable project name.  Moving the
 // file must not silently select a different SQLite volume.  Operators running
 // more than one instance must change this value to another unique name.
-const BACKUP_INTERVAL_EXTENSION = "x-perpay-backup-interval-seconds";
-const BACKUP_INTERVAL_ANCHOR = "perpay-backup-interval-seconds";
-const TOP_LEVEL_KEYS = new Set(["name", BACKUP_INTERVAL_EXTENSION, "services", "volumes"]);
+const TEMPLATE_EXTENSIONS = Object.freeze({
+  "x-perpay-host-port": ["perpay-host-port", "127.0.0.1:6190:6190"],
+  "x-perpay-master-key": ["perpay-master-key", "CHANGE_ME_TO_64_HEX_CHARACTERS"],
+  "x-perpay-public-url": ["perpay-public-url", "http://localhost:6190"],
+  "x-perpay-trusted-proxy-cidrs": ["perpay-trusted-proxy-cidrs", ""],
+  "x-perpay-backup-interval-seconds": ["perpay-backup-interval-seconds", "86400"],
+  "x-perpay-backup-keep-count": ["perpay-backup-keep-count", "7"],
+});
+const TOP_LEVEL_KEYS = new Set(["name", ...Object.keys(TEMPLATE_EXTENSIONS), "services", "volumes"]);
 const APP_KEYS = new Set([
   "image",
   "environment",
@@ -55,64 +61,16 @@ const MAINTENANCE_KEYS = new Set([
   "network_mode",
 ]);
 const ENVIRONMENT_KEYS = new Set([
-  "PERPAY_INITIAL_ADMIN_PASSWORD",
-  "PERPAY_ADMIN_USERNAME",
+  "PERPAY_MASTER_KEY",
   "PERPAY_PUBLIC_URL",
   "PERPAY_TRUSTED_PROXY_CIDRS",
-  "PERPAY_API_CLIENT_ID",
-  "PERPAY_API_SECRET",
-  "PERPAY_COLLECTION_CODE_PAYLOAD",
-  "PERPAY_ORDER_TTL_SECONDS",
-  "PERPAY_AMOUNT_OFFSET_MAX_CENTS",
-  "PERPAY_CHECKOUT_KEY_ROTATION_DAYS",
-  "PERPAY_CHECKOUT_TERMINAL_OBSERVATION_SECONDS",
   "PERPAY_BACKUP_INTERVAL_SECONDS",
-  "PERPAY_ALIPAY_ENABLED",
-  "PERPAY_ALIPAY_APP_ID",
-  "PERPAY_ALIPAY_PRIVATE_KEY",
-  "PERPAY_ALIPAY_PUBLIC_KEY",
-  "PERPAY_ALIPAY_ENDPOINT",
-  "PERPAY_ALIPAY_TIMEOUT_MILLISECONDS",
-  "PERPAY_ALIPAY_SCAN_INTERVAL_SECONDS",
-  "PERPAY_ALIPAY_MAX_SUCCESS_AGE_SECONDS",
-  "PERPAY_WEBHOOK_ENABLED",
-  "PERPAY_WEBHOOK_ALLOWED_ORIGIN",
-  "PERPAY_WEBHOOK_SECRET",
-  "PERPAY_WEBHOOK_TIMEOUT_MILLISECONDS",
-  "PERPAY_WEBHOOK_MAX_ATTEMPTS",
-  "PERPAY_WEBHOOK_RETRY_BASE_SECONDS",
-  "PERPAY_WEBHOOK_RETRY_MAX_SECONDS",
 ]);
 const RELEASE_TEMPLATE_ENVIRONMENT = Object.freeze({
-  PERPAY_INITIAL_ADMIN_PASSWORD: "CHANGE_ME_TO_A_LONG_RANDOM_PASSWORD",
-  PERPAY_ADMIN_USERNAME: "admin",
-  PERPAY_PUBLIC_URL: "http://localhost:8080",
+  PERPAY_MASTER_KEY: "CHANGE_ME_TO_64_HEX_CHARACTERS",
+  PERPAY_PUBLIC_URL: "http://localhost:6190",
   PERPAY_TRUSTED_PROXY_CIDRS: "",
-  PERPAY_API_CLIENT_ID: "default",
-  PERPAY_API_SECRET: "CHANGE_ME_TO_A_43_CHARACTER_BASE64URL_SECRET",
-  PERPAY_COLLECTION_CODE_PAYLOAD: "CHANGE_ME_TO_COLLECTION_CODE_PAYLOAD",
-  PERPAY_ORDER_TTL_SECONDS: "300",
-  PERPAY_AMOUNT_OFFSET_MAX_CENTS: "99",
-  PERPAY_CHECKOUT_KEY_ROTATION_DAYS: "90",
-  PERPAY_CHECKOUT_TERMINAL_OBSERVATION_SECONDS: "86400",
   PERPAY_BACKUP_INTERVAL_SECONDS: "86400",
-  PERPAY_ALIPAY_ENABLED: "true",
-  PERPAY_ALIPAY_APP_ID: "CHANGE_ME_TO_ALIPAY_APP_ID",
-  PERPAY_ALIPAY_PRIVATE_KEY:
-    "-----BEGIN PRIVATE KEY-----\nCHANGE_ME_TO_ALIPAY_APPLICATION_PRIVATE_KEY\n-----END PRIVATE KEY-----",
-  PERPAY_ALIPAY_PUBLIC_KEY:
-    "-----BEGIN PUBLIC KEY-----\nCHANGE_ME_TO_ALIPAY_PLATFORM_PUBLIC_KEY\n-----END PUBLIC KEY-----",
-  PERPAY_ALIPAY_ENDPOINT: "https://openapi.alipay.com",
-  PERPAY_ALIPAY_TIMEOUT_MILLISECONDS: "8000",
-  PERPAY_ALIPAY_SCAN_INTERVAL_SECONDS: "10",
-  PERPAY_ALIPAY_MAX_SUCCESS_AGE_SECONDS: "60",
-  PERPAY_WEBHOOK_ENABLED: "false",
-  PERPAY_WEBHOOK_ALLOWED_ORIGIN: "https://CHANGE_ME_TO_YOUR_WEBHOOK_HOST",
-  PERPAY_WEBHOOK_SECRET: "CHANGE_ME_TO_ANOTHER_43_CHARACTER_BASE64URL_SECRET",
-  PERPAY_WEBHOOK_TIMEOUT_MILLISECONDS: "5000",
-  PERPAY_WEBHOOK_MAX_ATTEMPTS: "12",
-  PERPAY_WEBHOOK_RETRY_BASE_SECONDS: "5",
-  PERPAY_WEBHOOK_RETRY_MAX_SECONDS: "3600",
 });
 const BACKUP_ENVIRONMENT_KEYS = new Set([
   "PERPAY_DATA_DIR",
@@ -150,15 +108,10 @@ function assertExactArray(value, expected, label) {
   }
 }
 
-function assertBackupIntervalAlias(document, service) {
-  const node = document.getIn(
-    ["services", service, "environment", "PERPAY_BACKUP_INTERVAL_SECONDS"],
-    true,
-  );
-  if (!isAlias(node) || node.source !== BACKUP_INTERVAL_ANCHOR) {
-    throw new Error(
-      `Compose ${service}.environment.PERPAY_BACKUP_INTERVAL_SECONDS must reference the shared backup interval anchor`,
-    );
+function assertAlias(document, path, anchor, label) {
+  const node = document.getIn(path, true);
+  if (!isAlias(node) || node.source !== anchor) {
+    throw new Error(`Compose ${label} must reference the ${anchor} anchor`);
   }
 }
 
@@ -190,13 +143,11 @@ export function inspectComposeContract(source) {
   if (value.name !== "perpay") {
     throw new Error("release Compose project name must retain the official template value");
   }
-  const backupIntervalNode = document.get(BACKUP_INTERVAL_EXTENSION, true);
-  if (
-    !isScalar(backupIntervalNode) ||
-    backupIntervalNode.value !== "86400" ||
-    backupIntervalNode.anchor !== BACKUP_INTERVAL_ANCHOR
-  ) {
-    throw new Error("release Compose backup interval extension must retain its anchored template value");
+  for (const [extension, [anchor, expected]] of Object.entries(TEMPLATE_EXTENSIONS)) {
+    const node = document.get(extension, true);
+    if (!isScalar(node) || node.value !== expected || node.anchor !== anchor) {
+      throw new Error(`release Compose ${extension} must retain its anchored template value`);
+    }
   }
   const services = value.services;
   if (services === null || typeof services !== "object" || Array.isArray(services)) {
@@ -232,9 +183,13 @@ export function inspectComposeContract(source) {
       throw new Error(`Compose environment ${key} must retain its release template value`);
     }
   }
-  assertBackupIntervalAlias(document, "app");
+  assertAlias(document, ["services", "app", "ports", 0], "perpay-host-port", "app.ports[0]");
+  assertAlias(document, ["services", "app", "environment", "PERPAY_MASTER_KEY"], "perpay-master-key", "app.environment.PERPAY_MASTER_KEY");
+  assertAlias(document, ["services", "app", "environment", "PERPAY_PUBLIC_URL"], "perpay-public-url", "app.environment.PERPAY_PUBLIC_URL");
+  assertAlias(document, ["services", "app", "environment", "PERPAY_TRUSTED_PROXY_CIDRS"], "perpay-trusted-proxy-cidrs", "app.environment.PERPAY_TRUSTED_PROXY_CIDRS");
+  assertAlias(document, ["services", "app", "environment", "PERPAY_BACKUP_INTERVAL_SECONDS"], "perpay-backup-interval-seconds", "app.environment.PERPAY_BACKUP_INTERVAL_SECONDS");
 
-  assertExactArray(app.ports, ["127.0.0.1:8080:8080"], "Compose app.ports");
+  assertExactArray(app.ports, ["127.0.0.1:6190:6190"], "Compose app.ports");
   assertExactArray(
     app.volumes,
     ["perpay-data:/data", "perpay-backups:/backups:ro"],
@@ -255,7 +210,7 @@ export function inspectComposeContract(source) {
   assertExactKeys(healthcheck, HEALTHCHECK_KEYS, "Compose app.healthcheck");
   assertExactArray(
     healthcheck.test,
-    ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"],
+    ["CMD", "node", "-e", "fetch('http://127.0.0.1:6190/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"],
     "Compose app.healthcheck.test",
   );
   if (healthcheck.interval !== "30s" || healthcheck.timeout !== "5s" ||
@@ -296,7 +251,18 @@ export function inspectComposeContract(source) {
       throw new Error(`Compose backup environment ${key} must retain its release template value`);
     }
   }
-  assertBackupIntervalAlias(document, "backup");
+  assertAlias(
+    document,
+    ["services", "backup", "environment", "PERPAY_BACKUP_INTERVAL_SECONDS"],
+    "perpay-backup-interval-seconds",
+    "backup.environment.PERPAY_BACKUP_INTERVAL_SECONDS",
+  );
+  assertAlias(
+    document,
+    ["services", "backup", "environment", "PERPAY_BACKUP_KEEP_COUNT"],
+    "perpay-backup-keep-count",
+    "backup.environment.PERPAY_BACKUP_KEEP_COUNT",
+  );
   assertExactArray(
     backup.volumes,
     ["perpay-data:/data:ro", "perpay-backups:/backups"],
@@ -370,7 +336,18 @@ export function inspectComposeContract(source) {
       throw new Error(`Compose maintenance environment ${key} must retain its release template value`);
     }
   }
-  assertBackupIntervalAlias(document, "maintenance");
+  assertAlias(
+    document,
+    ["services", "maintenance", "environment", "PERPAY_BACKUP_INTERVAL_SECONDS"],
+    "perpay-backup-interval-seconds",
+    "maintenance.environment.PERPAY_BACKUP_INTERVAL_SECONDS",
+  );
+  assertAlias(
+    document,
+    ["services", "maintenance", "environment", "PERPAY_BACKUP_KEEP_COUNT"],
+    "perpay-backup-keep-count",
+    "maintenance.environment.PERPAY_BACKUP_KEEP_COUNT",
+  );
   assertExactArray(
     maintenance.volumes,
     ["perpay-data:/data", "perpay-backups:/backups"],

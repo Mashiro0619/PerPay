@@ -5,31 +5,24 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { loadConfig } from "../src/config.ts";
-import { AppDatabase } from "../src/database/database.ts";
 import { createApp } from "../src/http/app.ts";
-import { IdentityService } from "../src/identity/service.ts";
 import type { AccountLogDetail } from "../src/infrastructure/alipay/types.ts";
 import { LedgerStore, type RawPageEvidence } from "../src/ledger/index.ts";
-import { OrderService } from "../src/orders/service.ts";
 import { ReconciliationStore } from "../src/reconciliation/index.ts";
+import {
+  createConfiguredHttpServices,
+  HTTP_TEST_ADMIN_PASSWORD,
+} from "./http-fixture.ts";
 
-const ADMIN_PASSWORD = "strong-local-admin-password";
+const ADMIN_PASSWORD = HTTP_TEST_ADMIN_PASSWORD;
 const API_SECRET = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const COLLECTION_CODE = "https://qr.local.invalid/ledger-conflict-http";
-const PUBLIC_ORIGIN = "http://localhost:8080";
+const PUBLIC_ORIGIN = "http://localhost:6190";
 const BASE_TIME = Date.now();
 const WINDOW = {
   start: "2026-08-14 00:00:00",
   end: "2026-08-14 01:00:00",
 } as const;
-const PROVIDER_IDENTITY = {
-  providerAccountKey: "primary",
-  providerKind: "alipay",
-  endpoint: "https://openapi.alipay.com",
-  externalAccountId: "2026000000000000",
-} as const;
-
 interface SessionAuth {
   cookie: string;
   csrfToken: string;
@@ -38,29 +31,26 @@ interface SessionAuth {
 describe("ledger conflict HTTP operations", () => {
   it("protects conflict evidence, requires step-up, preserves idempotency, and degrades status", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-ledger-conflict-http-"));
-    const config = loadConfig({
-      PERPAY_INITIAL_ADMIN_PASSWORD: ADMIN_PASSWORD,
-      PERPAY_API_SECRET: API_SECRET,
-      PERPAY_COLLECTION_CODE_PAYLOAD: COLLECTION_CODE,
-      PERPAY_DATA_DIR: directory,
-      PERPAY_PUBLIC_URL: PUBLIC_ORIGIN,
-      PERPAY_ALIPAY_ENABLED: "false",
+    const services = await createConfiguredHttpServices({
+      directory,
+      apiSecret: API_SECRET,
+      collectionCodePayload: COLLECTION_CODE,
+      publicUrl: PUBLIC_ORIGIN,
+      identityClock: () => BASE_TIME,
     });
-    const database = await AppDatabase.open(config.databasePath);
+    const { config, database, identity, orders, settings } = services;
     try {
-      const identity = new IdentityService(database, config, () => BASE_TIME);
-      await identity.initialize();
-      const orders = new OrderService(database, config, () => BASE_TIME);
-      orders.initialize();
       const ledger = new LedgerStore(database);
-      ledger.bindProviderIdentity(PROVIDER_IDENTITY, BASE_TIME);
+      const providerAccountKey = settings.snapshot().activeProviderAccountKey;
+      if (!providerAccountKey) throw new Error("provider account is not configured");
       const reconciliation = new ReconciliationStore(database);
-      const conflict = createInvalidAmountConflict(ledger);
+      const conflict = createInvalidAmountConflict(ledger, providerAccountKey);
       let ledgerState: "degraded" | "healthy" = "degraded";
       const app = createApp({
         config,
         database,
         identity,
+        settings,
         orders,
         ledger,
         reconciliation,
@@ -124,7 +114,7 @@ describe("ledger conflict HTTP operations", () => {
 
       const readyBefore = await app.request("/readyz");
       assert.equal(readyBefore.status, 200);
-      assert.deepEqual(await readyBefore.json(), { status: "degraded" });
+      assert.deepEqual(await readyBefore.json(), { status: "degraded", code: null });
 
       const adminStatus = await app.request("/api/admin/v1/system/status", {
         headers: { cookie: auth.cookie },
@@ -145,7 +135,7 @@ describe("ledger conflict HTTP operations", () => {
         { open: 1, ignored: 0, total: 1 },
       );
       assert.deepEqual(statusBody.reconciliation.exceptions, {
-        provider_account_key: "primary",
+        provider_account_key: providerAccountKey,
         open: 0,
         resolved: 0,
         total: 0,
@@ -234,7 +224,7 @@ describe("ledger conflict HTTP operations", () => {
 
       const readyAfter = await app.request("/readyz");
       assert.equal(readyAfter.status, 200);
-      assert.deepEqual(await readyAfter.json(), { status: "ready" });
+      assert.deepEqual(await readyAfter.json(), { status: "ready", code: null });
     } finally {
       database.close();
       rmSync(directory, { recursive: true, force: true });
@@ -242,8 +232,13 @@ describe("ledger conflict HTTP operations", () => {
   });
 });
 
-function createInvalidAmountConflict(ledger: LedgerStore) {
-  const run = ledger.startIngestRun({ ...WINDOW, pageSize: 1, now: BASE_TIME });
+function createInvalidAmountConflict(ledger: LedgerStore, providerAccountKey: string) {
+  const run = ledger.startIngestRun({
+    ...WINDOW,
+    providerAccountKey,
+    pageSize: 1,
+    now: BASE_TIME,
+  });
   const result = ledger.recordPage({
     ingestRunId: run.ingestRunId,
     page: {
@@ -297,7 +292,7 @@ async function login(app: ReturnType<typeof createApp>): Promise<SessionAuth> {
   const response = await app.request("/api/admin/v1/session/login", {
     method: "POST",
     headers: { "content-type": "application/json", origin: PUBLIC_ORIGIN },
-    body: JSON.stringify({ username: "admin", password: ADMIN_PASSWORD }),
+    body: JSON.stringify({ password: ADMIN_PASSWORD }),
   });
   assert.equal(response.status, 200);
   return authenticationFrom(response);

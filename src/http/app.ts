@@ -75,6 +75,21 @@ import {
   type WebhookStore,
 } from "../notifications/index.ts";
 import { verifyApiRequestSignature, type ApiRequestAuthentication } from "../security/api-signature.ts";
+import type {
+  PaymentRuntimeStatus,
+  RevisionedLedgerHealth,
+  RevisionedReconciliationHealth,
+} from "../runtime/index.ts";
+import {
+  advancedSettingsInputSchema,
+  collectionSettingsInputSchema,
+  providerSettingsInputSchema,
+  RUNTIME_SECRET_NAMES,
+  RuntimeSettingsService,
+  SettingsError,
+  webhookSettingsInputSchema,
+  type RuntimeSecretName,
+} from "../settings/index.ts";
 import { APP_VERSION } from "../version.ts";
 import { PublicCheckoutRateLimiter } from "./public-checkout-rate-limit.ts";
 import { parseStrictJson, StrictJsonError } from "./strict-json.ts";
@@ -125,18 +140,22 @@ const passwordValueSchema = z.string().min(1).refine(
   (value) => Buffer.byteLength(value, "utf8") <= MAX_PASSWORD_BYTES,
   { message: `must contain at most ${MAX_PASSWORD_BYTES} UTF-8 bytes` },
 );
-const newPasswordValueSchema = z.string().min(12).refine(
+const newPasswordValueSchema = z.string().refine(
   (value) => value.isWellFormed(),
   { message: "must contain only Unicode scalar values" },
+).refine(
+  (value) => Array.from(value).length >= 12,
+  { message: "must contain at least 12 Unicode characters" },
 ).refine(
   (value) => Buffer.byteLength(value, "utf8") <= MAX_PASSWORD_BYTES,
   { message: `must contain at most ${MAX_PASSWORD_BYTES} UTF-8 bytes` },
 );
 
-const loginSchema = z.object({
-  username: z.string().min(1).max(64),
-  password: passwordValueSchema,
-}).strict();
+const loginSchema = z.object({ password: passwordValueSchema }).strict();
+const setupSchema = z.object({ password: newPasswordValueSchema }).strict();
+const settingsRevisionSchema = z.object({ revision: z.number().int().nonnegative() }).strict();
+const emptyObjectSchema = z.object({}).strict();
+const runtimeSecretNames = new Set<string>(RUNTIME_SECRET_NAMES);
 
 const passwordSchema = z.object({ password: passwordValueSchema }).strict();
 const changePasswordSchema = z.object({
@@ -159,15 +178,23 @@ export interface AppDependencies {
   readonly config: AppConfig;
   readonly database: AppDatabase;
   readonly identity: IdentityService;
+  readonly settings?: RuntimeSettingsService | undefined;
+  readonly runtimeStatus?: (() => PaymentRuntimeStatus) | undefined;
   readonly orders: OrderService;
   readonly startedAt: Date;
   readonly clock?: (() => number) | undefined;
   readonly backupHealth?: (() => BackupHealth | PromiseLike<BackupHealth>) | undefined;
   readonly ledger?: LedgerStore | undefined;
-  readonly ledgerHealth?: (() => LedgerSchedulerHealth & { readonly enabled: boolean }) | undefined;
+  readonly ledgerHealth?: (() => LedgerSchedulerHealth & {
+    readonly enabled: boolean;
+    readonly paymentRevision?: number | null;
+  }) | undefined;
   readonly reconciliation?: ReconciliationStore | undefined;
   readonly reconciliationHealth?: (
-    () => ReconciliationSchedulerHealth & { readonly enabled: boolean }
+    () => ReconciliationSchedulerHealth & {
+      readonly enabled: boolean;
+      readonly paymentRevision?: number | null;
+    }
   ) | undefined;
   readonly webhookStore?: WebhookStore | undefined;
   readonly webhookHealth?: (() => WebhookSchedulerHealth) | undefined;
@@ -177,6 +204,7 @@ export interface AppDependencies {
 
 const disabledLedgerHealth = Object.freeze({
   enabled: false,
+  paymentRevision: null,
   state: "idle" as const,
   inFlight: false,
   lastAttemptAt: null,
@@ -187,6 +215,7 @@ const disabledLedgerHealth = Object.freeze({
 
 const disabledReconciliationHealth = Object.freeze({
   enabled: false,
+  paymentRevision: null,
   state: "idle" as const,
   inFlight: false,
   lastAttemptAt: null,
@@ -275,13 +304,16 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
 
   app.get("/readyz", (context) => {
     const database = dependencies.database.health();
+    const runtime = currentRuntimeStatus(dependencies);
     const ledger = currentLedgerHealth(dependencies);
-    const reconciliation = dependencies.reconciliationHealth?.() ?? disabledReconciliationHealth;
+    const reconciliation = currentReconciliationHealth(dependencies);
     const webhook = dependencies.webhookHealth?.() ?? disabledWebhookHealth;
     const collection = collectionFreshness(dependencies, ledger);
     const confirmation = confirmationFreshness(dependencies, reconciliation);
     const operations = operationalSummaries(dependencies, database.ok);
-    const ready = database.ok && collection.ready && confirmation.ready;
+    const configured = dependencies.identity.isInitialized() && runtime.configured;
+    const ready = database.ok && configured && !runtime.transitioning &&
+      collection.ready && confirmation.ready;
     const degraded = ready && (
       isBackgroundHealthDegraded(ledger) ||
       isBackgroundHealthDegraded(reconciliation) ||
@@ -293,6 +325,13 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     return context.json(
       {
         status: ready ? (degraded ? "degraded" : "ready") : "not_ready",
+        code: ready
+          ? null
+          : !database.ok
+            ? "system_not_ready"
+            : !configured
+              ? "system_not_configured"
+              : "reconciliation_not_ready",
       },
       ready ? 200 : 503,
     );
@@ -314,10 +353,24 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     });
   }
 
-  app.get("/", (context) => context.redirect("/admin", 302));
-  app.get("/admin/login", (context) => context.html(renderAdminPage(true)));
-  app.get("/admin", (context) => context.html(renderAdminPage()));
-  app.get("/admin/*", (context) => context.html(renderAdminPage()));
+  app.get("/", (context) =>
+    context.redirect(dependencies.identity.isInitialized() ? "/admin" : "/admin/setup", 302));
+  app.get("/admin/setup", (context) => {
+    if (dependencies.identity.isInitialized()) return context.redirect("/admin/login", 302);
+    return context.html(renderAdminPage("setup"));
+  });
+  app.get("/admin/login", (context) => {
+    if (!dependencies.identity.isInitialized()) return context.redirect("/admin/setup", 302);
+    return context.html(renderAdminPage("login"));
+  });
+  app.get("/admin", (context) => {
+    if (!dependencies.identity.isInitialized()) return context.redirect("/admin/setup", 302);
+    return context.html(renderAdminPage("application"));
+  });
+  app.get("/admin/*", (context) => {
+    if (!dependencies.identity.isInitialized()) return context.redirect("/admin/setup", 302);
+    return context.html(renderAdminPage("application"));
+  });
 
   app.get("/checkout/:token", (context) => {
     const token = context.req.param("token");
@@ -431,12 +484,22 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     return context.body(svg);
   });
 
+  app.post("/api/admin/v1/setup", async (context) => {
+    requireJsonContentType(context);
+    requireSameOrigin(context, dependencies.config.publicOrigin);
+    const body = await readJson(context, setupSchema, MAX_JSON_BODY_BYTES);
+    await dependencies.identity.setupAdmin(
+      body.password,
+      identityContext(context, dependencies.config.trustedProxy),
+    );
+    return context.body(null, 204);
+  });
+
   app.post("/api/admin/v1/session/login", async (context) => {
     requireJsonContentType(context);
     requireSameOrigin(context, dependencies.config.publicOrigin);
     const body = await readJson(context, loginSchema, MAX_JSON_BODY_BYTES);
     const result = await dependencies.identity.login(
-      body.username,
       body.password,
       identityContext(context, dependencies.config.trustedProxy),
     );
@@ -573,14 +636,128 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     dependencies.config.secureCookies,
   );
 
+  app.get("/api/admin/v1/settings", adminSession, (context) => {
+    return context.json({ data: requireSettingsService(dependencies).view() });
+  });
+
+  app.put(
+    "/api/admin/v1/settings/collection",
+    adminSession,
+    financialWrite,
+    async (context) => {
+      const body = await readJson(context, collectionSettingsInputSchema, MAX_JSON_BODY_BYTES);
+      const data = await settingsOperation(() =>
+        requireSettingsService(dependencies).saveCollection(
+          body,
+          settingsAuditContext(context, dependencies),
+        )
+      );
+      return context.json({ data });
+    },
+  );
+
+  app.put(
+    "/api/admin/v1/settings/provider",
+    adminSession,
+    financialWrite,
+    async (context) => {
+      const body = await readJson(context, providerSettingsInputSchema, MAX_JSON_BODY_BYTES);
+      const data = await settingsOperation(() =>
+        requireSettingsService(dependencies).saveProvider(
+          body,
+          settingsAuditContext(context, dependencies),
+        )
+      );
+      return context.json({ data });
+    },
+  );
+
+  app.put(
+    "/api/admin/v1/settings/notifications",
+    adminSession,
+    financialWrite,
+    async (context) => {
+      const body = await readJson(context, webhookSettingsInputSchema, MAX_JSON_BODY_BYTES);
+      const data = await settingsOperation(() =>
+        requireSettingsService(dependencies).saveWebhook(
+          body,
+          settingsAuditContext(context, dependencies),
+        )
+      );
+      return context.json({ data });
+    },
+  );
+
+  app.put(
+    "/api/admin/v1/settings/advanced",
+    adminSession,
+    financialWrite,
+    async (context) => {
+      const body = await readJson(context, advancedSettingsInputSchema, MAX_JSON_BODY_BYTES);
+      const data = await settingsOperation(() =>
+        requireSettingsService(dependencies).saveAdvanced(
+          body,
+          settingsAuditContext(context, dependencies),
+        )
+      );
+      return context.json({ data });
+    },
+  );
+
+  app.post(
+    "/api/admin/v1/settings/api-key/actions/rotate",
+    adminSession,
+    financialWrite,
+    async (context) => {
+      const body = await readJson(context, settingsRevisionSchema, MAX_JSON_BODY_BYTES);
+      const data = await settingsOperation(() =>
+        requireSettingsService(dependencies).rotateApiSecret(
+          body.revision,
+          settingsAuditContext(context, dependencies),
+        )
+      );
+      return context.json({ data }, 201);
+    },
+  );
+
+  app.post(
+    "/api/admin/v1/settings/secrets/:name/actions/reveal",
+    adminSession,
+    financialWrite,
+    async (context) => {
+      await readJson(context, emptyObjectSchema, MAX_JSON_BODY_BYTES);
+      const name = context.req.param("name");
+      if (!runtimeSecretNames.has(name)) {
+        throw new HttpApiError(404, "secret_not_found", "密钥不存在");
+      }
+      const value = await settingsOperation(() => Promise.resolve(
+        requireSettingsService(dependencies).revealSecret(
+          name as RuntimeSecretName,
+          settingsAuditContext(context, dependencies),
+        ),
+      ));
+      return context.json({ data: { name, value } });
+    },
+  );
+
   app.get("/api/admin/v1/ledger/conflicts", adminSession, (context) => {
-    const query = readLedgerConflictPageQuery(context);
+    const query = readLedgerConflictPageQuery(
+      context,
+      currentRuntimeStatus(dependencies).activeProviderAccountKey,
+    );
+    if (query.providerAccountKey === null) {
+      return context.json({ data: [], page: { next_cursor: null } });
+    }
     const page = requireLedgerStore(dependencies)
-      .conflictPage("primary", query.status, query.cursor, query.limit);
+      .conflictPage(query.providerAccountKey, query.status, query.cursor, query.limit);
     return context.json({
       data: page.conflicts.map(serializeLedgerConflict),
       page: {
-        next_cursor: encodeLedgerConflictCursor(page.nextCursor, query.status),
+        next_cursor: encodeLedgerConflictCursor(
+          page.nextCursor,
+          query.status,
+          query.providerAccountKey,
+        ),
       },
     });
   });
@@ -710,12 +887,20 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   });
 
   app.get("/api/admin/v1/reconciliation/exceptions", adminSession, (context) => {
-    const query = readExceptionPageQuery(context);
+    const query = readExceptionPageQuery(
+      context,
+      currentRuntimeStatus(dependencies).activeProviderAccountKey,
+    );
+    if (query.providerAccountKey === null) {
+      return context.json({ data: [], page: { next_cursor: null } });
+    }
     const page = requireReconciliationStore(dependencies)
-      .openExceptionPage("primary", query.cursor, query.limit);
+      .openExceptionPage(query.providerAccountKey, query.cursor, query.limit);
     return context.json({
       data: page.exceptions.map(serializeFinancialException),
-      page: { next_cursor: encodeExceptionCursor(page.nextCursor) },
+      page: {
+        next_cursor: encodeExceptionCursor(page.nextCursor, query.providerAccountKey),
+      },
     });
   });
 
@@ -863,13 +1048,14 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       const body = await readJson(context, webhookReplayRequestSchema, MAX_JSON_BODY_BYTES);
       const session = requireCurrentStepUp(context, dependencies.identity);
       const store = requireWebhookStore(dependencies);
+      const webhook = dependencies.settings?.snapshot().webhook;
       const result = store.replay({
         redeliveryId: body.redelivery_id,
         deliveryId,
         actorId: session.session.username,
         reason: body.reason,
-        activeAllowedOrigin: dependencies.config.webhook.enabled
-          ? dependencies.config.webhook.allowedOrigin
+        activeAllowedOrigin: webhook?.enabled === true
+          ? webhook.allowedOrigin
           : null,
         now: Date.now(),
         requestId: context.get("requestId"),
@@ -903,7 +1089,6 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     requireJsonContentType(context);
     const request = parseJsonBytes(context.get("apiRawBody"), createOrderRequestSchema);
     const result = dependencies.orders.create(
-      context.get("apiClientId"),
       request,
       () => requirePaymentBackgroundReady(dependencies),
     );
@@ -929,7 +1114,6 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       const parsed = merchantOrderNumberSchema.safeParse(context.req.param("merchantOrderNo"));
       if (!parsed.success) throw orderNotFoundHttpError();
       const order = dependencies.orders.getByMerchantOrderNumber(
-        context.get("apiClientId"),
         parsed.data,
       );
       return context.json({ data: serializeOrder(order, dependencies.config.publicOrigin) });
@@ -938,13 +1122,13 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
 
   app.get("/api/v1/orders/:orderId", signedApi(0), (context) => {
     const orderId = requireOrderId(context.req.param("orderId"));
-    const order = dependencies.orders.get(context.get("apiClientId"), orderId);
+    const order = dependencies.orders.get(orderId);
     return context.json({ data: serializeOrder(order, dependencies.config.publicOrigin) });
   });
 
   app.post("/api/v1/orders/:orderId/actions/close", signedApi(0), (context) => {
     const orderId = requireOrderId(context.req.param("orderId"));
-    const order = dependencies.orders.close(context.get("apiClientId"), orderId);
+    const order = dependencies.orders.close(orderId);
     return context.json({ data: serializeOrder(order, dependencies.config.publicOrigin) });
   });
 
@@ -1037,6 +1221,14 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         webhookStoreMessage(error.code),
       );
     }
+    if (error instanceof SettingsError) {
+      return errorResponse(
+        context,
+        settingsStatus(error.code),
+        error.code,
+        error.message,
+      );
+    }
 
     console.error(
       JSON.stringify({
@@ -1076,6 +1268,38 @@ function requireFinancialWrite(
     requireJsonContentType(context);
     await next();
   };
+}
+
+function requireSettingsService(dependencies: AppDependencies): RuntimeSettingsService {
+  if (!dependencies.settings) {
+    throw new HttpApiError(503, "settings_unavailable", "运行配置服务不可用");
+  }
+  return dependencies.settings;
+}
+
+function settingsAuditContext(
+  context: Context<AppEnvironment>,
+  dependencies: AppDependencies,
+) {
+  const session = requireCurrentStepUp(context, dependencies.identity);
+  return {
+    actorId: session.session.username,
+    requestId: context.get("requestId"),
+    remoteAddressHash: dependencies.identity.sourceHash(
+      remoteAddress(context, dependencies.config.trustedProxy),
+    ),
+  };
+}
+
+async function settingsOperation<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof RangeError) {
+      throw new HttpApiError(422, "settings_validation_failed", error.message);
+    }
+    throw error;
+  }
 }
 
 function requireReconciliationStore(dependencies: AppDependencies): ReconciliationStore {
@@ -1144,8 +1368,12 @@ function requireApiClient(
   failureAuditLimiter: ApiFailureAuditLimiter,
 ): MiddlewareHandler<AppEnvironment> {
   return async (context, next) => {
+    const credential = dependencies.settings?.apiCredential() ?? null;
+    if (credential === null) {
+      throw new HttpApiError(503, "system_not_configured", "收款系统尚未完成配置");
+    }
     const authentication = readApiAuthentication(context);
-    const client = dependencies.identity.apiClient(authentication.clientId);
+    const client = authentication.clientId === credential.clientId ? credential : undefined;
     if (!client) throw new HttpApiError(401, "api_authentication_failed", "API 认证失败");
     const body = await readBodyLimited(context, maximumBodyBytes);
     context.set("apiRawBody", body);
@@ -1154,7 +1382,7 @@ function requireApiClient(
     const verifiedAt = new Date();
     try {
       verified = verifyApiRequestSignature({
-        secret: Buffer.from(dependencies.config.apiSecret, "base64url"),
+        secret: Buffer.from(credential.secret, "base64url"),
         method: context.req.method,
         target: originalRequestTarget(context),
         body,
@@ -1177,6 +1405,8 @@ function requireApiClient(
         client.clientId,
         verified.nonce,
         verified.timestamp,
+        client.keyVersion,
+        client.secretFingerprint,
         verifiedAt.getTime(),
       )
     ) {
@@ -1437,12 +1667,47 @@ function remoteAddress(
 
 function currentLedgerHealth(
   dependencies: AppDependencies,
-): LedgerSchedulerHealth & { readonly enabled: boolean } {
-  if (dependencies.ledgerHealth) return dependencies.ledgerHealth();
-  if (!dependencies.config.alipay.enabled) return disabledLedgerHealth;
+): RevisionedLedgerHealth {
+  if (dependencies.ledgerHealth) {
+    const health = dependencies.ledgerHealth();
+    return {
+      ...health,
+      paymentRevision:
+        health.paymentRevision ?? currentRuntimeStatus(dependencies).paymentRevision,
+    };
+  }
+  return disabledLedgerHealth;
+}
+
+function currentReconciliationHealth(
+  dependencies: AppDependencies,
+): RevisionedReconciliationHealth {
+  if (dependencies.reconciliationHealth) {
+    const health = dependencies.reconciliationHealth();
+    return {
+      ...health,
+      paymentRevision:
+        health.paymentRevision ?? currentRuntimeStatus(dependencies).paymentRevision,
+    };
+  }
+  return disabledReconciliationHealth;
+}
+
+function currentRuntimeStatus(dependencies: AppDependencies): PaymentRuntimeStatus {
+  if (dependencies.runtimeStatus) return dependencies.runtimeStatus();
+  const snapshot = dependencies.settings?.snapshot();
   return {
-    ...disabledLedgerHealth,
-    enabled: true,
+    configured: snapshot !== undefined &&
+      snapshot.collection !== null &&
+      snapshot.provider !== null &&
+      snapshot.apiSecret !== null &&
+      snapshot.activeProviderAccountKey !== null,
+    transitioning: false,
+    paymentRevision: snapshot?.paymentRevision ?? 0,
+    activeProviderAccountKey: snapshot?.activeProviderAccountKey ?? null,
+    scanIntervalMilliseconds: snapshot?.provider?.scanIntervalMilliseconds ?? null,
+    maximumSuccessAgeMilliseconds:
+      snapshot?.provider?.maximumSuccessAgeMilliseconds ?? null,
   };
 }
 
@@ -1462,16 +1727,21 @@ function operationalSummaries(
   let conflicts: LedgerConflictSummary | null = null;
   let exceptions: FinancialExceptionSummary | null = null;
   let unavailable = false;
+  const providerAccountKey = currentRuntimeStatus(dependencies).activeProviderAccountKey;
   if (dependencies.ledger) {
     try {
-      conflicts = dependencies.ledger.conflictSummary();
+      conflicts = providerAccountKey
+        ? dependencies.ledger.conflictSummary(providerAccountKey)
+        : null;
     } catch {
       unavailable = true;
     }
   }
   if (dependencies.reconciliation) {
     try {
-      exceptions = dependencies.reconciliation.exceptionSummary();
+      exceptions = providerAccountKey
+        ? dependencies.reconciliation.exceptionSummary(providerAccountKey)
+        : null;
     } catch {
       unavailable = true;
     }
@@ -1481,14 +1751,17 @@ function operationalSummaries(
 
 async function systemStatus(dependencies: AppDependencies) {
   const database = dependencies.database.health();
+  const runtime = currentRuntimeStatus(dependencies);
   const ledger = currentLedgerHealth(dependencies);
-  const reconciliation = dependencies.reconciliationHealth?.() ?? disabledReconciliationHealth;
+  const reconciliation = currentReconciliationHealth(dependencies);
   const webhook = dependencies.webhookHealth?.() ?? disabledWebhookHealth;
   const collection = collectionFreshness(dependencies, ledger);
   const confirmation = confirmationFreshness(dependencies, reconciliation);
   const operations = operationalSummaries(dependencies, database.ok);
   const backup = await currentBackupHealth(dependencies);
-  const ready = database.ok && collection.ready && confirmation.ready;
+  const configured = dependencies.identity.isInitialized() && runtime.configured;
+  const ready = database.ok && configured && !runtime.transitioning &&
+    collection.ready && confirmation.ready;
   const degraded = ready && (
     isBackgroundHealthDegraded(ledger) ||
     isBackgroundHealthDegraded(reconciliation) ||
@@ -1502,6 +1775,11 @@ async function systemStatus(dependencies: AppDependencies) {
     status: ready ? (degraded ? "degraded" : "ready") : "not_ready",
     version: APP_VERSION,
     instance_id: dependencies.database.instanceId(),
+    initialized: dependencies.identity.isInitialized(),
+    configured,
+    settings_revision: dependencies.settings?.status().revision ?? null,
+    payment_revision: runtime.paymentRevision,
+    provider_account_key: runtime.activeProviderAccountKey,
     database,
     ledger: {
       ...serializeLedgerHealth(ledger, collection),
@@ -1560,16 +1838,22 @@ async function currentBackupHealth(dependencies: AppDependencies) {
 interface CollectionFreshness {
   readonly ready: boolean;
   readonly lastSuccessAgeMilliseconds: number | null;
-  readonly maximumSuccessAgeMilliseconds: number;
+  readonly maximumSuccessAgeMilliseconds: number | null;
 }
 
 function collectionFreshness(
   dependencies: AppDependencies,
-  health: LedgerSchedulerHealth & { readonly enabled: boolean },
+  health: RevisionedLedgerHealth,
 ): CollectionFreshness {
-  const maximumSuccessAgeMilliseconds =
-    dependencies.config.alipay.maximumSuccessAgeMilliseconds;
-  if (!health.enabled) {
+  const runtime = currentRuntimeStatus(dependencies);
+  const maximumSuccessAgeMilliseconds = runtime.maximumSuccessAgeMilliseconds;
+  if (
+    !runtime.configured ||
+    runtime.transitioning ||
+    maximumSuccessAgeMilliseconds === null ||
+    !health.enabled ||
+    health.paymentRevision !== runtime.paymentRevision
+  ) {
     return {
       ready: false,
       lastSuccessAgeMilliseconds: null,
@@ -1606,16 +1890,24 @@ function collectionFreshness(
 interface ConfirmationFreshness {
   readonly ready: boolean;
   readonly lastSuccessAgeMilliseconds: number | null;
-  readonly maximumSuccessAgeMilliseconds: number;
+  readonly maximumSuccessAgeMilliseconds: number | null;
 }
 
 function confirmationFreshness(
   dependencies: AppDependencies,
-  health: ReconciliationSchedulerHealth & { readonly enabled: boolean },
+  health: RevisionedReconciliationHealth,
 ): ConfirmationFreshness {
-  const maximumSuccessAgeMilliseconds =
-    dependencies.config.alipay.maximumSuccessAgeMilliseconds;
-  if (!health.enabled || health.state === "stopped" || health.lastSuccessAt === null) {
+  const runtime = currentRuntimeStatus(dependencies);
+  const maximumSuccessAgeMilliseconds = runtime.maximumSuccessAgeMilliseconds;
+  if (
+    !runtime.configured ||
+    runtime.transitioning ||
+    maximumSuccessAgeMilliseconds === null ||
+    !health.enabled ||
+    health.paymentRevision !== runtime.paymentRevision ||
+    health.state === "stopped" ||
+    health.lastSuccessAt === null
+  ) {
     return {
       ready: false,
       lastSuccessAgeMilliseconds: null,
@@ -1656,19 +1948,28 @@ function requirePaymentDatabaseReady(dependencies: AppDependencies): void {
 }
 
 function requirePaymentBackgroundReady(dependencies: AppDependencies): void {
+  const runtime = currentRuntimeStatus(dependencies);
+  if (!dependencies.identity.isInitialized() || !runtime.configured) {
+    throw new HttpApiError(
+      503,
+      "system_not_configured",
+      "收款系统尚未完成配置",
+      5,
+    );
+  }
   const retryAfterSeconds = Math.max(
     1,
-    Math.ceil(dependencies.config.alipay.scanIntervalMilliseconds / 1_000),
+    Math.ceil((runtime.scanIntervalMilliseconds ?? 5_000) / 1_000),
   );
   if (!collectionFreshness(dependencies, currentLedgerHealth(dependencies)).ready) {
     throw new HttpApiError(
       503,
-      "collection_not_ready",
-      "账务采集没有近期成功扫描记录",
+      "reconciliation_not_ready",
+      "账务采集和自动确认尚未就绪",
       retryAfterSeconds,
     );
   }
-  const reconciliation = dependencies.reconciliationHealth?.() ?? disabledReconciliationHealth;
+  const reconciliation = currentReconciliationHealth(dependencies);
   if (confirmationFreshness(dependencies, reconciliation).ready) return;
   throw new HttpApiError(
     503,
@@ -1701,6 +2002,7 @@ function identityStatus(code: IdentityError["code"]): 401 | 403 | 409 | 429 | 50
       return 403;
     case "password_unchanged":
     case "api_nonce_replayed":
+    case "identity_already_initialized":
       return 409;
     case "auth_rate_limited":
       return 429;
@@ -1720,11 +2022,24 @@ function orderStatus(code: OrderErrorCode): 404 | 409 | 422 | 503 {
       return 409;
     case "amount_slots_exhausted":
     case "order_clock_unavailable":
+    case "system_not_configured":
       return 503;
     case "webhook_disabled":
     case "webhook_target_invalid":
     case "webhook_target_not_allowed":
       return 422;
+  }
+}
+
+function settingsStatus(code: SettingsError["code"]): 404 | 409 | 503 {
+  switch (code) {
+    case "secret_not_found":
+      return 404;
+    case "settings_revision_conflict":
+    case "provider_switch_blocked":
+      return 409;
+    case "settings_not_configured":
+      return 503;
   }
 }
 
@@ -1924,14 +2239,23 @@ function decodeAdminOrderCursor(
   return { createdAt, orderId: match[4]! };
 }
 
-function readLedgerConflictPageQuery(context: Context<AppEnvironment>): {
+function readLedgerConflictPageQuery(
+  context: Context<AppEnvironment>,
+  activeProviderAccountKey: string | null,
+): {
   readonly limit: number;
   readonly status: LedgerConflictStatus | "ALL";
+  readonly providerAccountKey: string | null;
   readonly cursor: LedgerConflictCursor | null;
 } {
   const values = new URL(context.req.url).searchParams;
   for (const key of values.keys()) {
-    if (key !== "limit" && key !== "status" && key !== "cursor") {
+    if (
+      key !== "limit" &&
+      key !== "status" &&
+      key !== "cursor" &&
+      key !== "provider_account_key"
+    ) {
       throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
     }
   }
@@ -1955,6 +2279,13 @@ function readLedgerConflictPageQuery(context: Context<AppEnvironment>): {
     throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
   }
   const status = statusValue as LedgerConflictStatus | "ALL";
+  const providerAccountKeys = values.getAll("provider_account_key");
+  if (providerAccountKeys.length > 1) {
+    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  }
+  const providerAccountKey = providerAccountKeys.length === 0
+    ? activeProviderAccountKey
+    : requireProviderAccountKey(providerAccountKeys[0] ?? "");
   const cursors = values.getAll("cursor");
   if (cursors.length > 1) {
     throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
@@ -1962,19 +2293,21 @@ function readLedgerConflictPageQuery(context: Context<AppEnvironment>): {
   return {
     limit,
     status,
+    providerAccountKey,
     cursor: cursors.length === 0
       ? null
-      : decodeLedgerConflictCursor(cursors[0] ?? "", status),
+      : decodeLedgerConflictCursor(cursors[0] ?? "", status, providerAccountKey),
   };
 }
 
 function encodeLedgerConflictCursor(
   cursor: LedgerConflictCursor | null,
   status: LedgerConflictStatus | "ALL",
+  providerAccountKey: string,
 ): string | null {
   if (!cursor) return null;
   return Buffer.from(
-    `perpay:ledger-conflicts:v1\n${status}\n${cursor.createdAt}\n${cursor.conflictId}`,
+    `perpay:ledger-conflicts:v2\n${providerAccountKey}\n${status}\n${cursor.createdAt}\n${cursor.conflictId}`,
     "ascii",
   ).toString("base64url");
 }
@@ -1982,21 +2315,30 @@ function encodeLedgerConflictCursor(
 function decodeLedgerConflictCursor(
   value: string,
   expectedStatus: LedgerConflictStatus | "ALL",
+  expectedProviderAccountKey: string | null,
 ): LedgerConflictCursor {
-  if (!/^[A-Za-z0-9_-]{1,256}$/.test(value)) {
+  if (expectedProviderAccountKey === null) {
+    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  }
+  if (!/^[A-Za-z0-9_-]{1,512}$/.test(value)) {
     throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
   }
   const decoded = Buffer.from(value, "base64url");
   if (decoded.toString("base64url") !== value || decoded.some((byte) => byte > 0x7f)) {
     throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
   }
-  const match = /^perpay:ledger-conflicts:v1\n(OPEN|RESOLVED|IGNORED|ALL)\n(0|[1-9][0-9]*)\n([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/
+  const match = /^perpay:ledger-conflicts:v2\n([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\n(OPEN|RESOLVED|IGNORED|ALL)\n(0|[1-9][0-9]*)\n([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/
     .exec(decoded.toString("ascii"));
-  const createdAt = Number(match?.[2]);
-  if (!match || match[1] !== expectedStatus || !Number.isSafeInteger(createdAt)) {
+  const createdAt = Number(match?.[3]);
+  if (
+    !match ||
+    match[1] !== expectedProviderAccountKey ||
+    match[2] !== expectedStatus ||
+    !Number.isSafeInteger(createdAt)
+  ) {
     throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
   }
-  return { createdAt, conflictId: match[3]! };
+  return { createdAt, conflictId: match[4]! };
 }
 
 function readPaymentMatchHistoryPageQuery(context: Context<AppEnvironment>): {
@@ -2082,13 +2424,17 @@ function decodePaymentMatchHistoryCursor(
   return { eventSequence };
 }
 
-function readExceptionPageQuery(context: Context<AppEnvironment>): {
+function readExceptionPageQuery(
+  context: Context<AppEnvironment>,
+  activeProviderAccountKey: string | null,
+): {
   readonly limit: number;
+  readonly providerAccountKey: string | null;
   readonly cursor: FinancialExceptionCursor | null;
 } {
   const values = new URL(context.req.url).searchParams;
   for (const key of values.keys()) {
-    if (key !== "limit" && key !== "cursor") {
+    if (key !== "limit" && key !== "cursor" && key !== "provider_account_key") {
       throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
     }
   }
@@ -2100,40 +2446,69 @@ function readExceptionPageQuery(context: Context<AppEnvironment>): {
   if (limit > 200) {
     throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
   }
+  const providerAccountKeys = values.getAll("provider_account_key");
+  if (providerAccountKeys.length > 1) {
+    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  }
+  const providerAccountKey = providerAccountKeys.length === 0
+    ? activeProviderAccountKey
+    : requireProviderAccountKey(providerAccountKeys[0] ?? "");
   const cursors = values.getAll("cursor");
   if (cursors.length > 1) {
     throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
   }
   return {
     limit,
-    cursor: cursors.length === 0 ? null : decodeExceptionCursor(cursors[0] ?? ""),
+    providerAccountKey,
+    cursor: cursors.length === 0
+      ? null
+      : decodeExceptionCursor(cursors[0] ?? "", providerAccountKey),
   };
 }
 
 function encodeExceptionCursor(
   cursor: FinancialExceptionCursor | null,
+  providerAccountKey: string,
 ): string | null {
   if (!cursor) return null;
-  return Buffer.from(`${cursor.createdAt}:${cursor.exceptionId}`, "ascii").toString("base64url");
+  return Buffer.from(
+    `perpay:financial-exceptions:v2\n${providerAccountKey}\n${cursor.createdAt}\n${cursor.exceptionId}`,
+    "ascii",
+  ).toString("base64url");
 }
 
 function decodeExceptionCursor(
   value: string,
+  expectedProviderAccountKey: string | null,
 ): FinancialExceptionCursor {
-  if (!/^[A-Za-z0-9_-]{1,128}$/.test(value)) {
+  if (
+    expectedProviderAccountKey === null ||
+    !/^[A-Za-z0-9_-]{1,512}$/.test(value)
+  ) {
     throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
   }
   const decoded = Buffer.from(value, "base64url");
   if (decoded.toString("base64url") !== value) {
     throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
   }
-  const match = /^(0|[1-9][0-9]*):([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/
+  const match = /^perpay:financial-exceptions:v2\n([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\n(0|[1-9][0-9]*)\n([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/
     .exec(decoded.toString("ascii"));
-  const createdAt = Number(match?.[1]);
-  if (!match || !Number.isSafeInteger(createdAt)) {
+  const createdAt = Number(match?.[2]);
+  if (
+    !match ||
+    match[1] !== expectedProviderAccountKey ||
+    !Number.isSafeInteger(createdAt)
+  ) {
     throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
   }
-  return { createdAt, exceptionId: match[2]! };
+  return { createdAt, exceptionId: match[3]! };
+}
+
+function requireProviderAccountKey(value: string): string {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value)) {
+    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  }
+  return value;
 }
 
 function readWebhookDeliveryPageQuery(context: Context<AppEnvironment>): {

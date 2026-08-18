@@ -6,7 +6,8 @@ export interface Migration {
   readonly sql: string;
   readonly postApply?:
     | "upgrade_ledger_semantic_fingerprints_v2"
-    | "backfill_evidence_fingerprints_v1";
+    | "backfill_evidence_fingerprints_v1"
+    | "normalize_fixed_accounts_v1";
 }
 
 /** Stable catalog checksum used to detect edited migration definitions at startup. */
@@ -3660,6 +3661,416 @@ export const migrations: readonly Migration[] = [
       BEFORE DELETE ON ledger_conflict_operations
       BEGIN
         SELECT RAISE(ABORT, 'ledger conflict operations cannot be deleted');
+      END;
+    `,
+  },
+  {
+    version: 14,
+    name: "provider_account_generations",
+    postApply: "normalize_fixed_accounts_v1",
+    sql: `
+      CREATE TABLE provider_account_bindings_v14 (
+        provider_account_key TEXT PRIMARY KEY CHECK (
+          length(provider_account_key) BETWEEN 1 AND 128 AND
+          provider_account_key GLOB '[A-Za-z0-9]*' AND
+          provider_account_key NOT GLOB '*[^A-Za-z0-9._:-]*'
+        ),
+        provider_kind TEXT NOT NULL CHECK (provider_kind = 'alipay'),
+        provider_endpoint TEXT NOT NULL CHECK (
+          length(provider_endpoint) BETWEEN 1 AND 2048 AND
+          provider_endpoint = trim(provider_endpoint) AND
+          provider_endpoint GLOB 'https://*' AND
+          instr(provider_endpoint, char(0)) = 0
+        ),
+        external_account_id TEXT NOT NULL CHECK (
+          length(external_account_id) BETWEEN 1 AND 128 AND
+          external_account_id = trim(external_account_id) AND
+          instr(external_account_id, char(0)) = 0
+        ),
+        identity_fingerprint_version INTEGER NOT NULL CHECK (
+          identity_fingerprint_version = 1
+        ),
+        identity_fingerprint TEXT NOT NULL CHECK (
+          length(identity_fingerprint) = 64 AND
+          identity_fingerprint = lower(identity_fingerprint) AND
+          identity_fingerprint NOT GLOB '*[^0-9a-f]*'
+        ),
+        bound_at INTEGER NOT NULL CHECK (bound_at >= 0)
+      ) STRICT;
+
+      INSERT INTO provider_account_bindings_v14(
+        provider_account_key, provider_kind, provider_endpoint,
+        external_account_id, identity_fingerprint_version,
+        identity_fingerprint, bound_at
+      )
+      SELECT provider_account_key, provider_kind, provider_endpoint,
+             external_account_id, identity_fingerprint_version,
+             identity_fingerprint, bound_at
+        FROM provider_account_bindings;
+
+      DROP TRIGGER provider_account_bindings_no_update;
+      DROP TRIGGER provider_account_bindings_no_delete;
+      DROP TABLE provider_account_bindings;
+      ALTER TABLE provider_account_bindings_v14 RENAME TO provider_account_bindings;
+
+      CREATE TRIGGER provider_account_bindings_no_update
+      BEFORE UPDATE ON provider_account_bindings
+      BEGIN
+        SELECT RAISE(ABORT, 'provider account bindings are immutable');
+      END;
+
+      CREATE TRIGGER provider_account_bindings_no_delete
+      BEFORE DELETE ON provider_account_bindings
+      BEGIN
+        SELECT RAISE(ABORT, 'provider account bindings cannot be deleted');
+      END;
+
+      CREATE TABLE provider_account_activations (
+        activation_id TEXT PRIMARY KEY CHECK (length(activation_id) = 36),
+        sequence INTEGER NOT NULL UNIQUE CHECK (sequence >= 1),
+        provider_account_key TEXT NOT NULL UNIQUE
+          REFERENCES provider_account_bindings(provider_account_key),
+        previous_provider_account_key TEXT
+          REFERENCES provider_account_bindings(provider_account_key),
+        activated_at INTEGER NOT NULL CHECK (activated_at >= 0),
+        reason TEXT NOT NULL CHECK (reason IN ('MIGRATION', 'CONFIG_SYNC')),
+        CHECK (provider_account_key IS NOT previous_provider_account_key)
+      ) STRICT;
+
+      CREATE TRIGGER provider_account_activations_valid_insert
+      BEFORE INSERT ON provider_account_activations
+      WHEN
+        NEW.sequence != COALESCE(
+          (SELECT MAX(sequence) + 1 FROM provider_account_activations),
+          1
+        ) OR
+        NEW.previous_provider_account_key IS NOT (
+          SELECT provider_account_key
+            FROM provider_account_activations
+           ORDER BY sequence DESC
+           LIMIT 1
+        ) OR
+        NOT EXISTS (
+          SELECT 1
+            FROM provider_account_bindings AS binding
+           WHERE binding.provider_account_key = NEW.provider_account_key
+             AND binding.bound_at <= NEW.activated_at
+        ) OR
+        NEW.activated_at < COALESCE(
+          (SELECT MAX(activated_at) FROM provider_account_activations),
+          0
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'provider account activation is invalid');
+      END;
+
+      CREATE TRIGGER provider_account_activations_no_update
+      BEFORE UPDATE ON provider_account_activations
+      BEGIN
+        SELECT RAISE(ABORT, 'provider account activations are append-only');
+      END;
+
+      CREATE TRIGGER provider_account_activations_no_delete
+      BEFORE DELETE ON provider_account_activations
+      BEGIN
+        SELECT RAISE(ABORT, 'provider account activations are append-only');
+      END;
+
+      INSERT INTO provider_account_activations(
+        activation_id, sequence, provider_account_key,
+        previous_provider_account_key, activated_at, reason
+      )
+      SELECT '00000000-0000-4000-8000-000000000014', 1,
+             provider_account_key, NULL, bound_at, 'MIGRATION'
+        FROM provider_account_bindings
+       WHERE provider_account_key = 'primary';
+
+      CREATE VIEW active_provider_account AS
+      SELECT activation.activation_id, activation.sequence,
+             activation.provider_account_key,
+             activation.previous_provider_account_key,
+             activation.activated_at, activation.reason,
+             binding.provider_kind, binding.provider_endpoint,
+             binding.external_account_id,
+             binding.identity_fingerprint_version,
+             binding.identity_fingerprint, binding.bound_at
+        FROM provider_account_activations AS activation
+        JOIN provider_account_bindings AS binding
+          ON binding.provider_account_key = activation.provider_account_key
+       ORDER BY activation.sequence DESC
+       LIMIT 1;
+
+      CREATE TABLE collection_profile_provider_accounts (
+        profile_id TEXT PRIMARY KEY REFERENCES collection_profiles(profile_id),
+        provider_account_key TEXT NOT NULL
+          REFERENCES provider_account_bindings(provider_account_key),
+        linked_at INTEGER NOT NULL CHECK (linked_at >= 0)
+      ) STRICT;
+
+      INSERT INTO collection_profile_provider_accounts(
+        profile_id, provider_account_key, linked_at
+      )
+      SELECT profile.profile_id, 'primary', profile.created_at
+        FROM collection_profiles AS profile
+       WHERE EXISTS (
+         SELECT 1 FROM provider_account_bindings
+          WHERE provider_account_key = 'primary'
+       );
+
+      CREATE TRIGGER collection_profile_provider_accounts_no_update
+      BEFORE UPDATE ON collection_profile_provider_accounts
+      BEGIN
+        SELECT RAISE(ABORT, 'collection profile provider links are immutable');
+      END;
+
+      CREATE TRIGGER collection_profile_provider_accounts_no_delete
+      BEFORE DELETE ON collection_profile_provider_accounts
+      BEGIN
+        SELECT RAISE(ABORT, 'collection profile provider links cannot be deleted');
+      END;
+
+      DROP TRIGGER match_candidates_valid_insert;
+
+      CREATE TRIGGER match_candidates_valid_insert
+      BEFORE INSERT ON match_candidates
+      WHEN NOT EXISTS (
+        SELECT 1
+          FROM ledger_entries AS entry
+          JOIN payment_orders AS orders
+            ON orders.order_id = NEW.order_id
+          JOIN collection_profile_provider_accounts AS profile_provider
+            ON profile_provider.profile_id = orders.collection_profile_id
+          JOIN amount_slots AS slot
+            ON slot.slot_id = NEW.slot_id
+         WHERE entry.ledger_entry_id = NEW.ledger_entry_id
+           AND entry.provider_account_key = profile_provider.provider_account_key
+           AND entry.direction = 'CREDIT'
+           AND entry.currency = orders.currency
+           AND entry.amount_cents = orders.payable_amount_cents
+           AND entry.occurred_at + entry.occurred_at_precision_ms > orders.eligible_from
+           AND entry.occurred_at + entry.occurred_at_precision_ms > slot.occupied_from
+           AND entry.occurred_at < orders.expires_at
+           AND (slot.released_at IS NULL OR entry.occurred_at < slot.released_at)
+           AND entry.state IN ('UNALLOCATED', 'CANDIDATE')
+           AND orders.payment_status = 'UNPAID'
+           AND slot.order_id = orders.order_id
+           AND slot.collection_profile_id = orders.collection_profile_id
+           AND slot.payable_amount_cents = orders.payable_amount_cents
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'match candidate is not supported by current facts');
+      END;
+
+      CREATE TABLE runtime_configuration (
+        singleton_key INTEGER PRIMARY KEY CHECK (singleton_key = 1),
+        revision INTEGER NOT NULL CHECK (revision >= 0),
+        payment_revision INTEGER NOT NULL CHECK (
+          payment_revision >= 0 AND payment_revision <= revision
+        ),
+        collection_code_payload TEXT CHECK (
+          collection_code_payload IS NULL OR (
+            length(collection_code_payload) >= 8 AND
+            length(CAST(collection_code_payload AS BLOB)) <= 2331
+          )
+        ),
+        order_ttl_seconds INTEGER NOT NULL CHECK (
+          order_ttl_seconds BETWEEN 60 AND 1800
+        ),
+        amount_offset_maximum_cents INTEGER NOT NULL CHECK (
+          amount_offset_maximum_cents BETWEEN 1 AND 99
+        ),
+        provider_environment TEXT CHECK (
+          provider_environment IS NULL OR
+          provider_environment IN ('PRODUCTION', 'SANDBOX')
+        ),
+        provider_app_id TEXT CHECK (
+          provider_app_id IS NULL OR (
+            length(provider_app_id) BETWEEN 1 AND 64 AND
+            provider_app_id GLOB '[A-Za-z0-9]*' AND
+            provider_app_id NOT GLOB '*[^A-Za-z0-9._-]*'
+          )
+        ),
+        provider_account_key TEXT REFERENCES provider_account_bindings(provider_account_key),
+        provider_timeout_milliseconds INTEGER NOT NULL CHECK (
+          provider_timeout_milliseconds BETWEEN 1000 AND 120000
+        ),
+        provider_scan_interval_milliseconds INTEGER NOT NULL CHECK (
+          provider_scan_interval_milliseconds BETWEEN 5000 AND 3600000
+        ),
+        provider_maximum_success_age_milliseconds INTEGER NOT NULL CHECK (
+          provider_maximum_success_age_milliseconds BETWEEN 10000 AND 86400000 AND
+          provider_maximum_success_age_milliseconds >= provider_scan_interval_milliseconds * 2
+        ),
+        webhook_enabled INTEGER NOT NULL CHECK (webhook_enabled IN (0, 1)),
+        webhook_allowed_origin TEXT CHECK (
+          webhook_allowed_origin IS NULL OR (
+            length(webhook_allowed_origin) BETWEEN 1 AND 4096 AND
+            webhook_allowed_origin = trim(webhook_allowed_origin)
+          )
+        ),
+        webhook_timeout_milliseconds INTEGER NOT NULL CHECK (
+          webhook_timeout_milliseconds BETWEEN 1000 AND 30000
+        ),
+        webhook_maximum_attempts INTEGER NOT NULL CHECK (
+          webhook_maximum_attempts BETWEEN 1 AND 100
+        ),
+        webhook_retry_base_milliseconds INTEGER NOT NULL CHECK (
+          webhook_retry_base_milliseconds BETWEEN 1000 AND 3600000
+        ),
+        webhook_retry_maximum_milliseconds INTEGER NOT NULL CHECK (
+          webhook_retry_maximum_milliseconds BETWEEN webhook_retry_base_milliseconds AND 86400000
+        ),
+        checkout_key_rotation_days INTEGER NOT NULL CHECK (
+          checkout_key_rotation_days BETWEEN 1 AND 3650
+        ),
+        checkout_terminal_observation_seconds INTEGER NOT NULL CHECK (
+          checkout_terminal_observation_seconds BETWEEN 60 AND 604800
+        ),
+        created_at INTEGER NOT NULL CHECK (created_at >= 0),
+        updated_at INTEGER NOT NULL CHECK (updated_at >= created_at),
+        CHECK ((provider_environment IS NULL) = (provider_app_id IS NULL)),
+        CHECK ((provider_environment IS NULL) = (provider_account_key IS NULL)),
+        CHECK (
+          (webhook_enabled = 0 AND webhook_allowed_origin IS NULL) OR
+          (webhook_enabled = 1 AND webhook_allowed_origin IS NOT NULL)
+        )
+      ) STRICT;
+
+      INSERT INTO runtime_configuration(
+        singleton_key, revision, payment_revision,
+        collection_code_payload, order_ttl_seconds,
+        amount_offset_maximum_cents, provider_environment,
+        provider_app_id, provider_account_key,
+        provider_timeout_milliseconds,
+        provider_scan_interval_milliseconds,
+        provider_maximum_success_age_milliseconds,
+        webhook_enabled, webhook_allowed_origin,
+        webhook_timeout_milliseconds, webhook_maximum_attempts,
+        webhook_retry_base_milliseconds,
+        webhook_retry_maximum_milliseconds,
+        checkout_key_rotation_days,
+        checkout_terminal_observation_seconds,
+        created_at, updated_at
+      ) VALUES (
+        1, 0, 0, NULL, 300, 99, NULL, NULL, NULL,
+        8000, 10000, 60000, 0, NULL, 5000, 12,
+        5000, 3600000, 90, 86400,
+        CAST(unixepoch('subsec') * 1000 AS INTEGER),
+        CAST(unixepoch('subsec') * 1000 AS INTEGER)
+      );
+
+      CREATE TRIGGER runtime_configuration_revision_guard
+      BEFORE UPDATE ON runtime_configuration
+      WHEN
+        NEW.singleton_key != OLD.singleton_key OR
+        NEW.revision != OLD.revision + 1 OR
+        NEW.payment_revision NOT IN (OLD.payment_revision, OLD.payment_revision + 1) OR
+        NEW.updated_at < OLD.updated_at
+      BEGIN
+        SELECT RAISE(ABORT, 'runtime configuration revision is invalid');
+      END;
+
+      CREATE TRIGGER runtime_configuration_no_delete
+      BEFORE DELETE ON runtime_configuration
+      BEGIN
+        SELECT RAISE(ABORT, 'runtime configuration cannot be deleted');
+      END;
+
+      CREATE TABLE runtime_secrets (
+        secret_name TEXT PRIMARY KEY CHECK (
+          secret_name IN (
+            'api_secret', 'provider_private_key',
+            'provider_public_key', 'webhook_secret'
+          )
+        ),
+        secret_version INTEGER NOT NULL CHECK (secret_version >= 1),
+        cipher_version INTEGER NOT NULL CHECK (cipher_version = 1),
+        nonce BLOB NOT NULL CHECK (typeof(nonce) = 'blob' AND length(nonce) = 12),
+        ciphertext BLOB NOT NULL CHECK (
+          typeof(ciphertext) = 'blob' AND length(ciphertext) BETWEEN 1 AND 32768
+        ),
+        authentication_tag BLOB NOT NULL CHECK (
+          typeof(authentication_tag) = 'blob' AND length(authentication_tag) = 16
+        ),
+        secret_fingerprint TEXT NOT NULL CHECK (
+          length(secret_fingerprint) = 64 AND
+          secret_fingerprint = lower(secret_fingerprint) AND
+          secret_fingerprint NOT GLOB '*[^0-9a-f]*'
+        ),
+        updated_at INTEGER NOT NULL CHECK (updated_at >= 0)
+      ) STRICT;
+
+      CREATE TRIGGER runtime_secrets_version_guard
+      BEFORE UPDATE ON runtime_secrets
+      WHEN
+        NEW.secret_name != OLD.secret_name OR
+        NEW.secret_version != OLD.secret_version + 1 OR
+        NEW.updated_at < OLD.updated_at
+      BEGIN
+        SELECT RAISE(ABORT, 'runtime secret version is invalid');
+      END;
+
+      CREATE TRIGGER runtime_secrets_no_delete
+      BEFORE DELETE ON runtime_secrets
+      BEGIN
+        SELECT RAISE(ABORT, 'runtime secrets cannot be deleted');
+      END;
+
+      CREATE TABLE runtime_master_key_guard (
+        singleton_key INTEGER PRIMARY KEY CHECK (singleton_key = 1),
+        cipher_version INTEGER NOT NULL CHECK (cipher_version = 1),
+        nonce BLOB NOT NULL CHECK (typeof(nonce) = 'blob' AND length(nonce) = 12),
+        ciphertext BLOB NOT NULL CHECK (
+          typeof(ciphertext) = 'blob' AND length(ciphertext) BETWEEN 1 AND 128
+        ),
+        authentication_tag BLOB NOT NULL CHECK (
+          typeof(authentication_tag) = 'blob' AND length(authentication_tag) = 16
+        ),
+        created_at INTEGER NOT NULL CHECK (created_at >= 0)
+      ) STRICT;
+
+      CREATE TRIGGER runtime_master_key_guard_no_update
+      BEFORE UPDATE ON runtime_master_key_guard
+      BEGIN
+        SELECT RAISE(ABORT, 'runtime master key guard is immutable');
+      END;
+
+      CREATE TRIGGER runtime_master_key_guard_no_delete
+      BEFORE DELETE ON runtime_master_key_guard
+      BEGIN
+        SELECT RAISE(ABORT, 'runtime master key guard cannot be deleted');
+      END;
+
+      CREATE TABLE api_client_idempotency_namespaces (
+        client_id TEXT NOT NULL CHECK (client_id = 'default'),
+        namespace_id TEXT NOT NULL CHECK (
+          length(namespace_id) BETWEEN 1 AND 128 AND
+          namespace_id = trim(namespace_id) AND
+          instr(namespace_id, char(0)) = 0 AND
+          namespace_id != client_id
+        ),
+        recorded_at INTEGER NOT NULL CHECK (recorded_at >= 0),
+        PRIMARY KEY (client_id, namespace_id)
+      ) STRICT;
+
+      INSERT INTO api_client_idempotency_namespaces(
+        client_id, namespace_id, recorded_at
+      )
+      SELECT 'default', client_id,
+             CAST(unixepoch('subsec') * 1000 AS INTEGER)
+        FROM api_client_config
+       WHERE singleton_key = 1 AND client_id != 'default';
+
+      CREATE TRIGGER api_client_idempotency_namespaces_no_update
+      BEFORE UPDATE ON api_client_idempotency_namespaces
+      BEGIN
+        SELECT RAISE(ABORT, 'API client idempotency namespaces are immutable');
+      END;
+
+      CREATE TRIGGER api_client_idempotency_namespaces_no_delete
+      BEFORE DELETE ON api_client_idempotency_namespaces
+      BEGIN
+        SELECT RAISE(ABORT, 'API client idempotency namespaces cannot be deleted');
       END;
     `,
   },

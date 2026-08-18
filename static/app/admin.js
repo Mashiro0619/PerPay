@@ -22,10 +22,54 @@
   }
 
   const page = document.body.dataset.perpayAdminPage;
-  if (page === "login") {
+  if (page === "setup") {
+    void initializeSetup();
+  } else if (page === "login") {
     void initializeLogin();
   } else if (page === "application") {
     void initializeApplication();
+  }
+
+  async function initializeSetup() {
+    const form = document.querySelector("#setup-form");
+    if (!(form instanceof HTMLFormElement)) return;
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!form.reportValidity()) return;
+      const password = valueOf("#setup-password");
+      if (Array.from(password).length < 12) {
+        showSetupError("管理员密码至少需要 12 个字符。");
+        document.querySelector("#setup-password")?.focus();
+        return;
+      }
+      if (password !== valueOf("#setup-password-confirmation")) {
+        showSetupError("两次输入的密码不一致。");
+        document.querySelector("#setup-password-confirmation")?.focus();
+        return;
+      }
+      const submit = document.querySelector("#setup-submit");
+      setBusy(submit, true, "正在设置");
+      showSetupError("");
+      try {
+        await api("/setup", {
+          method: "POST",
+          body: { password },
+          redirectOnUnauthorized: false,
+        });
+        // Initialization deliberately does not create a session.  Once the
+        // password is persisted, the setup route is closed permanently and
+        // the administrator must use the regular login flow.
+        location.replace("/admin/login");
+      } catch (error) {
+        if (error instanceof ApiError && error.code === "identity_already_initialized") {
+          location.replace("/admin/login");
+          return;
+        }
+        showSetupError(errorMessage(error));
+      } finally {
+        setBusy(submit, false, "完成设置");
+      }
+    });
   }
 
   async function initializeLogin() {
@@ -41,7 +85,6 @@
         const response = await api("/session/login", {
           method: "POST",
           body: {
-            username: valueOf("#login-username"),
             password: valueOf("#login-password"),
           },
           redirectOnUnauthorized: false,
@@ -141,6 +184,9 @@
         break;
       case "/admin/notifications":
         await renderNotifications();
+        break;
+      case "/admin/settings":
+        await renderSettings();
         break;
       case "/admin/security":
         renderSecurity();
@@ -307,12 +353,17 @@
       await renderExceptionDetail(response.data);
       return;
     }
+    const settingsView = (await api("/settings")).data || {};
+    const generations = settingsView.provider_generations || [];
+    const providerAccountKey = selectedProviderGeneration(query, generations);
     const parameters = pickQuery(query, ["cursor"]);
+    if (providerAccountKey) parameters.set("provider_account_key", providerAccountKey);
     parameters.set("limit", "100");
     const response = await api(`/reconciliation/exceptions?${parameters}`);
     const rows = response.data || [];
     renderMain(
       pageHeader("异常处理", "只有不能唯一、安全自动匹配的资金事实会进入这里。", [button("刷新", () => location.reload())]),
+      providerGenerationFilter(generations, providerAccountKey, ["provider_account_key"]),
       rows.length === 0
         ? emptyState("没有开放异常", "正常唯一匹配的付款已经自动确认。")
         : tableRegion("开放异常", [
@@ -349,7 +400,12 @@
     if (exception.status === "OPEN" && exception.ledger_entry_id && evidenceReady && isRefundLedgerEligible(ledger)) {
       actions.push(button("登记退款", () => openFinancialDecision("refund", exception, ledger)));
     }
-    actions.push(linkButton("返回异常", "/admin/exceptions"));
+    actions.push(linkButton(
+      "返回异常",
+      exception.provider_account_key
+        ? `/admin/exceptions?provider_account_key=${encodeURIComponent(exception.provider_account_key)}`
+        : "/admin/exceptions",
+    ));
     renderMain(
       pageHeader(statusText(exception.exception_type), "异常证据与可执行处置。", actions),
       div("perpay-detail-grid", [
@@ -468,8 +524,12 @@
       ["OPEN", "ALL", "RESOLVED", "IGNORED"],
       "OPEN",
     );
+    const settingsView = (await api("/settings")).data || {};
+    const generations = settingsView.provider_generations || [];
+    const providerAccountKey = selectedProviderGeneration(query, generations);
     const parameters = pickQuery(query, ["cursor"]);
     if (status !== "OPEN") parameters.set("status", status);
+    if (providerAccountKey) parameters.set("provider_account_key", providerAccountKey);
     parameters.set("limit", "100");
     const response = await api(`/ledger/conflicts?${parameters}`);
     const rows = response.data || [];
@@ -477,7 +537,20 @@
       pageHeader("账务冲突", "采集证据重复、变化或无法标准化时形成的隔离记录。", [button("刷新", () => location.reload())]),
       filterBar([
         selectField("状态", "status", status, ["OPEN", "ALL", "RESOLVED", "IGNORED"], statusText),
-        button("应用筛选", () => applyFilters(["status"], true), "primary"),
+        generations.length > 0
+          ? selectField(
+              "采集应用",
+              "provider_account_key",
+              providerAccountKey,
+              generations.map((generation) => generation.provider_account_key),
+              (value) => providerGenerationLabel(value, generations),
+            )
+          : null,
+        button(
+          "应用筛选",
+          () => applyFilters(["status", "provider_account_key"], true),
+          "primary",
+        ),
       ]),
       rows.length === 0 ? emptyState("没有账务冲突", "采集到的流水证据目前一致。") : tableRegion("冲突记录", [
         ["类型", (row) => detailLink("ledger-conflicts", row.conflict_id, statusText(row.conflict_type))],
@@ -493,7 +566,12 @@
   function renderLedgerConflictDetail(detail) {
     const conflict = detail.conflict;
     const availableAction = conflictResolutionAction(conflict.conflict_type);
-    const actions = [linkButton("返回冲突", "/admin/ledger-conflicts")];
+    const actions = [linkButton(
+      "返回冲突",
+      conflict.provider_account_key
+        ? `/admin/ledger-conflicts?provider_account_key=${encodeURIComponent(conflict.provider_account_key)}`
+        : "/admin/ledger-conflicts",
+    )];
     if (conflict.status === "OPEN" && availableAction) {
       actions.unshift(button("处理冲突", () => openConflictResolution(conflict), "primary"));
     }
@@ -604,6 +682,527 @@
       ], attempts) : emptyState("还没有投递尝试", "调度器领取任务后会记录尝试证据。", true)),
       section("事件载荷", jsonBlock(detail.event?.payload || {})),
     );
+  }
+
+  async function renderSettings() {
+    setDocumentTitle("设置");
+    const response = await api("/settings");
+    const view = response.data || {};
+    renderMain(
+      pageHeader("设置", "经营码、支付宝平台、API 客户端、通知与收银台策略。", [
+        button("刷新", () => location.reload()),
+      ]),
+      settingsCompletion(view),
+      section("收款配置", div("perpay-detail-grid", [
+        detailBlock("经营码与金额", collectionSettingsForm(view)),
+        detailBlock("支付宝平台", providerSettingsForm(view)),
+      ])),
+      section("通知", detailBlock("异步通知", notificationSettingsForm(view))),
+      section("高级设置", detailBlock("收银台生命周期", advancedSettingsForm(view))),
+      section("API 客户端", detailBlock("调用凭据", apiSettingsBlock(view))),
+      section("已保存密钥", detailBlock("敏感值", secretSettingsBlock(view))),
+      providerGenerationHistory(view.provider_generations || []),
+    );
+  }
+
+  function settingsCompletion(view) {
+    const completion = view.completion || {};
+    const complete = completion.complete === true;
+    const missing = [];
+    if (!completion.collection) missing.push("经营码");
+    if (!completion.provider) missing.push("支付宝平台");
+    if (!completion.api) missing.push("API 客户端");
+    return el("div", {
+      class: `uzu-alert ${complete ? "uzu-alert-success" : "uzu-alert-warning"}`,
+      role: "status",
+    }, [
+      el("strong", { text: complete ? "收款配置已完成" : "收款入口暂未开放" }),
+      el("p", {
+        text: complete
+          ? "必需配置已就绪；后台会继续根据采集和自动确认状态控制收款入口。"
+          : `还缺少：${missing.join("、") || "必需配置"}。完成这些配置前不会创建新订单或展示付款指令。`,
+      }),
+    ]);
+  }
+
+  function collectionSettingsForm(view) {
+    const collection = view.collection || {};
+    const form = el("form", { class: "uzu-form", id: "settings-collection-form", novalidate: true }, [
+      field(
+        "经营码内容",
+        settingsTextarea("settings-code-payload", collection.code_payload || "", 3, true),
+        "填写支付宝经营码对应的收款链接；不会把内容写入前端脚本。",
+      ),
+      field(
+        "订单有效期（秒）",
+        input({
+          id: "settings-order-ttl",
+          type: "number",
+          min: 60,
+          max: 1800,
+          step: 1,
+          value: collection.order_ttl_seconds ?? 300,
+          required: true,
+        }),
+        "范围 60–1800 秒。",
+      ),
+      field(
+        "金额尾差上限（分）",
+        input({
+          id: "settings-amount-offset",
+          type: "number",
+          min: 1,
+          max: 99,
+          step: 1,
+          value: collection.amount_offset_maximum_cents ?? 99,
+          required: true,
+        }),
+        "用于分配唯一应付金额，范围 1–99 分。",
+      ),
+      button("保存收款配置", null, "primary", "submit"),
+    ]);
+    form.addEventListener("submit", (event) => void saveCollectionSettings(event, form, view.revision));
+    return form;
+  }
+
+  function providerSettingsForm(view) {
+    const provider = view.provider || {};
+    const hasProvider = Boolean(view.completion?.provider);
+    const form = el("form", { class: "uzu-form", id: "settings-provider-form", novalidate: true }, [
+      field(
+        "运行环境",
+        select(["PRODUCTION", "SANDBOX"], provider.environment || "PRODUCTION", (value) =>
+          value === "PRODUCTION" ? "生产环境" : "沙箱环境"),
+        "应用 ID 或端点变更会创建新的流水账户代际，历史账务保持隔离。",
+      ),
+      field(
+        "应用 ID",
+        input({ id: "settings-provider-app-id", value: provider.app_id || "", maxlength: 64, required: true }),
+      ),
+      field(
+        "应用私钥",
+        settingsTextarea("settings-provider-private-key", "", 5, !hasProvider),
+        hasProvider ? "留空表示保留当前私钥；填写新值会替换它。" : "首次配置必填，支持 PEM 或 Base64 内容。",
+      ),
+      field(
+        "平台公钥",
+        settingsTextarea("settings-provider-public-key", "", 5, !hasProvider),
+        hasProvider ? "留空表示保留当前平台公钥；填写新值会替换它。" : "首次配置必填，支持 PEM 或 Base64 内容。",
+      ),
+      field(
+        "请求超时（毫秒）",
+        input({
+          id: "settings-provider-timeout",
+          type: "number",
+          min: 1000,
+          max: 120000,
+          step: 1000,
+          value: provider.timeout_milliseconds ?? 8000,
+          required: true,
+        }),
+      ),
+      field(
+        "采集间隔（秒）",
+        input({
+          id: "settings-provider-scan-interval",
+          type: "number",
+          min: 5,
+          max: 3600,
+          step: 1,
+          value: provider.scan_interval_seconds ?? 10,
+          required: true,
+        }),
+      ),
+      field(
+        "最大成功年龄（秒）",
+        input({
+          id: "settings-provider-max-age",
+          type: "number",
+          min: 10,
+          max: 86400,
+          step: 1,
+          value: provider.maximum_success_age_seconds ?? 60,
+          required: true,
+        }),
+        "至少是采集间隔的两倍。",
+      ),
+      button("保存平台配置", null, "primary", "submit"),
+    ]);
+    const environment = form.querySelector("select");
+    if (environment instanceof HTMLSelectElement) environment.id = "settings-provider-environment";
+    form.addEventListener("submit", (event) => void saveProviderSettings(
+      event,
+      form,
+      view.revision,
+      provider,
+    ));
+    return form;
+  }
+
+  function notificationSettingsForm(view) {
+    const notifications = view.notifications || {};
+    const form = el("form", { class: "uzu-form", id: "settings-notification-form", novalidate: true }, [
+      field(
+        "启用通知",
+        input({ id: "settings-notification-enabled", type: "checkbox", checked: notifications.enabled === true }),
+        "通知是可选功能；关闭后不会影响支付确认。",
+      ),
+      field(
+        "允许的 HTTPS Origin",
+        input({
+          id: "settings-notification-origin",
+          type: "url",
+          value: notifications.allowed_origin || "",
+          placeholder: "https://merchant.example",
+        }),
+        "启用通知时必填，不要填写路径。",
+      ),
+      field(
+        "请求超时（毫秒）",
+        input({
+          id: "settings-notification-timeout",
+          type: "number",
+          min: 1000,
+          max: 30000,
+          step: 1000,
+          value: notifications.timeout_milliseconds ?? 5000,
+          required: true,
+        }),
+      ),
+      field(
+        "最大尝试次数",
+        input({
+          id: "settings-notification-attempts",
+          type: "number",
+          min: 1,
+          max: 100,
+          step: 1,
+          value: notifications.maximum_attempts ?? 12,
+          required: true,
+        }),
+      ),
+      field(
+        "初始重试间隔（秒）",
+        input({
+          id: "settings-notification-retry-base",
+          type: "number",
+          min: 1,
+          max: 3600,
+          step: 1,
+          value: notifications.retry_base_seconds ?? 5,
+          required: true,
+        }),
+      ),
+      field(
+        "最大重试间隔（秒）",
+        input({
+          id: "settings-notification-retry-max",
+          type: "number",
+          min: 1,
+          max: 86400,
+          step: 1,
+          value: notifications.retry_maximum_seconds ?? 3600,
+          required: true,
+        }),
+      ),
+      button("保存通知配置", null, "primary", "submit"),
+    ]);
+    form.addEventListener("submit", (event) => void saveNotificationSettings(event, form, view.revision));
+    return form;
+  }
+
+  function advancedSettingsForm(view) {
+    const advanced = view.advanced || {};
+    const form = el("form", { class: "uzu-form", id: "settings-advanced-form", novalidate: true }, [
+      field(
+        "收银台令牌轮换周期（天）",
+        input({
+          id: "settings-checkout-key-rotation-days",
+          type: "number",
+          min: 1,
+          max: 3650,
+          step: 1,
+          value: advanced.checkout_key_rotation_days ?? 90,
+          required: true,
+        }),
+        "新订单使用新令牌密钥的周期，范围 1–3650 天；已创建的订单不受影响。",
+      ),
+      field(
+        "终态收银台观察期（秒）",
+        input({
+          id: "settings-checkout-terminal-observation-seconds",
+          type: "number",
+          min: 60,
+          max: 604800,
+          step: 1,
+          value: advanced.checkout_terminal_observation_seconds ?? 86400,
+          required: true,
+        }),
+        "订单关闭或过期后仍可读取收银台的时间，范围 60–604800 秒。",
+      ),
+      button("保存高级设置", null, "primary", "submit"),
+    ]);
+    form.addEventListener("submit", (event) => void saveAdvancedSettings(event, form, view.revision));
+    return form;
+  }
+
+  function apiSettingsBlock(view) {
+    const metadata = view.secrets?.api_secret || {};
+    return div("uzu-stack", [
+      el("p", {
+        class: "uzu-help",
+        text: "API 客户端 ID 固定为 default。轮换后旧密钥立即失效，新密钥只在本次操作中显示。",
+      }),
+      secretMetadataRow("API 密钥", "api_secret", metadata),
+      button("轮换 API 密钥", () => void rotateApiSecret(view.revision), "danger"),
+    ]);
+  }
+
+  function secretSettingsBlock(view) {
+    const secrets = view.secrets || {};
+    return div("uzu-stack", [
+      el("p", {
+        class: "uzu-help",
+        text: "敏感值默认只显示掩码。查看会要求再次输入管理员密码，并写入审计记录。",
+      }),
+      secretMetadataRow("应用私钥", "provider_private_key", secrets.provider_private_key),
+      secretMetadataRow("平台公钥", "provider_public_key", secrets.provider_public_key),
+      secretMetadataRow("通知密钥", "webhook_secret", secrets.webhook_secret),
+    ]);
+  }
+
+  function secretMetadataRow(label, name, metadata = {}) {
+    const configured = metadata.configured === true;
+    const reveal = button("查看", () => void revealRuntimeSecret(name, label));
+    reveal.disabled = !configured;
+    return div("uzu-flex uzu-wrap uzu-gap-2", [
+      div("uzu-stack", [
+        el("strong", { text: label }),
+        el("span", { class: "uzu-muted uzu-mono perpay-code", text: configured ? (metadata.masked || "已配置") : "未配置" }),
+        metadata.fingerprint ? el("span", { class: "uzu-help uzu-mono perpay-code", text: `指纹 ${metadata.fingerprint}` }) : null,
+      ]),
+      reveal,
+    ]);
+  }
+
+  function settingsTextarea(id, value, rows, required) {
+    const control = el("textarea", { class: "uzu-textarea", id, rows: String(rows), maxlength: 16384 });
+    control.value = value;
+    control.required = required;
+    control.spellcheck = false;
+    return control;
+  }
+
+  async function saveCollectionSettings(event, form, revision) {
+    event.preventDefault();
+    if (!(form instanceof HTMLFormElement) || !form.reportValidity()) return;
+    const submit = form.querySelector("button[type=submit]");
+    setBusy(submit, true, "正在保存");
+    try {
+      await protectedRequest("/settings/collection", {
+        revision,
+        code_payload: valueOf("#settings-code-payload"),
+        order_ttl_seconds: Number(valueOf("#settings-order-ttl")),
+        amount_offset_maximum_cents: Number(valueOf("#settings-amount-offset")),
+      }, "PUT");
+      toast("收款配置已保存", "success");
+      await renderSettings();
+    } catch (error) {
+      toast(errorMessage(error), "danger");
+    } finally {
+      setBusy(submit, false, "保存收款配置");
+    }
+  }
+
+  async function saveProviderSettings(event, form, revision, currentProvider) {
+    event.preventDefault();
+    if (!(form instanceof HTMLFormElement) || !form.reportValidity()) return;
+    const privateKey = valueOf("#settings-provider-private-key");
+    const publicKey = valueOf("#settings-provider-public-key");
+    const environment = valueOf("#settings-provider-environment");
+    const appId = valueOf("#settings-provider-app-id");
+    const identityChanged = Boolean(currentProvider?.app_id) && (
+      environment !== currentProvider.environment || appId !== currentProvider.app_id
+    );
+    if ((!currentProvider?.app_id || identityChanged) && (!privateKey || !publicKey)) {
+      toast(
+        identityChanged
+          ? "更换采集应用时必须重新填写应用私钥和平台公钥"
+          : "首次配置必须填写应用私钥和平台公钥",
+        "danger",
+      );
+      return;
+    }
+    if (identityChanged && !window.confirm(
+      "这会归档当前采集应用并创建新的账务代际。旧订单和流水会保留，但不能与新代际交叉匹配。确定继续吗？",
+    )) return;
+    const submit = form.querySelector("button[type=submit]");
+    setBusy(submit, true, "正在保存");
+    const body = {
+      revision,
+      environment,
+      app_id: appId,
+      timeout_milliseconds: Number(valueOf("#settings-provider-timeout")),
+      scan_interval_seconds: Number(valueOf("#settings-provider-scan-interval")),
+      maximum_success_age_seconds: Number(valueOf("#settings-provider-max-age")),
+      ...(privateKey ? { private_key: privateKey } : {}),
+      ...(publicKey ? { platform_public_key: publicKey } : {}),
+    };
+    try {
+      await protectedRequest("/settings/provider", body, "PUT");
+      toast("支付宝平台配置已保存", "success");
+      await renderSettings();
+    } catch (error) {
+      toast(errorMessage(error), "danger");
+    } finally {
+      setBusy(submit, false, "保存平台配置");
+    }
+  }
+
+  async function saveNotificationSettings(event, form, revision) {
+    event.preventDefault();
+    if (!(form instanceof HTMLFormElement) || !form.reportValidity()) return;
+    const enabled = checkedOf("#settings-notification-enabled");
+    const submit = form.querySelector("button[type=submit]");
+    setBusy(submit, true, "正在保存");
+    const body = {
+      revision,
+      enabled,
+      ...(enabled ? { allowed_origin: valueOf("#settings-notification-origin") } : {}),
+      timeout_milliseconds: Number(valueOf("#settings-notification-timeout")),
+      maximum_attempts: Number(valueOf("#settings-notification-attempts")),
+      retry_base_seconds: Number(valueOf("#settings-notification-retry-base")),
+      retry_maximum_seconds: Number(valueOf("#settings-notification-retry-max")),
+    };
+    try {
+      await protectedRequest("/settings/notifications", body, "PUT");
+      toast("通知配置已保存", "success");
+      await renderSettings();
+    } catch (error) {
+      toast(errorMessage(error), "danger");
+    } finally {
+      setBusy(submit, false, "保存通知配置");
+    }
+  }
+
+  async function saveAdvancedSettings(event, form, revision) {
+    event.preventDefault();
+    if (!(form instanceof HTMLFormElement) || !form.reportValidity()) return;
+    const submit = form.querySelector("button[type=submit]");
+    setBusy(submit, true, "正在保存");
+    try {
+      await protectedRequest("/settings/advanced", {
+        revision,
+        checkout_key_rotation_days: Number(valueOf("#settings-checkout-key-rotation-days")),
+        checkout_terminal_observation_seconds: Number(
+          valueOf("#settings-checkout-terminal-observation-seconds"),
+        ),
+      }, "PUT");
+      toast("高级设置已保存", "success");
+      await renderSettings();
+    } catch (error) {
+      toast(errorMessage(error), "danger");
+    } finally {
+      setBusy(submit, false, "保存高级设置");
+    }
+  }
+
+  async function rotateApiSecret(revision) {
+    const confirmed = await confirmAction(
+      "轮换 API 密钥",
+      "现有 API 密钥会立即失效，正在运行的客户端需要改用新密钥。",
+      "继续轮换",
+    );
+    if (!confirmed) return;
+    try {
+      const response = await protectedRequest("/settings/api-key/actions/rotate", { revision });
+      showSecretValue(
+        "新的 API 密钥",
+        response.data.secret,
+        "请立即复制；关闭后不会再次显示完整值。",
+        () => void refreshSettingsAfterSecret(),
+      );
+    } catch (error) {
+      toast(errorMessage(error), "danger");
+    }
+  }
+
+  async function revealRuntimeSecret(name, label) {
+    try {
+      const response = await protectedRequest(`/settings/secrets/${encodeURIComponent(name)}/actions/reveal`, {});
+      showSecretValue(label, response.data.value, "此值已写入审计记录，请勿截图或粘贴到公共位置。");
+    } catch (error) {
+      toast(errorMessage(error), "danger");
+    }
+  }
+
+  function showSecretValue(label, value, message, onClose) {
+    const control = el("textarea", { class: "uzu-textarea", rows: "5", readonly: true });
+    control.value = value || "";
+    const dialog = document.querySelector("#action-dialog");
+    let closed = false;
+    const finish = () => {
+      if (closed) return;
+      closed = true;
+      dialog?.removeEventListener("uzu-dialog-close", handleDialogClose);
+      control.value = "";
+      document.querySelector("#action-content")?.replaceChildren();
+      onClose?.();
+    };
+    const handleDialogClose = (event) => {
+      if (event.target === dialog) finish();
+    };
+    dialog?.addEventListener("uzu-dialog-close", handleDialogClose);
+    const content = div("uzu-stack", [
+      el("div", { class: "uzu-alert uzu-alert-warning", role: "alert", text: message }),
+      control,
+      div("uzu-dialog-actions", [
+        button("复制", async () => {
+          try {
+            await copyText(control.value);
+            toast("已复制到剪贴板", "success");
+          } catch {
+            toast("复制失败，请手动选择并复制", "danger");
+          }
+        }, "primary"),
+        button("关闭", () => {
+          closeActionDialog();
+          finish();
+        }),
+      ]),
+    ]);
+    openActionDialog(label, "敏感值仅在当前对话框中显示。", content);
+    control.focus();
+    control.select();
+  }
+
+  async function refreshSettingsAfterSecret() {
+    try {
+      await renderSettings();
+    } catch (error) {
+      renderRouteError(error, () => void refreshSettingsAfterSecret());
+    }
+  }
+
+  async function copyText(value) {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return;
+    }
+    const fallback = el("textarea", { readonly: true });
+    fallback.value = value;
+    fallback.style.position = "fixed";
+    fallback.style.opacity = "0";
+    document.body.append(fallback);
+    fallback.select();
+    const copied = document.execCommand("copy");
+    fallback.remove();
+    if (!copied) throw new Error("copy failed");
+  }
+
+  function checkedOf(selector) {
+    const control = document.querySelector(selector);
+    return control instanceof HTMLInputElement && control.checked;
   }
 
   function renderSecurity() {
@@ -857,13 +1456,13 @@
     openActionDialog("重新投递通知", `原投递 ${short(delivery.delivery_id)}`, form);
   }
 
-  async function protectedRequest(path, body) {
+  async function protectedRequest(path, body, method = "POST") {
     try {
-      return await api(path, { method: "POST", body });
+      return await api(path, { method, body });
     } catch (error) {
       if (!(error instanceof ApiError) || error.code !== "step_up_required") throw error;
       await requireStepUp();
-      return api(path, { method: "POST", body });
+      return api(path, { method, body });
     }
   }
 
@@ -1107,6 +1706,56 @@
     control.name = name;
     control.id = `filter-${name}`;
     return field(label, control);
+  }
+
+  function selectedProviderGeneration(query, generations) {
+    const requested = query.get("provider_account_key");
+    if (requested) return requested;
+    return generations.find((generation) => generation.active)?.provider_account_key ||
+      generations[0]?.provider_account_key || "";
+  }
+
+  function providerGenerationLabel(providerAccountKey, generations) {
+    const generation = generations.find(
+      (candidate) => candidate.provider_account_key === providerAccountKey,
+    );
+    if (!generation) return providerAccountKey;
+    const environment = generation.environment === "SANDBOX" ? "沙箱" : "生产";
+    return `${generation.app_id} · ${environment}${generation.active ? " · 当前" : " · 已归档"}`;
+  }
+
+  function providerGenerationFilter(generations, selected, names) {
+    if (generations.length === 0) return null;
+    return filterBar([
+      selectField(
+        "采集应用",
+        "provider_account_key",
+        selected,
+        generations.map((generation) => generation.provider_account_key),
+        (value) => providerGenerationLabel(value, generations),
+      ),
+      button("应用筛选", () => applyFilters(names, true), "primary"),
+    ]);
+  }
+
+  function providerGenerationHistory(generations) {
+    if (generations.length === 0) return null;
+    return section("采集应用历史", tableRegion("采集应用代际", [
+      ["应用 ID", (row) => code(row.app_id)],
+      ["环境", (row) => row.environment === "SANDBOX" ? "沙箱" : "生产"],
+      ["状态", (row) => stateLabel(row.active ? "当前" : "已归档", row.active ? "success" : "neutral")],
+      ["激活时间", (row) => formatTime(row.activated_at)],
+      ["异常", (row) => el("a", {
+        class: "uzu-text-link",
+        href: `/admin/exceptions?provider_account_key=${encodeURIComponent(row.provider_account_key)}`,
+        text: "查看",
+      })],
+      ["冲突", (row) => el("a", {
+        class: "uzu-text-link",
+        href: `/admin/ledger-conflicts?provider_account_key=${encodeURIComponent(row.provider_account_key)}`,
+        text: "查看",
+      })],
+    ], generations));
   }
 
   function applyFilters(names, preserveAll = false) {
@@ -1427,6 +2076,13 @@
     region.hidden = !message;
   }
 
+  function showSetupError(message) {
+    const region = document.querySelector("#setup-error");
+    if (!region) return;
+    region.textContent = message;
+    region.hidden = !message;
+  }
+
   function renderSessionSummary(session) {
     const username = document.querySelector("#session-username");
     const expiry = document.querySelector("#session-expiry");
@@ -1490,7 +2146,11 @@
 
   function valueOf(selector) {
     const control = document.querySelector(selector);
-    return control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement ? control.value : "";
+    return control instanceof HTMLInputElement ||
+      control instanceof HTMLTextAreaElement ||
+      control instanceof HTMLSelectElement
+      ? control.value
+      : "";
   }
 
   function pickQuery(source, allowed) {

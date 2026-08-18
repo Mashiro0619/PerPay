@@ -7,6 +7,7 @@ import {
   IDEMPOTENCY_KEY_DIGEST_VERSION,
   MAX_REQUESTED_AMOUNT_CENTS,
   MAX_ORDER_CLOCK_AHEAD_MILLISECONDS,
+  digestIdempotencyKey,
   orderEventDetailsFingerprint,
   type AdminOrderCursor,
   type AdminOrderFilters,
@@ -41,7 +42,7 @@ type DatabaseOwner = Pick<AppDatabase, "read" | "write">;
 export interface CollectionProfile {
   readonly profileId: string;
   readonly version: number;
-  readonly providerAccountKey: "primary";
+  readonly providerAccountKey: string;
   readonly codePayload: string;
   readonly payloadFingerprint: string;
   readonly profileFingerprint: string;
@@ -85,6 +86,7 @@ export interface StoredWebhookTarget {
 }
 
 export interface SyncCollectionProfileInput {
+  readonly providerAccountKey?: string;
   readonly codePayload: string;
   readonly payloadFingerprint: string;
   readonly profileFingerprint: string;
@@ -105,6 +107,9 @@ export interface CreateStoredOrderInput {
   readonly requestFingerprint: string;
   readonly ttlMilliseconds: number;
   readonly amountOffsetMaximumCents: number;
+  /** Runtime checkout policy captured when this order is created. */
+  readonly checkoutKeyRotationMilliseconds?: number | undefined;
+  readonly checkoutTerminalObservationMilliseconds?: number | undefined;
   readonly webhookTarget?: PreparedWebhookTarget | null;
   readonly webhookTargetRejection?: {
     readonly url: string;
@@ -167,6 +172,14 @@ export class OrderStore {
   syncCollectionProfile(input: SyncCollectionProfileInput): SyncCollectionProfileResult {
     return this.#database.write((connection) => {
       const now = this.#logicalNow(connection);
+      const providerAccountKey = input.providerAccountKey ?? "primary";
+      const expected = fingerprintCollectionCodeProfile(input.codePayload, providerAccountKey);
+      if (
+        input.payloadFingerprint !== expected.payloadFingerprint ||
+        input.profileFingerprint !== expected.profileFingerprint
+      ) {
+        throw new Error("collection profile input fingerprints are invalid");
+      }
       const active = readActiveCollectionProfile(connection);
       if (active?.profileFingerprint === input.profileFingerprint) {
         return {
@@ -202,9 +215,13 @@ export class OrderStore {
             now,
           );
         assertChangedOnce(inserted.changes, "collection profile insert");
+        linkCollectionProfileProvider(connection, profileId, providerAccountKey, now);
         profile = readCollectionProfileById(connection, profileId);
         if (!profile) throw new Error("inserted collection profile cannot be read");
         created = true;
+      }
+      if (profile.providerAccountKey !== providerAccountKey) {
+        throw new Error("collection profile belongs to another provider account generation");
       }
 
       const activationTime = Math.max(now, active?.createdAt ?? 0);
@@ -262,6 +279,19 @@ export class OrderStore {
     beforeCreate?: (() => void) | undefined,
   ): CreateStoredOrderResult {
     validateWebhookTargetInput(input);
+    const checkoutKeyRotationMilliseconds = input.checkoutKeyRotationMilliseconds ??
+      this.#checkoutKeyRotationMilliseconds;
+    const checkoutTerminalObservationMilliseconds =
+      input.checkoutTerminalObservationMilliseconds ??
+      this.#checkoutTerminalObservationMilliseconds;
+    assertPositiveSafeInteger(
+      checkoutKeyRotationMilliseconds,
+      "checkout token key rotation interval",
+    );
+    assertPositiveSafeInteger(
+      checkoutTerminalObservationMilliseconds,
+      "checkout terminal observation interval",
+    );
     return this.#database.write((connection) => {
       const now = this.#logicalNow(connection);
       expireDueOrders(connection, now, EXPIRY_SWEEP_LIMIT);
@@ -297,6 +327,42 @@ export class OrderStore {
           return { kind: "idempotency_conflict", orderId: idempotent.order.orderId };
         }
         return { kind: "existing", aggregate: withCheckoutToken(connection, idempotent) };
+      }
+
+      // v14 fixed the sole API client identifier to `default`. Historical
+      // v13 digests remain bound to the former, non-secret client namespace.
+      // Recompute only those legacy digests so replay semantics stay exact.
+      let migratedReplay = readAggregateByLegacyIdempotencyKey(
+        connection,
+        input.apiClientId,
+        input.request.idempotency_key,
+      );
+      if (migratedReplay) {
+        if (
+          migratedReplay.order.checkoutStatus === "OPEN" &&
+          migratedReplay.order.expiresAt <= now
+        ) {
+          expireOrder(connection, migratedReplay.order.orderId, now);
+          migratedReplay = readAggregateByLegacyIdempotencyKey(
+            connection,
+            input.apiClientId,
+            input.request.idempotency_key,
+          );
+          if (!migratedReplay) throw new Error("expired migrated order replay cannot be read");
+        }
+        if (
+          migratedReplay.order.requestFingerprint !== input.requestFingerprint ||
+          migratedReplay.order.requestFingerprintVersion !==
+            CREATE_ORDER_REQUEST_FINGERPRINT_VERSION ||
+          !sameWebhookTargetRequest(
+            migratedReplay.webhookTarget,
+            input.webhookTarget ?? null,
+            input.webhookTargetRejection,
+          )
+        ) {
+          return { kind: "idempotency_conflict", orderId: migratedReplay.order.orderId };
+        }
+        return { kind: "existing", aggregate: withCheckoutToken(connection, migratedReplay) };
       }
 
       beforeCreate?.();
@@ -344,7 +410,7 @@ export class OrderStore {
       const key = readOrRotateActiveCheckoutTokenKey(
         connection,
         now,
-        this.#checkoutKeyRotationMilliseconds,
+        checkoutKeyRotationMilliseconds,
       );
       const checkoutToken = deriveCheckoutToken(key.material, checkoutId);
       const tokenDigest = digestCheckoutToken(checkoutToken);
@@ -423,7 +489,7 @@ export class OrderStore {
           orderId,
           tokenDigest,
           key.version,
-          this.#checkoutTerminalObservationMilliseconds,
+          checkoutTerminalObservationMilliseconds,
         );
       assertChangedOnce(checkoutInsert.changes, "checkout session insert");
 
@@ -933,7 +999,7 @@ type AggregateRow = {
   token_key_version: bigint | number;
   terminal_observation_milliseconds: bigint | number;
   profile_version: bigint | number;
-  provider_account_key: "primary";
+  provider_account_key: string;
   code_payload: string;
   payload_fingerprint: string;
   profile_fingerprint: string;
@@ -981,7 +1047,8 @@ const AGGREGATE_SELECT = `
     checkout.token_key_version,
     checkout.terminal_observation_milliseconds,
     profile.version AS profile_version,
-    profile.provider_account_key,
+    COALESCE(profile_provider.provider_account_key, profile.provider_account_key)
+      AS provider_account_key,
     profile.code_payload,
     profile.payload_fingerprint,
     profile.profile_fingerprint,
@@ -999,6 +1066,8 @@ const AGGREGATE_SELECT = `
   FROM payment_orders AS orders
   JOIN checkout_sessions AS checkout ON checkout.order_id = orders.order_id
   JOIN collection_profiles AS profile ON profile.profile_id = orders.collection_profile_id
+  LEFT JOIN collection_profile_provider_accounts AS profile_provider
+    ON profile_provider.profile_id = profile.profile_id
   LEFT JOIN webhook_targets AS target ON target.order_id = orders.order_id
 `;
 
@@ -1170,6 +1239,28 @@ function readAggregateByIdempotencyDigest(
     )
     .get(apiClientId, digest) as AggregateRow | undefined;
   return row ? mapAggregate(row) : undefined;
+}
+
+function readAggregateByLegacyIdempotencyKey(
+  connection: DatabaseSync,
+  apiClientId: string,
+  idempotencyKey: string,
+): Omit<StoredOrderAggregate, "checkoutToken"> | undefined {
+  const namespaces = connection.prepare(
+    `SELECT namespace_id
+       FROM api_client_idempotency_namespaces
+      WHERE client_id = ?
+      ORDER BY namespace_id`,
+  ).all(apiClientId) as Array<{ namespace_id: string }>;
+  for (const namespace of namespaces) {
+    const aggregate = readAggregateByIdempotencyDigest(
+      connection,
+      apiClientId,
+      digestIdempotencyKey(namespace.namespace_id, idempotencyKey),
+    );
+    if (aggregate) return aggregate;
+  }
+  return undefined;
 }
 
 function readAggregateByTokenDigest(
@@ -1514,11 +1605,15 @@ function assertPositiveSafeInteger(value: number, label: string): void {
 function readActiveCollectionProfile(connection: DatabaseSync): CollectionProfile | undefined {
   const row = connection
     .prepare(
-      `SELECT profile.profile_id, profile.version, profile.provider_account_key,
+      `SELECT profile.profile_id, profile.version,
+              COALESCE(link.provider_account_key, profile.provider_account_key)
+                AS provider_account_key,
               profile.code_payload, profile.payload_fingerprint,
               profile.profile_fingerprint, profile.evidence_policy, profile.created_at
          FROM active_collection_profile AS active
          JOIN collection_profiles AS profile ON profile.profile_id = active.profile_id
+         LEFT JOIN collection_profile_provider_accounts AS link
+           ON link.profile_id = profile.profile_id
         WHERE active.singleton_key = 1`,
     )
     .get() as CollectionProfileRow | undefined;
@@ -1531,10 +1626,15 @@ function readCollectionProfileByFingerprint(
 ): CollectionProfile | undefined {
   const row = connection
     .prepare(
-      `SELECT profile_id, version, provider_account_key, code_payload,
-              payload_fingerprint, profile_fingerprint, evidence_policy, created_at
-         FROM collection_profiles
-        WHERE profile_fingerprint = ?`,
+      `SELECT profile.profile_id, profile.version,
+              COALESCE(link.provider_account_key, profile.provider_account_key)
+                AS provider_account_key,
+              profile.code_payload, profile.payload_fingerprint,
+              profile.profile_fingerprint, profile.evidence_policy, profile.created_at
+         FROM collection_profiles AS profile
+         LEFT JOIN collection_profile_provider_accounts AS link
+           ON link.profile_id = profile.profile_id
+        WHERE profile.profile_fingerprint = ?`,
     )
     .get(fingerprint) as CollectionProfileRow | undefined;
   return row ? mapCollectionProfile(row) : undefined;
@@ -1546,10 +1646,15 @@ function readCollectionProfileById(
 ): CollectionProfile | undefined {
   const row = connection
     .prepare(
-      `SELECT profile_id, version, provider_account_key, code_payload,
-              payload_fingerprint, profile_fingerprint, evidence_policy, created_at
-         FROM collection_profiles
-        WHERE profile_id = ?`,
+      `SELECT profile.profile_id, profile.version,
+              COALESCE(link.provider_account_key, profile.provider_account_key)
+                AS provider_account_key,
+              profile.code_payload, profile.payload_fingerprint,
+              profile.profile_fingerprint, profile.evidence_policy, profile.created_at
+         FROM collection_profiles AS profile
+         LEFT JOIN collection_profile_provider_accounts AS link
+           ON link.profile_id = profile.profile_id
+        WHERE profile.profile_id = ?`,
     )
     .get(profileId) as CollectionProfileRow | undefined;
   return row ? mapCollectionProfile(row) : undefined;
@@ -1558,7 +1663,7 @@ function readCollectionProfileById(
 interface CollectionProfileRow {
   readonly profile_id: string;
   readonly version: bigint | number;
-  readonly provider_account_key: "primary";
+  readonly provider_account_key: string;
   readonly code_payload: string;
   readonly payload_fingerprint: string;
   readonly profile_fingerprint: string;
@@ -1567,7 +1672,7 @@ interface CollectionProfileRow {
 }
 
 function mapCollectionProfile(row: CollectionProfileRow): CollectionProfile {
-  const expected = fingerprintCollectionCodeProfile(row.code_payload);
+  const expected = fingerprintCollectionCodeProfile(row.code_payload, row.provider_account_key);
   if (
     row.payload_fingerprint !== expected.payloadFingerprint ||
     row.profile_fingerprint !== expected.profileFingerprint
@@ -1584,6 +1689,29 @@ function mapCollectionProfile(row: CollectionProfileRow): CollectionProfile {
     evidencePolicy: row.evidence_policy,
     createdAt: toSafeInteger(row.created_at, "collection profile creation time"),
   };
+}
+
+function linkCollectionProfileProvider(
+  connection: DatabaseSync,
+  profileId: string,
+  providerAccountKey: string,
+  linkedAt: number,
+): void {
+  const binding = connection.prepare(
+    `SELECT 1 AS present
+       FROM provider_account_bindings
+      WHERE provider_account_key = ?`,
+  ).get(providerAccountKey);
+  if (!binding) {
+    if (providerAccountKey === "primary") return;
+    throw new Error("collection profile provider account must be bound first");
+  }
+  const inserted = connection.prepare(
+    `INSERT INTO collection_profile_provider_accounts(
+       profile_id, provider_account_key, linked_at
+     ) VALUES (?, ?, ?)`,
+  ).run(profileId, providerAccountKey, linkedAt);
+  assertChangedOnce(inserted.changes, "collection profile provider link insert");
 }
 
 function readDatabaseTime(connection: DatabaseSync): number {

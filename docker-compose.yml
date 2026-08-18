@@ -1,56 +1,25 @@
-# 先填写 app.environment 顶部的首次部署必填项。
 name: perpay
 
+# 部署配置
+x-perpay-master-key: &perpay-master-key "CHANGE_ME_TO_64_HEX_CHARACTERS"
+x-perpay-host-port: &perpay-host-port "127.0.0.1:6190:6190"
+x-perpay-public-url: &perpay-public-url "http://localhost:6190"
+x-perpay-trusted-proxy-cidrs: &perpay-trusted-proxy-cidrs ""
+
+# 自动备份
 x-perpay-backup-interval-seconds: &perpay-backup-interval-seconds "86400"
+x-perpay-backup-keep-count: &perpay-backup-keep-count "7"
 
 services:
   app:
-    environment:
-      # 首次部署必须填写；管理员初始化后删除第一项。
-      PERPAY_INITIAL_ADMIN_PASSWORD: "CHANGE_ME_TO_A_LONG_RANDOM_PASSWORD"
-      PERPAY_API_SECRET: "CHANGE_ME_TO_A_43_CHARACTER_BASE64URL_SECRET"
-      PERPAY_COLLECTION_CODE_PAYLOAD: "CHANGE_ME_TO_COLLECTION_CODE_PAYLOAD"
-      PERPAY_ALIPAY_ENABLED: "true"
-      PERPAY_ALIPAY_APP_ID: "CHANGE_ME_TO_ALIPAY_APP_ID"
-      PERPAY_ALIPAY_PRIVATE_KEY: |-
-        -----BEGIN PRIVATE KEY-----
-        CHANGE_ME_TO_ALIPAY_APPLICATION_PRIVATE_KEY
-        -----END PRIVATE KEY-----
-      # 这里填写支付宝平台公钥，不是应用公钥。
-      PERPAY_ALIPAY_PUBLIC_KEY: |-
-        -----BEGIN PUBLIC KEY-----
-        CHANGE_ME_TO_ALIPAY_PLATFORM_PUBLIC_KEY
-        -----END PUBLIC KEY-----
-
-      # 按部署环境修改。
-      PERPAY_PUBLIC_URL: "http://localhost:8080"
-      PERPAY_TRUSTED_PROXY_CIDRS: ""
-
-      # 可选：启用通知后再填写下面两项。
-      PERPAY_WEBHOOK_ENABLED: "false"
-      PERPAY_WEBHOOK_ALLOWED_ORIGIN: "https://CHANGE_ME_TO_YOUR_WEBHOOK_HOST"
-      PERPAY_WEBHOOK_SECRET: "CHANGE_ME_TO_ANOTHER_43_CHARACTER_BASE64URL_SECRET"
-
-      # 默认值通常无需修改。
-      PERPAY_ADMIN_USERNAME: "admin"
-      PERPAY_API_CLIENT_ID: "default"
-      PERPAY_ORDER_TTL_SECONDS: "300"
-      PERPAY_AMOUNT_OFFSET_MAX_CENTS: "99"
-      PERPAY_CHECKOUT_KEY_ROTATION_DAYS: "90"
-      PERPAY_CHECKOUT_TERMINAL_OBSERVATION_SECONDS: "86400"
-      PERPAY_BACKUP_INTERVAL_SECONDS: *perpay-backup-interval-seconds
-      PERPAY_ALIPAY_ENDPOINT: "https://openapi.alipay.com"
-      PERPAY_ALIPAY_TIMEOUT_MILLISECONDS: "8000"
-      PERPAY_ALIPAY_SCAN_INTERVAL_SECONDS: "10"
-      PERPAY_ALIPAY_MAX_SUCCESS_AGE_SECONDS: "60"
-      PERPAY_WEBHOOK_TIMEOUT_MILLISECONDS: "5000"
-      PERPAY_WEBHOOK_MAX_ATTEMPTS: "12"
-      PERPAY_WEBHOOK_RETRY_BASE_SECONDS: "5"
-      PERPAY_WEBHOOK_RETRY_MAX_SECONDS: "3600"
-    image: ghcr.io/mashiro0619/perpay:latest
-    # 按部署环境修改宿主端口；公网请使用 HTTPS 反向代理。
     ports:
-      - "127.0.0.1:8080:8080"
+      - *perpay-host-port
+    environment:
+      PERPAY_MASTER_KEY: *perpay-master-key
+      PERPAY_PUBLIC_URL: *perpay-public-url
+      PERPAY_TRUSTED_PROXY_CIDRS: *perpay-trusted-proxy-cidrs
+      PERPAY_BACKUP_INTERVAL_SECONDS: *perpay-backup-interval-seconds
+    image: ghcr.io/mashiro0619/perpay:latest
     volumes:
       - perpay-data:/data
       - perpay-backups:/backups:ro
@@ -70,7 +39,7 @@ services:
         - CMD
         - node
         - -e
-        - "fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        - "fetch('http://127.0.0.1:6190/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
       interval: 30s
       timeout: 5s
       start_period: 5m
@@ -87,7 +56,7 @@ services:
       PERPAY_DATA_DIR: "/data"
       PERPAY_BACKUP_DIR: "/backups"
       PERPAY_BACKUP_INTERVAL_SECONDS: *perpay-backup-interval-seconds
-      PERPAY_BACKUP_KEEP_COUNT: "7"
+      PERPAY_BACKUP_KEEP_COUNT: *perpay-backup-keep-count
     volumes:
       - perpay-data:/data:ro
       - perpay-backups:/backups
@@ -134,7 +103,7 @@ services:
       PERPAY_DATA_DIR: "/data"
       PERPAY_BACKUP_DIR: "/backups"
       PERPAY_BACKUP_INTERVAL_SECONDS: *perpay-backup-interval-seconds
-      PERPAY_BACKUP_KEEP_COUNT: "7"
+      PERPAY_BACKUP_KEEP_COUNT: *perpay-backup-keep-count
     volumes:
       - perpay-data:/data
       - perpay-backups:/backups

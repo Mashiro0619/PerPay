@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
 import fs, { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
@@ -16,6 +16,7 @@ import type { AccountLogDetail } from "../src/infrastructure/alipay/types.ts";
 import {
   conflictFingerprint,
   legacySemanticFingerprintV1,
+  normalizeProviderIdentity,
   parseOccurredAtWithPrecision,
   payloadFingerprint,
   requestFingerprint,
@@ -38,6 +39,11 @@ import {
   outboxPayloadFingerprint,
 } from "../src/reconciliation/model.ts";
 import { ReconciliationStore } from "../src/reconciliation/store.ts";
+import {
+  parseProviderKeys,
+  RuntimeSettingsService,
+  RuntimeSettingsStore,
+} from "../src/settings/index.ts";
 import { DATABASE_COMPATIBILITY } from "../src/version.ts";
 
 const API_SECRET = "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc";
@@ -48,6 +54,8 @@ const PROVIDER_IDENTITY = {
   endpoint: "https://openapi.alipay.com",
   externalAccountId: "2026000000000000",
 } as const;
+const RECOVERY_APPLICATION_KEYS = generateKeyPairSync("rsa", { modulusLength: 2_048 });
+const RECOVERY_PLATFORM_KEYS = generateKeyPairSync("rsa", { modulusLength: 2_048 });
 
 const LEGACY_API_NONCES_TABLE_SQL = migrationObjectSql(
   2,
@@ -128,6 +136,26 @@ const LEGACY_PAYMENT_MATCH_VALID_INSERT_SQL = migrationObjectSql(
   5,
   "trigger",
   "payment_matches_valid_insert",
+);
+const LEGACY_MATCH_CANDIDATE_VALID_INSERT_SQL = migrationObjectSql(
+  5,
+  "trigger",
+  "match_candidates_valid_insert",
+);
+const LEGACY_PROVIDER_ACCOUNT_BINDINGS_TABLE_SQL = migrationObjectSql(
+  4,
+  "table",
+  "provider_account_bindings",
+);
+const LEGACY_PROVIDER_ACCOUNT_BINDINGS_NO_UPDATE_SQL = migrationObjectSql(
+  4,
+  "trigger",
+  "provider_account_bindings_no_update",
+);
+const LEGACY_PROVIDER_ACCOUNT_BINDINGS_NO_DELETE_SQL = migrationObjectSql(
+  4,
+  "trigger",
+  "provider_account_bindings_no_delete",
 );
 
 describe("database recovery boundaries", () => {
@@ -345,9 +373,11 @@ describe("database recovery boundaries", () => {
 
         const restored = await AppDatabase.open(backupPath);
         try {
-          const restoredOrders = new OrderService(restored, config);
-          restoredOrders.initialize();
-          const restoredOrder = restoredOrders.getByMerchantOrderNumber("default", "recovery-1");
+           const restoredSettings = runtimeSettings(restored, config);
+           restoredSettings.initialize();
+           const restoredOrders = new OrderService(restored, () => restoredSettings.snapshot());
+           restoredOrders.initialize();
+           const restoredOrder = restoredOrders.getByMerchantOrderNumber("recovery-1");
           assert.equal(restoredOrder.orderId, order.orderId);
           assert.equal(restoredOrder.checkoutToken, order.checkoutToken);
         } finally {
@@ -760,15 +790,17 @@ describe("database recovery boundaries", () => {
 
   it("repairs a settled v9 ledger state overwritten by a provider conflict and keeps backups restorable", async () => {
     await withOrderDatabase("perpay-v9-financial-state-repair-", async (context) => {
-      const { database, databasePath, directory, order, close } = context;
+      const { database, databasePath, directory, order, settings, close } = context;
       const ledger = new LedgerStore(database);
-      ledger.bindProviderIdentity(PROVIDER_IDENTITY, order.createdAt);
+      const providerAccountKey = settings.snapshot().activeProviderAccountKey;
+      if (!providerAccountKey) throw new Error("recovery provider account is missing");
       const entry = recordRecoveryCredit(
         ledger,
         "v9-settled-provider-conflict",
         order.payableAmountCents,
         Math.ceil((order.createdAt + 1_000) / 1_000) * 1_000,
         order.createdAt + 2_000,
+        providerAccountKey,
       );
       const reconciliation = new ReconciliationStore(database);
       const settlement = reconciliation.reconcileEntry(
@@ -879,6 +911,47 @@ describe("database recovery boundaries", () => {
           ${LEGACY_CHECKOUT_TOKEN_KEY_NO_DELETE_SQL};
           ${LEGACY_CHECKOUT_SESSIONS_NO_UPDATE_SQL};
           ${LEGACY_CHECKOUT_SESSIONS_NO_DELETE_SQL};
+
+          DROP TRIGGER api_client_idempotency_namespaces_no_delete;
+          DROP TRIGGER api_client_idempotency_namespaces_no_update;
+          DROP TABLE api_client_idempotency_namespaces;
+          DROP TRIGGER runtime_master_key_guard_no_delete;
+          DROP TRIGGER runtime_master_key_guard_no_update;
+          DROP TABLE runtime_master_key_guard;
+          DROP TRIGGER runtime_secrets_no_delete;
+          DROP TRIGGER runtime_secrets_version_guard;
+          DROP TABLE runtime_secrets;
+          DROP TRIGGER runtime_configuration_no_delete;
+          DROP TRIGGER runtime_configuration_revision_guard;
+          DROP TABLE runtime_configuration;
+          DROP TRIGGER collection_profile_provider_accounts_no_delete;
+          DROP TRIGGER collection_profile_provider_accounts_no_update;
+          DROP TABLE collection_profile_provider_accounts;
+          DROP VIEW active_provider_account;
+          DROP TRIGGER provider_account_activations_no_delete;
+          DROP TRIGGER provider_account_activations_no_update;
+          DROP TRIGGER provider_account_activations_valid_insert;
+          DROP TABLE provider_account_activations;
+          DROP TRIGGER match_candidates_valid_insert;
+          ${LEGACY_MATCH_CANDIDATE_VALID_INSERT_SQL};
+
+          DROP TRIGGER provider_account_bindings_no_delete;
+          DROP TRIGGER provider_account_bindings_no_update;
+          ALTER TABLE provider_account_bindings RENAME TO provider_account_bindings_v14;
+          ${LEGACY_PROVIDER_ACCOUNT_BINDINGS_TABLE_SQL};
+          INSERT INTO provider_account_bindings(
+            provider_account_key, provider_kind, provider_endpoint,
+            external_account_id, identity_fingerprint_version,
+            identity_fingerprint, bound_at
+          )
+          SELECT provider_account_key, provider_kind, provider_endpoint,
+                 external_account_id, identity_fingerprint_version,
+                 identity_fingerprint, bound_at
+            FROM provider_account_bindings_v14
+           WHERE provider_account_key = 'primary';
+          DROP TABLE provider_account_bindings_v14;
+          ${LEGACY_PROVIDER_ACCOUNT_BINDINGS_NO_UPDATE_SQL};
+          ${LEGACY_PROVIDER_ACCOUNT_BINDINGS_NO_DELETE_SQL};
         `);
         legacy.prepare("DELETE FROM schema_migrations WHERE version >= 10").run();
         legacy.prepare(
@@ -1192,6 +1265,7 @@ async function withOrderDatabase(
     readonly databasePath: string;
     readonly database: AppDatabase;
     readonly config: AppConfig;
+    readonly settings: RuntimeSettingsService;
     readonly order: ReturnType<OrderService["get"]>;
     readonly close: () => void;
   }) => Promise<void>,
@@ -1209,11 +1283,11 @@ async function withOrderDatabase(
     try {
       const identity = new IdentityService(database, config);
       await identity.initialize();
-      const orders = new OrderService(database, config);
-      orders.initialize();
-      const created = orders.create(
-        "default",
-        createOrderRequestSchema.parse({
+       const settings = configureRuntimeSettings(database, config);
+       const orders = new OrderService(database, () => settings.snapshot());
+       orders.initialize();
+       const created = orders.create(
+         createOrderRequestSchema.parse({
           idempotency_key: "recovery-idempotency-1",
           merchant_order_no: "recovery-1",
           amount_cents: 10_000,
@@ -1225,6 +1299,7 @@ async function withOrderDatabase(
         databasePath,
         database,
         config,
+        settings,
         order: created.order,
         close,
       });
@@ -1248,11 +1323,73 @@ async function withDirectory(
 
 function testConfig(directory: string): AppConfig {
   return loadConfig({
-    PERPAY_INITIAL_ADMIN_PASSWORD: "recovery-test-password-2026",
-    PERPAY_API_SECRET: API_SECRET,
-    PERPAY_COLLECTION_CODE_PAYLOAD: COLLECTION_CODE,
-    PERPAY_DATA_DIR: directory,
+    PERPAY_MASTER_KEY: "31".repeat(32),
+    PERPAY_DATA_DIR: join(directory, "data"),
+    PERPAY_BACKUP_DIR: join(directory, "backup-volume"),
   });
+}
+
+function runtimeSettings(
+  database: AppDatabase,
+  config: AppConfig,
+): RuntimeSettingsService {
+  return new RuntimeSettingsService({
+    store: new RuntimeSettingsStore(database, config.masterKey),
+  });
+}
+
+function configureRuntimeSettings(
+  database: AppDatabase,
+  config: AppConfig,
+): RuntimeSettingsService {
+  const store = new RuntimeSettingsStore(database, config.masterKey);
+  store.initialize();
+  const audit = {
+    actorId: "admin",
+    requestId: "database-recovery-settings",
+    remoteAddressHash: "a".repeat(64),
+  };
+  store.saveCollection({
+    revision: 0,
+    code_payload: COLLECTION_CODE,
+    order_ttl_seconds: 300,
+    amount_offset_maximum_cents: 99,
+  }, audit);
+  const provider = parseProviderKeys({
+    environment: "PRODUCTION",
+    appId: PROVIDER_IDENTITY.externalAccountId,
+    privateKey: RECOVERY_APPLICATION_KEYS.privateKey
+      .export({ format: "pem", type: "pkcs8" })
+      .toString(),
+    publicKey: RECOVERY_PLATFORM_KEYS.publicKey
+      .export({ format: "pem", type: "spki" })
+      .toString(),
+    timeoutMilliseconds: 8_000,
+    scanIntervalMilliseconds: 10_000,
+    maximumSuccessAgeMilliseconds: 60_000,
+  });
+  store.saveProvider({
+    expectedRevision: 1,
+    accountKey: "primary",
+    environment: provider.environment,
+    appId: provider.appId,
+    privateKeyPem: provider.privateKeyPem,
+    publicKeyPem: provider.publicKeyPem,
+    privateKeyFingerprint: provider.applicationKeyFingerprint,
+    publicKeyFingerprint: provider.platformKeyFingerprint,
+    timeoutMilliseconds: provider.timeoutMilliseconds,
+    scanIntervalMilliseconds: provider.scanIntervalMilliseconds,
+    maximumSuccessAgeMilliseconds: provider.maximumSuccessAgeMilliseconds,
+    providerIdentity: {
+      endpoint: provider.endpoint,
+      externalAccountId: provider.appId,
+    },
+    audit,
+  });
+  store.saveApiSecret(API_SECRET, 2, audit);
+  const settings = new RuntimeSettingsService({ store });
+  settings.initialize();
+  return settings;
 }
 
 function recordRecoveryCredit(
@@ -1261,6 +1398,7 @@ function recordRecoveryCredit(
   amountCents: number,
   occurredAt: number,
   startedAt: number,
+  providerAccountKey = "primary",
 ) {
   const occurredAtText = formatProviderTimestamp(occurredAt);
   const amount = (amountCents / 100).toFixed(2);
@@ -1281,6 +1419,7 @@ function recordRecoveryCredit(
     otherAccount: null,
   };
   const run = store.startIngestRun({
+    providerAccountKey,
     start: formatProviderTimestamp(occurredAt - 60_000),
     end: formatProviderTimestamp(occurredAt + 60_000),
     pageSize: 1,
@@ -1988,6 +2127,23 @@ function createVersionEightEvidenceDatabase(databasePath: string): {
     const occurrence = parseOccurredAtWithPrecision("2026-08-16 00:01:00");
     const orderCreatedAt = occurrence.milliseconds - 1_000;
     const completedAt = occurrence.milliseconds + 1_000;
+
+    const providerIdentity = normalizeProviderIdentity(PROVIDER_IDENTITY);
+    connection.prepare(
+      `INSERT INTO provider_account_bindings(
+         provider_account_key, provider_kind, provider_endpoint,
+         external_account_id, identity_fingerprint_version,
+         identity_fingerprint, bound_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      providerIdentity.providerAccountKey,
+      providerIdentity.providerKind,
+      providerIdentity.endpoint,
+      providerIdentity.externalAccountId,
+      providerIdentity.identityFingerprintVersion,
+      providerIdentity.identityFingerprint,
+      orderCreatedAt,
+    );
 
     connection.prepare(
       `INSERT INTO api_client_config(

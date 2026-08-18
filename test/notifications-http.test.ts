@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { loadConfig, type AppConfig } from "../src/config.ts";
+import type { AppConfig } from "../src/config.ts";
 import { AppDatabase } from "../src/database/database.ts";
 import { createApp } from "../src/http/app.ts";
 import { IdentityService } from "../src/identity/service.ts";
@@ -21,23 +21,18 @@ import type { OrderProjection } from "../src/orders/model.ts";
 import { OrderService } from "../src/orders/service.ts";
 import { ReconciliationStore } from "../src/reconciliation/store.ts";
 import { signApiRequest } from "../src/security/api-signature.ts";
+import type { RuntimeSettingsService, RuntimeSettingsStore } from "../src/settings/index.ts";
+import { createConfiguredHttpServices, HTTP_TEST_ADMIN_PASSWORD } from "./http-fixture.ts";
 
-const ADMIN_PASSWORD = "notifications-http-admin-password";
+const ADMIN_PASSWORD = HTTP_TEST_ADMIN_PASSWORD;
 const API_SECRET = Buffer.alloc(32, 41).toString("base64url");
 const WEBHOOK_SECRET = Buffer.alloc(32, 73).toString("base64url");
 const COLLECTION_CODE = "https://qr.alipay.com/fkx-notifications-http";
-const PUBLIC_ORIGIN = "http://localhost:8080";
+const PUBLIC_ORIGIN = "http://localhost:6190";
 const ALLOWED_ORIGIN = "https://hooks.mashiro.dev";
 const ROTATED_ORIGIN = "https://callbacks.mashiro.dev";
 const API_CLIENT_ID = "default";
 const ISOLATED_CLIENT_ID = "isolated-client";
-const PROVIDER_IDENTITY = {
-  providerAccountKey: "primary",
-  providerKind: "alipay",
-  endpoint: "https://openapi.alipay.com",
-  externalAccountId: "2026000000000999",
-} as const;
-
 describe("notification HTTP contract", () => {
   it("projects notify_url and returns only events owned by the signed API client", async () => {
     await withNotificationFixture(async (fixture) => {
@@ -190,9 +185,9 @@ describe("notification HTTP contract", () => {
       assert.equal(await responseErrorCode(missingStepUp), "step_up_required");
 
       await stepUp(fixture.app, auth);
-      const disabledApp = createFixtureApp(fixture, disabledWebhookConfig(fixture.config));
+      saveWebhookSettings(fixture, false, null);
       const disabled = await postAdmin(
-        disabledApp,
+        fixture.app,
         redeliveryPath,
         auth,
         { redelivery_id: randomUUID(), reason: "disabled configuration" },
@@ -200,9 +195,9 @@ describe("notification HTTP contract", () => {
       assert.equal(disabled.status, 409);
       assert.equal(await responseErrorCode(disabled), "webhook_disabled");
 
-      const rotatedApp = createFixtureApp(fixture, rotatedWebhookConfig(fixture.config));
+      saveWebhookSettings(fixture, true, ROTATED_ORIGIN);
       const inactive = await postAdmin(
-        rotatedApp,
+        fixture.app,
         redeliveryPath,
         auth,
         { redelivery_id: randomUUID(), reason: "historical target" },
@@ -210,6 +205,7 @@ describe("notification HTTP contract", () => {
       assert.equal(inactive.status, 409);
       assert.equal(await responseErrorCode(inactive), "webhook_target_inactive");
 
+      saveWebhookSettings(fixture, true, ALLOWED_ORIGIN);
       const created = await postAdmin(fixture.app, redeliveryPath, auth, request);
       assert.equal(created.status, 201);
       const createdData = await responseData<{
@@ -233,7 +229,7 @@ describe("notification HTTP contract", () => {
       assert.equal(replayedData.replayed, true);
       assert.equal(replayedData.delivery.delivery_id, createdData.delivery.delivery_id);
 
-      for (const changedApp of [disabledApp, rotatedApp]) {
+      for (const changedApp of [fixture.app]) {
         const replayedAfterConfigurationChange = await postAdmin(
           changedApp,
           redeliveryPath,
@@ -283,6 +279,8 @@ interface NotificationFixture {
   readonly config: AppConfig;
   readonly database: AppDatabase;
   readonly identity: IdentityService;
+  readonly settings: RuntimeSettingsService;
+  readonly settingsStore: RuntimeSettingsStore;
   readonly ordersService: OrderService;
   readonly webhooks: IsolatedWebhookStore;
   readonly orders: readonly FixtureOrder[];
@@ -311,16 +309,20 @@ async function withNotificationFixture(
 ): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), "perpay-notifications-http-"));
   const orderClock = Date.now() - 60_000;
-  const config = webhookConfig(directory, ALLOWED_ORIGIN, true);
-  const database = await AppDatabase.open(config.databasePath);
+  const services = await createConfiguredHttpServices({
+    directory,
+    apiSecret: API_SECRET,
+    collectionCodePayload: COLLECTION_CODE,
+    publicUrl: PUBLIC_ORIGIN,
+    identityClock: () => orderClock,
+  });
+  const { config, database, identity, settings, settingsStore, orders: ordersService } = services;
   try {
-    const identity = new IdentityService(database, config);
-    await identity.initialize();
-    const ordersService = new OrderService(database, config, () => orderClock);
-    ordersService.initialize();
+    saveWebhookStoreSettings(settingsStore, true, ALLOWED_ORIGIN, WEBHOOK_SECRET);
     const reconciliation = new ReconciliationStore(database);
     const ledger = new LedgerStore(database);
-    ledger.bindProviderIdentity(PROVIDER_IDENTITY, orderClock - 1_000);
+    const providerAccountKey = settings.snapshot().activeProviderAccountKey;
+    if (!providerAccountKey) throw new Error("provider account is not configured");
     const isolatedEvent = isolatedWebhookEvent(orderClock);
     const webhooks = new IsolatedWebhookStore(database, isolatedEvent);
     webhooks.syncSigningKey({
@@ -331,6 +333,7 @@ async function withNotificationFixture(
       config,
       database,
       identity,
+      settings,
       orders: ordersService,
       webhookStore: webhooks,
       startedAt: new Date(0),
@@ -362,13 +365,14 @@ async function withNotificationFixture(
       const suffix = String(index + 1);
       const notifyUrl = `${ALLOWED_ORIGIN}/receive/${suffix}?tenant=personal%26developer`;
       const httpProjection = await createHttpOrder(app, suffix, notifyUrl, 1_000 + index * 1_000);
-      const order = ordersService.get(API_CLIENT_ID, httpProjection.order_id);
+      const order = ordersService.get(httpProjection.order_id);
       const entry = recordLedgerEntry(
         ledger,
         `notifications-http-credit-${suffix}`,
         order.payableAmountCents,
         orderClock + 5_000 + index * 1_000,
         orderClock + 10_000 + index * 1_000,
+        providerAccountKey,
       );
       reconciliation.settleManually({
         financialOperationId: randomUUID(),
@@ -421,6 +425,8 @@ async function withNotificationFixture(
       config,
       database,
       identity,
+      settings,
+      settingsStore,
       ordersService,
       webhooks,
       orders,
@@ -431,41 +437,6 @@ async function withNotificationFixture(
     database.close();
     rmSync(directory, { recursive: true, force: true });
   }
-}
-
-function createFixtureApp(
-  fixture: NotificationFixture,
-  config: AppConfig,
-): ReturnType<typeof createApp> {
-  return createApp({
-    config,
-    database: fixture.database,
-    identity: fixture.identity,
-    orders: fixture.ordersService,
-    webhookStore: fixture.webhooks,
-    startedAt: new Date(0),
-    clock: () => Date.now(),
-    ledgerHealth: () => ({
-      enabled: true,
-      state: "healthy" as const,
-      inFlight: false,
-      lastAttemptAt: Date.now(),
-      lastSuccessAt: Date.now(),
-      lastErrorCode: null,
-      consecutiveFailures: 0,
-    }),
-    reconciliationHealth: () => ({
-      enabled: true,
-      state: "healthy" as const,
-      inFlight: false,
-      lastAttemptAt: Date.now(),
-      lastSuccessAt: Date.now(),
-      lastErrorCode: null,
-      consecutiveFailures: 0,
-      pendingOrders: 0,
-      continuationPending: false,
-    }),
-  });
 }
 
 async function createHttpOrder(
@@ -532,29 +503,35 @@ function isolatedWebhookEvent(createdAt: number): WebhookEvent {
   };
 }
 
-function webhookConfig(directory: string, allowedOrigin: string, enabled: boolean): AppConfig {
-  return loadConfig({
-    PERPAY_INITIAL_ADMIN_PASSWORD: ADMIN_PASSWORD,
-    PERPAY_API_SECRET: API_SECRET,
-    PERPAY_COLLECTION_CODE_PAYLOAD: COLLECTION_CODE,
-    PERPAY_DATA_DIR: directory,
-    PERPAY_PUBLIC_URL: PUBLIC_ORIGIN,
-    PERPAY_WEBHOOK_ENABLED: enabled ? "true" : "false",
-    ...(enabled
-      ? {
-          PERPAY_WEBHOOK_ALLOWED_ORIGIN: allowedOrigin,
-          PERPAY_WEBHOOK_SECRET: WEBHOOK_SECRET,
-        }
-      : {}),
+function saveWebhookSettings(
+  fixture: NotificationFixture,
+  enabled: boolean,
+  allowedOrigin: string | null,
+): void {
+  saveWebhookStoreSettings(fixture.settingsStore, enabled, allowedOrigin);
+}
+
+function saveWebhookStoreSettings(
+  store: RuntimeSettingsStore,
+  enabled: boolean,
+  allowedOrigin: string | null,
+  secret: string | null = null,
+): void {
+  const revision = store.snapshot().revision;
+  store.saveWebhook({
+    revision,
+    enabled,
+    ...(enabled && allowedOrigin ? { allowed_origin: allowedOrigin } : {}),
+    timeout_milliseconds: 5_000,
+    maximum_attempts: 5,
+    retry_base_seconds: 1,
+    retry_maximum_seconds: 60,
+    secret,
+  }, {
+    actorId: "admin",
+    requestId: `notifications-http-webhook-${revision}`,
+    remoteAddressHash: "a".repeat(64),
   });
-}
-
-function disabledWebhookConfig(config: AppConfig): AppConfig {
-  return webhookConfig(config.dataDir, ALLOWED_ORIGIN, false);
-}
-
-function rotatedWebhookConfig(config: AppConfig): AppConfig {
-  return webhookConfig(config.dataDir, ROTATED_ORIGIN, true);
 }
 
 async function login(app: ReturnType<typeof createApp>): Promise<SessionAuth> {
@@ -564,7 +541,7 @@ async function login(app: ReturnType<typeof createApp>): Promise<SessionAuth> {
       "content-type": "application/json",
       origin: PUBLIC_ORIGIN,
     },
-    body: JSON.stringify({ username: "admin", password: ADMIN_PASSWORD }),
+    body: JSON.stringify({ password: ADMIN_PASSWORD }),
   });
   assert.equal(response.status, 200);
   const cookies = response.headers.getSetCookie();
@@ -661,8 +638,10 @@ function recordLedgerEntry(
   amountCents: number,
   occurredAt: number,
   startedAt: number,
+  providerAccountKey: string,
 ): LedgerEntry {
   const run = store.startIngestRun({
+    providerAccountKey,
     start: formatProviderTimestamp(occurredAt - 60_000),
     end: formatProviderTimestamp(occurredAt + 60 * 60 * 1_000),
     pageSize: 1,

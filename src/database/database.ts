@@ -553,6 +553,8 @@ async function migrate(
         upgradeLedgerSemanticFingerprints(connection);
       } else if (migration.postApply === "backfill_evidence_fingerprints_v1") {
         backfillEvidenceFingerprints(connection);
+      } else if (migration.postApply === "normalize_fixed_accounts_v1") {
+        normalizeFixedAccounts(connection);
       }
       insert.run(migration.version, migration.name, migrationChecksum(migration));
       // A long migration owns SQLite's write lock, so renew in that same
@@ -791,6 +793,98 @@ function backfillEvidenceFingerprints(connection: DatabaseSync): void {
   }
 }
 
+/**
+ * v13 allowed operators to choose identifiers that became fixed in v14.
+ * Normalize the live identity rows without rewriting hashed historical facts.
+ */
+function normalizeFixedAccounts(connection: DatabaseSync): void {
+  const admin = connection.prepare(
+    "SELECT username FROM admin_identity WHERE singleton_key = 1",
+  ).get() as { username: string } | undefined;
+  if (admin && admin.username !== "admin") {
+    const renamed = connection.prepare(
+      "UPDATE admin_identity SET username = 'admin' WHERE singleton_key = 1 AND username = ?",
+    ).run(admin.username);
+    if (Number(renamed.changes) !== 1) {
+      throw new Error("v14 migration could not normalize the administrator identity");
+    }
+  }
+
+  const client = connection.prepare(
+    "SELECT client_id FROM api_client_config WHERE singleton_key = 1",
+  ).get() as { client_id: string } | undefined;
+  if (client && client.client_id !== "default") {
+    // Updating an order's client namespace is otherwise rejected by both the
+    // immutable snapshot trigger and generic state/version guards. Capture all
+    // triggers on the affected tables so a future v13 trigger cannot silently
+    // turn this one-time namespace migration into a partial update.
+    const triggerTables = [
+      "api_client_config",
+      "api_client_keys",
+      "payment_orders",
+      "webhook_targets",
+    ] as const;
+    const triggerTablePlaceholders = triggerTables.map(() => "?").join(", ");
+    const triggers = connection.prepare(
+      `SELECT name, sql
+         FROM sqlite_schema
+        WHERE type = 'trigger' AND tbl_name IN (${triggerTablePlaceholders})
+        ORDER BY name`,
+    ).all(...triggerTables) as Array<{ name: string; sql: string | null }>;
+    if (
+      triggers.length === 0 ||
+      triggers.some((trigger) => trigger.sql === null)
+    ) {
+      throw new Error("v14 migration cannot find account immutability triggers");
+    }
+
+    connection.exec("PRAGMA defer_foreign_keys = ON");
+    for (const trigger of triggers) connection.exec(`DROP TRIGGER ${trigger.name}`);
+    try {
+      const previousClientId = client.client_id;
+      const configUpdate = connection.prepare(
+        "UPDATE api_client_config SET client_id = 'default' WHERE singleton_key = 1 AND client_id = ?",
+      ).run(previousClientId);
+      if (Number(configUpdate.changes) !== 1) {
+        throw new Error("v14 migration could not normalize the API client configuration");
+      }
+
+      const keyUpdate = connection.prepare(
+        "UPDATE api_client_keys SET client_id = 'default' WHERE client_id = ?",
+      ).run(previousClientId);
+      if (Number(keyUpdate.changes) < 1) {
+        throw new Error("v14 migration found no API client key history to normalize");
+      }
+      connection.prepare(
+        "UPDATE api_nonces SET client_id = 'default' WHERE client_id = ?",
+      ).run(previousClientId);
+      connection.prepare(
+        "UPDATE payment_orders SET api_client_id = 'default' WHERE api_client_id = ?",
+      ).run(previousClientId);
+      connection.prepare(
+        "UPDATE webhook_targets SET api_client_id = 'default' WHERE api_client_id = ?",
+      ).run(previousClientId);
+    } finally {
+      for (const trigger of triggers) connection.exec(trigger.sql!);
+    }
+  }
+
+  const staleReferences = connection.prepare(
+    `SELECT
+       (SELECT COUNT(*) FROM api_client_config WHERE client_id != 'default') +
+       (SELECT COUNT(*) FROM api_client_keys WHERE client_id != 'default') +
+       (SELECT COUNT(*) FROM api_nonces WHERE client_id != 'default') +
+       (SELECT COUNT(*) FROM payment_orders WHERE api_client_id != 'default') +
+       (SELECT COUNT(*) FROM webhook_targets WHERE api_client_id != 'default') AS count`,
+  ).get() as { count: bigint | number };
+  if (Number(staleReferences.count) !== 0) {
+    throw new Error("v14 migration left legacy API client references");
+  }
+  if (connection.prepare("PRAGMA foreign_key_check").all().length !== 0) {
+    throw new Error("v14 migration left foreign key violations after account normalization");
+  }
+}
+
 async function createPreMigrationBackup(
   connection: DatabaseSync,
   databasePath: string,
@@ -924,10 +1018,26 @@ export function inspectDatabaseIntegrity(connection: DatabaseSync): DatabaseInte
 
 function countDomainViolations(connection: DatabaseSync): number {
   return countIdentityDomainViolations(connection) +
+    countRuntimeSettingsDomainViolations(connection) +
     countOrderDomainViolations(connection) +
     countLedgerDomainViolations(connection) +
     countReconciliationDomainViolations(connection) +
     countWebhookDomainViolations(connection);
+}
+
+function countRuntimeSettingsDomainViolations(connection: DatabaseSync): number {
+  const hasSecrets = tableExists(connection, "runtime_secrets");
+  const hasGuard = tableExists(connection, "runtime_master_key_guard");
+  if (!hasSecrets && !hasGuard) return 0;
+  if (!hasSecrets || !hasGuard) return 1;
+  return readViolationCount(
+    connection,
+    `SELECT CASE
+       WHEN EXISTS (SELECT 1 FROM runtime_secrets) AND
+            (SELECT COUNT(*) FROM runtime_master_key_guard WHERE singleton_key = 1) != 1
+       THEN 1 ELSE 0 END AS violations`,
+    "runtime master key guard",
+  );
 }
 
 function countIdentityDomainViolations(connection: DatabaseSync): number {
@@ -1554,6 +1664,18 @@ function countReconciliationDomainViolations(connection: DatabaseSync): number {
            )
          )`
     : "0";
+  const hasProviderAccountGenerations = tableExists(
+    connection,
+    "collection_profile_provider_accounts",
+  );
+  const candidateProviderJoin = hasProviderAccountGenerations
+    ? `LEFT JOIN collection_profile_provider_accounts AS profile_provider
+         ON profile_provider.profile_id = profile.profile_id`
+    : "";
+  const candidateProviderViolation = hasProviderAccountGenerations
+    ? `profile_provider.profile_id IS NULL OR
+         entry.provider_account_key != profile_provider.provider_account_key`
+    : "entry.provider_account_key != profile.provider_account_key";
 
   const candidateViolations = readViolationCount(
     connection,
@@ -1565,6 +1687,7 @@ function countReconciliationDomainViolations(connection: DatabaseSync): number {
          ON orders.order_id = candidate.order_id
        LEFT JOIN collection_profiles AS profile
          ON profile.profile_id = orders.collection_profile_id
+       ${candidateProviderJoin}
        LEFT JOIN amount_slots AS slot
          ON slot.slot_id = candidate.slot_id
        LEFT JOIN financial_operations AS decision
@@ -1573,7 +1696,7 @@ function countReconciliationDomainViolations(connection: DatabaseSync): number {
          OR orders.order_id IS NULL
          OR profile.profile_id IS NULL
          OR slot.slot_id IS NULL
-         OR entry.provider_account_key != profile.provider_account_key
+         OR ${candidateProviderViolation}
          OR entry.direction != 'CREDIT'
          OR entry.currency != orders.currency
          OR entry.amount_cents != orders.payable_amount_cents
@@ -2382,17 +2505,32 @@ function countOrderCryptographicDomainViolations(connection: DatabaseSync): numb
   }
 
   let violations = 0;
+  const collectionProfileQuery = tableExists(
+    connection,
+    "collection_profile_provider_accounts",
+  )
+    ? `SELECT profile.code_payload, profile.payload_fingerprint,
+              profile.profile_fingerprint,
+              COALESCE(link.provider_account_key, profile.provider_account_key)
+                AS provider_account_key
+         FROM collection_profiles AS profile
+         LEFT JOIN collection_profile_provider_accounts AS link
+           ON link.profile_id = profile.profile_id`
+    : `SELECT code_payload, payload_fingerprint, profile_fingerprint,
+              provider_account_key
+         FROM collection_profiles`;
   for (const row of connection
-    .prepare(
-      `SELECT code_payload, payload_fingerprint, profile_fingerprint
-         FROM collection_profiles`,
-    )
+    .prepare(collectionProfileQuery)
     .iterate() as Iterable<{
       code_payload: string;
       payload_fingerprint: string;
       profile_fingerprint: string;
+      provider_account_key: string;
     }>) {
-    const expected = fingerprintCollectionCodeProfile(row.code_payload);
+    const expected = fingerprintCollectionCodeProfile(
+      row.code_payload,
+      row.provider_account_key,
+    );
     if (
       row.payload_fingerprint !== expected.payloadFingerprint ||
       row.profile_fingerprint !== expected.profileFingerprint

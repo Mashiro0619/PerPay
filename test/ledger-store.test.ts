@@ -51,6 +51,14 @@ describe("LedgerStore segment ingestion", () => {
         ).get() as { count: bigint }).count)),
         1,
       );
+      assert.deepEqual(store.activeProviderIdentity(), {
+        ...binding,
+        activationId: store.activeProviderIdentity()?.activationId,
+        sequence: 1,
+        previousProviderAccountKey: null,
+        activatedAt: STARTED_AT,
+        reason: "CONFIG_SYNC",
+      });
       assert.equal(database.integrityCheck().ok, true);
     });
   });
@@ -71,6 +79,92 @@ describe("LedgerStore segment ingestion", () => {
       const repeated = store.bindProviderIdentity(rotatedIdentity, STARTED_AT + 1_000);
 
       assert.deepEqual(repeated, first);
+      assert.equal(
+        database.read((connection) => Number((connection.prepare(
+          "SELECT COUNT(*) AS count FROM provider_account_bindings",
+        ).get() as { count: bigint }).count)),
+        1,
+      );
+    });
+  });
+
+  it("activates isolated provider generations and keeps their history append-only", async () => {
+    await withUnboundLedgerStore(async ({ database, store }) => {
+      store.bindProviderIdentity(PROVIDER_IDENTITY, STARTED_AT);
+      const nextIdentity = {
+        providerAccountKey: "account:2026-08-sandbox",
+        providerKind: "alipay",
+        endpoint: "https://openapi-sandbox.dl.alipaydev.com",
+        externalAccountId: "2026000000000001",
+      } as const;
+      const next = store.bindProviderIdentity(nextIdentity, STARTED_AT + 1_000);
+      const active = store.activeProviderIdentity();
+
+      assert.deepEqual(active, {
+        ...next,
+        activationId: active?.activationId,
+        sequence: 2,
+        previousProviderAccountKey: "primary",
+        activatedAt: STARTED_AT + 1_000,
+        reason: "CONFIG_SYNC",
+      });
+      assert.match(active?.activationId ?? "", /^[0-9a-f-]{36}$/);
+      assert.deepEqual(
+        database.read((connection) => connection.prepare(
+          `SELECT sequence, provider_account_key, previous_provider_account_key, reason
+             FROM provider_account_activations
+            ORDER BY sequence`,
+        ).all().map((row) => ({ ...row }))),
+        [
+          {
+            sequence: 1n,
+            provider_account_key: "primary",
+            previous_provider_account_key: null,
+            reason: "CONFIG_SYNC",
+          },
+          {
+            sequence: 2n,
+            provider_account_key: nextIdentity.providerAccountKey,
+            previous_provider_account_key: "primary",
+            reason: "CONFIG_SYNC",
+          },
+        ],
+      );
+      assert.throws(
+        () => store.startIngestRun({
+          ...WINDOW,
+          providerAccountKey: "primary",
+          pageSize: 1,
+          now: STARTED_AT + 2_000,
+        }),
+        /must be active before ledger ingestion/,
+      );
+      assert.equal(
+        store.startIngestRun({
+          ...WINDOW,
+          providerAccountKey: nextIdentity.providerAccountKey,
+          pageSize: 1,
+          now: STARTED_AT + 2_000,
+        }).providerAccountKey,
+        nextIdentity.providerAccountKey,
+      );
+    });
+  });
+
+  it("rolls an account change back while the active generation is ingesting", async () => {
+    await withUnboundLedgerStore(async ({ database, store }) => {
+      store.bindProviderIdentity(PROVIDER_IDENTITY, STARTED_AT);
+      store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT + 1_000 });
+
+      assert.throws(
+        () => store.bindProviderIdentity({
+          ...PROVIDER_IDENTITY,
+          providerAccountKey: "account:next",
+          externalAccountId: "2026000000000001",
+        }, STARTED_AT + 2_000),
+        /must finish before changing account generation/,
+      );
+      assert.equal(store.activeProviderIdentity()?.providerAccountKey, "primary");
       assert.equal(
         database.read((connection) => Number((connection.prepare(
           "SELECT COUNT(*) AS count FROM provider_account_bindings",
