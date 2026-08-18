@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release
   cancel-in-progress: false
 
 env:
@@ -295,12 +295,12 @@ jobs:
           fi
           test "$public_digest" = "$RELEASE_IMAGE_DIGEST"
 
-      - name: Render and validate the digest-pinned release Compose
+      - name: Render and validate the latest-channel release Compose
         run: |
           set -euo pipefail
-          node scripts/render-release-compose.mjs "$RELEASE_IMAGE_DIGEST" release-assets/docker-compose.yml
+          node scripts/render-release-compose.mjs release-assets/docker-compose.yml
           docker compose -f release-assets/docker-compose.yml config --quiet
-          expected_image="${RELEASE_IMAGE}@${RELEASE_IMAGE_DIGEST}"
+          expected_image="${IMAGE_NAME}:latest"
           expected_images="$(printf '%s\n%s\n%s' "$expected_image" "$expected_image" "$expected_image")"
           test "$(docker compose --profile maintenance -f release-assets/docker-compose.yml config --images)" = "$expected_images"
 
@@ -396,6 +396,94 @@ jobs:
           cleanup
           trap - EXIT
 
+      - name: Promote the validated image to latest
+        env:
+          RELEASE_AMD64_DIGEST: ${{ steps.platform_images.outputs.amd64_digest }}
+          RELEASE_ARM64_DIGEST: ${{ steps.platform_images.outputs.arm64_digest }}
+          RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          latest_image="${IMAGE_NAME}:latest"
+          if ! latest_state="$(node scripts/registry-manifest-status.mjs "$IMAGE_NAME" latest)"; then
+            echo "::error::The current latest channel could not be inspected"
+            exit 1
+          fi
+
+          publish_latest=true
+          manifest=""
+          if [ "$latest_state" = exists ]; then
+            manifest="$(docker buildx imagetools inspect "$latest_image" --format '{{json .Manifest}}')"
+            current_digest="$(jq -er '.digest | select(test("^sha256:[0-9a-f]{64}$"))' <<<"$manifest")"
+            jq -e '
+              (.manifests | length) == 2
+              and ([.manifests[] | [.platform.os, .platform.architecture]] | sort)
+                == [["linux", "amd64"], ["linux", "arm64"]]
+            ' <<<"$manifest" >/dev/null
+
+            current_versions=()
+            for architecture in amd64 arm64; do
+              platform_digest="$(jq -er --arg architecture "$architecture" '
+                .manifests[]
+                | select(.platform.os == "linux" and .platform.architecture == $architecture)
+                | .digest
+                | select(test("^sha256:[0-9a-f]{64}$"))
+              ' <<<"$manifest")"
+              image="$(docker buildx imagetools inspect "${IMAGE_NAME}@${platform_digest}" --format '{{json .Image}}')"
+              current_versions+=("$(jq -er '
+                .config.Labels["org.opencontainers.image.version"]
+                | select(test("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"))
+              ' <<<"$image")")
+            done
+            if [ "${current_versions[0]}" != "${current_versions[1]}" ]; then
+              echo "::error::The current latest platforms disagree on their release version"
+              exit 1
+            fi
+
+            current_version="${current_versions[0]}"
+            if [ "$current_version" = "$RELEASE_VERSION" ]; then
+              if [ "$current_digest" != "$RELEASE_IMAGE_DIGEST" ]; then
+                echo "::error::The current latest tag has the target version but a different digest"
+                exit 1
+              fi
+              publish_latest=false
+            elif [ "$(printf '%s\n%s\n' "$current_version" "$RELEASE_VERSION" | sort -V | tail -n 1)" != "$RELEASE_VERSION" ]; then
+              echo "::error::Refusing to move latest backward from ${current_version} to ${RELEASE_VERSION}"
+              exit 1
+            fi
+          elif [ "$latest_state" != missing ]; then
+            echo "::error::The registry returned an unsupported latest-tag state"
+            exit 1
+          fi
+
+          if [ "$publish_latest" = true ]; then
+            docker buildx imagetools create \
+              --tag "$latest_image" \
+              "${IMAGE_NAME}@${RELEASE_AMD64_DIGEST}" \
+              "${IMAGE_NAME}@${RELEASE_ARM64_DIGEST}"
+            manifest=""
+            for _ in $(seq 1 12); do
+              if manifest="$(docker buildx imagetools inspect "$latest_image" --format '{{json .Manifest}}' 2>/dev/null)"; then
+                break
+              fi
+              sleep 5
+            done
+          fi
+          if [ -z "$manifest" ]; then
+            echo "::error::The latest image did not become readable"
+            exit 1
+          fi
+
+          latest_digest="$(jq -er '.digest | select(test("^sha256:[0-9a-f]{64}$"))' <<<"$manifest")"
+          jq -e \
+            --arg amd64 "$RELEASE_AMD64_DIGEST" \
+            --arg arm64 "$RELEASE_ARM64_DIGEST" '
+              (.manifests | length) == 2
+              and ([.manifests[] | [.platform.os, .platform.architecture]] | sort)
+                == [["linux", "amd64"], ["linux", "arm64"]]
+              and ([.manifests[].digest] | sort) == ([$amd64, $arm64] | sort)
+            ' <<<"$manifest" >/dev/null
+          test "$latest_digest" = "$RELEASE_IMAGE_DIGEST"
+
       - name: Publish the GitHub Release
         env:
           DATABASE_MAXIMUM: ${{ needs.verify.outputs.database_maximum }}
@@ -421,12 +509,13 @@ jobs:
           cat > release-notes.md <<EOF
           ## Container image
 
-          - Image: \`${RELEASE_IMAGE}@${RELEASE_IMAGE_DIGEST}\`
+          - Fixed rollback image: \`${RELEASE_IMAGE}@${RELEASE_IMAGE_DIGEST}\`
+          - Default update channel: \`${IMAGE_NAME}:latest\`
           - Platforms: \`linux/amd64\`, \`linux/arm64\`
           - Supported database schema range: \`${DATABASE_MINIMUM}..${DATABASE_MAXIMUM}\`
           - Compose SHA-256: \`${compose_sha256}\`
 
-          Download the attached \`docker-compose.yml\`, fill its placeholders, and run \`docker compose up -d\`. The two long-running services and the maintenance profile are pinned to the image digest above.
+          First installation: download the attached \`docker-compose.yml\`, fill its placeholders, and run \`docker compose up -d\`. Existing installations normally update with \`docker compose pull\` followed by \`docker compose up -d\`; replace the Compose only when the operational notes require template changes. The fixed image reference above is retained for manual rollback.
 
           Verify the attachment on Linux with \`echo "${compose_sha256}  docker-compose.yml" | sha256sum -c -\`.
 
@@ -436,4 +525,4 @@ jobs:
             --verify-tag \
             --title "$GITHUB_REF_NAME" \
             --notes-file release-notes.md \
-            --latest=false
+            --latest

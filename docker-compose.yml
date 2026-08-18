@@ -8,9 +8,9 @@ x-perpay-backup-interval-seconds: &perpay-backup-interval-seconds "86400"
 
 services:
   app:
-    # 固定版本标签，不使用 latest。升级或回滚时必须同时替换三个服务的 image。
-    # 正式发布说明同时给出 OCI digest；严格固定字节时使用 tag@sha256:... 完整引用。
-    image: ghcr.io/mashiro0619/perpay:0.1.0
+    # 默认跟随 latest；升级时 pull 后重建容器。回滚时把三处 image 一起改成固定版本标签。
+    # 每个正式 Release 仍会保留不可变的 X.Y.Z 标签和 OCI digest 供审计与回滚。
+    image: ghcr.io/mashiro0619/perpay:latest
     environment:
       # Compose 会对所有字符串执行变量插值；任何人工填写值中的 $ 都必须写成 $$。
       # 首次初始化新数据卷时必填；管理员创建成功后删除这一整项并重建容器。
@@ -99,8 +99,8 @@ services:
         max-file: "3"
 
   backup:
-    # 必须与 app、maintenance 使用完全相同的镜像引用；发布渲染器会同时固定三处 digest。
-    image: ghcr.io/mashiro0619/perpay:0.1.0
+    # 必须与 app、maintenance 使用完全相同的镜像引用；回滚时三处一起改成固定版本。
+    image: ghcr.io/mashiro0619/perpay:latest
     environment:
       PERPAY_DATA_DIR: "/data"
       PERPAY_BACKUP_DIR: "/backups"
@@ -150,7 +150,7 @@ services:
   # 仅供停机恢复使用；profile 使普通 `docker compose up -d` 不会启动它。
   maintenance:
     # 必须与 app、backup 使用完全相同的镜像引用。
-    image: ghcr.io/mashiro0619/perpay:0.1.0
+    image: ghcr.io/mashiro0619/perpay:latest
     profiles:
       - maintenance
     environment:

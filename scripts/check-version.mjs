@@ -71,11 +71,9 @@ try {
 } catch (error) {
   errors.push(`docker-compose.yml structure is invalid: ${error instanceof Error ? error.message : String(error)}`);
 }
-const imageVersion = typeof composeImage === "string"
-  ? /^ghcr\.io\/mashiro0619\/perpay:([^\s@]+)$/u.exec(composeImage)?.[1]
-  : undefined;
-if (imageVersion !== packageVersion) {
-  errors.push(`docker-compose.yml image tag=${imageVersion ?? "<missing>"} does not match package.json=${packageVersion}`);
+const expectedComposeImage = "ghcr.io/mashiro0619/perpay:latest";
+if (composeImage !== expectedComposeImage) {
+  errors.push(`docker-compose.yml image=${composeImage ?? "<missing>"} must be ${expectedComposeImage}`);
 }
 
 const dockerfile = readFileSync(resolve(root, "Dockerfile"), "utf8");

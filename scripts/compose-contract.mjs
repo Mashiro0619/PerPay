@@ -165,7 +165,7 @@ function assertBackupIntervalAlias(document, service) {
 /**
  * Parses the user-facing Compose file and enforces the release contract. The
  * two default services and the profile-gated maintenance service run the same
- * immutable application image.
+ * identical application image reference or channel.
  */
 export function inspectComposeContract(source) {
   if (typeof source !== "string" || source.length === 0) {

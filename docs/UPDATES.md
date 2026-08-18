@@ -1,6 +1,6 @@
 # 更新与回滚
 
-PerPay 使用不可变应用镜像和两个外置命名卷：应用数据卷保存在线 SQLite 与迁移恢复点，备份卷保存经过校验的本地 SQLite 副本、备份状态和备份锁。同一个镜像同时运行长期 `app`、`backup` 服务和按需 `maintenance` profile；容器可以替换，卷不能随意删除。
+PerPay 使用应用镜像和两个外置命名卷：应用数据卷保存在线 SQLite 与迁移恢复点，备份卷保存经过校验的本地 SQLite 副本、备份状态和备份锁。同一个镜像同时运行长期 `app`、`backup` 服务和按需 `maintenance` profile；容器可以替换，卷不能随意删除。
 
 本页只处理镜像更新、自动迁移和版本回退。日常备份、恢复以及恢复前隔离库的显式清理见 [自动备份与恢复](BACKUPS.md)；恢复命令被中断时见 [恢复故障处置](RECOVERY.md)。隔离库不会在恢复完成时自动删除，空间管理仍由部署者负责。
 
@@ -10,15 +10,14 @@ PerPay 使用不可变应用镜像和两个外置命名卷：应用数据卷保�
 
 正式 Compose 默认顶层名称为 `perpay`，对应卷通常为 `perpay_perpay-data` 与 `perpay_perpay-backups`。`-p`、`--project-name` 和 `COMPOSE_PROJECT_NAME` 可以覆盖顶层名称；日常运维不得临时使用这些覆盖方式。真正决定卷身份的是有效项目名，不是当前目录名。
 
-始终从同一稳定部署路径操作，并保持有效项目名不变；每次升级仍要以目标 Release 附件为新模板，不能只在旧文件中改镜像。操作前用 `docker compose ls --all`、`docker compose config --quiet` 和 `docker volume ls` 核对实例与当前配置有效性。不要运行会输出完整插值配置的裸 `docker compose config`，它会把秘密写到终端和日志。多实例部署必须为每个实例配置不同且长期不变的项目名，并分别修改宿主端口与 `PERPAY_PUBLIC_URL`。不要用 `docker compose down --volumes` 试探卷是否正确。
+始终从同一稳定部署路径操作，并保持有效项目名不变。操作前用 `docker compose ls --all`、`docker compose config --quiet` 和 `docker volume ls` 核对实例与当前配置有效性。不要运行会输出完整插值配置的裸 `docker compose config`，它会把秘密写到终端和日志。多实例部署必须为每个实例配置不同且长期不变的项目名，并分别修改宿主端口与 `PERPAY_PUBLIC_URL`。不要用 `docker compose down --volumes` 试探卷是否正确。
 
-正式发布使用固定语义版本和 OCI digest，不使用 `latest`。Release 附件中的 `app`、`backup` 与 `maintenance` 三处 `image:` 必须完全相同；更新或回退时同时替换三处完整引用。
+正式 Compose 默认使用 `latest`。每个正式 Release 同时保留固定语义版本标签和 OCI digest；Release 附件中的三个服务仍必须使用完全相同的 `latest` 引用。
 
 ## 标准升级流程
 
 1. 阅读目标版本 Release 说明，确认 CPU 架构、数据库兼容范围、schema migration、数据分叉风险和恢复要求。代理或 Docker 网络变化时重新核对 `PERPAY_TRUSTED_PROXY_CIDRS`，不得扩大为全部地址。
-2. 加密保存升级前填写后的 Compose，并记录其中三处旧的完整 `仓库:版本@sha256:...` 引用。不要只记录裸 digest。
-3. 保持旧应用运行，停止自动备份，创建经过验证的当前状态备份并复制到两个卷之外。复制前准备一个受访问控制、全新且为空的 `<FRESH_IGNORED_EXPORT_DIR>`；目录必须在源码树之外，或已被 `.gitignore` 明确排除，且本次操作不得复用旧导出目录：
+2. 保存当前填写好的 Compose，运行 `docker compose images app` 记录当前镜像的版本或 digest，并在升级前创建一份经过验证的备份；重要实例还应把副本复制到两个 Docker 卷之外。复制前准备一个受访问控制、全新且为空的 `<FRESH_IGNORED_EXPORT_DIR>`：
 
    ```text
    docker compose stop backup
@@ -26,23 +25,21 @@ PerPay 使用不可变应用镜像和两个外置命名卷：应用数据卷保�
    docker compose cp backup:/backups/<BACKUP_NAME> <FRESH_IGNORED_EXPORT_DIR>/<BACKUP_NAME>
    ```
 
-   从 `run-once` 输出的 `backup.name` 与 `backup.sha256` 取精确值，复制后重新计算 SHA-256，并按 [备份与恢复要求](BACKUPS.md) 加密和限制卷外副本访问。任一步失败都不得继续，失败或部分写入的目录不得续用；如果暂时中止升级，先执行 `docker compose up -d --wait --wait-timeout 900 backup` 恢复自动备份。
-4. 在受限目录中以目标 Release 附件为基线准备新的私密 Compose：迁移现有秘密、稳定项目名、宿主端口、公开 URL 和其他实例值，并按 Release 的 `Operational notes` 处理新增或变化的环境变量、卷、健康检查与安全约束。三处 `image:` 必须保留附件给出的同一完整引用。不要把填写后的新旧文件上传到在线 diff、Issue 或日志，也不要用旧模板覆盖目标附件的新结构。
-5. 对候选文件运行 `docker compose -f "<NEW_COMPOSE_PATH>" config --quiet`，确认成功后再用它替换稳定部署路径中的 Compose；加密保留第 2 步的旧文件。替换过程中不得改变有效项目名，除非本次操作本来就是经过单独计划的实例迁移。
-6. 只拉取镜像；此时不会停止当前应用或修改数据：
+   从 `run-once` 输出的 `backup.name` 与 `backup.sha256` 取精确值，复制后重新计算 SHA-256，并按 [备份与恢复要求](BACKUPS.md) 加密和限制卷外副本访问。任一步失败都不得继续；如果暂时中止升级，先启动 backup 恢复自动备份。
+3. 在当前部署目录执行：
 
    ```text
-   docker compose --profile maintenance pull
+   docker compose pull
    ```
 
-7. 重建两个服务并等待 healthcheck：
+4. 重建两个服务并等待 healthcheck：
 
    ```text
    docker compose up -d --wait --wait-timeout 900 app backup
    ```
 
    大型数据库可以增加等待时间。超时或 healthcheck 失败不会自动回滚；先查看 `docker compose ps`、`docker compose logs app` 和 `docker compose logs backup`，不要并发启动恢复命令。
-8. 核对核心就绪和后台状态：
+5. 核对核心就绪和后台状态：
 
    ```text
    docker compose ps
@@ -53,7 +50,7 @@ PerPay 使用不可变应用镜像和两个外置命名卷：应用数据卷保�
 
 账务采集和自动确认任务都必须先有一次成功记录，且最近成功仍在 `PERPAY_ALIPAY_MAX_SUCCESS_AGE_SECONDS` 内，`/readyz` 才返回 200。后续瞬时故障在既有成功仍新鲜时表现为 `status: degraded`；任一任务从未成功、停止或成功记录过期后会重新返回 503，并关闭新订单和仍可付款订单的付款指令。终态订单仍可查询。必须同时检查签名的 `/api/v1/system/status` 中 `collection_ready`、`confirmation_ready` 和两个任务的成功年龄，不能只看容器正在运行。
 
-单机个人部署接受更新期间的短暂停机，不增加多副本和负载均衡复杂度。
+如果本次 Release 只更新镜像，原有 Compose 可以直接沿用；只有 Release 明确要求配置、卷或健康检查变化时，才下载新的 Compose 模板并迁移配置。单机个人部署接受更新期间的短暂停机，不增加多副本和负载均衡复杂度。
 
 ## 自动迁移与恢复点
 
@@ -76,7 +73,7 @@ PerPay 使用不可变应用镜像和两个外置命名卷：应用数据卷保�
 
 ## 选择回退方式
 
-只有目标 Release 明确声明旧镜像仍兼容升级后持久状态，并且没有执行旧程序不支持的 schema 或状态变更时，才可恢复升级前保存的三处完整旧镜像引用，然后执行：
+如果数据库 schema 与旧版本兼容，可以把三处 `image:` 从 `latest` 一起改成目标固定版本标签，然后执行：
 
 ```text
 docker compose --profile maintenance pull
@@ -99,7 +96,7 @@ docker compose run --rm --no-deps --entrypoint node maintenance dist/database/ma
 docker compose run --rm --no-deps --entrypoint node maintenance dist/database/maintenance.js restore-migration-backup <MIGRATION_BACKUP_NAME> --confirm-replace-current-database
 ```
 
-恢复工具会争用维护租约，拒绝路径穿越、链接和带 sidecar 的非自包含文件，校验源文件与 staging，并在替换主路径前持久化当前数据库的隔离副本。完成后将三处镜像引用改回兼容旧 schema 的同一版本，再启动并核对：
+恢复工具会争用维护租约，拒绝路径穿越、链接和带 sidecar 的非自包含文件，校验源文件与 staging，并在替换主路径前持久化当前数据库的隔离副本。完成后将三处镜像引用改回兼容旧 schema 的同一固定版本，再启动并核对：
 
 ```text
 docker compose --profile maintenance pull
@@ -108,13 +105,15 @@ docker compose up -d --wait --wait-timeout 900 app backup
 
 如果恢复被中断、应用因维护锁拒绝启动或出现孤立 SQLite sidecar，不要手工删除现场，按 [恢复故障处置](RECOVERY.md) 操作。
 
+问题版本修复并发布新版本后，再将三处 `image:` 一起改回 `latest`，执行普通升级流程。
+
 ## 平台边界
 
 项目仅发布并支持 Linux `amd64`、`arm64` 容器；部署、更新、恢复和发布门禁均以 Linux Docker 为唯一基线。
 
 ## 不采用的方式
 
-- 不使用 `latest` 作为正式部署版本。
+- 不把 `latest` 当作不可变的审计依据；需要复现或回滚时使用 Release 提供的固定版本标签和 OCI digest。
 - 不把 Docker Socket 挂入长期应用容器。
 - 不使用常驻更新 sidecar 或无人确认的自动替换工具。
 - 不在运行中的 SQLite WAL 数据库上用普通文件复制冒充在线备份。

@@ -20,17 +20,17 @@ PerPay 是面向个人开发者的开源、自托管经营码收款系统。它�
 
 ## 部署
 
-正式发布后的推荐路径是下载对应 GitHub Release 附带的 `docker-compose.yml`，填写其中的占位配置，然后运行：
+首次部署时下载 GitHub Release 附带的 `docker-compose.yml`，填写占位配置，然后运行：
 
 ```sh
 docker compose up -d
 ```
 
-仓库根目录的 [docker-compose.yml](docker-compose.yml) 只是生成发布附件的模板，不是固定镜像字节的生产部署证据；正式部署只使用对应 Release 附带的文件。
+Compose 默认跟随 `latest`。以后正常升级不需要重新下载文件，只需 `docker compose pull` 后重新 `up -d`；只有 Release 明确增加或修改配置项时才替换模板。
 
 部署主机必须是 Linux `amd64` 或 `arm64` 服务器，并安装 Docker Engine 以及能够使用 `up --wait --wait-timeout`、`cp` 和长格式健康依赖的 Docker Compose v2 插件。旧版 `docker-compose` v1 不受支持。
 
-Compose 使用同一个不可变镜像运行两个长期服务，并提供一个默认不启动的维护 profile：
+Compose 使用同一个镜像引用运行两个长期服务，并提供一个默认不启动的维护 profile：
 
 - `app`：HTTP API、订单、账务采集、对账和通知。
 - `backup`：无网络的周期备份进程。
@@ -90,7 +90,7 @@ docker compose logs backup
 
 自动备份卷默认仍位于同一 Docker 主机，不等于异地灾备。处理重要数据前，应建立加密异地副本并实际演练恢复。
 
-升级使用固定版本镜像和 OCI digest，由 Docker Compose 替换容器；应用不访问 Docker Socket，也不会自行更新。不要使用 `latest` 或无人确认的自动更新工具。
+默认 Compose 跟随官方 `latest` 镜像。升级时执行 `docker compose pull` 和 `docker compose up -d`；固定版本标签与 OCI digest 保留用于审计和手动回滚。应用不访问 Docker Socket，也不会自行更新。
 
 ## 文档
 

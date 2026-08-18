@@ -31,16 +31,20 @@ const releaseNotesText = readFileSync(
 );
 const dockerfileText = readFileSync(new URL("../Dockerfile", import.meta.url), "utf8");
 const noticeText = readFileSync(new URL("../NOTICE", import.meta.url), "utf8");
+const checkVersionText = readFileSync(
+  new URL("../scripts/check-version.mjs", import.meta.url),
+  "utf8",
+);
 
 test("Compose contract accepts the default services and profile-gated maintenance topology", () => {
   const contract = inspectComposeContract(validCompose);
-  assert.equal(contract.image, "ghcr.io/mashiro0619/perpay:0.1.0");
+  assert.equal(contract.image, "ghcr.io/mashiro0619/perpay:latest");
 
   const digest = `sha256:${"a".repeat(64)}`;
   const rendered = replaceComposeImage(validCompose, `${contract.image}@${digest}`);
   const renderedContract = inspectComposeContract(rendered);
   assert.equal(renderedContract.image, `${contract.image}@${digest}`);
-  assert.equal(rendered.match(/perpay:0\.1\.0@sha256:a{64}/gu)?.length, 3);
+  assert.equal(rendered.match(/perpay:latest@sha256:a{64}/gu)?.length, 3);
 
   const parsed = parse(validCompose);
   assert.equal(parsed["x-perpay-backup-interval-seconds"], "86400");
@@ -141,17 +145,19 @@ test("Compose contract rejects privilege and volume-boundary escapes", () => {
   )));
 });
 
-test("render-release-compose writes a digest-pinned file without changing the source", () => {
+test("render-release-compose copies the validated latest-channel template", () => {
   const outputDirectory = mkdtempSync(join(tmpdir(), "perpay-release-compose-"));
   try {
     const output = join(outputDirectory, "docker-compose.yml");
     const result = spawnSync(process.execPath, [
       "scripts/render-release-compose.mjs",
-      `sha256:${"b".repeat(64)}`,
       output,
     ], { encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);
-    assert.match(readFileSync(output, "utf8"), /perpay:0\.1\.0@sha256:b{64}/u);
+    const rendered = readFileSync(output, "utf8");
+    assert.equal(rendered, validCompose);
+    assert.equal(inspectComposeContract(rendered).image, "ghcr.io/mashiro0619/perpay:latest");
+    assert.doesNotMatch(rendered, /perpay:latest@sha256:/u);
   } finally {
     rmSync(outputDirectory, { recursive: true, force: true });
   }
@@ -172,7 +178,7 @@ test("the application image contains only the pinned Node runtime and applicatio
   assert.equal(existsSync(new URL("../third_party/restic/LICENSE", import.meta.url)), false);
 });
 
-test("release builds, scans, fixes, verifies, and publishes one version image", () => {
+test("release builds, scans, verifies, and publishes fixed and latest images", () => {
   const workflow = parse(releaseWorkflowText);
   assert.deepEqual(Object.keys(workflow.jobs), ["verify", "publish"]);
   assert.equal(workflow.jobs.verify["timeout-minutes"], 30);
@@ -182,7 +188,7 @@ test("release builds, scans, fixes, verifies, and publishes one version image", 
     contents: "write",
     packages: "write",
   });
-  assert.equal(workflow.concurrency.group, "release-${{ github.ref }}");
+  assert.equal(workflow.concurrency.group, "release");
   assert.equal(workflow.jobs.publish.environment, undefined);
 
   const verifySteps = workflow.jobs.verify.steps;
@@ -229,8 +235,17 @@ test("release builds, scans, fixes, verifies, and publishes one version image", 
   assert.doesNotMatch(releaseWorkflowText, /DOCKER_CONFIG=.*imagetools inspect/u);
   assert.match(releaseWorkflowText, /--digest/u);
 
+  const latest = publishSteps.find(
+    (step) => step.name === "Promote the validated image to latest",
+  );
+  assert.match(latest?.run ?? "", /imagetools create/u);
+  assert.match(latest?.run ?? "", /registry-manifest-status\.mjs.*latest/u);
+  assert.match(latest?.run ?? "", /sort -V/u);
+  assert.match(latest?.run ?? "", /Refusing to move latest backward/u);
+  assert.match(latest?.run ?? "", /target version but a different digest/u);
+
   const render = publishSteps.find(
-    (step) => step.name === "Render and validate the digest-pinned release Compose",
+    (step) => step.name === "Render and validate the latest-channel release Compose",
   );
   assert.match(render?.run ?? "", /render-release-compose\.mjs/u);
   assert.match(render?.run ?? "", /config --quiet/u);
@@ -259,9 +274,16 @@ test("release builds, scans, fixes, verifies, and publishes one version image", 
   }
 
   const publish = publishSteps.find((step) => step.name === "Publish the GitHub Release");
+  assert.ok(smoke);
+  assert.ok(latest);
+  assert.ok(publish);
+  assert.equal(publishSteps.indexOf(smoke) < publishSteps.indexOf(latest), true);
+  assert.equal(publishSteps.indexOf(latest) < publishSteps.indexOf(publish), true);
   assert.match(publish?.run ?? "", /gh release create/u);
-  assert.match(publish?.run ?? "", /--latest=false/u);
-  assert.doesNotMatch(releaseWorkflowText, /attest-build-provenance|\.sbom|:latest|candidate|bootstrap/iu);
+  assert.match(publish?.run ?? "", /--latest(?:\s|$)/u);
+  assert.doesNotMatch(publish?.run ?? "", /--latest=false/u);
+  assert.match(releaseWorkflowText, /\$\{IMAGE_NAME\}:latest/u);
+  assert.doesNotMatch(releaseWorkflowText, /attest-build-provenance|\.sbom|candidate|bootstrap/iu);
   assert.equal(
     [...releaseWorkflowText.matchAll(/secrets\.([A-Za-z0-9_]+)/gu)].every(
       (match) => match[1] === "GITHUB_TOKEN",
@@ -269,6 +291,8 @@ test("release builds, scans, fixes, verifies, and publishes one version image", 
     true,
   );
   assert.equal(existsSync(new URL("../.github/release-allowed-signers", import.meta.url)), false);
+  assert.match(checkVersionText, /ghcr\.io\/mashiro0619\/perpay:latest/u);
+  assert.doesNotMatch(checkVersionText, /image tag=.*does not match package\.json/u);
 });
 
 test("daily CI is one bounded Linux Node job", () => {
@@ -349,6 +373,11 @@ test("registry status accepts only authoritative manifest 200 and 404 responses"
       new Response(null, { status: 404 })),
     "missing",
   );
+  assert.equal(
+    await queryGhcrVersionTag("ghcr.io/mashiro0619/perpay", "latest", async () =>
+      new Response(null, { status: 404 })),
+    "missing",
+  );
   await assert.rejects(
     () => queryGhcrVersionTag("ghcr.io/mashiro0619/perpay", "0.1.0", async () =>
       new Response(null, { status: 403 })),
@@ -395,8 +424,8 @@ test("registry status rejects malformed authentication and input boundaries", as
     /lowercase ghcr\.io repository/u,
   );
   await assert.rejects(
-    () => queryGhcrVersionTag("ghcr.io/mashiro0619/perpay", "latest", async () =>
+    () => queryGhcrVersionTag("ghcr.io/mashiro0619/perpay", "nightly", async () =>
       new Response(null, { status: 404 })),
-    /stable semantic version/u,
+    /latest or a stable semantic version/u,
   );
 });
