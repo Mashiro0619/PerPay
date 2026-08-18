@@ -15,13 +15,15 @@
 
 ## 安装
 
-仅支持 Linux Docker（`amd64`、`arm64`）。下载 Release 附带的 `docker-compose.yml`，填写所有 `CHANGE_ME` 值，至少包括：
+仅支持 Linux Docker（`amd64`、`arm64`）。下载 Release 附带的 `docker-compose.yml`，填写文件顶部首次部署必填项中的 `CHANGE_ME` 值，至少包括：
 
 - 管理员初始密码 `PERPAY_INITIAL_ADMIN_PASSWORD`
-- 公网 HTTPS 地址 `PERPAY_PUBLIC_URL`
-- API 凭据 `PERPAY_API_CLIENT_ID`、`PERPAY_API_SECRET`
+- 公网地址 `PERPAY_PUBLIC_URL`（本地测试可保留 `http://localhost:8080`）
+- API 密钥 `PERPAY_API_SECRET`（客户端 ID 默认是 `default`）
 - 经营码内容 `PERPAY_COLLECTION_CODE_PAYLOAD`
 - 启用采集时的支付宝应用 ID、应用私钥和平台公钥
+
+通知默认关闭；只有把 `PERPAY_WEBHOOK_ENABLED` 改为 `true` 时，才填写通知域名和密钥。
 
 然后运行：
 

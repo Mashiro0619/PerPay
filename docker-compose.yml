@@ -1,76 +1,60 @@
-# 同一主机部署多个实例时，必须为每个实例改成唯一且长期不变的小写名称。
-# 同时为每个实例修改宿主端口和 PERPAY_PUBLIC_URL；改名会选择另一份命名卷。
-# 单实例保持默认值即可。
+# 先填写 app.environment 顶部的首次部署必填项。
 name: perpay
 
-# app 的状态监控与 backup 的调度必须共用同一周期；允许范围为 3600-604800 秒。
 x-perpay-backup-interval-seconds: &perpay-backup-interval-seconds "86400"
 
 services:
   app:
-    # 默认跟随 latest；升级时 pull 后重建容器。回滚时把三处 image 一起改成固定版本标签。
-    # 每个正式 Release 仍会保留不可变的 X.Y.Z 标签和 OCI digest 供审计与回滚。
-    image: ghcr.io/mashiro0619/perpay:latest
     environment:
-      # Compose 会对所有字符串执行变量插值；任何人工填写值中的 $ 都必须写成 $$。
-      # 首次初始化新数据卷时必填；管理员创建成功后删除这一整项并重建容器。
-      # 至少 12 个字符、最多 1024 UTF-8 字节；推荐使用无填充 base64url 随机值。
+      # 首次部署必须填写；管理员初始化后删除第一项。
       PERPAY_INITIAL_ADMIN_PASSWORD: "CHANGE_ME_TO_A_LONG_RANDOM_PASSWORD"
-      PERPAY_ADMIN_USERNAME: "admin"
-      # 浏览器实际访问的 origin；修改宿主端口时一并修改这里。
-      PERPAY_PUBLIC_URL: "http://localhost:8080"
-      # 本地 HTTP 可留空。HTTPS 部署必须填写应用实际看到的直连代理 IP/CIDR，并确保代理覆盖
-      # X-Forwarded-For；多个值用英文逗号分隔，禁止使用 0.0.0.0/0 或 ::/0。
-      PERPAY_TRUSTED_PROXY_CIDRS: ""
-      # 必填：32 个随机字节的无填充 base64url 编码（恰好 43 字符），不得复用初始管理员密码。
-      PERPAY_API_CLIENT_ID: "default"
       PERPAY_API_SECRET: "CHANGE_ME_TO_A_43_CHARACTER_BASE64URL_SECRET"
-      # 必填：经营码二维码解码后的原始内容，最多 2331 个 UTF-8 字节；其中的 $ 同样必须写成 $$。
-      # 订单会冻结其版本，修改后只影响新订单。
       PERPAY_COLLECTION_CODE_PAYLOAD: "CHANGE_ME_TO_COLLECTION_CODE_PAYLOAD"
-      # 订单有效期 60-1800 秒；尾差范围 1-99 分，新订单从 +0.01 元开始分配唯一应付金额。
-      PERPAY_ORDER_TTL_SECONDS: "300"
-      PERPAY_AMOUNT_OFFSET_MAX_CENTS: "99"
-      # checkout 派生密钥自动轮换周期，以及关闭/过期后公开状态链接的保留观察窗口。
-      PERPAY_CHECKOUT_KEY_ROTATION_DAYS: "90"
-      PERPAY_CHECKOUT_TERMINAL_OBSERVATION_SECONDS: "86400"
-      PERPAY_BACKUP_INTERVAL_SECONDS: *perpay-backup-interval-seconds
-      # 账务采集只允许官方生产/沙箱网关。当前项目只支持经营码收款。
       PERPAY_ALIPAY_ENABLED: "true"
       PERPAY_ALIPAY_APP_ID: "CHANGE_ME_TO_ALIPAY_APP_ID"
-      # 可粘贴完整 PEM，也可将平台工具导出的无头尾 base64 内容直接放在同一字段中。
       PERPAY_ALIPAY_PRIVATE_KEY: |-
         -----BEGIN PRIVATE KEY-----
         CHANGE_ME_TO_ALIPAY_APPLICATION_PRIVATE_KEY
         -----END PRIVATE KEY-----
-      # 这里必须填写平台公钥，不是应用公钥，也不能填写任何私钥。
+      # 这里填写支付宝平台公钥，不是应用公钥。
       PERPAY_ALIPAY_PUBLIC_KEY: |-
         -----BEGIN PUBLIC KEY-----
         CHANGE_ME_TO_ALIPAY_PLATFORM_PUBLIC_KEY
         -----END PUBLIC KEY-----
-      PERPAY_ALIPAY_ENDPOINT: "https://openapi.alipay.com"
-      PERPAY_ALIPAY_TIMEOUT_MILLISECONDS: "8000"
-      PERPAY_ALIPAY_SCAN_INTERVAL_SECONDS: "10"
-      # 最近一次成功扫描超过该秒数后停止新订单与公开付款入口；必须至少是扫描间隔的两倍。
-      PERPAY_ALIPAY_MAX_SUCCESS_AGE_SECONDS: "60"
-      # 订单通知默认关闭。启用前将下一项改为 true，并填写唯一允许的 HTTPS DNS origin
-      # 与独立的 32 字节无填充 base64url 密钥；每笔订单的 notify_url 必须属于该 origin。
+
+      # 按部署环境修改。
+      PERPAY_PUBLIC_URL: "http://localhost:8080"
+      PERPAY_TRUSTED_PROXY_CIDRS: ""
+
+      # 可选：启用通知后再填写下面两项。
       PERPAY_WEBHOOK_ENABLED: "false"
       PERPAY_WEBHOOK_ALLOWED_ORIGIN: "https://CHANGE_ME_TO_YOUR_WEBHOOK_HOST"
       PERPAY_WEBHOOK_SECRET: "CHANGE_ME_TO_ANOTHER_43_CHARACTER_BASE64URL_SECRET"
-      # 单次超时 1-30 秒；自动投递最多 1-100 次，指数退避受下列上下界约束。
+
+      # 默认值通常无需修改。
+      PERPAY_ADMIN_USERNAME: "admin"
+      PERPAY_API_CLIENT_ID: "default"
+      PERPAY_ORDER_TTL_SECONDS: "300"
+      PERPAY_AMOUNT_OFFSET_MAX_CENTS: "99"
+      PERPAY_CHECKOUT_KEY_ROTATION_DAYS: "90"
+      PERPAY_CHECKOUT_TERMINAL_OBSERVATION_SECONDS: "86400"
+      PERPAY_BACKUP_INTERVAL_SECONDS: *perpay-backup-interval-seconds
+      PERPAY_ALIPAY_ENDPOINT: "https://openapi.alipay.com"
+      PERPAY_ALIPAY_TIMEOUT_MILLISECONDS: "8000"
+      PERPAY_ALIPAY_SCAN_INTERVAL_SECONDS: "10"
+      PERPAY_ALIPAY_MAX_SUCCESS_AGE_SECONDS: "60"
       PERPAY_WEBHOOK_TIMEOUT_MILLISECONDS: "5000"
       PERPAY_WEBHOOK_MAX_ATTEMPTS: "12"
       PERPAY_WEBHOOK_RETRY_BASE_SECONDS: "5"
       PERPAY_WEBHOOK_RETRY_MAX_SECONDS: "3600"
+    image: ghcr.io/mashiro0619/perpay:latest
+    # 按部署环境修改宿主端口；公网请使用 HTTPS 反向代理。
     ports:
-      # 默认仅本机可访问；修改中间端口，公网访问应由 HTTPS 反向代理提供。
       - "127.0.0.1:8080:8080"
     volumes:
       - perpay-data:/data
       - perpay-backups:/backups:ro
     user: "1000:1000"
-    # 正式版本默认保活；调试确定性配置错误时用 `docker compose logs app` 查看原因。
     restart: unless-stopped
     stop_grace_period: 45s
     read_only: true
@@ -89,7 +73,6 @@ services:
         - "fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
       interval: 30s
       timeout: 5s
-      # 大库启动时会先完成在线备份、完整性检查和 migration。
       start_period: 5m
       retries: 3
     logging:
@@ -99,14 +82,11 @@ services:
         max-file: "3"
 
   backup:
-    # 必须与 app、maintenance 使用完全相同的镜像引用；回滚时三处一起改成固定版本。
     image: ghcr.io/mashiro0619/perpay:latest
     environment:
       PERPAY_DATA_DIR: "/data"
       PERPAY_BACKUP_DIR: "/backups"
-      # 自动备份周期 1 小时至 7 天；以下默认值为每天一次。
       PERPAY_BACKUP_INTERVAL_SECONDS: *perpay-backup-interval-seconds
-      # 保留最近 1-365 份已完整校验的本地备份，默认保留 7 份。
       PERPAY_BACKUP_KEEP_COUNT: "7"
     volumes:
       - perpay-data:/data:ro
@@ -136,7 +116,6 @@ services:
         - node
         - dist/backup/runner.js
         - health
-      # 这里只读取有界状态与文件身份；应用状态接口异步流式复核完整 SHA-256。
       interval: 5m
       timeout: 10s
       start_period: 10m
@@ -147,9 +126,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # 仅供停机恢复使用；profile 使普通 `docker compose up -d` 不会启动它。
   maintenance:
-    # 必须与 app、backup 使用完全相同的镜像引用。
     image: ghcr.io/mashiro0619/perpay:latest
     profiles:
       - maintenance
@@ -177,5 +154,4 @@ services:
 
 volumes:
   perpay-data:
-  # 这是与应用数据卷同机的明文 SQLite 备份卷，不等同于异地灾备。
   perpay-backups:
