@@ -4,8 +4,8 @@ info:
   version: 0.1.0
   summary: Self-hosted collection-code payment and reconciliation API
   license:
-    name: Apache-2.0
-    identifier: Apache-2.0
+    name: MIT
+    identifier: MIT
   description: |
     Development contract for the native order, public checkout, automatic
     reconciliation, administrator exception handling, and reliable notification APIs.

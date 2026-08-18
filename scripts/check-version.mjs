@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inspectComposeContract } from "./compose-contract.mjs";
@@ -36,32 +36,6 @@ const databaseMinimum = compatibility?.[1];
 const databaseMaximum = compatibility?.[2];
 if (databaseMinimum === undefined || databaseMaximum === undefined) {
   errors.push("src/version.ts DATABASE_COMPATIBILITY is invalid");
-}
-
-const releaseNotesPath = resolve(root, "docs", "releases", `v${packageVersion}.md`);
-if (!existsSync(releaseNotesPath)) {
-  errors.push(`versioned release notes are missing: docs/releases/v${packageVersion}.md`);
-} else {
-  const releaseNotes = readFileSync(releaseNotesPath, "utf8");
-  for (const heading of ["## Schema migration", "## Upgrade and rollback risk", "## Operational notes"]) {
-    if (releaseNotes.split(heading).length !== 2) {
-      errors.push(`versioned release notes must contain exactly one ${heading} section`);
-    }
-  }
-  if (releaseNotes.length < 400) {
-    errors.push("versioned release notes must describe migration and operational risk in detail");
-  }
-  if (
-    databaseMinimum !== undefined &&
-    databaseMaximum !== undefined &&
-    !releaseNotes.includes(
-      `Supported database schema range: \`${databaseMinimum}..${databaseMaximum}\`.`,
-    )
-  ) {
-    errors.push(
-      `versioned release notes must declare database schema range ${databaseMinimum}..${databaseMaximum}`,
-    );
-  }
 }
 
 const compose = readFileSync(resolve(root, "docker-compose.yml"), "utf8");

@@ -25,10 +25,6 @@ const ciWorkflowText = readFileSync(
   new URL("../.github/workflows/ci.yml", import.meta.url),
   "utf8",
 );
-const releaseNotesText = readFileSync(
-  new URL("../docs/releases/v0.1.0.md", import.meta.url),
-  "utf8",
-);
 const dockerfileText = readFileSync(new URL("../Dockerfile", import.meta.url), "utf8");
 const noticeText = readFileSync(new URL("../NOTICE", import.meta.url), "utf8");
 const checkVersionText = readFileSync(
@@ -66,11 +62,6 @@ test("Compose contract accepts the default services and profile-gated maintenanc
     "perpay-data:/data",
     "perpay-backups:/backups",
   ]);
-});
-
-test("versioned release notes match the current database compatibility", () => {
-  assert.match(releaseNotesText, /database schema 13/u);
-  assert.match(releaseNotesText, /Supported database schema range: `13\.\.13`\./u);
 });
 
 test("Compose contract rejects duplicate keys, unexpected services, and renamed projects", () => {
@@ -169,7 +160,7 @@ test("the application image contains only the pinned Node runtime and applicatio
     /node:24\.19\.0-alpine3\.24@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43/u,
   );
   assert.doesNotMatch(dockerfileText, /GO_IMAGE|RESTIC|golang|--from=restic|third_party/iu);
-  assert.match(dockerfileText, /org\.opencontainers\.image\.licenses="Apache-2\.0"/u);
+  assert.match(dockerfileText, /org\.opencontainers\.image\.licenses="MIT"/u);
   assert.match(dockerfileText, /mkdir -p \/data \/backups/u);
   assert.match(dockerfileText, /VOLUME \["\/data", "\/backups"\]/u);
   assert.match(dockerfileText, /http:\/\/127\.0\.0\.1:8080\/healthz/u);

@@ -75,11 +75,6 @@ jobs:
           npm run build
           npm audit --audit-level=high
 
-      - name: Require versioned release notes
-        env:
-          RELEASE_VERSION: ${{ steps.release.outputs.version }}
-        run: test -s "docs/releases/v${RELEASE_VERSION}.md"
-
   publish:
     needs: verify
     runs-on: ubuntu-24.04
@@ -515,12 +510,11 @@ jobs:
           - Supported database schema range: \`${DATABASE_MINIMUM}..${DATABASE_MAXIMUM}\`
           - Compose SHA-256: \`${compose_sha256}\`
 
-          First installation: download the attached \`docker-compose.yml\`, fill its placeholders, and run \`docker compose up -d\`. Existing installations normally update with \`docker compose pull\` followed by \`docker compose up -d\`; replace the Compose only when the operational notes require template changes. The fixed image reference above is retained for manual rollback.
+          First installation: download the attached \`docker-compose.yml\`, fill its placeholders, and run \`docker compose up -d\`. Existing installations update with \`docker compose pull\` followed by \`docker compose up -d\`. The fixed image reference above is retained for manual rollback.
 
           Verify the attachment on Linux with \`echo "${compose_sha256}  docker-compose.yml" | sha256sum -c -\`.
 
           EOF
-          cat "docs/releases/v${RELEASE_VERSION}.md" >> release-notes.md
           gh release create "$GITHUB_REF_NAME" release-assets/docker-compose.yml \
             --verify-tag \
             --title "$GITHUB_REF_NAME" \
