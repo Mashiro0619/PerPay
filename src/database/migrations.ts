@@ -235,7 +235,7 @@ export const migrations: readonly Migration[] = [
         provider_account_key TEXT NOT NULL CHECK (provider_account_key = 'primary'),
         code_payload TEXT NOT NULL CHECK (
           length(code_payload) >= 8 AND
-          length(CAST(code_payload AS BLOB)) <= 4096
+          length(CAST(code_payload AS BLOB)) <= 2331
         ),
         payload_fingerprint TEXT NOT NULL CHECK (
           length(payload_fingerprint) = 64 AND
@@ -470,10 +470,18 @@ export const migrations: readonly Migration[] = [
       WHERE checkout_status = 'OPEN';
 
       CREATE INDEX payment_orders_checkout_expiry_idx
-      ON payment_orders(checkout_status, expires_at);
+      ON payment_orders(checkout_status, expires_at, order_id);
 
       CREATE INDEX payment_orders_created_idx
-      ON payment_orders(created_at DESC, order_id);
+      ON payment_orders(created_at DESC, order_id DESC);
+
+      CREATE INDEX payment_orders_checkout_created_idx
+      ON payment_orders(checkout_status, created_at DESC, order_id DESC);
+
+      CREATE INDEX payment_orders_checkout_payment_created_idx
+      ON payment_orders(
+        checkout_status, payment_status, created_at DESC, order_id DESC
+      );
 
       CREATE TRIGGER payment_orders_snapshot_immutable
       BEFORE UPDATE OF

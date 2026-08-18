@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 
 export const COLLECTION_PROFILE_FINGERPRINT_VERSION = 2;
+/** QR Code version 40, error correction M, byte-mode payload capacity. */
+export const MAX_COLLECTION_CODE_PAYLOAD_BYTES = 2_331;
 
 export function fingerprintCollectionCodeProfile(codePayload: string): {
   readonly payloadFingerprint: string;

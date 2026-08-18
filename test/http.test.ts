@@ -8,6 +8,7 @@ import { describe, it } from "node:test";
 import { loadConfig } from "../src/config.ts";
 import { AppDatabase } from "../src/database/database.ts";
 import { createApp } from "../src/http/app.ts";
+import { WEB_ASSET_URLS } from "../src/http/web/assets.ts";
 import { IdentityService } from "../src/identity/service.ts";
 import { OrderService } from "../src/orders/service.ts";
 import { signApiRequest } from "../src/security/api-signature.ts";
@@ -1050,7 +1051,7 @@ describe("order HTTP contract", () => {
       });
       assert.equal(created.status, 201);
       const createdBody = (await created.json()) as {
-        data: { checkout: { state_url: string } };
+        data: { checkout: { checkout_url: string; state_url: string } };
       };
       const publicTarget = new URL(createdBody.data.checkout.state_url).pathname;
       const blockedCheckout = await pending.request(publicTarget);
@@ -1278,6 +1279,14 @@ describe("order HTTP contract", () => {
         ((await unsafeCheckout.json()) as { error: { code: string } }).error.code,
         "order_clock_unavailable",
       );
+      const unsafeCheckoutPage = await ready.request(
+        new URL(createdBody.data.checkout.checkout_url).pathname,
+      );
+      assert.equal(unsafeCheckoutPage.status, 503);
+      assert.match(unsafeCheckoutPage.headers.get("content-type") ?? "", /^text\/html/);
+      const unsafeCheckoutHtml = await unsafeCheckoutPage.text();
+      assert.match(unsafeCheckoutHtml, /data-initial-state="UNAVAILABLE"/);
+      assert.match(unsafeCheckoutHtml, /order_clock_unavailable/);
 
       const unsafeRequestBody = Buffer.from(JSON.stringify({
         idempotency_key: "unsafe-core-gate",
@@ -1353,7 +1362,7 @@ describe("order HTTP contract", () => {
           merchant_order_no: string;
           requested_amount_cents: number;
           payable_amount_cents: number;
-          checkout: { token: string; state_url: string; status: string };
+          checkout: { token: string; state_url: string; checkout_url: string; status: string };
         };
       };
       assert.match(createdBody.data.order_id, /^[0-9a-f-]{36}$/);
@@ -1423,6 +1432,52 @@ describe("order HTTP contract", () => {
       );
       assert.equal(publicBody.data.payment_instructions?.payable_amount_cents, 1_001);
       assert.equal(publicBody.data.checkout.status, "OPEN");
+
+      assert.equal(
+        new URL(createdBody.data.checkout.checkout_url).pathname,
+        `/checkout/${createdBody.data.checkout.token}`,
+      );
+      const checkoutPage = await app.request(
+        new URL(createdBody.data.checkout.checkout_url).pathname,
+      );
+      assert.equal(checkoutPage.status, 200);
+      assert.match(checkoutPage.headers.get("content-type") ?? "", /^text\/html/);
+      assert.match(
+        checkoutPage.headers.get("content-security-policy") ?? "",
+        /script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'/,
+      );
+      const checkoutHtml = await checkoutPage.text();
+      assert.match(checkoutHtml, /data-payable-amount[^>]*>10\.01<\/strong>/);
+      assert.ok(checkoutHtml.includes(WEB_ASSET_URLS.usuzumiStylesheet));
+      assert.match(checkoutHtml, /\/api\/public\/v1\/checkouts\/[^" ]+\/qr\.svg/);
+      assert.equal(checkoutHtml.includes(collectionCodePayload), false);
+      assert.doesNotMatch(checkoutHtml, /<script(?![^>]*\bsrc=)[^>]*>/i);
+      assert.doesNotMatch(checkoutHtml, /\sstyle=/i);
+
+      const qrTarget = `/api/public/v1/checkouts/${createdBody.data.checkout.token}/qr.svg`;
+      const qrResponse = await app.request(qrTarget);
+      assert.equal(qrResponse.status, 200);
+      assert.match(qrResponse.headers.get("content-type") ?? "", /^image\/svg\+xml/);
+      const qrSvg = await qrResponse.text();
+      assert.match(qrSvg, /^<svg[^>]+xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+      assert.doesNotMatch(qrSvg, /<script|<foreignObject/i);
+
+      const adminPage = await app.request("/admin");
+      assert.equal(adminPage.status, 200);
+      const adminHtml = await adminPage.text();
+      assert.match(adminHtml, /data-perpay-admin-page="application"/);
+      assert.ok(adminHtml.includes(WEB_ASSET_URLS.adminScript));
+      assert.doesNotMatch(adminHtml, /<script(?![^>]*\bsrc=)[^>]*>/i);
+
+      const stylesheet = await app.request(WEB_ASSET_URLS.usuzumiStylesheet);
+      assert.equal(stylesheet.status, 200);
+      assert.equal(stylesheet.headers.get("cache-control"), "public, max-age=31536000, immutable");
+      assert.ok(stylesheet.headers.get("etag"));
+      const notModified = await app.request(
+        WEB_ASSET_URLS.usuzumiStylesheet,
+        { headers: { "if-none-match": stylesheet.headers.get("etag")! } },
+      );
+      assert.equal(notModified.status, 304);
 
       const closeTarget = `/api/v1/orders/${createdBody.data.order_id}/actions/close`;
       const closed = await app.request(closeTarget, {
@@ -1569,6 +1624,14 @@ describe("order HTTP contract", () => {
         ((await missingCheckout.json()) as { error: { code: string } }).error.code,
         "checkout_not_found",
       );
+
+      const oversizedCheckoutToken = "x".repeat(513);
+      const oversizedCheckoutPage = await app.request(`/checkout/${oversizedCheckoutToken}`);
+      assert.equal(oversizedCheckoutPage.status, 404);
+      assert.match(oversizedCheckoutPage.headers.get("content-type") ?? "", /^text\/html/);
+      const oversizedCheckoutHtml = await oversizedCheckoutPage.text();
+      assert.match(oversizedCheckoutHtml, /data-initial-state="NOT_FOUND"/);
+      assert.equal(oversizedCheckoutHtml.includes(oversizedCheckoutToken), false);
 
       let rateLimited: Response | undefined;
       for (let attempt = 0; attempt < 200; attempt += 1) {

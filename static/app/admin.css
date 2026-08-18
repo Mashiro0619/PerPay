@@ -1,0 +1,494 @@
+@layer perpay {
+  :root {
+    --perpay-muted: var(--uzu-muted);
+    --perpay-success: var(--uzu-success);
+    --perpay-warning: var(--uzu-warning);
+    --perpay-danger: var(--uzu-danger);
+    --perpay-line: var(--uzu-border);
+    --perpay-page: var(--uzu-bg);
+    --perpay-surface: var(--uzu-surface);
+    --perpay-sidebar: var(--uzu-surface-soft);
+    --perpay-mono: var(--uzu-font-mono);
+  }
+
+  .perpay-wordmark {
+    font-weight: 760;
+  }
+
+  .perpay-topbar {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 20;
+    margin-block-end: 0;
+    background: color-mix(in srgb, var(--perpay-page) 94%, transparent);
+  }
+
+  .perpay-topbar .perpay-wordmark {
+    font-size: 1.18rem;
+  }
+
+  .perpay-environment {
+    color: var(--perpay-muted);
+    font-size: 0.75rem;
+    padding-inline-start: 0.65rem;
+    border-inline-start: 1px solid var(--perpay-line);
+  }
+
+  .perpay-top-status {
+    display: inline-flex;
+    min-height: 2rem;
+    align-items: center;
+    gap: 0.48rem;
+    color: var(--perpay-muted);
+    font-size: 0.78rem;
+    white-space: nowrap;
+  }
+
+  .perpay-status-dot {
+    inline-size: 0.52rem;
+    block-size: 0.52rem;
+    border-radius: 50%;
+    background: var(--perpay-muted);
+  }
+
+  .perpay-top-status[data-state="ready"] .perpay-status-dot {
+    background: var(--perpay-success);
+  }
+
+  .perpay-top-status[data-state="degraded"] .perpay-status-dot {
+    background: var(--perpay-warning);
+  }
+
+  .perpay-top-status[data-state="not_ready"] .perpay-status-dot,
+  .perpay-top-status[data-state="error"] .perpay-status-dot {
+    background: var(--perpay-danger);
+  }
+
+  .perpay-admin-layout {
+    --uzu-sidebar-layout-sidebar-width: 14.5rem;
+    --uzu-sidebar-layout-gap: 0;
+    min-height: calc(100dvh - 3.5rem);
+  }
+
+  .perpay-session-summary {
+    display: grid;
+    gap: 0.15rem;
+    margin-block-start: 1.4rem;
+    padding-block-start: 1rem;
+    border-block-start: 1px solid var(--perpay-line);
+    font-size: 0.76rem;
+  }
+
+  .perpay-session-summary time {
+    color: var(--perpay-muted);
+  }
+
+  .perpay-sidebar-controls {
+    display: none;
+  }
+
+  @media (min-width: 921px) {
+    .perpay-sidebar {
+      position: sticky;
+      inset-block-start: 3.5rem;
+      align-self: start;
+      block-size: calc(100dvh - 3.5rem);
+      margin-block-start: 0;
+      padding: 1.1rem 0.85rem;
+      border-inline-end: 1px solid var(--perpay-line);
+      background: var(--perpay-sidebar);
+      overflow-y: auto;
+    }
+  }
+
+  .perpay-admin-main {
+    min-width: 0;
+    padding: 1.75rem clamp(1rem, 3vw, 3rem) 4rem;
+  }
+
+  .perpay-route-loading {
+    display: flex;
+    min-height: 16rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.7rem;
+    color: var(--perpay-muted);
+  }
+
+  .perpay-page-head {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-block-end: 1.75rem;
+  }
+
+  .perpay-page-head h1 {
+    margin: 0;
+    font-size: 2rem;
+    line-height: 1.18;
+    letter-spacing: 0;
+  }
+
+  .perpay-page-head p {
+    max-width: 64ch;
+    margin: 0.35rem 0 0;
+    color: var(--perpay-muted);
+    font-size: 0.9rem;
+  }
+
+  .perpay-section {
+    padding-block: 1.6rem;
+    border-block-start: 1px solid var(--perpay-line);
+  }
+
+  .perpay-section:first-of-type {
+    padding-block-start: 0;
+    border-block-start: 0;
+  }
+
+  .perpay-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-block-end: 0.9rem;
+  }
+
+  .perpay-section-head h2,
+  .perpay-section-head h3 {
+    margin: 0;
+    font-size: 1rem;
+    letter-spacing: 0;
+  }
+
+  .perpay-health-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    border: 1px solid var(--perpay-line);
+    border-radius: 7px;
+    background: var(--perpay-surface);
+  }
+
+  .perpay-health-cell {
+    min-width: 0;
+    padding: 1rem;
+    border-inline-start: 1px solid var(--perpay-line);
+  }
+
+  .perpay-health-cell:first-child {
+    border-inline-start: 0;
+  }
+
+  .perpay-health-cell strong {
+    display: block;
+    margin-block: 0.32rem 0.15rem;
+    font-size: 1rem;
+  }
+
+  .perpay-health-cell small {
+    display: block;
+    color: var(--perpay-muted);
+    overflow-wrap: anywhere;
+  }
+
+  .perpay-health-label {
+    display: flex;
+    align-items: center;
+    gap: 0.46rem;
+    color: var(--perpay-muted);
+    font-size: 0.76rem;
+  }
+
+  .perpay-health-label .perpay-status-dot[data-tone="success"] {
+    background: var(--perpay-success);
+  }
+
+  .perpay-health-label .perpay-status-dot[data-tone="warning"] {
+    background: var(--perpay-warning);
+  }
+
+  .perpay-health-label .perpay-status-dot[data-tone="danger"] {
+    background: var(--perpay-danger);
+  }
+
+  .perpay-metric-grid {
+    --uzu-grid-gap: 0.75rem;
+    --uzu-grid-min-item-width: 12rem;
+    --uzu-grid-max-columns: 3;
+    margin: 0;
+  }
+
+  .perpay-filter-bar {
+    align-items: end;
+    margin-block-end: 1rem;
+  }
+
+  .perpay-filter-bar .uzu-field {
+    min-width: min(100%, 12rem);
+    flex: 0 1 15rem;
+  }
+
+  .perpay-data-region {
+    min-height: 10rem;
+  }
+
+  .perpay-table {
+    min-width: 46rem;
+  }
+
+  .perpay-table th,
+  .perpay-table td {
+    vertical-align: middle;
+  }
+
+  .perpay-table td {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .perpay-code {
+    font-size: 0.78rem;
+  }
+
+  .perpay-money {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    font-weight: 650;
+  }
+
+  .perpay-detail-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(16rem, 0.42fr);
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  .perpay-detail-block {
+    padding: 1rem;
+  }
+
+  .perpay-detail-block h2,
+  .perpay-detail-block h3 {
+    margin: 0 0 0.9rem;
+    font-size: 0.95rem;
+  }
+
+  .perpay-facts {
+    display: grid;
+    grid-template-columns: minmax(8rem, 0.35fr) minmax(0, 1fr);
+    margin: 0;
+  }
+
+  .perpay-facts dt,
+  .perpay-facts dd {
+    margin: 0;
+    padding: 0.56rem 0;
+    border-block-start: 1px solid var(--perpay-line);
+    overflow-wrap: anywhere;
+  }
+
+  .perpay-facts dt:first-of-type,
+  .perpay-facts dt:first-of-type + dd {
+    border-block-start: 0;
+  }
+
+  .perpay-facts dt {
+    color: var(--perpay-muted);
+    font-size: 0.77rem;
+  }
+
+  .perpay-facts dd {
+    min-width: 0;
+    font-size: 0.83rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .perpay-json {
+    --uzu-code-block-max-height: 22rem;
+    --uzu-code-block-padding: 0.8rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .perpay-pagination-row {
+    justify-content: flex-end;
+    margin-block-start: 1rem;
+  }
+
+  .perpay-action-dialog {
+    width: min(42rem, calc(100vw - 2rem));
+  }
+
+  .perpay-action-dialog #action-content {
+    margin-block-start: 1rem;
+  }
+
+  .perpay-operation-key {
+    color: var(--perpay-muted);
+    font: 0.72rem/1.4 var(--perpay-mono);
+    overflow-wrap: anywhere;
+  }
+
+  .perpay-auth-shell {
+    min-height: 100dvh;
+    padding: 1.25rem;
+  }
+
+  .perpay-auth-panel {
+    width: min(100%, 25rem);
+    padding: 2rem;
+  }
+
+  .perpay-auth-panel > .perpay-wordmark {
+    display: inline-block;
+    margin-block-end: 2.3rem;
+    font-size: 1.15rem;
+  }
+
+  .perpay-auth-panel .uzu-title-pair {
+    margin-block-end: 1.4rem;
+  }
+
+  .perpay-auth-panel h1 {
+    font-size: 1.55rem;
+    letter-spacing: 0;
+  }
+
+  .perpay-auth-panel .uzu-form {
+    margin-block-start: 1rem;
+  }
+
+  .perpay-full-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .perpay-auth-meta {
+    margin: 1.4rem 0 0;
+    color: var(--perpay-muted);
+    font-size: 0.75rem;
+    text-align: center;
+  }
+
+  .perpay-security-action {
+    padding-block: 1.2rem;
+    border-block-start: 1px solid var(--perpay-line);
+  }
+
+  .perpay-security-action:first-child {
+    border-block-start: 0;
+    padding-block-start: 0;
+  }
+
+  .perpay-security-action h2 {
+    margin: 0 0 0.35rem;
+    font-size: 1rem;
+  }
+
+  .perpay-security-action > p {
+    margin: 0 0 0.9rem;
+    color: var(--perpay-muted);
+    font-size: 0.84rem;
+  }
+
+  @media (max-width: 980px) {
+    .perpay-health-strip {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .perpay-health-cell:nth-child(3) {
+      border-inline-start: 0;
+      border-block-start: 1px solid var(--perpay-line);
+    }
+
+    .perpay-health-cell:nth-child(4) {
+      border-block-start: 1px solid var(--perpay-line);
+    }
+
+    .perpay-detail-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  @media (max-width: 920px) {
+    .perpay-environment,
+    .perpay-top-status > :last-child {
+      display: none;
+    }
+
+    .perpay-sidebar-controls {
+      display: flex;
+      padding: 0.65rem 1rem 0;
+    }
+
+    .perpay-session-summary {
+      display: none;
+    }
+
+    .perpay-admin-main {
+      padding: 1.35rem 1rem 3rem;
+    }
+
+    .perpay-page-head {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .perpay-page-head h1 {
+      font-size: 1.55rem;
+    }
+
+    .perpay-page-head .perpay-action-bar {
+      width: 100%;
+    }
+
+    .perpay-page-head .perpay-action-bar > * {
+      flex: 1 1 auto;
+    }
+
+    .perpay-filter-bar .uzu-field {
+      flex-basis: 100%;
+    }
+
+  }
+
+  @media (max-width: 520px) {
+    .perpay-topbar {
+      padding-inline: 0.75rem;
+    }
+
+    .perpay-health-strip {
+      grid-template-columns: 1fr;
+    }
+
+    .perpay-health-cell,
+    .perpay-health-cell:nth-child(3),
+    .perpay-health-cell:nth-child(4) {
+      border-inline-start: 0;
+      border-block-start: 1px solid var(--perpay-line);
+    }
+
+    .perpay-health-cell:first-child {
+      border-block-start: 0;
+    }
+
+    .perpay-facts {
+      grid-template-columns: 1fr;
+    }
+
+    .perpay-facts dt {
+      padding-block-end: 0.1rem;
+      border-block-start: 1px solid var(--perpay-line);
+    }
+
+    .perpay-facts dd {
+      padding-block-start: 0.1rem;
+      border-block-start: 0;
+    }
+
+    .perpay-auth-panel {
+      padding: 1.45rem;
+    }
+  }
+
+}

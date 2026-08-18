@@ -25,7 +25,7 @@ services:
       # 必填：32 个随机字节的无填充 base64url 编码（恰好 43 字符），不得复用初始管理员密码。
       PERPAY_API_CLIENT_ID: "default"
       PERPAY_API_SECRET: "CHANGE_ME_TO_A_43_CHARACTER_BASE64URL_SECRET"
-      # 必填：经营码二维码解码后的原始内容；其中的 $ 同样必须写成 $$。
+      # 必填：经营码二维码解码后的原始内容，最多 2331 个 UTF-8 字节；其中的 $ 同样必须写成 $$。
       # 订单会冻结其版本，修改后只影响新订单。
       PERPAY_COLLECTION_CODE_PAYLOAD: "CHANGE_ME_TO_COLLECTION_CODE_PAYLOAD"
       # 订单有效期 60-1800 秒；尾差范围 1-99 分，新订单从 +0.01 元开始分配唯一应付金额。

@@ -28,11 +28,18 @@ import {
   type TrustedProxyPolicy,
 } from "../infrastructure/network/trusted-proxy.ts";
 import {
+  checkoutStatusSchema,
   createOrderRequestSchema,
   merchantOrderNumberSchema,
+  paymentStatusSchema,
+  type AdminOrderCursor,
+  type AdminOrderDetailProjection,
+  type AdminOrderFilters,
+  type AdminOrderSummaryProjection,
   type OrderProjection,
   type PublicCheckoutProjection,
 } from "../orders/model.ts";
+import { isCanonicalCheckoutToken } from "../orders/checkout-token.ts";
 import { OrderError, type OrderErrorCode, type OrderService } from "../orders/service.ts";
 import {
   financialDecisionRequestSchema,
@@ -71,6 +78,13 @@ import { verifyApiRequestSignature, type ApiRequestAuthentication } from "../sec
 import { APP_VERSION } from "../version.ts";
 import { PublicCheckoutRateLimiter } from "./public-checkout-rate-limit.ts";
 import { parseStrictJson, StrictJsonError } from "./strict-json.ts";
+import { renderAdminPage } from "./web/admin.ts";
+import {
+  type CheckoutPageInitialError,
+  renderCheckoutPage,
+} from "./web/checkout.ts";
+import { CollectionCodeRenderError, CollectionCodeSvgCache } from "./web/collection-code.ts";
+import { WEB_ASSET_PATHS, webAsset } from "./web/assets.ts";
 
 const SESSION_COOKIE = "perpay_session";
 const SECURE_SESSION_COOKIE = "__Host-perpay_session";
@@ -223,6 +237,8 @@ const disabledBackupHealth = Object.freeze({
 
 export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   const app = new Hono<AppEnvironment>();
+  const publicCheckoutBudget = new PublicCheckoutRateLimiter();
+  const collectionCodeCache = new CollectionCodeSvgCache();
 
   app.use("*", async (context, next) => {
     const supplied = context.req.header("x-request-id");
@@ -235,7 +251,12 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     context.header("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=()");
     context.header("cross-origin-resource-policy", "same-origin");
     context.header("cross-origin-opener-policy", "same-origin");
-    context.header("content-security-policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+    context.header(
+      "content-security-policy",
+      "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; " +
+        "img-src 'self'; font-src 'self'; object-src 'none'; frame-ancestors 'none'; " +
+        "base-uri 'none'; form-action 'self'; worker-src 'none'",
+    );
     if (dependencies.config.secureCookies) {
       context.header("strict-transport-security", "max-age=31536000; includeSubDomains");
     }
@@ -275,6 +296,139 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       },
       ready ? 200 : 503,
     );
+  });
+
+  for (const path of WEB_ASSET_PATHS) {
+    app.get(path, (context) => {
+      const asset = webAsset(path);
+      if (!asset) throw new HttpApiError(404, "asset_not_found", "静态资源不存在");
+      if (context.req.header("if-none-match") === asset.etag) {
+        context.header("etag", asset.etag);
+        context.header("cache-control", "public, max-age=31536000, immutable");
+        return context.body(null, 304);
+      }
+      context.header("content-type", asset.contentType);
+      context.header("etag", asset.etag);
+      context.header("cache-control", "public, max-age=31536000, immutable");
+      return context.body(asset.body);
+    });
+  }
+
+  app.get("/", (context) => context.redirect("/admin", 302));
+  app.get("/admin/login", (context) => context.html(renderAdminPage(true)));
+  app.get("/admin", (context) => context.html(renderAdminPage()));
+  app.get("/admin/*", (context) => context.html(renderAdminPage()));
+
+  app.get("/checkout/:token", (context) => {
+    const token = context.req.param("token");
+    if (!isCanonicalCheckoutToken(token)) {
+      return context.html(renderCheckoutPage({
+        checkoutToken: token,
+        checkout: null,
+        qrImageUrl: null,
+        initialError: {
+          status: 404,
+          code: "checkout_not_found",
+          message: "收银台不存在",
+          retryAfterSeconds: null,
+        },
+      }), 404);
+    }
+    const sourceAddress = remoteAddress(context, dependencies.config.trustedProxy);
+    if (!publicCheckoutBudget.take(sourceAddress)) {
+      context.header("retry-after", "1");
+      return context.html(renderCheckoutPage({
+        checkoutToken: token,
+        checkout: null,
+        qrImageUrl: null,
+        initialError: {
+          status: 429,
+          code: "public_checkout_rate_limited",
+          message: "公开收银台请求过于频繁",
+          retryAfterSeconds: 1,
+        },
+      }), 429);
+    }
+
+    let checkout: PublicCheckoutProjection | null = null;
+    let initialError: CheckoutPageInitialError | null = null;
+    let status: 200 | 404 | 503 = 200;
+    try {
+      checkout = dependencies.orders.publicCheckout(token);
+      if (checkout.paymentInstructions !== null) requirePaymentEntryReady(dependencies);
+    } catch (error) {
+      if (error instanceof OrderError) {
+        if (error.code === "checkout_not_found") {
+          initialError = {
+            status: 404,
+            code: error.code,
+            message: error.message,
+            retryAfterSeconds: null,
+          };
+          status = 404;
+        } else if (error.code === "order_clock_unavailable") {
+          initialError = {
+            status: 503,
+            code: error.code,
+            message: error.message,
+            retryAfterSeconds: error.retryAfterSeconds ?? null,
+          };
+          status = 503;
+        } else {
+          throw error;
+        }
+      } else if (error instanceof HttpApiError && error.status === 503) {
+        initialError = {
+          status: 503,
+          code: error.code,
+          message: error.message,
+          retryAfterSeconds: error.retryAfterSeconds ?? null,
+        };
+        status = 503;
+      } else {
+        throw error;
+      }
+    }
+    return context.html(renderCheckoutPage({
+      checkoutToken: token,
+      checkout,
+      qrImageUrl: checkout?.paymentInstructions === null || checkout === null
+        ? null
+        : `/api/public/v1/checkouts/${encodeURIComponent(token)}/qr.svg`,
+      initialError,
+    }), status);
+  });
+
+  app.get("/api/public/v1/checkouts/:token/qr.svg", (context) => {
+    const sourceAddress = remoteAddress(context, dependencies.config.trustedProxy);
+    if (!publicCheckoutBudget.take(sourceAddress)) {
+      throw new HttpApiError(
+        429,
+        "public_checkout_rate_limited",
+        "公开收银台请求过于频繁",
+        1,
+      );
+    }
+    const checkout = dependencies.orders.publicCheckout(context.req.param("token"));
+    if (checkout.paymentInstructions === null) {
+      throw new HttpApiError(404, "checkout_code_not_found", "经营码不可用");
+    }
+    requirePaymentEntryReady(dependencies);
+    let svg: string;
+    try {
+      svg = collectionCodeCache.render(checkout.paymentInstructions.collectionCodePayload);
+    } catch (error) {
+      if (!(error instanceof CollectionCodeRenderError)) throw error;
+      throw new HttpApiError(
+        503,
+        "checkout_code_generation_failed",
+        "经营码暂时无法生成",
+        5,
+      );
+    }
+    context.header("content-type", "image/svg+xml; charset=utf-8");
+    context.header("content-disposition", "inline; filename=perpay-collection-code.svg");
+    return context.body(svg);
   });
 
   app.post("/api/admin/v1/session/login", async (context) => {
@@ -384,6 +538,33 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     );
     clearAuthenticationCookies(context, dependencies.config.secureCookies);
     return context.body(null, 204);
+  });
+
+  app.get("/api/admin/v1/orders", adminSession, (context) => {
+    const query = readAdminOrderPageQuery(context);
+    const page = dependencies.orders.adminPage(query.filters, query.cursor, query.limit);
+    return context.json({
+      data: page.orders.map(serializeAdminOrderSummary),
+      page: {
+        next_cursor: encodeAdminOrderCursor(page.nextCursor, query.filters),
+      },
+    });
+  });
+
+  app.get(
+    "/api/admin/v1/orders/by-merchant-no/:merchantOrderNo",
+    adminSession,
+    (context) => {
+      const parsed = merchantOrderNumberSchema.safeParse(context.req.param("merchantOrderNo"));
+      if (!parsed.success) throw orderNotFoundHttpError();
+      const order = dependencies.orders.adminGetByMerchantOrderNumber(parsed.data);
+      return context.json({ data: serializeAdminOrderDetail(order) });
+    },
+  );
+
+  app.get("/api/admin/v1/orders/:orderId", adminSession, (context) => {
+    const order = dependencies.orders.adminGet(requireOrderId(context.req.param("orderId")));
+    return context.json({ data: serializeAdminOrderDetail(order) });
   });
 
   const financialWrite = requireFinancialWrite(
@@ -714,7 +895,6 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   );
 
   const apiFailureAuditLimiter = new ApiFailureAuditLimiter();
-  const publicCheckoutBudget = new PublicCheckoutRateLimiter();
   const signedApi = (maximumBodyBytes: number) =>
     requireApiClient(dependencies, maximumBodyBytes, apiFailureAuditLimiter);
 
@@ -1646,6 +1826,104 @@ function requireResourceId(value: string, code: string, message: string): string
   return value;
 }
 
+function readAdminOrderPageQuery(context: Context<AppEnvironment>): {
+  readonly limit: number;
+  readonly filters: AdminOrderFilters;
+  readonly cursor: AdminOrderCursor | null;
+} {
+  const values = new URL(context.req.url).searchParams;
+  for (const key of values.keys()) {
+    if (
+      key !== "limit" &&
+      key !== "checkout_status" &&
+      key !== "payment_status" &&
+      key !== "cursor"
+    ) {
+      throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+    }
+  }
+  const limits = values.getAll("limit");
+  if (
+    limits.length > 1 ||
+    (limits.length === 1 && !/^[1-9][0-9]{0,2}$/.test(limits[0] ?? ""))
+  ) {
+    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  }
+  const limit = limits.length === 0 ? 100 : Number(limits[0]);
+  if (limit > 200) {
+    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  }
+  const checkoutStatuses = values.getAll("checkout_status");
+  const paymentStatuses = values.getAll("payment_status");
+  if (checkoutStatuses.length > 1 || paymentStatuses.length > 1) {
+    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  }
+  const checkoutStatus = checkoutStatuses[0] === undefined
+    ? null
+    : checkoutStatusSchema.safeParse(checkoutStatuses[0]);
+  const paymentStatus = paymentStatuses[0] === undefined
+    ? null
+    : paymentStatusSchema.safeParse(paymentStatuses[0]);
+  if (
+    (checkoutStatus !== null && !checkoutStatus.success) ||
+    (paymentStatus !== null && !paymentStatus.success)
+  ) {
+    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  }
+  const filters: AdminOrderFilters = {
+    checkoutStatus: checkoutStatus === null ? null : checkoutStatus.data,
+    paymentStatus: paymentStatus === null ? null : paymentStatus.data,
+  };
+  const cursors = values.getAll("cursor");
+  if (cursors.length > 1) {
+    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  }
+  return {
+    limit,
+    filters,
+    cursor: cursors.length === 0
+      ? null
+      : decodeAdminOrderCursor(cursors[0] ?? "", filters),
+  };
+}
+
+function encodeAdminOrderCursor(
+  cursor: AdminOrderCursor | null,
+  filters: AdminOrderFilters,
+): string | null {
+  if (!cursor) return null;
+  return Buffer.from(
+    `perpay:admin-orders:v1\n${filters.checkoutStatus ?? "*"}\n${filters.paymentStatus ?? "*"}\n${cursor.createdAt}\n${cursor.orderId}`,
+    "ascii",
+  ).toString("base64url");
+}
+
+function decodeAdminOrderCursor(
+  value: string,
+  expectedFilters: AdminOrderFilters,
+): AdminOrderCursor {
+  if (!/^[A-Za-z0-9_-]{1,256}$/.test(value)) {
+    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  }
+  const decoded = Buffer.from(value, "base64url");
+  if (decoded.toString("base64url") !== value || decoded.some((byte) => byte > 0x7f)) {
+    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  }
+  const match =
+    /^perpay:admin-orders:v1\n(\*|OPEN|EXPIRED|CLOSED)\n(\*|UNPAID|CONFIRMED|DISPUTED)\n(0|[1-9][0-9]*)\n([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/
+      .exec(decoded.toString("ascii"));
+  const createdAt = Number(match?.[3]);
+  if (
+    !match ||
+    !Number.isSafeInteger(createdAt) ||
+    match[1] !== (expectedFilters.checkoutStatus ?? "*") ||
+    match[2] !== (expectedFilters.paymentStatus ?? "*")
+  ) {
+    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  }
+  return { createdAt, orderId: match[4]! };
+}
+
 function readLedgerConflictPageQuery(context: Context<AppEnvironment>): {
   readonly limit: number;
   readonly status: LedgerConflictStatus | "ALL";
@@ -1954,6 +2232,48 @@ function orderNotFoundHttpError(): HttpApiError {
   return new HttpApiError(404, "order_not_found", "订单不存在");
 }
 
+function serializeAdminOrderSummary(order: AdminOrderSummaryProjection) {
+  return {
+    order_id: order.orderId,
+    api_client_id: order.apiClientId,
+    merchant_order_no: order.merchantOrderNo,
+    requested_amount_cents: order.requestedAmountCents,
+    payable_amount_cents: order.payableAmountCents,
+    received_amount_cents: order.receivedAmountCents,
+    currency: order.currency,
+    description: order.description,
+    checkout: {
+      status: order.checkout.status,
+      expires_at: new Date(order.checkout.expiresAt).toISOString(),
+      closed_at: nullableIsoTime(order.checkout.closedAt),
+    },
+    payment: {
+      status: order.payment.status,
+      basis: order.payment.basis,
+      received_amount_cents: order.payment.receivedAmountCents,
+    },
+    refund: { status: order.refund.status },
+    eligible_from: new Date(order.eligibleFrom).toISOString(),
+    created_at: new Date(order.createdAt).toISOString(),
+    updated_at: new Date(order.updatedAt).toISOString(),
+    version: order.version,
+  };
+}
+
+function serializeAdminOrderDetail(order: AdminOrderDetailProjection) {
+  return {
+    ...serializeAdminOrderSummary(order),
+    notification: { notify_url: order.notification.notifyUrl },
+    events: order.events.map((event) => ({
+      event_id: event.eventId,
+      sequence: event.sequence,
+      event_type: event.eventType,
+      occurred_at: new Date(event.occurredAt).toISOString(),
+      details: parseStrictJson(Buffer.from(event.detailsJson, "utf8")),
+    })),
+  };
+}
+
 function serializeOrder(order: OrderProjection, publicOrigin: string) {
   return {
     order_id: order.orderId,
@@ -1968,6 +2288,10 @@ function serializeOrder(order: OrderProjection, publicOrigin: string) {
       token: order.checkoutToken,
       state_url: new URL(
         `/api/public/v1/checkouts/${encodeURIComponent(order.checkoutToken)}`,
+        publicOrigin,
+      ).toString(),
+      checkout_url: new URL(
+        `/checkout/${encodeURIComponent(order.checkoutToken)}`,
         publicOrigin,
       ).toString(),
       expires_at: new Date(order.checkout.expiresAt).toISOString(),

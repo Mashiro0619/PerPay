@@ -128,13 +128,20 @@ describe("loadConfig", () => {
       `valid-code-${"\ud800"}`,
       " CHANGE_ME_TO_COLLECTION_CODE_PAYLOAD",
       "https://qr.alipay.com/code\n",
-      "x".repeat(4097),
+      "x".repeat(2332),
     ]) {
       assert.throws(
         () => loadConfig({ ...validEnvironment, PERPAY_COLLECTION_CODE_PAYLOAD: payload }),
-        /PERPAY_COLLECTION_CODE_PAYLOAD|at most 4096 UTF-8 bytes|control characters|whitespace/,
+        /PERPAY_COLLECTION_CODE_PAYLOAD|at most 2331 UTF-8 bytes|control characters|whitespace/,
       );
     }
+    assert.equal(
+      loadConfig({
+        ...validEnvironment,
+        PERPAY_COLLECTION_CODE_PAYLOAD: "x".repeat(2331),
+      }).collectionCodePayload.length,
+      2331,
+    );
     assert.throws(
       () => loadConfig({ ...validEnvironment, PERPAY_ORDER_TTL_SECONDS: "59" }),
       /PERPAY_ORDER_TTL_SECONDS/,

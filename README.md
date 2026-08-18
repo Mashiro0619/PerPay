@@ -10,14 +10,13 @@ PerPay 是面向个人开发者的开源、自托管经营码收款系统。它�
 
 ## 当前能力
 
-- 经营码订单、幂等创建、唯一应付金额和公开收银台状态。
+- 经营码订单、幂等创建、唯一应付金额和公开收银台页面。
 - V3 请求签名、成功响应验签、原始证据留存和账务冲突隔离。
 - 唯一流水自动确认、异常人工认领、撤销、退款登记、双式分录和资金异常追踪。
 - 管理员会话、CSRF、step-up、API HMAC 签名、限流和审计链。
 - 订单事件签名、严格 ACK、有限重试、死信和人工补发。
 - SQLite 自动迁移、健康检查、经校验的周期备份、恢复和容器化更新。
-
-正式收银台页面和管理页面尚未实现；现阶段提供后端 API 和 JSON 收银台状态。
+- 同源管理后台，覆盖系统状态、订单、异常、结算、冲突、通知和安全操作。
 
 ## 部署
 
@@ -46,7 +45,7 @@ SQLite 数据与本地备份分别保存在两个命名卷中，删除或重建�
 `docker-compose.yml` 内的注释是配置字段说明。部署前至少需要：
 
 - 替换所有必填项及已启用功能中的 `CHANGE_ME` 占位值；通知保持关闭时，其专属占位项可以暂不填写。配置中出现 `$` 时写成 `$$`。
-- 填写管理员初始密码、API 密钥和经营码原始内容。
+- 填写管理员初始密码、API 密钥和经营码原始内容；经营码内容最多为 2331 个 UTF-8 字节。
 - 启用账务采集时填写应用 ID、应用私钥和平台公钥。平台公钥不是应用公钥。
 - Compose 不提供 TLS 或证书管理。未来的公网入口必须使用外部 HTTPS 反向代理，正确设置公开 origin 与可信直连代理 CIDR，并保持应用端口只绑定宿主机回环地址。
 - 将填写后的 Compose 视为高敏感文件，不要提交到 Git、Issue 或日志。部署目录权限不得宽于 `0700`，文件不得宽于 `0600`。完整边界见 [安全策略](SECURITY.md)。
@@ -80,7 +79,7 @@ docker compose logs backup
 
 机器可读的路径、请求、响应和错误契约见 [openapi.yaml](openapi.yaml)。API 客户端签名规则和固定测试向量见 [API 认证与签名](docs/API_AUTHENTICATION.md)。
 
-在正式前端接入前，创建订单返回的 `checkout.state_url` 指向 JSON 状态接口，不是 HTML 页面。管理员功能同样通过受会话、同源、CSRF 和 step-up 保护的 API 提供。
+创建订单同时返回 `checkout.state_url`（JSON 状态接口）和 `checkout.checkout_url`（付款人 HTML 收银台）。管理后台位于 `/admin`；浏览器只使用管理员 Cookie 会话、同源 CSRF 和 step-up，不持有商户 API 密钥。
 
 ## 运维
 
@@ -111,6 +110,7 @@ docker compose logs backup
 
 - Node.js 24 LTS、TypeScript 6、Hono 4。
 - Node 内置 `node:sqlite`，单应用进程写入。
+- Usuzumi 零构建 UI 与普通 CSS/JavaScript 静态资产。
 - 同一 Linux 镜像运行应用与备份服务。
 - Linux `amd64` 与 `arm64` 镜像目标。
 

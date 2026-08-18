@@ -22,6 +22,8 @@ tags:
     description: Public token-scoped checkout state.
   - name: Admin Session
     description: Same-origin administrator login, session, and recent-password verification.
+  - name: Admin Orders
+    description: Session-authenticated order lookup for exception handling and operational inspection.
   - name: Ledger Operations
     description: Administrator inspection and one-time disposition of retained ledger conflicts.
   - name: Reconciliation
@@ -281,6 +283,96 @@ paths:
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '429': { $ref: '#/components/responses/AdminRateLimited' }
         '503': { $ref: '#/components/responses/AdminUnavailable' }
+  /api/admin/v1/orders:
+    get:
+      tags: [Admin Orders]
+      operationId: listAdministratorOrders
+      summary: Page through orders for operational inspection
+      description: |
+        Results use a stable creation-time and order-ID ordering. The opaque cursor is bound to
+        the exact `checkout_status` and `payment_status` filters that produced it. Checkout tokens,
+        token digests, idempotency digests, request fingerprints, and secrets are never returned.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - name: checkout_status
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/CheckoutStatus' }
+        - name: payment_status
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/PaymentStatus' }
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque canonical base64url cursor returned by the preceding page.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+            pattern: '^[A-Za-z0-9_-]+$'
+      responses:
+        '200':
+          description: Filtered administrator order page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminOrderPageEnvelope' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/admin/v1/orders/by-merchant-no/{merchantOrderNo}:
+    get:
+      tags: [Admin Orders]
+      operationId: getAdministratorOrderByMerchantNumber
+      summary: Read one order by its exact merchant order number
+      description: Uses the instance's configured API client scope without requiring merchant HMAC credentials.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - name: merchantOrderNo
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/MerchantOrderNumber' }
+      responses:
+        '200':
+          description: Sanitized order detail and immutable event history
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminOrderDetailEnvelope' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '404': { $ref: '#/components/responses/AdminOrderNotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/admin/v1/orders/{orderId}:
+    get:
+      tags: [Admin Orders]
+      operationId: getAdministratorOrder
+      summary: Read one order by its internal identifier
+      description: Returns sanitized order facts, its notification target, and immutable event history.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Sanitized order detail and immutable event history
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminOrderDetailEnvelope' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '404': { $ref: '#/components/responses/AdminOrderNotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
   /api/admin/v1/ledger/conflicts:
     get:
       tags: [Ledger Operations]
@@ -1026,6 +1118,42 @@ paths:
         '404': { $ref: '#/components/responses/CheckoutNotFound' }
         '429': { $ref: '#/components/responses/RateLimited' }
         '503': { $ref: '#/components/responses/Unavailable' }
+  /api/public/v1/checkouts/{token}/qr.svg:
+    get:
+      tags: [Checkout]
+      operationId: getPublicCheckoutQrCode
+      summary: Render the order-bound collection code as a local SVG
+      description: >-
+        Returns a same-origin QR image only while the checkout can accept payment and collection
+        plus automatic reconciliation are ready. The image is generated locally from the
+        collection-code version frozen when the order was created and is never delegated to an
+        external QR service.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^pct1_[A-Za-z0-9_-]{43}$'
+            minLength: 48
+            maxLength: 48
+      responses:
+        '200':
+          description: Collection-code QR image
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: The checkout is unknown, outside its observation window, or no longer exposes payment instructions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Unavailable' }
   /api/v1/system/status:
     get:
       tags: [System]
@@ -1725,6 +1853,138 @@ components:
           required: [revoked_sessions]
           properties:
             revoked_sessions: { type: integer, minimum: 1 }
+    AdminOrderPageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/AdminOrderSummary' }
+        page:
+          type: object
+          additionalProperties: false
+          required: [next_cursor]
+          properties:
+            next_cursor:
+              type: [string, 'null']
+              maxLength: 256
+    AdminOrderDetailEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/AdminOrderDetail' }
+    AdminOrderSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - order_id
+        - api_client_id
+        - merchant_order_no
+        - requested_amount_cents
+        - payable_amount_cents
+        - received_amount_cents
+        - currency
+        - description
+        - checkout
+        - payment
+        - refund
+        - eligible_from
+        - created_at
+        - updated_at
+        - version
+      properties:
+        order_id: { $ref: '#/components/schemas/ResourceId' }
+        api_client_id:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$'
+        merchant_order_no: { $ref: '#/components/schemas/MerchantOrderNumber' }
+        requested_amount_cents: { type: integer, minimum: 1, maximum: 9999999998 }
+        payable_amount_cents: { type: integer, minimum: 2, maximum: 9999999999 }
+        received_amount_cents:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 9999999999
+        currency: { const: CNY }
+        description: { type: [string, 'null'], maxLength: 200 }
+        checkout: { $ref: '#/components/schemas/CheckoutState' }
+        payment: { $ref: '#/components/schemas/PaymentState' }
+        refund: { $ref: '#/components/schemas/RefundState' }
+        eligible_from: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        version: { type: integer, minimum: 1 }
+    AdminOrderDetail:
+      type: object
+      additionalProperties: false
+      required:
+        - order_id
+        - api_client_id
+        - merchant_order_no
+        - requested_amount_cents
+        - payable_amount_cents
+        - received_amount_cents
+        - currency
+        - description
+        - checkout
+        - payment
+        - refund
+        - eligible_from
+        - notification
+        - events
+        - created_at
+        - updated_at
+        - version
+      properties:
+        order_id: { $ref: '#/components/schemas/ResourceId' }
+        api_client_id:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$'
+        merchant_order_no: { $ref: '#/components/schemas/MerchantOrderNumber' }
+        requested_amount_cents: { type: integer, minimum: 1, maximum: 9999999998 }
+        payable_amount_cents: { type: integer, minimum: 2, maximum: 9999999999 }
+        received_amount_cents:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 9999999999
+        currency: { const: CNY }
+        description: { type: [string, 'null'], maxLength: 200 }
+        checkout: { $ref: '#/components/schemas/CheckoutState' }
+        payment: { $ref: '#/components/schemas/PaymentState' }
+        refund: { $ref: '#/components/schemas/RefundState' }
+        eligible_from: { type: string, format: date-time }
+        notification: { $ref: '#/components/schemas/OrderNotification' }
+        events:
+          type: array
+          items: { $ref: '#/components/schemas/AdminOrderEvent' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        version: { type: integer, minimum: 1 }
+    AdminOrderEvent:
+      type: object
+      additionalProperties: false
+      required: [event_id, sequence, event_type, occurred_at, details]
+      properties:
+        event_id: { $ref: '#/components/schemas/ResourceId' }
+        sequence: { type: integer, minimum: 1 }
+        event_type:
+          type: string
+          enum:
+            - CREATED
+            - CHECKOUT_CLOSED
+            - CHECKOUT_EXPIRED
+            - PAYMENT_CONFIRMED
+            - PAYMENT_DISPUTED
+            - REFUND_UPDATED
+        occurred_at: { type: string, format: date-time }
+        details:
+          type: object
+          additionalProperties: true
     MerchantOrderNumber:
       type: string
       minLength: 1
@@ -1824,11 +2084,18 @@ components:
     AuthenticatedCheckoutState:
       type: object
       additionalProperties: false
-      required: [status, token, state_url, expires_at, closed_at]
+      required: [status, token, state_url, checkout_url, expires_at, closed_at]
       properties:
         status: { $ref: '#/components/schemas/CheckoutStatus' }
         token: { type: string, pattern: '^pct1_[A-Za-z0-9_-]{43}$' }
-        state_url: { type: string, format: uri }
+        state_url:
+          type: string
+          format: uri
+          description: Stable JSON state endpoint for server and application clients.
+        checkout_url:
+          type: string
+          format: uri
+          description: Browser-facing HTML checkout page for the payer.
         expires_at: { type: string, format: date-time }
         closed_at: { type: [string, 'null'], format: date-time }
     CheckoutState:
@@ -1842,14 +2109,15 @@ components:
     CheckoutStatus:
       type: string
       enum: [OPEN, EXPIRED, CLOSED]
+    PaymentStatus:
+      type: string
+      enum: [UNPAID, CONFIRMED, DISPUTED]
     PaymentState:
       type: object
       additionalProperties: false
       required: [status, basis, received_amount_cents]
       properties:
-        status:
-          type: string
-          enum: [UNPAID, CONFIRMED, DISPUTED]
+        status: { $ref: '#/components/schemas/PaymentStatus' }
         basis:
           type: string
           enum: [NONE, INFERRED, MANUAL]
@@ -1909,7 +2177,9 @@ components:
         collection_code_payload:
           type: string
           minLength: 8
-          maxLength: 4096
+          maxLength: 2331
+          x-perpay-max-utf8-bytes: 2331
+          description: The configured collection-code payload, bounded by QR Code version 40 ECC M byte capacity.
     FinancialDecisionRequest:
       type: object
       additionalProperties: false
@@ -3056,6 +3326,13 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    AdminOrderNotFound:
+      description: >-
+        The administrator order identifier or merchant order number is malformed or unknown
+        (`order_not_found`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     FinancialWriteForbidden:
       description: >-
         Same-origin or CSRF validation failed, or recent-password verification is not active
@@ -3209,9 +3486,11 @@ components:
     Unavailable:
       description: >-
         No amount slot is available, core storage or the order clock is unsafe
-        (`system_not_ready`), provider collection has no sufficiently recent successful scan
+        (`system_not_ready` or `order_clock_unavailable`), provider collection has no sufficiently
+        recent successful scan
         (`collection_not_ready`), or automatic reconciliation has no sufficiently recent successful
         run (`reconciliation_not_ready`).
+        QR rendering may also fail closed with `checkout_code_generation_failed`.
       headers:
         Retry-After:
           schema: { type: integer, minimum: 1 }

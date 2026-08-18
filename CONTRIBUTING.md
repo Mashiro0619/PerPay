@@ -19,6 +19,8 @@ npm run check
 npm audit --audit-level=high
 ```
 
+浏览器界面不使用前端构建器。可维护资产位于 `static/app/`，页面只依赖固定版本的 Usuzumi 公共 `.uzu-*`、`data-uzu-*` 和 `--uzu-*` 接口；项目扩展层不得修改依赖包生成文件。商户或平台返回文本必须通过文本节点呈现，不能直接拼入 HTML。
+
 根 Compose 面向使用者，只引用预构建发布镜像，不从当前源码隐式构建。需要验收本地源码容器时，在仓库外建立一份私密 Compose 副本，将顶层 `name`、宿主端口与 `PERPAY_PUBLIC_URL` 改成不会与现有实例冲突的开发值，把 `app`、`backup` 与 `maintenance` 三处 `image:` 都改为 `perpay-dev:local`，填写必需占位值，并在不测试外部采集时显式设置 `PERPAY_ALIPAY_ENABLED: "false"`。该副本包含秘密，不得提交。
 
 ```text

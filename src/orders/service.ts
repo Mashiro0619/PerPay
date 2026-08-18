@@ -5,6 +5,8 @@ import type { AppDatabase } from "../database/database.ts";
 import {
   OrderClockError,
   OrderStore,
+  type StoredAdminOrder,
+  type StoredAdminOrderDetail,
   type StoredOrderAggregate,
   type SyncCollectionProfileResult,
 } from "../database/order-store.ts";
@@ -19,6 +21,11 @@ import {
 import {
   IDEMPOTENCY_KEY_DIGEST_VERSION,
   fingerprintCreateOrderRequest,
+  type AdminOrderCursor,
+  type AdminOrderDetailProjection,
+  type AdminOrderFilters,
+  type AdminOrderPageProjection,
+  type AdminOrderSummaryProjection,
   type CreateOrderRequest,
   type OrderProjection,
   type PublicCheckoutProjection,
@@ -158,6 +165,34 @@ export class OrderService {
     return this.#projectOrder(aggregate);
   }
 
+  adminPage(
+    filters: AdminOrderFilters,
+    cursor: AdminOrderCursor | null,
+    limit: number,
+  ): AdminOrderPageProjection {
+    const page = this.#runStoreOperation(() =>
+      this.#store.adminOrderPage(filters, cursor, limit),
+    );
+    return {
+      orders: page.orders.map((order) => this.#projectAdminOrder(order)),
+      nextCursor: page.nextCursor,
+    };
+  }
+
+  adminGet(orderId: string): AdminOrderDetailProjection {
+    const order = this.#runStoreOperation(() => this.#store.adminOrderById(orderId));
+    if (!order) throw orderNotFound();
+    return this.#projectAdminOrderDetail(order);
+  }
+
+  adminGetByMerchantOrderNumber(merchantOrderNo: string): AdminOrderDetailProjection {
+    const order = this.#runStoreOperation(() =>
+      this.#store.adminOrderByMerchantOrderNumber(this.#config.apiClientId, merchantOrderNo),
+    );
+    if (!order) throw orderNotFound();
+    return this.#projectAdminOrderDetail(order);
+  }
+
   close(apiClientId: string, orderId: string): OrderProjection {
     const aggregate = this.#runStoreOperation(() => this.#store.closeOrder(apiClientId, orderId));
     if (!aggregate) throw orderNotFound();
@@ -208,6 +243,34 @@ export class OrderService {
       createdAt: aggregate.order.createdAt,
       updatedAt: aggregate.order.updatedAt,
       version: aggregate.order.version,
+    };
+  }
+
+  #projectAdminOrder(aggregate: StoredAdminOrder): AdminOrderSummaryProjection {
+    return {
+      orderId: aggregate.order.orderId,
+      apiClientId: aggregate.order.apiClientId,
+      merchantOrderNo: aggregate.order.merchantOrderNo,
+      requestedAmountCents: aggregate.order.requestedAmountCents,
+      payableAmountCents: aggregate.order.payableAmountCents,
+      receivedAmountCents: aggregate.order.receivedAmountCents,
+      currency: aggregate.order.currency,
+      description: aggregate.order.description,
+      checkout: checkoutProjection(aggregate),
+      payment: paymentProjection(aggregate),
+      refund: { status: aggregate.order.refundStatus },
+      eligibleFrom: aggregate.order.eligibleFrom,
+      createdAt: aggregate.order.createdAt,
+      updatedAt: aggregate.order.updatedAt,
+      version: aggregate.order.version,
+    };
+  }
+
+  #projectAdminOrderDetail(aggregate: StoredAdminOrderDetail): AdminOrderDetailProjection {
+    return {
+      ...this.#projectAdminOrder(aggregate),
+      notification: { notifyUrl: aggregate.webhookTarget?.targetUrl ?? null },
+      events: aggregate.events,
     };
   }
 
@@ -275,7 +338,7 @@ export function digestIdempotencyKey(apiClientId: string, idempotencyKey: string
     .digest("hex");
 }
 
-function checkoutProjection(aggregate: StoredOrderAggregate) {
+function checkoutProjection(aggregate: Pick<StoredOrderAggregate, "order">) {
   return {
     status: aggregate.order.checkoutStatus,
     expiresAt: aggregate.order.expiresAt,
@@ -283,7 +346,7 @@ function checkoutProjection(aggregate: StoredOrderAggregate) {
   } as const;
 }
 
-function paymentProjection(aggregate: StoredOrderAggregate) {
+function paymentProjection(aggregate: Pick<StoredOrderAggregate, "order">) {
   return {
     status: aggregate.order.paymentStatus,
     basis: aggregate.order.paymentBasis,

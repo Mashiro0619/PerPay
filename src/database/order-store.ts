@@ -8,6 +8,9 @@ import {
   MAX_REQUESTED_AMOUNT_CENTS,
   MAX_ORDER_CLOCK_AHEAD_MILLISECONDS,
   orderEventDetailsFingerprint,
+  type AdminOrderCursor,
+  type AdminOrderFilters,
+  type AdminOrderEventProjection,
   type CheckoutSession,
   type CheckoutStatus,
   type CreateOrderRequest,
@@ -31,6 +34,7 @@ const MAX_PAYABLE_AMOUNT_CENTS = MAX_REQUESTED_AMOUNT_CENTS + 1;
 const EXPIRY_SWEEP_LIMIT = 256;
 const DEFAULT_CHECKOUT_KEY_ROTATION_MILLISECONDS = 90 * 24 * 60 * 60 * 1_000;
 const DEFAULT_CHECKOUT_TERMINAL_OBSERVATION_MILLISECONDS = 24 * 60 * 60 * 1_000;
+const ORDER_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 type DatabaseOwner = Pick<AppDatabase, "read" | "write">;
 
@@ -51,6 +55,20 @@ export interface StoredOrderAggregate {
   readonly collectionProfile: CollectionProfile;
   readonly webhookTarget: StoredWebhookTarget | null;
   readonly checkoutToken: string;
+}
+
+export interface StoredAdminOrder {
+  readonly order: PaymentOrder;
+  readonly webhookTarget: StoredWebhookTarget | null;
+}
+
+export interface StoredAdminOrderDetail extends StoredAdminOrder {
+  readonly events: readonly AdminOrderEventProjection[];
+}
+
+export interface StoredAdminOrderPage {
+  readonly orders: readonly StoredAdminOrder[];
+  readonly nextCursor: AdminOrderCursor | null;
 }
 
 export interface StoredWebhookTarget {
@@ -469,6 +487,120 @@ export class OrderStore {
     });
   }
 
+  adminOrderPage(
+    filters: AdminOrderFilters,
+    cursor: AdminOrderCursor | null,
+    limit: number,
+  ): StoredAdminOrderPage {
+    validateAdminOrderPageInput(filters, cursor, limit);
+    return this.#database.write((connection) => {
+      const now = this.#logicalNow(connection);
+      expireDueOrders(connection, now, EXPIRY_SWEEP_LIMIT);
+      if (filters.checkoutStatus === "EXPIRED") {
+        let rows = readExpiredAdminOrderRows(
+          connection,
+          filters.paymentStatus,
+          cursor,
+          now,
+          limit + 1,
+        );
+        let expiredSelectedOrder = false;
+        for (const row of rows) {
+          if (
+            row.checkout_status === "OPEN" &&
+            toSafeInteger(row.expires_at, "order expiry") <= now
+          ) {
+            expireOrder(connection, row.order_id, now);
+            expiredSelectedOrder = true;
+          }
+        }
+        if (expiredSelectedOrder) {
+          rows = readExpiredAdminOrderRows(
+            connection,
+            filters.paymentStatus,
+            cursor,
+            now,
+            limit + 1,
+          );
+        }
+        return buildStoredAdminOrderPage(rows, limit);
+      }
+
+      const where: string[] = [];
+      const parameters: Array<string | number> = [];
+      if (filters.checkoutStatus !== null) {
+        if (filters.checkoutStatus === "OPEN") {
+          where.push("orders.checkout_status = 'OPEN' AND orders.expires_at > ?");
+          parameters.push(now);
+        } else {
+          where.push("orders.checkout_status = 'CLOSED'");
+        }
+      }
+      if (filters.paymentStatus !== null) {
+        where.push("orders.payment_status = ?");
+        parameters.push(filters.paymentStatus);
+      }
+      if (cursor !== null) {
+        where.push("(orders.created_at, orders.order_id) < (?, ?)");
+        parameters.push(cursor.createdAt, cursor.orderId);
+      }
+      const statement = connection.prepare(
+        `${AGGREGATE_SELECT}
+         ${where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""}
+         ORDER BY orders.created_at DESC, orders.order_id DESC
+         LIMIT ?`,
+      );
+      const readRows = () =>
+        statement.all(...parameters, limit + 1) as unknown as AggregateRow[];
+      let rows = readRows();
+      let expiredSelectedOrder = false;
+      for (const row of rows) {
+        if (
+          row.checkout_status === "OPEN" &&
+          toSafeInteger(row.expires_at, "order expiry") <= now
+        ) {
+          expireOrder(connection, row.order_id, now);
+          expiredSelectedOrder = true;
+        }
+      }
+      if (expiredSelectedOrder) rows = readRows();
+      return buildStoredAdminOrderPage(rows, limit);
+    });
+  }
+
+  adminOrderById(orderId: string): StoredAdminOrderDetail | undefined {
+    return this.#database.write((connection) => {
+      const now = this.#logicalNow(connection);
+      let aggregate = readAggregateByAdminId(connection, orderId);
+      if (!aggregate) return undefined;
+      expireOrderByIdIfDue(connection, aggregate.order.apiClientId, orderId, now);
+      aggregate = readAggregateByAdminId(connection, orderId);
+      if (!aggregate) throw new Error("administrator order aggregate cannot be read");
+      return {
+        ...mapStoredAdminOrder(aggregate),
+        events: readAdminOrderEvents(connection, orderId),
+      };
+    });
+  }
+
+  adminOrderByMerchantOrderNumber(
+    apiClientId: string,
+    merchantOrderNo: string,
+  ): StoredAdminOrderDetail | undefined {
+    return this.#database.write((connection) => {
+      const now = this.#logicalNow(connection);
+      let aggregate = readAggregateByMerchantOrderNumber(connection, apiClientId, merchantOrderNo);
+      if (!aggregate) return undefined;
+      expireOrderByIdIfDue(connection, apiClientId, aggregate.order.orderId, now);
+      aggregate = readAggregateByMerchantOrderNumber(connection, apiClientId, merchantOrderNo);
+      if (!aggregate) throw new Error("administrator merchant order aggregate cannot be read");
+      return {
+        ...mapStoredAdminOrder(aggregate),
+        events: readAdminOrderEvents(connection, aggregate.order.orderId),
+      };
+    });
+  }
+
   closeOrder(apiClientId: string, orderId: string): StoredOrderAggregate | undefined {
     return this.#database.write((connection) => {
       const now = this.#logicalNow(connection);
@@ -870,6 +1002,127 @@ const AGGREGATE_SELECT = `
   LEFT JOIN webhook_targets AS target ON target.order_id = orders.order_id
 `;
 
+const ADMIN_ORDER_CHECKOUT_SELECT = AGGREGATE_SELECT.replace(
+  "FROM payment_orders AS orders",
+  "FROM payment_orders AS orders INDEXED BY payment_orders_checkout_created_idx",
+);
+
+const ADMIN_ORDER_CHECKOUT_PAYMENT_SELECT = AGGREGATE_SELECT.replace(
+  "FROM payment_orders AS orders",
+  "FROM payment_orders AS orders INDEXED BY payment_orders_checkout_payment_created_idx",
+);
+
+function readExpiredAdminOrderRows(
+  connection: DatabaseSync,
+  paymentStatus: PaymentStatus | null,
+  cursor: AdminOrderCursor | null,
+  now: number,
+  limit: number,
+): AggregateRow[] {
+  const storedExpired = readAdminOrderCheckoutBranch(
+    connection,
+    "EXPIRED",
+    paymentStatus,
+    cursor,
+    null,
+    limit,
+  );
+  const overdueOpen = readAdminOrderCheckoutBranch(
+    connection,
+    "OPEN",
+    paymentStatus,
+    cursor,
+    now,
+    limit,
+  );
+  return mergeAdminOrderRows(storedExpired, overdueOpen, limit);
+}
+
+function readAdminOrderCheckoutBranch(
+  connection: DatabaseSync,
+  checkoutStatus: "OPEN" | "EXPIRED",
+  paymentStatus: PaymentStatus | null,
+  cursor: AdminOrderCursor | null,
+  expiresAtMaximum: number | null,
+  limit: number,
+): AggregateRow[] {
+  const where = ["orders.checkout_status = ?"];
+  const parameters: Array<string | number> = [checkoutStatus];
+  if (expiresAtMaximum !== null) {
+    where.push("orders.expires_at <= ?");
+    parameters.push(expiresAtMaximum);
+  }
+  if (paymentStatus !== null) {
+    where.push("orders.payment_status = ?");
+    parameters.push(paymentStatus);
+  }
+  if (cursor !== null) {
+    where.push("(orders.created_at, orders.order_id) < (?, ?)");
+    parameters.push(cursor.createdAt, cursor.orderId);
+  }
+  const aggregateSelect = paymentStatus === null
+    ? ADMIN_ORDER_CHECKOUT_SELECT
+    : ADMIN_ORDER_CHECKOUT_PAYMENT_SELECT;
+  return connection
+    .prepare(
+      `${aggregateSelect}
+       WHERE ${where.join(" AND ")}
+       ORDER BY orders.created_at DESC, orders.order_id DESC
+       LIMIT ?`,
+    )
+    .all(...parameters, limit) as unknown as AggregateRow[];
+}
+
+function mergeAdminOrderRows(
+  left: readonly AggregateRow[],
+  right: readonly AggregateRow[],
+  limit: number,
+): AggregateRow[] {
+  const merged: AggregateRow[] = [];
+  let leftIndex = 0;
+  let rightIndex = 0;
+  while (merged.length < limit && (leftIndex < left.length || rightIndex < right.length)) {
+    const leftRow = left[leftIndex];
+    const rightRow = right[rightIndex];
+    if (
+      leftRow !== undefined &&
+      (rightRow === undefined || compareAdminOrderRows(leftRow, rightRow) <= 0)
+    ) {
+      merged.push(leftRow);
+      leftIndex += 1;
+    } else if (rightRow !== undefined) {
+      merged.push(rightRow);
+      rightIndex += 1;
+    }
+  }
+  return merged;
+}
+
+function compareAdminOrderRows(left: AggregateRow, right: AggregateRow): number {
+  const leftCreatedAt = toSafeInteger(left.created_at, "administrator order creation time");
+  const rightCreatedAt = toSafeInteger(right.created_at, "administrator order creation time");
+  if (leftCreatedAt !== rightCreatedAt) return leftCreatedAt > rightCreatedAt ? -1 : 1;
+  if (left.order_id === right.order_id) return 0;
+  return left.order_id > right.order_id ? -1 : 1;
+}
+
+function buildStoredAdminOrderPage(
+  rows: readonly AggregateRow[],
+  limit: number,
+): StoredAdminOrderPage {
+  const selected = rows.slice(0, limit);
+  const last = selected.at(-1);
+  return Object.freeze({
+    orders: Object.freeze(selected.map((row) => mapStoredAdminOrder(mapAggregate(row)))),
+    nextCursor: rows.length > limit && last
+      ? Object.freeze({
+          createdAt: toSafeInteger(last.created_at, "administrator order cursor time"),
+          orderId: last.order_id,
+        })
+      : null,
+  });
+}
+
 function readAggregateById(
   connection: DatabaseSync,
   apiClientId: string,
@@ -878,6 +1131,16 @@ function readAggregateById(
   const row = connection
     .prepare(`${AGGREGATE_SELECT} WHERE orders.api_client_id = ? AND orders.order_id = ?`)
     .get(apiClientId, orderId) as AggregateRow | undefined;
+  return row ? mapAggregate(row) : undefined;
+}
+
+function readAggregateByAdminId(
+  connection: DatabaseSync,
+  orderId: string,
+): Omit<StoredOrderAggregate, "checkoutToken"> | undefined {
+  const row = connection
+    .prepare(`${AGGREGATE_SELECT} WHERE orders.order_id = ?`)
+    .get(orderId) as AggregateRow | undefined;
   return row ? mapAggregate(row) : undefined;
 }
 
@@ -987,6 +1250,44 @@ function mapAggregate(row: AggregateRow): Omit<StoredOrderAggregate, "checkoutTo
     },
     webhookTarget: mapWebhookTarget(row),
   };
+}
+
+function mapStoredAdminOrder(
+  aggregate: Omit<StoredOrderAggregate, "checkoutToken">,
+): StoredAdminOrder {
+  return Object.freeze({
+    order: aggregate.order,
+    webhookTarget: aggregate.webhookTarget,
+  });
+}
+
+type AdminOrderEventRow = {
+  readonly event_id: string;
+  readonly sequence: bigint | number;
+  readonly event_type: AdminOrderEventProjection["eventType"];
+  readonly occurred_at: bigint | number;
+  readonly details_json: string;
+};
+
+function readAdminOrderEvents(
+  connection: DatabaseSync,
+  orderId: string,
+): readonly AdminOrderEventProjection[] {
+  const rows = connection
+    .prepare(
+      `SELECT event_id, sequence, event_type, occurred_at, details_json
+         FROM order_events
+        WHERE order_id = ?
+        ORDER BY sequence`,
+    )
+    .all(orderId) as unknown as AdminOrderEventRow[];
+  return Object.freeze(rows.map((row) => Object.freeze({
+    eventId: row.event_id,
+    sequence: toSafeInteger(row.sequence, "administrator order event sequence"),
+    eventType: row.event_type,
+    occurredAt: toSafeInteger(row.occurred_at, "administrator order event time"),
+    detailsJson: row.details_json,
+  })));
 }
 
 function mapWebhookTarget(row: AggregateRow): StoredWebhookTarget | null {
@@ -1306,6 +1607,36 @@ function assertChangedOnce(changes: bigint | number, action: string): void {
 
 function nullableSafeInteger(value: bigint | number | null, label: string): number | null {
   return value === null ? null : toSafeInteger(value, label);
+}
+
+function validateAdminOrderPageInput(
+  filters: AdminOrderFilters,
+  cursor: AdminOrderCursor | null,
+  limit: number,
+): void {
+  if (
+    filters.checkoutStatus !== null &&
+    !["OPEN", "EXPIRED", "CLOSED"].includes(filters.checkoutStatus)
+  ) {
+    throw new RangeError("administrator checkout status filter is invalid");
+  }
+  if (
+    filters.paymentStatus !== null &&
+    !["UNPAID", "CONFIRMED", "DISPUTED"].includes(filters.paymentStatus)
+  ) {
+    throw new RangeError("administrator payment status filter is invalid");
+  }
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200) {
+    throw new RangeError("administrator order page limit is invalid");
+  }
+  if (
+    cursor !== null &&
+    (!Number.isSafeInteger(cursor.createdAt) ||
+      cursor.createdAt < 0 ||
+      !ORDER_ID_PATTERN.test(cursor.orderId))
+  ) {
+    throw new RangeError("administrator order cursor is invalid");
+  }
 }
 
 function toSafeInteger(value: bigint | number, label: string): number {

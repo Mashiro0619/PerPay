@@ -188,6 +188,63 @@ export interface OrderProjection {
   readonly version: number;
 }
 
+export interface AdminOrderCursor {
+  readonly createdAt: number;
+  readonly orderId: string;
+}
+
+export interface AdminOrderFilters {
+  readonly checkoutStatus: CheckoutStatus | null;
+  readonly paymentStatus: PaymentStatus | null;
+}
+
+/** Administrator order data deliberately excludes checkout credentials and request digests. */
+export interface AdminOrderSummaryProjection {
+  readonly orderId: string;
+  readonly apiClientId: string;
+  readonly merchantOrderNo: string;
+  readonly requestedAmountCents: number;
+  readonly payableAmountCents: number;
+  readonly receivedAmountCents: number | null;
+  readonly currency: Currency;
+  readonly description: string | null;
+  readonly checkout: CheckoutStateProjection;
+  readonly payment: PaymentStateProjection;
+  readonly refund: RefundStateProjection;
+  readonly eligibleFrom: number;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+  readonly version: number;
+}
+
+export type OrderEventType =
+  | "CREATED"
+  | "CHECKOUT_CLOSED"
+  | "CHECKOUT_EXPIRED"
+  | "PAYMENT_CONFIRMED"
+  | "PAYMENT_DISPUTED"
+  | "REFUND_UPDATED";
+
+export interface AdminOrderEventProjection {
+  readonly eventId: string;
+  readonly sequence: number;
+  readonly eventType: OrderEventType;
+  readonly occurredAt: number;
+  readonly detailsJson: string;
+}
+
+export interface AdminOrderDetailProjection extends AdminOrderSummaryProjection {
+  readonly notification: {
+    readonly notifyUrl: string | null;
+  };
+  readonly events: readonly AdminOrderEventProjection[];
+}
+
+export interface AdminOrderPageProjection {
+  readonly orders: readonly AdminOrderSummaryProjection[];
+  readonly nextCursor: AdminOrderCursor | null;
+}
+
 /** Public checkout data selected by a high-entropy token; it intentionally contains no token or internal IDs. */
 export interface PublicCheckoutProjection {
   readonly merchantOrderNo: string;

@@ -138,6 +138,128 @@ describe("reconciliation HTTP contract", () => {
     });
   });
 
+  it("lists and inspects administrator orders without exposing checkout credentials", async () => {
+    await withHttpFixture(async (fixture) => {
+      const open = fixture.createOrder("admin-open", 1_499);
+      const closed = fixture.createOrder("admin-closed", 2_499);
+      fixture.closeOrder(closed.orderId);
+      const confirmed = fixture.createSettlement("admin-confirmed", 3_499).order;
+
+      const anonymous = await fixture.app.request("/api/admin/v1/orders");
+      assert.equal(anonymous.status, 401);
+      assert.equal(await responseErrorCode(anonymous), "session_invalid");
+      const auth = await login(fixture.app);
+
+      const unpaidIds: string[] = [];
+      let cursor: string | null = null;
+      do {
+        const query = new URLSearchParams({ payment_status: "UNPAID", limit: "1" });
+        if (cursor) query.set("cursor", cursor);
+        const response = await fixture.app.request(
+          `/api/admin/v1/orders?${query.toString()}`,
+          { headers: { cookie: auth.cookie } },
+        );
+        assert.equal(response.status, 200);
+        const page = (await response.json()) as {
+          data: Array<Record<string, any>>;
+          page: { next_cursor: string | null };
+        };
+        assert.equal(page.data.length, 1);
+        assert.equal(page.data[0]?.payment.status, "UNPAID");
+        unpaidIds.push(String(page.data[0]?.order_id));
+        cursor = page.page.next_cursor;
+      } while (cursor !== null);
+      assert.deepEqual(new Set(unpaidIds), new Set([open.orderId, closed.orderId]));
+
+      const firstPage = await fixture.app.request(
+        "/api/admin/v1/orders?payment_status=UNPAID&limit=1",
+        { headers: { cookie: auth.cookie } },
+      );
+      const firstPageBody = (await firstPage.json()) as {
+        page: { next_cursor: string | null };
+      };
+      assert.ok(firstPageBody.page.next_cursor);
+      for (const reboundQuery of [
+        `payment_status=CONFIRMED&limit=1&cursor=${firstPageBody.page.next_cursor}`,
+        `payment_status=UNPAID&checkout_status=OPEN&limit=1&cursor=${firstPageBody.page.next_cursor}`,
+      ]) {
+        const rebound = await fixture.app.request(
+          `/api/admin/v1/orders?${reboundQuery}`,
+          { headers: { cookie: auth.cookie } },
+        );
+        assert.equal(rebound.status, 422);
+        assert.equal(await responseErrorCode(rebound), "validation_failed");
+      }
+
+      const closedPage = await fixture.app.request(
+        "/api/admin/v1/orders?checkout_status=CLOSED",
+        { headers: { cookie: auth.cookie } },
+      );
+      assert.equal(closedPage.status, 200);
+      const closedData = await responseData<Array<Record<string, any>>>(closedPage);
+      assert.deepEqual(closedData.map((order) => order.order_id), [closed.orderId]);
+
+      const byMerchant = await fixture.app.request(
+        `/api/admin/v1/orders/by-merchant-no/${confirmed.merchantOrderNo}`,
+        { headers: { cookie: auth.cookie } },
+      );
+      assert.equal(byMerchant.status, 200);
+      const byMerchantText = await byMerchant.text();
+      assert.equal(byMerchantText.includes(confirmed.checkoutToken), false);
+      assert.equal(byMerchantText.includes(API_SECRET), false);
+      assert.equal(byMerchantText.includes("idempotency_key_digest"), false);
+      const byMerchantData = (JSON.parse(byMerchantText) as { data: Record<string, any> }).data;
+      assert.equal(byMerchantData.order_id, confirmed.orderId);
+      assert.equal(byMerchantData.api_client_id, "default");
+      assert.equal(byMerchantData.payment.status, "CONFIRMED");
+      assert.deepEqual(
+        byMerchantData.events.map((event: Record<string, unknown>) => event.event_type),
+        ["CREATED", "PAYMENT_CONFIRMED"],
+      );
+      assert.equal(byMerchantData.checkout.token, undefined);
+
+      const byId = await fixture.app.request(`/api/admin/v1/orders/${closed.orderId}`, {
+        headers: { cookie: auth.cookie },
+      });
+      assert.equal(byId.status, 200);
+      const byIdData = await responseData<Record<string, any>>(byId);
+      assert.equal(byIdData.checkout.status, "CLOSED");
+      assert.deepEqual(
+        byIdData.events.map((event: Record<string, unknown>) => event.event_type),
+        ["CREATED", "CHECKOUT_CLOSED"],
+      );
+
+      for (const invalidQuery of [
+        "checkout_status=UNKNOWN",
+        "payment_status=UNKNOWN",
+        "limit=0",
+        "limit=201",
+        "payment_status=UNPAID&payment_status=UNPAID",
+        "cursor=not-a-canonical-cursor",
+        "unknown=value",
+      ]) {
+        const invalid = await fixture.app.request(`/api/admin/v1/orders?${invalidQuery}`, {
+          headers: { cookie: auth.cookie },
+        });
+        assert.equal(invalid.status, 422, invalidQuery);
+        assert.equal(await responseErrorCode(invalid), "validation_failed");
+      }
+
+      const missing = await fixture.app.request(
+        "/api/admin/v1/orders/00000000-0000-4000-8000-000000000000",
+        { headers: { cookie: auth.cookie } },
+      );
+      assert.equal(missing.status, 404);
+      assert.equal(await responseErrorCode(missing), "order_not_found");
+      const invalidMerchant = await fixture.app.request(
+        "/api/admin/v1/orders/by-merchant-no/invalid%20merchant",
+        { headers: { cookie: auth.cookie } },
+      );
+      assert.equal(invalidMerchant.status, 404);
+      assert.equal(await responseErrorCode(invalidMerchant), "order_not_found");
+    });
+  });
+
   it("keeps manual claim, reversal, and refund as stepped-up exception actions", async () => {
     await withHttpFixture(async (fixture) => {
       const auth = await login(fixture.app);
@@ -267,6 +389,7 @@ interface ReconciliationHttpFixture {
   readonly database: AppDatabase;
   readonly reconciliation: ReconciliationStore;
   readonly createOrder: (suffix: string, requestedAmountCents: number) => OrderProjection;
+  readonly closeOrder: (orderId: string) => OrderProjection;
   readonly createSettlement: (suffix: string, requestedAmountCents: number) => SettlementFixture;
   readonly recordCredit: (externalEventId: string, amountCents: number, occurrenceOffset: number) => LedgerEntry;
   readonly recordDebit: (externalEventId: string, amountCents: number, occurrenceOffset: number) => LedgerEntry;
@@ -359,6 +482,9 @@ async function withHttpFixture(
       database,
       reconciliation,
       createOrder,
+      closeOrder(orderId) {
+        return orders.close("default", orderId);
+      },
       createSettlement(suffix, requestedAmountCents) {
         const order = createOrder(suffix, requestedAmountCents);
         const entry = record(

@@ -19,6 +19,8 @@
   "dependencies": {
     "@hono/node-server": "2.1.0",
     "hono": "4.13.2",
+    "uqr": "0.1.3",
+    "usuzumi": "2.3.0",
     "zod": "4.4.3"
   },
   "devDependencies": {

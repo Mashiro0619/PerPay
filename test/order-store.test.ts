@@ -12,6 +12,7 @@ import {
   fingerprintCreateOrderRequest,
   type CreateOrderRequest,
 } from "../src/orders/model.ts";
+import { MAX_COLLECTION_CODE_PAYLOAD_BYTES } from "../src/orders/collection-profile.ts";
 import {
   digestIdempotencyKey,
   fingerprintCollectionCodeProfile,
@@ -22,6 +23,18 @@ const API_CLIENT_ID = "default";
 const TEST_START_MS = 2_000_000_000_000;
 
 describe("OrderStore", () => {
+  it("enforces the QR payload byte capacity in the database baseline", async () => {
+    await withStore(async ({ store }) => {
+      assert.doesNotThrow(() =>
+        syncProfile(store, "x".repeat(MAX_COLLECTION_CODE_PAYLOAD_BYTES))
+      );
+      assert.throws(
+        () => syncProfile(store, "y".repeat(MAX_COLLECTION_CODE_PAYLOAD_BYTES + 1)),
+        /constraint|collection_profiles/i,
+      );
+    });
+  });
+
   it("creates one complete aggregate and replays the exact idempotent request", async () => {
     await withStore(async ({ database, store }) => {
       syncProfile(store, "https://qr.example.test/profile-a");
@@ -754,6 +767,215 @@ describe("OrderStore", () => {
         undefined,
       );
       assert.equal(store.closeOrder("different-client", created.aggregate.order.orderId), undefined);
+    });
+  });
+
+  it("never returns overdue orders as OPEN when the expiry backlog exceeds one sweep", async () => {
+    await withStore(async ({ database, setNow, store }) => {
+      syncProfile(store, "https://qr.example.test/admin-expiry-backlog");
+      for (let index = 0; index < 300; index += 1) {
+        const created = store.createOrder(
+          createInput(
+            requestFor(
+              `backlog-idempotency-${index}`,
+              `backlog-merchant-${index}`,
+              10_000 + index * 100,
+            ),
+            99,
+            60_000,
+          ),
+        );
+        assert.equal(created.kind, "created");
+      }
+      setNow(TEST_START_MS + 60_000);
+
+      const page = store.adminOrderPage(
+        { checkoutStatus: "OPEN", paymentStatus: null },
+        null,
+        200,
+      );
+      assert.deepEqual(page.orders, []);
+      assert.equal(page.nextCursor, null);
+
+      const remainingStoredAsOpen = database.read((connection) =>
+        Number((connection.prepare(
+          "SELECT COUNT(*) AS count FROM payment_orders WHERE checkout_status = 'OPEN'",
+        ).get() as { count: bigint | number }).count)
+      );
+      assert.equal(remainingStoredAsOpen, 44);
+    });
+  });
+
+  it("merges stored and lazily expired administrator orders in stable descending pages", async () => {
+    await withStore(async ({ database, setNow, store }) => {
+      syncProfile(store, "https://qr.example.test/admin-expired-merge");
+      const createdOrderIds: string[] = [];
+      for (let index = 0; index < 270; index += 1) {
+        const created = store.createOrder(
+          createInput(
+            requestFor(
+              `expired-merge-idempotency-${index}`,
+              `expired-merge-merchant-${index}`,
+              20_000 + index * 100,
+            ),
+            99,
+            index < 135 ? 60_000 : 120_000,
+          ),
+        );
+        assert.equal(created.kind, "created");
+        if (created.kind === "created") createdOrderIds.push(created.aggregate.order.orderId);
+      }
+      const expectedOrderIds = createdOrderIds.toSorted((left, right) => {
+        if (left === right) return 0;
+        return left > right ? -1 : 1;
+      });
+      setNow(TEST_START_MS + 120_000);
+
+      const firstPage = store.adminOrderPage(
+        { checkoutStatus: "EXPIRED", paymentStatus: "UNPAID" },
+        null,
+        200,
+      );
+      assert.deepEqual(
+        firstPage.orders.map((entry) => entry.order.orderId),
+        expectedOrderIds.slice(0, 200),
+      );
+      assert.equal(
+        firstPage.orders.every((entry) => entry.order.checkoutStatus === "EXPIRED"),
+        true,
+      );
+      assert.deepEqual(firstPage.nextCursor, {
+        createdAt: TEST_START_MS,
+        orderId: expectedOrderIds[199],
+      });
+
+      const secondPage = store.adminOrderPage(
+        { checkoutStatus: "EXPIRED", paymentStatus: "UNPAID" },
+        firstPage.nextCursor,
+        200,
+      );
+      assert.deepEqual(
+        secondPage.orders.map((entry) => entry.order.orderId),
+        expectedOrderIds.slice(200),
+      );
+      assert.equal(
+        secondPage.orders.every((entry) => entry.order.checkoutStatus === "EXPIRED"),
+        true,
+      );
+      assert.equal(secondPage.nextCursor, null);
+
+      const remainingStoredAsOpen = database.read((connection) =>
+        Number((connection.prepare(
+          "SELECT COUNT(*) AS count FROM payment_orders WHERE checkout_status = 'OPEN'",
+        ).get() as { count: bigint | number }).count)
+      );
+      assert.equal(remainingStoredAsOpen, 0);
+    });
+  });
+
+  it("keeps the expiry sweep and both expired-order branches on ordered indexes", async () => {
+    await withStore(async ({ database }) => {
+      const plans = database.read((connection) => [
+        {
+          index: "payment_orders_checkout_expiry_idx",
+          rows: connection.prepare(
+            `EXPLAIN QUERY PLAN
+             SELECT order_id
+               FROM payment_orders INDEXED BY payment_orders_checkout_expiry_idx
+              WHERE checkout_status = 'OPEN' AND expires_at <= ?
+              ORDER BY expires_at, order_id
+              LIMIT ?`,
+          ).all(TEST_START_MS + 120_000, 256),
+        },
+        {
+          index: "payment_orders_checkout_created_idx",
+          rows: connection.prepare(
+            `EXPLAIN QUERY PLAN
+             SELECT orders.order_id
+               FROM payment_orders AS orders
+                    INDEXED BY payment_orders_checkout_created_idx
+               JOIN checkout_sessions AS checkout ON checkout.order_id = orders.order_id
+               JOIN collection_profiles AS profile
+                 ON profile.profile_id = orders.collection_profile_id
+               LEFT JOIN webhook_targets AS target ON target.order_id = orders.order_id
+              WHERE orders.checkout_status = 'EXPIRED'
+                AND (orders.created_at, orders.order_id) < (?, ?)
+              ORDER BY orders.created_at DESC, orders.order_id DESC
+              LIMIT ?`,
+          ).all(TEST_START_MS, "ffffffff-ffff-4fff-bfff-ffffffffffff", 201),
+        },
+        {
+          index: "payment_orders_checkout_payment_created_idx",
+          rows: connection.prepare(
+            `EXPLAIN QUERY PLAN
+             SELECT orders.order_id
+               FROM payment_orders AS orders
+                    INDEXED BY payment_orders_checkout_payment_created_idx
+               JOIN checkout_sessions AS checkout ON checkout.order_id = orders.order_id
+               JOIN collection_profiles AS profile
+                 ON profile.profile_id = orders.collection_profile_id
+               LEFT JOIN webhook_targets AS target ON target.order_id = orders.order_id
+              WHERE orders.checkout_status = 'OPEN'
+                AND orders.expires_at <= ?
+                AND orders.payment_status = 'UNPAID'
+                AND (orders.created_at, orders.order_id) < (?, ?)
+              ORDER BY orders.created_at DESC, orders.order_id DESC
+              LIMIT ?`,
+          ).all(
+            TEST_START_MS + 120_000,
+            TEST_START_MS,
+            "ffffffff-ffff-4fff-bfff-ffffffffffff",
+            201,
+          ),
+        },
+      ] as const);
+
+      for (const plan of plans) {
+        const details = plan.rows
+          .map((row) => String((row as { detail?: unknown }).detail ?? ""))
+          .join("\n");
+        assert.match(details, new RegExp(`USING (?:COVERING )?INDEX ${plan.index}`));
+        assert.doesNotMatch(details, /TEMP B-TREE|MULTI-INDEX OR/);
+      }
+    });
+  });
+
+  it("pages administrator orders from newest to oldest", async () => {
+    await withStore(async ({ store, setNow }) => {
+      syncProfile(store, "https://qr.example.test/admin-recent-orders");
+      const createdOrderIds: string[] = [];
+      for (let index = 0; index < 3; index += 1) {
+        setNow(TEST_START_MS + index * 1_000);
+        const created = store.createOrder(createInput(requestFor(
+          `admin-page-idempotency-${index}`,
+          `admin-page-merchant-${index}`,
+          10_000 + index * 100,
+        )));
+        assert.equal(created.kind, "created");
+        if (created.kind === "created") createdOrderIds.push(created.aggregate.order.orderId);
+      }
+
+      const firstPage = store.adminOrderPage(
+        { checkoutStatus: null, paymentStatus: null },
+        null,
+        2,
+      );
+      assert.deepEqual(
+        firstPage.orders.map((entry) => entry.order.orderId),
+        [createdOrderIds[2], createdOrderIds[1]],
+      );
+      assert.notEqual(firstPage.nextCursor, null);
+
+      const secondPage = store.adminOrderPage(
+        { checkoutStatus: null, paymentStatus: null },
+        firstPage.nextCursor,
+        2,
+      );
+      assert.deepEqual(
+        secondPage.orders.map((entry) => entry.order.orderId),
+        [createdOrderIds[0]],
+      );
+      assert.equal(secondPage.nextCursor, null);
     });
   });
 });

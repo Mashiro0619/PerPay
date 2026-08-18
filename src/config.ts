@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { isValidWebhookDnsHostname } from "./infrastructure/network/public-address.ts";
 import { pathsOverlap } from "./infrastructure/storage/path-separation.ts";
+import { MAX_COLLECTION_CODE_PAYLOAD_BYTES } from "./orders/collection-profile.ts";
 import {
   parseTrustedProxyPolicy,
   type TrustedProxyPolicy,
@@ -17,7 +18,6 @@ const apiClientIdPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/;
 const canonicalBase64UrlPattern = /^[A-Za-z0-9_-]{43}$/;
 const maximumPasswordBytes = 1024;
 const apiSecretBytes = 32;
-const maximumCollectionCodeBytes = 4096;
 const maximumProviderKeyBytes = 16 * 1024;
 const maximumWebhookUrlBytes = 4096;
 const productionProviderEndpoint = "https://openapi.alipay.com" as const;
@@ -65,8 +65,8 @@ const rawConfigSchema = z.object({
     .refine((value) => !/[\u0000-\u001f\u007f]/.test(value), {
       message: "must not contain control characters",
     })
-    .refine((value) => Buffer.byteLength(value, "utf8") <= maximumCollectionCodeBytes, {
-      message: `must contain at most ${maximumCollectionCodeBytes} UTF-8 bytes`,
+    .refine((value) => Buffer.byteLength(value, "utf8") <= MAX_COLLECTION_CODE_PAYLOAD_BYTES, {
+      message: `must contain at most ${MAX_COLLECTION_CODE_PAYLOAD_BYTES} UTF-8 bytes`,
     }),
   PERPAY_ORDER_TTL_SECONDS: z.coerce.number().int().min(60).max(1800).default(300),
   PERPAY_AMOUNT_OFFSET_MAX_CENTS: z.coerce.number().int().min(1).max(99).default(99),
