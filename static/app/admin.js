@@ -3,11 +3,18 @@
 
   const API_ROOT = "/api/admin/v1";
   const CURSOR_PARENT_STORAGE_KEY = "perpay:cursor-parents:v1";
+  const SETTINGS_STEPS = Object.freeze([
+    { id: "application-key", title: "生成应用密钥", nextStep: "GENERATE_APPLICATION_KEY" },
+    { id: "provider", title: "配置支付宝", nextStep: "CONFIGURE_PROVIDER" },
+    { id: "collection", title: "配置经营码", nextStep: "CONFIGURE_COLLECTION" },
+    { id: "api-key", title: "生成 API 密钥", nextStep: "GENERATE_API_KEY" },
+  ]);
   const state = {
     session: null,
     csrfToken: readCsrfCookie(),
     stepUpPromise: null,
     dialogTriggers: new WeakMap(),
+    settingsStep: null,
   };
 
   class ApiError extends Error {
@@ -688,8 +695,18 @@
     setDocumentTitle("设置");
     const response = await api("/settings");
     const view = response.data || {};
+    if (view.completion?.complete !== true) {
+      renderMain(
+        pageHeader("设置收款", "按顺序完成四项必需配置，完成后系统才会开放收款。", [
+          button("刷新", () => location.reload()),
+        ]),
+        settingsCompletion(view),
+        section("配置流程", settingsOnboarding(view)),
+      );
+      return;
+    }
     renderMain(
-      pageHeader("设置", "经营码、支付宝平台、API 客户端、通知与收银台策略。", [
+      pageHeader("设置", "维护收款配置、接口凭据和可选功能。", [
         button("刷新", () => location.reload()),
       ]),
       settingsCompletion(view),
@@ -705,12 +722,132 @@
     );
   }
 
+  function settingsOnboarding(view) {
+    const completion = view.completion || {};
+    const recommended = settingsStepId(completion.next_step);
+    const requested = SETTINGS_STEPS.some((step) => step.id === state.settingsStep)
+      ? state.settingsStep
+      : null;
+    const initial = requested && settingsStepAvailable(requested, completion)
+      ? requested
+      : recommended || "application-key";
+    const navigation = el("ol", {
+      class: "uzu-step-nav perpay-settings-steps",
+      "data-uzu-step-nav-value": initial,
+      "aria-label": "收款配置步骤",
+    });
+    const panel = div("perpay-settings-step-panel");
+    const controls = new Map();
+
+    const activate = (stepId, focus = false) => {
+      if (!settingsStepAvailable(stepId, completion)) return;
+      state.settingsStep = stepId;
+      navigation.dataset.uzuStepNavValue = stepId;
+      for (const [id, control] of controls) {
+        const active = id === stepId;
+        control.classList.toggle("is-active", active);
+        if (active) control.setAttribute("aria-current", "step");
+        else control.removeAttribute("aria-current");
+      }
+      panel.replaceChildren(settingsStepPanel(view, stepId, activate));
+      if (focus) panel.querySelector("h2")?.focus({ preventScroll: true });
+    };
+
+    for (const [index, step] of SETTINGS_STEPS.entries()) {
+      const complete = settingsStepComplete(step.id, completion);
+      const available = settingsStepAvailable(step.id, completion);
+      const control = el("button", {
+        class: `uzu-step-nav-button${complete ? " is-complete" : ""}`,
+        type: "button",
+        "data-uzu-step-value": step.id,
+        text: `${index + 1}. ${step.title}`,
+        disabled: !available,
+      });
+      control.addEventListener("click", () => activate(step.id, true));
+      controls.set(step.id, control);
+      navigation.append(el("li", { class: "uzu-step-nav-item" }, control));
+    }
+    navigation.addEventListener("keydown", (event) => {
+      if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
+        return;
+      }
+      const current = event.target;
+      if (!(current instanceof HTMLButtonElement) || !controls.has(current.dataset.uzuStepValue)) return;
+      const available = SETTINGS_STEPS
+        .map((step) => [step.id, controls.get(step.id)])
+        .filter((entry) => entry[1] instanceof HTMLButtonElement && !entry[1].disabled);
+      const currentIndex = available.findIndex((entry) => entry[1] === current);
+      if (currentIndex < 0) return;
+      let nextIndex;
+      if (event.key === "Home") nextIndex = 0;
+      else if (event.key === "End") nextIndex = available.length - 1;
+      else if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+        nextIndex = (currentIndex + 1) % available.length;
+      } else {
+        nextIndex = (currentIndex - 1 + available.length) % available.length;
+      }
+      const [stepId, nextControl] = available[nextIndex];
+      event.preventDefault();
+      nextControl.focus();
+      activate(stepId);
+    });
+    activate(initial);
+    return div("perpay-settings-flow", [navigation, panel]);
+  }
+
+  function settingsStepPanel(view, stepId, activate) {
+    let panel;
+    switch (stepId) {
+      case "application-key":
+        panel = detailBlock("1. 生成并上传应用公钥", applicationKeySettingsBlock(
+          view,
+          () => activate("provider", true),
+        ));
+        break;
+      case "provider":
+        panel = detailBlock("2. 填写支付宝应用信息", providerSettingsForm(view));
+        break;
+      case "collection":
+        panel = detailBlock("3. 配置经营码", collectionSettingsForm(view));
+        break;
+      case "api-key":
+        panel = detailBlock("4. 生成接口密钥", apiSettingsBlock(view, true));
+        break;
+      default:
+        return emptyState("配置步骤不存在", "请刷新页面后重试。", true);
+    }
+    const heading = panel.querySelector("h2");
+    if (heading instanceof HTMLElement) heading.tabIndex = -1;
+    return panel;
+  }
+
+  function settingsStepId(nextStep) {
+    return SETTINGS_STEPS.find((step) => step.nextStep === nextStep)?.id || null;
+  }
+
+  function settingsStepComplete(stepId, completion) {
+    if (stepId === "application-key") return completion.application_key === true;
+    if (stepId === "provider") return completion.provider === true;
+    if (stepId === "collection") return completion.collection === true;
+    if (stepId === "api-key") return completion.api === true;
+    return false;
+  }
+
+  function settingsStepAvailable(stepId, completion) {
+    if (stepId === "application-key") return true;
+    if (stepId === "provider") return completion.application_key === true;
+    if (stepId === "collection") return completion.provider === true;
+    if (stepId === "api-key") return completion.collection === true;
+    return false;
+  }
+
   function settingsCompletion(view) {
     const completion = view.completion || {};
     const complete = completion.complete === true;
     const missing = [];
-    if (!completion.collection) missing.push("经营码");
+    if (!completion.application_key) missing.push("应用密钥");
     if (!completion.provider) missing.push("支付宝平台");
+    if (!completion.collection) missing.push("经营码");
     if (!completion.api) missing.push("API 客户端");
     return el("div", {
       class: `uzu-alert ${complete ? "uzu-alert-success" : "uzu-alert-warning"}`,
@@ -720,7 +857,68 @@
       el("p", {
         text: complete
           ? "必需配置已就绪；后台会继续根据采集和自动确认状态控制收款入口。"
-          : `还缺少：${missing.join("、") || "必需配置"}。完成这些配置前不会创建新订单或展示付款指令。`,
+          : `当前步骤：${SETTINGS_STEPS.find((step) => step.nextStep === completion.next_step)?.title || "完成必需配置"}。尚未完成：${missing.join("、") || "必需配置"}。`,
+      }),
+    ]);
+  }
+
+  function applicationKeySettingsBlock(view, next) {
+    if (!view.application_public_key) {
+      const generate = button("生成应用密钥", null, "primary");
+      generate.addEventListener("click", () => void generateApplicationKey(view.revision, generate));
+      return div("uzu-stack", [
+        el("p", {
+          class: "uzu-help",
+          text: "系统会在本机生成应用密钥。私钥加密保存且不会上传，你只需把生成的应用公钥上传到支付宝开放平台。",
+        }),
+        generate,
+      ]);
+    }
+    return div("uzu-stack", [
+      el("div", {
+        class: "uzu-alert uzu-alert-success",
+        role: "status",
+        text: "应用密钥已生成。请复制下面的应用公钥并上传到支付宝开放平台。",
+      }),
+      applicationPublicKeyDisplay(view),
+      div("uzu-flex uzu-wrap uzu-gap-2", [
+        el("a", {
+          class: "uzu-button",
+          href: "https://open.alipay.com/",
+          target: "_blank",
+          rel: "noreferrer",
+          text: "打开支付宝开放平台",
+        }),
+        button("下一步：填写支付宝信息", next, "primary"),
+      ]),
+    ]);
+  }
+
+  function applicationPublicKeyDisplay(view) {
+    const control = el("textarea", {
+      class: "uzu-textarea perpay-application-public-key",
+      rows: "5",
+      readonly: true,
+      "aria-label": "应用公钥",
+    });
+    control.value = view.application_public_key || "";
+    return div("perpay-application-key", [
+      el("strong", { text: "应用公钥" }),
+      el("p", {
+        class: "uzu-help",
+        text: "上传后，支付宝开放平台会提供应用 ID 和支付宝公钥，下一步需要填写这两项。",
+      }),
+      control,
+      view.application_key_fingerprint
+        ? el("p", { class: "uzu-help uzu-mono perpay-code", text: `指纹 ${view.application_key_fingerprint}` })
+        : null,
+      button("复制应用公钥", async () => {
+        try {
+          await copyText(control.value);
+          toast("应用公钥已复制", "success");
+        } catch {
+          toast("复制失败，请手动选择并复制", "danger");
+        }
       }),
     ]);
   }
@@ -769,25 +967,25 @@
     const provider = view.provider || {};
     const hasProvider = Boolean(view.completion?.provider);
     const form = el("form", { class: "uzu-form", id: "settings-provider-form", novalidate: true }, [
+      applicationPublicKeyDisplay(view),
       field(
         "运行环境",
         select(["PRODUCTION", "SANDBOX"], provider.environment || "PRODUCTION", (value) =>
           value === "PRODUCTION" ? "生产环境" : "沙箱环境"),
-        "应用 ID 或端点变更会创建新的流水账户代际，历史账务保持隔离。",
+        hasProvider
+          ? "切换前先把上方应用公钥上传到新应用；保存后会创建新的流水账户代际，历史账务保持隔离。"
+          : "请选择应用所在的支付宝开放平台环境。",
       ),
       field(
         "应用 ID",
         input({ id: "settings-provider-app-id", value: provider.app_id || "", maxlength: 64, required: true }),
       ),
       field(
-        "应用私钥",
-        settingsTextarea("settings-provider-private-key", "", 5, !hasProvider),
-        hasProvider ? "留空表示保留当前私钥；填写新值会替换它。" : "首次配置必填，支持 PEM 或 Base64 内容。",
-      ),
-      field(
-        "平台公钥",
+        "支付宝公钥",
         settingsTextarea("settings-provider-public-key", "", 5, !hasProvider),
-        hasProvider ? "留空表示保留当前平台公钥；填写新值会替换它。" : "首次配置必填，支持 PEM 或 Base64 内容。",
+        hasProvider
+          ? "留空表示保留当前支付宝公钥；切换应用 ID 或环境时必须填写新应用对应的支付宝公钥。"
+          : "上传应用公钥后，从支付宝开放平台复制此公钥。支持 PEM 或单行 Base64 内容。",
       ),
       field(
         "请求超时（毫秒）",
@@ -946,8 +1144,17 @@
     return form;
   }
 
-  function apiSettingsBlock(view) {
+  function apiSettingsBlock(view, initial = false) {
     const metadata = view.secrets?.api_secret || {};
+    if (initial && metadata.configured !== true) {
+      return div("uzu-stack", [
+        el("p", {
+          class: "uzu-help",
+          text: "客户端 ID 固定为 default。生成的 API 密钥用于你的程序调用订单接口，只会完整显示一次。",
+        }),
+        button("生成 API 密钥", () => void rotateApiSecret(view.revision, true), "primary"),
+      ]);
+    }
     return div("uzu-stack", [
       el("p", {
         class: "uzu-help",
@@ -993,6 +1200,30 @@
     return control;
   }
 
+  async function generateApplicationKey(revision, control) {
+    setBusy(control, true, "正在生成");
+    try {
+      await protectedRequest("/settings/provider/application-key/actions/generate", { revision });
+      toast("应用密钥已生成", "success");
+      state.settingsStep = "application-key";
+      await renderSettings();
+    } catch (error) {
+      await handleSettingsMutationError(error);
+    } finally {
+      setBusy(control, false, "生成应用密钥");
+    }
+  }
+
+  async function handleSettingsMutationError(error) {
+    if (error instanceof ApiError && error.code === "settings_revision_conflict") {
+      toast("配置已在其他窗口更新，已刷新到最新状态", "warning");
+      state.settingsStep = null;
+      await renderSettings();
+      return;
+    }
+    toast(errorMessage(error), "danger");
+  }
+
   async function saveCollectionSettings(event, form, revision) {
     event.preventDefault();
     if (!(form instanceof HTMLFormElement) || !form.reportValidity()) return;
@@ -1006,9 +1237,10 @@
         amount_offset_maximum_cents: Number(valueOf("#settings-amount-offset")),
       }, "PUT");
       toast("收款配置已保存", "success");
+      state.settingsStep = null;
       await renderSettings();
     } catch (error) {
-      toast(errorMessage(error), "danger");
+      await handleSettingsMutationError(error);
     } finally {
       setBusy(submit, false, "保存收款配置");
     }
@@ -1017,18 +1249,17 @@
   async function saveProviderSettings(event, form, revision, currentProvider) {
     event.preventDefault();
     if (!(form instanceof HTMLFormElement) || !form.reportValidity()) return;
-    const privateKey = valueOf("#settings-provider-private-key");
     const publicKey = valueOf("#settings-provider-public-key");
     const environment = valueOf("#settings-provider-environment");
     const appId = valueOf("#settings-provider-app-id");
     const identityChanged = Boolean(currentProvider?.app_id) && (
       environment !== currentProvider.environment || appId !== currentProvider.app_id
     );
-    if ((!currentProvider?.app_id || identityChanged) && (!privateKey || !publicKey)) {
+    if ((!currentProvider?.app_id || identityChanged) && !publicKey) {
       toast(
         identityChanged
-          ? "更换采集应用时必须重新填写应用私钥和平台公钥"
-          : "首次配置必须填写应用私钥和平台公钥",
+          ? "更换采集应用时必须填写对应的支付宝公钥"
+          : "首次配置必须填写支付宝公钥",
         "danger",
       );
       return;
@@ -1045,15 +1276,15 @@
       timeout_milliseconds: Number(valueOf("#settings-provider-timeout")),
       scan_interval_seconds: Number(valueOf("#settings-provider-scan-interval")),
       maximum_success_age_seconds: Number(valueOf("#settings-provider-max-age")),
-      ...(privateKey ? { private_key: privateKey } : {}),
       ...(publicKey ? { platform_public_key: publicKey } : {}),
     };
     try {
       await protectedRequest("/settings/provider", body, "PUT");
       toast("支付宝平台配置已保存", "success");
+      state.settingsStep = null;
       await renderSettings();
     } catch (error) {
-      toast(errorMessage(error), "danger");
+      await handleSettingsMutationError(error);
     } finally {
       setBusy(submit, false, "保存平台配置");
     }
@@ -1079,7 +1310,7 @@
       toast("通知配置已保存", "success");
       await renderSettings();
     } catch (error) {
-      toast(errorMessage(error), "danger");
+      await handleSettingsMutationError(error);
     } finally {
       setBusy(submit, false, "保存通知配置");
     }
@@ -1101,29 +1332,34 @@
       toast("高级设置已保存", "success");
       await renderSettings();
     } catch (error) {
-      toast(errorMessage(error), "danger");
+      await handleSettingsMutationError(error);
     } finally {
       setBusy(submit, false, "保存高级设置");
     }
   }
 
-  async function rotateApiSecret(revision) {
-    const confirmed = await confirmAction(
-      "轮换 API 密钥",
-      "现有 API 密钥会立即失效，正在运行的客户端需要改用新密钥。",
-      "继续轮换",
-    );
-    if (!confirmed) return;
+  async function rotateApiSecret(revision, initial = false) {
+    if (!initial) {
+      const confirmed = await confirmAction(
+        "轮换 API 密钥",
+        "现有 API 密钥会立即失效，正在运行的客户端需要改用新密钥。",
+        "继续轮换",
+      );
+      if (!confirmed) return;
+    }
     try {
       const response = await protectedRequest("/settings/api-key/actions/rotate", { revision });
       showSecretValue(
-        "新的 API 密钥",
+        initial ? "API 密钥" : "新的 API 密钥",
         response.data.secret,
         "请立即复制；关闭后不会再次显示完整值。",
-        () => void refreshSettingsAfterSecret(),
+        () => {
+          state.settingsStep = null;
+          void refreshSettingsAfterSecret();
+        },
       );
     } catch (error) {
-      toast(errorMessage(error), "danger");
+      await handleSettingsMutationError(error);
     }
   }
 

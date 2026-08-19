@@ -273,6 +273,40 @@
     font-size: 0.95rem;
   }
 
+  .perpay-settings-flow {
+    display: grid;
+    max-width: 56rem;
+    gap: 1rem;
+  }
+
+  .perpay-settings-steps {
+    padding-block: 0.25rem;
+  }
+
+  .perpay-settings-step-panel > .perpay-detail-block {
+    padding: 1.25rem;
+  }
+
+  .perpay-settings-step-panel h2:focus {
+    outline: none;
+  }
+
+  .perpay-application-key {
+    display: grid;
+    gap: 0.65rem;
+  }
+
+  .perpay-application-key > :is(p, strong) {
+    margin: 0;
+  }
+
+  .perpay-application-public-key {
+    min-height: 7rem;
+    font-family: var(--perpay-mono);
+    font-size: 0.78rem;
+    overflow-wrap: anywhere;
+  }
+
   .perpay-facts {
     display: grid;
     grid-template-columns: minmax(8rem, 0.35fr) minmax(0, 1fr);
@@ -488,6 +522,20 @@
 
     .perpay-auth-panel {
       padding: 1.45rem;
+    }
+
+    .perpay-settings-steps {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .perpay-settings-steps .uzu-step-nav-item,
+    .perpay-settings-steps .uzu-step-nav-button {
+      width: 100%;
+    }
+
+    .perpay-settings-steps .uzu-step-nav-item::after {
+      display: none;
     }
   }
 

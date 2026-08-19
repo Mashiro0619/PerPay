@@ -471,15 +471,26 @@ describe("runtime settings", () => {
       const settings = service(database, masterKey);
       await settings.saveProvider(providerInput(0, "2026000000000001"), audit("provider-a1"));
       const first = settings.snapshot().activeProviderAccountKey;
-      await settings.saveProvider(providerInput(1, "2026000000000002"), audit("provider-b"));
+      const firstPrivateKey = settings.revealSecret("provider_private_key", audit("provider-a1-key"));
+      await settings.saveProvider(
+        providerInputWithoutPrivateKey(1, "2026000000000002"),
+        audit("provider-b"),
+      );
       const second = settings.snapshot().activeProviderAccountKey;
-      await settings.saveProvider(providerInput(2, "2026000000000001"), audit("provider-a2"));
+      await settings.saveProvider(
+        providerInputWithoutPrivateKey(2, "2026000000000001"),
+        audit("provider-a2"),
+      );
       const third = settings.snapshot().activeProviderAccountKey;
 
       assert.ok(first);
       assert.ok(second);
       assert.ok(third);
       assert.equal(new Set([first, second, third]).size, 3);
+      assert.equal(
+        settings.revealSecret("provider_private_key", audit("provider-a2-key")),
+        firstPrivateKey,
+      );
       assert.deepEqual(database.read((connection) => ({
         bindings: Number((connection.prepare(
           "SELECT COUNT(*) AS count FROM provider_account_bindings",
@@ -793,6 +804,18 @@ function providerInput(revision: number, appId: string) {
     environment: "SANDBOX" as const,
     app_id: appId,
     private_key: applicationPrivateKey,
+    platform_public_key: platformPublicKey,
+    timeout_milliseconds: 8_000,
+    scan_interval_seconds: 10,
+    maximum_success_age_seconds: 60,
+  };
+}
+
+function providerInputWithoutPrivateKey(revision: number, appId: string) {
+  return {
+    revision,
+    environment: "SANDBOX" as const,
+    app_id: appId,
     platform_public_key: platformPublicKey,
     timeout_milliseconds: 8_000,
     scan_interval_seconds: 10,

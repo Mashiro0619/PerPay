@@ -40,6 +40,22 @@ describe("web asset manifest", () => {
     assert.match(adminScript, /checkout_terminal_observation_seconds/);
   });
 
+  it("exposes the guided settings flow without asking for an application private key", () => {
+    const adminScript = webAsset(WEB_ASSET_URLS.adminScript)?.body;
+    assert.ok(adminScript);
+    assert.match(adminScript, /GENERATE_APPLICATION_KEY/);
+    assert.match(adminScript, /CONFIGURE_PROVIDER/);
+    assert.match(adminScript, /CONFIGURE_COLLECTION/);
+    assert.match(adminScript, /GENERATE_API_KEY/);
+    assert.match(adminScript, /settings\/provider\/application-key\/actions\/generate/);
+    assert.match(adminScript, /复制应用公钥/);
+    assert.match(adminScript, /生成 API 密钥/);
+    assert.match(adminScript, /ArrowRight/);
+    assert.match(adminScript, /handleSettingsMutationError/);
+    assert.doesNotMatch(adminScript, /settings-provider-private-key/);
+    assert.doesNotMatch(adminScript, /首次配置必须填写应用私钥/);
+  });
+
   it("keeps a final not-found checkout inert across browser lifecycle events", () => {
     const checkoutScript = webAsset(WEB_ASSET_URLS.checkoutScript)?.body;
     assert.ok(checkoutScript);

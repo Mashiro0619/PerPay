@@ -272,9 +272,8 @@ export class RuntimeSettingsService {
             );
           }
         }
-        const privateKeyPem = stagedApplicationKey?.privateKeyPem ?? parsed.private_key ?? (
-          identityChanged ? null : current.provider?.privateKeyPem ?? null
-        );
+        const privateKeyPem = stagedApplicationKey?.privateKeyPem ?? parsed.private_key ??
+          current.provider?.privateKeyPem ?? null;
         if (
           privateKeyPem === null &&
           current.provider === null &&
