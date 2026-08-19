@@ -5,6 +5,8 @@ import type { ProviderIdentityActivation } from "../ledger/model.ts";
 import {
   advancedSettingsInputSchema,
   collectionSettingsInputSchema,
+  generateProviderApplicationKey,
+  parseProviderApplicationPrivateKey,
   parseProviderKeys,
   parseWebhookOrigin,
   providerEndpoint,
@@ -30,10 +32,17 @@ export interface RuntimeSettingsView {
   readonly updated_at: string;
   readonly completion: {
     readonly complete: boolean;
+    readonly application_key: boolean;
     readonly collection: boolean;
     readonly provider: boolean;
     readonly api: boolean;
     readonly notifications: boolean;
+    readonly next_step:
+      | "GENERATE_APPLICATION_KEY"
+      | "CONFIGURE_PROVIDER"
+      | "CONFIGURE_COLLECTION"
+      | "GENERATE_API_KEY"
+      | null;
   };
   readonly collection: {
     readonly code_payload: string;
@@ -48,6 +57,8 @@ export interface RuntimeSettingsView {
     readonly scan_interval_seconds: number;
     readonly maximum_success_age_seconds: number;
   } | null;
+  readonly application_public_key: string | null;
+  readonly application_key_fingerprint: string | null;
   readonly provider_generations: readonly {
     readonly provider_account_key: string;
     readonly app_id: string;
@@ -130,16 +141,24 @@ export class RuntimeSettingsService {
   view(): RuntimeSettingsView {
     const snapshot = this.#store.snapshot();
     const status = this.#store.status();
+    const applicationKey = this.#store.providerApplicationKey();
     return {
       revision: snapshot.revision,
       payment_revision: snapshot.paymentRevision,
       updated_at: new Date(snapshot.updatedAt).toISOString(),
       completion: {
         complete: status.complete,
+        application_key: applicationKey !== null,
         collection: status.collectionConfigured,
         provider: status.providerConfigured,
         api: status.apiConfigured,
         notifications: status.notificationConfigured,
+        next_step: configurationNextStep({
+          applicationKeyConfigured: applicationKey !== null,
+          providerConfigured: status.providerConfigured,
+          collectionConfigured: status.collectionConfigured,
+          apiConfigured: status.apiConfigured,
+        }),
       },
       collection: snapshot.collection
         ? {
@@ -158,6 +177,8 @@ export class RuntimeSettingsService {
             maximum_success_age_seconds: snapshot.provider.maximumSuccessAgeMilliseconds / 1_000,
           }
         : null,
+      application_public_key: applicationKey?.uploadPublicKey ?? null,
+      application_key_fingerprint: applicationKey?.fingerprint ?? null,
       provider_generations: Object.freeze(this.#providerHistory().map((generation) => ({
         provider_account_key: generation.providerAccountKey,
         app_id: generation.externalAccountId,
@@ -229,9 +250,42 @@ export class RuntimeSettingsService {
         const currentAppId = current.provider?.appId ?? historicalActive?.externalAccountId ?? null;
         const currentEndpoint = current.provider?.endpoint ?? historicalActive?.endpoint ?? null;
         const identityChanged = currentAppId !== parsed.app_id || currentEndpoint !== endpoint;
-        const privateKeyPem = parsed.private_key ?? (
+        const stagedApplicationKey = current.provider === null && currentProviderAccountKey === null
+          ? this.#store.providerApplicationKey()
+          : null;
+        if (stagedApplicationKey && parsed.private_key !== undefined) {
+          const suppliedApplicationKey = parseProviderApplicationPrivateKey(parsed.private_key);
+          if (suppliedApplicationKey.fingerprint !== stagedApplicationKey.fingerprint) {
+            throw new RangeError(
+              "the supplied application private key does not match the generated application public key",
+            );
+          }
+        }
+        if (current.provider !== null && !identityChanged && parsed.private_key !== undefined) {
+          const suppliedApplicationKey = parseProviderApplicationPrivateKey(parsed.private_key);
+          if (
+            suppliedApplicationKey.fingerprint !== current.provider.applicationKeyFingerprint
+          ) {
+            throw new SettingsError(
+              "provider_application_key_rotation_not_supported",
+              "the active provider application key cannot be replaced without a two-phase rotation",
+            );
+          }
+        }
+        const privateKeyPem = stagedApplicationKey?.privateKeyPem ?? parsed.private_key ?? (
           identityChanged ? null : current.provider?.privateKeyPem ?? null
         );
+        if (
+          privateKeyPem === null &&
+          current.provider === null &&
+          currentProviderAccountKey === null &&
+          parsed.private_key === undefined
+        ) {
+          throw new SettingsError(
+            "provider_application_key_missing",
+            "generate an application key before configuring the provider",
+          );
+        }
         const publicKeyPem = parsed.platform_public_key ?? (
           identityChanged ? null : current.provider?.publicKeyPem ?? null
         );
@@ -289,6 +343,58 @@ export class RuntimeSettingsService {
         if (!committed && transitionStarted) await this.#restoreCurrentRuntime(error);
         throw error;
       }
+    });
+  }
+
+  generateProviderApplicationKey(
+    expectedRevision: number,
+    audit: SettingsAuditContext,
+  ): Promise<{
+    readonly created: boolean;
+    readonly settings: RuntimeSettingsView;
+    readonly public_key: string;
+    readonly fingerprint: string;
+  }> {
+    return this.#exclusive(async () => {
+      const current = this.#store.snapshot();
+      if (
+        current.provider !== null ||
+        current.activeProviderAccountKey !== null ||
+        this.#providerHistory().length > 0
+      ) {
+        throw new SettingsError(
+          "provider_application_key_rotation_not_supported",
+          "an application key cannot be generated after a provider generation has been created",
+        );
+      }
+      const existing = this.#store.providerApplicationKey();
+      if (existing !== null) {
+        if (expectedRevision > current.revision) {
+          throw revisionConflict(expectedRevision, current.revision);
+        }
+        return {
+          created: false,
+          settings: this.view(),
+          public_key: existing.uploadPublicKey,
+          fingerprint: existing.fingerprint,
+        };
+      }
+      if (current.revision !== expectedRevision) {
+        throw revisionConflict(expectedRevision, current.revision);
+      }
+      const generated = await generateProviderApplicationKey();
+      this.#store.saveGeneratedProviderApplicationKey({
+        expectedRevision,
+        privateKeyPem: generated.privateKeyPem,
+        fingerprint: generated.fingerprint,
+        audit,
+      });
+      return {
+        created: true,
+        settings: this.view(),
+        public_key: generated.uploadPublicKey,
+        fingerprint: generated.fingerprint,
+      };
     });
   }
 
@@ -389,6 +495,19 @@ function revisionConflict(expected: number, current: number): SettingsError {
     "settings_revision_conflict",
     `settings changed concurrently: expected revision ${expected}, current revision ${current}`,
   );
+}
+
+function configurationNextStep(input: {
+  readonly applicationKeyConfigured: boolean;
+  readonly providerConfigured: boolean;
+  readonly collectionConfigured: boolean;
+  readonly apiConfigured: boolean;
+}): RuntimeSettingsView["completion"]["next_step"] {
+  if (!input.applicationKeyConfigured) return "GENERATE_APPLICATION_KEY";
+  if (!input.providerConfigured) return "CONFIGURE_PROVIDER";
+  if (!input.collectionConfigured) return "CONFIGURE_COLLECTION";
+  if (!input.apiConfigured) return "GENERATE_API_KEY";
+  return null;
 }
 
 function latestProviderGeneration(

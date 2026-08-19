@@ -384,10 +384,13 @@ paths:
       operationId: updateProviderSettings
       summary: Save provider application credentials and collection timing
       description: |
-        The supplied revision must equal the current settings revision. Private and platform
-        public keys may be omitted only when retaining the same provider application identity;
-        switching environment or application ID requires both keys. A switch is rejected while
-        unsafe open payment work exists. Plaintext keys are encrypted at rest and are not returned.
+        The supplied revision must equal the current settings revision. During initial setup the
+        application private key may be omitted after the dedicated generation action; the staged
+        encrypted key is then used automatically. The platform public key is still required.
+        For the same active application, omitted keys retain their current values. Switching
+        environment or application ID requires both keys and is rejected while unsafe open
+        payment work exists. Plaintext keys are encrypted at rest and are not returned by this
+        save operation; they can be read only through the separate audited secret-reveal action.
         All responses use `Cache-Control: no-store`.
       x-perpay-requires-same-origin: true
       x-perpay-requires-recent-step-up: true
@@ -411,6 +414,60 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RuntimeSettingsEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '409': { $ref: '#/components/responses/SettingsConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/SettingsValidationFailed' }
+        '503': { $ref: '#/components/responses/SettingsUnavailable' }
+  /api/admin/v1/settings/provider/application-key/actions/generate:
+    post:
+      tags: [Admin Settings]
+      operationId: generateProviderApplicationKey
+      summary: Generate the provider application RSA key pair before initial provider setup
+      description: >-
+        Ensures that one 2048-bit RSA application key pair exists for initial setup. The private
+        key is encrypted at rest and is not included in this generation response; it remains
+        available only through the separate audited secret-reveal operation. The response
+        contains the single-line SPKI Base64 application public key that must be uploaded to the
+        provider console. Repeating this action before activation returns the same key without
+        replacing it. This action is unavailable after a provider generation exists; active-key
+        rotation requires a future two-phase pending-key workflow. The provider platform public
+        key must still be copied from the provider console. The supplied revision must be current
+        when a key needs to be created. A retry with an older revision is accepted after the key
+        exists and returns that same key; a future revision is rejected. All responses use
+        `Cache-Control: no-store`.
+      x-perpay-requires-same-origin: true
+      x-perpay-requires-recent-step-up: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SettingsRevisionRequest' }
+      responses:
+        '200':
+          description: Existing initial application public key returned without replacement
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderApplicationKeyGenerationEnvelope' }
+        '201':
+          description: Application private key encrypted and uploadable public key returned
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderApplicationKeyGenerationEnvelope' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
         '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
@@ -2219,6 +2276,8 @@ components:
         - completion
         - collection
         - provider
+        - application_public_key
+        - application_key_fingerprint
         - provider_generations
         - notifications
         - advanced
@@ -2240,6 +2299,16 @@ components:
           anyOf:
             - $ref: '#/components/schemas/ProviderSettings'
             - type: 'null'
+        application_public_key:
+          type: [string, 'null']
+          pattern: '^[A-Za-z0-9+/]+={0,2}$'
+          description: >-
+            Single-line Base64-encoded SPKI application public key for upload to the provider
+            console. It is derived from the encrypted application private key and is not secret.
+        application_key_fingerprint:
+          anyOf:
+            - $ref: '#/components/schemas/Sha256Fingerprint'
+            - type: 'null'
         provider_generations:
           type: array
           items: { $ref: '#/components/schemas/ProviderGeneration' }
@@ -2252,13 +2321,30 @@ components:
     SettingsCompletion:
       type: object
       additionalProperties: false
-      required: [complete, collection, provider, api, notifications]
+      required: [complete, application_key, collection, provider, api, notifications, next_step]
       properties:
-        complete: { type: boolean }
+        complete:
+          type: boolean
+          description: True when provider, collection, and API credentials are configured.
+        application_key:
+          type: boolean
+          description: Whether the encrypted application private key and uploadable public key exist.
         collection: { type: boolean }
         provider: { type: boolean }
         api: { type: boolean }
         notifications: { type: boolean }
+        next_step:
+          type: [string, 'null']
+          enum:
+            - GENERATE_APPLICATION_KEY
+            - CONFIGURE_PROVIDER
+            - CONFIGURE_COLLECTION
+            - GENERATE_API_KEY
+            - null
+          description: >-
+            First incomplete required configuration step in the supported setup order. Null means
+            configuration is complete; payment readiness must still be checked through `/readyz`
+            or the administrator system-status endpoint.
     CollectionSettings:
       type: object
       additionalProperties: false
@@ -2395,7 +2481,11 @@ components:
           type: string
           minLength: 1
           maxLength: 16384
-          description: Required when changing environment or application ID; omitted to retain the current key.
+          description: >-
+            Omit during the normal initial flow after generating the application key. If supplied
+            while an initial generated key is staged, it must be the same key. Otherwise required
+            when changing environment or application ID; omitted to retain the current key for
+            the same active application.
         platform_public_key:
           type: string
           minLength: 1
@@ -2469,6 +2559,25 @@ components:
               type: string
               pattern: '^[A-Za-z0-9_-]{43}$'
               description: Returned once; exactly 32 random bytes encoded as unpadded base64url.
+    ProviderApplicationKeyGenerationEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [created, settings, public_key, fingerprint]
+          properties:
+            created:
+              type: boolean
+              description: True only when this request generated and persisted the key pair.
+            settings: { $ref: '#/components/schemas/RuntimeSettings' }
+            public_key:
+              type: string
+              pattern: '^[A-Za-z0-9+/]+={0,2}$'
+              description: Single-line Base64-encoded SPKI application public key.
+            fingerprint: { $ref: '#/components/schemas/Sha256Fingerprint' }
     SecretRevealEnvelope:
       type: object
       additionalProperties: false
@@ -4002,8 +4111,10 @@ components:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     SettingsConflict:
       description: >-
-        The supplied settings revision is stale, or a provider identity switch is unsafe while
-        open payment work exists (`settings_revision_conflict` or `provider_switch_blocked`).
+        The supplied settings revision is stale, a provider identity switch is unsafe while
+        open payment work exists, or active application-key replacement was attempted without a
+        two-phase pending-key workflow (`settings_revision_conflict`, `provider_switch_blocked`,
+        or `provider_application_key_rotation_not_supported`).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
@@ -4017,7 +4128,8 @@ components:
     SettingsValidationFailed:
       description: >-
         Request fields, provider keys, timing relationships, or notification origin violate the
-        runtime settings contract (`validation_failed` or `settings_validation_failed`).
+        runtime settings contract (`validation_failed`, `settings_validation_failed`, or
+        `provider_application_key_missing`).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }

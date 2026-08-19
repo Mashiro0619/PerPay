@@ -1,4 +1,10 @@
-import { createHash, createPrivateKey, createPublicKey, type KeyObject } from "node:crypto";
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPair,
+  type KeyObject,
+} from "node:crypto";
 
 import { z } from "zod";
 
@@ -41,6 +47,15 @@ export interface ProviderSettings {
   readonly timeoutMilliseconds: number;
   readonly scanIntervalMilliseconds: number;
   readonly maximumSuccessAgeMilliseconds: number;
+}
+
+export interface ProviderApplicationKeyMaterial {
+  readonly privateKey: KeyObject;
+  readonly privateKeyPem: string;
+  readonly publicKeyPem: string;
+  /** Single-line SPKI Base64 accepted by the Alipay application-key form. */
+  readonly uploadPublicKey: string;
+  readonly fingerprint: string;
 }
 
 export interface WebhookSettings {
@@ -187,11 +202,12 @@ export function parseProviderKeys(input: {
   readonly scanIntervalMilliseconds: number;
   readonly maximumSuccessAgeMilliseconds: number;
 }): ProviderSettings {
-  const privateKeyPem = normalizeProviderKey(input.privateKey, "private");
+  const applicationKey = parseProviderApplicationPrivateKey(input.privateKey);
+  const privateKeyPem = applicationKey.privateKeyPem;
   const publicKeyPem = normalizeProviderKey(input.publicKey, "public");
-  const privateKey = parseRsaKey(privateKeyPem, "private");
+  const privateKey = applicationKey.privateKey;
   const publicKey = parseRsaKey(publicKeyPem, "public");
-  const applicationKeyFingerprint = publicKeyFingerprint(createPublicKey(privateKey));
+  const applicationKeyFingerprint = applicationKey.fingerprint;
   const platformKeyFingerprint = publicKeyFingerprint(publicKey);
   if (applicationKeyFingerprint === platformKeyFingerprint) {
     throw new RangeError("platform public key cannot be the application's public key");
@@ -210,6 +226,36 @@ export function parseProviderKeys(input: {
     scanIntervalMilliseconds: input.scanIntervalMilliseconds,
     maximumSuccessAgeMilliseconds: input.maximumSuccessAgeMilliseconds,
   });
+}
+
+export function generateProviderApplicationKey(): Promise<ProviderApplicationKeyMaterial> {
+  return new Promise((resolve, reject) => {
+    generateKeyPair(
+      "rsa",
+      { modulusLength: 2_048, publicExponent: 0x1_0001 },
+      (error, publicKey, privateKey) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        try {
+          const privateKeyPem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+          const publicKeyPem = publicKey.export({ type: "spki", format: "pem" }).toString();
+          resolve(providerApplicationKeyMaterial(privateKeyPem, publicKeyPem, privateKey));
+        } catch (conversionError) {
+          reject(conversionError);
+        }
+      },
+    );
+  });
+}
+
+export function parseProviderApplicationPrivateKey(value: string): ProviderApplicationKeyMaterial {
+  const privateKeyPem = normalizeProviderKey(value, "private");
+  const privateKey = parseRsaKey(privateKeyPem, "private");
+  const publicKey = createPublicKey(privateKey);
+  const publicKeyPem = publicKey.export({ type: "spki", format: "pem" }).toString();
+  return providerApplicationKeyMaterial(privateKeyPem, publicKeyPem, privateKey);
 }
 
 export function parseWebhookOrigin(value: string): string {
@@ -283,4 +329,23 @@ function publicKeyFingerprint(key: KeyObject): string {
   return createHash("sha256")
     .update(key.export({ type: "spki", format: "der" }))
     .digest("hex");
+}
+
+function providerApplicationKeyMaterial(
+  privateKeyPem: string,
+  publicKeyPem: string,
+  parsedPrivateKey?: KeyObject,
+): ProviderApplicationKeyMaterial {
+  const privateKey = parsedPrivateKey ?? parseRsaKey(privateKeyPem, "private");
+  const publicKey = createPublicKey(publicKeyPem);
+  if (publicKey.asymmetricKeyType !== "rsa") {
+    throw new RangeError("provider application public key must be an RSA public key");
+  }
+  return Object.freeze({
+    privateKey,
+    privateKeyPem,
+    publicKeyPem,
+    uploadPublicKey: publicKey.export({ type: "spki", format: "der" }).toString("base64"),
+    fingerprint: publicKeyFingerprint(publicKey),
+  });
 }

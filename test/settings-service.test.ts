@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { generateKeyPairSync } from "node:crypto";
+import { createPrivateKey, createPublicKey, generateKeyPairSync } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
 import { AppDatabase, inspectDatabaseIntegrity } from "../src/database/database.ts";
+import { LedgerStore } from "../src/ledger/store.ts";
 import {
   RuntimeSettingsService,
   RuntimeSettingsStore,
@@ -53,6 +54,8 @@ describe("runtime settings", () => {
       assert.equal(rotated.client_id, "default");
       assert.match(rotated.secret, /^[A-Za-z0-9_-]{43}$/);
       assert.equal(rotated.settings.completion.complete, true);
+      assert.equal(rotated.settings.completion.application_key, true);
+      assert.equal(rotated.settings.completion.next_step, null);
       assert.equal(rotated.settings.payment_revision, 2);
       assert.equal(rotated.settings.secrets.api_secret.masked, `••••${rotated.secret.slice(-4)}`);
       assert.equal(settings.revealSecret("api_secret", audit("reveal")), rotated.secret);
@@ -110,6 +113,233 @@ describe("runtime settings", () => {
       assert.equal(correct.status().complete, true);
     } finally {
       restored.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("generates and stages an encrypted application key for initial provider setup", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-settings-generated-provider-key-"));
+    const database = await AppDatabase.open(join(directory, "perpay.sqlite3"));
+    try {
+      const settings = service(database, masterKey);
+      assert.deepEqual(settings.view().completion, {
+        complete: false,
+        application_key: false,
+        collection: false,
+        provider: false,
+        api: false,
+        notifications: true,
+        next_step: "GENERATE_APPLICATION_KEY",
+      });
+      const initialProvider = providerInput(0, "2026000000000098");
+      const { private_key: _missingPrivateKey, ...platformOnly } = initialProvider;
+      await assert.rejects(
+        settings.saveProvider(platformOnly, audit("provider-missing-generated-key")),
+        (error: unknown) => error instanceof SettingsError &&
+          error.code === "provider_application_key_missing",
+      );
+      const generatedConcurrently = await Promise.all([
+        settings.generateProviderApplicationKey(0, audit("generate-provider-key-first")),
+        settings.generateProviderApplicationKey(0, audit("generate-provider-key-retry")),
+      ]);
+      const generated = generatedConcurrently.find((result) => result.created);
+      const concurrentRetry = generatedConcurrently.find((result) => !result.created);
+      assert.ok(generated);
+      assert.ok(concurrentRetry);
+      assert.equal(concurrentRetry.public_key, generated.public_key);
+      assert.equal(concurrentRetry.fingerprint, generated.fingerprint);
+      assert.equal(concurrentRetry.settings.revision, 1);
+
+      assert.equal(generated.settings.revision, 1);
+      assert.equal(generated.settings.payment_revision, 0);
+      assert.equal(generated.settings.application_public_key, generated.public_key);
+      assert.equal(generated.settings.application_key_fingerprint, generated.fingerprint);
+      assert.equal(generated.created, true);
+      assert.equal(generated.settings.completion.next_step, "CONFIGURE_PROVIDER");
+      assert.match(generated.public_key, /^[A-Za-z0-9+/]+={0,2}$/u);
+      assert.match(generated.fingerprint, /^[0-9a-f]{64}$/u);
+
+      const privateKey = settings.revealSecret(
+        "provider_private_key",
+        audit("reveal-generated-provider-key"),
+      );
+      const derivedPublicKey = createPublicKey(createPrivateKey(privateKey))
+        .export({ format: "der", type: "spki" })
+        .toString("base64");
+      assert.equal(derivedPublicKey, generated.public_key);
+
+      const stored = database.read((connection) => connection.prepare(
+        `SELECT ciphertext FROM runtime_secrets WHERE secret_name = 'provider_private_key'`,
+      ).get() as { ciphertext: Uint8Array });
+      assert.equal(Buffer.from(stored.ciphertext).includes(Buffer.from(privateKey)), false);
+
+      const repeated = await settings.generateProviderApplicationKey(
+        0,
+        audit("repeat-provider-key-generation"),
+      );
+      assert.equal(repeated.created, false);
+      assert.equal(repeated.settings.revision, 1);
+      assert.equal(repeated.public_key, generated.public_key);
+      assert.equal(repeated.fingerprint, generated.fingerprint);
+      assert.equal(settings.revealSecret(
+        "provider_private_key",
+        audit("reveal-repeated-provider-key"),
+      ), privateKey);
+
+      const otherApplicationKeys = generateKeyPairSync("rsa", { modulusLength: 2048 });
+      const otherPrivateKey = otherApplicationKeys.privateKey
+        .export({ format: "pem", type: "pkcs8" })
+        .toString();
+
+      const input = providerInput(1, "2026000000000099");
+
+      await assert.rejects(
+        settings.saveProvider({
+          ...input,
+          private_key: otherPrivateKey,
+        }, audit("provider-with-mismatched-generated-key")),
+        /does not match the generated application public key/u,
+      );
+      assert.equal(settings.view().revision, 1);
+
+      const saved = await settings.saveProvider({
+        ...input,
+        private_key: undefined,
+      }, audit("provider-with-generated-key"));
+      assert.equal(saved.provider?.app_id, "2026000000000099");
+      assert.equal(saved.application_public_key, generated.public_key);
+      assert.equal(saved.payment_revision, 1);
+      assert.equal(saved.completion.next_step, "CONFIGURE_COLLECTION");
+
+      const auditJson = database.read((connection) => String((connection.prepare(
+        `SELECT details_json FROM audit_events
+          WHERE action = 'settings.provider_application_key_generated'`,
+      ).get() as { details_json: string }).details_json));
+      assert.equal(auditJson.includes(privateKey), false);
+      assert.deepEqual(JSON.parse(auditJson), {
+        application_key_fingerprint: generated.fingerprint,
+        payment_revision_changed: false,
+        revision: 1,
+      });
+      assert.equal(database.read((connection) => Number((connection.prepare(
+        `SELECT COUNT(*) AS count FROM audit_events
+          WHERE action = 'settings.provider_application_key_generated'`,
+      ).get() as { count: bigint | number }).count)), 1);
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not overwrite the private key of an active provider application", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-settings-active-provider-key-"));
+    const database = await AppDatabase.open(join(directory, "perpay.sqlite3"));
+    try {
+      let pauses = 0;
+      let applies = 0;
+      const settings = new RuntimeSettingsService({
+        store: new RuntimeSettingsStore(database, masterKey),
+        onPaymentMutationStarted: () => { pauses += 1; },
+        onApplied: () => { applies += 1; },
+      });
+      settings.initialize();
+      await settings.saveProvider(providerInput(0, "2026000000000001"), audit("active-provider"));
+      const before = settings.view();
+      const privateKeyBefore = settings.revealSecret("provider_private_key", audit("active-key-before"));
+      pauses = 0;
+      applies = 0;
+
+      await assert.rejects(
+        settings.generateProviderApplicationKey(before.revision, audit("active-key-regenerate")),
+        (error: unknown) => error instanceof SettingsError &&
+          error.code === "provider_application_key_rotation_not_supported",
+      );
+      assert.equal(settings.view().revision, before.revision);
+      assert.equal(settings.view().payment_revision, before.payment_revision);
+      assert.equal(
+        settings.revealSecret("provider_private_key", audit("active-key-after")),
+        privateKeyBefore,
+      );
+      assert.equal(pauses, 0);
+      assert.equal(applies, 0);
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects replacing the private key while retaining the same active application", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-settings-active-key-update-"));
+    const database = await AppDatabase.open(join(directory, "perpay.sqlite3"));
+    try {
+      const settings = service(database, masterKey);
+      await settings.saveProvider(providerInput(0, "2026000000000001"), audit("active-provider"));
+      const before = settings.view();
+      const privateKeyBefore = settings.revealSecret(
+        "provider_private_key",
+        audit("active-private-key-before"),
+      );
+      const replacement = generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey
+        .export({ format: "pem", type: "pkcs8" })
+        .toString();
+
+      await assert.rejects(
+        settings.saveProvider({
+          ...providerInput(before.revision, "2026000000000001"),
+          private_key: replacement,
+        }, audit("replace-active-private-key")),
+        (error: unknown) => error instanceof SettingsError &&
+          error.code === "provider_application_key_rotation_not_supported",
+      );
+
+      assert.equal(settings.view().revision, before.revision);
+      assert.equal(settings.view().payment_revision, before.payment_revision);
+      assert.equal(
+        settings.revealSecret("provider_private_key", audit("active-private-key-after")),
+        privateKeyBefore,
+      );
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects key generation when an immutable provider generation survives without runtime configuration", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-settings-historical-provider-key-"));
+    const database = await AppDatabase.open(join(directory, "perpay.sqlite3"));
+    try {
+      const ledger = new LedgerStore(database);
+      ledger.bindProviderIdentity({
+        providerAccountKey: "source:historical",
+        providerKind: "alipay",
+        endpoint: "https://openapi.alipay.com",
+        externalAccountId: "2026000000000042",
+      }, 1);
+      const settings = new RuntimeSettingsService({
+        store: new RuntimeSettingsStore(database, masterKey),
+        // Deliberately omit providerHistory to prove the transactional store guard
+        // also protects callers whose history projection is stale or unavailable.
+      });
+      settings.initialize();
+
+      assert.equal(settings.snapshot().activeProviderAccountKey, null);
+      await assert.rejects(
+        settings.generateProviderApplicationKey(0, audit("historical-key-regenerate")),
+        (error: unknown) => error instanceof SettingsError &&
+          error.code === "provider_application_key_rotation_not_supported",
+      );
+      assert.equal(settings.view().revision, 0);
+      assert.equal(settings.view().application_public_key, null);
+      assert.equal(
+        database.read((connection) => Number((connection.prepare(
+          `SELECT COUNT(*) AS count
+             FROM runtime_secrets
+            WHERE secret_name = 'provider_private_key'`,
+        ).get() as { count: bigint | number }).count)),
+        0,
+      );
+    } finally {
+      database.close();
       rmSync(directory, { recursive: true, force: true });
     }
   });

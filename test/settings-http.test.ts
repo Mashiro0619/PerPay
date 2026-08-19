@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
+import { generateKeyPairSync } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
+import { loadConfig } from "../src/config.ts";
+import { AppDatabase } from "../src/database/database.ts";
 import { createApp } from "../src/http/app.ts";
+import { IdentityService } from "../src/identity/service.ts";
+import { OrderService } from "../src/orders/service.ts";
+import { RuntimeSettingsService, RuntimeSettingsStore } from "../src/settings/index.ts";
 import {
   createConfiguredHttpServices,
   HTTP_TEST_ADMIN_PASSWORD,
@@ -100,35 +106,239 @@ describe("advanced settings HTTP contract", () => {
   });
 });
 
+describe("provider application key HTTP contract", () => {
+  it("generates the initial application key without returning the private key", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-http-provider-key-"));
+    const config = loadConfig({
+      PERPAY_MASTER_KEY: "0123456789abcdef".repeat(4),
+      PERPAY_DATA_DIR: join(directory, "data"),
+      PERPAY_BACKUP_DIR: join(directory, "backups"),
+      PERPAY_PUBLIC_URL: origin,
+    });
+    const database = await AppDatabase.open(config.databasePath);
+    const identity = new IdentityService(database);
+    await identity.initialize();
+    await identity.setupAdmin(HTTP_TEST_ADMIN_PASSWORD);
+    const settings = new RuntimeSettingsService({
+      store: new RuntimeSettingsStore(database, config.masterKey),
+    });
+    settings.initialize();
+    const orders = new OrderService(database, () => settings.snapshot());
+    orders.initialize();
+    const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
+    try {
+      const unauthenticated = await app.request(
+        "/api/admin/v1/settings/provider/application-key/actions/generate",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", origin },
+          body: JSON.stringify({ revision: 0 }),
+        },
+      );
+      assert.equal(unauthenticated.status, 401);
+
+      const login = await loginOnly(app);
+      const withoutStepUp = await app.request(
+        "/api/admin/v1/settings/provider/application-key/actions/generate",
+        {
+          method: "POST",
+          headers: login.headers,
+          body: JSON.stringify({ revision: 0 }),
+        },
+      );
+      assert.equal(withoutStepUp.status, 403);
+      assert.equal(
+        (await withoutStepUp.json() as { error: { code: string } }).error.code,
+        "step_up_required",
+      );
+
+      const elevatedHeaders = await stepUp(app, login.cookie, login.csrfToken);
+      const generated = await app.request(
+        "/api/admin/v1/settings/provider/application-key/actions/generate",
+        {
+          method: "POST",
+          headers: elevatedHeaders,
+          body: JSON.stringify({ revision: 0 }),
+        },
+      );
+      assert.equal(generated.status, 201);
+      assert.equal(generated.headers.get("cache-control"), "no-store");
+      const body = await generated.json() as {
+        data: {
+          settings: {
+            revision: number;
+            payment_revision: number;
+            application_public_key: string;
+            application_key_fingerprint: string;
+          };
+          created: boolean;
+          public_key: string;
+          fingerprint: string;
+        };
+      };
+      assert.equal(body.data.created, true);
+      assert.equal(body.data.settings.revision, 1);
+      assert.equal(body.data.settings.payment_revision, 0);
+      assert.equal(body.data.settings.application_public_key, body.data.public_key);
+      assert.equal(body.data.settings.application_key_fingerprint, body.data.fingerprint);
+      assert.equal(JSON.stringify(body).includes("PRIVATE KEY"), false);
+      assert.equal(JSON.stringify(body).includes("BEGIN RSA"), false);
+
+      const settingsResponse = await app.request("/api/admin/v1/settings", {
+        headers: { cookie: elevatedHeaders.cookie },
+      });
+      assert.equal(settingsResponse.status, 200);
+      const settingsBody = await settingsResponse.json() as {
+        data: { application_public_key: string; application_key_fingerprint: string };
+      };
+      assert.equal(settingsBody.data.application_public_key, body.data.public_key);
+      assert.equal(settingsBody.data.application_key_fingerprint, body.data.fingerprint);
+
+      const repeated = await app.request(
+        "/api/admin/v1/settings/provider/application-key/actions/generate",
+        {
+          method: "POST",
+          headers: elevatedHeaders,
+          body: JSON.stringify({ revision: 0 }),
+        },
+      );
+      assert.equal(repeated.status, 200);
+      const repeatedBody = await repeated.json() as typeof body;
+      assert.equal(repeatedBody.data.created, false);
+      assert.equal(repeatedBody.data.settings.revision, 1);
+      assert.equal(repeatedBody.data.public_key, body.data.public_key);
+      assert.equal(repeatedBody.data.fingerprint, body.data.fingerprint);
+
+      const future = await app.request(
+        "/api/admin/v1/settings/provider/application-key/actions/generate",
+        {
+          method: "POST",
+          headers: elevatedHeaders,
+          body: JSON.stringify({ revision: 2 }),
+        },
+      );
+      assert.equal(future.status, 409);
+      assert.equal(
+        (await future.json() as { error: { code: string } }).error.code,
+        "settings_revision_conflict",
+      );
+      assert.equal(database.read((connection) => Number((connection.prepare(
+        `SELECT COUNT(*) AS count FROM audit_events
+          WHERE action = 'settings.provider_application_key_generated'`,
+      ).get() as { count: bigint | number }).count)), 1);
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects regeneration after a provider application is active", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-http-active-provider-key-"));
+    const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
+      directory,
+      apiSecret,
+      collectionCodePayload: "https://qr.local.invalid/http-active-provider-key",
+      publicUrl: origin,
+    });
+    const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
+    try {
+      const elevatedHeaders = await loginAndStepUp(app);
+      const response = await app.request(
+        "/api/admin/v1/settings/provider/application-key/actions/generate",
+        {
+          method: "POST",
+          headers: elevatedHeaders,
+          body: JSON.stringify({ revision: 3 }),
+        },
+      );
+      assert.equal(response.status, 409);
+      assert.equal(
+        (await response.json() as { error: { code: string } }).error.code,
+        "provider_application_key_rotation_not_supported",
+      );
+
+      const replacementPrivateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
+        .privateKey.export({ format: "pem", type: "pkcs8" }).toString();
+      const update = await app.request("/api/admin/v1/settings/provider", {
+        method: "PUT",
+        headers: elevatedHeaders,
+        body: JSON.stringify({
+          revision: 3,
+          environment: "PRODUCTION",
+          app_id: "2026000000000001",
+          private_key: replacementPrivateKey,
+          timeout_milliseconds: 8_000,
+          scan_interval_seconds: 10,
+          maximum_success_age_seconds: 60,
+        }),
+      });
+      assert.equal(update.status, 409);
+      assert.equal(
+        (await update.json() as { error: { code: string } }).error.code,
+        "provider_application_key_rotation_not_supported",
+      );
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
+
 async function loginAndStepUp(app: ReturnType<typeof createApp>): Promise<Record<string, string>> {
-  const login = await app.request("/api/admin/v1/session/login", {
+  const login = await loginOnly(app);
+  return stepUp(app, login.cookie, login.csrfToken);
+}
+
+async function loginOnly(app: ReturnType<typeof createApp>): Promise<{
+  readonly headers: Record<string, string>;
+  readonly cookie: string;
+  readonly csrfToken: string;
+}> {
+  const response = await app.request("/api/admin/v1/session/login", {
     method: "POST",
     headers: { "content-type": "application/json", origin },
     body: JSON.stringify({ password: HTTP_TEST_ADMIN_PASSWORD }),
   });
-  assert.equal(login.status, 200);
-  const loginBody = await login.json() as { data: { csrf_token: string } };
-  const loginCookie = login.headers.getSetCookie()
+  assert.equal(response.status, 200);
+  const body = await response.json() as { data: { csrf_token: string } };
+  const cookie = response.headers.getSetCookie()
     .map((value) => value.split(";", 1)[0])
     .join("; ");
-  const stepUp = await app.request("/api/admin/v1/session/step-up", {
+  return {
+    headers: {
+      "content-type": "application/json",
+      origin,
+      cookie,
+      "x-csrf-token": body.data.csrf_token,
+    },
+    cookie,
+    csrfToken: body.data.csrf_token,
+  };
+}
+
+async function stepUp(
+  app: ReturnType<typeof createApp>,
+  cookie: string,
+  csrfToken: string,
+): Promise<Record<string, string>> {
+  const response = await app.request("/api/admin/v1/session/step-up", {
     method: "POST",
     headers: {
       "content-type": "application/json",
       origin,
-      cookie: loginCookie,
-      "x-csrf-token": loginBody.data.csrf_token,
+      cookie,
+      "x-csrf-token": csrfToken,
     },
     body: JSON.stringify({ password: HTTP_TEST_ADMIN_PASSWORD }),
   });
-  assert.equal(stepUp.status, 200);
-  const stepUpBody = await stepUp.json() as { data: { csrf_token: string } };
+  assert.equal(response.status, 200);
+  const body = await response.json() as { data: { csrf_token: string } };
   return {
     "content-type": "application/json",
     origin,
-    cookie: stepUp.headers.getSetCookie()
+    cookie: response.headers.getSetCookie()
       .map((value) => value.split(";", 1)[0])
       .join("; "),
-    "x-csrf-token": stepUpBody.data.csrf_token,
+    "x-csrf-token": body.data.csrf_token,
   };
 }

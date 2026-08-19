@@ -672,6 +672,22 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     },
   );
 
+  app.post(
+    "/api/admin/v1/settings/provider/application-key/actions/generate",
+    adminSession,
+    financialWrite,
+    async (context) => {
+      const body = await readJson(context, settingsRevisionSchema, MAX_JSON_BODY_BYTES);
+      const data = await settingsOperation(() =>
+        requireSettingsService(dependencies).generateProviderApplicationKey(
+          body.revision,
+          settingsAuditContext(context, dependencies),
+        )
+      );
+      return context.json({ data }, data.created ? 201 : 200);
+    },
+  );
+
   app.put(
     "/api/admin/v1/settings/notifications",
     adminSession,
@@ -2031,12 +2047,15 @@ function orderStatus(code: OrderErrorCode): 404 | 409 | 422 | 503 {
   }
 }
 
-function settingsStatus(code: SettingsError["code"]): 404 | 409 | 503 {
+function settingsStatus(code: SettingsError["code"]): 404 | 409 | 422 | 503 {
   switch (code) {
     case "secret_not_found":
       return 404;
+    case "provider_application_key_missing":
+      return 422;
     case "settings_revision_conflict":
     case "provider_switch_blocked":
+    case "provider_application_key_rotation_not_supported":
       return 409;
     case "settings_not_configured":
       return 503;

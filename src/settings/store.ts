@@ -11,11 +11,13 @@ import {
   API_CLIENT_ID,
   fingerprintSecret,
   isCanonicalSecret,
+  parseProviderApplicationPrivateKey,
   parseProviderKeys,
   type AdvancedSettingsInput,
   type CollectionSettingsInput,
   type ApiCredentialSnapshot,
   type ProviderEnvironment,
+  type ProviderApplicationKeyMaterial,
   type ProviderSettings,
   type RuntimeSecretName,
   type RuntimeSettingsSnapshot,
@@ -76,7 +78,9 @@ export class SettingsError extends Error {
     | "settings_revision_conflict"
     | "settings_not_configured"
     | "secret_not_found"
-    | "provider_switch_blocked";
+    | "provider_application_key_missing"
+    | "provider_switch_blocked"
+    | "provider_application_key_rotation_not_supported";
 
   constructor(code: SettingsError["code"], message: string) {
     super(message);
@@ -179,6 +183,15 @@ export class RuntimeSettingsStore {
       notificationConfigured: !snapshot.webhook.enabled || snapshot.webhook.secret !== null,
       activeProviderAccountKey: snapshot.activeProviderAccountKey,
     };
+  }
+
+  providerApplicationKey(): ProviderApplicationKeyMaterial | null {
+    return this.#database.read((connection) => {
+      const row = readSecret(connection, "provider_private_key");
+      return row
+        ? parseProviderApplicationPrivateKey(decryptSecret(this.#cipher, row))
+        : null;
+    });
   }
 
   saveCollection(
@@ -287,6 +300,66 @@ export class RuntimeSettingsStore {
         application_key_fingerprint: input.privateKeyFingerprint,
         platform_key_fingerprint: input.publicKeyFingerprint,
       });
+      return this.#snapshot(connection);
+    });
+  }
+
+  saveGeneratedProviderApplicationKey(input: {
+    readonly expectedRevision: number;
+    readonly privateKeyPem: string;
+    readonly fingerprint: string;
+    readonly audit: SettingsAuditContext;
+    readonly now?: number;
+  }): RuntimeSettingsSnapshot {
+    const key = parseProviderApplicationPrivateKey(input.privateKeyPem);
+    if (key.fingerprint !== input.fingerprint) {
+      throw new RangeError("provider application key fingerprint does not match the private key");
+    }
+    const now = input.now ?? Date.now();
+    return this.#database.write((connection) => {
+      assertRevision(connection, input.expectedRevision);
+      const configuration = readConfiguration(connection);
+      const historicalProvider = connection.prepare(
+        "SELECT 1 AS present FROM provider_account_bindings LIMIT 1",
+      ).get() as { readonly present: number } | undefined;
+      if (configuration.provider_account_key !== null || historicalProvider !== undefined) {
+        throw new SettingsError(
+          "provider_application_key_rotation_not_supported",
+          "an application key cannot be generated after a provider generation has been created",
+        );
+      }
+      if (readSecret(connection, "provider_private_key") !== null) {
+        throw new SettingsError(
+          "provider_application_key_rotation_not_supported",
+          "the initial application key has already been generated",
+        );
+      }
+      writeSecret(
+        connection,
+        this.#cipher,
+        "provider_private_key",
+        key.privateKeyPem,
+        key.fingerprint,
+        now,
+      );
+      const updated = connection.prepare(
+        `UPDATE runtime_configuration
+            SET revision = revision + 1,
+                updated_at = ?
+          WHERE singleton_key = 1 AND revision = ?`,
+      ).run(now, input.expectedRevision);
+      assertUpdated(updated.changes);
+      appendSettingsAudit(
+        connection,
+        input.audit,
+        now,
+        "settings.provider_application_key_generated",
+        {
+          revision: input.expectedRevision + 1,
+          payment_revision_changed: false,
+          application_key_fingerprint: key.fingerprint,
+        },
+      );
       return this.#snapshot(connection);
     });
   }
