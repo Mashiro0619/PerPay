@@ -46,6 +46,63 @@ docker compose up -d
 
 首次密码设置没有额外验证码。设置完成前不要向公网开放反向代理，只从可信网络或 SSH 隧道访问；初始化完成后再开放公网入口。
 
+## 网站接入
+
+在后台“设置 → API”生成 `default` 客户端 API 密钥。客户端密钥只放在发起支付网站的后端，不能放进浏览器 JavaScript。
+
+网站后端创建订单时，向 PerPay 的 `POST /api/v1/orders` 发送带 HMAC-SHA256 签名的 JSON 请求。下面是 Node.js 示例：
+
+```js
+import { createHash, createHmac, randomBytes } from "node:crypto";
+
+const perpayUrl = "https://pay.example.com";
+const clientId = process.env.PERPAY_CLIENT_ID ?? "default";
+const secret = Buffer.from(process.env.PERPAY_API_SECRET, "base64url");
+
+async function perpayRequest(method, target, value = null) {
+  const body = value === null ? Buffer.alloc(0) : Buffer.from(JSON.stringify(value));
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const nonce = randomBytes(32).toString("base64url");
+  const bodyDigest = createHash("sha256").update(body).digest("hex");
+  const signingText = [
+    "PERPAY-HMAC-SHA256", "v1", method.toUpperCase(), target,
+    timestamp, nonce, clientId, bodyDigest,
+  ].join("\n");
+  const signature = createHmac("sha256", secret).update(signingText).digest("hex");
+
+  const response = await fetch(new URL(target, perpayUrl), {
+    method,
+    headers: {
+      "content-type": "application/json",
+      "x-perpay-client-id": clientId,
+      "x-perpay-timestamp": timestamp,
+      "x-perpay-nonce": nonce,
+      "x-perpay-signature-version": "v1",
+      "x-perpay-signature": signature,
+    },
+    body: body.length === 0 ? undefined : body,
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(`PerPay ${response.status}: ${JSON.stringify(result)}`);
+  return result.data;
+}
+
+const order = await perpayRequest("POST", "/api/v1/orders", {
+  idempotency_key: "shop-order-20260820-0001", // 重试同一订单必须保持不变
+  merchant_order_no: "ORDER-20260820-0001",
+  amount_cents: 1000,                            // 10.00 元
+  description: "示例商品",
+  // notify_url: "https://shop.example.com/webhooks/perpay", // 可选
+});
+
+// 将这个地址返回给前端，或由网站后端直接 302 跳转。
+console.log(order.checkout.checkout_url);
+```
+
+创建订单响应中的 `checkout.checkout_url` 是付款页面，用户付款后回到该页面即可看到确认结果。网站后台可以用同样的签名方式轮询 `GET /api/v1/orders/{order_id}`，读取 `data.payment.status`：`CONFIRMED` 表示已确认，`UNPAID` 表示未支付，`DISPUTED` 表示需要管理员处理。
+
+如果已在后台配置通知地址，PerPay 会向 `notify_url` 发送签名事件。网站应使用原始请求体验证通知签名，并按 `event_id` 做幂等处理；通知失败不会撤销已经确认的支付。完整字段和错误响应见 [`openapi.yaml`](openapi.yaml)。
+
 ## 更新
 
 保留原来的 Compose 文件和卷，执行：
