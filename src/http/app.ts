@@ -356,6 +356,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       context.header("content-type", asset.contentType);
       context.header("etag", asset.etag);
       context.header("cache-control", "public, max-age=31536000, immutable");
+      if (typeof asset.body === "string") return context.body(asset.body);
       return context.body(asset.body);
     });
   }

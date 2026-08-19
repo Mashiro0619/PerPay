@@ -8,7 +8,7 @@ import { mergeTestPaymentOrder, testPaymentTerminal } from "../web/admin/test-pa
 
 describe("web asset manifest", () => {
   it("binds every immutable URL to the complete SHA-256 digest of its content", () => {
-    assert.equal(WEB_ASSET_PATHS.length, 3);
+    assert.equal(WEB_ASSET_PATHS.length, 4);
     assert.equal(new Set(WEB_ASSET_PATHS).size, WEB_ASSET_PATHS.length);
 
     for (const path of Object.values(WEB_ASSET_URLS)) {
@@ -16,7 +16,7 @@ describe("web asset manifest", () => {
       assert.ok(match, `asset path is not content addressed: ${path}`);
       const asset = webAsset(path);
       assert.ok(asset);
-      assert.equal(match[1], createHash("sha256").update(asset.body, "utf8").digest("hex"));
+      assert.equal(match[1], createHash("sha256").update(asset.body).digest("hex"));
     }
   });
 
@@ -25,9 +25,33 @@ describe("web asset manifest", () => {
     assert.equal(webAsset("/assets/vendor/legacy/legacy.min.css"), null);
   });
 
+  it("serves the optimized Alipay icon as a content-addressed PNG", () => {
+    const icon = webAsset(WEB_ASSET_URLS.alipayIcon);
+    assert.ok(icon);
+    assert.equal(icon.contentType, "image/png");
+    assert.ok(icon.body instanceof Uint8Array);
+    assert.deepEqual([...icon.body.slice(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    assert.ok(icon.body.byteLength < 16 * 1024);
+  });
+
+  it("ships system theme tokens and a mobile-first checkout payment order", () => {
+    const stylesheet = webAsset(WEB_ASSET_URLS.checkoutStylesheet)?.body;
+    assert.equal(typeof stylesheet, "string");
+    if (typeof stylesheet !== "string") return;
+    assert.match(stylesheet, /@media \(prefers-color-scheme: dark\)/);
+    assert.match(stylesheet, /color-scheme: light dark/);
+    assert.match(stylesheet, /grid-template-areas:\s*"summary"\s*"payment"\s*"details"/);
+    assert.match(stylesheet, /@media \(min-width: 801px\)[\s\S]*grid-template-areas:\s*"summary payment"\s*"details payment"/);
+    assert.match(stylesheet, /\.checkout-manual-refresh\s*\{[^}]*min-height: 44px/s);
+    assert.match(stylesheet, /@media \(max-width: 560px\)[\s\S]*\.checkout-code-figure img\s*\{[^}]*240px/s);
+    assert.match(stylesheet, /env\(safe-area-inset-top\)/);
+    assert.match(stylesheet, /env\(safe-area-inset-bottom\)/);
+  });
+
   it("bundles the complete MUI admin workflows", () => {
     const script = webAsset(WEB_ASSET_URLS.adminScript)?.body;
-    assert.ok(script);
+    assert.equal(typeof script, "string");
+    if (typeof script !== "string") return;
     for (const expected of [
       "/settings/provider/application-key/actions/generate",
       "/settings/advanced",
@@ -45,16 +69,48 @@ describe("web asset manifest", () => {
     assert.doesNotMatch(script, /模拟到账|模拟确认/);
   });
 
+  it("keeps administrator navigation, password fields, and settings sections client-side", () => {
+    const script = webAsset(WEB_ASSET_URLS.adminScript)?.body;
+    assert.equal(typeof script, "string");
+    if (typeof script !== "string") return;
+    for (const expected of [
+      "pushState",
+      "popstate",
+      "data-page-title",
+      "admin-login-password",
+      "current-password",
+      "admin-setup-password",
+      "password_confirmation",
+      "admin-new-password",
+      "new_password_confirmation",
+      "/admin/settings?section=",
+      "collection",
+      "provider",
+      "api",
+      "notifications",
+      "advanced",
+      "secrets",
+      "image/png,image/jpeg,image/webp",
+    ]) assert.ok(script.includes(expected), `admin bundle is missing ${expected}`);
+    assert.doesNotMatch(script, /location\.reload|image\/gif|再次输入管理员密码|step_up_required|session\/step-up/);
+  });
+
   it("keeps a final not-found checkout inert across browser lifecycle events", () => {
     const checkoutScript = webAsset(WEB_ASSET_URLS.checkoutScript)?.body;
-    assert.ok(checkoutScript);
+    assert.equal(typeof checkoutScript, "string");
+    if (typeof checkoutScript !== "string") return;
 
     class FakeHTMLElement {
       readonly dataset: Record<string, string> = {
         checkoutApiUrl: "", checkoutQrUrl: "", initialState: "NOT_FOUND",
         refundStatus: "NONE", retryAfterSeconds: "",
       };
-      querySelector(): null { return null; }
+      readonly children = new Map<string, FakeHTMLElement>();
+      hidden = false;
+      textContent = "";
+      querySelector(selector: string): FakeHTMLElement | null {
+        return this.children.get(selector) ?? null;
+      }
     }
     class FakeHTMLDialogElement extends FakeHTMLElement {}
     class FakeHTMLImageElement extends FakeHTMLElement {}
@@ -62,6 +118,11 @@ describe("web asset manifest", () => {
     class FakeHTMLAnchorElement extends FakeHTMLElement {}
 
     const root = new FakeHTMLElement();
+    const routeError = new FakeHTMLElement();
+    const routeErrorTitle = new FakeHTMLElement();
+    routeErrorTitle.textContent = "找不到这个订单";
+    routeError.children.set("[data-route-error-title]", routeErrorTitle);
+    root.children.set("[data-route-error]", routeError);
     const documentListeners = new Map<string, () => void>();
     const windowListeners = new Map<string, () => void>();
     let fetchCount = 0;
@@ -87,11 +148,13 @@ describe("web asset manifest", () => {
     documentListeners.get("visibilitychange")?.();
     windowListeners.get("online")?.();
     assert.equal(fetchCount, 0);
+    assert.equal(routeErrorTitle.textContent, "找不到这个订单");
   });
 
   it("coalesces repeated manual checkout status checks", () => {
     const checkoutScript = webAsset(WEB_ASSET_URLS.checkoutScript)?.body;
-    assert.ok(checkoutScript);
+    assert.equal(typeof checkoutScript, "string");
+    if (typeof checkoutScript !== "string") return;
 
     class FakeHTMLElement {
       readonly dataset: Record<string, string> = {};

@@ -9,6 +9,7 @@
     ? sameOriginUrl(root.dataset.checkoutQrUrl)
     : null;
   const content = root.querySelector("[data-checkout-content]");
+  const receiptBody = root.querySelector(".checkout-receipt-body");
   const routeError = root.querySelector("[data-route-error]");
   const retryButton = root.querySelector("[data-checkout-retry]");
   const networkBanner = document.querySelector("[data-network-banner]");
@@ -21,6 +22,7 @@
   const qrDialogImage = qrDialog?.querySelector("[data-qr-dialog-image]");
   const countdown = root.querySelector("[data-countdown]");
   const countdownWrap = root.querySelector("[data-countdown-wrap]");
+  const paymentColumn = root.querySelector("[data-payment-column]");
   const manualRefreshButton = root.querySelector("[data-checkout-refresh]");
   const manualRefreshLabel = manualRefreshButton?.querySelector("[data-checkout-refresh-label]");
   const requestTimeoutMilliseconds = 10_000;
@@ -76,7 +78,9 @@
   updateManualRefreshButton();
 
   if (apiUrl === null) {
-    showRouteError("配置错误", "收银台状态地址无效，无法读取订单。", "CONFIG", false);
+    if (lastVisualState !== "NOT_FOUND") {
+      showRouteError("配置错误", "收银台状态地址无效，无法读取订单。", "CONFIG", false);
+    }
     return;
   }
 
@@ -295,7 +299,8 @@
       });
       const qrDialogWasOpen = deactivateQr();
       setHidden(qrPanel, true);
-      setHidden(root.querySelector("[data-payment-guidance]"), true);
+      setHidden(qrActions, true);
+      setAllHidden("[data-payment-guidance]", true);
       setHidden(root.querySelector("[data-service-alert]"), false);
       if (!hasCheckoutData) {
         showRouteError(
@@ -309,6 +314,7 @@
       retryAfterMilliseconds = readRetryAfter(response.headers.get("retry-after"), backoffMilliseconds());
       retryNotBefore = Date.now() + retryAfterMilliseconds;
       setHidden(manualRefreshButton, !hasCheckoutData);
+      updatePaymentColumn();
       scheduleNext(retryAfterMilliseconds);
       return;
     }
@@ -346,26 +352,28 @@
       ?? checkout.payment.received_amount_cents
       ?? checkout.requested_amount_cents;
     const amountLabel = instructions !== null
-      ? "本次应付"
+      ? "应付金额"
       : checkout.payment.status === "CONFIRMED" || checkout.payment.status === "DISPUTED"
         ? "已收金额"
         : "订单金额";
-    setText(root.querySelector("[data-amount-label]"), amountLabel);
-    setText(root.querySelector("[data-payable-amount]"), formatCents(displayedAmount));
+    setAllText("[data-amount-label]", amountLabel);
+    setAllText("[data-payable-amount]", formatCents(displayedAmount));
     const formattedAmount = formatCents(displayedAmount);
-    const amount = root.querySelector(".checkout-amount");
-    setText(root.querySelector("[data-amount-accessible]"), `${amountLabel} ${formattedAmount} 元`);
-    if (amount instanceof HTMLElement) {
+    setAllText("[data-amount-accessible]", `${amountLabel} ${formattedAmount} 元`);
+    root.querySelectorAll(".checkout-amount").forEach((amount) => {
+      if (!(amount instanceof HTMLElement)) return;
       amount.classList.toggle("is-long", formattedAmount.length >= 10 && formattedAmount.length < 13);
       amount.classList.toggle("is-very-long", formattedAmount.length >= 13);
-    }
+    });
 
     const qrCanBeShown = visualState === "UNPAID" && instructions !== null && ensureQrSource();
     const qrDialogWasOpen = qrCanBeShown ? false : deactivateQr();
     setHidden(qrPanel, !qrCanBeShown);
-    setHidden(root.querySelector("[data-payment-guidance]"), !qrCanBeShown);
+    setHidden(qrActions, !qrCanBeShown);
+    setAllHidden("[data-payment-guidance]", !qrCanBeShown);
     const manualWasFocused = manualRefreshButton instanceof HTMLElement && manualRefreshButton === document.activeElement;
     setHidden(manualRefreshButton, !["UNPAID", "UNAVAILABLE"].includes(visualState));
+    updatePaymentColumn();
     setHidden(countdownWrap, visualState !== "UNPAID");
     root.dataset.expiresAt = checkout.checkout.expires_at;
     if (countdown instanceof HTMLTimeElement) countdown.dateTime = checkout.checkout.expires_at;
@@ -649,6 +657,19 @@
     setHidden(manualRefreshButton, terminal || !hasCheckoutData);
     manualRefreshButton.disabled = refreshInFlight || destroyed || document.hidden || !navigator.onLine || Date.now() < retryNotBefore;
     if (!refreshInFlight && manualRefreshLabel instanceof HTMLElement) manualRefreshLabel.textContent = "立即检查支付状态";
+    updatePaymentColumn();
+  }
+
+  function updatePaymentColumn() {
+    if (!(paymentColumn instanceof HTMLElement)) return;
+    const qrShown = qrPanel instanceof HTMLElement && !qrPanel.hidden;
+    const visible = qrShown
+      || (manualRefreshButton instanceof HTMLElement && !manualRefreshButton.hidden);
+    paymentColumn.hidden = !visible;
+    if (receiptBody instanceof HTMLElement) {
+      receiptBody.classList.toggle("is-summary-only", !visible);
+      receiptBody.classList.toggle("has-qr", qrShown);
+    }
   }
 
   function clearScheduledRefresh() {
@@ -764,7 +785,15 @@
     if (node instanceof HTMLElement) node.textContent = value;
   }
 
+  function setAllText(selector, value) {
+    root.querySelectorAll(selector).forEach((node) => setText(node, value));
+  }
+
   function setHidden(node, hidden) {
     if (node instanceof HTMLElement) node.hidden = hidden;
+  }
+
+  function setAllHidden(selector, hidden) {
+    root.querySelectorAll(selector).forEach((node) => setHidden(node, hidden));
   }
 })();

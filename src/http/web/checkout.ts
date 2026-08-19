@@ -2,6 +2,7 @@ import type { PublicCheckoutProjection } from "../../orders/model.ts";
 import { WEB_ASSET_URLS } from "./assets.ts";
 
 export const CHECKOUT_PAGE_ASSETS = Object.freeze({
+  alipayIcon: WEB_ASSET_URLS.alipayIcon,
   checkoutStylesheet: WEB_ASSET_URLS.checkoutStylesheet,
   checkoutScript: WEB_ASSET_URLS.checkoutScript,
 });
@@ -129,7 +130,7 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
     ?? checkout?.requestedAmountCents
     ?? 0;
   const amountLabel = paymentInstructions !== null
-    ? "本次应付"
+    ? "应付金额"
     : checkout?.payment.status === "CONFIRMED" || checkout?.payment.status === "DISPUTED"
       ? "已收金额"
       : "订单金额";
@@ -139,6 +140,14 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
     : formattedAmount.length >= 10
       ? "is-long"
       : "";
+  const amountContent = `
+              <p class="checkout-amount-label" data-amount-label>${escapeHtml(amountLabel)}</p>
+              <p class="checkout-amount ${amountLengthClass}">
+                <span class="checkout-sr-only" data-amount-accessible>${formatAmountAccessible(displayedAmountCents, amountLabel)}</span>
+                <span class="checkout-currency" aria-hidden="true">¥</span>
+                <strong class="checkout-mono" data-payable-amount aria-hidden="true">${formattedAmount}</strong>
+                <span class="checkout-currency-code" aria-hidden="true">CNY</span>
+              </p>`;
   const routeErrorVisible = checkout === null;
   const checkoutVisible = checkout !== null;
   const qrVisible =
@@ -148,6 +157,9 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
     && input.initialError?.status !== 503
     && input.initialError?.status !== 404
     && input.qrImageUrl !== null;
+  const manualRefreshVisible =
+    checkout !== null && ["UNPAID", "UNAVAILABLE"].includes(visualState);
+  const paymentColumnVisible = qrVisible || manualRefreshVisible;
   const refundMessage = refundCopy(checkout);
   const evidence = evidenceCopy(checkout, visualState);
   const title = checkout === null
@@ -164,8 +176,10 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f5f6f8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#101317" media="(prefers-color-scheme: dark)">
   <meta name="robots" content="noindex, nofollow, noarchive">
   <title>${escapeHtml(title)}</title>
   <link rel="stylesheet" href="${CHECKOUT_PAGE_ASSETS.checkoutStylesheet}">
@@ -223,72 +237,84 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
         </div>
       </div>
 
-      <div class="checkout-receipt-body">
+      <div class="checkout-receipt-body${paymentColumnVisible ? "" : " is-summary-only"}${qrVisible ? " has-qr" : ""}">
         <section class="checkout-summary" aria-labelledby="checkout-title">
           <div class="checkout-heading-block">
             <h1 id="checkout-title" data-status-heading tabindex="-1">${escapeHtml(stateCopy.heading)}</h1>
             <p class="checkout-status-detail" data-status-detail>${escapeHtml(stateCopy.detail)}</p>
           </div>
 
-          <div class="checkout-amount-block" data-amount-block>
-            <p class="checkout-amount-label" data-amount-label>${escapeHtml(amountLabel)}</p>
-            <p class="checkout-amount ${amountLengthClass}">
-              <span class="checkout-sr-only" data-amount-accessible>${formatAmountAccessible(displayedAmountCents, amountLabel)}</span>
-              <span class="checkout-currency" aria-hidden="true">¥</span>
-              <strong class="checkout-mono" data-payable-amount aria-hidden="true">${formattedAmount}</strong>
-              <span class="checkout-currency-code" aria-hidden="true">CNY</span>
-            </p>
+          <div class="checkout-amount-block checkout-amount-block--summary" data-amount-block>
+            ${amountContent}
           </div>
 
-          <div class="checkout-exact-note checkout-alert checkout-alert--info" data-payment-guidance${hiddenAttribute(!qrVisible)}>
+          <div class="checkout-exact-note checkout-exact-note--desktop checkout-alert checkout-alert--info" data-payment-guidance${hiddenAttribute(!qrVisible)}>
             <div class="checkout-message-body">
               <h2>金额必须完全一致</h2>
-              <p>请按上方金额付款。金额不同将无法自动确认。</p>
+              <p>请按二维码下方金额付款。金额不同将无法自动确认。</p>
             </div>
           </div>
 
-          <dl class="checkout-order-details">
-            <div>
-              <dt>订单号</dt>
-              <dd class="checkout-mono" data-merchant-order-no>${escapeHtml(checkout?.merchantOrderNo ?? "-")}</dd>
-            </div>
-            <div data-description-row${hiddenAttribute(checkout?.description === null || checkout?.description === undefined)}>
-              <dt>订单说明</dt>
-              <dd data-description>${escapeHtml(checkout?.description ?? "")}</dd>
-            </div>
-            <div>
-              <dt>原始金额</dt>
-              <dd class="checkout-mono" data-requested-amount>${checkout === null ? "-" : formatMoney(checkout.requestedAmountCents, checkout.currency)}</dd>
-            </div>
-          </dl>
         </section>
 
-        <section class="checkout-code-panel" data-qr-panel${hiddenAttribute(!qrVisible)} aria-labelledby="code-title">
-          <div class="checkout-code-heading">
-            <h2 id="code-title">经营码</h2>
-            <p>请使用支付宝扫描</p>
-          </div>
-          <figure class="checkout-code-figure">
-            <img
-              data-qr-image
-              ${imageSourceAttributes(input.qrImageUrl, qrVisible)}
-              width="320"
-              height="320"
-              alt="用于支付此订单的经营码"
-              decoding="async"
-            >
-            <figcaption>付款前请再次核对金额</figcaption>
-          </figure>
-          <div class="checkout-code-error checkout-inline-error" data-qr-error role="alert" hidden>
-            <strong>经营码加载失败</strong>
-            <p>请检查网络连接后重新加载。</p>
-            <button class="checkout-button" type="button" data-qr-reload>重新加载经营码</button>
-          </div>
-          <div class="checkout-code-actions">
-            <button class="checkout-button" type="button" data-qr-expand>放大经营码</button>
+        <div class="checkout-payment-column" data-payment-column${hiddenAttribute(!paymentColumnVisible)}>
+          <section class="checkout-code-panel" data-qr-panel${hiddenAttribute(!qrVisible)} aria-labelledby="code-title">
+            <div class="checkout-code-heading">
+              <h2 id="code-title"><img src="${CHECKOUT_PAGE_ASSETS.alipayIcon}" width="28" height="28" alt="" aria-hidden="true">支付宝付款</h2>
+              <p>请使用支付宝扫码完成付款</p>
+            </div>
+            <figure class="checkout-code-figure">
+              <img
+                data-qr-image
+                ${imageSourceAttributes(input.qrImageUrl, qrVisible)}
+                width="320"
+                height="320"
+                alt="用于支付此订单的支付宝付款二维码"
+                decoding="async"
+              >
+              <div class="checkout-code-amount checkout-amount-block" data-amount-block>
+                ${amountContent}
+              </div>
+              <figcaption>付款前请再次核对金额</figcaption>
+            </figure>
+            <div class="checkout-code-error checkout-inline-error" data-qr-error role="alert" hidden>
+              <strong>二维码加载失败</strong>
+              <p>请检查网络连接后重新加载。</p>
+              <button class="checkout-button" type="button" data-qr-reload>重新加载二维码</button>
+            </div>
+          </section>
+
+          <button class="checkout-button checkout-button--quiet checkout-manual-refresh" type="button" data-checkout-refresh${hiddenAttribute(!manualRefreshVisible)}>
+            <span data-checkout-refresh-label>立即检查支付状态</span>
+          </button>
+
+          <div class="checkout-code-actions"${hiddenAttribute(!qrVisible)}>
+            <button class="checkout-button" type="button" data-qr-expand>放大二维码</button>
             <a class="checkout-button checkout-button--primary"${linkHrefAttribute(input.qrImageUrl)} download="perpay-collection-code.svg" data-qr-download>保存图片</a>
           </div>
-        </section>
+
+          <div class="checkout-exact-note checkout-exact-note--mobile checkout-alert checkout-alert--info" data-payment-guidance${hiddenAttribute(!qrVisible)}>
+            <div class="checkout-message-body">
+              <h2>金额必须完全一致</h2>
+              <p>请按二维码下方金额付款。金额不同将无法自动确认。</p>
+            </div>
+          </div>
+        </div>
+
+        <dl class="checkout-order-details">
+          <div>
+            <dt>订单号</dt>
+            <dd class="checkout-mono" data-merchant-order-no>${escapeHtml(checkout?.merchantOrderNo ?? "-")}</dd>
+          </div>
+          <div data-description-row${hiddenAttribute(checkout?.description === null || checkout?.description === undefined)}>
+            <dt>订单说明</dt>
+            <dd data-description>${escapeHtml(checkout?.description ?? "")}</dd>
+          </div>
+          <div>
+            <dt>原始金额</dt>
+            <dd class="checkout-mono" data-requested-amount>${checkout === null ? "-" : formatMoney(checkout.requestedAmountCents, checkout.currency)}</dd>
+          </div>
+        </dl>
       </div>
 
       <div class="checkout-refund checkout-alert ${refundMessage.className}" data-refund-message role="status"${hiddenAttribute(refundMessage.text === null)}>
@@ -304,9 +330,6 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
             <h2 id="evidence-title">付款确认进度</h2>
             <p>本页只显示服务器已经确认的结果</p>
           </div>
-          <button class="checkout-button checkout-button--quiet" type="button" data-checkout-refresh${hiddenAttribute(checkout === null || !["UNPAID", "UNAVAILABLE"].includes(visualState))}>
-            <span data-checkout-refresh-label>立即检查支付状态</span>
-          </button>
         </div>
         <ol class="checkout-evidence-track">
           ${renderEvidenceStep("payment", "付款", evidence.payment)}
@@ -325,10 +348,10 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
 
   <dialog class="checkout-code-dialog" data-qr-dialog aria-labelledby="expanded-code-title">
     <div class="checkout-dialog-header">
-      <h2 id="expanded-code-title">经营码</h2>
+      <h2 id="expanded-code-title"><img src="${CHECKOUT_PAGE_ASSETS.alipayIcon}" width="28" height="28" alt="" aria-hidden="true">支付宝付款</h2>
       <button class="checkout-button" type="button" data-qr-dialog-close>关闭</button>
     </div>
-    <img ${imageSourceAttributes(input.qrImageUrl, qrVisible)} width="640" height="640" alt="放大的经营码" data-qr-dialog-image>
+    <img ${imageSourceAttributes(input.qrImageUrl, qrVisible)} width="640" height="640" alt="放大的支付宝付款二维码" data-qr-dialog-image>
     <p>请按页面显示的准确金额付款</p>
   </dialog>
 </body>

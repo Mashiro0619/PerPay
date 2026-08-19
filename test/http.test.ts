@@ -1502,6 +1502,13 @@ describe("order HTTP contract", () => {
       assert.equal(stylesheet.status, 200);
       assert.equal(stylesheet.headers.get("cache-control"), "public, max-age=31536000, immutable");
       assert.ok(stylesheet.headers.get("etag"));
+      const alipayIcon = await app.request(WEB_ASSET_URLS.alipayIcon);
+      assert.equal(alipayIcon.status, 200);
+      assert.equal(alipayIcon.headers.get("content-type"), "image/png");
+      assert.deepEqual(
+        [...new Uint8Array(await alipayIcon.arrayBuffer()).slice(0, 8)],
+        [137, 80, 78, 71, 13, 10, 26, 10],
+      );
       const notModified = await app.request(
         WEB_ASSET_URLS.checkoutStylesheet,
         { headers: { "if-none-match": stylesheet.headers.get("etag")! } },

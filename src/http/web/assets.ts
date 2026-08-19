@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 export interface WebAsset {
-  readonly body: string;
+  readonly body: string | Uint8Array<ArrayBuffer>;
   readonly contentType: string;
   readonly etag: string;
 }
@@ -31,6 +31,7 @@ function staticAsset(fileName: string, contentType: string): AssetSource {
 
 const sources = Object.freeze({
   adminScript: generatedAsset("admin.js", "text/javascript; charset=utf-8"),
+  alipayIcon: staticAsset("alipay.png", "image/png"),
   checkoutStylesheet: staticAsset("checkout.css", "text/css; charset=utf-8"),
   checkoutScript: staticAsset("checkout.js", "text/javascript; charset=utf-8"),
 });
@@ -42,6 +43,7 @@ function contentAddress(source: AssetSource): string {
 
 export const WEB_ASSET_URLS = Object.freeze({
   adminScript: contentAddress(sources.adminScript),
+  alipayIcon: contentAddress(sources.alipayIcon),
   checkoutStylesheet: contentAddress(sources.checkoutStylesheet),
   checkoutScript: contentAddress(sources.checkoutScript),
 });
@@ -53,7 +55,9 @@ const assets = new Map<string, WebAsset>(
     return [
       WEB_ASSET_URLS[key],
       Object.freeze({
-        body: source.bytes.toString("utf8"),
+        body: source.contentType.startsWith("text/")
+          ? source.bytes.toString("utf8")
+          : Uint8Array.from(source.bytes),
         contentType: source.contentType,
         etag: `"${digest}"`,
       }),
