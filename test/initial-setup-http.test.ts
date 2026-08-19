@@ -8,6 +8,7 @@ import { loadConfig } from "../src/config.ts";
 import { AppDatabase } from "../src/database/database.ts";
 import { AUTH_FAILURE_THRESHOLD } from "../src/database/identity-store.ts";
 import { createApp } from "../src/http/app.ts";
+import { WEB_ASSET_URLS } from "../src/http/web/assets.ts";
 import { IdentityService } from "../src/identity/service.ts";
 import { OrderService } from "../src/orders/service.ts";
 import { RuntimeSettingsService, RuntimeSettingsStore } from "../src/settings/index.ts";
@@ -27,8 +28,8 @@ describe("first-run administrator HTTP flow", () => {
       const setupPage = await fixture.app.request("/admin/setup");
       assert.equal(setupPage.status, 200);
       const setupHtml = await setupPage.text();
-      assert.match(setupHtml, /id="setup-password"/);
-      assert.match(setupHtml, /id="setup-password-confirmation"/);
+      assert.match(setupHtml, /id="perpay-admin-root" data-mode="setup"/);
+      assert.ok(setupHtml.includes(WEB_ASSET_URLS.adminScript));
       assert.doesNotMatch(setupHtml, /setup-code|setup-token|设置码|验证码/i);
 
       const unexpectedField = await fixture.app.request("/api/admin/v1/setup", {

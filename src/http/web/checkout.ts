@@ -2,7 +2,6 @@ import type { PublicCheckoutProjection } from "../../orders/model.ts";
 import { WEB_ASSET_URLS } from "./assets.ts";
 
 export const CHECKOUT_PAGE_ASSETS = Object.freeze({
-  usuzumiStylesheet: WEB_ASSET_URLS.usuzumiStylesheet,
   checkoutStylesheet: WEB_ASSET_URLS.checkoutStylesheet,
   checkoutScript: WEB_ASSET_URLS.checkoutScript,
 });
@@ -51,43 +50,43 @@ const STATE_COPY: Readonly<Record<CheckoutVisualState, StateCopy>> = Object.free
     badge: "付款已确认",
     heading: "付款已确认",
     detail: "订单已经完成确认，无需再次付款。",
-    badgeClass: "uzu-badge-success",
+    badgeClass: "is-success",
   },
   DISPUTED: {
     badge: "付款有争议",
     heading: "付款关联需要处理",
     detail: "这笔付款的关联存在争议，请联系订单提供方处理，勿再次付款。",
-    badgeClass: "uzu-badge-danger",
+    badgeClass: "is-danger",
   },
   CLOSED: {
     badge: "订单已关闭",
     heading: "订单已关闭",
     detail: "此订单不再收款，请勿扫描或再次付款。",
-    badgeClass: "uzu-badge-warning",
+    badgeClass: "is-warning",
   },
   EXPIRED: {
     badge: "订单已过期",
     heading: "订单已过期",
     detail: "付款时间已经结束，请返回订单提供方重新创建订单。",
-    badgeClass: "uzu-badge-warning",
+    badgeClass: "is-warning",
   },
   NOT_FOUND: {
     badge: "订单不可用",
     heading: "找不到这个订单",
     detail: "链接可能不完整、已经失效，或订单的查询期限已经结束。",
-    badgeClass: "uzu-badge-danger",
+    badgeClass: "is-danger",
   },
   RATE_LIMITED: {
     badge: "正在等待刷新",
     heading: "请求过于频繁",
     detail: "页面会在稍后自动重新获取订单状态，也可以手动重试。",
-    badgeClass: "uzu-badge-warning",
+    badgeClass: "is-warning",
   },
   UNAVAILABLE: {
     badge: "收款暂不可用",
     heading: "暂时无法确认付款",
     detail: "自动确认服务尚未就绪，请暂勿付款。页面会自动重试。",
-    badgeClass: "uzu-badge-warning",
+    badgeClass: "is-warning",
   },
 });
 
@@ -162,25 +161,24 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
   const retryAfter = input.initialError?.retryAfterSeconds;
 
   return `<!doctype html>
-<html class="uzu-root" lang="zh-CN">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <meta name="robots" content="noindex, nofollow, noarchive">
   <title>${escapeHtml(title)}</title>
-  <link rel="stylesheet" href="${CHECKOUT_PAGE_ASSETS.usuzumiStylesheet}">
   <link rel="stylesheet" href="${CHECKOUT_PAGE_ASSETS.checkoutStylesheet}">
   <script src="${CHECKOUT_PAGE_ASSETS.checkoutScript}" defer></script>
 </head>
-<body class="uzu-app checkout-page">
+<body class="checkout-page">
   <a class="checkout-skip-link" href="#checkout-main">跳到付款内容</a>
   <header class="checkout-masthead">
     <span class="checkout-brand">PerPay</span>
     <span class="checkout-masthead-label">收银台</span>
   </header>
 
-  <div class="checkout-network-banner uzu-alert uzu-alert-warning" data-network-banner role="status" aria-live="polite" hidden></div>
+  <div class="checkout-network-banner checkout-alert checkout-alert--warning" data-network-banner role="status" aria-live="polite" hidden></div>
 
   <main
     class="checkout-shell"
@@ -197,29 +195,29 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
     data-expires-at="${checkout === null ? "" : new Date(checkout.checkout.expiresAt).toISOString()}"
     data-retry-after-seconds="${retryAfter ?? ""}"
   >
-    <section class="uzu-error-page uzu-error-page-screen checkout-route-error" data-route-error${hiddenAttribute(!routeErrorVisible)} aria-labelledby="route-error-title" role="alert" aria-live="assertive" aria-atomic="true" tabindex="-1">
-      <p class="uzu-error-page-code checkout-route-code uzu-mono" data-route-error-code>${input.initialError?.status ?? ""}</p>
+    <section class="checkout-route-error" data-route-error${hiddenAttribute(!routeErrorVisible)} aria-labelledby="route-error-title" role="alert" aria-live="assertive" aria-atomic="true" tabindex="-1">
+      <p class="checkout-route-code checkout-mono" data-route-error-code>${input.initialError?.status ?? ""}</p>
       <h1 id="route-error-title" data-route-error-title tabindex="-1">${escapeHtml(stateCopy.heading)}</h1>
       <p data-route-error-message>${escapeHtml(stateCopy.detail)}</p>
-      <div class="uzu-error-page-actions">
-        <button class="uzu-button uzu-button-primary" type="button" data-checkout-retry${hiddenAttribute(input.initialError?.status === 404)}>重新获取订单</button>
+      <div class="checkout-route-actions">
+        <button class="checkout-button checkout-button--primary" type="button" data-checkout-retry${hiddenAttribute(input.initialError?.status === 404)}>重新获取订单</button>
       </div>
-      <p class="checkout-request-reference uzu-muted" data-request-reference${hiddenAttribute(input.initialError === null)}>
-        错误代码：<span class="uzu-mono">${escapeHtml(input.initialError?.code ?? "")}</span>
+      <p class="checkout-request-reference checkout-muted" data-request-reference${hiddenAttribute(input.initialError === null)}>
+        错误代码：<span class="checkout-mono">${escapeHtml(input.initialError?.code ?? "")}</span>
       </p>
     </section>
 
-    <article class="uzu-card checkout-receipt" data-checkout-content${hiddenAttribute(!checkoutVisible)} aria-labelledby="checkout-title">
+    <article class="checkout-receipt" data-checkout-content${hiddenAttribute(!checkoutVisible)} aria-labelledby="checkout-title">
       <header class="checkout-statebar">
-        <span class="checkout-state-badge uzu-badge ${stateCopy.badgeClass}" data-status-badge>${escapeHtml(stateCopy.badge)}</span>
+        <span class="checkout-state-badge ${stateCopy.badgeClass}" data-status-badge>${escapeHtml(stateCopy.badge)}</span>
         <div class="checkout-countdown" data-countdown-wrap${hiddenAttribute(visualState !== "UNPAID")}>
           <span>付款时间</span>
-          <time class="uzu-mono" data-countdown datetime="${checkout === null ? "" : new Date(checkout.checkout.expiresAt).toISOString()}">--:--</time>
+          <time class="checkout-mono" data-countdown datetime="${checkout === null ? "" : new Date(checkout.checkout.expiresAt).toISOString()}">--:--</time>
         </div>
       </header>
 
-      <div class="checkout-service-alert uzu-alert uzu-alert-warning" data-service-alert role="status"${hiddenAttribute(input.initialError?.status !== 503)}>
-        <div class="uzu-title-pair">
+      <div class="checkout-service-alert checkout-alert checkout-alert--warning" data-service-alert role="status"${hiddenAttribute(input.initialError?.status !== 503)}>
+        <div class="checkout-message-body">
           <h2>暂时无法确认付款</h2>
           <p>自动确认服务尚未就绪，请暂勿付款。页面会自动重试。</p>
         </div>
@@ -235,15 +233,15 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
           <div class="checkout-amount-block" data-amount-block>
             <p class="checkout-amount-label" data-amount-label>${escapeHtml(amountLabel)}</p>
             <p class="checkout-amount ${amountLengthClass}">
-              <span class="uzu-sr-only" data-amount-accessible>${formatAmountAccessible(displayedAmountCents, amountLabel)}</span>
+              <span class="checkout-sr-only" data-amount-accessible>${formatAmountAccessible(displayedAmountCents, amountLabel)}</span>
               <span class="checkout-currency" aria-hidden="true">¥</span>
-              <strong class="uzu-mono" data-payable-amount aria-hidden="true">${formattedAmount}</strong>
+              <strong class="checkout-mono" data-payable-amount aria-hidden="true">${formattedAmount}</strong>
               <span class="checkout-currency-code" aria-hidden="true">CNY</span>
             </p>
           </div>
 
-          <div class="checkout-exact-note uzu-alert uzu-alert-info" data-payment-guidance${hiddenAttribute(!qrVisible)}>
-            <div class="uzu-title-pair">
+          <div class="checkout-exact-note checkout-alert checkout-alert--info" data-payment-guidance${hiddenAttribute(!qrVisible)}>
+            <div class="checkout-message-body">
               <h2>金额必须完全一致</h2>
               <p>请按上方金额付款。金额不同将无法自动确认。</p>
             </div>
@@ -252,7 +250,7 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
           <dl class="checkout-order-details">
             <div>
               <dt>订单号</dt>
-              <dd class="uzu-mono" data-merchant-order-no>${escapeHtml(checkout?.merchantOrderNo ?? "-")}</dd>
+              <dd class="checkout-mono" data-merchant-order-no>${escapeHtml(checkout?.merchantOrderNo ?? "-")}</dd>
             </div>
             <div data-description-row${hiddenAttribute(checkout?.description === null || checkout?.description === undefined)}>
               <dt>订单说明</dt>
@@ -260,7 +258,7 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
             </div>
             <div>
               <dt>原始金额</dt>
-              <dd class="uzu-mono" data-requested-amount>${checkout === null ? "-" : formatMoney(checkout.requestedAmountCents, checkout.currency)}</dd>
+              <dd class="checkout-mono" data-requested-amount>${checkout === null ? "-" : formatMoney(checkout.requestedAmountCents, checkout.currency)}</dd>
             </div>
           </dl>
         </section>
@@ -281,20 +279,20 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
             >
             <figcaption>付款前请再次核对金额</figcaption>
           </figure>
-          <div class="checkout-code-error uzu-error-state" data-qr-error role="alert" hidden>
+          <div class="checkout-code-error checkout-inline-error" data-qr-error role="alert" hidden>
             <strong>经营码加载失败</strong>
             <p>请检查网络连接后重新加载。</p>
-            <button class="uzu-button" type="button" data-qr-reload>重新加载经营码</button>
+            <button class="checkout-button" type="button" data-qr-reload>重新加载经营码</button>
           </div>
           <div class="checkout-code-actions">
-            <button class="uzu-button" type="button" data-qr-expand>放大经营码</button>
-            <a class="uzu-button uzu-button-primary"${linkHrefAttribute(input.qrImageUrl)} download="perpay-collection-code.svg" data-qr-download>保存图片</a>
+            <button class="checkout-button" type="button" data-qr-expand>放大经营码</button>
+            <a class="checkout-button checkout-button--primary"${linkHrefAttribute(input.qrImageUrl)} download="perpay-collection-code.svg" data-qr-download>保存图片</a>
           </div>
         </section>
       </div>
 
-      <div class="checkout-refund uzu-alert ${refundMessage.className}" data-refund-message role="status"${hiddenAttribute(refundMessage.text === null)}>
-        <div class="uzu-title-pair">
+      <div class="checkout-refund checkout-alert ${refundMessage.className}" data-refund-message role="status"${hiddenAttribute(refundMessage.text === null)}>
+        <div class="checkout-message-body">
           <h2 data-refund-title>${escapeHtml(refundMessage.title)}</h2>
           <p data-refund-detail>${escapeHtml(refundMessage.text ?? "")}</p>
         </div>
@@ -312,18 +310,18 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
         </ol>
       </section>
 
-      <div class="checkout-update-message uzu-alert" data-update-message role="status" aria-live="polite" hidden></div>
+      <div class="checkout-update-message checkout-alert" data-update-message role="status" aria-live="polite" hidden></div>
     </article>
   </main>
 
-  <footer class="uzu-footer checkout-footer">
+  <footer class="checkout-footer">
     <p>${escapeHtml(footerCopy)}</p>
   </footer>
 
-  <dialog class="uzu-modal checkout-code-dialog" data-qr-dialog aria-labelledby="expanded-code-title">
-    <div class="uzu-dialog-header checkout-dialog-header">
+  <dialog class="checkout-code-dialog" data-qr-dialog aria-labelledby="expanded-code-title">
+    <div class="checkout-dialog-header">
       <h2 id="expanded-code-title">经营码</h2>
-      <button class="uzu-button" type="button" data-qr-dialog-close>关闭</button>
+      <button class="checkout-button" type="button" data-qr-dialog-close>关闭</button>
     </div>
     <img ${imageSourceAttributes(input.qrImageUrl, qrVisible)} width="640" height="640" alt="放大的经营码" data-qr-dialog-image>
     <p>请按页面显示的准确金额付款</p>
@@ -372,14 +370,14 @@ function refundCopy(checkout: PublicCheckoutProjection | null): {
     return {
       title: "款项已全额退款",
       text: "此订单的已收款项已登记为全额退款。",
-      className: "uzu-alert-info",
+      className: "checkout-alert--info",
     };
   }
   if (checkout?.refund.status === "PARTIAL") {
     return {
       title: "款项已部分退款",
       text: "此订单已有部分退款，具体金额请联系订单提供方确认。",
-      className: "uzu-alert-info",
+      className: "checkout-alert--info",
     };
   }
   return { title: "", text: null, className: "" };

@@ -5,34 +5,36 @@ import { renderAdminPage } from "../src/http/web/admin.ts";
 import { WEB_ASSET_URLS } from "../src/http/web/assets.ts";
 
 describe("admin page renderer", () => {
-  it("uses a POST fallback for credentials and only same-origin external scripts", () => {
-    const html = renderAdminPage("login");
+  it("renders a minimal same-origin React entry with the CSP nonce", () => {
+    const html = renderAdminPage("login", "unique-nonce-value");
 
-    assert.match(
-      html,
-      /<form[^>]*id="login-form"[^>]*action="\/api\/admin\/v1\/session\/login"[^>]*method="post"/,
-    );
+    assert.match(html, /id="perpay-admin-root" data-mode="login"/);
+    assert.match(html, /<meta name="csp-nonce" content="unique-nonce-value">/);
     assert.match(html, new RegExp(`src="${escapeRegExp(WEB_ASSET_URLS.adminScript)}" defer`));
     assert.doesNotMatch(html, /<script(?![^>]*\bsrc=)[^>]*>/i);
     assert.doesNotMatch(html, /\son[a-z]+=/i);
+    assert.doesNotMatch(html, /\sstyle=/i);
   });
 
-  it("renders the application shell separately from the login form", () => {
-    const html = renderAdminPage("application");
+  it("selects the application shell without server-rendering credentials", () => {
+    const html = renderAdminPage("application", "application-nonce");
 
-    assert.match(html, /data-perpay-admin-page="application"/);
-    assert.match(html, /id="admin-main"/);
-    assert.match(html, /id="step-up-dialog"/);
-    assert.doesNotMatch(html, /id="login-form"/);
+    assert.match(html, /data-mode="application"/);
+    assert.doesNotMatch(html, /name="password"|autocomplete="current-password"/);
   });
 
-  it("renders first-time password setup without a setup code or username", () => {
-    const html = renderAdminPage("setup");
+  it("selects first-time password setup without a setup code or username", () => {
+    const html = renderAdminPage("setup", "setup-nonce");
 
-    assert.match(html, /data-perpay-admin-page="setup"/);
-    assert.match(html, /id="setup-password"/);
-    assert.match(html, /id="setup-password-confirmation"/);
+    assert.match(html, /data-mode="setup"/);
     assert.doesNotMatch(html, /setup-code|setup-token|login-username/i);
+  });
+
+  it("escapes a nonce before placing it in HTML", () => {
+    const html = renderAdminPage("login", `nonce\"><script>`);
+
+    assert.match(html, /content="nonce&quot;&gt;&lt;script&gt;"/);
+    assert.doesNotMatch(html, /<meta[^>]+><script>/);
   });
 });
 

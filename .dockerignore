@@ -5,6 +5,7 @@
 a/
 node_modules/
 dist/
+web-dist/
 coverage/
 data/
 backups/

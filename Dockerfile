@@ -9,8 +9,10 @@ COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 
 FROM dependencies AS build
-COPY tsconfig.json tsconfig.build.json ./
+COPY tsconfig.json tsconfig.build.json tsconfig.web.json ./
+COPY scripts/build-web.mjs ./scripts/build-web.mjs
 COPY src ./src
+COPY web ./web
 RUN npm run build && npm prune --omit=dev --ignore-scripts
 
 FROM ${NODE_IMAGE} AS runtime
@@ -29,6 +31,7 @@ ENV NODE_ENV=production \
 
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
+COPY --from=build --chown=node:node /app/web-dist ./web-dist
 COPY --chown=node:node static ./static
 COPY --chown=node:node package.json ./package.json
 COPY --chown=node:node LICENSE NOTICE ./

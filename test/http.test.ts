@@ -1428,11 +1428,11 @@ describe("order HTTP contract", () => {
       assert.match(checkoutPage.headers.get("content-type") ?? "", /^text\/html/);
       assert.match(
         checkoutPage.headers.get("content-security-policy") ?? "",
-        /script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'/,
+        /script-src 'self'; style-src-elem 'self' 'nonce-[A-Za-z0-9+/=]+'; style-src-attr 'none'; connect-src 'self'; img-src 'self'/,
       );
       const checkoutHtml = await checkoutPage.text();
       assert.match(checkoutHtml, /data-payable-amount[^>]*>10\.01<\/strong>/);
-      assert.ok(checkoutHtml.includes(WEB_ASSET_URLS.usuzumiStylesheet));
+      assert.ok(checkoutHtml.includes(WEB_ASSET_URLS.checkoutStylesheet));
       assert.match(checkoutHtml, /\/api\/public\/v1\/checkouts\/[^" ]+\/qr\.svg/);
       assert.equal(checkoutHtml.includes(collectionCodePayload), false);
       assert.doesNotMatch(checkoutHtml, /<script(?![^>]*\bsrc=)[^>]*>/i);
@@ -1449,16 +1449,21 @@ describe("order HTTP contract", () => {
       const adminPage = await app.request("/admin");
       assert.equal(adminPage.status, 200);
       const adminHtml = await adminPage.text();
-      assert.match(adminHtml, /data-perpay-admin-page="application"/);
+      assert.match(adminHtml, /id="perpay-admin-root" data-mode="application"/);
       assert.ok(adminHtml.includes(WEB_ASSET_URLS.adminScript));
+      const adminNonce = /<meta name="csp-nonce" content="([A-Za-z0-9+/=]+)">/.exec(adminHtml)?.[1];
+      assert.ok(adminNonce);
+      assert.ok(
+        adminPage.headers.get("content-security-policy")?.includes(`'nonce-${adminNonce}'`),
+      );
       assert.doesNotMatch(adminHtml, /<script(?![^>]*\bsrc=)[^>]*>/i);
 
-      const stylesheet = await app.request(WEB_ASSET_URLS.usuzumiStylesheet);
+      const stylesheet = await app.request(WEB_ASSET_URLS.checkoutStylesheet);
       assert.equal(stylesheet.status, 200);
       assert.equal(stylesheet.headers.get("cache-control"), "public, max-age=31536000, immutable");
       assert.ok(stylesheet.headers.get("etag"));
       const notModified = await app.request(
-        WEB_ASSET_URLS.usuzumiStylesheet,
+        WEB_ASSET_URLS.checkoutStylesheet,
         { headers: { "if-none-match": stylesheet.headers.get("etag")! } },
       );
       assert.equal(notModified.status, 304);

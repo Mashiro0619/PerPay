@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import type { HttpBindings } from "@hono/node-server";
 import { getConnInfo } from "@hono/node-server/conninfo";
@@ -134,6 +134,7 @@ type AppEnvironment = {
     adminSession: AuthenticatedSession;
     apiRawBody: Buffer;
     apiClientId: string;
+    cspNonce: string;
   };
 };
 
@@ -278,6 +279,8 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const supplied = context.req.header("x-request-id");
     const requestId = supplied && /^[A-Za-z0-9._-]{1,128}$/.test(supplied) ? supplied : randomUUID();
     context.set("requestId", requestId);
+    const cspNonce = randomBytes(18).toString("base64");
+    context.set("cspNonce", cspNonce);
     context.header("x-request-id", requestId);
     context.header("x-content-type-options", "nosniff");
     context.header("referrer-policy", "no-referrer");
@@ -287,7 +290,8 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     context.header("cross-origin-opener-policy", "same-origin");
     context.header(
       "content-security-policy",
-      "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; " +
+      `default-src 'none'; script-src 'self'; style-src-elem 'self' 'nonce-${cspNonce}'; ` +
+        "style-src-attr 'none'; connect-src 'self'; " +
         "img-src 'self'; font-src 'self'; object-src 'none'; frame-ancestors 'none'; " +
         "base-uri 'none'; form-action 'self'; worker-src 'none'",
     );
@@ -362,19 +366,19 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     context.redirect(dependencies.identity.isInitialized() ? "/admin" : "/admin/setup", 302));
   app.get("/admin/setup", (context) => {
     if (dependencies.identity.isInitialized()) return context.redirect("/admin/login", 302);
-    return context.html(renderAdminPage("setup"));
+    return context.html(renderAdminPage("setup", context.get("cspNonce")));
   });
   app.get("/admin/login", (context) => {
     if (!dependencies.identity.isInitialized()) return context.redirect("/admin/setup", 302);
-    return context.html(renderAdminPage("login"));
+    return context.html(renderAdminPage("login", context.get("cspNonce")));
   });
   app.get("/admin", (context) => {
     if (!dependencies.identity.isInitialized()) return context.redirect("/admin/setup", 302);
-    return context.html(renderAdminPage("application"));
+    return context.html(renderAdminPage("application", context.get("cspNonce")));
   });
   app.get("/admin/*", (context) => {
     if (!dependencies.identity.isInitialized()) return context.redirect("/admin/setup", 302);
-    return context.html(renderAdminPage("application"));
+    return context.html(renderAdminPage("application", context.get("cspNonce")));
   });
 
   app.get("/checkout/:token", (context) => {

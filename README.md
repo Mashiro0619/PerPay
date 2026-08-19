@@ -69,7 +69,7 @@ npm ci --ignore-scripts
 npm run check
 ```
 
-技术栈：Node.js 24 LTS、Hono、TypeScript、`node:sqlite`、Usuzumi。
+技术栈：Node.js 24 LTS、Hono、TypeScript、`node:sqlite`、React、Material UI。
 
 ## 许可证
 

@@ -34,25 +34,25 @@
       badge: "付款已确认",
       heading: "付款已确认",
       detail: "订单已经完成确认，无需再次付款。",
-      badgeClass: "uzu-badge-success",
+      badgeClass: "is-success",
     }),
     DISPUTED: Object.freeze({
       badge: "付款有争议",
       heading: "付款关联需要处理",
       detail: "这笔付款的关联存在争议，请联系订单提供方处理，勿再次付款。",
-      badgeClass: "uzu-badge-danger",
+      badgeClass: "is-danger",
     }),
     CLOSED: Object.freeze({
       badge: "订单已关闭",
       heading: "订单已关闭",
       detail: "此订单不再收款，请勿扫描或再次付款。",
-      badgeClass: "uzu-badge-warning",
+      badgeClass: "is-warning",
     }),
     EXPIRED: Object.freeze({
       badge: "订单已过期",
       heading: "订单已过期",
       detail: "付款时间已经结束，请返回订单提供方重新创建订单。",
-      badgeClass: "uzu-badge-warning",
+      badgeClass: "is-warning",
     }),
   });
 
@@ -259,7 +259,7 @@
         badge: "收款暂不可用",
         heading: "暂时无法确认付款",
         detail: "自动确认服务尚未就绪，请暂勿付款。页面会自动重试。",
-        badgeClass: "uzu-badge-warning",
+        badgeClass: "is-warning",
       });
       const qrDialogWasOpen = deactivateQr();
       setHidden(qrPanel, true);
@@ -363,7 +363,7 @@
     const badge = root.querySelector("[data-status-badge]");
     if (badge instanceof HTMLElement) {
       badge.textContent = copy.badge;
-      badge.classList.remove("uzu-badge-success", "uzu-badge-warning", "uzu-badge-danger");
+      badge.classList.remove("is-success", "is-warning", "is-danger");
       if (copy.badgeClass) badge.classList.add(copy.badgeClass);
     }
     setText(root.querySelector("[data-status-heading]"), copy.heading);
@@ -374,13 +374,13 @@
   function updateRefund(refundStatus) {
     const refundMessage = root.querySelector("[data-refund-message]");
     if (!(refundMessage instanceof HTMLElement)) return;
-    refundMessage.classList.remove("uzu-alert-info");
+    refundMessage.classList.remove("checkout-alert--info");
     if (refundStatus === "NONE") {
       refundMessage.hidden = true;
       return;
     }
     refundMessage.hidden = false;
-    refundMessage.classList.add("uzu-alert-info");
+    refundMessage.classList.add("checkout-alert--info");
     setText(
       refundMessage.querySelector("[data-refund-title]"),
       refundStatus === "FULL" ? "款项已全额退款" : "款项已部分退款",
@@ -475,7 +475,7 @@
     setText(routeError?.querySelector("[data-route-error-title]"), title);
     setText(routeError?.querySelector("[data-route-error-message]"), message);
     setText(routeError?.querySelector("[data-route-error-code]"), code === "checkout_not_found" ? "404" : "");
-    setText(routeError?.querySelector("[data-request-reference] .uzu-mono"), code);
+    setText(routeError?.querySelector("[data-request-reference] .checkout-mono"), code);
     setHidden(routeError?.querySelector("[data-request-reference]"), !code);
     setHidden(retryButton, !retryable);
     if (shouldMoveFocus) {
@@ -492,29 +492,32 @@
     if (!(networkBanner instanceof HTMLElement)) return;
     networkBanner.hidden = false;
     networkBanner.textContent = message;
-    networkBanner.classList.toggle("is-danger", danger);
-    networkBanner.classList.toggle("uzu-alert-danger", danger);
-    networkBanner.classList.toggle("uzu-alert-warning", !danger);
+    networkBanner.classList.toggle("checkout-alert--danger", danger);
+    networkBanner.classList.toggle("checkout-alert--warning", !danger);
   }
 
   function hideNetworkMessage() {
     if (!(networkBanner instanceof HTMLElement)) return;
     networkBanner.hidden = true;
     networkBanner.textContent = "";
-    networkBanner.classList.remove("is-danger");
-    networkBanner.classList.remove("uzu-alert-danger");
-    networkBanner.classList.add("uzu-alert-warning");
+    networkBanner.classList.remove("checkout-alert--danger");
+    networkBanner.classList.add("checkout-alert--warning");
   }
 
   function showUpdateMessage(message, tone) {
     const update = root.querySelector("[data-update-message]");
     if (!(update instanceof HTMLElement)) return;
-    update.classList.remove("uzu-alert-success", "uzu-alert-warning", "uzu-alert-danger", "uzu-alert-info");
+    update.classList.remove(
+      "checkout-alert--success",
+      "checkout-alert--warning",
+      "checkout-alert--danger",
+      "checkout-alert--info",
+    );
     const toneClass = {
-      success: "uzu-alert-success",
-      warning: "uzu-alert-warning",
-      danger: "uzu-alert-danger",
-      info: "uzu-alert-info",
+      success: "checkout-alert--success",
+      warning: "checkout-alert--warning",
+      danger: "checkout-alert--danger",
+      info: "checkout-alert--info",
     }[tone];
     if (toneClass) update.classList.add(toneClass);
     update.textContent = message;

@@ -11,53 +11,36 @@ interface AssetSource {
   readonly bytes: Buffer;
   readonly contentType: string;
   readonly fileName: string;
-  readonly namespace: "app" | "vendor/usuzumi";
 }
 
-function vendorAsset(specifier: string, fileName: string, contentType: string): AssetSource {
+function generatedAsset(fileName: string, contentType: string): AssetSource {
   return {
-    bytes: readFileSync(new URL(import.meta.resolve(specifier))),
+    bytes: readFileSync(new URL(`../../../web-dist/${fileName}`, import.meta.url)),
     contentType,
     fileName,
-    namespace: "vendor/usuzumi",
   };
 }
 
-function applicationAsset(fileName: string, contentType: string): AssetSource {
+function staticAsset(fileName: string, contentType: string): AssetSource {
   return {
     bytes: readFileSync(new URL(`../../../static/app/${fileName}`, import.meta.url)),
     contentType,
     fileName,
-    namespace: "app",
   };
 }
 
 const sources = Object.freeze({
-  usuzumiStylesheet: vendorAsset(
-    "usuzumi/usuzumi.min.css",
-    "usuzumi.min.css",
-    "text/css; charset=utf-8",
-  ),
-  usuzumiScript: vendorAsset(
-    "usuzumi/usuzumi-core.min.js",
-    "usuzumi-core.min.js",
-    "text/javascript; charset=utf-8",
-  ),
-  adminStylesheet: applicationAsset("admin.css", "text/css; charset=utf-8"),
-  adminScript: applicationAsset("admin.js", "text/javascript; charset=utf-8"),
-  checkoutStylesheet: applicationAsset("checkout.css", "text/css; charset=utf-8"),
-  checkoutScript: applicationAsset("checkout.js", "text/javascript; charset=utf-8"),
+  adminScript: generatedAsset("admin.js", "text/javascript; charset=utf-8"),
+  checkoutStylesheet: staticAsset("checkout.css", "text/css; charset=utf-8"),
+  checkoutScript: staticAsset("checkout.js", "text/javascript; charset=utf-8"),
 });
 
 function contentAddress(source: AssetSource): string {
   const digest = createHash("sha256").update(source.bytes).digest("hex");
-  return `/assets/${source.namespace}/${digest}/${source.fileName}`;
+  return `/assets/app/${digest}/${source.fileName}`;
 }
 
 export const WEB_ASSET_URLS = Object.freeze({
-  usuzumiStylesheet: contentAddress(sources.usuzumiStylesheet),
-  usuzumiScript: contentAddress(sources.usuzumiScript),
-  adminStylesheet: contentAddress(sources.adminStylesheet),
   adminScript: contentAddress(sources.adminScript),
   checkoutStylesheet: contentAddress(sources.checkoutStylesheet),
   checkoutScript: contentAddress(sources.checkoutScript),

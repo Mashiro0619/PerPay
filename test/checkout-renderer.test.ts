@@ -48,7 +48,8 @@ describe("public checkout renderer", () => {
     assert.match(html, /付款后请停留在本页/);
     assert.match(html, /data-checkout-api-url="\/api\/public\/v1\/checkouts\/pct1_test-token"/);
     assert.match(html, /data-checkout-qr-url="\/api\/public\/v1\/checkouts\/pct1_test-token\/qr\.svg"/);
-    assert.match(html, new RegExp(`href="${escapeRegExp(CHECKOUT_PAGE_ASSETS.usuzumiStylesheet)}"`));
+    assert.match(html, new RegExp(`href="${escapeRegExp(CHECKOUT_PAGE_ASSETS.checkoutStylesheet)}"`));
+    assert.equal((html.match(/<link rel="stylesheet"/g) ?? []).length, 1);
     assert.match(html, new RegExp(`src="${escapeRegExp(CHECKOUT_PAGE_ASSETS.checkoutScript)}" defer`));
     assert.doesNotMatch(html, /<script(?![^>]*\bsrc=)[^>]*>/i);
     assert.doesNotMatch(html, /\sstyle=/i);

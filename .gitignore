@@ -8,6 +8,7 @@
 # Build output and local tooling
 node_modules/
 dist/
+web-dist/
 coverage/
 *.log
 .idea/
