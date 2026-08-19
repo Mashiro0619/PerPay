@@ -1,54 +1,204 @@
-import { createTheme, type PaletteMode } from "@mui/material/styles";
+import { alpha, createTheme, type PaletteMode } from "@mui/material/styles";
+
+const UI_FONT = [
+  '"Microsoft YaHei UI"',
+  '"Microsoft YaHei"',
+  '"Noto Sans CJK SC"',
+  '"Source Han Sans SC"',
+  '"PingFang SC"',
+  "system-ui",
+  "sans-serif",
+].join(", ");
 
 export function createAdminTheme(mode: PaletteMode) {
   const dark = mode === "dark";
+  const primary = dark ? "#91b4ff" : "#245fca";
+  const divider = dark ? "#343a43" : "#dce1e7";
+  const paper = dark ? "#1a1d22" : "#ffffff";
+
   return createTheme({
     palette: {
       mode,
-      primary: { main: dark ? "#8ab4f8" : "#1f5fae" },
-      success: { main: dark ? "#78c895" : "#247a45" },
-      warning: { main: dark ? "#f5c56b" : "#9a5b00" },
-      error: { main: dark ? "#ff8c84" : "#b3261e" },
-      background: {
-        default: dark ? "#111315" : "#f6f7f8",
-        paper: dark ? "#1b1e21" : "#ffffff",
+      primary: { main: primary },
+      success: { main: dark ? "#73c991" : "#16804b" },
+      warning: { main: dark ? "#eab85b" : "#a76000" },
+      error: { main: dark ? "#ff8f88" : "#c23b33" },
+      info: { main: dark ? "#76b7e8" : "#2474a8" },
+      text: {
+        primary: dark ? "#f0f2f5" : "#1a2029",
+        secondary: dark ? "#aeb5bf" : "#5c6673",
       },
-      divider: dark ? "#383d42" : "#d9dde2",
+      background: {
+        default: dark ? "#111317" : "#f4f6f8",
+        paper,
+      },
+      divider,
+      action: {
+        hover: alpha(primary, dark ? 0.10 : 0.06),
+        selected: alpha(primary, dark ? 0.18 : 0.10),
+        focus: alpha(primary, 0.18),
+      },
     },
-    shape: { borderRadius: 4 },
+    shape: { borderRadius: 6 },
     typography: {
-      fontFamily: 'Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif',
+      fontFamily: UI_FONT,
       fontSize: 14,
-      h1: { fontSize: "1.75rem", fontWeight: 700, lineHeight: 1.25, letterSpacing: 0 },
-      h2: { fontSize: "1.05rem", fontWeight: 700, lineHeight: 1.35, letterSpacing: 0 },
-      h3: { fontSize: "0.95rem", fontWeight: 700, lineHeight: 1.35, letterSpacing: 0 },
-      button: { fontWeight: 600, textTransform: "none", letterSpacing: 0 },
-      caption: { letterSpacing: 0 },
-      overline: { letterSpacing: 0, fontWeight: 700 },
+      h1: { fontSize: "1.5rem", fontWeight: 650, lineHeight: 1.35, letterSpacing: 0 },
+      h2: { fontSize: "1rem", fontWeight: 650, lineHeight: 1.45, letterSpacing: 0 },
+      h3: { fontSize: "0.925rem", fontWeight: 650, lineHeight: 1.45, letterSpacing: 0 },
+      body1: { lineHeight: 1.6, letterSpacing: 0 },
+      body2: { lineHeight: 1.55, letterSpacing: 0 },
+      button: { fontWeight: 650, textTransform: "none", letterSpacing: 0 },
+      caption: { lineHeight: 1.5, letterSpacing: 0 },
+      overline: { fontWeight: 700, letterSpacing: 0 },
     },
     components: {
+      MuiCssBaseline: {
+        styleOverrides: {
+          html: { colorScheme: mode },
+          body: {
+            minWidth: 320,
+            fontFamily: UI_FONT,
+            fontVariantNumeric: "tabular-nums",
+            textRendering: "optimizeLegibility",
+            WebkitFontSmoothing: "antialiased",
+          },
+          "::selection": {
+            color: dark ? "#ffffff" : "#10244c",
+            backgroundColor: alpha(primary, dark ? 0.42 : 0.22),
+          },
+          "*": {
+            scrollbarColor: `${dark ? "#555d68" : "#b7bec8"} transparent`,
+            scrollbarWidth: "thin",
+          },
+          "@media (prefers-reduced-motion: reduce)": {
+            "*, *::before, *::after": {
+              animationDuration: "0.01ms !important",
+              animationIterationCount: "1 !important",
+              scrollBehavior: "auto !important",
+              transitionDuration: "0.01ms !important",
+            },
+          },
+        },
+      },
       MuiButtonBase: {
         defaultProps: { disableRipple: true },
+        styleOverrides: {
+          root: {
+            "&.Mui-focusVisible": {
+              outline: `2px solid ${primary}`,
+              outlineOffset: 2,
+            },
+          },
+        },
       },
       MuiButton: {
         defaultProps: { disableElevation: true },
-        styleOverrides: { root: { minHeight: 36, borderRadius: 4 } },
+        styleOverrides: {
+          root: {
+            minHeight: 40,
+            minWidth: 0,
+            borderRadius: 6,
+            paddingInline: 14,
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+          },
+          sizeSmall: { minHeight: 36, paddingInline: 12 },
+        },
       },
-      MuiCard: {
-        styleOverrides: { root: { borderRadius: 6, boxShadow: "none" } },
+      MuiIconButton: {
+        styleOverrides: {
+          root: { width: 44, height: 44, borderRadius: 6 },
+        },
       },
       MuiPaper: {
-        styleOverrides: { rounded: { borderRadius: 6 } },
+        styleOverrides: {
+          root: { backgroundImage: "none" },
+          rounded: { borderRadius: 7 },
+          outlined: { borderColor: divider },
+        },
+      },
+      MuiCard: {
+        styleOverrides: { root: { borderRadius: 7, boxShadow: "none" } },
+      },
+      MuiCardContent: {
+        styleOverrides: {
+          root: { padding: 20, "&:last-child": { paddingBottom: 20 } },
+        },
+      },
+      MuiOutlinedInput: {
+        styleOverrides: {
+          root: { minHeight: 40, borderRadius: 6, backgroundColor: paper },
+          input: { paddingTop: 9, paddingBottom: 9 },
+        },
+      },
+      MuiInputLabel: {
+        styleOverrides: { root: { fontWeight: 500 } },
+      },
+      MuiTextField: { defaultProps: { size: "small", variant: "outlined" } },
+      MuiSelect: { defaultProps: { size: "small", variant: "outlined" } },
+      MuiMenu: {
+        defaultProps: { elevation: 8 },
+        styleOverrides: {
+          paper: {
+            marginTop: 4,
+            border: `1px solid ${divider}`,
+            borderRadius: 7,
+            boxShadow: dark
+              ? "0 12px 32px rgba(0, 0, 0, 0.38)"
+              : "0 12px 32px rgba(27, 37, 51, 0.16)",
+          },
+        },
+      },
+      MuiMenuItem: {
+        styleOverrides: {
+          root: {
+            minHeight: 40,
+            fontSize: "0.875rem",
+            "&.Mui-selected": { fontWeight: 650 },
+          },
+        },
+      },
+      MuiListItemButton: {
+        styleOverrides: { root: { minHeight: 42, borderRadius: 6 } },
+      },
+      MuiStack: {
+        defaultProps: { useFlexGap: true },
       },
       MuiTableCell: {
         styleOverrides: {
-          root: { padding: "10px 12px", borderColor: dark ? "#383d42" : "#e4e7eb" },
-          head: { fontWeight: 700, color: dark ? "#c7ccd1" : "#4e5965", background: dark ? "#22262a" : "#f5f6f7" },
+          root: {
+            padding: "11px 14px",
+            borderColor: dark ? "#2e343c" : "#e5e8ec",
+            verticalAlign: "middle",
+          },
+          head: {
+            color: dark ? "#c8ced6" : "#4c5764",
+            backgroundColor: dark ? "#20242a" : "#f6f7f9",
+            fontWeight: 700,
+            whiteSpace: "nowrap",
+          },
         },
       },
-      MuiTextField: { defaultProps: { size: "small", variant: "outlined" } },
-      MuiAlert: { styleOverrides: { root: { borderRadius: 4 } } },
-      MuiChip: { styleOverrides: { root: { borderRadius: 4, fontWeight: 600 } } },
+      MuiTableRow: {
+        styleOverrides: { root: { "&:last-child td": { borderBottom: 0 } } },
+      },
+      MuiAlert: {
+        styleOverrides: {
+          root: { borderRadius: 6, alignItems: "flex-start" },
+          message: { minWidth: 0 },
+        },
+      },
+      MuiChip: {
+        styleOverrides: { root: { height: 26, borderRadius: 5, fontWeight: 650 } },
+      },
+      MuiTooltip: {
+        defaultProps: { arrow: true, enterDelay: 450 },
+        styleOverrides: { tooltip: { fontSize: "0.75rem" } },
+      },
+      MuiDivider: {
+        styleOverrides: { root: { borderColor: divider } },
+      },
     },
   });
 }

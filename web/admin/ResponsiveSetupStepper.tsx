@@ -1,9 +1,10 @@
-import { Step, StepButton, Stepper, useMediaQuery, useTheme } from "@mui/material";
+import { Box, Step, StepButton, Stepper, Typography } from "@mui/material";
 import type { ReactNode } from "react";
 
 export interface ResponsiveSetupStep {
   readonly id: string;
   readonly title: ReactNode;
+  readonly description?: ReactNode;
   readonly completed: boolean;
   readonly disabled: boolean;
 }
@@ -19,31 +20,31 @@ export function ResponsiveSetupStepper({
   activeStep,
   onStepChange,
 }: ResponsiveSetupStepperProps) {
-  const theme = useTheme();
-  const compact = useMediaQuery(theme.breakpoints.down("sm"));
-
   return (
     <Stepper
       aria-label="配置进度"
       activeStep={activeStep}
       nonLinear
-      orientation={compact ? "vertical" : "horizontal"}
+      orientation="vertical"
       sx={{
-        mb: 2,
         width: "100%",
-        "& .MuiStep-horizontal": { minWidth: 0 },
-        "& .MuiStepLabel-labelContainer": { minWidth: 0 },
+        "& .MuiStepConnector-line": { minHeight: 22 },
+        "& .MuiStepLabel-iconContainer": { pr: 1.5 },
         "& .MuiStepLabel-label": {
           overflowWrap: "anywhere",
-          textAlign: compact ? "left" : "center",
+          textAlign: "left",
           whiteSpace: "normal",
         },
+        "& .MuiStepButton-root": { borderRadius: 1, py: 0.75 },
       }}
     >
       {steps.map((step, index) => (
         <Step key={step.id} completed={step.completed} disabled={step.disabled}>
           <StepButton disabled={step.disabled} onClick={() => onStepChange(index)}>
-            {index + 1}. {step.title}
+            <Box component="span" sx={{ display: "block", minWidth: 0 }}>
+              <Typography component="span" variant="body2" sx={{ display: "block", fontWeight: index === activeStep ? 700 : 600 }}>{step.title}</Typography>
+              {step.description ? <Typography component="span" variant="caption" color="textSecondary" sx={{ display: "block" }}>{step.description}</Typography> : null}
+            </Box>
           </StepButton>
         </Step>
       ))}

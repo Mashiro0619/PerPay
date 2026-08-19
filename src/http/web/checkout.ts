@@ -300,8 +300,13 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
 
       <section class="checkout-evidence" data-evidence-panel aria-labelledby="evidence-title">
         <div class="checkout-evidence-heading">
-          <h2 id="evidence-title">付款确认进度</h2>
-          <p>本页只显示服务器已经确认的结果</p>
+          <div>
+            <h2 id="evidence-title">付款确认进度</h2>
+            <p>本页只显示服务器已经确认的结果</p>
+          </div>
+          <button class="checkout-button checkout-button--quiet" type="button" data-checkout-refresh${hiddenAttribute(checkout === null || !["UNPAID", "UNAVAILABLE"].includes(visualState))}>
+            <span data-checkout-refresh-label>立即检查支付状态</span>
+          </button>
         </div>
         <ol class="checkout-evidence-track">
           ${renderEvidenceStep("payment", "付款", evidence.payment)}

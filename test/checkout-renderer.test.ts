@@ -48,6 +48,8 @@ describe("public checkout renderer", () => {
     assert.match(html, /付款后请停留在本页/);
     assert.match(html, /data-checkout-api-url="\/api\/public\/v1\/checkouts\/pct1_test-token"/);
     assert.match(html, /data-checkout-qr-url="\/api\/public\/v1\/checkouts\/pct1_test-token\/qr\.svg"/);
+    assert.match(html, /data-checkout-refresh-label>立即检查支付状态/);
+    assert.doesNotMatch(html, /data-checkout-refresh[^>]*hidden/);
     assert.match(html, new RegExp(`href="${escapeRegExp(CHECKOUT_PAGE_ASSETS.checkoutStylesheet)}"`));
     assert.equal((html.match(/<link rel="stylesheet"/g) ?? []).length, 1);
     assert.match(html, new RegExp(`src="${escapeRegExp(CHECKOUT_PAGE_ASSETS.checkoutScript)}" defer`));
@@ -96,6 +98,7 @@ describe("public checkout renderer", () => {
     assert.match(html, /data-qr-panel hidden/);
     assert.match(html, /已自动确认/);
     assert.match(html, /款项已部分退款/);
+    assert.match(html, /data-checkout-refresh[^>]*hidden/);
   });
 
   it("renders retryable 503 and final 404 states without exposing a QR panel", () => {
@@ -114,6 +117,7 @@ describe("public checkout renderer", () => {
     assert.match(unavailable, /请暂勿付款/);
     assert.match(unavailable, /data-retry-after-seconds="5"/);
     assert.match(unavailable, /data-checkout-content hidden/);
+    assert.match(unavailable, /data-checkout-refresh[^>]*hidden/);
     assert.match(unavailable, /data-route-error[^>]*role="alert"[^>]*aria-live="assertive"/);
     assert.match(unavailable, /data-route-error-title tabindex="-1"/);
     assert.match(unavailable, /data-checkout-qr-url="\/qr\.svg"/);
@@ -149,6 +153,7 @@ describe("public checkout renderer", () => {
     assert.match(missing, /data-initial-state="NOT_FOUND"/);
     assert.match(missing, /找不到这个订单/);
     assert.match(missing, /data-checkout-retry hidden/);
+    assert.match(missing, /data-checkout-refresh[^>]*hidden/);
     assert.doesNotMatch(missing, /<img\s+src=""/);
   });
 

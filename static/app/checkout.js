@@ -21,6 +21,8 @@
   const qrDialogImage = qrDialog?.querySelector("[data-qr-dialog-image]");
   const countdown = root.querySelector("[data-countdown]");
   const countdownWrap = root.querySelector("[data-countdown-wrap]");
+  const manualRefreshButton = root.querySelector("[data-checkout-refresh]");
+  const manualRefreshLabel = manualRefreshButton?.querySelector("[data-checkout-refresh-label]");
   const requestTimeoutMilliseconds = 10_000;
 
   const stateCopy = Object.freeze({
@@ -64,11 +66,14 @@
   let lastRefundStatus = root.dataset.refundStatus ?? "NONE";
   let retryFailures = 0;
   let retryAfterMilliseconds = parseRetryAfterSeconds(root.dataset.retryAfterSeconds) * 1000;
+  let retryNotBefore = retryAfterMilliseconds > 0 ? Date.now() + retryAfterMilliseconds : 0;
+  let refreshInFlight = false;
   let destroyed = false;
 
   wireQrControls();
   wireLifecycle();
   startCountdown();
+  updateManualRefreshButton();
 
   if (apiUrl === null) {
     showRouteError("配置错误", "收银台状态地址无效，无法读取订单。", "CONFIG", false);
@@ -86,14 +91,21 @@
       void refresh();
     });
 
+    manualRefreshButton?.addEventListener("click", () => {
+      if (refreshInFlight || Date.now() < retryNotBefore) return;
+      void refresh(true);
+    });
+
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) {
         clearScheduledRefresh();
         activeController?.abort();
         stopCountdown();
+        updateManualRefreshButton();
         return;
       }
       startCountdown();
+      updateManualRefreshButton();
       if (navigator.onLine && initialDelay() !== null) void refresh();
     });
 
@@ -101,12 +113,14 @@
       clearScheduledRefresh();
       activeController?.abort();
       showNetworkMessage("网络已断开，恢复连接后会继续刷新订单状态。", true);
+      updateManualRefreshButton();
     });
 
     window.addEventListener("online", () => {
       if (initialDelay() === null) return;
       showNetworkMessage("网络已恢复，正在刷新订单状态。", false);
       retryFailures = 0;
+      updateManualRefreshButton();
       void refresh();
     });
 
@@ -164,10 +178,18 @@
     });
   }
 
-  async function refresh() {
-    if (destroyed || document.hidden || !navigator.onLine || apiUrl === null) return;
+  async function refresh(manual = false) {
+    if (refreshInFlight || destroyed || document.hidden || !navigator.onLine || apiUrl === null) return false;
+    if (manual && Date.now() < retryNotBefore) {
+      showUpdateMessage("请等待冷却时间结束后再检查。", "warning");
+      updateManualRefreshButton();
+      return false;
+    }
+    const previousState = lastVisualState;
+    refreshInFlight = true;
+    setManualRefreshBusy(manual);
+    updateManualRefreshButton();
     clearScheduledRefresh();
-    activeController?.abort();
     const controller = new AbortController();
     activeController = controller;
     let timedOut = false;
@@ -187,17 +209,22 @@
       });
       if (!response.ok) {
         await handleHttpError(response);
-        return;
+        return false;
       }
       const payload = await response.json();
       const checkout = readCheckoutPayload(payload);
       applyCheckout(checkout);
       retryFailures = 0;
       retryAfterMilliseconds = 0;
+      retryNotBefore = 0;
       hideNetworkMessage();
       scheduleNext(intervalForState(lastVisualState));
+      if (manual && previousState === lastVisualState && hasCheckoutData) {
+        showUpdateMessage("已检查，暂未确认付款。", "info");
+      }
+      return true;
     } catch (error) {
-      if (controller.signal.aborted && (!timedOut || destroyed || document.hidden)) return;
+      if (controller.signal.aborted && (!timedOut || destroyed || document.hidden)) return false;
       retryFailures += 1;
       if (!hasCheckoutData) {
         showRouteError(
@@ -217,9 +244,13 @@
         );
       }
       scheduleNext(backoffMilliseconds());
+      return false;
     } finally {
       window.clearTimeout(timeoutId);
       if (activeController === controller) activeController = undefined;
+      refreshInFlight = false;
+      setManualRefreshBusy(false);
+      updateManualRefreshButton();
     }
   }
 
@@ -238,6 +269,7 @@
 
     if (response.status === 429) {
       retryAfterMilliseconds = readRetryAfter(response.headers.get("retry-after"), 1_000);
+      retryNotBefore = Date.now() + retryAfterMilliseconds;
       if (!hasCheckoutData) {
         showRouteError(
           "请求过于频繁",
@@ -275,6 +307,8 @@
       }
       if (qrDialogWasOpen) focusStatusHeading();
       retryAfterMilliseconds = readRetryAfter(response.headers.get("retry-after"), backoffMilliseconds());
+      retryNotBefore = Date.now() + retryAfterMilliseconds;
+      setHidden(manualRefreshButton, !hasCheckoutData);
       scheduleNext(retryAfterMilliseconds);
       return;
     }
@@ -330,6 +364,8 @@
     const qrDialogWasOpen = qrCanBeShown ? false : deactivateQr();
     setHidden(qrPanel, !qrCanBeShown);
     setHidden(root.querySelector("[data-payment-guidance]"), !qrCanBeShown);
+    const manualWasFocused = manualRefreshButton instanceof HTMLElement && manualRefreshButton === document.activeElement;
+    setHidden(manualRefreshButton, !["UNPAID", "UNAVAILABLE"].includes(visualState));
     setHidden(countdownWrap, visualState !== "UNPAID");
     root.dataset.expiresAt = checkout.checkout.expires_at;
     if (countdown instanceof HTMLTimeElement) countdown.dateTime = checkout.checkout.expires_at;
@@ -344,7 +380,7 @@
     root.dataset.refundStatus = checkout.refund.status;
     document.title = `${checkout.merchant_order_no} | PerPay 收银台`;
 
-    if (routeErrorHadFocus || qrDialogWasOpen) focusStatusHeading();
+    if (routeErrorHadFocus || qrDialogWasOpen || (manualWasFocused && manualRefreshButton instanceof HTMLElement && manualRefreshButton.hidden)) focusStatusHeading();
 
     if (previousState !== visualState) {
       showUpdateMessage(stateCopy[visualState].detail, visualState === "DISPUTED" ? "danger" : "success");
@@ -470,6 +506,7 @@
   function showRouteError(title, message, code, retryable) {
     const shouldMoveFocus = routeError instanceof HTMLElement && routeError.hidden;
     deactivateQr();
+    setHidden(manualRefreshButton, true);
     setHidden(content, true);
     setHidden(routeError, false);
     setText(routeError?.querySelector("[data-route-error-title]"), title);
@@ -594,6 +631,24 @@
     clearScheduledRefresh();
     if (destroyed || delay === null || document.hidden || !navigator.onLine) return;
     timerId = window.setTimeout(() => void refresh(), Math.max(250, delay));
+  }
+
+  function setManualRefreshBusy(busy) {
+    if (!(manualRefreshButton instanceof HTMLElement)) return;
+    manualRefreshButton.disabled = busy || Date.now() < retryNotBefore;
+    manualRefreshButton.setAttribute("aria-busy", String(busy));
+    if (manualRefreshLabel instanceof HTMLElement) {
+      manualRefreshLabel.textContent = busy ? "正在检查" : "立即检查支付状态";
+    }
+    manualRefreshButton.toggleAttribute("data-loading", busy);
+  }
+
+  function updateManualRefreshButton() {
+    if (!(manualRefreshButton instanceof HTMLElement)) return;
+    const terminal = !["UNPAID", "UNAVAILABLE"].includes(lastVisualState);
+    setHidden(manualRefreshButton, terminal || !hasCheckoutData);
+    manualRefreshButton.disabled = refreshInFlight || destroyed || document.hidden || !navigator.onLine || Date.now() < retryNotBefore;
+    if (!refreshInFlight && manualRefreshLabel instanceof HTMLElement) manualRefreshLabel.textContent = "立即检查支付状态";
   }
 
   function clearScheduledRefresh() {

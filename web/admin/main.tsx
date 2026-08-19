@@ -11,6 +11,11 @@ import {
   Chip,
   CssBaseline,
   Divider,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  Drawer,
+  Fade,
   FormControl,
   FormControlLabel,
   FormHelperText,
@@ -21,8 +26,12 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
-  NativeSelect,
+  MenuItem,
   Paper,
+  Select,
+  Skeleton,
+  Snackbar,
+  Stack,
   Step,
   StepButton,
   Stepper,
@@ -32,9 +41,10 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  TextField as MuiTextField,
+  TextField,
   ThemeProvider,
   Toolbar,
+  Tooltip,
   Typography,
   styled,
   useMediaQuery,
@@ -47,7 +57,9 @@ import {
   Close,
   DarkModeOutlined,
   ErrorOutlined,
+  FilterAltOutlined,
   HistoryOutlined,
+  InboxOutlined,
   LightModeOutlined,
   Logout,
   Menu as MenuIcon,
@@ -55,6 +67,7 @@ import {
   ReceiptLongOutlined,
   Refresh,
   ReportProblemOutlined,
+  Search,
   SettingsOutlined,
   ShieldOutlined,
   Visibility,
@@ -79,88 +92,38 @@ import { ResponsiveSetupStepper } from "./ResponsiveSetupStepper.tsx";
 import { mergeTestPaymentOrder, testPaymentTerminal } from "./test-payment.ts";
 import { createAdminTheme } from "./theme.ts";
 
-const DRAWER_WIDTH = 232;
+const DRAWER_WIDTH = 248;
 const THEME_KEY = "perpay:admin-theme:v1";
 const TEST_PAYMENT_KEY = "perpay:test-payment-pending:v1";
 const CURSOR_PARENT_KEY = "perpay:cursor-parents:v1";
 const MONO = '"SFMono-Regular", Consolas, "Liberation Mono", monospace';
 
-interface StackProps {
-  readonly direction?: any;
-  readonly gap?: number;
-  readonly spacing?: number;
-  readonly justifyContent?: any;
-  readonly alignItems?: any;
-  readonly flexWrap?: any;
-  readonly sx?: any;
-  readonly onSubmit?: React.FormEventHandler<HTMLFormElement>;
-  readonly children?: ReactNode;
-  readonly [key: string]: any;
+function readThemePreference(): PaletteMode {
+  try { return localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light"; }
+  catch { return "light"; }
 }
 
-function Stack({
-  direction = "column",
-  gap,
-  spacing,
-  justifyContent,
-  alignItems,
-  flexWrap,
-  sx,
-  ...props
-}: StackProps) {
-  return <Box {...props as any} sx={{
-    display: "flex",
-    flexDirection: direction,
-    gap: gap ?? spacing,
-    justifyContent,
-    alignItems,
-    flexWrap,
-    ...sx,
-  }} />;
-}
-
-type TextFieldCompatProps = React.ComponentProps<typeof MuiTextField> & {
-  readonly inputProps?: Record<string, unknown>;
-  readonly InputProps?: Record<string, unknown>;
-};
-
-function TextField({ inputProps, InputProps, slotProps, ...props }: TextFieldCompatProps) {
-  const slots = (slotProps || {}) as Record<string, any>;
-  return <MuiTextField
-    {...props}
-    slotProps={{
-      ...slots,
-      htmlInput: { ...(slots.htmlInput || {}), ...(inputProps || {}) },
-      input: { ...(slots.input || {}), ...(InputProps || {}) },
-    } as any}
-  />;
+function persistThemePreference(mode: PaletteMode): void {
+  try { localStorage.setItem(THEME_KEY, mode); } catch { /* The selected theme still applies for this page. */ }
 }
 
 const PageFrame = styled(Box)(({ theme }) => ({
   width: "100%",
-  maxWidth: 1320,
+  maxWidth: 1600,
   margin: "0 auto",
-  padding: theme.spacing(3),
-  [theme.breakpoints.down("sm")]: { padding: theme.spacing(2, 1.5, 4) },
+  padding: theme.spacing(3.5, 4, 5),
+  [theme.breakpoints.up("xl")]: { paddingInline: theme.spacing(5) },
+  [theme.breakpoints.down("sm")]: { padding: theme.spacing(2.5, 2, 4) },
 }));
 
-const ModalBackdrop = styled(Box)(({ theme }) => ({
-  position: "fixed",
-  inset: 0,
-  zIndex: theme.zIndex.modal,
-  display: "grid",
-  placeItems: "center",
-  padding: theme.spacing(2),
-  background: "rgba(0, 0, 0, 0.52)",
-}));
-
-const ModalPaper = styled(Paper)(({ theme }) => ({
-  width: "min(100%, 560px)",
-  maxHeight: "calc(100dvh - 32px)",
-  overflow: "auto",
-  padding: theme.spacing(2.5),
-  border: `1px solid ${theme.palette.divider}`,
-}));
+const MainContent = styled("main")({
+  minWidth: 0,
+  outline: 0,
+  "&:focus-visible": {
+    outline: "2px solid currentColor",
+    outlineOffset: -2,
+  },
+});
 
 type Tone = "success" | "warning" | "error" | "default";
 
@@ -248,11 +211,11 @@ function JsonBlock({ value }: { readonly value: unknown }) {
 }
 
 function Section({ title, children }: { readonly title: string; readonly children: ReactNode }) {
-  return <Box component="section" sx={{ mb: 3 }}><Typography component="h2" variant="h2" sx={{ mb: 1.25 }}>{title}</Typography>{children}</Box>;
+  return <Box component="section" sx={{ mb: 3.5 }}><Typography component="h2" variant="h2" sx={{ mb: 1.5 }}>{title}</Typography>{children}</Box>;
 }
 
-function DetailCard({ title, children }: { readonly title: string; readonly children: ReactNode }) {
-  return <Card variant="outlined"><CardContent><Typography component="h2" variant="h2" sx={{ mb: 1.5 }}>{title}</Typography>{children}</CardContent></Card>;
+function DetailCard({ title, children, titleComponent = "h2" }: { readonly title: string; readonly children: ReactNode; readonly titleComponent?: "h2" | "h3" }) {
+  return <Card variant="outlined" sx={{ height: "100%" }}><CardContent><Typography component={titleComponent} variant="h2" sx={{ mb: 1.75 }}>{title}</Typography>{children}</CardContent></Card>;
 }
 
 type Fact = readonly [string, ReactNode, boolean?];
@@ -260,14 +223,20 @@ type Fact = readonly [string, ReactNode, boolean?];
 function Facts({ items }: { readonly items: readonly Fact[] }) {
   return <Box component="dl" sx={{ m: 0, display: "grid", gridTemplateColumns: "minmax(112px, 0.35fr) minmax(0, 1fr)", columnGap: 2, rowGap: 1.1, alignItems: "start" }}>
     {items.map(([label, value, mono], index) => <React.Fragment key={`${label}-${index}`}>
-      <Typography component="dt" color="text.secondary" variant="body2">{label}</Typography>
+      <Typography component="dt" color="textSecondary" variant="body2">{label}</Typography>
       <Typography component="dd" sx={{ m: 0, minWidth: 0, overflowWrap: "anywhere", ...(mono ? { fontFamily: MONO, fontSize: "0.86rem" } : {}) }}>{value ?? "-"}</Typography>
     </React.Fragment>)}
   </Box>;
 }
 
 function EmptyState({ title, message }: { readonly title: string; readonly message: string }) {
-  return <Paper variant="outlined" sx={{ py: 5, px: 2, textAlign: "center" }}><Typography component="h2" variant="h2">{title}</Typography><Typography color="text.secondary" sx={{ mt: 0.75 }}>{message}</Typography></Paper>;
+  return <Paper variant="outlined" sx={{ minHeight: 152, px: 3, py: 4, display: "grid", placeItems: "center", textAlign: "center" }}>
+    <Stack spacing={1} sx={{ maxWidth: 440, alignItems: "center" }}>
+      <InboxOutlined aria-hidden="true" sx={{ color: "text.disabled", fontSize: 30 }} />
+      <Typography component="h2" variant="h2">{title}</Typography>
+      <Typography variant="body2" color="textSecondary">{message}</Typography>
+    </Stack>
+  </Paper>;
 }
 
 interface PageHeaderProps {
@@ -278,9 +247,9 @@ interface PageHeaderProps {
 
 function PageHeader({ title, description, actions }: PageHeaderProps) {
   useEffect(() => { document.title = `${title} - PerPay`; }, [title]);
-  return <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "flex-start" }} gap={2} sx={{ mb: 3 }}>
-    <Box><Typography component="h1" variant="h1">{title}</Typography><Typography color="text.secondary" sx={{ mt: 0.5 }}>{description}</Typography></Box>
-    {actions ? <Stack direction="row" gap={1} flexWrap="wrap">{actions}</Stack> : null}
+  return <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mb: 3.5, justifyContent: "space-between", alignItems: { xs: "stretch", sm: "center" } }}>
+    <Box sx={{ minWidth: 0 }}><Typography component="h1" variant="h1">{title}</Typography><Typography variant="body2" color="textSecondary" sx={{ mt: 0.5, maxWidth: 720 }}>{description}</Typography></Box>
+    {actions ? <Stack direction="row" spacing={1} sx={{ alignSelf: { xs: "flex-end", sm: "center" }, flexShrink: 0, flexWrap: "wrap" }}>{actions}</Stack> : null}
   </Stack>;
 }
 
@@ -290,7 +259,7 @@ interface Column {
 }
 
 function DataTable({ label, columns, rows }: { readonly label: string; readonly columns: readonly Column[]; readonly rows: readonly JsonObject[] }) {
-  return <TableContainer component={Paper} variant="outlined"><Table size="small" aria-label={label}>
+  return <TableContainer component={Paper} variant="outlined"><Table size="small" aria-label={label} sx={{ minWidth: Math.max(620, columns.length * 132) }}>
     <TableHead><TableRow>{columns.map((column) => <TableCell key={column.label}>{column.label}</TableCell>)}</TableRow></TableHead>
     <TableBody>{rows.map((row, rowIndex) => <TableRow hover key={String(row.id || row.order_id || row.exception_id || row.payment_match_id || row.conflict_id || row.delivery_id || rowIndex)}>{columns.map((column) => <TableCell key={column.label}>{column.render(row)}</TableCell>)}</TableRow>)}</TableBody>
   </Table></TableContainer>;
@@ -301,11 +270,18 @@ function LinkButton({ href, children, color = "primary" }: { readonly href: stri
 }
 
 function RefreshButton() {
-  return <Button variant="outlined" startIcon={<Refresh />} onClick={() => location.reload()}>刷新</Button>;
+  return <Tooltip title="刷新页面"><IconButton aria-label="刷新页面" onClick={() => location.reload()} sx={{ border: 1, borderColor: "divider", bgcolor: "background.paper" }}><Refresh fontSize="small" /></IconButton></Tooltip>;
 }
 
 function LoadingPage() {
-  return <Box sx={{ py: 9, display: "grid", placeItems: "center" }} role="status"><Stack alignItems="center" gap={1.5}><Box aria-hidden="true" sx={{ width: 28, height: 28, border: "3px solid", borderColor: "divider", borderTopColor: "primary.main", borderRadius: "50%", animation: "perpay-spin 800ms linear infinite", "@keyframes perpay-spin": { to: { transform: "rotate(360deg)" } }, "@media (prefers-reduced-motion: reduce)": { animation: "none" } }} /><Typography color="text.secondary">正在读取最新状态</Typography></Stack></Box>;
+  return <Box role="status" aria-label="正在读取最新状态" sx={{ py: 1 }}>
+    <Skeleton variant="text" width={180} height={42} animation="wave" />
+    <Skeleton variant="text" width="min(100%, 520px)" height={28} animation="wave" sx={{ mb: 3 }} />
+    <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 1.25 }}>
+      {[0, 1, 2, 3].map((item) => <Skeleton key={item} variant="rounded" height={104} animation="wave" />)}
+    </Box>
+    <Typography className="checkout-sr-only" sx={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>正在读取最新状态</Typography>
+  </Box>;
 }
 
 function RouteError({ error }: { readonly error: unknown }) {
@@ -351,8 +327,13 @@ function PasswordInput({ label, value, onChange, autoComplete, minLength, autoFo
 }
 
 function AuthShell({ children }: { readonly children: ReactNode }) {
-  return <Box component="main" sx={{ minHeight: "100dvh", display: "grid", placeItems: "center", p: 2, background: "linear-gradient(180deg, rgba(31,95,174,0.06), transparent 42%)" }}>
-    <Card variant="outlined" sx={{ width: "min(100%, 420px)" }}><CardContent sx={{ p: { xs: 2.5, sm: 4 } }}><Typography component="p" variant="h2" color="primary" sx={{ mb: 3 }}>PerPay</Typography>{children}</CardContent></Card>
+  return <Box component="main" sx={{ minHeight: "100dvh", display: "grid", placeItems: "center", p: 2, bgcolor: "background.default" }}>
+    <Card variant="outlined" sx={{ width: "min(100%, 440px)", boxShadow: (theme) => theme.palette.mode === "dark" ? "0 18px 48px rgba(0,0,0,.28)" : "0 18px 48px rgba(31,42,55,.08)" }}>
+      <CardContent sx={{ p: { xs: 3, sm: 4.5 }, "&:last-child": { pb: { xs: 3, sm: 4.5 } } }}>
+        <Stack direction="row" spacing={1.25} sx={{ mb: 3.5, alignItems: "center" }}><Box sx={{ width: 36, height: 36, display: "grid", placeItems: "center", borderRadius: 1, bgcolor: "primary.main", color: "primary.contrastText" }}><AccountBalanceWalletOutlined fontSize="small" /></Box><Typography component="p" variant="h2">PerPay</Typography></Stack>
+        {children}
+      </CardContent>
+    </Card>
   </Box>;
 }
 
@@ -374,7 +355,7 @@ function SetupPage() {
       else setError(errorMessage(caught));
     } finally { setBusy(false); }
   };
-  return <AuthShell><Typography component="h1" variant="h1">设置管理员密码</Typography><Typography color="text.secondary" sx={{ mt: 1, mb: 3 }}>这是首次启动。设置完成后，首次设置入口会永久关闭。</Typography>{error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}<Stack component="form" gap={2} onSubmit={(event) => void submit(event)}><PasswordInput label="管理员密码" value={password} onChange={setPassword} autoComplete="new-password" minLength={12} autoFocus /><PasswordInput label="确认密码" value={confirmation} onChange={setConfirmation} autoComplete="new-password" minLength={12} /><Typography variant="body2" color="text.secondary">至少 12 个字符。</Typography><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在设置" : "完成设置"}</Button></Stack></AuthShell>;
+  return <AuthShell><Typography component="h1" variant="h1">设置管理员密码</Typography><Typography color="textSecondary" sx={{ mt: 1, mb: 3 }}>这是首次启动。设置完成后，首次设置入口会永久关闭。</Typography>{error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}<Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><PasswordInput label="管理员密码" value={password} onChange={setPassword} autoComplete="new-password" minLength={12} autoFocus /><PasswordInput label="确认密码" value={confirmation} onChange={setConfirmation} autoComplete="new-password" minLength={12} /><Typography variant="body2" color="textSecondary">至少 12 个字符。</Typography><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在设置" : "完成设置"}</Button></Stack></AuthShell>;
 }
 
 function LoginPage() {
@@ -390,7 +371,7 @@ function LoginPage() {
       location.replace(returnTo?.startsWith("/admin") && !returnTo.startsWith("//") ? returnTo : "/admin");
     } catch (caught) { setError(errorMessage(caught)); } finally { setBusy(false); }
   };
-  return <AuthShell><Typography component="h1" variant="h1">管理员登录</Typography><Typography color="text.secondary" sx={{ mt: 1, mb: 3 }}>进入收款运行与异常处理后台。</Typography>{error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}<Stack component="form" gap={2} onSubmit={(event) => void submit(event)}><PasswordInput label="密码" value={password} onChange={setPassword} autoComplete="current-password" autoFocus /><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在登录" : "登录"}</Button></Stack></AuthShell>;
+  return <AuthShell><Typography component="h1" variant="h1">管理员登录</Typography><Typography color="textSecondary" sx={{ mt: 1, mb: 3 }}>进入收款运行与异常处理后台。</Typography>{error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}<Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><PasswordInput label="密码" value={password} onChange={setPassword} autoComplete="current-password" autoFocus /><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在登录" : "登录"}</Button></Stack></AuthShell>;
 }
 
 const NAV_ITEMS = [
@@ -405,29 +386,13 @@ const NAV_ITEMS = [
 ] as const;
 
 function ModalLayer({ dialog, close }: { readonly dialog: DialogState; readonly close: () => void }) {
-  const paper = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const frame = requestAnimationFrame(() => paper.current?.querySelector<HTMLElement>("input, textarea, button, [href]")?.focus());
-    const keydown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
-      if (event.key !== "Tab" || !paper.current) return;
-      const controls = [...paper.current.querySelectorAll<HTMLElement>("input, textarea, select, button, [href], [tabindex]:not([tabindex='-1'])")].filter((control) => !control.hasAttribute("disabled"));
-      if (controls.length === 0) return;
-      const first = controls[0];
-      const last = controls.at(-1);
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
-    };
-    document.addEventListener("keydown", keydown);
-    return () => { cancelAnimationFrame(frame); document.removeEventListener("keydown", keydown); previous?.focus(); };
-  }, [close]);
-  return <ModalBackdrop role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
-    <ModalPaper ref={paper} role="dialog" aria-modal="true" aria-labelledby="perpay-dialog-title">
-      <Stack direction="row" alignItems="flex-start" justifyContent="space-between" gap={2} sx={{ mb: 2 }}><Box><Typography id="perpay-dialog-title" component="h2" variant="h2">{dialog.title}</Typography>{dialog.description ? <Typography color="text.secondary" sx={{ mt: 0.5 }}>{dialog.description}</Typography> : null}</Box><IconButton aria-label="关闭" onClick={close}><Close /></IconButton></Stack>
-      {dialog.content}
-    </ModalPaper>
-  </ModalBackdrop>;
+  return <Dialog open onClose={close} fullWidth maxWidth="sm" aria-labelledby="perpay-dialog-title">
+    <DialogTitle id="perpay-dialog-title" component="div" sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 2, pb: 1.5 }}>
+      <Box><Typography component="h2" variant="h2">{dialog.title}</Typography>{dialog.description ? <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5 }}>{dialog.description}</Typography> : null}</Box>
+      <IconButton aria-label="关闭" onClick={close} edge="end"><Close /></IconButton>
+    </DialogTitle>
+    <DialogContent dividers sx={{ pt: 2.5 }}>{dialog.content}</DialogContent>
+  </Dialog>;
 }
 
 function StepUpForm({ finish, cancel }: { readonly finish: () => void; readonly cancel: (reason?: unknown) => void }) {
@@ -440,22 +405,20 @@ function StepUpForm({ finish, cancel }: { readonly finish: () => void; readonly 
     catch (caught) { setError(errorMessage(caught)); }
     finally { setBusy(false); }
   };
-  return <Stack component="form" gap={2} onSubmit={(event) => void submit(event)}>{error ? <Alert severity="error">{error}</Alert> : null}<PasswordInput label="当前密码" value={password} onChange={setPassword} autoComplete="current-password" autoFocus /><Stack direction="row" justifyContent="flex-end" gap={1}><Button onClick={() => cancel(new Error("已取消身份验证"))}>取消</Button><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在验证" : "验证"}</Button></Stack></Stack>;
+  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}>{error ? <Alert severity="error">{error}</Alert> : null}<PasswordInput label="当前密码" value={password} onChange={setPassword} autoComplete="current-password" autoFocus /><Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}><Button onClick={() => cancel(new Error("已取消身份验证"))}>取消</Button><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在验证" : "验证"}</Button></Stack></Stack>;
 }
 
-function AdminApplication() {
+function AdminApplication({ mode, onModeChange }: { readonly mode: PaletteMode; readonly onModeChange: (mode: PaletteMode) => void }) {
   const [session, setSession] = useState<JsonObject | null>(null);
   const [sessionError, setSessionError] = useState<unknown>(null);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [toast, setToastState] = useState<ToastState | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [mode, setMode] = useState<PaletteMode>(() => localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light");
   const compact = useMediaQuery("(max-width:899px)");
+  const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const stepUp = useRef<{ readonly promise: Promise<void>; readonly resolve: () => void; readonly reject: (reason?: unknown) => void } | null>(null);
 
   useEffect(() => { void api("/session").then((response) => setSession(response.data)).catch(setSessionError); }, []);
-  useEffect(() => { if (!toast) return; const timeout = window.setTimeout(() => setToastState(null), 5000); return () => clearTimeout(timeout); }, [toast]);
-
   const closeDialog = useCallback(() => { setDialog((current) => { current?.onClose?.(); return null; }); }, []);
   const setToast = useCallback((message: string, severity: AlertColor = "info") => setToastState({ message, severity }), []);
   const openDialog = useCallback((next: DialogState) => setDialog(next), []);
@@ -483,21 +446,47 @@ function AdminApplication() {
   if (!session) return <LoadingPage />;
 
   const path = location.pathname.replace(/\/+$/, "") || "/admin";
-  const nav = <><Toolbar sx={{ minHeight: 64 }}><Typography variant="h2" color="primary">PerPay</Typography></Toolbar><Divider /><List component="nav" aria-label="管理后台" sx={{ px: 1, py: 1.5 }}>{NAV_ITEMS.map(([href, label, icon]) => <ListItemButton key={href} component="a" href={href} selected={path === href} onClick={() => setMobileOpen(false)} sx={{ mb: 0.5, borderRadius: 1 }}><ListItemIcon sx={{ minWidth: 38 }}>{icon}</ListItemIcon><ListItemText primary={label} /></ListItemButton>)}</List><Box sx={{ mt: "auto", p: 2, borderTop: 1, borderColor: "divider" }}><Typography variant="caption" color="text.secondary">当前会话</Typography><Typography variant="body2" sx={{ fontWeight: 700 }}>{session.username || "admin"}</Typography><Typography variant="caption" color="text.secondary">至 {formatTime(session.idle_expires_at)}</Typography></Box></>;
-  const toggleTheme = () => setMode((current) => { const next = current === "light" ? "dark" : "light"; localStorage.setItem(THEME_KEY, next); return next; });
+  const currentLabel = NAV_ITEMS.find(([href]) => href === path)?.[1] || "管理后台";
+  const nav = <Box id="admin-navigation" sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+    <Stack direction="row" spacing={1.25} sx={{ minHeight: 64, px: 2.25, alignItems: "center" }}>
+      <Box sx={{ width: 34, height: 34, display: "grid", placeItems: "center", borderRadius: 1, bgcolor: "primary.main", color: "primary.contrastText" }}><AccountBalanceWalletOutlined fontSize="small" /></Box>
+      <Box sx={{ minWidth: 0 }}><Typography variant="h2">PerPay</Typography><Typography variant="caption" color="textSecondary">收款控制台</Typography></Box>
+    </Stack>
+    <Divider />
+    <List component="nav" aria-label="管理后台" sx={{ px: 1.25, py: 1.5 }}>
+      {NAV_ITEMS.map(([href, label, icon]) => <ListItemButton key={href} component="a" href={href} aria-current={path === href ? "page" : undefined} selected={path === href} onClick={() => setMobileOpen(false)} sx={{ mb: 0.375, px: 1.25, "&.Mui-selected": { color: "primary.main", "& .MuiListItemIcon-root": { color: "primary.main" } } }}><ListItemIcon sx={{ minWidth: 36, color: "text.secondary", "& .MuiSvgIcon-root": { fontSize: 21 } }}>{icon}</ListItemIcon><ListItemText primary={label} slotProps={{ primary: { variant: "body2", sx: { fontWeight: path === href ? 700 : 500 } } }} /></ListItemButton>)}
+    </List>
+    <Box sx={{ mt: "auto", p: 1.75, borderTop: 1, borderColor: "divider" }}>
+      <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
+        <Box aria-hidden="true" sx={{ width: 34, height: 34, flex: "0 0 auto", display: "grid", placeItems: "center", borderRadius: "50%", bgcolor: "action.selected", color: "primary.main", fontWeight: 800 }}>A</Box>
+        <Box sx={{ minWidth: 0 }}><Typography variant="body2" sx={{ fontWeight: 700 }}>{session.username || "admin"}</Typography><Tooltip title={`会话有效至 ${formatTime(session.idle_expires_at)}`} placement="top"><Typography variant="caption" color="textSecondary">当前会话</Typography></Tooltip></Box>
+      </Stack>
+    </Box>
+  </Box>;
+  const toggleTheme = () => { const next = mode === "light" ? "dark" : "light"; persistThemePreference(next); onModeChange(next); };
+  const logout = () => void api("/session/logout", { method: "POST" }).then(() => location.replace("/admin/login")).catch((caught) => setToast(errorMessage(caught), "error"));
   const context = { session, setToast, openDialog, closeDialog, protectedRequest } satisfies AdminContextValue;
-  return <ThemeProvider theme={createAdminTheme(mode)}><CssBaseline /><AdminContext.Provider value={context}>
+  return <AdminContext.Provider value={context}>
     <Box sx={{ minHeight: "100dvh", display: "flex", bgcolor: "background.default" }}>
-      {!compact ? <Paper component="aside" square variant="outlined" sx={{ width: DRAWER_WIDTH, minHeight: "100dvh", position: "fixed", inset: "0 auto 0 0", display: "flex", flexDirection: "column", zIndex: 2 }}>{nav}</Paper> : null}
-      {compact && mobileOpen ? <><Box role="presentation" onClick={() => setMobileOpen(false)} sx={{ position: "fixed", inset: 0, zIndex: 1199, bgcolor: "rgba(0,0,0,.48)" }} /><Paper component="aside" square sx={{ width: "min(86vw, 280px)", position: "fixed", inset: "0 auto 0 0", zIndex: 1200, display: "flex", flexDirection: "column" }}>{nav}</Paper></> : null}
-      <Box sx={{ flex: 1, minWidth: 0, ml: { md: `${DRAWER_WIDTH}px` } }}>
-        <AppBar position="sticky" color="inherit" elevation={0} sx={{ borderBottom: 1, borderColor: "divider" }}><Toolbar sx={{ minHeight: 64, gap: 1 }}>{compact ? <IconButton aria-label="打开导航" onClick={() => setMobileOpen(true)}><MenuIcon /></IconButton> : null}<Typography sx={{ flex: 1, fontWeight: 700 }}>自托管支付</Typography><IconButton aria-label={mode === "light" ? "切换深色主题" : "切换浅色主题"} onClick={toggleTheme}>{mode === "light" ? <DarkModeOutlined /> : <LightModeOutlined />}</IconButton><Button color="inherit" startIcon={<Logout />} onClick={() => void api("/session/logout", { method: "POST" }).then(() => location.replace("/admin/login")).catch((caught) => setToast(errorMessage(caught), "error"))}>退出</Button></Toolbar></AppBar>
-        <PageFrame><AdminRoute path={path} /></PageFrame>
+      <Link href="#main-content" sx={{ position: "fixed", zIndex: 2000, left: 12, top: 12, px: 1.5, py: 1, bgcolor: "background.paper", border: 1, borderColor: "primary.main", borderRadius: 1, transform: "translateY(-160%)", "&:focus": { transform: "translateY(0)" } }}>跳到主要内容</Link>
+      {compact ? <Drawer variant="temporary" open={mobileOpen} onClose={() => setMobileOpen(false)} ModalProps={{ keepMounted: true }} sx={{ "& .MuiDrawer-paper": { width: "min(86vw, 280px)", bgcolor: "background.paper" } }}>{nav}</Drawer> : <Drawer variant="permanent" open sx={{ width: DRAWER_WIDTH, flexShrink: 0, "& .MuiDrawer-paper": { width: DRAWER_WIDTH, boxSizing: "border-box", borderWidth: "0 1px 0 0", borderColor: "divider", bgcolor: "background.paper" } }}>{nav}</Drawer>}
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <AppBar component="header" position="sticky" color="inherit" elevation={0} sx={{ bgcolor: "background.paper", borderBottom: 1, borderColor: "divider" }}>
+          <Toolbar disableGutters sx={{ minHeight: "56px !important", px: { xs: 2, sm: 3, lg: 4, xl: 5 }, gap: 0.75 }}>
+            {compact ? <IconButton aria-label="打开导航" aria-expanded={mobileOpen} aria-controls="admin-navigation" onClick={() => setMobileOpen(true)} sx={{ mr: 0.5 }}><MenuIcon /></IconButton> : null}
+            <Typography variant="body2" sx={{ flex: 1, fontWeight: 700 }}>{currentLabel}</Typography>
+            <Tooltip title={mode === "light" ? "切换到深色主题" : "切换到浅色主题"}><IconButton aria-label={mode === "light" ? "切换到深色主题" : "切换到浅色主题"} onClick={toggleTheme}>{mode === "light" ? <DarkModeOutlined fontSize="small" /> : <LightModeOutlined fontSize="small" />}</IconButton></Tooltip>
+            <Tooltip title="退出登录"><IconButton aria-label="退出登录" onClick={logout}><Logout fontSize="small" /></IconButton></Tooltip>
+          </Toolbar>
+        </AppBar>
+        <MainContent id="main-content" tabIndex={-1}><PageFrame><Fade in appear timeout={reduceMotion ? 0 : 180}><Box><AdminRoute path={path} /></Box></Fade></PageFrame></MainContent>
       </Box>
     </Box>
     {dialog ? <ModalLayer dialog={dialog} close={closeDialog} /> : null}
-    {toast ? <Alert severity={toast.severity} onClose={() => setToastState(null)} sx={{ position: "fixed", zIndex: 1500, right: 16, bottom: 16, maxWidth: "min(420px, calc(100vw - 32px))", boxShadow: 6 }}>{toast.message}</Alert> : null}
-  </AdminContext.Provider></ThemeProvider>;
+    <Snackbar open={Boolean(toast)} autoHideDuration={5000} anchorOrigin={{ vertical: "bottom", horizontal: "right" }} onClose={(_, reason) => { if (reason !== "clickaway") setToastState(null); }}>
+      {toast ? <Alert severity={toast.severity} variant="filled" onClose={() => setToastState(null)} sx={{ width: "min(420px, calc(100vw - 32px))" }}>{toast.message}</Alert> : undefined}
+    </Snackbar>
+  </AdminContext.Provider>;
 }
 
 function AdminRoute({ path }: { readonly path: string }) {
@@ -513,7 +502,7 @@ function AdminRoute({ path }: { readonly path: string }) {
 }
 
 function MetricGrid({ items }: { readonly items: readonly (readonly [string, ReactNode])[] }) {
-  return <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 1.25 }}>{items.map(([label, value]) => <Paper variant="outlined" key={label} sx={{ p: 1.5 }}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography sx={{ mt: 0.5, fontSize: "1.35rem", fontWeight: 700 }}>{value}</Typography></Paper>)}</Box>;
+  return <Paper variant="outlined" sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", md: `repeat(${Math.min(items.length, 6)}, minmax(0, 1fr))` }, overflow: "hidden" }}>{items.map(([label, value], index) => <Box key={label} sx={{ minWidth: 0, p: 2, borderInlineEnd: { md: index === items.length - 1 ? 0 : 1 }, borderBottom: { xs: index < Math.max(0, items.length - 2) ? 1 : 0, md: 0 }, borderColor: "divider" }}><Typography variant="caption" color="textSecondary">{label}</Typography><Typography sx={{ mt: 0.375, fontSize: "1.25rem", fontWeight: 700 }}>{value}</Typography></Box>)}</Paper>;
 }
 
 function OverviewPage() {
@@ -523,11 +512,22 @@ function OverviewPage() {
   const view = data.data || {};
   const ledger = view.ledger || {}, reconciliation = view.reconciliation || {}, webhook = view.webhook || {}, backup = view.backup || {};
   const freshness = (health: JsonObject) => health.last_success_age_milliseconds === null || health.last_success_age_milliseconds === undefined ? "尚无成功记录" : `最近成功 ${formatDuration(health.last_success_age_milliseconds)}前`;
+  const collectionReady = ledger.collection_ready === true;
+  const confirmationReady = reconciliation.confirmation_ready === true;
+  const acceptingPayments = view.database?.ok === true && collectionReady && confirmationReady;
+  const chain = [["数据库", view.database?.ok ? "可用" : "不可用", view.database?.ok ? "success" : "error", view.instance_id], ["流水采集", collectionReady ? "可收款" : "已暂停", collectionReady ? "success" : "error", freshness(ledger)], ["自动确认", confirmationReady ? "可确认" : "未就绪", confirmationReady ? "success" : "error", freshness(reconciliation)], ["通知", webhook.enabled === false ? "未启用" : webhook.dead_letters > 0 ? "存在死信" : "运行中", webhook.dead_letters > 0 ? "error" : "success", webhook.last_error_code || `${webhook.pending_deliveries || 0} 条待投递`]] as const;
   return <><PageHeader title="系统状态" description="收款入口、自动确认、通知与备份的当前事实。" actions={<RefreshButton />} />
-    <Section title="收款链路"><Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 1.25 }}>
-      {[["数据库", view.database?.ok ? "可用" : "不可用", view.database?.ok ? "success" : "error", view.instance_id], ["流水采集", ledger.collection_ready ? "可收款" : "已暂停", ledger.collection_ready ? "success" : "error", freshness(ledger)], ["自动确认", reconciliation.confirmation_ready ? "可确认" : "未就绪", reconciliation.confirmation_ready ? "success" : "error", freshness(reconciliation)], ["通知", webhook.enabled === false ? "未启用" : webhook.dead_letters > 0 ? "存在死信" : "运行中", webhook.dead_letters > 0 ? "error" : "success", webhook.last_error_code || `${webhook.pending_deliveries || 0} 条待投递`]].map(([label, value, tone, note]) => <Paper variant="outlined" key={String(label)} sx={{ p: 1.5 }}><Typography variant="caption" color="text.secondary">{label}</Typography><Stack direction="row" alignItems="center" gap={1} sx={{ mt: 0.5 }}><Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: `${tone}.main` }} /><Typography sx={{ fontWeight: 700 }}>{value}</Typography></Stack><Typography variant="caption" color="text.secondary">{note || "-"}</Typography></Paper>)}</Box></Section>
+    <Paper variant="outlined" sx={{ mb: 3.5, overflow: "hidden" }}>
+      <Box sx={{ p: { xs: 2, sm: 2.5 }, bgcolor: acceptingPayments ? "success.main" : "warning.main", color: acceptingPayments ? "success.contrastText" : "warning.contrastText", display: "flex", alignItems: { xs: "flex-start", sm: "center" }, justifyContent: "space-between", flexDirection: { xs: "column", sm: "row" }, gap: 2 }}>
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}><Box aria-hidden="true" sx={{ width: 42, height: 42, flex: "0 0 auto", display: "grid", placeItems: "center", borderRadius: 1, bgcolor: "rgba(255,255,255,.18)" }}><AccountBalanceWalletOutlined /></Box><Box><Typography component="h2" variant="h2" sx={{ color: "inherit" }}>{acceptingPayments ? "收款入口已开放" : "收款入口已暂停"}</Typography><Typography variant="body2" sx={{ color: "inherit", opacity: 0.9 }}>{acceptingPayments ? "流水采集和自动确认均处于有效时间窗内。" : "完成配置并等待流水采集、自动确认成功运行后会自动开放。"}</Typography></Box></Stack>
+        {!acceptingPayments ? <Button component="a" href="/admin/settings" variant="contained" color="inherit" startIcon={<SettingsOutlined />} sx={{ bgcolor: "background.paper", color: "text.primary", "&:hover": { bgcolor: "background.default" } }}>检查设置</Button> : null}
+      </Box>
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", xl: "repeat(4, minmax(0, 1fr))" } }}>
+        {chain.map(([label, value, tone, note], index) => <Box key={label} sx={{ minWidth: 0, p: 2, borderInlineEnd: { xs: 0, sm: index % 2 === 0 ? 1 : 0, xl: index === chain.length - 1 ? 0 : 1 }, borderBottom: { xs: index === chain.length - 1 ? 0 : 1, sm: index < 2 ? 1 : 0, xl: 0 }, borderColor: "divider" }}><Typography variant="caption" color="textSecondary">{label}</Typography><Stack direction="row" spacing={1} sx={{ mt: 0.5, alignItems: "center" }}><Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: `${tone}.main` }} /><Typography sx={{ fontWeight: 700 }}>{value}</Typography></Stack><Typography variant="caption" color="textSecondary" sx={{ display: "block", mt: 0.375, overflowWrap: "anywhere" }}>{note || "-"}</Typography></Box>)}
+      </Box>
+    </Paper>
     <Section title="待处理"><MetricGrid items={[["开放异常", view.reconciliation?.exceptions?.open ?? "-"], ["账务冲突", view.ledger?.conflicts?.open ?? "-"], ["通知死信", webhook.dead_letters ?? "-"], ["待对账订单", reconciliation.pending_orders ?? "-"], ["连续采集失败", ledger.consecutive_failures ?? "-"], ["连续通知失败", webhook.consecutive_failures ?? "-"]]} /></Section>
-    <Section title="数据保护"><DetailCard title="自动备份"><Facts items={[["状态", backup.enabled ? (backup.ok ? "正常" : "异常") : "未启用"], ["最近成功", formatTime(backup.last_success_at)], ["备份文件", backup.backup_name || "-", true], ["保留数量", backup.retained_count ?? "-"], ["实例一致", backup.instance_matches === null ? "-" : backup.instance_matches ? "是" : "否"], ["恢复要求", backup.recovery_required ? "需要处理" : "无"]]} /></DetailCard></Section>
+    <Section title="数据保护"><Box sx={{ maxWidth: 760 }}><DetailCard title="自动备份" titleComponent="h3"><Facts items={[["状态", backup.enabled ? (backup.ok ? "正常" : "异常") : "未启用"], ["最近成功", formatTime(backup.last_success_at)], ["备份文件", backup.backup_name || "-", true], ["保留数量", backup.retained_count ?? "-"], ["实例一致", backup.instance_matches === null ? "-" : backup.instance_matches ? "是" : "否"], ["恢复要求", backup.recovery_required ? "需要处理" : "无"]]} /></DetailCard></Box></Section>
   </>;
 }
 
@@ -540,8 +540,36 @@ function OrderLink({ id }: { readonly id: unknown }) {
   return <DetailLink route="orders" id={id}>{short(id)}</DetailLink>;
 }
 
-function NativeFilter({ name, label, value, values }: { readonly name: string; readonly label: string; readonly value: string; readonly values: readonly string[] }) {
-  return <FormControl size="small" sx={{ minWidth: 150 }}><InputLabel variant="standard" htmlFor={`filter-${name}`}>{label}</InputLabel><NativeSelect id={`filter-${name}`} name={name} value={value} inputProps={{ "aria-label": label }}>{values.map((item) => <option key={item} value={item}>{statusText(item)}</option>)}</NativeSelect></FormControl>;
+interface FilterOption {
+  readonly value: string;
+  readonly label: string;
+}
+
+function FilterSelect({ name, label, value, options, minWidth = 160 }: {
+  readonly name: string;
+  readonly label: string;
+  readonly value: string;
+  readonly options: readonly FilterOption[];
+  readonly minWidth?: number;
+}) {
+  const id = `filter-${name}`;
+  return <FormControl size="small" sx={{ minWidth: { xs: "100%", sm: minWidth } }}>
+    <InputLabel id={`${id}-label`}>{label}</InputLabel>
+    <Select labelId={`${id}-label`} id={id} name={name} defaultValue={value} label={label}>
+      {options.map((option) => <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}
+    </Select>
+  </FormControl>;
+}
+
+function StatusFilter({ name, label, value, values }: { readonly name: string; readonly label: string; readonly value: string; readonly values: readonly string[] }) {
+  return <FilterSelect name={name} label={label} value={value} options={values.map((item) => ({ value: item, label: statusText(item) }))} />;
+}
+
+function FilterBar({ names, children }: { readonly names: readonly string[]; readonly children: ReactNode }) {
+  return <Paper component="form" variant="outlined" onSubmit={(event) => applyFilterForm(event, names)} sx={{ p: 1.5, mb: 2, display: "flex", gap: 1.5, alignItems: "center", flexWrap: "wrap" }}>
+    {children}
+    <Button type="submit" variant="contained" startIcon={<FilterAltOutlined />} sx={{ width: { xs: "100%", sm: "auto" } }}>应用筛选</Button>
+  </Paper>;
 }
 
 function applyFilterForm(event: FormEvent<HTMLFormElement>, names: readonly string[]) {
@@ -571,7 +599,7 @@ function CursorNavigation({ nextCursor }: { readonly nextCursor: unknown }) {
     map[next] = cursor || "";
     try { sessionStorage.setItem(CURSOR_PARENT_KEY, JSON.stringify(map)); } catch { /* pagination remains usable forward */ }
   }
-  return <Stack direction="row" justifyContent="flex-end" gap={1} sx={{ mt: 1.5 }}><Button component="a" href={makeUrl(previous || null)} variant="outlined" startIcon={<ChevronLeft />} disabled={!cursor}>上一页</Button><Button component="a" href={nextHref || "#"} variant="outlined" endIcon={<ChevronRight />} disabled={!next}>下一页</Button></Stack>;
+  return <Stack direction="row" spacing={1} sx={{ mt: 1.5, justifyContent: "flex-end" }}><Button component="a" href={makeUrl(previous || null)} variant="outlined" startIcon={<ChevronLeft />} disabled={!cursor}>上一页</Button><Button component="a" href={nextHref || "#"} variant="outlined" endIcon={<ChevronRight />} disabled={!next}>下一页</Button></Stack>;
 }
 
 function readCursorParents(): Record<string, string> {
@@ -607,7 +635,7 @@ function OrdersPage() {
   if (id || merchantNo) return <OrderDetail payload={data.data || {}} />;
   const rows = (data.data || []) as JsonObject[];
   return <><PageHeader title="订单" description="按收银台和付款状态查看订单事实。" actions={<RefreshButton />} /><OrderSearch value="" />
-    <Paper component="form" variant="outlined" onSubmit={(event) => applyFilterForm(event, ["checkout_status", "payment_status"])} sx={{ p: 1.5, mb: 2, display: "flex", gap: 2, alignItems: "end", flexWrap: "wrap" }}><NativeFilter name="checkout_status" label="收银台" value={checkoutStatus} values={["ALL", "OPEN", "CLOSED", "EXPIRED"]} /><NativeFilter name="payment_status" label="付款" value={paymentStatus} values={["ALL", "UNPAID", "CONFIRMED", "DISPUTED"]} /><Button type="submit" variant="contained">应用筛选</Button></Paper>
+    <FilterBar names={["checkout_status", "payment_status"]}><StatusFilter name="checkout_status" label="收银台" value={checkoutStatus} values={["ALL", "OPEN", "CLOSED", "EXPIRED"]} /><StatusFilter name="payment_status" label="付款" value={paymentStatus} values={["ALL", "UNPAID", "CONFIRMED", "DISPUTED"]} /></FilterBar>
     {rows.length ? <DataTable label="订单列表" rows={rows} columns={[
       { label: "商户订单号", render: (row) => <DetailLink route="orders" id={row.order_id}>{row.merchant_order_no}</DetailLink> },
       { label: "应付金额", render: (row) => formatMoney(row.payable_amount_cents, row.currency) },
@@ -622,7 +650,7 @@ function OrdersPage() {
 
 function OrderSearch({ value }: { readonly value: string }) {
   const [search, setSearch] = useState(value);
-  return <Stack component="form" direction={{ xs: "column", sm: "row" }} gap={1} sx={{ mb: 2 }} onSubmit={(event) => { event.preventDefault(); const term = search.trim(); if (term) location.href = `/admin/orders?merchant_order_no=${encodeURIComponent(term)}`; }}><TextField label="完整商户订单号" value={search} onChange={(event) => setSearch(event.target.value)} fullWidth /><Button type="submit" variant="outlined">查找订单</Button></Stack>;
+  return <Stack component="form" direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mb: 2, maxWidth: 680, alignItems: { sm: "flex-start" } }} onSubmit={(event) => { event.preventDefault(); const term = search.trim(); if (term) location.href = `/admin/orders?merchant_order_no=${encodeURIComponent(term)}`; }}><TextField label="完整商户订单号" value={search} onChange={(event) => setSearch(event.target.value)} fullWidth /><Button type="submit" variant="outlined" startIcon={<Search />} sx={{ minHeight: 40 }}>查找订单</Button></Stack>;
 }
 
 function OrderDetail({ payload }: { readonly payload: JsonObject }) {
@@ -643,7 +671,7 @@ function providerGenerationLabel(key: unknown, generations: readonly JsonObject[
 
 function ProviderFilter({ generations, selected, names }: { readonly generations: readonly JsonObject[]; readonly selected: string; readonly names: readonly string[] }) {
   if (!generations.length) return null;
-  return <Paper component="form" variant="outlined" onSubmit={(event) => applyFilterForm(event, names)} sx={{ p: 1.5, mb: 2, display: "flex", gap: 2, alignItems: "end", flexWrap: "wrap" }}><FormControl size="small" sx={{ minWidth: 240 }}><InputLabel variant="standard" htmlFor="provider-generation">采集应用</InputLabel><NativeSelect id="provider-generation" name="provider_account_key" value={selected}>{generations.map((generation) => <option key={generation.provider_account_key} value={generation.provider_account_key}>{providerGenerationLabel(generation.provider_account_key, generations)}</option>)}</NativeSelect></FormControl><Button type="submit" variant="contained">应用筛选</Button></Paper>;
+  return <FilterBar names={names}><FilterSelect name="provider_account_key" label="采集应用" value={selected} minWidth={280} options={generations.map((generation) => ({ value: String(generation.provider_account_key), label: providerGenerationLabel(generation.provider_account_key, generations) }))} /></FilterBar>;
 }
 
 function ExceptionsPage() {
@@ -690,7 +718,7 @@ function ExceptionDetail({ payload }: { readonly payload: JsonObject }) {
     content: <FinancialDecisionForm kind={kind} exception={exception} />,
   });
   return <><PageHeader title={statusText(exception.exception_type)} description="异常证据与可执行处置。" actions={<>{exception.status === "OPEN" && evidenceReady && manual ? <Button variant="contained" onClick={() => openDecision("manual")}>人工认领</Button> : null}{exception.status === "OPEN" && evidenceReady && refund ? <Button variant="outlined" color="error" onClick={() => openDecision("refund")}>登记退款</Button> : null}<LinkButton href="/admin/exceptions">返回异常</LinkButton></>} />
-    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2, mb: 3 }}><DetailCard title="异常事实"><Facts items={[["异常 ID", exception.exception_id, true], ["状态", statusText(exception.status)], ["订单 ID", exception.order_id || "未关联", true], ["流水 ID", exception.ledger_entry_id || "无", true], ["候选 ID", exception.candidate_id || "无", true], ["发现时间", formatTime(exception.created_at)], ["处理时间", formatTime(exception.resolved_at)], ["处理结果", exception.resolution ? <JsonBlock value={exception.resolution} /> : "待处理"]]} /></DetailCard><DetailCard title="流水">{payload.ledger_error ? <Alert severity="error">{payload.ledger_error}</Alert> : ledger ? <Facts items={[["方向", statusText(ledger.direction)], ["金额", formatMoney(ledger.amount_cents, ledger.currency)], ["发生时间", formatTime(ledger.occurred_at)], ["状态", statusText(ledger.state)], ["平台流水号", ledger.provider_order_no || "-", true], ["对方账户", ledger.other_account || "-"]]} /> : <Typography color="text.secondary">此异常没有可读取的标准化流水。</Typography>}</DetailCard></Box>
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2, mb: 3 }}><DetailCard title="异常事实"><Facts items={[["异常 ID", exception.exception_id, true], ["状态", statusText(exception.status)], ["订单 ID", exception.order_id || "未关联", true], ["流水 ID", exception.ledger_entry_id || "无", true], ["候选 ID", exception.candidate_id || "无", true], ["发现时间", formatTime(exception.created_at)], ["处理时间", formatTime(exception.resolved_at)], ["处理结果", exception.resolution ? <JsonBlock value={exception.resolution} /> : "待处理"]]} /></DetailCard><DetailCard title="流水">{payload.ledger_error ? <Alert severity="error">{payload.ledger_error}</Alert> : ledger ? <Facts items={[["方向", statusText(ledger.direction)], ["金额", formatMoney(ledger.amount_cents, ledger.currency)], ["发生时间", formatTime(ledger.occurred_at)], ["状态", statusText(ledger.state)], ["平台流水号", ledger.provider_order_no || "-", true], ["对方账户", ledger.other_account || "-"]]} /> : <Typography color="textSecondary">此异常没有可读取的标准化流水。</Typography>}</DetailCard></Box>
     <Section title="候选订单">{payload.candidates_error ? <Alert severity="error">{payload.candidates_error}</Alert> : candidates.length ? <DataTable label="匹配候选" rows={candidates} columns={[{ label: "订单 ID", render: (row) => <OrderLink id={row.order_id} /> }, { label: "证据", render: (row) => evidenceText(row.evidence_type) }, { label: "状态", render: (row) => <StateChip value={row.status} /> }, { label: "创建时间", render: (row) => formatTime(row.created_at) }]} /> : <EmptyState title="没有候选订单" message="可通过商户订单号查找正确订单后人工认领。" />}</Section><Section title="原始上下文"><JsonBlock value={exception.details || {}} /></Section>
   </>;
 }
@@ -718,7 +746,7 @@ function FinancialDecisionForm({ kind, exception }: { readonly kind: "manual" | 
       setToast(kind === "refund" ? "退款流水已登记" : "订单已人工认领", "success"); closeDialog(); location.reload();
     } catch (caught) { setToast(errorMessage(caught), "error"); setBusy(false); }
   };
-  return <Stack component="form" gap={2} onSubmit={(event) => void submit(event)}><Alert severity="warning"><strong>{kind === "refund" ? "登记退款流水" : "建立人工付款关联"}</strong>。{kind === "refund" ? "退款只更新退款状态，不会撤销原付款事实。" : "此操作会确认订单并发送付款成功通知。"}</Alert><TextField label="商户订单号" value={merchantNo} onChange={(event) => { setMerchantNo(event.target.value); setSelected(null); }} required helperText="使用完整商户订单号查找，不需要输入内部 UUID。" /><Button variant="outlined" onClick={() => void search()} disabled={searching || !merchantNo.trim()}>{searching ? "正在查找" : "查找订单"}</Button>{selected ? <Alert severity="success">已选择 {selected.merchant_order_no}，应付 {formatMoney(selected.payable_amount_cents, selected.currency)}</Alert> : null}<TextField label="流水 ID" value={String(exception.ledger_entry_id || "")} slotProps={{ input: { readOnly: true } }} /><FixedTextareaField label="处理理由" value={reason} onChange={(event) => setReason(event.target.value)} rows={3} required /><Typography variant="caption" color="text.secondary" sx={{ fontFamily: MONO }}>操作编号 {operationId.current}</Typography><Stack direction="row" justifyContent="flex-end" gap={1}><Button onClick={closeDialog}>取消</Button><Button type="submit" variant="contained" color={kind === "refund" ? "error" : "primary"} disabled={busy}>{busy ? "正在提交" : kind === "refund" ? "登记退款" : "确认人工认领"}</Button></Stack></Stack>;
+  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><Alert severity="warning"><strong>{kind === "refund" ? "登记退款流水" : "建立人工付款关联"}</strong>。{kind === "refund" ? "退款只更新退款状态，不会撤销原付款事实。" : "此操作会确认订单并发送付款成功通知。"}</Alert><TextField label="商户订单号" value={merchantNo} onChange={(event) => { setMerchantNo(event.target.value); setSelected(null); }} required helperText="使用完整商户订单号查找，不需要输入内部 UUID。" /><Button variant="outlined" onClick={() => void search()} disabled={searching || !merchantNo.trim()}>{searching ? "正在查找" : "查找订单"}</Button>{selected ? <Alert severity="success">已选择 {selected.merchant_order_no}，应付 {formatMoney(selected.payable_amount_cents, selected.currency)}</Alert> : null}<TextField label="流水 ID" value={String(exception.ledger_entry_id || "")} slotProps={{ input: { readOnly: true } }} /><FixedTextareaField label="处理理由" value={reason} onChange={(event) => setReason(event.target.value)} rows={3} required /><Typography variant="caption" color="textSecondary" sx={{ fontFamily: MONO }}>操作编号 {operationId.current}</Typography><Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}><Button onClick={closeDialog}>取消</Button><Button type="submit" variant="contained" color={kind === "refund" ? "error" : "primary"} disabled={busy}>{busy ? "正在提交" : kind === "refund" ? "登记退款" : "确认人工认领"}</Button></Stack></Stack>;
 }
 
 function SettlementsPage() {
@@ -737,7 +765,7 @@ function SettlementsPage() {
   if (!data) return <LoadingPage />;
   if (id) return <SettlementDetail match={data.data || {}} />;
   const rows = (data.data || []) as JsonObject[];
-  return <><PageHeader title="结算历史" description="自动确认和管理员处置形成的有效或已撤销关联。" actions={<RefreshButton />} /><Paper component="form" variant="outlined" onSubmit={(event) => applyFilterForm(event, ["status"])} sx={{ p: 1.5, mb: 2, display: "flex", gap: 2, alignItems: "end" }}><NativeFilter name="status" label="状态" value={status} values={["SETTLED", "REVERSED"]} /><Button type="submit" variant="contained">应用筛选</Button></Paper>{rows.length ? <DataTable label="结算记录" rows={rows} columns={[{ label: "关联 ID", render: (row) => <DetailLink route="settlements" id={row.payment_match_id} /> }, { label: "订单", render: (row) => <OrderLink id={row.order_id} /> }, { label: "流水", render: (row) => <Code>{short(row.ledger_entry_id)}</Code> }, { label: "证据", render: (row) => evidenceText(row.evidence_type) }, { label: "状态", render: (row) => <StateChip value={row.status} /> }, { label: "创建时间", render: (row) => formatTime(row.created_at) }]} /> : <EmptyState title="没有结算记录" message="新的自动确认会直接出现在这里。" />}<CursorNavigation nextCursor={data.page?.next_cursor} /></>;
+  return <><PageHeader title="结算历史" description="自动确认和管理员处置形成的有效或已撤销关联。" actions={<RefreshButton />} /><FilterBar names={["status"]}><StatusFilter name="status" label="状态" value={status} values={["SETTLED", "REVERSED"]} /></FilterBar>{rows.length ? <DataTable label="结算记录" rows={rows} columns={[{ label: "关联 ID", render: (row) => <DetailLink route="settlements" id={row.payment_match_id} /> }, { label: "订单", render: (row) => <OrderLink id={row.order_id} /> }, { label: "流水", render: (row) => <Code>{short(row.ledger_entry_id)}</Code> }, { label: "证据", render: (row) => evidenceText(row.evidence_type) }, { label: "状态", render: (row) => <StateChip value={row.status} /> }, { label: "创建时间", render: (row) => formatTime(row.created_at) }]} /> : <EmptyState title="没有结算记录" message="新的自动确认会直接出现在这里。" />}<CursorNavigation nextCursor={data.page?.next_cursor} /></>;
 }
 
 function SettlementDetail({ match }: { readonly match: JsonObject }) {
@@ -755,7 +783,7 @@ function ReverseSettlementForm({ match }: { readonly match: JsonObject }) {
   const [busy, setBusy] = useState(false);
   const operationId = useRef(crypto.randomUUID());
   const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { await protectedRequest(`/reconciliation/matches/${encodeURIComponent(match.payment_match_id)}/actions/reverse`, { financial_operation_id: operationId.current, reason: reason.trim() }); setToast("关联已撤销，订单已进入争议状态", "success"); closeDialog(); location.reload(); } catch (caught) { setToast(errorMessage(caught), "error"); setBusy(false); } };
-  return <Stack component="form" gap={2} onSubmit={(event) => void submit(event)}><Alert severity="error">撤销后订单进入争议状态，并向已配置的回调地址发送争议通知。</Alert><FixedTextareaField label="撤销理由" value={reason} onChange={(event) => setReason(event.target.value)} rows={3} required /><Typography variant="caption" color="text.secondary" sx={{ fontFamily: MONO }}>操作编号 {operationId.current}</Typography><Stack direction="row" justifyContent="flex-end" gap={1}><Button onClick={closeDialog}>取消</Button><Button type="submit" variant="contained" color="error" disabled={busy}>{busy ? "正在撤销" : "撤销关联"}</Button></Stack></Stack>;
+  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><Alert severity="error">撤销后订单进入争议状态，并向已配置的回调地址发送争议通知。</Alert><FixedTextareaField label="撤销理由" value={reason} onChange={(event) => setReason(event.target.value)} rows={3} required /><Typography variant="caption" color="textSecondary" sx={{ fontFamily: MONO }}>操作编号 {operationId.current}</Typography><Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}><Button onClick={closeDialog}>取消</Button><Button type="submit" variant="contained" color="error" disabled={busy}>{busy ? "正在撤销" : "撤销关联"}</Button></Stack></Stack>;
 }
 
 function conflictResolutionAction(type: unknown): "KEEP_EXISTING" | "ACKNOWLEDGE_ISOLATED" | null {
@@ -786,7 +814,7 @@ function ConflictsPage() {
   if (!data) return <LoadingPage />;
   if (id) return <ConflictDetail detail={data.data || {}} />;
   const rows = (data.data || []) as JsonObject[], generations = (data.generations || []) as JsonObject[];
-  return <><PageHeader title="账务冲突" description="采集证据重复、变化或无法标准化时形成的隔离记录。" actions={<RefreshButton />} /><Paper component="form" variant="outlined" onSubmit={(event) => applyFilterForm(event, ["status", "provider_account_key"])} sx={{ p: 1.5, mb: 2, display: "flex", gap: 2, alignItems: "end", flexWrap: "wrap" }}><NativeFilter name="status" label="状态" value={status} values={["OPEN", "ALL", "RESOLVED", "IGNORED"]} />{generations.length ? <FormControl size="small" sx={{ minWidth: 240 }}><InputLabel variant="standard" htmlFor="conflict-provider">采集应用</InputLabel><NativeSelect id="conflict-provider" name="provider_account_key" value={String(data.accountKey || "")}>{generations.map((generation) => <option key={generation.provider_account_key} value={generation.provider_account_key}>{providerGenerationLabel(generation.provider_account_key, generations)}</option>)}</NativeSelect></FormControl> : null}<Button type="submit" variant="contained">应用筛选</Button></Paper>{rows.length ? <DataTable label="冲突记录" rows={rows} columns={[{ label: "类型", render: (row) => <DetailLink route="ledger-conflicts" id={row.conflict_id}>{statusText(row.conflict_type)}</DetailLink> }, { label: "外部流水", render: (row) => <Code>{row.external_event_id || "-"}</Code> }, { label: "状态", render: (row) => <StateChip value={row.status} /> }, { label: "处理结果", render: (row) => row.resolution_action ? statusText(row.resolution_action) : "-" }, { label: "发现时间", render: (row) => formatTime(row.created_at) }]} /> : <EmptyState title="没有账务冲突" message="采集到的流水证据目前一致。" />}<CursorNavigation nextCursor={data.page?.next_cursor} /></>;
+  return <><PageHeader title="账务冲突" description="采集证据重复、变化或无法标准化时形成的隔离记录。" actions={<RefreshButton />} /><FilterBar names={["status", "provider_account_key"]}><StatusFilter name="status" label="状态" value={status} values={["OPEN", "ALL", "RESOLVED", "IGNORED"]} />{generations.length ? <FilterSelect name="provider_account_key" label="采集应用" value={String(data.accountKey || "")} minWidth={280} options={generations.map((generation) => ({ value: String(generation.provider_account_key), label: providerGenerationLabel(generation.provider_account_key, generations) }))} /> : null}</FilterBar>{rows.length ? <DataTable label="冲突记录" rows={rows} columns={[{ label: "类型", render: (row) => <DetailLink route="ledger-conflicts" id={row.conflict_id}>{statusText(row.conflict_type)}</DetailLink> }, { label: "外部流水", render: (row) => <Code>{row.external_event_id || "-"}</Code> }, { label: "状态", render: (row) => <StateChip value={row.status} /> }, { label: "处理结果", render: (row) => row.resolution_action ? statusText(row.resolution_action) : "-" }, { label: "发现时间", render: (row) => formatTime(row.created_at) }]} /> : <EmptyState title="没有账务冲突" message="采集到的流水证据目前一致。" />}<CursorNavigation nextCursor={data.page?.next_cursor} /></>;
 }
 
 function ConflictDetail({ detail }: { readonly detail: JsonObject }) {
@@ -799,7 +827,7 @@ function ConflictResolutionForm({ conflict, action }: { readonly conflict: JsonO
   const { protectedRequest, setToast, closeDialog } = useAdmin();
   const [reason, setReason] = useState(""); const [busy, setBusy] = useState(false); const operationId = useRef(crypto.randomUUID());
   const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { await protectedRequest(`/ledger/conflicts/${encodeURIComponent(conflict.conflict_id)}/actions/resolve`, { conflict_operation_id: operationId.current, action, reason: reason.trim() }); setToast("账务冲突已处理", "success"); closeDialog(); location.reload(); } catch (caught) { setToast(errorMessage(caught), "error"); setBusy(false); } };
-  return <Stack component="form" gap={2} onSubmit={(event) => void submit(event)}><Alert severity="warning">{action === "KEEP_EXISTING" ? "将保留已经入账的流水事实，并关闭重复外部流水号冲突。" : "将确认该记录保持隔离，不把无效证据写入账本。"}</Alert><FixedTextareaField label="处理理由" value={reason} onChange={(event) => setReason(event.target.value)} rows={3} required /><Typography variant="caption" color="text.secondary" sx={{ fontFamily: MONO }}>操作编号 {operationId.current}</Typography><Stack direction="row" justifyContent="flex-end" gap={1}><Button onClick={closeDialog}>取消</Button><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在提交" : "提交处理"}</Button></Stack></Stack>;
+  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><Alert severity="warning">{action === "KEEP_EXISTING" ? "将保留已经入账的流水事实，并关闭重复外部流水号冲突。" : "将确认该记录保持隔离，不把无效证据写入账本。"}</Alert><FixedTextareaField label="处理理由" value={reason} onChange={(event) => setReason(event.target.value)} rows={3} required /><Typography variant="caption" color="textSecondary" sx={{ fontFamily: MONO }}>操作编号 {operationId.current}</Typography><Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}><Button onClick={closeDialog}>取消</Button><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在提交" : "提交处理"}</Button></Stack></Stack>;
 }
 
 function NotificationsPage() {
@@ -822,7 +850,7 @@ function NotificationsPage() {
   if (!data) return <LoadingPage />;
   if (id) return <NotificationDetail detail={data.data || {}} attempts={(data.attempts || []) as JsonObject[]} />;
   const rows = (data.data || []) as JsonObject[];
-  return <><PageHeader title="通知投递" description="付款、争议和退款事件的异步送达状态。" actions={<RefreshButton />} /><Paper component="form" variant="outlined" onSubmit={(event) => applyFilterForm(event, ["status"])} sx={{ p: 1.5, mb: 2, display: "flex", gap: 2, alignItems: "end" }}><NativeFilter name="status" label="状态" value={status} values={allowed} /><Button type="submit" variant="contained">应用筛选</Button></Paper>{rows.length ? <DataTable label="通知记录" rows={rows} columns={[{ label: "事件", render: (row) => <DetailLink route="notifications" id={row.delivery_id}>{row.event?.event_type || "通知"}</DetailLink> }, { label: "订单", render: (row) => <OrderLink id={row.event?.order_id} /> }, { label: "代次", render: (row) => String(row.generation) }, { label: "状态", render: (row) => <StateChip value={row.status} /> }, { label: "尝试", render: (row) => String(row.attempt_count) }, { label: "更新时间", render: (row) => formatTime(row.updated_at) }]} /> : <EmptyState title="没有通知投递" message="配置回调地址的订单产生事件后会出现在这里。" />}<CursorNavigation nextCursor={data.page?.next_cursor} /></>;
+  return <><PageHeader title="通知投递" description="付款、争议和退款事件的异步送达状态。" actions={<RefreshButton />} /><FilterBar names={["status"]}><StatusFilter name="status" label="状态" value={status} values={allowed} /></FilterBar>{rows.length ? <DataTable label="通知记录" rows={rows} columns={[{ label: "事件", render: (row) => <DetailLink route="notifications" id={row.delivery_id}>{row.event?.event_type || "通知"}</DetailLink> }, { label: "订单", render: (row) => <OrderLink id={row.event?.order_id} /> }, { label: "代次", render: (row) => String(row.generation) }, { label: "状态", render: (row) => <StateChip value={row.status} /> }, { label: "尝试", render: (row) => String(row.attempt_count) }, { label: "更新时间", render: (row) => formatTime(row.updated_at) }]} /> : <EmptyState title="没有通知投递" message="配置回调地址的订单产生事件后会出现在这里。" />}<CursorNavigation nextCursor={data.page?.next_cursor} /></>;
 }
 
 function NotificationDetail({ detail, attempts }: { readonly detail: JsonObject; readonly attempts: readonly JsonObject[] }) {
@@ -833,14 +861,14 @@ function NotificationDetail({ detail, attempts }: { readonly detail: JsonObject;
 function RedeliveryForm({ delivery }: { readonly delivery: JsonObject }) {
   const { protectedRequest, setToast, closeDialog } = useAdmin(); const [reason, setReason] = useState(""); const [busy, setBusy] = useState(false); const operationId = useRef(crypto.randomUUID());
   const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { const response = await protectedRequest(`/webhooks/deliveries/${encodeURIComponent(delivery.delivery_id)}/actions/redeliver`, { redelivery_id: operationId.current, reason: reason.trim() }); setToast(response.data?.replayed ? "已恢复既有补发请求" : "补发任务已创建", "success"); closeDialog(); location.href = `/admin/notifications?id=${encodeURIComponent(response.data.delivery.delivery_id)}`; } catch (caught) { setToast(errorMessage(caught), "error"); setBusy(false); } };
-  return <Stack component="form" gap={2} onSubmit={(event) => void submit(event)}><Alert severity="warning">补发会创建新的投递代次；接收端仍应按 event_id 幂等处理。</Alert><FixedTextareaField label="补发理由" value={reason} onChange={(event) => setReason(event.target.value)} rows={3} required /><Typography variant="caption" color="text.secondary" sx={{ fontFamily: MONO }}>补发编号 {operationId.current}</Typography><Stack direction="row" justifyContent="flex-end" gap={1}><Button onClick={closeDialog}>取消</Button><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在创建" : "创建补发"}</Button></Stack></Stack>;
+  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><Alert severity="warning">补发会创建新的投递代次；接收端仍应按 event_id 幂等处理。</Alert><FixedTextareaField label="补发理由" value={reason} onChange={(event) => setReason(event.target.value)} rows={3} required /><Typography variant="caption" color="textSecondary" sx={{ fontFamily: MONO }}>补发编号 {operationId.current}</Typography><Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}><Button onClick={closeDialog}>取消</Button><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在创建" : "创建补发"}</Button></Stack></Stack>;
 }
 
 const SETTINGS_STEPS = [
-  { id: "application-key", title: "生成应用密钥", next: "GENERATE_APPLICATION_KEY" },
-  { id: "provider", title: "配置支付宝", next: "CONFIGURE_PROVIDER" },
-  { id: "collection", title: "配置经营码", next: "CONFIGURE_COLLECTION" },
-  { id: "api-key", title: "生成 API 密钥", next: "GENERATE_API_KEY" },
+  { id: "application-key", title: "生成应用密钥", description: "上传应用公钥", next: "GENERATE_APPLICATION_KEY" },
+  { id: "provider", title: "配置支付宝", description: "填写应用与平台公钥", next: "CONFIGURE_PROVIDER" },
+  { id: "collection", title: "配置经营码", description: "设置收款链接与金额", next: "CONFIGURE_COLLECTION" },
+  { id: "api-key", title: "生成 API 密钥", description: "连接你的业务程序", next: "GENERATE_API_KEY" },
 ] as const;
 
 function SettingsPage() {
@@ -853,12 +881,12 @@ function SettingsPage() {
   const view = data.data || {}, status = data.status || {}, complete = view.completion?.complete === true;
   return <><PageHeader title={complete ? "设置" : "设置收款"} description={complete ? "维护收款配置、接口凭据和可选功能。" : "按顺序完成四项必需配置，完成后系统才会开放收款。"} actions={<RefreshButton />} /><SettingsCompletion view={view} />
     {!complete ? <Section title="配置流程"><SettingsOnboarding view={view} reload={reload} /></Section> : <>
-      <Section title="测试支付"><DetailCard title="验证真实收款链路"><TestPayment view={view} systemStatus={status} /></DetailCard></Section>
-      <Section title="收款配置"><Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2 }}><DetailCard title="经营码与金额"><CollectionSettingsForm view={view} reload={reload} /></DetailCard><DetailCard title="支付宝平台"><ProviderSettingsForm view={view} reload={reload} /></DetailCard></Box></Section>
-      <Section title="通知"><DetailCard title="异步通知"><NotificationSettingsForm view={view} reload={reload} /></DetailCard></Section>
-      <Section title="高级设置"><DetailCard title="收银台生命周期"><AdvancedSettingsForm view={view} reload={reload} /></DetailCard></Section>
-      <Section title="API 客户端"><DetailCard title="调用凭据"><ApiKeyBlock view={view} reload={reload} /></DetailCard></Section>
-      <Section title="已保存密钥"><DetailCard title="敏感值"><SecretSettings view={view} /></DetailCard></Section>
+      <Section title="测试支付"><Box sx={{ maxWidth: 960 }}><DetailCard title="验证真实收款链路" titleComponent="h3"><TestPayment view={view} systemStatus={status} /></DetailCard></Box></Section>
+      <Section title="收款配置"><Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2, maxWidth: 1200 }}><DetailCard title="经营码与金额" titleComponent="h3"><CollectionSettingsForm view={view} reload={reload} /></DetailCard><DetailCard title="支付宝平台" titleComponent="h3"><ProviderSettingsForm view={view} reload={reload} /></DetailCard></Box></Section>
+      <Section title="通知"><Box sx={{ maxWidth: 760 }}><DetailCard title="异步通知" titleComponent="h3"><NotificationSettingsForm view={view} reload={reload} /></DetailCard></Box></Section>
+      <Section title="高级设置"><Box sx={{ maxWidth: 760 }}><DetailCard title="收银台生命周期" titleComponent="h3"><AdvancedSettingsForm view={view} reload={reload} /></DetailCard></Box></Section>
+      <Section title="API 客户端"><Box sx={{ maxWidth: 760 }}><DetailCard title="调用凭据" titleComponent="h3"><ApiKeyBlock view={view} reload={reload} /></DetailCard></Box></Section>
+      <Section title="已保存密钥"><Box sx={{ maxWidth: 760 }}><DetailCard title="敏感值" titleComponent="h3"><SecretSettings view={view} /></DetailCard></Box></Section>
       <ProviderHistory generations={(view.provider_generations || []) as JsonObject[]} />
     </>}
   </>;
@@ -884,13 +912,25 @@ function SettingsOnboarding({ view, reload }: { readonly view: JsonObject; reado
   const completion = view.completion || {};
   const recommended = Math.max(0, SETTINGS_STEPS.findIndex((step) => step.next === completion.next_step));
   const [active, setActive] = useState(recommended);
+  const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const steps = SETTINGS_STEPS.map((step, index) => ({
     id: step.id,
     title: step.title,
+    description: step.description,
     completed: stepComplete(index, completion),
     disabled: !stepAvailable(index, completion),
   }));
-  return <Box><ResponsiveSetupStepper steps={steps} activeStep={active} onStepChange={setActive} /><Box sx={{ maxWidth: 760 }}>{active === 0 ? <DetailCard title="1. 生成并上传应用公钥"><ApplicationKeyBlock view={view} reload={reload} next={() => setActive(1)} /></DetailCard> : active === 1 ? <DetailCard title="2. 填写支付宝应用信息"><ProviderSettingsForm view={view} reload={reload} /></DetailCard> : active === 2 ? <DetailCard title="3. 配置经营码"><CollectionSettingsForm view={view} reload={reload} /></DetailCard> : <DetailCard title="4. 生成接口密钥"><ApiKeyBlock view={view} reload={reload} initial /></DetailCard>}</Box></Box>;
+  return <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0, 1fr)", md: "280px minmax(0, 760px)" }, gap: 2, alignItems: "start" }}>
+    <Paper component="aside" variant="outlined" sx={{ p: 2, position: { md: "sticky" }, top: { md: 76 } }}>
+      <Typography component="h3" variant="h3" sx={{ mb: 1.5 }}>配置进度</Typography>
+      <ResponsiveSetupStepper steps={steps} activeStep={active} onStepChange={setActive} />
+      <Divider sx={{ my: 1.5 }} />
+      <Typography variant="caption" color="textSecondary">完成当前步骤后，下一步会自动开放。</Typography>
+    </Paper>
+    <Fade in key={active} timeout={reduceMotion ? 0 : 180}>
+      <Box>{active === 0 ? <DetailCard title="生成并上传应用公钥" titleComponent="h3"><ApplicationKeyBlock view={view} reload={reload} next={() => setActive(1)} /></DetailCard> : active === 1 ? <DetailCard title="填写支付宝应用信息" titleComponent="h3"><ProviderSettingsForm view={view} reload={reload} /></DetailCard> : active === 2 ? <DetailCard title="配置经营码" titleComponent="h3"><CollectionSettingsForm view={view} reload={reload} /></DetailCard> : <DetailCard title="生成接口密钥" titleComponent="h3"><ApiKeyBlock view={view} reload={reload} initial /></DetailCard>}</Box>
+    </Fade>
+  </Box>;
 }
 
 async function copyText(value: string): Promise<void> {
@@ -900,13 +940,13 @@ async function copyText(value: string): Promise<void> {
 
 function ApplicationPublicKey({ view }: { readonly view: JsonObject }) {
   const { setToast } = useAdmin();
-  return <Stack gap={1.25}><Typography variant="body2" color="text.secondary">上传后，支付宝开放平台会提供应用 ID 和支付宝公钥，下一步需要填写这两项。</Typography><FixedTextareaField label="应用公钥" value={String(view.application_public_key || "")} rows={5} readOnly ariaLabel="应用公钥" />{view.application_key_fingerprint ? <Typography variant="caption" color="text.secondary" sx={{ fontFamily: MONO, overflowWrap: "anywhere" }}>指纹 {view.application_key_fingerprint}</Typography> : null}<Button variant="outlined" onClick={() => void copyText(String(view.application_public_key || "")).then(() => setToast("应用公钥已复制", "success")).catch((caught) => setToast(errorMessage(caught), "error"))}>复制应用公钥</Button></Stack>;
+  return <Stack spacing={1.25}><Typography variant="body2" color="textSecondary">上传后，支付宝开放平台会提供应用 ID 和支付宝公钥，下一步需要填写这两项。</Typography><FixedTextareaField label="应用公钥" value={String(view.application_public_key || "")} rows={5} readOnly ariaLabel="应用公钥" />{view.application_key_fingerprint ? <Typography variant="caption" color="textSecondary" sx={{ fontFamily: MONO, overflowWrap: "anywhere" }}>指纹 {view.application_key_fingerprint}</Typography> : null}<Button variant="outlined" onClick={() => void copyText(String(view.application_public_key || "")).then(() => setToast("应用公钥已复制", "success")).catch((caught) => setToast(errorMessage(caught), "error"))}>复制应用公钥</Button></Stack>;
 }
 
 function ApplicationKeyBlock({ view, reload, next }: { readonly view: JsonObject; readonly reload: () => Promise<void>; readonly next: () => void }) {
   const { protectedRequest, setToast } = useAdmin(); const [busy, setBusy] = useState(false);
-  if (!view.application_public_key) return <Stack gap={2}><Typography color="text.secondary">系统会在本机生成应用密钥。私钥加密保存且不会上传，你只需把生成的应用公钥上传到支付宝开放平台。</Typography><Button variant="contained" disabled={busy} onClick={() => { setBusy(true); void protectedRequest("/settings/provider/application-key/actions/generate", { revision: view.revision }).then(async () => { setToast("应用密钥已生成", "success"); await reload(); }).catch((caught) => setToast(errorMessage(caught), "error")).finally(() => setBusy(false)); }}>{busy ? "正在生成" : "生成应用密钥"}</Button></Stack>;
-  return <Stack gap={2}><Alert severity="success">应用密钥已生成。请复制下面的应用公钥并上传到支付宝开放平台。</Alert><ApplicationPublicKey view={view} /><Stack direction={{ xs: "column", sm: "row" }} gap={1}><Button component="a" href="https://open.alipay.com/" target="_blank" rel="noreferrer" variant="outlined">打开支付宝开放平台</Button><Button variant="contained" onClick={next}>下一步：填写支付宝信息</Button></Stack></Stack>;
+  if (!view.application_public_key) return <Stack spacing={2}><Typography color="textSecondary">系统会在本机生成应用密钥。私钥加密保存且不会上传，你只需把生成的应用公钥上传到支付宝开放平台。</Typography><Button variant="contained" disabled={busy} onClick={() => { setBusy(true); void protectedRequest("/settings/provider/application-key/actions/generate", { revision: view.revision }).then(async () => { setToast("应用密钥已生成", "success"); await reload(); }).catch((caught) => setToast(errorMessage(caught), "error")).finally(() => setBusy(false)); }}>{busy ? "正在生成" : "生成应用密钥"}</Button></Stack>;
+  return <Stack spacing={2}><Alert severity="success">应用密钥已生成。请复制下面的应用公钥并上传到支付宝开放平台。</Alert><ApplicationPublicKey view={view} /><Stack direction={{ xs: "column", sm: "row" }} spacing={1}><Button component="a" href="https://open.alipay.com/" target="_blank" rel="noreferrer" variant="outlined">打开支付宝开放平台</Button><Button variant="contained" onClick={next}>下一步：填写支付宝信息</Button></Stack></Stack>;
 }
 
 function mutationError(caught: unknown, setToast: AdminContextValue["setToast"], reload: () => Promise<void>) {
@@ -918,60 +958,70 @@ function CollectionSettingsForm({ view, reload }: { readonly view: JsonObject; r
   const { protectedRequest, setToast } = useAdmin(); const current = view.collection || {};
   const [codePayload, setCodePayload] = useState(String(current.code_payload || "")); const [ttl, setTtl] = useState(Number(current.order_ttl_seconds ?? 300)); const [offset, setOffset] = useState(Number(current.amount_offset_maximum_cents ?? 99)); const [busy, setBusy] = useState(false);
   const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { await protectedRequest("/settings/collection", { revision: view.revision, code_payload: codePayload, order_ttl_seconds: ttl, amount_offset_maximum_cents: offset }, "PUT"); setToast("收款配置已保存", "success"); await reload(); } catch (caught) { await mutationError(caught, setToast, reload); } finally { setBusy(false); } };
-  return <Stack component="form" gap={2} onSubmit={(event) => void submit(event)}><FixedTextareaField label="经营码内容" value={codePayload} onChange={(event) => setCodePayload(event.target.value)} rows={3} required helperText="填写支付宝经营码对应的收款链接；不会把内容写入前端脚本。" /><TextField label="订单有效期（秒）" type="number" value={ttl} onChange={(event) => setTtl(Number(event.target.value))} inputProps={{ min: 60, max: 1800, step: 1 }} required helperText="范围 60–1800 秒。" /><TextField label="金额尾差上限（分）" type="number" value={offset} onChange={(event) => setOffset(Number(event.target.value))} inputProps={{ min: 1, max: 99, step: 1 }} required helperText="用于分配唯一应付金额，范围 1–99 分。" /><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在保存" : "保存收款配置"}</Button></Stack>;
+  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><FixedTextareaField label="经营码内容" value={codePayload} onChange={(event) => setCodePayload(event.target.value)} rows={3} required helperText="填写支付宝经营码对应的收款链接；不会把内容写入前端脚本。" /><TextField label="订单有效期（秒）" type="number" value={ttl} onChange={(event) => setTtl(Number(event.target.value))} slotProps={{ htmlInput: { min: 60, max: 1800, step: 1 } }} required helperText="范围 60–1800 秒。" /><TextField label="金额尾差上限（分）" type="number" value={offset} onChange={(event) => setOffset(Number(event.target.value))} slotProps={{ htmlInput: { min: 1, max: 99, step: 1 } }} required helperText="用于分配唯一应付金额，范围 1–99 分。" /><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在保存" : "保存收款配置"}</Button></Stack>;
 }
 
 function ProviderSettingsForm({ view, reload }: { readonly view: JsonObject; readonly reload: () => Promise<void> }) {
-  const { protectedRequest, setToast } = useAdmin(); const current = view.provider || {}, hasProvider = view.completion?.provider === true;
+  const { protectedRequest, setToast, openDialog, closeDialog } = useAdmin(); const current = view.provider || {}, hasProvider = view.completion?.provider === true;
   const [environment, setEnvironment] = useState(String(current.environment || "PRODUCTION")); const [appId, setAppId] = useState(String(current.app_id || "")); const [publicKey, setPublicKey] = useState(""); const [timeout, setTimeoutValue] = useState(Number(current.timeout_milliseconds ?? 8000)); const [interval, setIntervalValue] = useState(Number(current.scan_interval_seconds ?? 10)); const [maxAge, setMaxAge] = useState(Number(current.maximum_success_age_seconds ?? 60)); const [busy, setBusy] = useState(false);
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    const identityChanged = Boolean(current.app_id) && (environment !== current.environment || appId !== current.app_id);
-    if ((!current.app_id || identityChanged) && !publicKey.trim()) { setToast(identityChanged ? "更换采集应用时必须填写对应的支付宝公钥" : "首次配置必须填写支付宝公钥", "error"); return; }
-    if (identityChanged && !window.confirm("这会归档当前采集应用并创建新的账务代际。旧订单和流水会保留，但不能与新代际交叉匹配。确定继续吗？")) return;
+  const save = async () => {
     setBusy(true);
     try { await protectedRequest("/settings/provider", { revision: view.revision, environment, app_id: appId, timeout_milliseconds: timeout, scan_interval_seconds: interval, maximum_success_age_seconds: maxAge, ...(publicKey.trim() ? { platform_public_key: publicKey } : {}) }, "PUT"); setToast("支付宝平台配置已保存", "success"); await reload(); }
     catch (caught) { await mutationError(caught, setToast, reload); }
     finally { setBusy(false); }
   };
-  return <Stack component="form" gap={2} onSubmit={(event) => void submit(event)}>{view.application_public_key ? <ApplicationPublicKey view={view} /> : null}<FormControl size="small"><InputLabel variant="standard" htmlFor="provider-environment">运行环境</InputLabel><NativeSelect id="provider-environment" value={environment} onChange={(event) => setEnvironment(event.target.value)}><option value="PRODUCTION">生产环境</option><option value="SANDBOX">沙箱环境</option></NativeSelect><FormHelperText>{hasProvider ? "切换环境或应用会创建新的流水账户代际。" : "请选择支付宝开放平台环境。"}</FormHelperText></FormControl><TextField label="应用 ID" value={appId} onChange={(event) => setAppId(event.target.value)} inputProps={{ maxLength: 64 }} required /><FixedTextareaField label="支付宝公钥" value={publicKey} onChange={(event) => setPublicKey(event.target.value)} rows={5} required={!hasProvider} helperText={hasProvider ? "留空表示保留当前支付宝公钥；更换应用时必须填写新公钥。" : "上传应用公钥后，从支付宝开放平台复制支付宝公钥。支持 PEM 或单行 Base64。"} /><TextField label="请求超时（毫秒）" type="number" value={timeout} onChange={(event) => setTimeoutValue(Number(event.target.value))} inputProps={{ min: 1000, max: 120000, step: 1000 }} required /><TextField label="采集间隔（秒）" type="number" value={interval} onChange={(event) => setIntervalValue(Number(event.target.value))} inputProps={{ min: 5, max: 3600, step: 1 }} required /><TextField label="最大成功年龄（秒）" type="number" value={maxAge} onChange={(event) => setMaxAge(Number(event.target.value))} inputProps={{ min: 10, max: 86400, step: 1 }} required helperText="至少是采集间隔的两倍。" /><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在保存" : "保存平台配置"}</Button></Stack>;
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const identityChanged = Boolean(current.app_id) && (environment !== current.environment || appId !== current.app_id);
+    if ((!current.app_id || identityChanged) && !publicKey.trim()) { setToast(identityChanged ? "更换采集应用时必须填写对应的支付宝公钥" : "首次配置必须填写支付宝公钥", "error"); return; }
+    if (identityChanged) {
+      openDialog({ title: "切换采集应用", description: "这会创建新的账务代际。", content: <ConfirmAction label="确认切换" severity="error" onConfirm={async () => { closeDialog(); await save(); }} /> });
+      return;
+    }
+    await save();
+  };
+  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}>{view.application_public_key ? <ApplicationPublicKey view={view} /> : null}<FormControl size="small"><InputLabel id="provider-environment-label">运行环境</InputLabel><Select labelId="provider-environment-label" id="provider-environment" value={environment} label="运行环境" onChange={(event) => setEnvironment(String(event.target.value))}><MenuItem value="PRODUCTION">生产环境</MenuItem><MenuItem value="SANDBOX">沙箱环境</MenuItem></Select><FormHelperText>{hasProvider ? "切换环境或应用会创建新的流水账户代际。" : "请选择支付宝开放平台环境。"}</FormHelperText></FormControl><TextField label="应用 ID" value={appId} onChange={(event) => setAppId(event.target.value)} slotProps={{ htmlInput: { maxLength: 64 } }} required /><FixedTextareaField label="支付宝公钥" value={publicKey} onChange={(event) => setPublicKey(event.target.value)} rows={5} required={!hasProvider} helperText={hasProvider ? "留空表示保留当前支付宝公钥；更换应用时必须填写新公钥。" : "上传应用公钥后，从支付宝开放平台复制支付宝公钥。支持 PEM 或单行 Base64。"} /><TextField label="请求超时（毫秒）" type="number" value={timeout} onChange={(event) => setTimeoutValue(Number(event.target.value))} slotProps={{ htmlInput: { min: 1000, max: 120000, step: 1000 } }} required /><TextField label="采集间隔（秒）" type="number" value={interval} onChange={(event) => setIntervalValue(Number(event.target.value))} slotProps={{ htmlInput: { min: 5, max: 3600, step: 1 } }} required /><TextField label="最大成功年龄（秒）" type="number" value={maxAge} onChange={(event) => setMaxAge(Number(event.target.value))} slotProps={{ htmlInput: { min: 10, max: 86400, step: 1 } }} required helperText="至少是采集间隔的两倍。" /><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在保存" : "保存平台配置"}</Button></Stack>;
 }
 
 function NotificationSettingsForm({ view, reload }: { readonly view: JsonObject; readonly reload: () => Promise<void> }) {
   const { protectedRequest, setToast } = useAdmin(); const current = view.notifications || {};
   const [enabled, setEnabled] = useState(current.enabled === true); const [origin, setOrigin] = useState(String(current.allowed_origin || "")); const [timeout, setTimeoutValue] = useState(Number(current.timeout_milliseconds ?? 5000)); const [attempts, setAttempts] = useState(Number(current.maximum_attempts ?? 12)); const [retryBase, setRetryBase] = useState(Number(current.retry_base_seconds ?? 5)); const [retryMax, setRetryMax] = useState(Number(current.retry_maximum_seconds ?? 3600)); const [busy, setBusy] = useState(false);
   const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { await protectedRequest("/settings/notifications", { revision: view.revision, enabled, ...(enabled ? { allowed_origin: origin } : {}), timeout_milliseconds: timeout, maximum_attempts: attempts, retry_base_seconds: retryBase, retry_maximum_seconds: retryMax }, "PUT"); setToast("通知配置已保存", "success"); await reload(); } catch (caught) { await mutationError(caught, setToast, reload); } finally { setBusy(false); } };
-  return <Stack component="form" gap={2} onSubmit={(event) => void submit(event)}><FormControlLabel control={<Checkbox checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />} label="启用通知" /><Typography variant="body2" color="text.secondary">通知是可选功能；关闭后不会影响支付确认。</Typography><TextField label="允许的 HTTPS Origin" type="url" value={origin} onChange={(event) => setOrigin(event.target.value)} required={enabled} placeholder="https://merchant.example" helperText="启用通知时必填，不要填写路径。" /><TextField label="请求超时（毫秒）" type="number" value={timeout} onChange={(event) => setTimeoutValue(Number(event.target.value))} inputProps={{ min: 1000, max: 30000, step: 1000 }} required /><TextField label="最大尝试次数" type="number" value={attempts} onChange={(event) => setAttempts(Number(event.target.value))} inputProps={{ min: 1, max: 100, step: 1 }} required /><TextField label="初始重试间隔（秒）" type="number" value={retryBase} onChange={(event) => setRetryBase(Number(event.target.value))} inputProps={{ min: 1, max: 3600, step: 1 }} required /><TextField label="最大重试间隔（秒）" type="number" value={retryMax} onChange={(event) => setRetryMax(Number(event.target.value))} inputProps={{ min: 1, max: 86400, step: 1 }} required /><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在保存" : "保存通知配置"}</Button></Stack>;
+  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><FormControlLabel control={<Checkbox checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />} label="启用通知" /><Typography variant="body2" color="textSecondary">通知是可选功能；关闭后不会影响支付确认。</Typography><TextField label="允许的 HTTPS Origin" type="url" value={origin} onChange={(event) => setOrigin(event.target.value)} required={enabled} placeholder="https://merchant.example" helperText="启用通知时必填，不要填写路径。" /><TextField label="请求超时（毫秒）" type="number" value={timeout} onChange={(event) => setTimeoutValue(Number(event.target.value))} slotProps={{ htmlInput: { min: 1000, max: 30000, step: 1000 } }} required /><TextField label="最大尝试次数" type="number" value={attempts} onChange={(event) => setAttempts(Number(event.target.value))} slotProps={{ htmlInput: { min: 1, max: 100, step: 1 } }} required /><TextField label="初始重试间隔（秒）" type="number" value={retryBase} onChange={(event) => setRetryBase(Number(event.target.value))} slotProps={{ htmlInput: { min: 1, max: 3600, step: 1 } }} required /><TextField label="最大重试间隔（秒）" type="number" value={retryMax} onChange={(event) => setRetryMax(Number(event.target.value))} slotProps={{ htmlInput: { min: 1, max: 86400, step: 1 } }} required /><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在保存" : "保存通知配置"}</Button></Stack>;
 }
 
 function AdvancedSettingsForm({ view, reload }: { readonly view: JsonObject; readonly reload: () => Promise<void> }) {
   const { protectedRequest, setToast } = useAdmin(); const current = view.advanced || {}; const [rotation, setRotation] = useState(Number(current.checkout_key_rotation_days ?? 90)); const [observation, setObservation] = useState(Number(current.checkout_terminal_observation_seconds ?? 86400)); const [busy, setBusy] = useState(false);
   const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { await protectedRequest("/settings/advanced", { revision: view.revision, checkout_key_rotation_days: rotation, checkout_terminal_observation_seconds: observation }, "PUT"); setToast("高级设置已保存", "success"); await reload(); } catch (caught) { await mutationError(caught, setToast, reload); } finally { setBusy(false); } };
-  return <Stack component="form" gap={2} onSubmit={(event) => void submit(event)}><TextField label="收银台令牌轮换周期（天）" type="number" value={rotation} onChange={(event) => setRotation(Number(event.target.value))} inputProps={{ min: 1, max: 3650, step: 1 }} required helperText="新订单使用新令牌密钥的周期；已创建订单不受影响。" /><TextField label="终态收银台观察期（秒）" type="number" value={observation} onChange={(event) => setObservation(Number(event.target.value))} inputProps={{ min: 60, max: 604800, step: 1 }} required helperText="订单关闭或过期后仍可读取收银台的时间。" /><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在保存" : "保存高级设置"}</Button></Stack>;
+  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><TextField label="收银台令牌轮换周期（天）" type="number" value={rotation} onChange={(event) => setRotation(Number(event.target.value))} slotProps={{ htmlInput: { min: 1, max: 3650, step: 1 } }} required helperText="新订单使用新令牌密钥的周期；已创建订单不受影响。" /><TextField label="终态收银台观察期（秒）" type="number" value={observation} onChange={(event) => setObservation(Number(event.target.value))} slotProps={{ htmlInput: { min: 60, max: 604800, step: 1 } }} required helperText="订单关闭或过期后仍可读取收银台的时间。" /><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在保存" : "保存高级设置"}</Button></Stack>;
 }
 
 function SecretValue({ label, value, message }: { readonly label: string; readonly value: string; readonly message: string }) {
   const { setToast, closeDialog } = useAdmin(); const [secret, setSecret] = useState(value);
   useEffect(() => () => setSecret(""), []);
-  return <Stack gap={2}><Alert severity="warning">{message}</Alert><FixedTextareaField label={label} value={secret} rows={5} readOnly /><Stack direction="row" justifyContent="flex-end" gap={1}><Button variant="outlined" onClick={() => void copyText(secret).then(() => setToast("已复制到剪贴板", "success")).catch((caught) => setToast(errorMessage(caught), "error"))}>复制</Button><Button variant="contained" onClick={() => { setSecret(""); closeDialog(); }}>关闭</Button></Stack></Stack>;
+  return <Stack spacing={2}><Alert severity="warning">{message}</Alert><FixedTextareaField label={label} value={secret} rows={5} readOnly /><Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}><Button variant="outlined" onClick={() => void copyText(secret).then(() => setToast("已复制到剪贴板", "success")).catch((caught) => setToast(errorMessage(caught), "error"))}>复制</Button><Button variant="contained" onClick={() => { setSecret(""); closeDialog(); }}>关闭</Button></Stack></Stack>;
 }
 
 function ApiKeyBlock({ view, reload, initial = false }: { readonly view: JsonObject; readonly reload: () => Promise<void>; readonly initial?: boolean }) {
-  const { protectedRequest, setToast, openDialog } = useAdmin(); const metadata = view.secrets?.api_secret || {}; const [busy, setBusy] = useState(false);
-  const rotate = async () => { if (!initial && !window.confirm("现有 API 密钥会立即失效，正在运行的客户端需要改用新密钥。确定继续吗？")) return; setBusy(true); try { const response = await protectedRequest("/settings/api-key/actions/rotate", { revision: view.revision }); openDialog({ title: initial ? "API 密钥" : "新的 API 密钥", description: "敏感值仅在当前对话框中显示。", content: <SecretValue label="API 密钥" value={String(response.data.secret || "")} message="请立即复制；关闭后不会再次显示完整值。" />, onClose: () => { void reload(); } }); } catch (caught) { await mutationError(caught, setToast, reload); } finally { setBusy(false); } };
-  if (initial && metadata.configured !== true) return <Stack gap={2}><Typography color="text.secondary">客户端 ID 固定为 <Code>default</Code>。生成的 API 密钥用于你的程序调用订单接口，只会完整显示一次。</Typography><Button variant="contained" disabled={busy} onClick={() => void rotate()}>{busy ? "正在生成" : "生成 API 密钥"}</Button></Stack>;
-  return <Stack gap={2}><Typography color="text.secondary">API 客户端 ID 固定为 <Code>default</Code>。轮换后旧密钥立即失效，新密钥只显示一次。</Typography><SecretMetadata label="API 密钥" name="api_secret" metadata={metadata} /><Button color="error" variant="outlined" disabled={busy} onClick={() => void rotate()}>{busy ? "正在轮换" : "轮换 API 密钥"}</Button></Stack>;
+  const { protectedRequest, setToast, openDialog, closeDialog } = useAdmin(); const metadata = view.secrets?.api_secret || {}; const [busy, setBusy] = useState(false);
+  const performRotate = async () => { setBusy(true); try { const response = await protectedRequest("/settings/api-key/actions/rotate", { revision: view.revision }); openDialog({ title: initial ? "API 密钥" : "新的 API 密钥", description: "敏感值仅在当前对话框中显示。", content: <SecretValue label="API 密钥" value={String(response.data.secret || "")} message="请立即复制；关闭后不会再次显示完整值。" />, onClose: () => { void reload(); } }); } catch (caught) { await mutationError(caught, setToast, reload); } finally { setBusy(false); } };
+  const rotate = () => {
+    if (initial) { void performRotate(); return; }
+    openDialog({ title: "轮换 API 密钥", description: "旧密钥会立即失效。", content: <ConfirmAction label="轮换密钥" severity="error" onConfirm={async () => { closeDialog(); await performRotate(); }} /> });
+  };
+  if (initial && metadata.configured !== true) return <Stack spacing={2}><Typography color="textSecondary">客户端 ID 固定为 <Code>default</Code>。生成的 API 密钥用于你的程序调用订单接口，只会完整显示一次。</Typography><Button variant="contained" disabled={busy} onClick={rotate}>{busy ? "正在生成" : "生成 API 密钥"}</Button></Stack>;
+  return <Stack spacing={2}><Typography color="textSecondary">API 客户端 ID 固定为 <Code>default</Code>。轮换后旧密钥立即失效，新密钥只显示一次。</Typography><SecretMetadata label="API 密钥" name="api_secret" metadata={metadata} /><Button color="error" variant="outlined" disabled={busy} onClick={rotate}>{busy ? "正在轮换" : "轮换 API 密钥"}</Button></Stack>;
 }
 
 function SecretMetadata({ label, name, metadata }: { readonly label: string; readonly name: string; readonly metadata: JsonObject }) {
   const { protectedRequest, setToast, openDialog } = useAdmin(); const [busy, setBusy] = useState(false); const configured = metadata.configured === true;
   const reveal = async () => { setBusy(true); try { const response = await protectedRequest(`/settings/secrets/${encodeURIComponent(name)}/actions/reveal`, {}); openDialog({ title: label, description: "敏感值仅在当前对话框中显示。", content: <SecretValue label={label} value={String(response.data.value || "")} message="此值已写入审计记录，请勿截图或粘贴到公共位置。" /> }); } catch (caught) { setToast(errorMessage(caught), "error"); } finally { setBusy(false); } };
-  return <Paper variant="outlined" sx={{ p: 1.5 }}><Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "center" }} gap={1}><Box><Typography sx={{ fontWeight: 700 }}>{label}</Typography><Typography variant="body2" color="text.secondary" sx={{ fontFamily: MONO, overflowWrap: "anywhere" }}>{configured ? metadata.masked || "已配置" : "未配置"}</Typography>{metadata.fingerprint ? <Typography variant="caption" color="text.secondary" sx={{ fontFamily: MONO, overflowWrap: "anywhere" }}>指纹 {metadata.fingerprint}</Typography> : null}</Box><Button variant="outlined" disabled={!configured || busy} onClick={() => void reveal()}>{busy ? "正在读取" : "查看"}</Button></Stack></Paper>;
+  return <Paper variant="outlined" sx={{ p: 1.5 }}><Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ justifyContent: "space-between", alignItems: { xs: "stretch", sm: "center" } }}><Box><Typography sx={{ fontWeight: 700 }}>{label}</Typography><Typography variant="body2" color="textSecondary" sx={{ fontFamily: MONO, overflowWrap: "anywhere" }}>{configured ? metadata.masked || "已配置" : "未配置"}</Typography>{metadata.fingerprint ? <Typography variant="caption" color="textSecondary" sx={{ fontFamily: MONO, overflowWrap: "anywhere" }}>指纹 {metadata.fingerprint}</Typography> : null}</Box><Button variant="outlined" disabled={!configured || busy} onClick={() => void reveal()}>{busy ? "正在读取" : "查看"}</Button></Stack></Paper>;
 }
 
 function SecretSettings({ view }: { readonly view: JsonObject }) {
   const secrets = view.secrets || {};
-  return <Stack gap={1.25}><Typography color="text.secondary">敏感值默认只显示掩码。查看会要求再次输入管理员密码，并写入审计记录。</Typography><SecretMetadata label="应用私钥" name="provider_private_key" metadata={secrets.provider_private_key || {}} /><SecretMetadata label="平台公钥" name="provider_public_key" metadata={secrets.provider_public_key || {}} /><SecretMetadata label="通知密钥" name="webhook_secret" metadata={secrets.webhook_secret || {}} /></Stack>;
+  return <Stack spacing={1.25}><Typography color="textSecondary">敏感值默认只显示掩码。查看会要求再次输入管理员密码，并写入审计记录。</Typography><SecretMetadata label="应用私钥" name="provider_private_key" metadata={secrets.provider_private_key || {}} /><SecretMetadata label="平台公钥" name="provider_public_key" metadata={secrets.provider_public_key || {}} /><SecretMetadata label="通知密钥" name="webhook_secret" metadata={secrets.webhook_secret || {}} /></Stack>;
 }
 
 function ProviderHistory({ generations }: { readonly generations: readonly JsonObject[] }) {
@@ -1026,33 +1076,32 @@ function TestPayment({ view, systemStatus }: { readonly view: JsonObject; readon
   const terminal = testPaymentTerminal(order); const paymentStatus = order?.payment?.status; const checkoutStatus = order?.checkout?.status;
   const statusTitle = paymentStatus === "CONFIRMED" ? "测试支付已自动确认" : paymentStatus === "DISPUTED" ? "测试订单存在争议" : checkoutStatus === "EXPIRED" ? "测试订单已过期" : checkoutStatus === "CLOSED" ? "测试订单已关闭" : "等待付款与自动确认";
   const statusMessage = paymentStatus === "CONFIRMED" ? `系统已确认收到 ${formatMoney(order?.payment?.received_amount_cents, order?.currency)}。` : paymentStatus === "DISPUTED" ? "请到异常与订单记录中检查付款证据。" : checkoutStatus === "EXPIRED" ? "未确认付款；可以重新创建一笔测试订单。" : checkoutStatus === "CLOSED" ? "该订单不再接受付款。" : "请按最终应付金额付款；到账后页面会自动更新。";
-  return <Stack gap={2}><Alert severity={production ? "warning" : "info"}><Typography sx={{ fontWeight: 700 }}>{production ? "这是实际到账测试" : "当前使用沙箱采集环境"}</Typography><Typography variant="body2">{production ? "扫码付款会真实转账到当前经营码，系统不会自动退款。" : "请使用与沙箱采集环境相符的支付数据；生产账户的真实到账不会被沙箱采集确认。"}</Typography></Alert><Alert severity={runtimeReady ? "success" : "warning"}><Typography sx={{ fontWeight: 700 }}>{runtimeReady ? "收款链路可以测试" : "收款链路尚未就绪"}</Typography><Typography variant="body2">{runtimeReady ? systemStatus.status === "degraded" ? "核心收款仍可用，但系统当前存在降级项。" : "流水采集和自动确认已就绪。" : "等待流水采集和自动确认成功运行后，刷新页面再试。"}</Typography></Alert><Stack component="form" direction={{ xs: "column", sm: "row" }} gap={1} alignItems={{ sm: "flex-start" }} onSubmit={(event) => void submit(event)}><TextField label="测试金额（元）" value={amount} onChange={(event) => setAmount(event.target.value)} inputProps={{ inputMode: "decimal", min: "0.01", max: "100.00", step: "0.01" }} disabled={Boolean(pending)} required helperText="0.01 至 100.00 元；系统仍会分配最终唯一应付金额。" /><Button type="submit" variant="contained" disabled={!runtimeReady || busy}>{busy ? "正在创建" : pending ? "继续上次测试" : "创建测试订单"}</Button></Stack>{message ? <Alert severity="warning">{message}</Alert> : null}{order ? <Paper variant="outlined" sx={{ p: 2 }}><Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: terminal ? "1fr" : "208px minmax(0, 1fr)" }, gap: 2, alignItems: "start" }}>{!terminal && order.checkout?.token ? <Box component="img" src={`/api/public/v1/checkouts/${encodeURIComponent(order.checkout.token)}/qr.svg`} alt={`测试订单应付 ${formatMoney(order.payable_amount_cents, order.currency)} 的经营码`} width={208} height={208} sx={{ width: 208, height: 208, maxWidth: "100%", border: 1, borderColor: "divider" }} /> : null}<Stack gap={1.5}><Alert severity={toneForState(paymentStatus === "DISPUTED" ? "DISPUTED" : paymentStatus === "CONFIRMED" ? "CONFIRMED" : "UNPAID") === "error" ? "error" : toneForState(paymentStatus === "CONFIRMED" ? "CONFIRMED" : "UNPAID") === "success" ? "success" : "warning"}><Typography sx={{ fontWeight: 700 }}>{statusTitle}</Typography><Typography variant="body2">{statusMessage}</Typography></Alert><Facts items={[["最终应付金额", formatMoney(order.payable_amount_cents, order.currency)], ["测试订单号", order.merchant_order_no, true], ["到期时间", formatTime(order.checkout?.expires_at)]]} /><Stack direction="row" gap={1} flexWrap="wrap">{!terminal && order.checkout?.checkout_url ? <Button component="a" href={order.checkout.checkout_url} target="_blank" rel="noopener noreferrer" variant="contained">打开收银台</Button> : null}<LinkButton href={`/admin/orders?id=${encodeURIComponent(order.order_id)}`}>查看订单</LinkButton></Stack></Stack></Box></Paper> : null}</Stack>;
+  return <Stack spacing={2}><Alert severity={production ? "warning" : "info"}><Typography sx={{ fontWeight: 700 }}>{production ? "这是实际到账测试" : "当前使用沙箱采集环境"}</Typography><Typography variant="body2">{production ? "扫码付款会真实转账到当前经营码，系统不会自动退款。" : "请使用与沙箱采集环境相符的支付数据；生产账户的真实到账不会被沙箱采集确认。"}</Typography></Alert><Alert severity={runtimeReady ? "success" : "warning"}><Typography sx={{ fontWeight: 700 }}>{runtimeReady ? "收款链路可以测试" : "收款链路尚未就绪"}</Typography><Typography variant="body2">{runtimeReady ? systemStatus.status === "degraded" ? "核心收款仍可用，但系统当前存在降级项。" : "流水采集和自动确认已就绪。" : "等待流水采集和自动确认成功运行后，刷新页面再试。"}</Typography></Alert><Stack component="form" direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ alignItems: { sm: "flex-start" } }} onSubmit={(event) => void submit(event)}><TextField label="测试金额（元）" value={amount} onChange={(event) => setAmount(event.target.value)} slotProps={{ htmlInput: { inputMode: "decimal", min: "0.01", max: "100.00", step: "0.01" } }} disabled={Boolean(pending)} required helperText="0.01 至 100.00 元；系统仍会分配最终唯一应付金额。" /><Button type="submit" variant="contained" disabled={!runtimeReady || busy}>{busy ? "正在创建" : pending ? "继续上次测试" : "创建测试订单"}</Button></Stack>{message ? <Alert severity="warning">{message}</Alert> : null}{order ? <Paper variant="outlined" sx={{ p: 2 }}><Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: terminal ? "1fr" : "208px minmax(0, 1fr)" }, gap: 2, alignItems: "start" }}>{!terminal && order.checkout?.token ? <Box component="img" src={`/api/public/v1/checkouts/${encodeURIComponent(order.checkout.token)}/qr.svg`} alt={`测试订单应付 ${formatMoney(order.payable_amount_cents, order.currency)} 的经营码`} width={208} height={208} sx={{ width: 208, height: 208, maxWidth: "100%", border: 1, borderColor: "divider" }} /> : null}<Stack spacing={1.5}><Alert severity={toneForState(paymentStatus === "DISPUTED" ? "DISPUTED" : paymentStatus === "CONFIRMED" ? "CONFIRMED" : "UNPAID") === "error" ? "error" : toneForState(paymentStatus === "CONFIRMED" ? "CONFIRMED" : "UNPAID") === "success" ? "success" : "warning"}><Typography sx={{ fontWeight: 700 }}>{statusTitle}</Typography><Typography variant="body2">{statusMessage}</Typography></Alert><Facts items={[["最终应付金额", formatMoney(order.payable_amount_cents, order.currency)], ["测试订单号", order.merchant_order_no, true], ["到期时间", formatTime(order.checkout?.expires_at)]]} /><Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>{!terminal && order.checkout?.checkout_url ? <Button component="a" href={order.checkout.checkout_url} target="_blank" rel="noopener noreferrer" variant="contained">打开收银台</Button> : null}<LinkButton href={`/admin/orders?id=${encodeURIComponent(order.order_id)}`}>查看订单</LinkButton></Stack></Stack></Box></Paper> : null}</Stack>;
 }
 
 function SecurityPage() {
   const { session, protectedRequest, setToast, openDialog } = useAdmin(); const [current, setCurrent] = useState(""); const [next, setNext] = useState(""); const [confirmation, setConfirmation] = useState(""); const [busy, setBusy] = useState(false);
   const change = async (event: FormEvent) => { event.preventDefault(); if (next !== confirmation) { setToast("两次输入的新密码不一致", "error"); return; } setBusy(true); try { await protectedRequest("/password", { current_password: current, new_password: next }); location.replace("/admin/login"); } catch (caught) { setToast(errorMessage(caught), "error"); setBusy(false); } };
   const revoke = () => openDialog({ title: "撤销全部会话", description: "所有浏览器都需要重新登录。", content: <ConfirmAction label="撤销会话" severity="error" onConfirm={async () => { await protectedRequest("/sessions/revoke-all", {}); location.replace("/admin/login"); }} /> });
-  return <><PageHeader title="安全" description="管理员凭据与当前会话状态。" /><Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2, mb: 3 }}><DetailCard title="当前会话"><Facts items={[["用户名", session.username || "admin"], ["空闲到期", formatTime(session.idle_expires_at)], ["绝对到期", formatTime(session.absolute_expires_at)], ["近期验证", session.step_up_active ? "有效" : "未激活"]]} /></DetailCard><DetailCard title="会话控制"><Typography color="text.secondary" sx={{ mb: 2 }}>立即使所有管理员会话失效，包括当前浏览器。</Typography><Button color="error" variant="outlined" onClick={revoke}>撤销全部会话</Button></DetailCard></Box><Section title="修改密码"><DetailCard title="更新管理员密码"><Stack component="form" gap={2} onSubmit={(event) => void change(event)}><PasswordInput label="当前密码" value={current} onChange={setCurrent} autoComplete="current-password" /><PasswordInput label="新密码" value={next} onChange={setNext} autoComplete="new-password" minLength={12} /><PasswordInput label="确认新密码" value={confirmation} onChange={setConfirmation} autoComplete="new-password" minLength={12} /><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在修改" : "修改密码并退出"}</Button></Stack></DetailCard></Section></>;
+  return <><PageHeader title="安全" description="管理员凭据与当前会话状态。" /><Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2, mb: 3 }}><DetailCard title="当前会话"><Facts items={[["用户名", session.username || "admin"], ["空闲到期", formatTime(session.idle_expires_at)], ["绝对到期", formatTime(session.absolute_expires_at)], ["近期验证", session.step_up_active ? "有效" : "未激活"]]} /></DetailCard><DetailCard title="会话控制"><Typography color="textSecondary" sx={{ mb: 2 }}>立即使所有管理员会话失效，包括当前浏览器。</Typography><Button color="error" variant="outlined" onClick={revoke}>撤销全部会话</Button></DetailCard></Box><Section title="修改密码"><Box sx={{ maxWidth: 760 }}><DetailCard title="更新管理员密码" titleComponent="h3"><Stack component="form" spacing={2} onSubmit={(event) => void change(event)}><PasswordInput label="当前密码" value={current} onChange={setCurrent} autoComplete="current-password" /><PasswordInput label="新密码" value={next} onChange={setNext} autoComplete="new-password" minLength={12} /><PasswordInput label="确认新密码" value={confirmation} onChange={setConfirmation} autoComplete="new-password" minLength={12} /><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在修改" : "修改密码并退出"}</Button></Stack></DetailCard></Box></Section></>;
 }
 
 function ConfirmAction({ label, severity, onConfirm }: { readonly label: string; readonly severity: "error" | "primary"; readonly onConfirm: () => Promise<void> }) {
   const { closeDialog, setToast } = useAdmin(); const [busy, setBusy] = useState(false);
-  return <Stack gap={2}><Alert severity={severity === "error" ? "warning" : "info"}>此操作会立即生效，请确认后继续。</Alert><Stack direction="row" justifyContent="flex-end" gap={1}><Button onClick={closeDialog}>取消</Button><Button variant="contained" color={severity} disabled={busy} onClick={() => { setBusy(true); void onConfirm().catch((caught) => { setToast(errorMessage(caught), "error"); setBusy(false); }); }}>{busy ? "正在处理" : label}</Button></Stack></Stack>;
+  return <Stack spacing={2}><Alert severity={severity === "error" ? "warning" : "info"}>此操作会立即生效，请确认后继续。</Alert><Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}><Button onClick={closeDialog}>取消</Button><Button variant="contained" color={severity} disabled={busy} onClick={() => { setBusy(true); void onConfirm().catch((caught) => { setToast(errorMessage(caught), "error"); setBusy(false); }); }}>{busy ? "正在处理" : label}</Button></Stack></Stack>;
 }
 
 function Root() {
   const node = document.querySelector<HTMLElement>("#perpay-admin-root");
-  const mode = node?.dataset.mode || "application";
-  if (mode === "setup") return <SetupPage />;
-  if (mode === "login") return <LoginPage />;
-  return <AdminApplication />;
+  const pageMode = node?.dataset.mode || "application";
+  const [mode, setMode] = useState<PaletteMode>(readThemePreference);
+  const theme = useMemo(() => createAdminTheme(mode), [mode]);
+  return <ThemeProvider theme={theme}><CssBaseline />{pageMode === "setup" ? <SetupPage /> : pageMode === "login" ? <LoginPage /> : <AdminApplication mode={mode} onModeChange={setMode} />}</ThemeProvider>;
 }
 
 const rootNode = document.querySelector<HTMLElement>("#perpay-admin-root");
 if (rootNode) {
   const nonce = document.querySelector<HTMLMetaElement>('meta[name="csp-nonce"]')?.content;
   const cache = createCache({ key: "perpay", ...(nonce ? { nonce } : {}), prepend: true });
-  const initialMode: PaletteMode = localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light";
-  createRoot(rootNode).render(<CacheProvider value={cache}><ThemeProvider theme={createAdminTheme(initialMode)}><CssBaseline /><Root /></ThemeProvider></CacheProvider>);
+  createRoot(rootNode).render(<CacheProvider value={cache}><Root /></CacheProvider>);
 }

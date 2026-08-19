@@ -88,6 +88,79 @@ describe("web asset manifest", () => {
     windowListeners.get("online")?.();
     assert.equal(fetchCount, 0);
   });
+
+  it("coalesces repeated manual checkout status checks", () => {
+    const checkoutScript = webAsset(WEB_ASSET_URLS.checkoutScript)?.body;
+    assert.ok(checkoutScript);
+
+    class FakeHTMLElement {
+      readonly dataset: Record<string, string> = {};
+      readonly listeners = new Map<string, () => void>();
+      readonly attributes = new Map<string, string>();
+      hidden = false;
+      disabled = false;
+      textContent = "";
+      querySelector(_selector: string): FakeHTMLElement | null { return null; }
+      addEventListener(name: string, listener: () => void): void { this.listeners.set(name, listener); }
+      setAttribute(name: string, value: string): void { this.attributes.set(name, value); }
+      toggleAttribute(name: string, force: boolean): void {
+        if (force) this.attributes.set(name, "");
+        else this.attributes.delete(name);
+      }
+      click(): void { this.listeners.get("click")?.(); }
+    }
+    class FakeHTMLDialogElement extends FakeHTMLElement {}
+    class FakeHTMLImageElement extends FakeHTMLElement {}
+    class FakeHTMLTimeElement extends FakeHTMLElement {}
+    class FakeHTMLAnchorElement extends FakeHTMLElement {}
+
+    const label = new FakeHTMLElement();
+    label.textContent = "立即检查支付状态";
+    const button = new FakeHTMLElement();
+    button.querySelector = (selector: string) =>
+      selector === "[data-checkout-refresh-label]" ? label : null;
+    const content = new FakeHTMLElement();
+    const root = new FakeHTMLElement();
+    root.dataset.checkoutApiUrl = "/api/public/v1/checkouts/pct1_manual";
+    root.dataset.initialState = "UNPAID";
+    root.dataset.refundStatus = "NONE";
+    root.dataset.retryAfterSeconds = "";
+    root.querySelector = (selector: string) => {
+      if (selector === "[data-checkout-content]") return content;
+      if (selector === "[data-checkout-refresh]") return button;
+      return null;
+    };
+
+    let fetchCount = 0;
+    const document = {
+      activeElement: null, hidden: false, title: "",
+      querySelector: (selector: string) => selector === "[data-checkout-root]" ? root : null,
+      addEventListener() {},
+    };
+    const window = {
+      location: { origin: "https://checkout.example.test" },
+      addEventListener() {},
+      setInterval: () => 1, clearInterval() {}, setTimeout: () => 1, clearTimeout() {},
+      requestAnimationFrame(callback: () => void) { callback(); return 1; },
+    };
+    runInNewContext(checkoutScript, {
+      AbortController, Date, HTMLAnchorElement: FakeHTMLAnchorElement,
+      HTMLDialogElement: FakeHTMLDialogElement, HTMLElement: FakeHTMLElement,
+      HTMLImageElement: FakeHTMLImageElement, HTMLTimeElement: FakeHTMLTimeElement,
+      Math, Number, Object, Promise, String, URL, document,
+      fetch() { fetchCount += 1; return new Promise(() => undefined); },
+      navigator: { onLine: true }, window,
+    });
+
+    button.click();
+    button.click();
+
+    assert.equal(fetchCount, 1);
+    assert.equal(button.disabled, true);
+    assert.equal(button.attributes.get("aria-busy"), "true");
+    assert.equal(button.attributes.has("data-loading"), true);
+    assert.equal(label.textContent, "正在检查");
+  });
 });
 
 describe("administrator test-payment browser state", () => {

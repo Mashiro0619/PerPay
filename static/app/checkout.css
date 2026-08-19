@@ -137,6 +137,35 @@ html {
   background: #123957;
 }
 
+.checkout-button--quiet {
+  min-height: 40px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--checkout-primary);
+  white-space: nowrap;
+}
+
+.checkout-button--quiet:hover {
+  border-color: var(--checkout-border);
+  background: var(--checkout-surface-muted);
+  color: var(--checkout-primary-hover);
+}
+
+.checkout-button[data-loading="true"]::before {
+  width: 13px;
+  height: 13px;
+  margin-inline-end: 8px;
+  border: 2px solid currentColor;
+  border-inline-end-color: transparent;
+  border-radius: 50%;
+  content: "";
+  animation: checkout-spin 720ms linear infinite;
+}
+
+@keyframes checkout-spin {
+  to { transform: rotate(360deg); }
+}
+
 .checkout-alert {
   width: 100%;
   padding: 13px 15px;
@@ -557,9 +586,15 @@ html {
 .checkout-evidence-heading {
   margin-bottom: 22px;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 20px;
+}
+
+.checkout-evidence-heading > div {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
 }
 
 .checkout-evidence-heading h2 {
@@ -879,7 +914,12 @@ html {
 
   .checkout-evidence-heading {
     display: grid;
-    gap: 5px;
+    align-items: start;
+    gap: 12px;
+  }
+
+  .checkout-evidence-heading .checkout-button {
+    justify-self: start;
   }
 
   .checkout-evidence-track {
@@ -941,6 +981,10 @@ html {
   .checkout-button,
   .checkout-skip-link {
     transition: none;
+  }
+
+  .checkout-button[data-loading="true"]::before {
+    animation: none;
   }
 }
 
