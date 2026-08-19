@@ -109,6 +109,7 @@ const SESSION_COOKIE_MAX_AGE_SECONDS = 12 * 60 * 60;
 const MAX_JSON_BODY_BYTES = 16 * 1024;
 const MAX_PASSWORD_BYTES = 1024;
 const ORDER_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const TEST_PAYMENT_MAX_AMOUNT_CENTS = 10_000;
 const WEBHOOK_DELIVERY_STATUSES = new Set<WebhookDeliveryStatus>([
   "PENDING",
   "LEASED",
@@ -158,6 +159,10 @@ const emptyObjectSchema = z.object({}).strict();
 const runtimeSecretNames = new Set<string>(RUNTIME_SECRET_NAMES);
 
 const passwordSchema = z.object({ password: passwordValueSchema }).strict();
+const testPaymentRequestSchema = z.object({
+  test_payment_id: z.string().regex(ORDER_ID_PATTERN),
+  amount_cents: z.number().int().min(1).max(TEST_PAYMENT_MAX_AMOUNT_CENTS),
+}).strict();
 const changePasswordSchema = z.object({
   current_password: passwordValueSchema,
   new_password: newPasswordValueSchema,
@@ -639,6 +644,35 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   app.get("/api/admin/v1/settings", adminSession, (context) => {
     return context.json({ data: requireSettingsService(dependencies).view() });
   });
+
+  app.post(
+    "/api/admin/v1/test-payments",
+    adminSession,
+    financialWrite,
+    async (context) => {
+      requirePaymentDatabaseReady(dependencies);
+      const body = await readJson(context, testPaymentRequestSchema, MAX_JSON_BODY_BYTES);
+      const result = dependencies.orders.create({
+        idempotency_key: `admin-test-payment:${body.test_payment_id}`,
+        merchant_order_no: `test-${body.test_payment_id}`,
+        amount_cents: body.amount_cents,
+        description: "配置测试支付（真实收款）",
+      }, () => requirePaymentBackgroundReady(dependencies));
+      try {
+        dependencies.onOrderAvailable?.(result.order.orderId);
+      } catch (error) {
+        console.error(JSON.stringify({
+          level: "error",
+          event: "order_reconciliation_trigger_failed",
+          request_id: context.get("requestId"),
+          error_type: error instanceof Error ? error.name : "unknown_error",
+        }));
+      }
+      const data = serializeOrder(result.order, dependencies.config.publicOrigin);
+      context.header("location", `/api/admin/v1/orders/${encodeURIComponent(result.order.orderId)}`);
+      return context.json({ data }, result.created ? 201 : 200);
+    },
+  );
 
   app.put(
     "/api/admin/v1/settings/collection",

@@ -3,6 +3,7 @@
 
   const API_ROOT = "/api/admin/v1";
   const CURSOR_PARENT_STORAGE_KEY = "perpay:cursor-parents:v1";
+  const TEST_PAYMENT_PENDING_STORAGE_KEY = "perpay:test-payment-pending:v1";
   const SETTINGS_STEPS = Object.freeze([
     { id: "application-key", title: "生成应用密钥", nextStep: "GENERATE_APPLICATION_KEY" },
     { id: "provider", title: "配置支付宝", nextStep: "CONFIGURE_PROVIDER" },
@@ -693,8 +694,14 @@
 
   async function renderSettings() {
     setDocumentTitle("设置");
-    const response = await api("/settings");
+    const [response, statusResponse] = await Promise.all([
+      api("/settings"),
+      api("/system/status"),
+    ]);
     const view = response.data || {};
+    const systemStatus = statusResponse.data || {};
+    updateGlobalStatus(systemStatus.status || "not_ready");
+    updateNavigationCounts(systemStatus);
     if (view.completion?.complete !== true) {
       renderMain(
         pageHeader("设置收款", "按顺序完成四项必需配置，完成后系统才会开放收款。", [
@@ -710,6 +717,7 @@
         button("刷新", () => location.reload()),
       ]),
       settingsCompletion(view),
+      section("测试支付", detailBlock("验证真实收款链路", testPaymentBlock(view, systemStatus))),
       section("收款配置", div("perpay-detail-grid", [
         detailBlock("经营码与金额", collectionSettingsForm(view)),
         detailBlock("支付宝平台", providerSettingsForm(view)),
@@ -860,6 +868,349 @@
           : `当前步骤：${SETTINGS_STEPS.find((step) => step.nextStep === completion.next_step)?.title || "完成必需配置"}。尚未完成：${missing.join("、") || "必需配置"}。`,
       }),
     ]);
+  }
+
+  function testPaymentBlock(view, systemStatus) {
+    const runtimeReady = ["ready", "degraded"].includes(systemStatus.status);
+    const production = view.provider?.environment === "PRODUCTION";
+    let pendingRequest = readPendingTestPayment();
+    const amount = input({
+      id: "test-payment-amount",
+      type: "number",
+      min: "0.01",
+      max: "100.00",
+      step: "0.01",
+      value: pendingRequest ? (pendingRequest.amountCents / 100).toFixed(2) : "1.00",
+      inputMode: "decimal",
+      required: true,
+    });
+    const submit = button("创建测试订单", null, "primary", "submit");
+    submit.disabled = !runtimeReady;
+    if (pendingRequest) {
+      amount.readOnly = true;
+      submit.textContent = "继续上次测试";
+    }
+    const result = div("perpay-test-payment-result");
+    result.hidden = true;
+    const form = el("form", { class: "uzu-form perpay-test-payment-form", novalidate: true }, [
+      field("测试金额（元）", amount, "可输入 0.01 至 100.00 元；系统仍会分配最终唯一应付金额。"),
+      div("uzu-flex uzu-wrap uzu-gap-2", [submit]),
+    ]);
+    const finishPendingRequest = () => {
+      pendingRequest = null;
+      clearPendingTestPayment();
+      amount.readOnly = false;
+      submit.textContent = "创建测试订单";
+    };
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!form.reportValidity()) return;
+      const amountCents = parseYuanAmount(amount.value);
+      if (amountCents === null || amountCents > 10_000) {
+        amount.setCustomValidity("请输入 0.01 至 100.00 元，最多两位小数。");
+        amount.reportValidity();
+        return;
+      }
+      amount.setCustomValidity("");
+      if (!pendingRequest || pendingRequest.amountCents !== amountCents) {
+        pendingRequest = { testPaymentId: crypto.randomUUID(), amountCents };
+      }
+      writePendingTestPayment(pendingRequest);
+      amount.readOnly = true;
+      setBusy(submit, true, "正在创建");
+      result.hidden = false;
+      result.replaceChildren(el("div", {
+        class: "uzu-alert",
+        role: "status",
+        text: "正在创建测试订单并分配唯一应付金额。",
+      }));
+      try {
+        const response = await protectedRequest("/test-payments", {
+          test_payment_id: pendingRequest.testPaymentId,
+          amount_cents: amountCents,
+        });
+        renderTestPaymentResult(response.data, result, finishPendingRequest);
+      } catch (error) {
+        result.replaceChildren(el("div", {
+          class: "uzu-alert uzu-alert-danger",
+          role: "alert",
+          text: testPaymentErrorMessage(error),
+        }));
+      } finally {
+        setBusy(submit, false, pendingRequest ? "继续上次测试" : "创建测试订单");
+      }
+    });
+    amount.addEventListener("input", () => amount.setCustomValidity(""));
+    if (pendingRequest) {
+      result.hidden = false;
+      result.replaceChildren(el("div", {
+        class: "uzu-alert uzu-alert-warning",
+        role: "status",
+        text: "正在检查上次测试订单。后续操作会复用同一编号，不会重复下单。",
+      }));
+      void inspectPendingTestPayment(pendingRequest, result, finishPendingRequest);
+    }
+
+    return div("uzu-stack perpay-test-payment", [
+      el("div", {
+        class: `uzu-alert ${production ? "uzu-alert-warning" : ""}`.trim(),
+        role: "note",
+      }, [
+        el("strong", { text: production ? "这是实际到账测试" : "当前使用沙箱采集环境" }),
+        el("p", {
+          text: production
+            ? "扫码付款会真实转账到当前经营码，系统不会自动退款。"
+            : "请使用与沙箱采集环境相符的支付数据；生产账户的真实到账不会被沙箱采集确认。",
+        }),
+      ]),
+      el("div", {
+        class: `uzu-alert ${runtimeReady ? "uzu-alert-success" : "uzu-alert-warning"}`,
+        role: "status",
+      }, [
+        el("strong", { text: runtimeReady ? "收款链路可以测试" : "收款链路尚未就绪" }),
+        el("p", {
+          text: runtimeReady
+            ? systemStatus.status === "degraded"
+              ? "核心收款仍可用，但系统当前存在降级项。"
+              : "流水采集和自动确认已就绪。"
+            : "等待流水采集和自动确认成功运行后，刷新页面再试。",
+        }),
+      ]),
+      form,
+      result,
+    ]);
+  }
+
+  function renderTestPaymentResult(order, region, onTerminal) {
+    const checkout = order.checkout || {};
+    const status = div("perpay-test-payment-status");
+    updateTestPaymentStatus(status, order);
+    const qr = checkout.token
+      ? el("img", {
+        class: "perpay-test-payment-qr",
+        src: `/api/public/v1/checkouts/${encodeURIComponent(checkout.token)}/qr.svg`,
+        alt: `测试订单应付 ${formatMoney(order.payable_amount_cents, order.currency)} 的经营码`,
+        width: "208",
+        height: "208",
+      })
+      : null;
+    const checkoutLink = checkout.checkout_url
+      ? el("a", {
+        class: "uzu-button uzu-button-primary",
+        href: checkout.checkout_url,
+        target: "_blank",
+        rel: "noopener noreferrer",
+        text: "打开收银台",
+      })
+      : null;
+    const details = div("uzu-stack perpay-test-payment-details", [
+      status,
+      facts([
+        ["最终应付金额", formatMoney(order.payable_amount_cents, order.currency)],
+        ["测试订单号", order.merchant_order_no, "code"],
+        ["到期时间", formatTime(checkout.expires_at)],
+      ]),
+      div("uzu-flex uzu-wrap uzu-gap-2", [
+        checkoutLink,
+        linkButton("查看订单", `/admin/orders?id=${encodeURIComponent(order.order_id)}`),
+      ].filter(Boolean)),
+    ]);
+    const layout = div("perpay-test-payment-result-layout", [qr, details].filter(Boolean));
+    const retirePaymentInstructions = () => {
+      qr?.remove();
+      checkoutLink?.remove();
+      layout.classList.add("is-inactive");
+    };
+    region.replaceChildren(layout);
+    if (testPaymentTerminal(order)) {
+      retirePaymentInstructions();
+      onTerminal();
+    } else {
+      pollTestPaymentOrder(
+        order.order_id,
+        status,
+        checkout.expires_at,
+        onTerminal,
+        retirePaymentInstructions,
+      );
+    }
+  }
+
+  function pollTestPaymentOrder(
+    orderId,
+    statusRegion,
+    expiresAt,
+    onTerminal,
+    retirePaymentInstructions = () => {},
+  ) {
+    const expires = Date.parse(expiresAt || "");
+    const deadline = Number.isFinite(expires) ? expires + 60_000 : Date.now() + 15 * 60_000;
+    let consecutiveFailures = 0;
+    const poll = async () => {
+      if (!statusRegion.isConnected) return;
+      if (Date.now() > deadline) {
+        retirePaymentInstructions();
+        statusRegion.replaceChildren(el("div", {
+          class: "uzu-alert uzu-alert-warning",
+          role: "status",
+          text: "已停止自动刷新并撤下付款入口，请打开订单详情查看最终状态。",
+        }));
+        return;
+      }
+      try {
+        const response = await api(`/orders/${encodeURIComponent(orderId)}`);
+        const order = response.data || {};
+        consecutiveFailures = 0;
+        updateTestPaymentStatus(statusRegion, order);
+        if (testPaymentTerminal(order)) {
+          retirePaymentInstructions();
+          onTerminal();
+          return;
+        }
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          retirePaymentInstructions();
+          return;
+        }
+        consecutiveFailures += 1;
+        const terminalFailure = error instanceof ApiError && [403, 404].includes(error.status);
+        if (terminalFailure || consecutiveFailures >= 3) {
+          retirePaymentInstructions();
+          statusRegion.replaceChildren(el("div", {
+            class: "uzu-alert uzu-alert-warning",
+            role: "alert",
+          }, [
+            el("strong", { text: "自动刷新已停止" }),
+            el("p", { text: "无法可靠读取测试订单状态，付款入口已撤下；请打开订单详情继续检查。" }),
+          ]));
+          return;
+        }
+        statusRegion.replaceChildren(el("div", {
+          class: "uzu-alert uzu-alert-warning",
+          role: "status",
+          text: "暂时无法刷新订单状态，系统正在重试。",
+        }));
+      }
+      const delay = Math.min(15_000, 3_000 * (2 ** consecutiveFailures));
+      setTimeout(() => void poll(), delay);
+    };
+    setTimeout(() => void poll(), 3_000);
+  }
+
+  async function inspectPendingTestPayment(pending, region, onTerminal) {
+    const merchantOrderNo = `test-${pending.testPaymentId}`;
+    try {
+      const response = await api(`/orders/by-merchant-no/${encodeURIComponent(merchantOrderNo)}`);
+      const order = response.data || {};
+      const status = div("perpay-test-payment-status");
+      updateTestPaymentStatus(status, order);
+      region.replaceChildren(div("uzu-stack", [
+        status,
+        facts([
+          ["最终应付金额", formatMoney(order.payable_amount_cents, order.currency)],
+          ["测试订单号", order.merchant_order_no, "code"],
+          ["到期时间", formatTime(order.checkout?.expires_at)],
+        ]),
+        div("uzu-flex uzu-wrap uzu-gap-2", [
+          linkButton("查看订单", `/admin/orders?id=${encodeURIComponent(order.order_id)}`),
+        ]),
+        testPaymentTerminal(order)
+          ? null
+          : el("p", { class: "uzu-help", text: "点击“继续上次测试”可重新取得收银台。" }),
+      ].filter(Boolean)));
+      if (testPaymentTerminal(order)) onTerminal();
+      else pollTestPaymentOrder(order.order_id, status, order.checkout?.expires_at, onTerminal);
+    } catch (error) {
+      const notFound = error instanceof ApiError && error.status === 404;
+      region.replaceChildren(el("div", {
+        class: "uzu-alert uzu-alert-warning",
+        role: "status",
+        text: notFound
+          ? "上次请求尚未创建订单；点击“继续上次测试”可使用同一编号安全重试。"
+          : "暂时无法检查上次请求；继续操作仍会复用同一编号。",
+      }));
+    }
+  }
+
+  function readPendingTestPayment() {
+    try {
+      const value = JSON.parse(sessionStorage.getItem(TEST_PAYMENT_PENDING_STORAGE_KEY) || "null");
+      if (
+        !value ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value.testPaymentId) ||
+        !Number.isSafeInteger(value.amountCents) ||
+        value.amountCents < 1 ||
+        value.amountCents > 10_000
+      ) {
+        clearPendingTestPayment();
+        return null;
+      }
+      return value;
+    } catch {
+      clearPendingTestPayment();
+      return null;
+    }
+  }
+
+  function writePendingTestPayment(pending) {
+    try {
+      sessionStorage.setItem(TEST_PAYMENT_PENDING_STORAGE_KEY, JSON.stringify(pending));
+    } catch {
+      // The server-side idempotency key still protects retries in the current page lifecycle.
+    }
+  }
+
+  function clearPendingTestPayment() {
+    try { sessionStorage.removeItem(TEST_PAYMENT_PENDING_STORAGE_KEY); } catch { /* no-op */ }
+  }
+
+  function updateTestPaymentStatus(region, order) {
+    const paymentStatus = order.payment?.status;
+    const checkoutStatus = order.checkout?.status;
+    let tone = "warning";
+    let title = "等待付款与自动确认";
+    let message = "请按最终应付金额付款；到账后页面会自动更新。";
+    if (paymentStatus === "CONFIRMED") {
+      tone = "success";
+      title = "测试支付已自动确认";
+      message = `系统已确认收到 ${formatMoney(order.payment?.received_amount_cents, order.currency)}。`;
+    } else if (paymentStatus === "DISPUTED") {
+      tone = "danger";
+      title = "测试订单存在争议";
+      message = "请到异常与订单记录中检查付款证据。";
+    } else if (checkoutStatus === "EXPIRED") {
+      title = "测试订单已过期";
+      message = "未确认付款；可以重新创建一笔测试订单。";
+    } else if (checkoutStatus === "CLOSED") {
+      title = "测试订单已关闭";
+      message = "该订单不再接受付款。";
+    }
+    region.replaceChildren(el("div", {
+      class: `uzu-alert uzu-alert-${tone}`,
+      role: paymentStatus === "DISPUTED" ? "alert" : "status",
+    }, [el("strong", { text: title }), el("p", { text: message })]));
+  }
+
+  function testPaymentTerminal(order) {
+    return ["CONFIRMED", "DISPUTED"].includes(order.payment?.status) ||
+      ["EXPIRED", "CLOSED"].includes(order.checkout?.status);
+  }
+
+  function testPaymentErrorMessage(error) {
+    if (error instanceof ApiError && error.code === "reconciliation_not_ready") {
+      return "流水采集或自动确认尚未就绪，请稍后刷新页面再试。";
+    }
+    if (error instanceof ApiError && error.code === "system_not_configured") {
+      return "必需配置尚未完整生效，请检查配置状态。";
+    }
+    return errorMessage(error);
+  }
+
+  function parseYuanAmount(value) {
+    if (!/^(?:0|[1-9][0-9]{0,2})(?:\.[0-9]{1,2})?$/.test(value)) return null;
+    const [yuan, fraction = ""] = value.split(".");
+    const cents = Number(yuan) * 100 + Number(fraction.padEnd(2, "0"));
+    return Number.isSafeInteger(cents) && cents >= 1 ? cents : null;
   }
 
   function applicationKeySettingsBlock(view, next) {

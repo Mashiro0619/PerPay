@@ -339,6 +339,60 @@ paths:
               schema: { $ref: '#/components/schemas/RuntimeSettingsEnvelope' }
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
         '503': { $ref: '#/components/responses/SettingsUnavailable' }
+  /api/admin/v1/test-payments:
+    post:
+      tags: [Admin Orders]
+      operationId: createAdministratorTestPayment
+      summary: Create a real small-value payment test order
+      description: >-
+        Creates an ordinary collection-code order that must pass through the configured provider
+        collection and automatic reconciliation path. It never simulates a ledger entry or payment
+        confirmation, does not request a notification delivery, and does not refund a real transfer.
+        The same `test_payment_id` and amount replay the original order; reusing the identifier with
+        another amount returns an idempotency conflict. The returned payable amount may include a
+        unique amount offset and is the exact amount the payer must use.
+      x-perpay-requires-same-origin: true
+      x-perpay-requires-recent-step-up: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminTestPaymentRequest' }
+            example:
+              test_payment_id: 12345678-1234-4123-8123-123456789abc
+              amount_cents: 100
+      responses:
+        '200':
+          description: The idempotent test order already existed
+          headers:
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderEnvelope' }
+        '201':
+          description: Test order created
+          headers:
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/Unavailable' }
   /api/admin/v1/settings/collection:
     put:
       tags: [Admin Settings]
@@ -2765,6 +2819,20 @@ components:
           maxLength: 200
         notify_url:
           $ref: '#/components/schemas/NotifyUrl'
+    AdminTestPaymentRequest:
+      type: object
+      additionalProperties: false
+      required: [test_payment_id, amount_cents]
+      properties:
+        test_payment_id:
+          type: string
+          format: uuid
+          pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          description: Client-generated UUID v4 retained across retries of the same user action.
+        amount_cents:
+          type: integer
+          minimum: 1
+          maximum: 10000
     OrderEnvelope:
       type: object
       additionalProperties: false

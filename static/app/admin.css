@@ -307,6 +307,44 @@
     overflow-wrap: anywhere;
   }
 
+  .perpay-test-payment-form {
+    max-width: 24rem;
+  }
+
+  .perpay-test-payment-form .uzu-input {
+    max-width: 12rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .perpay-test-payment-result {
+    padding-block-start: 0.25rem;
+  }
+
+  .perpay-test-payment-result-layout {
+    display: grid;
+    grid-template-columns: 13rem minmax(0, 1fr);
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  .perpay-test-payment-result-layout.is-inactive {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .perpay-test-payment-qr {
+    display: block;
+    width: 13rem;
+    height: 13rem;
+    padding: 0.45rem;
+    border: 1px solid var(--perpay-line);
+    border-radius: 7px;
+    background: #fff;
+  }
+
+  .perpay-test-payment-details {
+    min-width: 0;
+  }
+
   .perpay-facts {
     display: grid;
     grid-template-columns: minmax(8rem, 0.35fr) minmax(0, 1fr);
@@ -536,6 +574,10 @@
 
     .perpay-settings-steps .uzu-step-nav-item::after {
       display: none;
+    }
+
+    .perpay-test-payment-result-layout {
+      grid-template-columns: 1fr;
     }
   }
 

@@ -56,6 +56,60 @@ describe("web asset manifest", () => {
     assert.doesNotMatch(adminScript, /首次配置必须填写应用私钥/);
   });
 
+  it("creates real test-payment orders from completed settings", () => {
+    const adminScript = webAsset(WEB_ASSET_URLS.adminScript)?.body;
+    assert.ok(adminScript);
+    assert.match(adminScript, /\/test-payments/);
+    assert.match(adminScript, /test_payment_id/);
+    assert.match(adminScript, /crypto\.randomUUID\(\)/);
+    assert.match(adminScript, /这是实际到账测试/);
+    assert.match(adminScript, /系统不会自动退款/);
+    assert.match(adminScript, /最终应付金额/);
+    assert.match(adminScript, /\/qr\.svg/);
+    assert.match(adminScript, /pollTestPaymentOrder/);
+    assert.match(adminScript, /TEST_PAYMENT_PENDING_STORAGE_KEY/);
+    assert.match(adminScript, /继续上次测试/);
+    assert.match(adminScript, /自动刷新已停止/);
+    assert.doesNotMatch(adminScript, /模拟到账|模拟确认/);
+  });
+
+  it("removes test-payment instructions after a terminal status or unreliable polling", async () => {
+    const adminScript = webAsset(WEB_ASSET_URLS.adminScript)?.body;
+    assert.ok(adminScript);
+
+    const confirmed = createAdminTestPaymentHarness(adminScript, () => testPaymentResponse({
+      payment: { status: "CONFIRMED", received_amount_cents: 101 },
+    }));
+    let terminalObserved = false;
+    confirmed.hooks.renderTestPaymentResult(
+      testPaymentOrder(),
+      confirmed.region,
+      () => { terminalObserved = true; },
+    );
+    assertTestPaymentInstructions(confirmed.region, true);
+    await confirmed.runNextTimer();
+    assert.equal(terminalObserved, true);
+    assertTestPaymentInstructions(confirmed.region, false);
+
+    const unavailable = createAdminTestPaymentHarness(
+      adminScript,
+      () => new Response(JSON.stringify({ error: { code: "internal_error", message: "failed" } }), {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    unavailable.hooks.renderTestPaymentResult(
+      testPaymentOrder(),
+      unavailable.region,
+      () => assert.fail("polling failures must not mark the order terminal"),
+    );
+    assertTestPaymentInstructions(unavailable.region, true);
+    await unavailable.runNextTimer();
+    await unavailable.runNextTimer();
+    await unavailable.runNextTimer();
+    assertTestPaymentInstructions(unavailable.region, false);
+  });
+
   it("keeps a final not-found checkout inert across browser lifecycle events", () => {
     const checkoutScript = webAsset(WEB_ASSET_URLS.checkoutScript)?.body;
     assert.ok(checkoutScript);
@@ -136,3 +190,166 @@ describe("web asset manifest", () => {
     assert.equal(fetchCount, 0);
   });
 });
+
+interface AdminTestPaymentHooks {
+  renderTestPaymentResult(
+    order: Record<string, unknown>,
+    region: FakeNode,
+    onTerminal: () => void,
+  ): void;
+}
+
+function createAdminTestPaymentHarness(
+  adminScript: string,
+  fetchResponse: () => Response,
+): {
+  hooks: AdminTestPaymentHooks;
+  region: FakeNode;
+  runNextTimer: () => Promise<void>;
+} {
+  const instrumented = adminScript.replace(
+    /\}\)\(\);\s*$/,
+    "  globalThis.__perpayAdminTestHooks = { renderTestPaymentResult };\n})();",
+  );
+  assert.notEqual(instrumented, adminScript, "admin test hooks were not injected");
+
+  const timers: Array<() => void> = [];
+  const body = new FakeNode("body");
+  body.dataset.perpayAdminPage = "test";
+  const sandbox: Record<string, unknown> = {
+    AbortController,
+    Headers,
+    Node: FakeNode,
+    Response,
+    crypto,
+    document: {
+      body,
+      cookie: "",
+      createElement: (tag: string) => new FakeNode(tag),
+      createTextNode: (text: string) => {
+        const node = new FakeNode("#text");
+        node.textContent = text;
+        return node;
+      },
+    },
+    fetch: async () => fetchResponse(),
+    location: { pathname: "/admin/settings", search: "" },
+    sessionStorage: { getItem: () => null, removeItem() {}, setItem() {} },
+    setTimeout(callback: () => void) {
+      timers.push(callback);
+      return timers.length;
+    },
+  };
+  runInNewContext(instrumented, sandbox);
+  const hooks = sandbox.__perpayAdminTestHooks as AdminTestPaymentHooks | undefined;
+  assert.ok(hooks);
+
+  return {
+    hooks,
+    region: new FakeNode("section"),
+    async runNextTimer() {
+      const timer = timers.shift();
+      assert.ok(timer, "expected a pending test-payment poll");
+      timer();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    },
+  };
+}
+
+function testPaymentOrder(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    order_id: "12345678-1234-4123-8123-123456789abc",
+    merchant_order_no: "test-12345678-1234-4123-8123-123456789abc",
+    payable_amount_cents: 101,
+    currency: "CNY",
+    checkout: {
+      status: "OPEN",
+      token: "pct1_test-payment-token",
+      checkout_url: "https://pay.example.test/checkout/pct1_test-payment-token",
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+    },
+    payment: { status: "UNPAID", received_amount_cents: null },
+    ...overrides,
+  };
+}
+
+function testPaymentResponse(overrides: Record<string, unknown>): Response {
+  return new Response(JSON.stringify({ data: testPaymentOrder(overrides) }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+function assertTestPaymentInstructions(region: FakeNode, visible: boolean): void {
+  const nodes = descendants(region);
+  const qrVisible = nodes.some((node) => node.tagName === "img");
+  const checkoutVisible = nodes.some(
+    (node) => node.tagName === "a" && node.textContent === "打开收银台",
+  );
+  assert.equal(qrVisible, visible);
+  assert.equal(checkoutVisible, visible);
+  assert.equal(
+    nodes.some((node) => node.tagName === "a" && node.textContent === "查看订单"),
+    true,
+  );
+}
+
+function descendants(root: FakeNode): FakeNode[] {
+  return [root, ...root.children.flatMap((child) => descendants(child))];
+}
+
+class FakeNode {
+  readonly tagName: string;
+  readonly children: FakeNode[] = [];
+  readonly dataset: Record<string, string> = {};
+  readonly attributes = new Map<string, string>();
+  readonly classList: { add: (...tokens: string[]) => void; contains: (token: string) => boolean };
+  parentNode: FakeNode | null = null;
+  textContent = "";
+  hidden = false;
+  #classTokens = new Set<string>();
+
+  constructor(tagName: string) {
+    this.tagName = tagName;
+    this.classList = {
+      add: (...tokens) => tokens.forEach((token) => this.#classTokens.add(token)),
+      contains: (token) => this.#classTokens.has(token),
+    };
+  }
+
+  get className(): string {
+    return [...this.#classTokens].join(" ");
+  }
+
+  set className(value: string) {
+    this.#classTokens = new Set(value.split(/\s+/).filter(Boolean));
+  }
+
+  get isConnected(): boolean {
+    return true;
+  }
+
+  append(...nodes: FakeNode[]): void {
+    for (const node of nodes) {
+      node.parentNode = this;
+      this.children.push(node);
+    }
+  }
+
+  replaceChildren(...nodes: FakeNode[]): void {
+    this.children.splice(0, this.children.length);
+    this.append(...nodes);
+  }
+
+  remove(): void {
+    if (!this.parentNode) return;
+    const index = this.parentNode.children.indexOf(this);
+    if (index >= 0) this.parentNode.children.splice(index, 1);
+    this.parentNode = null;
+  }
+
+  setAttribute(name: string, value: string): void {
+    this.attributes.set(name, value);
+  }
+}
