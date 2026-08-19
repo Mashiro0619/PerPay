@@ -13,7 +13,6 @@ export const ADMIN_USERNAME = "admin" as const;
 
 export const SESSION_IDLE_TTL_MS = 30 * 60 * 1000;
 export const SESSION_ABSOLUTE_TTL_MS = 12 * 60 * 60 * 1000;
-export const STEP_UP_TTL_MS = 10 * 60 * 1000;
 export const AUTH_WINDOW_MS = 15 * 60 * 1000;
 export const AUTH_FAILURE_THRESHOLD = 5;
 export const API_SIGNATURE_SKEW_MS = 5 * 60 * 1000;
@@ -36,7 +35,6 @@ export interface AdminSession {
   readonly lastSeenAt: number;
   readonly idleExpiresAt: number;
   readonly absoluteExpiresAt: number;
-  readonly stepUpExpiresAt: number | null;
   readonly username: string;
 }
 
@@ -121,7 +119,7 @@ export class IdentityReadTransaction {
       .prepare(
         `SELECT s.session_id, s.token_digest, s.csrf_digest, s.generation,
                 s.created_at, s.last_seen_at, s.idle_expires_at,
-                s.absolute_expires_at, s.step_up_expires_at, a.username
+                s.absolute_expires_at, a.username
            FROM admin_sessions AS s
            JOIN admin_identity AS a ON a.singleton_key = 1
           WHERE s.token_digest = ?
@@ -140,7 +138,6 @@ export class IdentityReadTransaction {
           last_seen_at: bigint | number;
           idle_expires_at: bigint | number;
           absolute_expires_at: bigint | number;
-          step_up_expires_at: bigint | number | null;
           username: string;
         }
       | undefined;
@@ -252,9 +249,7 @@ export class IdentityTransaction extends IdentityReadTransaction {
     if (
       !current ||
       current.sessionId !== input.sessionId ||
-      current.generation !== input.expectedGeneration ||
-      current.stepUpExpiresAt === null ||
-      current.stepUpExpiresAt <= input.now
+      current.generation !== input.expectedGeneration
     ) {
       return undefined;
     }
@@ -286,14 +281,13 @@ export class IdentityTransaction extends IdentityReadTransaction {
     readonly createdAt: number;
     readonly idleExpiresAt: number;
     readonly absoluteExpiresAt: number;
-    readonly stepUpExpiresAt?: number | null;
   }): void {
     this.connection
       .prepare(
         `INSERT INTO admin_sessions(
            session_id, token_digest, csrf_digest, generation, created_at,
-           last_seen_at, idle_expires_at, absolute_expires_at, step_up_expires_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           last_seen_at, idle_expires_at, absolute_expires_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.sessionId,
@@ -304,7 +298,6 @@ export class IdentityTransaction extends IdentityReadTransaction {
         input.createdAt,
         input.idleExpiresAt,
         input.absoluteExpiresAt,
-        input.stepUpExpiresAt ?? null,
       );
   }
 
@@ -340,12 +333,7 @@ export class IdentityTransaction extends IdentityReadTransaction {
     readonly tokenDigest: string;
   }): number | undefined {
     const session = this.activeSession(input.tokenDigest, input.now);
-    if (
-      !session ||
-      session.sessionId !== input.sessionId ||
-      session.stepUpExpiresAt === null ||
-      session.stepUpExpiresAt <= input.now
-    ) {
+    if (!session || session.sessionId !== input.sessionId) {
       return undefined;
     }
     const identity = this.adminIdentity();
@@ -694,7 +682,6 @@ function mapSession(row: {
   last_seen_at: bigint | number;
   idle_expires_at: bigint | number;
   absolute_expires_at: bigint | number;
-  step_up_expires_at: bigint | number | null;
   username: string;
 }): AdminSession {
   return {
@@ -706,7 +693,6 @@ function mapSession(row: {
     lastSeenAt: Number(row.last_seen_at),
     idleExpiresAt: Number(row.idle_expires_at),
     absoluteExpiresAt: Number(row.absolute_expires_at),
-    stepUpExpiresAt: row.step_up_expires_at === null ? null : Number(row.step_up_expires_at),
     username: row.username,
   };
 }

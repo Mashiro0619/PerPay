@@ -29,7 +29,7 @@ interface SessionAuth {
 }
 
 describe("ledger conflict HTTP operations", () => {
-  it("protects conflict evidence, requires step-up, preserves idempotency, and degrades status", async () => {
+  it("protects conflict evidence, requires an authenticated write, preserves idempotency, and degrades status", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-ledger-conflict-http-"));
     const services = await createConfiguredHttpServices({
       directory,
@@ -142,22 +142,6 @@ describe("ledger conflict HTTP operations", () => {
       });
 
       const operationId = randomUUID();
-      const withoutStepUp = await app.request(
-        `/api/admin/v1/ledger/conflicts/${conflict.conflictId}/actions/resolve`,
-        {
-          method: "POST",
-          headers: writeHeaders(auth),
-          body: JSON.stringify({
-            conflict_operation_id: operationId,
-            action: "ACKNOWLEDGE_ISOLATED",
-            reason: "provider evidence is malformed and intentionally isolated",
-          }),
-        },
-      );
-      assert.equal(withoutStepUp.status, 403);
-      assert.equal(await errorCode(withoutStepUp), "step_up_required");
-
-      await stepUp(app, auth);
       const wrongAction = await app.request(
         `/api/admin/v1/ledger/conflicts/${conflict.conflictId}/actions/resolve`,
         {
@@ -296,18 +280,6 @@ async function login(app: ReturnType<typeof createApp>): Promise<SessionAuth> {
   });
   assert.equal(response.status, 200);
   return authenticationFrom(response);
-}
-
-async function stepUp(app: ReturnType<typeof createApp>, auth: SessionAuth): Promise<void> {
-  const response = await app.request("/api/admin/v1/session/step-up", {
-    method: "POST",
-    headers: writeHeaders(auth),
-    body: JSON.stringify({ password: ADMIN_PASSWORD }),
-  });
-  assert.equal(response.status, 200);
-  const replacement = await authenticationFrom(response);
-  auth.cookie = replacement.cookie;
-  auth.csrfToken = replacement.csrfToken;
 }
 
 async function authenticationFrom(response: Response): Promise<SessionAuth> {

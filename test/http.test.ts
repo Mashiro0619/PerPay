@@ -513,16 +513,23 @@ describe("identity HTTP contract", () => {
       const headerWithoutCsrfCookie = await app.request("/api/admin/v1/session/logout", {
         method: "POST",
         headers: {
+          "content-type": "application/json",
           origin: "http://localhost:6190",
           cookie: sessionCookie.split(";", 1)[0],
           "x-csrf-token": loginBody.data.csrf_token,
         },
+        body: "{}",
       });
       assert.equal(headerWithoutCsrfCookie.status, 403);
 
       const noCsrf = await app.request("/api/admin/v1/session/logout", {
         method: "POST",
-        headers: { origin: "http://localhost:6190", cookie },
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost:6190",
+          cookie,
+        },
+        body: "{}",
       });
       assert.equal(noCsrf.status, 403);
       assert.equal((await noCsrf.json() as { error: { code: string } }).error.code, "csrf_invalid");
@@ -530,10 +537,12 @@ describe("identity HTTP contract", () => {
       const logout = await app.request("/api/admin/v1/session/logout", {
         method: "POST",
         headers: {
+          "content-type": "application/json",
           origin: "http://localhost:6190",
           cookie,
           "x-csrf-token": loginBody.data.csrf_token,
         },
+        body: "{}",
       });
       assert.equal(logout.status, 204);
     } finally {
@@ -609,26 +618,10 @@ describe("identity HTTP contract", () => {
         cookie,
         "x-csrf-token": loginBody.data.csrf_token,
       };
-      const stepUp = await app.request("/api/admin/v1/session/step-up", {
-        method: "POST",
-        headers: authenticatedHeaders,
-        body: JSON.stringify({ password: "a-secure-local-password" }),
-      });
-      assert.equal(stepUp.status, 200);
-      const stepUpBody = await stepUp.json() as { data: { csrf_token: string } };
-      const elevatedHeaders = {
-        ...authenticatedHeaders,
-        cookie: stepUp.headers.getSetCookie()
-          .map((value) => value.split(";", 1)[0])
-          .join("; "),
-        "x-csrf-token": stepUpBody.data.csrf_token,
-      };
-
       const malformedNewPassword = await app.request("/api/admin/v1/password", {
         method: "POST",
-        headers: elevatedHeaders,
+        headers: authenticatedHeaders,
         body: JSON.stringify({
-          current_password: "a-secure-local-password",
           new_password: "malformed-\ud800-new-password",
         }),
       });
@@ -650,15 +643,13 @@ describe("identity HTTP contract", () => {
     }
   });
 
-  it("rotates credentials on step-up and preserves them when an identical password is rejected", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "perpay-http-step-up-rotation-"));
-    const clock = { now: Date.parse("2026-08-16T12:00:00Z") };
+  it("removes step-up and changes the password from an authenticated session", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-http-password-change-"));
     const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
       directory,
       apiSecret,
       collectionCodePayload,
       publicUrl: "http://localhost:6190",
-      identityClock: () => clock.now,
     });
     const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
     try {
@@ -671,15 +662,12 @@ describe("identity HTTP contract", () => {
         body: JSON.stringify({ password: HTTP_TEST_ADMIN_PASSWORD }),
       });
       assert.equal(login.status, 200);
-      const loginBody = await login.json() as {
-        data: { csrf_token: string; absolute_expires_at: string };
-      };
+      const loginBody = await login.json() as { data: { csrf_token: string } };
       const loginCookie = login.headers.getSetCookie()
         .map((value) => value.split(";", 1)[0])
         .join("; ");
-      clock.now += 60_000;
 
-      const stepUp = await app.request("/api/admin/v1/session/step-up", {
+      const removedStepUp = await app.request("/api/admin/v1/session/step-up", {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -689,44 +677,60 @@ describe("identity HTTP contract", () => {
         },
         body: JSON.stringify({ password: "a-secure-local-password" }),
       });
-      assert.equal(stepUp.status, 200);
-      const stepUpCookies = stepUp.headers.getSetCookie();
-      const replacementSessionCookie = stepUpCookies.find((value) =>
-        value.startsWith("perpay_session=")
+      assert.equal(removedStepUp.status, 404);
+      assert.equal(
+        (await removedStepUp.json() as { error: { code: string } }).error.code,
+        "route_not_found",
       );
-      const replacementCsrfCookie = stepUpCookies.find((value) =>
-        value.startsWith("perpay_csrf=")
-      );
-      assert.ok(replacementSessionCookie);
-      assert.ok(replacementCsrfCookie);
-      assert.match(replacementSessionCookie, /Max-Age=43140/);
-      assert.match(replacementCsrfCookie, /Max-Age=43140/);
-      const stepUpBody = await stepUp.json() as {
-        data: {
-          csrf_token: string;
-          step_up_expires_at: string;
-          absolute_expires_at: string;
-        };
-      };
-      assert.notEqual(stepUpBody.data.csrf_token, loginBody.data.csrf_token);
-      assert.equal(stepUpBody.data.absolute_expires_at, loginBody.data.absolute_expires_at);
-      const replacementCookie = [replacementSessionCookie, replacementCsrfCookie]
-        .map((value) => value.split(";", 1)[0])
-        .join("; ");
-      assert.notEqual(replacementCookie, loginCookie);
 
-      const oldSession = await app.request("/api/admin/v1/session", {
+      const sessionResponse = await app.request("/api/admin/v1/session", {
         headers: { cookie: loginCookie },
       });
-      assert.equal(oldSession.status, 401);
-      const replacementSession = await app.request("/api/admin/v1/session", {
-        headers: { cookie: replacementCookie },
+      assert.equal(sessionResponse.status, 200);
+      const sessionBody = await sessionResponse.json() as { data: Record<string, unknown> };
+      assert.equal(Object.hasOwn(sessionBody.data, "step_up_active"), false);
+
+      const passwordRequestBody = JSON.stringify({ new_password: "next-secure-local-password" });
+      const passwordWithoutOrigin = await app.request("/api/admin/v1/password", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: loginCookie,
+          "x-csrf-token": loginBody.data.csrf_token,
+        },
+        body: passwordRequestBody,
       });
-      assert.equal(replacementSession.status, 200);
+      assert.equal(passwordWithoutOrigin.status, 403);
+
+      const passwordWithoutCsrf = await app.request("/api/admin/v1/password", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost:6190",
+          cookie: loginCookie,
+        },
+        body: passwordRequestBody,
+      });
+      assert.equal(passwordWithoutCsrf.status, 403);
       assert.equal(
-        (await replacementSession.json() as { data: { step_up_active: boolean } }).data
-          .step_up_active,
-        true,
+        (await passwordWithoutCsrf.json() as { error: { code: string } }).error.code,
+        "csrf_invalid",
+      );
+
+      const passwordWithoutJson = await app.request("/api/admin/v1/password", {
+        method: "POST",
+        headers: {
+          "content-type": "text/plain",
+          origin: "http://localhost:6190",
+          cookie: loginCookie,
+          "x-csrf-token": loginBody.data.csrf_token,
+        },
+        body: passwordRequestBody,
+      });
+      assert.equal(passwordWithoutJson.status, 415);
+      assert.equal(
+        (await passwordWithoutJson.json() as { error: { code: string } }).error.code,
+        "unsupported_media_type",
       );
 
       const identityBefore = identity.store.read((transaction) => transaction.adminIdentity());
@@ -736,11 +740,10 @@ describe("identity HTTP contract", () => {
         headers: {
           "content-type": "application/json",
           origin: "http://localhost:6190",
-          cookie: replacementCookie,
-          "x-csrf-token": stepUpBody.data.csrf_token,
+          cookie: loginCookie,
+          "x-csrf-token": loginBody.data.csrf_token,
         },
         body: JSON.stringify({
-          current_password: "a-secure-local-password",
           new_password: "a-secure-local-password",
         }),
       });
@@ -759,13 +762,50 @@ describe("identity HTTP contract", () => {
       );
       assert.deepEqual(unchanged.headers.getSetCookie(), []);
 
-      const stillElevated = await app.request("/api/admin/v1/session", {
-        headers: { cookie: replacementCookie },
+      const changed = await app.request("/api/admin/v1/password", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost:6190",
+          cookie: loginCookie,
+          "x-csrf-token": loginBody.data.csrf_token,
+        },
+        body: JSON.stringify({ new_password: "next-secure-local-password" }),
       });
-      assert.equal(stillElevated.status, 200);
+      assert.equal(changed.status, 204);
+      assert.ok(changed.headers.getSetCookie().length >= 2);
       assert.equal(
-        (await stillElevated.json() as { data: { step_up_active: boolean } }).data.step_up_active,
-        true,
+        (await app.request("/api/admin/v1/session", { headers: { cookie: loginCookie } })).status,
+        401,
+      );
+
+      const replacementLogin = await app.request("/api/admin/v1/session/login", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost:6190",
+        },
+        body: JSON.stringify({ password: "next-secure-local-password" }),
+      });
+      assert.equal(replacementLogin.status, 200);
+      const replacementBody = await replacementLogin.json() as { data: { csrf_token: string } };
+      const replacementCookie = replacementLogin.headers.getSetCookie()
+        .map((value) => value.split(";", 1)[0])
+        .join("; ");
+      const revoked = await app.request("/api/admin/v1/sessions/revoke-all", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "http://localhost:6190",
+          cookie: replacementCookie,
+          "x-csrf-token": replacementBody.data.csrf_token,
+        },
+        body: "{}",
+      });
+      assert.equal(revoked.status, 200);
+      assert.equal(
+        (await revoked.json() as { data: { revoked_sessions: number } }).data.revoked_sessions,
+        1,
       );
     } finally {
       database.close();

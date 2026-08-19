@@ -17,7 +17,7 @@ const COLLECTION_CODE = "https://qr.alipay.com/fkx-test-payment-http";
 const TEST_PAYMENT_ID = "12345678-1234-4123-8123-123456789abc";
 
 describe("administrator test payment HTTP contract", () => {
-  it("uses the real order path with readiness, financial-write, and idempotency protection", async () => {
+  it("uses the real order path with readiness, session, and idempotency protection", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-test-payment-http-"));
     const services = await createConfiguredHttpServices({
       directory,
@@ -70,18 +70,9 @@ describe("administrator test payment HTTP contract", () => {
       assert.equal(missingCsrf.status, 403);
       assert.equal(await errorCode(missingCsrf), "csrf_invalid");
 
-      const notElevated = await ready.request(target, {
-        method: "POST",
-        headers: login.headers,
-        body: JSON.stringify(request),
-      });
-      assert.equal(notElevated.status, 403);
-      assert.equal(await errorCode(notElevated), "step_up_required");
-
-      const elevatedHeaders = await administratorStepUp(ready, login);
       const blocked = await unready.request(target, {
         method: "POST",
-        headers: elevatedHeaders,
+        headers: login.headers,
         body: JSON.stringify(request),
       });
       assert.equal(blocked.status, 503);
@@ -90,7 +81,7 @@ describe("administrator test payment HTTP contract", () => {
 
       const invalidAmount = await ready.request(target, {
         method: "POST",
-        headers: elevatedHeaders,
+        headers: login.headers,
         body: JSON.stringify({ ...request, amount_cents: 10_001 }),
       });
       assert.equal(invalidAmount.status, 422);
@@ -99,7 +90,7 @@ describe("administrator test payment HTTP contract", () => {
 
       const created = await ready.request(target, {
         method: "POST",
-        headers: elevatedHeaders,
+        headers: login.headers,
         body: JSON.stringify(request),
       });
       assert.equal(created.status, 201);
@@ -120,7 +111,7 @@ describe("administrator test payment HTTP contract", () => {
 
       const replay = await ready.request(target, {
         method: "POST",
-        headers: elevatedHeaders,
+        headers: login.headers,
         body: JSON.stringify(request),
       });
       assert.equal(replay.status, 200);
@@ -131,7 +122,7 @@ describe("administrator test payment HTTP contract", () => {
 
       const conflictingReplay = await ready.request(target, {
         method: "POST",
-        headers: elevatedHeaders,
+        headers: login.headers,
         body: JSON.stringify({ ...request, amount_cents: 101 }),
       });
       assert.equal(conflictingReplay.status, 409);
@@ -187,27 +178,6 @@ async function administratorLogin(app: ReturnType<typeof createApp>) {
       cookie,
       "x-csrf-token": body.data.csrf_token,
     },
-  };
-}
-
-async function administratorStepUp(
-  app: ReturnType<typeof createApp>,
-  login: Awaited<ReturnType<typeof administratorLogin>>,
-) {
-  const response = await app.request("/api/admin/v1/session/step-up", {
-    method: "POST",
-    headers: login.headers,
-    body: JSON.stringify({ password: HTTP_TEST_ADMIN_PASSWORD }),
-  });
-  assert.equal(response.status, 200);
-  const body = await response.json() as { data: { csrf_token: string } };
-  return {
-    "content-type": "application/json",
-    origin: ORIGIN,
-    cookie: response.headers.getSetCookie()
-      .map((value) => value.split(";", 1)[0])
-      .join("; "),
-    "x-csrf-token": body.data.csrf_token,
   };
 }
 

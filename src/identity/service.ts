@@ -9,7 +9,6 @@ import {
   IdentityStore,
   SESSION_ABSOLUTE_TTL_MS,
   SESSION_IDLE_TTL_MS,
-  STEP_UP_TTL_MS,
   type AdminSession,
   type AuthLimit,
 } from "../database/identity-store.ts";
@@ -37,7 +36,6 @@ export type IdentityErrorCode =
   | "password_work_busy"
   | "session_invalid"
   | "csrf_invalid"
-  | "step_up_required"
   | "password_unchanged"
   | "api_client_invalid"
   | "api_nonce_replayed";
@@ -76,15 +74,6 @@ export interface SetupAdminResult {
 export interface AuthenticatedSession {
   readonly session: AdminSession;
   readonly token: string;
-}
-
-export interface StepUpResult {
-  readonly sessionToken: string;
-  readonly csrfToken: string;
-  readonly createdAt: number;
-  readonly stepUpExpiresAt: number;
-  readonly idleExpiresAt: number;
-  readonly absoluteExpiresAt: number;
 }
 
 export interface ApiClientAuthentication {
@@ -307,111 +296,6 @@ export class IdentityService {
     return current !== undefined && tokenMatchesDigest(csrfToken, current.csrfDigest);
   }
 
-  async stepUp(
-    session: AuthenticatedSession,
-    password: string,
-    context: IdentityContext = {},
-  ): Promise<StepUpResult> {
-    const now = this.#clock();
-    const sourceHash = this.sourceHash(context.sourceAddress);
-    this.#assertAuthAttemptAllowed(sourceHash, now);
-    const sessionBeforeWork = this.#store.read((transaction) =>
-      transaction.activeSession(session.session.tokenDigest, now),
-    );
-    if (!sessionBeforeWork || sessionBeforeWork.sessionId !== session.session.sessionId) {
-      throw new IdentityError("session_invalid", "会话已失效");
-    }
-    const identity = this.#store.read((transaction) => transaction.adminIdentity());
-    if (!identity) throw new IdentityError("identity_not_initialized", "管理员身份尚未初始化");
-    const valid = await this.#verifyCredentialPassword(
-      password,
-      identity.passwordHash,
-      "authenticated",
-    );
-    if (!valid) {
-      const failureAt = this.#clock();
-      this.#store.transaction((transaction) => {
-        const current = transaction.activeSession(session.session.tokenDigest, failureAt);
-        if (!current || current.sessionId !== session.session.sessionId) {
-          throw new IdentityError("session_invalid", "会话已失效");
-        }
-        const next = transaction.recordAuthFailure(sourceHash, failureAt);
-        transaction.appendAudit({
-          occurredAt: failureAt,
-          actorType: "ADMIN",
-          actorId: current.username,
-          action: "admin.step_up",
-          outcome: "FAILURE",
-          subjectType: "admin_session",
-          subjectId: current.sessionId,
-          requestId: context.requestId,
-          remoteAddressHash: sourceHash,
-          details: {
-            reason: next.failureCount >= AUTH_FAILURE_THRESHOLD ? "throttled" : "invalid_password",
-          },
-        });
-      });
-      throw new IdentityError("invalid_credentials", "密码错误");
-    }
-
-    const verifiedAt = this.#clock();
-    const expiresAt = Math.min(verifiedAt + STEP_UP_TTL_MS, sessionBeforeWork.absoluteExpiresAt);
-    const idleExpiresAt = Math.min(
-      verifiedAt + SESSION_IDLE_TTL_MS,
-      sessionBeforeWork.absoluteExpiresAt,
-    );
-    const replacementSessionToken = issueSessionToken();
-    const replacementCsrfToken = issueCsrfToken();
-    const replacementSessionId = randomUUID();
-    this.#store.transaction((transaction) => {
-      const current = transaction.activeSession(session.session.tokenDigest, verifiedAt);
-      const currentIdentity = transaction.adminIdentity();
-      if (
-        !current ||
-        current.sessionId !== session.session.sessionId ||
-        !currentIdentity ||
-        currentIdentity.passwordHash !== identity.passwordHash ||
-        currentIdentity.sessionGeneration !== identity.sessionGeneration
-      ) {
-        throw new IdentityError("session_invalid", "会话或管理员凭据已发生变化");
-      }
-      if (!transaction.revokeSession(current.sessionId, "step_up_replaced", verifiedAt)) {
-        throw new IdentityError("session_invalid", "会话已失效");
-      }
-      transaction.createSession({
-        sessionId: replacementSessionId,
-        tokenDigest: replacementSessionToken.digest,
-        csrfDigest: replacementCsrfToken.digest,
-        generation: current.generation,
-        createdAt: verifiedAt,
-        idleExpiresAt,
-        absoluteExpiresAt: current.absoluteExpiresAt,
-        stepUpExpiresAt: expiresAt,
-      });
-      transaction.resetAuthLimit(sourceHash);
-      transaction.appendAudit({
-        occurredAt: verifiedAt,
-        actorType: "ADMIN",
-        actorId: current.username,
-        action: "admin.step_up",
-        outcome: "SUCCESS",
-        subjectType: "admin_session",
-        subjectId: replacementSessionId,
-        requestId: context.requestId,
-        remoteAddressHash: sourceHash,
-        details: { expires_at: expiresAt, replaced_session_id: current.sessionId },
-      });
-    });
-    return {
-      sessionToken: replacementSessionToken.token,
-      csrfToken: replacementCsrfToken.token,
-      createdAt: verifiedAt,
-      stepUpExpiresAt: expiresAt,
-      idleExpiresAt,
-      absoluteExpiresAt: sessionBeforeWork.absoluteExpiresAt,
-    };
-  }
-
   logout(session: AuthenticatedSession, context: IdentityContext = {}): void {
     const now = this.#clock();
     this.#store.transaction((transaction) => {
@@ -441,7 +325,7 @@ export class IdentityService {
         tokenDigest: session.session.tokenDigest,
       });
       if (count === undefined) {
-        throw new IdentityError("step_up_required", "此操作需要有效会话和近期密码验证");
+        throw new IdentityError("session_invalid", "会话不存在或已过期");
       }
       transaction.appendAudit({
         occurredAt: now,
@@ -459,56 +343,25 @@ export class IdentityService {
 
   async changePassword(
     session: AuthenticatedSession,
-    currentPassword: string,
     nextPassword: string,
     context: IdentityContext = {},
   ): Promise<void> {
     const now = this.#clock();
     const sourceHash = this.sourceHash(context.sourceAddress);
-    this.#assertAuthAttemptAllowed(sourceHash, now);
     const sessionBeforeWork = this.#store.read((transaction) =>
       transaction.activeSession(session.session.tokenDigest, now),
     );
-    if (
-      !sessionBeforeWork ||
-      sessionBeforeWork.sessionId !== session.session.sessionId ||
-      sessionBeforeWork.stepUpExpiresAt === null ||
-      sessionBeforeWork.stepUpExpiresAt <= now
-    ) {
-      throw new IdentityError("step_up_required", "此操作需要有效会话和近期密码验证");
+    if (!sessionBeforeWork || sessionBeforeWork.sessionId !== session.session.sessionId) {
+      throw new IdentityError("session_invalid", "会话不存在或已过期");
     }
     const identity = this.#store.read((transaction) => transaction.adminIdentity());
     if (!identity) throw new IdentityError("identity_not_initialized", "管理员身份尚未初始化");
-    const valid = await this.#verifyCredentialPassword(
-      currentPassword,
+    const unchanged = await this.#verifyCredentialPassword(
+      nextPassword,
       identity.passwordHash,
       "authenticated",
     );
-    if (!valid) {
-      const failureAt = this.#clock();
-      this.#store.transaction((transaction) => {
-        const current = transaction.activeSession(session.session.tokenDigest, failureAt);
-        if (!current || current.sessionId !== session.session.sessionId) {
-          throw new IdentityError("session_invalid", "会话已失效");
-        }
-        const next = transaction.recordAuthFailure(sourceHash, failureAt);
-        transaction.appendAudit({
-          occurredAt: failureAt,
-          actorType: "ADMIN",
-          actorId: current.username,
-          action: "admin.password_change",
-          outcome: "FAILURE",
-          subjectType: "admin_identity",
-          requestId: context.requestId,
-          remoteAddressHash: sourceHash,
-          details: {
-            reason: next.failureCount >= AUTH_FAILURE_THRESHOLD ? "throttled" : "invalid_password",
-          },
-        });
-      });
-      throw new IdentityError("invalid_credentials", "当前密码错误");
-    }
-    if (currentPassword === nextPassword) {
+    if (unchanged) {
       throw new IdentityError("password_unchanged", "新密码不能与当前密码相同");
     }
     const nextHash = await this.#runPasswordWork(
@@ -526,12 +379,8 @@ export class IdentityService {
         now: changedAt,
       });
       if (generation === undefined) {
-        throw new IdentityError(
-          "step_up_required",
-          "会话、密码或近期验证状态已发生变化，请重新验证",
-        );
+        throw new IdentityError("session_invalid", "会话或管理员凭据已发生变化");
       }
-      transaction.resetAuthLimit(sourceHash);
       transaction.appendAudit({
         occurredAt: changedAt,
         actorType: "ADMIN",
@@ -591,13 +440,6 @@ export class IdentityService {
         details: input.details,
       });
     });
-  }
-
-  isStepUp(session: AuthenticatedSession, now = this.#clock()): boolean {
-    const current = this.#currentSession(session, now);
-    return current !== undefined &&
-      current.stepUpExpiresAt !== null &&
-      current.stepUpExpiresAt > now;
   }
 
   sourceHash(sourceAddress: string | undefined): string {
@@ -748,7 +590,6 @@ class PasswordWorkGate {
 export const IDENTITY_LIMITS = Object.freeze({
   sessionIdleMs: SESSION_IDLE_TTL_MS,
   sessionAbsoluteMs: SESSION_ABSOLUTE_TTL_MS,
-  stepUpMs: STEP_UP_TTL_MS,
   authWindowMs: AUTH_WINDOW_MS,
   apiSignatureSkewMs: API_SIGNATURE_SKEW_MS,
 });

@@ -180,11 +180,6 @@ describe("notification HTTP contract", () => {
       });
       assert.equal(missingCsrf.status, 403);
       assert.equal(await responseErrorCode(missingCsrf), "csrf_invalid");
-      const missingStepUp = await postAdmin(fixture.app, redeliveryPath, auth, request);
-      assert.equal(missingStepUp.status, 403);
-      assert.equal(await responseErrorCode(missingStepUp), "step_up_required");
-
-      await stepUp(fixture.app, auth);
       saveWebhookSettings(fixture, false, null);
       const disabled = await postAdmin(
         fixture.app,
@@ -554,25 +549,6 @@ async function login(app: ReturnType<typeof createApp>): Promise<SessionAuth> {
     cookie: [sessionCookie, csrfCookie].map((value) => value.split(";", 1)[0]).join("; "),
     csrfToken: body.csrf_token,
   };
-}
-
-async function stepUp(app: ReturnType<typeof createApp>, auth: SessionAuth): Promise<void> {
-  const response = await app.request("/api/admin/v1/session/step-up", {
-    method: "POST",
-    headers: adminHeaders(auth),
-    body: JSON.stringify({ password: ADMIN_PASSWORD }),
-  });
-  assert.equal(response.status, 200);
-  const cookies = response.headers.getSetCookie();
-  const sessionCookie = cookies.find((value) => value.startsWith("perpay_session="));
-  const csrfCookie = cookies.find((value) => value.startsWith("perpay_csrf="));
-  assert.ok(sessionCookie);
-  assert.ok(csrfCookie);
-  const body = await responseData<{ csrf_token: string }>(response);
-  auth.cookie = [sessionCookie, csrfCookie]
-    .map((value) => value.split(";", 1)[0])
-    .join("; ");
-  auth.csrfToken = body.csrf_token;
 }
 
 async function postAdmin(

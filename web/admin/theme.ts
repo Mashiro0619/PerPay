@@ -12,8 +12,8 @@ const UI_FONT = [
 
 export function createAdminTheme(mode: PaletteMode) {
   const dark = mode === "dark";
-  const primary = dark ? "#91b4ff" : "#245fca";
-  const divider = dark ? "#343a43" : "#dce1e7";
+  const primary = dark ? "#91b4ff" : "#205fce";
+  const divider = dark ? "#323842" : "#dfe3e8";
   const paper = dark ? "#1a1d22" : "#ffffff";
 
   return createTheme({
@@ -29,7 +29,7 @@ export function createAdminTheme(mode: PaletteMode) {
         secondary: dark ? "#aeb5bf" : "#5c6673",
       },
       background: {
-        default: dark ? "#111317" : "#f4f6f8",
+        default: dark ? "#111318" : "#f6f7f9",
         paper,
       },
       divider,
@@ -39,13 +39,13 @@ export function createAdminTheme(mode: PaletteMode) {
         focus: alpha(primary, 0.18),
       },
     },
-    shape: { borderRadius: 6 },
+    shape: { borderRadius: 7 },
     typography: {
       fontFamily: UI_FONT,
       fontSize: 14,
-      h1: { fontSize: "1.5rem", fontWeight: 650, lineHeight: 1.35, letterSpacing: 0 },
-      h2: { fontSize: "1rem", fontWeight: 650, lineHeight: 1.45, letterSpacing: 0 },
-      h3: { fontSize: "0.925rem", fontWeight: 650, lineHeight: 1.45, letterSpacing: 0 },
+      h1: { fontSize: "1.375rem", fontWeight: 700, lineHeight: 1.4, letterSpacing: 0 },
+      h2: { fontSize: "1rem", fontWeight: 700, lineHeight: 1.45, letterSpacing: 0 },
+      h3: { fontSize: "0.925rem", fontWeight: 700, lineHeight: 1.45, letterSpacing: 0 },
       body1: { lineHeight: 1.6, letterSpacing: 0 },
       body2: { lineHeight: 1.55, letterSpacing: 0 },
       button: { fontWeight: 650, textTransform: "none", letterSpacing: 0 },
@@ -82,7 +82,6 @@ export function createAdminTheme(mode: PaletteMode) {
         },
       },
       MuiButtonBase: {
-        defaultProps: { disableRipple: true },
         styleOverrides: {
           root: {
             "&.Mui-focusVisible": {
@@ -98,7 +97,7 @@ export function createAdminTheme(mode: PaletteMode) {
           root: {
             minHeight: 40,
             minWidth: 0,
-            borderRadius: 6,
+            borderRadius: 7,
             paddingInline: 14,
             whiteSpace: "nowrap",
             flexShrink: 0,
@@ -108,18 +107,18 @@ export function createAdminTheme(mode: PaletteMode) {
       },
       MuiIconButton: {
         styleOverrides: {
-          root: { width: 44, height: 44, borderRadius: 6 },
+          root: { width: 44, height: 44, borderRadius: 7 },
         },
       },
       MuiPaper: {
         styleOverrides: {
           root: { backgroundImage: "none" },
-          rounded: { borderRadius: 7 },
+          rounded: { borderRadius: 8 },
           outlined: { borderColor: divider },
         },
       },
       MuiCard: {
-        styleOverrides: { root: { borderRadius: 7, boxShadow: "none" } },
+        styleOverrides: { root: { borderRadius: 8, boxShadow: "none" } },
       },
       MuiCardContent: {
         styleOverrides: {
@@ -128,7 +127,7 @@ export function createAdminTheme(mode: PaletteMode) {
       },
       MuiOutlinedInput: {
         styleOverrides: {
-          root: { minHeight: 40, borderRadius: 6, backgroundColor: paper },
+          root: { minHeight: 40, borderRadius: 7, backgroundColor: paper },
           input: { paddingTop: 9, paddingBottom: 9 },
         },
       },
@@ -160,7 +159,24 @@ export function createAdminTheme(mode: PaletteMode) {
         },
       },
       MuiListItemButton: {
-        styleOverrides: { root: { minHeight: 42, borderRadius: 6 } },
+        styleOverrides: { root: { minHeight: 40, borderRadius: 7 } },
+      },
+      MuiTabs: {
+        styleOverrides: {
+          root: { minHeight: 44 },
+          indicator: { height: 2 },
+        },
+      },
+      MuiTab: {
+        styleOverrides: {
+          root: {
+            minHeight: 44,
+            minWidth: 0,
+            paddingInline: 16,
+            textTransform: "none",
+            fontWeight: 650,
+          },
+        },
       },
       MuiStack: {
         defaultProps: { useFlexGap: true },
@@ -185,7 +201,7 @@ export function createAdminTheme(mode: PaletteMode) {
       },
       MuiAlert: {
         styleOverrides: {
-          root: { borderRadius: 6, alignItems: "flex-start" },
+          root: { borderRadius: 8, alignItems: "flex-start" },
           message: { minWidth: 0 },
         },
       },

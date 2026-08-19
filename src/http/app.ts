@@ -159,13 +159,11 @@ const settingsRevisionSchema = z.object({ revision: z.number().int().nonnegative
 const emptyObjectSchema = z.object({}).strict();
 const runtimeSecretNames = new Set<string>(RUNTIME_SECRET_NAMES);
 
-const passwordSchema = z.object({ password: passwordValueSchema }).strict();
 const testPaymentRequestSchema = z.object({
   test_payment_id: z.string().regex(ORDER_ID_PATTERN),
   amount_cents: z.number().int().min(1).max(TEST_PAYMENT_MAX_AMOUNT_CENTS),
 }).strict();
 const changePasswordSchema = z.object({
-  current_password: passwordValueSchema,
   new_password: newPasswordValueSchema,
 }).strict();
 const ledgerConflictResolutionSchema = z.object({
@@ -537,7 +535,6 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       data: {
         username: session.session.username,
         csrf_token_required: true,
-        step_up_active: dependencies.identity.isStepUp(session),
         idle_expires_at: new Date(session.session.idleExpiresAt).toISOString(),
         absolute_expires_at: new Date(session.session.absoluteExpiresAt).toISOString(),
       },
@@ -548,9 +545,11 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     context.json({ data: await systemStatus(dependencies) }),
   );
 
-  app.post("/api/admin/v1/session/logout", adminSession, (context) => {
+  app.post("/api/admin/v1/session/logout", adminSession, async (context) => {
+    requireJsonContentType(context);
     requireSameOrigin(context, dependencies.config.publicOrigin);
     requireCsrf(context, dependencies.identity, dependencies.config.secureCookies);
+    await readJson(context, emptyObjectSchema, MAX_JSON_BODY_BYTES);
     dependencies.identity.logout(
       context.get("adminSession"),
       identityContext(context, dependencies.config.trustedProxy),
@@ -559,36 +558,11 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     return context.body(null, 204);
   });
 
-  app.post("/api/admin/v1/session/step-up", adminSession, async (context) => {
+  app.post("/api/admin/v1/sessions/revoke-all", adminSession, async (context) => {
     requireJsonContentType(context);
     requireSameOrigin(context, dependencies.config.publicOrigin);
     requireCsrf(context, dependencies.identity, dependencies.config.secureCookies);
-    const body = await readJson(context, passwordSchema, MAX_JSON_BODY_BYTES);
-    const result = await dependencies.identity.stepUp(
-      context.get("adminSession"),
-      body.password,
-      identityContext(context, dependencies.config.trustedProxy),
-    );
-    setAuthenticationCookies(
-      context,
-      result.sessionToken,
-      result.csrfToken,
-      dependencies.config.secureCookies,
-      Math.max(1, Math.ceil((result.absoluteExpiresAt - result.createdAt) / 1_000)),
-    );
-    return context.json({
-      data: {
-        csrf_token: result.csrfToken,
-        step_up_expires_at: new Date(result.stepUpExpiresAt).toISOString(),
-        idle_expires_at: new Date(result.idleExpiresAt).toISOString(),
-        absolute_expires_at: new Date(result.absoluteExpiresAt).toISOString(),
-      },
-    });
-  });
-
-  app.post("/api/admin/v1/sessions/revoke-all", adminSession, (context) => {
-    requireSameOrigin(context, dependencies.config.publicOrigin);
-    requireCsrf(context, dependencies.identity, dependencies.config.secureCookies);
+    await readJson(context, emptyObjectSchema, MAX_JSON_BODY_BYTES);
     const revoked = dependencies.identity.revokeAllSessions(
       context.get("adminSession"),
       identityContext(context, dependencies.config.trustedProxy),
@@ -604,7 +578,6 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const body = await readJson(context, changePasswordSchema, MAX_JSON_BODY_BYTES);
     await dependencies.identity.changePassword(
       context.get("adminSession"),
-      body.current_password,
       body.new_password,
       identityContext(context, dependencies.config.trustedProxy),
     );
@@ -840,7 +813,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         "账务冲突不存在",
       );
       const body = await readJson(context, ledgerConflictResolutionSchema, MAX_JSON_BODY_BYTES);
-      const session = requireCurrentStepUp(context, dependencies.identity);
+      const session = requireCurrentSession(context, dependencies.identity);
       const result = requireLedgerStore(dependencies).resolveConflict({
         conflictOperationId: body.conflict_operation_id,
         conflictId,
@@ -982,7 +955,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         "支付关联不存在",
       );
       const body = await readJson(context, financialDecisionRequestSchema, MAX_JSON_BODY_BYTES);
-      const session = requireCurrentStepUp(context, dependencies.identity);
+      const session = requireCurrentSession(context, dependencies.identity);
       const result = requireReconciliationStore(dependencies).reverseSettlement({
         financialOperationId: body.financial_operation_id,
         paymentMatchId,
@@ -1004,7 +977,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         linkedFinancialDecisionRequestSchema,
         MAX_JSON_BODY_BYTES,
       );
-      const session = requireCurrentStepUp(context, dependencies.identity);
+      const session = requireCurrentSession(context, dependencies.identity);
       const result = requireReconciliationStore(dependencies).settleManually({
         financialOperationId: body.financial_operation_id,
         orderId: body.order_id,
@@ -1027,7 +1000,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         linkedFinancialDecisionRequestSchema,
         MAX_JSON_BODY_BYTES,
       );
-      const session = requireCurrentStepUp(context, dependencies.identity);
+      const session = requireCurrentSession(context, dependencies.identity);
       const result = requireReconciliationStore(dependencies).recordRefund({
         financialOperationId: body.financial_operation_id,
         orderId: body.order_id,
@@ -1100,7 +1073,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         "通知投递不存在",
       );
       const body = await readJson(context, webhookReplayRequestSchema, MAX_JSON_BODY_BYTES);
-      const session = requireCurrentStepUp(context, dependencies.identity);
+      const session = requireCurrentSession(context, dependencies.identity);
       const store = requireWebhookStore(dependencies);
       const webhook = dependencies.settings?.snapshot().webhook;
       const result = store.replay({
@@ -1316,9 +1289,6 @@ function requireFinancialWrite(
   return async (context, next) => {
     requireSameOrigin(context, publicOrigin);
     requireCsrf(context, identity, secureCookies);
-    if (!identity.isStepUp(context.get("adminSession"))) {
-      throw new IdentityError("step_up_required", "此资金操作需要近期密码验证");
-    }
     requireJsonContentType(context);
     await next();
   };
@@ -1335,7 +1305,7 @@ function settingsAuditContext(
   context: Context<AppEnvironment>,
   dependencies: AppDependencies,
 ) {
-  const session = requireCurrentStepUp(context, dependencies.identity);
+  const session = requireCurrentSession(context, dependencies.identity);
   return {
     actorId: session.session.username,
     requestId: context.get("requestId"),
@@ -1403,16 +1373,13 @@ function notifyWebhookAvailable(
   }
 }
 
-function requireCurrentStepUp(
+function requireCurrentSession(
   context: Context<AppEnvironment>,
   identity: IdentityService,
 ): AuthenticatedSession {
   const current = identity.authenticate(context.get("adminSession").token);
   if (!current) throw new HttpApiError(401, "session_invalid", "会话不存在或已过期");
   context.set("adminSession", current);
-  if (!identity.isStepUp(current)) {
-    throw new IdentityError("step_up_required", "此操作需要近期密码验证");
-  }
   return current;
 }
 
@@ -2052,7 +2019,6 @@ function identityStatus(code: IdentityError["code"]): 401 | 403 | 409 | 429 | 50
     case "api_client_invalid":
       return 401;
     case "csrf_invalid":
-    case "step_up_required":
       return 403;
     case "password_unchanged":
     case "api_nonce_replayed":

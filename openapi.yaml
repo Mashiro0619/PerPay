@@ -21,7 +21,7 @@ tags:
   - name: Checkout
     description: Public token-scoped checkout state.
   - name: Admin Session
-    description: Same-origin administrator login, session, and recent-password verification.
+    description: Same-origin administrator login and session lifecycle operations.
   - name: Admin Settings
     description: Runtime payment, provider, API credential, and notification configuration.
   - name: Admin Orders
@@ -34,8 +34,8 @@ tags:
     description: |
       API clients read their own immutable events with request HMAC authentication. Administrator
       reads require the session cookie; manual redelivery additionally requires same-origin and
-      CSRF checks plus recent password verification. Outbound deliveries use the independently
-      configured webhook secret and the signed protocol described under `webhooks`.
+      CSRF checks. Outbound deliveries use the independently configured webhook secret and the
+      signed protocol described under `webhooks`.
   - name: System
     description: Public application probes and authenticated instance status.
 paths:
@@ -199,50 +199,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/SystemStatusEnvelope'
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
-  /api/admin/v1/session/step-up:
-    post:
-      tags: [Admin Session]
-      operationId: stepUpAdministratorSession
-      summary: Verify the administrator password for sensitive financial actions
-      description: |
-        Successful verification activates step-up for at most ten minutes and never past
-        the session's absolute expiry. The server atomically revokes the presented session and
-        issues replacement session and CSRF cookies; only the replacement session is elevated.
-      x-perpay-requires-same-origin: true
-      security:
-        - AdminSessionCookie: []
-          AdminCsrfCookie: []
-          AdminCsrfHeader: []
-      parameters:
-        - $ref: '#/components/parameters/RequestId'
-        - $ref: '#/components/parameters/AdminOrigin'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AdminStepUpRequest'
-      responses:
-        '200':
-          description: Recent-password verification is active on replacement credentials
-          headers:
-            Set-Cookie:
-              description: >-
-                Replaces both administrator authentication cookies. The previously presented
-                session and CSRF credentials are invalid after this response.
-              schema: { type: string }
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AdminStepUpEnvelope'
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/AdminUnauthorized' }
-        '403': { $ref: '#/components/responses/AdminForbidden' }
-        '413': { $ref: '#/components/responses/TooLarge' }
-        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
-        '422': { $ref: '#/components/responses/ValidationFailed' }
-        '429': { $ref: '#/components/responses/AdminRateLimited' }
-        '503': { $ref: '#/components/responses/AdminUnavailable' }
   /api/admin/v1/session/logout:
     post:
       tags: [Admin Session]
@@ -256,11 +212,19 @@ paths:
       parameters:
         - $ref: '#/components/parameters/RequestId'
         - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminEmptyRequest' }
       responses:
         '204': { description: Active session revoked and authentication cookies cleared }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
         '403': { $ref: '#/components/responses/AdminForbidden' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/AdminUnavailable' }
   /api/admin/v1/sessions/revoke-all:
     post:
@@ -268,7 +232,6 @@ paths:
       operationId: revokeAllAdministratorSessions
       summary: Revoke every administrator session generation
       x-perpay-requires-same-origin: true
-      x-perpay-requires-recent-step-up: true
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -276,6 +239,11 @@ paths:
       parameters:
         - $ref: '#/components/parameters/RequestId'
         - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminEmptyRequest' }
       responses:
         '200':
           description: All sessions revoked and authentication cookies cleared
@@ -285,6 +253,9 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
         '403': { $ref: '#/components/responses/AdminForbidden' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/AdminUnavailable' }
   /api/admin/v1/password:
     post:
@@ -293,7 +264,6 @@ paths:
       summary: Change the administrator password and revoke every session
       description: Successful password replacement clears the active authentication cookies.
       x-perpay-requires-same-origin: true
-      x-perpay-requires-recent-step-up: true
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -315,7 +285,6 @@ paths:
         '413': { $ref: '#/components/responses/TooLarge' }
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
-        '429': { $ref: '#/components/responses/AdminRateLimited' }
         '503': { $ref: '#/components/responses/AdminUnavailable' }
   /api/admin/v1/settings:
     get:
@@ -352,7 +321,6 @@ paths:
         another amount returns an idempotency conflict. The returned payable amount may include a
         unique amount offset and is the exact amount the payer must use.
       x-perpay-requires-same-origin: true
-      x-perpay-requires-recent-step-up: true
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -403,7 +371,6 @@ paths:
         mutation pauses payment readiness while the runtime is replaced. All responses use
         `Cache-Control: no-store`.
       x-perpay-requires-same-origin: true
-      x-perpay-requires-recent-step-up: true
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -447,7 +414,6 @@ paths:
         save operation; they can be read only through the separate audited secret-reveal action.
         All responses use `Cache-Control: no-store`.
       x-perpay-requires-same-origin: true
-      x-perpay-requires-recent-step-up: true
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -494,7 +460,6 @@ paths:
         exists and returns that same key; a future revision is rejected. All responses use
         `Cache-Control: no-store`.
       x-perpay-requires-same-origin: true
-      x-perpay-requires-recent-step-up: true
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -541,7 +506,6 @@ paths:
         only masked metadata. The supplied revision must be current. All responses use
         `Cache-Control: no-store`.
       x-perpay-requires-same-origin: true
-      x-perpay-requires-recent-step-up: true
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -582,7 +546,6 @@ paths:
         advance `payment_revision`, and does not restart provider or notification schedulers. All
         responses use `Cache-Control: no-store`.
       x-perpay-requires-same-origin: true
-      x-perpay-requires-recent-step-up: true
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -626,7 +589,6 @@ paths:
         settings reads expose masked metadata only. The supplied revision must be current. Never
         cache, log, or place this response in a URL. All responses use `Cache-Control: no-store`.
       x-perpay-requires-same-origin: true
-      x-perpay-requires-recent-step-up: true
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -661,11 +623,10 @@ paths:
       operationId: revealRuntimeSecret
       summary: Reveal one configured runtime secret
       description: >-
-        Returns plaintext only after recent password verification and records an audit event.
-        The JSON request body must be an empty object. Never cache, log, or place the result in a
-        URL. All responses use `Cache-Control: no-store`.
+        Returns plaintext to an authenticated administrator and records an audit event. The JSON
+        request body must be an empty object. Never cache, log, or place the result in a URL. All
+        responses use `Cache-Control: no-store`.
       x-perpay-requires-same-origin: true
-      x-perpay-requires-recent-step-up: true
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -862,7 +823,6 @@ paths:
         use `ACKNOWLEDGE_ISOLATED`. Raw-page variants are confirmed only by repeated signed provider
         evidence and cannot be resolved by an administrator. Exact operation replay returns HTTP 200.
       x-perpay-requires-same-origin: true
-      x-perpay-requires-recent-step-up: true
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -1094,7 +1054,6 @@ paths:
       summary: Reverse an incorrect settled association
       description: Posts reversing entries, marks the order disputed, and opens a reconciliation exception.
       x-perpay-requires-same-origin: true
-      x-perpay-requires-recent-step-up: true
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -1130,7 +1089,6 @@ paths:
         The server does not require the credit amount to equal the requested or payable amount.
         The administrator must have independently reviewed sufficient payer evidence.
       x-perpay-requires-same-origin: true
-      x-perpay-requires-recent-step-up: true
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -1166,7 +1124,6 @@ paths:
         Debits are never linked automatically. The cumulative registered amount may not exceed
         the order's confirmed received amount; an over-refund returns HTTP 409 atomically.
       x-perpay-requires-same-origin: true
-      x-perpay-requires-recent-step-up: true
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -1292,7 +1249,6 @@ paths:
         exact replay remains readable after delivery is disabled or the allowed origin changes;
         only creation of a new generation is constrained by the current configuration.
       x-perpay-requires-same-origin: true
-      x-perpay-requires-recent-step-up: true
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -2252,57 +2208,26 @@ components:
           required:
             - username
             - csrf_token_required
-            - step_up_active
             - idle_expires_at
             - absolute_expires_at
           properties:
             username: { type: string }
             csrf_token_required: { const: true }
-            step_up_active: { type: boolean }
             idle_expires_at: { type: string, format: date-time }
             absolute_expires_at: { type: string, format: date-time }
-    AdminStepUpRequest:
-      type: object
-      additionalProperties: false
-      required: [password]
-      properties:
-        password:
-          type: string
-          minLength: 1
-          x-perpay-max-utf8-bytes: 1024
-    AdminStepUpEnvelope:
-      type: object
-      additionalProperties: false
-      required: [data]
-      properties:
-        data:
-          type: object
-          additionalProperties: false
-          required: [csrf_token, step_up_expires_at, idle_expires_at, absolute_expires_at]
-          properties:
-            csrf_token:
-              type: string
-              pattern: '^pc1_[A-Za-z0-9_-]{43}$'
-              description: Same value set in the replacement CSRF cookie.
-            step_up_expires_at: { type: string, format: date-time }
-            idle_expires_at: { type: string, format: date-time }
-            absolute_expires_at:
-              type: string
-              format: date-time
-              description: Preserved from the revoked session; step-up never extends it.
     AdminPasswordChangeRequest:
       type: object
       additionalProperties: false
-      required: [current_password, new_password]
+      required: [new_password]
       properties:
-        current_password:
-          type: string
-          minLength: 1
-          x-perpay-max-utf8-bytes: 1024
         new_password:
           type: string
           minLength: 12
           x-perpay-max-utf8-bytes: 1024
+    AdminEmptyRequest:
+      type: object
+      additionalProperties: false
+      maxProperties: 0
     AdminRevokeAllEnvelope:
       type: object
       additionalProperties: false
@@ -4144,8 +4069,7 @@ components:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     FinancialWriteForbidden:
       description: >-
-        Same-origin or CSRF validation failed, or recent-password verification is not active
-        (`origin_not_allowed`, `csrf_invalid`, or `step_up_required`).
+        Same-origin or CSRF validation failed (`origin_not_allowed` or `csrf_invalid`).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }

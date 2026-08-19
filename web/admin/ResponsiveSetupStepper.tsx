@@ -1,4 +1,5 @@
-import { Box, Step, StepButton, Stepper, Typography } from "@mui/material";
+import { Box, Step, StepButton, Stepper, Typography, useMediaQuery } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import type { ReactNode } from "react";
 
 export interface ResponsiveSetupStep {
@@ -20,22 +21,30 @@ export function ResponsiveSetupStepper({
   activeStep,
   onStepChange,
 }: ResponsiveSetupStepperProps) {
+  const theme = useTheme();
+  const horizontal = useMediaQuery(theme.breakpoints.up("md"));
+
   return (
     <Stepper
       aria-label="配置进度"
       activeStep={activeStep}
+      alternativeLabel={horizontal}
       nonLinear
-      orientation="vertical"
+      orientation={horizontal ? "horizontal" : "vertical"}
       sx={{
         width: "100%",
-        "& .MuiStepConnector-line": { minHeight: 22 },
-        "& .MuiStepLabel-iconContainer": { pr: 1.5 },
+        "& .MuiStepConnector-line": horizontal ? undefined : { minHeight: 14 },
+        "& .MuiStepLabel-iconContainer": horizontal ? undefined : { pr: 1.25 },
         "& .MuiStepLabel-label": {
           overflowWrap: "anywhere",
-          textAlign: "left",
+          textAlign: horizontal ? "center" : "left",
           whiteSpace: "normal",
         },
-        "& .MuiStepButton-root": { borderRadius: 1, py: 0.75 },
+        "& .MuiStepButton-root": {
+          borderRadius: 1,
+          px: horizontal ? 1 : 0.75,
+          py: horizontal ? 0.5 : 0.625,
+        },
       }}
     >
       {steps.map((step, index) => (

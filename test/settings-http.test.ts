@@ -30,7 +30,21 @@ describe("advanced settings HTTP contract", () => {
     });
     const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
     try {
-      const elevatedHeaders = await loginAndStepUp(app);
+      const elevatedHeaders = await loginHeaders(app);
+      const revealed = await app.request(
+        "/api/admin/v1/settings/secrets/api_secret/actions/reveal",
+        {
+          method: "POST",
+          headers: elevatedHeaders,
+          body: JSON.stringify({}),
+        },
+      );
+      assert.equal(revealed.status, 200);
+      assert.equal(revealed.headers.get("cache-control"), "no-store");
+      assert.deepEqual(await revealed.json(), {
+        data: { name: "api_secret", value: apiSecret },
+      });
+
       const saved = await app.request("/api/admin/v1/settings/advanced", {
         method: "PUT",
         headers: elevatedHeaders,
@@ -138,21 +152,7 @@ describe("provider application key HTTP contract", () => {
       assert.equal(unauthenticated.status, 401);
 
       const login = await loginOnly(app);
-      const withoutStepUp = await app.request(
-        "/api/admin/v1/settings/provider/application-key/actions/generate",
-        {
-          method: "POST",
-          headers: login.headers,
-          body: JSON.stringify({ revision: 0 }),
-        },
-      );
-      assert.equal(withoutStepUp.status, 403);
-      assert.equal(
-        (await withoutStepUp.json() as { error: { code: string } }).error.code,
-        "step_up_required",
-      );
-
-      const elevatedHeaders = await stepUp(app, login.cookie, login.csrfToken);
+      const elevatedHeaders = login.headers;
       const generated = await app.request(
         "/api/admin/v1/settings/provider/application-key/actions/generate",
         {
@@ -242,7 +242,7 @@ describe("provider application key HTTP contract", () => {
     });
     const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
     try {
-      const elevatedHeaders = await loginAndStepUp(app);
+      const elevatedHeaders = await loginHeaders(app);
       const response = await app.request(
         "/api/admin/v1/settings/provider/application-key/actions/generate",
         {
@@ -284,9 +284,9 @@ describe("provider application key HTTP contract", () => {
   });
 });
 
-async function loginAndStepUp(app: ReturnType<typeof createApp>): Promise<Record<string, string>> {
+async function loginHeaders(app: ReturnType<typeof createApp>): Promise<Record<string, string>> {
   const login = await loginOnly(app);
-  return stepUp(app, login.cookie, login.csrfToken);
+  return login.headers;
 }
 
 async function loginOnly(app: ReturnType<typeof createApp>): Promise<{
@@ -313,32 +313,5 @@ async function loginOnly(app: ReturnType<typeof createApp>): Promise<{
     },
     cookie,
     csrfToken: body.data.csrf_token,
-  };
-}
-
-async function stepUp(
-  app: ReturnType<typeof createApp>,
-  cookie: string,
-  csrfToken: string,
-): Promise<Record<string, string>> {
-  const response = await app.request("/api/admin/v1/session/step-up", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      origin,
-      cookie,
-      "x-csrf-token": csrfToken,
-    },
-    body: JSON.stringify({ password: HTTP_TEST_ADMIN_PASSWORD }),
-  });
-  assert.equal(response.status, 200);
-  const body = await response.json() as { data: { csrf_token: string } };
-  return {
-    "content-type": "application/json",
-    origin,
-    cookie: response.headers.getSetCookie()
-      .map((value) => value.split(";", 1)[0])
-      .join("; "),
-    "x-csrf-token": body.data.csrf_token,
   };
 }

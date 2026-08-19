@@ -258,32 +258,7 @@ describe("IdentityService", () => {
     }
   });
 
-  it("applies the same source limit to repeated step-up failures", async () => {
-    const test = await fixture();
-    try {
-      const login = await test.identity.login(adminPassword, {
-        sourceAddress: "198.51.100.4",
-      });
-      const authenticated = test.identity.authenticate(login.sessionToken);
-      assert.ok(authenticated);
-      for (let attempt = 0; attempt < 5; attempt += 1) {
-        await assert.rejects(
-          test.identity.stepUp(authenticated, "wrong-password-value", {
-            sourceAddress: "198.51.100.4",
-          }),
-          (error: unknown) => error instanceof IdentityError && error.code === "invalid_credentials",
-        );
-      }
-      await assert.rejects(
-        test.identity.stepUp(authenticated, adminPassword, { sourceAddress: "198.51.100.4" }),
-        (error: unknown) => error instanceof IdentityError && error.code === "auth_rate_limited",
-      );
-    } finally {
-      test.close();
-    }
-  });
-
-  it("counts and audits malformed existing credential inputs", async () => {
+  it("counts malformed login credentials but not malformed replacement passwords", async () => {
     const test = await fixture();
     try {
       const malformedPassword = "malformed-\ud800-password";
@@ -299,33 +274,10 @@ describe("IdentityService", () => {
       const authenticated = test.identity.authenticate(login.sessionToken);
       assert.ok(authenticated);
 
-      const stepUpSource = "192.0.2.42";
-      await assert.rejects(
-        test.identity.stepUp(authenticated, malformedPassword, { sourceAddress: stepUpSource }),
-        (error: unknown) => error instanceof IdentityError && error.code === "invalid_credentials",
-      );
-      const stepUp = await test.identity.stepUp(authenticated, adminPassword, {
-        sourceAddress: "192.0.2.43",
-      });
-      const steppedUp = test.identity.authenticate(stepUp.sessionToken);
-      assert.ok(steppedUp);
-
-      const changeSource = "192.0.2.44";
-      await assert.rejects(
-        test.identity.changePassword(
-          steppedUp,
-          malformedPassword,
-          "next-well-formed-password",
-          { sourceAddress: changeSource },
-        ),
-        (error: unknown) => error instanceof IdentityError && error.code === "invalid_credentials",
-      );
-
       const malformedNewPasswordSource = "192.0.2.45";
       await assert.rejects(
         test.identity.changePassword(
-          steppedUp,
-          adminPassword,
+          authenticated,
           malformedPassword,
           { sourceAddress: malformedNewPasswordSource },
         ),
@@ -339,56 +291,33 @@ describe("IdentityService", () => {
         undefined,
       );
 
-      for (const source of [loginSource, stepUpSource, changeSource]) {
-        const sourceHash = test.identity.sourceHash(source);
-        const limit = test.identity.store.read((transaction) => transaction.authLimit(sourceHash));
-        assert.equal(limit?.failureCount, 1);
-      }
+      const loginLimit = test.identity.store.read((transaction) =>
+        transaction.authLimit(test.identity.sourceHash(loginSource))
+      );
+      assert.equal(loginLimit?.failureCount, 1);
       const failedActions = test.database.read((connection) =>
         connection.prepare(
           "SELECT action FROM audit_events WHERE outcome = 'FAILURE' ORDER BY sequence",
         ).all() as Array<{ action: string }>,
       ).map((event) => event.action);
-      assert.deepEqual(failedActions, ["admin.login", "admin.step_up", "admin.password_change"]);
+      assert.deepEqual(failedActions, ["admin.login"]);
     } finally {
       test.close();
     }
   });
 
-  it("requires recent step-up before revoking every session", async () => {
+  it("allows an authenticated administrator to revoke every session", async () => {
     const test = await fixture();
     try {
       const login = await test.identity.login(adminPassword, { sourceAddress: "127.0.0.1" });
+      const secondLogin = await test.identity.login(adminPassword, { sourceAddress: "127.0.0.2" });
       const authenticated = test.identity.authenticate(login.sessionToken);
       assert.ok(authenticated);
-      assert.throws(
-        () => test.identity.revokeAllSessions(authenticated),
-        (error: unknown) => error instanceof IdentityError && error.code === "step_up_required",
-      );
-
-      const firstStepUp = await test.identity.stepUp(authenticated, adminPassword);
-      assert.equal(firstStepUp.stepUpExpiresAt, test.clock.now + IDENTITY_LIMITS.stepUpMs);
-      assert.equal(firstStepUp.absoluteExpiresAt, login.absoluteExpiresAt);
-      assert.notEqual(firstStepUp.sessionToken, login.sessionToken);
-      assert.notEqual(firstStepUp.csrfToken, login.csrfToken);
+      assert.ok(test.identity.authenticate(secondLogin.sessionToken));
+      assert.equal(test.identity.revokeAllSessions(authenticated), 2);
       assert.equal(test.identity.authenticate(login.sessionToken), undefined);
+      assert.equal(test.identity.authenticate(secondLogin.sessionToken), undefined);
       assert.equal(test.identity.verifyCsrf(authenticated, login.csrfToken), false);
-      const steppedUp = test.identity.authenticate(firstStepUp.sessionToken);
-      assert.ok(steppedUp);
-      assert.equal(test.identity.isStepUp(steppedUp), true);
-      assert.equal(test.identity.verifyCsrf(steppedUp, firstStepUp.csrfToken), true);
-      test.clock.now += IDENTITY_LIMITS.stepUpMs + 1;
-      assert.equal(test.identity.isStepUp(steppedUp), false);
-      const secondStepUp = await test.identity.stepUp(steppedUp, adminPassword);
-      assert.equal(secondStepUp.absoluteExpiresAt, login.absoluteExpiresAt);
-      assert.equal(test.identity.authenticate(firstStepUp.sessionToken), undefined);
-      const refreshed = test.identity.authenticate(secondStepUp.sessionToken);
-      assert.ok(refreshed);
-      assert.equal(test.identity.isStepUp(refreshed), true);
-      assert.equal(test.identity.revokeAllSessions(refreshed), 1);
-      assert.equal(test.identity.authenticate(secondStepUp.sessionToken), undefined);
-      assert.equal(test.identity.isStepUp(refreshed), false);
-      assert.equal(test.identity.verifyCsrf(refreshed, secondStepUp.csrfToken), false);
     } finally {
       test.close();
     }
@@ -402,7 +331,7 @@ describe("IdentityService", () => {
       });
       const authenticated = test.identity.authenticate(login.sessionToken);
       assert.ok(authenticated);
-      const pending = test.identity.stepUp(authenticated, adminPassword, {
+      const pending = test.identity.changePassword(authenticated, "next-secure-password", {
         sourceAddress: "192.0.2.30",
       });
       test.clock.now += IDENTITY_LIMITS.sessionIdleMs + 1;
@@ -429,12 +358,12 @@ describe("IdentityService", () => {
           sourceAddress: `192.0.2.${suffix}`,
         })
       );
-      const stepUp = test.identity.stepUp(authenticated, adminPassword, {
+      const passwordChange = test.identity.changePassword(authenticated, "next-secure-password", {
         sourceAddress: "192.0.2.54",
       });
-      const [anonymousResults, replacement] = await Promise.all([
+      const [anonymousResults] = await Promise.all([
         Promise.allSettled(anonymousAttempts),
-        stepUp,
+        passwordChange,
       ]);
 
       const rejectedCodes = anonymousResults
@@ -446,9 +375,8 @@ describe("IdentityService", () => {
         "password_work_busy",
         "password_work_busy",
       ]);
-      const elevated = test.identity.authenticate(replacement.sessionToken);
-      assert.ok(elevated);
-      assert.equal(test.identity.isStepUp(elevated), true);
+      assert.equal(test.identity.authenticate(login.sessionToken), undefined);
+      await test.identity.login("next-secure-password", { sourceAddress: "192.0.2.55" });
     } finally {
       test.close();
     }
@@ -544,7 +472,7 @@ describe("IdentityService", () => {
     }
   });
 
-  it("allows only one concurrent password change from the same stepped-up session", async () => {
+  it("allows only one concurrent password change from the same session", async () => {
     const test = await fixture();
     try {
       const login = await test.identity.login(adminPassword, {
@@ -552,17 +480,11 @@ describe("IdentityService", () => {
       });
       const authenticated = test.identity.authenticate(login.sessionToken);
       assert.ok(authenticated);
-      const stepUp = await test.identity.stepUp(authenticated, adminPassword, {
-        sourceAddress: "192.0.2.10",
-      });
-      const steppedUp = test.identity.authenticate(stepUp.sessionToken);
-      assert.ok(steppedUp);
-
       const results = await Promise.allSettled([
-        test.identity.changePassword(steppedUp, adminPassword, "next-password-value-one", {
+        test.identity.changePassword(authenticated, "next-password-value-one", {
           sourceAddress: "192.0.2.11",
         }),
-        test.identity.changePassword(steppedUp, adminPassword, "next-password-value-two", {
+        test.identity.changePassword(authenticated, "next-password-value-two", {
           sourceAddress: "192.0.2.12",
         }),
       ]);
@@ -570,8 +492,8 @@ describe("IdentityService", () => {
       const rejected = results.find((result) => result.status === "rejected");
       assert.ok(rejected && rejected.status === "rejected");
       assert.equal(rejected.reason instanceof IdentityError, true);
-      assert.equal((rejected.reason as IdentityError).code, "step_up_required");
-      assert.equal(test.identity.authenticate(stepUp.sessionToken), undefined);
+      assert.equal((rejected.reason as IdentityError).code, "session_invalid");
+      assert.equal(test.identity.authenticate(login.sessionToken), undefined);
 
       const acceptedPasswords = await Promise.all(
         ["next-password-value-one", "next-password-value-two"].map(async (password, index) => {
@@ -599,20 +521,13 @@ describe("IdentityService", () => {
       });
       const authenticated = test.identity.authenticate(login.sessionToken);
       assert.ok(authenticated);
-      const stepUp = await test.identity.stepUp(authenticated, adminPassword, {
-        sourceAddress: "198.51.100.60",
-      });
-      const elevated = test.identity.authenticate(stepUp.sessionToken);
-      assert.ok(elevated);
-
       const before = {
         identity: test.identity.store.read((transaction) => transaction.adminIdentity()),
         audit: test.identity.store.read((transaction) => transaction.auditEvents()),
       };
       await assert.rejects(
         test.identity.changePassword(
-          elevated,
-          adminPassword,
+          authenticated,
           adminPassword,
           { sourceAddress: "198.51.100.60" },
         ),
@@ -627,10 +542,9 @@ describe("IdentityService", () => {
         test.identity.store.read((transaction) => transaction.auditEvents()),
         before.audit,
       );
-      const stillElevated = test.identity.authenticate(stepUp.sessionToken);
-      assert.ok(stillElevated);
-      assert.equal(test.identity.isStepUp(stillElevated), true);
-      assert.equal(test.identity.verifyCsrf(stillElevated, stepUp.csrfToken), true);
+      const stillAuthenticated = test.identity.authenticate(login.sessionToken);
+      assert.ok(stillAuthenticated);
+      assert.equal(test.identity.verifyCsrf(stillAuthenticated, login.csrfToken), true);
     } finally {
       test.close();
     }

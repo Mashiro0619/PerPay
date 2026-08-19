@@ -251,10 +251,9 @@ describe("reconciliation HTTP contract", () => {
     });
   });
 
-  it("keeps manual claim, reversal, and refund as stepped-up exception actions", async () => {
+  it("allows an authenticated administrator to claim, reverse, and record refunds", async () => {
     await withHttpFixture(async (fixture) => {
       const auth = await login(fixture.app);
-      await stepUp(fixture.app, auth);
 
       const manualOrder = fixture.createOrder("manual", 2_999);
       const manualEntry = fixture.recordCredit("http-manual-entry", 2_900, 1);
@@ -312,7 +311,6 @@ describe("reconciliation HTTP contract", () => {
   it("rejects an over-refund without partial financial side effects", async () => {
     await withHttpFixture(async (fixture) => {
       const auth = await login(fixture.app);
-      await stepUp(fixture.app, auth);
       const settlement = fixture.createSettlement("refund-cap", 4_999);
       const firstDebit = fixture.recordDebit("http-refund-cap-first", 3_000, 1);
       const first = await postFinancial(
@@ -520,23 +518,6 @@ async function login(app: ReturnType<typeof createApp>): Promise<SessionAuth> {
     cookie: [sessionCookie, csrfCookie].map((value) => value.split(";", 1)[0]).join("; "),
     csrfToken: body.csrf_token,
   };
-}
-
-async function stepUp(app: ReturnType<typeof createApp>, auth: SessionAuth): Promise<void> {
-  const response = await app.request("/api/admin/v1/session/step-up", {
-    method: "POST",
-    headers: financialHeaders(auth),
-    body: JSON.stringify({ password: ADMIN_PASSWORD }),
-  });
-  assert.equal(response.status, 200);
-  const cookies = response.headers.getSetCookie();
-  const sessionCookie = cookies.find((value) => value.startsWith("perpay_session="));
-  const csrfCookie = cookies.find((value) => value.startsWith("perpay_csrf="));
-  assert.ok(sessionCookie);
-  assert.ok(csrfCookie);
-  const body = await responseData<{ csrf_token: string }>(response);
-  auth.cookie = [sessionCookie, csrfCookie].map((value) => value.split(";", 1)[0]).join("; ");
-  auth.csrfToken = body.csrf_token;
 }
 
 async function postFinancial(

@@ -35,12 +35,14 @@ import {
   Step,
   StepButton,
   Stepper,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  Tabs,
   TextField,
   ThemeProvider,
   Toolbar,
@@ -64,12 +66,14 @@ import {
   Logout,
   Menu as MenuIcon,
   NotificationsNoneOutlined,
+  PaymentsOutlined,
   ReceiptLongOutlined,
   Refresh,
   ReportProblemOutlined,
   Search,
   SettingsOutlined,
   ShieldOutlined,
+  UploadFileOutlined,
   Visibility,
   VisibilityOff,
 } from "@mui/icons-material";
@@ -81,13 +85,16 @@ import React, {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent,
   type FormEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import { createRoot } from "react-dom/client";
 
 import { ApiError, api, errorMessage, type JsonObject } from "./api.ts";
 import { FixedTextareaField } from "./FixedTextareaField.tsx";
+import { decodeQrPixels, MAX_QR_CANVAS_EDGE, validateQrImage } from "./qr-code.ts";
 import { ResponsiveSetupStepper } from "./ResponsiveSetupStepper.tsx";
 import { mergeTestPaymentOrder, testPaymentTerminal } from "./test-payment.ts";
 import { createAdminTheme } from "./theme.ts";
@@ -97,6 +104,37 @@ const THEME_KEY = "perpay:admin-theme:v1";
 const TEST_PAYMENT_KEY = "perpay:test-payment-pending:v1";
 const CURSOR_PARENT_KEY = "perpay:cursor-parents:v1";
 const MONO = '"SFMono-Regular", Consolas, "Liberation Mono", monospace';
+
+interface AdminLocation {
+  readonly pathname: string;
+  readonly search: string;
+  readonly sequence: number;
+}
+
+interface AdminNavigationValue {
+  readonly navigate: (href: string) => void;
+  readonly refresh: () => void;
+}
+
+const AdminNavigationContext = createContext<AdminNavigationValue | null>(null);
+
+function currentAdminLocation(sequence = 0): AdminLocation {
+  return {
+    pathname: location.pathname.replace(/\/+$/, "") || "/admin",
+    search: location.search,
+    sequence,
+  };
+}
+
+function isAdminPath(pathname: string): boolean {
+  return pathname === "/admin" || pathname.startsWith("/admin/");
+}
+
+function useAdminNavigation(): AdminNavigationValue {
+  const value = useContext(AdminNavigationContext);
+  if (!value) throw new Error("admin navigation is unavailable");
+  return value;
+}
 
 function readThemePreference(): PaletteMode {
   try { return localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light"; }
@@ -215,7 +253,7 @@ function Section({ title, children }: { readonly title: string; readonly childre
 }
 
 function DetailCard({ title, children, titleComponent = "h2" }: { readonly title: string; readonly children: ReactNode; readonly titleComponent?: "h2" | "h3" }) {
-  return <Card variant="outlined" sx={{ height: "100%" }}><CardContent><Typography component={titleComponent} variant="h2" sx={{ mb: 1.75 }}>{title}</Typography>{children}</CardContent></Card>;
+  return <Card variant="outlined"><CardContent><Typography component={titleComponent} variant="h2" sx={{ mb: 1.75 }}>{title}</Typography>{children}</CardContent></Card>;
 }
 
 type Fact = readonly [string, ReactNode, boolean?];
@@ -246,9 +284,14 @@ interface PageHeaderProps {
 }
 
 function PageHeader({ title, description, actions }: PageHeaderProps) {
-  useEffect(() => { document.title = `${title} - PerPay`; }, [title]);
+  const titleElement = useRef<HTMLHeadingElement | null>(null);
+  useEffect(() => {
+    document.title = `${title} - PerPay`;
+    const frame = requestAnimationFrame(() => titleElement.current?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(frame);
+  }, [title]);
   return <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mb: 3.5, justifyContent: "space-between", alignItems: { xs: "stretch", sm: "center" } }}>
-    <Box sx={{ minWidth: 0 }}><Typography component="h1" variant="h1">{title}</Typography><Typography variant="body2" color="textSecondary" sx={{ mt: 0.5, maxWidth: 720 }}>{description}</Typography></Box>
+    <Box sx={{ minWidth: 0 }}><Typography ref={titleElement} component="h1" variant="h1" data-page-title tabIndex={-1} sx={{ outline: 0 }}>{title}</Typography><Typography variant="body2" color="textSecondary" sx={{ mt: 0.5, maxWidth: 720 }}>{description}</Typography></Box>
     {actions ? <Stack direction="row" spacing={1} sx={{ alignSelf: { xs: "flex-end", sm: "center" }, flexShrink: 0, flexWrap: "wrap" }}>{actions}</Stack> : null}
   </Stack>;
 }
@@ -270,7 +313,8 @@ function LinkButton({ href, children, color = "primary" }: { readonly href: stri
 }
 
 function RefreshButton() {
-  return <Tooltip title="刷新页面"><IconButton aria-label="刷新页面" onClick={() => location.reload()} sx={{ border: 1, borderColor: "divider", bgcolor: "background.paper" }}><Refresh fontSize="small" /></IconButton></Tooltip>;
+  const { refresh } = useAdminNavigation();
+  return <Tooltip title="刷新当前内容"><IconButton aria-label="刷新当前内容" onClick={refresh} sx={{ border: 1, borderColor: "divider", bgcolor: "background.paper" }}><Refresh fontSize="small" /></IconButton></Tooltip>;
 }
 
 function LoadingPage() {
@@ -307,7 +351,7 @@ interface AdminContextValue {
   readonly setToast: (message: string, severity?: AlertColor) => void;
   readonly openDialog: (dialog: DialogState) => void;
   readonly closeDialog: () => void;
-  readonly protectedRequest: (path: string, body?: unknown, method?: string) => Promise<JsonObject>;
+  readonly request: (path: string, body?: unknown, method?: string) => Promise<JsonObject>;
 }
 
 const AdminContext = createContext<AdminContextValue | null>(null);
@@ -318,12 +362,13 @@ function useAdmin(): AdminContextValue {
   return value;
 }
 
-function PasswordInput({ label, value, onChange, autoComplete, minLength, autoFocus = false, required = true }: {
+function PasswordInput({ id, name, label, value, onChange, autoComplete, minLength, autoFocus = false, required = true }: {
+  readonly id: string; readonly name: string;
   readonly label: string; readonly value: string; readonly onChange: (value: string) => void;
   readonly autoComplete: string; readonly minLength?: number; readonly autoFocus?: boolean; readonly required?: boolean;
 }) {
   const [visible, setVisible] = useState(false);
-  return <TextField fullWidth label={label} value={value} onChange={(event) => onChange(event.target.value)} type={visible ? "text" : "password"} autoComplete={autoComplete} required={required} autoFocus={autoFocus} slotProps={{ htmlInput: { minLength }, input: { endAdornment: <IconButton onClick={() => setVisible((current) => !current)} edge="end" aria-label={visible ? "隐藏密码" : "显示密码"}>{visible ? <VisibilityOff /> : <Visibility />}</IconButton> } }} />;
+  return <TextField id={id} name={name} fullWidth label={label} value={value} onChange={(event) => onChange(event.target.value)} type={visible ? "text" : "password"} autoComplete={autoComplete} required={required} autoFocus={autoFocus} slotProps={{ htmlInput: { minLength }, input: { endAdornment: <IconButton type="button" onClick={() => setVisible((current) => !current)} edge="end" aria-label={visible ? `隐藏${label}` : `显示${label}`} aria-controls={id}>{visible ? <VisibilityOff /> : <Visibility />}</IconButton> } }} />;
 }
 
 function AuthShell({ children }: { readonly children: ReactNode }) {
@@ -355,7 +400,7 @@ function SetupPage() {
       else setError(errorMessage(caught));
     } finally { setBusy(false); }
   };
-  return <AuthShell><Typography component="h1" variant="h1">设置管理员密码</Typography><Typography color="textSecondary" sx={{ mt: 1, mb: 3 }}>这是首次启动。设置完成后，首次设置入口会永久关闭。</Typography>{error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}<Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><PasswordInput label="管理员密码" value={password} onChange={setPassword} autoComplete="new-password" minLength={12} autoFocus /><PasswordInput label="确认密码" value={confirmation} onChange={setConfirmation} autoComplete="new-password" minLength={12} /><Typography variant="body2" color="textSecondary">至少 12 个字符。</Typography><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在设置" : "完成设置"}</Button></Stack></AuthShell>;
+  return <AuthShell><Typography component="h1" variant="h1">设置管理员密码</Typography><Typography color="textSecondary" sx={{ mt: 1, mb: 3 }}>这是首次启动。设置完成后，首次设置入口会永久关闭。</Typography>{error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}<Stack component="form" spacing={2} autoComplete="on" onSubmit={(event) => void submit(event)}><PasswordInput id="admin-setup-password" name="password" label="管理员密码" value={password} onChange={setPassword} autoComplete="new-password" minLength={12} autoFocus /><PasswordInput id="admin-setup-password-confirmation" name="password_confirmation" label="确认密码" value={confirmation} onChange={setConfirmation} autoComplete="new-password" minLength={12} /><Typography variant="body2" color="textSecondary">至少 12 个字符。</Typography><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在设置" : "完成设置"}</Button></Stack></AuthShell>;
 }
 
 function LoginPage() {
@@ -371,11 +416,12 @@ function LoginPage() {
       location.replace(returnTo?.startsWith("/admin") && !returnTo.startsWith("//") ? returnTo : "/admin");
     } catch (caught) { setError(errorMessage(caught)); } finally { setBusy(false); }
   };
-  return <AuthShell><Typography component="h1" variant="h1">管理员登录</Typography><Typography color="textSecondary" sx={{ mt: 1, mb: 3 }}>进入收款运行与异常处理后台。</Typography>{error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}<Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><PasswordInput label="密码" value={password} onChange={setPassword} autoComplete="current-password" autoFocus /><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在登录" : "登录"}</Button></Stack></AuthShell>;
+  return <AuthShell><Typography component="h1" variant="h1">管理员登录</Typography><Typography color="textSecondary" sx={{ mt: 1, mb: 3 }}>进入收款运行与异常处理后台。</Typography>{error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}<Stack component="form" spacing={2} autoComplete="on" onSubmit={(event) => void submit(event)}><PasswordInput id="admin-login-password" name="password" label="密码" value={password} onChange={setPassword} autoComplete="current-password" autoFocus /><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在登录" : "登录"}</Button></Stack></AuthShell>;
 }
 
 const NAV_ITEMS = [
   ["/admin", "系统状态", <AccountBalanceWalletOutlined key="overview" />],
+  ["/admin/test-payment", "测试支付", <PaymentsOutlined key="test-payment" />],
   ["/admin/orders", "订单", <ReceiptLongOutlined key="orders" />],
   ["/admin/exceptions", "异常处理", <ReportProblemOutlined key="exceptions" />],
   ["/admin/settlements", "结算历史", <HistoryOutlined key="settlements" />],
@@ -395,57 +441,80 @@ function ModalLayer({ dialog, close }: { readonly dialog: DialogState; readonly 
   </Dialog>;
 }
 
-function StepUpForm({ finish, cancel }: { readonly finish: () => void; readonly cancel: (reason?: unknown) => void }) {
-  const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const submit = async (event: FormEvent) => {
-    event.preventDefault(); setBusy(true); setError("");
-    try { await api("/session/step-up", { method: "POST", body: { password } }); finish(); }
-    catch (caught) { setError(errorMessage(caught)); }
-    finally { setBusy(false); }
-  };
-  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}>{error ? <Alert severity="error">{error}</Alert> : null}<PasswordInput label="当前密码" value={password} onChange={setPassword} autoComplete="current-password" autoFocus /><Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}><Button onClick={() => cancel(new Error("已取消身份验证"))}>取消</Button><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在验证" : "验证"}</Button></Stack></Stack>;
-}
-
 function AdminApplication({ mode, onModeChange }: { readonly mode: PaletteMode; readonly onModeChange: (mode: PaletteMode) => void }) {
   const [session, setSession] = useState<JsonObject | null>(null);
   const [sessionError, setSessionError] = useState<unknown>(null);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [toast, setToastState] = useState<ToastState | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [route, setRoute] = useState<AdminLocation>(() => currentAdminLocation());
   const compact = useMediaQuery("(max-width:899px)");
   const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
-  const stepUp = useRef<{ readonly promise: Promise<void>; readonly resolve: () => void; readonly reject: (reason?: unknown) => void } | null>(null);
+  const mainContent = useRef<HTMLElement | null>(null);
+  const focusAfterNavigation = useRef(false);
 
   useEffect(() => { void api("/session").then((response) => setSession(response.data)).catch(setSessionError); }, []);
+  useEffect(() => {
+    const previous = history.scrollRestoration;
+    history.scrollRestoration = "manual";
+    const handlePopState = () => {
+      setMobileOpen(false);
+      focusAfterNavigation.current = true;
+      setRoute((current) => currentAdminLocation(current.sequence + 1));
+    };
+    addEventListener("popstate", handlePopState);
+    return () => {
+      removeEventListener("popstate", handlePopState);
+      history.scrollRestoration = previous;
+    };
+  }, []);
+  useEffect(() => {
+    if (!focusAfterNavigation.current) return;
+    focusAfterNavigation.current = false;
+    requestAnimationFrame(() => {
+      scrollTo({ top: 0, left: 0, behavior: "auto" });
+    });
+  }, [route.sequence]);
   const closeDialog = useCallback(() => { setDialog((current) => { current?.onClose?.(); return null; }); }, []);
   const setToast = useCallback((message: string, severity: AlertColor = "info") => setToastState({ message, severity }), []);
   const openDialog = useCallback((next: DialogState) => setDialog(next), []);
-  const requireStepUp = useCallback((): Promise<void> => {
-    if (stepUp.current) return stepUp.current.promise;
-    let resolvePromise!: () => void;
-    let rejectPromise!: (reason?: unknown) => void;
-    const promise = new Promise<void>((resolve, reject) => { resolvePromise = resolve; rejectPromise = reject; });
-    const finish = () => { stepUp.current = null; setDialog(null); setSession((current) => current ? { ...current, step_up_active: true } : current); resolvePromise(); };
-    const cancel = (reason?: unknown) => { stepUp.current = null; setDialog(null); rejectPromise(reason ?? new Error("已取消身份验证")); };
-    stepUp.current = { promise, resolve: finish, reject: cancel };
-    setDialog({ title: "确认管理员身份", description: "此操作会改变资金或安全状态。", content: <StepUpForm finish={finish} cancel={cancel} />, onClose: () => cancel() });
-    return promise;
-  }, []);
-  const protectedRequest = useCallback(async (path: string, body: unknown = {}, method = "POST") => {
-    try { return await api(path, { method, body }); }
-    catch (caught) {
-      if (!(caught instanceof ApiError) || caught.code !== "step_up_required") throw caught;
-      await requireStepUp();
-      return api(path, { method, body });
+  const request = useCallback((path: string, body: unknown = {}, method = "POST") => api(path, { method, body }), []);
+  const navigate = useCallback((href: string) => {
+    const url = new URL(href, location.href);
+    if (url.origin !== location.origin || !isAdminPath(url.pathname)) {
+      location.href = url.href;
+      return;
     }
-  }, [requireStepUp]);
+    const next = `${url.pathname}${url.search}${url.hash}`;
+    const current = `${location.pathname}${location.search}${location.hash}`;
+    if (next !== current) history.pushState(null, "", next);
+    setMobileOpen(false);
+    focusAfterNavigation.current = true;
+    setRoute((active) => currentAdminLocation(active.sequence + 1));
+  }, []);
+  const refresh = useCallback(() => {
+    focusAfterNavigation.current = true;
+    setRoute((current) => ({ ...current, sequence: current.sequence + 1 }));
+  }, []);
+  const handleInternalLink = useCallback((event: ReactMouseEvent<HTMLElement>) => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const origin = event.target;
+    if (!(origin instanceof Element)) return;
+    const anchor = origin.closest<HTMLAnchorElement>("a[href]");
+    if (!anchor || !event.currentTarget.contains(anchor) || anchor.hasAttribute("download")) return;
+    const rawHref = anchor.getAttribute("href");
+    if (!rawHref || rawHref.startsWith("#") || (anchor.target && anchor.target !== "_self")) return;
+    const url = new URL(anchor.href, location.href);
+    if (url.origin !== location.origin || !isAdminPath(url.pathname)) return;
+    event.preventDefault();
+    navigate(`${url.pathname}${url.search}${url.hash}`);
+  }, [navigate]);
+  const navigation = useMemo<AdminNavigationValue>(() => ({ navigate, refresh }), [navigate, refresh]);
 
-  if (sessionError) return <RouteError error={sessionError} />;
-  if (!session) return <LoadingPage />;
+  if (sessionError) return <AdminNavigationContext.Provider value={navigation}><RouteError error={sessionError} /></AdminNavigationContext.Provider>;
+  if (!session) return <AdminNavigationContext.Provider value={navigation}><LoadingPage /></AdminNavigationContext.Provider>;
 
-  const path = location.pathname.replace(/\/+$/, "") || "/admin";
+  const path = route.pathname;
   const currentLabel = NAV_ITEMS.find(([href]) => href === path)?.[1] || "管理后台";
   const nav = <Box id="admin-navigation" sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
     <Stack direction="row" spacing={1.25} sx={{ minHeight: 64, px: 2.25, alignItems: "center" }}>
@@ -464,10 +533,10 @@ function AdminApplication({ mode, onModeChange }: { readonly mode: PaletteMode; 
     </Box>
   </Box>;
   const toggleTheme = () => { const next = mode === "light" ? "dark" : "light"; persistThemePreference(next); onModeChange(next); };
-  const logout = () => void api("/session/logout", { method: "POST" }).then(() => location.replace("/admin/login")).catch((caught) => setToast(errorMessage(caught), "error"));
-  const context = { session, setToast, openDialog, closeDialog, protectedRequest } satisfies AdminContextValue;
-  return <AdminContext.Provider value={context}>
-    <Box sx={{ minHeight: "100dvh", display: "flex", bgcolor: "background.default" }}>
+  const logout = () => void api("/session/logout", { method: "POST", body: {} }).then(() => location.replace("/admin/login")).catch((caught) => setToast(errorMessage(caught), "error"));
+  const context = { session, setToast, openDialog, closeDialog, request } satisfies AdminContextValue;
+  return <AdminNavigationContext.Provider value={navigation}><AdminContext.Provider value={context}>
+    <Box onClick={handleInternalLink} sx={{ minHeight: "100dvh", display: "flex", bgcolor: "background.default" }}>
       <Link href="#main-content" sx={{ position: "fixed", zIndex: 2000, left: 12, top: 12, px: 1.5, py: 1, bgcolor: "background.paper", border: 1, borderColor: "primary.main", borderRadius: 1, transform: "translateY(-160%)", "&:focus": { transform: "translateY(0)" } }}>跳到主要内容</Link>
       {compact ? <Drawer variant="temporary" open={mobileOpen} onClose={() => setMobileOpen(false)} ModalProps={{ keepMounted: true }} sx={{ "& .MuiDrawer-paper": { width: "min(86vw, 280px)", bgcolor: "background.paper" } }}>{nav}</Drawer> : <Drawer variant="permanent" open sx={{ width: DRAWER_WIDTH, flexShrink: 0, "& .MuiDrawer-paper": { width: DRAWER_WIDTH, boxSizing: "border-box", borderWidth: "0 1px 0 0", borderColor: "divider", bgcolor: "background.paper" } }}>{nav}</Drawer>}
       <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -479,18 +548,19 @@ function AdminApplication({ mode, onModeChange }: { readonly mode: PaletteMode; 
             <Tooltip title="退出登录"><IconButton aria-label="退出登录" onClick={logout}><Logout fontSize="small" /></IconButton></Tooltip>
           </Toolbar>
         </AppBar>
-        <MainContent id="main-content" tabIndex={-1}><PageFrame><Fade in appear timeout={reduceMotion ? 0 : 180}><Box><AdminRoute path={path} /></Box></Fade></PageFrame></MainContent>
+        <MainContent ref={mainContent} id="main-content" tabIndex={-1}><PageFrame><Fade in appear timeout={reduceMotion ? 0 : 180}><Box key={`${path}${route.search}:${route.sequence}`}><AdminRoute path={path} /></Box></Fade></PageFrame></MainContent>
       </Box>
     </Box>
     {dialog ? <ModalLayer dialog={dialog} close={closeDialog} /> : null}
     <Snackbar open={Boolean(toast)} autoHideDuration={5000} anchorOrigin={{ vertical: "bottom", horizontal: "right" }} onClose={(_, reason) => { if (reason !== "clickaway") setToastState(null); }}>
       {toast ? <Alert severity={toast.severity} variant="filled" onClose={() => setToastState(null)} sx={{ width: "min(420px, calc(100vw - 32px))" }}>{toast.message}</Alert> : undefined}
     </Snackbar>
-  </AdminContext.Provider>;
+  </AdminContext.Provider></AdminNavigationContext.Provider>;
 }
 
 function AdminRoute({ path }: { readonly path: string }) {
   if (path === "/admin") return <OverviewPage />;
+  if (path === "/admin/test-payment") return <TestPaymentPage />;
   if (path === "/admin/orders") return <OrdersPage />;
   if (path === "/admin/exceptions") return <ExceptionsPage />;
   if (path === "/admin/settlements") return <SettlementsPage />;
@@ -566,13 +636,14 @@ function StatusFilter({ name, label, value, values }: { readonly name: string; r
 }
 
 function FilterBar({ names, children }: { readonly names: readonly string[]; readonly children: ReactNode }) {
-  return <Paper component="form" variant="outlined" onSubmit={(event) => applyFilterForm(event, names)} sx={{ p: 1.5, mb: 2, display: "flex", gap: 1.5, alignItems: "center", flexWrap: "wrap" }}>
+  const { navigate } = useAdminNavigation();
+  return <Paper component="form" variant="outlined" onSubmit={(event) => applyFilterForm(event, names, navigate)} sx={{ p: 1.5, mb: 2, display: "flex", gap: 1.5, alignItems: "center", flexWrap: "wrap" }}>
     {children}
     <Button type="submit" variant="contained" startIcon={<FilterAltOutlined />} sx={{ width: { xs: "100%", sm: "auto" } }}>应用筛选</Button>
   </Paper>;
 }
 
-function applyFilterForm(event: FormEvent<HTMLFormElement>, names: readonly string[]) {
+function applyFilterForm(event: FormEvent<HTMLFormElement>, names: readonly string[], navigate: (href: string) => void) {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
   const query = new URLSearchParams();
@@ -580,7 +651,7 @@ function applyFilterForm(event: FormEvent<HTMLFormElement>, names: readonly stri
     const value = String(form.get(name) || "");
     if (value && value !== "ALL") query.set(name, value);
   }
-  location.href = `${location.pathname}${query.size ? `?${query}` : ""}`;
+  navigate(`${location.pathname}${query.size ? `?${query}` : ""}`);
 }
 
 function CursorNavigation({ nextCursor }: { readonly nextCursor: unknown }) {
@@ -649,8 +720,9 @@ function OrdersPage() {
 }
 
 function OrderSearch({ value }: { readonly value: string }) {
+  const { navigate } = useAdminNavigation();
   const [search, setSearch] = useState(value);
-  return <Stack component="form" direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mb: 2, maxWidth: 680, alignItems: { sm: "flex-start" } }} onSubmit={(event) => { event.preventDefault(); const term = search.trim(); if (term) location.href = `/admin/orders?merchant_order_no=${encodeURIComponent(term)}`; }}><TextField label="完整商户订单号" value={search} onChange={(event) => setSearch(event.target.value)} fullWidth /><Button type="submit" variant="outlined" startIcon={<Search />} sx={{ minHeight: 40 }}>查找订单</Button></Stack>;
+  return <Stack component="form" direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mb: 2, maxWidth: 680, alignItems: { sm: "flex-start" } }} onSubmit={(event) => { event.preventDefault(); const term = search.trim(); if (term) navigate(`/admin/orders?merchant_order_no=${encodeURIComponent(term)}`); }}><TextField label="完整商户订单号" value={search} onChange={(event) => setSearch(event.target.value)} fullWidth /><Button type="submit" variant="outlined" startIcon={<Search />} sx={{ minHeight: 40 }}>查找订单</Button></Stack>;
 }
 
 function OrderDetail({ payload }: { readonly payload: JsonObject }) {
@@ -724,7 +796,7 @@ function ExceptionDetail({ payload }: { readonly payload: JsonObject }) {
 }
 
 function FinancialDecisionForm({ kind, exception }: { readonly kind: "manual" | "refund"; readonly exception: JsonObject }) {
-  const { protectedRequest, setToast, closeDialog } = useAdmin();
+  const { request, setToast, closeDialog } = useAdmin(); const { refresh } = useAdminNavigation();
   const [merchantNo, setMerchantNo] = useState("");
   const [selected, setSelected] = useState<JsonObject | null>(null);
   const [searching, setSearching] = useState(false);
@@ -742,8 +814,8 @@ function FinancialDecisionForm({ kind, exception }: { readonly kind: "manual" | 
     if (!selected || selected.merchant_order_no !== merchantNo.trim()) { setToast("请先按商户订单号选择订单。", "warning"); return; }
     setBusy(true);
     try {
-      await protectedRequest(kind === "refund" ? "/reconciliation/refunds" : "/reconciliation/settlements/manual", { financial_operation_id: operationId.current, order_id: selected.order_id, ledger_entry_id: exception.ledger_entry_id, reason: reason.trim() });
-      setToast(kind === "refund" ? "退款流水已登记" : "订单已人工认领", "success"); closeDialog(); location.reload();
+      await request(kind === "refund" ? "/reconciliation/refunds" : "/reconciliation/settlements/manual", { financial_operation_id: operationId.current, order_id: selected.order_id, ledger_entry_id: exception.ledger_entry_id, reason: reason.trim() });
+      setToast(kind === "refund" ? "退款流水已登记" : "订单已人工认领", "success"); closeDialog(); refresh();
     } catch (caught) { setToast(errorMessage(caught), "error"); setBusy(false); }
   };
   return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><Alert severity="warning"><strong>{kind === "refund" ? "登记退款流水" : "建立人工付款关联"}</strong>。{kind === "refund" ? "退款只更新退款状态，不会撤销原付款事实。" : "此操作会确认订单并发送付款成功通知。"}</Alert><TextField label="商户订单号" value={merchantNo} onChange={(event) => { setMerchantNo(event.target.value); setSelected(null); }} required helperText="使用完整商户订单号查找，不需要输入内部 UUID。" /><Button variant="outlined" onClick={() => void search()} disabled={searching || !merchantNo.trim()}>{searching ? "正在查找" : "查找订单"}</Button>{selected ? <Alert severity="success">已选择 {selected.merchant_order_no}，应付 {formatMoney(selected.payable_amount_cents, selected.currency)}</Alert> : null}<TextField label="流水 ID" value={String(exception.ledger_entry_id || "")} slotProps={{ input: { readOnly: true } }} /><FixedTextareaField label="处理理由" value={reason} onChange={(event) => setReason(event.target.value)} rows={3} required /><Typography variant="caption" color="textSecondary" sx={{ fontFamily: MONO }}>操作编号 {operationId.current}</Typography><Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}><Button onClick={closeDialog}>取消</Button><Button type="submit" variant="contained" color={kind === "refund" ? "error" : "primary"} disabled={busy}>{busy ? "正在提交" : kind === "refund" ? "登记退款" : "确认人工认领"}</Button></Stack></Stack>;
@@ -778,11 +850,11 @@ function SettlementDetail({ match }: { readonly match: JsonObject }) {
 }
 
 function ReverseSettlementForm({ match }: { readonly match: JsonObject }) {
-  const { protectedRequest, setToast, closeDialog } = useAdmin();
+  const { request, setToast, closeDialog } = useAdmin(); const { refresh } = useAdminNavigation();
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const operationId = useRef(crypto.randomUUID());
-  const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { await protectedRequest(`/reconciliation/matches/${encodeURIComponent(match.payment_match_id)}/actions/reverse`, { financial_operation_id: operationId.current, reason: reason.trim() }); setToast("关联已撤销，订单已进入争议状态", "success"); closeDialog(); location.reload(); } catch (caught) { setToast(errorMessage(caught), "error"); setBusy(false); } };
+  const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { await request(`/reconciliation/matches/${encodeURIComponent(match.payment_match_id)}/actions/reverse`, { financial_operation_id: operationId.current, reason: reason.trim() }); setToast("关联已撤销，订单已进入争议状态", "success"); closeDialog(); refresh(); } catch (caught) { setToast(errorMessage(caught), "error"); setBusy(false); } };
   return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><Alert severity="error">撤销后订单进入争议状态，并向已配置的回调地址发送争议通知。</Alert><FixedTextareaField label="撤销理由" value={reason} onChange={(event) => setReason(event.target.value)} rows={3} required /><Typography variant="caption" color="textSecondary" sx={{ fontFamily: MONO }}>操作编号 {operationId.current}</Typography><Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}><Button onClick={closeDialog}>取消</Button><Button type="submit" variant="contained" color="error" disabled={busy}>{busy ? "正在撤销" : "撤销关联"}</Button></Stack></Stack>;
 }
 
@@ -824,9 +896,9 @@ function ConflictDetail({ detail }: { readonly detail: JsonObject }) {
 }
 
 function ConflictResolutionForm({ conflict, action }: { readonly conflict: JsonObject; readonly action: string }) {
-  const { protectedRequest, setToast, closeDialog } = useAdmin();
+  const { request, setToast, closeDialog } = useAdmin(); const { refresh } = useAdminNavigation();
   const [reason, setReason] = useState(""); const [busy, setBusy] = useState(false); const operationId = useRef(crypto.randomUUID());
-  const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { await protectedRequest(`/ledger/conflicts/${encodeURIComponent(conflict.conflict_id)}/actions/resolve`, { conflict_operation_id: operationId.current, action, reason: reason.trim() }); setToast("账务冲突已处理", "success"); closeDialog(); location.reload(); } catch (caught) { setToast(errorMessage(caught), "error"); setBusy(false); } };
+  const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { await request(`/ledger/conflicts/${encodeURIComponent(conflict.conflict_id)}/actions/resolve`, { conflict_operation_id: operationId.current, action, reason: reason.trim() }); setToast("账务冲突已处理", "success"); closeDialog(); refresh(); } catch (caught) { setToast(errorMessage(caught), "error"); setBusy(false); } };
   return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><Alert severity="warning">{action === "KEEP_EXISTING" ? "将保留已经入账的流水事实，并关闭重复外部流水号冲突。" : "将确认该记录保持隔离，不把无效证据写入账本。"}</Alert><FixedTextareaField label="处理理由" value={reason} onChange={(event) => setReason(event.target.value)} rows={3} required /><Typography variant="caption" color="textSecondary" sx={{ fontFamily: MONO }}>操作编号 {operationId.current}</Typography><Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}><Button onClick={closeDialog}>取消</Button><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在提交" : "提交处理"}</Button></Stack></Stack>;
 }
 
@@ -859,8 +931,8 @@ function NotificationDetail({ detail, attempts }: { readonly detail: JsonObject;
 }
 
 function RedeliveryForm({ delivery }: { readonly delivery: JsonObject }) {
-  const { protectedRequest, setToast, closeDialog } = useAdmin(); const [reason, setReason] = useState(""); const [busy, setBusy] = useState(false); const operationId = useRef(crypto.randomUUID());
-  const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { const response = await protectedRequest(`/webhooks/deliveries/${encodeURIComponent(delivery.delivery_id)}/actions/redeliver`, { redelivery_id: operationId.current, reason: reason.trim() }); setToast(response.data?.replayed ? "已恢复既有补发请求" : "补发任务已创建", "success"); closeDialog(); location.href = `/admin/notifications?id=${encodeURIComponent(response.data.delivery.delivery_id)}`; } catch (caught) { setToast(errorMessage(caught), "error"); setBusy(false); } };
+  const { request, setToast, closeDialog } = useAdmin(); const { navigate } = useAdminNavigation(); const [reason, setReason] = useState(""); const [busy, setBusy] = useState(false); const operationId = useRef(crypto.randomUUID());
+  const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { const response = await request(`/webhooks/deliveries/${encodeURIComponent(delivery.delivery_id)}/actions/redeliver`, { redelivery_id: operationId.current, reason: reason.trim() }); setToast(response.data?.replayed ? "已恢复既有补发请求" : "补发任务已创建", "success"); closeDialog(); navigate(`/admin/notifications?id=${encodeURIComponent(response.data.delivery.delivery_id)}`); } catch (caught) { setToast(errorMessage(caught), "error"); setBusy(false); } };
   return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><Alert severity="warning">补发会创建新的投递代次；接收端仍应按 event_id 幂等处理。</Alert><FixedTextareaField label="补发理由" value={reason} onChange={(event) => setReason(event.target.value)} rows={3} required /><Typography variant="caption" color="textSecondary" sx={{ fontFamily: MONO }}>补发编号 {operationId.current}</Typography><Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}><Button onClick={closeDialog}>取消</Button><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在创建" : "创建补发"}</Button></Stack></Stack>;
 }
 
@@ -871,25 +943,77 @@ const SETTINGS_STEPS = [
   { id: "api-key", title: "生成 API 密钥", description: "连接你的业务程序", next: "GENERATE_API_KEY" },
 ] as const;
 
+const SETTINGS_SECTIONS = [
+  { id: "collection", label: "收款", title: "经营码与金额", description: "设置付款二维码、订单有效期和唯一金额尾差。" },
+  { id: "provider", label: "支付平台", title: "支付宝平台", description: "维护采集应用、平台公钥和采集节奏。" },
+  { id: "api", label: "API", title: "API 客户端", description: "查看客户端身份并轮换业务程序使用的 API 密钥。" },
+  { id: "notifications", label: "通知", title: "异步通知", description: "控制支付结果通知目标、超时和失败重试。" },
+  { id: "advanced", label: "高级", title: "收银台生命周期", description: "调整令牌轮换和终态订单的可观察时间。" },
+  { id: "secrets", label: "安全与历史", title: "密钥与采集历史", description: "查看敏感配置元数据、管理员安全入口和采集应用代际。" },
+] as const;
+
+type SettingsSectionId = typeof SETTINGS_SECTIONS[number]["id"];
+
+function readSettingsSection(): SettingsSectionId {
+  const requested = new URLSearchParams(location.search).get("section");
+  return SETTINGS_SECTIONS.some((section) => section.id === requested) ? requested as SettingsSectionId : "collection";
+}
+
+function SettingsPanel({ title, description, status, children }: {
+  readonly title: string;
+  readonly description: string;
+  readonly status: { readonly label: string; readonly color: "default" | "success" | "warning" };
+  readonly children: ReactNode;
+}) {
+  return <Card variant="outlined"><CardContent>
+    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mb: 2.25, alignItems: { xs: "flex-start", sm: "center" }, justifyContent: "space-between" }}>
+      <Box sx={{ minWidth: 0 }}><Typography component="h2" variant="h2">{title}</Typography><Typography variant="body2" color="textSecondary" sx={{ mt: 0.375, maxWidth: 680 }}>{description}</Typography></Box>
+      <Chip size="small" variant="outlined" color={status.color} label={status.label} />
+    </Stack>
+    {children}
+  </CardContent></Card>;
+}
+
+function settingsSectionStatus(section: SettingsSectionId, view: JsonObject): { readonly label: string; readonly color: "default" | "success" | "warning" } {
+  const completion = view.completion || {};
+  if (section === "collection") return completion.collection === true ? { label: "已配置", color: "success" } : { label: "待配置", color: "warning" };
+  if (section === "provider") return completion.provider === true ? { label: "已配置", color: "success" } : { label: "待配置", color: "warning" };
+  if (section === "api") return completion.api === true ? { label: "已配置", color: "success" } : { label: "待配置", color: "warning" };
+  if (section === "notifications") return view.notifications?.enabled === true ? { label: "已启用", color: "success" } : { label: "未启用", color: "default" };
+  return { label: "可选设置", color: "default" };
+}
+
 function SettingsPage() {
   const { data, error, reload } = useApiData(async () => {
-    const [settings, status] = await Promise.all([api("/settings"), api("/system/status")]);
-    return { data: settings.data || {}, status: status.data || {} };
+    const settings = await api("/settings");
+    return { data: settings.data || {} };
   }, []);
   if (error) return <RouteError error={error} />;
   if (!data) return <LoadingPage />;
-  const view = data.data || {}, status = data.status || {}, complete = view.completion?.complete === true;
-  return <><PageHeader title={complete ? "设置" : "设置收款"} description={complete ? "维护收款配置、接口凭据和可选功能。" : "按顺序完成四项必需配置，完成后系统才会开放收款。"} actions={<RefreshButton />} /><SettingsCompletion view={view} />
-    {!complete ? <Section title="配置流程"><SettingsOnboarding view={view} reload={reload} /></Section> : <>
-      <Section title="测试支付"><Box sx={{ maxWidth: 960 }}><DetailCard title="验证真实收款链路" titleComponent="h3"><TestPayment view={view} systemStatus={status} /></DetailCard></Box></Section>
-      <Section title="收款配置"><Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2, maxWidth: 1200 }}><DetailCard title="经营码与金额" titleComponent="h3"><CollectionSettingsForm view={view} reload={reload} /></DetailCard><DetailCard title="支付宝平台" titleComponent="h3"><ProviderSettingsForm view={view} reload={reload} /></DetailCard></Box></Section>
-      <Section title="通知"><Box sx={{ maxWidth: 760 }}><DetailCard title="异步通知" titleComponent="h3"><NotificationSettingsForm view={view} reload={reload} /></DetailCard></Box></Section>
-      <Section title="高级设置"><Box sx={{ maxWidth: 760 }}><DetailCard title="收银台生命周期" titleComponent="h3"><AdvancedSettingsForm view={view} reload={reload} /></DetailCard></Box></Section>
-      <Section title="API 客户端"><Box sx={{ maxWidth: 760 }}><DetailCard title="调用凭据" titleComponent="h3"><ApiKeyBlock view={view} reload={reload} /></DetailCard></Box></Section>
-      <Section title="已保存密钥"><Box sx={{ maxWidth: 760 }}><DetailCard title="敏感值" titleComponent="h3"><SecretSettings view={view} /></DetailCard></Box></Section>
-      <ProviderHistory generations={(view.provider_generations || []) as JsonObject[]} />
+  const view = data.data || {}, complete = view.completion?.complete === true;
+  const activeSection = readSettingsSection();
+  const section = SETTINGS_SECTIONS.find((item) => item.id === activeSection) || SETTINGS_SECTIONS[0];
+  const panel = activeSection === "collection" ? <CollectionSettingsForm view={view} reload={reload} />
+    : activeSection === "provider" ? <ProviderSettingsForm view={view} reload={reload} />
+      : activeSection === "api" ? <ApiKeyBlock view={view} reload={reload} />
+        : activeSection === "notifications" ? <NotificationSettingsForm view={view} reload={reload} />
+          : activeSection === "advanced" ? <AdvancedSettingsForm view={view} reload={reload} />
+            : <Stack spacing={2.5}><SecretSettings view={view} /><Divider /><Box><Typography component="h3" variant="h3" sx={{ mb: 0.75 }}>管理员安全</Typography><Typography variant="body2" color="textSecondary" sx={{ mb: 1.5 }}>修改管理员密码或撤销全部已登录会话。</Typography><Button component="a" href="/admin/security" variant="outlined" startIcon={<ShieldOutlined />}>打开安全设置</Button></Box></Stack>;
+  return <Box sx={{ width: "100%", maxWidth: 1120, mx: "auto" }}><PageHeader title={complete ? "设置" : "设置收款"} description={complete ? "维护收款配置、接口凭据和可选功能。" : "按顺序完成四项必需配置，完成后系统才会开放收款。"} actions={<RefreshButton />} /><SettingsCompletion view={view} />
+    {!complete ? <Section title="配置流程"><SettingsOnboarding key={String(view.revision)} view={view} reload={reload} /></Section> : <>
+      <Box sx={{ mb: 2.5, borderBottom: 1, borderColor: "divider" }}>
+        <Tabs value={activeSection} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile aria-label="设置分区">
+          {SETTINGS_SECTIONS.map((item) => <Tab key={item.id} id={`settings-tab-${item.id}`} component="a" href={`/admin/settings?section=${item.id}`} value={item.id} label={item.label} aria-controls={`settings-panel-${item.id}`} />)}
+        </Tabs>
+      </Box>
+      <Fade in key={`${activeSection}:${String(view.revision)}`} timeout={180}>
+        <Box id={`settings-panel-${activeSection}`} role="tabpanel" aria-labelledby={`settings-tab-${activeSection}`} sx={{ maxWidth: 880, mx: "auto", mb: 3.5 }}>
+          <SettingsPanel title={section.title} description={section.description} status={settingsSectionStatus(activeSection, view)}>{panel}</SettingsPanel>
+          {activeSection === "secrets" ? <Box sx={{ mt: 3 }}><ProviderHistory generations={(view.provider_generations || []) as JsonObject[]} /></Box> : null}
+        </Box>
+      </Fade>
     </>}
-  </>;
+  </Box>;
 }
 
 function SettingsCompletion({ view }: { readonly view: JsonObject }) {
@@ -920,15 +1044,15 @@ function SettingsOnboarding({ view, reload }: { readonly view: JsonObject; reado
     completed: stepComplete(index, completion),
     disabled: !stepAvailable(index, completion),
   }));
-  return <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0, 1fr)", md: "280px minmax(0, 760px)" }, gap: 2, alignItems: "start" }}>
-    <Paper component="aside" variant="outlined" sx={{ p: 2, position: { md: "sticky" }, top: { md: 76 } }}>
+  return <Box sx={{ width: "100%", maxWidth: 880, mx: "auto" }}>
+    <Paper component="aside" variant="outlined" sx={{ p: { xs: 1.5, sm: 2 } }}>
       <Typography component="h3" variant="h3" sx={{ mb: 1.5 }}>配置进度</Typography>
       <ResponsiveSetupStepper steps={steps} activeStep={active} onStepChange={setActive} />
       <Divider sx={{ my: 1.5 }} />
       <Typography variant="caption" color="textSecondary">完成当前步骤后，下一步会自动开放。</Typography>
     </Paper>
     <Fade in key={active} timeout={reduceMotion ? 0 : 180}>
-      <Box>{active === 0 ? <DetailCard title="生成并上传应用公钥" titleComponent="h3"><ApplicationKeyBlock view={view} reload={reload} next={() => setActive(1)} /></DetailCard> : active === 1 ? <DetailCard title="填写支付宝应用信息" titleComponent="h3"><ProviderSettingsForm view={view} reload={reload} /></DetailCard> : active === 2 ? <DetailCard title="配置经营码" titleComponent="h3"><CollectionSettingsForm view={view} reload={reload} /></DetailCard> : <DetailCard title="生成接口密钥" titleComponent="h3"><ApiKeyBlock view={view} reload={reload} initial /></DetailCard>}</Box>
+      <Box sx={{ width: "100%", maxWidth: 760, mx: "auto", mt: 2 }}>{active === 0 ? <DetailCard title="生成并上传应用公钥" titleComponent="h3"><ApplicationKeyBlock view={view} reload={reload} next={() => setActive(1)} /></DetailCard> : active === 1 ? <DetailCard title="填写支付宝应用信息" titleComponent="h3"><ProviderSettingsForm view={view} reload={reload} /></DetailCard> : active === 2 ? <DetailCard title="配置经营码" titleComponent="h3"><CollectionSettingsForm view={view} reload={reload} /></DetailCard> : <DetailCard title="生成接口密钥" titleComponent="h3"><ApiKeyBlock view={view} reload={reload} initial /></DetailCard>}</Box>
     </Fade>
   </Box>;
 }
@@ -944,8 +1068,8 @@ function ApplicationPublicKey({ view }: { readonly view: JsonObject }) {
 }
 
 function ApplicationKeyBlock({ view, reload, next }: { readonly view: JsonObject; readonly reload: () => Promise<void>; readonly next: () => void }) {
-  const { protectedRequest, setToast } = useAdmin(); const [busy, setBusy] = useState(false);
-  if (!view.application_public_key) return <Stack spacing={2}><Typography color="textSecondary">系统会在本机生成应用密钥。私钥加密保存且不会上传，你只需把生成的应用公钥上传到支付宝开放平台。</Typography><Button variant="contained" disabled={busy} onClick={() => { setBusy(true); void protectedRequest("/settings/provider/application-key/actions/generate", { revision: view.revision }).then(async () => { setToast("应用密钥已生成", "success"); await reload(); }).catch((caught) => setToast(errorMessage(caught), "error")).finally(() => setBusy(false)); }}>{busy ? "正在生成" : "生成应用密钥"}</Button></Stack>;
+  const { request, setToast } = useAdmin(); const [busy, setBusy] = useState(false);
+  if (!view.application_public_key) return <Stack spacing={2}><Typography color="textSecondary">系统会在本机生成应用密钥。私钥加密保存且不会上传，你只需把生成的应用公钥上传到支付宝开放平台。</Typography><Button variant="contained" disabled={busy} onClick={() => { setBusy(true); void request("/settings/provider/application-key/actions/generate", { revision: view.revision }).then(async () => { setToast("应用密钥已生成", "success"); await reload(); }).catch((caught) => setToast(errorMessage(caught), "error")).finally(() => setBusy(false)); }}>{busy ? "正在生成" : "生成应用密钥"}</Button></Stack>;
   return <Stack spacing={2}><Alert severity="success">应用密钥已生成。请复制下面的应用公钥并上传到支付宝开放平台。</Alert><ApplicationPublicKey view={view} /><Stack direction={{ xs: "column", sm: "row" }} spacing={1}><Button component="a" href="https://open.alipay.com/" target="_blank" rel="noreferrer" variant="outlined">打开支付宝开放平台</Button><Button variant="contained" onClick={next}>下一步：填写支付宝信息</Button></Stack></Stack>;
 }
 
@@ -954,19 +1078,59 @@ function mutationError(caught: unknown, setToast: AdminContextValue["setToast"],
   setToast(errorMessage(caught), "error"); return Promise.resolve();
 }
 
+async function decodeQrImage(file: File): Promise<string> {
+  validateQrImage(file.type, file.size);
+  if (typeof createImageBitmap !== "function") throw new Error("当前浏览器不支持本地图片识别，请直接粘贴经营码内容。");
+  let image: ImageBitmap;
+  try {
+    image = await createImageBitmap(file);
+  } catch {
+    throw new Error("无法读取这张图片，请换一张 PNG、JPEG 或 WebP 图片。");
+  }
+  try {
+    if (!image.width || !image.height) throw new Error("图片尺寸无效。");
+    const scale = Math.min(1, MAX_QR_CANVAS_EDGE / Math.max(image.width, image.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.width * scale));
+    canvas.height = Math.max(1, Math.round(image.height * scale));
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) throw new Error("当前浏览器无法解析图片。");
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+    const payload = decodeQrPixels(pixels.data, pixels.width, pixels.height);
+    if (!payload) throw new Error("没有识别到二维码，请上传包含完整二维码的清晰图片。");
+    return payload;
+  } finally {
+    image.close();
+  }
+}
+
 function CollectionSettingsForm({ view, reload }: { readonly view: JsonObject; readonly reload: () => Promise<void> }) {
-  const { protectedRequest, setToast } = useAdmin(); const current = view.collection || {};
-  const [codePayload, setCodePayload] = useState(String(current.code_payload || "")); const [ttl, setTtl] = useState(Number(current.order_ttl_seconds ?? 300)); const [offset, setOffset] = useState(Number(current.amount_offset_maximum_cents ?? 99)); const [busy, setBusy] = useState(false);
-  const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { await protectedRequest("/settings/collection", { revision: view.revision, code_payload: codePayload, order_ttl_seconds: ttl, amount_offset_maximum_cents: offset }, "PUT"); setToast("收款配置已保存", "success"); await reload(); } catch (caught) { await mutationError(caught, setToast, reload); } finally { setBusy(false); } };
-  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><FixedTextareaField label="经营码内容" value={codePayload} onChange={(event) => setCodePayload(event.target.value)} rows={3} required helperText="填写支付宝经营码对应的收款链接；不会把内容写入前端脚本。" /><TextField label="订单有效期（秒）" type="number" value={ttl} onChange={(event) => setTtl(Number(event.target.value))} slotProps={{ htmlInput: { min: 60, max: 1800, step: 1 } }} required helperText="范围 60–1800 秒。" /><TextField label="金额尾差上限（分）" type="number" value={offset} onChange={(event) => setOffset(Number(event.target.value))} slotProps={{ htmlInput: { min: 1, max: 99, step: 1 } }} required helperText="用于分配唯一应付金额，范围 1–99 分。" /><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在保存" : "保存收款配置"}</Button></Stack>;
+  const { request, setToast } = useAdmin(); const current = view.collection || {};
+  const [codePayload, setCodePayload] = useState(String(current.code_payload || "")); const [ttl, setTtl] = useState(Number(current.order_ttl_seconds ?? 300)); const [offset, setOffset] = useState(Number(current.amount_offset_maximum_cents ?? 99)); const [busy, setBusy] = useState(false); const [readingImage, setReadingImage] = useState(false); const [imageMessage, setImageMessage] = useState("");
+  const readImage = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+    setReadingImage(true); setImageMessage("");
+    try {
+      const payload = await decodeQrImage(file);
+      setCodePayload(payload);
+      setImageMessage("已在浏览器中识别二维码并填入经营码内容，图片没有上传服务器。");
+    } catch (caught) {
+      setImageMessage(errorMessage(caught));
+    } finally { setReadingImage(false); }
+  };
+  const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { await request("/settings/collection", { revision: view.revision, code_payload: codePayload, order_ttl_seconds: ttl, amount_offset_maximum_cents: offset }, "PUT"); setToast("收款配置已保存", "success"); await reload(); } catch (caught) { await mutationError(caught, setToast, reload); } finally { setBusy(false); } };
+  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><Box><Button component="label" variant="outlined" startIcon={<UploadFileOutlined />} disabled={readingImage}>{readingImage ? "正在识别" : "从二维码图片读取"}<Box component="input" type="file" name="collection_code_image" accept="image/png,image/jpeg,image/webp" onChange={(event) => void readImage(event)} sx={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" }} /></Button><Typography variant="caption" color="textSecondary" sx={{ display: "block", mt: 0.75 }}>支持 PNG、JPEG、WebP，最大 10 MiB；图片仅在当前浏览器中解析。</Typography></Box>{imageMessage ? <Alert severity={codePayload && imageMessage.startsWith("已在") ? "success" : "error"}>{imageMessage}</Alert> : null}<FixedTextareaField label="经营码内容" value={codePayload} onChange={(event) => { setCodePayload(event.target.value); setImageMessage(""); }} rows={3} required helperText="可上传经营码图片自动读取，也可以直接粘贴二维码中的收款链接。" /><Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.5 }}><TextField label="订单有效期（秒）" type="number" value={ttl} onChange={(event) => setTtl(Number(event.target.value))} slotProps={{ htmlInput: { min: 60, max: 1800, step: 1 } }} required helperText="范围 60–1800 秒。" /><TextField label="金额尾差上限（分）" type="number" value={offset} onChange={(event) => setOffset(Number(event.target.value))} slotProps={{ htmlInput: { min: 1, max: 99, step: 1 } }} required helperText="范围 1–99 分。" /></Box><Button type="submit" variant="contained" disabled={busy || readingImage} sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}>{busy ? "正在保存" : "保存收款配置"}</Button></Stack>;
 }
 
 function ProviderSettingsForm({ view, reload }: { readonly view: JsonObject; readonly reload: () => Promise<void> }) {
-  const { protectedRequest, setToast, openDialog, closeDialog } = useAdmin(); const current = view.provider || {}, hasProvider = view.completion?.provider === true;
+  const { request, setToast, openDialog, closeDialog } = useAdmin(); const current = view.provider || {}, hasProvider = view.completion?.provider === true;
   const [environment, setEnvironment] = useState(String(current.environment || "PRODUCTION")); const [appId, setAppId] = useState(String(current.app_id || "")); const [publicKey, setPublicKey] = useState(""); const [timeout, setTimeoutValue] = useState(Number(current.timeout_milliseconds ?? 8000)); const [interval, setIntervalValue] = useState(Number(current.scan_interval_seconds ?? 10)); const [maxAge, setMaxAge] = useState(Number(current.maximum_success_age_seconds ?? 60)); const [busy, setBusy] = useState(false);
   const save = async () => {
     setBusy(true);
-    try { await protectedRequest("/settings/provider", { revision: view.revision, environment, app_id: appId, timeout_milliseconds: timeout, scan_interval_seconds: interval, maximum_success_age_seconds: maxAge, ...(publicKey.trim() ? { platform_public_key: publicKey } : {}) }, "PUT"); setToast("支付宝平台配置已保存", "success"); await reload(); }
+    try { await request("/settings/provider", { revision: view.revision, environment, app_id: appId, timeout_milliseconds: timeout, scan_interval_seconds: interval, maximum_success_age_seconds: maxAge, ...(publicKey.trim() ? { platform_public_key: publicKey } : {}) }, "PUT"); setToast("支付宝平台配置已保存", "success"); await reload(); }
     catch (caught) { await mutationError(caught, setToast, reload); }
     finally { setBusy(false); }
   };
@@ -980,20 +1144,20 @@ function ProviderSettingsForm({ view, reload }: { readonly view: JsonObject; rea
     }
     await save();
   };
-  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}>{view.application_public_key ? <ApplicationPublicKey view={view} /> : null}<FormControl size="small"><InputLabel id="provider-environment-label">运行环境</InputLabel><Select labelId="provider-environment-label" id="provider-environment" value={environment} label="运行环境" onChange={(event) => setEnvironment(String(event.target.value))}><MenuItem value="PRODUCTION">生产环境</MenuItem><MenuItem value="SANDBOX">沙箱环境</MenuItem></Select><FormHelperText>{hasProvider ? "切换环境或应用会创建新的流水账户代际。" : "请选择支付宝开放平台环境。"}</FormHelperText></FormControl><TextField label="应用 ID" value={appId} onChange={(event) => setAppId(event.target.value)} slotProps={{ htmlInput: { maxLength: 64 } }} required /><FixedTextareaField label="支付宝公钥" value={publicKey} onChange={(event) => setPublicKey(event.target.value)} rows={5} required={!hasProvider} helperText={hasProvider ? "留空表示保留当前支付宝公钥；更换应用时必须填写新公钥。" : "上传应用公钥后，从支付宝开放平台复制支付宝公钥。支持 PEM 或单行 Base64。"} /><TextField label="请求超时（毫秒）" type="number" value={timeout} onChange={(event) => setTimeoutValue(Number(event.target.value))} slotProps={{ htmlInput: { min: 1000, max: 120000, step: 1000 } }} required /><TextField label="采集间隔（秒）" type="number" value={interval} onChange={(event) => setIntervalValue(Number(event.target.value))} slotProps={{ htmlInput: { min: 5, max: 3600, step: 1 } }} required /><TextField label="最大成功年龄（秒）" type="number" value={maxAge} onChange={(event) => setMaxAge(Number(event.target.value))} slotProps={{ htmlInput: { min: 10, max: 86400, step: 1 } }} required helperText="至少是采集间隔的两倍。" /><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在保存" : "保存平台配置"}</Button></Stack>;
+  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}>{view.application_public_key ? <ApplicationPublicKey view={view} /> : null}<Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "minmax(180px, .7fr) minmax(0, 1.3fr)" }, gap: 1.5, alignItems: "start" }}><FormControl size="small"><InputLabel id="provider-environment-label">运行环境</InputLabel><Select labelId="provider-environment-label" id="provider-environment" value={environment} label="运行环境" onChange={(event) => setEnvironment(String(event.target.value))}><MenuItem value="PRODUCTION">生产环境</MenuItem><MenuItem value="SANDBOX">沙箱环境</MenuItem></Select><FormHelperText>{hasProvider ? "切换会创建新的账务代际。" : "选择开放平台环境。"}</FormHelperText></FormControl><TextField label="应用 ID" value={appId} onChange={(event) => setAppId(event.target.value)} slotProps={{ htmlInput: { maxLength: 64 } }} required /></Box><FixedTextareaField label="支付宝公钥" value={publicKey} onChange={(event) => setPublicKey(event.target.value)} rows={5} required={!hasProvider} helperText={hasProvider ? "留空表示保留当前支付宝公钥；更换应用时必须填写新公钥。" : "上传应用公钥后，从支付宝开放平台复制支付宝公钥。支持 PEM 或单行 Base64。"} /><Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, minmax(0, 1fr))" }, gap: 1.5, alignItems: "start" }}><TextField label="请求超时（毫秒）" type="number" value={timeout} onChange={(event) => setTimeoutValue(Number(event.target.value))} slotProps={{ htmlInput: { min: 1000, max: 120000, step: 1000 } }} required /><TextField label="采集间隔（秒）" type="number" value={interval} onChange={(event) => setIntervalValue(Number(event.target.value))} slotProps={{ htmlInput: { min: 5, max: 3600, step: 1 } }} required /><TextField label="最大成功年龄（秒）" type="number" value={maxAge} onChange={(event) => setMaxAge(Number(event.target.value))} slotProps={{ htmlInput: { min: 10, max: 86400, step: 1 } }} required helperText="至少是采集间隔的两倍。" /></Box><Button type="submit" variant="contained" disabled={busy} sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}>{busy ? "正在保存" : "保存平台配置"}</Button></Stack>;
 }
 
 function NotificationSettingsForm({ view, reload }: { readonly view: JsonObject; readonly reload: () => Promise<void> }) {
-  const { protectedRequest, setToast } = useAdmin(); const current = view.notifications || {};
+  const { request, setToast } = useAdmin(); const current = view.notifications || {};
   const [enabled, setEnabled] = useState(current.enabled === true); const [origin, setOrigin] = useState(String(current.allowed_origin || "")); const [timeout, setTimeoutValue] = useState(Number(current.timeout_milliseconds ?? 5000)); const [attempts, setAttempts] = useState(Number(current.maximum_attempts ?? 12)); const [retryBase, setRetryBase] = useState(Number(current.retry_base_seconds ?? 5)); const [retryMax, setRetryMax] = useState(Number(current.retry_maximum_seconds ?? 3600)); const [busy, setBusy] = useState(false);
-  const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { await protectedRequest("/settings/notifications", { revision: view.revision, enabled, ...(enabled ? { allowed_origin: origin } : {}), timeout_milliseconds: timeout, maximum_attempts: attempts, retry_base_seconds: retryBase, retry_maximum_seconds: retryMax }, "PUT"); setToast("通知配置已保存", "success"); await reload(); } catch (caught) { await mutationError(caught, setToast, reload); } finally { setBusy(false); } };
-  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><FormControlLabel control={<Checkbox checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />} label="启用通知" /><Typography variant="body2" color="textSecondary">通知是可选功能；关闭后不会影响支付确认。</Typography><TextField label="允许的 HTTPS Origin" type="url" value={origin} onChange={(event) => setOrigin(event.target.value)} required={enabled} placeholder="https://merchant.example" helperText="启用通知时必填，不要填写路径。" /><TextField label="请求超时（毫秒）" type="number" value={timeout} onChange={(event) => setTimeoutValue(Number(event.target.value))} slotProps={{ htmlInput: { min: 1000, max: 30000, step: 1000 } }} required /><TextField label="最大尝试次数" type="number" value={attempts} onChange={(event) => setAttempts(Number(event.target.value))} slotProps={{ htmlInput: { min: 1, max: 100, step: 1 } }} required /><TextField label="初始重试间隔（秒）" type="number" value={retryBase} onChange={(event) => setRetryBase(Number(event.target.value))} slotProps={{ htmlInput: { min: 1, max: 3600, step: 1 } }} required /><TextField label="最大重试间隔（秒）" type="number" value={retryMax} onChange={(event) => setRetryMax(Number(event.target.value))} slotProps={{ htmlInput: { min: 1, max: 86400, step: 1 } }} required /><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在保存" : "保存通知配置"}</Button></Stack>;
+  const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { await request("/settings/notifications", { revision: view.revision, enabled, ...(enabled ? { allowed_origin: origin } : {}), timeout_milliseconds: timeout, maximum_attempts: attempts, retry_base_seconds: retryBase, retry_maximum_seconds: retryMax }, "PUT"); setToast("通知配置已保存", "success"); await reload(); } catch (caught) { await mutationError(caught, setToast, reload); } finally { setBusy(false); } };
+  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><Box><FormControlLabel control={<Checkbox checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />} label="启用通知" /><Typography variant="body2" color="textSecondary">通知是可选功能；关闭后不会影响支付确认。</Typography></Box><TextField label="允许的 HTTPS Origin" type="url" value={origin} onChange={(event) => setOrigin(event.target.value)} required={enabled} placeholder="https://merchant.example" helperText="启用通知时必填，不要填写路径。" /><Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.5, alignItems: "start" }}><TextField label="请求超时（毫秒）" type="number" value={timeout} onChange={(event) => setTimeoutValue(Number(event.target.value))} slotProps={{ htmlInput: { min: 1000, max: 30000, step: 1000 } }} required /><TextField label="最大尝试次数" type="number" value={attempts} onChange={(event) => setAttempts(Number(event.target.value))} slotProps={{ htmlInput: { min: 1, max: 100, step: 1 } }} required /><TextField label="初始重试间隔（秒）" type="number" value={retryBase} onChange={(event) => setRetryBase(Number(event.target.value))} slotProps={{ htmlInput: { min: 1, max: 3600, step: 1 } }} required /><TextField label="最大重试间隔（秒）" type="number" value={retryMax} onChange={(event) => setRetryMax(Number(event.target.value))} slotProps={{ htmlInput: { min: 1, max: 86400, step: 1 } }} required /></Box><Button type="submit" variant="contained" disabled={busy} sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}>{busy ? "正在保存" : "保存通知配置"}</Button></Stack>;
 }
 
 function AdvancedSettingsForm({ view, reload }: { readonly view: JsonObject; readonly reload: () => Promise<void> }) {
-  const { protectedRequest, setToast } = useAdmin(); const current = view.advanced || {}; const [rotation, setRotation] = useState(Number(current.checkout_key_rotation_days ?? 90)); const [observation, setObservation] = useState(Number(current.checkout_terminal_observation_seconds ?? 86400)); const [busy, setBusy] = useState(false);
-  const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { await protectedRequest("/settings/advanced", { revision: view.revision, checkout_key_rotation_days: rotation, checkout_terminal_observation_seconds: observation }, "PUT"); setToast("高级设置已保存", "success"); await reload(); } catch (caught) { await mutationError(caught, setToast, reload); } finally { setBusy(false); } };
-  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><TextField label="收银台令牌轮换周期（天）" type="number" value={rotation} onChange={(event) => setRotation(Number(event.target.value))} slotProps={{ htmlInput: { min: 1, max: 3650, step: 1 } }} required helperText="新订单使用新令牌密钥的周期；已创建订单不受影响。" /><TextField label="终态收银台观察期（秒）" type="number" value={observation} onChange={(event) => setObservation(Number(event.target.value))} slotProps={{ htmlInput: { min: 60, max: 604800, step: 1 } }} required helperText="订单关闭或过期后仍可读取收银台的时间。" /><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在保存" : "保存高级设置"}</Button></Stack>;
+  const { request, setToast } = useAdmin(); const current = view.advanced || {}; const [rotation, setRotation] = useState(Number(current.checkout_key_rotation_days ?? 90)); const [observation, setObservation] = useState(Number(current.checkout_terminal_observation_seconds ?? 86400)); const [busy, setBusy] = useState(false);
+  const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { await request("/settings/advanced", { revision: view.revision, checkout_key_rotation_days: rotation, checkout_terminal_observation_seconds: observation }, "PUT"); setToast("高级设置已保存", "success"); await reload(); } catch (caught) { await mutationError(caught, setToast, reload); } finally { setBusy(false); } };
+  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.5, alignItems: "start" }}><TextField label="收银台令牌轮换周期（天）" type="number" value={rotation} onChange={(event) => setRotation(Number(event.target.value))} slotProps={{ htmlInput: { min: 1, max: 3650, step: 1 } }} required helperText="新订单使用新令牌密钥的周期；已创建订单不受影响。" /><TextField label="终态收银台观察期（秒）" type="number" value={observation} onChange={(event) => setObservation(Number(event.target.value))} slotProps={{ htmlInput: { min: 60, max: 604800, step: 1 } }} required helperText="订单关闭或过期后仍可读取收银台的时间。" /></Box><Button type="submit" variant="contained" disabled={busy} sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}>{busy ? "正在保存" : "保存高级设置"}</Button></Stack>;
 }
 
 function SecretValue({ label, value, message }: { readonly label: string; readonly value: string; readonly message: string }) {
@@ -1003,8 +1167,8 @@ function SecretValue({ label, value, message }: { readonly label: string; readon
 }
 
 function ApiKeyBlock({ view, reload, initial = false }: { readonly view: JsonObject; readonly reload: () => Promise<void>; readonly initial?: boolean }) {
-  const { protectedRequest, setToast, openDialog, closeDialog } = useAdmin(); const metadata = view.secrets?.api_secret || {}; const [busy, setBusy] = useState(false);
-  const performRotate = async () => { setBusy(true); try { const response = await protectedRequest("/settings/api-key/actions/rotate", { revision: view.revision }); openDialog({ title: initial ? "API 密钥" : "新的 API 密钥", description: "敏感值仅在当前对话框中显示。", content: <SecretValue label="API 密钥" value={String(response.data.secret || "")} message="请立即复制；关闭后不会再次显示完整值。" />, onClose: () => { void reload(); } }); } catch (caught) { await mutationError(caught, setToast, reload); } finally { setBusy(false); } };
+  const { request, setToast, openDialog, closeDialog } = useAdmin(); const metadata = view.secrets?.api_secret || {}; const [busy, setBusy] = useState(false);
+  const performRotate = async () => { setBusy(true); try { const response = await request("/settings/api-key/actions/rotate", { revision: view.revision }); openDialog({ title: initial ? "API 密钥" : "新的 API 密钥", description: "敏感值仅在当前对话框中显示。", content: <SecretValue label="API 密钥" value={String(response.data.secret || "")} message="请立即复制；关闭后不会再次显示完整值。" />, onClose: () => { void reload(); } }); } catch (caught) { await mutationError(caught, setToast, reload); } finally { setBusy(false); } };
   const rotate = () => {
     if (initial) { void performRotate(); return; }
     openDialog({ title: "轮换 API 密钥", description: "旧密钥会立即失效。", content: <ConfirmAction label="轮换密钥" severity="error" onConfirm={async () => { closeDialog(); await performRotate(); }} /> });
@@ -1014,14 +1178,14 @@ function ApiKeyBlock({ view, reload, initial = false }: { readonly view: JsonObj
 }
 
 function SecretMetadata({ label, name, metadata }: { readonly label: string; readonly name: string; readonly metadata: JsonObject }) {
-  const { protectedRequest, setToast, openDialog } = useAdmin(); const [busy, setBusy] = useState(false); const configured = metadata.configured === true;
-  const reveal = async () => { setBusy(true); try { const response = await protectedRequest(`/settings/secrets/${encodeURIComponent(name)}/actions/reveal`, {}); openDialog({ title: label, description: "敏感值仅在当前对话框中显示。", content: <SecretValue label={label} value={String(response.data.value || "")} message="此值已写入审计记录，请勿截图或粘贴到公共位置。" /> }); } catch (caught) { setToast(errorMessage(caught), "error"); } finally { setBusy(false); } };
-  return <Paper variant="outlined" sx={{ p: 1.5 }}><Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ justifyContent: "space-between", alignItems: { xs: "stretch", sm: "center" } }}><Box><Typography sx={{ fontWeight: 700 }}>{label}</Typography><Typography variant="body2" color="textSecondary" sx={{ fontFamily: MONO, overflowWrap: "anywhere" }}>{configured ? metadata.masked || "已配置" : "未配置"}</Typography>{metadata.fingerprint ? <Typography variant="caption" color="textSecondary" sx={{ fontFamily: MONO, overflowWrap: "anywhere" }}>指纹 {metadata.fingerprint}</Typography> : null}</Box><Button variant="outlined" disabled={!configured || busy} onClick={() => void reveal()}>{busy ? "正在读取" : "查看"}</Button></Stack></Paper>;
+  const { request, setToast, openDialog } = useAdmin(); const [busy, setBusy] = useState(false); const configured = metadata.configured === true;
+  const reveal = async () => { setBusy(true); try { const response = await request(`/settings/secrets/${encodeURIComponent(name)}/actions/reveal`, {}); openDialog({ title: label, description: "敏感值仅在当前对话框中显示。", content: <SecretValue label={label} value={String(response.data.value || "")} message="此值已写入审计记录，请勿截图或粘贴到公共位置。" /> }); } catch (caught) { setToast(errorMessage(caught), "error"); } finally { setBusy(false); } };
+  return <Box sx={{ py: 1.25, borderBottom: 1, borderColor: "divider", "&:last-of-type": { borderBottom: 0 } }}><Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ justifyContent: "space-between", alignItems: { xs: "stretch", sm: "center" } }}><Box><Typography sx={{ fontWeight: 700 }}>{label}</Typography><Typography variant="body2" color="textSecondary" sx={{ fontFamily: MONO, overflowWrap: "anywhere" }}>{configured ? metadata.masked || "已配置" : "未配置"}</Typography>{metadata.fingerprint ? <Typography variant="caption" color="textSecondary" sx={{ fontFamily: MONO, overflowWrap: "anywhere" }}>指纹 {metadata.fingerprint}</Typography> : null}</Box><Button variant="outlined" disabled={!configured || busy} onClick={() => void reveal()}>{busy ? "正在读取" : "查看"}</Button></Stack></Box>;
 }
 
 function SecretSettings({ view }: { readonly view: JsonObject }) {
   const secrets = view.secrets || {};
-  return <Stack spacing={1.25}><Typography color="textSecondary">敏感值默认只显示掩码。查看会要求再次输入管理员密码，并写入审计记录。</Typography><SecretMetadata label="应用私钥" name="provider_private_key" metadata={secrets.provider_private_key || {}} /><SecretMetadata label="平台公钥" name="provider_public_key" metadata={secrets.provider_public_key || {}} /><SecretMetadata label="通知密钥" name="webhook_secret" metadata={secrets.webhook_secret || {}} /></Stack>;
+  return <Stack spacing={1.25}><Typography color="textSecondary">敏感值默认只显示掩码。查看操作依赖当前管理员会话，并会写入审计记录。</Typography><SecretMetadata label="应用私钥" name="provider_private_key" metadata={secrets.provider_private_key || {}} /><SecretMetadata label="平台公钥" name="provider_public_key" metadata={secrets.provider_public_key || {}} /><SecretMetadata label="通知密钥" name="webhook_secret" metadata={secrets.webhook_secret || {}} /></Stack>;
 }
 
 function ProviderHistory({ generations }: { readonly generations: readonly JsonObject[] }) {
@@ -1045,8 +1209,23 @@ function parseYuanAmount(value: string): number | null {
   return Number.isSafeInteger(cents) && cents >= 1 && cents <= 10_000 ? cents : null;
 }
 
+function TestPaymentPage() {
+  const { data, error } = useApiData(async () => {
+    const [settings, status] = await Promise.all([api("/settings"), api("/system/status")]);
+    return { settings: settings.data || {}, status: status.data || {} };
+  }, []);
+  if (error) return <RouteError error={error} />;
+  if (!data) return <LoadingPage />;
+  const settings = data.settings || {};
+  const configured = settings.completion?.complete === true;
+  return <><PageHeader title="测试支付" description="创建一笔小额测试订单，验证经营码、流水采集和自动确认链路。" actions={<RefreshButton />} />
+    {!configured ? <Alert severity="warning" action={<Button component="a" href="/admin/settings" color="inherit">前往设置</Button>} sx={{ mb: 2 }}>完成四项必需配置后才能发起测试支付。</Alert> : null}
+    <Box sx={{ maxWidth: 960, mx: "auto" }}><DetailCard title="验证收款链路"><TestPayment view={settings} systemStatus={data.status || {}} /></DetailCard></Box>
+  </>;
+}
+
 function TestPayment({ view, systemStatus }: { readonly view: JsonObject; readonly systemStatus: JsonObject }) {
-  const { protectedRequest, setToast } = useAdmin(); const initialPending = useMemo(readPendingTestPayment, []);
+  const { request, setToast } = useAdmin(); const initialPending = useMemo(readPendingTestPayment, []);
   const [pending, setPending] = useState<PendingTestPayment | null>(initialPending); const [amount, setAmount] = useState(initialPending ? (initialPending.amountCents / 100).toFixed(2) : "1.00"); const [order, setOrder] = useState<JsonObject | null>(null); const [busy, setBusy] = useState(false); const [message, setMessage] = useState(initialPending ? "正在检查上次测试订单。" : ""); const [pollFailures, setPollFailures] = useState(0);
   const runtimeReady = ["ready", "degraded"].includes(systemStatus.status), production = view.provider?.environment === "PRODUCTION";
   const finish = useCallback(() => { try { sessionStorage.removeItem(TEST_PAYMENT_KEY); } catch { /* no-op */ } setPending(null); }, []);
@@ -1066,10 +1245,10 @@ function TestPayment({ view, systemStatus }: { readonly view: JsonObject; readon
   }, [finish, order, pollFailures]);
   const submit = async (event: FormEvent) => {
     event.preventDefault(); const amountCents = parseYuanAmount(amount); if (amountCents === null) { setToast("请输入 0.01 至 100.00 元，最多两位小数。", "error"); return; }
-    const request = pending?.amountCents === amountCents ? pending : { testPaymentId: crypto.randomUUID(), amountCents };
-    try { sessionStorage.setItem(TEST_PAYMENT_KEY, JSON.stringify(request)); } catch { /* server idempotency remains */ }
-    setPending(request); setBusy(true); setMessage("正在创建测试订单并分配唯一应付金额。");
-    try { const response = await protectedRequest("/test-payments", { test_payment_id: request.testPaymentId, amount_cents: amountCents }); setOrder(response.data || {}); setMessage(""); }
+    const requestData = pending?.amountCents === amountCents ? pending : { testPaymentId: crypto.randomUUID(), amountCents };
+    try { sessionStorage.setItem(TEST_PAYMENT_KEY, JSON.stringify(requestData)); } catch { /* server idempotency remains */ }
+    setPending(requestData); setBusy(true); setMessage("正在创建测试订单并分配唯一应付金额。");
+    try { const response = await request("/test-payments", { test_payment_id: requestData.testPaymentId, amount_cents: amountCents }); setOrder(response.data || {}); setMessage(""); }
     catch (caught) { setMessage(caught instanceof ApiError && caught.code === "reconciliation_not_ready" ? "流水采集或自动确认尚未就绪，请稍后刷新页面再试。" : caught instanceof ApiError && caught.code === "system_not_configured" ? "必需配置尚未完整生效，请检查配置状态。" : errorMessage(caught)); }
     finally { setBusy(false); }
   };
@@ -1080,10 +1259,10 @@ function TestPayment({ view, systemStatus }: { readonly view: JsonObject; readon
 }
 
 function SecurityPage() {
-  const { session, protectedRequest, setToast, openDialog } = useAdmin(); const [current, setCurrent] = useState(""); const [next, setNext] = useState(""); const [confirmation, setConfirmation] = useState(""); const [busy, setBusy] = useState(false);
-  const change = async (event: FormEvent) => { event.preventDefault(); if (next !== confirmation) { setToast("两次输入的新密码不一致", "error"); return; } setBusy(true); try { await protectedRequest("/password", { current_password: current, new_password: next }); location.replace("/admin/login"); } catch (caught) { setToast(errorMessage(caught), "error"); setBusy(false); } };
-  const revoke = () => openDialog({ title: "撤销全部会话", description: "所有浏览器都需要重新登录。", content: <ConfirmAction label="撤销会话" severity="error" onConfirm={async () => { await protectedRequest("/sessions/revoke-all", {}); location.replace("/admin/login"); }} /> });
-  return <><PageHeader title="安全" description="管理员凭据与当前会话状态。" /><Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2, mb: 3 }}><DetailCard title="当前会话"><Facts items={[["用户名", session.username || "admin"], ["空闲到期", formatTime(session.idle_expires_at)], ["绝对到期", formatTime(session.absolute_expires_at)], ["近期验证", session.step_up_active ? "有效" : "未激活"]]} /></DetailCard><DetailCard title="会话控制"><Typography color="textSecondary" sx={{ mb: 2 }}>立即使所有管理员会话失效，包括当前浏览器。</Typography><Button color="error" variant="outlined" onClick={revoke}>撤销全部会话</Button></DetailCard></Box><Section title="修改密码"><Box sx={{ maxWidth: 760 }}><DetailCard title="更新管理员密码" titleComponent="h3"><Stack component="form" spacing={2} onSubmit={(event) => void change(event)}><PasswordInput label="当前密码" value={current} onChange={setCurrent} autoComplete="current-password" /><PasswordInput label="新密码" value={next} onChange={setNext} autoComplete="new-password" minLength={12} /><PasswordInput label="确认新密码" value={confirmation} onChange={setConfirmation} autoComplete="new-password" minLength={12} /><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在修改" : "修改密码并退出"}</Button></Stack></DetailCard></Box></Section></>;
+  const { session, request, setToast, openDialog } = useAdmin(); const [next, setNext] = useState(""); const [confirmation, setConfirmation] = useState(""); const [busy, setBusy] = useState(false);
+  const change = async (event: FormEvent) => { event.preventDefault(); if (next !== confirmation) { setToast("两次输入的新密码不一致", "error"); return; } setBusy(true); try { await request("/password", { new_password: next }); location.replace("/admin/login"); } catch (caught) { setToast(errorMessage(caught), "error"); setBusy(false); } };
+  const revoke = () => openDialog({ title: "撤销全部会话", description: "所有浏览器都需要重新登录。", content: <ConfirmAction label="撤销会话" severity="error" onConfirm={async () => { await request("/sessions/revoke-all", {}); location.replace("/admin/login"); }} /> });
+  return <><PageHeader title="安全" description="管理员凭据与当前会话状态。" /><Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2, mb: 3 }}><DetailCard title="当前会话"><Facts items={[["用户名", session.username || "admin"], ["空闲到期", formatTime(session.idle_expires_at)], ["绝对到期", formatTime(session.absolute_expires_at)]]} /></DetailCard><DetailCard title="会话控制"><Typography color="textSecondary" sx={{ mb: 2 }}>立即使所有管理员会话失效，包括当前浏览器。</Typography><Button color="error" variant="outlined" onClick={revoke}>撤销全部会话</Button></DetailCard></Box><Section title="修改密码"><Box sx={{ maxWidth: 760 }}><DetailCard title="更新管理员密码" titleComponent="h3"><Stack component="form" spacing={2} autoComplete="on" onSubmit={(event) => void change(event)}><PasswordInput id="admin-new-password" name="new_password" label="新密码" value={next} onChange={setNext} autoComplete="new-password" minLength={12} /><PasswordInput id="admin-new-password-confirmation" name="new_password_confirmation" label="确认新密码" value={confirmation} onChange={setConfirmation} autoComplete="new-password" minLength={12} /><Typography variant="body2" color="textSecondary">修改成功后，所有管理员会话都会失效。</Typography><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在修改" : "修改密码并退出"}</Button></Stack></DetailCard></Box></Section></>;
 }
 
 function ConfirmAction({ label, severity, onConfirm }: { readonly label: string; readonly severity: "error" | "primary"; readonly onConfirm: () => Promise<void> }) {
