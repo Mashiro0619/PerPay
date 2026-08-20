@@ -178,8 +178,8 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
-  <meta name="theme-color" content="#f5f6f8" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#101317" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#ece9e1" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#101c1b" media="(prefers-color-scheme: dark)">
   <meta name="robots" content="noindex, nofollow, noarchive">
   <title>${escapeHtml(title)}</title>
   <link rel="stylesheet" href="${CHECKOUT_PAGE_ASSETS.checkoutStylesheet}">

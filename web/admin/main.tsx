@@ -149,11 +149,11 @@ function persistThemePreference(mode: PaletteMode): void {
 
 const PageFrame = styled(Box)(({ theme }) => ({
   width: "100%",
-  maxWidth: 1600,
+  maxWidth: 1380,
   margin: "0 auto",
-  padding: theme.spacing(3.5, 4, 5),
+  padding: theme.spacing(3.5, 4, 6),
   [theme.breakpoints.up("xl")]: { paddingInline: theme.spacing(5) },
-  [theme.breakpoints.down("sm")]: { padding: theme.spacing(2.5, 2, 4) },
+  [theme.breakpoints.down("sm")]: { padding: theme.spacing(2.25, 1.75, 4) },
 }));
 
 const MainContent = styled("main")({
@@ -314,8 +314,8 @@ function PageHeader({ title, description, actions }: PageHeaderProps) {
     const frame = requestAnimationFrame(() => titleElement.current?.focus({ preventScroll: true }));
     return () => cancelAnimationFrame(frame);
   }, [title]);
-  return <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mb: 3.5, justifyContent: "space-between", alignItems: { xs: "stretch", sm: "center" } }}>
-    <Box sx={{ minWidth: 0 }}><Typography ref={titleElement} component="h1" variant="h1" data-page-title tabIndex={-1} sx={{ outline: 0 }}>{title}</Typography><Typography variant="body2" color="textSecondary" sx={{ mt: 0.5, maxWidth: 720 }}>{description}</Typography></Box>
+  return <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mb: 3, justifyContent: "space-between", alignItems: { xs: "stretch", sm: "center" } }}>
+    <Box sx={{ minWidth: 0 }}><Typography ref={titleElement} component="h1" variant="h1" data-page-title tabIndex={-1} sx={{ outline: 0 }}>{title}</Typography><Typography variant="body2" color="textSecondary" sx={{ mt: 0.65, maxWidth: 720 }}>{description}</Typography></Box>
     {actions ? <Stack direction="row" spacing={1} sx={{ alignSelf: { xs: "flex-end", sm: "center" }, flexShrink: 0, flexWrap: "wrap" }}>{actions}</Stack> : null}
   </Stack>;
 }
@@ -409,13 +409,20 @@ function PasswordInput({ id, name, label, value, onChange, autoComplete, minLeng
 }
 
 function AuthShell({ children }: { readonly children: ReactNode }) {
-  return <Box component="main" sx={{ minHeight: "100dvh", display: "grid", placeItems: "center", p: 2, bgcolor: "background.default" }}>
-    <Card variant="outlined" sx={{ width: "min(100%, 440px)", boxShadow: (theme) => theme.palette.mode === "dark" ? "0 18px 48px rgba(0,0,0,.28)" : "0 18px 48px rgba(31,42,55,.08)" }}>
-      <CardContent sx={{ p: { xs: 3, sm: 4.5 }, "&:last-child": { pb: { xs: 3, sm: 4.5 } } }}>
-        <Stack direction="row" spacing={1.25} sx={{ mb: 3.5, alignItems: "center" }}><Box sx={{ width: 36, height: 36, display: "grid", placeItems: "center", borderRadius: 1, bgcolor: "primary.main", color: "primary.contrastText" }}><AccountBalanceWalletOutlined fontSize="small" /></Box><Typography component="p" variant="h2">PerPay</Typography></Stack>
-        {children}
-      </CardContent>
-    </Card>
+  return <Box component="main" sx={{ minHeight: "100dvh", display: "grid", gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) minmax(420px, .72fr)" }, bgcolor: "background.default" }}>
+    <Box sx={{ display: { xs: "none", md: "flex" }, minHeight: "100dvh", p: { md: 6, lg: 9 }, bgcolor: "#14332f", color: "#f1f7f1", flexDirection: "column", justifyContent: "space-between" }}>
+      <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}><Box sx={{ width: 38, height: 38, display: "grid", placeItems: "center", borderRadius: 1.5, bgcolor: "secondary.main", color: "#fff" }}><AccountBalanceWalletOutlined fontSize="small" /></Box><Typography variant="h2" sx={{ color: "inherit", fontWeight: 800 }}>PerPay</Typography></Stack>
+      <Box sx={{ maxWidth: 520 }}><Typography component="h1" sx={{ fontSize: { md: "2.6rem", lg: "3.5rem" }, fontWeight: 780, lineHeight: 1.08, letterSpacing: "-0.04em", color: "inherit" }}>让每一笔经营码付款，都有清楚的证据轨道。</Typography><Typography sx={{ mt: 2.5, maxWidth: 440, color: "rgba(241,247,241,.72)", lineHeight: 1.75 }}>流水采集、唯一金额匹配、自动确认和异步通知，在同一个自托管控制台里运行。</Typography><Stack direction="row" spacing={1} sx={{ mt: 4, flexWrap: "wrap" }}>{["自动确认", "SQLite 持久化", "服务端通知"].map((item) => <Chip key={item} label={item} size="small" sx={{ bgcolor: "rgba(255,255,255,.1)", color: "inherit", border: "1px solid rgba(255,255,255,.2)" }} />)}</Stack></Box>
+      <Typography variant="caption" sx={{ color: "rgba(241,247,241,.55)" }}>个人开发者支付运营台</Typography>
+    </Box>
+    <Box sx={{ minHeight: "100dvh", display: "grid", placeItems: "center", p: { xs: 2, sm: 4, md: 6 }, bgcolor: "background.default" }}>
+      <Card variant="outlined" sx={{ width: "min(100%, 480px)" }}>
+        <CardContent sx={{ p: { xs: 3, sm: 4.5 }, "&:last-child": { pb: { xs: 3, sm: 4.5 } } }}>
+          <Stack direction="row" spacing={1.25} sx={{ mb: 3.5, alignItems: "center", display: { xs: "flex", md: "none" } }}><Box sx={{ width: 36, height: 36, display: "grid", placeItems: "center", borderRadius: 1.25, bgcolor: "secondary.main", color: "secondary.contrastText" }}><AccountBalanceWalletOutlined fontSize="small" /></Box><Typography component="p" variant="h2">PerPay</Typography></Stack>
+          {children}
+        </CardContent>
+      </Card>
+    </Box>
   </Box>;
 }
 
@@ -437,7 +444,7 @@ function SetupPage() {
       else setError(errorMessage(caught));
     } finally { setBusy(false); }
   };
-  return <AuthShell><Typography component="h1" variant="h1">设置管理员密码</Typography><Typography color="textSecondary" sx={{ mt: 1, mb: 3 }}>这是首次启动。设置完成后，首次设置入口会永久关闭。</Typography>{error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}<Stack component="form" spacing={2} autoComplete="on" onSubmit={(event) => void submit(event)}><PasswordInput id="admin-setup-password" name="password" label="管理员密码" value={password} onChange={setPassword} autoComplete="new-password" minLength={12} autoFocus /><PasswordInput id="admin-setup-password-confirmation" name="password_confirmation" label="确认密码" value={confirmation} onChange={setConfirmation} autoComplete="new-password" minLength={12} /><Typography variant="body2" color="textSecondary">至少 12 个字符。</Typography><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在设置" : "完成设置"}</Button></Stack></AuthShell>;
+  return <AuthShell><Typography component="h1" variant="h1">设置管理员密码</Typography><Typography color="textSecondary" sx={{ mt: 1, mb: 3 }}>这是首次启动。设置完成后，首次设置入口会永久关闭。</Typography>{error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}<Stack component="form" spacing={2} autoComplete="on" onSubmit={(event) => void submit(event)}><input type="text" name="username" autoComplete="username" value="admin" readOnly aria-hidden="true" tabIndex={-1} style={{ position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }} /><PasswordInput id="admin-setup-password" name="password" label="管理员密码" value={password} onChange={setPassword} autoComplete="new-password" minLength={12} autoFocus /><PasswordInput id="admin-setup-password-confirmation" name="password_confirmation" label="确认密码" value={confirmation} onChange={setConfirmation} autoComplete="new-password" minLength={12} /><Typography variant="body2" color="textSecondary">至少 12 个字符。</Typography><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在设置" : "完成设置"}</Button></Stack></AuthShell>;
 }
 
 function LoginPage() {
@@ -453,21 +460,48 @@ function LoginPage() {
       location.replace(returnTo?.startsWith("/admin") && !returnTo.startsWith("//") ? returnTo : "/admin");
     } catch (caught) { setError(errorMessage(caught)); } finally { setBusy(false); }
   };
-  return <AuthShell><Typography component="h1" variant="h1">管理员登录</Typography><Typography color="textSecondary" sx={{ mt: 1, mb: 3 }}>进入收款运行与异常处理后台。</Typography>{error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}<Stack component="form" spacing={2} autoComplete="on" onSubmit={(event) => void submit(event)}><PasswordInput id="admin-login-password" name="password" label="密码" value={password} onChange={setPassword} autoComplete="current-password" autoFocus /><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在登录" : "登录"}</Button></Stack></AuthShell>;
+  return <AuthShell><Typography component="h1" variant="h1">管理员登录</Typography><Typography color="textSecondary" sx={{ mt: 1, mb: 3 }}>进入收款运行与异常处理后台。</Typography>{error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}<Stack component="form" spacing={2} autoComplete="on" onSubmit={(event) => void submit(event)}><input type="text" name="username" autoComplete="username" value="admin" readOnly aria-hidden="true" tabIndex={-1} style={{ position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }} /><PasswordInput id="admin-login-password" name="password" label="密码" value={password} onChange={setPassword} autoComplete="current-password" autoFocus /><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在登录" : "登录"}</Button></Stack></AuthShell>;
 }
 
-const NAV_ITEMS = [
-  ["/admin", "系统状态", <AccountBalanceWalletOutlined key="overview" />],
-  ["/admin/test-payment", "测试支付", <PaymentsOutlined key="test-payment" />],
-  ["/admin/integration", "网站接入", <IntegrationInstructionsOutlined key="integration" />],
-  ["/admin/orders", "订单", <ReceiptLongOutlined key="orders" />],
-  ["/admin/exceptions", "异常处理", <ReportProblemOutlined key="exceptions" />],
-  ["/admin/settlements", "结算历史", <HistoryOutlined key="settlements" />],
-  ["/admin/ledger-conflicts", "账务冲突", <ErrorOutlined key="conflicts" />],
-  ["/admin/notifications", "通知投递", <NotificationsNoneOutlined key="notifications" />],
-  ["/admin/settings", "设置", <SettingsOutlined key="settings" />],
-  ["/admin/security", "安全", <ShieldOutlined key="security" />],
+interface NavItem {
+  readonly href: string;
+  readonly label: string;
+  readonly icon: ReactNode;
+}
+
+interface NavGroup {
+  readonly label: string;
+  readonly items: readonly NavItem[];
+}
+
+const NAV_GROUPS: readonly NavGroup[] = [
+  {
+    label: "工作台",
+    items: [
+      { href: "/admin", label: "系统状态", icon: <AccountBalanceWalletOutlined key="overview" /> },
+      { href: "/admin/test-payment", label: "测试支付", icon: <PaymentsOutlined key="test-payment" /> },
+      { href: "/admin/integration", label: "网站接入", icon: <IntegrationInstructionsOutlined key="integration" /> },
+    ],
+  },
+  {
+    label: "资金记录",
+    items: [
+      { href: "/admin/orders", label: "订单", icon: <ReceiptLongOutlined key="orders" /> },
+      { href: "/admin/settlements", label: "结算历史", icon: <HistoryOutlined key="settlements" /> },
+      { href: "/admin/exceptions", label: "异常处理", icon: <ReportProblemOutlined key="exceptions" /> },
+      { href: "/admin/ledger-conflicts", label: "账务冲突", icon: <ErrorOutlined key="conflicts" /> },
+    ],
+  },
+  {
+    label: "系统",
+    items: [
+      { href: "/admin/notifications", label: "通知投递", icon: <NotificationsNoneOutlined key="notifications" /> },
+      { href: "/admin/settings", label: "设置", icon: <SettingsOutlined key="settings" /> },
+      { href: "/admin/security", label: "安全", icon: <ShieldOutlined key="security" /> },
+    ],
+  },
 ] as const;
+const NAV_ITEMS = NAV_GROUPS.flatMap((group) => group.items);
 
 function ModalLayer({ dialog, close }: { readonly dialog: DialogState; readonly close: () => void }) {
   return <Dialog open onClose={close} fullWidth maxWidth="sm" aria-labelledby="perpay-dialog-title">
@@ -552,20 +586,24 @@ function AdminApplication({ mode, onModeChange }: { readonly mode: PaletteMode; 
   if (!session) return <AdminNavigationContext.Provider value={navigation}><LoadingPage /></AdminNavigationContext.Provider>;
 
   const path = route.pathname;
-  const currentLabel = NAV_ITEMS.find(([href]) => href === path)?.[1] || "管理后台";
+  const currentLabel = NAV_ITEMS.find((item) => item.href === path)?.label || "管理后台";
   const nav = <Box id="admin-navigation" sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
-    <Stack direction="row" spacing={1.25} sx={{ minHeight: 64, px: 2.25, alignItems: "center" }}>
-      <Box sx={{ width: 34, height: 34, display: "grid", placeItems: "center", borderRadius: 1, bgcolor: "primary.main", color: "primary.contrastText" }}><AccountBalanceWalletOutlined fontSize="small" /></Box>
-      <Box sx={{ minWidth: 0 }}><Typography variant="h2">PerPay</Typography><Typography variant="caption" color="textSecondary">收款控制台</Typography></Box>
+    <Stack direction="row" spacing={1.25} sx={{ minHeight: 82, px: 2.25, alignItems: "center" }}>
+      <Box sx={{ position: "relative", width: 40, height: 40, display: "grid", placeItems: "center", borderRadius: 1.75, bgcolor: "primary.main", color: "primary.contrastText", boxShadow: "0 8px 18px rgba(18,107,101,.22)", "&::after": { content: '""', position: "absolute", width: 8, height: 8, right: -3, bottom: -3, borderRadius: "50%", bgcolor: "secondary.main", border: 2, borderColor: "background.paper" } }}><AccountBalanceWalletOutlined fontSize="small" /></Box>
+      <Box sx={{ minWidth: 0 }}><Typography variant="h2" sx={{ fontWeight: 820, letterSpacing: "-0.04em" }}>PerPay</Typography><Typography variant="caption" color="textSecondary">支付运营台</Typography></Box>
     </Stack>
     <Divider />
-    <List component="nav" aria-label="管理后台" sx={{ px: 1.25, py: 1.5 }}>
-      {NAV_ITEMS.map(([href, label, icon]) => <ListItemButton key={href} component="a" href={href} aria-current={path === href ? "page" : undefined} selected={path === href} onClick={() => setMobileOpen(false)} sx={{ mb: 0.375, px: 1.25, "&.Mui-selected": { color: "primary.main", "& .MuiListItemIcon-root": { color: "primary.main" } } }}><ListItemIcon sx={{ minWidth: 36, color: "text.secondary", "& .MuiSvgIcon-root": { fontSize: 21 } }}>{icon}</ListItemIcon><ListItemText primary={label} slotProps={{ primary: { variant: "body2", sx: { fontWeight: path === href ? 700 : 500 } } }} /></ListItemButton>)}
+    <List component="nav" aria-label="管理后台" sx={{ px: 1.25, py: 1.5, flex: 1, overflowY: "auto" }}>
+      {NAV_GROUPS.map((group) => <Box component="li" key={group.label} sx={{ listStyle: "none", mb: 1.5 }}>
+        <Typography component="p" variant="overline" color="textSecondary" sx={{ px: 1.25, mb: 0.75, fontSize: "0.66rem", lineHeight: 1.2 }}>{group.label}</Typography>
+        {group.items.map(({ href, label, icon }) => <ListItemButton key={href} component="a" href={href} aria-current={path === href ? "page" : undefined} selected={path === href} onClick={() => setMobileOpen(false)} sx={{ position: "relative", px: 1.25, color: path === href ? "primary.main" : "text.secondary", "&.Mui-selected": { bgcolor: "action.selected", color: "primary.main", "&::before": { content: "\"\"", position: "absolute", insetBlock: 8, insetInlineStart: 0, width: 3, borderRadius: 3, bgcolor: "primary.main" }, "& .MuiListItemIcon-root": { color: "primary.main" } }, "&:hover": { bgcolor: "action.hover", color: "text.primary" } }}><ListItemIcon sx={{ minWidth: 36, color: "inherit", "& .MuiSvgIcon-root": { fontSize: 21 } }}>{icon}</ListItemIcon><ListItemText primary={label} slotProps={{ primary: { variant: "body2", sx: { fontWeight: path === href ? 760 : 620 } } }} /></ListItemButton>)}
+      </Box>)}
     </List>
-    <Box sx={{ mt: "auto", p: 1.75, borderTop: 1, borderColor: "divider" }}>
+    <Box sx={{ p: 1.5, borderTop: 1, borderColor: "divider", bgcolor: "action.hover" }}>
       <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
-        <Box aria-hidden="true" sx={{ width: 34, height: 34, flex: "0 0 auto", display: "grid", placeItems: "center", borderRadius: "50%", bgcolor: "action.selected", color: "primary.main", fontWeight: 800 }}>A</Box>
-        <Box sx={{ minWidth: 0 }}><Typography variant="body2" sx={{ fontWeight: 700 }}>{session.username || "admin"}</Typography><Tooltip title={`会话有效至 ${formatTime(session.idle_expires_at)}`} placement="top"><Typography variant="caption" color="textSecondary">当前会话</Typography></Tooltip></Box>
+        <Box aria-hidden="true" sx={{ width: 34, height: 34, flex: "0 0 auto", display: "grid", placeItems: "center", borderRadius: 1.25, bgcolor: "secondary.main", color: "secondary.contrastText", fontWeight: 820 }}>A</Box>
+        <Box sx={{ minWidth: 0, flex: 1 }}><Typography variant="body2" sx={{ fontWeight: 760 }}>{session.username || "admin"}</Typography><Tooltip title={`会话有效至 ${formatTime(session.idle_expires_at)}`} placement="top"><Typography variant="caption" color="textSecondary">安全会话</Typography></Tooltip></Box>
+        <Tooltip title="打开安全设置"><IconButton component="a" href="/admin/security" aria-label="打开安全设置" size="small"><ShieldOutlined fontSize="small" /></IconButton></Tooltip>
       </Stack>
     </Box>
   </Box>;
@@ -578,11 +616,14 @@ function AdminApplication({ mode, onModeChange }: { readonly mode: PaletteMode; 
       {compact ? <Drawer variant="temporary" open={mobileOpen} onClose={() => setMobileOpen(false)} ModalProps={{ keepMounted: true }} sx={{ "& .MuiDrawer-paper": { width: "min(86vw, 280px)", bgcolor: "background.paper" } }}>{nav}</Drawer> : <Drawer variant="permanent" open sx={{ width: DRAWER_WIDTH, flexShrink: 0, "& .MuiDrawer-paper": { width: DRAWER_WIDTH, boxSizing: "border-box", borderWidth: "0 1px 0 0", borderColor: "divider", bgcolor: "background.paper" } }}>{nav}</Drawer>}
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <AppBar component="header" position="sticky" color="inherit" elevation={0} sx={{ bgcolor: "background.paper", borderBottom: 1, borderColor: "divider" }}>
-          <Toolbar disableGutters sx={{ minHeight: "56px !important", px: { xs: 2, sm: 3, lg: 4, xl: 5 }, gap: 0.75 }}>
-            {compact ? <IconButton aria-label="打开导航" aria-expanded={mobileOpen} aria-controls="admin-navigation" onClick={() => setMobileOpen(true)} sx={{ mr: 0.5 }}><MenuIcon /></IconButton> : null}
-            <Typography variant="body2" sx={{ flex: 1, fontWeight: 700 }}>{currentLabel}</Typography>
-            <Tooltip title={mode === "light" ? "切换到深色主题" : "切换到浅色主题"}><IconButton aria-label={mode === "light" ? "切换到深色主题" : "切换到浅色主题"} onClick={toggleTheme}>{mode === "light" ? <DarkModeOutlined fontSize="small" /> : <LightModeOutlined fontSize="small" />}</IconButton></Tooltip>
-            <Tooltip title="退出登录"><IconButton aria-label="退出登录" onClick={logout}><Logout fontSize="small" /></IconButton></Tooltip>
+          <Toolbar disableGutters sx={{ minHeight: "66px !important", px: { xs: 1.5, sm: 2.5, lg: 3.5 }, gap: 1 }}>
+            <Box sx={{ width: "100%", maxWidth: 1380, mx: "auto", display: "flex", alignItems: "center", gap: 1 }}>
+              {compact ? <IconButton aria-label="打开导航" aria-expanded={mobileOpen} aria-controls="admin-navigation" onClick={() => setMobileOpen(true)} sx={{ mr: 0.25 }}><MenuIcon /></IconButton> : null}
+              <Box sx={{ flex: 1, minWidth: 0 }}><Typography variant="caption" color="textSecondary" sx={{ display: "block", lineHeight: 1.2 }}>PerPay / 管理后台</Typography><Typography variant="body2" sx={{ fontWeight: 780, mt: 0.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentLabel}</Typography></Box>
+              <Chip size="small" variant="outlined" label="自托管" sx={{ display: { xs: "none", sm: "inline-flex" }, borderColor: "divider", color: "text.secondary" }} />
+              <Tooltip title={mode === "light" ? "切换到深色主题" : "切换到浅色主题"}><IconButton aria-label={mode === "light" ? "切换到深色主题" : "切换到浅色主题"} onClick={toggleTheme}>{mode === "light" ? <DarkModeOutlined fontSize="small" /> : <LightModeOutlined fontSize="small" />}</IconButton></Tooltip>
+              <Tooltip title="退出登录"><IconButton aria-label="退出登录" onClick={logout}><Logout fontSize="small" /></IconButton></Tooltip>
+            </Box>
           </Toolbar>
         </AppBar>
         <MainContent ref={mainContent} id="main-content" tabIndex={-1}><PageFrame><Box><AdminRoute key={`${path}${route.search}:${route.sequence}`} path={path} /></Box></PageFrame></MainContent>
@@ -777,7 +818,9 @@ function IntegrationPage() {
 }
 
 function MetricGrid({ items }: { readonly items: readonly (readonly [string, ReactNode])[] }) {
-  return <Paper variant="outlined" sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", md: `repeat(${Math.min(items.length, 6)}, minmax(0, 1fr))` }, overflow: "hidden" }}>{items.map(([label, value], index) => <Box key={label} sx={{ minWidth: 0, p: 2, borderInlineEnd: { md: index === items.length - 1 ? 0 : 1 }, borderBottom: { xs: index < Math.max(0, items.length - 2) ? 1 : 0, md: 0 }, borderColor: "divider" }}><Typography variant="caption" color="textSecondary">{label}</Typography><Typography sx={{ mt: 0.375, fontSize: "1.25rem", fontWeight: 700 }}>{value}</Typography></Box>)}</Paper>;
+  return <Paper variant="outlined" sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", sm: "repeat(3, minmax(0, 1fr))" }, overflow: "hidden" }}>
+    {items.map(([label, value], index) => <Box key={label} sx={{ minWidth: 0, p: { xs: 1.75, sm: 2.25 }, borderInlineEnd: { xs: index % 2 === 0 ? 1 : 0, sm: index % 3 === 2 ? 0 : 1 }, borderBottom: { xs: index < items.length - 2 ? 1 : 0, sm: index < items.length - 3 ? 1 : 0 }, borderColor: "divider", transition: "background-color 160ms ease-out", "&:hover": { bgcolor: "action.hover" } }}><Typography variant="caption" color="textSecondary">{label}</Typography><Typography sx={{ mt: 0.55, fontSize: { xs: "1.22rem", sm: "1.35rem" }, fontWeight: 790, fontVariantNumeric: "tabular-nums" }}>{value}</Typography></Box>)}
+  </Paper>;
 }
 
 function OverviewPage() {
@@ -792,15 +835,21 @@ function OverviewPage() {
   const acceptingPayments = view.database?.ok === true && collectionReady && confirmationReady;
   const chain = [["数据库", view.database?.ok ? "可用" : "不可用", view.database?.ok ? "success" : "error", view.instance_id], ["流水采集", collectionReady ? "可收款" : "已暂停", collectionReady ? "success" : "error", freshness(ledger)], ["自动确认", confirmationReady ? "可确认" : "未就绪", confirmationReady ? "success" : "error", freshness(reconciliation)], ["通知", webhook.enabled === false ? "未启用" : webhook.dead_letters > 0 ? "存在死信" : "运行中", webhook.dead_letters > 0 ? "error" : "success", webhook.last_error_code || `${webhook.pending_deliveries || 0} 条待投递`]] as const;
   return <><PageHeader title="系统状态" description="收款入口、自动确认、通知与备份的当前事实。" actions={<RefreshButton />} />
-    <Paper variant="outlined" sx={{ mb: 3.5, overflow: "hidden" }}>
-      <Box sx={{ p: { xs: 2, sm: 2.5 }, bgcolor: acceptingPayments ? "success.main" : "warning.main", color: acceptingPayments ? "success.contrastText" : "warning.contrastText", display: "flex", alignItems: { xs: "flex-start", sm: "center" }, justifyContent: "space-between", flexDirection: { xs: "column", sm: "row" }, gap: 2 }}>
-        <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}><Box aria-hidden="true" sx={{ width: 42, height: 42, flex: "0 0 auto", display: "grid", placeItems: "center", borderRadius: 1, bgcolor: "rgba(255,255,255,.18)" }}><AccountBalanceWalletOutlined /></Box><Box><Typography component="h2" variant="h2" sx={{ color: "inherit" }}>{acceptingPayments ? "收款入口已开放" : "收款入口已暂停"}</Typography><Typography variant="body2" sx={{ color: "inherit", opacity: 0.9 }}>{acceptingPayments ? "流水采集和自动确认均处于有效时间窗内。" : "完成配置并等待流水采集、自动确认成功运行后会自动开放。"}</Typography></Box></Stack>
-        {!acceptingPayments ? <Button component="a" href="/admin/settings" variant="contained" color="inherit" startIcon={<SettingsOutlined />} sx={{ bgcolor: "background.paper", color: "text.primary", "&:hover": { bgcolor: "background.default" } }}>检查设置</Button> : null}
-      </Box>
-      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", xl: "repeat(4, minmax(0, 1fr))" } }}>
-        {chain.map(([label, value, tone, note], index) => <Box key={label} sx={{ minWidth: 0, p: 2, borderInlineEnd: { xs: 0, sm: index % 2 === 0 ? 1 : 0, xl: index === chain.length - 1 ? 0 : 1 }, borderBottom: { xs: index === chain.length - 1 ? 0 : 1, sm: index < 2 ? 1 : 0, xl: 0 }, borderColor: "divider" }}><Typography variant="caption" color="textSecondary">{label}</Typography><Stack direction="row" spacing={1} sx={{ mt: 0.5, alignItems: "center" }}><Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: `${tone}.main` }} /><Typography sx={{ fontWeight: 700 }}>{value}</Typography></Stack><Typography variant="caption" color="textSecondary" sx={{ display: "block", mt: 0.375, overflowWrap: "anywhere" }}>{note || "-"}</Typography></Box>)}
-      </Box>
-    </Paper>
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 1.55fr) minmax(280px, .75fr)" }, gap: 2.25, mb: 3.25 }}>
+      <Paper variant="outlined" sx={{ overflow: "hidden" }}>
+        <Box sx={{ p: { xs: 2.25, sm: 3 }, bgcolor: acceptingPayments ? "success.main" : "warning.main", color: acceptingPayments ? "success.contrastText" : "warning.contrastText", display: "flex", alignItems: { xs: "flex-start", sm: "center" }, justifyContent: "space-between", flexDirection: { xs: "column", sm: "row" }, gap: 2 }}>
+          <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}><Box aria-hidden="true" sx={{ width: 44, height: 44, flex: "0 0 auto", display: "grid", placeItems: "center", borderRadius: 1.5, bgcolor: "rgba(255,255,255,.18)" }}><AccountBalanceWalletOutlined /></Box><Box><Typography component="h2" variant="h2" sx={{ color: "inherit" }}>{acceptingPayments ? "收款入口已开放" : "收款入口已暂停"}</Typography><Typography variant="body2" sx={{ color: "inherit", opacity: 0.9 }}>{acceptingPayments ? "流水采集和自动确认均处于有效时间窗内。" : "完成配置并等待流水采集、自动确认成功运行后会自动开放。"}</Typography></Box></Stack>
+          {!acceptingPayments ? <Button component="a" href="/admin/settings" variant="contained" color="inherit" startIcon={<SettingsOutlined />} sx={{ bgcolor: "background.paper", color: "text.primary", "&:hover": { bgcolor: "background.default" } }}>检查设置</Button> : <Chip label="可创建订单" sx={{ bgcolor: "rgba(255,255,255,.18)", color: "inherit", border: "1px solid rgba(255,255,255,.28)" }} />}
+        </Box>
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", xl: "repeat(4, minmax(0, 1fr))" } }}>
+          {chain.map(([label, value, tone, note], index) => <Box key={label} sx={{ minWidth: 0, p: { xs: 1.75, sm: 2 }, borderInlineEnd: { xs: 0, sm: index % 2 === 0 ? 1 : 0, xl: index === chain.length - 1 ? 0 : 1 }, borderBottom: { xs: index === chain.length - 1 ? 0 : 1, sm: index < 2 ? 1 : 0, xl: 0 }, borderColor: "divider" }}><Typography variant="caption" color="textSecondary">{label}</Typography><Stack direction="row" spacing={1} sx={{ mt: 0.55, alignItems: "center" }}><Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: `${tone}.main`, boxShadow: `0 0 0 4px ${tone === "success" ? "rgba(20,122,97,.12)" : "rgba(155,100,20,.12)"}` }} /><Typography sx={{ fontWeight: 760 }}>{value}</Typography></Stack><Typography variant="caption" color="textSecondary" sx={{ display: "block", mt: 0.45, overflowWrap: "anywhere" }}>{note || "-"}</Typography></Box>)}
+        </Box>
+      </Paper>
+      <Paper variant="outlined" sx={{ p: { xs: 2.25, sm: 2.75 }, display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 2 }}>
+        <Box><Typography component="h2" variant="h2">常用操作</Typography><Typography variant="body2" color="textSecondary" sx={{ mt: .65 }}>快速验证收款链路，或接入你的业务网站。</Typography></Box>
+        <Stack spacing={1}><Button component="a" href="/admin/test-payment" variant="contained" startIcon={<PaymentsOutlined />}>发起测试支付</Button><Button component="a" href="/admin/integration" variant="outlined" startIcon={<IntegrationInstructionsOutlined />}>查看网站接入</Button><Button component="a" href="/admin/settings" variant="text" startIcon={<SettingsOutlined />} sx={{ justifyContent: "flex-start" }}>打开系统设置</Button></Stack>
+      </Paper>
+    </Box>
     <Section title="待处理"><MetricGrid items={[["开放异常", view.reconciliation?.exceptions?.open ?? "-"], ["账务冲突", view.ledger?.conflicts?.open ?? "-"], ["通知死信", webhook.dead_letters ?? "-"], ["待对账订单", reconciliation.pending_orders ?? "-"], ["连续采集失败", ledger.consecutive_failures ?? "-"], ["连续通知失败", webhook.consecutive_failures ?? "-"]]} /></Section>
     <Section title="数据保护"><Box sx={{ maxWidth: 760 }}><DetailCard title="自动备份" titleComponent="h3"><Facts items={[["状态", backup.enabled ? (backup.ok ? "正常" : "异常") : "未启用"], ["最近成功", formatTime(backup.last_success_at)], ["备份文件", backup.backup_name || "-", true], ["保留数量", backup.retained_count ?? "-"], ["实例一致", backup.instance_matches === null ? "-" : backup.instance_matches ? "是" : "否"], ["恢复要求", backup.recovery_required ? "需要处理" : "无"]]} /></DetailCard></Box></Section>
   </>;

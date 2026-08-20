@@ -43,7 +43,7 @@ describe("web asset manifest", () => {
     assert.match(stylesheet, /grid-template-areas:\s*"summary"\s*"payment"\s*"details"/);
     assert.match(stylesheet, /@media \(min-width: 801px\)[\s\S]*grid-template-areas:\s*"summary payment"\s*"details payment"/);
     assert.match(stylesheet, /\.checkout-manual-refresh\s*\{[^}]*min-height: 44px/s);
-    assert.match(stylesheet, /@media \(max-width: 560px\)[\s\S]*\.checkout-code-figure img\s*\{[^}]*240px/s);
+    assert.match(stylesheet, /@media \(max-width: 560px\)[\s\S]*\.checkout-code-figure img\s*\{[^}]*232px/s);
     assert.match(stylesheet, /env\(safe-area-inset-top\)/);
     assert.match(stylesheet, /env\(safe-area-inset-bottom\)/);
   });

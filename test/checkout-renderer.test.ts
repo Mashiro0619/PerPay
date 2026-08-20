@@ -55,7 +55,7 @@ describe("public checkout renderer", () => {
     assert.ok(html.includes(CHECKOUT_PAGE_ASSETS.alipayIcon));
     assert.doesNotMatch(html, /data-checkout-refresh[^>]*hidden/);
     assert.match(html, /<meta name="color-scheme" content="light dark">/);
-    assert.match(html, /<meta name="theme-color" content="#101317" media="\(prefers-color-scheme: dark\)">/);
+    assert.match(html, /<meta name="theme-color" content="#101c1b" media="\(prefers-color-scheme: dark\)">/);
     assert.match(html, new RegExp(`href="${escapeRegExp(CHECKOUT_PAGE_ASSETS.checkoutStylesheet)}"`));
     assert.equal((html.match(/<link rel="stylesheet"/g) ?? []).length, 1);
     assert.match(html, new RegExp(`src="${escapeRegExp(CHECKOUT_PAGE_ASSETS.checkoutScript)}" defer`));
