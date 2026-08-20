@@ -2049,6 +2049,8 @@ function orderStatus(code: OrderErrorCode): 404 | 409 | 422 | 503 {
     case "webhook_disabled":
     case "webhook_target_invalid":
     case "webhook_target_not_allowed":
+    case "return_url_invalid":
+    case "return_url_not_allowed":
       return 422;
   }
 }
@@ -2685,6 +2687,7 @@ function serializeOrder(order: OrderProjection, publicOrigin: string) {
     currency: order.currency,
     product_name: order.productName,
     note: order.note,
+    return_url: order.returnUrl,
     checkout: {
       status: order.checkout.status,
       token: order.checkoutToken,
@@ -2807,6 +2810,7 @@ function serializePublicCheckout(checkout: PublicCheckoutProjection) {
     requested_amount_cents: checkout.requestedAmountCents,
     currency: checkout.currency,
     product_name: checkout.productName,
+    return_url: checkout.returnUrl,
     payment_instructions:
       checkout.paymentInstructions === null
         ? null

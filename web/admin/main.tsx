@@ -26,6 +26,7 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  Menu,
   MenuItem,
   Paper,
   Select,
@@ -54,6 +55,7 @@ import {
 import type { AlertColor, PaletteMode } from "@mui/material";
 import {
   AccountBalanceWalletOutlined,
+  BrightnessAutoOutlined,
   ChevronLeft,
   ChevronRight,
   Close,
@@ -102,7 +104,7 @@ import { mergeTestPaymentOrder, testPaymentTerminal } from "./test-payment.ts";
 import { createAdminTheme } from "./theme.ts";
 
 const DRAWER_WIDTH = 248;
-const THEME_KEY = "perpay:admin-theme:v1";
+const THEME_KEY = "perpay:admin-theme:v2";
 const TEST_PAYMENT_KEY = "perpay:test-payment-pending:v1";
 const CURSOR_PARENT_KEY = "perpay:cursor-parents:v1";
 const MONO = '"SFMono-Regular", Consolas, "Liberation Mono", monospace';
@@ -138,13 +140,17 @@ function useAdminNavigation(): AdminNavigationValue {
   return value;
 }
 
-function readThemePreference(): PaletteMode {
-  try { return localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light"; }
-  catch { return "light"; }
+type ThemePreference = PaletteMode | "auto";
+
+function readThemePreference(): ThemePreference {
+  try {
+    const stored = localStorage.getItem(THEME_KEY);
+    return stored === "light" || stored === "dark" || stored === "auto" ? stored : "auto";
+  } catch { return "auto"; }
 }
 
-function persistThemePreference(mode: PaletteMode): void {
-  try { localStorage.setItem(THEME_KEY, mode); } catch { /* The selected theme still applies for this page. */ }
+function persistThemePreference(preference: ThemePreference): void {
+  try { localStorage.setItem(THEME_KEY, preference); } catch { /* The selected theme still applies for this page. */ }
 }
 
 const PageFrame = styled(Box)(({ theme }) => ({
@@ -410,10 +416,10 @@ function PasswordInput({ id, name, label, value, onChange, autoComplete, minLeng
 
 function AuthShell({ children }: { readonly children: ReactNode }) {
   return <Box component="main" sx={{ minHeight: "100dvh", display: "grid", gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) minmax(420px, .72fr)" }, bgcolor: "background.default" }}>
-    <Box sx={{ display: { xs: "none", md: "flex" }, minHeight: "100dvh", p: { md: 6, lg: 9 }, bgcolor: "#14332f", color: "#f1f7f1", flexDirection: "column", justifyContent: "space-between" }}>
+    <Box sx={{ display: { xs: "none", md: "flex" }, minHeight: "100dvh", p: { md: 6, lg: 9 }, bgcolor: "#111113", color: "#f4f4f5", flexDirection: "column", justifyContent: "space-between" }}>
       <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}><Box sx={{ width: 38, height: 38, display: "grid", placeItems: "center", borderRadius: 1.5, bgcolor: "secondary.main", color: "#fff" }}><AccountBalanceWalletOutlined fontSize="small" /></Box><Typography variant="h2" sx={{ color: "inherit", fontWeight: 800 }}>PerPay</Typography></Stack>
-      <Box sx={{ maxWidth: 520 }}><Typography component="h1" sx={{ fontSize: { md: "2.6rem", lg: "3.5rem" }, fontWeight: 780, lineHeight: 1.08, letterSpacing: "-0.04em", color: "inherit" }}>让每一笔经营码付款，都有清楚的证据轨道。</Typography><Typography sx={{ mt: 2.5, maxWidth: 440, color: "rgba(241,247,241,.72)", lineHeight: 1.75 }}>流水采集、唯一金额匹配、自动确认和异步通知，在同一个自托管控制台里运行。</Typography><Stack direction="row" spacing={1} sx={{ mt: 4, flexWrap: "wrap" }}>{["自动确认", "SQLite 持久化", "服务端通知"].map((item) => <Chip key={item} label={item} size="small" sx={{ bgcolor: "rgba(255,255,255,.1)", color: "inherit", border: "1px solid rgba(255,255,255,.2)" }} />)}</Stack></Box>
-      <Typography variant="caption" sx={{ color: "rgba(241,247,241,.55)" }}>个人开发者支付运营台</Typography>
+      <Box sx={{ maxWidth: 520 }}><Typography component="h1" sx={{ fontSize: { md: "2.6rem", lg: "3.5rem" }, fontWeight: 780, lineHeight: 1.08, letterSpacing: "-0.04em", color: "inherit" }}>让每一笔经营码付款，都有清楚的证据轨道。</Typography><Typography sx={{ mt: 2.5, maxWidth: 440, color: "rgba(244,244,245,.72)", lineHeight: 1.75 }}>流水采集、唯一金额匹配、自动确认和异步通知，在同一个自托管控制台里运行。</Typography><Stack direction="row" spacing={1} sx={{ mt: 4, flexWrap: "wrap" }}>{["自动确认", "SQLite 持久化", "服务端通知"].map((item) => <Chip key={item} label={item} size="small" sx={{ bgcolor: "rgba(255,255,255,.1)", color: "inherit", border: "1px solid rgba(255,255,255,.2)" }} />)}</Stack></Box>
+      <Typography variant="caption" sx={{ color: "rgba(244,244,245,.55)" }}>个人开发者支付运营台</Typography>
     </Box>
     <Box sx={{ minHeight: "100dvh", display: "grid", placeItems: "center", p: { xs: 2, sm: 4, md: 6 }, bgcolor: "background.default" }}>
       <Card variant="outlined" sx={{ width: "min(100%, 480px)" }}>
@@ -513,12 +519,13 @@ function ModalLayer({ dialog, close }: { readonly dialog: DialogState; readonly 
   </Dialog>;
 }
 
-function AdminApplication({ mode, onModeChange }: { readonly mode: PaletteMode; readonly onModeChange: (mode: PaletteMode) => void }) {
+function AdminApplication({ preference, onPreferenceChange }: { readonly preference: ThemePreference; readonly onPreferenceChange: (preference: ThemePreference) => void }) {
   const [session, setSession] = useState<JsonObject | null>(null);
   const [sessionError, setSessionError] = useState<unknown>(null);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [toast, setToastState] = useState<ToastState | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [themeMenuAnchor, setThemeMenuAnchor] = useState<HTMLElement | null>(null);
   const [route, setRoute] = useState<AdminLocation>(() => currentAdminLocation());
   const compact = useMediaQuery("(max-width:899px)");
   const mainContent = useRef<HTMLElement | null>(null);
@@ -589,7 +596,7 @@ function AdminApplication({ mode, onModeChange }: { readonly mode: PaletteMode; 
   const currentLabel = NAV_ITEMS.find((item) => item.href === path)?.label || "管理后台";
   const nav = <Box id="admin-navigation" sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
     <Stack direction="row" spacing={1.25} sx={{ minHeight: 82, px: 2.25, alignItems: "center" }}>
-      <Box sx={{ position: "relative", width: 40, height: 40, display: "grid", placeItems: "center", borderRadius: 1.75, bgcolor: "primary.main", color: "primary.contrastText", boxShadow: "0 8px 18px rgba(18,107,101,.22)", "&::after": { content: '""', position: "absolute", width: 8, height: 8, right: -3, bottom: -3, borderRadius: "50%", bgcolor: "secondary.main", border: 2, borderColor: "background.paper" } }}><AccountBalanceWalletOutlined fontSize="small" /></Box>
+      <Box sx={{ position: "relative", width: 40, height: 40, display: "grid", placeItems: "center", borderRadius: 1.75, bgcolor: "primary.main", color: "primary.contrastText", boxShadow: "0 8px 18px rgba(0,0,0,.16)", "&::after": { content: '""', position: "absolute", width: 8, height: 8, right: -3, bottom: -3, borderRadius: "50%", bgcolor: "secondary.main", border: 2, borderColor: "background.paper" } }}><AccountBalanceWalletOutlined fontSize="small" /></Box>
       <Box sx={{ minWidth: 0 }}><Typography variant="h2" sx={{ fontWeight: 820, letterSpacing: "-0.04em" }}>PerPay</Typography><Typography variant="caption" color="textSecondary">支付运营台</Typography></Box>
     </Stack>
     <Divider />
@@ -607,7 +614,10 @@ function AdminApplication({ mode, onModeChange }: { readonly mode: PaletteMode; 
       </Stack>
     </Box>
   </Box>;
-  const toggleTheme = () => { const next = mode === "light" ? "dark" : "light"; persistThemePreference(next); onModeChange(next); };
+  const themeMenuOpen = Boolean(themeMenuAnchor);
+  const themeLabel = preference === "auto" ? "自动" : preference === "dark" ? "深色" : "浅色";
+  const ThemeIcon = preference === "auto" ? BrightnessAutoOutlined : preference === "dark" ? DarkModeOutlined : LightModeOutlined;
+  const chooseTheme = (next: ThemePreference) => { persistThemePreference(next); onPreferenceChange(next); setThemeMenuAnchor(null); };
   const logout = () => void api("/session/logout", { method: "POST", body: {} }).then(() => location.replace("/admin/login")).catch((caught) => setToast(errorMessage(caught), "error"));
   const context = { session, setToast, openDialog, closeDialog, request } satisfies AdminContextValue;
   return <AdminNavigationContext.Provider value={navigation}><AdminContext.Provider value={context}>
@@ -621,7 +631,12 @@ function AdminApplication({ mode, onModeChange }: { readonly mode: PaletteMode; 
               {compact ? <IconButton aria-label="打开导航" aria-expanded={mobileOpen} aria-controls="admin-navigation" onClick={() => setMobileOpen(true)} sx={{ mr: 0.25 }}><MenuIcon /></IconButton> : null}
               <Box sx={{ flex: 1, minWidth: 0 }}><Typography variant="caption" color="textSecondary" sx={{ display: "block", lineHeight: 1.2 }}>PerPay / 管理后台</Typography><Typography variant="body2" sx={{ fontWeight: 780, mt: 0.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentLabel}</Typography></Box>
               <Chip size="small" variant="outlined" label="自托管" sx={{ display: { xs: "none", sm: "inline-flex" }, borderColor: "divider", color: "text.secondary" }} />
-              <Tooltip title={mode === "light" ? "切换到深色主题" : "切换到浅色主题"}><IconButton aria-label={mode === "light" ? "切换到深色主题" : "切换到浅色主题"} onClick={toggleTheme}>{mode === "light" ? <DarkModeOutlined fontSize="small" /> : <LightModeOutlined fontSize="small" />}</IconButton></Tooltip>
+              <Tooltip title={`主题：${themeLabel}`}><IconButton aria-label={`主题：${themeLabel}`} aria-haspopup="menu" aria-expanded={themeMenuOpen ? "true" : undefined} onClick={(event) => setThemeMenuAnchor(event.currentTarget)}><ThemeIcon fontSize="small" /></IconButton></Tooltip>
+              <Menu anchorEl={themeMenuAnchor} open={themeMenuOpen} onClose={() => setThemeMenuAnchor(null)}>
+                <MenuItem selected={preference === "auto"} onClick={() => chooseTheme("auto")}><ListItemIcon><BrightnessAutoOutlined fontSize="small" /></ListItemIcon><ListItemText primary="自动" secondary="跟随系统设置" /></MenuItem>
+                <MenuItem selected={preference === "light"} onClick={() => chooseTheme("light")}><ListItemIcon><LightModeOutlined fontSize="small" /></ListItemIcon><ListItemText primary="浅色" /></MenuItem>
+                <MenuItem selected={preference === "dark"} onClick={() => chooseTheme("dark")}><ListItemIcon><DarkModeOutlined fontSize="small" /></ListItemIcon><ListItemText primary="深色" /></MenuItem>
+              </Menu>
               <Tooltip title="退出登录"><IconButton aria-label="退出登录" onClick={logout}><Logout fontSize="small" /></IconButton></Tooltip>
             </Box>
           </Toolbar>
@@ -694,6 +709,7 @@ function IntegrationPage() {
     '  product_name: "商品名称",',
     '  note: "可选的商户备注",',
     '  notify_url: "https://shop.example.com/webhooks/perpay",',
+    '  return_url: "https://shop.example.com/orders/paid",',
     '});',
     "",
     '// 将地址返回给浏览器，或由服务端直接 302 跳转。',
@@ -1527,9 +1543,11 @@ function ConfirmAction({ label, severity, onConfirm }: { readonly label: string;
 function Root() {
   const node = document.querySelector<HTMLElement>("#perpay-admin-root");
   const pageMode = node?.dataset.mode || "application";
-  const [mode, setMode] = useState<PaletteMode>(readThemePreference);
+  const [preference, setPreference] = useState<ThemePreference>(readThemePreference);
+  const systemDark = useMediaQuery("(prefers-color-scheme: dark)", { noSsr: true });
+  const mode: PaletteMode = preference === "auto" ? (systemDark ? "dark" : "light") : preference;
   const theme = useMemo(() => createAdminTheme(mode), [mode]);
-  return <ThemeProvider theme={theme}><CssBaseline />{pageMode === "setup" ? <SetupPage /> : pageMode === "login" ? <LoginPage /> : <AdminApplication mode={mode} onModeChange={setMode} />}</ThemeProvider>;
+  return <ThemeProvider theme={theme}><CssBaseline />{pageMode === "setup" ? <SetupPage /> : pageMode === "login" ? <LoginPage /> : <AdminApplication preference={preference} onPreferenceChange={setPreference} />}</ThemeProvider>;
 }
 
 const rootNode = document.querySelector<HTMLElement>("#perpay-admin-root");

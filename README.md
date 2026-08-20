@@ -94,13 +94,14 @@ const order = await perpayRequest("POST", "/api/v1/orders", {
   product_name: "示例商品",
   note: "可选备注",
   // notify_url: "https://shop.example.com/webhooks/perpay", // 可选
+  // return_url: "https://shop.example.com/orders/paid",    // 可选，支付完成后显示“返回商家”
 });
 
 // 将这个地址返回给前端，或由网站后端直接 302 跳转。
 console.log(order.checkout.checkout_url);
 ```
 
-创建订单响应中的 `checkout.checkout_url` 是付款页面，用户付款后回到该页面即可看到确认结果。网站后台可以用同样的签名方式轮询 `GET /api/v1/orders/{order_id}`，读取 `data.payment.status`：`CONFIRMED` 表示已确认，`UNPAID` 表示未支付，`DISPUTED` 表示需要管理员处理。
+创建订单响应中的 `checkout.checkout_url` 是付款页面。配置 `return_url` 后，付款确认时页面会显示“返回商家”按钮；该地址必须属于后台通知设置中的允许 HTTPS 来源。网站后台也可以用同样的签名方式轮询 `GET /api/v1/orders/{order_id}`，读取 `data.payment.status`：`CONFIRMED` 表示已确认，`UNPAID` 表示未支付，`DISPUTED` 表示需要管理员处理。
 
 如果已在后台配置通知地址，PerPay 会向 `notify_url` 发送签名事件。网站应使用原始请求体验证通知签名，并按 `event_id` 做幂等处理；通知失败不会撤销已经确认的支付。完整字段和错误响应见 [`openapi.yaml`](openapi.yaml)。
 

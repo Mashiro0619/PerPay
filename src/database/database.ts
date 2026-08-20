@@ -34,8 +34,10 @@ import {
   MAX_ORDER_CLOCK_AHEAD_MILLISECONDS,
   MAX_ORDER_PRODUCT_NAME_BYTES,
   MAX_ORDER_PRODUCT_NAME_CHARACTERS,
+  MAX_RETURN_URL_BYTES,
   orderEventDetailsFingerprint,
   fingerprintOrderNote,
+  fingerprintOrderReturnUrl,
 } from "../orders/model.ts";
 import {
   assertDatabaseMaintenanceIdle,
@@ -2509,15 +2511,21 @@ function countOrderCryptographicDomainViolations(connection: DatabaseSync): numb
 
   let violations = 0;
   if (columnExists(connection, "payment_orders", "note_fingerprint")) {
+    const hasReturnUrl = columnExists(connection, "payment_orders", "return_url");
     for (const row of connection
       .prepare(
-        "SELECT product_name, note, note_fingerprint, note_fingerprint_version FROM payment_orders",
+        hasReturnUrl
+          ? "SELECT product_name, note, note_fingerprint, note_fingerprint_version, return_url, return_url_fingerprint, return_url_fingerprint_version FROM payment_orders"
+          : "SELECT product_name, note, note_fingerprint, note_fingerprint_version FROM payment_orders",
       )
       .iterate() as Iterable<{
         product_name: string | null;
         note: string | null;
         note_fingerprint: string | null;
         note_fingerprint_version: bigint | number | null;
+        return_url?: string | null;
+        return_url_fingerprint?: string | null;
+        return_url_fingerprint_version?: bigint | number | null;
       }>) {
       if (
         row.product_name === null ||
@@ -2527,7 +2535,19 @@ function countOrderCryptographicDomainViolations(connection: DatabaseSync): numb
         (row.note !== null && row.note !== row.note.trim()) ||
         row.note_fingerprint === null ||
         Number(row.note_fingerprint_version) !== 1 ||
-        row.note_fingerprint !== fingerprintOrderNote(row.note)
+        row.note_fingerprint !== fingerprintOrderNote(row.note) ||
+        (hasReturnUrl && (
+          row.return_url_fingerprint === null ||
+          row.return_url_fingerprint === undefined ||
+          Number(row.return_url_fingerprint_version) !== 1 ||
+          row.return_url_fingerprint !== fingerprintOrderReturnUrl(row.return_url ?? null) ||
+          (row.return_url !== null && row.return_url !== undefined && (
+          row.return_url !== row.return_url.trim() ||
+          row.return_url.length === 0 ||
+          Buffer.byteLength(row.return_url, "utf8") > MAX_RETURN_URL_BYTES ||
+          /\p{Cc}/u.test(row.return_url)
+          ))
+        ))
       ) {
         violations += 1;
       }

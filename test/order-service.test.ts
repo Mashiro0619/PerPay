@@ -324,8 +324,16 @@ describe("order service", () => {
         3_000,
         `${allowedOrigin}/paid?source=api`,
       );
-      const created = orders.create(request);
+      const requestWithReturnUrl = createOrderRequestSchema.parse({
+        ...request,
+        return_url: `${allowedOrigin}/orders/service-webhook-order?paid=1`,
+      });
+      const created = orders.create(requestWithReturnUrl);
       assert.equal(created.order.notification.notifyUrl, request.notify_url);
+      assert.equal(
+        created.order.returnUrl,
+        `${allowedOrigin}/orders/service-webhook-order?paid=1`,
+      );
       assert.deepEqual(readWebhookOrderCounts(database), {
         orders: 1,
         targets: 1,
@@ -333,7 +341,7 @@ describe("order service", () => {
       });
 
       settings = runtimeSettings({ revision: 2, webhook: disabledWebhook });
-      const replayedWhileDisabled = orders.create(request);
+      const replayedWhileDisabled = orders.create(requestWithReturnUrl);
       assert.equal(replayedWhileDisabled.created, false);
       assert.equal(replayedWhileDisabled.order.orderId, created.order.orderId);
       assert.throws(
@@ -347,7 +355,7 @@ describe("order service", () => {
         revision: 3,
         webhook: enabledWebhook(rotatedAllowedOrigin),
       });
-      const replayedAfterRotation = orders.create(request);
+      const replayedAfterRotation = orders.create(requestWithReturnUrl);
       assert.equal(replayedAfterRotation.created, false);
       assert.equal(replayedAfterRotation.order.orderId, created.order.orderId);
       assert.throws(

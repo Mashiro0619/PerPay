@@ -14,6 +14,7 @@ const checkout = Object.freeze({
   merchantOrderNo: "merchant-order-1",
   requestedAmountCents: 1_000,
   currency: "CNY",
+  returnUrl: null,
   productName: "测试订单",
   paymentInstructions: Object.freeze({
     payableAmountCents: 1_001,
@@ -55,7 +56,7 @@ describe("public checkout renderer", () => {
     assert.ok(html.includes(CHECKOUT_PAGE_ASSETS.alipayIcon));
     assert.doesNotMatch(html, /data-checkout-refresh[^>]*hidden/);
     assert.match(html, /<meta name="color-scheme" content="light dark">/);
-    assert.match(html, /<meta name="theme-color" content="#101c1b" media="\(prefers-color-scheme: dark\)">/);
+    assert.match(html, /<meta name="theme-color" content="#0b0b0c" media="\(prefers-color-scheme: dark\)">/);
     assert.match(html, new RegExp(`href="${escapeRegExp(CHECKOUT_PAGE_ASSETS.checkoutStylesheet)}"`));
     assert.equal((html.match(/<link rel="stylesheet"/g) ?? []).length, 1);
     assert.match(html, new RegExp(`src="${escapeRegExp(CHECKOUT_PAGE_ASSETS.checkoutScript)}" defer`));
@@ -113,6 +114,33 @@ describe("public checkout renderer", () => {
     assert.match(html, /已自动确认/);
     assert.match(html, /款项已部分退款/);
     assert.match(html, /data-checkout-refresh[^>]*hidden/);
+  });
+
+  it("only renders the merchant return action after confirmation", () => {
+    const unpaidHtml = renderCheckoutPage({
+      checkoutToken: "pct1_return_unpaid",
+      checkout,
+      qrImageUrl: "/qr.svg",
+      initialError: null,
+    });
+    assert.match(unpaidHtml, /data-return-merchant[^>]*hidden/);
+
+    const confirmedHtml = renderCheckoutPage({
+      checkoutToken: "pct1_return_confirmed",
+      checkout: {
+        ...checkout,
+        returnUrl: "https://shop.example.com/orders/1?paid=1",
+        paymentInstructions: null,
+        payment: { status: "CONFIRMED", basis: "INFERRED", receivedAmountCents: 1_001 },
+      },
+      qrImageUrl: null,
+      initialError: null,
+    });
+    assert.match(
+      confirmedHtml,
+      /<a[^>]+data-return-merchant[^>]+href="https:\/\/shop\.example\.com\/orders\/1\?paid=1"[^>]*>返回商家<\/a>/,
+    );
+    assert.doesNotMatch(confirmedHtml, /data-return-merchant[^>]*hidden/);
   });
 
   it("hides the payment column and its controls for every terminal state", () => {

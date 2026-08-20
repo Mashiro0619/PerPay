@@ -25,6 +25,7 @@
   const paymentColumn = root.querySelector("[data-payment-column]");
   const manualRefreshButton = root.querySelector("[data-checkout-refresh]");
   const manualRefreshLabel = manualRefreshButton?.querySelector("[data-checkout-refresh-label]");
+  const returnMerchantLink = root.querySelector("[data-return-merchant]");
   const requestTimeoutMilliseconds = 10_000;
 
   const stateCopy = Object.freeze({
@@ -338,6 +339,7 @@
     setHidden(content, false);
     setHidden(root.querySelector("[data-service-alert]"), true);
     setStatus(visualState, stateCopy[visualState]);
+    updateReturnMerchant(checkout.return_url, visualState);
 
     setText(root.querySelector("[data-merchant-order-no]"), checkout.merchant_order_no);
     setText(root.querySelector("[data-product-name]"), checkout.product_name);
@@ -413,6 +415,18 @@
     setText(root.querySelector("[data-status-heading]"), copy.heading);
     setText(root.querySelector("[data-status-detail]"), copy.detail);
     if (content instanceof HTMLElement) content.dataset.state = visualState;
+  }
+
+  function updateReturnMerchant(value, visualState) {
+    if (!(returnMerchantLink instanceof HTMLAnchorElement)) return;
+    const target = visualState === "CONFIRMED" ? parseMerchantReturnUrl(value) : null;
+    if (target === null) {
+      returnMerchantLink.hidden = true;
+      returnMerchantLink.removeAttribute("href");
+      return;
+    }
+    returnMerchantLink.href = target;
+    returnMerchantLink.hidden = false;
   }
 
   function updateRefund(refundStatus) {
@@ -718,6 +732,7 @@
     if (typeof value.merchant_order_no !== "string" || value.merchant_order_no.length === 0) return false;
     if (!isAmount(value.requested_amount_cents) || value.currency !== "CNY") return false;
     if (typeof value.product_name !== "string" || value.product_name.length === 0) return false;
+    if (value.return_url !== undefined && value.return_url !== null && typeof value.return_url !== "string") return false;
     if (!value.checkout || !["OPEN", "CLOSED", "EXPIRED"].includes(value.checkout.status)) return false;
     if (typeof value.checkout.expires_at !== "string" || !Number.isFinite(Date.parse(value.checkout.expires_at))) return false;
     if (!value.payment || !["UNPAID", "CONFIRMED", "DISPUTED"].includes(value.payment.status)) return false;
@@ -751,6 +766,19 @@
     try {
       const url = new URL(value, window.location.origin);
       return url.origin === window.location.origin ? url : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function parseMerchantReturnUrl(value) {
+    if (typeof value !== "string" || value.trim().length === 0) return null;
+    try {
+      const url = new URL(value);
+      if (url.protocol !== "https:" || url.username !== "" || url.password !== "" || url.hash !== "") {
+        return null;
+      }
+      return url.href;
     } catch {
       return null;
     }

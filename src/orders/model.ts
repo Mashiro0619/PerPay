@@ -9,9 +9,11 @@ export const MAX_ORDER_PRODUCT_NAME_BYTES = MAX_ORDER_PRODUCT_NAME_CHARACTERS * 
 export const MAX_ORDER_NOTE_CHARACTERS = 500;
 export const MAX_ORDER_NOTE_BYTES = MAX_ORDER_NOTE_CHARACTERS * 4;
 export const MAX_NOTIFY_URL_BYTES = 4096;
+export const MAX_RETURN_URL_BYTES = 4096;
 export const IDEMPOTENCY_KEY_DIGEST_VERSION = 1;
 export const IDEMPOTENCY_KEY_DIGEST_ALGORITHM = "sha256";
 export const CREATE_ORDER_REQUEST_FINGERPRINT_VERSION = 1;
+export const ORDER_RETURN_URL_FINGERPRINT_VERSION = 1;
 export const MAX_ORDER_CLOCK_AHEAD_MILLISECONDS = 5 * 60 * 1000;
 
 export function digestIdempotencyKey(apiClientId: string, idempotencyKey: string): string {
@@ -105,6 +107,22 @@ const notifyUrlSchema = z
     message: `must contain at most ${MAX_NOTIFY_URL_BYTES} UTF-8 bytes`,
   });
 
+const returnUrlSchema = z
+  .string()
+  .min(1)
+  .refine((value) => value === value.trim(), {
+    message: "must not contain leading or trailing whitespace",
+  })
+  .refine((value) => hasOnlyUnicodeScalarValues(value), {
+    message: "must contain only valid Unicode characters",
+  })
+  .refine((value) => !controlCharacterPattern.test(value), {
+    message: "must not contain control characters",
+  })
+  .refine((value) => Buffer.byteLength(value, "utf8") <= MAX_RETURN_URL_BYTES, {
+    message: `must contain at most ${MAX_RETURN_URL_BYTES} UTF-8 bytes`,
+  });
+
 export const merchantOrderNumberSchema = z
   .string()
   .min(1)
@@ -127,6 +145,7 @@ export const createOrderRequestSchema = z
     product_name: orderProductNameSchema,
     note: orderNoteSchema.nullable().optional(),
     notify_url: notifyUrlSchema.optional(),
+    return_url: returnUrlSchema.optional(),
   })
   .strict();
 
@@ -163,6 +182,8 @@ export interface PaymentOrder {
   readonly productName: string;
   readonly note: string | null;
   readonly noteFingerprint: string;
+  readonly returnUrl: string | null;
+  readonly returnUrlFingerprint: string;
   readonly collectionProfileId: string;
   readonly checkoutStatus: CheckoutStatus;
   readonly paymentStatus: PaymentStatus;
@@ -216,6 +237,7 @@ export interface OrderProjection {
   readonly currency: Currency;
   readonly productName: string;
   readonly note: string | null;
+  readonly returnUrl: string | null;
   readonly checkoutToken: string;
   readonly checkout: CheckoutStateProjection;
   readonly payment: PaymentStateProjection;
@@ -292,6 +314,7 @@ export interface PublicCheckoutProjection {
   readonly requestedAmountCents: number;
   readonly currency: Currency;
   readonly productName: string;
+  readonly returnUrl: string | null;
   readonly paymentInstructions: PublicPaymentInstructions | null;
   readonly checkout: CheckoutStateProjection;
   readonly payment: PaymentStateProjection;
@@ -317,6 +340,13 @@ export function fingerprintCreateOrderRequest(request: CreateOrderRequest): stri
   ] as const;
 
   return createHash("sha256").update(JSON.stringify(canonicalRequest), "utf8").digest("hex");
+}
+
+export function fingerprintOrderReturnUrl(returnUrl: string | null): string {
+  return createHash("sha256")
+    .update("perpay:order-return-url:v1\0", "utf8")
+    .update(JSON.stringify([ORDER_RETURN_URL_FINGERPRINT_VERSION, returnUrl]), "utf8")
+    .digest("hex");
 }
 
 export const ORDER_NOTE_FINGERPRINT_VERSION = 1;

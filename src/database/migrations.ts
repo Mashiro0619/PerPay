@@ -4179,4 +4179,56 @@ export const migrations: readonly Migration[] = [
       END;
     `,
   },
+  {
+    version: 17,
+    name: "order_return_url",
+    sql: `
+      ALTER TABLE payment_orders ADD COLUMN return_url TEXT;
+      ALTER TABLE payment_orders ADD COLUMN return_url_fingerprint TEXT NOT NULL
+        DEFAULT 'e693e547327adfdd93722cbb053560a5df0dbbdb46a55a47d8efd75de4e16320';
+      ALTER TABLE payment_orders ADD COLUMN return_url_fingerprint_version INTEGER NOT NULL
+        DEFAULT 1;
+
+      DROP TRIGGER payment_orders_snapshot_immutable;
+      CREATE TRIGGER payment_orders_snapshot_immutable
+      BEFORE UPDATE OF
+        order_id, api_client_id, merchant_order_no, idempotency_key_digest,
+        idempotency_key_digest_version,
+        request_fingerprint, request_fingerprint_version, requested_amount_cents,
+        payable_amount_cents, allocation_offset_max_cents, currency, product_name,
+        collection_profile_id, eligible_from, created_at, expires_at,
+        return_url, return_url_fingerprint, return_url_fingerprint_version
+      ON payment_orders
+      BEGIN
+        SELECT RAISE(ABORT, 'order request and collection snapshot are immutable');
+      END;
+
+      CREATE TRIGGER payment_orders_return_url_insert_guard
+      BEFORE INSERT ON payment_orders
+      WHEN
+        (NEW.return_url IS NULL AND (
+          NEW.return_url_fingerprint IS NULL OR
+          NEW.return_url_fingerprint_version != 1
+        )) OR
+        (NEW.return_url IS NOT NULL AND (
+          NEW.return_url = trim(NEW.return_url) AND
+          length(NEW.return_url) > 0 AND
+          length(CAST(NEW.return_url AS BLOB)) <= 4096 AND
+          NEW.return_url_fingerprint IS NOT NULL AND
+          NEW.return_url_fingerprint_version = 1 AND
+          length(NEW.return_url_fingerprint) = 64 AND
+          NEW.return_url_fingerprint NOT GLOB '*[^0-9a-f]*'
+        ) = 0)
+      BEGIN
+        SELECT RAISE(ABORT, 'order return URL is invalid');
+      END;
+
+      CREATE TRIGGER payment_orders_return_url_immutable
+      BEFORE UPDATE OF return_url, return_url_fingerprint, return_url_fingerprint_version
+      ON payment_orders
+      BEGIN
+        SELECT RAISE(ABORT, 'order return URL is immutable');
+      END;
+    `,
+  },
 ] as const;

@@ -9,6 +9,7 @@ import {
 } from "../database/order-store.ts";
 import { digestCheckoutToken, isCanonicalCheckoutToken } from "./checkout-token.ts";
 import { fingerprintCollectionCodeProfile } from "./collection-profile.ts";
+import { prepareReturnUrl, ReturnUrlError, type ReturnUrlErrorCode } from "./return-url.ts";
 import {
   prepareWebhookTarget,
   WebhookTargetError,
@@ -52,7 +53,8 @@ export type OrderErrorCode =
   | "system_not_configured"
   | "webhook_disabled"
   | "webhook_target_invalid"
-  | "webhook_target_not_allowed";
+  | "webhook_target_not_allowed"
+  | ReturnUrlErrorCode;
 
 export class OrderError extends Error {
   readonly code: OrderErrorCode;
@@ -76,6 +78,14 @@ interface WebhookTargetDecision {
   readonly rejection?: {
     readonly url: string;
     readonly code: WebhookTargetErrorCode;
+  } | undefined;
+}
+
+interface ReturnUrlDecision {
+  readonly url: string | null;
+  readonly rejection?: {
+    readonly url: string;
+    readonly code: ReturnUrlErrorCode;
   } | undefined;
 }
 
@@ -123,6 +133,7 @@ export class OrderService {
     const settings = this.#configuredSettings();
     this.syncCollectionProfile(settings.collection, settings.providerAccountKey);
     const webhookTarget = this.#prepareWebhookTarget(request, settings.webhook);
+    const returnUrl = this.#prepareReturnUrl(request, settings.webhook);
     const result = this.#runStoreOperation(() =>
       this.#store.createOrder(
         {
@@ -138,6 +149,8 @@ export class OrderService {
             .checkoutTerminalObservationSeconds * 1_000,
           webhookTarget: webhookTarget.target,
           webhookTargetRejection: webhookTarget.rejection,
+          returnUrl: returnUrl.url,
+          returnUrlRejection: returnUrl.rejection,
         },
         beforeCreate,
       ),
@@ -159,6 +172,8 @@ export class OrderService {
         );
       case "webhook_target_rejected":
         throw webhookTargetOrderError(result.code);
+      case "return_url_rejected":
+        throw returnUrlOrderError(result.code);
       case "amount_slots_exhausted":
         throw new OrderError(
           "amount_slots_exhausted",
@@ -231,6 +246,9 @@ export class OrderService {
       requestedAmountCents: aggregate.order.requestedAmountCents,
       currency: aggregate.order.currency,
       productName: aggregate.order.productName,
+      returnUrl: aggregate.order.paymentStatus === "CONFIRMED"
+        ? aggregate.order.returnUrl
+        : null,
       paymentInstructions:
         aggregate.order.checkoutStatus === "OPEN" && aggregate.order.paymentStatus === "UNPAID"
           ? {
@@ -254,6 +272,7 @@ export class OrderService {
       receivedAmountCents: aggregate.order.receivedAmountCents,
       currency: aggregate.order.currency,
       productName: aggregate.order.productName,
+      returnUrl: aggregate.order.returnUrl,
       note: aggregate.order.note,
       checkoutToken: aggregate.checkoutToken,
       checkout: checkoutProjection(aggregate),
@@ -367,6 +386,22 @@ export class OrderService {
       };
     }
   }
+
+  #prepareReturnUrl(
+    request: CreateOrderRequest,
+    webhook: RuntimeSettingsSnapshot["webhook"],
+  ): ReturnUrlDecision {
+    if (request.return_url === undefined) return { url: null };
+    try {
+      return { url: prepareReturnUrl(request.return_url, webhook.allowedOrigin) };
+    } catch (error) {
+      if (!(error instanceof ReturnUrlError)) throw error;
+      return {
+        url: null,
+        rejection: { url: request.return_url, code: error.code },
+      };
+    }
+  }
 }
 
 function webhookTargetOrderError(code: WebhookTargetErrorCode): OrderError {
@@ -383,6 +418,15 @@ function webhookTargetOrderError(code: WebhookTargetErrorCode): OrderError {
       );
     case "webhook_target_invalid":
       return new OrderError(code, "notify_url 格式无效");
+  }
+}
+
+function returnUrlOrderError(code: ReturnUrlErrorCode): OrderError {
+  switch (code) {
+    case "return_url_invalid":
+      return new OrderError(code, "return_url 格式无效");
+    case "return_url_not_allowed":
+      return new OrderError(code, "return_url 必须位于后台配置允许的 HTTPS origin");
   }
 }
 

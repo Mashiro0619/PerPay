@@ -1301,7 +1301,7 @@ paths:
       description: |
         The idempotency key is part of the signed JSON body. An exact replay returns
         the original order with HTTP 200. Reusing the key for different request data
-        returns HTTP 409. `notify_url`, when present, is immutable and participates in
+        returns HTTP 409. `notify_url` and `return_url`, when present, are immutable and participate in
         idempotency matching. New orders require notification delivery to be enabled and
         the URL to be under the currently configured allowed HTTPS origin. A historical
         exact replay still returns the original order after notifications are disabled or
@@ -2735,6 +2735,17 @@ components:
         Absolute HTTPS URL under the one DNS origin enabled by deployment configuration.
         User information, fragments, control characters, trailing-dot hosts, and encoded
         control bytes are rejected. Paths and existing query parameters are preserved.
+    ReturnUrl:
+      type: string
+      format: uri
+      minLength: 1
+      maxLength: 4096
+      pattern: '^[Hh][Tt][Tt][Pp][Ss]://'
+      x-perpay-max-utf8-bytes: 4096
+      description: |
+        Optional browser return target under the HTTPS merchant origin configured in the
+        notification settings. Credentials, fragments, control characters, and encoded
+        control bytes are rejected.
     CreateOrderRequest:
       type: object
       additionalProperties: false
@@ -2761,6 +2772,8 @@ components:
           maxLength: 500
         notify_url:
           $ref: '#/components/schemas/NotifyUrl'
+        return_url:
+          $ref: '#/components/schemas/ReturnUrl'
     AdminTestPaymentRequest:
       type: object
       additionalProperties: false
@@ -2794,6 +2807,7 @@ components:
         - currency
         - product_name
         - note
+        - return_url
         - checkout
         - payment
         - refund
@@ -2813,6 +2827,11 @@ components:
         currency: { const: CNY }
         product_name: { type: string, minLength: 1, maxLength: 200 }
         note: { type: [string, 'null'], maxLength: 500 }
+        return_url:
+          description: Null until payment is confirmed or when the order did not configure a browser return target.
+          oneOf:
+            - $ref: '#/components/schemas/ReturnUrl'
+            - type: 'null'
         checkout:
           $ref: '#/components/schemas/AuthenticatedCheckoutState'
         payment:
@@ -2899,6 +2918,7 @@ components:
             - requested_amount_cents
             - currency
             - product_name
+            - return_url
             - payment_instructions
             - checkout
             - payment
@@ -2908,6 +2928,11 @@ components:
             requested_amount_cents: { type: integer }
             currency: { const: CNY }
             product_name: { type: string, minLength: 1, maxLength: 200 }
+            return_url:
+              description: Null until payment is confirmed or when the order did not configure a browser return target.
+              oneOf:
+                - $ref: '#/components/schemas/ReturnUrl'
+                - type: 'null'
             payment_instructions:
               description: >-
                 Present only while checkout status is OPEN and payment status is UNPAID. It is
@@ -4205,9 +4230,10 @@ components:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     OrderValidationFailed:
       description: >-
-        Order fields violate the contract, notification delivery is disabled, or `notify_url`
-        is invalid or outside the configured allowed origin (`validation_failed`,
-        `webhook_disabled`, `webhook_target_invalid`, or `webhook_target_not_allowed`).
+        Order fields violate the contract, notification delivery is disabled, or `notify_url`/
+        `return_url` is invalid or outside the configured allowed origin (`validation_failed`,
+        `webhook_disabled`, `webhook_target_invalid`, `webhook_target_not_allowed`,
+        `return_url_invalid`, or `return_url_not_allowed`).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }

@@ -1,5 +1,5 @@
 export const APP_VERSION = "0.1.0";
 export const DATABASE_COMPATIBILITY = Object.freeze({
-  minimum: 16,
-  maximum: 16,
+  minimum: 17,
+  maximum: 17,
 });

@@ -159,6 +159,8 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
     && input.qrImageUrl !== null;
   const manualRefreshVisible =
     checkout !== null && ["UNPAID", "UNAVAILABLE"].includes(visualState);
+  const returnMerchantVisible =
+    checkout !== null && visualState === "CONFIRMED" && checkout.returnUrl !== null;
   const paymentColumnVisible = qrVisible || manualRefreshVisible;
   const refundMessage = refundCopy(checkout);
   const evidence = evidenceCopy(checkout, visualState);
@@ -178,8 +180,8 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
-  <meta name="theme-color" content="#ece9e1" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#101c1b" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f4f4f5" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0b0b0c" media="(prefers-color-scheme: dark)">
   <meta name="robots" content="noindex, nofollow, noarchive">
   <title>${escapeHtml(title)}</title>
   <link rel="stylesheet" href="${CHECKOUT_PAGE_ASSETS.checkoutStylesheet}">
@@ -242,6 +244,12 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
           <div class="checkout-heading-block">
             <h1 id="checkout-title" data-status-heading tabindex="-1">${escapeHtml(stateCopy.heading)}</h1>
             <p class="checkout-status-detail" data-status-detail>${escapeHtml(stateCopy.detail)}</p>
+            <a
+              class="checkout-button checkout-button--primary checkout-return-merchant"
+              data-return-merchant
+              ${linkHrefAttribute(returnMerchantVisible ? checkout?.returnUrl ?? null : null)}
+              ${hiddenAttribute(!returnMerchantVisible)}
+            >返回商家</a>
           </div>
 
           <div class="checkout-amount-block checkout-amount-block--summary" data-amount-block>

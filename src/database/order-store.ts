@@ -9,6 +9,8 @@ import {
   MAX_ORDER_CLOCK_AHEAD_MILLISECONDS,
   digestIdempotencyKey,
   fingerprintOrderNote,
+  fingerprintOrderReturnUrl,
+  ORDER_RETURN_URL_FINGERPRINT_VERSION,
   ORDER_NOTE_FINGERPRINT_VERSION,
   orderEventDetailsFingerprint,
   type AdminOrderCursor,
@@ -117,6 +119,11 @@ export interface CreateStoredOrderInput {
     readonly url: string;
     readonly code: WebhookTargetErrorCode;
   } | undefined;
+  readonly returnUrl?: string | null;
+  readonly returnUrlRejection?: {
+    readonly url: string;
+    readonly code: "return_url_invalid" | "return_url_not_allowed";
+  } | undefined;
 }
 
 export type CreateStoredOrderResult =
@@ -127,6 +134,10 @@ export type CreateStoredOrderResult =
   | {
       readonly kind: "webhook_target_rejected";
       readonly code: WebhookTargetErrorCode;
+    }
+  | {
+      readonly kind: "return_url_rejected";
+      readonly code: "return_url_invalid" | "return_url_not_allowed";
     }
   | {
       readonly kind: "amount_slots_exhausted";
@@ -281,6 +292,7 @@ export class OrderStore {
     beforeCreate?: (() => void) | undefined,
   ): CreateStoredOrderResult {
     validateWebhookTargetInput(input);
+    validateReturnUrlInput(input);
     const checkoutKeyRotationMilliseconds = input.checkoutKeyRotationMilliseconds ??
       this.#checkoutKeyRotationMilliseconds;
     const checkoutTerminalObservationMilliseconds =
@@ -321,6 +333,11 @@ export class OrderStore {
           idempotent.order.requestFingerprintVersion !==
             CREATE_ORDER_REQUEST_FINGERPRINT_VERSION ||
           idempotent.order.noteFingerprint !== fingerprintOrderNote(input.request.note ?? null) ||
+          !sameReturnUrlRequest(
+            idempotent.order.returnUrl,
+            input.returnUrl ?? null,
+            input.returnUrlRejection,
+          ) ||
           !sameWebhookTargetRequest(
             idempotent.webhookTarget,
             input.webhookTarget ?? null,
@@ -358,6 +375,11 @@ export class OrderStore {
           migratedReplay.order.requestFingerprintVersion !==
             CREATE_ORDER_REQUEST_FINGERPRINT_VERSION ||
           migratedReplay.order.noteFingerprint !== fingerprintOrderNote(input.request.note ?? null) ||
+          !sameReturnUrlRequest(
+            migratedReplay.order.returnUrl,
+            input.returnUrl ?? null,
+            input.returnUrlRejection,
+          ) ||
           !sameWebhookTargetRequest(
             migratedReplay.webhookTarget,
             input.webhookTarget ?? null,
@@ -375,6 +397,13 @@ export class OrderStore {
         return {
           kind: "webhook_target_rejected",
           code: input.webhookTargetRejection.code,
+        };
+      }
+
+      if (input.returnUrlRejection) {
+        return {
+          kind: "return_url_rejected",
+          code: input.returnUrlRejection.code,
         };
       }
 
@@ -429,12 +458,13 @@ export class OrderStore {
              requested_amount_cents, payable_amount_cents,
              allocation_offset_max_cents, received_amount_cents, currency,
              product_name, note, note_fingerprint, note_fingerprint_version,
+             return_url, return_url_fingerprint, return_url_fingerprint_version,
              collection_profile_id, checkout_status, payment_status,
              refund_status, payment_basis, eligible_from, created_at, expires_at,
              closed_at, updated_at, version
            ) VALUES (
-             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'CNY', ?, ?, ?, ?, ?,
-             'OPEN', 'UNPAID', 'NONE', 'NONE', ?, ?, ?, NULL, ?, 1
+             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'CNY',
+             ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', 'UNPAID', 'NONE', 'NONE', ?, ?, ?, NULL, ?, 1
            )`,
         )
         .run(
@@ -453,6 +483,9 @@ export class OrderStore {
           input.request.note ?? null,
           fingerprintOrderNote(input.request.note ?? null),
           ORDER_NOTE_FINGERPRINT_VERSION,
+          input.returnUrl ?? null,
+          fingerprintOrderReturnUrl(input.returnUrl ?? null),
+          ORDER_RETURN_URL_FINGERPRINT_VERSION,
           profile.profileId,
           now,
           now,
@@ -994,6 +1027,9 @@ type AggregateRow = {
   note: string | null;
   note_fingerprint: string;
   note_fingerprint_version: bigint | number;
+  return_url: string | null;
+  return_url_fingerprint: string;
+  return_url_fingerprint_version: bigint | number;
   collection_profile_id: string;
   checkout_status: CheckoutStatus;
   payment_status: PaymentStatus;
@@ -1045,6 +1081,9 @@ const AGGREGATE_SELECT = `
     orders.note,
     orders.note_fingerprint,
     orders.note_fingerprint_version,
+    orders.return_url,
+    orders.return_url_fingerprint,
+    orders.return_url_fingerprint_version,
     orders.collection_profile_id,
     orders.checkout_status,
     orders.payment_status,
@@ -1312,6 +1351,16 @@ function mapAggregate(row: AggregateRow): Omit<StoredOrderAggregate, "checkoutTo
   if (row.note_fingerprint !== fingerprintOrderNote(row.note)) {
     throw new Error("order note fingerprint does not match its note");
   }
+  const returnUrlFingerprintVersion = toSafeInteger(
+    row.return_url_fingerprint_version,
+    "order return URL fingerprint version",
+  );
+  if (returnUrlFingerprintVersion !== ORDER_RETURN_URL_FINGERPRINT_VERSION) {
+    throw new Error(`unsupported order return URL fingerprint version ${returnUrlFingerprintVersion}`);
+  }
+  if (row.return_url_fingerprint !== fingerprintOrderReturnUrl(row.return_url)) {
+    throw new Error("order return URL fingerprint does not match its return URL");
+  }
   const order: PaymentOrder = {
     orderId: row.order_id,
     apiClientId: row.api_client_id,
@@ -1331,6 +1380,8 @@ function mapAggregate(row: AggregateRow): Omit<StoredOrderAggregate, "checkoutTo
     productName: row.product_name,
     note: row.note,
     noteFingerprint: row.note_fingerprint,
+    returnUrl: row.return_url,
+    returnUrlFingerprint: row.return_url_fingerprint,
     collectionProfileId: row.collection_profile_id,
     checkoutStatus: row.checkout_status,
     paymentStatus: row.payment_status,
@@ -1490,6 +1541,20 @@ function sameWebhookTargetRequest(
   }
 }
 
+function sameReturnUrlRequest(
+  stored: string | null,
+  requested: string | null,
+  rejected: CreateStoredOrderInput["returnUrlRejection"],
+): boolean {
+  if (!rejected) return stored === requested;
+  if (stored === null) return false;
+  try {
+    return new URL(rejected.url).toString() === stored;
+  } catch {
+    return false;
+  }
+}
+
 function validateWebhookTargetInput(input: CreateStoredOrderInput): void {
   const requestedUrl = input.request.notify_url ?? null;
   const target = input.webhookTarget ?? null;
@@ -1518,6 +1583,38 @@ function validateWebhookTargetInput(input: CreateStoredOrderInput): void {
     target.requestFingerprintVersion !== prepared.requestFingerprintVersion
   ) {
     throw new RangeError("order webhook target does not match the request");
+  }
+}
+
+function validateReturnUrlInput(input: CreateStoredOrderInput): void {
+  const requestedUrl = input.request.return_url ?? null;
+  const returnUrl = input.returnUrl ?? null;
+  const rejected = input.returnUrlRejection;
+  if (returnUrl !== null && rejected) {
+    throw new RangeError("order return URL input is ambiguous");
+  }
+  if (requestedUrl === null) {
+    if (returnUrl !== null || rejected) {
+      throw new RangeError("order return URL has no request URL");
+    }
+    return;
+  }
+  if (rejected) {
+    if (rejected.url !== requestedUrl) {
+      throw new RangeError("rejected order return URL does not match the request");
+    }
+    return;
+  }
+  if (returnUrl === null) {
+    throw new RangeError("order return URL is missing");
+  }
+  try {
+    if (new URL(requestedUrl).toString() !== returnUrl) {
+      throw new RangeError("order return URL does not match the request");
+    }
+  } catch (error) {
+    if (error instanceof RangeError) throw error;
+    throw new RangeError("order return URL is invalid", { cause: error });
   }
 }
 

@@ -824,11 +824,16 @@ describe("database recovery boundaries", () => {
         legacy.exec(`
           DROP TRIGGER payment_orders_product_metadata_immutable;
           DROP TRIGGER payment_orders_product_metadata_insert_guard;
+          DROP TRIGGER payment_orders_return_url_immutable;
+          DROP TRIGGER payment_orders_return_url_insert_guard;
           DROP TRIGGER payment_orders_snapshot_immutable;
           ALTER TABLE payment_orders RENAME COLUMN product_name TO description;
           ALTER TABLE payment_orders DROP COLUMN note;
           ALTER TABLE payment_orders DROP COLUMN note_fingerprint;
           ALTER TABLE payment_orders DROP COLUMN note_fingerprint_version;
+          ALTER TABLE payment_orders DROP COLUMN return_url;
+          ALTER TABLE payment_orders DROP COLUMN return_url_fingerprint;
+          ALTER TABLE payment_orders DROP COLUMN return_url_fingerprint_version;
           ${migrationObjectSql(3, "trigger", "payment_orders_snapshot_immutable")};
 
           DROP TRIGGER ledger_conflict_operations_no_delete;

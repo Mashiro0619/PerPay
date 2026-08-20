@@ -12,23 +12,24 @@ const UI_FONT = [
 
 export function createAdminTheme(mode: PaletteMode) {
   const dark = mode === "dark";
-  const primary = dark ? "#6ed9cb" : "#126b65";
-  const secondary = dark ? "#ff9b7d" : "#d85d43";
-  const divider = dark ? "#2d4145" : "#d8e0df";
-  const paper = dark ? "#142328" : "#ffffff";
-  const canvas = dark ? "#0a151a" : "#f1f5f5";
-  const ink = dark ? "#ecf5f4" : "#15252a";
-  const muted = dark ? "#a7bbb9" : "#5e7071";
+  const primary = dark ? "#f4f4f5" : "#18181b";
+  const primaryContrast = dark ? "#18181b" : "#ffffff";
+  const secondary = dark ? "#a1a1aa" : "#52525b";
+  const divider = dark ? "#303033" : "#e4e4e7";
+  const paper = dark ? "#151517" : "#ffffff";
+  const canvas = dark ? "#0b0b0c" : "#f4f4f5";
+  const ink = dark ? "#f4f4f5" : "#18181b";
+  const muted = dark ? "#a1a1aa" : "#52525b";
 
   return createTheme({
     palette: {
       mode,
-      primary: { main: primary },
-      secondary: { main: secondary },
-      success: { main: dark ? "#78d5ad" : "#147a61" },
-      warning: { main: dark ? "#efc46e" : "#9b6414" },
-      error: { main: dark ? "#ff9d91" : "#b83f35" },
-      info: { main: dark ? "#87c8e2" : "#27758a" },
+      primary: { main: primary, contrastText: primaryContrast },
+      secondary: { main: secondary, contrastText: dark ? "#18181b" : "#ffffff" },
+      success: { main: dark ? "#86efac" : "#166534" },
+      warning: { main: dark ? "#facc15" : "#854d0e" },
+      error: { main: dark ? "#fca5a5" : "#b91c1c" },
+      info: { main: dark ? "#93c5fd" : "#1d4ed8" },
       text: {
         primary: ink,
         secondary: muted,
@@ -67,7 +68,7 @@ export function createAdminTheme(mode: PaletteMode) {
           },
           "a": { color: "inherit" },
           "::selection": {
-            color: dark ? "#09211e" : "#ffffff",
+            color: primaryContrast,
             backgroundColor: alpha(primary, dark ? 0.5 : 0.25),
           },
           "*": {
@@ -106,7 +107,7 @@ export function createAdminTheme(mode: PaletteMode) {
             flexShrink: 0,
           },
           sizeSmall: { minHeight: 36, paddingInline: 12, borderRadius: 9 },
-          contained: { boxShadow: dark ? "0 7px 18px rgba(0,0,0,.22)" : "0 7px 16px rgba(18,107,101,.16)" },
+          contained: { boxShadow: "0 7px 18px rgba(0,0,0,.16)" },
         },
       },
       MuiIconButton: {
@@ -206,8 +207,8 @@ export function createAdminTheme(mode: PaletteMode) {
             verticalAlign: "middle",
           },
           head: {
-            color: dark ? "#bed0ce" : "#526769",
-            backgroundColor: dark ? "#182a2e" : "#f5f8f8",
+            color: dark ? "#d4d4d8" : "#52525b",
+            backgroundColor: dark ? "#1f1f22" : "#fafafa",
             fontWeight: 700,
             whiteSpace: "nowrap",
           },
