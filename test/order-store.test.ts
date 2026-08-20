@@ -464,6 +464,7 @@ describe("OrderStore", () => {
         idempotency_key: "idem-webhook-target",
         merchant_order_no: "merchant-webhook-target",
         amount_cents: 800,
+        product_name: "merchant-webhook-target",
         notify_url: targetUrl,
       });
       const input = {
@@ -487,9 +488,10 @@ describe("OrderStore", () => {
 
       assert.equal(
         store.createOrder(createInput(createOrderRequestSchema.parse({
-          idempotency_key: request.idempotency_key,
-          merchant_order_no: request.merchant_order_no,
-          amount_cents: request.amount_cents,
+           idempotency_key: request.idempotency_key,
+           merchant_order_no: request.merchant_order_no,
+           amount_cents: request.amount_cents,
+           product_name: request.product_name,
         }))).kind,
         "idempotency_conflict",
       );
@@ -517,6 +519,7 @@ describe("OrderStore", () => {
             idempotency_key: "idem-webhook-rejected-new",
             merchant_order_no: "merchant-webhook-rejected-new",
             amount_cents: 900,
+            product_name: "merchant-webhook-rejected-new",
             notify_url: targetUrl,
           })),
           webhookTargetRejection: {
@@ -1116,13 +1119,13 @@ function requestFor(
   idempotencyKey: string,
   merchantOrderNo: string,
   amountCents: number,
-  description?: string,
+  productName?: string,
 ): CreateOrderRequest {
   return createOrderRequestSchema.parse({
     idempotency_key: idempotencyKey,
     merchant_order_no: merchantOrderNo,
     amount_cents: amountCents,
-    ...(description === undefined ? {} : { description }),
+    product_name: productName ?? merchantOrderNo,
   });
 }
 

@@ -4,8 +4,10 @@ import { z } from "zod";
 
 export const MAX_REQUESTED_AMOUNT_CENTS = 9_999_999_998;
 export const MAX_IDEMPOTENCY_KEY_BYTES = 256;
-export const MAX_ORDER_DESCRIPTION_CHARACTERS = 200;
-export const MAX_ORDER_DESCRIPTION_BYTES = MAX_ORDER_DESCRIPTION_CHARACTERS * 4;
+export const MAX_ORDER_PRODUCT_NAME_CHARACTERS = 200;
+export const MAX_ORDER_PRODUCT_NAME_BYTES = MAX_ORDER_PRODUCT_NAME_CHARACTERS * 4;
+export const MAX_ORDER_NOTE_CHARACTERS = 500;
+export const MAX_ORDER_NOTE_BYTES = MAX_ORDER_NOTE_CHARACTERS * 4;
 export const MAX_NOTIFY_URL_BYTES = 4096;
 export const IDEMPOTENCY_KEY_DIGEST_VERSION = 1;
 export const IDEMPOTENCY_KEY_DIGEST_ALGORITHM = "sha256";
@@ -49,19 +51,42 @@ const idempotencyKeySchema = z
     message: `must contain at most ${MAX_IDEMPOTENCY_KEY_BYTES} UTF-8 bytes`,
   });
 
-const orderDescriptionSchema = z
+const orderProductNameSchema = z
   .string()
   .refine((value) => hasOnlyUnicodeScalarValues(value), {
     message: "must contain only valid Unicode characters",
   })
+  .refine((value) => !controlCharacterPattern.test(value), {
+    message: "must not contain control characters",
+  })
+  .transform((value) => value.trim())
   .refine((value) => unicodeCharacterCount(value) >= 1, {
     message: "must contain at least 1 Unicode character",
   })
-  .refine((value) => unicodeCharacterCount(value) <= MAX_ORDER_DESCRIPTION_CHARACTERS, {
-    message: `must contain at most ${MAX_ORDER_DESCRIPTION_CHARACTERS} Unicode characters`,
+  .refine((value) => unicodeCharacterCount(value) <= MAX_ORDER_PRODUCT_NAME_CHARACTERS, {
+    message: `must contain at most ${MAX_ORDER_PRODUCT_NAME_CHARACTERS} Unicode characters`,
   })
-  .refine((value) => Buffer.byteLength(value, "utf8") <= MAX_ORDER_DESCRIPTION_BYTES, {
-    message: `must contain at most ${MAX_ORDER_DESCRIPTION_BYTES} UTF-8 bytes`,
+  .refine((value) => Buffer.byteLength(value, "utf8") <= MAX_ORDER_PRODUCT_NAME_BYTES, {
+    message: `must contain at most ${MAX_ORDER_PRODUCT_NAME_BYTES} UTF-8 bytes`,
+  });
+
+const orderNoteSchema = z
+  .string()
+  .refine((value) => hasOnlyUnicodeScalarValues(value), {
+    message: "must contain only valid Unicode characters",
+  })
+  .refine((value) => !controlCharacterPattern.test(value), {
+    message: "must not contain control characters",
+  })
+  .transform((value) => {
+    const trimmed = value.trim();
+    return trimmed === "" ? null : trimmed;
+  })
+  .refine((value) => value === null || unicodeCharacterCount(value) <= MAX_ORDER_NOTE_CHARACTERS, {
+    message: `must contain at most ${MAX_ORDER_NOTE_CHARACTERS} Unicode characters`,
+  })
+  .refine((value) => value === null || Buffer.byteLength(value, "utf8") <= MAX_ORDER_NOTE_BYTES, {
+    message: `must contain at most ${MAX_ORDER_NOTE_BYTES} UTF-8 bytes`,
   });
 
 const notifyUrlSchema = z
@@ -99,7 +124,8 @@ export const createOrderRequestSchema = z
     idempotency_key: idempotencyKeySchema,
     merchant_order_no: merchantOrderNumberSchema,
     amount_cents: z.number().int().min(1).max(MAX_REQUESTED_AMOUNT_CENTS),
-    description: orderDescriptionSchema.optional(),
+    product_name: orderProductNameSchema,
+    note: orderNoteSchema.nullable().optional(),
     notify_url: notifyUrlSchema.optional(),
   })
   .strict();
@@ -134,7 +160,9 @@ export interface PaymentOrder {
   readonly allocationOffsetMaximumCents: number;
   readonly receivedAmountCents: number | null;
   readonly currency: Currency;
-  readonly description: string | null;
+  readonly productName: string;
+  readonly note: string | null;
+  readonly noteFingerprint: string;
   readonly collectionProfileId: string;
   readonly checkoutStatus: CheckoutStatus;
   readonly paymentStatus: PaymentStatus;
@@ -186,7 +214,8 @@ export interface OrderProjection {
   readonly payableAmountCents: number;
   readonly receivedAmountCents: number | null;
   readonly currency: Currency;
-  readonly description: string | null;
+  readonly productName: string;
+  readonly note: string | null;
   readonly checkoutToken: string;
   readonly checkout: CheckoutStateProjection;
   readonly payment: PaymentStateProjection;
@@ -218,7 +247,7 @@ export interface AdminOrderSummaryProjection {
   readonly payableAmountCents: number;
   readonly receivedAmountCents: number | null;
   readonly currency: Currency;
-  readonly description: string | null;
+  readonly productName: string;
   readonly checkout: CheckoutStateProjection;
   readonly payment: PaymentStateProjection;
   readonly refund: RefundStateProjection;
@@ -245,6 +274,7 @@ export interface AdminOrderEventProjection {
 }
 
 export interface AdminOrderDetailProjection extends AdminOrderSummaryProjection {
+  readonly note: string | null;
   readonly notification: {
     readonly notifyUrl: string | null;
   };
@@ -261,7 +291,7 @@ export interface PublicCheckoutProjection {
   readonly merchantOrderNo: string;
   readonly requestedAmountCents: number;
   readonly currency: Currency;
-  readonly description: string | null;
+  readonly productName: string;
   readonly paymentInstructions: PublicPaymentInstructions | null;
   readonly checkout: CheckoutStateProjection;
   readonly payment: PaymentStateProjection;
@@ -274,9 +304,9 @@ export interface PublicCheckoutProjection {
  * checked alongside this value by the same idempotent creation transaction.
  */
 export function fingerprintCreateOrderRequest(request: CreateOrderRequest): string {
-  const description = Object.hasOwn(request, "description")
-    ? (["present", request.description] as const)
-    : (["missing"] as const);
+  // Keep the v1 canonical slot named `description` so historical request
+  // fingerprints remain meaningful after the public field is renamed.
+  const description = ["present", request.product_name] as const;
   const canonicalRequest = [
     "perpay:create-order-request",
     CREATE_ORDER_REQUEST_FINGERPRINT_VERSION,
@@ -287,6 +317,15 @@ export function fingerprintCreateOrderRequest(request: CreateOrderRequest): stri
   ] as const;
 
   return createHash("sha256").update(JSON.stringify(canonicalRequest), "utf8").digest("hex");
+}
+
+export const ORDER_NOTE_FINGERPRINT_VERSION = 1;
+
+export function fingerprintOrderNote(note: string | null): string {
+  return createHash("sha256")
+    .update(`perpay:order-note:v${ORDER_NOTE_FINGERPRINT_VERSION}\0`, "utf8")
+    .update(note ?? "", "utf8")
+    .digest("hex");
 }
 
 function unicodeCharacterCount(value: string): number {

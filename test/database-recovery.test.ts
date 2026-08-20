@@ -822,6 +822,15 @@ describe("database recovery boundaries", () => {
       });
       try {
         legacy.exec(`
+          DROP TRIGGER payment_orders_product_metadata_immutable;
+          DROP TRIGGER payment_orders_product_metadata_insert_guard;
+          DROP TRIGGER payment_orders_snapshot_immutable;
+          ALTER TABLE payment_orders RENAME COLUMN product_name TO description;
+          ALTER TABLE payment_orders DROP COLUMN note;
+          ALTER TABLE payment_orders DROP COLUMN note_fingerprint;
+          ALTER TABLE payment_orders DROP COLUMN note_fingerprint_version;
+          ${migrationObjectSql(3, "trigger", "payment_orders_snapshot_immutable")};
+
           DROP TRIGGER ledger_conflict_operations_no_delete;
           DROP TRIGGER ledger_conflict_operations_no_update;
           DROP TRIGGER ledger_conflict_operations_apply;
@@ -1291,7 +1300,7 @@ async function withOrderDatabase(
           idempotency_key: "recovery-idempotency-1",
           merchant_order_no: "recovery-1",
           amount_cents: 10_000,
-          description: "recovery boundary",
+          product_name: "recovery boundary",
         }),
       );
       await operation({

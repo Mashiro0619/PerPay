@@ -537,8 +537,8 @@ function inspectLocalBackupWithIdentity(
       | undefined;
     schemaVersion = Number(schema?.version ?? Number.NaN);
     if (
-      schemaVersion !== DATABASE_COMPATIBILITY.minimum ||
-      schemaVersion !== DATABASE_COMPATIBILITY.maximum
+      schemaVersion < DATABASE_COMPATIBILITY.minimum ||
+      schemaVersion > DATABASE_COMPATIBILITY.maximum
     ) {
       throw new Error(
         `backup schema ${schemaVersion} is outside application compatibility ` +

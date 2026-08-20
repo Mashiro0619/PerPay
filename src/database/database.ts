@@ -32,7 +32,10 @@ import { deriveCheckoutToken, digestCheckoutToken } from "../orders/checkout-tok
 import { fingerprintCollectionCodeProfile } from "../orders/collection-profile.ts";
 import {
   MAX_ORDER_CLOCK_AHEAD_MILLISECONDS,
+  MAX_ORDER_PRODUCT_NAME_BYTES,
+  MAX_ORDER_PRODUCT_NAME_CHARACTERS,
   orderEventDetailsFingerprint,
+  fingerprintOrderNote,
 } from "../orders/model.ts";
 import {
   assertDatabaseMaintenanceIdle,
@@ -2505,6 +2508,31 @@ function countOrderCryptographicDomainViolations(connection: DatabaseSync): numb
   }
 
   let violations = 0;
+  if (columnExists(connection, "payment_orders", "note_fingerprint")) {
+    for (const row of connection
+      .prepare(
+        "SELECT product_name, note, note_fingerprint, note_fingerprint_version FROM payment_orders",
+      )
+      .iterate() as Iterable<{
+        product_name: string | null;
+        note: string | null;
+        note_fingerprint: string | null;
+        note_fingerprint_version: bigint | number | null;
+      }>) {
+      if (
+        row.product_name === null ||
+        row.product_name.trim() === "" ||
+        Array.from(row.product_name).length > MAX_ORDER_PRODUCT_NAME_CHARACTERS ||
+        Buffer.byteLength(row.product_name, "utf8") > MAX_ORDER_PRODUCT_NAME_BYTES ||
+        (row.note !== null && row.note !== row.note.trim()) ||
+        row.note_fingerprint === null ||
+        Number(row.note_fingerprint_version) !== 1 ||
+        row.note_fingerprint !== fingerprintOrderNote(row.note)
+      ) {
+        violations += 1;
+      }
+    }
+  }
   const collectionProfileQuery = tableExists(
     connection,
     "collection_profile_provider_accounts",

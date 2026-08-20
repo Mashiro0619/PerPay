@@ -91,7 +91,8 @@ const order = await perpayRequest("POST", "/api/v1/orders", {
   idempotency_key: "shop-order-20260820-0001", // 重试同一订单必须保持不变
   merchant_order_no: "ORDER-20260820-0001",
   amount_cents: 1000,                            // 10.00 元
-  description: "示例商品",
+  product_name: "示例商品",
+  note: "可选备注",
   // notify_url: "https://shop.example.com/webhooks/perpay", // 可选
 });
 

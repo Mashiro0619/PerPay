@@ -112,7 +112,8 @@ export interface ReconciliationOrderProjection {
   readonly payableAmountCents: number;
   readonly receivedAmountCents: number | null;
   readonly currency: "CNY";
-  readonly description: string | null;
+  readonly productName: string;
+  readonly note: string | null;
   readonly checkoutStatus: "OPEN" | "EXPIRED" | "CLOSED";
   readonly paymentStatus: OrderDecisionRow["payment_status"];
   readonly paymentBasis: OrderDecisionRow["payment_basis"];
@@ -297,6 +298,8 @@ interface ExceptionRow {
 interface OrderDecisionRow {
   readonly order_id: string;
   readonly merchant_order_no: string;
+  readonly product_name: string;
+  readonly note: string | null;
   readonly requested_amount_cents: bigint | number;
   readonly payable_amount_cents: bigint | number;
   readonly received_amount_cents: bigint | number | null;
@@ -333,7 +336,8 @@ interface ReviewOrderRow {
   readonly payable_amount_cents: bigint | number;
   readonly received_amount_cents: bigint | number | null;
   readonly currency: "CNY";
-  readonly description: string | null;
+  readonly product_name: string;
+  readonly note: string | null;
   readonly checkout_status: "OPEN" | "EXPIRED" | "CLOSED";
   readonly payment_status: OrderDecisionRow["payment_status"];
   readonly payment_basis: OrderDecisionRow["payment_basis"];
@@ -1149,7 +1153,7 @@ const REVIEW_LEDGER_COLUMNS = `
 const REVIEW_ORDER_COLUMNS = `
   SELECT order_id, merchant_order_no, requested_amount_cents,
          payable_amount_cents, received_amount_cents, currency,
-         description, checkout_status, payment_status, payment_basis,
+         product_name, note, checkout_status, payment_status, payment_basis,
          refund_status, eligible_from, created_at, expires_at,
          closed_at, updated_at, version
     FROM payment_orders`;
@@ -1316,7 +1320,8 @@ function mapReviewOrder(row: ReviewOrderRow): ReconciliationOrderProjection {
     payableAmountCents: toSafeInteger(row.payable_amount_cents, "payable amount"),
     receivedAmountCents: nullableSafeInteger(row.received_amount_cents, "received amount"),
     currency: row.currency,
-    description: row.description,
+    productName: row.product_name,
+    note: row.note,
     checkoutStatus: row.checkout_status,
     paymentStatus: row.payment_status,
     paymentBasis: row.payment_basis,
@@ -2176,7 +2181,8 @@ function latestMatchContext(connection: DatabaseSync, ledgerEntryId: string): st
 function requireOrderDecision(connection: DatabaseSync, orderId: string): OrderDecisionRow {
   const row = connection
     .prepare(
-      `SELECT order_id, merchant_order_no, requested_amount_cents,
+      `SELECT order_id, merchant_order_no, product_name, note,
+               requested_amount_cents,
               payable_amount_cents, received_amount_cents, currency,
               payment_status, payment_basis, refund_status, updated_at, version
          FROM payment_orders
@@ -2420,6 +2426,8 @@ function insertOutboxEvent(
     financial_operation_id: input.operation.financialOperationId,
     order_id: input.order.order_id,
     merchant_order_no: input.order.merchant_order_no,
+    product_name: input.order.product_name,
+    note: input.order.note,
     requested_amount_cents: toSafeInteger(input.order.requested_amount_cents, "requested amount"),
     payable_amount_cents: toSafeInteger(input.order.payable_amount_cents, "payable amount"),
     received_amount_cents: toSafeInteger(input.order.received_amount_cents, "received amount"),

@@ -2618,7 +2618,7 @@ components:
         - payable_amount_cents
         - received_amount_cents
         - currency
-        - description
+        - product_name
         - checkout
         - payment
         - refund
@@ -2641,7 +2641,7 @@ components:
           minimum: 1
           maximum: 9999999999
         currency: { const: CNY }
-        description: { type: [string, 'null'], maxLength: 200 }
+        product_name: { type: string, minLength: 1, maxLength: 200 }
         checkout: { $ref: '#/components/schemas/CheckoutState' }
         payment: { $ref: '#/components/schemas/PaymentState' }
         refund: { $ref: '#/components/schemas/RefundState' }
@@ -2660,7 +2660,8 @@ components:
         - payable_amount_cents
         - received_amount_cents
         - currency
-        - description
+        - product_name
+        - note
         - checkout
         - payment
         - refund
@@ -2685,7 +2686,8 @@ components:
           minimum: 1
           maximum: 9999999999
         currency: { const: CNY }
-        description: { type: [string, 'null'], maxLength: 200 }
+        product_name: { type: string, minLength: 1, maxLength: 200 }
+        note: { type: [string, 'null'], maxLength: 500 }
         checkout: { $ref: '#/components/schemas/CheckoutState' }
         payment: { $ref: '#/components/schemas/PaymentState' }
         refund: { $ref: '#/components/schemas/RefundState' }
@@ -2736,7 +2738,7 @@ components:
     CreateOrderRequest:
       type: object
       additionalProperties: false
-      required: [idempotency_key, merchant_order_no, amount_cents]
+      required: [idempotency_key, merchant_order_no, amount_cents, product_name]
       properties:
         idempotency_key:
           type: string
@@ -2750,10 +2752,13 @@ components:
           type: integer
           minimum: 1
           maximum: 9999999998
-        description:
+        product_name:
           type: string
           minLength: 1
           maxLength: 200
+        note:
+          type: [string, 'null']
+          maxLength: 500
         notify_url:
           $ref: '#/components/schemas/NotifyUrl'
     AdminTestPaymentRequest:
@@ -2787,7 +2792,8 @@ components:
         - payable_amount_cents
         - received_amount_cents
         - currency
-        - description
+        - product_name
+        - note
         - checkout
         - payment
         - refund
@@ -2805,7 +2811,8 @@ components:
           minimum: 1
           maximum: 9999999999
         currency: { const: CNY }
-        description: { type: [string, 'null'], maxLength: 200 }
+        product_name: { type: string, minLength: 1, maxLength: 200 }
+        note: { type: [string, 'null'], maxLength: 500 }
         checkout:
           $ref: '#/components/schemas/AuthenticatedCheckoutState'
         payment:
@@ -2891,7 +2898,7 @@ components:
             - merchant_order_no
             - requested_amount_cents
             - currency
-            - description
+            - product_name
             - payment_instructions
             - checkout
             - payment
@@ -2900,7 +2907,7 @@ components:
             merchant_order_no: { $ref: '#/components/schemas/MerchantOrderNumber' }
             requested_amount_cents: { type: integer }
             currency: { const: CNY }
-            description: { type: [string, 'null'] }
+            product_name: { type: string, minLength: 1, maxLength: 200 }
             payment_instructions:
               description: >-
                 Present only while checkout status is OPEN and payment status is UNPAID. It is
@@ -3482,7 +3489,8 @@ components:
         - payable_amount_cents
         - received_amount_cents
         - currency
-        - description
+        - product_name
+        - note
         - checkout_status
         - payment_status
         - payment_basis
@@ -3500,7 +3508,8 @@ components:
         payable_amount_cents: { type: integer, minimum: 2, maximum: 9999999999 }
         received_amount_cents: { type: [integer, 'null'], minimum: 1, maximum: 999999999999 }
         currency: { const: CNY }
-        description: { type: [string, 'null'], maxLength: 256 }
+        product_name: { type: string, minLength: 1, maxLength: 200 }
+        note: { type: [string, 'null'], maxLength: 500 }
         checkout_status: { type: string, enum: [OPEN, EXPIRED, CLOSED] }
         payment_status: { type: string, enum: [UNPAID, CONFIRMED, DISPUTED] }
         payment_basis: { type: string, enum: [NONE, INFERRED, MANUAL] }
@@ -3699,7 +3708,15 @@ components:
       type: object
       additionalProperties: true
       x-perpay-max-utf8-bytes: 131072
-      required: [schema, event_id, event_type, order_id, order_version]
+      required:
+        - schema
+        - event_id
+        - event_type
+        - order_id
+        - merchant_order_no
+        - product_name
+        - note
+        - order_version
       properties:
         schema:
           type: string
@@ -3712,6 +3729,8 @@ components:
           $ref: '#/components/schemas/ResourceId'
         order_id: { $ref: '#/components/schemas/ResourceId' }
         merchant_order_no: { $ref: '#/components/schemas/MerchantOrderNumber' }
+        product_name: { type: string, minLength: 1, maxLength: 200 }
+        note: { type: [string, 'null'], maxLength: 500 }
         requested_amount_cents: { type: integer, minimum: 1, maximum: 9999999998 }
         payable_amount_cents: { type: integer, minimum: 2, maximum: 9999999999 }
         received_amount_cents: { type: integer, minimum: 1, maximum: 9999999999 }

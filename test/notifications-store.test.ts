@@ -417,6 +417,7 @@ async function withWebhookContext(
       idempotency_key: "webhook-store-idempotency",
       merchant_order_no: "webhook-store-order",
       amount_cents: 999,
+      product_name: "webhook-store-order",
       notify_url: TARGET_URL,
     });
     const created = orders.createOrder({
@@ -502,6 +503,7 @@ function createOrderWithoutWebhook(database: AppDatabase): StoredOrderAggregate 
     idempotency_key: "webhook-store-no-target-idempotency",
     merchant_order_no: "webhook-store-no-target-order",
     amount_cents: 899,
+    product_name: "webhook-store-no-target-order",
   });
   const created = new OrderStore(database, () => DELIVERY_TIME + 10_000).createOrder({
     apiClientId: API_CLIENT_ID,

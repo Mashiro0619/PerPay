@@ -414,6 +414,7 @@ async function withHttpFixture(
         idempotency_key: `http-idem-${suffix}-${orderSequence}`,
         merchant_order_no: `http-merchant-${suffix}-${orderSequence}`,
         amount_cents: requestedAmountCents,
+        product_name: `http-merchant-${suffix}-${orderSequence}`,
       })).order;
     };
     const record = (

@@ -98,7 +98,7 @@ describe("administrator test payment HTTP contract", () => {
       assert.equal(createdBody.data.merchant_order_no, `test-${TEST_PAYMENT_ID}`);
       assert.equal(createdBody.data.requested_amount_cents, 100);
       assert.ok(createdBody.data.payable_amount_cents >= 100);
-      assert.equal(createdBody.data.description, "配置测试支付（真实收款）");
+      assert.equal(createdBody.data.product_name, "配置测试支付（真实收款）");
       assert.equal(createdBody.data.payment.status, "UNPAID");
       assert.equal(createdBody.data.notification.notify_url, null);
       assert.match(createdBody.data.checkout.checkout_url, /^http:\/\/localhost:6190\/checkout\//);
@@ -141,7 +141,7 @@ interface TestPaymentResponse {
   readonly merchant_order_no: string;
   readonly requested_amount_cents: number;
   readonly payable_amount_cents: number;
-  readonly description: string | null;
+  readonly product_name: string;
   readonly checkout: {
     readonly checkout_url: string;
     readonly state_url: string;

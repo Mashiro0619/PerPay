@@ -4091,4 +4091,92 @@ export const migrations: readonly Migration[] = [
       END;
     `,
   },
+  {
+    version: 16,
+    name: "order_product_name_and_note",
+    sql: `
+      ALTER TABLE payment_orders RENAME COLUMN description TO product_name;
+      ALTER TABLE payment_orders ADD COLUMN note TEXT;
+      ALTER TABLE payment_orders ADD COLUMN note_fingerprint TEXT;
+      ALTER TABLE payment_orders ADD COLUMN note_fingerprint_version INTEGER;
+
+      DROP TRIGGER payment_orders_snapshot_immutable;
+      DROP TRIGGER payment_orders_version_step;
+      DROP TRIGGER payment_orders_checkout_transition;
+
+      UPDATE payment_orders
+         SET product_name = merchant_order_no
+       WHERE product_name IS NULL OR trim(product_name) = '';
+
+      UPDATE payment_orders
+         SET note = NULL,
+             note_fingerprint = 'c7b0d19e058e6aacb782339fcc3b8a3e2f72223adb7af8dbe46ae910b85a666d',
+             note_fingerprint_version = 1;
+
+      CREATE TRIGGER payment_orders_snapshot_immutable
+      BEFORE UPDATE OF
+        order_id, api_client_id, merchant_order_no, idempotency_key_digest,
+        idempotency_key_digest_version,
+        request_fingerprint, request_fingerprint_version, requested_amount_cents,
+        payable_amount_cents, allocation_offset_max_cents, currency, product_name,
+        collection_profile_id, eligible_from, created_at, expires_at
+      ON payment_orders
+      BEGIN
+        SELECT RAISE(ABORT, 'order request and collection snapshot are immutable');
+      END;
+
+      CREATE TRIGGER payment_orders_version_step
+      BEFORE UPDATE ON payment_orders
+      WHEN NEW.version != OLD.version + 1
+      BEGIN
+        SELECT RAISE(ABORT, 'order version must advance exactly once');
+      END;
+
+      CREATE TRIGGER payment_orders_checkout_transition
+      BEFORE UPDATE OF checkout_status ON payment_orders
+      WHEN
+        NEW.checkout_status != OLD.checkout_status AND
+        NOT (
+          OLD.checkout_status = 'OPEN' AND
+          NEW.checkout_status IN ('EXPIRED', 'CLOSED')
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'checkout status transition is invalid');
+      END;
+
+      CREATE TRIGGER payment_orders_product_metadata_insert_guard
+      BEFORE INSERT ON payment_orders
+      WHEN NEW.product_name IS NULL OR
+           NEW.product_name != trim(NEW.product_name) OR
+           trim(NEW.product_name) = '' OR
+           length(NEW.product_name) > 200 OR
+           length(CAST(NEW.product_name AS BLOB)) > 800 OR
+           (NEW.note IS NOT NULL AND (
+             trim(NEW.note) = '' OR
+             NEW.note != trim(NEW.note) OR
+             length(NEW.note) > 500 OR
+             length(CAST(NEW.note AS BLOB)) > 2000 OR
+             NEW.note_fingerprint IS NULL OR
+             NEW.note_fingerprint_version != 1 OR
+             length(NEW.note_fingerprint) != 64 OR
+             NEW.note_fingerprint GLOB '*[^0-9a-f]*'
+           )) OR
+           NEW.note IS NULL AND (
+             NEW.note_fingerprint IS NULL OR
+             NEW.note_fingerprint_version != 1 OR
+             length(NEW.note_fingerprint) != 64 OR
+             NEW.note_fingerprint GLOB '*[^0-9a-f]*'
+           )
+      BEGIN
+        SELECT RAISE(ABORT, 'order product metadata is invalid');
+      END;
+
+      CREATE TRIGGER payment_orders_product_metadata_immutable
+      BEFORE UPDATE OF product_name, note, note_fingerprint, note_fingerprint_version
+      ON payment_orders
+      BEGIN
+        SELECT RAISE(ABORT, 'order product metadata is immutable');
+      END;
+    `,
+  },
 ] as const;

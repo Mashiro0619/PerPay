@@ -248,6 +248,7 @@ function createSchemaElevenCheckoutDatabase(databasePath: string): {
       idempotency_key: "schema-11-checkout",
       merchant_order_no: "schema-11-checkout",
       amount_cents: 1_000,
+      product_name: "schema-11-checkout",
     });
     const detailsJson = '{"amount_offset_cents":1,"slot_generation":1}';
 
@@ -369,6 +370,7 @@ function createStoredOrderInput(
     idempotency_key: idempotencyKey,
     merchant_order_no: merchantOrderNumber,
     amount_cents: amountCents,
+    product_name: merchantOrderNumber,
   });
   return {
     apiClientId: API_CLIENT_ID,

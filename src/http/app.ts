@@ -634,7 +634,8 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         idempotency_key: `admin-test-payment:${body.test_payment_id}`,
         merchant_order_no: `test-${body.test_payment_id}`,
         amount_cents: body.amount_cents,
-        description: "配置测试支付（真实收款）",
+        product_name: "配置测试支付（真实收款）",
+        note: null,
       }, () => requirePaymentBackgroundReady(dependencies));
       try {
         dependencies.onOrderAvailable?.(result.order.orderId);
@@ -2640,7 +2641,7 @@ function serializeAdminOrderSummary(order: AdminOrderSummaryProjection) {
     payable_amount_cents: order.payableAmountCents,
     received_amount_cents: order.receivedAmountCents,
     currency: order.currency,
-    description: order.description,
+    product_name: order.productName,
     checkout: {
       status: order.checkout.status,
       expires_at: new Date(order.checkout.expiresAt).toISOString(),
@@ -2662,6 +2663,7 @@ function serializeAdminOrderSummary(order: AdminOrderSummaryProjection) {
 function serializeAdminOrderDetail(order: AdminOrderDetailProjection) {
   return {
     ...serializeAdminOrderSummary(order),
+    note: order.note,
     notification: { notify_url: order.notification.notifyUrl },
     events: order.events.map((event) => ({
       event_id: event.eventId,
@@ -2681,7 +2683,8 @@ function serializeOrder(order: OrderProjection, publicOrigin: string) {
     payable_amount_cents: order.payableAmountCents,
     received_amount_cents: order.receivedAmountCents,
     currency: order.currency,
-    description: order.description,
+    product_name: order.productName,
+    note: order.note,
     checkout: {
       status: order.checkout.status,
       token: order.checkoutToken,
@@ -2803,7 +2806,7 @@ function serializePublicCheckout(checkout: PublicCheckoutProjection) {
     merchant_order_no: checkout.merchantOrderNo,
     requested_amount_cents: checkout.requestedAmountCents,
     currency: checkout.currency,
-    description: checkout.description,
+    product_name: checkout.productName,
     payment_instructions:
       checkout.paymentInstructions === null
         ? null
@@ -2901,7 +2904,8 @@ function serializeReconciliationOrder(order: ReconciliationOrderProjection) {
     payable_amount_cents: order.payableAmountCents,
     received_amount_cents: order.receivedAmountCents,
     currency: order.currency,
-    description: order.description,
+    product_name: order.productName,
+    note: order.note,
     checkout_status: order.checkoutStatus,
     payment_status: order.paymentStatus,
     payment_basis: order.paymentBasis,

@@ -424,6 +424,7 @@ function orderRequest(key: string, amountCents: number, notifyUrl?: string) {
     idempotency_key: `${key}-idempotency`,
     merchant_order_no: key,
     amount_cents: amountCents,
+    product_name: key,
     ...(notifyUrl === undefined ? {} : { notify_url: notifyUrl }),
   });
 }

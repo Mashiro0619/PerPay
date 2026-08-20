@@ -306,9 +306,9 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
             <dt>订单号</dt>
             <dd class="checkout-mono" data-merchant-order-no>${escapeHtml(checkout?.merchantOrderNo ?? "-")}</dd>
           </div>
-          <div data-description-row${hiddenAttribute(checkout?.description === null || checkout?.description === undefined)}>
-            <dt>订单说明</dt>
-            <dd data-description>${escapeHtml(checkout?.description ?? "")}</dd>
+          <div data-product-name-row${hiddenAttribute(!checkout?.productName)}>
+            <dt>商品名称</dt>
+            <dd data-product-name>${escapeHtml(checkout?.productName ?? "")}</dd>
           </div>
           <div>
             <dt>原始金额</dt>

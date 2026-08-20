@@ -33,6 +33,7 @@ const legacyRequest: CreateOrderRequest = Object.freeze({
   idempotency_key: "legacy-idempotency-key",
   merchant_order_no: "legacy-order",
   amount_cents: 1_000,
+  product_name: "legacy-order",
   notify_url: LEGACY_NOTIFY_URL,
 });
 const legacyWebhookTarget = prepareWebhookTarget(
@@ -73,7 +74,7 @@ describe("fixed account namespace migration", () => {
       assert.equal(state.orderClient.api_client_id, API_CLIENT_ID);
       assert.equal(state.webhookClient.api_client_id, API_CLIENT_ID);
       assert.equal(state.legacyReferences, 0);
-      assert.equal(state.schemaVersion, 15);
+      assert.equal(state.schemaVersion, 16);
       assert.equal(database.integrityCheck().ok, true);
       const historicalOrder = new OrderStore(database).orderById(
         API_CLIENT_ID,

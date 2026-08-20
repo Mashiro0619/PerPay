@@ -8,6 +8,8 @@ import {
   MAX_REQUESTED_AMOUNT_CENTS,
   MAX_ORDER_CLOCK_AHEAD_MILLISECONDS,
   digestIdempotencyKey,
+  fingerprintOrderNote,
+  ORDER_NOTE_FINGERPRINT_VERSION,
   orderEventDetailsFingerprint,
   type AdminOrderCursor,
   type AdminOrderFilters,
@@ -318,6 +320,7 @@ export class OrderStore {
           idempotent.order.requestFingerprint !== input.requestFingerprint ||
           idempotent.order.requestFingerprintVersion !==
             CREATE_ORDER_REQUEST_FINGERPRINT_VERSION ||
+          idempotent.order.noteFingerprint !== fingerprintOrderNote(input.request.note ?? null) ||
           !sameWebhookTargetRequest(
             idempotent.webhookTarget,
             input.webhookTarget ?? null,
@@ -354,6 +357,7 @@ export class OrderStore {
           migratedReplay.order.requestFingerprint !== input.requestFingerprint ||
           migratedReplay.order.requestFingerprintVersion !==
             CREATE_ORDER_REQUEST_FINGERPRINT_VERSION ||
+          migratedReplay.order.noteFingerprint !== fingerprintOrderNote(input.request.note ?? null) ||
           !sameWebhookTargetRequest(
             migratedReplay.webhookTarget,
             input.webhookTarget ?? null,
@@ -424,11 +428,12 @@ export class OrderStore {
              webhook_target_request_fingerprint,
              requested_amount_cents, payable_amount_cents,
              allocation_offset_max_cents, received_amount_cents, currency,
-             description, collection_profile_id, checkout_status, payment_status,
+             product_name, note, note_fingerprint, note_fingerprint_version,
+             collection_profile_id, checkout_status, payment_status,
              refund_status, payment_basis, eligible_from, created_at, expires_at,
              closed_at, updated_at, version
            ) VALUES (
-             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'CNY', ?, ?,
+             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'CNY', ?, ?, ?, ?, ?,
              'OPEN', 'UNPAID', 'NONE', 'NONE', ?, ?, ?, NULL, ?, 1
            )`,
         )
@@ -444,7 +449,10 @@ export class OrderStore {
           input.request.amount_cents,
           allocation.payableAmountCents,
           input.amountOffsetMaximumCents,
-          input.request.description ?? null,
+          input.request.product_name,
+          input.request.note ?? null,
+          fingerprintOrderNote(input.request.note ?? null),
+          ORDER_NOTE_FINGERPRINT_VERSION,
           profile.profileId,
           now,
           now,
@@ -982,7 +990,10 @@ type AggregateRow = {
   allocation_offset_max_cents: bigint | number;
   received_amount_cents: bigint | number | null;
   currency: "CNY";
-  description: string | null;
+  product_name: string;
+  note: string | null;
+  note_fingerprint: string;
+  note_fingerprint_version: bigint | number;
   collection_profile_id: string;
   checkout_status: CheckoutStatus;
   payment_status: PaymentStatus;
@@ -1030,7 +1041,10 @@ const AGGREGATE_SELECT = `
     orders.allocation_offset_max_cents,
     orders.received_amount_cents,
     orders.currency,
-    orders.description,
+    orders.product_name,
+    orders.note,
+    orders.note_fingerprint,
+    orders.note_fingerprint_version,
     orders.collection_profile_id,
     orders.checkout_status,
     orders.payment_status,
@@ -1288,6 +1302,16 @@ function mapAggregate(row: AggregateRow): Omit<StoredOrderAggregate, "checkoutTo
   if (fingerprintVersion !== CREATE_ORDER_REQUEST_FINGERPRINT_VERSION) {
     throw new Error(`unsupported request fingerprint version ${fingerprintVersion}`);
   }
+  const noteFingerprintVersion = toSafeInteger(
+    row.note_fingerprint_version,
+    "order note fingerprint version",
+  );
+  if (noteFingerprintVersion !== ORDER_NOTE_FINGERPRINT_VERSION) {
+    throw new Error(`unsupported order note fingerprint version ${noteFingerprintVersion}`);
+  }
+  if (row.note_fingerprint !== fingerprintOrderNote(row.note)) {
+    throw new Error("order note fingerprint does not match its note");
+  }
   const order: PaymentOrder = {
     orderId: row.order_id,
     apiClientId: row.api_client_id,
@@ -1304,7 +1328,9 @@ function mapAggregate(row: AggregateRow): Omit<StoredOrderAggregate, "checkoutTo
     ),
     receivedAmountCents: nullableSafeInteger(row.received_amount_cents, "received amount"),
     currency: row.currency,
-    description: row.description,
+    productName: row.product_name,
+    note: row.note,
+    noteFingerprint: row.note_fingerprint,
     collectionProfileId: row.collection_profile_id,
     checkoutStatus: row.checkout_status,
     paymentStatus: row.payment_status,

@@ -985,6 +985,7 @@ describe("order HTTP contract", () => {
       idempotency_key: "first-scan-gate",
       merchant_order_no: "first-scan-gate",
       amount_cents: 1_000,
+      product_name: "first-scan-gate",
     }));
     const target = "/api/v1/orders";
     let collectionNow = 1_700_000_001_000;
@@ -1093,8 +1094,9 @@ describe("order HTTP contract", () => {
       collectionConsecutiveFailures = 4;
       const staleRequestBody = Buffer.from(JSON.stringify({
         idempotency_key: "stale-scan-gate",
-        merchant_order_no: "stale-scan-gate",
-        amount_cents: 2_000,
+         merchant_order_no: "stale-scan-gate",
+         amount_cents: 2_000,
+         product_name: "stale-scan-gate",
       }));
       const staleCreate = await ready.request(target, {
         method: "POST",
@@ -1129,6 +1131,7 @@ describe("order HTTP contract", () => {
         idempotency_key: "reconciliation-readiness-gate",
         merchant_order_no: "reconciliation-readiness-gate",
         amount_cents: 3_000,
+        product_name: "reconciliation-readiness-gate",
       }));
       reconciliationState = "degraded";
       reconciliationLastSuccessAt = null;
@@ -1167,6 +1170,7 @@ describe("order HTTP contract", () => {
         idempotency_key: "reconciliation-stopped-gate",
         merchant_order_no: "reconciliation-stopped-gate",
         amount_cents: 4_000,
+        product_name: "reconciliation-stopped-gate",
       }));
       const stopped = await ready.request(target, {
         method: "POST",
@@ -1202,6 +1206,7 @@ describe("order HTTP contract", () => {
         idempotency_key: "terminal-checkout-readiness",
         merchant_order_no: "terminal-checkout-readiness",
         amount_cents: 5_000,
+        product_name: "terminal-checkout-readiness",
       }).order;
       orders.close(terminal.orderId);
       const terminalResponse = await ready.request(
@@ -1278,6 +1283,7 @@ describe("order HTTP contract", () => {
           idempotency_key: "storage-core-gate",
           merchant_order_no: "storage-core-gate",
           amount_cents: 1_000,
+          product_name: "storage-core-gate",
         }));
         const storageCreate = await ready.request(target, {
           method: "POST",
@@ -1319,8 +1325,9 @@ describe("order HTTP contract", () => {
 
       const unsafeRequestBody = Buffer.from(JSON.stringify({
         idempotency_key: "unsafe-core-gate",
-        merchant_order_no: "unsafe-core-gate",
-        amount_cents: 1_000,
+         merchant_order_no: "unsafe-core-gate",
+         amount_cents: 1_000,
+         product_name: "unsafe-core-gate",
       }));
       const unsafeCreate = await ready.request(target, {
         method: "POST",
@@ -1367,7 +1374,8 @@ describe("order HTTP contract", () => {
           idempotency_key: "http-order-attempt-1",
           merchant_order_no: "http-order-1",
           amount_cents: 1_000,
-          description: "HTTP contract",
+          product_name: "HTTP contract",
+          note: "内部订单备注",
         }),
         "utf8",
       );
@@ -1383,7 +1391,9 @@ describe("order HTTP contract", () => {
       const createdBody = (await created.json()) as {
         data: {
           order_id: string;
-          merchant_order_no: string;
+           merchant_order_no: string;
+           product_name: string;
+           note: string | null;
           requested_amount_cents: number;
           payable_amount_cents: number;
           checkout: { token: string; state_url: string; checkout_url: string; status: string };
@@ -1391,6 +1401,8 @@ describe("order HTTP contract", () => {
       };
       assert.match(createdBody.data.order_id, /^[0-9a-f-]{36}$/);
       assert.equal(createdBody.data.merchant_order_no, "http-order-1");
+      assert.equal(createdBody.data.product_name, "HTTP contract");
+      assert.equal(createdBody.data.note, "内部订单备注");
       assert.equal(createdBody.data.requested_amount_cents, 1_000);
       assert.equal(createdBody.data.payable_amount_cents, 1_001);
       assert.match(createdBody.data.checkout.token, /^pct1_[A-Za-z0-9_-]{43}$/);
@@ -1443,6 +1455,7 @@ describe("order HTTP contract", () => {
       assert.equal(publicText.includes(apiSecret), false);
       const publicBody = JSON.parse(publicText) as {
         data: {
+          product_name: string;
           payment_instructions: {
             payable_amount_cents: number;
             collection_code_payload: string;
@@ -1454,6 +1467,8 @@ describe("order HTTP contract", () => {
         publicBody.data.payment_instructions?.collection_code_payload,
         collectionCodePayload,
       );
+      assert.equal(publicBody.data.product_name, "HTTP contract");
+      assert.equal(Object.hasOwn(publicBody.data, "note"), false);
       assert.equal(publicBody.data.payment_instructions?.payable_amount_cents, 1_001);
       assert.equal(publicBody.data.checkout.status, "OPEN");
 
@@ -1542,6 +1557,7 @@ describe("order HTTP contract", () => {
           idempotency_key: "http-order-attempt-2",
           merchant_order_no: "http-order-2",
           amount_cents: 1_000,
+          product_name: "HTTP contract 2",
         }),
       );
       const replacement = await app.request(target, {
@@ -1598,6 +1614,7 @@ describe("order HTTP contract", () => {
           idempotency_key: "http-conflict-key",
           merchant_order_no: "http-conflict-order",
           amount_cents: 100,
+          product_name: "HTTP conflict",
         }),
       );
       const first = await app.request(target, {
@@ -1615,6 +1632,7 @@ describe("order HTTP contract", () => {
           idempotency_key: "http-conflict-key",
           merchant_order_no: "http-conflict-order",
           amount_cents: 101,
+          product_name: "HTTP conflict",
         }),
       );
       const conflict = await app.request(target, {

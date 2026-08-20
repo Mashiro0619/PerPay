@@ -14,7 +14,7 @@ const checkout = Object.freeze({
   merchantOrderNo: "merchant-order-1",
   requestedAmountCents: 1_000,
   currency: "CNY",
-  description: "测试订单",
+  productName: "测试订单",
   paymentInstructions: Object.freeze({
     payableAmountCents: 1_001,
     currency: "CNY",
@@ -75,7 +75,7 @@ describe("public checkout renderer", () => {
     const hostileCheckout: PublicCheckoutProjection = {
       ...checkout,
       merchantOrderNo: `order"><script>alert(1)</script>`,
-      description: `</dd><img src=x onerror="alert(1)"> & 'quoted'`,
+      productName: `</dd><img src=x onerror="alert(1)"> & 'quoted'`,
     };
     const html = renderCheckoutPage({
       checkoutToken: `pct1_"><script>alert(2)</script>`,

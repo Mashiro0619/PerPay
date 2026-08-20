@@ -340,8 +340,8 @@
     setStatus(visualState, stateCopy[visualState]);
 
     setText(root.querySelector("[data-merchant-order-no]"), checkout.merchant_order_no);
-    setText(root.querySelector("[data-description]"), checkout.description ?? "");
-    setHidden(root.querySelector("[data-description-row]"), checkout.description === null);
+    setText(root.querySelector("[data-product-name]"), checkout.product_name);
+    setHidden(root.querySelector("[data-product-name-row]"), !checkout.product_name);
     setText(
       root.querySelector("[data-requested-amount]"),
       formatMoney(checkout.requested_amount_cents, checkout.currency),
@@ -717,7 +717,7 @@
     if (!value || typeof value !== "object") return false;
     if (typeof value.merchant_order_no !== "string" || value.merchant_order_no.length === 0) return false;
     if (!isAmount(value.requested_amount_cents) || value.currency !== "CNY") return false;
-    if (value.description !== null && typeof value.description !== "string") return false;
+    if (typeof value.product_name !== "string" || value.product_name.length === 0) return false;
     if (!value.checkout || !["OPEN", "CLOSED", "EXPIRED"].includes(value.checkout.status)) return false;
     if (typeof value.checkout.expires_at !== "string" || !Number.isFinite(Date.parse(value.checkout.expires_at))) return false;
     if (!value.payment || !["UNPAID", "CONFIRMED", "DISPUTED"].includes(value.payment.status)) return false;

@@ -230,7 +230,7 @@ export class OrderService {
       merchantOrderNo: aggregate.order.merchantOrderNo,
       requestedAmountCents: aggregate.order.requestedAmountCents,
       currency: aggregate.order.currency,
-      description: aggregate.order.description,
+      productName: aggregate.order.productName,
       paymentInstructions:
         aggregate.order.checkoutStatus === "OPEN" && aggregate.order.paymentStatus === "UNPAID"
           ? {
@@ -253,7 +253,8 @@ export class OrderService {
       payableAmountCents: aggregate.order.payableAmountCents,
       receivedAmountCents: aggregate.order.receivedAmountCents,
       currency: aggregate.order.currency,
-      description: aggregate.order.description,
+      productName: aggregate.order.productName,
+      note: aggregate.order.note,
       checkoutToken: aggregate.checkoutToken,
       checkout: checkoutProjection(aggregate),
       payment: paymentProjection(aggregate),
@@ -276,7 +277,7 @@ export class OrderService {
       payableAmountCents: aggregate.order.payableAmountCents,
       receivedAmountCents: aggregate.order.receivedAmountCents,
       currency: aggregate.order.currency,
-      description: aggregate.order.description,
+      productName: aggregate.order.productName,
       checkout: checkoutProjection(aggregate),
       payment: paymentProjection(aggregate),
       refund: { status: aggregate.order.refundStatus },
@@ -290,6 +291,7 @@ export class OrderService {
   #projectAdminOrderDetail(aggregate: StoredAdminOrderDetail): AdminOrderDetailProjection {
     return {
       ...this.#projectAdminOrder(aggregate),
+      note: aggregate.order.note,
       notification: { notifyUrl: aggregate.webhookTarget?.targetUrl ?? null },
       events: aggregate.events,
     };

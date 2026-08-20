@@ -93,6 +93,7 @@ describe("notification HTTP contract", () => {
         idempotency_key: "notifications-http-normalized-url-limit",
         merchant_order_no: "notifications-http-normalized-url-limit",
         amount_cents: 20_001,
+        product_name: "notifications-http-normalized-url-limit",
         notify_url: `${ALLOWED_ORIGIN}/${"\u4f60".repeat(1_300)}`,
       }), "utf8");
       const response = await fixture.app.request(target, {
@@ -448,6 +449,7 @@ async function createHttpOrder(
     idempotency_key: `notifications-http-idempotency-${suffix}`,
     merchant_order_no: `notifications-http-order-${suffix}`,
     amount_cents: amountCents,
+    product_name: `notifications-http-order-${suffix}`,
     notify_url: notifyUrl,
   }), "utf8");
   const response = await app.request(target, {

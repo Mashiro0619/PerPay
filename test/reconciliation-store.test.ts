@@ -737,6 +737,7 @@ function createOrder(store: OrderStore, suffix: string, requestedAmountCents: nu
     idempotency_key: `idem-${suffix}`,
     merchant_order_no: `merchant-${suffix}`,
     amount_cents: requestedAmountCents,
+    product_name: `merchant-${suffix}`,
   });
   const result = store.createOrder({
     apiClientId: API_CLIENT_ID,
