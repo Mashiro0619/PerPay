@@ -57,11 +57,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Close,
+  ContentCopyOutlined,
   DarkModeOutlined,
   ErrorOutlined,
   FilterAltOutlined,
   HistoryOutlined,
   InboxOutlined,
+  IntegrationInstructionsOutlined,
   LightModeOutlined,
   Logout,
   Menu as MenuIcon,
@@ -246,6 +248,28 @@ function Code({ children }: { readonly children: ReactNode }) {
 
 function JsonBlock({ value }: { readonly value: unknown }) {
   return <Box component="pre" sx={{ m: 0, p: 1.5, maxHeight: 360, overflow: "auto", bgcolor: "action.hover", border: 1, borderColor: "divider", fontFamily: MONO, fontSize: 12, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{safeJson(value)}</Box>;
+}
+
+function CopyableCode({ label, value }: { readonly label: string; readonly value: string }) {
+  const { setToast } = useAdmin();
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await copyText(value);
+      setCopied(true);
+      setToast("代码已复制", "success");
+      window.setTimeout(() => setCopied(false), 1400);
+    } catch (caught) {
+      setToast(errorMessage(caught), "error");
+    }
+  };
+  return <Paper variant="outlined" sx={{ overflow: "hidden" }}>
+    <Stack direction="row" spacing={1} sx={{ px: 1.5, py: 1, alignItems: "center", justifyContent: "space-between", bgcolor: "action.hover", borderBottom: 1, borderColor: "divider" }}>
+      <Typography variant="caption" sx={{ fontWeight: 700 }}>{label}</Typography>
+      <Button size="small" variant="text" startIcon={<ContentCopyOutlined fontSize="small" />} onClick={() => void copy()}>{copied ? "已复制" : "复制"}</Button>
+    </Stack>
+    <Box component="pre" sx={{ m: 0, p: { xs: 1.5, sm: 2 }, overflow: "auto", maxHeight: 520, fontFamily: MONO, fontSize: { xs: 11.5, sm: 12.5 }, lineHeight: 1.65, whiteSpace: "pre", color: "text.primary" }}>{value}</Box>
+  </Paper>;
 }
 
 function Section({ title, children }: { readonly title: string; readonly children: ReactNode }) {
@@ -435,6 +459,7 @@ function LoginPage() {
 const NAV_ITEMS = [
   ["/admin", "系统状态", <AccountBalanceWalletOutlined key="overview" />],
   ["/admin/test-payment", "测试支付", <PaymentsOutlined key="test-payment" />],
+  ["/admin/integration", "网站接入", <IntegrationInstructionsOutlined key="integration" />],
   ["/admin/orders", "订单", <ReceiptLongOutlined key="orders" />],
   ["/admin/exceptions", "异常处理", <ReportProblemOutlined key="exceptions" />],
   ["/admin/settlements", "结算历史", <HistoryOutlined key="settlements" />],
@@ -573,6 +598,7 @@ function AdminApplication({ mode, onModeChange }: { readonly mode: PaletteMode; 
 function AdminRoute({ path }: { readonly path: string }) {
   if (path === "/admin") return <OverviewPage />;
   if (path === "/admin/test-payment") return <TestPaymentPage />;
+  if (path === "/admin/integration") return <IntegrationPage />;
   if (path === "/admin/orders") return <OrdersPage />;
   if (path === "/admin/exceptions") return <ExceptionsPage />;
   if (path === "/admin/settlements") return <SettlementsPage />;
@@ -581,6 +607,173 @@ function AdminRoute({ path }: { readonly path: string }) {
   if (path === "/admin/settings") return <SettingsPage />;
   if (path === "/admin/security") return <SecurityPage />;
   return <><PageHeader title="页面不存在" description="请求的后台页面不存在。" /><EmptyState title="404" message="请从左侧导航选择页面。" /></>;
+}
+
+function IntegrationPage() {
+  const apiBase = location.origin;
+  const signedRequestCode = [
+    'import { createHash, createHmac, randomBytes } from "node:crypto";',
+    "",
+    `const perpayUrl = process.env.PERPAY_URL ?? ${JSON.stringify(apiBase)};`,
+    'const clientId = "default";',
+    'const secret = Buffer.from(process.env.PERPAY_API_SECRET, "base64url");',
+    "",
+    "async function perpayRequest(method, target, data) {",
+    '  const body = data === undefined ? Buffer.alloc(0) : Buffer.from(JSON.stringify(data));',
+    '  const timestamp = String(Math.floor(Date.now() / 1000));',
+    '  const nonce = randomBytes(32).toString("base64url");',
+    '  const bodyDigest = createHash("sha256").update(body).digest("hex");',
+    '  const signingText = [',
+    '    "PERPAY-HMAC-SHA256", "v1", method.toUpperCase(), target,',
+    '    timestamp, nonce, clientId, bodyDigest,',
+    '  ].join("\\n");',
+    '  const signature = createHmac("sha256", secret).update(signingText).digest("hex");',
+    '  const response = await fetch(new URL(target, perpayUrl), {',
+    '    method,',
+    '    headers: {',
+    '      "content-type": "application/json",',
+    '      "x-perpay-client-id": clientId,',
+    '      "x-perpay-timestamp": timestamp,',
+    '      "x-perpay-nonce": nonce,',
+    '      "x-perpay-signature-version": "v1",',
+    '      "x-perpay-signature": signature,',
+    '    },',
+    '    body: body.length === 0 ? undefined : body,',
+    '  });',
+    '  const result = await response.json();',
+    '  if (!response.ok) throw new Error(`PerPay ${response.status}: ${JSON.stringify(result)}`);',
+    '  return result.data;',
+    "}",
+  ].join("\n");
+  const createOrderCode = [
+    'const order = await perpayRequest("POST", "/api/v1/orders", {',
+    '  idempotency_key: `shop-${yourOrderId}`,',
+    '  merchant_order_no: String(yourOrderNo),',
+    '  amount_cents: 1000, // 10.00 元',
+    '  description: "商品名称",',
+    '  notify_url: "https://shop.example.com/webhooks/perpay",',
+    '});',
+    "",
+    '// 将地址返回给浏览器，或由服务端直接 302 跳转。',
+    'return Response.redirect(order.checkout.checkout_url, 303);',
+  ].join("\n");
+  const webhookCode = [
+    'import { createHash, createHmac } from "node:crypto";',
+    "",
+    'const rawBody = await request.arrayBuffer(); // 先取原始请求体，再解析 JSON',
+    'const body = Buffer.from(rawBody);',
+    'const version = request.headers.get("x-perpay-webhook-version");',
+    'const keyId = request.headers.get("x-perpay-webhook-key-id");',
+    'const timestamp = request.headers.get("x-perpay-webhook-timestamp");',
+    'const deliveryId = request.headers.get("x-perpay-webhook-delivery-id");',
+    'const eventId = request.headers.get("x-perpay-webhook-event-id");',
+    'const attempt = request.headers.get("x-perpay-webhook-attempt");',
+    'if (version !== "1" || !keyId || !timestamp || !deliveryId || !eventId || !attempt) {',
+    '  return new Response("invalid webhook headers", { status: 400 });',
+    '}',
+    'const webhookSecret = loadWebhookSecret(keyId); // 同时保留当前和历史密钥',
+    'if (!webhookSecret) return new Response("unknown key", { status: 401 });',
+    'const bodyDigest = createHash("sha256").update(body).digest("hex");',
+    'const signingText = [',
+    '  "perpay:webhook:v1", keyId, timestamp, deliveryId, eventId, attempt, bodyDigest,',
+    '].join("\\n");',
+    'const expected = `v1=${createHmac("sha256", webhookSecret)',
+    '  .update(signingText, "utf8").digest("hex")}`;',
+    'if (request.headers.get("x-perpay-webhook-signature") !== expected) {',
+    '  return new Response("invalid signature", { status: 401 });',
+    '}',
+    'const event = JSON.parse(body.toString("utf8"));',
+    '// 以 event_id 做幂等键；重复通知直接返回同一个 ACK。',
+    'return Response.json({ schema: "perpay:webhook-ack:v1", ack: true, event_id: eventId, delivery_id: deliveryId });',
+  ].join("\n");
+  return <Box sx={{ width: "100%", maxWidth: 1160, mx: "auto" }}>
+    <PageHeader title="网站接入" description="把你的商城、会员系统或 API 服务接入 PerPay，创建订单并接收付款结果。" actions={<Button component="a" href="/admin/settings?section=api" variant="outlined" startIcon={<SettingsOutlined />}>生成 API 密钥</Button>} />
+    <Alert severity="info" sx={{ mb: 3.5 }}>
+      <Typography sx={{ fontWeight: 700 }}>只在网站后端调用</Typography>
+      <Typography variant="body2" sx={{ mt: 0.375 }}>API 密钥和通知密钥属于服务端凭据，不能放入浏览器 JavaScript、移动端包或公开代码。当前服务地址是 <Code>{apiBase}</Code>。</Typography>
+    </Alert>
+
+    <Section title="接入流程">
+      <Paper variant="outlined" sx={{ p: { xs: 2, sm: 2.5 } }}>
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(4, minmax(0, 1fr))" }, gap: 2 }}>
+          {[
+            ["1", "生成凭据", "在“设置 → API”生成 default 客户端密钥。"],
+            ["2", "服务端签名", "按下方规则签名后调用订单接口。"],
+            ["3", "跳转付款", "把 checkout_url 交给付款人打开。"],
+            ["4", "接收结果", "用通知或查询确认订单状态。"],
+          ].map(([number, title, description]) => <Stack key={number} spacing={1} sx={{ minWidth: 0 }}>
+            <Box sx={{ width: 30, height: 30, display: "grid", placeItems: "center", borderRadius: "50%", bgcolor: "primary.main", color: "primary.contrastText", fontWeight: 800 }}>{number}</Box>
+            <Typography component="h3" variant="h3">{title}</Typography>
+            <Typography variant="body2" color="textSecondary">{description}</Typography>
+          </Stack>)}
+        </Box>
+      </Paper>
+    </Section>
+
+    <Section title="接口入口">
+      <TableContainer component={Paper} variant="outlined">
+        <Table size="small" aria-label="PerPay 接口入口">
+          <TableHead><TableRow><TableCell>用途</TableCell><TableCell>方法</TableCell><TableCell>路径</TableCell><TableCell>说明</TableCell></TableRow></TableHead>
+          <TableBody>
+            {[
+              ["创建订单", "POST", "/api/v1/orders", "创建订单并取得收银台地址。"],
+              ["查询订单", "GET", "/api/v1/orders/{order_id}", "读取付款和退款状态。"],
+              ["关闭订单", "POST", "/api/v1/orders/{order_id}/actions/close", "付款前主动关闭收银台。"],
+              ["读取事件", "GET", "/api/v1/events/{event_id}", "按需读取通知事件详情。"],
+            ].map(([purpose, method, path, description]) => <TableRow key={path}><TableCell sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>{purpose}</TableCell><TableCell><Chip size="small" label={method} variant="outlined" color={method === "GET" ? "default" : "primary"} /></TableCell><TableCell><Code>{path}</Code></TableCell><TableCell>{description}</TableCell></TableRow>)}
+          </TableBody>
+        </Table>
+      </TableContainer>
+      <Typography variant="body2" color="textSecondary" sx={{ mt: 1.25 }}>所有接口都使用当前服务地址拼接路径，例如 <Code>{apiBase}/api/v1/orders</Code>。请求目标必须是原始路径和查询字符串，不要把完整 URL 写进签名原文。</Typography>
+    </Section>
+
+    <Section title="请求签名">
+      <Stack spacing={1.5}>
+        <Typography variant="body2">每次请求都生成新的时间戳和随机 nonce。HMAC-SHA256 的签名原文由以下 8 行组成，换行符必须是 LF（<Code>\\n</Code>）：</Typography>
+        <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 }, bgcolor: "action.hover" }}><Typography component="pre" sx={{ m: 0, fontFamily: MONO, fontSize: { xs: 11.5, sm: 13 }, lineHeight: 1.7, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{["PERPAY-HMAC-SHA256", "v1", "大写 HTTP 方法", "规范化 origin-form 路径", "Unix 秒时间戳", "32 字节 base64url nonce", "客户端 ID（固定为 default）", "请求体的小写 SHA-256"].join("\\n")}</Typography></Paper>
+        <Typography variant="body2" color="textSecondary">请求头名称为 <Code>X-PerPay-Client-Id</Code>、<Code>X-PerPay-Timestamp</Code>、<Code>X-PerPay-Nonce</Code>、<Code>X-PerPay-Signature-Version</Code> 和 <Code>X-PerPay-Signature</Code>。服务端允许的时钟偏差为 5 分钟，重复 nonce 会被拒绝。</Typography>
+        <CopyableCode label="Node.js 24：签名请求工具" value={signedRequestCode} />
+      </Stack>
+    </Section>
+
+    <Section title="创建订单并跳转收银台">
+      <Stack spacing={1.5}>
+        <Typography variant="body2">金额使用分，<Code>1000</Code> 表示 10.00 元。<Code>idempotency_key</Code> 必须在同一订单的重试中保持不变；更换业务数据后不能复用旧值。</Typography>
+        <CopyableCode label="创建订单" value={createOrderCode} />
+        <Alert severity="warning">不要把应付金额、订单状态或通知结果仅交给浏览器判断。浏览器只负责展示收银台，最终结果以服务端查询或验签通知为准。</Alert>
+      </Stack>
+    </Section>
+
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 1fr) minmax(0, 1fr)" }, gap: 2.5 }}>
+      <Section title="查询付款状态">
+        <Stack spacing={1.5}>
+          <Typography variant="body2">服务端用同一套签名工具调用 <Code>GET /api/v1/orders/{"{order_id}"}</Code>，读取响应中的 <Code>data.payment.status</Code>：</Typography>
+          <Box sx={{ display: "grid", gap: 1 }}>
+            {[ ["UNPAID", "未付款或尚未采集到唯一流水。", "warning"], ["CONFIRMED", "已自动确认或管理员认领。", "success"], ["DISPUTED", "已撤销关联，进入争议处理。", "error"] ].map(([status, description, tone]) => <Paper key={status} variant="outlined" sx={{ p: 1.5, display: "flex", gap: 1.25, alignItems: "flex-start" }}><Chip size="small" label={status} color={tone as "success" | "warning" | "error"} variant="outlined" sx={{ fontFamily: MONO, flexShrink: 0 }} /><Typography variant="body2">{description}</Typography></Paper>)}
+          </Box>
+          <Typography variant="body2" color="textSecondary">只有 <Code>CONFIRMED</Code> 才代表可以为用户发货或充值。订单过期、关闭和退款状态需要结合 <Code>data.checkout</Code>、<Code>data.refund</Code> 一起判断。</Typography>
+        </Stack>
+      </Section>
+      <Section title="通知与幂等">
+        <Stack spacing={1.5}>
+          <Typography variant="body2">在“设置 → 通知”启用允许来源后，创建订单时填写 <Code>notify_url</Code>。PerPay 会发送签名事件，网络失败会自动重试。</Typography>
+          <Typography variant="body2" color="textSecondary">接收端必须先读取原始请求体，再按下方字段验签；解析 JSON 后使用 <Code>event_id</Code> 幂等处理。只有精确返回事件 ID 和投递 ID 的 ACK 才算成功。</Typography>
+          <CopyableCode label="Node.js：通知验签骨架" value={webhookCode} />
+        </Stack>
+      </Section>
+    </Box>
+
+    <Section title="上线前检查">
+      <Paper variant="outlined" sx={{ p: { xs: 2, sm: 2.5 } }}>
+        <Box component="ul" sx={{ m: 0, pl: 2.5, display: "grid", gap: 1 }}>
+          <Typography component="li" variant="body2">API 密钥、通知密钥仅保存在网站服务器环境变量或密钥管理器中。</Typography>
+          <Typography component="li" variant="body2">生产环境使用 HTTPS；通知地址必须是已允许的 HTTPS 来源，不能依赖重定向。</Typography>
+          <Typography component="li" variant="body2">订单创建失败时按 HTTP 状态和错误码处理；网络超时可以用相同幂等键安全重试。</Typography>
+          <Typography component="li" variant="body2">通知和查询都可能重复或乱序，业务状态更新必须幂等，并以订单状态单向推进。</Typography>
+        </Box>
+      </Paper>
+    </Section>
+  </Box>;
 }
 
 function MetricGrid({ items }: { readonly items: readonly (readonly [string, ReactNode])[] }) {

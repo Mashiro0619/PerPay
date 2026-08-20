@@ -65,6 +65,12 @@ describe("web asset manifest", () => {
       "这是实际到账测试",
       "最终应付金额",
       "继续上次测试",
+      "/admin/integration",
+      "网站接入",
+      "PERPAY-HMAC-SHA256",
+      "/api/v1/orders",
+      "x-perpay-webhook-signature",
+      "event_id",
     ]) assert.ok(script.includes(expected), `admin bundle is missing ${expected}`);
     assert.doesNotMatch(script, /模拟到账|模拟确认/);
   });
