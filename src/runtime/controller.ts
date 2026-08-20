@@ -455,7 +455,7 @@ export class RuntimeController {
       pageSize: DEFAULT_ACCOUNT_LOG_PAGE_SIZE,
       overlapMilliseconds: 5 * 60 * 1_000,
       windowMilliseconds: 24 * 60 * 60 * 1_000,
-      safetyLagMilliseconds: 30 * 1_000,
+      safetyLagMilliseconds: providerSettings.safetyLagMilliseconds,
       maxRequestsPerRun: 32,
       initialWindowStartMilliseconds: activation.activatedAt,
       clock: this.#clock,

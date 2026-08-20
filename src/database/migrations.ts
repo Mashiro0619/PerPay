@@ -4074,4 +4074,21 @@ export const migrations: readonly Migration[] = [
       END;
     `,
   },
+  {
+    version: 15,
+    name: "configurable_provider_safety_lag",
+    sql: `
+      ALTER TABLE runtime_configuration
+        ADD COLUMN provider_safety_lag_milliseconds INTEGER NOT NULL
+        DEFAULT 10000
+        CHECK (provider_safety_lag_milliseconds BETWEEN 5000 AND 300000);
+
+      CREATE TRIGGER runtime_configuration_provider_timing_guard
+      BEFORE UPDATE ON runtime_configuration
+      WHEN NEW.provider_safety_lag_milliseconds > NEW.provider_maximum_success_age_milliseconds
+      BEGIN
+        SELECT RAISE(ABORT, 'provider safety lag exceeds maximum success age');
+      END;
+    `,
+  },
 ] as const;

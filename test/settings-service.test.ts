@@ -31,6 +31,9 @@ describe("runtime settings", () => {
     const database = await AppDatabase.open(databasePath);
     try {
       const settings = service(database, masterKey);
+      assert.equal(database.read((connection) => Number((connection.prepare(
+        "SELECT provider_safety_lag_milliseconds FROM runtime_configuration WHERE singleton_key = 1",
+      ).get() as { provider_safety_lag_milliseconds: bigint }).provider_safety_lag_milliseconds)), 10_000);
       assert.deepEqual(settings.status(), {
         revision: 0,
         paymentRevision: 0,
@@ -50,6 +53,7 @@ describe("runtime settings", () => {
         amount_offset_maximum_cents: 19,
       }, audit("collection"));
       await settings.saveProvider(providerInput(1, "2026000000000001"), audit("provider"));
+      assert.equal(settings.view().provider?.safety_lag_seconds, 10);
       const rotated = await settings.rotateApiSecret(2, audit("api"));
       assert.equal(rotated.client_id, "default");
       assert.match(rotated.secret, /^[A-Za-z0-9_-]{43}$/);
@@ -610,6 +614,22 @@ describe("runtime settings", () => {
       await assert.rejects(
         settings.saveProvider({
           ...providerInput(0, "2026000000000001"),
+          safety_lag_seconds: 301,
+        }, audit("provider-safety-lag-range")),
+        /Too big|less than or equal to 300/u,
+      );
+      await assert.rejects(
+        settings.saveProvider({
+          ...providerInput(0, "2026000000000001"),
+          safety_lag_seconds: 61,
+          maximum_success_age_seconds: 60,
+        }, audit("provider-safety-lag-age")),
+        /must not exceed the maximum success age/u,
+      );
+
+      await assert.rejects(
+        settings.saveProvider({
+          ...providerInput(0, "2026000000000001"),
           private_key: "not-an-rsa-private-key",
         }, audit("provider-validation")),
         /provider private key .*invalid|valid RSA private key/u,
@@ -807,6 +827,7 @@ function providerInput(revision: number, appId: string) {
     platform_public_key: platformPublicKey,
     timeout_milliseconds: 8_000,
     scan_interval_seconds: 10,
+    safety_lag_seconds: 10,
     maximum_success_age_seconds: 60,
   };
 }
@@ -819,6 +840,7 @@ function providerInputWithoutPrivateKey(revision: number, appId: string) {
     platform_public_key: platformPublicKey,
     timeout_milliseconds: 8_000,
     scan_interval_seconds: 10,
+    safety_lag_seconds: 10,
     maximum_success_age_seconds: 60,
   };
 }

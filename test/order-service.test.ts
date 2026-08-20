@@ -394,6 +394,7 @@ function runtimeSettings(
       platformKeyFingerprint: "2".repeat(64),
       timeoutMilliseconds: 10_000,
       scanIntervalMilliseconds: 30_000,
+      safetyLagMilliseconds: 10_000,
       maximumSuccessAgeMilliseconds: 120_000,
     },
     apiSecret,

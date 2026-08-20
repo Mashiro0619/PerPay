@@ -73,7 +73,7 @@ describe("fixed account namespace migration", () => {
       assert.equal(state.orderClient.api_client_id, API_CLIENT_ID);
       assert.equal(state.webhookClient.api_client_id, API_CLIENT_ID);
       assert.equal(state.legacyReferences, 0);
-      assert.equal(state.schemaVersion, 14);
+      assert.equal(state.schemaVersion, 15);
       assert.equal(database.integrityCheck().ok, true);
       const historicalOrder = new OrderStore(database).orderById(
         API_CLIENT_ID,

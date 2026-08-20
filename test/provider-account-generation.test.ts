@@ -94,6 +94,7 @@ describe("provider account generation migration", () => {
         platform_public_key: platformPublicKey,
         timeout_milliseconds: 8_000,
         scan_interval_seconds: 10,
+        safety_lag_seconds: 10,
         maximum_success_age_seconds: 60,
       }, {
         actorId: "admin",
@@ -144,6 +145,7 @@ describe("provider account generation migration", () => {
           platform_public_key: platformPublicKey,
           timeout_milliseconds: 8_000,
           scan_interval_seconds: 10,
+          safety_lag_seconds: 10,
           maximum_success_age_seconds: 60,
         }, {
           actorId: "admin",

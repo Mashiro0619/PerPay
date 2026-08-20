@@ -2344,6 +2344,7 @@ components:
         - provider_account_key
         - timeout_milliseconds
         - scan_interval_seconds
+        - safety_lag_seconds
         - maximum_success_age_seconds
       properties:
         environment: { type: string, enum: [PRODUCTION, SANDBOX] }
@@ -2353,6 +2354,11 @@ components:
           description: Internal immutable account-generation identifier; not a provider credential.
         timeout_milliseconds: { type: integer, minimum: 1000, maximum: 120000 }
         scan_interval_seconds: { type: integer, minimum: 5, maximum: 3600 }
+        safety_lag_seconds:
+          type: integer
+          minimum: 5
+          maximum: 300
+          description: Skip the newest provider transactions for this many seconds while they stabilize.
         maximum_success_age_seconds: { type: integer, minimum: 10, maximum: 86400 }
     ProviderGeneration:
       type: object
@@ -2451,6 +2457,7 @@ components:
         - app_id
         - timeout_milliseconds
         - scan_interval_seconds
+        - safety_lag_seconds
         - maximum_success_age_seconds
       properties:
         revision: { type: integer, minimum: 0 }
@@ -2472,6 +2479,11 @@ components:
           description: Required when changing environment or application ID; omitted to retain the current key.
         timeout_milliseconds: { type: integer, minimum: 1000, maximum: 120000 }
         scan_interval_seconds: { type: integer, minimum: 5, maximum: 3600 }
+        safety_lag_seconds:
+          type: integer
+          minimum: 5
+          maximum: 300
+          description: Skip the newest provider transactions for this many seconds while they stabilize.
         maximum_success_age_seconds:
           type: integer
           minimum: 10

@@ -46,6 +46,7 @@ export interface ProviderSettings {
   readonly platformKeyFingerprint: string;
   readonly timeoutMilliseconds: number;
   readonly scanIntervalMilliseconds: number;
+  readonly safetyLagMilliseconds: number;
   readonly maximumSuccessAgeMilliseconds: number;
 }
 
@@ -140,6 +141,7 @@ export const providerSettingsInputSchema = z.object({
   platform_public_key: z.string().min(1).max(16 * 1024).optional(),
   timeout_milliseconds: z.number().int().min(1_000).max(120_000),
   scan_interval_seconds: z.number().int().min(5).max(3_600),
+  safety_lag_seconds: z.number().int().min(5).max(300),
   maximum_success_age_seconds: z.number().int().min(10).max(86_400),
 }).strict().superRefine((input, context) => {
   if (input.maximum_success_age_seconds < input.scan_interval_seconds * 2) {
@@ -147,6 +149,13 @@ export const providerSettingsInputSchema = z.object({
       code: "custom",
       path: ["maximum_success_age_seconds"],
       message: "must be at least twice the scan interval",
+    });
+  }
+  if (input.safety_lag_seconds > input.maximum_success_age_seconds) {
+    context.addIssue({
+      code: "custom",
+      path: ["safety_lag_seconds"],
+      message: "must not exceed the maximum success age",
     });
   }
 });
@@ -200,6 +209,7 @@ export function parseProviderKeys(input: {
   readonly publicKey: string;
   readonly timeoutMilliseconds: number;
   readonly scanIntervalMilliseconds: number;
+  readonly safetyLagMilliseconds: number;
   readonly maximumSuccessAgeMilliseconds: number;
 }): ProviderSettings {
   const applicationKey = parseProviderApplicationPrivateKey(input.privateKey);
@@ -224,6 +234,7 @@ export function parseProviderKeys(input: {
     platformKeyFingerprint,
     timeoutMilliseconds: input.timeoutMilliseconds,
     scanIntervalMilliseconds: input.scanIntervalMilliseconds,
+    safetyLagMilliseconds: input.safetyLagMilliseconds,
     maximumSuccessAgeMilliseconds: input.maximumSuccessAgeMilliseconds,
   });
 }

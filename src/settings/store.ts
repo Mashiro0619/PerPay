@@ -37,6 +37,7 @@ interface ConfigurationRow {
   readonly provider_account_key: string | null;
   readonly provider_timeout_milliseconds: bigint | number;
   readonly provider_scan_interval_milliseconds: bigint | number;
+  readonly provider_safety_lag_milliseconds: bigint | number;
   readonly provider_maximum_success_age_milliseconds: bigint | number;
   readonly webhook_enabled: bigint | number;
   readonly webhook_allowed_origin: string | null;
@@ -237,6 +238,7 @@ export class RuntimeSettingsStore {
     readonly publicKeyFingerprint: string;
     readonly timeoutMilliseconds: number;
     readonly scanIntervalMilliseconds: number;
+    readonly safetyLagMilliseconds: number;
     readonly maximumSuccessAgeMilliseconds: number;
     readonly providerIdentity: {
       readonly endpoint: string;
@@ -278,6 +280,7 @@ export class RuntimeSettingsStore {
                 provider_account_key = ?,
                 provider_timeout_milliseconds = ?,
                 provider_scan_interval_milliseconds = ?,
+                provider_safety_lag_milliseconds = ?,
                 provider_maximum_success_age_milliseconds = ?,
                 updated_at = ?
           WHERE singleton_key = 1 AND revision = ?`,
@@ -287,6 +290,7 @@ export class RuntimeSettingsStore {
         input.accountKey,
         input.timeoutMilliseconds,
         input.scanIntervalMilliseconds,
+        input.safetyLagMilliseconds,
         input.maximumSuccessAgeMilliseconds,
         now,
         input.expectedRevision,
@@ -553,6 +557,10 @@ export class RuntimeSettingsStore {
           row.provider_scan_interval_milliseconds,
           "provider scan interval",
         ),
+        safetyLagMilliseconds: safeInteger(
+          row.provider_safety_lag_milliseconds,
+          "provider safety lag",
+        ),
         maximumSuccessAgeMilliseconds: safeInteger(
           row.provider_maximum_success_age_milliseconds,
           "provider maximum success age",
@@ -619,6 +627,7 @@ function readConfiguration(connection: DatabaseSync): ConfigurationRow {
             provider_environment, provider_app_id, provider_account_key,
             provider_timeout_milliseconds,
             provider_scan_interval_milliseconds,
+            provider_safety_lag_milliseconds,
             provider_maximum_success_age_milliseconds,
             webhook_enabled, webhook_allowed_origin,
             webhook_timeout_milliseconds, webhook_maximum_attempts,

@@ -1366,6 +1366,7 @@ function configureRuntimeSettings(
       .toString(),
     timeoutMilliseconds: 8_000,
     scanIntervalMilliseconds: 10_000,
+    safetyLagMilliseconds: 10_000,
     maximumSuccessAgeMilliseconds: 60_000,
   });
   store.saveProvider({
@@ -1379,6 +1380,7 @@ function configureRuntimeSettings(
     publicKeyFingerprint: provider.platformKeyFingerprint,
     timeoutMilliseconds: provider.timeoutMilliseconds,
     scanIntervalMilliseconds: provider.scanIntervalMilliseconds,
+    safetyLagMilliseconds: provider.safetyLagMilliseconds,
     maximumSuccessAgeMilliseconds: provider.maximumSuccessAgeMilliseconds,
     providerIdentity: {
       endpoint: provider.endpoint,

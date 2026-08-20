@@ -16,7 +16,7 @@ import {
 import { LedgerStore } from "./store.ts";
 
 const DEFAULT_WINDOW_MILLISECONDS = 24 * 60 * 60 * 1000;
-const DEFAULT_SAFETY_LAG_MILLISECONDS = 30 * 1000;
+const DEFAULT_SAFETY_LAG_MILLISECONDS = 10 * 1000;
 const DEFAULT_MAX_REQUESTS_PER_RUN = 1_000;
 
 export interface LedgerIngestServiceOptions {

@@ -332,13 +332,26 @@ function RouteError({ error }: { readonly error: unknown }) {
   return <PageFrame><PageHeader title="无法读取页面" description={errorMessage(error)} actions={<RefreshButton />} /><Alert severity="error">请求失败，请检查服务状态后重试。</Alert></PageFrame>;
 }
 
+const adminDataCache = new Map<string, JsonObject>();
+
+function adminDataCacheKey(): string {
+  const url = new URL(location.href);
+  if (url.pathname === "/admin/settings") return url.pathname;
+  return `${url.pathname}${url.search}`;
+}
+
 function useApiData(loader: () => Promise<JsonObject>, dependencies: readonly unknown[] = []) {
-  const [data, setData] = useState<JsonObject | null>(null);
+  const cacheKey = adminDataCacheKey();
+  const [data, setData] = useState<JsonObject | null>(() => adminDataCache.get(cacheKey) || null);
   const [error, setError] = useState<unknown>(null);
   const reload = useCallback(async () => {
     setError(null);
-    try { setData(await loader()); } catch (caught) { setError(caught); }
-  }, dependencies);
+    try {
+      const next = await loader();
+      adminDataCache.set(cacheKey, next);
+      setData(next);
+    } catch (caught) { setError(caught); }
+  }, [cacheKey, ...dependencies]);
   useEffect(() => { void reload(); }, [reload]);
   return { data, error, reload };
 }
@@ -449,7 +462,6 @@ function AdminApplication({ mode, onModeChange }: { readonly mode: PaletteMode; 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [route, setRoute] = useState<AdminLocation>(() => currentAdminLocation());
   const compact = useMediaQuery("(max-width:899px)");
-  const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const mainContent = useRef<HTMLElement | null>(null);
   const focusAfterNavigation = useRef(false);
 
@@ -548,7 +560,7 @@ function AdminApplication({ mode, onModeChange }: { readonly mode: PaletteMode; 
             <Tooltip title="退出登录"><IconButton aria-label="退出登录" onClick={logout}><Logout fontSize="small" /></IconButton></Tooltip>
           </Toolbar>
         </AppBar>
-        <MainContent ref={mainContent} id="main-content" tabIndex={-1}><PageFrame><Fade in appear timeout={reduceMotion ? 0 : 180}><Box key={`${path}${route.search}:${route.sequence}`}><AdminRoute path={path} /></Box></Fade></PageFrame></MainContent>
+        <MainContent ref={mainContent} id="main-content" tabIndex={-1}><PageFrame><Box><AdminRoute key={`${path}${route.search}:${route.sequence}`} path={path} /></Box></PageFrame></MainContent>
       </Box>
     </Box>
     {dialog ? <ModalLayer dialog={dialog} close={closeDialog} /> : null}
@@ -1001,17 +1013,15 @@ function SettingsPage() {
             : <Stack spacing={2.5}><SecretSettings view={view} /><Divider /><Box><Typography component="h3" variant="h3" sx={{ mb: 0.75 }}>管理员安全</Typography><Typography variant="body2" color="textSecondary" sx={{ mb: 1.5 }}>修改管理员密码或撤销全部已登录会话。</Typography><Button component="a" href="/admin/security" variant="outlined" startIcon={<ShieldOutlined />}>打开安全设置</Button></Box></Stack>;
   return <Box sx={{ width: "100%", maxWidth: 1120, mx: "auto" }}><PageHeader title={complete ? "设置" : "设置收款"} description={complete ? "维护收款配置、接口凭据和可选功能。" : "按顺序完成四项必需配置，完成后系统才会开放收款。"} actions={<RefreshButton />} /><SettingsCompletion view={view} />
     {!complete ? <Section title="配置流程"><SettingsOnboarding key={String(view.revision)} view={view} reload={reload} /></Section> : <>
-      <Box sx={{ mb: 2.5, borderBottom: 1, borderColor: "divider" }}>
+      <Box sx={{ mb: 2.5, borderBottom: 1, borderColor: "divider", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", "& .MuiTabs-root": { width: "100%" }, "& .MuiTabs-flexContainer": { justifyContent: { xs: "flex-start", sm: "center" } } }}>
         <Tabs value={activeSection} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile aria-label="设置分区">
           {SETTINGS_SECTIONS.map((item) => <Tab key={item.id} id={`settings-tab-${item.id}`} component="a" href={`/admin/settings?section=${item.id}`} value={item.id} label={item.label} aria-controls={`settings-panel-${item.id}`} />)}
         </Tabs>
       </Box>
-      <Fade in key={`${activeSection}:${String(view.revision)}`} timeout={180}>
-        <Box id={`settings-panel-${activeSection}`} role="tabpanel" aria-labelledby={`settings-tab-${activeSection}`} sx={{ maxWidth: 880, mx: "auto", mb: 3.5 }}>
-          <SettingsPanel title={section.title} description={section.description} status={settingsSectionStatus(activeSection, view)}>{panel}</SettingsPanel>
-          {activeSection === "secrets" ? <Box sx={{ mt: 3 }}><ProviderHistory generations={(view.provider_generations || []) as JsonObject[]} /></Box> : null}
-        </Box>
-      </Fade>
+      <Box id={`settings-panel-${activeSection}`} role="tabpanel" aria-labelledby={`settings-tab-${activeSection}`} sx={{ maxWidth: 880, mx: "auto", mb: 3.5 }}>
+        <SettingsPanel title={section.title} description={section.description} status={settingsSectionStatus(activeSection, view)}>{panel}</SettingsPanel>
+        {activeSection === "secrets" ? <Box sx={{ mt: 3 }}><ProviderHistory generations={(view.provider_generations || []) as JsonObject[]} /></Box> : null}
+      </Box>
     </>}
   </Box>;
 }
@@ -1127,10 +1137,10 @@ function CollectionSettingsForm({ view, reload }: { readonly view: JsonObject; r
 
 function ProviderSettingsForm({ view, reload }: { readonly view: JsonObject; readonly reload: () => Promise<void> }) {
   const { request, setToast, openDialog, closeDialog } = useAdmin(); const current = view.provider || {}, hasProvider = view.completion?.provider === true;
-  const [environment, setEnvironment] = useState(String(current.environment || "PRODUCTION")); const [appId, setAppId] = useState(String(current.app_id || "")); const [publicKey, setPublicKey] = useState(""); const [timeout, setTimeoutValue] = useState(Number(current.timeout_milliseconds ?? 8000)); const [interval, setIntervalValue] = useState(Number(current.scan_interval_seconds ?? 10)); const [maxAge, setMaxAge] = useState(Number(current.maximum_success_age_seconds ?? 60)); const [busy, setBusy] = useState(false);
+  const [environment, setEnvironment] = useState(String(current.environment || "PRODUCTION")); const [appId, setAppId] = useState(String(current.app_id || "")); const [publicKey, setPublicKey] = useState(""); const [timeout, setTimeoutValue] = useState(Number(current.timeout_milliseconds ?? 8000)); const [interval, setIntervalValue] = useState(Number(current.scan_interval_seconds ?? 10)); const [safetyLag, setSafetyLag] = useState(Number(current.safety_lag_seconds ?? 10)); const [maxAge, setMaxAge] = useState(Number(current.maximum_success_age_seconds ?? 60)); const [busy, setBusy] = useState(false);
   const save = async () => {
     setBusy(true);
-    try { await request("/settings/provider", { revision: view.revision, environment, app_id: appId, timeout_milliseconds: timeout, scan_interval_seconds: interval, maximum_success_age_seconds: maxAge, ...(publicKey.trim() ? { platform_public_key: publicKey } : {}) }, "PUT"); setToast("支付宝平台配置已保存", "success"); await reload(); }
+    try { await request("/settings/provider", { revision: view.revision, environment, app_id: appId, timeout_milliseconds: timeout, scan_interval_seconds: interval, safety_lag_seconds: safetyLag, maximum_success_age_seconds: maxAge, ...(publicKey.trim() ? { platform_public_key: publicKey } : {}) }, "PUT"); setToast("支付宝平台配置已保存", "success"); await reload(); }
     catch (caught) { await mutationError(caught, setToast, reload); }
     finally { setBusy(false); }
   };
@@ -1144,7 +1154,7 @@ function ProviderSettingsForm({ view, reload }: { readonly view: JsonObject; rea
     }
     await save();
   };
-  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}>{view.application_public_key ? <ApplicationPublicKey view={view} /> : null}<Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "minmax(180px, .7fr) minmax(0, 1.3fr)" }, gap: 1.5, alignItems: "start" }}><FormControl size="small"><InputLabel id="provider-environment-label">运行环境</InputLabel><Select labelId="provider-environment-label" id="provider-environment" value={environment} label="运行环境" onChange={(event) => setEnvironment(String(event.target.value))}><MenuItem value="PRODUCTION">生产环境</MenuItem><MenuItem value="SANDBOX">沙箱环境</MenuItem></Select><FormHelperText>{hasProvider ? "切换会创建新的账务代际。" : "选择开放平台环境。"}</FormHelperText></FormControl><TextField label="应用 ID" value={appId} onChange={(event) => setAppId(event.target.value)} slotProps={{ htmlInput: { maxLength: 64 } }} required /></Box><FixedTextareaField label="支付宝公钥" value={publicKey} onChange={(event) => setPublicKey(event.target.value)} rows={5} required={!hasProvider} helperText={hasProvider ? "留空表示保留当前支付宝公钥；更换应用时必须填写新公钥。" : "上传应用公钥后，从支付宝开放平台复制支付宝公钥。支持 PEM 或单行 Base64。"} /><Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, minmax(0, 1fr))" }, gap: 1.5, alignItems: "start" }}><TextField label="请求超时（毫秒）" type="number" value={timeout} onChange={(event) => setTimeoutValue(Number(event.target.value))} slotProps={{ htmlInput: { min: 1000, max: 120000, step: 1000 } }} required /><TextField label="采集间隔（秒）" type="number" value={interval} onChange={(event) => setIntervalValue(Number(event.target.value))} slotProps={{ htmlInput: { min: 5, max: 3600, step: 1 } }} required /><TextField label="最大成功年龄（秒）" type="number" value={maxAge} onChange={(event) => setMaxAge(Number(event.target.value))} slotProps={{ htmlInput: { min: 10, max: 86400, step: 1 } }} required helperText="至少是采集间隔的两倍。" /></Box><Button type="submit" variant="contained" disabled={busy} sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}>{busy ? "正在保存" : "保存平台配置"}</Button></Stack>;
+  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}>{view.application_public_key ? <ApplicationPublicKey view={view} /> : null}<Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "minmax(180px, .7fr) minmax(0, 1.3fr)" }, gap: 1.5, alignItems: "start" }}><FormControl size="small"><InputLabel id="provider-environment-label">运行环境</InputLabel><Select labelId="provider-environment-label" id="provider-environment" value={environment} label="运行环境" onChange={(event) => setEnvironment(String(event.target.value))}><MenuItem value="PRODUCTION">生产环境</MenuItem><MenuItem value="SANDBOX">沙箱环境</MenuItem></Select><FormHelperText>{hasProvider ? "切换会创建新的账务代际。" : "选择开放平台环境。"}</FormHelperText></FormControl><TextField label="应用 ID" value={appId} onChange={(event) => setAppId(event.target.value)} slotProps={{ htmlInput: { maxLength: 64 } }} required /></Box><FixedTextareaField label="支付宝公钥" value={publicKey} onChange={(event) => setPublicKey(event.target.value)} rows={5} required={!hasProvider} helperText={hasProvider ? "留空表示保留当前支付宝公钥；更换应用时必须填写新公钥。" : "上传应用公钥后，从支付宝开放平台复制支付宝公钥。支持 PEM 或单行 Base64。"} /><Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(4, minmax(0, 1fr))" }, gap: 1.5, alignItems: "start" }}><TextField label="请求超时（毫秒）" type="number" value={timeout} onChange={(event) => setTimeoutValue(Number(event.target.value))} slotProps={{ htmlInput: { min: 1000, max: 120000, step: 1000 } }} required /><TextField label="采集间隔（秒）" type="number" value={interval} onChange={(event) => setIntervalValue(Number(event.target.value))} slotProps={{ htmlInput: { min: 5, max: 3600, step: 1 } }} required helperText="多久采集一次支付宝流水。" /><TextField label="安全滞后（秒）" type="number" value={safetyLag} onChange={(event) => setSafetyLag(Number(event.target.value))} slotProps={{ htmlInput: { min: 5, max: 300, step: 1 } }} required helperText="跳过最近这段时间的流水，避免最新流水尚未稳定。" /><TextField label="最大成功年龄（秒）" type="number" value={maxAge} onChange={(event) => setMaxAge(Number(event.target.value))} slotProps={{ htmlInput: { min: 10, max: 86400, step: 1 } }} required helperText="至少是采集间隔的两倍，且不小于安全滞后。" /></Box><Button type="submit" variant="contained" disabled={busy} sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}>{busy ? "正在保存" : "保存平台配置"}</Button></Stack>;
 }
 
 function NotificationSettingsForm({ view, reload }: { readonly view: JsonObject; readonly reload: () => Promise<void> }) {

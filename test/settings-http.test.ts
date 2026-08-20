@@ -269,6 +269,7 @@ describe("provider application key HTTP contract", () => {
           private_key: replacementPrivateKey,
           timeout_milliseconds: 8_000,
           scan_interval_seconds: 10,
+          safety_lag_seconds: 10,
           maximum_success_age_seconds: 60,
         }),
       });
