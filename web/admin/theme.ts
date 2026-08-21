@@ -12,24 +12,24 @@ const UI_FONT = [
 
 export function createAdminTheme(mode: PaletteMode, brandFontUrl?: string) {
   const dark = mode === "dark";
-  const primary = dark ? "#f4f4f5" : "#18181b";
-  const primaryContrast = dark ? "#18181b" : "#ffffff";
-  const secondary = dark ? "#a1a1aa" : "#52525b";
-  const divider = dark ? "#303033" : "#e4e4e7";
-  const paper = dark ? "#151517" : "#ffffff";
-  const canvas = dark ? "#0b0b0c" : "#f4f4f5";
+  const primary = dark ? "#f5f5f5" : "#171717";
+  const primaryContrast = dark ? "#171717" : "#ffffff";
+  const secondary = dark ? "#a3a3a3" : "#525252";
+  const divider = dark ? "#2d2d2f" : "#dededb";
+  const paper = dark ? "#171718" : "#ffffff";
+  const canvas = dark ? "#101011" : "#f5f5f3";
   const ink = dark ? "#f4f4f5" : "#18181b";
-  const muted = dark ? "#a1a1aa" : "#52525b";
+  const muted = dark ? "#a3a3a3" : "#616161";
 
   return createTheme({
     palette: {
       mode,
       primary: { main: primary, contrastText: primaryContrast },
       secondary: { main: secondary, contrastText: dark ? "#18181b" : "#ffffff" },
-      success: { main: dark ? "#86efac" : "#166534" },
-      warning: { main: dark ? "#facc15" : "#854d0e" },
-      error: { main: dark ? "#fca5a5" : "#b91c1c" },
-      info: { main: dark ? "#93c5fd" : "#1d4ed8" },
+      success: { main: dark ? "#86efac" : "#24734a" },
+      warning: { main: dark ? "#facc15" : "#946c00" },
+      error: { main: dark ? "#fca5a5" : "#b42318" },
+      info: { main: dark ? "#a1a1aa" : "#525252" },
       text: {
         primary: ink,
         secondary: muted,
@@ -41,13 +41,13 @@ export function createAdminTheme(mode: PaletteMode, brandFontUrl?: string) {
       divider,
       action: { hover: alpha(primary, dark ? 0.14 : 0.07), selected: alpha(primary, dark ? 0.22 : 0.11), focus: alpha(primary, 0.24) },
     },
-    shape: { borderRadius: 12 },
+    shape: { borderRadius: 8 },
     typography: {
       fontFamily: UI_FONT,
       fontSize: 14,
-      h1: { fontSize: "1.75rem", fontWeight: 780, lineHeight: 1.22, letterSpacing: "-0.025em" },
-      h2: { fontSize: "1.08rem", fontWeight: 760, lineHeight: 1.35, letterSpacing: "-0.01em" },
-      h3: { fontSize: "0.96rem", fontWeight: 740, lineHeight: 1.4, letterSpacing: 0 },
+      h1: { fontSize: "1.65rem", fontWeight: 760, lineHeight: 1.24, letterSpacing: "-0.025em" },
+      h2: { fontSize: "1.05rem", fontWeight: 740, lineHeight: 1.35, letterSpacing: "-0.01em" },
+      h3: { fontSize: "0.92rem", fontWeight: 720, lineHeight: 1.4, letterSpacing: 0 },
       body1: { lineHeight: 1.62, letterSpacing: 0 },
       body2: { lineHeight: 1.55, letterSpacing: 0 },
       button: { fontWeight: 720, textTransform: "none", letterSpacing: 0 },
@@ -110,43 +110,44 @@ export function createAdminTheme(mode: PaletteMode, brandFontUrl?: string) {
           root: {
             minHeight: 44,
             minWidth: 0,
-            borderRadius: 10,
-            paddingInline: 14,
+            borderRadius: 7,
+            paddingInline: 13,
             whiteSpace: "nowrap",
             flexShrink: 0,
           },
-          sizeSmall: { minHeight: 36, paddingInline: 12, borderRadius: 9 },
-          contained: { boxShadow: "0 7px 18px rgba(0,0,0,.16)" },
+          sizeSmall: { minHeight: 34, paddingInline: 11, borderRadius: 6 },
+          contained: { boxShadow: "none" },
         },
       },
       MuiIconButton: {
         styleOverrides: {
-          root: { width: 42, height: 42, borderRadius: 10 },
+          root: { width: 40, height: 40, borderRadius: 7 },
         },
       },
       MuiPaper: {
         styleOverrides: {
           root: { backgroundImage: "none" },
-          rounded: { borderRadius: 14 },
+          rounded: { borderRadius: 8 },
           outlined: { borderColor: divider },
         },
       },
       MuiCard: {
         styleOverrides: {
           root: {
-            borderRadius: 14,
-            boxShadow: dark ? "0 18px 48px rgba(0,0,0,.18)" : "0 14px 34px rgba(27,53,57,.07)",
+            borderRadius: 8,
+            boxShadow: "none",
+            border: `1px solid ${divider}`,
           },
         },
       },
       MuiCardContent: {
         styleOverrides: {
-          root: { padding: 22, "&:last-child": { paddingBottom: 22 } },
+          root: { padding: 18, "&:last-child": { paddingBottom: 18 } },
         },
       },
       MuiOutlinedInput: {
         styleOverrides: {
-          root: { minHeight: 44, borderRadius: 10, backgroundColor: paper },
+          root: { minHeight: 42, borderRadius: 7, backgroundColor: paper },
           input: {
             paddingTop: 9,
             paddingBottom: 9,
@@ -192,9 +193,8 @@ export function createAdminTheme(mode: PaletteMode, brandFontUrl?: string) {
           root: {
             minHeight: 44,
             borderRadius: 10,
-            marginBottom: 4,
-            transition: "background-color 160ms ease-out, color 160ms ease-out, transform 160ms ease-out",
-            "&:active": { transform: "translateX(2px)" },
+            marginBottom: 2,
+            transition: "background-color 160ms ease-out, color 160ms ease-out",
           },
         },
       },
@@ -221,13 +221,13 @@ export function createAdminTheme(mode: PaletteMode, brandFontUrl?: string) {
       MuiTableCell: {
         styleOverrides: {
           root: {
-            padding: "12px 15px",
+            padding: "10px 13px",
             borderColor: divider,
             verticalAlign: "middle",
           },
           head: {
             color: dark ? "#d4d4d8" : "#52525b",
-            backgroundColor: dark ? "#1f1f22" : "#fafafa",
+            backgroundColor: dark ? "#202022" : "#f7f7f5",
             fontWeight: 700,
             whiteSpace: "nowrap",
           },

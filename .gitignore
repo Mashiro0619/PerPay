@@ -8,6 +8,7 @@ coverage/
 .vscode/
 *.iml
 .DS_Store
+.playwright-cli/
 
 # Local configuration and secrets
 .env

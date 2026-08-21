@@ -381,7 +381,6 @@
     if (countdown instanceof HTMLTimeElement) countdown.dateTime = checkout.checkout.expires_at;
     updateCountdown();
     updateRefund(checkout.refund.status);
-    updateEvidence(checkout, visualState);
 
     root.dataset.initialState = visualState;
     root.dataset.checkoutStatus = checkout.checkout.status;
@@ -449,47 +448,6 @@
         ? "此订单的已收款项已登记为全额退款。"
         : "此订单已有部分退款，具体金额请联系订单提供方确认。",
     );
-  }
-
-  function updateEvidence(checkout, visualState) {
-    let steps;
-    if (visualState === "CONFIRMED") {
-      steps = {
-        payment: ["complete", "付款已到账"],
-        ledger: ["complete", "流水已核对"],
-        confirmation: [
-          "complete",
-          checkout.payment.basis === "INFERRED" ? "已自动确认" : "订单已确认",
-        ],
-      };
-    } else if (visualState === "DISPUTED") {
-      steps = {
-        payment: ["complete", "已有付款记录"],
-        ledger: ["complete", "已有流水关联"],
-        confirmation: ["danger", "关联存在争议"],
-      };
-    } else if (visualState === "CLOSED" || visualState === "EXPIRED") {
-      steps = {
-        payment: ["stopped", visualState === "CLOSED" ? "订单已关闭" : "付款时间已结束"],
-        ledger: ["pending", "未进入核对"],
-        confirmation: ["pending", "未确认"],
-      };
-    } else {
-      steps = {
-        payment: ["current", "等待付款"],
-        ledger: ["pending", "等待流水"],
-        confirmation: ["pending", "匹配后自动确认"],
-      };
-    }
-
-    for (const [name, values] of Object.entries(steps)) {
-      const step = root.querySelector(`[data-evidence-step="${name}"]`);
-      if (!(step instanceof HTMLElement)) continue;
-      step.classList.remove("is-complete", "is-current", "is-pending", "is-danger", "is-stopped");
-      step.classList.add(`is-${values[0]}`);
-      step.dataset.stepState = values[0];
-      setText(step.querySelector("[data-evidence-detail]"), values[1]);
-    }
   }
 
   function startCountdown() {

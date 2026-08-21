@@ -102,6 +102,7 @@ import {
 import { CollectionCodeRenderError, CollectionCodeSvgCache } from "./web/collection-code.ts";
 import { WEB_ASSET_PATHS, webAsset } from "./web/assets.ts";
 import { type HttpErrorCode } from "./error-codes.ts";
+import { systemAnalytics } from "./system-analytics.ts";
 
 const SESSION_COOKIE = "perpay_session";
 const SECURE_SESSION_COOKIE = "__Host-perpay_session";
@@ -547,6 +548,15 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   app.get("/api/admin/v1/system/status", adminSession, async (context) =>
     context.json({ data: await systemStatus(dependencies) }),
   );
+
+  app.get("/api/admin/v1/system/analytics", adminSession, (context) => {
+    const values = new URL(context.req.url).searchParams;
+    const rawRange = values.get("range");
+    if (values.size > (rawRange === null ? 0 : 1) || (rawRange !== null && !/^(?:7|30|90)$/.test(rawRange))) {
+      throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+    }
+    return context.json({ data: systemAnalytics(dependencies.database, rawRange === null ? 30 : Number(rawRange)) });
+  });
 
   app.post("/api/admin/v1/session/logout", adminSession, async (context) => {
     requireJsonContentType(context);

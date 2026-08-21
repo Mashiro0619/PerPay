@@ -199,6 +199,32 @@ paths:
               schema:
                 $ref: '#/components/schemas/SystemStatusEnvelope'
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
+  /api/admin/v1/system/analytics:
+    get:
+      tags: [System]
+      operationId: getAdministratorSystemAnalytics
+      summary: Read real order and notification aggregates for the dashboard
+      description: >-
+        Returns UTC daily aggregates from SQLite for the selected period. Empty days are returned
+        as zeroes; the endpoint never creates synthetic activity or trend values.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - name: range
+          in: query
+          required: false
+          description: Number of calendar days to include. Defaults to 30.
+          schema: { type: integer, enum: [7, 30, 90], default: 30 }
+      responses:
+        '200':
+          description: Real dashboard aggregates and daily series
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemAnalyticsEnvelope'
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
   /api/admin/v1/session/logout:
     post:
       tags: [Admin Session]
@@ -1906,6 +1932,71 @@ components:
           $ref: '#/components/schemas/WebhookHealth'
         backup:
           $ref: '#/components/schemas/BackupHealth'
+    SystemAnalyticsEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/SystemAnalytics'
+    SystemAnalytics:
+      type: object
+      additionalProperties: false
+      required: [range_days, from, to, orders, confirmations, notifications, pending, daily]
+      properties:
+        range_days: { type: integer, enum: [7, 30, 90] }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        orders:
+          type: object
+          additionalProperties: false
+          required: [created, unpaid, confirmed, disputed, closed, expired]
+          properties:
+            created: { type: integer, minimum: 0 }
+            unpaid: { type: integer, minimum: 0 }
+            confirmed: { type: integer, minimum: 0 }
+            disputed: { type: integer, minimum: 0 }
+            closed: { type: integer, minimum: 0 }
+            expired: { type: integer, minimum: 0 }
+        confirmations:
+          type: object
+          additionalProperties: false
+          required: [count, amount_cents]
+          properties:
+            count: { type: integer, minimum: 0 }
+            amount_cents: { type: integer, minimum: 0 }
+        notifications:
+          type: object
+          additionalProperties: false
+          required: [acknowledged, failed, pending]
+          properties:
+            acknowledged: { type: integer, minimum: 0 }
+            failed: { type: integer, minimum: 0 }
+            pending: { type: integer, minimum: 0 }
+        pending:
+          type: object
+          additionalProperties: false
+          required: [orders, exceptions, conflicts, notifications]
+          properties:
+            orders: { type: integer, minimum: 0 }
+            exceptions: { type: integer, minimum: 0 }
+            conflicts: { type: integer, minimum: 0 }
+            notifications: { type: integer, minimum: 0 }
+        daily:
+          type: array
+          minItems: 7
+          maxItems: 90
+          items:
+            type: object
+            additionalProperties: false
+            required: [date, orders_created, confirmations, confirmed_amount_cents, notifications_acknowledged, notifications_failed]
+            properties:
+              date: { type: string, format: date }
+              orders_created: { type: integer, minimum: 0 }
+              confirmations: { type: integer, minimum: 0 }
+              confirmed_amount_cents: { type: integer, minimum: 0 }
+              notifications_acknowledged: { type: integer, minimum: 0 }
+              notifications_failed: { type: integer, minimum: 0 }
     LedgerConflictSummary:
       type: [object, 'null']
       additionalProperties: false

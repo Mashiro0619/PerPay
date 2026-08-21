@@ -164,22 +164,6 @@ html { min-width: 320px; min-height: 100%; scrollbar-color: var(--checkout-borde
 .checkout-order-details dd { min-width: 0; margin: 0; color: var(--checkout-text); font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
 .checkout-refund, .checkout-update-message { width: auto; margin: 0 24px 28px; }
 
-.checkout-evidence { padding: 28px 24px 34px; border-top: 1px solid var(--checkout-border); background: var(--checkout-surface); }
-.checkout-evidence-heading { margin-bottom: 22px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
-.checkout-evidence-heading > div { min-width: 0; display: grid; gap: 5px; }
-.checkout-evidence-heading h2 { margin: 0; color: var(--checkout-text); font-size: 16px; font-weight: 760; line-height: 1.4; }
-.checkout-evidence-heading p { margin: 0; color: var(--checkout-text-muted); font-size: 12px; line-height: 1.5; }
-.checkout-evidence-track { margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); list-style: none; }
-.checkout-evidence-step { position: relative; min-width: 0; display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 10px; }
-.checkout-evidence-step:not(:last-child)::after { position: absolute; z-index: 0; inset-block-start: 9px; inset-inline-start: 10px; width: calc(100% - 2px); height: 1px; background: var(--checkout-border); content: ""; }
-.checkout-evidence-marker { position: relative; z-index: 1; width: 18px; height: 18px; border: 2px solid var(--checkout-border-strong); border-radius: 50%; background: var(--checkout-surface); }
-.checkout-evidence-step > div { position: relative; z-index: 1; min-width: 0; padding-inline-end: 20px; background: var(--checkout-surface); display: grid; gap: 3px; }
-.checkout-evidence-step strong { color: var(--checkout-text); font-size: 13px; font-weight: 680; line-height: 1.4; }
-.checkout-evidence-step [data-evidence-detail] { color: var(--checkout-text-muted); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
-.checkout-evidence-step.is-complete .checkout-evidence-marker { border-color: var(--checkout-success); background: var(--checkout-success); box-shadow: inset 0 0 0 4px var(--checkout-surface); }
-.checkout-evidence-step.is-current .checkout-evidence-marker { border-color: var(--checkout-primary); background: var(--checkout-primary); box-shadow: inset 0 0 0 4px var(--checkout-surface); }
-.checkout-evidence-step.is-danger .checkout-evidence-marker { border-color: var(--checkout-danger); background: var(--checkout-danger); box-shadow: inset 0 0 0 4px var(--checkout-surface); }
-.checkout-evidence-step.is-stopped .checkout-evidence-marker { border-color: var(--checkout-warning); background: var(--checkout-warning-soft); }
 
 .checkout-route-error { width: min(100%, 720px); min-height: 440px; margin-inline: auto; padding: 48px 24px; display: grid; align-content: center; justify-items: start; gap: 14px; }
 .checkout-route-error h1, .checkout-route-error p { margin: 0; }
@@ -200,7 +184,7 @@ html { min-width: 320px; min-height: 100%; scrollbar-color: var(--checkout-borde
 .checkout-code-dialog > p { margin-top: 14px; text-align: center; }
 
 @media (min-width: 801px) {
-  .checkout-receipt-body { grid-template-areas: "summary payment" "details payment"; grid-template-columns: minmax(0, 1fr) 372px; grid-template-rows: auto 1fr; }
+  .checkout-receipt-body { grid-template-areas: "summary payment" "details payment"; grid-template-columns: minmax(0, 1fr) 372px; grid-template-rows: auto auto; }
   .checkout-receipt-body.is-summary-only { grid-template-areas: "summary" "details"; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; }
   .checkout-summary { padding: 42px 44px 30px; }
   .checkout-heading-block { min-height: 92px; }
@@ -237,12 +221,6 @@ html { min-width: 320px; min-height: 100%; scrollbar-color: var(--checkout-borde
   .checkout-order-details { padding: 22px 16px 28px; }
   .checkout-order-details > div { grid-template-columns: 72px minmax(0, 1fr); gap: 10px; }
   .checkout-refund, .checkout-update-message { margin-inline: 16px; }
-  .checkout-evidence { padding: 26px 16px 30px; }
-  .checkout-evidence-heading { display: grid; align-items: start; gap: 12px; }
-  .checkout-evidence-track { grid-template-columns: minmax(0, 1fr); gap: 0; }
-  .checkout-evidence-step { min-height: 68px; }
-  .checkout-evidence-step:not(:last-child)::after { inset-block-start: 9px; inset-inline-start: 9px; width: 1px; height: 100%; }
-  .checkout-evidence-step > div { padding: 0 0 18px; }
   .checkout-route-error { min-height: 360px; padding-inline: 10px; }
   .checkout-route-error h1 { font-size: 28px; }
   .checkout-code-dialog { padding: 18px; }

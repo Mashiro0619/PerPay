@@ -163,7 +163,6 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
     checkout !== null && visualState === "CONFIRMED" && checkout.returnUrl !== null;
   const paymentColumnVisible = qrVisible || manualRefreshVisible;
   const refundMessage = refundCopy(checkout);
-  const evidence = evidenceCopy(checkout, visualState);
   const title = checkout === null
     ? `${stateCopy.heading} | PerPay`
     : `${checkout.merchantOrderNo} | PerPay 收银台`;
@@ -332,20 +331,6 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
         </div>
       </div>
 
-      <section class="checkout-evidence" data-evidence-panel aria-labelledby="evidence-title">
-        <div class="checkout-evidence-heading">
-          <div>
-            <h2 id="evidence-title">付款确认进度</h2>
-            <p>本页只显示服务器已经确认的结果</p>
-          </div>
-        </div>
-        <ol class="checkout-evidence-track">
-          ${renderEvidenceStep("payment", "付款", evidence.payment)}
-          ${renderEvidenceStep("ledger", "流水核对", evidence.ledger)}
-          ${renderEvidenceStep("confirmation", "订单确认", evidence.confirmation)}
-        </ol>
-      </section>
-
       <div class="checkout-update-message checkout-alert" data-update-message role="status" aria-live="polite" hidden></div>
     </article>
   </main>
@@ -417,62 +402,6 @@ function refundCopy(checkout: PublicCheckoutProjection | null): {
     };
   }
   return { title: "", text: null, className: "" };
-}
-
-type EvidenceStepState = "complete" | "current" | "pending" | "danger" | "stopped";
-
-interface EvidenceStepCopy {
-  readonly state: EvidenceStepState;
-  readonly detail: string;
-}
-
-function evidenceCopy(
-  checkout: PublicCheckoutProjection | null,
-  visualState: CheckoutVisualState,
-): Readonly<Record<"payment" | "ledger" | "confirmation", EvidenceStepCopy>> {
-  if (visualState === "CONFIRMED") {
-    return {
-      payment: { state: "complete", detail: "付款已到账" },
-      ledger: { state: "complete", detail: "流水已核对" },
-      confirmation: {
-        state: "complete",
-        detail: checkout?.payment.basis === "INFERRED" ? "已自动确认" : "订单已确认",
-      },
-    };
-  }
-  if (visualState === "DISPUTED") {
-    return {
-      payment: { state: "complete", detail: "已有付款记录" },
-      ledger: { state: "complete", detail: "已有流水关联" },
-      confirmation: { state: "danger", detail: "关联存在争议" },
-    };
-  }
-  if (visualState === "CLOSED" || visualState === "EXPIRED") {
-    return {
-      payment: { state: "stopped", detail: visualState === "CLOSED" ? "订单已关闭" : "付款时间已结束" },
-      ledger: { state: "pending", detail: "未进入核对" },
-      confirmation: { state: "pending", detail: "未确认" },
-    };
-  }
-  return {
-    payment: { state: "current", detail: "等待付款" },
-    ledger: { state: "pending", detail: "等待流水" },
-    confirmation: { state: "pending", detail: "匹配后自动确认" },
-  };
-}
-
-function renderEvidenceStep(
-  name: "payment" | "ledger" | "confirmation",
-  title: string,
-  step: EvidenceStepCopy,
-): string {
-  return `<li class="checkout-evidence-step is-${step.state}" data-evidence-step="${name}" data-step-state="${step.state}">
-            <span class="checkout-evidence-marker" aria-hidden="true"></span>
-            <div>
-              <strong>${title}</strong>
-              <span data-evidence-detail>${escapeHtml(step.detail)}</span>
-            </div>
-          </li>`;
 }
 
 function formatCents(cents: number): string {

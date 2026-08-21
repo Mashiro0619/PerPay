@@ -111,7 +111,8 @@ describe("public checkout renderer", () => {
     assert.match(html, /data-qr-panel hidden/);
     assert.match(html, /checkout-receipt-body is-summary-only/);
     assert.match(html, /data-payment-column hidden/);
-    assert.match(html, /已自动确认/);
+    assert.match(html, /付款已确认/);
+    assert.doesNotMatch(html, /checkout-evidence|付款确认进度|流水核对/);
     assert.match(html, /款项已部分退款/);
     assert.match(html, /data-checkout-refresh[^>]*hidden/);
   });
