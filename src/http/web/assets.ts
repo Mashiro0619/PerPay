@@ -13,14 +13,6 @@ interface AssetSource {
   readonly fileName: string;
 }
 
-function generatedAsset(fileName: string, contentType: string): AssetSource {
-  return {
-    bytes: readFileSync(new URL(`../../../web-dist/${fileName}`, import.meta.url)),
-    contentType,
-    fileName,
-  };
-}
-
 function staticAsset(fileName: string, contentType: string): AssetSource {
   return {
     bytes: readFileSync(new URL(`../../../static/app/${fileName}`, import.meta.url)),
@@ -30,11 +22,9 @@ function staticAsset(fileName: string, contentType: string): AssetSource {
 }
 
 const sources = Object.freeze({
-  adminScript: generatedAsset("admin.js", "text/javascript; charset=utf-8"),
   alipayIcon: staticAsset("alipay.png", "image/png"),
   checkoutStylesheet: staticAsset("checkout.css", "text/css; charset=utf-8"),
   checkoutScript: staticAsset("checkout.js", "text/javascript; charset=utf-8"),
-  meddonFont: staticAsset("Meddon-Regular.woff2", "font/woff2"),
 });
 
 function contentAddress(source: AssetSource): string {
@@ -43,11 +33,9 @@ function contentAddress(source: AssetSource): string {
 }
 
 export const WEB_ASSET_URLS = Object.freeze({
-  adminScript: contentAddress(sources.adminScript),
   alipayIcon: contentAddress(sources.alipayIcon),
   checkoutStylesheet: contentAddress(sources.checkoutStylesheet),
   checkoutScript: contentAddress(sources.checkoutScript),
-  meddonFont: contentAddress(sources.meddonFont),
 });
 
 const assets = new Map<string, WebAsset>(

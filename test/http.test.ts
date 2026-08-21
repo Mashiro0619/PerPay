@@ -1501,18 +1501,6 @@ describe("order HTTP contract", () => {
       assert.match(qrSvg, /^<svg[^>]+xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
       assert.doesNotMatch(qrSvg, /<script|<foreignObject/i);
 
-      const adminPage = await app.request("/admin");
-      assert.equal(adminPage.status, 200);
-      const adminHtml = await adminPage.text();
-      assert.match(adminHtml, /id="perpay-admin-root" data-mode="application"/);
-      assert.ok(adminHtml.includes(WEB_ASSET_URLS.adminScript));
-      const adminNonce = /<meta name="csp-nonce" content="([A-Za-z0-9+/=]+)">/.exec(adminHtml)?.[1];
-      assert.ok(adminNonce);
-      assert.ok(
-        adminPage.headers.get("content-security-policy")?.includes(`'nonce-${adminNonce}'`),
-      );
-      assert.doesNotMatch(adminHtml, /<script(?![^>]*\bsrc=)[^>]*>/i);
-
       const stylesheet = await app.request(WEB_ASSET_URLS.checkoutStylesheet);
       assert.equal(stylesheet.status, 200);
       assert.equal(stylesheet.headers.get("cache-control"), "public, max-age=31536000, immutable");

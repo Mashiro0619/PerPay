@@ -94,7 +94,6 @@ import {
 import { APP_VERSION } from "../version.ts";
 import { PublicCheckoutRateLimiter } from "./public-checkout-rate-limit.ts";
 import { parseStrictJson, StrictJsonError } from "./strict-json.ts";
-import { renderAdminPage } from "./web/admin.ts";
 import {
   type CheckoutPageInitialError,
   renderCheckoutPage,
@@ -364,24 +363,9 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     });
   }
 
-  app.get("/", (context) =>
-    context.redirect(dependencies.identity.isInitialized() ? "/admin" : "/admin/setup", 302));
-  app.get("/admin/setup", (context) => {
-    if (dependencies.identity.isInitialized()) return context.redirect("/admin/login", 302);
-    return context.html(renderAdminPage("setup", context.get("cspNonce")));
-  });
-  app.get("/admin/login", (context) => {
-    if (!dependencies.identity.isInitialized()) return context.redirect("/admin/setup", 302);
-    return context.html(renderAdminPage("login", context.get("cspNonce")));
-  });
-  app.get("/admin", (context) => {
-    if (!dependencies.identity.isInitialized()) return context.redirect("/admin/setup", 302);
-    return context.html(renderAdminPage("application", context.get("cspNonce")));
-  });
-  app.get("/admin/*", (context) => {
-    if (!dependencies.identity.isInitialized()) return context.redirect("/admin/setup", 302);
-    return context.html(renderAdminPage("application", context.get("cspNonce")));
-  });
+  app.get("/", (context) => context.text("管理后台前端已移除。", 410));
+  app.get("/admin", (context) => context.text("管理后台前端已移除。", 410));
+  app.get("/admin/*", (context) => context.text("管理后台前端已移除。", 410));
 
   app.get("/checkout/:token", (context) => {
     const token = context.req.param("token");

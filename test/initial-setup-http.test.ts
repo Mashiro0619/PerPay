@@ -8,7 +8,6 @@ import { loadConfig } from "../src/config.ts";
 import { AppDatabase } from "../src/database/database.ts";
 import { AUTH_FAILURE_THRESHOLD } from "../src/database/identity-store.ts";
 import { createApp } from "../src/http/app.ts";
-import { WEB_ASSET_URLS } from "../src/http/web/assets.ts";
 import { IdentityService } from "../src/identity/service.ts";
 import { OrderService } from "../src/orders/service.ts";
 import { RuntimeSettingsService, RuntimeSettingsStore } from "../src/settings/index.ts";
@@ -22,15 +21,10 @@ describe("first-run administrator HTTP flow", () => {
     const fixture = await createFixture();
     try {
       const root = await fixture.app.request("/");
-      assert.equal(root.status, 302);
-      assert.equal(root.headers.get("location"), "/admin/setup");
+      assert.equal(root.status, 410);
 
       const setupPage = await fixture.app.request("/admin/setup");
-      assert.equal(setupPage.status, 200);
-      const setupHtml = await setupPage.text();
-      assert.match(setupHtml, /id="perpay-admin-root" data-mode="setup"/);
-      assert.ok(setupHtml.includes(WEB_ASSET_URLS.adminScript));
-      assert.doesNotMatch(setupHtml, /setup-code|setup-token|设置码|验证码/i);
+      assert.equal(setupPage.status, 410);
 
       const unexpectedField = await fixture.app.request("/api/admin/v1/setup", {
         method: "POST",
@@ -59,8 +53,7 @@ describe("first-run administrator HTTP flow", () => {
       assert.deepEqual(setup.headers.getSetCookie(), []);
 
       const setupAfterInitialization = await fixture.app.request("/admin/setup");
-      assert.equal(setupAfterInitialization.status, 302);
-      assert.equal(setupAfterInitialization.headers.get("location"), "/admin/login");
+      assert.equal(setupAfterInitialization.status, 410);
 
       const repeatedSetup = await fixture.app.request("/api/admin/v1/setup", {
         method: "POST",

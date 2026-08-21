@@ -8,18 +8,16 @@
     "node": ">=24.15.0 <25"
   },
   "scripts": {
-    "build": "npm run build:web && npm run build:server",
+    "build": "npm run build:server",
     "build:server": "tsc -p tsconfig.build.json",
-    "build:web": "node scripts/build-web.mjs",
-    "check": "npm run check:version && npm run typecheck && npm run build:web && npm run test:node && npm run build:server",
+    "check": "npm run check:version && npm run typecheck && npm run test:node && npm run build:server",
     "check:version": "node scripts/check-version.mjs",
-    "dev": "npm run build:web && node --experimental-strip-types --watch src/main.ts",
+    "dev": "node --experimental-strip-types --watch src/main.ts",
     "start": "node dist/main.js",
-    "test": "npm run build:web && npm run test:node",
+    "test": "npm run test:node",
     "test:node": "node --experimental-strip-types --test --test-isolation=process test/**/*.test.ts test/**/*.test.mjs",
-    "typecheck": "npm run typecheck:server && npm run typecheck:web",
-    "typecheck:server": "tsc --noEmit",
-    "typecheck:web": "tsc -p tsconfig.web.json --noEmit"
+    "typecheck": "npm run typecheck:server",
+    "typecheck:server": "tsc --noEmit"
   },
   "dependencies": {
     "@hono/node-server": "2.1.0",
@@ -28,19 +26,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@emotion/cache": "11.14.0",
-    "@emotion/react": "11.14.0",
-    "@emotion/styled": "11.14.1",
-    "@mui/icons-material": "9.3.1",
-    "@mui/material": "9.3.1",
-    "@mui/x-charts": "^9.12.0",
     "@types/node": "24.13.3",
-    "@types/react": "19.2.18",
-    "@types/react-dom": "19.2.4",
-    "esbuild": "0.28.2",
-    "jsqr": "1.4.0",
-    "react": "19.2.8",
-    "react-dom": "19.2.8",
     "typescript": "6.0.3",
     "yaml": "2.9.0"
   }

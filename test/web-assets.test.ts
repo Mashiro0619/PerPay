@@ -4,11 +4,10 @@ import { describe, it } from "node:test";
 import { runInNewContext } from "node:vm";
 
 import { WEB_ASSET_PATHS, WEB_ASSET_URLS, webAsset } from "../src/http/web/assets.ts";
-import { mergeTestPaymentOrder, testPaymentTerminal } from "../web/admin/test-payment.ts";
 
 describe("web asset manifest", () => {
   it("binds every immutable URL to the complete SHA-256 digest of its content", () => {
-    assert.equal(WEB_ASSET_PATHS.length, 5);
+    assert.equal(WEB_ASSET_PATHS.length, 3);
     assert.equal(new Set(WEB_ASSET_PATHS).size, WEB_ASSET_PATHS.length);
 
     for (const path of Object.values(WEB_ASSET_URLS)) {
@@ -21,7 +20,6 @@ describe("web asset manifest", () => {
   });
 
   it("does not serve former version-only or vendor paths", () => {
-    assert.equal(webAsset("/assets/app/v0.1.0/admin.js"), null);
     assert.equal(webAsset("/assets/vendor/legacy/legacy.min.css"), null);
   });
 
@@ -32,14 +30,6 @@ describe("web asset manifest", () => {
     assert.ok(icon.body instanceof Uint8Array);
     assert.deepEqual([...icon.body.slice(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
     assert.ok(icon.body.byteLength < 16 * 1024);
-  });
-
-  it("serves the Meddon brand font as a content-addressed WOFF2", () => {
-    const font = webAsset(WEB_ASSET_URLS.meddonFont);
-    assert.ok(font);
-    assert.equal(font.contentType, "font/woff2");
-    assert.ok(font.body instanceof Uint8Array);
-    assert.deepEqual([...font.body.slice(0, 4)], [119, 79, 70, 50]);
   });
 
   it("ships system theme tokens and a mobile-first checkout payment order", () => {
@@ -54,65 +44,6 @@ describe("web asset manifest", () => {
     assert.match(stylesheet, /@media \(max-width: 560px\)[\s\S]*\.checkout-code-figure img\s*\{[^}]*232px/s);
     assert.match(stylesheet, /env\(safe-area-inset-top\)/);
     assert.match(stylesheet, /env\(safe-area-inset-bottom\)/);
-  });
-
-  it("bundles the complete MUI admin workflows", () => {
-    const script = webAsset(WEB_ASSET_URLS.adminScript)?.body;
-    assert.equal(typeof script, "string");
-    if (typeof script !== "string") return;
-    for (const expected of [
-      "/settings/provider/application-key/actions/generate",
-      "/settings/advanced",
-      "/settings/backup",
-      "/settings/api-key/actions/rotate",
-      "/test-payments",
-      "/reconciliation/settlements/manual",
-      "/actions/reverse",
-      "/actions/redeliver",
-      "生成应用密钥",
-      "复制应用公钥",
-      "这是实际到账测试",
-      "最终应付金额",
-      "继续上次测试",
-      "/admin/integration",
-      "使用方法",
-      "PERPAY-HMAC-SHA256",
-      "/api/v1/orders",
-      "x-perpay-webhook-signature",
-      "event_id",
-      "通知 JSON：核心字段示例",
-      "timingSafeEqual",
-      "Meddon",
-    ]) assert.ok(script.includes(expected), `admin bundle is missing ${expected}`);
-    assert.doesNotMatch(script, /网站接入/);
-    assert.doesNotMatch(script, /模拟到账|模拟确认/);
-  });
-
-  it("keeps administrator navigation, password fields, and settings sections client-side", () => {
-    const script = webAsset(WEB_ASSET_URLS.adminScript)?.body;
-    assert.equal(typeof script, "string");
-    if (typeof script !== "string") return;
-    for (const expected of [
-      "pushState",
-      "popstate",
-      "data-page-title",
-      "admin-login-password",
-      "current-password",
-      "admin-setup-password",
-      "password_confirmation",
-      "admin-new-password",
-      "new_password_confirmation",
-      "/admin/settings?section=",
-      "collection",
-      "provider",
-      "api",
-      "notifications",
-      "advanced",
-      "backup",
-      "secrets",
-      "image/png,image/jpeg,image/webp",
-    ]) assert.ok(script.includes(expected), `admin bundle is missing ${expected}`);
-    assert.doesNotMatch(script, /location\.reload|image\/gif|再次输入管理员密码|step_up_required|session\/step-up/);
   });
 
   it("keeps a final not-found checkout inert across browser lifecycle events", () => {
@@ -243,39 +174,5 @@ describe("web asset manifest", () => {
     assert.equal(button.attributes.get("aria-busy"), "true");
     assert.equal(button.attributes.has("data-loading"), true);
     assert.equal(label.textContent, "正在检查");
-  });
-});
-
-describe("administrator test-payment browser state", () => {
-  it("preserves checkout credentials while applying administrator status refreshes", () => {
-    const created = {
-      order_id: "12345678-1234-4123-8123-123456789abc",
-      checkout: {
-        status: "OPEN",
-        token: "pct1_test-token",
-        state_url: "https://pay.example.test/api/public/v1/checkouts/pct1_test-token",
-        checkout_url: "https://pay.example.test/checkout/pct1_test-token",
-        expires_at: "2030-01-01T00:00:00.000Z",
-      },
-      payment: { status: "UNPAID" },
-    };
-    const refreshed = {
-      order_id: created.order_id,
-      checkout: { status: "OPEN", expires_at: "2030-01-01T00:00:00.000Z" },
-      payment: { status: "UNPAID" },
-      version: 2,
-    };
-
-    const merged = mergeTestPaymentOrder(created, refreshed);
-    assert.equal(merged.checkout.token, created.checkout.token);
-    assert.equal(merged.checkout.state_url, created.checkout.state_url);
-    assert.equal(merged.checkout.checkout_url, created.checkout.checkout_url);
-    assert.equal(merged.version, 2);
-    assert.equal(testPaymentTerminal(merged), false);
-  });
-
-  it("treats refreshed payment and checkout terminal states as terminal", () => {
-    assert.equal(testPaymentTerminal({ payment: { status: "CONFIRMED" }, checkout: { status: "OPEN" } }), true);
-    assert.equal(testPaymentTerminal({ payment: { status: "UNPAID" }, checkout: { status: "EXPIRED" } }), true);
   });
 });

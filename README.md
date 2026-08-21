@@ -2,7 +2,7 @@
 
 # PerPay
 
-面向个人开发者的开源支付宝经营码收款服务。正常付款会自动确认，错付、重复或争议交易才需要管理员处理。
+面向个人开发者的开源支付宝经营码收款服务。正常付款会自动确认，错付、重复或争议交易才需要管理员处理。当前版本不包含管理后台网页，管理操作通过管理 API 完成。
 
 ## 安装
 
@@ -22,24 +22,22 @@
 
 SQLite 不需要数据库用户名或数据库密码。应用首次启动会在 `perpay-secrets` 卷中自动生成主密钥，密钥不会出现在 Compose 或日志中。请保留这个卷；删除它将无法解密数据库中的支付宝密钥。
 
-支付宝经营码、应用 ID、支付宝公钥、网站 API 密钥和通知密钥，全部在启动后登录 `/admin` 配置。
+支付宝经营码、应用 ID、支付宝公钥、网站 API 密钥和通知密钥，通过 `/api/admin/v1` 管理 API 配置。`/admin` 管理后台网页已移除，会返回 HTTP 410。
 
 ## 初始化
 
-打开 `PERPAY_PUBLIC_URL`，首次访问直接设置管理员密码，然后登录后台按页面流程完成：
+启动后使用同源 JSON 请求完成初始化和配置：
 
-1. 生成应用密钥，并把应用公钥上传到支付宝开放平台。
-2. 填写应用 ID、平台公钥和生产或沙箱环境。
-3. 配置经营码。
-4. 生成网站 API 密钥。
-5. 按需启用异步通知。
-6. 在“备份”设置中配置备份周期和保留数量。
+1. `POST /api/admin/v1/setup` 设置管理员密码。
+2. `POST /api/admin/v1/session/login` 创建管理员会话，并保存 CSRF Cookie。
+3. 通过 `/api/admin/v1/settings/...` 配置应用密钥、支付宝平台、经营码、API、通知和备份。
+4. 使用 `/healthz` 和 `/readyz` 检查服务及收款链路状态。
 
 `/healthz` 表示进程和 SQLite 正常；`/readyz` 表示已经可以创建订单。完成配置并成功采集、对账后才会开放收款。
 
 ## 接入说明
 
-后台“使用方法”页面提供可复制的签名、创建订单和回调通知示例；根目录的 [`USAGE.md`](USAGE.md) 保存同一套完整中文说明。完整字段、错误码和接口契约见 [`openapi.yaml`](openapi.yaml)。
+签名、创建订单和回调通知示例保存在根目录的 [`USAGE.md`](USAGE.md)。完整字段、错误码和接口契约见 [`openapi.yaml`](openapi.yaml)。
 
 ## 更新与回滚
 
@@ -54,7 +52,7 @@ docker compose up -d
 
 ## 备份与恢复
 
-备份服务默认运行，备份文件保存在 `perpay-backups` 卷。周期和保留数量在后台“备份”页面修改，不需要编辑 Compose。
+备份服务默认运行，备份文件保存在 `perpay-backups` 卷。周期和保留数量通过 `/api/admin/v1/settings/backup` 修改。
 
 ```sh
 docker compose --profile maintenance run --rm maintenance health
@@ -73,7 +71,7 @@ docker compose up -d
 
 ## 入口与许可
 
-- 管理后台：`/admin`
+- 管理 API：`/api/admin/v1`
 - 健康检查：`/healthz`
 - 收款就绪：`/readyz`
 - 完整 API：[`openapi.yaml`](openapi.yaml)

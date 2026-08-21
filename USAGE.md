@@ -6,10 +6,11 @@
 
 ## 1. 准备配置
 
-1. 登录管理后台，在“设置 → API”生成 `default` 客户端 API 密钥。
-2. 在“设置 → 通知”启用通知，填写网站的 HTTPS Origin，例如 `https://shop.example.com`。这里只填写来源，不填写路径。
-3. 在“安全”页面生成或查看通知密钥，并只保存到网站后端的环境变量或密钥管理器。
-4. 创建订单时，将 `notify_url` 填成已允许来源下的完整地址，例如 `https://shop.example.com/webhooks/perpay`。
+1. 通过 `POST /api/admin/v1/setup` 设置管理员密码，再通过 `POST /api/admin/v1/session/login` 创建管理员会话。
+2. 使用 `POST /api/admin/v1/settings/provider/application-key/actions/generate` 和 `POST /api/admin/v1/settings/api-key/actions/rotate` 生成或轮换 `default` 客户端 API 密钥。
+3. 使用 `PUT /api/admin/v1/settings/notifications` 启用通知并填写网站的 HTTPS Origin，例如 `https://shop.example.com`。这里只填写来源，不填写路径。
+4. 使用密钥 reveal 管理接口查看通知密钥，并只保存到网站后端的环境变量或密钥管理器。
+5. 创建订单时，将 `notify_url` 填成已允许来源下的完整地址，例如 `https://shop.example.com/webhooks/perpay`。
 
 ## 2. 请求签名
 
@@ -215,7 +216,7 @@ export async function receivePerPayWebhook(request) {
 ## 6. 上线检查
 
 - API 密钥和通知密钥只保存在网站服务端环境变量或密钥管理器。
-- 生产环境使用 HTTPS，`notify_url` 必须位于后台配置的允许来源下，不能依赖重定向。
+- 生产环境使用 HTTPS，`notify_url` 必须位于管理 API 配置的允许来源下，不能依赖重定向。
 - 创建订单遇到网络超时，使用相同幂等键重试，不要重复生成业务订单号。
 - 通知和查询都可能重复或乱序，业务状态更新必须幂等并单向推进。
 - 只有服务端查询或验签通知显示 `CONFIRMED` 时，才执行发货、充值或余额增加。
