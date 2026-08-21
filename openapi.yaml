@@ -2723,6 +2723,7 @@ components:
         - eligible_from
         - notification
         - events
+        - reconciliation
         - created_at
         - updated_at
         - version
@@ -2751,6 +2752,7 @@ components:
         events:
           type: array
           items: { $ref: '#/components/schemas/AdminOrderEvent' }
+        reconciliation: { $ref: '#/components/schemas/AdminOrderReconciliation' }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
         version: { type: integer, minimum: 1 }
@@ -2774,6 +2776,17 @@ components:
         details:
           type: object
           additionalProperties: true
+    AdminOrderReconciliation:
+      type: object
+      additionalProperties: false
+      required: [matches, exceptions]
+      properties:
+        matches:
+          type: array
+          items: { $ref: '#/components/schemas/PaymentMatchDetail' }
+        exceptions:
+          type: array
+          items: { $ref: '#/components/schemas/FinancialException' }
     MerchantOrderNumber:
       type: string
       minLength: 1

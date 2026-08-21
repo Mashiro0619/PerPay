@@ -606,13 +606,13 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       const parsed = merchantOrderNumberSchema.safeParse(context.req.param("merchantOrderNo"));
       if (!parsed.success) throw orderNotFoundHttpError();
       const order = dependencies.orders.adminGetByMerchantOrderNumber(parsed.data);
-      return context.json({ data: serializeAdminOrderDetail(order) });
+      return context.json({ data: serializeAdminOrderDetail(order, dependencies.reconciliation) });
     },
   );
 
   app.get("/api/admin/v1/orders/:orderId", adminSession, (context) => {
     const order = dependencies.orders.adminGet(requireOrderId(context.req.param("orderId")));
-    return context.json({ data: serializeAdminOrderDetail(order) });
+    return context.json({ data: serializeAdminOrderDetail(order, dependencies.reconciliation) });
   });
 
   const financialWrite = requireFinancialWrite(
@@ -2680,7 +2680,13 @@ function serializeAdminOrderSummary(order: AdminOrderSummaryProjection) {
   };
 }
 
-function serializeAdminOrderDetail(order: AdminOrderDetailProjection) {
+function serializeAdminOrderDetail(order: AdminOrderDetailProjection, reconciliation?: ReconciliationStore) {
+  const financialContext = reconciliation
+    ? {
+      matches: reconciliation.paymentMatchDetailsForOrder(order.orderId).map(serializePaymentMatchDetail),
+      exceptions: reconciliation.financialExceptionsForOrder(order.orderId).map(serializeFinancialException),
+    }
+    : { matches: [], exceptions: [] };
   return {
     ...serializeAdminOrderSummary(order),
     note: order.note,
@@ -2692,6 +2698,7 @@ function serializeAdminOrderDetail(order: AdminOrderDetailProjection) {
       occurred_at: new Date(event.occurredAt).toISOString(),
       details: parseStrictJson(Buffer.from(event.detailsJson, "utf8")),
     })),
+    reconciliation: financialContext,
   };
 }
 

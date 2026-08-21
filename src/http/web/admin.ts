@@ -20,7 +20,7 @@ export function renderAdminPage(mode: AdminPageMode = "application", nonce = "")
   <script src="${WEB_ASSET_URLS.adminScript}" defer></script>
 </head>
 <body>
-  <div id="perpay-admin-root" data-mode="${mode}"></div>
+  <div id="perpay-admin-root" data-mode="${mode}" data-brand-font-url="${WEB_ASSET_URLS.meddonFont}"></div>
 </body>
 </html>`;
 }

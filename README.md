@@ -31,108 +31,15 @@ SQLite 不需要数据库用户名或数据库密码。应用首次启动会在 
 1. 生成应用密钥，并把应用公钥上传到支付宝开放平台。
 2. 填写应用 ID、平台公钥和生产或沙箱环境。
 3. 配置经营码。
-4. 生成网站接入 API 密钥。
+4. 生成网站 API 密钥。
 5. 按需启用异步通知。
 6. 在“备份”设置中配置备份周期和保留数量。
 
 `/healthz` 表示进程和 SQLite 正常；`/readyz` 表示已经可以创建订单。完成配置并成功采集、对账后才会开放收款。
 
-## 网站接入
+## 接入说明
 
-API 密钥只能放在网站后端。完整字段、签名规则和错误定义见 [`openapi.yaml`](openapi.yaml)。最小调用示例：
-
-```js
-import { createHash, createHmac, randomBytes } from "node:crypto";
-
-const baseUrl = "https://pay.example.com";
-const clientId = "default";
-const secret = Buffer.from(process.env.PERPAY_API_SECRET, "base64url");
-const target = "/api/v1/orders";
-const body = Buffer.from(JSON.stringify({
-  idempotency_key: "order-20260821-0001",
-  merchant_order_no: "ORDER-20260821-0001",
-  amount_cents: 1000,
-  product_name: "示例商品",
-  note: "用户名：demo",
-  notify_url: "https://shop.example.com/webhooks/perpay",
-  return_url: "https://shop.example.com/orders/paid",
-}));
-const timestamp = String(Math.floor(Date.now() / 1000));
-const nonce = randomBytes(32).toString("base64url");
-const bodyHash = createHash("sha256").update(body).digest("hex");
-const signingText = ["PERPAY-HMAC-SHA256", "v1", "POST", target, timestamp, nonce, clientId, bodyHash].join("\n");
-const signature = createHmac("sha256", secret).update(signingText).digest("hex");
-
-const response = await fetch(new URL(target, baseUrl), {
-  method: "POST",
-  headers: {
-    "content-type": "application/json",
-    "x-perpay-client-id": clientId,
-    "x-perpay-timestamp": timestamp,
-    "x-perpay-nonce": nonce,
-    "x-perpay-signature-version": "v1",
-    "x-perpay-signature": signature,
-  },
-  body,
-});
-const order = (await response.json()).data;
-console.log(order.checkout.checkout_url);
-```
-
-订单状态为 `UNPAID`、`CONFIRMED` 或 `DISPUTED`。通知必须验签并按 `event_id` 幂等处理，最终结果以服务端查询或已验签通知为准。
-
-### 回调通知
-
-在后台“设置 → 通知”中启用通知，允许来源填写网站的 HTTPS Origin，例如 `https://shop.example.com`，不要填写路径。然后在“安全”页面查看并复制通知密钥，只保存到网站后端的环境变量中。创建订单时，把 `notify_url` 填成该 Origin 下的具体地址，例如 `https://shop.example.com/webhooks/perpay`。
-
-接收端必须使用原始请求体验签。下面是 Node.js Fetch 风格的示例：
-
-```js
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-
-const webhookSecret = Buffer.from(process.env.PERPAY_WEBHOOK_SECRET, "base64url");
-
-export async function receivePerPayWebhook(request) {
-  const body = Buffer.from(await request.arrayBuffer());
-  const headers = request.headers;
-  const version = headers.get("x-perpay-webhook-version");
-  const keyId = headers.get("x-perpay-webhook-key-id");
-  const timestamp = headers.get("x-perpay-webhook-timestamp");
-  const deliveryId = headers.get("x-perpay-webhook-delivery-id");
-  const eventId = headers.get("x-perpay-webhook-event-id");
-  const attempt = headers.get("x-perpay-webhook-attempt");
-  const received = headers.get("x-perpay-webhook-signature");
-  if (!version || !keyId || !timestamp || !deliveryId || !eventId || !attempt || !received) {
-    return new Response("invalid webhook headers", { status: 400 });
-  }
-
-  const bodyDigest = createHash("sha256").update(body).digest("hex");
-  const signingText = [
-    "perpay:webhook:v1", keyId, timestamp, deliveryId, eventId, attempt, bodyDigest,
-  ].join("\n");
-  const expected = `v1=${createHmac("sha256", webhookSecret)
-    .update(signingText, "utf8").digest("hex")}`;
-  const valid = received.length === expected.length && timingSafeEqual(
-    Buffer.from(received, "ascii"),
-    Buffer.from(expected, "ascii"),
-  );
-  if (version !== "1" || !valid) {
-    return new Response("invalid webhook signature", { status: 401 });
-  }
-
-  const event = JSON.parse(body.toString("utf8"));
-  // 在数据库事务中按 event.event_id 去重；重复通知直接返回同一个 ACK。
-  await processOnceByEventId(event.event_id, event);
-  return Response.json({
-    schema: "perpay:webhook-ack:v1",
-    ack: true,
-    event_id: eventId,
-    delivery_id: deliveryId,
-  });
-}
-```
-
-必须返回 HTTP `200`、`application/json`，并且响应体只能包含上面四个字段。网络错误、`5xx`、`429` 或错误的 ACK 会重试；`401`、`403` 等鉴权错误可能直接进入失败或死信。网站业务处理必须以 `event_id` 幂等，不能按投递次数重复执行充值。
+后台“使用方法”页面提供可复制的签名、创建订单和回调通知示例；根目录的 [`USAGE.md`](USAGE.md) 保存同一套完整中文说明。完整字段、错误码和接口契约见 [`openapi.yaml`](openapi.yaml)。
 
 ## 更新与回滚
 

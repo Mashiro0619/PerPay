@@ -428,15 +428,13 @@ function PasswordInput({ id, name, label, value, onChange, autoComplete, minLeng
 
 function AuthShell({ children }: { readonly children: ReactNode }) {
   return <Box component="main" sx={{ minHeight: "100dvh", display: "grid", gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) minmax(420px, .72fr)" }, bgcolor: "background.default" }}>
-    <Box sx={{ display: { xs: "none", md: "flex" }, minHeight: "100dvh", p: { md: 6, lg: 9 }, bgcolor: "#111113", color: "#f4f4f5", flexDirection: "column", justifyContent: "space-between" }}>
-      <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}><Box sx={{ width: 38, height: 38, display: "grid", placeItems: "center", borderRadius: 1.5, bgcolor: "secondary.main", color: "#fff" }}><AccountBalanceWalletOutlined fontSize="small" /></Box><Typography variant="h2" sx={{ color: "inherit", fontWeight: 800 }}>PerPay</Typography></Stack>
-      <Box sx={{ maxWidth: 520 }}><Typography component="h1" sx={{ fontSize: { md: "2.6rem", lg: "3.5rem" }, fontWeight: 780, lineHeight: 1.08, letterSpacing: "-0.04em", color: "inherit" }}>让每一笔经营码付款，都有清楚的证据轨道。</Typography><Typography sx={{ mt: 2.5, maxWidth: 440, color: "rgba(244,244,245,.72)", lineHeight: 1.75 }}>流水采集、唯一金额匹配、自动确认和异步通知，在同一个自托管控制台里运行。</Typography><Stack direction="row" spacing={1} sx={{ mt: 4, flexWrap: "wrap" }}>{["自动确认", "SQLite 持久化", "服务端通知"].map((item) => <Chip key={item} label={item} size="small" sx={{ bgcolor: "rgba(255,255,255,.1)", color: "inherit", border: "1px solid rgba(255,255,255,.2)" }} />)}</Stack></Box>
-      <Typography variant="caption" sx={{ color: "rgba(244,244,245,.55)" }}>个人开发者支付运营台</Typography>
+    <Box sx={{ display: { xs: "none", md: "flex" }, minHeight: "100dvh", p: { md: 6, lg: 9 }, bgcolor: "#111113", color: "#f4f4f5", alignItems: "center", justifyContent: "center" }}>
+      <Typography component="p" sx={{ color: "inherit", fontFamily: '"Meddon", cursive', fontSize: { md: "5.5rem", lg: "7.5rem" }, fontWeight: 400, lineHeight: 1, letterSpacing: 0, whiteSpace: "nowrap" }}>PerPay</Typography>
     </Box>
     <Box sx={{ minHeight: "100dvh", display: "grid", placeItems: "center", p: { xs: 2, sm: 4, md: 6 }, bgcolor: "background.default" }}>
       <Card variant="outlined" sx={{ width: "min(100%, 480px)" }}>
         <CardContent sx={{ p: { xs: 3, sm: 4.5 }, "&:last-child": { pb: { xs: 3, sm: 4.5 } } }}>
-          <Stack direction="row" spacing={1.25} sx={{ mb: 3.5, alignItems: "center", display: { xs: "flex", md: "none" } }}><Box sx={{ width: 36, height: 36, display: "grid", placeItems: "center", borderRadius: 1.25, bgcolor: "secondary.main", color: "secondary.contrastText" }}><AccountBalanceWalletOutlined fontSize="small" /></Box><Typography component="p" variant="h2">PerPay</Typography></Stack>
+          <Typography component="p" sx={{ mb: 3.5, display: { xs: "block", md: "none" }, fontFamily: '"Meddon", cursive', fontSize: "2.75rem", fontWeight: 400, lineHeight: 1, letterSpacing: 0 }}>PerPay</Typography>
           {children}
         </CardContent>
       </Card>
@@ -498,7 +496,7 @@ const NAV_GROUPS: readonly NavGroup[] = [
     items: [
       { href: "/admin", label: "系统状态", icon: <AccountBalanceWalletOutlined key="overview" /> },
       { href: "/admin/test-payment", label: "测试支付", icon: <PaymentsOutlined key="test-payment" /> },
-      { href: "/admin/integration", label: "网站接入", icon: <IntegrationInstructionsOutlined key="integration" /> },
+      { href: "/admin/integration", label: "使用方法", icon: <IntegrationInstructionsOutlined key="integration" /> },
     ],
   },
   {
@@ -615,13 +613,6 @@ function AdminApplication({ preference, onPreferenceChange }: { readonly prefere
         {group.items.map(({ href, label, icon }) => <ListItemButton key={href} component="a" href={href} aria-current={path === href ? "page" : undefined} selected={path === href} onClick={() => setMobileOpen(false)} sx={{ position: "relative", px: 1.25, color: path === href ? "primary.main" : "text.secondary", "&.Mui-selected": { bgcolor: "action.selected", color: "primary.main", "&::before": { content: "\"\"", position: "absolute", insetBlock: 8, insetInlineStart: 0, width: 3, borderRadius: 3, bgcolor: "primary.main" }, "& .MuiListItemIcon-root": { color: "primary.main" } }, "&:hover": { bgcolor: "action.hover", color: "text.primary" } }}><ListItemIcon sx={{ minWidth: 36, color: "inherit", "& .MuiSvgIcon-root": { fontSize: 21 } }}>{icon}</ListItemIcon><ListItemText primary={label} slotProps={{ primary: { variant: "body2", sx: { fontWeight: path === href ? 760 : 620 } } }} /></ListItemButton>)}
       </Box>)}
     </List>
-    <Box sx={{ p: 1.5, borderTop: 1, borderColor: "divider", bgcolor: "action.hover" }}>
-      <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
-        <Box aria-hidden="true" sx={{ width: 34, height: 34, flex: "0 0 auto", display: "grid", placeItems: "center", borderRadius: 1.25, bgcolor: "secondary.main", color: "secondary.contrastText", fontWeight: 820 }}>A</Box>
-        <Box sx={{ minWidth: 0, flex: 1 }}><Typography variant="body2" sx={{ fontWeight: 760 }}>{session.username || "admin"}</Typography></Box>
-        <Tooltip title="打开安全设置"><IconButton component="a" href="/admin/security" aria-label="打开安全设置" size="small"><ShieldOutlined fontSize="small" /></IconButton></Tooltip>
-      </Stack>
-    </Box>
   </Box>;
   const themeMenuOpen = Boolean(themeMenuAnchor);
   const themeLabel = preference === "auto" ? "自动" : preference === "dark" ? "深色" : "浅色";
@@ -639,7 +630,6 @@ function AdminApplication({ preference, onPreferenceChange }: { readonly prefere
             <Box sx={{ width: "100%", maxWidth: 1380, mx: "auto", display: "flex", alignItems: "center", gap: 1 }}>
               {compact ? <IconButton aria-label="打开导航" aria-expanded={mobileOpen} aria-controls="admin-navigation" onClick={() => setMobileOpen(true)} sx={{ mr: 0.25 }}><MenuIcon /></IconButton> : null}
               <Box sx={{ flex: 1, minWidth: 0 }} />
-              <Chip size="small" variant="outlined" label="自托管" sx={{ display: { xs: "none", sm: "inline-flex" }, borderColor: "divider", color: "text.secondary" }} />
               <Tooltip title={`主题：${themeLabel}`}><IconButton aria-label={`主题：${themeLabel}`} aria-haspopup="menu" aria-expanded={themeMenuOpen ? "true" : undefined} onClick={(event) => setThemeMenuAnchor(event.currentTarget)}><ThemeIcon fontSize="small" /></IconButton></Tooltip>
               <Menu anchorEl={themeMenuAnchor} open={themeMenuOpen} onClose={() => setThemeMenuAnchor(null)}>
                 <MenuItem selected={preference === "auto"} onClick={() => chooseTheme("auto")}><ListItemIcon><BrightnessAutoOutlined fontSize="small" /></ListItemIcon><ListItemText primary="自动" /></MenuItem>
@@ -725,7 +715,7 @@ function IntegrationPage() {
     'return Response.redirect(order.checkout.checkout_url, 303);',
   ].join("\n");
   const webhookCode = [
-    'import { createHash, createHmac } from "node:crypto";',
+    'import { createHash, createHmac, timingSafeEqual } from "node:crypto";',
     "",
     'const rawBody = await request.arrayBuffer(); // 先取原始请求体，再解析 JSON',
     'const body = Buffer.from(rawBody);',
@@ -746,15 +736,35 @@ function IntegrationPage() {
     '].join("\\n");',
     'const expected = `v1=${createHmac("sha256", webhookSecret)',
     '  .update(signingText, "utf8").digest("hex")}`;',
-    'if (request.headers.get("x-perpay-webhook-signature") !== expected) {',
+    'const received = request.headers.get("x-perpay-webhook-signature");',
+    'const valid = received !== null && received.length === expected.length && timingSafeEqual(',
+    '  Buffer.from(received, "ascii"), Buffer.from(expected, "ascii"),',
+    ');',
+    'if (!valid) {',
     '  return new Response("invalid signature", { status: 401 });',
     '}',
     'const event = JSON.parse(body.toString("utf8"));',
     '// 以 event_id 做幂等键；重复通知直接返回同一个 ACK。',
     'return Response.json({ schema: "perpay:webhook-ack:v1", ack: true, event_id: eventId, delivery_id: deliveryId });',
   ].join("\n");
+  const webhookPayloadCode = [
+    '{',
+    '  "schema": "perpay:outbox-event:v2",',
+    '  "event_id": "evt_...",',
+    '  "event_type": "PAYMENT_CONFIRMED",',
+    '  "order_id": "ord_...",',
+    '  "merchant_order_no": "ORDER-20260821-0001",',
+    '  "product_name": "商品名称",',
+    '  "note": "用户名：demo",',
+    '  "payment_status": "CONFIRMED",',
+    '  "payment_basis": "INFERRED",',
+    '  "refund_status": "NONE",',
+    '  "order_version": 2,',
+    '  "occurred_at": 1776700800000',
+    '}',
+  ].join("\n");
   return <Box sx={{ width: "100%", maxWidth: 1160, mx: "auto" }}>
-    <PageHeader title="网站接入" description="把你的商城、会员系统或 API 服务接入 PerPay，创建订单并接收付款结果。" actions={<Button component="a" href="/admin/settings?section=api" variant="outlined" startIcon={<SettingsOutlined />}>生成 API 密钥</Button>} />
+    <PageHeader title="使用方法" description="查看后端调用、订单创建、回调通知和验签处理示例。" actions={<Button component="a" href="/admin/settings?section=api" variant="outlined" startIcon={<SettingsOutlined />}>生成 API 密钥</Button>} />
     <Alert severity="info" sx={{ mb: 3.5 }}>
       <Typography sx={{ fontWeight: 700 }}>只在网站后端调用</Typography>
       <Typography variant="body2" sx={{ mt: 0.375 }}>API 密钥和通知密钥属于服务端凭据，不能放入浏览器 JavaScript、移动端包或公开代码。当前服务地址是 <Code>{apiBase}</Code>。</Typography>
@@ -823,9 +833,11 @@ function IntegrationPage() {
       </Section>
       <Section title="通知与幂等">
         <Stack spacing={1.5}>
-          <Typography variant="body2">在“设置 → 通知”启用允许来源后，创建订单时填写 <Code>notify_url</Code>。PerPay 会发送签名事件，网络失败会自动重试。</Typography>
-          <Typography variant="body2" color="textSecondary">接收端必须先读取原始请求体，再按下方字段验签；解析 JSON 后使用 <Code>event_id</Code> 幂等处理。只有精确返回事件 ID 和投递 ID 的 ACK 才算成功。</Typography>
+          <Typography variant="body2">在“设置 → 通知”启用通知并填写网站的 HTTPS Origin（只填来源，不填路径）。创建订单时，把 <Code>notify_url</Code> 填成该来源下的完整回调地址。通知可能重复、延迟或乱序，网站必须按 <Code>event_id</Code> 幂等处理。</Typography>
+          <Typography variant="body2" color="textSecondary">接收端必须先读取原始请求体，再计算 SHA-256 并用通知密钥验签；不要先解析 JSON 再重新序列化。只有 HTTP 200、JSON 且精确返回事件 ID 和投递 ID 的 ACK 才算成功。</Typography>
           <CopyableCode label="Node.js：通知验签骨架" value={webhookCode} />
+          <CopyableCode label="通知 JSON：核心字段示例" value={webhookPayloadCode} />
+          <Typography variant="body2" color="textSecondary">网络错误、5xx、429 或错误 ACK 会重试；401、403 等鉴权错误可能进入失败或死信。事件类型包括 <Code>PAYMENT_CONFIRMED</Code>、<Code>PAYMENT_DISPUTED</Code> 和 <Code>REFUND_UPDATED</Code>，业务处理必须以 <Code>event_id</Code> 去重。</Typography>
         </Stack>
       </Section>
     </Box>
@@ -1006,8 +1018,9 @@ function OrderDetail({ payload }: { readonly payload: JsonObject }) {
   const order = payload.order || payload;
   const events = (payload.events || []) as JsonObject[];
   return <><PageHeader title={order.merchant_order_no || "订单详情"} description={order.product_name || "网站订单状态与审计事件。"} actions={<LinkButton href="/admin/orders">返回订单</LinkButton>} />
-    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2, mb: 3 }}><DetailCard title="网站订单"><Facts items={[["网站订单号", order.merchant_order_no, true], ["PerPay 订单 ID", order.order_id, true], ["商品名称", order.product_name || "-"], ["商户备注", order.note || "无"], ["请求金额", formatMoney(order.requested_amount_cents, order.currency)], ["应付金额", formatMoney(order.payable_amount_cents, order.currency)], ["实收金额", formatMoney(order.received_amount_cents, order.currency)], ["收银台", statusText(order.checkout_status || order.checkout?.status)], ["付款", `${statusText(order.payment_status || order.payment?.status)} / ${statusText(order.payment_basis || order.payment?.basis)}`], ["退款", statusText(order.refund_status || order.refund?.status)], ["创建时间", formatTime(order.created_at)], ["到期时间", formatTime(order.expires_at || order.checkout?.expires_at)], ["更新时间", formatTime(order.updated_at)]]} /></DetailCard><DetailCard title="通知"><Facts items={[["目标", order.notification?.notify_url || order.notify_url || "未配置", true], ["当前版本", order.version ?? "-"], ["付款证据", evidenceText(order.payment_basis || order.payment?.basis)]]} /></DetailCard></Box>
-    <Section title="订单事件">{events.length ? <DataTable label="订单事件" rows={events} columns={[{ label: "时间", render: (row) => formatTime(row.occurred_at) }, { label: "类型", render: (row) => <Code>{row.event_type}</Code> }, { label: "序号", render: (row) => String(row.sequence ?? "-") }, { label: "详情", render: (row) => <Box component="details"><Typography component="summary" sx={{ cursor: "pointer" }}>查看</Typography><JsonBlock value={row.details || row.event_details || {}} /></Box> }]} /> : <EmptyState title="暂无事件" message="该订单还没有可显示的状态事件。" />}</Section>
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 1.35fr) minmax(0, 1fr)" }, gap: 2, mb: 3 }}><OrderFactsCard order={order} /><OrderNotificationCard order={order} /></Box>
+    <OrderFinancialSection order={order} />
+    <OrderEventsSection events={events} />
   </>;
 }
 
@@ -1023,6 +1036,116 @@ function ProviderFilter({ generations, selected, names }: { readonly generations
   return <FilterBar names={names}><FilterSelect name="provider_account_key" label="采集应用" value={selected} minWidth={280} options={generations.map((generation) => ({ value: String(generation.provider_account_key), label: providerGenerationLabel(generation.provider_account_key, generations) }))} /></FilterBar>;
 }
 
+function OrderFactsCard({ order }: { readonly order: JsonObject }) {
+  const checkout = (order.checkout || {}) as JsonObject;
+  const payment = (order.payment || {}) as JsonObject;
+  const refund = (order.refund || {}) as JsonObject;
+  const checkoutStatus = order.checkout_status ?? checkout.status;
+  const paymentStatus = order.payment_status ?? payment.status;
+  const paymentBasis = order.payment_basis ?? payment.basis;
+  const refundStatus = order.refund_status ?? refund.status;
+  const receivedAmount = order.received_amount_cents ?? payment.received_amount_cents;
+  return <DetailCard title="网站订单"><Facts items={[
+    ["网站订单号", order.merchant_order_no || "-", true],
+    ["PerPay 订单 ID", order.order_id || "-", true],
+    ["客户端 ID", order.api_client_id || "-", true],
+    ["商品名称", order.product_name || "-"],
+    ["商户备注", order.note || "无"],
+    ["请求金额", formatMoney(order.requested_amount_cents, order.currency)],
+    ["应付金额", formatMoney(order.payable_amount_cents, order.currency)],
+    ["实收金额", formatMoney(receivedAmount, order.currency)],
+    ["币种", order.currency || "CNY"],
+    ["收银台", statusText(checkoutStatus)],
+    ["付款", `${statusText(paymentStatus)} / ${evidenceText(paymentBasis)}`],
+    ["退款", statusText(refundStatus)],
+    ["可匹配时间", formatTime(order.eligible_from)],
+    ["创建时间", formatTime(order.created_at)],
+    ["到期时间", formatTime(order.expires_at || checkout.expires_at)],
+    ["关闭时间", formatTime(order.closed_at || checkout.closed_at)],
+    ["更新时间", formatTime(order.updated_at)],
+    ["版本", order.version ?? "-"],
+  ]} /></DetailCard>;
+}
+
+function OrderNotificationCard({ order }: { readonly order: JsonObject }) {
+  const notification = (order.notification || {}) as JsonObject;
+  return <DetailCard title="通知与收银台"><Facts items={[
+    ["通知目标", notification.notify_url || order.notify_url || "未配置", true],
+    ["返回地址", order.return_url || "未配置", true],
+    ["通知版本", order.version ?? "-"],
+    ["说明", "收银台令牌和地址不在后台详情中展示。"],
+  ]} /></DetailCard>;
+}
+
+function LedgerFactsCard({ ledger }: { readonly ledger: JsonObject | null }) {
+  if (!ledger) return <DetailCard title="支付宝流水"><Typography color="textSecondary">没有关联的支付宝流水。</Typography></DetailCard>;
+  return <DetailCard title="支付宝流水"><Facts items={[
+    ["PerPay 流水记录 ID", ledger.ledger_entry_id || "-", true],
+    ["支付宝流水记录 ID", ledger.external_event_id || "-", true],
+    ["支付宝交易订单号", ledger.provider_order_no || ledger.alipay_order_no || "未返回", true],
+    ["支付宝商户订单号", ledger.merchant_order_no || "未返回", true],
+    ["金额", formatMoney(ledger.amount_cents, ledger.currency)],
+    ["币种", ledger.currency || "CNY"],
+    ["发生时间", formatTime(ledger.occurred_at)],
+    ["时间精度", ledger.occurred_at_precision_milliseconds ? `${ledger.occurred_at_precision_milliseconds} 毫秒` : "-"],
+    ["时间区间结束", formatTime(ledger.occurred_at_interval_end_exclusive)],
+    ["方向", statusText(ledger.direction)],
+    ["状态", statusText(ledger.state)],
+    ["对方账户", ledger.other_account || "-"],
+    ["交易备注", ledger.memo || ledger.trans_memo || "无"],
+    ["证据指纹", ledger.semantic_fingerprint || "-", true],
+    ["创建时间", formatTime(ledger.created_at)],
+    ["更新时间", formatTime(ledger.updated_at)],
+  ]} /></DetailCard>;
+}
+
+function MatchFactsCard({ match }: { readonly match: JsonObject }) {
+  return <DetailCard title="付款关联"><Facts items={[
+    ["付款关联 ID", match.payment_match_id || "-", true],
+    ["候选 ID", match.candidate_id || "无", true],
+    ["状态", statusText(match.status)],
+    ["确认依据", evidenceText(match.evidence_type)],
+    ["创建操作 ID", match.created_by_operation_id || "-", true],
+    ["撤销操作 ID", match.resolved_by_operation_id || "无", true],
+    ["创建时间", formatTime(match.created_at)],
+    ["更新时间", formatTime(match.updated_at)],
+    ["撤销时间", formatTime(match.resolved_at)],
+  ]} /></DetailCard>;
+}
+
+function ExceptionFactsCard({ exception }: { readonly exception: JsonObject }) {
+  return <DetailCard title="异常事实"><Facts items={[
+    ["异常 ID", exception.exception_id || "-", true],
+    ["采集应用", exception.provider_account_key || "-", true],
+    ["异常类型", statusText(exception.exception_type)],
+    ["状态", statusText(exception.status)],
+    ["PerPay 订单 ID", exception.order_id || "未关联", true],
+    ["PerPay 流水记录 ID", exception.ledger_entry_id || "无", true],
+    ["候选 ID", exception.candidate_id || "无", true],
+    ["上下文 ID", exception.context_key || "-", true],
+    ["发现时间", formatTime(exception.created_at)],
+    ["处理时间", formatTime(exception.resolved_at)],
+    ["处理操作 ID", exception.resolution_operation_id || "待处理", true],
+    ["处理结果", exception.resolution ? <JsonBlock value={exception.resolution} /> : "待处理"],
+    ["异常指纹", exception.exception_fingerprint || "-", true],
+  ]} /></DetailCard>;
+}
+
+function OrderEventsSection({ events }: { readonly events: readonly JsonObject[] }) {
+  return <Section title="订单事件">{events.length ? <DataTable label="订单事件" rows={events} columns={[{ label: "时间", render: (row) => formatTime(row.occurred_at) }, { label: "类型", render: (row) => <Code>{row.event_type}</Code> }, { label: "序号", render: (row) => String(row.sequence ?? "-") }, { label: "详情", render: (row) => <Box component="details"><Typography component="summary" sx={{ cursor: "pointer" }}>查看</Typography><JsonBlock value={row.details || row.event_details || {}} /></Box> }]} /> : <EmptyState title="暂无事件" message="该订单还没有可显示的状态事件。" />}</Section>;
+}
+
+function OrderFinancialSection({ order }: { readonly order: JsonObject }) {
+  const reconciliation = (order.reconciliation || {}) as JsonObject;
+  const matches = (reconciliation.matches || []) as JsonObject[];
+  const exceptions = (reconciliation.exceptions || []) as JsonObject[];
+  if (!matches.length && !exceptions.length) return <Section title="资金关联"><EmptyState title="暂无流水或异常关联" message="该订单尚未形成支付宝流水关联或异常记录。" /></Section>;
+  return <Section title="资金关联"><Stack spacing={2}>
+    {matches.map((match) => <Box key={String(match.payment_match_id)} sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 1.35fr) minmax(0, 1fr)" }, gap: 2 }}><LedgerFactsCard ledger={(match.ledger_entry || null) as JsonObject | null} /><MatchFactsCard match={match} /></Box>)}
+    {exceptions.map((exception) => <ExceptionFactsCard key={String(exception.exception_id)} exception={exception} />)}
+  </Stack></Section>;
+}
+
 function ExceptionsPage() {
   const query = useMemo(() => new URLSearchParams(location.search), []);
   const id = query.get("id");
@@ -1032,9 +1155,33 @@ function ExceptionsPage() {
     if (id) {
       const exceptionResponse = await api(`/reconciliation/exceptions/${encodeURIComponent(id)}`);
       const exception = exceptionResponse.data || {};
-      if (!exception.ledger_entry_id) return { data: { exception, ledger: null, candidates: [] } };
-      const [ledger, candidates] = await Promise.allSettled([api(`/reconciliation/ledger-entries/${encodeURIComponent(exception.ledger_entry_id)}`), api(`/reconciliation/ledger-entries/${encodeURIComponent(exception.ledger_entry_id)}/candidates`)]);
-      return { data: { exception, ledger: ledger.status === "fulfilled" ? ledger.value.data : null, ledger_error: ledger.status === "rejected" ? errorMessage(ledger.reason) : null, candidates: candidates.status === "fulfilled" ? candidates.value.data || [] : [], candidates_error: candidates.status === "rejected" ? errorMessage(candidates.reason) : null } };
+      const requests: [Promise<JsonObject>, Promise<JsonObject>, Promise<JsonObject>?] = [
+        exception.ledger_entry_id ? api(`/reconciliation/ledger-entries/${encodeURIComponent(exception.ledger_entry_id)}`) : Promise.resolve({ data: null }),
+        exception.ledger_entry_id ? api(`/reconciliation/ledger-entries/${encodeURIComponent(exception.ledger_entry_id)}/candidates`) : Promise.resolve({ data: [] }),
+      ];
+      if (exception.order_id) requests.push(api(`/orders/${encodeURIComponent(exception.order_id)}`));
+      const [ledger, candidates, order] = await Promise.allSettled(requests);
+      const candidateRows = candidates.status === "fulfilled" ? (candidates.value.data || []) as JsonObject[] : [];
+      const enrichedCandidates = await Promise.all(candidateRows.map(async (candidate) => {
+        if (!candidate.order_id) return candidate;
+        try {
+          const response = await api(`/orders/${encodeURIComponent(candidate.order_id)}`);
+          return { ...candidate, ...(response.data || {}) };
+        } catch {
+          return candidate;
+        }
+      }));
+      const orderData = order && "value" in order ? order.value.data : null;
+      const orderError = order && "reason" in order ? errorMessage(order.reason) : null;
+      return { data: {
+        exception,
+        ledger: ledger.status === "fulfilled" ? ledger.value.data : null,
+        ledger_error: ledger.status === "rejected" ? errorMessage(ledger.reason) : null,
+        candidates: enrichedCandidates,
+        candidates_error: candidates.status === "rejected" ? errorMessage(candidates.reason) : null,
+        order: orderData,
+        order_error: orderError,
+      } };
     }
     const settings = await api("/settings");
     const generations = (settings.data?.provider_generations || []) as JsonObject[];
@@ -1057,6 +1204,7 @@ function ExceptionDetail({ payload }: { readonly payload: JsonObject }) {
   const { openDialog } = useAdmin();
   const exception = payload.exception || {};
   const ledger = payload.ledger as JsonObject | null;
+  const order = payload.order as JsonObject | null;
   const candidates = (payload.candidates || []) as JsonObject[];
   const evidenceReady = !payload.ledger_error && !payload.candidates_error;
   const manual = ledger?.direction === "CREDIT" && ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(ledger.state);
@@ -1067,8 +1215,10 @@ function ExceptionDetail({ payload }: { readonly payload: JsonObject }) {
     content: <FinancialDecisionForm kind={kind} exception={exception} />,
   });
   return <><PageHeader title={statusText(exception.exception_type)} description="异常证据与可执行处置。" actions={<>{exception.status === "OPEN" && evidenceReady && manual ? <Button variant="contained" onClick={() => openDecision("manual")}>人工认领</Button> : null}{exception.status === "OPEN" && evidenceReady && refund ? <Button variant="outlined" color="error" onClick={() => openDecision("refund")}>登记退款</Button> : null}<LinkButton href="/admin/exceptions">返回异常</LinkButton></>} />
-    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2, mb: 3 }}><DetailCard title="异常事实"><Facts items={[["异常 ID", exception.exception_id, true], ["状态", statusText(exception.status)], ["PerPay 订单", exception.order_id || "未关联", true], ["PerPay 流水记录", exception.ledger_entry_id || "无", true], ["候选 ID", exception.candidate_id || "无", true], ["发现时间", formatTime(exception.created_at)], ["处理时间", formatTime(exception.resolved_at)], ["处理结果", exception.resolution ? <JsonBlock value={exception.resolution} /> : "待处理"]]} /></DetailCard><DetailCard title="支付宝流水">{payload.ledger_error ? <Alert severity="error">{payload.ledger_error}</Alert> : ledger ? <Facts items={[["支付宝交易订单号", ledger.provider_order_no || "未返回", true], ["支付宝商户订单号", ledger.merchant_order_no || "未返回", true], ["金额", formatMoney(ledger.amount_cents, ledger.currency)], ["发生时间", formatTime(ledger.occurred_at)], ["方向", statusText(ledger.direction)], ["状态", statusText(ledger.state)], ["对方账户", ledger.other_account || "-"]]} /> : <Typography color="textSecondary">此异常没有可读取的支付宝流水。</Typography>}</DetailCard></Box>
-    <Section title="候选订单">{payload.candidates_error ? <Alert severity="error">{payload.candidates_error}</Alert> : candidates.length ? <DataTable label="匹配候选" rows={candidates} columns={[{ label: "PerPay 订单", render: (row) => <OrderLink id={row.order_id} /> }, { label: "证据", render: (row) => evidenceText(row.evidence_type) }, { label: "状态", render: (row) => <StateChip value={row.status} /> }, { label: "创建时间", render: (row) => formatTime(row.created_at) }]} /> : <EmptyState title="没有候选订单" message="可通过网站订单号查找正确订单后人工认领。" />}</Section><Section title="原始上下文"><JsonBlock value={exception.details || {}} /></Section>
+    {payload.order_error ? <Alert severity="warning" sx={{ mb: 3 }}>关联订单详情读取失败：{payload.order_error}</Alert> : null}
+    {order ? <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 1.35fr) minmax(0, 1fr)" }, gap: 2, mb: 3 }}><OrderFactsCard order={order} /><OrderNotificationCard order={order} /></Box> : null}
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 1fr) minmax(0, 1.35fr)" }, gap: 2, mb: 3 }}><ExceptionFactsCard exception={exception} />{payload.ledger_error ? <DetailCard title="支付宝流水"><Alert severity="error">{payload.ledger_error}</Alert></DetailCard> : <LedgerFactsCard ledger={ledger} />}</Box>
+    <Section title="候选订单">{payload.candidates_error ? <Alert severity="error">{payload.candidates_error}</Alert> : candidates.length ? <DataTable label="匹配候选" rows={candidates} columns={[{ label: "PerPay 订单", render: (row) => <OrderLink id={row.order_id} /> }, { label: "网站订单号", render: (row) => <Code>{row.merchant_order_no || "-"}</Code> }, { label: "商品名称", render: (row) => row.product_name || "-" }, { label: "备注", render: (row) => row.note || "无" }, { label: "应付金额", render: (row) => formatMoney(row.payable_amount_cents, row.currency) }, { label: "证据", render: (row) => evidenceText(row.evidence_type) }, { label: "状态", render: (row) => <StateChip value={row.status} /> }, { label: "创建时间", render: (row) => formatTime(row.created_at) }]} /> : <EmptyState title="没有候选订单" message="可通过网站订单号查找正确订单后人工认领。" />}</Section><Section title="原始上下文"><JsonBlock value={exception.details || {}} /></Section>
   </>;
 }
 
@@ -1104,7 +1254,16 @@ function SettlementsPage() {
   const status = ["SETTLED", "REVERSED"].includes(query.get("status") || "") ? query.get("status")! : "SETTLED";
   const cursor = query.get("cursor");
   const { data, error } = useApiData(() => {
-    if (id) return api(`/reconciliation/matches/${encodeURIComponent(id)}`);
+    if (id) return api(`/reconciliation/matches/${encodeURIComponent(id)}`).then(async (response) => {
+      const match = response.data || {};
+      if (!match.order_id) return response;
+      try {
+        const order = await api(`/orders/${encodeURIComponent(match.order_id)}`);
+        return { ...response, data: { ...match, order_detail: order.data } };
+      } catch (caught) {
+        return { ...response, data: { ...match, order_error: errorMessage(caught) } };
+      }
+    });
     const parameters = new URLSearchParams({ limit: "100" });
     if (status !== "SETTLED") parameters.set("status", status);
     if (cursor) parameters.set("cursor", cursor);
@@ -1119,10 +1278,15 @@ function SettlementsPage() {
 
 function SettlementDetail({ match }: { readonly match: JsonObject }) {
   const { openDialog } = useAdmin();
-  const order = match.order || {}, ledger = match.ledger_entry || {};
+  const order = (match.order_detail || match.order || {}) as JsonObject;
+  const ledger = (match.ledger_entry || null) as JsonObject | null;
   return <><PageHeader title="付款确认详情" description="查看网站订单与支付宝流水之间的确认记录。" actions={<>{match.status === "SETTLED" ? <Button color="error" variant="contained" onClick={() => openDialog({ title: "撤销付款关联", description: `网站订单 ${order.merchant_order_no || short(match.order_id)}`, content: <ReverseSettlementForm match={match} /> })}>撤销关联</Button> : null}<LinkButton href="/admin/settlements">返回结算</LinkButton></>} />
     <Section title="确认过程"><Stepper activeStep={3} alternativeLabel sx={{ py: 2 }}><Step completed><StepButton>网站订单创建</StepButton></Step><Step completed><StepButton>支付宝流水采集</StepButton></Step><Step completed><StepButton>{match.candidate ? "唯一金额匹配" : "管理员认领"}</StepButton></Step><Step completed><StepButton>{match.status === "REVERSED" ? "关联已撤销" : "付款已确认"}</StepButton></Step></Stepper></Section>
-    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2, mb: 3 }}><DetailCard title="网站订单"><Facts items={[["网站订单号", order.merchant_order_no || "-", true], ["商品名称", order.product_name || "-"], ["商户备注", order.note || "无"], ["应付金额", formatMoney(order.payable_amount_cents, order.currency)], ["实收金额", formatMoney(order.received_amount_cents, order.currency)], ["付款状态", statusText(order.payment_status)], ["确认依据", evidenceText(order.payment_basis)]]} /></DetailCard><DetailCard title="支付宝流水"><Facts items={[["支付宝交易订单号", ledger.provider_order_no || "未返回", true], ["支付宝商户订单号", ledger.merchant_order_no || "未返回", true], ["实际到账金额", formatMoney(ledger.amount_cents, ledger.currency)], ["收款时间", formatTime(ledger.occurred_at)], ["收款方向", statusText(ledger.direction)], ["流水状态", statusText(ledger.state)]]} /></DetailCard></Box><Box component="details" sx={{ mb: 3 }}><Typography component="summary" sx={{ cursor: "pointer", color: "text.secondary", fontSize: "0.875rem" }}>查看系统追踪编号</Typography><Box sx={{ mt: 1.5, maxWidth: 760 }}><DetailCard title="仅供排查"><Facts items={[["付款关联 ID", match.payment_match_id, true], ["PerPay 订单 ID", match.order_id, true], ["PerPay 流水记录 ID", match.ledger_entry_id, true], ["候选 ID", match.candidate_id || "无", true], ["创建操作 ID", match.created_by_operation_id, true], ["撤销操作 ID", match.resolved_by_operation_id || "无", true]]} /></DetailCard></Box></Box><Section title="匹配证据"><JsonBlock value={match.evidence || {}} /></Section>
+    {match.order_error ? <Alert severity="warning" sx={{ mb: 3 }}>完整订单详情读取失败：{match.order_error}</Alert> : null}
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 1.35fr) minmax(0, 1fr)" }, gap: 2, mb: 3 }}><OrderFactsCard order={order} /><OrderNotificationCard order={order} /></Box>
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 1.35fr) minmax(0, 1fr)" }, gap: 2, mb: 3 }}><LedgerFactsCard ledger={ledger} /><MatchFactsCard match={match} /></Box>
+    <Section title="匹配证据"><JsonBlock value={match.evidence || {}} /></Section>
+    <OrderEventsSection events={(match.order_detail?.events || []) as JsonObject[]} />
   </>;
 }
 
@@ -1584,10 +1748,11 @@ function ConfirmAction({ label, severity, onConfirm }: { readonly label: string;
 function Root() {
   const node = document.querySelector<HTMLElement>("#perpay-admin-root");
   const pageMode = node?.dataset.mode || "application";
+  const brandFontUrl = node?.dataset.brandFontUrl;
   const [preference, setPreference] = useState<ThemePreference>(readThemePreference);
   const systemDark = useMediaQuery("(prefers-color-scheme: dark)", { noSsr: true });
   const mode: PaletteMode = preference === "auto" ? (systemDark ? "dark" : "light") : preference;
-  const theme = useMemo(() => createAdminTheme(mode), [mode]);
+  const theme = useMemo(() => createAdminTheme(mode, brandFontUrl), [mode, brandFontUrl]);
   return <ThemeProvider theme={theme}><CssBaseline />{pageMode === "setup" ? <SetupPage /> : pageMode === "login" ? <LoginPage /> : <AdminApplication preference={preference} onPreferenceChange={setPreference} />}</ThemeProvider>;
 }
 

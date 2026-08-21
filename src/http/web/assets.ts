@@ -34,6 +34,7 @@ const sources = Object.freeze({
   alipayIcon: staticAsset("alipay.png", "image/png"),
   checkoutStylesheet: staticAsset("checkout.css", "text/css; charset=utf-8"),
   checkoutScript: staticAsset("checkout.js", "text/javascript; charset=utf-8"),
+  meddonFont: staticAsset("Meddon-Regular.woff2", "font/woff2"),
 });
 
 function contentAddress(source: AssetSource): string {
@@ -46,6 +47,7 @@ export const WEB_ASSET_URLS = Object.freeze({
   alipayIcon: contentAddress(sources.alipayIcon),
   checkoutStylesheet: contentAddress(sources.checkoutStylesheet),
   checkoutScript: contentAddress(sources.checkoutScript),
+  meddonFont: contentAddress(sources.meddonFont),
 });
 
 const assets = new Map<string, WebAsset>(

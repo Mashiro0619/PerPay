@@ -964,6 +964,23 @@ export class ReconciliationStore {
     });
   }
 
+  paymentMatchDetailsForOrder(orderId: string): readonly PaymentMatchDetail[] {
+    requireIdentifier(orderId, "order ID");
+    return this.#database.read((connection) => {
+      const rows = connection
+        .prepare(
+          `SELECT payment_match_id, ledger_entry_id, order_id, candidate_id,
+                  evidence_type, evidence_json, status, created_by_operation_id,
+                  resolved_by_operation_id, created_at, updated_at, resolved_at
+             FROM payment_matches
+            WHERE order_id = ?
+            ORDER BY created_at DESC, payment_match_id DESC`,
+        )
+        .all(orderId) as unknown as PaymentMatchRow[];
+      return readPaymentMatchDetails(connection, rows.map(mapPaymentMatch));
+    });
+  }
+
   paymentMatchHistoryPage(
     status: PaymentMatchStatus = "SETTLED",
     cursor: PaymentMatchHistoryCursor | null = null,
@@ -1034,6 +1051,15 @@ export class ReconciliationStore {
         .get(exceptionId) as unknown as ExceptionRow | undefined;
       return row ? mapException(row) : null;
     });
+  }
+
+  financialExceptionsForOrder(orderId: string): readonly FinancialException[] {
+    requireIdentifier(orderId, "order ID");
+    return this.#database.read((connection) => Object.freeze(
+      (connection
+        .prepare(`${EXCEPTION_COLUMNS} WHERE order_id = ? ORDER BY created_at DESC, exception_id DESC`)
+        .all(orderId) as unknown as ExceptionRow[]).map(mapException),
+    ));
   }
 
   listCandidates(ledgerEntryId: string): readonly MatchCandidate[] {

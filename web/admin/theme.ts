@@ -10,7 +10,7 @@ const UI_FONT = [
   "sans-serif",
 ].join(", ");
 
-export function createAdminTheme(mode: PaletteMode) {
+export function createAdminTheme(mode: PaletteMode, brandFontUrl?: string) {
   const dark = mode === "dark";
   const primary = dark ? "#f4f4f5" : "#18181b";
   const primaryContrast = dark ? "#18181b" : "#ffffff";
@@ -57,6 +57,15 @@ export function createAdminTheme(mode: PaletteMode) {
     components: {
       MuiCssBaseline: {
         styleOverrides: {
+          ...(brandFontUrl ? {
+            "@font-face": {
+              fontFamily: "Meddon",
+              src: `url(${JSON.stringify(brandFontUrl)}) format("woff2")`,
+              fontWeight: 400,
+              fontStyle: "normal",
+              fontDisplay: "swap",
+            },
+          } : {}),
           html: { colorScheme: mode },
           body: {
             minWidth: 320,

@@ -203,6 +203,11 @@ describe("reconciliation HTTP contract", () => {
       assert.equal(byMerchantData.order_id, confirmed.orderId);
       assert.equal(byMerchantData.api_client_id, "default");
       assert.equal(byMerchantData.payment.status, "CONFIRMED");
+      assert.ok(Array.isArray(byMerchantData.reconciliation?.matches));
+      assert.ok(Array.isArray(byMerchantData.reconciliation?.exceptions));
+      assert.equal(byMerchantData.reconciliation.matches.length, 1);
+      assert.equal(byMerchantData.reconciliation.matches[0].ledger_entry.amount_cents, confirmed.payableAmountCents);
+      assert.equal(byMerchantData.reconciliation.matches[0].order.product_name, byMerchantData.product_name);
       assert.deepEqual(
         byMerchantData.events.map((event: Record<string, unknown>) => event.event_type),
         ["CREATED", "PAYMENT_CONFIRMED"],

@@ -8,7 +8,7 @@ import { mergeTestPaymentOrder, testPaymentTerminal } from "../web/admin/test-pa
 
 describe("web asset manifest", () => {
   it("binds every immutable URL to the complete SHA-256 digest of its content", () => {
-    assert.equal(WEB_ASSET_PATHS.length, 4);
+    assert.equal(WEB_ASSET_PATHS.length, 5);
     assert.equal(new Set(WEB_ASSET_PATHS).size, WEB_ASSET_PATHS.length);
 
     for (const path of Object.values(WEB_ASSET_URLS)) {
@@ -32,6 +32,14 @@ describe("web asset manifest", () => {
     assert.ok(icon.body instanceof Uint8Array);
     assert.deepEqual([...icon.body.slice(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
     assert.ok(icon.body.byteLength < 16 * 1024);
+  });
+
+  it("serves the Meddon brand font as a content-addressed WOFF2", () => {
+    const font = webAsset(WEB_ASSET_URLS.meddonFont);
+    assert.ok(font);
+    assert.equal(font.contentType, "font/woff2");
+    assert.ok(font.body instanceof Uint8Array);
+    assert.deepEqual([...font.body.slice(0, 4)], [119, 79, 70, 50]);
   });
 
   it("ships system theme tokens and a mobile-first checkout payment order", () => {
@@ -67,12 +75,16 @@ describe("web asset manifest", () => {
       "最终应付金额",
       "继续上次测试",
       "/admin/integration",
-      "网站接入",
+      "使用方法",
       "PERPAY-HMAC-SHA256",
       "/api/v1/orders",
       "x-perpay-webhook-signature",
       "event_id",
+      "通知 JSON：核心字段示例",
+      "timingSafeEqual",
+      "Meddon",
     ]) assert.ok(script.includes(expected), `admin bundle is missing ${expected}`);
+    assert.doesNotMatch(script, /网站接入/);
     assert.doesNotMatch(script, /模拟到账|模拟确认/);
   });
 
