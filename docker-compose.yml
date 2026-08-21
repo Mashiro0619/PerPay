@@ -1,28 +1,22 @@
 name: perpay
 
-# 部署配置
-x-perpay-master-key: &perpay-master-key "CHANGE_ME_TO_64_HEX_CHARACTERS"
 x-perpay-host-port: &perpay-host-port "127.0.0.1:6190:6190"
-x-perpay-public-url: &perpay-public-url "http://localhost:6190"
+x-perpay-public-url: &perpay-public-url "https://pay.example.com"
 x-perpay-trusted-proxy-cidrs: &perpay-trusted-proxy-cidrs ""
-
-# 自动备份
-x-perpay-backup-interval-seconds: &perpay-backup-interval-seconds "86400"
-x-perpay-backup-keep-count: &perpay-backup-keep-count "7"
 
 services:
   app:
     ports:
       - *perpay-host-port
     environment:
-      PERPAY_MASTER_KEY: *perpay-master-key
+      PERPAY_SECRETS_DIR: "/run/perpay-secrets"
       PERPAY_PUBLIC_URL: *perpay-public-url
       PERPAY_TRUSTED_PROXY_CIDRS: *perpay-trusted-proxy-cidrs
-      PERPAY_BACKUP_INTERVAL_SECONDS: *perpay-backup-interval-seconds
     image: ghcr.io/mashiro0619/perpay:latest
     volumes:
       - perpay-data:/data
       - perpay-backups:/backups:ro
+      - perpay-secrets:/run/perpay-secrets
     user: "1000:1000"
     restart: unless-stopped
     stop_grace_period: 45s
@@ -55,8 +49,6 @@ services:
     environment:
       PERPAY_DATA_DIR: "/data"
       PERPAY_BACKUP_DIR: "/backups"
-      PERPAY_BACKUP_INTERVAL_SECONDS: *perpay-backup-interval-seconds
-      PERPAY_BACKUP_KEEP_COUNT: *perpay-backup-keep-count
     volumes:
       - perpay-data:/data:ro
       - perpay-backups:/backups
@@ -102,8 +94,6 @@ services:
     environment:
       PERPAY_DATA_DIR: "/data"
       PERPAY_BACKUP_DIR: "/backups"
-      PERPAY_BACKUP_INTERVAL_SECONDS: *perpay-backup-interval-seconds
-      PERPAY_BACKUP_KEEP_COUNT: *perpay-backup-keep-count
     volumes:
       - perpay-data:/data
       - perpay-backups:/backups
@@ -124,3 +114,4 @@ services:
 volumes:
   perpay-data:
   perpay-backups:
+  perpay-secrets:

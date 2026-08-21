@@ -4229,6 +4229,21 @@ export const migrations: readonly Migration[] = [
       BEGIN
         SELECT RAISE(ABORT, 'order return URL is immutable');
       END;
+      `,
+  },
+  {
+    version: 18,
+    name: "configurable_backup_policy",
+    sql: `
+      ALTER TABLE runtime_configuration
+        ADD COLUMN backup_interval_seconds INTEGER NOT NULL
+        DEFAULT 86400
+        CHECK (backup_interval_seconds BETWEEN 3600 AND 604800);
+
+      ALTER TABLE runtime_configuration
+        ADD COLUMN backup_keep_count INTEGER NOT NULL
+        DEFAULT 7
+        CHECK (backup_keep_count BETWEEN 1 AND 365);
     `,
   },
 ] as const;

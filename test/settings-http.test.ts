@@ -120,6 +120,35 @@ describe("advanced settings HTTP contract", () => {
   });
 });
 
+describe("backup settings HTTP contract", () => {
+  it("persists the administrator-controlled backup policy without changing payment revision", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-http-backup-settings-"));
+    const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
+      directory,
+      apiSecret,
+      collectionCodePayload: "https://qr.local.invalid/http-backup-settings",
+      publicUrl: origin,
+    });
+    const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
+    try {
+      const headers = await loginHeaders(app);
+      const response = await app.request("/api/admin/v1/settings/backup", {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ revision: 3, interval_seconds: 7_200, keep_count: 14 }),
+      });
+      assert.equal(response.status, 200);
+      const body = await response.json() as { data: { revision: number; payment_revision: number; backup: { interval_seconds: number; keep_count: number } } };
+      assert.equal(body.data.revision, 4);
+      assert.equal(body.data.payment_revision, 2);
+      assert.deepEqual(body.data.backup, { interval_seconds: 7_200, keep_count: 14 });
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("provider application key HTTP contract", () => {
   it("generates the initial application key without returning the private key", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-http-provider-key-"));

@@ -1,3 +1,17 @@
+import { randomBytes } from "node:crypto";
+import {
+  chmodSync,
+  existsSync,
+  fsyncSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  closeSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { isIP } from "node:net";
 import { resolve } from "node:path";
 
@@ -18,9 +32,11 @@ const rawDeploymentConfigSchema = z.object({
   PERPAY_PORT: z.coerce.number().int().min(1).max(65535).default(6190),
   PERPAY_DATA_DIR: z.string().trim().min(1).default("./data"),
   PERPAY_BACKUP_DIR: z.string().trim().min(1).default("/backups"),
-  PERPAY_MASTER_KEY: z.string().length(MASTER_KEY_HEX_LENGTH).regex(masterKeyHexPattern),
+  PERPAY_MASTER_KEY: z.string().length(MASTER_KEY_HEX_LENGTH).regex(masterKeyHexPattern).optional(),
+  PERPAY_SECRETS_DIR: z.string().trim().min(1).optional(),
   PERPAY_PUBLIC_URL: z.string().trim().min(1).default("http://localhost:6190"),
   PERPAY_TRUSTED_PROXY_CIDRS: z.string().default(""),
+  // Kept as a non-Compose compatibility fallback for local health probes.
   PERPAY_BACKUP_INTERVAL_SECONDS: z.coerce
     .number()
     .int()
@@ -81,10 +97,14 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): Deploy
     );
   }
 
-  const masterKey = Buffer.from(parsed.data.PERPAY_MASTER_KEY, "hex");
-  if (masterKey.byteLength !== MASTER_KEY_BYTES) {
-    throw new Error("configuration validation failed: PERPAY_MASTER_KEY must encode exactly 32 bytes");
-  }
+  const secretsDirectory = parsed.data.PERPAY_SECRETS_DIR === undefined
+    ? null
+    : resolve(parsed.data.PERPAY_SECRETS_DIR);
+  const masterKey = resolveMasterKey(
+    parsed.data.PERPAY_MASTER_KEY,
+    secretsDirectory,
+    resolve(dataDir, "perpay.sqlite3"),
+  );
 
   return Object.freeze({
     host: parsed.data.PERPAY_HOST,
@@ -98,6 +118,63 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): Deploy
     trustedProxy,
     backupIntervalMilliseconds: parsed.data.PERPAY_BACKUP_INTERVAL_SECONDS * 1_000,
   });
+}
+
+function resolveMasterKey(
+  configured: string | undefined,
+  secretsDirectory: string | null,
+  databasePath: string,
+): Buffer {
+  if (configured !== undefined) {
+    const key = Buffer.from(configured, "hex");
+    if (key.byteLength !== MASTER_KEY_BYTES) {
+      throw new Error("configuration validation failed: PERPAY_MASTER_KEY must encode exactly 32 bytes");
+    }
+    return key;
+  }
+  if (secretsDirectory === null) {
+    throw new Error("configuration validation failed: set PERPAY_SECRETS_DIR or PERPAY_MASTER_KEY");
+  }
+  mkdirSync(secretsDirectory, { recursive: true, mode: 0o700 });
+  if (process.platform !== "win32") chmodSync(secretsDirectory, 0o700);
+  const path = resolve(secretsDirectory, "master-key");
+  if (existsSync(databasePath) && lstatSync(databasePath).size > 0 && !existsSync(path)) {
+    throw new Error("configuration validation failed: master-key is missing for an existing database");
+  }
+  if (existsSync(path)) {
+    const stat = lstatSync(path);
+    if (stat.isSymbolicLink() || !stat.isFile() || stat.nlink !== 1) {
+      throw new Error("configuration validation failed: master-key must be a private ordinary file");
+    }
+    if (process.platform !== "win32" && (stat.mode & 0o077) !== 0) chmodSync(path, 0o600);
+    const value = readFileSync(path, "utf8").trim();
+    if (!masterKeyHexPattern.test(value)) {
+      throw new Error("configuration validation failed: master-key file must contain 64 hexadecimal characters");
+    }
+    return Buffer.from(value, "hex");
+  }
+  const value = randomBytes(MASTER_KEY_BYTES).toString("hex");
+  const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(temporary, `${value}\n`, { encoding: "utf8", flag: "wx", mode: 0o600 });
+  try {
+    if (process.platform !== "win32") chmodSync(temporary, 0o600);
+    if (process.platform !== "win32") {
+      const handle = openSync(temporary, "r");
+      try { fsyncSync(handle); } finally { closeSync(handle); }
+    }
+    try {
+      renameSync(temporary, path);
+    } catch (error) {
+      if (!existsSync(path)) throw error;
+    }
+  } finally {
+    try { unlinkSync(temporary); } catch { /* another process published the key */ }
+  }
+  const published = readFileSync(path, "utf8").trim();
+  if (!masterKeyHexPattern.test(published)) {
+    throw new Error("configuration validation failed: generated master-key file is invalid");
+  }
+  return Buffer.from(published, "hex");
 }
 
 function parsePublicUrl(value: string): URL {

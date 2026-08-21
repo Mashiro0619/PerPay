@@ -138,7 +138,17 @@ export function createAdminTheme(mode: PaletteMode) {
       MuiOutlinedInput: {
         styleOverrides: {
           root: { minHeight: 44, borderRadius: 10, backgroundColor: paper },
-          input: { paddingTop: 9, paddingBottom: 9 },
+          input: {
+            paddingTop: 9,
+            paddingBottom: 9,
+            "&:-webkit-autofill": {
+              WebkitBoxShadow: `0 0 0 100px ${paper} inset`,
+              WebkitTextFillColor: ink,
+              caretColor: ink,
+              borderRadius: 8,
+              transition: "background-color 10000s ease-out 0s",
+            },
+          },
         },
       },
       MuiInputLabel: {

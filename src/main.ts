@@ -19,6 +19,7 @@ const startedAt = new Date();
 const config = loadConfig();
 const backupHealth = createAsyncBackupHealthProvider({
   backupDirectory: config.backupDir,
+  dataDirectory: config.dataDir,
   intervalMilliseconds: config.backupIntervalMilliseconds,
 });
 const database = await AppDatabase.open(config.databasePath);

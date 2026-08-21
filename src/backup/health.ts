@@ -7,6 +7,7 @@ import {
   inspectBackupHealth,
   type BackupHealth,
 } from "./runner.ts";
+import { readBackupPolicy } from "./policy.ts";
 
 /**
  * Health probing intentionally has a short, fixed cache. The persisted backup
@@ -20,6 +21,7 @@ const STREAM_HIGH_WATER_MARK_BYTES = 256 * 1_024;
 
 export interface AsyncBackupHealthConfig {
   readonly backupDirectory: string;
+  readonly dataDirectory?: string | undefined;
   readonly intervalMilliseconds: number;
   readonly keepCount?: number | undefined;
 }
@@ -128,7 +130,11 @@ async function inspectAndVerify(
   config: AsyncBackupHealthConfig,
   now: number,
 ): Promise<BackupHealth> {
-  const metadata = inspectBackupHealth(config, now);
+  const policy = config.dataDirectory === undefined ? null : readBackupPolicy(config.dataDirectory);
+  const metadata = inspectBackupHealth({
+    ...config,
+    ...(policy ?? {}),
+  }, now);
   if (
     !metadata.backup_available ||
     metadata.backup_name === null ||

@@ -55,6 +55,7 @@ describe("web asset manifest", () => {
     for (const expected of [
       "/settings/provider/application-key/actions/generate",
       "/settings/advanced",
+      "/settings/backup",
       "/settings/api-key/actions/rotate",
       "/test-payments",
       "/reconciliation/settlements/manual",
@@ -95,6 +96,7 @@ describe("web asset manifest", () => {
       "api",
       "notifications",
       "advanced",
+      "backup",
       "secrets",
       "image/png,image/jpeg,image/webp",
     ]) assert.ok(script.includes(expected), `admin bundle is missing ${expected}`);

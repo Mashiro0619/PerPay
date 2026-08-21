@@ -32,24 +32,6 @@ const checkVersionText = readFileSync(
   "utf8",
 );
 
-function replaceServiceValue(source, service, key, replacement) {
-  const serviceMarker = `  ${service}:\n`;
-  const serviceStart = source.indexOf(serviceMarker);
-  assert.notEqual(serviceStart, -1, `missing Compose service ${service}`);
-  const remainderStart = serviceStart + serviceMarker.length;
-  const nextServiceOffset = source.slice(remainderStart).search(/\n  [A-Za-z0-9_-]+:\n/u);
-  const serviceEnd = nextServiceOffset === -1
-    ? source.length
-    : remainderStart + nextServiceOffset;
-  const serviceSource = source.slice(serviceStart, serviceEnd);
-  const pattern = new RegExp(`^( {6}${key}:).+$`, "mu");
-  assert.match(serviceSource, pattern);
-  return `${source.slice(0, serviceStart)}${serviceSource.replace(
-    pattern,
-    `$1 ${replacement}`,
-  )}${source.slice(serviceEnd)}`;
-}
-
 test("Compose contract accepts the default services and profile-gated maintenance topology", () => {
   const contract = inspectComposeContract(validCompose);
   assert.equal(contract.image, "ghcr.io/mashiro0619/perpay:latest");
@@ -61,23 +43,16 @@ test("Compose contract accepts the default services and profile-gated maintenanc
   assert.equal(rendered.match(/perpay:latest@sha256:a{64}/gu)?.length, 3);
 
   const parsed = parse(validCompose);
-  assert.equal(parsed["x-perpay-backup-interval-seconds"], "86400");
-  assert.equal(parsed["x-perpay-backup-keep-count"], "7");
-  assert.equal(
-    parsed.services.app.environment.PERPAY_MASTER_KEY,
-    "CHANGE_ME_TO_64_HEX_CHARACTERS",
-  );
-  assert.equal(parsed.services.app.environment.PERPAY_PUBLIC_URL, "http://localhost:6190");
-  assert.equal(parsed.services.app.environment.PERPAY_BACKUP_INTERVAL_SECONDS, "86400");
-  assert.equal(parsed.services.backup.environment.PERPAY_BACKUP_INTERVAL_SECONDS, "86400");
-  assert.equal(parsed.services.backup.environment.PERPAY_BACKUP_KEEP_COUNT, "7");
-  assert.equal(parsed.services.maintenance.environment.PERPAY_BACKUP_INTERVAL_SECONDS, "86400");
-  assert.equal(parsed.services.maintenance.environment.PERPAY_BACKUP_KEEP_COUNT, "7");
+  assert.equal(parsed.services.app.environment.PERPAY_PUBLIC_URL, "https://pay.example.com");
+  assert.equal(parsed.services.app.environment.PERPAY_SECRETS_DIR, "/run/perpay-secrets");
+  assert.equal(parsed.services.app.environment.PERPAY_BACKUP_INTERVAL_SECONDS, undefined);
+  assert.equal(parsed.services.backup.environment.PERPAY_BACKUP_INTERVAL_SECONDS, undefined);
   assert.equal(parsed.services.backup.healthcheck.interval, "5m");
   assert.equal(parsed.services.backup.healthcheck.timeout, "10s");
   assert.deepEqual(parsed.services.app.volumes, [
     "perpay-data:/data",
     "perpay-backups:/backups:ro",
+    "perpay-secrets:/run/perpay-secrets",
   ]);
   assert.deepEqual(parsed.services.backup.volumes, [
     "perpay-data:/data:ro",
@@ -107,35 +82,18 @@ test("Compose contract rejects duplicate keys, unexpected services, and renamed 
 
 test("Compose release template rejects locally filled configuration", () => {
   for (const [placeholder, configured] of [
-    ["CHANGE_ME_TO_64_HEX_CHARACTERS", "1".repeat(64)],
-    ["http://localhost:6190", "https://pay.example.test"],
+    ["https://pay.example.com", "https://pay.example.test"],
   ]) {
     assert.throws(
       () => inspectComposeContract(validCompose.replace(placeholder, configured)),
       /must retain its anchored template value/u,
     );
   }
-  assert.throws(
-    () => inspectComposeContract(validCompose.replace(
-      '&perpay-backup-interval-seconds "86400"',
-      '&perpay-backup-interval-seconds "7200"',
-    )),
-    /x-perpay-backup-interval-seconds must retain its anchored template value/u,
-  );
 });
 
-test("Compose backup and maintenance services must reference the shared backup policy anchors", () => {
-  for (const [service, key, scalar, anchor] of [
-    ["backup", "PERPAY_BACKUP_INTERVAL_SECONDS", '"86400"', "perpay-backup-interval-seconds"],
-    ["backup", "PERPAY_BACKUP_KEEP_COUNT", '"7"', "perpay-backup-keep-count"],
-    ["maintenance", "PERPAY_BACKUP_INTERVAL_SECONDS", '"86400"', "perpay-backup-interval-seconds"],
-    ["maintenance", "PERPAY_BACKUP_KEEP_COUNT", '"7"', "perpay-backup-keep-count"],
-  ]) {
-    assert.throws(
-      () => inspectComposeContract(replaceServiceValue(validCompose, service, key, scalar)),
-      new RegExp(`Compose ${service}\\.environment\\.${key} must reference the ${anchor} anchor`, "u"),
-    );
-  }
+test("Compose keeps backup policy out of service environments", () => {
+  assert.doesNotMatch(validCompose, /PERPAY_BACKUP_INTERVAL_SECONDS|PERPAY_BACKUP_KEEP_COUNT/u);
+  assert.doesNotMatch(validCompose, /PERPAY_MASTER_KEY/u);
 });
 
 test("Compose contract rejects privilege and volume-boundary escapes", () => {
@@ -159,7 +117,7 @@ test("Compose contract rejects privilege and volume-boundary escapes", () => {
     validCompose.replace('    user: "1000:1000"', '    user: "0:0"'),
     validCompose.replace("    read_only: true", "    read_only: false"),
     validCompose.replace("      - ALL", "      - NET_RAW"),
-    validCompose.replace(/      PERPAY_MASTER_KEY:.*\n/u, ""),
+    validCompose.replace("perpay-secrets:/run/perpay-secrets", "perpay-secrets:/run/other"),
   ]) {
     assert.throws(() => inspectComposeContract(mutated));
   }
@@ -195,7 +153,7 @@ test("the application image contains only the pinned Node runtime and applicatio
   assert.doesNotMatch(dockerfileText, /GO_IMAGE|RESTIC|golang|--from=restic|third_party/iu);
   assert.match(dockerfileText, /org\.opencontainers\.image\.licenses="MIT"/u);
   assert.match(dockerfileText, /mkdir -p \/data \/backups/u);
-  assert.match(dockerfileText, /VOLUME \["\/data", "\/backups"\]/u);
+  assert.match(dockerfileText, /VOLUME \["\/data", "\/backups", "\/run\/perpay-secrets"\]/u);
   assert.match(dockerfileText, /http:\/\/127\.0\.0\.1:6190\/healthz/u);
   assert.doesNotMatch(dockerfileText, /\/readyz/u);
   assert.doesNotMatch(noticeText, /restic|Go toolchain|golang/iu);

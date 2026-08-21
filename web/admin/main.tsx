@@ -157,9 +157,9 @@ const PageFrame = styled(Box)(({ theme }) => ({
   width: "100%",
   maxWidth: 1380,
   margin: "0 auto",
-  padding: theme.spacing(3.5, 4, 6),
+  padding: theme.spacing(2, 4, 6),
   [theme.breakpoints.up("xl")]: { paddingInline: theme.spacing(5) },
-  [theme.breakpoints.down("sm")]: { padding: theme.spacing(2.25, 1.75, 4) },
+  [theme.breakpoints.down("sm")]: { padding: theme.spacing(1.5, 1.75, 4) },
 }));
 
 const MainContent = styled("main")({
@@ -184,6 +184,18 @@ const STATUS_LABELS: Record<string, string> = {
   DEAD_LETTER: "死信", CREDIT: "入账", DEBIT: "出账", ALLOCATED: "已分配",
   CANDIDATE: "待匹配", ISOLATED: "已隔离", ready: "收款就绪",
   degraded: "降级运行", not_ready: "收款暂停", error: "连接失败",
+  UNALLOCATED: "未分配", CONFLICT: "冲突",
+  RUNNING: "运行中", COMPLETED: "已完成", FAILED: "失败",
+  STOPPED: "已停止", CATCHING_UP: "追赶中", COMPLETE: "已完成",
+  UNMATCHED_CREDIT: "未匹配入账", UNMATCHED_DEBIT: "未匹配出账",
+  AMBIGUOUS_MATCH: "匹配歧义", CHECKOUT_ENDED_PAYMENT: "收银台结束后付款",
+  DUPLICATE_PAYMENT: "重复付款", AMOUNT_MISMATCH: "金额不符",
+  UNLINKED_REFUND: "未关联退款", RECONCILIATION_CONFLICT: "对账冲突",
+  RAW_PAGE_VARIANT: "原始页面变体", DUPLICATE_EXTERNAL_ID: "支付宝流水记录重复",
+  MISSING_EXTERNAL_ID: "缺少支付宝流水记录 ID", INVALID_AMOUNT: "金额无效",
+  INVALID_TIMESTAMP: "时间无效", INVALID_DIRECTION: "方向无效", INVALID_SHAPE: "数据格式无效",
+  AUTO_SETTLEMENT: "自动结算", SUPERSEDE_CANDIDATE: "替换候选",
+  MANUAL_SETTLEMENT: "人工结算", REVERSE_SETTLEMENT: "撤销结算", RECORD_REFUND: "登记退款",
   CONFIRM_VARIANT: "确认响应变体", KEEP_EXISTING: "保留既有事实",
   ACKNOWLEDGE_ISOLATED: "确认隔离", AMOUNT_INFERRED: "唯一金额推断",
   STARTED: "已开始", RETRYABLE_FAILURE: "可重试失败",
@@ -507,8 +519,6 @@ const NAV_GROUPS: readonly NavGroup[] = [
     ],
   },
 ] as const;
-const NAV_ITEMS = NAV_GROUPS.flatMap((group) => group.items);
-
 function ModalLayer({ dialog, close }: { readonly dialog: DialogState; readonly close: () => void }) {
   return <Dialog open onClose={close} fullWidth maxWidth="sm" aria-labelledby="perpay-dialog-title">
     <DialogTitle id="perpay-dialog-title" component="div" sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 2, pb: 1.5 }}>
@@ -593,7 +603,6 @@ function AdminApplication({ preference, onPreferenceChange }: { readonly prefere
   if (!session) return <AdminNavigationContext.Provider value={navigation}><LoadingPage /></AdminNavigationContext.Provider>;
 
   const path = route.pathname;
-  const currentLabel = NAV_ITEMS.find((item) => item.href === path)?.label || "管理后台";
   const nav = <Box id="admin-navigation" sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
     <Stack direction="row" spacing={1.25} sx={{ minHeight: 82, px: 2.25, alignItems: "center" }}>
       <Box sx={{ position: "relative", width: 40, height: 40, display: "grid", placeItems: "center", borderRadius: 1.75, bgcolor: "primary.main", color: "primary.contrastText", boxShadow: "0 8px 18px rgba(0,0,0,.16)", "&::after": { content: '""', position: "absolute", width: 8, height: 8, right: -3, bottom: -3, borderRadius: "50%", bgcolor: "secondary.main", border: 2, borderColor: "background.paper" } }}><AccountBalanceWalletOutlined fontSize="small" /></Box>
@@ -609,7 +618,7 @@ function AdminApplication({ preference, onPreferenceChange }: { readonly prefere
     <Box sx={{ p: 1.5, borderTop: 1, borderColor: "divider", bgcolor: "action.hover" }}>
       <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
         <Box aria-hidden="true" sx={{ width: 34, height: 34, flex: "0 0 auto", display: "grid", placeItems: "center", borderRadius: 1.25, bgcolor: "secondary.main", color: "secondary.contrastText", fontWeight: 820 }}>A</Box>
-        <Box sx={{ minWidth: 0, flex: 1 }}><Typography variant="body2" sx={{ fontWeight: 760 }}>{session.username || "admin"}</Typography><Tooltip title={`会话有效至 ${formatTime(session.idle_expires_at)}`} placement="top"><Typography variant="caption" color="textSecondary">安全会话</Typography></Tooltip></Box>
+        <Box sx={{ minWidth: 0, flex: 1 }}><Typography variant="body2" sx={{ fontWeight: 760 }}>{session.username || "admin"}</Typography></Box>
         <Tooltip title="打开安全设置"><IconButton component="a" href="/admin/security" aria-label="打开安全设置" size="small"><ShieldOutlined fontSize="small" /></IconButton></Tooltip>
       </Stack>
     </Box>
@@ -626,14 +635,14 @@ function AdminApplication({ preference, onPreferenceChange }: { readonly prefere
       {compact ? <Drawer variant="temporary" open={mobileOpen} onClose={() => setMobileOpen(false)} ModalProps={{ keepMounted: true }} sx={{ "& .MuiDrawer-paper": { width: "min(86vw, 280px)", bgcolor: "background.paper" } }}>{nav}</Drawer> : <Drawer variant="permanent" open sx={{ width: DRAWER_WIDTH, flexShrink: 0, "& .MuiDrawer-paper": { width: DRAWER_WIDTH, boxSizing: "border-box", borderWidth: "0 1px 0 0", borderColor: "divider", bgcolor: "background.paper" } }}>{nav}</Drawer>}
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <AppBar component="header" position="sticky" color="inherit" elevation={0} sx={{ bgcolor: "background.paper", borderBottom: 1, borderColor: "divider" }}>
-          <Toolbar disableGutters sx={{ minHeight: "66px !important", px: { xs: 1.5, sm: 2.5, lg: 3.5 }, gap: 1 }}>
+          <Toolbar disableGutters sx={{ minHeight: "56px !important", px: { xs: 1.5, sm: 2.5, lg: 3.5 }, gap: 1 }}>
             <Box sx={{ width: "100%", maxWidth: 1380, mx: "auto", display: "flex", alignItems: "center", gap: 1 }}>
               {compact ? <IconButton aria-label="打开导航" aria-expanded={mobileOpen} aria-controls="admin-navigation" onClick={() => setMobileOpen(true)} sx={{ mr: 0.25 }}><MenuIcon /></IconButton> : null}
-              <Box sx={{ flex: 1, minWidth: 0 }}><Typography variant="caption" color="textSecondary" sx={{ display: "block", lineHeight: 1.2 }}>PerPay / 管理后台</Typography><Typography variant="body2" sx={{ fontWeight: 780, mt: 0.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentLabel}</Typography></Box>
+              <Box sx={{ flex: 1, minWidth: 0 }} />
               <Chip size="small" variant="outlined" label="自托管" sx={{ display: { xs: "none", sm: "inline-flex" }, borderColor: "divider", color: "text.secondary" }} />
               <Tooltip title={`主题：${themeLabel}`}><IconButton aria-label={`主题：${themeLabel}`} aria-haspopup="menu" aria-expanded={themeMenuOpen ? "true" : undefined} onClick={(event) => setThemeMenuAnchor(event.currentTarget)}><ThemeIcon fontSize="small" /></IconButton></Tooltip>
               <Menu anchorEl={themeMenuAnchor} open={themeMenuOpen} onClose={() => setThemeMenuAnchor(null)}>
-                <MenuItem selected={preference === "auto"} onClick={() => chooseTheme("auto")}><ListItemIcon><BrightnessAutoOutlined fontSize="small" /></ListItemIcon><ListItemText primary="自动" secondary="跟随系统设置" /></MenuItem>
+                <MenuItem selected={preference === "auto"} onClick={() => chooseTheme("auto")}><ListItemIcon><BrightnessAutoOutlined fontSize="small" /></ListItemIcon><ListItemText primary="自动" /></MenuItem>
                 <MenuItem selected={preference === "light"} onClick={() => chooseTheme("light")}><ListItemIcon><LightModeOutlined fontSize="small" /></ListItemIcon><ListItemText primary="浅色" /></MenuItem>
                 <MenuItem selected={preference === "dark"} onClick={() => chooseTheme("dark")}><ListItemIcon><DarkModeOutlined fontSize="small" /></ListItemIcon><ListItemText primary="深色" /></MenuItem>
               </Menu>
@@ -852,7 +861,7 @@ function OverviewPage() {
   const acceptingPayments = view.database?.ok === true && collectionReady && confirmationReady;
   const chain = [["数据库", view.database?.ok ? "可用" : "不可用", view.database?.ok ? "success" : "error", view.instance_id], ["流水采集", collectionReady ? "可收款" : "已暂停", collectionReady ? "success" : "error", freshness(ledger)], ["自动确认", confirmationReady ? "可确认" : "未就绪", confirmationReady ? "success" : "error", freshness(reconciliation)], ["通知", webhook.enabled === false ? "未启用" : webhook.dead_letters > 0 ? "存在死信" : "运行中", webhook.dead_letters > 0 ? "error" : "success", webhook.last_error_code || `${webhook.pending_deliveries || 0} 条待投递`]] as const;
   return <><PageHeader title="系统状态" description="收款入口、自动确认、通知与备份的当前事实。" actions={<RefreshButton />} />
-    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 1.55fr) minmax(280px, .75fr)" }, gap: 2.25, mb: 3.25 }}>
+    <Box sx={{ mb: 3.25 }}>
       <Paper variant="outlined" sx={{ overflow: "hidden" }}>
         <Box sx={{ p: { xs: 2.25, sm: 3 }, bgcolor: acceptingPayments ? "success.main" : "warning.main", color: acceptingPayments ? "success.contrastText" : "warning.contrastText", display: "flex", alignItems: { xs: "flex-start", sm: "center" }, justifyContent: "space-between", flexDirection: { xs: "column", sm: "row" }, gap: 2 }}>
           <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}><Box aria-hidden="true" sx={{ width: 44, height: 44, flex: "0 0 auto", display: "grid", placeItems: "center", borderRadius: 1.5, bgcolor: "rgba(255,255,255,.18)" }}><AccountBalanceWalletOutlined /></Box><Box><Typography component="h2" variant="h2" sx={{ color: "inherit" }}>{acceptingPayments ? "收款入口已开放" : "收款入口已暂停"}</Typography><Typography variant="body2" sx={{ color: "inherit", opacity: 0.9 }}>{acceptingPayments ? "流水采集和自动确认均处于有效时间窗内。" : "完成配置并等待流水采集、自动确认成功运行后会自动开放。"}</Typography></Box></Stack>
@@ -861,10 +870,6 @@ function OverviewPage() {
         <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", xl: "repeat(4, minmax(0, 1fr))" } }}>
           {chain.map(([label, value, tone, note], index) => <Box key={label} sx={{ minWidth: 0, p: { xs: 1.75, sm: 2 }, borderInlineEnd: { xs: 0, sm: index % 2 === 0 ? 1 : 0, xl: index === chain.length - 1 ? 0 : 1 }, borderBottom: { xs: index === chain.length - 1 ? 0 : 1, sm: index < 2 ? 1 : 0, xl: 0 }, borderColor: "divider" }}><Typography variant="caption" color="textSecondary">{label}</Typography><Stack direction="row" spacing={1} sx={{ mt: 0.55, alignItems: "center" }}><Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: `${tone}.main`, boxShadow: `0 0 0 4px ${tone === "success" ? "rgba(20,122,97,.12)" : "rgba(155,100,20,.12)"}` }} /><Typography sx={{ fontWeight: 760 }}>{value}</Typography></Stack><Typography variant="caption" color="textSecondary" sx={{ display: "block", mt: 0.45, overflowWrap: "anywhere" }}>{note || "-"}</Typography></Box>)}
         </Box>
-      </Paper>
-      <Paper variant="outlined" sx={{ p: { xs: 2.25, sm: 2.75 }, display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 2 }}>
-        <Box><Typography component="h2" variant="h2">常用操作</Typography><Typography variant="body2" color="textSecondary" sx={{ mt: .65 }}>快速验证收款链路，或接入你的业务网站。</Typography></Box>
-        <Stack spacing={1}><Button component="a" href="/admin/test-payment" variant="contained" startIcon={<PaymentsOutlined />}>发起测试支付</Button><Button component="a" href="/admin/integration" variant="outlined" startIcon={<IntegrationInstructionsOutlined />}>查看网站接入</Button><Button component="a" href="/admin/settings" variant="text" startIcon={<SettingsOutlined />} sx={{ justifyContent: "flex-start" }}>打开系统设置</Button></Stack>
       </Paper>
     </Box>
     <Section title="待处理"><MetricGrid items={[["开放异常", view.reconciliation?.exceptions?.open ?? "-"], ["账务冲突", view.ledger?.conflicts?.open ?? "-"], ["通知死信", webhook.dead_letters ?? "-"], ["待对账订单", reconciliation.pending_orders ?? "-"], ["连续采集失败", ledger.consecutive_failures ?? "-"], ["连续通知失败", webhook.consecutive_failures ?? "-"]]} /></Section>
@@ -970,7 +975,7 @@ function OrdersPage() {
     return api(`/orders?${parameters}`);
   }, [id, merchantNo, checkoutStatus, paymentStatus, query.get("cursor")]);
   if (error) {
-    if (merchantNo && error instanceof ApiError && error.status === 404) return <><PageHeader title="订单" description="按商户订单号精确查找，或浏览最近订单。" /><OrderSearch value={merchantNo} /><EmptyState title="未找到订单" message="请核对完整商户订单号。" /></>;
+    if (merchantNo && error instanceof ApiError && error.status === 404) return <><PageHeader title="订单" description="按网站订单号精确查找，或浏览最近订单。" /><OrderSearch value={merchantNo} /><EmptyState title="未找到订单" message="请核对完整网站订单号。" /></>;
     return <RouteError error={error} />;
   }
   if (!data) return <LoadingPage />;
@@ -980,7 +985,7 @@ function OrdersPage() {
     <FilterBar names={["checkout_status", "payment_status"]}><StatusFilter name="checkout_status" label="收银台" value={checkoutStatus} values={["ALL", "OPEN", "CLOSED", "EXPIRED"]} /><StatusFilter name="payment_status" label="付款" value={paymentStatus} values={["ALL", "UNPAID", "CONFIRMED", "DISPUTED"]} /></FilterBar>
     {rows.length ? <DataTable label="订单列表" rows={rows} columns={[
        { label: "商品", render: (row) => <DetailLink route="orders" id={row.order_id}>{row.product_name || row.merchant_order_no}</DetailLink> },
-       { label: "商户订单号", render: (row) => <Code>{row.merchant_order_no}</Code> },
+       { label: "网站订单号", render: (row) => <Code>{row.merchant_order_no}</Code> },
       { label: "应付金额", render: (row) => formatMoney(row.payable_amount_cents, row.currency) },
       { label: "收银台", render: (row) => <StateChip value={row.checkout?.status} /> },
       { label: "付款", render: (row) => <StateChip value={row.payment?.status} /> },
@@ -994,14 +999,14 @@ function OrdersPage() {
 function OrderSearch({ value }: { readonly value: string }) {
   const { navigate } = useAdminNavigation();
   const [search, setSearch] = useState(value);
-  return <Stack component="form" direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mb: 2, maxWidth: 680, alignItems: { sm: "flex-start" } }} onSubmit={(event) => { event.preventDefault(); const term = search.trim(); if (term) navigate(`/admin/orders?merchant_order_no=${encodeURIComponent(term)}`); }}><TextField label="完整商户订单号" value={search} onChange={(event) => setSearch(event.target.value)} fullWidth /><Button type="submit" variant="outlined" startIcon={<Search />} sx={{ minHeight: 40 }}>查找订单</Button></Stack>;
+  return <Stack component="form" direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mb: 2, maxWidth: 680, alignItems: { sm: "flex-start" } }} onSubmit={(event) => { event.preventDefault(); const term = search.trim(); if (term) navigate(`/admin/orders?merchant_order_no=${encodeURIComponent(term)}`); }}><TextField label="完整网站订单号" value={search} onChange={(event) => setSearch(event.target.value)} fullWidth /><Button type="submit" variant="outlined" startIcon={<Search />} sx={{ minHeight: 40 }}>查找订单</Button></Stack>;
 }
 
 function OrderDetail({ payload }: { readonly payload: JsonObject }) {
   const order = payload.order || payload;
   const events = (payload.events || []) as JsonObject[];
-  return <><PageHeader title={order.merchant_order_no || "订单详情"} description={order.product_name || "订单状态与审计事件。"} actions={<LinkButton href="/admin/orders">返回订单</LinkButton>} />
-    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2, mb: 3 }}><DetailCard title="订单事实"><Facts items={[["订单 ID", order.order_id, true], ["商品名称", order.product_name || "-"], ["商户备注", order.note || "无"], ["请求金额", formatMoney(order.requested_amount_cents, order.currency)], ["应付金额", formatMoney(order.payable_amount_cents, order.currency)], ["实收金额", formatMoney(order.received_amount_cents, order.currency)], ["收银台", statusText(order.checkout_status || order.checkout?.status)], ["付款", `${statusText(order.payment_status || order.payment?.status)} / ${statusText(order.payment_basis || order.payment?.basis)}`], ["退款", statusText(order.refund_status || order.refund?.status)], ["创建时间", formatTime(order.created_at)], ["到期时间", formatTime(order.expires_at || order.checkout?.expires_at)], ["更新时间", formatTime(order.updated_at)]]} /></DetailCard><DetailCard title="通知"><Facts items={[["目标", order.notification?.notify_url || order.notify_url || "未配置", true], ["当前版本", order.version ?? "-"], ["付款证据", evidenceText(order.payment_basis || order.payment?.basis)]]} /></DetailCard></Box>
+  return <><PageHeader title={order.merchant_order_no || "订单详情"} description={order.product_name || "网站订单状态与审计事件。"} actions={<LinkButton href="/admin/orders">返回订单</LinkButton>} />
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2, mb: 3 }}><DetailCard title="网站订单"><Facts items={[["网站订单号", order.merchant_order_no, true], ["PerPay 订单 ID", order.order_id, true], ["商品名称", order.product_name || "-"], ["商户备注", order.note || "无"], ["请求金额", formatMoney(order.requested_amount_cents, order.currency)], ["应付金额", formatMoney(order.payable_amount_cents, order.currency)], ["实收金额", formatMoney(order.received_amount_cents, order.currency)], ["收银台", statusText(order.checkout_status || order.checkout?.status)], ["付款", `${statusText(order.payment_status || order.payment?.status)} / ${statusText(order.payment_basis || order.payment?.basis)}`], ["退款", statusText(order.refund_status || order.refund?.status)], ["创建时间", formatTime(order.created_at)], ["到期时间", formatTime(order.expires_at || order.checkout?.expires_at)], ["更新时间", formatTime(order.updated_at)]]} /></DetailCard><DetailCard title="通知"><Facts items={[["目标", order.notification?.notify_url || order.notify_url || "未配置", true], ["当前版本", order.version ?? "-"], ["付款证据", evidenceText(order.payment_basis || order.payment?.basis)]]} /></DetailCard></Box>
     <Section title="订单事件">{events.length ? <DataTable label="订单事件" rows={events} columns={[{ label: "时间", render: (row) => formatTime(row.occurred_at) }, { label: "类型", render: (row) => <Code>{row.event_type}</Code> }, { label: "序号", render: (row) => String(row.sequence ?? "-") }, { label: "详情", render: (row) => <Box component="details"><Typography component="summary" sx={{ cursor: "pointer" }}>查看</Typography><JsonBlock value={row.details || row.event_details || {}} /></Box> }]} /> : <EmptyState title="暂无事件" message="该订单还没有可显示的状态事件。" />}</Section>
   </>;
 }
@@ -1045,7 +1050,7 @@ function ExceptionsPage() {
   if (id) return <ExceptionDetail payload={data.data || {}} />;
   const rows = (data.data || []) as JsonObject[];
   const generations = (data.generations || []) as JsonObject[];
-  return <><PageHeader title="异常处理" description="只有不能唯一、安全自动匹配的资金事实会进入这里。" actions={<RefreshButton />} /><ProviderFilter generations={generations} selected={String(data.accountKey || "")} names={["provider_account_key"]} />{rows.length ? <DataTable label="开放异常" rows={rows} columns={[{ label: "类型", render: (row) => <DetailLink route="exceptions" id={row.exception_id}>{statusText(row.exception_type)}</DetailLink> }, { label: "流水 ID", render: (row) => <Code>{short(row.ledger_entry_id)}</Code> }, { label: "订单 ID", render: (row) => <Code>{short(row.order_id)}</Code> }, { label: "状态", render: (row) => <StateChip value={row.status} /> }, { label: "发现时间", render: (row) => formatTime(row.created_at) }]} /> : <EmptyState title="没有开放异常" message="正常唯一匹配的付款已经自动确认。" />}<CursorNavigation nextCursor={data.page?.next_cursor} /></>;
+  return <><PageHeader title="异常处理" description="只有不能唯一、安全自动匹配的资金事实会进入这里。" actions={<RefreshButton />} /><ProviderFilter generations={generations} selected={String(data.accountKey || "")} names={["provider_account_key"]} />{rows.length ? <DataTable label="开放异常" rows={rows} columns={[{ label: "类型", render: (row) => <DetailLink route="exceptions" id={row.exception_id}>{statusText(row.exception_type)}</DetailLink> }, { label: "PerPay 流水记录", render: (row) => <Code>{short(row.ledger_entry_id)}</Code> }, { label: "PerPay 订单", render: (row) => <Code>{short(row.order_id)}</Code> }, { label: "状态", render: (row) => <StateChip value={row.status} /> }, { label: "发现时间", render: (row) => formatTime(row.created_at) }]} /> : <EmptyState title="没有开放异常" message="正常唯一匹配的付款已经自动确认。" />}<CursorNavigation nextCursor={data.page?.next_cursor} /></>;
 }
 
 function ExceptionDetail({ payload }: { readonly payload: JsonObject }) {
@@ -1062,8 +1067,8 @@ function ExceptionDetail({ payload }: { readonly payload: JsonObject }) {
     content: <FinancialDecisionForm kind={kind} exception={exception} />,
   });
   return <><PageHeader title={statusText(exception.exception_type)} description="异常证据与可执行处置。" actions={<>{exception.status === "OPEN" && evidenceReady && manual ? <Button variant="contained" onClick={() => openDecision("manual")}>人工认领</Button> : null}{exception.status === "OPEN" && evidenceReady && refund ? <Button variant="outlined" color="error" onClick={() => openDecision("refund")}>登记退款</Button> : null}<LinkButton href="/admin/exceptions">返回异常</LinkButton></>} />
-    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2, mb: 3 }}><DetailCard title="异常事实"><Facts items={[["异常 ID", exception.exception_id, true], ["状态", statusText(exception.status)], ["订单 ID", exception.order_id || "未关联", true], ["流水 ID", exception.ledger_entry_id || "无", true], ["候选 ID", exception.candidate_id || "无", true], ["发现时间", formatTime(exception.created_at)], ["处理时间", formatTime(exception.resolved_at)], ["处理结果", exception.resolution ? <JsonBlock value={exception.resolution} /> : "待处理"]]} /></DetailCard><DetailCard title="流水">{payload.ledger_error ? <Alert severity="error">{payload.ledger_error}</Alert> : ledger ? <Facts items={[["方向", statusText(ledger.direction)], ["金额", formatMoney(ledger.amount_cents, ledger.currency)], ["发生时间", formatTime(ledger.occurred_at)], ["状态", statusText(ledger.state)], ["平台流水号", ledger.provider_order_no || "-", true], ["对方账户", ledger.other_account || "-"]]} /> : <Typography color="textSecondary">此异常没有可读取的标准化流水。</Typography>}</DetailCard></Box>
-    <Section title="候选订单">{payload.candidates_error ? <Alert severity="error">{payload.candidates_error}</Alert> : candidates.length ? <DataTable label="匹配候选" rows={candidates} columns={[{ label: "订单 ID", render: (row) => <OrderLink id={row.order_id} /> }, { label: "证据", render: (row) => evidenceText(row.evidence_type) }, { label: "状态", render: (row) => <StateChip value={row.status} /> }, { label: "创建时间", render: (row) => formatTime(row.created_at) }]} /> : <EmptyState title="没有候选订单" message="可通过商户订单号查找正确订单后人工认领。" />}</Section><Section title="原始上下文"><JsonBlock value={exception.details || {}} /></Section>
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2, mb: 3 }}><DetailCard title="异常事实"><Facts items={[["异常 ID", exception.exception_id, true], ["状态", statusText(exception.status)], ["PerPay 订单", exception.order_id || "未关联", true], ["PerPay 流水记录", exception.ledger_entry_id || "无", true], ["候选 ID", exception.candidate_id || "无", true], ["发现时间", formatTime(exception.created_at)], ["处理时间", formatTime(exception.resolved_at)], ["处理结果", exception.resolution ? <JsonBlock value={exception.resolution} /> : "待处理"]]} /></DetailCard><DetailCard title="支付宝流水">{payload.ledger_error ? <Alert severity="error">{payload.ledger_error}</Alert> : ledger ? <Facts items={[["支付宝交易订单号", ledger.provider_order_no || "未返回", true], ["支付宝商户订单号", ledger.merchant_order_no || "未返回", true], ["金额", formatMoney(ledger.amount_cents, ledger.currency)], ["发生时间", formatTime(ledger.occurred_at)], ["方向", statusText(ledger.direction)], ["状态", statusText(ledger.state)], ["对方账户", ledger.other_account || "-"]]} /> : <Typography color="textSecondary">此异常没有可读取的支付宝流水。</Typography>}</DetailCard></Box>
+    <Section title="候选订单">{payload.candidates_error ? <Alert severity="error">{payload.candidates_error}</Alert> : candidates.length ? <DataTable label="匹配候选" rows={candidates} columns={[{ label: "PerPay 订单", render: (row) => <OrderLink id={row.order_id} /> }, { label: "证据", render: (row) => evidenceText(row.evidence_type) }, { label: "状态", render: (row) => <StateChip value={row.status} /> }, { label: "创建时间", render: (row) => formatTime(row.created_at) }]} /> : <EmptyState title="没有候选订单" message="可通过网站订单号查找正确订单后人工认领。" />}</Section><Section title="原始上下文"><JsonBlock value={exception.details || {}} /></Section>
   </>;
 }
 
@@ -1083,14 +1088,14 @@ function FinancialDecisionForm({ kind, exception }: { readonly kind: "manual" | 
   };
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!selected || selected.merchant_order_no !== merchantNo.trim()) { setToast("请先按商户订单号选择订单。", "warning"); return; }
+    if (!selected || selected.merchant_order_no !== merchantNo.trim()) { setToast("请先按网站订单号选择订单。", "warning"); return; }
     setBusy(true);
     try {
       await request(kind === "refund" ? "/reconciliation/refunds" : "/reconciliation/settlements/manual", { financial_operation_id: operationId.current, order_id: selected.order_id, ledger_entry_id: exception.ledger_entry_id, reason: reason.trim() });
       setToast(kind === "refund" ? "退款流水已登记" : "订单已人工认领", "success"); closeDialog(); refresh();
     } catch (caught) { setToast(errorMessage(caught), "error"); setBusy(false); }
   };
-  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><Alert severity="warning"><strong>{kind === "refund" ? "登记退款流水" : "建立人工付款关联"}</strong>。{kind === "refund" ? "退款只更新退款状态，不会撤销原付款事实。" : "此操作会确认订单并发送付款成功通知。"}</Alert><TextField label="商户订单号" value={merchantNo} onChange={(event) => { setMerchantNo(event.target.value); setSelected(null); }} required helperText="使用完整商户订单号查找，不需要输入内部 UUID。" /><Button variant="outlined" onClick={() => void search()} disabled={searching || !merchantNo.trim()}>{searching ? "正在查找" : "查找订单"}</Button>{selected ? <Alert severity="success">已选择 {selected.merchant_order_no}，商品：{selected.product_name || "-"}，应付 {formatMoney(selected.payable_amount_cents, selected.currency)}{selected.note ? `，备注：${selected.note}` : ""}</Alert> : null}<TextField label="流水 ID" value={String(exception.ledger_entry_id || "")} slotProps={{ input: { readOnly: true } }} /><FixedTextareaField label="处理理由" value={reason} onChange={(event) => setReason(event.target.value)} rows={3} required /><Typography variant="caption" color="textSecondary" sx={{ fontFamily: MONO }}>操作编号 {operationId.current}</Typography><Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}><Button onClick={closeDialog}>取消</Button><Button type="submit" variant="contained" color={kind === "refund" ? "error" : "primary"} disabled={busy}>{busy ? "正在提交" : kind === "refund" ? "登记退款" : "确认人工认领"}</Button></Stack></Stack>;
+  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><Alert severity="warning"><strong>{kind === "refund" ? "登记退款流水" : "建立人工付款关联"}</strong>。{kind === "refund" ? "退款只更新退款状态，不会撤销原付款事实。" : "此操作会确认订单并发送付款成功通知。"}</Alert><TextField label="网站订单号" value={merchantNo} onChange={(event) => { setMerchantNo(event.target.value); setSelected(null); }} required helperText="使用完整网站订单号查找，不需要输入 PerPay 内部 ID。" /><Button variant="outlined" onClick={() => void search()} disabled={searching || !merchantNo.trim()}>{searching ? "正在查找" : "查找订单"}</Button>{selected ? <Alert severity="success">已选择 {selected.merchant_order_no}，商品：{selected.product_name || "-"}，应付 {formatMoney(selected.payable_amount_cents, selected.currency)}{selected.note ? `，备注：${selected.note}` : ""}</Alert> : null}<TextField label="PerPay 流水记录 ID" value={String(exception.ledger_entry_id || "")} slotProps={{ input: { readOnly: true } }} /><FixedTextareaField label="处理理由" value={reason} onChange={(event) => setReason(event.target.value)} rows={3} required /><Typography variant="caption" color="textSecondary" sx={{ fontFamily: MONO }}>操作编号 {operationId.current}</Typography><Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}><Button onClick={closeDialog}>取消</Button><Button type="submit" variant="contained" color={kind === "refund" ? "error" : "primary"} disabled={busy}>{busy ? "正在提交" : kind === "refund" ? "登记退款" : "确认人工认领"}</Button></Stack></Stack>;
 }
 
 function SettlementsPage() {
@@ -1109,15 +1114,15 @@ function SettlementsPage() {
   if (!data) return <LoadingPage />;
   if (id) return <SettlementDetail match={data.data || {}} />;
   const rows = (data.data || []) as JsonObject[];
-  return <><PageHeader title="结算历史" description="自动确认和管理员处置形成的有效或已撤销关联。" actions={<RefreshButton />} /><FilterBar names={["status"]}><StatusFilter name="status" label="状态" value={status} values={["SETTLED", "REVERSED"]} /></FilterBar>{rows.length ? <DataTable label="结算记录" rows={rows} columns={[{ label: "关联 ID", render: (row) => <DetailLink route="settlements" id={row.payment_match_id} /> }, { label: "订单", render: (row) => <OrderLink id={row.order_id} /> }, { label: "流水", render: (row) => <Code>{short(row.ledger_entry_id)}</Code> }, { label: "证据", render: (row) => evidenceText(row.evidence_type) }, { label: "状态", render: (row) => <StateChip value={row.status} /> }, { label: "创建时间", render: (row) => formatTime(row.created_at) }]} /> : <EmptyState title="没有结算记录" message="新的自动确认会直接出现在这里。" />}<CursorNavigation nextCursor={data.page?.next_cursor} /></>;
+  return <><PageHeader title="结算历史" description="查看网站订单与支付宝流水之间的确认记录。" actions={<RefreshButton />} /><FilterBar names={["status"]}><StatusFilter name="status" label="状态" value={status} values={["SETTLED", "REVERSED"]} /></FilterBar>{rows.length ? <DataTable label="结算记录" rows={rows} columns={[{ label: "网站订单号", render: (row) => <DetailLink route="settlements" id={row.payment_match_id}>{row.order?.merchant_order_no || short(row.payment_match_id)}</DetailLink> }, { label: "支付宝交易订单号", render: (row) => <Code>{row.ledger_entry?.provider_order_no || "-"}</Code> }, { label: "支付宝商户订单号", render: (row) => <Code>{row.ledger_entry?.merchant_order_no || "-"}</Code> }, { label: "实收金额", render: (row) => formatMoney(row.ledger_entry?.amount_cents, row.ledger_entry?.currency) }, { label: "确认依据", render: (row) => evidenceText(row.evidence_type) }, { label: "状态", render: (row) => <StateChip value={row.status} /> }, { label: "确认时间", render: (row) => formatTime(row.created_at) }]} /> : <EmptyState title="没有结算记录" message="新的自动确认会直接出现在这里。" />}<CursorNavigation nextCursor={data.page?.next_cursor} /></>;
 }
 
 function SettlementDetail({ match }: { readonly match: JsonObject }) {
   const { openDialog } = useAdmin();
   const order = match.order || {}, ledger = match.ledger_entry || {};
-  return <><PageHeader title={`结算 ${short(match.payment_match_id)}`} description="订单、流水与确认依据的证据轨道。" actions={<>{match.status === "SETTLED" ? <Button color="error" variant="contained" onClick={() => openDialog({ title: "撤销付款关联", description: `订单 ${order.merchant_order_no || short(match.order_id)}`, content: <ReverseSettlementForm match={match} /> })}>撤销关联</Button> : null}<LinkButton href="/admin/settlements">返回结算</LinkButton></>} />
-    <Section title="状态轨道"><Stepper activeStep={3} alternativeLabel sx={{ py: 2 }}><Step completed><StepButton>订单创建</StepButton></Step><Step completed><StepButton>流水采集</StepButton></Step><Step completed><StepButton>{match.candidate ? "唯一候选" : "管理员认领"}</StepButton></Step><Step completed><StepButton>{match.status === "REVERSED" ? "关联已撤销" : "付款已确认"}</StepButton></Step></Stepper></Section>
-    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2, mb: 3 }}><DetailCard title="订单"><Facts items={[["商户订单号", order.merchant_order_no || "-", true], ["商品名称", order.product_name || "-"], ["商户备注", order.note || "无"], ["订单 ID", match.order_id, true], ["应付金额", formatMoney(order.payable_amount_cents, order.currency)], ["实收金额", formatMoney(order.received_amount_cents, order.currency)], ["付款状态", statusText(order.payment_status)], ["证据来源", evidenceText(order.payment_basis)]]} /></DetailCard><DetailCard title="流水"><Facts items={[["流水 ID", match.ledger_entry_id, true], ["金额", formatMoney(ledger.amount_cents, ledger.currency)], ["方向", statusText(ledger.direction)], ["发生时间", formatTime(ledger.occurred_at)], ["平台流水号", ledger.provider_order_no || "-", true], ["状态", statusText(ledger.state)]]} /></DetailCard></Box><Section title="关联证据"><JsonBlock value={match.evidence || {}} /></Section>
+  return <><PageHeader title="付款确认详情" description="查看网站订单与支付宝流水之间的确认记录。" actions={<>{match.status === "SETTLED" ? <Button color="error" variant="contained" onClick={() => openDialog({ title: "撤销付款关联", description: `网站订单 ${order.merchant_order_no || short(match.order_id)}`, content: <ReverseSettlementForm match={match} /> })}>撤销关联</Button> : null}<LinkButton href="/admin/settlements">返回结算</LinkButton></>} />
+    <Section title="确认过程"><Stepper activeStep={3} alternativeLabel sx={{ py: 2 }}><Step completed><StepButton>网站订单创建</StepButton></Step><Step completed><StepButton>支付宝流水采集</StepButton></Step><Step completed><StepButton>{match.candidate ? "唯一金额匹配" : "管理员认领"}</StepButton></Step><Step completed><StepButton>{match.status === "REVERSED" ? "关联已撤销" : "付款已确认"}</StepButton></Step></Stepper></Section>
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2, mb: 3 }}><DetailCard title="网站订单"><Facts items={[["网站订单号", order.merchant_order_no || "-", true], ["商品名称", order.product_name || "-"], ["商户备注", order.note || "无"], ["应付金额", formatMoney(order.payable_amount_cents, order.currency)], ["实收金额", formatMoney(order.received_amount_cents, order.currency)], ["付款状态", statusText(order.payment_status)], ["确认依据", evidenceText(order.payment_basis)]]} /></DetailCard><DetailCard title="支付宝流水"><Facts items={[["支付宝交易订单号", ledger.provider_order_no || "未返回", true], ["支付宝商户订单号", ledger.merchant_order_no || "未返回", true], ["实际到账金额", formatMoney(ledger.amount_cents, ledger.currency)], ["收款时间", formatTime(ledger.occurred_at)], ["收款方向", statusText(ledger.direction)], ["流水状态", statusText(ledger.state)]]} /></DetailCard></Box><Box component="details" sx={{ mb: 3 }}><Typography component="summary" sx={{ cursor: "pointer", color: "text.secondary", fontSize: "0.875rem" }}>查看系统追踪编号</Typography><Box sx={{ mt: 1.5, maxWidth: 760 }}><DetailCard title="仅供排查"><Facts items={[["付款关联 ID", match.payment_match_id, true], ["PerPay 订单 ID", match.order_id, true], ["PerPay 流水记录 ID", match.ledger_entry_id, true], ["候选 ID", match.candidate_id || "无", true], ["创建操作 ID", match.created_by_operation_id, true], ["撤销操作 ID", match.resolved_by_operation_id || "无", true]]} /></DetailCard></Box></Box><Section title="匹配证据"><JsonBlock value={match.evidence || {}} /></Section>
   </>;
 }
 
@@ -1158,20 +1163,20 @@ function ConflictsPage() {
   if (!data) return <LoadingPage />;
   if (id) return <ConflictDetail detail={data.data || {}} />;
   const rows = (data.data || []) as JsonObject[], generations = (data.generations || []) as JsonObject[];
-  return <><PageHeader title="账务冲突" description="采集证据重复、变化或无法标准化时形成的隔离记录。" actions={<RefreshButton />} /><FilterBar names={["status", "provider_account_key"]}><StatusFilter name="status" label="状态" value={status} values={["OPEN", "ALL", "RESOLVED", "IGNORED"]} />{generations.length ? <FilterSelect name="provider_account_key" label="采集应用" value={String(data.accountKey || "")} minWidth={280} options={generations.map((generation) => ({ value: String(generation.provider_account_key), label: providerGenerationLabel(generation.provider_account_key, generations) }))} /> : null}</FilterBar>{rows.length ? <DataTable label="冲突记录" rows={rows} columns={[{ label: "类型", render: (row) => <DetailLink route="ledger-conflicts" id={row.conflict_id}>{statusText(row.conflict_type)}</DetailLink> }, { label: "外部流水", render: (row) => <Code>{row.external_event_id || "-"}</Code> }, { label: "状态", render: (row) => <StateChip value={row.status} /> }, { label: "处理结果", render: (row) => row.resolution_action ? statusText(row.resolution_action) : "-" }, { label: "发现时间", render: (row) => formatTime(row.created_at) }]} /> : <EmptyState title="没有账务冲突" message="采集到的流水证据目前一致。" />}<CursorNavigation nextCursor={data.page?.next_cursor} /></>;
+  return <><PageHeader title="账务冲突" description="采集证据重复、变化或无法标准化时形成的隔离记录。" actions={<RefreshButton />} /><FilterBar names={["status", "provider_account_key"]}><StatusFilter name="status" label="状态" value={status} values={["OPEN", "ALL", "RESOLVED", "IGNORED"]} />{generations.length ? <FilterSelect name="provider_account_key" label="采集应用" value={String(data.accountKey || "")} minWidth={280} options={generations.map((generation) => ({ value: String(generation.provider_account_key), label: providerGenerationLabel(generation.provider_account_key, generations) }))} /> : null}</FilterBar>{rows.length ? <DataTable label="冲突记录" rows={rows} columns={[{ label: "类型", render: (row) => <DetailLink route="ledger-conflicts" id={row.conflict_id}>{statusText(row.conflict_type)}</DetailLink> }, { label: "支付宝流水记录 ID", render: (row) => <Code>{row.external_event_id || "-"}</Code> }, { label: "状态", render: (row) => <StateChip value={row.status} /> }, { label: "处理结果", render: (row) => row.resolution_action ? statusText(row.resolution_action) : "-" }, { label: "发现时间", render: (row) => formatTime(row.created_at) }]} /> : <EmptyState title="没有账务冲突" message="采集到的流水证据目前一致。" />}<CursorNavigation nextCursor={data.page?.next_cursor} /></>;
 }
 
 function ConflictDetail({ detail }: { readonly detail: JsonObject }) {
   const { openDialog } = useAdmin();
   const conflict = detail.conflict || {}, action = conflictResolutionAction(conflict.conflict_type);
-  return <><PageHeader title={statusText(conflict.conflict_type)} description="冲突证据和隔离结果。" actions={<>{conflict.status === "OPEN" && action ? <Button variant="contained" onClick={() => openDialog({ title: "处理账务冲突", description: statusText(conflict.conflict_type), content: <ConflictResolutionForm conflict={conflict} action={action} /> })}>处理冲突</Button> : null}<LinkButton href="/admin/ledger-conflicts">返回冲突</LinkButton></>} /><Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2, mb: 3 }}><DetailCard title="冲突事实"><Facts items={[["冲突 ID", conflict.conflict_id, true], ["状态", statusText(conflict.status)], ["外部流水号", conflict.external_event_id || "-", true], ["原始页", conflict.raw_page_id || "-", true], ["现有流水", conflict.existing_ledger_entry_id || "-", true], ["发现时间", formatTime(conflict.created_at)], ["处理时间", formatTime(conflict.resolved_at)]]} /></DetailCard><DetailCard title="处理"><Facts items={[["动作", conflict.resolution_action ? statusText(conflict.resolution_action) : "待处理"], ["可用处置", conflict.status !== "OPEN" ? "无需处置" : action ? statusText(action) : "等待系统补充一致采集证据"], ["操作 ID", conflict.resolution_operation_id || "-", true], ["证据指纹", conflict.conflict_fingerprint || "-", true]]} /></DetailCard></Box>{[["原始响应", detail.raw_page], ["流入事件", detail.incoming_event], ["现有流水", detail.existing_ledger_entry]].map(([title, value]) => <Section key={String(title)} title={String(title)}>{value ? <JsonBlock value={value} /> : <EmptyState title={`没有${title}`} message="该冲突未关联对应记录。" />}</Section>)}</>;
+  return <><PageHeader title={statusText(conflict.conflict_type)} description="冲突证据和隔离结果。" actions={<>{conflict.status === "OPEN" && action ? <Button variant="contained" onClick={() => openDialog({ title: "处理账务冲突", description: statusText(conflict.conflict_type), content: <ConflictResolutionForm conflict={conflict} action={action} /> })}>处理冲突</Button> : null}<LinkButton href="/admin/ledger-conflicts">返回冲突</LinkButton></>} /><Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2, mb: 3 }}><DetailCard title="冲突事实"><Facts items={[["冲突 ID", conflict.conflict_id, true], ["状态", statusText(conflict.status)], ["支付宝流水记录 ID", conflict.external_event_id || "-", true], ["原始页", conflict.raw_page_id || "-", true], ["现有 PerPay 流水记录", conflict.existing_ledger_entry_id || "-", true], ["发现时间", formatTime(conflict.created_at)], ["处理时间", formatTime(conflict.resolved_at)]]} /></DetailCard><DetailCard title="处理"><Facts items={[["动作", conflict.resolution_action ? statusText(conflict.resolution_action) : "待处理"], ["可用处置", conflict.status !== "OPEN" ? "无需处置" : action ? statusText(action) : "等待系统补充一致采集证据"], ["操作 ID", conflict.resolution_operation_id || "-", true], ["证据指纹", conflict.conflict_fingerprint || "-", true]]} /></DetailCard></Box>{[["原始响应", detail.raw_page], ["流入事件", detail.incoming_event], ["现有流水", detail.existing_ledger_entry]].map(([title, value]) => <Section key={String(title)} title={String(title)}>{value ? <JsonBlock value={value} /> : <EmptyState title={`没有${title}`} message="该冲突未关联对应记录。" />}</Section>)}</>;
 }
 
 function ConflictResolutionForm({ conflict, action }: { readonly conflict: JsonObject; readonly action: string }) {
   const { request, setToast, closeDialog } = useAdmin(); const { refresh } = useAdminNavigation();
   const [reason, setReason] = useState(""); const [busy, setBusy] = useState(false); const operationId = useRef(crypto.randomUUID());
   const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { await request(`/ledger/conflicts/${encodeURIComponent(conflict.conflict_id)}/actions/resolve`, { conflict_operation_id: operationId.current, action, reason: reason.trim() }); setToast("账务冲突已处理", "success"); closeDialog(); refresh(); } catch (caught) { setToast(errorMessage(caught), "error"); setBusy(false); } };
-  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><Alert severity="warning">{action === "KEEP_EXISTING" ? "将保留已经入账的流水事实，并关闭重复外部流水号冲突。" : "将确认该记录保持隔离，不把无效证据写入账本。"}</Alert><FixedTextareaField label="处理理由" value={reason} onChange={(event) => setReason(event.target.value)} rows={3} required /><Typography variant="caption" color="textSecondary" sx={{ fontFamily: MONO }}>操作编号 {operationId.current}</Typography><Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}><Button onClick={closeDialog}>取消</Button><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在提交" : "提交处理"}</Button></Stack></Stack>;
+  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><Alert severity="warning">{action === "KEEP_EXISTING" ? "将保留已经入账的流水事实，并关闭支付宝流水记录重复冲突。" : "将确认该记录保持隔离，不把无效证据写入账本。"}</Alert><FixedTextareaField label="处理理由" value={reason} onChange={(event) => setReason(event.target.value)} rows={3} required /><Typography variant="caption" color="textSecondary" sx={{ fontFamily: MONO }}>操作编号 {operationId.current}</Typography><Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}><Button onClick={closeDialog}>取消</Button><Button type="submit" variant="contained" disabled={busy}>{busy ? "正在提交" : "提交处理"}</Button></Stack></Stack>;
 }
 
 function NotificationsPage() {
@@ -1194,12 +1199,12 @@ function NotificationsPage() {
   if (!data) return <LoadingPage />;
   if (id) return <NotificationDetail detail={data.data || {}} attempts={(data.attempts || []) as JsonObject[]} />;
   const rows = (data.data || []) as JsonObject[];
-  return <><PageHeader title="通知投递" description="付款、争议和退款事件的异步送达状态。" actions={<RefreshButton />} /><FilterBar names={["status"]}><StatusFilter name="status" label="状态" value={status} values={allowed} /></FilterBar>{rows.length ? <DataTable label="通知记录" rows={rows} columns={[{ label: "事件", render: (row) => <DetailLink route="notifications" id={row.delivery_id}>{row.event?.event_type || "通知"}</DetailLink> }, { label: "订单", render: (row) => <OrderLink id={row.event?.order_id} /> }, { label: "代次", render: (row) => String(row.generation) }, { label: "状态", render: (row) => <StateChip value={row.status} /> }, { label: "尝试", render: (row) => String(row.attempt_count) }, { label: "更新时间", render: (row) => formatTime(row.updated_at) }]} /> : <EmptyState title="没有通知投递" message="配置回调地址的订单产生事件后会出现在这里。" />}<CursorNavigation nextCursor={data.page?.next_cursor} /></>;
+  return <><PageHeader title="通知投递" description="付款、争议和退款事件的异步送达状态。" actions={<RefreshButton />} /><FilterBar names={["status"]}><StatusFilter name="status" label="状态" value={status} values={allowed} /></FilterBar>{rows.length ? <DataTable label="通知记录" rows={rows} columns={[{ label: "事件", render: (row) => <DetailLink route="notifications" id={row.delivery_id}>{row.event?.event_type || "通知"}</DetailLink> }, { label: "PerPay 订单", render: (row) => <OrderLink id={row.event?.order_id} /> }, { label: "代次", render: (row) => String(row.generation) }, { label: "状态", render: (row) => <StateChip value={row.status} /> }, { label: "尝试", render: (row) => String(row.attempt_count) }, { label: "更新时间", render: (row) => formatTime(row.updated_at) }]} /> : <EmptyState title="没有通知投递" message="配置回调地址的订单产生事件后会出现在这里。" />}<CursorNavigation nextCursor={data.page?.next_cursor} /></>;
 }
 
 function NotificationDetail({ detail, attempts }: { readonly detail: JsonObject; readonly attempts: readonly JsonObject[] }) {
   const { openDialog } = useAdmin(); const delivery = detail.delivery || {};
-  return <><PageHeader title={detail.event?.event_type || "通知详情"} description="事件、目标与每次网络尝试的持久证据。" actions={<>{["DEAD_LETTER", "ACKNOWLEDGED"].includes(delivery.status) ? <Button variant="contained" onClick={() => openDialog({ title: "重新投递通知", description: `原投递 ${short(delivery.delivery_id)}`, content: <RedeliveryForm delivery={delivery} /> })}>重新投递</Button> : null}<LinkButton href="/admin/notifications">返回通知</LinkButton></>} /><Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2, mb: 3 }}><DetailCard title="投递"><Facts items={[["投递 ID", delivery.delivery_id, true], ["状态", statusText(delivery.status)], ["代次", delivery.generation], ["尝试次数", delivery.attempt_count], ["下次尝试", formatTime(delivery.next_attempt_at)], ["最后错误", delivery.last_error_code || "无", true], ["更新时间", formatTime(delivery.updated_at)]]} /></DetailCard><DetailCard title="目标"><Facts items={[["地址", detail.target?.target_url || "-", true], ["允许来源", detail.target?.allowed_origin || "-", true], ["格式", detail.target?.format || "-"], ["事件 ID", detail.event?.event_id || "-", true], ["订单 ID", detail.event?.order_id || "-", true]]} /></DetailCard></Box><Section title="尝试记录">{attempts.length ? <DataTable label="通知尝试" rows={attempts} columns={[{ label: "次数", render: (row) => String(row.attempt_number) }, { label: "结果", render: (row) => <StateChip value={row.outcome} /> }, { label: "HTTP", render: (row) => row.http_status === null ? "-" : String(row.http_status) }, { label: "地址", render: (row) => <Code>{row.connected_address || "-"}</Code> }, { label: "错误", render: (row) => <Code>{row.error_code || row.ack_code || "-"}</Code> }, { label: "开始时间", render: (row) => formatTime(row.started_at) }]} /> : <EmptyState title="还没有投递尝试" message="调度器领取任务后会记录尝试证据。" />}</Section><Section title="事件载荷"><JsonBlock value={detail.event?.payload || {}} /></Section></>;
+  return <><PageHeader title={detail.event?.event_type || "通知详情"} description="事件、目标与每次网络尝试的持久证据。" actions={<>{["DEAD_LETTER", "ACKNOWLEDGED"].includes(delivery.status) ? <Button variant="contained" onClick={() => openDialog({ title: "重新投递通知", description: `原投递 ${short(delivery.delivery_id)}`, content: <RedeliveryForm delivery={delivery} /> })}>重新投递</Button> : null}<LinkButton href="/admin/notifications">返回通知</LinkButton></>} /><Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2, mb: 3 }}><DetailCard title="投递"><Facts items={[["投递 ID", delivery.delivery_id, true], ["状态", statusText(delivery.status)], ["代次", delivery.generation], ["尝试次数", delivery.attempt_count], ["下次尝试", formatTime(delivery.next_attempt_at)], ["最后错误", delivery.last_error_code || "无", true], ["更新时间", formatTime(delivery.updated_at)]]} /></DetailCard><DetailCard title="目标"><Facts items={[["地址", detail.target?.target_url || "-", true], ["允许来源", detail.target?.allowed_origin || "-", true], ["格式", detail.target?.format || "-"], ["事件 ID", detail.event?.event_id || "-", true], ["PerPay 订单 ID", detail.event?.order_id || "-", true]]} /></DetailCard></Box><Section title="尝试记录">{attempts.length ? <DataTable label="通知尝试" rows={attempts} columns={[{ label: "次数", render: (row) => String(row.attempt_number) }, { label: "结果", render: (row) => <StateChip value={row.outcome} /> }, { label: "HTTP", render: (row) => row.http_status === null ? "-" : String(row.http_status) }, { label: "地址", render: (row) => <Code>{row.connected_address || "-"}</Code> }, { label: "错误", render: (row) => <Code>{row.error_code || row.ack_code || "-"}</Code> }, { label: "开始时间", render: (row) => formatTime(row.started_at) }]} /> : <EmptyState title="还没有投递尝试" message="调度器领取任务后会记录尝试证据。" />}</Section><Section title="事件载荷"><JsonBlock value={detail.event?.payload || {}} /></Section></>;
 }
 
 function RedeliveryForm({ delivery }: { readonly delivery: JsonObject }) {
@@ -1221,6 +1226,7 @@ const SETTINGS_SECTIONS = [
   { id: "api", label: "API", title: "API 客户端", description: "查看客户端身份并轮换业务程序使用的 API 密钥。" },
   { id: "notifications", label: "通知", title: "异步通知", description: "控制支付结果通知目标、超时和失败重试。" },
   { id: "advanced", label: "高级", title: "收银台生命周期", description: "调整令牌轮换和终态订单的可观察时间。" },
+  { id: "backup", label: "备份", title: "自动备份", description: "设置自动备份周期和本地备份保留数量。" },
   { id: "secrets", label: "安全与历史", title: "密钥与采集历史", description: "查看敏感配置元数据、管理员安全入口和采集应用代际。" },
 ] as const;
 
@@ -1252,6 +1258,7 @@ function settingsSectionStatus(section: SettingsSectionId, view: JsonObject): { 
   if (section === "provider") return completion.provider === true ? { label: "已配置", color: "success" } : { label: "待配置", color: "warning" };
   if (section === "api") return completion.api === true ? { label: "已配置", color: "success" } : { label: "待配置", color: "warning" };
   if (section === "notifications") return view.notifications?.enabled === true ? { label: "已启用", color: "success" } : { label: "未启用", color: "default" };
+  if (section === "backup") return { label: "自动运行", color: "success" };
   return { label: "可选设置", color: "default" };
 }
 
@@ -1270,6 +1277,7 @@ function SettingsPage() {
       : activeSection === "api" ? <ApiKeyBlock view={view} reload={reload} />
         : activeSection === "notifications" ? <NotificationSettingsForm view={view} reload={reload} />
           : activeSection === "advanced" ? <AdvancedSettingsForm view={view} reload={reload} />
+            : activeSection === "backup" ? <BackupSettingsForm view={view} reload={reload} />
             : <Stack spacing={2.5}><SecretSettings view={view} /><Divider /><Box><Typography component="h3" variant="h3" sx={{ mb: 0.75 }}>管理员安全</Typography><Typography variant="body2" color="textSecondary" sx={{ mb: 1.5 }}>修改管理员密码或撤销全部已登录会话。</Typography><Button component="a" href="/admin/security" variant="outlined" startIcon={<ShieldOutlined />}>打开安全设置</Button></Box></Stack>;
   return <Box sx={{ width: "100%", maxWidth: 1120, mx: "auto" }}><PageHeader title={complete ? "设置" : "设置收款"} description={complete ? "维护收款配置、接口凭据和可选功能。" : "按顺序完成四项必需配置，完成后系统才会开放收款。"} actions={<RefreshButton />} /><SettingsCompletion view={view} />
     {!complete ? <Section title="配置流程"><SettingsOnboarding key={String(view.revision)} view={view} reload={reload} /></Section> : <>
@@ -1428,6 +1436,39 @@ function AdvancedSettingsForm({ view, reload }: { readonly view: JsonObject; rea
   const { request, setToast } = useAdmin(); const current = view.advanced || {}; const [rotation, setRotation] = useState(Number(current.checkout_key_rotation_days ?? 90)); const [observation, setObservation] = useState(Number(current.checkout_terminal_observation_seconds ?? 86400)); const [busy, setBusy] = useState(false);
   const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { await request("/settings/advanced", { revision: view.revision, checkout_key_rotation_days: rotation, checkout_terminal_observation_seconds: observation }, "PUT"); setToast("高级设置已保存", "success"); await reload(); } catch (caught) { await mutationError(caught, setToast, reload); } finally { setBusy(false); } };
   return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}><Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.5, alignItems: "start" }}><TextField label="收银台令牌轮换周期（天）" type="number" value={rotation} onChange={(event) => setRotation(Number(event.target.value))} slotProps={{ htmlInput: { min: 1, max: 3650, step: 1 } }} required helperText="新订单使用新令牌密钥的周期；已创建订单不受影响。" /><TextField label="终态收银台观察期（秒）" type="number" value={observation} onChange={(event) => setObservation(Number(event.target.value))} slotProps={{ htmlInput: { min: 60, max: 604800, step: 1 } }} required helperText="订单关闭或过期后仍可读取收银台的时间。" /></Box><Button type="submit" variant="contained" disabled={busy} sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}>{busy ? "正在保存" : "保存高级设置"}</Button></Stack>;
+}
+
+function BackupSettingsForm({ view, reload }: { readonly view: JsonObject; readonly reload: () => Promise<void> }) {
+  const { request, setToast } = useAdmin();
+  const current = view.backup || {};
+  const [interval, setIntervalValue] = useState(Number(current.interval_seconds ?? 86400));
+  const [keepCount, setKeepCount] = useState(Number(current.keep_count ?? 7));
+  const [busy, setBusy] = useState(false);
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      await request("/settings/backup", {
+        revision: view.revision,
+        interval_seconds: interval,
+        keep_count: keepCount,
+      }, "PUT");
+      setToast("备份策略已保存", "success");
+      await reload();
+    } catch (caught) {
+      await mutationError(caught, setToast, reload);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return <Stack component="form" spacing={2} onSubmit={(event) => void submit(event)}>
+    <Alert severity="info">备份服务会自动读取这里的设置，修改后最多约一分钟生效。备份文件保存在独立卷中。</Alert>
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.5, alignItems: "start" }}>
+      <TextField label="备份周期（秒）" type="number" value={interval} onChange={(event) => setIntervalValue(Number(event.target.value))} slotProps={{ htmlInput: { min: 3600, max: 604800, step: 3600 } }} helperText="最短 1 小时，最长 7 天。" required />
+      <TextField label="保留数量" type="number" value={keepCount} onChange={(event) => setKeepCount(Number(event.target.value))} slotProps={{ htmlInput: { min: 1, max: 365, step: 1 } }} helperText="最多保留 365 个已验证备份。" required />
+    </Box>
+    <Button type="submit" variant="contained" disabled={busy} sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}>{busy ? "正在保存" : "保存备份设置"}</Button>
+  </Stack>;
 }
 
 function SecretValue({ label, value, message }: { readonly label: string; readonly value: string; readonly message: string }) {

@@ -13,6 +13,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { loadBackupConfig, type BackupConfig } from "./config.ts";
+import { readBackupPolicy } from "./policy.ts";
 import {
   BACKUP_CYCLE_TIMEOUT_MILLISECONDS,
   acquireBackupLock,
@@ -213,7 +214,8 @@ export async function runBackupCommand(
   operations: BackupOperations = defaultBackupOperations,
 ): Promise<number> {
   hardenProcessFileCreation();
-  const config = loadBackupConfig(environment);
+  const baseConfig = loadBackupConfig(environment);
+  const config = withCurrentPolicy(baseConfig);
   ensurePrivateDirectory(config.backupDirectory);
   const command = arguments_[0] ?? "schedule";
   if (arguments_.length === 1 && command === "run-once") {
@@ -372,7 +374,7 @@ export async function runBackupCommand(
     return 0;
   }
   if (arguments_.length === 1 && command === "schedule") {
-    await schedule(config, operations);
+    await schedule(baseConfig, operations);
     return 0;
   }
   throw new Error(
@@ -392,10 +394,11 @@ async function schedule(config: BackupConfig, operations: BackupOperations): Pro
   let reconcileBeforeDelay = true;
   try {
     while (!controller.signal.aborted) {
+      const activeConfig = withCurrentPolicy(config);
       try {
         if (reconcileBeforeDelay) {
           try {
-            await reconcileBackupRetention(config, operations, controller.signal);
+            await reconcileBackupRetention(activeConfig, operations, controller.signal);
           } catch (error) {
             if (controller.signal.aborted) break;
             process.stderr.write(`${JSON.stringify({
@@ -407,12 +410,12 @@ async function schedule(config: BackupConfig, operations: BackupOperations): Pro
           }
           reconcileBeforeDelay = false;
         }
-        const delayMilliseconds = nextScheduledDelayMilliseconds(config, Date.now());
+        const delayMilliseconds = nextScheduledDelayMilliseconds(activeConfig, Date.now());
         if (delayMilliseconds > 0) {
           await waitFor(delayMilliseconds, controller.signal);
           if (controller.signal.aborted) break;
         }
-        const result = await runTrackedCycle(config, operations, controller.signal);
+        const result = await runTrackedCycle(activeConfig, operations, controller.signal);
         process.stdout.write(`${JSON.stringify({
           level: "info",
           event: "backup_cycle_succeeded",
@@ -427,7 +430,7 @@ async function schedule(config: BackupConfig, operations: BackupOperations): Pro
           error_type: error instanceof Error ? error.name : "unknown_error",
         })}\n`);
         await waitFor(
-          Math.min(config.intervalMilliseconds, RETRY_DELAY_MILLISECONDS),
+          Math.min(activeConfig.intervalMilliseconds, RETRY_DELAY_MILLISECONDS),
           controller.signal,
         );
       }
@@ -436,6 +439,15 @@ async function schedule(config: BackupConfig, operations: BackupOperations): Pro
     process.removeListener("SIGINT", stop);
     process.removeListener("SIGTERM", stop);
   }
+}
+
+function withCurrentPolicy(config: BackupConfig): BackupConfig {
+  const policy = readBackupPolicy(config.dataDirectory);
+  return Object.freeze({
+    ...config,
+    intervalMilliseconds: policy.intervalMilliseconds,
+    keepCount: policy.keepCount,
+  });
 }
 
 export async function reconcileBackupRetention(

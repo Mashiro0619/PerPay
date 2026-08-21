@@ -27,6 +27,8 @@ export type ProviderEnvironment = "PRODUCTION" | "SANDBOX";
 
 export const DEFAULT_CHECKOUT_KEY_ROTATION_DAYS = 90;
 export const DEFAULT_CHECKOUT_TERMINAL_OBSERVATION_SECONDS = 86_400;
+export const DEFAULT_BACKUP_INTERVAL_SECONDS = 86_400;
+export const DEFAULT_BACKUP_KEEP_COUNT = 7;
 
 export interface CollectionSettings {
   readonly codePayload: string;
@@ -75,6 +77,11 @@ export interface AdvancedSettings {
   readonly checkoutTerminalObservationSeconds: number;
 }
 
+export interface BackupSettings {
+  readonly intervalSeconds: number;
+  readonly keepCount: number;
+}
+
 export interface RuntimeSettingsSnapshot {
   readonly revision: number;
   readonly paymentRevision: number;
@@ -85,6 +92,7 @@ export interface RuntimeSettingsSnapshot {
   readonly apiSecretFingerprint: string | null;
   readonly webhook: WebhookSettings;
   readonly advanced: AdvancedSettings;
+  readonly backup?: BackupSettings;
   readonly activeProviderAccountKey: string | null;
 }
 
@@ -191,10 +199,17 @@ export const advancedSettingsInputSchema = z.object({
   checkout_terminal_observation_seconds: z.number().int().min(60).max(604_800),
 }).strict();
 
+export const backupSettingsInputSchema = z.object({
+  revision: z.number().int().nonnegative(),
+  interval_seconds: z.number().int().min(3_600).max(7 * 24 * 60 * 60),
+  keep_count: z.number().int().min(1).max(365),
+}).strict();
+
 export type CollectionSettingsInput = z.infer<typeof collectionSettingsInputSchema>;
 export type ProviderSettingsInput = z.infer<typeof providerSettingsInputSchema>;
 export type WebhookSettingsInput = z.infer<typeof webhookSettingsInputSchema>;
 export type AdvancedSettingsInput = z.infer<typeof advancedSettingsInputSchema>;
+export type BackupSettingsInput = z.infer<typeof backupSettingsInputSchema>;
 
 export function providerEndpoint(environment: ProviderEnvironment): ProviderSettings["endpoint"] {
   return environment === "PRODUCTION"

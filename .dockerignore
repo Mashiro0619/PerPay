@@ -2,7 +2,6 @@
 .github/
 .idea/
 .vscode/
-a/
 node_modules/
 dist/
 web-dist/
@@ -21,9 +20,4 @@ backups/
 *.p12
 *.pfx
 credentials.json
-NEW_PROJECT_PLAN.md
-PRE_DEVELOPMENT_AUDIT.md
-REFERENCE_PROJECT_ANALYSIS.md
-UI_LIBRARY_REQUIREMENTS.md
-RELEASE_BACKUP_REFACTOR_PLAN.md
 *.log

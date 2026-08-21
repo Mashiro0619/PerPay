@@ -82,6 +82,7 @@ import type {
 } from "../runtime/index.ts";
 import {
   advancedSettingsInputSchema,
+  backupSettingsInputSchema,
   collectionSettingsInputSchema,
   providerSettingsInputSchema,
   RUNTIME_SECRET_NAMES,
@@ -100,6 +101,7 @@ import {
 } from "./web/checkout.ts";
 import { CollectionCodeRenderError, CollectionCodeSvgCache } from "./web/collection-code.ts";
 import { WEB_ASSET_PATHS, webAsset } from "./web/assets.ts";
+import { type HttpErrorCode } from "./error-codes.ts";
 
 const SESSION_COOKIE = "perpay_session";
 const SECURE_SESSION_COOKIE = "__Host-perpay_session";
@@ -725,6 +727,22 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       const body = await readJson(context, advancedSettingsInputSchema, MAX_JSON_BODY_BYTES);
       const data = await settingsOperation(() =>
         requireSettingsService(dependencies).saveAdvanced(
+          body,
+          settingsAuditContext(context, dependencies),
+        )
+      );
+      return context.json({ data });
+    },
+  );
+
+  app.put(
+    "/api/admin/v1/settings/backup",
+    adminSession,
+    financialWrite,
+    async (context) => {
+      const body = await readJson(context, backupSettingsInputSchema, MAX_JSON_BODY_BYTES);
+      const data = await settingsOperation(() =>
+        requireSettingsService(dependencies).saveBackup(
           body,
           settingsAuditContext(context, dependencies),
         )
@@ -2163,7 +2181,7 @@ function webhookStoreMessage(code: WebhookStoreError["code"]): string {
   }
 }
 
-function requireResourceId(value: string, code: string, message: string): string {
+function requireResourceId(value: string, code: HttpErrorCode, message: string): string {
   if (!ORDER_ID_PATTERN.test(value)) throw new HttpApiError(404, code, message);
   return value;
 }
@@ -3175,7 +3193,7 @@ function serializeFinancialExceptionSummary(summary: FinancialExceptionSummary |
 function errorResponse(
   context: Context<AppEnvironment>,
   status: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 429 | 500 | 503,
-  code: string,
+  code: HttpErrorCode,
   message: string,
 ): Response {
   return context.json(
@@ -3192,12 +3210,12 @@ function errorResponse(
 
 class HttpApiError extends Error {
   readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 429 | 503;
-  readonly code: string;
+  readonly code: HttpErrorCode;
   readonly retryAfterSeconds: number | undefined;
 
   constructor(
     status: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 429 | 503,
-    code: string,
+    code: HttpErrorCode,
     message: string,
     retryAfterSeconds?: number,
   ) {

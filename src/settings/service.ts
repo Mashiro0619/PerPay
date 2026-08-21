@@ -4,6 +4,7 @@ import type { ProviderIdentityActivation } from "../ledger/model.ts";
 
 import {
   advancedSettingsInputSchema,
+  backupSettingsInputSchema,
   collectionSettingsInputSchema,
   generateProviderApplicationKey,
   parseProviderApplicationPrivateKey,
@@ -13,6 +14,7 @@ import {
   providerSettingsInputSchema,
   webhookSettingsInputSchema,
   type AdvancedSettingsInput,
+  type BackupSettingsInput,
   type CollectionSettingsInput,
   type ApiCredentialSnapshot,
   type ProviderSettingsInput,
@@ -78,6 +80,10 @@ export interface RuntimeSettingsView {
   readonly advanced: {
     readonly checkout_key_rotation_days: number;
     readonly checkout_terminal_observation_seconds: number;
+  };
+  readonly backup: {
+    readonly interval_seconds: number;
+    readonly keep_count: number;
   };
   readonly secrets: Readonly<Record<RuntimeSecretName, ReturnType<RuntimeSettingsStore["secretMetadata"]>>>;
 }
@@ -202,6 +208,10 @@ export class RuntimeSettingsService {
         checkout_key_rotation_days: snapshot.advanced.checkoutKeyRotationDays,
         checkout_terminal_observation_seconds:
           snapshot.advanced.checkoutTerminalObservationSeconds,
+      },
+      backup: {
+        interval_seconds: snapshot.backup?.intervalSeconds ?? 86_400,
+        keep_count: snapshot.backup?.keepCount ?? 7,
       },
       secrets: {
         api_secret: this.#store.secretMetadata("api_secret"),
@@ -437,6 +447,14 @@ export class RuntimeSettingsService {
     return this.#exclusive(async () => {
       const parsed = advancedSettingsInputSchema.parse(input);
       this.#store.saveAdvanced(parsed, audit);
+      return this.view();
+    });
+  }
+
+  saveBackup(input: BackupSettingsInput, audit: SettingsAuditContext): Promise<RuntimeSettingsView> {
+    return this.#exclusive(async () => {
+      const parsed = backupSettingsInputSchema.parse(input);
+      this.#store.saveBackup(parsed, audit);
       return this.view();
     });
   }

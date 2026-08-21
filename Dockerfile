@@ -44,13 +44,13 @@ RUN rm -rf /usr/local/lib/node_modules /opt/yarn-* \
       /usr/local/bin/pnpx \
       /usr/local/bin/yarn \
       /usr/local/bin/yarnpkg \
-    && mkdir -p /data /backups \
-    && chown node:node /data /backups \
-    && chmod 0700 /data /backups
+    && mkdir -p /data /backups /run/perpay-secrets \
+    && chown node:node /data /backups /run/perpay-secrets \
+    && chmod 0700 /data /backups /run/perpay-secrets
 
 USER node
 EXPOSE 6190
-VOLUME ["/data", "/backups"]
+VOLUME ["/data", "/backups", "/run/perpay-secrets"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5m --retries=3 \
   CMD ["node", "-e", "fetch('http://127.0.0.1:6190/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]

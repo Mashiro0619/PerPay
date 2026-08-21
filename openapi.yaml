@@ -617,6 +617,43 @@ paths:
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
         '422': { $ref: '#/components/responses/SettingsValidationFailed' }
         '503': { $ref: '#/components/responses/SettingsUnavailable' }
+  /api/admin/v1/settings/backup:
+    put:
+      tags: [Admin Settings]
+      operationId: updateBackupSettings
+      summary: Save automatic backup policy
+      description: >-
+        Updates the automatic backup interval and retention count. The backup service reads the
+        values from SQLite and applies them without restarting the application.
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BackupSettingsRequest' }
+      responses:
+        '200':
+          description: Backup settings saved and runtime settings returned
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RuntimeSettingsEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '409': { $ref: '#/components/responses/SettingsConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/SettingsValidationFailed' }
+        '503': { $ref: '#/components/responses/SettingsUnavailable' }
   /api/admin/v1/settings/secrets/{name}/actions/reveal:
     post:
       tags: [Admin Settings]
@@ -2260,6 +2297,7 @@ components:
         - provider_generations
         - notifications
         - advanced
+        - backup
         - secrets
       properties:
         revision: { type: integer, minimum: 0 }
@@ -2295,6 +2333,8 @@ components:
           $ref: '#/components/schemas/NotificationSettings'
         advanced:
           $ref: '#/components/schemas/AdvancedSettings'
+        backup:
+          $ref: '#/components/schemas/BackupSettings'
         secrets:
           $ref: '#/components/schemas/RuntimeSecretMetadataMap'
     SettingsCompletion:
@@ -2406,6 +2446,13 @@ components:
           minimum: 60
           maximum: 604800
           description: How long a newly created checkout remains readable after reaching a terminal state.
+    BackupSettings:
+      type: object
+      additionalProperties: false
+      required: [interval_seconds, keep_count]
+      properties:
+        interval_seconds: { type: integer, minimum: 3600, maximum: 604800 }
+        keep_count: { type: integer, minimum: 1, maximum: 365 }
     RuntimeSecretName:
       type: string
       enum: [api_secret, provider_private_key, provider_public_key, webhook_secret]
@@ -2528,6 +2575,14 @@ components:
           type: integer
           minimum: 60
           maximum: 604800
+    BackupSettingsRequest:
+      type: object
+      additionalProperties: false
+      required: [revision, interval_seconds, keep_count]
+      properties:
+        revision: { type: integer, minimum: 0 }
+        interval_seconds: { type: integer, minimum: 3600, maximum: 604800 }
+        keep_count: { type: integer, minimum: 1, maximum: 365 }
     SettingsRevisionRequest:
       type: object
       additionalProperties: false
@@ -4078,6 +4133,80 @@ components:
     Sha256Fingerprint:
       type: string
       pattern: '^[0-9a-f]{64}$'
+    ErrorCode:
+      type: string
+      enum:
+        - amount_slots_exhausted
+        - api_authentication_failed
+        - api_client_invalid
+        - api_nonce_replayed
+        - asset_not_found
+        - auth_rate_limited
+        - candidate_not_found
+        - candidate_set_changed
+        - checkout_code_generation_failed
+        - checkout_code_not_found
+        - checkout_not_found
+        - csrf_invalid
+        - duplicate_json_key
+        - event_not_found
+        - financial_clock_unavailable
+        - financial_exception_not_found
+        - forwarded_header_invalid
+        - idempotency_conflict
+        - identity_already_initialized
+        - identity_not_initialized
+        - internal_error
+        - invalid_content_length
+        - invalid_credentials
+        - invalid_json
+        - ledger_conflict_action_not_allowed
+        - ledger_conflict_not_found
+        - ledger_conflict_operation_conflict
+        - ledger_conflict_state_conflict
+        - ledger_entry_not_found
+        - ledger_unavailable
+        - match_not_found
+        - match_state_conflict
+        - merchant_order_no_conflict
+        - operation_conflict
+        - order_clock_unavailable
+        - order_not_found
+        - origin_not_allowed
+        - password_unchanged
+        - password_work_busy
+        - provider_application_key_missing
+        - provider_application_key_rotation_not_supported
+        - provider_switch_blocked
+        - public_checkout_rate_limited
+        - reconciliation_not_ready
+        - reconciliation_unavailable
+        - request_body_too_large
+        - request_body_unreadable
+        - return_url_invalid
+        - return_url_not_allowed
+        - route_not_found
+        - secret_not_found
+        - session_invalid
+        - settings_not_configured
+        - settings_revision_conflict
+        - settings_unavailable
+        - settings_validation_failed
+        - system_not_configured
+        - system_not_ready
+        - unsupported_media_type
+        - validation_failed
+        - webhook_delivery_not_found
+        - webhook_delivery_state_conflict
+        - webhook_disabled
+        - webhook_event_not_found
+        - webhook_operation_conflict
+        - webhook_signing_key_rollback
+        - webhook_signing_key_unavailable
+        - webhook_target_inactive
+        - webhook_target_invalid
+        - webhook_target_not_allowed
+        - webhook_unavailable
     ErrorEnvelope:
       type: object
       additionalProperties: false
@@ -4088,7 +4217,7 @@ components:
           additionalProperties: false
           required: [code, message, request_id]
           properties:
-            code: { type: string }
+            code: { $ref: '#/components/schemas/ErrorCode' }
             message: { type: string }
             request_id: { type: string }
   responses:

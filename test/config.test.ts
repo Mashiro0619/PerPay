@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { describe, it } from "node:test";
 
@@ -52,6 +54,25 @@ describe("deployment configuration", () => {
       loadConfig({ PERPAY_MASTER_KEY: uppercase }).masterKey,
       Buffer.from(uppercase, "hex"),
     );
+  });
+
+  it("generates and reuses a master key in the configured secrets directory", () => {
+    const root = mkdtempSync(resolve(tmpdir(), "perpay-config-secrets-"));
+    try {
+      const environment = {
+        PERPAY_DATA_DIR: resolve(root, "data"),
+        PERPAY_BACKUP_DIR: resolve(root, "backups"),
+        PERPAY_SECRETS_DIR: resolve(root, "secrets"),
+      };
+      const first = loadConfig(environment);
+      const path = resolve(root, "secrets", "master-key");
+      assert.equal(existsSync(path), true);
+      assert.equal(readFileSync(path, "utf8").trim().length, 64);
+      const second = loadConfig(environment);
+      assert.deepEqual(second.masterKey, first.masterKey);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("accepts only an IP address or localhost as the listener host", () => {

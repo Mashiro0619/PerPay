@@ -7,6 +7,8 @@ import { pathsOverlap } from "../infrastructure/storage/path-separation.ts";
 const rawBackupConfigSchema = z.object({
   PERPAY_DATA_DIR: z.string().trim().min(1).default("/data"),
   PERPAY_BACKUP_DIR: z.string().trim().min(1).default("/backups"),
+  // Compatibility fallback for direct runner invocation; production Compose
+  // leaves policy ownership to runtime_configuration.
   PERPAY_BACKUP_INTERVAL_SECONDS: z.coerce
     .number()
     .int()

@@ -14,6 +14,7 @@ import {
   parseProviderApplicationPrivateKey,
   parseProviderKeys,
   type AdvancedSettingsInput,
+  type BackupSettingsInput,
   type CollectionSettingsInput,
   type ApiCredentialSnapshot,
   type ProviderEnvironment,
@@ -47,6 +48,8 @@ interface ConfigurationRow {
   readonly webhook_retry_maximum_milliseconds: bigint | number;
   readonly checkout_key_rotation_days: bigint | number;
   readonly checkout_terminal_observation_seconds: bigint | number;
+  readonly backup_interval_seconds: bigint | number;
+  readonly backup_keep_count: bigint | number;
   readonly updated_at: bigint | number;
 }
 
@@ -495,6 +498,36 @@ export class RuntimeSettingsStore {
     });
   }
 
+  saveBackup(
+    input: BackupSettingsInput,
+    audit: SettingsAuditContext,
+    now = Date.now(),
+  ): RuntimeSettingsSnapshot {
+    return this.#database.write((connection) => {
+      assertRevision(connection, input.revision);
+      const updated = connection.prepare(
+        `UPDATE runtime_configuration
+            SET revision = revision + 1,
+                backup_interval_seconds = ?,
+                backup_keep_count = ?,
+                updated_at = ?
+          WHERE singleton_key = 1 AND revision = ?`,
+      ).run(
+        input.interval_seconds,
+        input.keep_count,
+        now,
+        input.revision,
+      );
+      assertUpdated(updated.changes);
+      appendSettingsAudit(connection, audit, now, "settings.backup_updated", {
+        revision: input.revision + 1,
+        interval_seconds: input.interval_seconds,
+        keep_count: input.keep_count,
+      });
+      return this.#snapshot(connection);
+    });
+  }
+
   reveal(name: RuntimeSecretName, audit: SettingsAuditContext, now = Date.now()): string {
     return this.#database.write((connection) => {
       const row = readSecret(connection, name);
@@ -613,6 +646,10 @@ export class RuntimeSettingsStore {
           "checkout terminal observation seconds",
         ),
       },
+      backup: {
+        intervalSeconds: safeInteger(row.backup_interval_seconds, "backup interval"),
+        keepCount: safeInteger(row.backup_keep_count, "backup keep count"),
+      },
       activeProviderAccountKey: row.provider_account_key,
     };
   }
@@ -635,6 +672,8 @@ function readConfiguration(connection: DatabaseSync): ConfigurationRow {
             webhook_retry_maximum_milliseconds,
             checkout_key_rotation_days,
             checkout_terminal_observation_seconds,
+            backup_interval_seconds,
+            backup_keep_count,
             updated_at
        FROM runtime_configuration WHERE singleton_key = 1`,
   ).get() as ConfigurationRow | undefined;
@@ -650,6 +689,7 @@ function assertRevision(connection: DatabaseSync, expected: number): void {
       `settings changed concurrently: expected revision ${expected}, current revision ${current}`,
     );
   }
+
 }
 
 function assertUpdated(changes: bigint | number): void {
