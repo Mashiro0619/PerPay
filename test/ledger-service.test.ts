@@ -16,6 +16,7 @@ import { LedgerIngestScheduler } from "../src/ledger/scheduler.ts";
 import {
   LedgerIngestService,
   normalLedgerOverlapMilliseconds,
+  type LedgerScanResult,
 } from "../src/ledger/service.ts";
 import { LedgerStore } from "../src/ledger/store.ts";
 
@@ -93,6 +94,7 @@ describe("LedgerIngestService", () => {
       const resumed = await serviceFor(resumedProvider, store, {
         maxRequestsPerRun: 1,
         overlapMilliseconds: 10_000,
+        clock: () => NOW + 10_000,
       }).run("new-interval-resume");
       assert.equal(resumed.status, "COMPLETED");
       assert.equal(store.getCursor()?.overlapMilliseconds, 300_000);
@@ -155,7 +157,10 @@ describe("LedgerIngestService", () => {
           rawResponse: { ...firstPage.rawResponse, body: '{"view":"A"}' },
         }]),
         store,
-        { maxRequestsPerRun: 1, overlapMilliseconds: 60 * 60 * 1_000 },
+        {
+          maxRequestsPerRun: 1,
+          overlapMilliseconds: 60 * 60 * 1_000,
+        },
       ).run("variant-baseline");
       assert.equal(first.status, "COMPLETED");
 
@@ -220,21 +225,27 @@ describe("LedgerIngestService", () => {
           };
         }),
         {
-          status: "FAILED",
+          status: "RUNNING",
           pages: 0,
           details: 0,
-          failureCode: "pagination_variant",
+          failureCode: null,
           errorCount: 1,
         },
       );
-      assert.equal(database.integrityCheck().ok, true);
+      const rejectedIntegrity = database.integrityCheck();
+      assert.equal(rejectedIntegrity.ok, true, JSON.stringify(rejectedIntegrity));
 
       const confirmed = await serviceFor(
         new ScriptedProvider([changedResponse]),
         store,
-        { maxRequestsPerRun: 1, overlapMilliseconds: 60 * 60 * 1_000 },
+        {
+          maxRequestsPerRun: 1,
+          overlapMilliseconds: 60 * 60 * 1_000,
+          clock: () => NOW + 5_000,
+        },
       ).run("variant-confirmed");
       assert.equal(confirmed.status, "COMPLETED");
+      assert.equal(confirmed.ingestRunId, rejected.ingestRunId);
       assert.equal(confirmed.details, 1);
       assert.equal(confirmed.createdEntries, 1);
       assert.equal(store.getLedgerEntry("primary", "changed-service-event")?.amountCents, 202);
@@ -529,7 +540,7 @@ describe("LedgerIngestService", () => {
       ).get() as { raw_body: Uint8Array | null; details_json: string });
       assert.equal(stored.raw_body, null);
       assert.equal((JSON.parse(stored.details_json) as { evidence_omitted: boolean }).evidence_omitted, true);
-      assert.equal(store.getRun(result.ingestRunId ?? "")?.status, "FAILED");
+      assert.equal(store.getRun(result.ingestRunId ?? "")?.status, "RUNNING");
     });
   });
 
@@ -590,7 +601,7 @@ describe("LedgerIngestService", () => {
         overlapMilliseconds: 10_000,
         clock: () => NOW + 65_000,
       }).run("periodic-compensation");
-      assert.equal(recovered.status, "COMPLETED");
+      assert.equal(recovered.status, "PARTIAL");
       assert.equal(recovered.createdEntries, 1);
       assert.equal(delayedProvider.requests[0]?.startTime, "2026-08-14 11:50:55");
     });
@@ -635,36 +646,19 @@ describe("LedgerIngestService", () => {
         maxRequestsPerRun: 1,
         clock: () => NOW + 60_000,
       }).run("compensation-10m");
-      assert.equal(tenMinute.status, "COMPLETED");
+      assert.equal(tenMinute.status, "PARTIAL");
       assert.equal(store.getRun(tenMinute.ingestRunId ?? "")?.scanKind, "COMPENSATION_10M");
       assert.equal(store.getCompensationState()?.next10mAt, NOW + 120_000);
-
-      const hourlyCatchUpProvider = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
-      const hourlyCatchUp = await serviceFor(hourlyCatchUpProvider, store, {
-        maxRequestsPerRun: 1,
-        clock: () => NOW + 60 * 60 * 1_000,
-      }).run("compensation-1h-catch-up");
-      assert.equal(hourlyCatchUp.status, "COMPLETED");
-      assert.equal(store.getRun(hourlyCatchUp.ingestRunId ?? "")?.scanKind, "NORMAL");
 
       const hourlyProvider = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
       const hourly = await serviceFor(hourlyProvider, store, {
         maxRequestsPerRun: 1,
         clock: () => NOW + 60 * 60 * 1_000,
       }).run("compensation-1h");
-      assert.equal(hourly.status, "COMPLETED");
+      assert.equal(hourly.status, "PARTIAL");
       assert.equal(store.getRun(hourly.ingestRunId ?? "")?.scanKind, "COMPENSATION_1H");
       assert.equal(store.getCompensationState()?.next1hAt, NOW + 2 * 60 * 60 * 1_000);
       assert.equal(store.getCompensationState()?.next10mAt, NOW + 61 * 60 * 1_000);
-
-      const dailyCatchUpProvider = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
-      const dailyCatchUp = await serviceFor(dailyCatchUpProvider, store, {
-        maxRequestsPerRun: 1,
-        windowMilliseconds: 24 * 60 * 60 * 1_000,
-        clock: () => NOW + 24 * 60 * 60 * 1_000,
-      }).run("compensation-1d-catch-up");
-      assert.equal(dailyCatchUp.status, "COMPLETED");
-      assert.equal(store.getRun(dailyCatchUp.ingestRunId ?? "")?.scanKind, "NORMAL");
 
       const dailyProvider = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
       const daily = await serviceFor(dailyProvider, store, {
@@ -672,7 +666,7 @@ describe("LedgerIngestService", () => {
         windowMilliseconds: 24 * 60 * 60 * 1_000,
         clock: () => NOW + 24 * 60 * 60 * 1_000,
       }).run("compensation-1d");
-      assert.equal(daily.status, "COMPLETED");
+      assert.equal(daily.status, "PARTIAL");
       assert.equal(store.getRun(daily.ingestRunId ?? "")?.scanKind, "COMPENSATION_1D");
       assert.deepEqual(store.getCompensationState(), {
         providerAccountKey: "primary",
@@ -710,6 +704,250 @@ describe("LedgerIngestService", () => {
       assert.equal(store.getRun(failed.ingestRunId ?? "")?.scanKind, "COMPENSATION_10M");
       assert.deepEqual(store.getCompensationState(), before);
     });
+  });
+
+  it("does not starve compensation at the maximum interval when a scan outlasts safety lag", async () => {
+    await withDatabase(async ({ store }) => {
+      const finishedAt = NOW + 20_000;
+      await serviceFor(
+        new ScriptedProvider([providerPage(1, 1, 0, false, [])]),
+        store,
+        {
+          maxRequestsPerRun: 1,
+          scanIntervalMilliseconds: 3_600_000,
+          windowMilliseconds: 24 * 60 * 60 * 1_000,
+          safetyLagMilliseconds: 5_000,
+          clock: sequenceClock(NOW, finishedAt, finishedAt),
+        },
+      ).run("long-interval-baseline");
+      assert.equal(store.getCompensationState()?.next1hAt, finishedAt + 3_600_000);
+
+      const compensationProvider = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
+      const compensation = await serviceFor(compensationProvider, store, {
+        maxRequestsPerRun: 1,
+        scanIntervalMilliseconds: 3_600_000,
+        windowMilliseconds: 24 * 60 * 60 * 1_000,
+        safetyLagMilliseconds: 5_000,
+        clock: () => finishedAt + 3_600_000,
+      }).run("long-interval-compensation");
+
+      assert.equal(compensation.status, "PARTIAL");
+      assert.equal(compensation.errorCode, "normal_continuation");
+      assert.equal(compensation.normalCompleted, false);
+      assert.equal(store.getRun(compensation.ingestRunId ?? "")?.scanKind, "COMPENSATION_1H");
+      assert.equal(compensationProvider.requests.length, 1);
+
+      const normal = await serviceFor(
+        new ScriptedProvider([providerPage(1, 1, 0, false, [])]),
+        store,
+        {
+          maxRequestsPerRun: 1,
+          scanIntervalMilliseconds: 3_600_000,
+          windowMilliseconds: 24 * 60 * 60 * 1_000,
+          safetyLagMilliseconds: 5_000,
+          clock: () => finishedAt + 3_600_000,
+        },
+      ).run("long-interval-normal-continuation");
+      assert.equal(normal.status, "COMPLETED");
+      assert.equal(normal.normalCompleted, true);
+    });
+  });
+
+  it("keeps a 23-hour normal gap ahead of an hourly six-hour compensation", async () => {
+    await withDatabase(async ({ store }) => {
+      await serviceFor(
+        new ScriptedProvider([providerPage(1, 1, 0, false, [])]),
+        store,
+        {
+          maxRequestsPerRun: 1,
+          windowMilliseconds: 24 * 60 * 60 * 1_000,
+          scanIntervalMilliseconds: 3_600_000,
+        },
+      ).run("normal-gap-baseline");
+
+      const provider = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
+      const result = await serviceFor(provider, store, {
+        maxRequestsPerRun: 1,
+        windowMilliseconds: 24 * 60 * 60 * 1_000,
+        scanIntervalMilliseconds: 3_600_000,
+        clock: () => NOW + 23 * 60 * 60 * 1_000,
+      }).run("normal-gap-before-hourly-compensation");
+
+      assert.equal(result.status, "COMPLETED");
+      assert.equal(store.getRun(result.ingestRunId ?? "")?.scanKind, "NORMAL");
+      assert.equal(store.getCursor("primary", "COMPENSATION"), null);
+    });
+  });
+
+  it("interleaves a fresh normal tail with a pending compensation lane", async () => {
+    await withDatabase(async ({ store }) => {
+      await serviceFor(
+        new ScriptedProvider([providerPage(1, 1, 0, false, [])]),
+        store,
+        { maxRequestsPerRun: 1, scanIntervalMilliseconds: 5_000 },
+      ).run("dual-lane-baseline");
+
+      const compensationProbe = new ScriptedProvider([
+        providerPage(1, 1, 2, true, [detail("compensation-probe", "1.00", "2026-08-14 11:59:00")]),
+      ]);
+      const compensation = await serviceFor(compensationProbe, store, {
+        maxRequestsPerRun: 32,
+        scanIntervalMilliseconds: 5_000,
+        clock: sequenceClock(NOW + 60_000, NOW + 66_000, NOW + 66_000),
+      }).run("dual-lane-compensation");
+      assert.equal(compensation.status, "PARTIAL");
+      const compensationRunId = compensation.ingestRunId ?? "";
+      assert.equal(store.getRun(compensationRunId)?.scanKind, "COMPENSATION_10M");
+      assert.equal(store.getCursor("primary", "COMPENSATION")?.complete, false);
+
+      const normalProvider = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
+      const normal = await serviceFor(normalProvider, store, {
+        maxRequestsPerRun: 32,
+        scanIntervalMilliseconds: 5_000,
+        clock: sequenceClock(NOW + 66_000, NOW + 72_000, NOW + 72_000),
+      }).run("dual-lane-normal");
+      assert.equal(normal.status, "PARTIAL");
+      assert.equal(normal.normalCompleted, true);
+      assert.equal(store.getRun(normal.ingestRunId ?? "")?.scanKind, "NORMAL");
+      const normalCursor = store.getCursor("primary", "NORMAL");
+
+      const resumedProvider = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
+      const resumed = await serviceFor(resumedProvider, store, {
+        maxRequestsPerRun: 32,
+        scanIntervalMilliseconds: 5_000,
+        clock: () => NOW + 72_000,
+      }).run("dual-lane-resume");
+      assert.equal(resumed.status, "PARTIAL");
+      assert.equal(resumed.ingestRunId, compensationRunId);
+      assert.equal(store.getCursor("primary", "NORMAL")?.windowEnd, normalCursor?.windowEnd);
+      assert.equal(
+        store.getCursor("primary", "NORMAL")?.lastEventOccurredAt,
+        normalCursor?.lastEventOccurredAt,
+      );
+    });
+  });
+
+  it("preserves retryable compensation progress and resumes the same run", async () => {
+    await withDatabase(async ({ store }) => {
+      await serviceFor(
+        new ScriptedProvider([providerPage(1, 1, 0, false, [])]),
+        store,
+        { maxRequestsPerRun: 1, scanIntervalMilliseconds: 3_600_000 },
+      ).run("retryable-compensation-baseline");
+
+      const split = await serviceFor(
+        new ScriptedProvider([
+          providerPage(1, 1, 2, true, [detail("retryable-probe", "1.00", "2026-08-14 11:59:00")]),
+        ]),
+        store,
+        {
+          maxRequestsPerRun: 32,
+          scanIntervalMilliseconds: 3_600_000,
+          clock: () => NOW + 60_000,
+        },
+      ).run("retryable-compensation-split");
+      const runId = split.ingestRunId ?? "";
+      const completedBefore = store.listIngestSegments(runId).filter((segment) => segment.state !== "PENDING").length;
+
+      const failed = await serviceFor(
+        new ScriptedProvider([
+          new AlipayProviderError({
+            kind: "network",
+            code: "transport_network",
+            message: "provider request failed",
+          }),
+        ]),
+        store,
+        {
+          maxRequestsPerRun: 32,
+          scanIntervalMilliseconds: 3_600_000,
+          clock: () => NOW + 60_000,
+        },
+      ).run("retryable-compensation-failure");
+      assert.equal(failed.status, "FAILED");
+      assert.equal(store.getRun(runId)?.status, "RUNNING");
+      assert.equal(
+        store.listIngestSegments(runId).filter((segment) => segment.state !== "PENDING").length,
+        completedBefore,
+      );
+
+      const normal = await serviceFor(
+        new ScriptedProvider([providerPage(1, 1, 0, false, [])]),
+        store,
+        {
+          maxRequestsPerRun: 32,
+          scanIntervalMilliseconds: 3_600_000,
+          clock: () => NOW + 3_660_000,
+        },
+      ).run("retryable-compensation-normal");
+      assert.equal(store.getRun(normal.ingestRunId ?? "")?.scanKind, "NORMAL");
+
+      const resumed = await serviceFor(
+        new ScriptedProvider([providerPage(1, 1, 0, false, [])]),
+        store,
+        {
+          maxRequestsPerRun: 32,
+          scanIntervalMilliseconds: 3_600_000,
+          clock: () => NOW + 3_660_000,
+        },
+      ).run("retryable-compensation-resume");
+      assert.equal(resumed.ingestRunId, runId);
+    });
+  });
+
+  it("persists provider cooldown across database and service reconstruction", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-ledger-cooldown-"));
+    const databasePath = join(directory, "database.sqlite3");
+    let database = await AppDatabase.open(databasePath);
+    try {
+      let store = new LedgerStore(database);
+      store.bindProviderIdentity(PROVIDER_IDENTITY, NOW);
+      const failed = await serviceFor(
+        new ScriptedProvider([
+          new AlipayProviderError({
+            kind: "rate_limited",
+            code: "remote_rate_limited",
+            message: "provider rate limit reached",
+            status: 429,
+            retryAfterSeconds: 17,
+          }),
+        ]),
+        store,
+        {
+          maxRequestsPerRun: 1,
+          scanIntervalMilliseconds: 5_000,
+        },
+      ).run("cooldown-before-restart");
+      assert.equal(failed.retryAfterSeconds, 17);
+      const runId = failed.ingestRunId ?? "";
+      database.close();
+
+      database = await AppDatabase.open(databasePath);
+      store = new LedgerStore(database);
+      const blockedProvider = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
+      const blocked = await serviceFor(blockedProvider, store, {
+        maxRequestsPerRun: 1,
+        scanIntervalMilliseconds: 5_000,
+        clock: () => NOW + 1_000,
+      }).run("cooldown-after-restart");
+      assert.equal(blocked.status, "FAILED");
+      assert.equal(blocked.retryAfterSeconds, 16);
+      assert.equal(blockedProvider.requests.length, 0);
+      assert.equal(store.getRun(runId)?.status, "RUNNING");
+
+      const recoveredProvider = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
+      const recovered = await serviceFor(recoveredProvider, store, {
+        maxRequestsPerRun: 1,
+        scanIntervalMilliseconds: 5_000,
+        clock: () => NOW + 17_000,
+      }).run("cooldown-recovered");
+      assert.equal(recovered.status, "COMPLETED");
+      assert.equal(recovered.ingestRunId, runId);
+      assert.equal(store.getIngestScheduleState(), null);
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
 
@@ -762,7 +1000,10 @@ describe("LedgerIngestScheduler", () => {
       ]);
       const timers: Array<{ readonly delay: number; cleared: boolean }> = [];
       const scheduler = new LedgerIngestScheduler({
-        service: serviceFor(provider, store, { maxRequestsPerRun: 1 }),
+        service: serviceFor(provider, store, {
+          maxRequestsPerRun: 1,
+          scanIntervalMilliseconds: 5_000,
+        }),
         intervalMilliseconds: 5_000,
         clock: () => NOW,
         setTimeout: (callback, delay) => {
@@ -781,7 +1022,8 @@ describe("LedgerIngestScheduler", () => {
 
       await scheduler.trigger("manual-after-rate-limit");
       await waitFor(() => timers.length === 2);
-      assert.equal(timers[1]?.delay, 10_000);
+      assert.equal(timers[1]?.delay, 17_000);
+      assert.equal(provider.requests.length, 1);
       await scheduler.stop();
     });
   });
@@ -799,7 +1041,10 @@ describe("LedgerIngestScheduler", () => {
       ]);
       const timers: Array<{ readonly delay: number; cleared: boolean }> = [];
       const scheduler = new LedgerIngestScheduler({
-        service: serviceFor(provider, store, { maxRequestsPerRun: 1 }),
+        service: serviceFor(provider, store, {
+          maxRequestsPerRun: 1,
+          scanIntervalMilliseconds: 5_000,
+        }),
         intervalMilliseconds: 5_000,
         clock: () => NOW,
         setTimeout: (callback, delay) => {
@@ -832,7 +1077,10 @@ describe("LedgerIngestScheduler", () => {
       ]);
       const timers: Array<{ readonly delay: number; cleared: boolean }> = [];
       const scheduler = new LedgerIngestScheduler({
-        service: serviceFor(provider, store, { maxRequestsPerRun: 1 }),
+        service: serviceFor(provider, store, {
+          maxRequestsPerRun: 1,
+          scanIntervalMilliseconds: 5_000,
+        }),
         intervalMilliseconds: 5_000,
         clock: () => NOW,
         setTimeout: (callback, delay) => {
@@ -852,6 +1100,72 @@ describe("LedgerIngestScheduler", () => {
       await scheduler.stop();
     });
   });
+
+  it("uses durable short variant delay even when the normal interval is one hour", async () => {
+    const timers: Array<{ readonly delay: number; cleared: boolean }> = [];
+    const service = new ScriptedScanService([
+      scanResult({
+        status: "FAILED",
+        errorCode: "pagination_variant",
+        retryAfterSeconds: 5,
+        retryable: true,
+      }),
+    ]);
+    const scheduler = new LedgerIngestScheduler({
+      service: service as unknown as LedgerIngestService,
+      intervalMilliseconds: 3_600_000,
+      clock: () => NOW,
+      setTimeout: (callback, delay) => {
+        const timer = { delay, cleared: false };
+        timers.push(timer);
+        return { unref: () => undefined, callback } as unknown as NodeJS.Timeout;
+      },
+      clearTimeout: () => undefined,
+    });
+
+    scheduler.start();
+    await waitFor(() => timers.length === 1);
+    assert.equal(timers[0]?.delay, 5_000);
+    await scheduler.stop();
+  });
+
+  it("resets failure backoff on partial progress and refreshes health for a completed normal tail", async () => {
+    const timers: Array<{ readonly delay: number; cleared: boolean }> = [];
+    const service = new ScriptedScanService([
+      scanResult({ status: "FAILED", errorCode: "transport_network", retryable: true }),
+      scanResult({
+        status: "PARTIAL",
+        errorCode: "compensation_continuation",
+        normalCompleted: true,
+      }),
+      scanResult({ status: "FAILED", errorCode: "transport_network", retryable: true }),
+    ]);
+    const scheduler = new LedgerIngestScheduler({
+      service: service as unknown as LedgerIngestService,
+      intervalMilliseconds: 5_000,
+      clock: () => NOW,
+      setTimeout: (callback, delay) => {
+        const timer = { delay, cleared: false };
+        timers.push(timer);
+        return { unref: () => undefined, callback } as unknown as NodeJS.Timeout;
+      },
+      clearTimeout: () => {
+        const timer = timers.at(-1);
+        if (timer) timer.cleared = true;
+      },
+    });
+
+    scheduler.start();
+    await waitFor(() => timers.length === 1);
+    assert.equal(timers[0]?.delay, 5_000);
+    await scheduler.trigger("partial-progress");
+    assert.equal(timers[1]?.delay, 0);
+    assert.equal(scheduler.health().consecutiveFailures, 0);
+    assert.equal(scheduler.health().lastSuccessAt, NOW);
+    await scheduler.trigger("failure-after-progress");
+    assert.equal(timers[2]?.delay, 5_000);
+    await scheduler.stop();
+  });
 });
 
 class ScriptedProvider implements LedgerProvider {
@@ -869,6 +1183,24 @@ class ScriptedProvider implements LedgerProvider {
     if (response instanceof Error) throw response;
     return response;
   }
+}
+
+class ScriptedScanService {
+  readonly #results: LedgerScanResult[];
+
+  constructor(results: readonly LedgerScanResult[]) {
+    this.#results = [...results];
+  }
+
+  async run(): Promise<LedgerScanResult> {
+    const result = this.#results.shift();
+    if (!result) throw new Error("scripted scan service has no result");
+    return result;
+  }
+
+  stop(): void {}
+
+  async waitForIdle(): Promise<void> {}
 }
 
 class DenseProvider implements LedgerProvider {
@@ -922,6 +1254,8 @@ function serviceFor(
     readonly pageSize?: number;
     readonly overlapMilliseconds?: number;
     readonly windowMilliseconds?: number;
+    readonly scanIntervalMilliseconds?: number;
+    readonly safetyLagMilliseconds?: number;
     readonly clock?: () => number;
   },
 ): LedgerIngestService {
@@ -931,7 +1265,8 @@ function serviceFor(
     pageSize: options.pageSize ?? 1,
     overlapMilliseconds: options.overlapMilliseconds ?? 5 * 60 * 1000,
     windowMilliseconds: options.windowMilliseconds ?? 60 * 60 * 1000,
-    safetyLagMilliseconds: 0,
+    safetyLagMilliseconds: options.safetyLagMilliseconds ?? 0,
+    scanIntervalMilliseconds: options.scanIntervalMilliseconds ?? 10_000,
     maxRequestsPerRun: options.maxRequestsPerRun,
     clock: options.clock ?? (() => NOW),
   });
@@ -1001,4 +1336,33 @@ async function waitFor(predicate: () => boolean): Promise<void> {
     await new Promise<void>((resolve) => setImmediate(resolve));
   }
   assert.equal(predicate(), true, "condition was not met before the test timeout");
+}
+
+function sequenceClock(...values: readonly number[]): () => number {
+  const pending = [...values];
+  return () => {
+    const value = pending.shift();
+    if (value === undefined) throw new Error("ledger service test clock exhausted");
+    return value;
+  };
+}
+
+function scanResult(overrides: Partial<LedgerScanResult>): LedgerScanResult {
+  return {
+    status: "COMPLETED",
+    reason: "test",
+    ingestRunId: null,
+    pages: 0,
+    details: 0,
+    createdEntries: 0,
+    duplicateEntries: 0,
+    isolatedDetails: 0,
+    conflicts: 0,
+    errorCode: null,
+    retryAfterSeconds: null,
+    retryable: false,
+    normalCompleted: false,
+    cooldownActive: false,
+    ...overrides,
+  };
 }

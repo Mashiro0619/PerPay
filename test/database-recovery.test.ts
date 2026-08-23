@@ -875,10 +875,9 @@ describe("database recovery boundaries", () => {
         enableForeignKeyConstraints: true,
         readBigInts: true,
       });
-      try {
-        legacy.exec(`
-          DROP INDEX ledger_compensation_due_idx;
-          DROP TABLE ledger_compensation_state;
+        try {
+          legacy.exec(`
+          ${schemaNineteenDowngradeSql()}
 
           DROP TRIGGER payment_orders_product_metadata_immutable;
           DROP TRIGGER payment_orders_product_metadata_insert_guard;
@@ -1025,11 +1024,6 @@ describe("database recovery boundaries", () => {
           ${LEGACY_PROVIDER_ACCOUNT_BINDINGS_NO_UPDATE_SQL};
           ${LEGACY_PROVIDER_ACCOUNT_BINDINGS_NO_DELETE_SQL};
 
-          DROP TRIGGER ingest_runs_identity_immutable;
-          ${migrationObjectSql(4, "trigger", "ingest_runs_identity_immutable")};
-
-          ALTER TABLE ingest_runs DROP COLUMN scan_kind;
-          ALTER TABLE ledger_cursors DROP COLUMN scan_kind;
         `);
         legacy.prepare("DELETE FROM schema_migrations WHERE version >= 10").run();
         legacy.prepare(
@@ -1417,13 +1411,7 @@ async function createVersionEighteenCompensationDatabase(
   });
   try {
     legacy.exec(`
-      DROP INDEX ledger_compensation_due_idx;
-      DROP TABLE ledger_compensation_state;
-      DROP TRIGGER ingest_runs_identity_immutable;
-      ALTER TABLE ingest_runs DROP COLUMN scan_kind;
-      ALTER TABLE ledger_cursors DROP COLUMN scan_kind;
-
-      ${migrationObjectSql(4, "trigger", "ingest_runs_identity_immutable")};
+      ${schemaNineteenDowngradeSql()}
 
       DELETE FROM schema_migrations WHERE version = 19;
     `);
@@ -1433,6 +1421,73 @@ async function createVersionEighteenCompensationDatabase(
   } finally {
     legacy.close();
   }
+}
+
+function schemaNineteenDowngradeSql(): string {
+  return `
+    DROP INDEX ledger_ingest_schedule_cooldown_idx;
+    DROP TABLE ledger_ingest_schedule_state;
+    DROP INDEX ledger_compensation_due_idx;
+    DROP TABLE ledger_compensation_state;
+
+    DROP TRIGGER ingest_runs_identity_immutable;
+    DROP INDEX ingest_runs_one_running_lane;
+    ALTER TABLE ingest_runs DROP COLUMN scan_kind;
+    ${migrationObjectSql(4, "trigger", "ingest_runs_identity_immutable")};
+    ${migrationObjectSql(4, "index", "ingest_runs_one_running_account")};
+
+    DROP TRIGGER ledger_cursors_monotonic_version;
+    DROP TRIGGER ledger_cursors_updated_at_monotonic;
+    DROP INDEX ledger_cursors_updated_idx;
+    ALTER TABLE ledger_cursors RENAME TO ledger_cursors_v19;
+    ${migrationObjectSql(4, "table", "ledger_cursors")};
+    INSERT INTO ledger_cursors(
+      provider_account_key, window_start, window_end, next_page_no,
+      page_size, expected_total_size, overlap_milliseconds, complete,
+      last_event_occurred_at, last_completed_at, updated_at, version
+    )
+    SELECT provider_account_key, window_start, window_end, next_page_no,
+           page_size, expected_total_size, overlap_milliseconds, complete,
+           last_event_occurred_at, last_completed_at, updated_at, version
+      FROM ledger_cursors_v19
+     WHERE scan_lane = 'NORMAL';
+    DROP TABLE ledger_cursors_v19;
+    ${migrationObjectSql(4, "trigger", "ledger_cursors_monotonic_version")};
+    ${migrationObjectSql(4, "trigger", "ledger_cursors_updated_at_monotonic")};
+    ${migrationObjectSql(4, "index", "ledger_cursors_updated_idx")};
+
+    DROP TRIGGER provider_raw_events_require_processed_leaf_insert;
+    DROP TRIGGER ingest_run_page_observations_rejected_variant_valid_insert;
+    DROP TRIGGER ingest_run_page_observations_transition_valid_insert;
+    DROP TRIGGER ingest_run_page_observations_sequence_valid_insert;
+    DROP TRIGGER ingest_run_page_observations_no_update;
+    DROP TRIGGER ingest_run_page_observations_valid_insert;
+    DROP TRIGGER ingest_run_page_observations_no_delete;
+    ALTER TABLE ingest_run_page_observations
+      RENAME TO ingest_run_page_observations_v19;
+    ${migrationObjectSql(7, "table", "ingest_run_page_observations")};
+    INSERT INTO ingest_run_page_observations(
+      ingest_run_id, ingest_segment_id, raw_page_id, observation_kind,
+      http_status, headers_json, trace_id, signature_verified, observed_at,
+      disposition, observation_sequence, transition_enforced
+    )
+    SELECT ingest_run_id, ingest_segment_id, raw_page_id, observation_kind,
+           http_status, headers_json, trace_id, signature_verified, observed_at,
+           disposition, observation_sequence, transition_enforced
+      FROM ingest_run_page_observations_v19;
+    DROP TABLE ingest_run_page_observations_v19;
+    ${migrationObjectSql(7, "index", "ingest_run_page_observations_page_idx")};
+    ${migrationObjectSql(7, "index", "ingest_run_page_observations_raw_page_idx")};
+    ${migrationObjectSql(7, "index", "ingest_run_page_observations_disposition_idx")};
+    ${migrationObjectSql(7, "index", "ingest_run_page_observations_sequence_idx")};
+    ${migrationObjectSql(7, "trigger", "ingest_run_page_observations_no_update")};
+    ${migrationObjectSql(7, "trigger", "ingest_run_page_observations_valid_insert")};
+    ${migrationObjectSql(7, "trigger", "ingest_run_page_observations_no_delete")};
+    ${migrationObjectSql(7, "trigger", "ingest_run_page_observations_sequence_valid_insert")};
+    ${migrationObjectSql(7, "trigger", "ingest_run_page_observations_transition_valid_insert")};
+    ${migrationObjectSql(7, "trigger", "ingest_run_page_observations_rejected_variant_valid_insert")};
+    ${migrationObjectSql(7, "trigger", "provider_raw_events_require_processed_leaf_insert")};
+  `;
 }
 
 function testConfig(directory: string): AppConfig {

@@ -812,14 +812,13 @@ export function restoreMigrationBackup(
   try {
     const preQuiesceTargetIdentity = inspectOrdinaryFile(target, "application database");
     maintenanceLeaseClaimed = claimAndQuiesceApplicationDatabase(target, now, lock.token);
-    assertFilePathIdentity(
+    const targetIdentity = assertFilePathIdentity(
       target,
       preQuiesceTargetIdentity,
       "application database",
       true,
       "the database restore was being prepared",
     );
-    const targetIdentity = inspectOrdinaryFile(target, "application database");
     assertSelfContainedSqlite(target, "application database");
 
     const sourceIdentity = inspectOrdinaryFile(source, "migration backup");
@@ -985,13 +984,21 @@ export function restoreOperationalBackup(
       now,
     );
   } catch (error) {
-    publicationLock?.release();
+    try {
+      publicationLock?.release();
+    } catch (releaseError) {
+      throw new AggregateError(
+        [error, releaseError],
+        "database restore failed while releasing the publication lock",
+      );
+    }
     throw error;
   }
   let maintenanceLeaseClaimed = false;
   let targetPublished = false;
   let replacementDurable = false;
   let retainMaintenanceLock = false;
+  let restoreFailure: unknown;
   const transactionId = randomUUID();
   const staging = join(directory, `.${DATABASE_NAME}.restore-${transactionId}.tmp`);
   const quarantine = join(
@@ -1004,9 +1011,15 @@ export function restoreOperationalBackup(
 
   try {
     if (pathEntryExists(target)) {
-      inspectOrdinaryFile(target, "application database");
+      const preQuiesceTargetIdentity = inspectOrdinaryFile(target, "application database");
       maintenanceLeaseClaimed = claimAndQuiesceApplicationDatabase(target, now, lock.token);
-      targetIdentity = inspectOrdinaryFile(target, "application database");
+      targetIdentity = assertFilePathIdentity(
+        target,
+        preQuiesceTargetIdentity,
+        "application database",
+        true,
+        "the database restore was being prepared",
+      );
       assertSelfContainedSqlite(target, "application database");
     } else {
       try {
@@ -1134,19 +1147,35 @@ export function restoreOperationalBackup(
     if (targetPublished && !replacementDurable) {
       retainMaintenanceLock = true;
     }
-    if (cleanupErrors.length > 0) {
-      throw new AggregateError([error, ...cleanupErrors], "database restore failed during cleanup");
-    }
-    throw error;
+    restoreFailure = cleanupErrors.length > 0
+      ? new AggregateError([error, ...cleanupErrors], "database restore failed during cleanup")
+      : error;
+    throw restoreFailure;
   } finally {
+    const releaseErrors: unknown[] = [];
     if (!retainMaintenanceLock && (!targetPublished || replacementDurable)) {
-      lock.release();
+      try {
+        lock.release();
+      } catch (error) {
+        releaseErrors.push(error);
+      }
     }
     // The database lock remains as the recovery barrier when publication was
     // interrupted; backups also check it before opening the live database.
-    // The cross-volume publication lease itself is therefore always released
-    // here and cannot strand maintenance indefinitely.
-    publicationLock?.release();
+    // Always attempt the cross-volume release even when the database lock
+    // release itself fails, so one cleanup error cannot strand both locks.
+    try {
+      publicationLock?.release();
+    } catch (error) {
+      releaseErrors.push(error);
+    }
+    if (releaseErrors.length > 0) {
+      const failures = restoreFailure === undefined
+        ? releaseErrors
+        : [restoreFailure, ...releaseErrors];
+      if (failures.length === 1) throw failures[0];
+      throw new AggregateError(failures, "database restore failed while releasing maintenance locks");
+    }
   }
 }
 
@@ -1617,11 +1646,12 @@ function assertFilePathIdentity(
   label: string,
   harden = true,
   operation = "the online backup was being created",
-): void {
+): FileIdentity {
   const actual = inspectOrdinaryFile(path, label, harden);
   if (actual.device !== expected.device || actual.inode !== expected.inode) {
     throw new Error(`${label} path identity changed while ${operation}`);
   }
+  return actual;
 }
 
 function finalizeInterruptedFreshRestorePublication(
@@ -1805,6 +1835,12 @@ function assertBackupMasterKey(
       readonly authentication_tag: Uint8Array;
     } | undefined;
     if (guard === undefined) {
+      if (!required) {
+        const encryptedSecret = tableExists(database, "runtime_secrets")
+          ? database.prepare("SELECT 1 AS present FROM runtime_secrets LIMIT 1").get()
+          : undefined;
+        if (encryptedSecret === undefined) return;
+      }
       throw new Error("selected backup is missing its runtime master key guard");
     }
     const encrypted: EncryptedSecret = {

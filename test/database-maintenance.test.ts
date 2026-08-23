@@ -570,6 +570,240 @@ describe("database migration backup maintenance", () => {
     }
   });
 
+  it("does not trust an operational restore target replaced while preparing its lease", async () => {
+    const sourceDirectory = temporaryDirectory();
+    const backupDirectory = temporaryDirectory();
+    const sourceDatabase = await openTestDatabase(join(sourceDirectory, "perpay.sqlite3"));
+    let backup: Awaited<ReturnType<typeof createOperationalBackup>>;
+    try {
+      backup = await createOperationalBackup({
+        dataDirectory: sourceDirectory,
+        backupDirectory,
+      });
+    } finally {
+      sourceDatabase.close();
+    }
+
+    const targetDirectory = temporaryDirectory();
+    const targetPath = join(targetDirectory, "perpay.sqlite3");
+    const targetDatabase = await openTestDatabase(targetPath);
+    targetDatabase.close();
+    const replacementPath = join(targetDirectory, ".operational-target-replacement.tmp");
+    const originalLstatSync = fs.lstatSync;
+    let targetLstatCalls = 0;
+    let targetReplaced = false;
+    const hookedLstatSync = ((...arguments_: Parameters<typeof fs.lstatSync>) => {
+      const requestedPath = arguments_[0];
+      if (typeof requestedPath === "string" && resolve(requestedPath) === targetPath) {
+        targetLstatCalls += 1;
+        if (!targetReplaced && targetLstatCalls === 4) {
+          copyFileSync(targetPath, replacementPath);
+          const replacement = new DatabaseSync(replacementPath, { readBigInts: true });
+          try {
+            replacement.prepare(
+              "INSERT INTO system_metadata(key, value, updated_at) VALUES ('operational_target_race_marker', 'replacement', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+            ).run();
+          } finally {
+            replacement.close();
+          }
+          fs.renameSync(replacementPath, targetPath);
+          targetReplaced = true;
+        }
+      }
+      return Reflect.apply(originalLstatSync, fs, arguments_);
+    }) as typeof fs.lstatSync;
+    assert.equal(Reflect.set(fs, "lstatSync", hookedLstatSync), true);
+    syncBuiltinESMExports();
+    try {
+      assert.throws(
+        () => restoreOperationalBackup({
+          dataDirectory: targetDirectory,
+          backupDirectory,
+          backupName: backup.name,
+          expectedSha256: backup.sha256,
+          confirmReplaceCurrentDatabase: true,
+          masterKey: TEST_MASTER_KEY,
+        }),
+        /application database path identity changed while the database restore was being prepared/u,
+      );
+    } finally {
+      assert.equal(Reflect.set(fs, "lstatSync", originalLstatSync), true);
+      syncBuiltinESMExports();
+    }
+
+    assert.equal(targetReplaced, true);
+    assert.equal(existsSync(databaseMaintenanceLockPath(targetPath)), false);
+    assert.equal(existsSync(publicationLockPath(backupDirectory)), false);
+    const replacement = new DatabaseSync(targetPath, { readOnly: true, readBigInts: true });
+    try {
+      assert.equal(
+        (replacement.prepare(
+          "SELECT value FROM system_metadata WHERE key = 'operational_target_race_marker'",
+        ).get() as { value: string }).value,
+        "replacement",
+      );
+    } finally {
+      replacement.close();
+    }
+  });
+
+  it("does not recapture an operational target replaced after path validation", async () => {
+    const sourceDirectory = temporaryDirectory();
+    const backupDirectory = temporaryDirectory();
+    const sourceDatabase = await openTestDatabase(join(sourceDirectory, "perpay.sqlite3"));
+    let backup: Awaited<ReturnType<typeof createOperationalBackup>>;
+    try {
+      backup = await createOperationalBackup({
+        dataDirectory: sourceDirectory,
+        backupDirectory,
+      });
+    } finally {
+      sourceDatabase.close();
+    }
+
+    const targetDirectory = temporaryDirectory();
+    const targetPath = join(targetDirectory, "perpay.sqlite3");
+    const targetDatabase = await openTestDatabase(targetPath);
+    targetDatabase.close();
+    const replacementPath = join(targetDirectory, ".operational-post-validation-replacement.tmp");
+    const originalLstatSync = fs.lstatSync;
+    let targetLstatCalls = 0;
+    let targetReplaced = false;
+    const hookedLstatSync = ((...arguments_: Parameters<typeof fs.lstatSync>) => {
+      const result = Reflect.apply(originalLstatSync, fs, arguments_);
+      const requestedPath = arguments_[0];
+      if (typeof requestedPath === "string" && resolve(requestedPath) === targetPath) {
+        targetLstatCalls += 1;
+        if (!targetReplaced && targetLstatCalls === 6) {
+          copyFileSync(targetPath, replacementPath);
+          const replacement = new DatabaseSync(replacementPath, { readBigInts: true });
+          try {
+            replacement.prepare(
+              "INSERT INTO system_metadata(key, value, updated_at) VALUES ('operational_post_validation_race_marker', 'replacement', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+            ).run();
+          } finally {
+            replacement.close();
+          }
+          fs.renameSync(replacementPath, targetPath);
+          targetReplaced = true;
+        }
+      }
+      return result;
+    }) as typeof fs.lstatSync;
+    assert.equal(Reflect.set(fs, "lstatSync", hookedLstatSync), true);
+    syncBuiltinESMExports();
+    try {
+      assert.throws(
+        () => restoreOperationalBackup({
+          dataDirectory: targetDirectory,
+          backupDirectory,
+          backupName: backup.name,
+          expectedSha256: backup.sha256,
+          confirmReplaceCurrentDatabase: true,
+          masterKey: TEST_MASTER_KEY,
+        }),
+        /application database changed while it was being copied/u,
+      );
+    } finally {
+      assert.equal(Reflect.set(fs, "lstatSync", originalLstatSync), true);
+      syncBuiltinESMExports();
+    }
+
+    assert.equal(targetReplaced, true);
+    assert.equal(existsSync(databaseMaintenanceLockPath(targetPath)), false);
+    assert.equal(existsSync(publicationLockPath(backupDirectory)), false);
+    const replacement = new DatabaseSync(targetPath, { readOnly: true, readBigInts: true });
+    try {
+      assert.equal(
+        (replacement.prepare(
+          "SELECT value FROM system_metadata WHERE key = 'operational_post_validation_race_marker'",
+        ).get() as { value: string }).value,
+        "replacement",
+      );
+    } finally {
+      replacement.close();
+    }
+  });
+
+  it("still releases the publication lock when database-lock release fails", async () => {
+    const sourceDirectory = temporaryDirectory();
+    const backupDirectory = temporaryDirectory();
+    const sourceDatabase = await openTestDatabase(join(sourceDirectory, "perpay.sqlite3"));
+    let backup: Awaited<ReturnType<typeof createOperationalBackup>>;
+    try {
+      backup = await createOperationalBackup({
+        dataDirectory: sourceDirectory,
+        backupDirectory,
+      });
+    } finally {
+      sourceDatabase.close();
+    }
+
+    const targetDirectory = temporaryDirectory();
+    const targetPath = join(targetDirectory, "perpay.sqlite3");
+    const targetDatabase = await openTestDatabase(targetPath);
+    targetDatabase.close();
+    const databaseLockPath = databaseMaintenanceLockPath(targetPath);
+    const publicationPath = publicationLockPath(backupDirectory);
+    const originalUnlinkSync = fs.unlinkSync;
+    const originalFsyncSync = fs.fsyncSync;
+    let databaseReleaseAttempted = false;
+    let publicationReleaseAttempted = false;
+    let publicationSyncFailed = false;
+    const hookedUnlinkSync = ((...arguments_: Parameters<typeof fs.unlinkSync>) => {
+      const requestedPath = arguments_[0];
+      if (typeof requestedPath === "string" && resolve(requestedPath) === databaseLockPath) {
+        databaseReleaseAttempted = true;
+        throw new Error("injected database lock release failure");
+      }
+      if (typeof requestedPath === "string" && resolve(requestedPath) === publicationPath) {
+        publicationReleaseAttempted = true;
+      }
+      return Reflect.apply(originalUnlinkSync, fs, arguments_);
+    }) as typeof fs.unlinkSync;
+    const hookedFsyncSync = ((...arguments_: Parameters<typeof fs.fsyncSync>) => {
+      if (publicationReleaseAttempted && !publicationSyncFailed) {
+        publicationSyncFailed = true;
+        throw new Error("injected publication lock sync failure");
+      }
+      return Reflect.apply(originalFsyncSync, fs, arguments_);
+    }) as typeof fs.fsyncSync;
+    assert.equal(Reflect.set(fs, "unlinkSync", hookedUnlinkSync), true);
+    assert.equal(Reflect.set(fs, "fsyncSync", hookedFsyncSync), true);
+    syncBuiltinESMExports();
+    try {
+      assert.throws(
+        () => restoreOperationalBackup({
+          dataDirectory: targetDirectory,
+          backupDirectory,
+          backupName: backup.name,
+          expectedSha256: backup.sha256,
+          confirmReplaceCurrentDatabase: true,
+          masterKey: TEST_MASTER_KEY,
+        }),
+        (error: unknown) =>
+          error instanceof AggregateError &&
+          error.errors.length === 2 &&
+          error.errors.some((entry) =>
+            entry instanceof Error && /database lock release failure/u.test(entry.message)
+          ) &&
+          error.errors.some((entry) =>
+            entry instanceof Error && /publication lock sync failure/u.test(entry.message)
+          ),
+      );
+    } finally {
+      assert.equal(Reflect.set(fs, "unlinkSync", originalUnlinkSync), true);
+      assert.equal(Reflect.set(fs, "fsyncSync", originalFsyncSync), true);
+      syncBuiltinESMExports();
+    }
+
+    assert.equal(databaseReleaseAttempted, true);
+    assert.equal(publicationReleaseAttempted, true);
+    assert.equal(publicationSyncFailed, true);
+    assert.equal(existsSync(databaseLockPath), true);
+    assert.equal(existsSync(publicationPath), false);
+  });
+
   it("requires an exact backup basename, SHA-256, ordinary file, and no sidecars", async () => {
     const sourceDirectory = temporaryDirectory();
     const sourceDatabase = await openTestDatabase(join(sourceDirectory, "perpay.sqlite3"));
@@ -737,6 +971,77 @@ describe("database migration backup maintenance", () => {
 
     const reopened = await openTestDatabase(databasePath);
     reopened.close();
+  });
+
+  it("restores a migration backup with no guard when it contains no encrypted secrets", async () => {
+    const directory = temporaryDirectory();
+    const databasePath = join(directory, "perpay.sqlite3");
+    const fromVersion = DATABASE_COMPATIBILITY.maximum;
+    const backupName = `perpay.sqlite3.pre-migration-v${fromVersion}-to-v${fromVersion + 1}.sqlite3`;
+    const backupPath = join(directory, backupName);
+    const database = await openTestDatabase(databasePath);
+    try {
+      await database.backupDetailed(backupPath);
+    } finally {
+      database.close();
+    }
+    removeMasterKeyGuard(backupPath);
+
+    const result = restoreMigrationBackup({
+      dataDirectory: directory,
+      backupName,
+      confirmReplaceCurrentDatabase: true,
+      masterKey: TEST_MASTER_KEY,
+    });
+    assert.equal(result.restoredSchemaVersion, fromVersion);
+
+    const reopened = await openTestDatabase(databasePath);
+    try {
+      assert.equal(
+        reopened.read((connection) => Number((connection.prepare(
+          "SELECT COUNT(*) AS count FROM runtime_master_key_guard",
+        ).get() as { count: bigint | number }).count)),
+        1,
+      );
+    } finally {
+      reopened.close();
+    }
+  });
+
+  it("rejects a migration backup with encrypted secrets but no master-key guard", async () => {
+    const directory = temporaryDirectory();
+    const databasePath = join(directory, "perpay.sqlite3");
+    const fromVersion = DATABASE_COMPATIBILITY.maximum;
+    const backupName = `perpay.sqlite3.pre-migration-v${fromVersion}-to-v${fromVersion + 1}.sqlite3`;
+    const backupPath = join(directory, backupName);
+    const database = await openTestDatabase(databasePath);
+    const settings = new RuntimeSettingsStore(database, TEST_MASTER_KEY);
+    try {
+      settings.saveApiSecret(
+        Buffer.alloc(32, 0x33).toString("base64url"),
+        0,
+        {
+          actorId: "admin",
+          requestId: "migration-guard-secret-test",
+          remoteAddressHash: "0".repeat(64),
+        },
+      );
+      await database.backupDetailed(backupPath);
+    } finally {
+      database.close();
+    }
+    removeMasterKeyGuard(backupPath);
+
+    assert.throws(
+      () => restoreMigrationBackup({
+        dataDirectory: directory,
+        backupName,
+        confirmReplaceCurrentDatabase: true,
+        masterKey: TEST_MASTER_KEY,
+      }),
+      /master key guard|domain_violations=[1-9]/u,
+    );
+    assert.equal(existsSync(databaseMaintenanceLockPath(databasePath)), false);
   });
 
   it("rejects a migration backup replaced after source preflight", async () => {
@@ -1381,6 +1686,25 @@ function temporaryDirectory(): string {
   const directory = mkdtempSync(join(tmpdir(), "perpay-maintenance-"));
   directories.push(directory);
   return directory;
+}
+
+function removeMasterKeyGuard(databasePath: string): void {
+  const database = new DatabaseSync(databasePath);
+  try {
+    const trigger = database.prepare(
+      `SELECT sql FROM sqlite_schema
+        WHERE type = 'trigger' AND name = 'runtime_master_key_guard_no_delete'`,
+    ).get() as { sql: string } | undefined;
+    assert.ok(trigger?.sql);
+    database.exec("DROP TRIGGER runtime_master_key_guard_no_delete");
+    try {
+      database.exec("DELETE FROM runtime_master_key_guard");
+    } finally {
+      database.exec(trigger.sql);
+    }
+  } finally {
+    database.close();
+  }
 }
 
 function randomWrongToken(): string {

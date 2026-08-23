@@ -4253,8 +4253,268 @@ export const migrations: readonly Migration[] = [
       ALTER TABLE ingest_runs ADD COLUMN scan_kind TEXT NOT NULL DEFAULT 'NORMAL'
         CHECK (scan_kind IN ('NORMAL', 'COMPENSATION_10M', 'COMPENSATION_1H', 'COMPENSATION_1D'));
 
-      ALTER TABLE ledger_cursors ADD COLUMN scan_kind TEXT NOT NULL DEFAULT 'NORMAL'
-        CHECK (scan_kind IN ('NORMAL', 'COMPENSATION_10M', 'COMPENSATION_1H', 'COMPENSATION_1D'));
+      DROP INDEX ingest_runs_one_running_account;
+
+      CREATE UNIQUE INDEX ingest_runs_one_running_lane
+      ON ingest_runs(
+        provider_account_key,
+        CASE scan_kind WHEN 'NORMAL' THEN 'NORMAL' ELSE 'COMPENSATION' END
+      ) WHERE status = 'RUNNING';
+
+      DROP TRIGGER ledger_cursors_monotonic_version;
+      DROP TRIGGER ledger_cursors_updated_at_monotonic;
+      DROP INDEX ledger_cursors_updated_idx;
+
+      CREATE TABLE ledger_cursors_v19 (
+        provider_account_key TEXT NOT NULL CHECK (length(provider_account_key) BETWEEN 1 AND 128),
+        scan_lane TEXT NOT NULL CHECK (scan_lane IN ('NORMAL', 'COMPENSATION')),
+        window_start TEXT NOT NULL CHECK (length(window_start) BETWEEN 1 AND 64),
+        window_end TEXT NOT NULL CHECK (length(window_end) BETWEEN 1 AND 64),
+        next_page_no INTEGER CHECK (next_page_no IS NULL OR next_page_no = 1),
+        page_size INTEGER NOT NULL CHECK (page_size BETWEEN 1 AND 2000),
+        scan_kind TEXT NOT NULL CHECK (
+          scan_kind IN ('NORMAL', 'COMPENSATION_10M', 'COMPENSATION_1H', 'COMPENSATION_1D') AND
+          (scan_lane = 'NORMAL') = (scan_kind = 'NORMAL')
+        ),
+        expected_total_size INTEGER CHECK (expected_total_size IS NULL OR expected_total_size >= 0),
+        overlap_milliseconds INTEGER NOT NULL DEFAULT 300000 CHECK (
+          overlap_milliseconds BETWEEN 0 AND 604800000
+        ),
+        complete INTEGER NOT NULL CHECK (complete IN (0, 1)),
+        last_event_occurred_at INTEGER CHECK (
+          last_event_occurred_at IS NULL OR last_event_occurred_at >= 0
+        ),
+        last_completed_at INTEGER CHECK (last_completed_at IS NULL OR last_completed_at >= 0),
+        updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
+        version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+        PRIMARY KEY (provider_account_key, scan_lane),
+        CHECK (expected_total_size IS NULL),
+        CHECK ((complete = 1 AND next_page_no IS NULL) OR (complete = 0 AND next_page_no = 1))
+      ) STRICT;
+
+      INSERT INTO ledger_cursors_v19(
+        provider_account_key, scan_lane, window_start, window_end,
+        next_page_no, page_size, scan_kind, expected_total_size,
+        overlap_milliseconds, complete, last_event_occurred_at,
+        last_completed_at, updated_at, version
+      )
+      SELECT provider_account_key, 'NORMAL', window_start, window_end,
+             next_page_no, page_size, 'NORMAL', expected_total_size,
+             overlap_milliseconds, complete, last_event_occurred_at,
+             last_completed_at, updated_at, version
+        FROM ledger_cursors;
+
+      DROP TABLE ledger_cursors;
+      ALTER TABLE ledger_cursors_v19 RENAME TO ledger_cursors;
+
+      CREATE TRIGGER ledger_cursors_monotonic_version
+      BEFORE UPDATE ON ledger_cursors
+      WHEN NEW.version != OLD.version + 1
+      BEGIN
+        SELECT RAISE(ABORT, 'ledger cursor version must advance exactly once');
+      END;
+
+      CREATE TRIGGER ledger_cursors_updated_at_monotonic
+      BEFORE UPDATE ON ledger_cursors
+      WHEN NEW.updated_at < OLD.updated_at
+      BEGIN
+        SELECT RAISE(ABORT, 'ledger cursor updated_at cannot move backwards');
+      END;
+
+      CREATE INDEX ledger_cursors_updated_idx
+      ON ledger_cursors(updated_at, provider_account_key, scan_lane);
+
+      DROP TRIGGER provider_raw_events_require_processed_leaf_insert;
+      DROP TRIGGER ingest_run_page_observations_rejected_variant_valid_insert;
+      DROP TRIGGER ingest_run_page_observations_transition_valid_insert;
+      DROP TRIGGER ingest_run_page_observations_sequence_valid_insert;
+      DROP TRIGGER ingest_run_page_observations_no_update;
+      DROP TRIGGER ingest_run_page_observations_valid_insert;
+      DROP TRIGGER ingest_run_page_observations_no_delete;
+
+      ALTER TABLE ingest_run_page_observations
+        RENAME TO ingest_run_page_observations_v19;
+
+      CREATE TABLE ingest_run_page_observations (
+        ingest_run_id TEXT NOT NULL REFERENCES ingest_runs(ingest_run_id),
+        ingest_segment_id TEXT NOT NULL REFERENCES ingest_segments(ingest_segment_id),
+        raw_page_id TEXT NOT NULL REFERENCES provider_raw_pages(raw_page_id),
+        observation_attempt INTEGER NOT NULL CHECK (observation_attempt >= 1),
+        observation_kind TEXT NOT NULL CHECK (
+          observation_kind IN ('OVERSIZED_PROBE', 'ACCEPTED_LEAF')
+        ),
+        http_status INTEGER NOT NULL CHECK (http_status BETWEEN 100 AND 599),
+        headers_json TEXT NOT NULL CHECK (
+          json_valid(headers_json) AND json_type(headers_json) = 'object' AND
+          length(CAST(headers_json AS BLOB)) <= 16384
+        ),
+        trace_id TEXT CHECK (trace_id IS NULL OR length(trace_id) BETWEEN 1 AND 256),
+        signature_verified INTEGER NOT NULL CHECK (signature_verified IN (0, 1)),
+        observed_at INTEGER NOT NULL CHECK (observed_at >= 0),
+        disposition TEXT NOT NULL CHECK (disposition IN ('PROCESSED', 'REJECTED_VARIANT')),
+        observation_sequence INTEGER NOT NULL CHECK (observation_sequence >= 1),
+        transition_enforced INTEGER NOT NULL CHECK (transition_enforced IN (0, 1)),
+        PRIMARY KEY (ingest_segment_id, raw_page_id, observation_attempt)
+      ) STRICT;
+
+      INSERT INTO ingest_run_page_observations(
+        ingest_run_id, ingest_segment_id, raw_page_id, observation_attempt,
+        observation_kind, http_status, headers_json, trace_id,
+        signature_verified, observed_at, disposition, observation_sequence,
+        transition_enforced
+      )
+      SELECT ingest_run_id, ingest_segment_id, raw_page_id,
+             ROW_NUMBER() OVER (
+               PARTITION BY ingest_segment_id, raw_page_id
+               ORDER BY observation_sequence
+             ),
+             observation_kind, http_status, headers_json, trace_id,
+             signature_verified, observed_at, disposition, observation_sequence,
+             transition_enforced
+        FROM ingest_run_page_observations_v19;
+
+      DROP TABLE ingest_run_page_observations_v19;
+
+      CREATE INDEX ingest_run_page_observations_page_idx
+      ON ingest_run_page_observations(ingest_run_id, raw_page_id, observed_at);
+
+      CREATE INDEX ingest_run_page_observations_raw_page_idx
+      ON ingest_run_page_observations(
+        raw_page_id, ingest_segment_id, ingest_run_id, observation_kind
+      );
+
+      CREATE INDEX ingest_run_page_observations_disposition_idx
+      ON ingest_run_page_observations(
+        ingest_run_id, disposition, observation_kind, observed_at
+      );
+
+      CREATE UNIQUE INDEX ingest_run_page_observations_sequence_idx
+      ON ingest_run_page_observations(observation_sequence);
+
+      CREATE TRIGGER ingest_run_page_observations_no_update
+      BEFORE UPDATE ON ingest_run_page_observations
+      BEGIN
+        SELECT RAISE(ABORT, 'ingest page observations are immutable');
+      END;
+
+      CREATE TRIGGER ingest_run_page_observations_no_delete
+      BEFORE DELETE ON ingest_run_page_observations
+      BEGIN
+        SELECT RAISE(ABORT, 'ingest page observations cannot be deleted');
+      END;
+
+      CREATE TRIGGER ingest_run_page_observations_valid_insert
+      BEFORE INSERT ON ingest_run_page_observations
+      WHEN NOT EXISTS (
+        SELECT 1
+          FROM ingest_runs AS run
+          JOIN ingest_segments AS segment ON segment.ingest_segment_id = NEW.ingest_segment_id
+          JOIN provider_raw_pages AS page ON page.raw_page_id = NEW.raw_page_id
+         WHERE run.ingest_run_id = NEW.ingest_run_id
+           AND segment.ingest_run_id = run.ingest_run_id
+           AND run.provider_account_key = page.provider_account_key
+           AND segment.window_start = page.window_start
+           AND segment.window_end = page.window_end
+           AND run.page_size = page.page_size
+           AND page.page_no = 1
+           AND NEW.http_status = page.http_status
+           AND NEW.signature_verified = 1
+           AND page.signature_verified = 1
+           AND (
+             (NEW.observation_kind = 'OVERSIZED_PROBE' AND page.has_more = 1) OR
+             (NEW.observation_kind = 'ACCEPTED_LEAF' AND page.has_more = 0)
+           )
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'ingest page observation must match its run and page');
+      END;
+
+      CREATE TRIGGER ingest_run_page_observations_sequence_valid_insert
+      BEFORE INSERT ON ingest_run_page_observations
+      WHEN
+        NEW.disposition NOT IN ('PROCESSED', 'REJECTED_VARIANT') OR
+        NEW.transition_enforced != 1 OR
+        NEW.observation_sequence != COALESCE((
+          SELECT MAX(observation_sequence) + 1
+            FROM ingest_run_page_observations
+        ), 1) OR
+        NEW.observation_attempt != COALESCE((
+          SELECT MAX(previous.observation_attempt) + 1
+            FROM ingest_run_page_observations AS previous
+           WHERE previous.ingest_segment_id = NEW.ingest_segment_id
+             AND previous.raw_page_id = NEW.raw_page_id
+        ), 1)
+      BEGIN
+        SELECT RAISE(ABORT, 'ingest page observation sequence or disposition is invalid');
+      END;
+
+      CREATE TRIGGER ingest_run_page_observations_transition_valid_insert
+      BEFORE INSERT ON ingest_run_page_observations
+      WHEN EXISTS (
+        SELECT 1
+          FROM provider_raw_pages AS incoming
+         WHERE incoming.raw_page_id = NEW.raw_page_id
+           AND NEW.disposition != CASE
+             WHEN (
+               SELECT previous_page.response_fingerprint
+                 FROM ingest_run_page_observations AS previous_observation
+                 JOIN provider_raw_pages AS previous_page
+                   ON previous_page.raw_page_id = previous_observation.raw_page_id
+                WHERE previous_page.provider_account_key = incoming.provider_account_key
+                  AND previous_page.request_fingerprint = incoming.request_fingerprint
+                ORDER BY previous_observation.observation_sequence DESC
+                LIMIT 1
+             ) IS NULL THEN 'PROCESSED'
+             WHEN (
+               SELECT previous_page.response_fingerprint
+                 FROM ingest_run_page_observations AS previous_observation
+                 JOIN provider_raw_pages AS previous_page
+                   ON previous_page.raw_page_id = previous_observation.raw_page_id
+                WHERE previous_page.provider_account_key = incoming.provider_account_key
+                  AND previous_page.request_fingerprint = incoming.request_fingerprint
+                ORDER BY previous_observation.observation_sequence DESC
+                LIMIT 1
+             ) = incoming.response_fingerprint THEN 'PROCESSED'
+             ELSE 'REJECTED_VARIANT'
+           END
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'ingest page observation transition is invalid');
+      END;
+
+      CREATE TRIGGER ingest_run_page_observations_rejected_variant_valid_insert
+      BEFORE INSERT ON ingest_run_page_observations
+      WHEN NEW.disposition = 'REJECTED_VARIANT' AND NOT EXISTS (
+        SELECT 1
+          FROM ingest_runs AS run
+          JOIN ingest_segments AS segment
+            ON segment.ingest_segment_id = NEW.ingest_segment_id
+          JOIN provider_raw_pages AS page ON page.raw_page_id = NEW.raw_page_id
+          JOIN ledger_conflicts AS conflict ON conflict.raw_page_id = page.raw_page_id
+         WHERE run.ingest_run_id = NEW.ingest_run_id
+           AND segment.ingest_run_id = run.ingest_run_id
+           AND run.status = 'RUNNING'
+           AND segment.state = 'PENDING'
+           AND conflict.provider_account_key = run.provider_account_key
+           AND conflict.conflict_type = 'RAW_PAGE_VARIANT'
+           AND conflict.incoming_semantic_fingerprint = page.response_fingerprint
+           AND conflict.existing_semantic_fingerprint IS NOT page.response_fingerprint
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'rejected provider variant lacks matching conflict evidence');
+      END;
+
+      CREATE TRIGGER provider_raw_events_require_processed_leaf_insert
+      BEFORE INSERT ON provider_raw_events
+      WHEN NOT EXISTS (
+        SELECT 1 FROM ingest_run_page_observations AS observation
+         WHERE observation.raw_page_id = NEW.raw_page_id
+           AND observation.observation_kind = 'ACCEPTED_LEAF'
+           AND observation.disposition = 'PROCESSED'
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'provider raw events require a processed accepted leaf');
+      END;
 
       DROP TRIGGER ingest_runs_identity_immutable;
 
@@ -4281,6 +4541,24 @@ export const migrations: readonly Migration[] = [
 
       CREATE INDEX ledger_compensation_due_idx
         ON ledger_compensation_state(next_10m_at, next_1h_at, next_1d_at);
+
+      CREATE TABLE ledger_ingest_schedule_state (
+        provider_account_key TEXT PRIMARY KEY
+          REFERENCES provider_account_bindings(provider_account_key),
+        consecutive_failures INTEGER NOT NULL CHECK (consecutive_failures >= 1),
+        cooldown_until INTEGER NOT NULL CHECK (cooldown_until >= 0),
+        last_error_code TEXT NOT NULL CHECK (
+          length(last_error_code) BETWEEN 1 AND 128 AND
+          instr(last_error_code, char(0)) = 0
+        ),
+        retryable INTEGER NOT NULL CHECK (retryable IN (0, 1)),
+        updated_at INTEGER NOT NULL CHECK (
+          updated_at >= 0 AND cooldown_until >= updated_at
+        )
+      ) STRICT;
+
+      CREATE INDEX ledger_ingest_schedule_cooldown_idx
+        ON ledger_ingest_schedule_state(cooldown_until, provider_account_key);
 
       CREATE TABLE ledger_compensation_state_migration_guard (
         singleton_key INTEGER PRIMARY KEY CHECK (singleton_key = 1),

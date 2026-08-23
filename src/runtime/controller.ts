@@ -457,6 +457,7 @@ export class RuntimeController {
       overlapMilliseconds: normalLedgerOverlapMilliseconds(providerSettings.scanIntervalMilliseconds),
       windowMilliseconds: 24 * 60 * 60 * 1_000,
       safetyLagMilliseconds: providerSettings.safetyLagMilliseconds,
+      scanIntervalMilliseconds: providerSettings.scanIntervalMilliseconds,
       maxRequestsPerRun: 32,
       initialWindowStartMilliseconds: activation.activatedAt,
       clock: this.#clock,

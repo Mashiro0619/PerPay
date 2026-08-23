@@ -49,6 +49,7 @@ export interface LedgerIngestServiceOptions {
   readonly overlapMilliseconds?: number;
   readonly windowMilliseconds?: number;
   readonly safetyLagMilliseconds?: number;
+  readonly scanIntervalMilliseconds?: number;
   readonly maxRequestsPerRun?: number;
   readonly initialWindowStartMilliseconds?: number;
   readonly clock?: () => number;
@@ -69,6 +70,10 @@ export interface LedgerScanResult {
   readonly retryAfterSeconds: number | null;
   /** Whether the failed scan should use the scheduler backoff policy. */
   readonly retryable: boolean;
+  /** A normal tail completed even though durable compensation work remains. */
+  readonly normalCompleted: boolean;
+  /** Returned without contacting the provider because a durable cooldown remains active. */
+  readonly cooldownActive: boolean;
 }
 
 /**
@@ -84,6 +89,7 @@ export class LedgerIngestService {
   readonly #overlapMilliseconds: number;
   readonly #windowMilliseconds: number;
   readonly #safetyLagMilliseconds: number;
+  readonly #scanIntervalMilliseconds: number;
   readonly #maxRequestsPerRun: number;
   readonly #initialWindowStartMilliseconds: number | undefined;
   readonly #clock: () => number;
@@ -98,6 +104,7 @@ export class LedgerIngestService {
     this.#overlapMilliseconds = options.overlapMilliseconds ?? LEDGER_CURSOR_DEFAULT_OVERLAP_MILLISECONDS;
     this.#windowMilliseconds = options.windowMilliseconds ?? DEFAULT_WINDOW_MILLISECONDS;
     this.#safetyLagMilliseconds = options.safetyLagMilliseconds ?? DEFAULT_SAFETY_LAG_MILLISECONDS;
+    this.#scanIntervalMilliseconds = options.scanIntervalMilliseconds ?? 10_000;
     this.#maxRequestsPerRun = options.maxRequestsPerRun ?? DEFAULT_MAX_REQUESTS_PER_RUN;
     this.#initialWindowStartMilliseconds = options.initialWindowStartMilliseconds;
     this.#clock = options.clock ?? (() => Date.now());
@@ -112,6 +119,13 @@ export class LedgerIngestService {
     }
     if (!Number.isSafeInteger(this.#safetyLagMilliseconds) || this.#safetyLagMilliseconds < 0) {
       throw new RangeError("ledger scanner safety lag is invalid");
+    }
+    if (
+      !Number.isSafeInteger(this.#scanIntervalMilliseconds) ||
+      this.#scanIntervalMilliseconds < 1_000 ||
+      this.#scanIntervalMilliseconds > 3_600_000
+    ) {
+      throw new RangeError("ledger scanner interval is invalid");
     }
     if (
       !Number.isSafeInteger(this.#maxRequestsPerRun) ||
@@ -161,13 +175,32 @@ export class LedgerIngestService {
 
   async #run(reason: string, signal: AbortSignal): Promise<LedgerScanResult> {
     const now = safeNow(this.#clock());
-    const cursor = this.#store.getCursor(this.#providerAccountKey);
+    const scheduleState = this.#store.getIngestScheduleState(this.#providerAccountKey);
+    if (scheduleState !== null) {
+      const scheduleNow = Math.max(now, scheduleState.updatedAt);
+      if (scheduleState.cooldownUntil > scheduleNow) {
+        return {
+          ...emptyResult("FAILED", reason),
+          errorCode: scheduleState.lastErrorCode,
+          retryAfterSeconds: Math.max(
+            1,
+            Math.ceil((scheduleState.cooldownUntil - scheduleNow) / 1_000),
+          ),
+          retryable: scheduleState.retryable,
+          cooldownActive: true,
+        };
+      }
+    }
+    const normalCursor = this.#store.getCursor(this.#providerAccountKey, "NORMAL");
+    const compensationCursor = this.#store.getCursor(this.#providerAccountKey, "COMPENSATION");
     const compensationState = this.#store.getCompensationState(this.#providerAccountKey);
     const selected = chooseWindow(
-      cursor,
+      normalCursor,
+      compensationCursor,
       now,
       this.#windowMilliseconds,
       this.#safetyLagMilliseconds,
+      this.#scanIntervalMilliseconds,
       this.#initialWindowStartMilliseconds,
       compensationState,
     );
@@ -175,8 +208,9 @@ export class LedgerIngestService {
       return emptyResult("SKIPPED", reason);
     }
     const { window, scanKind } = selected;
-    const effectiveOverlapMilliseconds = cursor && !cursor.complete
-      ? cursor.overlapMilliseconds
+    const selectedCursor = scanKind === "NORMAL" ? normalCursor : compensationCursor;
+    const effectiveOverlapMilliseconds = selectedCursor && !selectedCursor.complete
+      ? selectedCursor.overlapMilliseconds
       : this.#overlapMilliseconds;
 
     let run: IngestRun;
@@ -208,7 +242,10 @@ export class LedgerIngestService {
     let activeSegment: IngestSegment | null = null;
 
     try {
-      while (pages < this.#maxRequestsPerRun) {
+      const requestBudget = run.scanKind === "NORMAL"
+        ? this.#maxRequestsPerRun
+        : Math.min(1, this.#maxRequestsPerRun);
+      while (pages < requestBudget) {
         if (signal.aborted) throw abortError();
         activeSegment = this.#store.getNextPendingSegment(run.ingestRunId);
         if (activeSegment === null) {
@@ -228,6 +265,7 @@ export class LedgerIngestService {
           ingestRunId: run.ingestRunId,
           ingestSegmentId: activeSegment.ingestSegmentId,
           page,
+          retryIntervalMilliseconds: this.#scanIntervalMilliseconds,
           now: safeNow(this.#clock()),
         });
         if (recorded.kind === "variant") {
@@ -242,8 +280,13 @@ export class LedgerIngestService {
             isolatedDetails,
             conflicts,
             errorCode: "pagination_variant",
-            retryAfterSeconds: null,
-            retryable: false,
+            retryAfterSeconds: retryAfterSeconds(
+              this.#store.getIngestScheduleState(this.#providerAccountKey),
+              safeNow(this.#clock()),
+            ),
+            retryable: true,
+            normalCompleted: false,
+            cooldownActive: false,
           };
         }
         if (recorded.kind === "density_exceeded") {
@@ -258,8 +301,13 @@ export class LedgerIngestService {
             isolatedDetails,
             conflicts,
             errorCode: "pagination_density_exceeded",
-            retryAfterSeconds: null,
+            retryAfterSeconds: retryAfterSeconds(
+              this.#store.getIngestScheduleState(this.#providerAccountKey),
+              safeNow(this.#clock()),
+            ),
             retryable: false,
+            normalCompleted: false,
+            cooldownActive: false,
           };
         }
         if (recorded.kind === "split") continue;
@@ -272,8 +320,16 @@ export class LedgerIngestService {
           else conflicts += 1;
         }
         if (recorded.rootCompleted) {
+          const completedAt = safeNow(this.#clock());
+          const normalCursorAfter = this.#store.getCursor(this.#providerAccountKey, "NORMAL");
+          const compensationPending = run.scanKind === "NORMAL" &&
+            this.#store.getCursor(this.#providerAccountKey, "COMPENSATION")?.complete === false;
+          const normalPending = run.scanKind !== "NORMAL" &&
+            normalCursorAfter !== null &&
+            normalCursorBehind(normalCursorAfter, completedAt, this.#safetyLagMilliseconds);
+          const continuationPending = compensationPending || normalPending;
           return {
-            status: "COMPLETED",
+            status: continuationPending ? "PARTIAL" : "COMPLETED",
             reason,
             ingestRunId: run.ingestRunId,
             pages,
@@ -282,12 +338,18 @@ export class LedgerIngestService {
             duplicateEntries,
             isolatedDetails,
             conflicts,
-            errorCode: null,
+            errorCode: compensationPending
+              ? "compensation_continuation"
+              : normalPending ? "normal_continuation" : null,
             retryAfterSeconds: null,
             retryable: false,
+            normalCompleted: run.scanKind === "NORMAL",
+            cooldownActive: false,
           };
         }
       }
+
+      this.#store.markIngestBatchYield(run.ingestRunId, safeNow(this.#clock()));
 
       return {
         status: "PARTIAL",
@@ -302,12 +364,14 @@ export class LedgerIngestService {
         errorCode: "request_budget_exhausted",
         retryAfterSeconds: null,
         retryable: false,
+        normalCompleted: false,
+        cooldownActive: false,
       };
     } catch (error) {
       const aborted = signal.aborted;
       const providerError = error instanceof AlipayProviderError ? error : null;
       const code = aborted ? "scan_aborted" : providerError?.code ?? errorCode(error);
-      const retryable = !aborted && (providerError?.retryable ?? true);
+      const retryable = !aborted && providerError !== null && providerError.retryable;
       try {
         const evidence =
           providerError?.status === null ||
@@ -337,7 +401,16 @@ export class LedgerIngestService {
           pageNo: 1,
           errorKind: aborted ? "aborted" : providerError?.kind ?? "internal",
           errorCode: code,
-          retryable: aborted || providerError?.retryable !== false,
+          retryable,
+          preserveRun: retryable || aborted,
+          ...(aborted
+            ? {}
+            : {
+                retrySchedule: {
+                  intervalMilliseconds: this.#scanIntervalMilliseconds,
+                  retryAfterSeconds: providerError?.retryAfterSeconds ?? null,
+                },
+              }),
           details: errorDetails,
           now: safeNow(this.#clock()),
         } as const;
@@ -374,8 +447,13 @@ export class LedgerIngestService {
         isolatedDetails,
         conflicts,
         errorCode: code,
-        retryAfterSeconds: providerError?.retryAfterSeconds ?? null,
+        retryAfterSeconds: retryAfterSeconds(
+          this.#store.getIngestScheduleState(this.#providerAccountKey),
+          safeNow(this.#clock()),
+        ) ?? providerError?.retryAfterSeconds ?? null,
         retryable,
+        normalCompleted: false,
+        cooldownActive: false,
       };
     }
   }
@@ -416,22 +494,24 @@ const COMPENSATION_KINDS: readonly {
 ];
 
 function chooseWindow(
-  cursor: LedgerCursor | null,
+  normalCursor: LedgerCursor | null,
+  compensationCursor: LedgerCursor | null,
   now: number,
   windowMilliseconds: number,
   safetyLagMilliseconds: number,
+  scanIntervalMilliseconds: number,
   initialWindowStartMilliseconds?: number,
   compensationState: LedgerCompensationState | null = null,
 ): SelectedScanWindow | null {
   const endMilliseconds = now - safetyLagMilliseconds;
   if (!Number.isSafeInteger(endMilliseconds) || endMilliseconds <= 0) return null;
-  if (cursor && !cursor.complete) {
+  if (normalCursor && !normalCursor.complete) {
     return {
-      window: { start: cursor.windowStart, end: cursor.windowEnd },
-      scanKind: cursor.scanKind,
+      window: { start: normalCursor.windowStart, end: normalCursor.windowEnd },
+      scanKind: "NORMAL",
     };
   }
-  const previousEnd = cursor ? parseShanghai(cursor.windowEnd) : null;
+  const previousEnd = normalCursor ? parseShanghai(normalCursor.windowEnd) : null;
   if (previousEnd !== null && !Number.isSafeInteger(previousEnd)) {
     throw new Error("durable ledger cursor contains an invalid window end");
   }
@@ -445,23 +525,28 @@ function chooseWindow(
         boundedEndMilliseconds - windowMilliseconds,
         initialWindowStartMilliseconds ?? 0,
       )
-    : anchor - cursor!.overlapMilliseconds;
+    : anchor - normalCursor!.overlapMilliseconds;
 
   // A provider can expose a transaction after the time window in which it
   // occurred. Use the durable latest observed event only as an extra rewind
   // hint. Compensation scheduling below is independent of this field, so a
   // delayed event cannot be lost merely because no earlier event was seen.
   let startMilliseconds = regularStartMilliseconds;
-  if (cursor && cursor.lastEventOccurredAt !== null && anchor !== null) {
-    const cursorStart = parseShanghai(cursor.windowStart);
+  if (
+    normalCursor &&
+    normalCursor.scanKind === "NORMAL" &&
+    normalCursor.lastEventOccurredAt !== null &&
+    anchor !== null
+  ) {
+    const cursorStart = parseShanghai(normalCursor.windowStart);
     if (!Number.isSafeInteger(cursorStart)) {
       throw new Error("durable ledger cursor contains an invalid window start");
     }
     const rewound = parseShanghai(
       rewindProviderWindowStart(
-        cursor.windowStart,
-        cursor.overlapMilliseconds,
-        cursor.lastEventOccurredAt,
+        normalCursor.windowStart,
+        normalCursor.overlapMilliseconds,
+        normalCursor.lastEventOccurredAt,
       ),
     );
     if (
@@ -475,25 +560,45 @@ function chooseWindow(
   const start = formatShanghai(Math.max(0, startMilliseconds));
   const normalAvailable = start < boundedEnd;
 
+  if (compensationCursor && !compensationCursor.complete) {
+    // A compensation batch yields after one provider request. Give a normal
+    // tail that accumulated since the last normal completion first priority;
+    // otherwise resume the durable compensation segment tree.
+    const normalDue = previousEnd === null ||
+      endMilliseconds - previousEnd >= scanIntervalMilliseconds;
+    const normalGetsTurn = normalDue &&
+      (normalCursor?.updatedAt ?? 0) <= compensationCursor.updatedAt;
+    if (!normalGetsTurn) {
+      return {
+        window: { start: compensationCursor.windowStart, end: compensationCursor.windowEnd },
+        scanKind: compensationCursor.scanKind,
+      };
+    }
+  }
+
   // Do not start a long compensating sweep while a materially sized normal
   // window is still outstanding. A tiny overlap-sized tail is treated as
   // caught up so a due 10-minute sweep does not starve behind a fast poller.
   const normalGap = previousEnd === null ? Number.POSITIVE_INFINITY :
     Math.max(0, endMilliseconds - previousEnd);
-  const normalTailOnly = normalGap <= (cursor?.overlapMilliseconds ?? 0);
-  const canCompensate = cursor !== null && anchor !== null &&
+  // One bounded normal window is the catch-up unit. Once the gap is within
+  // that unit, a due compensation campaign may start; in-progress campaigns
+  // still yield between requests so newly accumulated normal tails interleave.
+  const normalTailOnly = normalGap <= windowMilliseconds;
+  const canCompensate = normalCursor !== null && anchor !== null &&
+    compensationCursor?.complete !== false &&
     (!normalAvailable || normalTailOnly);
   if (canCompensate) {
-    const baseline = cursor.lastCompletedAt ?? 0;
+    const baseline = normalCursor.lastCompletedAt ?? 0;
     const state = compensationState ?? {
-      providerAccountKey: cursor.providerAccountKey,
+      providerAccountKey: normalCursor.providerAccountKey,
       next10mAt: baseline + COMPENSATION_10M_INTERVAL_MILLISECONDS,
       next1hAt: baseline + COMPENSATION_1H_INTERVAL_MILLISECONDS,
       next1dAt: baseline + COMPENSATION_1D_INTERVAL_MILLISECONDS,
       updatedAt: baseline,
     } satisfies LedgerCompensationState;
     const due = COMPENSATION_KINDS.find((candidate) =>
-      now >= state[candidate.dueKey]);
+      now >= state[candidate.dueKey] && candidate.lookbackMilliseconds >= normalGap);
     if (due) {
       const start = formatShanghai(Math.max(
         initialWindowStartMilliseconds ?? 0,
@@ -626,6 +731,18 @@ function parseShanghai(value: string): number {
     8 * 60 * 60 * 1000;
 }
 
+function normalCursorBehind(
+  cursor: LedgerCursor,
+  now: number,
+  safetyLagMilliseconds: number,
+): boolean {
+  const end = parseShanghai(cursor.windowEnd);
+  if (!Number.isSafeInteger(end)) {
+    throw new Error("durable ledger cursor contains an invalid window end");
+  }
+  return end < now - safetyLagMilliseconds;
+}
+
 function safeNow(value: number): number {
   if (!Number.isSafeInteger(value) || value < 0) throw new RangeError("ledger scanner clock is invalid");
   return value;
@@ -672,5 +789,15 @@ function emptyResult(status: LedgerScanResult["status"], reason: string): Ledger
     errorCode: null,
     retryAfterSeconds: null,
     retryable: false,
+    normalCompleted: false,
+    cooldownActive: false,
   };
+}
+
+function retryAfterSeconds(
+  state: ReturnType<LedgerStore["getIngestScheduleState"]>,
+  now: number,
+): number | null {
+  if (state === null || state.cooldownUntil <= now) return null;
+  return Math.max(1, Math.ceil((state.cooldownUntil - now) / 1_000));
 }

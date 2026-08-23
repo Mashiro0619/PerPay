@@ -819,6 +819,41 @@ async function captureStandardOutput(action: () => Promise<unknown>): Promise<st
 }
 
 describe("local backup lock", () => {
+  it("keeps non-restore maintenance commands independent from deployment secrets", async () => {
+    for (const secretEnvironment of [
+      { PERPAY_MASTER_KEY: "not-a-key" },
+      { PERPAY_SECRETS_DIR: join(configuration().dataDirectory, "missing-secrets") },
+    ]) {
+      const config = configuration();
+      const environment = {
+        PERPAY_DATA_DIR: config.dataDirectory,
+        PERPAY_BACKUP_DIR: config.backupDirectory,
+        ...secretEnvironment,
+      };
+
+      for (const command of [
+        ["health"],
+        ["inspect-lock"],
+        ["list-backups"],
+        ["list-backup-files"],
+      ] as const) {
+        await captureStandardOutput(() => runBackupCommand(command, environment));
+      }
+
+      const lock = acquireBackupLock(
+        config,
+        "lazy-secret-cli-test",
+        Date.now() - BACKUP_LOCK_STALE_MILLISECONDS - 10_000,
+      );
+      await captureStandardOutput(() => runBackupCommand([
+        "clear-lock",
+        lock.record.token,
+        "--confirm-no-backup-process",
+      ], environment));
+      assert.equal(existsSync(lock.path), false);
+    }
+  });
+
   it("rejects an empty backup directory for publication-lock commands", async () => {
     await assert.rejects(
       () => runBackupCommand(["inspect-publication-lock"], { PERPAY_BACKUP_DIR: "  " }),

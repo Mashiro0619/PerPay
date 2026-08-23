@@ -12,7 +12,11 @@ import {
 import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { loadBackupConfig, type BackupConfig } from "./config.ts";
+import {
+  loadBackupConfig,
+  loadBackupRestoreMasterKey,
+  type BackupConfig,
+} from "./config.ts";
 import { readBackupPolicy } from "./policy.ts";
 import {
   BACKUP_CYCLE_TIMEOUT_MILLISECONDS,
@@ -360,12 +364,13 @@ export async function runBackupCommand(
     arguments_[3] === RESTORE_CONFIRMATION_ARGUMENT &&
     (arguments_.length === 4 || arguments_[4] === REBUILD_STATE_ARGUMENT)
   ) {
-    if (config.masterKey === undefined) {
-      throw new Error("deployment master key is required to restore a backup");
-    }
+    const restoreConfig = Object.freeze({
+      ...config,
+      masterKey: loadBackupRestoreMasterKey(environment),
+    });
     const backupName = arguments_[1] ?? "";
     const expectedSha256 = arguments_[2] ?? "";
-    const result = await withBackupLock(config, "restore", undefined, () => {
+    const result = await withBackupLock(restoreConfig, "restore", undefined, () => {
       const startedAt = Date.now();
       operations.recover(config.backupDirectory);
       if (!SHA256_PATTERN.test(expectedSha256)) {
@@ -398,7 +403,7 @@ export async function runBackupCommand(
       writeBackupState(config.backupDirectory, state);
       try {
         const restored = operations.restore(
-          config,
+          restoreConfig,
           backupName,
           expectedSha256,
           selected.instanceId,

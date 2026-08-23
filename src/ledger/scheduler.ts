@@ -103,6 +103,10 @@ export class LedgerIngestScheduler {
         } else if (result.status === "PARTIAL") {
           this.#state = "catching_up";
           this.#lastErrorCode = result.errorCode;
+          this.#consecutiveFailures = 0;
+          if (result.normalCompleted) {
+            this.#lastSuccessAt = safeNow(this.#clock());
+          }
         } else {
           this.#state = "degraded";
           this.#lastErrorCode = result.errorCode;
@@ -170,9 +174,29 @@ export class LedgerIngestScheduler {
   #scheduleNext(result: LedgerScanResult | null): void {
     if (!this.#started || this.#stopped || this.#timer !== null) return;
     let delay = this.#intervalMilliseconds;
+    if (result?.status === "PARTIAL") {
+      // Durable catch-up and compensation work yields in bounded batches.
+      // Continue promptly so a long sweep is interleaved with normal tails.
+      delay = 0;
+    }
     if (result?.status === "FAILED") {
-      if (!result.retryable) {
-        delay = Math.max(this.#intervalMilliseconds, LedgerIngestScheduler.#nonRetryableDelayMilliseconds);
+      if (result.cooldownActive) {
+        delay = Math.min(
+          LedgerIngestScheduler.#maximumRetryDelayMilliseconds,
+          Math.max(1_000, (result.retryAfterSeconds ?? 1) * 1_000),
+        );
+      } else if (!result.retryable) {
+        delay = Math.max(
+          this.#intervalMilliseconds,
+          (result.retryAfterSeconds ?? LedgerIngestScheduler.#nonRetryableDelayMilliseconds / 1_000) * 1_000,
+        );
+      } else if (result.errorCode === "pagination_variant") {
+        // The durable store already applies bounded exponential backoff for
+        // consecutive variants. Do not impose the ordinary scan interval.
+        delay = Math.min(
+          LedgerIngestScheduler.#maximumRetryDelayMilliseconds,
+          Math.max(1_000, (result.retryAfterSeconds ?? 1) * 1_000),
+        );
       } else {
         const exponential = Math.min(
           LedgerIngestScheduler.#maximumRetryDelayMilliseconds,

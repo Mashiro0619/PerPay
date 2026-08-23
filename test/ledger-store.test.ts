@@ -523,8 +523,8 @@ describe("LedgerStore segment ingestion", () => {
       });
 
       assert.equal(rejected.kind, "variant");
-      assert.equal(rejected.run.status, "FAILED");
-      assert.equal(rejected.run.failureCode, "pagination_variant");
+      assert.equal(rejected.run.status, "RUNNING");
+      assert.equal(rejected.run.failureCode, null);
       assert.equal(rejected.run.pagesReceived, 0);
       assert.equal(rejected.run.detailsReceived, 0);
       assert.equal(rejected.segment.state, "PENDING");
@@ -743,8 +743,8 @@ describe("LedgerStore segment ingestion", () => {
       assert.equal(variant.kind, "variant");
       assert.equal(variant.observation, "variant");
       assert.deepEqual(variant.normalized, []);
-      assert.equal(variant.run.status, "FAILED");
-      assert.equal(variant.run.failureCode, "pagination_variant");
+      assert.equal(variant.run.status, "RUNNING");
+      assert.equal(variant.run.failureCode, null);
       assert.equal(variant.run.pagesReceived, 0);
       assert.equal(variant.run.detailsReceived, 0);
       assert.equal(variant.segment.state, "PENDING");
@@ -825,7 +825,7 @@ describe("LedgerStore segment ingestion", () => {
         events: 2,
         entries: 2,
         observations: 4,
-        segments: 4,
+        segments: 3,
       });
       assert.equal(database.integrityCheck().ok, true);
     });
@@ -860,7 +860,7 @@ describe("LedgerStore segment ingestion", () => {
 
       const historicalA = scan(eventA, '{"sequence":"A"}', 4_000);
       assert.equal(historicalA.kind, "variant");
-      assert.equal(historicalA.run.status, "FAILED");
+      assert.equal(historicalA.run.status, "RUNNING");
       assert.equal(historicalA.cursor.complete, false);
 
       const confirmedA = scan(eventA, '{"sequence":"A"}', 6_000);
@@ -1125,6 +1125,42 @@ describe("LedgerStore segment ingestion", () => {
     });
   });
 
+  it("detects a gap in per-page observation attempts", async () => {
+    await withLedgerStore(async ({ database, store }) => {
+      const run = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT });
+      recordOnlyLeaf(
+        store,
+        run.ingestRunId,
+        page(1, 0, false, []),
+        '{"attempt":"A"}',
+        STARTED_AT + 1_000,
+      );
+      const triggers = database.read((connection) => connection.prepare(
+        `SELECT name, sql FROM sqlite_schema
+          WHERE type = 'trigger'
+            AND name IN (
+              'ingest_run_page_observations_no_update',
+              'ingest_run_page_observations_sequence_valid_insert'
+            )`,
+      ).all() as Array<{ name: string; sql: string }>);
+      database.write((connection) => {
+        connection.exec("DROP TRIGGER ingest_run_page_observations_no_update");
+        connection.prepare(
+          "UPDATE ingest_run_page_observations SET observation_attempt = 2",
+        ).run();
+        for (const trigger of triggers) {
+          if (trigger.name === "ingest_run_page_observations_no_update") {
+            connection.exec(trigger.sql);
+          }
+        }
+      });
+      const integrity = database.integrityCheck();
+      assert.equal(integrity.schema, "ok");
+      assert.ok(integrity.domainViolations >= 1);
+      assert.equal(integrity.ok, false);
+    });
+  });
+
   it("detects rejected variant evidence with its retryable error removed", async () => {
     await withLedgerStore(async ({ database, store }) => {
       const baselineRun = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT });
@@ -1318,8 +1354,7 @@ describe("LedgerStore segment ingestion", () => {
       const cursorVersion = store.getCursor()?.version;
       database.write((connection) => connection.exec(`
         CREATE TRIGGER test_abort_pagination_variant_failure
-        BEFORE UPDATE OF status ON ingest_runs
-        WHEN NEW.failure_code = 'pagination_variant'
+        BEFORE INSERT ON ledger_ingest_schedule_state
         BEGIN
           SELECT RAISE(ABORT, 'injected pagination variant failure');
         END;
@@ -1368,7 +1403,7 @@ describe("LedgerStore segment ingestion", () => {
         now: STARTED_AT + 4_000,
       });
       assert.equal(retry.kind, "variant");
-      assert.equal(retry.run.status, "FAILED");
+      assert.equal(retry.run.status, "RUNNING");
       assert.equal(database.integrityCheck().ok, true);
     });
   });
@@ -2232,20 +2267,22 @@ function insertSyntheticObservation(
     readonly ingestSegmentId: string;
     readonly rawPageId: string;
     readonly disposition: "PROCESSED" | "REJECTED_VARIANT";
+    readonly attempt?: number;
     readonly sequence: number;
     readonly now: number;
   },
 ): void {
   connection.prepare(
     `INSERT INTO ingest_run_page_observations(
-       ingest_run_id, ingest_segment_id, raw_page_id, observation_kind,
+       ingest_run_id, ingest_segment_id, raw_page_id, observation_attempt, observation_kind,
        http_status, headers_json, trace_id, signature_verified, observed_at,
        disposition, observation_sequence, transition_enforced
-     ) VALUES (?, ?, ?, 'ACCEPTED_LEAF', 200, '{}', NULL, 1, ?, ?, ?, 1)`,
+     ) VALUES (?, ?, ?, ?, 'ACCEPTED_LEAF', 200, '{}', NULL, 1, ?, ?, ?, 1)`,
   ).run(
     input.ingestRunId,
     input.ingestSegmentId,
     input.rawPageId,
+    input.attempt ?? 1,
     input.now,
     input.disposition,
     input.sequence,

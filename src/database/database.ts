@@ -1255,9 +1255,6 @@ function countLedgerDomainViolations(connection: DatabaseSync): number {
                OR observation.observation_sequence < 1
                OR observation.transition_enforced NOT IN (0, 1)
                OR (observation.disposition = 'REJECTED_VARIANT' AND (
-                     run.status != 'FAILED' OR
-                     run.failure_code != 'pagination_variant' OR
-                     segment.state != 'PENDING' OR
                      NOT EXISTS (
                        SELECT 1
                          FROM ledger_conflicts AS variant_conflict
@@ -1373,6 +1370,32 @@ function countLedgerDomainViolations(connection: DatabaseSync): number {
   const rawEventDisposition = hasPageStability
     ? " AND accepted_observation.disposition = 'PROCESSED'"
     : "";
+  const pendingObservationDisposition = hasPageStability
+    ? " AND pending_observation.disposition = 'PROCESSED'"
+    : "";
+  const hasObservationAttempt = columnExists(
+    connection,
+    "ingest_run_page_observations",
+    "observation_attempt",
+  );
+  const observationAttemptIntegrity = hasObservationAttempt
+    ? `
+         UNION ALL
+
+         SELECT 'ingest_page_observation_attempt:' || grouped.ingest_segment_id || ':' || grouped.raw_page_id
+           FROM (
+             SELECT ingest_segment_id, raw_page_id,
+                    COUNT(*) AS attempt_count,
+                    MIN(observation_attempt) AS minimum_attempt,
+                    MAX(observation_attempt) AS maximum_attempt,
+                    COUNT(DISTINCT observation_attempt) AS distinct_attempts
+               FROM ingest_run_page_observations
+              GROUP BY ingest_segment_id, raw_page_id
+           ) AS grouped
+          WHERE grouped.minimum_attempt != 1 OR
+                grouped.maximum_attempt != grouped.attempt_count OR
+                grouped.distinct_attempts != grouped.attempt_count`
+    : "";
   const observationSequenceIntegrity = hasPageStability
     ? `
          UNION ALL
@@ -1418,8 +1441,14 @@ function countLedgerDomainViolations(connection: DatabaseSync): number {
     : "";
   const hasIngestRunScanKind = columnExists(connection, "ingest_runs", "scan_kind");
   const hasCursorScanKind = columnExists(connection, "ledger_cursors", "scan_kind");
+  const hasCursorScanLane = columnExists(connection, "ledger_cursors", "scan_lane");
   const hasCompensationState = tableExists(connection, "ledger_compensation_state");
-  const scanKindIntegrity = hasIngestRunScanKind && hasCursorScanKind
+  const hasIngestScheduleState = tableExists(connection, "ledger_ingest_schedule_state");
+  const runningCursorLaneJoin = hasIngestRunScanKind && hasCursorScanLane
+    ? ` AND cursor.scan_lane = CASE run.scan_kind
+                   WHEN 'NORMAL' THEN 'NORMAL' ELSE 'COMPENSATION' END`
+    : "";
+  const scanKindIntegrity = hasIngestRunScanKind && hasCursorScanKind && hasCursorScanLane
     ? `
          UNION ALL
 
@@ -1431,7 +1460,9 @@ function countLedgerDomainViolations(connection: DatabaseSync): number {
 
          SELECT 'ledger_cursor_scan_kind:' || cursor.provider_account_key AS subject
            FROM ledger_cursors AS cursor
-          WHERE cursor.scan_kind NOT IN ('NORMAL', 'COMPENSATION_10M', 'COMPENSATION_1H', 'COMPENSATION_1D')
+          WHERE cursor.scan_kind NOT IN ('NORMAL', 'COMPENSATION_10M', 'COMPENSATION_1H', 'COMPENSATION_1D') OR
+                cursor.scan_lane NOT IN ('NORMAL', 'COMPENSATION') OR
+                (cursor.scan_lane = 'NORMAL') != (cursor.scan_kind = 'NORMAL')
 
          UNION ALL
 
@@ -1439,6 +1470,8 @@ function countLedgerDomainViolations(connection: DatabaseSync): number {
            FROM ingest_runs AS run
            JOIN ledger_cursors AS cursor
              ON cursor.provider_account_key = run.provider_account_key
+            AND cursor.scan_lane = CASE run.scan_kind
+                  WHEN 'NORMAL' THEN 'NORMAL' ELSE 'COMPENSATION' END
           WHERE run.status = 'RUNNING' AND cursor.scan_kind != run.scan_kind`
     : "";
   const compensationStateIntegrity = hasCompensationState
@@ -1461,6 +1494,19 @@ function countLedgerDomainViolations(connection: DatabaseSync): number {
                 state.next_10m_at - state.updated_at > 60000 OR
                 state.next_1h_at - state.updated_at > 3600000 OR
                 state.next_1d_at - state.updated_at > 86400000`
+    : "";
+  const ingestScheduleStateIntegrity = hasIngestScheduleState
+    ? `
+         UNION ALL
+
+         SELECT 'ledger_ingest_schedule_state_invalid:' || state.provider_account_key AS subject
+           FROM ledger_ingest_schedule_state AS state
+          WHERE state.consecutive_failures < 1 OR
+                state.cooldown_until < state.updated_at OR
+                state.cooldown_until - state.updated_at > 86400000 OR
+                state.retryable NOT IN (0, 1) OR
+                length(state.last_error_code) NOT BETWEEN 1 AND 128 OR
+                instr(state.last_error_code, char(0)) != 0`
     : "";
   const row = connection.prepare(
     `SELECT COUNT(*) AS violations
@@ -1506,6 +1552,8 @@ ${observationIntegrity}
 ${observationSequenceIntegrity}
 
 ${observationTransitionIntegrity}
+
+${observationAttemptIntegrity}
 
          UNION ALL
 
@@ -1565,8 +1613,9 @@ ${observationTransitionIntegrity}
              OR (segment.state = 'PENDING' AND run.status = 'RUNNING' AND EXISTS (
                    SELECT 1
                      FROM ingest_run_page_observations AS pending_observation
-                    WHERE pending_observation.ingest_segment_id = segment.ingest_segment_id
-                ))
+                     WHERE pending_observation.ingest_segment_id = segment.ingest_segment_id
+                     ${pendingObservationDisposition}
+                 ))
 
          UNION ALL
 
@@ -1626,8 +1675,9 @@ ${observationTransitionIntegrity}
 
          SELECT run.ingest_run_id AS subject
            FROM ingest_runs AS run
-           LEFT JOIN ledger_cursors AS cursor
-             ON cursor.provider_account_key = run.provider_account_key
+            LEFT JOIN ledger_cursors AS cursor
+              ON cursor.provider_account_key = run.provider_account_key
+             ${runningCursorLaneJoin}
           WHERE run.status = 'RUNNING'
             AND (
               cursor.provider_account_key IS NULL OR
@@ -1678,6 +1728,8 @@ ${observationTransitionIntegrity}
 ${scanKindIntegrity}
 
 ${compensationStateIntegrity}
+
+${ingestScheduleStateIntegrity}
        )`,
   ).get() as { violations: bigint | number };
   const violations = Number(row.violations);
@@ -2798,6 +2850,25 @@ function countLedgerCryptographicDomainViolations(connection: DatabaseSync): num
            ON previous_observation.observation_sequence =
               json_extract(conflict.details_json, '$.previous_observation_sequence')`
     : "";
+  const variantIncomingObservationCondition = hasPageObservationStability
+    ? `
+           AND (
+             json_type(conflict.details_json, '$.previous_observation_sequence') IS NULL OR
+             (
+               incoming_observation.disposition = 'REJECTED_VARIANT' AND
+               (
+                 SELECT MAX(earlier_observation.observation_sequence)
+                   FROM ingest_run_page_observations AS earlier_observation
+                   JOIN provider_raw_pages AS earlier_page
+                     ON earlier_page.raw_page_id = earlier_observation.raw_page_id
+                  WHERE earlier_page.provider_account_key = page.provider_account_key
+                    AND earlier_page.request_fingerprint = page.request_fingerprint
+                    AND earlier_observation.observation_sequence <
+                        incoming_observation.observation_sequence
+               ) = json_extract(conflict.details_json, '$.previous_observation_sequence')
+             )
+           )`
+    : "";
   for (const row of connection
     .prepare(
       `SELECT conflict.conflict_type, conflict.provider_account_key,
@@ -2865,8 +2936,9 @@ function countLedgerCryptographicDomainViolations(connection: DatabaseSync): num
            ON existing_page.raw_page_id =
               json_extract(conflict.details_json, '$.existing_raw_page_id')
          LEFT JOIN ingest_run_page_observations AS incoming_observation
-           ON incoming_observation.raw_page_id = page.raw_page_id
-          AND incoming_observation.ingest_segment_id = detail_segment.ingest_segment_id
+            ON incoming_observation.raw_page_id = page.raw_page_id
+           AND incoming_observation.ingest_segment_id = detail_segment.ingest_segment_id
+          ${variantIncomingObservationCondition}
          ${variantObservationJoins}`,
     )
     .iterate() as Iterable<{

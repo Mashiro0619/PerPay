@@ -21,6 +21,7 @@ export type LedgerEntryState =
   | "IGNORED";
 export type IngestRunStatus = "RUNNING" | "COMPLETED" | "PARTIAL" | "FAILED";
 export type IngestScanKind = "NORMAL" | "COMPENSATION_10M" | "COMPENSATION_1H" | "COMPENSATION_1D";
+export type IngestScanLane = "NORMAL" | "COMPENSATION";
 export type IngestSegmentState = "PENDING" | "SPLIT" | "COMPLETE";
 export type SegmentObservationKind = "OVERSIZED_PROBE" | "ACCEPTED_LEAF";
 export type LedgerConflictType =
@@ -74,6 +75,7 @@ export interface LedgerWindow {
 
 export interface LedgerCursor {
   readonly providerAccountKey: string;
+  readonly scanLane: IngestScanLane;
   readonly windowStart: string;
   readonly windowEnd: string;
   readonly nextPageNo: number | null;
@@ -94,6 +96,20 @@ export interface LedgerCompensationState {
   readonly next1hAt: number;
   readonly next1dAt: number;
   readonly updatedAt: number;
+}
+
+export interface LedgerIngestScheduleState {
+  readonly providerAccountKey: string;
+  readonly consecutiveFailures: number;
+  readonly cooldownUntil: number;
+  readonly lastErrorCode: string;
+  readonly retryable: boolean;
+  readonly updatedAt: number;
+}
+
+export interface LedgerRetrySchedulePolicy {
+  readonly intervalMilliseconds: number;
+  readonly retryAfterSeconds?: number | null;
 }
 
 export interface StartIngestRunInput extends LedgerWindow {
@@ -151,6 +167,7 @@ export interface RecordLedgerPageInput {
   readonly ingestRunId: string;
   readonly page: AccountLogPage | AccountLogPageInput;
   readonly evidence?: RawPageEvidence;
+  readonly retryIntervalMilliseconds?: number;
   readonly now?: number;
 }
 
@@ -422,6 +439,10 @@ export interface IngestErrorInput {
   readonly errorKind: string;
   readonly errorCode: string;
   readonly retryable: boolean;
+  /** Keeps completed segments and the active run available for a later retry. */
+  readonly preserveRun?: boolean;
+  /** Persists scheduler cooldown in the same transaction as this error. */
+  readonly retrySchedule?: LedgerRetrySchedulePolicy;
   readonly evidence?: RawErrorEvidence;
   readonly details?: Record<string, unknown>;
   readonly now?: number;

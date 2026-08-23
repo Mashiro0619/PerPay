@@ -32,6 +32,7 @@ import {
   type CompleteIngestRunInput,
   type IngestErrorInput,
   type IngestRun,
+  type IngestScanLane,
   type IngestScanKind,
   type IngestSegment,
   type LedgerConflict,
@@ -50,6 +51,7 @@ import {
   type LedgerCompensationState,
   type LedgerCursor,
   type LedgerEntry,
+  type LedgerIngestScheduleState,
   type LedgerListFilter,
   type PageNormalizationResult,
   type ProviderIdentityBinding,
@@ -74,6 +76,10 @@ type DatabaseOwner = Pick<AppDatabase, "read" | "write">;
 const COMPENSATION_10M_INTERVAL_MILLISECONDS = 60 * 1_000;
 const COMPENSATION_1H_INTERVAL_MILLISECONDS = 60 * 60 * 1_000;
 const COMPENSATION_1D_INTERVAL_MILLISECONDS = 24 * 60 * 60 * 1_000;
+const DEFAULT_RETRY_INTERVAL_MILLISECONDS = 10 * 1_000;
+const PAGINATION_VARIANT_RETRY_MAXIMUM_MILLISECONDS = 5 * 1_000;
+const NON_RETRYABLE_COOLDOWN_MILLISECONDS = 15 * 60 * 1_000;
+const MAXIMUM_RETRY_DELAY_MILLISECONDS = 24 * 60 * 60 * 1_000;
 
 interface IngestRunRow {
   readonly ingest_run_id: string;
@@ -92,6 +98,7 @@ interface IngestRunRow {
 
 interface CursorRow {
   readonly provider_account_key: string;
+  readonly scan_lane: IngestScanLane;
   readonly window_start: string;
   readonly window_end: string;
   readonly next_page_no: bigint | number | null;
@@ -111,6 +118,15 @@ interface CompensationStateRow {
   readonly next_10m_at: bigint | number;
   readonly next_1h_at: bigint | number;
   readonly next_1d_at: bigint | number;
+  readonly updated_at: bigint | number;
+}
+
+interface IngestScheduleStateRow {
+  readonly provider_account_key: string;
+  readonly consecutive_failures: bigint | number;
+  readonly cooldown_until: bigint | number;
+  readonly last_error_code: string;
+  readonly retryable: bigint | number;
   readonly updated_at: bigint | number;
 }
 
@@ -351,6 +367,7 @@ export class LedgerStore {
     validateOverlapMilliseconds(overlapMilliseconds);
     const requestedNow = safeNow(input.now);
     const scanKind = input.scanKind ?? "NORMAL";
+    const scanLane = scanLaneForKind(scanKind);
 
     return this.#database.write((connection) => {
       const binding = readProviderIdentityBinding(connection, providerAccountKey);
@@ -362,8 +379,8 @@ export class LedgerStore {
       if (active === null || active.providerAccountKey !== providerAccountKey) {
         throw new Error("provider account must be active before ledger ingestion");
       }
-      const running = readRunningRun(connection, providerAccountKey);
-      const cursor = readCursor(connection, providerAccountKey);
+      const running = readRunningRun(connection, providerAccountKey, scanLane);
+      const cursor = readCursor(connection, providerAccountKey, scanLane);
       if (running) {
         if (
           running.windowStart !== input.start ||
@@ -374,6 +391,7 @@ export class LedgerStore {
           cursor.windowStart !== input.start ||
           cursor.windowEnd !== input.end ||
           cursor.pageSize !== input.pageSize ||
+          cursor.scanKind !== running.scanKind ||
           cursor.overlapMilliseconds !== overlapMilliseconds ||
           cursor.complete
         ) {
@@ -394,14 +412,15 @@ export class LedgerStore {
       if (cursor === null) {
         const inserted = connection
           .prepare(
-            `INSERT INTO ledger_cursors(
-               provider_account_key, window_start, window_end, next_page_no,
+             `INSERT INTO ledger_cursors(
+               provider_account_key, scan_lane, window_start, window_end, next_page_no,
                page_size, scan_kind, expected_total_size, overlap_milliseconds, complete,
                last_event_occurred_at, last_completed_at, updated_at, version
-             ) VALUES (?, ?, ?, 1, ?, ?, NULL, ?, 0, NULL, NULL, ?, 1)`,
+             ) VALUES (?, ?, ?, ?, 1, ?, ?, NULL, ?, 0, NULL, NULL, ?, 1)`,
           )
           .run(
             providerAccountKey,
+            scanLane,
             input.start,
             input.end,
             input.pageSize,
@@ -427,7 +446,7 @@ export class LedgerStore {
                     page_size = ?, scan_kind = ?, expected_total_size = NULL,
                     overlap_milliseconds = ?, complete = 0,
                     updated_at = ?, version = version + 1
-              WHERE provider_account_key = ?`,
+              WHERE provider_account_key = ? AND scan_lane = ?`,
           )
           .run(
             input.start,
@@ -437,6 +456,7 @@ export class LedgerStore {
             overlapMilliseconds,
             now,
             providerAccountKey,
+            scanLane,
           );
         assertChangedOnce(updated.changes, "ledger cursor restart");
       }
@@ -499,6 +519,9 @@ export class LedgerStore {
 
   recordSegmentPage(input: RecordSegmentPageInput): RecordSegmentPageResult {
     const requestedPage = prepareSegmentPage(input);
+    const retryIntervalMilliseconds = validateRetryIntervalMilliseconds(
+      input.retryIntervalMilliseconds ?? DEFAULT_RETRY_INTERVAL_MILLISECONDS,
+    );
     return this.#database.write((connection) => {
       const run = requireRun(connection, input.ingestRunId);
       if (run.status !== "RUNNING") throw new Error("ingest run is already terminal");
@@ -509,7 +532,7 @@ export class LedgerStore {
       if (run.pageSize !== input.page.pageSize) {
         throw new Error("provider page size does not match the ingest run");
       }
-      const cursor = requireCursor(connection, run.providerAccountKey);
+      const cursor = requireCursor(connection, run.providerAccountKey, scanLaneForKind(run.scanKind));
       if (
         cursor.complete ||
         cursor.windowStart !== run.windowStart ||
@@ -546,6 +569,7 @@ export class LedgerStore {
           segment,
           retained,
           prepared.now,
+          retryIntervalMilliseconds,
         );
         return {
           kind: "variant",
@@ -554,7 +578,7 @@ export class LedgerStore {
           segment: requireSegment(connection, segment.ingestSegmentId),
           children: [],
           normalized: [],
-          cursor: requireCursor(connection, run.providerAccountKey),
+          cursor: requireCursor(connection, run.providerAccountKey, scanLaneForKind(run.scanKind)),
           run: requireRun(connection, run.ingestRunId),
         };
       }
@@ -563,7 +587,14 @@ export class LedgerStore {
         updateRunProgress(connection, run.ingestRunId, 0);
         const split = splitLedgerWindow({ start: segment.windowStart, end: segment.windowEnd });
         if (split === null) {
-          failDensityExceeded(connection, run, segment, retained.page, prepared.now);
+          failDensityExceeded(
+            connection,
+            run,
+            segment,
+            retained.page,
+            prepared.now,
+            retryIntervalMilliseconds,
+          );
           return {
             kind: "density_exceeded",
             observation: retained.observation,
@@ -571,7 +602,7 @@ export class LedgerStore {
             segment: requireSegment(connection, segment.ingestSegmentId),
             children: [],
             normalized: [],
-            cursor: requireCursor(connection, run.providerAccountKey),
+            cursor: requireCursor(connection, run.providerAccountKey, scanLaneForKind(run.scanKind)),
             run: requireRun(connection, run.ingestRunId),
           };
         }
@@ -584,6 +615,7 @@ export class LedgerStore {
           )
           .run(split.splitAt, prepared.now, segment.ingestSegmentId);
         assertChangedOnce(splitResult.changes, "ingest segment split");
+        clearIngestScheduleState(connection, run.providerAccountKey);
         const left = insertChildSegment(
           connection,
           segment,
@@ -605,10 +637,13 @@ export class LedgerStore {
           segment: requireSegment(connection, segment.ingestSegmentId),
           children: [left, right],
           normalized: [],
-          cursor: requireCursor(connection, run.providerAccountKey),
+          cursor: requireCursor(connection, run.providerAccountKey, scanLaneForKind(run.scanKind)),
           run: requireRun(connection, run.ingestRunId),
         };
       }
+
+      // Only a stable, accepted provider view proves the previous failure recovered.
+      clearIngestScheduleState(connection, run.providerAccountKey);
 
       const normalized: PageNormalizationResult[] = [];
       if (!retained.shouldNormalize) {
@@ -648,7 +683,7 @@ export class LedgerStore {
         segment: requireSegment(connection, segment.ingestSegmentId),
         children: [],
         normalized,
-        cursor: requireCursor(connection, run.providerAccountKey),
+        cursor: requireCursor(connection, run.providerAccountKey, scanLaneForKind(run.scanKind)),
         run: requireRun(connection, run.ingestRunId),
         rootCompleted,
       };
@@ -682,7 +717,7 @@ export class LedgerStore {
     return this.#database.write((connection) => {
       const run = requireRun(connection, input.ingestRunId);
       if (run.status !== "RUNNING") return run;
-      const cursor = requireCursor(connection, run.providerAccountKey);
+      const cursor = requireCursor(connection, run.providerAccountKey, scanLaneForKind(run.scanKind));
       const now = clampIngestWriteTime(connection, run, cursor, requestedNow);
       const status = input.status ?? (cursor.complete ? "COMPLETED" : "PARTIAL");
       if (status === "PARTIAL" && !cursor.complete) return run;
@@ -710,13 +745,20 @@ export class LedgerStore {
     const errorEvidence = prepareErrorEvidence(input.evidence);
     validateErrorLabel(input.errorKind, "ingest error kind", 64);
     validateErrorLabel(input.errorCode, "ingest error code", 128);
+    const retryIntervalMilliseconds = input.retrySchedule === undefined
+      ? null
+      : validateRetryIntervalMilliseconds(input.retrySchedule.intervalMilliseconds);
+    const retryAfterSeconds = validateRetryAfterSeconds(
+      input.retrySchedule?.retryAfterSeconds ?? null,
+    );
+    const preserveRun = input.preserveRun ?? false;
     if (input.pageNo !== undefined && (!Number.isSafeInteger(input.pageNo) || input.pageNo < 1)) {
       throw new RangeError("ingest error page number is invalid");
     }
     return this.#database.write((connection) => {
       const run = requireRun(connection, input.ingestRunId);
       if (run.status !== "RUNNING") throw new Error("ingest run is already terminal");
-      const cursor = requireCursor(connection, run.providerAccountKey);
+      const cursor = requireCursor(connection, run.providerAccountKey, scanLaneForKind(run.scanKind));
       const now = clampIngestWriteTime(connection, run, cursor, requestedNow);
       const inserted = connection
         .prepare(
@@ -745,8 +787,33 @@ export class LedgerStore {
             : errorEvidence.signatureVerified ? 1 : 0,
           detailsJson,
           now,
-        );
+      );
       assertChangedOnce(inserted.changes, "ingest error insert");
+      if (retryIntervalMilliseconds !== null) {
+        recordIngestScheduleFailure(connection, {
+          providerAccountKey: run.providerAccountKey,
+          errorCode: input.errorCode,
+          retryable: input.retryable,
+          intervalMilliseconds: retryIntervalMilliseconds,
+          retryAfterSeconds,
+          now,
+        });
+      }
+      if (preserveRun) {
+        const yielded = connection.prepare(
+          `UPDATE ledger_cursors
+              SET updated_at = ?, version = version + 1
+            WHERE provider_account_key = ? AND scan_lane = ? AND version = ?`,
+        ).run(
+          Math.max(now, cursor.updatedAt),
+          cursor.providerAccountKey,
+          cursor.scanLane,
+          cursor.version,
+        );
+        assertChangedOnce(yielded.changes, "ledger cursor yield after retryable ingest error");
+        return requireRun(connection, run.ingestRunId);
+      }
+
       const failed = connection
         .prepare(
           `UPDATE ingest_runs
@@ -761,18 +828,49 @@ export class LedgerStore {
             `UPDATE ledger_cursors
                 SET next_page_no = 1, expected_total_size = NULL,
                     updated_at = ?, version = version + 1
-              WHERE provider_account_key = ? AND version = ?`,
+              WHERE provider_account_key = ? AND scan_lane = ? AND version = ?`,
           )
-          .run(Math.max(now, cursor.updatedAt), cursor.providerAccountKey, cursor.version);
+          .run(
+            Math.max(now, cursor.updatedAt),
+            cursor.providerAccountKey,
+            cursor.scanLane,
+            cursor.version,
+          );
         assertChangedOnce(rewound.changes, "ledger cursor rewind after ingest failure");
       }
       return requireRun(connection, run.ingestRunId);
     });
   }
 
-  getCursor(providerAccountKey = "primary"): LedgerCursor | null {
+  getCursor(
+    providerAccountKey = "primary",
+    scanLane: IngestScanLane = "NORMAL",
+  ): LedgerCursor | null {
     const account = normalizeProviderAccountKey(providerAccountKey);
-    return this.#database.read((connection) => readCursor(connection, account));
+    return this.#database.read((connection) => readCursor(connection, account, scanLane));
+  }
+
+  getIngestScheduleState(providerAccountKey = "primary"): LedgerIngestScheduleState | null {
+    const account = normalizeProviderAccountKey(providerAccountKey);
+    return this.#database.read((connection) => readIngestScheduleState(connection, account));
+  }
+
+  markIngestBatchYield(ingestRunId: string, nowInput?: number): IngestRun {
+    const requestedNow = safeNow(nowInput);
+    return this.#database.write((connection) => {
+      const run = requireRun(connection, ingestRunId);
+      if (run.status !== "RUNNING") return run;
+      const lane = scanLaneForKind(run.scanKind);
+      const cursor = requireCursor(connection, run.providerAccountKey, lane);
+      const now = clampIngestWriteTime(connection, run, cursor, requestedNow);
+      const updated = connection.prepare(
+        `UPDATE ledger_cursors
+            SET updated_at = ?, version = version + 1
+          WHERE provider_account_key = ? AND scan_lane = ? AND version = ?`,
+      ).run(now, run.providerAccountKey, lane, cursor.version);
+      assertChangedOnce(updated.changes, "ledger cursor batch yield");
+      return requireRun(connection, ingestRunId);
+    });
   }
 
   getCompensationState(providerAccountKey = "primary"): LedgerCompensationState | null {
@@ -1278,7 +1376,18 @@ function readNextPendingSegment(connection: DatabaseSync, ingestRunId: string): 
       `SELECT ${INGEST_SEGMENT_COLUMNS}
          FROM ingest_segments
         WHERE ingest_run_id = ? AND state = 'PENDING'
-        ORDER BY window_start, window_end, depth, ingest_segment_id
+        ORDER BY
+          CASE WHEN EXISTS (
+            SELECT 1 FROM ingest_runs AS run
+             WHERE run.ingest_run_id = ingest_segments.ingest_run_id
+               AND run.scan_kind = 'NORMAL'
+          ) THEN window_start END ASC,
+          CASE WHEN EXISTS (
+            SELECT 1 FROM ingest_runs AS run
+             WHERE run.ingest_run_id = ingest_segments.ingest_run_id
+               AND run.scan_kind != 'NORMAL'
+          ) THEN window_start END DESC,
+          window_end, depth, ingest_segment_id
         LIMIT 1`,
     )
     .get(ingestRunId) as IngestSegmentRow | undefined;
@@ -1301,14 +1410,25 @@ function mapSegment(row: IngestSegmentRow): IngestSegment {
   };
 }
 
-function readRunningRun(connection: DatabaseSync, providerAccountKey: string): IngestRun | null {
+function readRunningRun(
+  connection: DatabaseSync,
+  providerAccountKey: string,
+  scanLane?: IngestScanLane,
+): IngestRun | null {
+  const lanePredicate = scanLane === undefined
+    ? ""
+    : " AND (CASE scan_kind WHEN 'NORMAL' THEN 'NORMAL' ELSE 'COMPENSATION' END) = ?";
   const row = connection
     .prepare(
       `SELECT ${INGEST_RUN_COLUMNS}
          FROM ingest_runs
-        WHERE provider_account_key = ? AND status = 'RUNNING'`,
+        WHERE provider_account_key = ? AND status = 'RUNNING'${lanePredicate}
+        ORDER BY started_at, ingest_run_id
+        LIMIT 1`,
     )
-    .get(providerAccountKey) as IngestRunRow | undefined;
+    .get(...(scanLane === undefined ? [providerAccountKey] : [providerAccountKey, scanLane])) as
+      | IngestRunRow
+      | undefined;
   return row ? mapRun(row) : null;
 }
 
@@ -1329,21 +1449,29 @@ function mapRun(row: IngestRunRow): IngestRun {
   };
 }
 
-function readCursor(connection: DatabaseSync, providerAccountKey: string): LedgerCursor | null {
+function readCursor(
+  connection: DatabaseSync,
+  providerAccountKey: string,
+  scanLane: IngestScanLane,
+): LedgerCursor | null {
   const row = connection
     .prepare(
-      `SELECT provider_account_key, window_start, window_end, next_page_no,
+      `SELECT provider_account_key, scan_lane, window_start, window_end, next_page_no,
               page_size, scan_kind, expected_total_size, overlap_milliseconds, complete, last_event_occurred_at,
               last_completed_at, updated_at, version
          FROM ledger_cursors
-        WHERE provider_account_key = ?`,
+        WHERE provider_account_key = ? AND scan_lane = ?`,
     )
-    .get(providerAccountKey) as CursorRow | undefined;
+    .get(providerAccountKey, scanLane) as CursorRow | undefined;
   return row ? mapCursor(row) : null;
 }
 
-function requireCursor(connection: DatabaseSync, providerAccountKey: string): LedgerCursor {
-  const cursor = readCursor(connection, providerAccountKey);
+function requireCursor(
+  connection: DatabaseSync,
+  providerAccountKey: string,
+  scanLane: IngestScanLane,
+): LedgerCursor {
+  const cursor = readCursor(connection, providerAccountKey, scanLane);
   if (!cursor) throw new Error("ledger cursor does not exist");
   return cursor;
 }
@@ -1351,6 +1479,7 @@ function requireCursor(connection: DatabaseSync, providerAccountKey: string): Le
 function mapCursor(row: CursorRow): LedgerCursor {
   return {
     providerAccountKey: row.provider_account_key,
+    scanLane: row.scan_lane,
     windowStart: row.window_start,
     windowEnd: row.window_end,
     nextPageNo: toNullableInteger(row.next_page_no, "ledger next page"),
@@ -2107,7 +2236,16 @@ function confirmPageVariantConflict(
           AND incoming_semantic_fingerprint = ?
           AND json_extract(details_json, '$.request_fingerprint') = ?
           AND json_extract(details_json, '$.ingest_segment_id') = ?
-          AND json_extract(details_json, '$.incoming_raw_page_id') = ?`,
+          AND json_extract(details_json, '$.incoming_raw_page_id') = ?
+          AND json_extract(details_json, '$.previous_observation_sequence') = (
+                SELECT MAX(previous_observation.observation_sequence)
+                  FROM ingest_run_page_observations AS previous_observation
+                  JOIN provider_raw_pages AS previous_page
+                    ON previous_page.raw_page_id = previous_observation.raw_page_id
+                 WHERE previous_page.provider_account_key = ?
+                   AND previous_page.request_fingerprint = ?
+                   AND previous_observation.observation_sequence < ?
+              )`,
     )
     .all(
       retainedPage.providerAccountKey,
@@ -2116,6 +2254,9 @@ function confirmPageVariantConflict(
       retainedPage.requestFingerprint,
       latest.ingestSegmentId,
       retainedPage.rawPageId,
+      retainedPage.providerAccountKey,
+      retainedPage.requestFingerprint,
+      latest.sequence,
     ) as unknown as ConflictRow[];
   if (rows.length !== 1) {
     throw new Error("confirmed page variant does not identify exactly one open conflict");
@@ -2458,19 +2599,20 @@ function insertPageObservation(
   disposition: PageObservationDisposition,
 ): boolean {
   const sequence = nextPageObservationSequence(connection);
+  const attempt = nextPageObservationAttempt(connection, ingestSegmentId, rawPageId);
   const inserted = connection
     .prepare(
       `INSERT INTO ingest_run_page_observations(
-         ingest_run_id, ingest_segment_id, raw_page_id, observation_kind,
+         ingest_run_id, ingest_segment_id, raw_page_id, observation_attempt, observation_kind,
          http_status, headers_json, trace_id, signature_verified, observed_at,
          disposition, observation_sequence, transition_enforced
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-       ON CONFLICT(ingest_segment_id, raw_page_id) DO NOTHING`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
     )
     .run(
       ingestRunId,
       ingestSegmentId,
       rawPageId,
+      attempt,
       observationKind,
       prepared.evidence.httpStatus,
       prepared.headersJson,
@@ -2480,11 +2622,25 @@ function insertPageObservation(
       disposition,
       sequence,
     );
-  const changes = Number(inserted.changes);
-  if (changes !== 0 && changes !== 1) {
-    throw new Error("ingest page observation changed an unexpected number of rows");
+  assertChangedOnce(inserted.changes, "ingest page observation insert");
+  return true;
+}
+
+function nextPageObservationAttempt(
+  connection: DatabaseSync,
+  ingestSegmentId: string,
+  rawPageId: string,
+): number {
+  const row = connection.prepare(
+    `SELECT COALESCE(MAX(observation_attempt), 0) AS latest_attempt
+       FROM ingest_run_page_observations
+      WHERE ingest_segment_id = ? AND raw_page_id = ?`,
+  ).get(ingestSegmentId, rawPageId) as { latest_attempt: bigint | number };
+  const latest = toSafeInteger(row.latest_attempt, "latest provider page observation attempt");
+  if (latest >= Number.MAX_SAFE_INTEGER) {
+    throw new Error("provider page observation attempt is exhausted");
   }
-  return changes === 1;
+  return latest + 1;
 }
 
 function nextPageObservationSequence(connection: DatabaseSync): number {
@@ -2547,6 +2703,7 @@ function failPaginationVariant(
   segment: IngestSegment,
   retained: RetainedSegmentPage,
   now: number,
+  retryIntervalMilliseconds: number,
 ): void {
   if (retained.observation !== "variant" || retained.previousVariantRawPageId === null) {
     throw new Error("pagination variant failure requires conflicting page evidence");
@@ -2574,25 +2731,31 @@ function failPaginationVariant(
       now,
     );
   assertChangedOnce(errorInserted.changes, "pagination variant error insert");
-  const failed = connection
-    .prepare(
-      `UPDATE ingest_runs
-          SET status = 'FAILED', completed_at = ?, failure_code = 'pagination_variant'
-        WHERE ingest_run_id = ? AND status = 'RUNNING'`,
-    )
-    .run(now, run.ingestRunId);
-  assertChangedOnce(failed.changes, "pagination variant run failure");
-
-  const cursor = requireCursor(connection, run.providerAccountKey);
-  const rewound = connection
+  recordIngestScheduleFailure(connection, {
+    providerAccountKey: run.providerAccountKey,
+    errorCode: "pagination_variant",
+    retryable: true,
+    intervalMilliseconds: Math.min(
+      retryIntervalMilliseconds,
+      PAGINATION_VARIANT_RETRY_MAXIMUM_MILLISECONDS,
+    ),
+    retryAfterSeconds: null,
+    now,
+  });
+  const cursor = requireCursor(connection, run.providerAccountKey, scanLaneForKind(run.scanKind));
+  const yielded = connection
     .prepare(
       `UPDATE ledger_cursors
-          SET next_page_no = 1, expected_total_size = NULL, complete = 0,
-              updated_at = ?, version = version + 1
-        WHERE provider_account_key = ? AND version = ? AND complete = 0`,
+          SET updated_at = ?, version = version + 1
+        WHERE provider_account_key = ? AND scan_lane = ? AND version = ? AND complete = 0`,
     )
-    .run(Math.max(now, cursor.updatedAt), cursor.providerAccountKey, cursor.version);
-  assertChangedOnce(rewound.changes, "ledger cursor rewind after pagination variant");
+    .run(
+      Math.max(now, cursor.updatedAt),
+      cursor.providerAccountKey,
+      cursor.scanLane,
+      cursor.version,
+    );
+  assertChangedOnce(yielded.changes, "ledger cursor yield after pagination variant");
 }
 
 function failDensityExceeded(
@@ -2601,6 +2764,7 @@ function failDensityExceeded(
   segment: IngestSegment,
   page: RawPageRecord,
   now: number,
+  retryIntervalMilliseconds: number,
 ): void {
   const errorInserted = connection
     .prepare(
@@ -2624,6 +2788,14 @@ function failDensityExceeded(
       now,
     );
   assertChangedOnce(errorInserted.changes, "pagination density error insert");
+  recordIngestScheduleFailure(connection, {
+    providerAccountKey: run.providerAccountKey,
+    errorCode: "pagination_density_exceeded",
+    retryable: false,
+    intervalMilliseconds: retryIntervalMilliseconds,
+    retryAfterSeconds: null,
+    now,
+  });
   const failed = connection
     .prepare(
       `UPDATE ingest_runs
@@ -2710,13 +2882,14 @@ function completeSegmentRun(
           SET next_page_no = NULL, expected_total_size = NULL, complete = 1,
               last_event_occurred_at = ?, last_completed_at = ?, updated_at = ?,
               version = version + 1
-        WHERE provider_account_key = ? AND version = ? AND complete = 0`,
+        WHERE provider_account_key = ? AND scan_lane = ? AND version = ? AND complete = 0`,
     )
     .run(
       lastEvent,
       now,
       now,
       cursor.providerAccountKey,
+      cursor.scanLane,
       cursor.version,
     );
   assertChangedOnce(updated.changes, "ledger cursor root completion");
@@ -2755,6 +2928,91 @@ function mapCompensationState(row: CompensationStateRow): LedgerCompensationStat
     next1dAt: toSafeInteger(row.next_1d_at, "ledger daily compensation due time"),
     updatedAt: toSafeInteger(row.updated_at, "ledger compensation state updated-at"),
   };
+}
+
+function readIngestScheduleState(
+  connection: DatabaseSync,
+  providerAccountKey: string,
+): LedgerIngestScheduleState | null {
+  const row = connection.prepare(
+    `SELECT provider_account_key, consecutive_failures, cooldown_until,
+            last_error_code, retryable, updated_at
+       FROM ledger_ingest_schedule_state
+      WHERE provider_account_key = ?`,
+  ).get(providerAccountKey) as IngestScheduleStateRow | undefined;
+  if (!row) return null;
+  return {
+    providerAccountKey: row.provider_account_key,
+    consecutiveFailures: toSafeInteger(row.consecutive_failures, "ledger ingest consecutive failures"),
+    cooldownUntil: toSafeInteger(row.cooldown_until, "ledger ingest cooldown"),
+    lastErrorCode: row.last_error_code,
+    retryable: Number(row.retryable) === 1,
+    updatedAt: toSafeInteger(row.updated_at, "ledger ingest schedule updated-at"),
+  };
+}
+
+function clearIngestScheduleState(connection: DatabaseSync, providerAccountKey: string): void {
+  connection.prepare(
+    "DELETE FROM ledger_ingest_schedule_state WHERE provider_account_key = ?",
+  ).run(providerAccountKey);
+}
+
+function recordIngestScheduleFailure(
+  connection: DatabaseSync,
+  input: {
+    readonly providerAccountKey: string;
+    readonly errorCode: string;
+    readonly retryable: boolean;
+    readonly intervalMilliseconds: number;
+    readonly retryAfterSeconds: number | null;
+    readonly now: number;
+  },
+): LedgerIngestScheduleState {
+  const existing = readIngestScheduleState(connection, input.providerAccountKey);
+  const now = Math.max(input.now, existing?.updatedAt ?? 0);
+  const consecutiveFailures = Math.min(
+    Number.MAX_SAFE_INTEGER,
+    (existing?.consecutiveFailures ?? 0) + 1,
+  );
+  const baseDelay = input.retryable
+    ? input.intervalMilliseconds
+    : NON_RETRYABLE_COOLDOWN_MILLISECONDS;
+  const exponentialDelay = input.retryable
+    ? Math.min(
+        MAXIMUM_RETRY_DELAY_MILLISECONDS,
+        baseDelay * 2 ** Math.min(30, consecutiveFailures - 1),
+      )
+    : baseDelay;
+  const retryAfterDelay = input.retryAfterSeconds === null
+    ? 0
+    : input.retryAfterSeconds * 1_000;
+  const delay = Math.min(
+    MAXIMUM_RETRY_DELAY_MILLISECONDS,
+    Math.max(baseDelay, exponentialDelay, retryAfterDelay),
+  );
+  const cooldownUntil = Math.min(Number.MAX_SAFE_INTEGER, now + delay);
+  connection.prepare(
+    `INSERT INTO ledger_ingest_schedule_state(
+       provider_account_key, consecutive_failures, cooldown_until,
+       last_error_code, retryable, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(provider_account_key) DO UPDATE SET
+       consecutive_failures = excluded.consecutive_failures,
+       cooldown_until = excluded.cooldown_until,
+       last_error_code = excluded.last_error_code,
+       retryable = excluded.retryable,
+       updated_at = excluded.updated_at`,
+  ).run(
+    input.providerAccountKey,
+    consecutiveFailures,
+    cooldownUntil,
+    input.errorCode,
+    input.retryable ? 1 : 0,
+    now,
+  );
+  const state = readIngestScheduleState(connection, input.providerAccountKey);
+  if (!state) throw new Error("ledger ingest schedule state was not persisted");
+  return state;
 }
 
 function advanceCompensationState(
@@ -2819,6 +3077,25 @@ function nextCompensationDueAt(now: number, interval: number): number {
     throw new RangeError("ledger compensation due time exceeds the safe integer range");
   }
   return now + interval;
+}
+
+function scanLaneForKind(scanKind: IngestScanKind): IngestScanLane {
+  return scanKind === "NORMAL" ? "NORMAL" : "COMPENSATION";
+}
+
+function validateRetryIntervalMilliseconds(value: number): number {
+  if (!Number.isSafeInteger(value) || value < 1_000 || value > 3_600_000) {
+    throw new RangeError("ledger retry interval is invalid");
+  }
+  return value;
+}
+
+function validateRetryAfterSeconds(value: number | null): number | null {
+  if (value === null) return null;
+  if (!Number.isSafeInteger(value) || value < 0 || value > 86_400) {
+    throw new RangeError("ledger retry-after is invalid");
+  }
+  return value;
 }
 
 function pageEvidence(page: RecordLedgerPageInput["page"]): RawPageEvidence {

@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { loadBackupConfig } from "../src/backup/config.ts";
+import {
+  loadBackupConfig,
+  loadBackupRestoreMasterKey,
+} from "../src/backup/config.ts";
 
 describe("backup configuration", () => {
   it("loads the separate backup directory and bounded retention policy", () => {
@@ -27,18 +30,53 @@ describe("backup configuration", () => {
     assert.match(config.backupDirectory, /[\\/]backups$/u);
   });
 
-  it("loads a restore key only from the explicitly mounted secrets directory", () => {
+  it("loads a restore key only when the restore path explicitly requests it", () => {
     const root = mkdtempSync(join(tmpdir(), "perpay-backup-config-secrets-"));
     const secrets = join(root, "secrets");
     mkdirSync(secrets);
     writeFileSync(join(secrets, "master-key"), `${"ab".repeat(32)}\n`, { mode: 0o600 });
     try {
-      const config = loadBackupConfig({
+      const environment = {
         PERPAY_DATA_DIR: join(root, "data"),
         PERPAY_BACKUP_DIR: join(root, "backups"),
         PERPAY_SECRETS_DIR: secrets,
-      });
-      assert.deepEqual(config.masterKey, Buffer.from("ab".repeat(32), "hex"));
+      };
+      const config = loadBackupConfig(environment);
+      assert.equal(config.masterKey, undefined);
+      assert.deepEqual(
+        loadBackupRestoreMasterKey(environment),
+        Buffer.from("ab".repeat(32), "hex"),
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not read a missing or damaged secrets path for ordinary backup configuration", () => {
+    const root = mkdtempSync(join(tmpdir(), "perpay-backup-config-lazy-secrets-"));
+    try {
+      for (const environment of [
+        {
+          PERPAY_SECRETS_DIR: join(root, "missing"),
+          PERPAY_MASTER_KEY: "not-a-key",
+        },
+        {
+          PERPAY_SECRETS_DIR: root,
+        },
+      ]) {
+        const config = loadBackupConfig({
+          PERPAY_DATA_DIR: join(root, "data"),
+          PERPAY_BACKUP_DIR: join(root, "backups"),
+          ...environment,
+        });
+        assert.equal(config.masterKey, undefined);
+      }
+      assert.throws(
+        () => loadBackupRestoreMasterKey({
+          PERPAY_SECRETS_DIR: join(root, "missing"),
+        }),
+        /master-key is missing/u,
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
