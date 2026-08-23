@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -25,6 +25,23 @@ describe("backup configuration", () => {
     assert.equal(config.keepCount, 7);
     assert.match(config.dataDirectory, /[\\/]data$/u);
     assert.match(config.backupDirectory, /[\\/]backups$/u);
+  });
+
+  it("loads a restore key only from the explicitly mounted secrets directory", () => {
+    const root = mkdtempSync(join(tmpdir(), "perpay-backup-config-secrets-"));
+    const secrets = join(root, "secrets");
+    mkdirSync(secrets);
+    writeFileSync(join(secrets, "master-key"), `${"ab".repeat(32)}\n`, { mode: 0o600 });
+    try {
+      const config = loadBackupConfig({
+        PERPAY_DATA_DIR: join(root, "data"),
+        PERPAY_BACKUP_DIR: join(root, "backups"),
+        PERPAY_SECRETS_DIR: secrets,
+      });
+      assert.deepEqual(config.masterKey, Buffer.from("ab".repeat(32), "hex"));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("rejects overlapping live-data and backup storage", () => {

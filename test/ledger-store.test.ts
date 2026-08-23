@@ -541,14 +541,63 @@ describe("LedgerStore segment ingestion", () => {
     });
   });
 
-  it("rolls back the leaf, cursor, and run together when final completion aborts", async () => {
+  it("keeps an ingest run scan kind immutable while it is running", async () => {
+    await withLedgerStore(async ({ database, store }) => {
+      const run = store.startIngestRun({
+        ...WINDOW,
+        pageSize: 1,
+        scanKind: "COMPENSATION_1D",
+        now: STARTED_AT,
+      });
+
+      assert.throws(
+        () => database.write((connection) => {
+          connection.prepare(
+            "UPDATE ingest_runs SET scan_kind = 'NORMAL' WHERE ingest_run_id = ?",
+          ).run(run.ingestRunId);
+        }),
+        /ingest run identity is immutable/,
+      );
+      assert.equal(store.getRun(run.ingestRunId)?.scanKind, "COMPENSATION_1D");
+      assert.equal(database.integrityCheck().ok, true);
+    });
+  });
+
+  it("detects a compensation deadline moved beyond its allowed interval", async () => {
+    await withLedgerStore(async ({ database, store }) => {
+      const run = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT });
+      recordOnlyLeaf(
+        store,
+        run.ingestRunId,
+        page(1, 0, false, []),
+        '{"compensation":"baseline"}',
+        STARTED_AT + 1_000,
+      );
+      assert.equal(database.integrityCheck().ok, true);
+
+      database.write((connection) => {
+        connection.prepare(
+          `UPDATE ledger_compensation_state
+              SET next_10m_at = updated_at + 60001
+            WHERE provider_account_key = 'primary'`,
+        ).run();
+      });
+
+      const integrity = database.integrityCheck();
+      assert.equal(integrity.schema, "ok");
+      assert.equal(integrity.foreignKeyViolations, 0);
+      assert.equal(integrity.domainViolations, 1);
+      assert.equal(integrity.ok, false);
+    });
+  });
+
+  it("rolls back the leaf, cursor, run, and compensation state when final completion aborts", async () => {
     await withLedgerStore(async ({ database, store }) => {
       const run = store.startIngestRun({ ...WINDOW, pageSize: 1, now: STARTED_AT });
       const root = requiredSegment(store.getNextPendingSegment(run.ingestRunId));
       database.write((connection) => connection.exec(`
         CREATE TRIGGER test_abort_ingest_completion
-        BEFORE UPDATE OF status ON ingest_runs
-        WHEN NEW.status = 'COMPLETED'
+        BEFORE INSERT ON ledger_compensation_state
         BEGIN
           SELECT RAISE(ABORT, 'injected final completion failure');
         END;
@@ -570,6 +619,7 @@ describe("LedgerStore segment ingestion", () => {
       assert.equal(store.getRun(run.ingestRunId)?.status, "RUNNING");
       assert.equal(store.getRootSegment(run.ingestRunId)?.state, "PENDING");
       assert.equal(store.getCursor()?.complete, false);
+      assert.equal(store.getCompensationState(), null);
       assert.equal(store.listLedgerEntries().length, 0);
       assert.deepEqual(databaseCounts(database), {
         pages: 0,
@@ -591,6 +641,7 @@ describe("LedgerStore segment ingestion", () => {
       assert.equal(retry.kind, "accepted");
       assert.equal(retry.rootCompleted, true);
       assert.equal(retry.run.status, "COMPLETED");
+      assert.ok(store.getCompensationState());
     });
   });
 

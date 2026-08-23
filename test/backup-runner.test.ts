@@ -39,12 +39,19 @@ import {
   type BackupOperations,
 } from "../src/backup/runner.ts";
 import { AppDatabase } from "../src/database/database.ts";
+import {
+  publicationLockPath,
+} from "../src/database/maintenance.ts";
+import { acquireDatabaseMaintenanceLock } from "../src/database/maintenance-lock.ts";
 import { DATABASE_COMPATIBILITY } from "../src/version.ts";
+import { RuntimeSettingsStore } from "../src/settings/store.ts";
 
 const instanceId = "c".repeat(32);
 const sha256 = "d236906afac4baaba89924427135f1f0f5d22fbb1c46a0e176e276aabb215add";
 const backupName =
   "perpay.sqlite3.backup-2026-08-17T00-00-00.000Z-12345678-1234-4123-8123-123456789abc.sqlite3";
+const RESTORE_MASTER_KEY_HEX = "42".repeat(32);
+const RESTORE_MASTER_KEY = Buffer.from(RESTORE_MASTER_KEY_HEX, "hex");
 const directories: string[] = [];
 
 afterEach(() => {
@@ -150,6 +157,26 @@ function fakeOperations(
 }
 
 describe("local backup state and scheduling", () => {
+  it("rejects restore before state mutation when the deployment key is unavailable", async () => {
+    const config = configuration();
+    const statePath = join(config.backupDirectory, "perpay-local-backup-state.json");
+    const fake = fakeOperations(config);
+    await assert.rejects(
+      runBackupCommand([
+        "restore",
+        backupName,
+        sha256,
+        "--confirm-replace-current-database",
+      ], {
+        PERPAY_DATA_DIR: config.dataDirectory,
+        PERPAY_BACKUP_DIR: config.backupDirectory,
+      }, fake.operations),
+      /master key is required/u,
+    );
+    assert.equal(existsSync(statePath), false);
+    assert.deepEqual(fake.calls, []);
+  });
+
   it("emits the frozen run-once and list-backups JSON shapes", async () => {
     const config = configuration();
     const fake = fakeOperations(config);
@@ -577,8 +604,10 @@ describe("local backup state and scheduling", () => {
       PERPAY_BACKUP_DIR: config.backupDirectory,
       PERPAY_BACKUP_INTERVAL_SECONDS: "86400",
       PERPAY_BACKUP_KEEP_COUNT: "2",
+      PERPAY_MASTER_KEY: RESTORE_MASTER_KEY_HEX,
     };
     const database = await AppDatabase.open(join(config.dataDirectory, "perpay.sqlite3"));
+    new RuntimeSettingsStore(database, RESTORE_MASTER_KEY).initialize();
     database.write((connection) => {
       connection.prepare(
         "INSERT INTO system_metadata(key,value,updated_at) VALUES ('restore_marker','older',strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
@@ -699,6 +728,7 @@ describe("local backup state and scheduling", () => {
   it("requires an explicit state rebuild before restoring through damaged metadata", async () => {
     const config = configuration();
     const database = await AppDatabase.open(join(config.dataDirectory, "perpay.sqlite3"));
+    new RuntimeSettingsStore(database, RESTORE_MASTER_KEY).initialize();
     const backup = await createLocalBackup(config);
     database.close();
     writeFileSync(
@@ -711,6 +741,7 @@ describe("local backup state and scheduling", () => {
       PERPAY_BACKUP_DIR: config.backupDirectory,
       PERPAY_BACKUP_INTERVAL_SECONDS: "86400",
       PERPAY_BACKUP_KEEP_COUNT: "7",
+      PERPAY_MASTER_KEY: RESTORE_MASTER_KEY_HEX,
     };
     await assert.rejects(
       runBackupCommand([
@@ -740,12 +771,14 @@ describe("local backup state and scheduling", () => {
   it("requires an explicit state rebuild when state metadata is missing", async () => {
     const config = configuration();
     const database = await AppDatabase.open(join(config.dataDirectory, "perpay.sqlite3"));
+    new RuntimeSettingsStore(database, RESTORE_MASTER_KEY).initialize();
     database.close();
     const environment = {
       PERPAY_DATA_DIR: config.dataDirectory,
       PERPAY_BACKUP_DIR: config.backupDirectory,
       PERPAY_BACKUP_INTERVAL_SECONDS: "86400",
       PERPAY_BACKUP_KEEP_COUNT: "7",
+      PERPAY_MASTER_KEY: RESTORE_MASTER_KEY_HEX,
     };
     const backup = JSON.parse(await captureStandardOutput(() =>
       runBackupCommand(["run-once"], environment))) as { backup: LocalBackup };
@@ -786,6 +819,74 @@ async function captureStandardOutput(action: () => Promise<unknown>): Promise<st
 }
 
 describe("local backup lock", () => {
+  it("rejects an empty backup directory for publication-lock commands", async () => {
+    await assert.rejects(
+      () => runBackupCommand(["inspect-publication-lock"], { PERPAY_BACKUP_DIR: "  " }),
+      /PERPAY_BACKUP_DIR must not be empty/u,
+    );
+  });
+
+  it("exposes cross-volume publication lock recovery through the maintenance runner", async () => {
+    const config = configuration();
+    const createdAt = Date.now() - BACKUP_LOCK_STALE_MILLISECONDS - 10_000;
+    const lock = acquireDatabaseMaintenanceLock(
+      join(config.backupDirectory, ".perpay-source-publication"),
+      "publish-operational-backup",
+      createdAt,
+    );
+    assert.equal(lock.path, publicationLockPath(config.backupDirectory));
+    // Publication lock recovery must remain available when the active data
+    // volume is missing or damaged.  It must not load runtime policy/key data.
+    rmSync(config.dataDirectory, { recursive: true, force: true });
+    const environment = {
+      PERPAY_DATA_DIR: config.dataDirectory,
+      PERPAY_BACKUP_DIR: config.backupDirectory,
+      PERPAY_MASTER_KEY: "not-a-key",
+    };
+
+    const inspection = JSON.parse(await captureStandardOutput(() =>
+      runBackupCommand(["inspect-publication-lock"], environment))) as {
+        status: string;
+        record: { token: string } | null;
+        cleanup_eligible: boolean;
+      };
+    assert.equal(inspection.status, "stale");
+    assert.equal(inspection.record?.token, lock.token);
+    assert.equal(inspection.cleanup_eligible, true);
+
+    await captureStandardOutput(() => runBackupCommand([
+      "clear-stale-publication-lock",
+      lock.token,
+      "--confirm-no-maintenance-process",
+    ], environment));
+    assert.equal(existsSync(publicationLockPath(config.backupDirectory)), false);
+  });
+
+  it("force-clears an unreadable publication lock without loading active runtime configuration", async () => {
+    const config = configuration();
+    const path = publicationLockPath(config.backupDirectory);
+    writeFileSync(path, "{unreadable\n", { mode: 0o600 });
+    const modifiedAt = Date.now() - BACKUP_LOCK_STALE_MILLISECONDS - 10_000;
+    utimesSync(path, modifiedAt / 1_000, modifiedAt / 1_000);
+
+    // This recovery path deliberately has no dependency on the active data
+    // volume or deployment master key.
+    rmSync(config.dataDirectory, { recursive: true, force: true });
+    const environment = {
+      PERPAY_DATA_DIR: config.dataDirectory,
+      PERPAY_BACKUP_DIR: config.backupDirectory,
+      PERPAY_MASTER_KEY: "not-a-key",
+    };
+
+    const output = JSON.parse(await captureStandardOutput(() => runBackupCommand([
+      "clear-stale-publication-lock",
+      "--force-unreadable-lock",
+      "--confirm-no-maintenance-process",
+    ], environment))) as { token: string };
+    assert.equal(output.token, "unreadable-lock-cleared");
+    assert.equal(existsSync(path), false);
+  });
+
   it("classifies every lock age without writing or repairing lock artifacts", () => {
     const now = Date.parse("2026-08-17T12:00:00.000Z");
     const missingConfig = configuration();
@@ -1096,6 +1197,28 @@ describe("local backup lock", () => {
       now: old + BACKUP_LOCK_STALE_MILLISECONDS + 1,
     });
     assert.equal(cleared.token, "unreadable-lock-cleared");
+    assert.equal(existsSync(path), false);
+  });
+
+  it("force-clears an unreadable local backup lock through the CLI", async () => {
+    const config = configuration();
+    const path = backupLockPath(config);
+    writeFileSync(path, "{unreadable\n", { mode: 0o600 });
+    const modifiedAt = Date.now() - BACKUP_LOCK_STALE_MILLISECONDS - 10_000;
+    utimesSync(path, modifiedAt / 1_000, modifiedAt / 1_000);
+    const environment = {
+      PERPAY_DATA_DIR: config.dataDirectory,
+      PERPAY_BACKUP_DIR: config.backupDirectory,
+      PERPAY_BACKUP_INTERVAL_SECONDS: "86400",
+      PERPAY_BACKUP_KEEP_COUNT: "7",
+    };
+
+    const output = JSON.parse(await captureStandardOutput(() => runBackupCommand([
+      "clear-lock",
+      "--force-unreadable-lock",
+      "--confirm-no-backup-process",
+    ], environment))) as { token: string };
+    assert.equal(output.token, "unreadable-lock-cleared");
     assert.equal(existsSync(path), false);
   });
 

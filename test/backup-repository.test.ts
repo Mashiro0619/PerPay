@@ -29,6 +29,9 @@ import {
 } from "../src/backup/repository.ts";
 import { AppDatabase } from "../src/database/database.ts";
 import { DATABASE_COMPATIBILITY } from "../src/version.ts";
+import { RuntimeSettingsStore } from "../src/settings/store.ts";
+
+const RESTORE_MASTER_KEY = Buffer.alloc(32, 0x41);
 
 const directories: string[] = [];
 
@@ -54,6 +57,17 @@ function configuration(): BackupConfig {
 }
 
 describe("local SQLite backup repository", () => {
+  it("requires the deployment master key before restoring", async () => {
+    const config = configuration();
+    const database = await AppDatabase.open(join(config.dataDirectory, "perpay.sqlite3"));
+    const backup = await createLocalBackup(config);
+    database.close();
+    assert.throws(
+      () => restoreLocalBackup(config, backup.name, backup.sha256, backup.instanceId),
+      /master key is required/u,
+    );
+  });
+
   it("writes a verified online backup directly into the separate backup directory", async () => {
     const config = configuration();
     const database = await AppDatabase.open(join(config.dataDirectory, "perpay.sqlite3"));
@@ -368,9 +382,10 @@ describe("local SQLite backup repository", () => {
   });
 
   it("restores through verified staging on the data volume and preserves the displaced database", async () => {
-    const config = configuration();
+    const config = Object.freeze({ ...configuration(), masterKey: RESTORE_MASTER_KEY });
     const path = join(config.dataDirectory, "perpay.sqlite3");
     const database = await AppDatabase.open(path);
+    new RuntimeSettingsStore(database, RESTORE_MASTER_KEY).initialize();
     database.write((connection) => {
       connection.prepare(
         "INSERT INTO system_metadata(key, value, updated_at) VALUES ('restore_marker', 'backup-state', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",

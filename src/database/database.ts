@@ -1416,6 +1416,52 @@ function countLedgerDomainViolations(connection: DatabaseSync): number {
                     ordered.disposition != 'REJECTED_VARIANT')
                 ))`
     : "";
+  const hasIngestRunScanKind = columnExists(connection, "ingest_runs", "scan_kind");
+  const hasCursorScanKind = columnExists(connection, "ledger_cursors", "scan_kind");
+  const hasCompensationState = tableExists(connection, "ledger_compensation_state");
+  const scanKindIntegrity = hasIngestRunScanKind && hasCursorScanKind
+    ? `
+         UNION ALL
+
+         SELECT 'ingest_run_scan_kind:' || run.ingest_run_id AS subject
+           FROM ingest_runs AS run
+          WHERE run.scan_kind NOT IN ('NORMAL', 'COMPENSATION_10M', 'COMPENSATION_1H', 'COMPENSATION_1D')
+
+         UNION ALL
+
+         SELECT 'ledger_cursor_scan_kind:' || cursor.provider_account_key AS subject
+           FROM ledger_cursors AS cursor
+          WHERE cursor.scan_kind NOT IN ('NORMAL', 'COMPENSATION_10M', 'COMPENSATION_1H', 'COMPENSATION_1D')
+
+         UNION ALL
+
+         SELECT 'running_scan_kind_mismatch:' || run.ingest_run_id AS subject
+           FROM ingest_runs AS run
+           JOIN ledger_cursors AS cursor
+             ON cursor.provider_account_key = run.provider_account_key
+          WHERE run.status = 'RUNNING' AND cursor.scan_kind != run.scan_kind`
+    : "";
+  const compensationStateIntegrity = hasCompensationState
+    ? `
+         UNION ALL
+
+         SELECT 'ledger_compensation_state_orphan:' || state.provider_account_key AS subject
+           FROM ledger_compensation_state AS state
+          WHERE NOT EXISTS (
+            SELECT 1 FROM provider_account_bindings AS binding
+             WHERE binding.provider_account_key = state.provider_account_key
+          )
+
+         UNION ALL
+
+          SELECT 'ledger_compensation_state_invalid:' || state.provider_account_key AS subject
+            FROM ledger_compensation_state AS state
+          WHERE state.next_10m_at < 0 OR state.next_1h_at < 0 OR
+                state.next_1d_at < 0 OR state.updated_at < 0 OR
+                state.next_10m_at - state.updated_at > 60000 OR
+                state.next_1h_at - state.updated_at > 3600000 OR
+                state.next_1d_at - state.updated_at > 86400000`
+    : "";
   const row = connection.prepare(
     `SELECT COUNT(*) AS violations
        FROM (
@@ -1626,8 +1672,12 @@ ${observationTransitionIntegrity}
              ${progressDisposition}
               GROUP BY observation.ingest_run_id
            ) AS progress ON progress.ingest_run_id = run.ingest_run_id
-          WHERE run.pages_received != COALESCE(progress.page_count, 0)
+         WHERE run.pages_received != COALESCE(progress.page_count, 0)
              OR run.details_received != COALESCE(progress.detail_count, 0)
+
+${scanKindIntegrity}
+
+${compensationStateIntegrity}
        )`,
   ).get() as { violations: bigint | number };
   const violations = Number(row.violations);

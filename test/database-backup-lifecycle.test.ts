@@ -27,8 +27,10 @@ import {
 } from "../src/database/maintenance.ts";
 import { acquireDatabaseMaintenanceLock } from "../src/database/maintenance-lock.ts";
 import { DATABASE_COMPATIBILITY } from "../src/version.ts";
+import { RuntimeSettingsStore } from "../src/settings/store.ts";
 
 const directories: string[] = [];
+const TEST_MASTER_KEY = Buffer.alloc(32, 0x11);
 const UUIDS = [
   "00000000-0000-4000-8000-000000000001",
   "00000000-0000-4000-8000-000000000002",
@@ -44,7 +46,7 @@ afterEach(() => {
 describe("database backup artifact lifecycle", () => {
   it("classifies every recognized artifact and returns bounded deterministic metadata", async () => {
     const directory = temporaryDirectory();
-    const database = await AppDatabase.open(join(directory, "perpay.sqlite3"));
+    const database = await openTestDatabase(join(directory, "perpay.sqlite3"));
     let operational: Awaited<ReturnType<typeof createOperationalBackup>>;
     try {
       operational = await createOperationalBackup({
@@ -96,7 +98,7 @@ describe("database backup artifact lifecycle", () => {
 
   it("lists a damaged quarantine and removes it only with its exact digest", async () => {
     const directory = temporaryDirectory();
-    const database = await AppDatabase.open(join(directory, "perpay.sqlite3"));
+    const database = await openTestDatabase(join(directory, "perpay.sqlite3"));
     let backup: Awaited<ReturnType<typeof createOperationalBackup>>;
     try {
       backup = await createOperationalBackup({
@@ -588,7 +590,7 @@ describe("database backup artifact lifecycle", () => {
       resolve(directory, `.${exampleName}.creating-${UUIDS[1]}.tmp`).length >= 260,
     );
 
-    const database = await AppDatabase.open(join(directory, "perpay.sqlite3"));
+    const database = await openTestDatabase(join(directory, "perpay.sqlite3"));
     let backup: Awaited<ReturnType<typeof createOperationalBackup>>;
     try {
       backup = await createOperationalBackup({ dataDirectory: directory, now });
@@ -605,10 +607,11 @@ describe("database backup artifact lifecycle", () => {
       backupName: backup.name,
       expectedSha256: backup.sha256,
       confirmReplaceCurrentDatabase: true,
+      masterKey: TEST_MASTER_KEY,
       now: now + 1_000,
     });
     assert.equal(restored.backupName, backup.name);
-    const reopened = await AppDatabase.open(join(directory, "perpay.sqlite3"));
+    const reopened = await openTestDatabase(join(directory, "perpay.sqlite3"));
     try {
       assert.deepEqual(reopened.health(), { ok: true, result: "ok" });
     } finally {
@@ -616,6 +619,12 @@ describe("database backup artifact lifecycle", () => {
     }
   });
 });
+
+async function openTestDatabase(path: string): Promise<AppDatabase> {
+  const database = await AppDatabase.open(path);
+  new RuntimeSettingsStore(database, TEST_MASTER_KEY).initialize();
+  return database;
+}
 
 function temporaryDirectory(): string {
   const directory = mkdtempSync(join(tmpdir(), "perpay-backup-lifecycle-"));

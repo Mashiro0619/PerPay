@@ -39,6 +39,10 @@ import {
 } from "./repository.ts";
 import { syncDirectory } from "../database/maintenance-lock.ts";
 import {
+  clearStalePublicationLock,
+  inspectPublicationLock,
+} from "../database/maintenance.ts";
+import {
   ensurePrivateDirectory,
   hardenExistingPrivateFile,
   hardenProcessFileCreation,
@@ -49,6 +53,7 @@ const RETRY_DELAY_MILLISECONDS = 5 * 60 * 1_000;
 const RESTORE_CONFIRMATION_ARGUMENT = "--confirm-replace-current-database";
 const REBUILD_STATE_ARGUMENT = "--rebuild-state";
 const CLEAR_LOCK_CONFIRMATION_ARGUMENT = "--confirm-no-backup-process";
+const CLEAR_PUBLICATION_LOCK_CONFIRMATION_ARGUMENT = "--confirm-no-maintenance-process";
 const FORCE_UNREADABLE_LOCK_ARGUMENT = "--force-unreadable-lock";
 const DELETE_BACKUP_FILE_CONFIRMATION_ARGUMENT = "--confirm-delete-backup-file";
 const BACKUP_STATE_KEYS = Object.freeze([
@@ -214,10 +219,56 @@ export async function runBackupCommand(
   operations: BackupOperations = defaultBackupOperations,
 ): Promise<number> {
   hardenProcessFileCreation();
+  const command = arguments_[0] ?? "schedule";
+
+  // Publication locks live on the backup volume so they remain recoverable
+  // even when the active data volume is missing or damaged.  Keep these
+  // operator commands independent from runtime policy and master-key loading.
+  if (command === "inspect-publication-lock" && arguments_.length === 1) {
+    const backupDirectory = resolveBackupDirectoryForLock(environment);
+    const inspection = inspectPublicationLock(backupDirectory, Date.now());
+    process.stdout.write(`${JSON.stringify({
+      status: inspection.status,
+      record: inspection.record,
+      age_milliseconds: inspection.ageMilliseconds,
+      cleanup_eligible: inspection.cleanupEligible,
+    })}\n`);
+    return 0;
+  }
+  if (
+    command === "clear-stale-publication-lock" &&
+    arguments_.length === 3 &&
+    arguments_[1] === FORCE_UNREADABLE_LOCK_ARGUMENT &&
+    arguments_[2] === CLEAR_PUBLICATION_LOCK_CONFIRMATION_ARGUMENT
+  ) {
+    const result = clearStalePublicationLock({
+      backupDirectory: resolveBackupDirectoryForLock(environment),
+      confirmNoMaintenanceProcess: true,
+      forceUnreadableLock: true,
+      now: Date.now(),
+    });
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+    return 0;
+  }
+  if (
+    command === "clear-stale-publication-lock" &&
+    arguments_.length === 3 &&
+    arguments_[1] !== undefined &&
+    arguments_[2] === CLEAR_PUBLICATION_LOCK_CONFIRMATION_ARGUMENT
+  ) {
+    const result = clearStalePublicationLock({
+      backupDirectory: resolveBackupDirectoryForLock(environment),
+      lockToken: arguments_[1],
+      confirmNoMaintenanceProcess: true,
+      now: Date.now(),
+    });
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+    return 0;
+  }
+
   const baseConfig = loadBackupConfig(environment);
   const config = withCurrentPolicy(baseConfig);
   ensurePrivateDirectory(config.backupDirectory);
-  const command = arguments_[0] ?? "schedule";
   if (arguments_.length === 1 && command === "run-once") {
     const result = await runTrackedCycle(config, operations);
     process.stdout.write(`${JSON.stringify(serializeResult(result))}\n`);
@@ -278,20 +329,6 @@ export async function runBackupCommand(
   if (
     arguments_.length === 3 &&
     command === "clear-lock" &&
-    arguments_[1] !== undefined &&
-    arguments_[2] === CLEAR_LOCK_CONFIRMATION_ARGUMENT
-  ) {
-    const result = clearStaleBackupLock(config, {
-      expectedToken: arguments_[1],
-      confirmNoBackupProcess: true,
-      now: Date.now(),
-    });
-    process.stdout.write(`${JSON.stringify(result)}\n`);
-    return 0;
-  }
-  if (
-    arguments_.length === 3 &&
-    command === "clear-lock" &&
     arguments_[1] === FORCE_UNREADABLE_LOCK_ARGUMENT &&
     arguments_[2] === CLEAR_LOCK_CONFIRMATION_ARGUMENT
   ) {
@@ -304,11 +341,28 @@ export async function runBackupCommand(
     return 0;
   }
   if (
+    arguments_.length === 3 &&
+    command === "clear-lock" &&
+    arguments_[1] !== undefined &&
+    arguments_[2] === CLEAR_LOCK_CONFIRMATION_ARGUMENT
+  ) {
+    const result = clearStaleBackupLock(config, {
+      expectedToken: arguments_[1],
+      confirmNoBackupProcess: true,
+      now: Date.now(),
+    });
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+    return 0;
+  }
+  if (
     (arguments_.length === 4 || arguments_.length === 5) &&
     command === "restore" &&
     arguments_[3] === RESTORE_CONFIRMATION_ARGUMENT &&
     (arguments_.length === 4 || arguments_[4] === REBUILD_STATE_ARGUMENT)
   ) {
+    if (config.masterKey === undefined) {
+      throw new Error("deployment master key is required to restore a backup");
+    }
     const backupName = arguments_[1] ?? "";
     const expectedSha256 = arguments_[2] ?? "";
     const result = await withBackupLock(config, "restore", undefined, () => {
@@ -378,10 +432,14 @@ export async function runBackupCommand(
     return 0;
   }
   throw new Error(
-    "usage: backup-runner <schedule|run-once|health|inspect-lock|list-backups|list-backup-files|" +
+    "usage: backup-runner <schedule|run-once|health|inspect-lock|inspect-publication-lock|" +
+    "list-backups|list-backup-files|" +
     `delete-backup-file NAME SHA256 ${DELETE_BACKUP_FILE_CONFIRMATION_ARGUMENT}|` +
     `clear-lock LOCK_TOKEN ${CLEAR_LOCK_CONFIRMATION_ARGUMENT}|` +
     `clear-lock ${FORCE_UNREADABLE_LOCK_ARGUMENT} ${CLEAR_LOCK_CONFIRMATION_ARGUMENT}|` +
+    `clear-stale-publication-lock LOCK_TOKEN ${CLEAR_PUBLICATION_LOCK_CONFIRMATION_ARGUMENT}|` +
+    `clear-stale-publication-lock ${FORCE_UNREADABLE_LOCK_ARGUMENT} ` +
+    `${CLEAR_PUBLICATION_LOCK_CONFIRMATION_ARGUMENT}|` +
     `restore BACKUP_NAME SHA256 ${RESTORE_CONFIRMATION_ARGUMENT} [${REBUILD_STATE_ARGUMENT}]>`,
   );
 }
@@ -448,6 +506,16 @@ function withCurrentPolicy(config: BackupConfig): BackupConfig {
     intervalMilliseconds: policy.intervalMilliseconds,
     keepCount: policy.keepCount,
   });
+}
+
+function resolveBackupDirectoryForLock(environment: NodeJS.ProcessEnv): string {
+  const configured = environment.PERPAY_BACKUP_DIR;
+  if (configured === undefined) return resolve("/backups");
+  const trimmed = configured.trim();
+  if (trimmed.length === 0) {
+    throw new Error("backup configuration validation failed: PERPAY_BACKUP_DIR must not be empty");
+  }
+  return resolve(trimmed);
 }
 
 export async function reconcileBackupRetention(

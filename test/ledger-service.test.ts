@@ -13,7 +13,10 @@ import type {
   LedgerProvider,
 } from "../src/infrastructure/alipay/index.ts";
 import { LedgerIngestScheduler } from "../src/ledger/scheduler.ts";
-import { LedgerIngestService } from "../src/ledger/service.ts";
+import {
+  LedgerIngestService,
+  normalLedgerOverlapMilliseconds,
+} from "../src/ledger/service.ts";
 import { LedgerStore } from "../src/ledger/store.ts";
 
 const NOW = Date.parse("2026-08-14T12:00:00+08:00");
@@ -25,6 +28,12 @@ const PROVIDER_IDENTITY = {
 } as const;
 
 describe("LedgerIngestService", () => {
+  it("scales normal overlap with the scan interval", () => {
+    assert.equal(normalLedgerOverlapMilliseconds(5_000), 10_000);
+    assert.equal(normalLedgerOverlapMilliseconds(60_000), 120_000);
+    assert.equal(normalLedgerOverlapMilliseconds(3_600_000), 300_000);
+  });
+
   it("does not query the provider when the durable account binding is missing", async () => {
     await withDatabase(async ({ database, store }) => {
       const provider = new ScriptedProvider([]);
@@ -42,6 +51,61 @@ describe("LedgerIngestService", () => {
         0,
       );
     }, false);
+  });
+
+  it("preserves provider retry metadata for the scheduler", async () => {
+    await withDatabase(async ({ store }) => {
+      const provider = new ScriptedProvider([
+        new AlipayProviderError({
+          kind: "rate_limited",
+          code: "remote_rate_limited",
+          message: "provider rate limit reached",
+          status: 429,
+          retryAfterSeconds: 17,
+        }),
+      ]);
+      const result = await serviceFor(provider, store, { maxRequestsPerRun: 1 }).run("test-retry-meta");
+
+      assert.equal(result.status, "FAILED");
+      assert.equal(result.errorCode, "remote_rate_limited");
+      assert.equal(result.retryAfterSeconds, 17);
+      assert.equal(result.retryable, true);
+    });
+  });
+
+  it("resumes an incomplete window with its persisted overlap after the interval changes", async () => {
+    await withDatabase(async ({ store }) => {
+      const failedProvider = new ScriptedProvider([
+        new AlipayProviderError({
+          kind: "network",
+          code: "transport_network",
+          message: "provider request failed",
+        }),
+      ]);
+      const failed = await serviceFor(failedProvider, store, {
+        maxRequestsPerRun: 1,
+        overlapMilliseconds: 300_000,
+      }).run("old-interval-failure");
+      assert.equal(failed.status, "FAILED");
+      assert.equal(store.getCursor()?.complete, false);
+
+      const resumedProvider = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
+      const resumed = await serviceFor(resumedProvider, store, {
+        maxRequestsPerRun: 1,
+        overlapMilliseconds: 10_000,
+      }).run("new-interval-resume");
+      assert.equal(resumed.status, "COMPLETED");
+      assert.equal(store.getCursor()?.overlapMilliseconds, 300_000);
+
+      const nextProvider = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
+      const next = await serviceFor(nextProvider, store, {
+        maxRequestsPerRun: 1,
+        overlapMilliseconds: 10_000,
+        clock: () => NOW + 60_000,
+      }).run("new-interval-applied");
+      assert.equal(next.status, "COMPLETED");
+      assert.equal(store.getCursor()?.overlapMilliseconds, 10_000);
+    });
   });
 
   it("accepts a complete single-page window and atomically completes its durable run", async () => {
@@ -499,6 +563,154 @@ describe("LedgerIngestService", () => {
       assert.equal(secondProvider.requests[0]?.endTime, "2026-08-14 13:00:00");
     });
   });
+
+  it("periodically recovers a transaction that became visible after the fast window passed", async () => {
+    await withDatabase(async ({ store }) => {
+      const firstProvider = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
+      await serviceFor(firstProvider, store, {
+        maxRequestsPerRun: 1,
+        overlapMilliseconds: 10_000,
+      }).run("fast-window-baseline");
+
+      for (let seconds = 5; seconds <= 55; seconds += 5) {
+        const provider = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
+        const ordinary = await serviceFor(provider, store, {
+          maxRequestsPerRun: 1,
+          overlapMilliseconds: 10_000,
+          clock: () => NOW + seconds * 1_000,
+        }).run(`fast-window-${seconds}`);
+        assert.equal(ordinary.status, "COMPLETED");
+      }
+
+      const delayedProvider = new ScriptedProvider([
+        providerPage(1, 1, 1, false, [detail("delayed-visible", "1.01", "2026-08-14 11:59:30")]),
+      ]);
+      const recovered = await serviceFor(delayedProvider, store, {
+        maxRequestsPerRun: 1,
+        overlapMilliseconds: 10_000,
+        clock: () => NOW + 65_000,
+      }).run("periodic-compensation");
+      assert.equal(recovered.status, "COMPLETED");
+      assert.equal(recovered.createdEntries, 1);
+      assert.equal(delayedProvider.requests[0]?.startTime, "2026-08-14 11:50:55");
+    });
+  });
+
+  it("uses the latest observed event for one compensating rewind, then advances", async () => {
+    await withDatabase(async ({ store }) => {
+      const firstProvider = new ScriptedProvider([
+        providerPage(1, 1, 1, false, [detail("late-event", "1.01", "2026-08-14 11:59:00")]),
+      ]);
+      await serviceFor(firstProvider, store, { maxRequestsPerRun: 1 }).run("rewind-baseline");
+
+      const secondProvider = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
+      await serviceFor(secondProvider, store, {
+        maxRequestsPerRun: 1,
+        clock: () => NOW + 30_000,
+      }).run("rewind-compensation");
+      assert.deepEqual(
+        [secondProvider.requests[0]?.startTime, secondProvider.requests[0]?.endTime],
+        ["2026-08-14 11:54:00", "2026-08-14 12:00:30"],
+      );
+
+      const thirdProvider = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
+      await serviceFor(thirdProvider, store, {
+        maxRequestsPerRun: 1,
+        clock: () => NOW + 45_000,
+      }).run("rewind-forward");
+      assert.deepEqual(
+        [thirdProvider.requests[0]?.startTime, thirdProvider.requests[0]?.endTime],
+        ["2026-08-14 11:55:30", "2026-08-14 12:00:45"],
+      );
+    });
+  });
+
+  it("persists compensation due times and lets wider sweeps consume covered layers", async () => {
+    await withDatabase(async ({ store }) => {
+      const baseline = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
+      await serviceFor(baseline, store, { maxRequestsPerRun: 1 }).run("compensation-baseline");
+
+      const fast = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
+      const tenMinute = await serviceFor(fast, store, {
+        maxRequestsPerRun: 1,
+        clock: () => NOW + 60_000,
+      }).run("compensation-10m");
+      assert.equal(tenMinute.status, "COMPLETED");
+      assert.equal(store.getRun(tenMinute.ingestRunId ?? "")?.scanKind, "COMPENSATION_10M");
+      assert.equal(store.getCompensationState()?.next10mAt, NOW + 120_000);
+
+      const hourlyCatchUpProvider = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
+      const hourlyCatchUp = await serviceFor(hourlyCatchUpProvider, store, {
+        maxRequestsPerRun: 1,
+        clock: () => NOW + 60 * 60 * 1_000,
+      }).run("compensation-1h-catch-up");
+      assert.equal(hourlyCatchUp.status, "COMPLETED");
+      assert.equal(store.getRun(hourlyCatchUp.ingestRunId ?? "")?.scanKind, "NORMAL");
+
+      const hourlyProvider = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
+      const hourly = await serviceFor(hourlyProvider, store, {
+        maxRequestsPerRun: 1,
+        clock: () => NOW + 60 * 60 * 1_000,
+      }).run("compensation-1h");
+      assert.equal(hourly.status, "COMPLETED");
+      assert.equal(store.getRun(hourly.ingestRunId ?? "")?.scanKind, "COMPENSATION_1H");
+      assert.equal(store.getCompensationState()?.next1hAt, NOW + 2 * 60 * 60 * 1_000);
+      assert.equal(store.getCompensationState()?.next10mAt, NOW + 61 * 60 * 1_000);
+
+      const dailyCatchUpProvider = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
+      const dailyCatchUp = await serviceFor(dailyCatchUpProvider, store, {
+        maxRequestsPerRun: 1,
+        windowMilliseconds: 24 * 60 * 60 * 1_000,
+        clock: () => NOW + 24 * 60 * 60 * 1_000,
+      }).run("compensation-1d-catch-up");
+      assert.equal(dailyCatchUp.status, "COMPLETED");
+      assert.equal(store.getRun(dailyCatchUp.ingestRunId ?? "")?.scanKind, "NORMAL");
+
+      const dailyProvider = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
+      const daily = await serviceFor(dailyProvider, store, {
+        maxRequestsPerRun: 1,
+        windowMilliseconds: 24 * 60 * 60 * 1_000,
+        clock: () => NOW + 24 * 60 * 60 * 1_000,
+      }).run("compensation-1d");
+      assert.equal(daily.status, "COMPLETED");
+      assert.equal(store.getRun(daily.ingestRunId ?? "")?.scanKind, "COMPENSATION_1D");
+      assert.deepEqual(store.getCompensationState(), {
+        providerAccountKey: "primary",
+        next10mAt: NOW + (24 * 60 + 1) * 60 * 1_000,
+        next1hAt: NOW + 25 * 60 * 60 * 1_000,
+        next1dAt: NOW + 2 * 24 * 60 * 60 * 1_000,
+        updatedAt: NOW + 24 * 60 * 60 * 1_000,
+      });
+    });
+  });
+
+  it("does not advance a due compensation layer when its provider scan fails", async () => {
+    await withDatabase(async ({ store }) => {
+      await serviceFor(
+        new ScriptedProvider([providerPage(1, 1, 0, false, [])]),
+        store,
+        { maxRequestsPerRun: 1 },
+      ).run("compensation-failure-baseline");
+      const before = store.getCompensationState();
+      assert.ok(before);
+
+      const failed = await serviceFor(
+        new ScriptedProvider([
+          new AlipayProviderError({
+            kind: "network",
+            code: "transport_network",
+            message: "provider request failed",
+          }),
+        ]),
+        store,
+        { maxRequestsPerRun: 1, clock: () => NOW + 60_000 },
+      ).run("compensation-failure");
+
+      assert.equal(failed.status, "FAILED");
+      assert.equal(store.getRun(failed.ingestRunId ?? "")?.scanKind, "COMPENSATION_10M");
+      assert.deepEqual(store.getCompensationState(), before);
+    });
+  });
 });
 
 describe("LedgerIngestScheduler", () => {
@@ -529,6 +741,115 @@ describe("LedgerIngestScheduler", () => {
       assert.equal(scheduler.health().lastSuccessAt, NOW);
       await scheduler.stop();
       assert.equal(scheduler.health().state, "stopped");
+    });
+  });
+
+  it("honors Retry-After and uses exponential backoff for transient scans", async () => {
+    await withDatabase(async ({ store }) => {
+      const provider = new ScriptedProvider([
+        new AlipayProviderError({
+          kind: "rate_limited",
+          code: "remote_rate_limited",
+          message: "provider rate limit reached",
+          status: 429,
+          retryAfterSeconds: 17,
+        }),
+        new AlipayProviderError({
+          kind: "network",
+          code: "transport_network",
+          message: "provider request failed",
+        }),
+      ]);
+      const timers: Array<{ readonly delay: number; cleared: boolean }> = [];
+      const scheduler = new LedgerIngestScheduler({
+        service: serviceFor(provider, store, { maxRequestsPerRun: 1 }),
+        intervalMilliseconds: 5_000,
+        clock: () => NOW,
+        setTimeout: (callback, delay) => {
+          const timer = { delay, cleared: false };
+          timers.push(timer);
+          return { unref: () => undefined, callback } as unknown as NodeJS.Timeout;
+        },
+        clearTimeout: () => {
+          const timer = timers.at(-1);
+          if (timer) timer.cleared = true;
+        },
+      });
+      scheduler.start();
+      await waitFor(() => timers.length === 1);
+      assert.equal(timers[0]?.delay, 17_000);
+
+      await scheduler.trigger("manual-after-rate-limit");
+      await waitFor(() => timers.length === 2);
+      assert.equal(timers[1]?.delay, 10_000);
+      await scheduler.stop();
+    });
+  });
+
+  it("never schedules a transient retry before the configured interval", async () => {
+    await withDatabase(async ({ store }) => {
+      const provider = new ScriptedProvider([
+        new AlipayProviderError({
+          kind: "rate_limited",
+          code: "remote_rate_limited",
+          message: "provider rate limit reached",
+          status: 429,
+          retryAfterSeconds: 1,
+        }),
+      ]);
+      const timers: Array<{ readonly delay: number; cleared: boolean }> = [];
+      const scheduler = new LedgerIngestScheduler({
+        service: serviceFor(provider, store, { maxRequestsPerRun: 1 }),
+        intervalMilliseconds: 5_000,
+        clock: () => NOW,
+        setTimeout: (callback, delay) => {
+          const timer = { delay, cleared: false };
+          timers.push(timer);
+          return { unref: () => undefined, callback } as unknown as NodeJS.Timeout;
+        },
+        clearTimeout: () => {
+          const timer = timers.at(-1);
+          if (timer) timer.cleared = true;
+        },
+      });
+
+      scheduler.start();
+      await waitFor(() => timers.length === 1);
+      assert.equal(timers[0]?.delay, 5_000);
+      await scheduler.stop();
+    });
+  });
+
+  it("uses a long cooldown for non-retryable provider failures", async () => {
+    await withDatabase(async ({ store }) => {
+      const provider = new ScriptedProvider([
+        new AlipayProviderError({
+          kind: "authorization",
+          code: "remote_authorization_failed",
+          message: "provider rejected the application permission",
+          status: 403,
+        }),
+      ]);
+      const timers: Array<{ readonly delay: number; cleared: boolean }> = [];
+      const scheduler = new LedgerIngestScheduler({
+        service: serviceFor(provider, store, { maxRequestsPerRun: 1 }),
+        intervalMilliseconds: 5_000,
+        clock: () => NOW,
+        setTimeout: (callback, delay) => {
+          const timer = { delay, cleared: false };
+          timers.push(timer);
+          return { unref: () => undefined, callback } as unknown as NodeJS.Timeout;
+        },
+        clearTimeout: () => {
+          const timer = timers.at(-1);
+          if (timer) timer.cleared = true;
+        },
+      });
+
+      scheduler.start();
+      await waitFor(() => timers.length === 1);
+      assert.equal(timers[0]?.delay, 15 * 60 * 1_000);
+      await scheduler.stop();
     });
   });
 });
@@ -600,6 +921,7 @@ function serviceFor(
     readonly maxRequestsPerRun: number;
     readonly pageSize?: number;
     readonly overlapMilliseconds?: number;
+    readonly windowMilliseconds?: number;
     readonly clock?: () => number;
   },
 ): LedgerIngestService {
@@ -608,7 +930,7 @@ function serviceFor(
     store,
     pageSize: options.pageSize ?? 1,
     overlapMilliseconds: options.overlapMilliseconds ?? 5 * 60 * 1000,
-    windowMilliseconds: 60 * 60 * 1000,
+    windowMilliseconds: options.windowMilliseconds ?? 60 * 60 * 1000,
     safetyLagMilliseconds: 0,
     maxRequestsPerRun: options.maxRequestsPerRun,
     clock: options.clock ?? (() => NOW),
@@ -671,4 +993,12 @@ async function withDatabase(
     database.close();
     rmSync(directory, { recursive: true, force: true });
   }
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (predicate()) return;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  assert.equal(predicate(), true, "condition was not met before the test timeout");
 }

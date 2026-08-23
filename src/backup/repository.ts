@@ -419,12 +419,16 @@ export function restoreLocalBackup(
   if (expectedInstanceId !== undefined && backup.instanceId !== expectedInstanceId) {
     throw new Error("backup belongs to another application instance");
   }
+  if (config.masterKey === undefined) {
+    throw new Error("deployment master key is required to restore a backup");
+  }
   const result = restoreOperationalBackup({
     dataDirectory: config.dataDirectory,
     backupDirectory: config.backupDirectory,
     backupName,
     expectedSha256,
     confirmReplaceCurrentDatabase: true,
+    masterKey: config.masterKey,
     now: clock,
   });
   if (result.restoredSchemaVersion !== DATABASE_COMPATIBILITY.maximum) {

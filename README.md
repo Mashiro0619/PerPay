@@ -57,6 +57,13 @@ docker compose up -d
 ```sh
 docker compose --profile maintenance run --rm maintenance health
 docker compose --profile maintenance run --rm maintenance list-backups
+docker compose --profile maintenance run --rm maintenance inspect-publication-lock
+```
+
+如果备份或恢复进程异常中断，先确认没有维护进程，再按检查结果使用返回的 token 清理超过 7 小时的跨卷发布锁：
+
+```sh
+docker compose --profile maintenance run --rm maintenance clear-stale-publication-lock LOCK_TOKEN --confirm-no-maintenance-process
 ```
 
 恢复前停止应用和备份服务，核对备份文件名与 SHA-256，再执行：

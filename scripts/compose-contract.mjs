@@ -92,8 +92,8 @@ export function inspectComposeContract(source) {
   const maintenance = root.services.maintenance;
   exactKeys(maintenance, MAINTENANCE_KEYS, "Compose maintenance service");
   array(maintenance.profiles, ["maintenance"], "Compose maintenance.profiles");
-  serviceEnvironment(maintenance.environment, { PERPAY_DATA_DIR: "/data", PERPAY_BACKUP_DIR: "/backups" }, "Compose maintenance.environment");
-  array(maintenance.volumes, ["perpay-data:/data", "perpay-backups:/backups"], "Compose maintenance.volumes");
+  serviceEnvironment(maintenance.environment, { PERPAY_DATA_DIR: "/data", PERPAY_BACKUP_DIR: "/backups", PERPAY_SECRETS_DIR: "/run/perpay-secrets" }, "Compose maintenance.environment");
+  array(maintenance.volumes, ["perpay-data:/data", "perpay-backups:/backups", "perpay-secrets:/run/perpay-secrets:ro"], "Compose maintenance.volumes");
   array(maintenance.entrypoint, ["node", "dist/backup/runner.js"], "Compose maintenance.entrypoint");
   checkCommon(maintenance, "maintenance", "none");
 

@@ -62,6 +62,7 @@ test("Compose contract accepts the default services and profile-gated maintenanc
   assert.deepEqual(parsed.services.maintenance.volumes, [
     "perpay-data:/data",
     "perpay-backups:/backups",
+    "perpay-secrets:/run/perpay-secrets:ro",
   ]);
 });
 

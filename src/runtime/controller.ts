@@ -7,6 +7,7 @@ import {
 import {
   LedgerIngestScheduler,
   LedgerIngestService,
+  normalLedgerOverlapMilliseconds,
   type LedgerSchedulerHealth,
   type LedgerStore,
 } from "../ledger/index.ts";
@@ -453,7 +454,7 @@ export class RuntimeController {
       store: this.#ledger,
       providerAccountKey,
       pageSize: DEFAULT_ACCOUNT_LOG_PAGE_SIZE,
-      overlapMilliseconds: 5 * 60 * 1_000,
+      overlapMilliseconds: normalLedgerOverlapMilliseconds(providerSettings.scanIntervalMilliseconds),
       windowMilliseconds: 24 * 60 * 60 * 1_000,
       safetyLagMilliseconds: providerSettings.safetyLagMilliseconds,
       maxRequestsPerRun: 32,

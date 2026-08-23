@@ -94,9 +94,11 @@ services:
     environment:
       PERPAY_DATA_DIR: "/data"
       PERPAY_BACKUP_DIR: "/backups"
+      PERPAY_SECRETS_DIR: "/run/perpay-secrets"
     volumes:
       - perpay-data:/data
       - perpay-backups:/backups
+      - perpay-secrets:/run/perpay-secrets:ro
     user: "1000:1000"
     entrypoint:
       - node

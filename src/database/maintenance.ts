@@ -7,6 +7,7 @@ import {
   linkSync,
   lstatSync,
   openSync,
+  readFileSync,
   readSync,
   readdirSync,
   renameSync,
@@ -17,6 +18,8 @@ import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 
+import { RuntimeSecretCipher, type EncryptedSecret } from "../settings/crypto.ts";
+
 import {
   createVerifiedDatabaseBackup,
   inspectDatabaseIntegrity,
@@ -24,6 +27,8 @@ import {
 import {
   acquireDatabaseMaintenanceLock,
   assertDatabaseMaintenanceIdle,
+  databaseMaintenanceLockPath,
+  DATABASE_MAINTENANCE_LOCK_STALE_MILLISECONDS,
   forceClearUnreadableDatabaseMaintenanceLock,
   forceReleaseDatabaseMaintenanceLock,
   readDatabaseMaintenanceLock,
@@ -47,7 +52,9 @@ const PRE_RESTORE_QUARANTINE_NAME_PATTERN =
 const RESTORE_STAGING_NAME_PATTERN =
   /^\.perpay\.sqlite3\.restore-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.tmp$/u;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
+const MASTER_KEY_HEX_PATTERN = /^[0-9a-fA-F]{64}$/u;
 const SQLITE_TIMEOUT_MILLISECONDS = 5_000;
+const BACKUP_PUBLICATION_LOCK_ANCHOR = ".perpay-source-publication";
 const RESTORE_CONFIRMATION_ARGUMENT = "--confirm-replace-current-database";
 const MAX_LISTED_BACKUP_ARTIFACTS = 4_096;
 const MAX_PRE_RESTORE_QUARANTINES = 4_096;
@@ -71,6 +78,8 @@ export interface RestoreMigrationBackupOptions {
   readonly dataDirectory: string;
   readonly backupName: string;
   readonly confirmReplaceCurrentDatabase: boolean;
+  /** Deployment key used to verify the selected backup before swap. */
+  readonly masterKey: Uint8Array;
   readonly now?: number | undefined;
 }
 
@@ -86,6 +95,8 @@ export interface RestoreOperationalBackupOptions {
   readonly backupName: string;
   readonly expectedSha256: string;
   readonly confirmReplaceCurrentDatabase: boolean;
+  /** Deployment key used to verify the selected backup before swap. */
+  readonly masterKey: Uint8Array;
   readonly now?: number | undefined;
 }
 
@@ -468,22 +479,33 @@ export async function createOperationalBackup(
     ? directory
     : inspectBackupDirectory(options.backupDirectory);
   const source = resolve(directory, DATABASE_NAME);
-  const sourceIdentity = inspectOrdinaryFile(source, "application database", !sourceReadOnly);
-  assertDatabaseMaintenanceIdle(source);
-
-  const name = `${DATABASE_NAME}.backup-${timestamp.toISOString().replaceAll(":", "-")}-${randomUUID()}.sqlite3`;
-  const target = resolve(backupDirectory, name);
-  const staging = resolve(backupDirectory, `.creating-${randomUUID()}.tmp`);
-  const database = new DatabaseSync(source, {
-    readOnly: true,
-    enableForeignKeyConstraints: true,
-    timeout: SQLITE_TIMEOUT_MILLISECONDS,
-    readBigInts: true,
-    defensive: true,
-  });
-  let databaseClosed = false;
-  let targetPublished = false;
+  // A backup service receives the live-data volume read-only, so it cannot
+  // create the database-side lock.  This shared publication lock closes the
+  // coordination gap with restore operations using a separate backup volume.
+  const publicationLock = options.backupDirectory === undefined
+    ? null
+    : acquireDatabaseMaintenanceLock(
+      join(backupDirectory, BACKUP_PUBLICATION_LOCK_ANCHOR),
+      "publish-operational-backup",
+      now,
+    );
   try {
+    const sourceIdentity = inspectOrdinaryFile(source, "application database", !sourceReadOnly);
+    assertDatabaseMaintenanceIdle(source);
+
+    const name = `${DATABASE_NAME}.backup-${timestamp.toISOString().replaceAll(":", "-")}-${randomUUID()}.sqlite3`;
+    const target = resolve(backupDirectory, name);
+    const staging = resolve(backupDirectory, `.creating-${randomUUID()}.tmp`);
+    const database = new DatabaseSync(source, {
+      readOnly: true,
+      enableForeignKeyConstraints: true,
+      timeout: SQLITE_TIMEOUT_MILLISECONDS,
+      readBigInts: true,
+      defensive: true,
+    });
+    let databaseClosed = false;
+    let targetPublished = false;
+    try {
     const backup = await createVerifiedDatabaseBackup(
       database,
       source,
@@ -531,15 +553,18 @@ export async function createOperationalBackup(
     } finally {
       lock?.release();
     }
-  } catch (error) {
-    removeSqliteArtifacts(staging);
-    if (targetPublished) {
-      removeSqliteArtifacts(target);
-      syncDirectory(backupDirectory);
+    } catch (error) {
+      removeSqliteArtifacts(staging);
+      if (targetPublished) {
+        removeSqliteArtifacts(target);
+        syncDirectory(backupDirectory);
+      }
+      throw error;
+    } finally {
+      if (!databaseClosed) database.close();
     }
-    throw error;
   } finally {
-    if (!databaseClosed) database.close();
+    publicationLock?.release();
   }
 }
 
@@ -548,6 +573,91 @@ export function inspectMaintenanceLock(
 ): DatabaseMaintenanceLockRecord {
   const directory = inspectDataDirectory(dataDirectory);
   return readDatabaseMaintenanceLock(resolve(directory, DATABASE_NAME));
+}
+
+export interface PublicationLockInspection {
+  readonly status: "missing" | "active" | "stale" | "future" | "unreadable";
+  readonly record: DatabaseMaintenanceLockRecord | null;
+  readonly ageMilliseconds: number | null;
+  readonly cleanupEligible: boolean;
+}
+
+export function publicationLockPath(backupDirectory: string): string {
+  return databaseMaintenanceLockPath(publicationLockAnchor(backupDirectory));
+}
+
+function publicationLockAnchor(backupDirectory: string): string {
+  return resolve(backupDirectory, BACKUP_PUBLICATION_LOCK_ANCHOR);
+}
+
+export function inspectPublicationLock(
+  backupDirectory: string,
+  now = Date.now(),
+): PublicationLockInspection {
+  if (!Number.isSafeInteger(now) || now < 0) throw new RangeError("maintenance clock is invalid");
+  const directory = inspectBackupDirectory(backupDirectory);
+  const anchor = publicationLockAnchor(directory);
+  let record: DatabaseMaintenanceLockRecord;
+  try {
+    record = readDatabaseMaintenanceLock(anchor);
+  } catch (error) {
+    if (isFileSystemError(error, "ENOENT")) {
+      return Object.freeze({ status: "missing", record: null, ageMilliseconds: null, cleanupEligible: false });
+    }
+    return Object.freeze({ status: "unreadable", record: null, ageMilliseconds: null, cleanupEligible: false });
+  }
+  const ageMilliseconds = now - Date.parse(record.createdAt);
+  const status = ageMilliseconds < 0
+    ? "future"
+    : ageMilliseconds > DATABASE_MAINTENANCE_LOCK_STALE_MILLISECONDS ? "stale" : "active";
+  return Object.freeze({ status, record, ageMilliseconds, cleanupEligible: status === "stale" });
+}
+
+export interface ClearStalePublicationLockOptions {
+  readonly backupDirectory: string;
+  readonly lockToken?: string | undefined;
+  readonly confirmNoMaintenanceProcess: boolean;
+  readonly forceUnreadableLock?: boolean | undefined;
+  readonly now?: number | undefined;
+}
+
+export function clearStalePublicationLock(
+  options: ClearStalePublicationLockOptions,
+): DatabaseMaintenanceLockRecord {
+  if (!options.confirmNoMaintenanceProcess) {
+    throw new Error("clearing a publication lock requires explicit process-stop confirmation");
+  }
+  if (options.forceUnreadableLock && options.lockToken !== undefined) {
+    throw new Error("an unreadable publication lock cannot be cleared with a token");
+  }
+  const now = options.now ?? Date.now();
+  if (!Number.isSafeInteger(now) || now < 0) throw new RangeError("maintenance clock is invalid");
+  const directory = inspectBackupDirectory(options.backupDirectory);
+  const anchor = publicationLockAnchor(directory);
+  const path = databaseMaintenanceLockPath(anchor);
+  let record: DatabaseMaintenanceLockRecord;
+  try {
+    record = readDatabaseMaintenanceLock(anchor);
+  } catch (error) {
+    if (!options.forceUnreadableLock) throw error;
+    const stat = lstatSync(path);
+    if (stat.isFile() === false || stat.isSymbolicLink() || stat.nlink !== 1) throw error;
+    const age = now - stat.mtimeMs;
+    if (!Number.isFinite(age) || age <= DATABASE_MAINTENANCE_LOCK_STALE_MILLISECONDS) {
+      throw new Error("unreadable publication lock is not older than the seven-hour safety interval", { cause: error });
+    }
+    forceClearUnreadableDatabaseMaintenanceLock(anchor);
+    return Object.freeze({ formatVersion: 1, token: "unreadable-lock-cleared", operation: "unreadable-lock-cleared", createdAt: new Date(now).toISOString() });
+  }
+  if (options.lockToken === undefined || record.token !== options.lockToken) {
+    throw new Error("publication lock token does not match");
+  }
+  const age = now - Date.parse(record.createdAt);
+  if (age < 0) throw new Error("publication lock clock is ahead of the current clock");
+  if (age <= DATABASE_MAINTENANCE_LOCK_STALE_MILLISECONDS) {
+    throw new Error("publication lock is not older than the seven-hour safety interval");
+  }
+  return forceReleaseDatabaseMaintenanceLock(anchor, options.lockToken);
 }
 
 export function clearStaleMaintenanceLock(
@@ -670,6 +780,17 @@ export function restoreMigrationBackup(
   if (dirname(source) !== directory || source === target) {
     throw new Error("migration backup escaped the data directory");
   }
+  // Complete source preflight before claiming the live database. Historical
+  // migration backups may predate runtime_master_key_guard, so verify it only
+  // when present; current-state backups below require it unconditionally.
+  const preflightSourceIdentity = inspectOrdinaryFile(source, "migration backup");
+  assertSelfContainedSqlite(source, "migration backup");
+  const preflightSourceHash = sha256File(source);
+  const preflightSchemaVersion = inspectDatabase(source, now, true);
+  if (preflightSchemaVersion !== parsedName.fromVersion) {
+    throw new Error("migration backup schema does not match its filename");
+  }
+  assertBackupMasterKey(source, options.masterKey, false);
 
   const lock = acquireDatabaseMaintenanceLock(
     target,
@@ -689,17 +810,40 @@ export function restoreMigrationBackup(
   const quarantineStaging = `${quarantine}.staging`;
 
   try {
-    inspectOrdinaryFile(target, "application database");
+    const preQuiesceTargetIdentity = inspectOrdinaryFile(target, "application database");
     maintenanceLeaseClaimed = claimAndQuiesceApplicationDatabase(target, now, lock.token);
+    assertFilePathIdentity(
+      target,
+      preQuiesceTargetIdentity,
+      "application database",
+      true,
+      "the database restore was being prepared",
+    );
+    const targetIdentity = inspectOrdinaryFile(target, "application database");
     assertSelfContainedSqlite(target, "application database");
 
     const sourceIdentity = inspectOrdinaryFile(source, "migration backup");
-    assertSelfContainedSqlite(source, "migration backup");
-    const backupSchemaVersion = inspectDatabase(source, now, true);
-    if (backupSchemaVersion !== parsedName.fromVersion) {
-      throw new Error("migration backup schema does not match its filename");
+    if (
+      sourceIdentity.device !== preflightSourceIdentity.device ||
+      sourceIdentity.inode !== preflightSourceIdentity.inode ||
+      sourceIdentity.size !== preflightSourceIdentity.size ||
+      sourceIdentity.modifiedAtNanoseconds !== preflightSourceIdentity.modifiedAtNanoseconds
+    ) {
+      throw new Error("migration backup changed after source preflight");
     }
+    assertSelfContainedSqlite(source, "migration backup");
     const sourceHash = sha256File(source);
+    if (sourceHash !== preflightSourceHash) {
+      throw new Error("migration backup changed after source preflight");
+    }
+    const backupSchemaVersion = inspectDatabase(source, now, true);
+    if (backupSchemaVersion !== preflightSchemaVersion) {
+      throw new Error("migration backup changed after source preflight");
+    }
+    assertBackupMasterKey(source, options.masterKey, false);
+
+    assertFileIdentity(target, targetIdentity, "application database");
+    assertSelfContainedSqlite(target, "application database");
     const targetHash = sha256File(target);
 
     copyFileSync(source, staging, fsConstants.COPYFILE_EXCL);
@@ -714,11 +858,13 @@ export function restoreMigrationBackup(
     if (stagedSchemaVersion !== backupSchemaVersion) {
       throw new Error("restored database staging schema changed while copying");
     }
+    assertBackupMasterKey(staging, options.masterKey, false);
     assertSelfContainedSqlite(staging, "restored database staging file");
     syncFile(staging);
 
     copyFileSync(target, quarantineStaging, fsConstants.COPYFILE_EXCL);
     hardenExistingPrivateFile(quarantineStaging);
+    assertFileIdentity(target, targetIdentity, "application database");
     inspectOrdinaryFile(quarantineStaging, "quarantined application database staging file");
     if (sha256File(quarantineStaging) !== targetHash) {
       throw new Error("quarantined application database bytes differ from the active database");
@@ -729,6 +875,8 @@ export function restoreMigrationBackup(
     syncDirectory(directory);
 
     // The atomic rename replaces the active path after preserving a verified quarantine copy.
+    assertFileIdentity(target, targetIdentity, "application database");
+    assertSelfContainedSqlite(target, "application database");
     renameSync(staging, target);
     targetReplaced = true;
     syncDirectory(directory);
@@ -809,12 +957,37 @@ export function restoreOperationalBackup(
   if (dirname(source) !== backupDirectory || source === target) {
     throw new Error("operational backup escaped the backup directory");
   }
+  // Complete source preflight before claiming either maintenance lock.  This
+  // keeps malformed/forged files from being reported as key failures and
+  // ensures digest, schema, and key checks all precede any replacement.
+  const preflightSourceIdentity = inspectOrdinaryFile(source, "operational backup");
+  assertSelfContainedSqlite(source, "operational backup");
+  const preflightSourceHash = sha256File(source);
+  if (preflightSourceHash !== options.expectedSha256) {
+    throw new Error("operational backup SHA-256 does not match the expected value");
+  }
+  const preflightSchemaVersion = inspectDatabase(source, now, true, "operational backup");
+  assertBackupMasterKey(source, options.masterKey, true);
 
-  const lock = acquireDatabaseMaintenanceLock(
-    target,
-    `restore-backup:${options.backupName}`,
-    now,
-  );
+  const publicationLock = options.backupDirectory === undefined
+    ? null
+    : acquireDatabaseMaintenanceLock(
+      join(backupDirectory, BACKUP_PUBLICATION_LOCK_ANCHOR),
+      `restore-backup:${options.backupName}`,
+      now,
+    );
+
+  let lock: ReturnType<typeof acquireDatabaseMaintenanceLock>;
+  try {
+    lock = acquireDatabaseMaintenanceLock(
+      target,
+      `restore-backup:${options.backupName}`,
+      now,
+    );
+  } catch (error) {
+    publicationLock?.release();
+    throw error;
+  }
   let maintenanceLeaseClaimed = false;
   let targetPublished = false;
   let replacementDurable = false;
@@ -849,12 +1022,23 @@ export function restoreOperationalBackup(
     }
 
     const sourceIdentity = inspectOrdinaryFile(source, "operational backup");
+    if (
+      sourceIdentity.device !== preflightSourceIdentity.device ||
+      sourceIdentity.inode !== preflightSourceIdentity.inode ||
+      sourceIdentity.size !== preflightSourceIdentity.size ||
+      sourceIdentity.modifiedAtNanoseconds !== preflightSourceIdentity.modifiedAtNanoseconds
+    ) {
+      throw new Error("operational backup changed after source preflight");
+    }
     assertSelfContainedSqlite(source, "operational backup");
     const sourceHash = sha256File(source);
     if (sourceHash !== options.expectedSha256) {
       throw new Error("operational backup SHA-256 does not match the expected value");
     }
     const backupSchemaVersion = inspectDatabase(source, now, true, "operational backup");
+    if (backupSchemaVersion !== preflightSchemaVersion || sourceHash !== preflightSourceHash) {
+      throw new Error("operational backup changed after source preflight");
+    }
 
     copyFileSync(source, staging, fsConstants.COPYFILE_EXCL);
     hardenExistingPrivateFile(staging);
@@ -958,6 +1142,11 @@ export function restoreOperationalBackup(
     if (!retainMaintenanceLock && (!targetPublished || replacementDurable)) {
       lock.release();
     }
+    // The database lock remains as the recovery barrier when publication was
+    // interrupted; backups also check it before opening the live database.
+    // The cross-volume publication lease itself is therefore always released
+    // here and cannot strand maintenance indefinitely.
+    publicationLock?.release();
   }
 }
 
@@ -1427,10 +1616,11 @@ function assertFilePathIdentity(
   expected: FileIdentity,
   label: string,
   harden = true,
+  operation = "the online backup was being created",
 ): void {
   const actual = inspectOrdinaryFile(path, label, harden);
   if (actual.device !== expected.device || actual.inode !== expected.inode) {
-    throw new Error(`${label} path identity changed while the online backup was being created`);
+    throw new Error(`${label} path identity changed while ${operation}`);
   }
 }
 
@@ -1573,6 +1763,60 @@ function parseMigrationBackupName(name: string): MigrationBackup | null {
     return null;
   }
   return Object.freeze({ name, fromVersion, toVersion });
+}
+
+/** Verify the deployment key before any restore operation claims the live database. */
+function assertBackupMasterKey(
+  path: string,
+  masterKey: Uint8Array,
+  required: boolean,
+): void {
+  if (masterKey === undefined) {
+    throw new Error("deployment master key is required to restore a backup");
+  }
+  if (masterKey.byteLength !== 32) {
+    throw new RangeError("restore master key must contain exactly 32 bytes");
+  }
+  const database = new DatabaseSync(path, {
+    readOnly: true,
+    enableForeignKeyConstraints: true,
+    timeout: SQLITE_TIMEOUT_MILLISECONDS,
+    readBigInts: true,
+    defensive: true,
+  });
+  try {
+    if (!tableExists(database, "runtime_master_key_guard")) {
+      if (!required) return;
+      throw new Error("selected backup does not contain a runtime master key guard");
+    }
+    const instance = database.prepare(
+      "SELECT value FROM system_metadata WHERE key = 'instance_id'",
+    ).get() as { readonly value: string } | undefined;
+    if (instance === undefined || !/^[0-9a-f]{32}$/u.test(instance.value)) {
+      throw new Error("selected backup is missing a valid instance identity");
+    }
+    const guard = database.prepare(
+      `SELECT cipher_version, nonce, ciphertext, authentication_tag
+         FROM runtime_master_key_guard WHERE singleton_key = 1`,
+    ).get() as {
+      readonly cipher_version: bigint | number;
+      readonly nonce: Uint8Array;
+      readonly ciphertext: Uint8Array;
+      readonly authentication_tag: Uint8Array;
+    } | undefined;
+    if (guard === undefined) {
+      throw new Error("selected backup is missing its runtime master key guard");
+    }
+    const encrypted: EncryptedSecret = {
+      cipherVersion: Number(guard.cipher_version) as 1,
+      nonce: Buffer.from(guard.nonce),
+      ciphertext: Buffer.from(guard.ciphertext),
+      authenticationTag: Buffer.from(guard.authentication_tag),
+    };
+    new RuntimeSecretCipher(masterKey, instance.value).verifyGuard(encrypted);
+  } finally {
+    database.close();
+  }
 }
 
 function inspectDatabase(
@@ -1797,18 +2041,47 @@ async function runCommand(arguments_: readonly string[]): Promise<void> {
     process.stdout.write(`${JSON.stringify(inspectMaintenanceLock(dataDirectory))}\n`);
     return;
   }
+  if (arguments_.length === 1 && arguments_[0] === "inspect-publication-lock") {
+    process.stdout.write(`${JSON.stringify(inspectPublicationLock(backupDirectory))}\n`);
+    return;
+  }
+  if (
+    arguments_.length === 3 &&
+    arguments_[0] === "clear-stale-publication-lock" &&
+    arguments_[1] === "--force-unreadable-lock" &&
+    arguments_[2] === "--confirm-no-maintenance-process"
+  ) {
+    process.stdout.write(`${JSON.stringify(clearStalePublicationLock({
+      backupDirectory,
+      confirmNoMaintenanceProcess: true,
+      forceUnreadableLock: true,
+    }))}\n`);
+    return;
+  }
+  if (
+    arguments_.length === 3 &&
+    arguments_[0] === "clear-stale-publication-lock" &&
+    arguments_[1] !== undefined &&
+    arguments_[2] === "--confirm-no-maintenance-process"
+  ) {
+    process.stdout.write(`${JSON.stringify(clearStalePublicationLock({
+      backupDirectory,
+      lockToken: arguments_[1],
+      confirmNoMaintenanceProcess: true,
+    }))}\n`);
+    return;
+  }
   if (
     arguments_.length === 3 &&
     arguments_[0] === "clear-stale-maintenance-lock" &&
-    arguments_[1] !== undefined &&
+    arguments_[1] === "--force-unreadable-lock" &&
     arguments_[2] === "--confirm-no-maintenance-process"
   ) {
     process.stdout.write(`${JSON.stringify(clearStaleMaintenanceLock({
       dataDirectory,
       backupDirectory,
-      lockToken: arguments_[1],
       confirmNoMaintenanceProcess: true,
-      forceAbandonMaintenanceLease: false,
+      forceUnreadableLock: true,
     }))}\n`);
     return;
   }
@@ -1847,14 +2120,15 @@ async function runCommand(arguments_: readonly string[]): Promise<void> {
   if (
     arguments_.length === 3 &&
     arguments_[0] === "clear-stale-maintenance-lock" &&
-    arguments_[1] === "--force-unreadable-lock" &&
+    arguments_[1] !== undefined &&
     arguments_[2] === "--confirm-no-maintenance-process"
   ) {
     process.stdout.write(`${JSON.stringify(clearStaleMaintenanceLock({
       dataDirectory,
       backupDirectory,
+      lockToken: arguments_[1],
       confirmNoMaintenanceProcess: true,
-      forceUnreadableLock: true,
+      forceAbandonMaintenanceLease: false,
     }))}\n`);
     return;
   }
@@ -1908,19 +2182,54 @@ async function runCommand(arguments_: readonly string[]): Promise<void> {
       dataDirectory,
       backupName: arguments_[1],
       confirmReplaceCurrentDatabase: true,
+      masterKey: resolveRestoreMasterKey(process.env),
     }))}\n`);
     return;
   }
   throw new Error(
-    `usage: maintenance <list-migration-backups|inspect-maintenance-lock|` +
+    `usage: maintenance <list-migration-backups|inspect-maintenance-lock|inspect-publication-lock|` +
     `list-pre-restore-quarantines|delete-pre-restore-quarantine NAME SHA256 ` +
     `--confirm-delete-pre-restore-quarantine|prune-pre-restore-quarantines KEEP_COUNT ` +
     `--confirm-prune-pre-restore-quarantines|` +
     `clear-stale-maintenance-lock LOCK_TOKEN --confirm-no-maintenance-process ` +
     `[--force-abandon-maintenance-lease|--finalize-interrupted-fresh-restore]|` +
     `clear-stale-maintenance-lock --force-unreadable-lock --confirm-no-maintenance-process|` +
+    `clear-stale-publication-lock LOCK_TOKEN --confirm-no-maintenance-process|` +
+    `clear-stale-publication-lock --force-unreadable-lock --confirm-no-maintenance-process|` +
     `restore-migration-backup BACKUP_NAME ${RESTORE_CONFIRMATION_ARGUMENT}>`,
   );
+}
+
+function resolveRestoreMasterKey(environment: NodeJS.ProcessEnv): Buffer {
+  const configured = environment.PERPAY_MASTER_KEY?.trim();
+  if (configured !== undefined && configured.length > 0) {
+    if (!MASTER_KEY_HEX_PATTERN.test(configured)) {
+      throw new Error("restore configuration validation failed: PERPAY_MASTER_KEY must contain 64 hexadecimal characters");
+    }
+    return Buffer.from(configured, "hex");
+  }
+  const secretsDirectory = environment.PERPAY_SECRETS_DIR?.trim();
+  if (secretsDirectory === undefined || secretsDirectory.length === 0) {
+    throw new Error("restore configuration validation failed: set PERPAY_MASTER_KEY or PERPAY_SECRETS_DIR/master-key");
+  }
+  const path = resolve(secretsDirectory, "master-key");
+  let stat;
+  try {
+    stat = lstatSync(path);
+  } catch (error) {
+    if (isFileSystemError(error, "ENOENT")) {
+      throw new Error("restore configuration validation failed: secrets/master-key is missing", { cause: error });
+    }
+    throw error;
+  }
+  if (stat.isSymbolicLink() || !stat.isFile() || stat.nlink !== 1) {
+    throw new Error("restore configuration validation failed: secrets/master-key must be a private ordinary file");
+  }
+  const value = readFileSync(path, "utf8").trim();
+  if (!MASTER_KEY_HEX_PATTERN.test(value)) {
+    throw new Error("restore configuration validation failed: secrets/master-key must contain 64 hexadecimal characters");
+  }
+  return Buffer.from(value, "hex");
 }
 
 const entryPoint = process.argv[1];

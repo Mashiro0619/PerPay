@@ -20,6 +20,7 @@ export type LedgerEntryState =
   | "ISOLATED"
   | "IGNORED";
 export type IngestRunStatus = "RUNNING" | "COMPLETED" | "PARTIAL" | "FAILED";
+export type IngestScanKind = "NORMAL" | "COMPENSATION_10M" | "COMPENSATION_1H" | "COMPENSATION_1D";
 export type IngestSegmentState = "PENDING" | "SPLIT" | "COMPLETE";
 export type SegmentObservationKind = "OVERSIZED_PROBE" | "ACCEPTED_LEAF";
 export type LedgerConflictType =
@@ -77,6 +78,7 @@ export interface LedgerCursor {
   readonly windowEnd: string;
   readonly nextPageNo: number | null;
   readonly pageSize: number;
+  readonly scanKind: IngestScanKind;
   readonly expectedTotalSize: number | null;
   readonly overlapMilliseconds: number;
   readonly complete: boolean;
@@ -86,11 +88,20 @@ export interface LedgerCursor {
   readonly version: number;
 }
 
+export interface LedgerCompensationState {
+  readonly providerAccountKey: string;
+  readonly next10mAt: number;
+  readonly next1hAt: number;
+  readonly next1dAt: number;
+  readonly updatedAt: number;
+}
+
 export interface StartIngestRunInput extends LedgerWindow {
   readonly providerAccountKey?: string;
   readonly pageSize: number;
   readonly overlapMilliseconds?: number;
   readonly now?: number;
+  readonly scanKind?: IngestScanKind;
 }
 
 export interface IngestRun {
@@ -99,6 +110,7 @@ export interface IngestRun {
   readonly windowStart: string;
   readonly windowEnd: string;
   readonly pageSize: number;
+  readonly scanKind: IngestScanKind;
   readonly status: IngestRunStatus;
   readonly startedAt: number;
   readonly completedAt: number | null;

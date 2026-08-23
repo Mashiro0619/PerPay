@@ -18,6 +18,8 @@ import {
 
 const LOCK_SUFFIX = ".maintenance-lock";
 const LOCK_FORMAT_VERSION = 1;
+/** A lock older than one maintenance window is reported as stale. */
+export const DATABASE_MAINTENANCE_LOCK_STALE_MILLISECONDS = 7 * 60 * 60 * 1_000;
 
 interface LockIdentity {
   readonly device: bigint;
@@ -55,8 +57,18 @@ export function hasDatabaseMaintenanceLock(databasePath: string): boolean {
 
 export function assertDatabaseMaintenanceIdle(databasePath: string): void {
   if (!hasDatabaseMaintenanceLock(databasePath)) return;
+  let detail = "database maintenance is in progress";
+  try {
+    const record = readDatabaseMaintenanceLock(databasePath);
+    const age = Date.now() - Date.parse(record.createdAt);
+    if (Number.isSafeInteger(age) && age > DATABASE_MAINTENANCE_LOCK_STALE_MILLISECONDS) {
+      detail = `database maintenance lock is stale; stop all maintenance processes and clear it explicitly with token ${record.token}`;
+    }
+  } catch {
+    // Preserve the fail-closed startup error for malformed or replaced locks.
+  }
   throw new Error(
-    "database maintenance is in progress; the application will not start until it finishes",
+    `${detail}; the application will not start until it finishes`,
   );
 }
 
@@ -81,6 +93,24 @@ export function acquireDatabaseMaintenanceLock(
     handle = openSync(path, "wx", 0o600);
   } catch (error) {
     if (isFileSystemError(error, "EEXIST")) {
+      let record: DatabaseMaintenanceLockRecord;
+      try {
+        record = readDatabaseMaintenanceLock(databasePath);
+      } catch (readError) {
+        throw new Error(
+          "database maintenance lock already exists and is unreadable; stop all maintenance processes and clear it explicitly",
+          { cause: readError },
+        );
+      }
+      const createdAtMilliseconds = Date.parse(record.createdAt);
+      if (now < createdAtMilliseconds) {
+        throw new Error("database maintenance lock clock is ahead of the current clock");
+      }
+      if (now - createdAtMilliseconds > DATABASE_MAINTENANCE_LOCK_STALE_MILLISECONDS) {
+        throw new Error(
+          `database maintenance lock already exists and is stale; stop all maintenance processes and clear it explicitly with token ${record.token}`,
+        );
+      }
       throw new Error(
         "database maintenance lock already exists; another maintenance operation may be running",
       );

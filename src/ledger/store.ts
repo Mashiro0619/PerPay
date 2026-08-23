@@ -32,6 +32,7 @@ import {
   type CompleteIngestRunInput,
   type IngestErrorInput,
   type IngestRun,
+  type IngestScanKind,
   type IngestSegment,
   type LedgerConflict,
   type LedgerConflictAction,
@@ -46,6 +47,7 @@ import {
   type LedgerConflictStatus,
   type LedgerConflictSummary,
   type LedgerConflictType,
+  type LedgerCompensationState,
   type LedgerCursor,
   type LedgerEntry,
   type LedgerListFilter,
@@ -69,6 +71,10 @@ import {
 
 type DatabaseOwner = Pick<AppDatabase, "read" | "write">;
 
+const COMPENSATION_10M_INTERVAL_MILLISECONDS = 60 * 1_000;
+const COMPENSATION_1H_INTERVAL_MILLISECONDS = 60 * 60 * 1_000;
+const COMPENSATION_1D_INTERVAL_MILLISECONDS = 24 * 60 * 60 * 1_000;
+
 interface IngestRunRow {
   readonly ingest_run_id: string;
   readonly provider_account_key: string;
@@ -81,6 +87,7 @@ interface IngestRunRow {
   readonly pages_received: bigint | number;
   readonly details_received: bigint | number;
   readonly failure_code: string | null;
+  readonly scan_kind: IngestScanKind;
 }
 
 interface CursorRow {
@@ -89,6 +96,7 @@ interface CursorRow {
   readonly window_end: string;
   readonly next_page_no: bigint | number | null;
   readonly page_size: bigint | number;
+  readonly scan_kind: IngestScanKind;
   readonly expected_total_size: bigint | number | null;
   readonly overlap_milliseconds: bigint | number;
   readonly complete: bigint | number;
@@ -96,6 +104,14 @@ interface CursorRow {
   readonly last_completed_at: bigint | number | null;
   readonly updated_at: bigint | number;
   readonly version: bigint | number;
+}
+
+interface CompensationStateRow {
+  readonly provider_account_key: string;
+  readonly next_10m_at: bigint | number;
+  readonly next_1h_at: bigint | number;
+  readonly next_1d_at: bigint | number;
+  readonly updated_at: bigint | number;
 }
 
 interface ProviderIdentityRow {
@@ -334,6 +350,7 @@ export class LedgerStore {
       input.overlapMilliseconds ?? LEDGER_CURSOR_DEFAULT_OVERLAP_MILLISECONDS;
     validateOverlapMilliseconds(overlapMilliseconds);
     const requestedNow = safeNow(input.now);
+    const scanKind = input.scanKind ?? "NORMAL";
 
     return this.#database.write((connection) => {
       const binding = readProviderIdentityBinding(connection, providerAccountKey);
@@ -352,6 +369,7 @@ export class LedgerStore {
           running.windowStart !== input.start ||
           running.windowEnd !== input.end ||
           running.pageSize !== input.pageSize ||
+          running.scanKind !== scanKind ||
           cursor === null ||
           cursor.windowStart !== input.start ||
           cursor.windowEnd !== input.end ||
@@ -369,16 +387,28 @@ export class LedgerStore {
         cursor?.updatedAt ?? 0,
         cursor?.lastCompletedAt ?? 0,
       );
+      // Once a window has started, resume its persisted scan semantics. This
+      // prevents a restart or segment split from changing compensation kind
+      // (or overlap) halfway through the same cursor.
+      const effectiveScanKind = cursor && !cursor.complete ? cursor.scanKind : scanKind;
       if (cursor === null) {
         const inserted = connection
           .prepare(
             `INSERT INTO ledger_cursors(
                provider_account_key, window_start, window_end, next_page_no,
-               page_size, expected_total_size, overlap_milliseconds, complete, last_event_occurred_at,
-               last_completed_at, updated_at, version
-             ) VALUES (?, ?, ?, 1, ?, NULL, ?, 0, NULL, NULL, ?, 1)`,
+               page_size, scan_kind, expected_total_size, overlap_milliseconds, complete,
+               last_event_occurred_at, last_completed_at, updated_at, version
+             ) VALUES (?, ?, ?, 1, ?, ?, NULL, ?, 0, NULL, NULL, ?, 1)`,
           )
-          .run(providerAccountKey, input.start, input.end, input.pageSize, overlapMilliseconds, now);
+          .run(
+            providerAccountKey,
+            input.start,
+            input.end,
+            input.pageSize,
+            effectiveScanKind,
+            overlapMilliseconds,
+            now,
+          );
         assertChangedOnce(inserted.changes, "ledger cursor insert");
       } else if (!cursor.complete) {
         if (
@@ -394,12 +424,20 @@ export class LedgerStore {
           .prepare(
             `UPDATE ledger_cursors
                 SET window_start = ?, window_end = ?, next_page_no = 1,
-                    page_size = ?, expected_total_size = NULL,
+                    page_size = ?, scan_kind = ?, expected_total_size = NULL,
                     overlap_milliseconds = ?, complete = 0,
                     updated_at = ?, version = version + 1
               WHERE provider_account_key = ?`,
           )
-          .run(input.start, input.end, input.pageSize, overlapMilliseconds, now, providerAccountKey);
+          .run(
+            input.start,
+            input.end,
+            input.pageSize,
+            effectiveScanKind,
+            overlapMilliseconds,
+            now,
+            providerAccountKey,
+          );
         assertChangedOnce(updated.changes, "ledger cursor restart");
       }
 
@@ -408,10 +446,18 @@ export class LedgerStore {
         .prepare(
           `INSERT INTO ingest_runs(
              ingest_run_id, provider_account_key, window_start, window_end,
-             page_size, status, started_at
-           ) VALUES (?, ?, ?, ?, ?, 'RUNNING', ?)`,
+             page_size, status, started_at, scan_kind
+           ) VALUES (?, ?, ?, ?, ?, 'RUNNING', ?, ?)`,
         )
-        .run(ingestRunId, providerAccountKey, input.start, input.end, input.pageSize, now);
+        .run(
+          ingestRunId,
+          providerAccountKey,
+          input.start,
+          input.end,
+          input.pageSize,
+          now,
+          effectiveScanKind,
+        );
       assertChangedOnce(inserted.changes, "ingest run insert");
       const rootSegmentId = randomUUID();
       const rootInserted = connection
@@ -651,6 +697,9 @@ export class LedgerStore {
         )
         .run(status, now, run.ingestRunId);
       assertChangedOnce(updated.changes, "ingest run completion");
+      if (status === "COMPLETED") {
+        advanceCompensationState(connection, run.providerAccountKey, run.scanKind, now);
+      }
       return requireRun(connection, run.ingestRunId);
     });
   }
@@ -724,6 +773,11 @@ export class LedgerStore {
   getCursor(providerAccountKey = "primary"): LedgerCursor | null {
     const account = normalizeProviderAccountKey(providerAccountKey);
     return this.#database.read((connection) => readCursor(connection, account));
+  }
+
+  getCompensationState(providerAccountKey = "primary"): LedgerCompensationState | null {
+    const account = normalizeProviderAccountKey(providerAccountKey);
+    return this.#database.read((connection) => readCompensationState(connection, account));
   }
 
   getRun(ingestRunId: string): IngestRun | null {
@@ -986,7 +1040,7 @@ export function bindProviderIdentityInTransaction(
 
 const INGEST_RUN_COLUMNS = `
   ingest_run_id, provider_account_key, window_start, window_end, page_size,
-  status, started_at, completed_at, pages_received, details_received, failure_code
+  scan_kind, status, started_at, completed_at, pages_received, details_received, failure_code
 `;
 
 const INGEST_SEGMENT_COLUMNS = `
@@ -1265,6 +1319,7 @@ function mapRun(row: IngestRunRow): IngestRun {
     windowStart: row.window_start,
     windowEnd: row.window_end,
     pageSize: toSafeInteger(row.page_size, "ingest page size"),
+    scanKind: row.scan_kind,
     status: row.status,
     startedAt: toSafeInteger(row.started_at, "ingest started-at"),
     completedAt: toNullableInteger(row.completed_at, "ingest completed-at"),
@@ -1278,7 +1333,7 @@ function readCursor(connection: DatabaseSync, providerAccountKey: string): Ledge
   const row = connection
     .prepare(
       `SELECT provider_account_key, window_start, window_end, next_page_no,
-              page_size, expected_total_size, overlap_milliseconds, complete, last_event_occurred_at,
+              page_size, scan_kind, expected_total_size, overlap_milliseconds, complete, last_event_occurred_at,
               last_completed_at, updated_at, version
          FROM ledger_cursors
         WHERE provider_account_key = ?`,
@@ -1300,6 +1355,7 @@ function mapCursor(row: CursorRow): LedgerCursor {
     windowEnd: row.window_end,
     nextPageNo: toNullableInteger(row.next_page_no, "ledger next page"),
     pageSize: toSafeInteger(row.page_size, "ledger page size"),
+    scanKind: row.scan_kind,
     expectedTotalSize: toNullableInteger(row.expected_total_size, "ledger expected total size"),
     overlapMilliseconds: toSafeInteger(row.overlap_milliseconds, "ledger overlap"),
     complete: Number(row.complete) === 1,
@@ -2672,6 +2728,97 @@ function completeSegmentRun(
     )
     .run(now, run.ingestRunId);
   assertChangedOnce(completed.changes, "ingest segment run completion");
+  // The compensation due state is part of the same write transaction as the
+  // cursor and run transition. A crash cannot publish a completed run while
+  // losing (or advancing) its durable sweep watermark.
+  advanceCompensationState(connection, run.providerAccountKey, run.scanKind, now);
+}
+
+function readCompensationState(
+  connection: DatabaseSync,
+  providerAccountKey: string,
+): LedgerCompensationState | null {
+  const row = connection.prepare(
+    `SELECT provider_account_key, next_10m_at, next_1h_at,
+            next_1d_at, updated_at
+       FROM ledger_compensation_state
+      WHERE provider_account_key = ?`,
+  ).get(providerAccountKey) as CompensationStateRow | undefined;
+  return row ? mapCompensationState(row) : null;
+}
+
+function mapCompensationState(row: CompensationStateRow): LedgerCompensationState {
+  return {
+    providerAccountKey: row.provider_account_key,
+    next10mAt: toSafeInteger(row.next_10m_at, "ledger 10-minute compensation due time"),
+    next1hAt: toSafeInteger(row.next_1h_at, "ledger hourly compensation due time"),
+    next1dAt: toSafeInteger(row.next_1d_at, "ledger daily compensation due time"),
+    updatedAt: toSafeInteger(row.updated_at, "ledger compensation state updated-at"),
+  };
+}
+
+function advanceCompensationState(
+  connection: DatabaseSync,
+  providerAccountKey: string,
+  scanKind: IngestScanKind,
+  now: number,
+): void {
+  const existing = readCompensationState(connection, providerAccountKey);
+  if (existing === null) {
+    const inserted = connection.prepare(
+      `INSERT INTO ledger_compensation_state(
+         provider_account_key, next_10m_at, next_1h_at, next_1d_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?)`,
+    ).run(
+      providerAccountKey,
+      nextCompensationDueAt(now, COMPENSATION_10M_INTERVAL_MILLISECONDS),
+      nextCompensationDueAt(now, COMPENSATION_1H_INTERVAL_MILLISECONDS),
+      nextCompensationDueAt(now, COMPENSATION_1D_INTERVAL_MILLISECONDS),
+      now,
+    );
+    assertChangedOnce(inserted.changes, "ledger compensation state insert");
+    return;
+  }
+
+  let next10mAt = existing.next10mAt;
+  let next1hAt = existing.next1hAt;
+  let next1dAt = existing.next1dAt;
+  switch (scanKind) {
+    case "COMPENSATION_10M":
+      next10mAt = nextCompensationDueAt(now, COMPENSATION_10M_INTERVAL_MILLISECONDS);
+      break;
+    case "COMPENSATION_1H":
+      // The hourly sweep contains the entire ten-minute sweep window, so one
+      // successful transaction proves both layers for their next intervals.
+      next1hAt = nextCompensationDueAt(now, COMPENSATION_1H_INTERVAL_MILLISECONDS);
+      next10mAt = nextCompensationDueAt(now, COMPENSATION_10M_INTERVAL_MILLISECONDS);
+      break;
+    case "COMPENSATION_1D":
+      // The daily sweep contains both shorter windows. Consume all three
+      // deadlines atomically, otherwise the scheduler would immediately run
+      // redundant 6-hour and 10-minute sweeps after a 7-day pass.
+      next1dAt = nextCompensationDueAt(now, COMPENSATION_1D_INTERVAL_MILLISECONDS);
+      next1hAt = nextCompensationDueAt(now, COMPENSATION_1H_INTERVAL_MILLISECONDS);
+      next10mAt = nextCompensationDueAt(now, COMPENSATION_10M_INTERVAL_MILLISECONDS);
+      break;
+    case "NORMAL":
+      // Normal scans do not consume compensation due times. In particular,
+      // a long catch-up must leave overdue sweeps due immediately afterwards.
+      break;
+  }
+  const updated = connection.prepare(
+    `UPDATE ledger_compensation_state
+        SET next_10m_at = ?, next_1h_at = ?, next_1d_at = ?, updated_at = ?
+      WHERE provider_account_key = ?`,
+  ).run(next10mAt, next1hAt, next1dAt, Math.max(existing.updatedAt, now), providerAccountKey);
+  assertChangedOnce(updated.changes, "ledger compensation state update");
+}
+
+function nextCompensationDueAt(now: number, interval: number): number {
+  if (now > Number.MAX_SAFE_INTEGER - interval) {
+    throw new RangeError("ledger compensation due time exceeds the safe integer range");
+  }
+  return now + interval;
 }
 
 function pageEvidence(page: RecordLedgerPageInput["page"]): RawPageEvidence {

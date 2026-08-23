@@ -4246,4 +4246,92 @@ export const migrations: readonly Migration[] = [
         CHECK (backup_keep_count BETWEEN 1 AND 365);
     `,
   },
+  {
+    version: 19,
+    name: "durable_ledger_compensation_state",
+    sql: `
+      ALTER TABLE ingest_runs ADD COLUMN scan_kind TEXT NOT NULL DEFAULT 'NORMAL'
+        CHECK (scan_kind IN ('NORMAL', 'COMPENSATION_10M', 'COMPENSATION_1H', 'COMPENSATION_1D'));
+
+      ALTER TABLE ledger_cursors ADD COLUMN scan_kind TEXT NOT NULL DEFAULT 'NORMAL'
+        CHECK (scan_kind IN ('NORMAL', 'COMPENSATION_10M', 'COMPENSATION_1H', 'COMPENSATION_1D'));
+
+      DROP TRIGGER ingest_runs_identity_immutable;
+
+      CREATE TRIGGER ingest_runs_identity_immutable
+      BEFORE UPDATE OF
+        ingest_run_id, provider_account_key, window_start, window_end,
+        page_size, scan_kind, started_at
+      ON ingest_runs
+      BEGIN
+        SELECT RAISE(ABORT, 'ingest run identity is immutable');
+      END;
+
+      CREATE TABLE ledger_compensation_state (
+        provider_account_key TEXT PRIMARY KEY REFERENCES provider_account_bindings(provider_account_key) CHECK (
+          length(provider_account_key) BETWEEN 1 AND 128 AND
+          provider_account_key GLOB '[A-Za-z0-9]*' AND
+          provider_account_key NOT GLOB '*[^A-Za-z0-9._:-]*'
+        ),
+        next_10m_at INTEGER NOT NULL CHECK (next_10m_at >= 0),
+        next_1h_at INTEGER NOT NULL CHECK (next_1h_at >= 0),
+        next_1d_at INTEGER NOT NULL CHECK (next_1d_at >= 0),
+        updated_at INTEGER NOT NULL CHECK (updated_at >= 0)
+      ) STRICT;
+
+      CREATE INDEX ledger_compensation_due_idx
+        ON ledger_compensation_state(next_10m_at, next_1h_at, next_1d_at);
+
+      CREATE TABLE ledger_compensation_state_migration_guard (
+        singleton_key INTEGER PRIMARY KEY CHECK (singleton_key = 1),
+        valid INTEGER NOT NULL CHECK (valid = 1)
+      ) STRICT;
+
+      INSERT INTO ledger_compensation_state_migration_guard(singleton_key, valid)
+      SELECT 1, CASE WHEN EXISTS (
+        SELECT 1
+          FROM system_metadata AS legacy
+         WHERE substr(legacy.key, 1, 23) = 'ledger_compensation_at:'
+           AND (
+             length(substr(legacy.key, 24)) NOT BETWEEN 1 AND 128 OR
+             instr(substr(legacy.key, 24), char(0)) != 0 OR
+             substr(legacy.key, 24) NOT GLOB '[A-Za-z0-9]*' OR
+             substr(legacy.key, 24) GLOB '*[^A-Za-z0-9._:-]*' OR
+             NOT (
+               legacy.value = '0' OR
+               (
+                 legacy.value GLOB '[1-9]*' AND
+                 legacy.value NOT GLOB '*[^0-9]*' AND
+                 (
+                   length(legacy.value) < 16 OR
+                   (length(legacy.value) = 16 AND legacy.value <= '9007199168340991')
+                 )
+               )
+             ) OR
+             NOT EXISTS (
+               SELECT 1
+                 FROM provider_account_bindings AS binding
+                WHERE binding.provider_account_key = substr(legacy.key, 24)
+             )
+           )
+      ) THEN 0 ELSE 1 END;
+
+      DROP TABLE ledger_compensation_state_migration_guard;
+
+      INSERT INTO ledger_compensation_state(
+        provider_account_key, next_10m_at, next_1h_at, next_1d_at, updated_at
+      )
+      SELECT
+        substr(legacy.key, 24),
+        CAST(legacy.value AS INTEGER) + 60000,
+        CAST(legacy.value AS INTEGER) + 3600000,
+        CAST(legacy.value AS INTEGER) + 86400000,
+        CAST(legacy.value AS INTEGER)
+        FROM system_metadata AS legacy
+       WHERE substr(legacy.key, 1, 23) = 'ledger_compensation_at:';
+
+      DELETE FROM system_metadata
+       WHERE substr(key, 1, 23) = 'ledger_compensation_at:';
+    `,
+  },
 ] as const;

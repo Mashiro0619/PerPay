@@ -318,6 +318,8 @@ jobs:
               image: ${PINNED_IMAGE}
             maintenance:
               image: ${PINNED_IMAGE}
+              environment:
+                PERPAY_MASTER_KEY: "1111111111111111111111111111111111111111111111111111111111111111"
           EOF
           compose() {
             docker compose --project-name "$project" \

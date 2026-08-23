@@ -13,7 +13,7 @@ import fs, {
 } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "node:test";
 
@@ -21,8 +21,11 @@ import { AppDatabase, sha256FileSync } from "../src/database/database.ts";
 import {
   clearStaleMaintenanceLock,
   createOperationalBackup,
+  clearStalePublicationLock,
   inspectMaintenanceLock,
+  inspectPublicationLock,
   listMigrationBackups,
+  publicationLockPath,
   restoreMigrationBackup,
   restoreOperationalBackup,
 } from "../src/database/maintenance.ts";
@@ -31,8 +34,10 @@ import {
   databaseMaintenanceLockPath,
 } from "../src/database/maintenance-lock.ts";
 import { DATABASE_COMPATIBILITY } from "../src/version.ts";
+import { RuntimeSettingsStore } from "../src/settings/store.ts";
 
 const directories: string[] = [];
+const TEST_MASTER_KEY = Buffer.alloc(32, 0x11);
 
 afterEach(() => {
   for (const directory of directories.splice(0)) {
@@ -41,10 +46,216 @@ afterEach(() => {
 });
 
 describe("database migration backup maintenance", () => {
+  it("exposes and clears a stale cross-volume publication lock", () => {
+    const backupDirectory = temporaryDirectory();
+    const now = Date.parse("2026-08-23T00:00:00.000Z");
+    const anchor = join(backupDirectory, ".perpay-source-publication");
+    const lock = acquireDatabaseMaintenanceLock(
+      anchor,
+      "publish-operational-backup",
+      now,
+    );
+    assert.equal(lock.path, publicationLockPath(backupDirectory));
+    assert.equal(inspectPublicationLock(backupDirectory, now).status, "active");
+    assert.throws(
+      () => clearStalePublicationLock({
+        backupDirectory,
+        lockToken: lock.token,
+        confirmNoMaintenanceProcess: true,
+        now: now + 1,
+      }),
+      /not older than the seven-hour safety interval/u,
+    );
+    const cleared = clearStalePublicationLock({
+      backupDirectory,
+      lockToken: lock.token,
+      confirmNoMaintenanceProcess: true,
+      now: now + 7 * 60 * 60 * 1_000 + 1,
+    });
+    assert.equal(cleared.token, lock.token);
+    assert.equal(inspectPublicationLock(backupDirectory, now).status, "missing");
+  });
+
+  it("clears an unreadable stale publication lock from the maintenance CLI", () => {
+    const backupDirectory = temporaryDirectory();
+    const lockPath = publicationLockPath(backupDirectory);
+    fs.writeFileSync(lockPath, "{", { mode: 0o600 });
+    const staleAt = new Date(Date.now() - 7 * 60 * 60 * 1_000 - 1_000);
+    fs.utimesSync(lockPath, staleAt, staleAt);
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--experimental-strip-types",
+        resolve("src/database/maintenance.ts"),
+        "clear-stale-publication-lock",
+        "--force-unreadable-lock",
+        "--confirm-no-maintenance-process",
+      ],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PERPAY_DATA_DIR: join(temporaryDirectory(), "missing-data-directory"),
+          PERPAY_BACKUP_DIR: backupDirectory,
+          PERPAY_MASTER_KEY: "not-a-valid-key",
+        },
+      },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(existsSync(lockPath), false);
+  });
+
+  it("clears an unreadable database maintenance lock from the maintenance CLI", async () => {
+    const directory = temporaryDirectory();
+    const databasePath = join(directory, "perpay.sqlite3");
+    const database = await openTestDatabase(databasePath);
+    database.close();
+    const lockPath = databaseMaintenanceLockPath(databasePath);
+    fs.writeFileSync(lockPath, "{", { mode: 0o600 });
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--experimental-strip-types",
+        resolve("src/database/maintenance.ts"),
+        "clear-stale-maintenance-lock",
+        "--force-unreadable-lock",
+        "--confirm-no-maintenance-process",
+      ],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PERPAY_DATA_DIR: directory,
+          PERPAY_BACKUP_DIR: temporaryDirectory(),
+          PERPAY_MASTER_KEY: "not-a-valid-key",
+        },
+      },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(existsSync(lockPath), false);
+  });
+
+  it("rejects an operational restore before replacement when the master key is wrong", async () => {
+    const directory = temporaryDirectory();
+    const databasePath = join(directory, "perpay.sqlite3");
+    const database = await openTestDatabase(databasePath);
+    const backup = await createOperationalBackup({ dataDirectory: directory });
+    database.close();
+
+    assert.throws(
+      () => restoreOperationalBackup({
+        dataDirectory: directory,
+        backupName: backup.name,
+        expectedSha256: backup.sha256,
+        confirmReplaceCurrentDatabase: true,
+        masterKey: Buffer.alloc(32, 0x22),
+      }),
+      /does not match this database/u,
+    );
+    assert.equal(existsSync(databasePath), true);
+    assert.equal(existsSync(databaseMaintenanceLockPath(databasePath)), false);
+  });
+
+  it("requires a deployment master key for every restore API", async () => {
+    const directory = temporaryDirectory();
+    const databasePath = join(directory, "perpay.sqlite3");
+    const database = await openTestDatabase(databasePath);
+    const backup = await createOperationalBackup({ dataDirectory: directory });
+    const migrationName =
+      "perpay.sqlite3.pre-migration-v" + DATABASE_COMPATIBILITY.maximum +
+      "-to-v" + (DATABASE_COMPATIBILITY.maximum + 1) + ".sqlite3";
+    await database.backupDetailed(join(directory, migrationName));
+    database.close();
+
+    assert.throws(
+      () => restoreOperationalBackup({
+        dataDirectory: directory,
+        backupName: backup.name,
+        expectedSha256: backup.sha256,
+        confirmReplaceCurrentDatabase: true,
+        masterKey: undefined as unknown as Uint8Array,
+      }),
+      /deployment master key is required/u,
+    );
+    assert.throws(
+      () => restoreMigrationBackup({
+        dataDirectory: directory,
+        backupName: migrationName,
+        confirmReplaceCurrentDatabase: true,
+        masterKey: undefined as unknown as Uint8Array,
+      }),
+      /deployment master key is required/u,
+    );
+    assert.equal(existsSync(databasePath), true);
+    assert.equal(existsSync(databaseMaintenanceLockPath(databasePath)), false);
+  });
+
+  it("loads the migration restore key from the mounted secrets directory", async () => {
+    const directory = temporaryDirectory();
+    const databasePath = join(directory, "perpay.sqlite3");
+    const backupName =
+      "perpay.sqlite3.pre-migration-v" + DATABASE_COMPATIBILITY.maximum +
+      "-to-v" + (DATABASE_COMPATIBILITY.maximum + 1) + ".sqlite3";
+    const database = await openTestDatabase(databasePath);
+    try {
+      await database.backupDetailed(join(directory, backupName));
+      database.write((connection) => {
+        connection.prepare(
+          "INSERT INTO system_metadata(key, value, updated_at) VALUES ('migration_cli_restore_marker', 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+        ).run();
+      });
+    } finally {
+      database.close();
+    }
+    const secretsDirectory = join(directory, "secrets");
+    fs.mkdirSync(secretsDirectory, { mode: 0o700 });
+    fs.writeFileSync(join(secretsDirectory, "master-key"), `${TEST_MASTER_KEY.toString("hex")}\n`, {
+      mode: 0o600,
+    });
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--experimental-strip-types",
+        resolve("src/database/maintenance.ts"),
+        "restore-migration-backup",
+        backupName,
+        "--confirm-replace-current-database",
+      ],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PERPAY_DATA_DIR: directory,
+          PERPAY_BACKUP_DIR: temporaryDirectory(),
+          PERPAY_SECRETS_DIR: secretsDirectory,
+          PERPAY_MASTER_KEY: undefined,
+        },
+      },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    const restored = new DatabaseSync(databasePath, { readOnly: true, readBigInts: true });
+    try {
+      assert.equal(
+        restored.prepare(
+          "SELECT value FROM system_metadata WHERE key = 'migration_cli_restore_marker'",
+        ).get(),
+        undefined,
+      );
+    } finally {
+      restored.close();
+    }
+  });
+
   it("creates a self-contained current-state backup while the application is running", async () => {
     const directory = temporaryDirectory();
     const databasePath = join(directory, "perpay.sqlite3");
-    const database = await AppDatabase.open(databasePath);
+    const database = await openTestDatabase(databasePath);
     try {
       database.write((connection) => {
         connection.prepare(
@@ -83,7 +294,7 @@ describe("database migration backup maintenance", () => {
   it("rejects and removes an unpublished online backup if restore replaces the database", async () => {
     const directory = temporaryDirectory();
     const databasePath = join(directory, "perpay.sqlite3");
-    const database = await AppDatabase.open(databasePath);
+    const database = await openTestDatabase(databasePath);
     database.write((connection) => {
       connection.prepare(
         "INSERT INTO system_metadata(key, value, updated_at) VALUES ('replacement_marker', 'backup-state', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
@@ -117,6 +328,7 @@ describe("database migration backup maintenance", () => {
           backupName: restoreSource.name,
           expectedSha256: restoreSource.sha256,
           confirmReplaceCurrentDatabase: true,
+          masterKey: TEST_MASTER_KEY,
         });
       }
       return Reflect.apply(originalOpenSync, fs, arguments_);
@@ -156,7 +368,7 @@ describe("database migration backup maintenance", () => {
 
   it("restores a staged current-state backup into a fresh data directory", async () => {
     const sourceDirectory = temporaryDirectory();
-    const sourceDatabase = await AppDatabase.open(join(sourceDirectory, "perpay.sqlite3"));
+    const sourceDatabase = await openTestDatabase(join(sourceDirectory, "perpay.sqlite3"));
     let backup: Awaited<ReturnType<typeof createOperationalBackup>>;
     try {
       sourceDatabase.write((connection) => {
@@ -179,6 +391,7 @@ describe("database migration backup maintenance", () => {
       backupName: backup.name,
       expectedSha256: backup.sha256,
       confirmReplaceCurrentDatabase: true,
+      masterKey: TEST_MASTER_KEY,
     });
 
     assert.deepEqual(result, {
@@ -217,13 +430,13 @@ describe("database migration backup maintenance", () => {
       restored.close();
     }
 
-    const reopened = await AppDatabase.open(join(targetDirectory, "perpay.sqlite3"));
+    const reopened = await openTestDatabase(join(targetDirectory, "perpay.sqlite3"));
     reopened.close();
   });
 
   it("refuses a fresh restore beside orphaned SQLite sidecars and preserves recovery state", async () => {
     const sourceDirectory = temporaryDirectory();
-    const sourceDatabase = await AppDatabase.open(join(sourceDirectory, "perpay.sqlite3"));
+    const sourceDatabase = await openTestDatabase(join(sourceDirectory, "perpay.sqlite3"));
     let backup: Awaited<ReturnType<typeof createOperationalBackup>>;
     try {
       backup = await createOperationalBackup({ dataDirectory: sourceDirectory });
@@ -242,6 +455,7 @@ describe("database migration backup maintenance", () => {
         backupName: backup.name,
         expectedSha256: backup.sha256,
         confirmReplaceCurrentDatabase: true,
+        masterKey: TEST_MASTER_KEY,
       }),
       /fresh restore target is not self-contained because -wal exists/,
     );
@@ -261,6 +475,7 @@ describe("database migration backup maintenance", () => {
       backupName: backup.name,
       expectedSha256: backup.sha256,
       confirmReplaceCurrentDatabase: true,
+      masterKey: TEST_MASTER_KEY,
     });
     assert.equal(result.quarantinedDatabaseName, null);
     assert.equal(lstatSync(databasePath).nlink, 1);
@@ -268,7 +483,7 @@ describe("database migration backup maintenance", () => {
 
   it("refuses a live target and preserves the old database when later replacing it", async () => {
     const sourceDirectory = temporaryDirectory();
-    const sourceDatabase = await AppDatabase.open(join(sourceDirectory, "perpay.sqlite3"));
+    const sourceDatabase = await openTestDatabase(join(sourceDirectory, "perpay.sqlite3"));
     let backup: Awaited<ReturnType<typeof createOperationalBackup>>;
     try {
       sourceDatabase.write((connection) => {
@@ -283,7 +498,7 @@ describe("database migration backup maintenance", () => {
 
     const targetDirectory = temporaryDirectory();
     const targetPath = join(targetDirectory, "perpay.sqlite3");
-    const targetDatabase = await AppDatabase.open(targetPath);
+    const targetDatabase = await openTestDatabase(targetPath);
     targetDatabase.write((connection) => {
       connection.prepare(
         "INSERT INTO system_metadata(key, value, updated_at) VALUES ('pre_restore_marker', 'target-state', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
@@ -300,6 +515,7 @@ describe("database migration backup maintenance", () => {
         backupName: backup.name,
         expectedSha256: backup.sha256,
         confirmReplaceCurrentDatabase: true,
+        masterKey: TEST_MASTER_KEY,
       }),
       /still owned/,
     );
@@ -317,6 +533,7 @@ describe("database migration backup maintenance", () => {
       backupName: backup.name,
       expectedSha256: backup.sha256,
       confirmReplaceCurrentDatabase: true,
+      masterKey: TEST_MASTER_KEY,
     });
     assert.notEqual(result.quarantinedDatabaseName, null);
     assert.equal(existsSync(join(targetDirectory, result.quarantinedDatabaseName ?? "")), true);
@@ -355,7 +572,7 @@ describe("database migration backup maintenance", () => {
 
   it("requires an exact backup basename, SHA-256, ordinary file, and no sidecars", async () => {
     const sourceDirectory = temporaryDirectory();
-    const sourceDatabase = await AppDatabase.open(join(sourceDirectory, "perpay.sqlite3"));
+    const sourceDatabase = await openTestDatabase(join(sourceDirectory, "perpay.sqlite3"));
     let backup: Awaited<ReturnType<typeof createOperationalBackup>>;
     try {
       backup = await createOperationalBackup({ dataDirectory: sourceDirectory });
@@ -373,6 +590,7 @@ describe("database migration backup maintenance", () => {
         backupName: backup.name,
         expectedSha256: backup.sha256,
         confirmReplaceCurrentDatabase: false,
+        masterKey: TEST_MASTER_KEY,
       }),
       /explicit replacement confirmation/,
     );
@@ -382,6 +600,7 @@ describe("database migration backup maintenance", () => {
         backupName: `../${backup.name}`,
         expectedSha256: backup.sha256,
         confirmReplaceCurrentDatabase: true,
+        masterKey: TEST_MASTER_KEY,
       }),
       /name is invalid/,
     );
@@ -391,6 +610,7 @@ describe("database migration backup maintenance", () => {
         backupName: backup.name,
         expectedSha256: backup.sha256.toUpperCase(),
         confirmReplaceCurrentDatabase: true,
+        masterKey: TEST_MASTER_KEY,
       }),
       /64 lowercase hexadecimal/,
     );
@@ -400,6 +620,7 @@ describe("database migration backup maintenance", () => {
         backupName: backup.name,
         expectedSha256: "0".repeat(64),
         confirmReplaceCurrentDatabase: true,
+        masterKey: TEST_MASTER_KEY,
       }),
       /does not match/,
     );
@@ -413,6 +634,7 @@ describe("database migration backup maintenance", () => {
         backupName: backup.name,
         expectedSha256: backup.sha256,
         confirmReplaceCurrentDatabase: true,
+        masterKey: TEST_MASTER_KEY,
       }),
       /not self-contained/,
     );
@@ -430,6 +652,7 @@ describe("database migration backup maintenance", () => {
         backupName: backup.name,
         expectedSha256: sha256FileSync(backupPath),
         confirmReplaceCurrentDatabase: true,
+        masterKey: TEST_MASTER_KEY,
       }),
       /failed application integrity checks/,
     );
@@ -446,6 +669,7 @@ describe("database migration backup maintenance", () => {
         backupName: linkedName,
         expectedSha256: backup.sha256,
         confirmReplaceCurrentDatabase: true,
+        masterKey: TEST_MASTER_KEY,
       }),
       /ordinary file with one link/,
     );
@@ -456,7 +680,7 @@ describe("database migration backup maintenance", () => {
     const databasePath = join(directory, "perpay.sqlite3");
     const fromVersion = DATABASE_COMPATIBILITY.maximum;
     const backupName = `perpay.sqlite3.pre-migration-v${fromVersion}-to-v${fromVersion + 1}.sqlite3`;
-    const database = await AppDatabase.open(databasePath);
+    const database = await openTestDatabase(databasePath);
     try {
       await database.backupDetailed(join(directory, backupName));
       database.write((connection) => {
@@ -472,6 +696,7 @@ describe("database migration backup maintenance", () => {
       dataDirectory: directory,
       backupName,
       confirmReplaceCurrentDatabase: true,
+      masterKey: TEST_MASTER_KEY,
     });
 
     assert.equal(result.backupName, backupName);
@@ -510,8 +735,234 @@ describe("database migration backup maintenance", () => {
       quarantined.close();
     }
 
-    const reopened = await AppDatabase.open(databasePath);
+    const reopened = await openTestDatabase(databasePath);
     reopened.close();
+  });
+
+  it("rejects a migration backup replaced after source preflight", async () => {
+    const directory = temporaryDirectory();
+    const databasePath = join(directory, "perpay.sqlite3");
+    const fromVersion = DATABASE_COMPATIBILITY.maximum;
+    const backupName = `perpay.sqlite3.pre-migration-v${fromVersion}-to-v${fromVersion + 1}.sqlite3`;
+    const backupPath = join(directory, backupName);
+    const database = await openTestDatabase(databasePath);
+    try {
+      await database.backupDetailed(backupPath);
+      database.write((connection) => {
+        connection.prepare(
+          "INSERT INTO system_metadata(key, value, updated_at) VALUES ('migration_source_race_target_marker', 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+        ).run();
+      });
+    } finally {
+      database.close();
+    }
+
+    const foreignDirectory = temporaryDirectory();
+    const foreignDatabasePath = join(foreignDirectory, "perpay.sqlite3");
+    const foreignBackupPath = join(foreignDirectory, "replacement.sqlite3");
+    const foreignDatabase = await AppDatabase.open(foreignDatabasePath);
+    try {
+      new RuntimeSettingsStore(foreignDatabase, Buffer.alloc(32, 0x22)).initialize();
+      await foreignDatabase.backupDetailed(foreignBackupPath);
+    } finally {
+      foreignDatabase.close();
+    }
+    const replacementStaging = join(directory, ".migration-source-replacement.tmp");
+    copyFileSync(foreignBackupPath, replacementStaging);
+
+    const lockPath = databaseMaintenanceLockPath(databasePath);
+    const originalOpenSync = fs.openSync;
+    let sourceReplaced = false;
+    const hookedOpenSync = ((...arguments_: Parameters<typeof fs.openSync>) => {
+      const requestedPath = arguments_[0];
+      if (
+        !sourceReplaced &&
+        typeof requestedPath === "string" &&
+        resolve(requestedPath) === lockPath &&
+        arguments_[1] === "wx"
+      ) {
+        fs.renameSync(replacementStaging, backupPath);
+        sourceReplaced = true;
+      }
+      return Reflect.apply(originalOpenSync, fs, arguments_);
+    }) as typeof fs.openSync;
+    assert.equal(Reflect.set(fs, "openSync", hookedOpenSync), true);
+    syncBuiltinESMExports();
+    try {
+      assert.throws(
+        () => restoreMigrationBackup({
+          dataDirectory: directory,
+          backupName,
+          confirmReplaceCurrentDatabase: true,
+          masterKey: TEST_MASTER_KEY,
+        }),
+        /migration backup changed after source preflight/u,
+      );
+    } finally {
+      assert.equal(Reflect.set(fs, "openSync", originalOpenSync), true);
+      syncBuiltinESMExports();
+    }
+
+    assert.equal(sourceReplaced, true);
+    assert.equal(existsSync(lockPath), false);
+    const retained = new DatabaseSync(databasePath, { readOnly: true, readBigInts: true });
+    try {
+      assert.equal(
+        (retained.prepare(
+          "SELECT value FROM system_metadata WHERE key = 'migration_source_race_target_marker'",
+        ).get() as { value: string }).value,
+        "active",
+      );
+    } finally {
+      retained.close();
+    }
+  });
+
+  it("does not trust a migration restore target replaced while preparing its lease", async () => {
+    const directory = temporaryDirectory();
+    const databasePath = join(directory, "perpay.sqlite3");
+    const fromVersion = DATABASE_COMPATIBILITY.maximum;
+    const backupName = `perpay.sqlite3.pre-migration-v${fromVersion}-to-v${fromVersion + 1}.sqlite3`;
+    const backupPath = join(directory, backupName);
+    const database = await openTestDatabase(databasePath);
+    try {
+      await database.backupDetailed(backupPath);
+    } finally {
+      database.close();
+    }
+
+    const replacementPath = join(directory, ".migration-preparation-target-replacement.tmp");
+    const originalLstatSync = fs.lstatSync;
+    let targetLstatCalls = 0;
+    let targetReplaced = false;
+    const hookedLstatSync = ((...arguments_: Parameters<typeof fs.lstatSync>) => {
+      const requestedPath = arguments_[0];
+      if (typeof requestedPath === "string" && resolve(requestedPath) === databasePath) {
+        targetLstatCalls += 1;
+        if (!targetReplaced && targetLstatCalls === 3) {
+          copyFileSync(databasePath, replacementPath);
+          const replacement = new DatabaseSync(replacementPath, { readBigInts: true });
+          try {
+            replacement.prepare(
+              "INSERT INTO system_metadata(key, value, updated_at) VALUES ('migration_preparation_race_marker', 'replacement', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+            ).run();
+          } finally {
+            replacement.close();
+          }
+          fs.renameSync(replacementPath, databasePath);
+          targetReplaced = true;
+        }
+      }
+      return Reflect.apply(originalLstatSync, fs, arguments_);
+    }) as typeof fs.lstatSync;
+    assert.equal(Reflect.set(fs, "lstatSync", hookedLstatSync), true);
+    syncBuiltinESMExports();
+    try {
+      assert.throws(
+        () => restoreMigrationBackup({
+          dataDirectory: directory,
+          backupName,
+          confirmReplaceCurrentDatabase: true,
+          masterKey: TEST_MASTER_KEY,
+        }),
+        /application database path identity changed while the database restore was being prepared/u,
+      );
+    } finally {
+      assert.equal(Reflect.set(fs, "lstatSync", originalLstatSync), true);
+      syncBuiltinESMExports();
+    }
+
+    assert.equal(targetReplaced, true);
+    assert.equal(existsSync(databaseMaintenanceLockPath(databasePath)), false);
+    const replacement = new DatabaseSync(databasePath, { readOnly: true, readBigInts: true });
+    try {
+      assert.equal(
+        (replacement.prepare(
+          "SELECT value FROM system_metadata WHERE key = 'migration_preparation_race_marker'",
+        ).get() as { value: string }).value,
+        "replacement",
+      );
+    } finally {
+      replacement.close();
+    }
+  });
+
+  it("does not overwrite a migration restore target replaced after quarantine", async () => {
+    const directory = temporaryDirectory();
+    const databasePath = join(directory, "perpay.sqlite3");
+    const fromVersion = DATABASE_COMPATIBILITY.maximum;
+    const backupName = `perpay.sqlite3.pre-migration-v${fromVersion}-to-v${fromVersion + 1}.sqlite3`;
+    const backupPath = join(directory, backupName);
+    const database = await openTestDatabase(databasePath);
+    try {
+      await database.backupDetailed(backupPath);
+      database.write((connection) => {
+        connection.prepare(
+          "INSERT INTO system_metadata(key, value, updated_at) VALUES ('migration_target_race_original_marker', 'original', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+        ).run();
+      });
+    } finally {
+      database.close();
+    }
+
+    const replacementPath = join(directory, ".migration-target-replacement.tmp");
+    const originalRenameSync = fs.renameSync;
+    let targetReplaced = false;
+    const hookedRenameSync = ((...arguments_: Parameters<typeof fs.renameSync>) => {
+      const result = Reflect.apply(originalRenameSync, fs, arguments_);
+      const sourcePath = arguments_[0];
+      const destinationPath = arguments_[1];
+      if (
+        !targetReplaced &&
+        typeof sourcePath === "string" &&
+        typeof destinationPath === "string" &&
+        sourcePath.endsWith(".staging") &&
+        basename(destinationPath).startsWith("perpay.sqlite3.before-restore-")
+      ) {
+        copyFileSync(databasePath, replacementPath);
+        const replacement = new DatabaseSync(replacementPath, { readBigInts: true });
+        try {
+          replacement.prepare(
+            "INSERT INTO system_metadata(key, value, updated_at) VALUES ('migration_target_race_replacement_marker', 'replacement', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+          ).run();
+        } finally {
+          replacement.close();
+        }
+        Reflect.apply(originalRenameSync, fs, [replacementPath, databasePath]);
+        targetReplaced = true;
+      }
+      return result;
+    }) as typeof fs.renameSync;
+    assert.equal(Reflect.set(fs, "renameSync", hookedRenameSync), true);
+    syncBuiltinESMExports();
+    try {
+      assert.throws(
+        () => restoreMigrationBackup({
+          dataDirectory: directory,
+          backupName,
+          confirmReplaceCurrentDatabase: true,
+          masterKey: TEST_MASTER_KEY,
+        }),
+        /application database changed while it was being copied/u,
+      );
+    } finally {
+      assert.equal(Reflect.set(fs, "renameSync", originalRenameSync), true);
+      syncBuiltinESMExports();
+    }
+
+    assert.equal(targetReplaced, true);
+    assert.equal(existsSync(databaseMaintenanceLockPath(databasePath)), false);
+    const replacement = new DatabaseSync(databasePath, { readOnly: true, readBigInts: true });
+    try {
+      assert.equal(
+        (replacement.prepare(
+          "SELECT value FROM system_metadata WHERE key = 'migration_target_race_replacement_marker'",
+        ).get() as { value: string }).value,
+        "replacement",
+      );
+    } finally {
+      replacement.close();
+    }
   });
 
   it("refuses restore while the application still owns the database", async () => {
@@ -519,7 +970,7 @@ describe("database migration backup maintenance", () => {
     const databasePath = join(directory, "perpay.sqlite3");
     const fromVersion = DATABASE_COMPATIBILITY.maximum;
     const backupName = `perpay.sqlite3.pre-migration-v${fromVersion}-to-v${fromVersion + 1}.sqlite3`;
-    const database = await AppDatabase.open(databasePath);
+    const database = await openTestDatabase(databasePath);
     try {
       await database.backupDetailed(join(directory, backupName));
       assert.throws(
@@ -527,6 +978,7 @@ describe("database migration backup maintenance", () => {
           dataDirectory: directory,
           backupName,
           confirmReplaceCurrentDatabase: true,
+          masterKey: TEST_MASTER_KEY,
         }),
         /still owned/,
       );
@@ -539,7 +991,7 @@ describe("database migration backup maintenance", () => {
     const directory = temporaryDirectory();
     const databasePath = join(directory, "perpay.sqlite3");
     const backupName = "perpay.sqlite3.pre-migration-v1-to-v2.sqlite3";
-    const database = await AppDatabase.open(databasePath);
+    const database = await openTestDatabase(databasePath);
     try {
       await database.backupDetailed(join(directory, backupName));
     } finally {
@@ -551,6 +1003,7 @@ describe("database migration backup maintenance", () => {
         dataDirectory: directory,
         backupName,
         confirmReplaceCurrentDatabase: true,
+        masterKey: TEST_MASTER_KEY,
       }),
       /schema does not match/,
     );
@@ -563,6 +1016,7 @@ describe("database migration backup maintenance", () => {
         dataDirectory: directory,
         backupName: "../perpay.sqlite3.pre-migration-v1-to-v2.sqlite3",
         confirmReplaceCurrentDatabase: true,
+        masterKey: TEST_MASTER_KEY,
       }),
       /name is invalid/,
     );
@@ -575,6 +1029,7 @@ describe("database migration backup maintenance", () => {
         dataDirectory: directory,
         backupName: "perpay.sqlite3.pre-migration-v1-to-v2.sqlite3",
         confirmReplaceCurrentDatabase: false,
+        masterKey: TEST_MASTER_KEY,
       }),
       /explicit replacement confirmation/,
     );
@@ -586,7 +1041,7 @@ describe("database migration backup maintenance", () => {
     const fromVersion = DATABASE_COMPATIBILITY.maximum;
     const backupName = `perpay.sqlite3.pre-migration-v${fromVersion}-to-v${fromVersion + 1}.sqlite3`;
     const backupPath = join(directory, backupName);
-    const database = await AppDatabase.open(databasePath);
+    const database = await openTestDatabase(databasePath);
     try {
       await database.backupDetailed(backupPath);
     } finally {
@@ -605,6 +1060,7 @@ describe("database migration backup maintenance", () => {
           dataDirectory: directory,
           backupName,
           confirmReplaceCurrentDatabase: true,
+          masterKey: TEST_MASTER_KEY,
         }),
         /not self-contained/,
       );
@@ -618,7 +1074,7 @@ describe("database migration backup maintenance", () => {
     const databasePath = join(directory, "perpay.sqlite3");
     const fromVersion = DATABASE_COMPATIBILITY.maximum;
     const backupName = `perpay.sqlite3.pre-migration-v${fromVersion}-to-v${fromVersion + 1}.sqlite3`;
-    const database = await AppDatabase.open(databasePath);
+    const database = await openTestDatabase(databasePath);
     database.close();
 
     const forged = new DatabaseSync(join(directory, backupName));
@@ -637,6 +1093,7 @@ describe("database migration backup maintenance", () => {
         dataDirectory: directory,
         backupName,
         confirmReplaceCurrentDatabase: true,
+        masterKey: TEST_MASTER_KEY,
       }),
       /application integrity checks/,
     );
@@ -645,27 +1102,27 @@ describe("database migration backup maintenance", () => {
   it("prevents application startup while a database maintenance lock is held", async () => {
     const directory = temporaryDirectory();
     const databasePath = join(directory, "perpay.sqlite3");
-    const database = await AppDatabase.open(databasePath);
+    const database = await openTestDatabase(databasePath);
     database.close();
 
     const lock = acquireDatabaseMaintenanceLock(databasePath, "test-restore", Date.now());
     try {
       await assert.rejects(
-        () => AppDatabase.open(databasePath),
+        () => openTestDatabase(databasePath),
         /database maintenance is in progress/,
       );
     } finally {
       lock.release();
     }
 
-    const reopened = await AppDatabase.open(databasePath);
+    const reopened = await openTestDatabase(databasePath);
     reopened.close();
   });
 
   it("makes an already open application fail closed while maintenance is pending", async () => {
     const directory = temporaryDirectory();
     const databasePath = join(directory, "perpay.sqlite3");
-    const database = await AppDatabase.open(databasePath);
+    const database = await openTestDatabase(databasePath);
     const lock = acquireDatabaseMaintenanceLock(databasePath, "test-concurrent-restore", Date.now());
     try {
       assert.throws(
@@ -687,7 +1144,7 @@ describe("database migration backup maintenance", () => {
   it("reports not ready as soon as a maintenance lock is created", async () => {
     const directory = temporaryDirectory();
     const databasePath = join(directory, "perpay.sqlite3");
-    const database = await AppDatabase.open(databasePath);
+    const database = await openTestDatabase(databasePath);
     const lock = acquireDatabaseMaintenanceLock(databasePath, "test-health-lock", Date.now());
     try {
       // The maintenance workflow claims its persisted lease only after it has
@@ -705,7 +1162,7 @@ describe("database migration backup maintenance", () => {
   it("clears a stale maintenance lock only with its exact token and no live app lease", async () => {
     const directory = temporaryDirectory();
     const databasePath = join(directory, "perpay.sqlite3");
-    const database = await AppDatabase.open(databasePath);
+    const database = await openTestDatabase(databasePath);
     database.close();
 
     const lock = acquireDatabaseMaintenanceLock(databasePath, "interrupted-restore", Date.now());
@@ -725,13 +1182,13 @@ describe("database migration backup maintenance", () => {
     });
     assert.equal(cleared.token, lock.token);
 
-    const reopened = await AppDatabase.open(databasePath);
+    const reopened = await openTestDatabase(databasePath);
     reopened.close();
   });
 
   it("strictly finalizes the two-link state left by an interrupted fresh restore", async () => {
     const sourceDirectory = temporaryDirectory();
-    const sourceDatabase = await AppDatabase.open(join(sourceDirectory, "perpay.sqlite3"));
+    const sourceDatabase = await openTestDatabase(join(sourceDirectory, "perpay.sqlite3"));
     let backup: Awaited<ReturnType<typeof createOperationalBackup>>;
     try {
       backup = await createOperationalBackup({ dataDirectory: sourceDirectory });
@@ -795,14 +1252,14 @@ describe("database migration backup maintenance", () => {
     assert.equal(existsSync(databaseMaintenanceLockPath(databasePath)), false);
     assert.equal(lstatSync(backupPath).nlink, 1);
 
-    const reopened = await AppDatabase.open(databasePath);
+    const reopened = await openTestDatabase(databasePath);
     reopened.close();
   });
 
   it("requires an explicit force flag before abandoning a live maintenance lease", async () => {
     const directory = temporaryDirectory();
     const databasePath = join(directory, "perpay.sqlite3");
-    const database = await AppDatabase.open(databasePath);
+    const database = await openTestDatabase(databasePath);
     database.close();
 
     const lock = acquireDatabaseMaintenanceLock(databasePath, "interrupted-restore", Date.now());
@@ -836,14 +1293,14 @@ describe("database migration backup maintenance", () => {
     });
     assert.equal(cleared.token, lock.token);
 
-    const reopened = await AppDatabase.open(databasePath);
+    const reopened = await openTestDatabase(databasePath);
     reopened.close();
   });
 
   it("does not let force-abandon override a live application lease", async () => {
     const directory = temporaryDirectory();
     const databasePath = join(directory, "perpay.sqlite3");
-    const database = await AppDatabase.open(databasePath);
+    const database = await openTestDatabase(databasePath);
     const lock = acquireDatabaseMaintenanceLock(databasePath, "unsafe-clear", Date.now());
     try {
       assert.throws(
@@ -865,7 +1322,7 @@ describe("database migration backup maintenance", () => {
   it("provides an explicit recovery path for a lock whose record was never written", async () => {
     const directory = temporaryDirectory();
     const databasePath = join(directory, "perpay.sqlite3");
-    const database = await AppDatabase.open(databasePath);
+    const database = await openTestDatabase(databasePath);
     database.close();
 
     const lockPath = databaseMaintenanceLockPath(databasePath);
@@ -879,7 +1336,7 @@ describe("database migration backup maintenance", () => {
     });
     assert.equal(result.operation, "unreadable-lock-cleared");
 
-    const reopened = await AppDatabase.open(databasePath);
+    const reopened = await openTestDatabase(databasePath);
     reopened.close();
   });
 
@@ -913,6 +1370,12 @@ describe("database migration backup maintenance", () => {
     }
   });
 });
+
+async function openTestDatabase(path: string): Promise<AppDatabase> {
+  const database = await AppDatabase.open(path);
+  new RuntimeSettingsStore(database, TEST_MASTER_KEY).initialize();
+  return database;
+}
 
 function temporaryDirectory(): string {
   const directory = mkdtempSync(join(tmpdir(), "perpay-maintenance-"));

@@ -159,6 +159,61 @@ const LEGACY_PROVIDER_ACCOUNT_BINDINGS_NO_DELETE_SQL = migrationObjectSql(
 );
 
 describe("database recovery boundaries", () => {
+  it("migrates valid legacy compensation watermarks into durable per-account deadlines", async () => {
+    await withDirectory("perpay-v18-compensation-watermark-", async (directory) => {
+      const databasePath = join(directory, "database.sqlite3");
+      const watermark = 1_800_000_000_000;
+      await createVersionEighteenCompensationDatabase(
+        databasePath,
+        "ledger_compensation_at:primary",
+        String(watermark),
+      );
+
+      const upgraded = await AppDatabase.open(databasePath);
+      try {
+        const state = upgraded.read((connection) => connection.prepare(
+          `SELECT next_10m_at, next_1h_at, next_1d_at, updated_at
+             FROM ledger_compensation_state
+            WHERE provider_account_key = 'primary'`,
+        ).get() as Record<string, bigint | number>);
+        assert.deepEqual(
+          Object.fromEntries(Object.entries(state).map(([key, value]) => [key, Number(value)])),
+          {
+            next_10m_at: watermark + 60_000,
+            next_1h_at: watermark + 60 * 60 * 1_000,
+            next_1d_at: watermark + 24 * 60 * 60 * 1_000,
+            updated_at: watermark,
+          },
+        );
+        assert.equal(
+          upgraded.read((connection) => Number((connection.prepare(
+            "SELECT COUNT(*) AS count FROM system_metadata WHERE key = 'ledger_compensation_at:primary'",
+          ).get() as { count: bigint | number }).count)),
+          0,
+        );
+        assert.equal(upgraded.integrityCheck().ok, true);
+      } finally {
+        upgraded.close();
+      }
+    });
+  });
+
+  it("rejects malformed or unbound legacy compensation watermarks", async () => {
+    for (const fixture of [
+      { suffix: "bad-value", key: "ledger_compensation_at:primary", value: "01" },
+      { suffix: "unknown-account", key: "ledger_compensation_at:unknown", value: "1800000000000" },
+    ]) {
+      await withDirectory(`perpay-v18-compensation-${fixture.suffix}-`, async (directory) => {
+        const databasePath = join(directory, "database.sqlite3");
+        await createVersionEighteenCompensationDatabase(databasePath, fixture.key, fixture.value);
+        await assert.rejects(
+          () => AppDatabase.open(databasePath),
+          /database migration 19 \(durable_ledger_compensation_state\) failed/,
+        );
+      });
+    }
+  });
+
   it("refuses to invent operation history for a terminal schema 12 ledger conflict", async () => {
     await withDirectory("perpay-schema-12-terminal-conflict-", async (directory) => {
       const databasePath = join(directory, "database.sqlite3");
@@ -822,6 +877,9 @@ describe("database recovery boundaries", () => {
       });
       try {
         legacy.exec(`
+          DROP INDEX ledger_compensation_due_idx;
+          DROP TABLE ledger_compensation_state;
+
           DROP TRIGGER payment_orders_product_metadata_immutable;
           DROP TRIGGER payment_orders_product_metadata_insert_guard;
           DROP TRIGGER payment_orders_return_url_immutable;
@@ -966,6 +1024,12 @@ describe("database recovery boundaries", () => {
           DROP TABLE provider_account_bindings_v14;
           ${LEGACY_PROVIDER_ACCOUNT_BINDINGS_NO_UPDATE_SQL};
           ${LEGACY_PROVIDER_ACCOUNT_BINDINGS_NO_DELETE_SQL};
+
+          DROP TRIGGER ingest_runs_identity_immutable;
+          ${migrationObjectSql(4, "trigger", "ingest_runs_identity_immutable")};
+
+          ALTER TABLE ingest_runs DROP COLUMN scan_kind;
+          ALTER TABLE ledger_cursors DROP COLUMN scan_kind;
         `);
         legacy.prepare("DELETE FROM schema_migrations WHERE version >= 10").run();
         legacy.prepare(
@@ -1332,6 +1396,42 @@ async function withDirectory(
     await operation(directory);
   } finally {
     rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+async function createVersionEighteenCompensationDatabase(
+  databasePath: string,
+  legacyKey: string,
+  legacyValue: string,
+): Promise<void> {
+  const current = await AppDatabase.open(databasePath);
+  try {
+    new LedgerStore(current).bindProviderIdentity(PROVIDER_IDENTITY, 1_800_000_000_000);
+  } finally {
+    current.close();
+  }
+
+  const legacy = new DatabaseSync(databasePath, {
+    enableForeignKeyConstraints: true,
+    readBigInts: true,
+  });
+  try {
+    legacy.exec(`
+      DROP INDEX ledger_compensation_due_idx;
+      DROP TABLE ledger_compensation_state;
+      DROP TRIGGER ingest_runs_identity_immutable;
+      ALTER TABLE ingest_runs DROP COLUMN scan_kind;
+      ALTER TABLE ledger_cursors DROP COLUMN scan_kind;
+
+      ${migrationObjectSql(4, "trigger", "ingest_runs_identity_immutable")};
+
+      DELETE FROM schema_migrations WHERE version = 19;
+    `);
+    legacy.prepare(
+      "INSERT INTO system_metadata(key, value, updated_at) VALUES (?, ?, '2026-08-24T00:00:00.000Z')",
+    ).run(legacyKey, legacyValue);
+  } finally {
+    legacy.close();
   }
 }
 

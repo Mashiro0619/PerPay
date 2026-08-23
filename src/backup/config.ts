@@ -1,3 +1,4 @@
+import { lstatSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { z } from "zod";
@@ -7,6 +8,10 @@ import { pathsOverlap } from "../infrastructure/storage/path-separation.ts";
 const rawBackupConfigSchema = z.object({
   PERPAY_DATA_DIR: z.string().trim().min(1).default("/data"),
   PERPAY_BACKUP_DIR: z.string().trim().min(1).default("/backups"),
+  PERPAY_SECRETS_DIR: z.string().trim().min(1).optional(),
+  // Only maintenance restores should provide this value.  The scheduled
+  // backup runner does not need access to the deployment master key.
+  PERPAY_MASTER_KEY: z.string().length(64).regex(/^[0-9a-fA-F]{64}$/u).optional(),
   // Compatibility fallback for direct runner invocation; production Compose
   // leaves policy ownership to runtime_configuration.
   PERPAY_BACKUP_INTERVAL_SECONDS: z.coerce
@@ -21,6 +26,8 @@ const rawBackupConfigSchema = z.object({
 export interface BackupConfig {
   readonly dataDirectory: string;
   readonly backupDirectory: string;
+  /** A key supplied explicitly for restore-time guard verification. */
+  readonly masterKey?: Buffer;
   readonly intervalMilliseconds: number;
   readonly keepCount: number;
 }
@@ -41,10 +48,29 @@ export function loadBackupConfig(
     );
   }
 
+  const masterKey = parsed.data.PERPAY_MASTER_KEY === undefined
+    ? readMasterKey(parsed.data.PERPAY_SECRETS_DIR)
+    : Buffer.from(parsed.data.PERPAY_MASTER_KEY, "hex");
+
   return Object.freeze({
     dataDirectory,
     backupDirectory,
+    ...(masterKey === null ? {} : { masterKey }),
     intervalMilliseconds: parsed.data.PERPAY_BACKUP_INTERVAL_SECONDS * 1_000,
     keepCount: parsed.data.PERPAY_BACKUP_KEEP_COUNT,
   });
+}
+
+function readMasterKey(secretsDirectory: string | undefined): Buffer | null {
+  if (secretsDirectory === undefined) return null;
+  const path = resolve(secretsDirectory, "master-key");
+  const stat = lstatSync(path);
+  if (stat.isSymbolicLink() || !stat.isFile() || stat.nlink !== 1) {
+    throw new Error("backup configuration validation failed: master-key must be a private ordinary file");
+  }
+  const value = readFileSync(path, "utf8").trim();
+  if (!/^[0-9a-fA-F]{64}$/u.test(value)) {
+    throw new Error("backup configuration validation failed: master-key file must contain 64 hexadecimal characters");
+  }
+  return Buffer.from(value, "hex");
 }

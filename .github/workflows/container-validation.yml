@@ -57,6 +57,8 @@ jobs:
               image: ${IMAGE}
             maintenance:
               image: ${IMAGE}
+              environment:
+                PERPAY_MASTER_KEY: "2222222222222222222222222222222222222222222222222222222222222222"
           EOF
           compose() {
             docker compose --project-name "$project" \
