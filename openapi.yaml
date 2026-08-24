@@ -225,6 +225,52 @@ paths:
                 $ref: '#/components/schemas/SystemAnalyticsEnvelope'
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
+  /api/admin/v1/work-items:
+    get:
+      tags: [System]
+      operationId: listAdministratorWorkItems
+      summary: Page through unresolved work across financial, ledger, and notification domains
+      description: |
+        Combines open financial exceptions, open ledger conflicts, retry-wait notifications, and
+        latest dead-letter notifications from every retained provider generation. Results use a
+        single SQLite snapshot and descending actionable-time, type, and resource-ID ordering.
+        The cursor is bound to the selected type filter. Each item links to its existing detailed
+        resource endpoint; normal pending or in-flight notification work is not included.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - name: type
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/AdminWorkItemTypeFilter'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque canonical base64url cursor returned by the previous page.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+            pattern: '^[A-Za-z0-9_-]+$'
+      responses:
+        '200':
+          description: One globally ordered page of unresolved work
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminWorkItemPageEnvelope' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/Unavailable' }
   /api/admin/v1/session/logout:
     post:
       tags: [Admin Session]
@@ -811,6 +857,47 @@ paths:
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
         '404': { $ref: '#/components/responses/AdminOrderNotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
+  /api/admin/v1/orders/{orderId}/notifications/deliveries:
+    get:
+      tags: [Admin Orders, Notifications]
+      operationId: listAdministratorOrderWebhookDeliveries
+      summary: Page through the complete notification delivery history for one order
+      description: |
+        Each item includes the immutable event, notification target, delivery generation, and every
+        persisted delivery attempt. Results use descending creation-time and delivery-ID ordering.
+        The opaque cursor is bound to the order ID and cannot be reused for another order.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/OrderId'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque canonical base64url cursor returned by the previous page.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+            pattern: '^[A-Za-z0-9_-]+$'
+      responses:
+        '200':
+          description: Complete notification delivery records belonging only to this order
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderWebhookDeliveryPageEnvelope' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '404': { $ref: '#/components/responses/AdminOrderNotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/WebhookUnavailable' }
   /api/admin/v1/ledger/conflicts:
     get:
       tags: [Ledger Operations]
@@ -1997,6 +2084,134 @@ components:
               confirmed_amount_cents: { type: integer, minimum: 0 }
               notifications_acknowledged: { type: integer, minimum: 0 }
               notifications_failed: { type: integer, minimum: 0 }
+    AdminWorkItemTypeFilter:
+      type: string
+      enum: [ALL, FINANCIAL_EXCEPTION, LEDGER_CONFLICT, NOTIFICATION_FAILURE]
+      default: ALL
+    AdminWorkItemPageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/AdminWorkItem' }
+        page:
+          type: object
+          additionalProperties: false
+          required: [next_cursor]
+          properties:
+            next_cursor:
+              type: [string, 'null']
+              maxLength: 256
+              pattern: '^[A-Za-z0-9_-]+$'
+    AdminWorkItem:
+      oneOf:
+        - $ref: '#/components/schemas/AdminFinancialExceptionWorkItem'
+        - $ref: '#/components/schemas/AdminLedgerConflictWorkItem'
+        - $ref: '#/components/schemas/AdminNotificationFailureWorkItem'
+      discriminator:
+        propertyName: type
+    AdminWorkItemBase:
+      type: object
+      required:
+        - type
+        - resource_id
+        - provider_account_key
+        - order_id
+        - ledger_entry_id
+        - created_at
+        - actionable_at
+        - detail_url
+      properties:
+        type:
+          type: string
+          enum: [FINANCIAL_EXCEPTION, LEDGER_CONFLICT, NOTIFICATION_FAILURE]
+        resource_id: { $ref: '#/components/schemas/ResourceId' }
+        provider_account_key:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'
+        order_id:
+          oneOf:
+            - $ref: '#/components/schemas/ResourceId'
+            - type: 'null'
+        ledger_entry_id:
+          oneOf:
+            - $ref: '#/components/schemas/ResourceId'
+            - type: 'null'
+        created_at: { type: string, format: date-time }
+        actionable_at:
+          type: string
+          format: date-time
+          description: >-
+            Sorting time for the unresolved work: resource creation for financial and ledger
+            items, the latest retry failure update for retry-wait notifications, or the terminal
+            dead-letter time.
+        detail_url:
+          type: string
+          pattern: '^/api/admin/v1/'
+    AdminFinancialExceptionWorkItem:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/AdminWorkItemBase'
+        - type: object
+          required: [status, exception_type, candidate_id]
+          properties:
+            type: { const: FINANCIAL_EXCEPTION }
+            status: { const: OPEN }
+            exception_type:
+              type: string
+              enum:
+                - UNMATCHED_CREDIT
+                - UNMATCHED_DEBIT
+                - AMBIGUOUS_MATCH
+                - CHECKOUT_ENDED_PAYMENT
+                - DUPLICATE_PAYMENT
+                - AMOUNT_MISMATCH
+                - UNLINKED_REFUND
+                - RECONCILIATION_CONFLICT
+            candidate_id:
+              oneOf:
+                - $ref: '#/components/schemas/ResourceId'
+                - type: 'null'
+      unevaluatedProperties: false
+    AdminLedgerConflictWorkItem:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/AdminWorkItemBase'
+        - type: object
+          required: [status, conflict_type, external_event_id]
+          properties:
+            type: { const: LEDGER_CONFLICT }
+            status: { const: OPEN }
+            conflict_type: { $ref: '#/components/schemas/LedgerConflictType' }
+            external_event_id: { type: [string, 'null'] }
+      unevaluatedProperties: false
+    AdminNotificationFailureWorkItem:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/AdminWorkItemBase'
+        - type: object
+          required:
+            - status
+            - event_type
+            - attempt_count
+            - next_attempt_at
+            - last_error_code
+            - dead_lettered_at
+            - updated_at
+          properties:
+            type: { const: NOTIFICATION_FAILURE }
+            status:
+              type: string
+              enum: [RETRY_WAIT, DEAD_LETTER]
+            event_type: { type: string }
+            attempt_count: { type: integer, minimum: 1 }
+            next_attempt_at: { type: [string, 'null'], format: date-time }
+            last_error_code: { type: [string, 'null'] }
+            dead_lettered_at: { type: [string, 'null'], format: date-time }
+            updated_at: { type: string, format: date-time }
+      unevaluatedProperties: false
     LedgerConflictSummary:
       type: [object, 'null']
       additionalProperties: false
@@ -4130,6 +4345,35 @@ components:
       required: [data]
       properties:
         data: { $ref: '#/components/schemas/WebhookDeliveryDetail' }
+    OrderWebhookDeliveryDetail:
+      type: object
+      additionalProperties: false
+      required: [delivery, event, target, attempts]
+      properties:
+        delivery: { $ref: '#/components/schemas/WebhookDelivery' }
+        event: { $ref: '#/components/schemas/WebhookEvent' }
+        target: { $ref: '#/components/schemas/WebhookTarget' }
+        attempts:
+          type: array
+          description: All persisted attempts in ascending attempt-number order.
+          items: { $ref: '#/components/schemas/WebhookAttempt' }
+    OrderWebhookDeliveryPageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/OrderWebhookDeliveryDetail' }
+        page:
+          type: object
+          additionalProperties: false
+          required: [next_cursor]
+          properties:
+            next_cursor:
+              type: [string, 'null']
+              maxLength: 256
+              pattern: '^[A-Za-z0-9_-]+$'
     WebhookAttempt:
       type: object
       additionalProperties: false

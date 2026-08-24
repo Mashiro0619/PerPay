@@ -106,6 +106,15 @@ describe("WebhookStore", () => {
         "RETRYABLE_FAILURE",
         "ACKNOWLEDGED",
       ]);
+      const orderPage = store.listDeliveriesForOrder({
+        orderId: detail.event.orderId,
+        limit: 1,
+      });
+      assert.deepEqual(
+        orderPage.deliveries[0]?.attempts.map((attempt) => attempt.outcome),
+        ["RETRYABLE_FAILURE", "ACKNOWLEDGED"],
+      );
+      assert.equal(orderPage.nextCursor, null);
       assert.equal(
         store.eventForApiClient(API_CLIENT_ID, detail.event.eventId)?.eventId,
         detail.event.eventId,
@@ -119,6 +128,96 @@ describe("WebhookStore", () => {
       assert.equal(page.deliveries[0]?.targetUrlFingerprint, detail.target.urlFingerprint);
       assert.equal(page.nextCursor, null);
       assert.deepEqual(store.counts(), { pending: 0, dead: 0 });
+      assert.equal(database.integrityCheck().ok, true);
+    });
+  });
+
+  it("pages complete delivery histories for one order in stable descending order", async () => {
+    await withWebhookContext(async ({ database, store, order }) => {
+      assert.equal(store.materialize(10, DELIVERY_TIME), 1);
+      const first = acknowledgeNextDelivery(store, DELIVERY_TIME);
+      const second = store.replay({
+        redeliveryId: randomUUID(),
+        deliveryId: first.deliveryId,
+        actorId: "admin",
+        reason: "first order history replay",
+        activeAllowedOrigin: ALLOWED_ORIGIN,
+        now: DELIVERY_TIME,
+      }).delivery;
+      acknowledgeNextDelivery(store, DELIVERY_TIME);
+      const third = store.replay({
+        redeliveryId: randomUUID(),
+        deliveryId: second.deliveryId,
+        actorId: "admin",
+        reason: "second order history replay",
+        activeAllowedOrigin: ALLOWED_ORIGIN,
+        now: DELIVERY_TIME,
+      }).delivery;
+
+      const expectedIds = [first.deliveryId, second.deliveryId, third.deliveryId]
+        .sort((left, right) => left < right ? 1 : left > right ? -1 : 0);
+      const firstPage = store.listDeliveriesForOrder({
+        orderId: order.order.orderId,
+        limit: 2,
+      });
+      assert.deepEqual(
+        firstPage.deliveries.map((detail) => detail.delivery.deliveryId),
+        expectedIds.slice(0, 2),
+      );
+      assert.deepEqual(firstPage.nextCursor, {
+        createdAt: DELIVERY_TIME,
+        deliveryId: expectedIds[1],
+      });
+      for (const detail of firstPage.deliveries) {
+        assert.equal(detail.event.orderId, order.order.orderId);
+        assert.equal(detail.target.orderId, order.order.orderId);
+        assert.equal(detail.delivery.createdAt, DELIVERY_TIME);
+        assert.equal(
+          detail.attempts.length,
+          detail.delivery.deliveryId === third.deliveryId ? 0 : 1,
+        );
+      }
+
+      const repeatedFirstPage = store.listDeliveriesForOrder({
+        orderId: order.order.orderId,
+        limit: 2,
+      });
+      assert.deepEqual(
+        repeatedFirstPage.deliveries.map((detail) => detail.delivery.deliveryId),
+        expectedIds.slice(0, 2),
+      );
+      const secondPage = store.listDeliveriesForOrder({
+        orderId: order.order.orderId,
+        cursor: firstPage.nextCursor,
+        limit: 2,
+      });
+      assert.deepEqual(
+        secondPage.deliveries.map((detail) => detail.delivery.deliveryId),
+        expectedIds.slice(2),
+      );
+      assert.equal(secondPage.nextCursor, null);
+      assert.equal(
+        secondPage.deliveries[0]?.attempts.length,
+        expectedIds[2] === third.deliveryId ? 0 : 1,
+      );
+
+      const unrelatedOrder = createOrderWithoutWebhook(database);
+      assert.deepEqual(store.listDeliveriesForOrder({
+        orderId: unrelatedOrder.order.orderId,
+        limit: 200,
+      }), { deliveries: [], nextCursor: null });
+      assert.throws(
+        () => store.listDeliveriesForOrder({ orderId: "not-an-order", limit: 1 }),
+        /webhook order ID is invalid/,
+      );
+      assert.throws(
+        () => store.listDeliveriesForOrder({ orderId: order.order.orderId, limit: 0 }),
+        /webhook order delivery page limit is invalid/,
+      );
+      assert.throws(
+        () => store.listDeliveriesForOrder({ orderId: order.order.orderId, limit: 201 }),
+        /webhook order delivery page limit is too large/,
+      );
       assert.equal(database.integrityCheck().ok, true);
     });
   });
@@ -490,6 +589,33 @@ function acknowledgeFirstDelivery(store: WebhookStore) {
     retryMaximumMilliseconds: 60_000,
     resolvedAddressesFingerprint: "d".repeat(64),
     connectedAddress: "8.8.8.8",
+    httpStatus: 200,
+    responseBytes: response.byteLength,
+    responseFingerprint: createHash("sha256").update(response).digest("hex"),
+    ackCode: "acknowledged",
+    errorCode: null,
+  });
+}
+
+function acknowledgeNextDelivery(store: WebhookStore, now: number) {
+  const claimed = store.claimNext({
+    now,
+    leaseMilliseconds: 30_000,
+    maximumAttempts: 3,
+  });
+  assert.ok(claimed);
+  const response = Buffer.from("{}");
+  return store.completeAttempt({
+    deliveryId: claimed.delivery.deliveryId,
+    attemptId: claimed.attempt.attemptId,
+    leaseToken: claimed.attempt.leaseToken,
+    outcome: "ACKNOWLEDGED",
+    now,
+    maximumAttempts: 3,
+    retryBaseMilliseconds: 1_000,
+    retryMaximumMilliseconds: 60_000,
+    resolvedAddressesFingerprint: "e".repeat(64),
+    connectedAddress: "8.8.4.4",
     httpStatus: 200,
     responseBytes: response.byteLength,
     responseFingerprint: createHash("sha256").update(response).digest("hex"),

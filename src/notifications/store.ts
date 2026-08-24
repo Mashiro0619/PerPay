@@ -99,6 +99,11 @@ export interface WebhookDeliveryDetail {
   readonly attempts: readonly WebhookAttempt[];
 }
 
+export interface WebhookDeliveryDetailPage {
+  readonly deliveries: readonly WebhookDeliveryDetail[];
+  readonly nextCursor: WebhookDeliveryCursor | null;
+}
+
 export type WebhookStoreErrorCode =
   | "webhook_delivery_not_found"
   | "webhook_event_not_found"
@@ -757,6 +762,76 @@ export class WebhookStore {
     });
   }
 
+  listDeliveriesForOrder(input: {
+    readonly orderId: string;
+    readonly cursor?: WebhookDeliveryCursor | null | undefined;
+    readonly limit: number;
+  }): WebhookDeliveryDetailPage {
+    assertUuid(input.orderId, "webhook order ID");
+    assertPositiveInteger(input.limit, "webhook order delivery page limit");
+    if (input.limit > 200) {
+      throw new RangeError("webhook order delivery page limit is too large");
+    }
+    if (input.cursor) {
+      assertTime(input.cursor.createdAt, "webhook order delivery cursor time");
+      assertUuid(input.cursor.deliveryId, "webhook order delivery cursor ID");
+    }
+    return this.#database.read((connection) => {
+      const rows = connection
+        .prepare(
+          `SELECT delivery.*, outbox.event_type, outbox.aggregate_id,
+                  outbox.aggregate_version, outbox.payload_json,
+                  outbox.payload_fingerprint, outbox.created_at AS event_created_at,
+                  target.order_id, target.api_client_id, target.target_format,
+                  target.target_url, target.allowed_origin,
+                  target.url_fingerprint, target.created_at AS target_created_at
+             FROM webhook_deliveries AS delivery
+             JOIN outbox_events AS outbox
+               ON outbox.outbox_event_id = delivery.outbox_event_id
+             JOIN webhook_targets AS target
+               ON target.target_id = delivery.target_id
+            WHERE outbox.aggregate_id = ?
+              AND target.order_id = ?
+              AND (
+                ? IS NULL OR delivery.created_at < ? OR
+                (delivery.created_at = ? AND delivery.delivery_id < ?)
+              )
+            ORDER BY delivery.created_at DESC, delivery.delivery_id DESC
+            LIMIT ?`,
+        )
+        .all(
+          input.orderId,
+          input.orderId,
+          input.cursor?.createdAt ?? null,
+          input.cursor?.createdAt ?? null,
+          input.cursor?.createdAt ?? null,
+          input.cursor?.deliveryId ?? null,
+          input.limit + 1,
+        ) as unknown as DetailRow[];
+      const hasMore = rows.length > input.limit;
+      const pageRows = hasMore ? rows.slice(0, input.limit) : rows;
+      const attemptsByDelivery = readAttemptsByDelivery(
+        connection,
+        pageRows.map((row) => row.delivery_id),
+      );
+      const last = pageRows.at(-1);
+      return {
+        deliveries: pageRows.map((row) => ({
+          delivery: mapDelivery(row),
+          event: mapEvent(row),
+          target: mapTarget(row),
+          attempts: attemptsByDelivery.get(row.delivery_id) ?? [],
+        })),
+        nextCursor: hasMore && last
+          ? {
+              createdAt: toSafeInteger(last.created_at, "webhook order delivery cursor time"),
+              deliveryId: last.delivery_id,
+            }
+          : null,
+      };
+    });
+  }
+
   listDeliveries(input: {
     readonly status?: WebhookDeliveryStatus | undefined;
     readonly cursor?: WebhookDeliveryCursor | null | undefined;
@@ -929,6 +1004,33 @@ interface SigningKeyRow {
   readonly secret_fingerprint: string;
   readonly activated_at: bigint | number;
   readonly retired_at: bigint | number | null;
+}
+
+function readAttemptsByDelivery(
+  connection: DatabaseSync,
+  deliveryIds: readonly string[],
+): ReadonlyMap<string, readonly WebhookAttempt[]> {
+  if (deliveryIds.length === 0) return new Map();
+  const rows = connection
+    .prepare(
+      `SELECT attempt_id, delivery_id, attempt_number, key_version,
+              (SELECT key_id FROM webhook_signing_keys WHERE key_version = attempt.key_version) AS key_id,
+              lease_token, request_timestamp, request_body_fingerprint, outcome,
+              resolved_addresses_fingerprint, connected_address, http_status,
+              response_bytes, response_fingerprint, ack_code, error_code,
+              started_at, finished_at
+         FROM webhook_attempts AS attempt
+        WHERE delivery_id IN (SELECT value FROM json_each(?))
+        ORDER BY delivery_id, attempt_number`,
+    )
+    .all(JSON.stringify(deliveryIds)) as unknown as AttemptRow[];
+  const grouped = new Map<string, WebhookAttempt[]>();
+  for (const row of rows) {
+    const attempts = grouped.get(row.delivery_id) ?? [];
+    attempts.push(mapAttempt(row));
+    grouped.set(row.delivery_id, attempts);
+  }
+  return grouped;
 }
 
 function readActiveSigningKey(connection: DatabaseSync): WebhookSigningKey | null {

@@ -119,6 +119,7 @@ describe("notification HTTP contract", () => {
         "/api/admin/v1/webhooks/deliveries",
         deliveryPath,
         attemptsPath,
+        `/api/admin/v1/orders/${fixture.orders[0]!.order.orderId}/notifications/deliveries`,
       ]) {
         const anonymous = await fixture.app.request(path);
         assert.equal(anonymous.status, 401);
@@ -128,6 +129,7 @@ describe("notification HTTP contract", () => {
       const auth = await login(fixture.app);
       const detail = await fixture.app.request(deliveryPath, { headers: { cookie: auth.cookie } });
       assert.equal(detail.status, 200);
+      const detailData = await responseData<{ event: { order_id: string } }>(detail);
       const attempts = await fixture.app.request(attemptsPath, { headers: { cookie: auth.cookie } });
       assert.equal(attempts.status, 200);
       const attemptText = await attempts.text();
@@ -224,6 +226,92 @@ describe("notification HTTP contract", () => {
       }>(replayed);
       assert.equal(replayedData.replayed, true);
       assert.equal(replayedData.delivery.delivery_id, createdData.delivery.delivery_id);
+
+      const orderId = detailData.event.order_id;
+      const orderDeliveryPath =
+        `/api/admin/v1/orders/${encodeURIComponent(orderId)}/notifications/deliveries`;
+      const firstOrderDeliveryPage = await fixture.app.request(
+        `${orderDeliveryPath}?limit=1`,
+        { headers: { cookie: auth.cookie } },
+      );
+      assert.equal(firstOrderDeliveryPage.status, 200);
+      const firstOrderDeliveryBody = (await firstOrderDeliveryPage.json()) as {
+        data: Array<{
+          delivery: { delivery_id: string };
+          event: { order_id: string };
+          target: { order_id: string };
+          attempts: Array<{ attempt_number: number }>;
+        }>;
+        page: { next_cursor: string | null };
+      };
+      assert.equal(firstOrderDeliveryBody.data.length, 1);
+      assert.equal(firstOrderDeliveryBody.data[0]?.event.order_id, orderId);
+      assert.equal(firstOrderDeliveryBody.data[0]?.target.order_id, orderId);
+      assert.ok(firstOrderDeliveryBody.page.next_cursor);
+
+      const secondOrderDeliveryPage = await fixture.app.request(
+        `${orderDeliveryPath}?limit=1&cursor=${encodeURIComponent(firstOrderDeliveryBody.page.next_cursor!)}`,
+        { headers: { cookie: auth.cookie } },
+      );
+      assert.equal(secondOrderDeliveryPage.status, 200);
+      const secondOrderDeliveryBody = (await secondOrderDeliveryPage.json()) as {
+        data: Array<{
+          delivery: { delivery_id: string };
+          attempts: Array<{ attempt_number: number }>;
+        }>;
+        page: { next_cursor: string | null };
+      };
+      assert.equal(secondOrderDeliveryBody.data.length, 1);
+      assert.equal(secondOrderDeliveryBody.page.next_cursor, null);
+      assert.deepEqual(
+        new Set([
+          firstOrderDeliveryBody.data[0]!.delivery.delivery_id,
+          secondOrderDeliveryBody.data[0]!.delivery.delivery_id,
+        ]),
+        new Set([original.deliveryId, createdData.delivery.delivery_id]),
+      );
+      const originalProjection = [
+        firstOrderDeliveryBody.data[0]!,
+        secondOrderDeliveryBody.data[0]!,
+      ].find((item) => item.delivery.delivery_id === original.deliveryId);
+      assert.deepEqual(originalProjection?.attempts.map((attempt) => attempt.attempt_number), [1]);
+      const orderDeliveryText = JSON.stringify([
+        firstOrderDeliveryBody.data,
+        secondOrderDeliveryBody.data,
+      ]);
+      assert.equal(orderDeliveryText.includes("lease_token"), false);
+      assert.equal(orderDeliveryText.includes(original.leaseToken), false);
+
+      const otherOrderId = fixture.orders.find((item) => item.order.orderId !== orderId)!.order.orderId;
+      const reboundCursor = await fixture.app.request(
+        `/api/admin/v1/orders/${encodeURIComponent(otherOrderId)}/notifications/deliveries` +
+          `?limit=1&cursor=${encodeURIComponent(firstOrderDeliveryBody.page.next_cursor!)}`,
+        { headers: { cookie: auth.cookie } },
+      );
+      assert.equal(reboundCursor.status, 422);
+      assert.equal(await responseErrorCode(reboundCursor), "validation_failed");
+
+      const withoutNotification = fixture.ordersService.create({
+        idempotency_key: "notifications-http-no-target",
+        merchant_order_no: "notifications-http-no-target",
+        amount_cents: 4_321,
+        product_name: "no notification target",
+      }).order;
+      const emptyHistory = await fixture.app.request(
+        `/api/admin/v1/orders/${withoutNotification.orderId}/notifications/deliveries`,
+        { headers: { cookie: auth.cookie } },
+      );
+      assert.equal(emptyHistory.status, 200);
+      assert.deepEqual(await emptyHistory.json(), {
+        data: [],
+        page: { next_cursor: null },
+      });
+      const missingOrder = await fixture.app.request(
+        "/api/admin/v1/orders/00000000-0000-4000-8000-000000000000/notifications/deliveries",
+        { headers: { cookie: auth.cookie } },
+      );
+      assert.equal(missingOrder.status, 404);
+      assert.equal(await responseErrorCode(missingOrder), "order_not_found");
 
       for (const changedApp of [fixture.app]) {
         const replayedAfterConfigurationChange = await postAdmin(

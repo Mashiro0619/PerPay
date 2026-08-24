@@ -102,6 +102,13 @@ import { CollectionCodeRenderError, CollectionCodeSvgCache } from "./web/collect
 import { WEB_ASSET_PATHS, webAsset } from "./web/assets.ts";
 import { type HttpErrorCode } from "./error-codes.ts";
 import { systemAnalytics } from "./system-analytics.ts";
+import {
+  ADMIN_WORK_ITEM_TYPES,
+  adminWorkItemPage,
+  type AdminWorkItem,
+  type AdminWorkItemCursor,
+  type AdminWorkItemType,
+} from "./admin-work-items.ts";
 
 const SESSION_COOKIE = "perpay_session";
 const SECURE_SESSION_COOKIE = "__Host-perpay_session";
@@ -542,6 +549,17 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     return context.json({ data: systemAnalytics(dependencies.database, rawRange === null ? 30 : Number(rawRange)) });
   });
 
+  app.get("/api/admin/v1/work-items", adminSession, (context) => {
+    const query = readAdminWorkItemPageQuery(context);
+    const page = adminWorkItemPage(dependencies.database, query);
+    return context.json({
+      data: page.items.map(serializeAdminWorkItem),
+      page: {
+        next_cursor: encodeAdminWorkItemCursor(page.nextCursor, query.type),
+      },
+    });
+  });
+
   app.post("/api/admin/v1/session/logout", adminSession, async (context) => {
     requireJsonContentType(context);
     requireSameOrigin(context, dependencies.config.publicOrigin);
@@ -601,6 +619,27 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       if (!parsed.success) throw orderNotFoundHttpError();
       const order = dependencies.orders.adminGetByMerchantOrderNumber(parsed.data);
       return context.json({ data: serializeAdminOrderDetail(order, dependencies.reconciliation) });
+    },
+  );
+
+  app.get(
+    "/api/admin/v1/orders/:orderId/notifications/deliveries",
+    adminSession,
+    (context) => {
+      const orderId = requireOrderId(context.req.param("orderId"));
+      dependencies.orders.adminGet(orderId);
+      const query = readOrderWebhookDeliveryPageQuery(context, orderId);
+      const page = requireWebhookStore(dependencies).listDeliveriesForOrder({
+        orderId,
+        cursor: query.cursor,
+        limit: query.limit,
+      });
+      return context.json({
+        data: page.deliveries.map(serializeWebhookDeliveryDetailWithAttempts),
+        page: {
+          next_cursor: encodeOrderWebhookDeliveryCursor(page.nextCursor, orderId),
+        },
+      });
     },
   );
 
@@ -2180,6 +2219,84 @@ function requireResourceId(value: string, code: HttpErrorCode, message: string):
   return value;
 }
 
+function readAdminWorkItemPageQuery(context: Context<AppEnvironment>): {
+  readonly type: AdminWorkItemType;
+  readonly limit: number;
+  readonly cursor: AdminWorkItemCursor | null;
+} {
+  const values = new URL(context.req.url).searchParams;
+  for (const key of values.keys()) {
+    if (key !== "type" && key !== "limit" && key !== "cursor") {
+      throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+    }
+  }
+  const types = values.getAll("type");
+  const limits = values.getAll("limit");
+  const cursors = values.getAll("cursor");
+  if (
+    types.length > 1 ||
+    limits.length > 1 ||
+    cursors.length > 1 ||
+    (types.length === 1 && !ADMIN_WORK_ITEM_TYPES.includes(types[0] as AdminWorkItemType)) ||
+    (limits.length === 1 && !/^[1-9][0-9]{0,2}$/.test(limits[0] ?? ""))
+  ) {
+    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  }
+  const type = (types[0] ?? "ALL") as AdminWorkItemType;
+  const limit = limits.length === 0 ? 100 : Number(limits[0]);
+  if (limit > 200) {
+    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  }
+  return {
+    type,
+    limit,
+    cursor: cursors.length === 0
+      ? null
+      : decodeAdminWorkItemCursor(cursors[0] ?? "", type),
+  };
+}
+
+function encodeAdminWorkItemCursor(
+  cursor: AdminWorkItemCursor | null,
+  type: AdminWorkItemType,
+): string | null {
+  if (!cursor) return null;
+  return Buffer.from(
+    `perpay:admin-work-items:v1\n${type}\n${cursor.actionableAt}\n${cursor.kind}\n${cursor.itemId}`,
+    "ascii",
+  ).toString("base64url");
+}
+
+function decodeAdminWorkItemCursor(
+  value: string,
+  expectedType: AdminWorkItemType,
+): AdminWorkItemCursor {
+  if (!/^[A-Za-z0-9_-]{1,256}$/.test(value)) {
+    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  }
+  const decoded = Buffer.from(value, "base64url");
+  if (decoded.toString("base64url") !== value || decoded.some((byte) => byte > 0x7f)) {
+    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  }
+  const match =
+    /^perpay:admin-work-items:v1\n(ALL|FINANCIAL_EXCEPTION|LEDGER_CONFLICT|NOTIFICATION_FAILURE)\n(0|[1-9][0-9]*)\n(FINANCIAL_EXCEPTION|LEDGER_CONFLICT|NOTIFICATION_FAILURE)\n([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/
+      .exec(decoded.toString("ascii"));
+  const actionableAt = Number(match?.[2]);
+  if (
+    !match ||
+    !Number.isSafeInteger(actionableAt) ||
+    match[1] !== expectedType ||
+    (expectedType !== "ALL" && match[3] !== expectedType)
+  ) {
+    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  }
+  return {
+    actionableAt,
+    kind: match[3] as AdminWorkItemCursor["kind"],
+    itemId: match[4]!,
+  };
+}
+
 function readAdminOrderPageQuery(context: Context<AppEnvironment>): {
   readonly limit: number;
   readonly filters: AdminOrderFilters;
@@ -2597,6 +2714,74 @@ function readWebhookDeliveryPageQuery(context: Context<AppEnvironment>): {
   };
 }
 
+function readOrderWebhookDeliveryPageQuery(
+  context: Context<AppEnvironment>,
+  orderId: string,
+): {
+  readonly limit: number;
+  readonly cursor: WebhookDeliveryCursor | null;
+} {
+  const values = new URL(context.req.url).searchParams;
+  for (const key of values.keys()) {
+    if (key !== "limit" && key !== "cursor") {
+      throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+    }
+  }
+  const limits = values.getAll("limit");
+  if (
+    limits.length > 1 ||
+    (limits.length === 1 && !/^[1-9][0-9]{0,2}$/.test(limits[0] ?? ""))
+  ) {
+    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  }
+  const limit = limits.length === 0 ? 100 : Number(limits[0]);
+  if (limit > 200) {
+    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  }
+  const cursors = values.getAll("cursor");
+  if (cursors.length > 1) {
+    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  }
+  return {
+    limit,
+    cursor: cursors.length === 0
+      ? null
+      : decodeOrderWebhookDeliveryCursor(cursors[0] ?? "", orderId),
+  };
+}
+
+function encodeOrderWebhookDeliveryCursor(
+  cursor: WebhookDeliveryCursor | null,
+  orderId: string,
+): string | null {
+  if (!cursor) return null;
+  return Buffer.from(
+    `perpay:order-webhook-deliveries:v1\n${orderId}\n${cursor.createdAt}\n${cursor.deliveryId}`,
+    "ascii",
+  ).toString("base64url");
+}
+
+function decodeOrderWebhookDeliveryCursor(
+  value: string,
+  expectedOrderId: string,
+): WebhookDeliveryCursor {
+  if (!/^[A-Za-z0-9_-]{1,256}$/.test(value)) {
+    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  }
+  const decoded = Buffer.from(value, "base64url");
+  if (decoded.toString("base64url") !== value || decoded.some((byte) => byte > 0x7f)) {
+    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  }
+  const match =
+    /^perpay:order-webhook-deliveries:v1\n([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\n(0|[1-9][0-9]*)\n([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/
+      .exec(decoded.toString("ascii"));
+  const createdAt = Number(match?.[2]);
+  if (!match || !Number.isSafeInteger(createdAt) || match[1] !== expectedOrderId) {
+    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  }
+  return { createdAt, deliveryId: match[3]! };
+}
+
 function encodeWebhookDeliveryCursor(
   cursor: WebhookDeliveryCursor | null,
   status: WebhookDeliveryStatus | null,
@@ -2672,6 +2857,51 @@ function serializeAdminOrderSummary(order: AdminOrderSummaryProjection) {
     updated_at: new Date(order.updatedAt).toISOString(),
     version: order.version,
   };
+}
+
+function serializeAdminWorkItem(item: AdminWorkItem) {
+  const common = {
+    type: item.kind,
+    resource_id: item.itemId,
+    provider_account_key: item.providerAccountKey,
+    order_id: item.orderId,
+    ledger_entry_id: item.ledgerEntryId,
+    created_at: new Date(item.createdAt).toISOString(),
+    actionable_at: new Date(item.actionableAt).toISOString(),
+  };
+  switch (item.kind) {
+    case "FINANCIAL_EXCEPTION":
+      return {
+        ...common,
+        status: item.status,
+        exception_type: item.exceptionType,
+        candidate_id: item.candidateId,
+        detail_url:
+          `/api/admin/v1/reconciliation/exceptions/${encodeURIComponent(item.itemId)}`,
+      };
+    case "LEDGER_CONFLICT":
+      return {
+        ...common,
+        status: item.status,
+        conflict_type: item.conflictType,
+        external_event_id: item.externalEventId,
+        detail_url: `/api/admin/v1/ledger/conflicts/${encodeURIComponent(item.itemId)}`,
+      };
+    case "NOTIFICATION_FAILURE":
+      return {
+        ...common,
+        status: item.status,
+        event_type: item.eventType,
+        attempt_count: item.attemptCount,
+        next_attempt_at: item.status === "RETRY_WAIT"
+          ? new Date(item.nextAttemptAt).toISOString()
+          : null,
+        last_error_code: item.lastErrorCode,
+        dead_lettered_at: nullableIsoTime(item.deadLetteredAt),
+        updated_at: new Date(item.updatedAt).toISOString(),
+        detail_url: `/api/admin/v1/webhooks/deliveries/${encodeURIComponent(item.itemId)}`,
+      };
+  }
 }
 
 function serializeAdminOrderDetail(order: AdminOrderDetailProjection, reconciliation?: ReconciliationStore) {
@@ -2774,6 +3004,13 @@ function serializeWebhookDeliveryDetail(detail: WebhookDeliveryDetail) {
       url_fingerprint: detail.target.urlFingerprint,
       created_at: new Date(detail.target.createdAt).toISOString(),
     },
+  };
+}
+
+function serializeWebhookDeliveryDetailWithAttempts(detail: WebhookDeliveryDetail) {
+  return {
+    ...serializeWebhookDeliveryDetail(detail),
+    attempts: detail.attempts.map(serializeWebhookAttempt),
   };
 }
 
