@@ -32,7 +32,8 @@ COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chown=node:node static ./static
 COPY --chown=node:node package.json ./package.json
 COPY --chown=node:node LICENSE NOTICE ./
-RUN rm -rf /usr/local/lib/node_modules /opt/yarn-* \
+RUN apk upgrade --no-cache \
+    && rm -rf /usr/local/lib/node_modules /opt/yarn-* \
     && rm -f \
       /usr/local/bin/corepack \
       /usr/local/bin/npm \

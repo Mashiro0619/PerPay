@@ -154,6 +154,7 @@ test("the application image contains only the pinned Node runtime and applicatio
   assert.doesNotMatch(dockerfileText, /GO_IMAGE|RESTIC|golang|--from=restic|third_party/iu);
   assert.match(dockerfileText, /org\.opencontainers\.image\.licenses="MIT"/u);
   assert.match(dockerfileText, /mkdir -p \/data \/backups/u);
+  assert.match(dockerfileText, /apk upgrade --no-cache/u);
   assert.match(dockerfileText, /VOLUME \["\/data", "\/backups", "\/run\/perpay-secrets"\]/u);
   assert.match(dockerfileText, /http:\/\/127\.0\.0\.1:6190\/healthz/u);
   assert.doesNotMatch(dockerfileText, /\/readyz/u);
