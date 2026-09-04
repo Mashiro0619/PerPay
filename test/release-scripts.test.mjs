@@ -149,7 +149,7 @@ test("render-release-compose copies the validated latest-channel template", () =
 test("the application image contains only the pinned Node runtime and application", () => {
   assert.match(
     dockerfileText,
-    /node:24\.19\.0-alpine3\.24@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43/u,
+    /node:24\.20\.0-alpine3\.24@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf/u,
   );
   assert.doesNotMatch(dockerfileText, /GO_IMAGE|RESTIC|golang|--from=restic|third_party/iu);
   assert.match(dockerfileText, /org\.opencontainers\.image\.licenses="MIT"/u);
