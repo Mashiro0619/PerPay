@@ -238,6 +238,8 @@ test("release builds, scans, verifies, and publishes fixed and latest images", (
     (step) => step.name === "Exercise Linux Compose, backup, restore, and persistence",
   );
   for (const required of [
+    'PERPAY_PUBLIC_URL: "http://localhost:6190"',
+    'PERPAY_TRUSTED_PROXY_CIDRS: ""',
     "compose up -d --wait --wait-timeout 900 app",
     "compose config --services",
     "compose_with_maintenance config --services",
@@ -304,6 +306,8 @@ test("container validation is manual and exercises the real deployment lifecycle
     (step) => step.name === "Exercise Compose, backup, restore, and persistence",
   );
   for (const required of [
+    'PERPAY_PUBLIC_URL: "http://localhost:6190"',
+    'PERPAY_TRUSTED_PROXY_CIDRS: ""',
     "compose config --quiet",
     "compose config --services",
     "compose_with_maintenance config --services",

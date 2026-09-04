@@ -51,6 +51,8 @@ jobs:
               image: ${IMAGE}
               environment:
                 PERPAY_MASTER_KEY: "2222222222222222222222222222222222222222222222222222222222222222"
+                PERPAY_PUBLIC_URL: "http://localhost:6190"
+                PERPAY_TRUSTED_PROXY_CIDRS: ""
               healthcheck:
                 test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:6190/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
             backup:

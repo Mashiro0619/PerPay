@@ -11,7 +11,7 @@
 1. 下载 `docker-compose.yml`。
 2. 只修改文件顶部的部署参数：
    - `PERPAY_PUBLIC_URL`：访问 PerPay 的完整地址，例如 `https://pay.example.com`。
-   - `PERPAY_TRUSTED_PROXY_CIDRS`：使用 HTTPS 反向代理时填写代理网段；没有代理时保持空值。
+   - `PERPAY_TRUSTED_PROXY_CIDRS`：使用 HTTPS 反向代理时填写直接连接到 PerPay 的代理网段；没有反向代理时只能使用回环地址，例如 `http://localhost:6190`，并保持空值。
    - 端口映射：默认 `127.0.0.1:6190:6190`。
 3. 检查并启动：
 
@@ -21,6 +21,8 @@
    ```
 
 SQLite 不需要数据库用户名或数据库密码。应用首次启动会在 `perpay-secrets` 卷中自动生成主密钥，密钥不会出现在 Compose 或日志中。请保留这个卷；删除它将无法解密数据库中的支付宝密钥。
+
+Compose 中的 `https://pay.example.com` 只是 HTTPS 部署占位值，不能直接原样启动：请改成你的真实 HTTPS 地址，并填写反向代理的可信网段。若先在服务器本机验证，可将地址改为 `http://localhost:6190`；该回环 HTTP 地址不能作为公网收款地址。
 
 支付宝经营码、应用 ID、支付宝公钥、网站 API 密钥和通知密钥，通过 `/api/admin/v1` 管理 API 配置。`/admin` 管理后台网页已移除，会返回 HTTP 410。
 
