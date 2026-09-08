@@ -8,15 +8,22 @@
     "node": ">=24.15.0 <25"
   },
   "scripts": {
-    "build": "npm run build:server",
+    "build": "npm run build:admin && npm run build:server",
+    "build:admin": "vite build --config web/vite.config.ts",
     "build:server": "tsc -p tsconfig.build.json",
-    "check": "npm run check:version && npm run typecheck && npm run test:node && npm run build:server",
+    "check": "npm run check:version && npm run api:check && npm run typecheck && npm run test && npm run build:server",
+    "api:types": "node scripts/generate-api-types.mjs",
+    "api:check": "node scripts/generate-api-types.mjs --check",
     "check:version": "node scripts/check-version.mjs",
     "dev": "node --experimental-strip-types --watch src/main.ts",
+    "dev:admin": "vite --config web/vite.config.ts",
     "start": "node dist/main.js",
-    "test": "npm run test:node",
+    "test": "npm run test:node && npm run test:admin",
+    "pretest": "npm run build:admin",
+    "test:admin": "vitest run --config web/vite.config.ts",
     "test:node": "node --experimental-strip-types --test --test-isolation=process test/**/*.test.ts test/**/*.test.mjs",
-    "typecheck": "npm run typecheck:server",
+    "typecheck": "npm run typecheck:server && npm run typecheck:admin",
+    "typecheck:admin": "tsc --project web/tsconfig.json",
     "typecheck:server": "tsc --noEmit"
   },
   "dependencies": {
@@ -26,8 +33,27 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@hey-api/openapi-ts": "0.99.0",
+    "@tanstack/react-query": "5.102.8",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.7",
     "@types/node": "24.13.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@vitejs/plugin-react": "6.1.1",
+    "jsdom": "30.0.1",
+    "jsqr": "1.4.0",
+    "lucide-react": "1.41.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-router": "8.3.1",
     "typescript": "6.0.3",
+    "vite": "8.2.2",
+    "vitest": "5.0.0",
     "yaml": "2.9.0"
+  },
+  "overrides": {
+    "js-yaml": "4.3.1"
   }
 }

@@ -205,8 +205,9 @@ paths:
       operationId: getAdministratorSystemAnalytics
       summary: Read real order and notification aggregates for the dashboard
       description: >-
-        Returns UTC daily aggregates from SQLite for the selected period. Empty days are returned
-        as zeroes; the endpoint never creates synthetic activity or trend values.
+        Returns daily aggregates from SQLite using Beijing calendar days (Asia/Shanghai, UTC+08:00),
+        including the current day. Empty days are returned as zeroes; the endpoint never creates
+        synthetic activity or trend values. Range boundaries are absolute ISO 8601 timestamps.
       security:
         - AdminSessionCookie: []
       parameters:
@@ -214,7 +215,7 @@ paths:
         - name: range
           in: query
           required: false
-          description: Number of calendar days to include. Defaults to 30.
+          description: Number of Beijing calendar days to include. Defaults to 30.
           schema: { type: integer, enum: [7, 30, 90], default: 30 }
       responses:
         '200':
@@ -2032,8 +2033,8 @@ components:
       required: [range_days, from, to, orders, confirmations, notifications, pending, daily]
       properties:
         range_days: { type: integer, enum: [7, 30, 90] }
-        from: { type: string, format: date-time }
-        to: { type: string, format: date-time }
+        from: { type: string, format: date-time, description: Inclusive Beijing midnight boundary serialized in UTC. }
+        to: { type: string, format: date-time, description: Exclusive Beijing midnight boundary serialized in UTC. }
         orders:
           type: object
           additionalProperties: false
@@ -2078,7 +2079,7 @@ components:
             additionalProperties: false
             required: [date, orders_created, confirmations, confirmed_amount_cents, notifications_acknowledged, notifications_failed]
             properties:
-              date: { type: string, format: date }
+              date: { type: string, format: date, description: Calendar date in Asia/Shanghai (UTC+08:00). }
               orders_created: { type: integer, minimum: 0 }
               confirmations: { type: integer, minimum: 0 }
               confirmed_amount_cents: { type: integer, minimum: 0 }
@@ -2112,6 +2113,10 @@ components:
         - $ref: '#/components/schemas/AdminNotificationFailureWorkItem'
       discriminator:
         propertyName: type
+        mapping:
+          FINANCIAL_EXCEPTION: '#/components/schemas/AdminFinancialExceptionWorkItem'
+          LEDGER_CONFLICT: '#/components/schemas/AdminLedgerConflictWorkItem'
+          NOTIFICATION_FAILURE: '#/components/schemas/AdminNotificationFailureWorkItem'
     AdminWorkItemBase:
       type: object
       required:

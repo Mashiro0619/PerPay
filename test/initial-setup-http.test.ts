@@ -21,10 +21,12 @@ describe("first-run administrator HTTP flow", () => {
     const fixture = await createFixture();
     try {
       const root = await fixture.app.request("/");
-      assert.equal(root.status, 410);
+      assert.equal(root.status, 302);
+      assert.equal(root.headers.get("location"), "/admin");
 
       const setupPage = await fixture.app.request("/admin/setup");
-      assert.equal(setupPage.status, 410);
+      assert.equal(setupPage.status, 200);
+      assert.match(await setupPage.text(), /name="perpay-initialized" content="false"/);
 
       const unexpectedField = await fixture.app.request("/api/admin/v1/setup", {
         method: "POST",
@@ -53,7 +55,8 @@ describe("first-run administrator HTTP flow", () => {
       assert.deepEqual(setup.headers.getSetCookie(), []);
 
       const setupAfterInitialization = await fixture.app.request("/admin/setup");
-      assert.equal(setupAfterInitialization.status, 410);
+      assert.equal(setupAfterInitialization.status, 200);
+      assert.match(await setupAfterInitialization.text(), /name="perpay-initialized" content="true"/);
 
       const repeatedSetup = await fixture.app.request("/api/admin/v1/setup", {
         method: "POST",

@@ -6,6 +6,8 @@
 
 ## 1. 准备配置
 
+推荐先访问 `/admin`：完成管理员初始化，按“支付宝接入 → 经营码与订单 → 密钥与安全”配置收款；在“业务通知”中填写业务网站的 HTTPS Origin。控制台的“测试收款”会创建真实小额订单，不是模拟支付。也可直接调用以下管理 API：
+
 1. 通过 `POST /api/admin/v1/setup` 设置管理员密码，再通过 `POST /api/admin/v1/session/login` 创建管理员会话。
 2. 使用 `POST /api/admin/v1/settings/provider/application-key/actions/generate` 和 `POST /api/admin/v1/settings/api-key/actions/rotate` 生成或轮换 `default` 客户端 API 密钥。
 3. 使用 `PUT /api/admin/v1/settings/notifications` 启用通知并填写网站的 HTTPS Origin，例如 `https://shop.example.com`。这里只填写来源，不填写路径。

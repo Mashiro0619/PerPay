@@ -100,6 +100,7 @@ import {
 } from "./web/checkout.ts";
 import { CollectionCodeRenderError, CollectionCodeSvgCache } from "./web/collection-code.ts";
 import { WEB_ASSET_PATHS, webAsset } from "./web/assets.ts";
+import { loadAdminFrontend } from "./web/admin.ts";
 import { type HttpErrorCode } from "./error-codes.ts";
 import { systemAnalytics } from "./system-analytics.ts";
 import {
@@ -281,6 +282,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   const app = new Hono<AppEnvironment>();
   const publicCheckoutBudget = new PublicCheckoutRateLimiter();
   const collectionCodeCache = new CollectionCodeSvgCache();
+  const adminFrontend = loadAdminFrontend();
 
   app.use("*", async (context, next) => {
     const supplied = context.req.header("x-request-id");
@@ -370,9 +372,29 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     });
   }
 
-  app.get("/", (context) => context.text("管理后台前端已移除。", 410));
-  app.get("/admin", (context) => context.text("管理后台前端已移除。", 410));
-  app.get("/admin/*", (context) => context.text("管理后台前端已移除。", 410));
+  app.get("/", (context) => context.redirect("/admin", 302));
+  const serveAdmin: MiddlewareHandler<AppEnvironment> = async (context) => {
+    if (!adminFrontend) {
+      return context.text("管理前端尚未构建。请运行 npm run build，或使用 npm run dev:admin 开发入口。", 503);
+    }
+    const path = context.req.path;
+    const asset = adminFrontend.assets.get(path);
+    if (asset) {
+      context.header("etag", asset.etag);
+      context.header("cache-control", path.startsWith("/admin/assets/")
+        ? "public, max-age=31536000, immutable"
+        : "public, max-age=0, must-revalidate");
+      if (context.req.header("if-none-match") === asset.etag) return context.body(null, 304);
+      context.header("content-type", asset.contentType);
+      return context.body(asset.body);
+    }
+    if (path.startsWith("/admin/assets/") || /\.[^/]+$/.test(path)) {
+      throw new HttpApiError(404, "asset_not_found", "静态资源不存在");
+    }
+    return context.html(adminFrontend.render(dependencies.identity.isInitialized()));
+  };
+  app.get("/admin", serveAdmin);
+  app.get("/admin/*", serveAdmin);
 
   app.get("/checkout/:token", (context) => {
     const token = context.req.param("token");

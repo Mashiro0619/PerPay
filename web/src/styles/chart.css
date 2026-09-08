@@ -1,0 +1,32 @@
+.daily-chart { min-width: 0; margin: 0 22px; padding-bottom: 20px; }
+.chart-readout { display: flex; flex-wrap: wrap; gap: 10px 20px; min-height: 72px; padding: 4px 0 18px; color: var(--muted); font-size: 12px; }
+.chart-readout > time { flex-basis: 100%; display: flex; align-items: baseline; gap: 7px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.chart-readout > time > span { color: var(--muted); font-size: 11px; }
+.chart-readout > span { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.chart-readout strong { color: var(--ink); font-size: 14px; font-variant-numeric: tabular-nums; }
+.chart-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.chart-dot--orders { background: var(--chart-orders); }
+.chart-interaction { border-radius: 6px; }
+.chart-interaction svg { display: block; width: 100%; touch-action: pan-y; }
+.chart-grid-line { stroke: var(--line); stroke-dasharray: 3 5; }
+.chart-label { fill: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.chart-series-title { fill: var(--muted); font-size: 12px; }
+.chart-area { fill: var(--accent); fill-opacity: 0.13; }
+.chart-area--orders { fill: var(--chart-orders); fill-opacity: 0.12; }
+.chart-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart-line--orders { stroke: var(--chart-orders); }
+.chart-crosshair { stroke: var(--line-strong); stroke-dasharray: 4 4; pointer-events: none; }
+.chart-point { fill: var(--surface); stroke: var(--accent); stroke-width: 2; pointer-events: none; }
+.chart-point--orders { stroke: var(--chart-orders); }
+.chart-controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 12px; }
+.chart-controls > div { display: flex; flex-shrink: 0; }
+.chart-data { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); }
+.chart-data > summary { width: fit-content; padding-block: 4px; font-size: 12px; }
+.chart-data .table-scroll { max-height: 320px; margin-top: 12px; }
+@media (max-width: 600px) {
+  .daily-chart { margin-inline: 16px; }
+  .chart-readout { min-height: 100px; gap: 8px 14px; }
+  .chart-readout > span { flex-basis: 100%; }
+  .chart-controls { align-items: flex-start; }
+  .chart-data > summary { padding-block: 10px; }
+}

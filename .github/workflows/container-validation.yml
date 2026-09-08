@@ -96,6 +96,14 @@ jobs:
           compose exec -T app node -e \
             "fetch('http://127.0.0.1:6190/readyz').then(async r=>{const value=await r.json();if(r.status!==503||value.status!=='not_ready')process.exit(1)}).catch(()=>process.exit(1))"
 
+          export PERPAY_SMOKE_ISOLATED=1
+          export PERPAY_SMOKE_PASSWORD="$(openssl rand -hex 32)"
+          admin_smoke() {
+            compose exec -T -e PERPAY_SMOKE_ISOLATED -e PERPAY_SMOKE_PASSWORD app \
+              node --input-type=module - "$1" < scripts/admin-smoke.mjs
+          }
+          admin_smoke initialize
+
           instance_before="$(compose exec -T app node --input-type=module -e \
             "import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync('/data/perpay.sqlite3',{readOnly:true});try{console.log(db.prepare(\"SELECT value FROM system_metadata WHERE key = 'instance_id'\").get().value)}finally{db.close()}" | tr -d '\r')"
           compose exec -T app node --input-type=module -e \
@@ -138,6 +146,7 @@ jobs:
           instance_after="$(compose exec -T app node --input-type=module -e \
             "import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync('/data/perpay.sqlite3',{readOnly:true});try{console.log(db.prepare(\"SELECT value FROM system_metadata WHERE key = 'instance_id'\").get().value)}finally{db.close()}" | tr -d '\r')"
           test "$instance_after" = "$instance_before"
+          admin_smoke verify
 
           cleanup
           trap - EXIT

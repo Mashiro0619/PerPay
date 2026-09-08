@@ -1,0 +1,95 @@
+:root { --motion-feedback: 140ms; --motion-state: 220ms; --motion-out: cubic-bezier(0.22, 1, 0.36, 1); view-transition-name: none; }
+.route-content { min-width: 0; }
+::view-transition { pointer-events: none; }
+:root:not(:has(.app-shell))::view-transition, :root:has(dialog[open])::view-transition { display: none; }
+body, .sidebar, .panel, .metrics-row, .auth-story, .auth-form-area, .theme-popover, .mobile-navigation, .dialog, .data-table th, .data-table td, .badge, .notice { transition: background-color var(--motion-state) ease-out, color var(--motion-state) ease-out, border-color var(--motion-state) ease-out; }
+.button, .nav-link, .settings-nav a, .theme-option, .segmented button, .tabs button, .linked-table-row, .work-item { transition: color var(--motion-feedback) ease-out, background-color var(--motion-feedback) ease-out, border-color var(--motion-feedback) ease-out; }
+.search-input, input, select, textarea { transition: border-color var(--motion-feedback) ease-out, background-color var(--motion-state) ease-out, color var(--motion-state) ease-out; }
+
+.main-nav, .tabs, .segmented { position: relative; isolation: isolate; }
+.settings-nav { isolation: isolate; }
+.selection-indicator { position: absolute; inset: 0 auto auto 0; z-index: -1; display: block; visibility: hidden; overflow: visible; pointer-events: none; }
+.selection-indicator[data-ready] { visibility: visible; }
+.selection-indicator rect { fill: var(--accent-soft); transform-box: fill-box; transform-origin: top left; }
+.selection-indicator--underline rect { fill: var(--accent); }
+.main-nav:has(> .selection-indicator[data-ready]) .nav-link.is-active, .settings-nav:has(> .selection-indicator[data-ready]) a.is-active { background: transparent; }
+.segmented:has(> .selection-indicator[data-ready]) button[aria-pressed="true"] { background: transparent; box-shadow: none; }
+.segmented > .selection-indicator rect { fill: var(--surface); }
+.tabs:has(> .selection-indicator[data-ready]) button[aria-pressed="true"] { border-bottom-color: transparent; }
+.chart-cursor { pointer-events: none; }
+.chart-point-halo { fill: var(--accent); opacity: 0; }
+.chart-point-halo--orders { fill: var(--chart-orders); }
+.chart-interaction:is(:hover, :focus-within) .chart-point-halo { opacity: 0.13; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .route-content:not([data-private-route]) { view-transition-name: route-page; }
+  ::view-transition-group(route-page) { animation: none; }
+  ::view-transition-image-pair(route-page) { isolation: isolate; }
+  ::view-transition-old(route-page) { animation: page-depart 150ms ease-out both; mix-blend-mode: normal; }
+  ::view-transition-new(route-page) { animation: page-arrive 300ms var(--motion-out) both; mix-blend-mode: normal; }
+
+  .button { transition: transform 240ms var(--motion-out), color var(--motion-feedback) ease-out, background-color var(--motion-feedback) ease-out, border-color var(--motion-feedback) ease-out; }
+  .button:not(:disabled):active { transform: translateY(1px) scale(0.985); transition-duration: 80ms; }
+  .button > svg:not(.spinner), .nav-link > svg, .work-item > svg, .text-link > svg, .back-link > svg { transition: translate var(--motion-state) var(--motion-out), rotate var(--motion-state) var(--motion-out); }
+  .button:hover > :is(.lucide-arrow-right, .lucide-arrow-up-right), .text-link:hover > svg, .work-item:hover > svg { translate: 3px 0; }
+  .back-link:hover > svg { translate: -3px 0; }
+  .nav-link:hover > svg, .sidebar-logout:hover > svg { translate: 2px 0; }
+  .theme-trigger:hover > svg { rotate: 12deg; }
+  select::picker-icon { transition: rotate var(--motion-state) var(--motion-out), color var(--motion-feedback) ease-out; }
+  .notice, .field-error, .empty-state { animation: feedback-arrive 200ms var(--motion-out); }
+  .copy-value .lucide-check { animation: control-settle 240ms var(--motion-out); }
+  .chart-cursor { transition: transform 120ms cubic-bezier(0.2, 0.7, 0.2, 1); }
+  .chart-point-halo { transition: opacity 160ms ease-out; }
+
+  :is(.chart-data, .json-details, .form-disclosure) > summary { list-style: none; }
+  :is(.chart-data, .json-details, .form-disclosure) > summary::-webkit-details-marker { display: none; }
+  :is(.chart-data, .json-details, .form-disclosure) > summary::before { content: ""; display: inline-block; width: 5px; height: 5px; margin-right: 9px; border-top: 1px solid currentColor; border-right: 1px solid currentColor; rotate: 45deg; vertical-align: 2px; transition: rotate 220ms var(--motion-out); }
+  :is(.chart-data, .json-details, .form-disclosure)[open] > summary::before { rotate: 135deg; }
+  @supports (interpolate-size: allow-keywords) and selector(details::details-content) {
+    :is(.chart-data, .json-details, .form-disclosure) { interpolate-size: allow-keywords; }
+    :is(.chart-data, .json-details, .form-disclosure)::details-content { block-size: 0; overflow: clip; transition: block-size 280ms var(--motion-out), content-visibility 280ms allow-discrete; }
+    :is(.chart-data, .json-details, .form-disclosure)[open]::details-content { block-size: auto; }
+    .form-disclosure[open] > summary { margin-bottom: 0; }
+    .form-disclosure > .field { padding-top: 18px; }
+  }
+
+  .auth-statement h2 { animation: statement-arrive 580ms var(--motion-out); }
+  .auth-form-wrap { animation: page-arrive 360ms var(--motion-out); }
+  .dialog[open] { animation: dialog-arrive 300ms var(--motion-out); }
+  .dialog[open]::backdrop { animation: backdrop-arrive 220ms ease-out; }
+
+  .theme-popover { opacity: 0; transform: translateY(6px) scale(0.985); transform-origin: bottom left; transition: opacity 140ms ease-out, transform 220ms var(--motion-out), display 220ms allow-discrete, overlay 220ms allow-discrete; }
+  .auth-theme .theme-popover { transform-origin: top right; transform: translateY(-6px) scale(0.985); }
+  .theme-popover:popover-open { opacity: 1; transform: none; }
+  .theme-popover:not(:popover-open) { pointer-events: none; }
+  .mobile-navigation { opacity: 0; transform: translateX(-100%); transition: opacity 200ms ease-out, transform 240ms cubic-bezier(0.4, 0, 0.8, 0.2), display 240ms allow-discrete, overlay 240ms allow-discrete; }
+  .mobile-navigation[open] { opacity: 1; transform: none; transition-duration: 200ms, 380ms, 380ms, 380ms; transition-timing-function: ease-out, var(--motion-out), linear, linear; }
+  .mobile-navigation::backdrop { opacity: 0; transition: opacity 200ms ease-out, display 240ms allow-discrete, overlay 240ms allow-discrete; }
+  .mobile-navigation[open]::backdrop { opacity: 1; }
+  .mobile-navigation:not([open]), .mobile-navigation:not([open])::backdrop { pointer-events: none; }
+  @starting-style {
+    .theme-popover:popover-open { opacity: 0; transform: translateY(6px) scale(0.985); }
+    .auth-theme .theme-popover:popover-open { transform: translateY(-6px) scale(0.985); }
+    .mobile-navigation[open] { opacity: 0; transform: translateX(-100%); }
+    .mobile-navigation[open]::backdrop { opacity: 0; }
+  }
+  @supports (appearance: base-select) {
+    select::picker(select) { opacity: 0; transform: translateY(-4px); transition: opacity 140ms ease-out, transform 200ms var(--motion-out), display 200ms allow-discrete, overlay 200ms allow-discrete; }
+    select:open::picker(select) { opacity: 1; transform: none; }
+    @starting-style { select:open::picker(select) { opacity: 0; transform: translateY(-4px); } }
+  }
+}
+
+@keyframes page-arrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes page-depart { to { opacity: 0; transform: translateY(-4px); } }
+@keyframes feedback-arrive { from { opacity: 0.5; } to { opacity: 1; } }
+@keyframes control-settle { from { transform: scale(0.85); } to { transform: none; } }
+@keyframes statement-arrive { from { opacity: 0.4; clip-path: inset(0 100% 0 0); } to { opacity: 1; clip-path: inset(0); } }
+@keyframes dialog-arrive { from { opacity: 0.5; transform: translateY(12px) scale(0.985); } to { opacity: 1; transform: none; } }
+@keyframes backdrop-arrive { from { opacity: 0; } to { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --motion-feedback: 80ms; --motion-state: 100ms; }
+  *, *::before, *::after { animation: none !important; scroll-behavior: auto !important; }
+  ::view-transition { display: none; }
+}

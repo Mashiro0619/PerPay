@@ -5,6 +5,9 @@ import type { AppDatabase } from "../database/database.ts";
 export const ANALYTICS_RANGES = [7, 30, 90] as const;
 export type AnalyticsRange = (typeof ANALYTICS_RANGES)[number];
 
+const DAY_MILLISECONDS = 86_400_000;
+const CHINA_OFFSET_MILLISECONDS = 8 * 60 * 60 * 1000;
+
 export interface SystemAnalytics {
   readonly range_days: AnalyticsRange;
   readonly from: string;
@@ -64,13 +67,12 @@ function integer(value: number | bigint | null | undefined): number {
   return Number.isSafeInteger(result) && result >= 0 ? result : 0;
 }
 
-function utcDayStart(now: number): number {
-  const date = new Date(now);
-  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+function chinaDayStart(now: number): number {
+  return Math.floor((now + CHINA_OFFSET_MILLISECONDS) / DAY_MILLISECONDS) * DAY_MILLISECONDS - CHINA_OFFSET_MILLISECONDS;
 }
 
 function dateKey(timestamp: number): string {
-  return new Date(timestamp).toISOString().slice(0, 10);
+  return new Date(timestamp + CHINA_OFFSET_MILLISECONDS).toISOString().slice(0, 10);
 }
 
 function rangeDays(value: number): AnalyticsRange {
@@ -84,8 +86,8 @@ export function systemAnalytics(
   now = Date.now(),
 ): SystemAnalytics {
   const days = rangeDays(requestedRange);
-  const end = utcDayStart(now) + 86_400_000;
-  const start = end - days * 86_400_000;
+  const end = chinaDayStart(now) + DAY_MILLISECONDS;
+  const start = end - days * DAY_MILLISECONDS;
   return database.read((connection) => readAnalytics(connection, days, start, end));
 }
 
@@ -137,13 +139,13 @@ function readAnalytics(
 
   const dailyRows = connection.prepare(`
     WITH order_daily AS (
-      SELECT strftime('%Y-%m-%d', created_at / 1000, 'unixepoch') AS date,
+      SELECT strftime('%Y-%m-%d', created_at / 1000, 'unixepoch', '+08:00') AS date,
              COUNT(*) AS orders_created
         FROM payment_orders
        WHERE created_at >= ? AND created_at < ?
        GROUP BY date
     ), confirmation_daily AS (
-      SELECT strftime('%Y-%m-%d', events.occurred_at / 1000, 'unixepoch') AS date,
+      SELECT strftime('%Y-%m-%d', events.occurred_at / 1000, 'unixepoch', '+08:00') AS date,
              COUNT(*) AS confirmations,
              COALESCE(SUM(orders.received_amount_cents), 0) AS confirmed_amount_cents
         FROM order_events AS events
@@ -152,7 +154,7 @@ function readAnalytics(
          AND events.occurred_at >= ? AND events.occurred_at < ?
        GROUP BY date
     ), notification_daily AS (
-      SELECT strftime('%Y-%m-%d', created_at / 1000, 'unixepoch') AS date,
+      SELECT strftime('%Y-%m-%d', created_at / 1000, 'unixepoch', '+08:00') AS date,
              SUM(CASE WHEN status = 'ACKNOWLEDGED' THEN 1 ELSE 0 END) AS notifications_acknowledged,
              SUM(CASE WHEN status = 'DEAD_LETTER' THEN 1 ELSE 0 END) AS notifications_failed
         FROM webhook_deliveries
@@ -174,7 +176,7 @@ function readAnalytics(
 
   const byDate = new Map(dailyRows.map((row) => [row.date, row]));
   const daily = Array.from({ length: days }, (_, index) => {
-    const timestamp = start + index * 86_400_000;
+    const timestamp = start + index * DAY_MILLISECONDS;
     const date = dateKey(timestamp);
     const row = byDate.get(date);
     return {
