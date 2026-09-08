@@ -18,9 +18,9 @@ function DialogHarness() {
 
 describe("native dialogs", () => {
   it("associates nested fields with labels, hints and inline errors", () => {
-    render(<Field label="密码" hint="至少 12 个字符" error="密码过短"><span><input name="password" /><button type="button">显示</button></span></Field>);
+    render(<Field label="密码" hint="至少 6 个字符" error="密码过短"><span><input name="password" /><button type="button">显示</button></span></Field>);
     const input = screen.getByRole("textbox", { name: "密码" });
-    expect(input).toHaveAccessibleDescription("至少 12 个字符 密码过短");
+    expect(input).toHaveAccessibleDescription("至少 6 个字符 密码过短");
     expect(input).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByRole("button", { name: "显示" }).closest("label")).toBeNull();
   });

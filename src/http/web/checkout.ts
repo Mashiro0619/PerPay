@@ -2,7 +2,6 @@ import type { PublicCheckoutProjection } from "../../orders/model.ts";
 import { WEB_ASSET_URLS } from "./assets.ts";
 
 export const CHECKOUT_PAGE_ASSETS = Object.freeze({
-  alipayIcon: WEB_ASSET_URLS.alipayIcon,
   checkoutStylesheet: WEB_ASSET_URLS.checkoutStylesheet,
   checkoutScript: WEB_ASSET_URLS.checkoutScript,
 });
@@ -43,50 +42,50 @@ interface StateCopy {
 const STATE_COPY: Readonly<Record<CheckoutVisualState, StateCopy>> = Object.freeze({
   UNPAID: {
     badge: "等待付款",
-    heading: "请支付以下准确金额",
-    detail: "付款后请停留在本页，系统确认后会自动更新。请勿重复付款。",
+    heading: "支付宝付款",
+    detail: "金额需完全一致，付款后自动确认。",
     badgeClass: "",
   },
   CONFIRMED: {
     badge: "付款已确认",
     heading: "付款已确认",
-    detail: "订单已经完成确认，无需再次付款。",
+    detail: "已收到付款，请勿重复支付。",
     badgeClass: "is-success",
   },
   DISPUTED: {
     badge: "付款有争议",
-    heading: "付款关联需要处理",
-    detail: "这笔付款的关联存在争议，请联系订单提供方处理，勿再次付款。",
+    heading: "付款需要核实",
+    detail: "请联系商家核实，勿再次付款。",
     badgeClass: "is-danger",
   },
   CLOSED: {
     badge: "订单已关闭",
     heading: "订单已关闭",
-    detail: "此订单不再收款，请勿扫描或再次付款。",
+    detail: "此订单不再收款，请勿付款。",
     badgeClass: "is-warning",
   },
   EXPIRED: {
     badge: "订单已过期",
     heading: "订单已过期",
-    detail: "付款时间已经结束，请返回订单提供方重新创建订单。",
+    detail: "付款时间已结束，请返回商家重新下单。",
     badgeClass: "is-warning",
   },
   NOT_FOUND: {
     badge: "订单不可用",
     heading: "找不到这个订单",
-    detail: "链接可能不完整、已经失效，或订单的查询期限已经结束。",
+    detail: "链接已失效或不完整，请向商家获取新链接。",
     badgeClass: "is-danger",
   },
   RATE_LIMITED: {
     badge: "正在等待刷新",
     heading: "请求过于频繁",
-    detail: "页面会在稍后自动重新获取订单状态，也可以手动重试。",
+    detail: "请稍等，页面会自动重试。",
     badgeClass: "is-warning",
   },
   UNAVAILABLE: {
     badge: "收款暂不可用",
     heading: "暂时无法确认付款",
-    detail: "自动确认服务尚未就绪，请暂勿付款。页面会自动重试。",
+    detail: "收款服务暂不可用，请勿付款。页面会自动重试。",
     badgeClass: "is-warning",
   },
 });
@@ -145,8 +144,7 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
               <p class="checkout-amount ${amountLengthClass}">
                 <span class="checkout-sr-only" data-amount-accessible>${formatAmountAccessible(displayedAmountCents, amountLabel)}</span>
                 <span class="checkout-currency" aria-hidden="true">¥</span>
-                <strong class="checkout-mono" data-payable-amount aria-hidden="true">${formattedAmount}</strong>
-                <span class="checkout-currency-code" aria-hidden="true">CNY</span>
+                <strong data-payable-amount aria-hidden="true">${formattedAmount}</strong>
               </p>`;
   const routeErrorVisible = checkout === null;
   const checkoutVisible = checkout !== null;
@@ -166,11 +164,6 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
   const title = checkout === null
     ? `${stateCopy.heading} | PerPay`
     : `${checkout.merchantOrderNo} | PerPay 收银台`;
-  const footerCopy = checkout === null
-    ? input.initialError?.status === 404
-      ? "请向订单提供方确认收银台链接是否完整、有效。"
-      : "页面会自动重新获取订单状态；恢复前请暂勿付款。"
-    : "支付结果以本页的订单状态为准。遇到异常时请保留付款记录并联系订单提供方。";
   const retryAfter = input.initialError?.retryAfterSeconds;
 
   return `<!doctype html>
@@ -179,8 +172,8 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
-  <meta name="theme-color" content="#f4f4f5" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0b0b0c" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f7f8fa" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#111214" media="(prefers-color-scheme: dark)">
   <meta name="robots" content="noindex, nofollow, noarchive">
   <title>${escapeHtml(title)}</title>
   <link rel="stylesheet" href="${CHECKOUT_PAGE_ASSETS.checkoutStylesheet}">
@@ -199,6 +192,7 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
     class="checkout-shell"
     id="checkout-main"
     data-checkout-root
+    data-server-time="${Date.now()}"
     data-checkout-token="${escapeHtml(pageToken)}"
     data-checkout-api-url="${escapeHtml(apiUrl)}"
     data-checkout-qr-url="${escapeHtml(recoverableQrUrl)}"
@@ -222,54 +216,28 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
       </p>
     </section>
 
-    <article class="checkout-receipt" data-checkout-content${hiddenAttribute(!checkoutVisible)} aria-labelledby="checkout-title">
+    <article class="checkout-receipt" data-checkout-content${hiddenAttribute(!checkoutVisible)} data-state="${visualState}" aria-labelledby="checkout-title">
       <header class="checkout-statebar">
         <span class="checkout-state-badge ${stateCopy.badgeClass}" data-status-badge>${escapeHtml(stateCopy.badge)}</span>
         <div class="checkout-countdown" data-countdown-wrap${hiddenAttribute(visualState !== "UNPAID")}>
-          <span>付款时间</span>
+          <span>剩余</span>
           <time class="checkout-mono" data-countdown datetime="${checkout === null ? "" : new Date(checkout.checkout.expiresAt).toISOString()}">--:--</time>
         </div>
       </header>
 
-      <div class="checkout-service-alert checkout-alert checkout-alert--warning" data-service-alert role="status"${hiddenAttribute(input.initialError?.status !== 503)}>
-        <div class="checkout-message-body">
-          <h2>暂时无法确认付款</h2>
-          <p>自动确认服务尚未就绪，请暂勿付款。页面会自动重试。</p>
-        </div>
-      </div>
-
       <div class="checkout-receipt-body${paymentColumnVisible ? "" : " is-summary-only"}${qrVisible ? " has-qr" : ""}">
         <section class="checkout-summary" aria-labelledby="checkout-title">
-          <div class="checkout-heading-block">
-            <h1 id="checkout-title" data-status-heading tabindex="-1">${escapeHtml(stateCopy.heading)}</h1>
-            <p class="checkout-status-detail" data-status-detail>${escapeHtml(stateCopy.detail)}</p>
-            <a
-              class="checkout-button checkout-button--primary checkout-return-merchant"
-              data-return-merchant
-              ${linkHrefAttribute(returnMerchantVisible ? checkout?.returnUrl ?? null : null)}
-              ${hiddenAttribute(!returnMerchantVisible)}
-            >返回商家</a>
-          </div>
-
-          <div class="checkout-amount-block checkout-amount-block--summary" data-amount-block>
+          <h1 id="checkout-title" data-status-heading tabindex="-1">${escapeHtml(stateCopy.heading)}</h1>
+          <div class="checkout-amount-block" data-amount-block>
             ${amountContent}
           </div>
-
-          <div class="checkout-exact-note checkout-exact-note--desktop checkout-alert checkout-alert--info" data-payment-guidance${hiddenAttribute(!qrVisible)}>
-            <div class="checkout-message-body">
-              <h2>金额必须完全一致</h2>
-              <p>请按二维码下方金额付款。金额不同将无法自动确认。</p>
-            </div>
-          </div>
-
+          <p class="checkout-status-detail" data-status-detail>${escapeHtml(stateCopy.detail)}</p>
+          <a class="checkout-button checkout-button--primary checkout-return-merchant" data-return-merchant${linkHrefAttribute(returnMerchantVisible ? checkout?.returnUrl ?? null : null)}${hiddenAttribute(!returnMerchantVisible)}>返回商家</a>
         </section>
 
         <div class="checkout-payment-column" data-payment-column${hiddenAttribute(!paymentColumnVisible)}>
           <section class="checkout-code-panel" data-qr-panel${hiddenAttribute(!qrVisible)} aria-labelledby="code-title">
-            <div class="checkout-code-heading">
-              <h2 id="code-title"><img src="${CHECKOUT_PAGE_ASSETS.alipayIcon}" width="28" height="28" alt="" aria-hidden="true">支付宝付款</h2>
-              <p>请使用支付宝扫码完成付款</p>
-            </div>
+            <h2 class="checkout-sr-only" id="code-title">支付宝付款二维码</h2>
             <figure class="checkout-code-figure">
               <img
                 data-qr-image
@@ -279,47 +247,37 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
                 alt="用于支付此订单的支付宝付款二维码"
                 decoding="async"
               >
-              <div class="checkout-code-amount checkout-amount-block" data-amount-block>
-                ${amountContent}
-              </div>
-              <figcaption>付款前请再次核对金额</figcaption>
+              <figcaption data-payment-guidance${hiddenAttribute(!qrVisible)}>打开支付宝，扫一扫</figcaption>
             </figure>
             <div class="checkout-code-error checkout-inline-error" data-qr-error role="alert" hidden>
               <strong>二维码加载失败</strong>
-              <p>请检查网络连接后重新加载。</p>
+              <p>检查网络后重试。</p>
               <button class="checkout-button" type="button" data-qr-reload>重新加载二维码</button>
             </div>
           </section>
 
-          <button class="checkout-button checkout-button--quiet checkout-manual-refresh" type="button" data-checkout-refresh${hiddenAttribute(!manualRefreshVisible)}>
-            <span data-checkout-refresh-label>立即检查支付状态</span>
-          </button>
-
           <div class="checkout-code-actions"${hiddenAttribute(!qrVisible)}>
-            <button class="checkout-button" type="button" data-qr-expand>放大二维码</button>
-            <a class="checkout-button checkout-button--primary"${linkHrefAttribute(input.qrImageUrl)} download="perpay-collection-code.svg" data-qr-download>保存图片</a>
+            <button class="checkout-button checkout-button--quiet" type="button" data-qr-expand>放大二维码</button>
+            <a class="checkout-button checkout-button--quiet"${linkHrefAttribute(qrVisible ? input.qrImageUrl : null)} download="perpay-collection-code.svg" data-qr-download>保存二维码</a>
           </div>
-
-          <div class="checkout-exact-note checkout-exact-note--mobile checkout-alert checkout-alert--info" data-payment-guidance${hiddenAttribute(!qrVisible)}>
-            <div class="checkout-message-body">
-              <h2>金额必须完全一致</h2>
-              <p>请按二维码下方金额付款。金额不同将无法自动确认。</p>
-            </div>
-          </div>
+          <button class="checkout-button checkout-button--primary checkout-manual-refresh" type="button" data-checkout-refresh${hiddenAttribute(!manualRefreshVisible)}>
+            <span data-checkout-refresh-label>查询付款状态</span>
+          </button>
+          <div class="checkout-update-message checkout-alert" data-update-message role="status" aria-live="polite" hidden></div>
         </div>
 
         <dl class="checkout-order-details">
+          <div data-product-name-row${hiddenAttribute(!checkout?.productName)}>
+            <dt>商品</dt>
+            <dd data-product-name>${escapeHtml(checkout?.productName ?? "")}</dd>
+          </div>
           <div>
             <dt>订单号</dt>
             <dd class="checkout-mono" data-merchant-order-no>${escapeHtml(checkout?.merchantOrderNo ?? "-")}</dd>
           </div>
-          <div data-product-name-row${hiddenAttribute(!checkout?.productName)}>
-            <dt>商品名称</dt>
-            <dd data-product-name>${escapeHtml(checkout?.productName ?? "")}</dd>
-          </div>
           <div>
-            <dt>原始金额</dt>
-            <dd class="checkout-mono" data-requested-amount>${checkout === null ? "-" : formatMoney(checkout.requestedAmountCents, checkout.currency)}</dd>
+            <dt>订单金额</dt>
+            <dd data-requested-amount>${checkout === null ? "-" : formatMoney(checkout.requestedAmountCents, checkout.currency)}</dd>
           </div>
         </dl>
       </div>
@@ -330,22 +288,18 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
           <p data-refund-detail>${escapeHtml(refundMessage.text ?? "")}</p>
         </div>
       </div>
-
-      <div class="checkout-update-message checkout-alert" data-update-message role="status" aria-live="polite" hidden></div>
+      <p class="checkout-sr-only" data-state-announcement role="status" aria-live="polite" aria-atomic="true"></p>
     </article>
   </main>
 
-  <footer class="checkout-footer">
-    <p>${escapeHtml(footerCopy)}</p>
-  </footer>
-
   <dialog class="checkout-code-dialog" data-qr-dialog aria-labelledby="expanded-code-title">
     <div class="checkout-dialog-header">
-      <h2 id="expanded-code-title"><img src="${CHECKOUT_PAGE_ASSETS.alipayIcon}" width="28" height="28" alt="" aria-hidden="true">支付宝付款</h2>
+      <h2 id="expanded-code-title">支付宝付款</h2>
       <button class="checkout-button" type="button" data-qr-dialog-close>关闭</button>
     </div>
+    <p class="checkout-dialog-amount" data-qr-dialog-amount>${formatMoney(displayedAmountCents, "CNY")}</p>
     <img ${imageSourceAttributes(input.qrImageUrl, qrVisible)} width="640" height="640" alt="放大的支付宝付款二维码" data-qr-dialog-image>
-    <p>请按页面显示的准确金额付款</p>
+    <p>请按此金额付款，勿重复支付。</p>
   </dialog>
 </body>
 </html>`;

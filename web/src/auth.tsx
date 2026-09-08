@@ -3,12 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, Eye, EyeOff, LockKeyhole } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router";
 
-import { api, ApiError, queryClient, result, sessionKey, type AdminSessionEnvelope } from "./api/client";
+import { api, ApiError, invalidateSessionRequests, queryClient, result, sessionKey, type AdminSessionEnvelope } from "./api/client";
 import { Button, ErrorNotice, Field, Loading, Notice } from "./components/ui";
-import { validatePassword } from "./lib/format";
+import { MIN_ADMIN_PASSWORD_CHARACTERS, validatePassword } from "./lib/format";
 import { ThemeControl } from "./theme";
+import { clearOnboardingDeferrals } from "./lib/onboarding";
 
-const SessionContext = createContext<{ username: string; forget: () => void }>({ username: "admin", forget: () => undefined });
+const SessionContext = createContext<{ username: string; forget: () => void; error: Error | null; retry: () => void }>({ username: "admin", forget: () => undefined, error: null, retry: () => undefined });
 export const useSession = () => useContext(SessionContext);
 
 export function AuthBoundary({ children }: { children: ReactNode }) {
@@ -19,6 +20,8 @@ export function AuthBoundary({ children }: { children: ReactNode }) {
     staleTime: 60_000,
   });
   const forget = () => {
+    clearOnboardingDeferrals();
+    invalidateSessionRequests();
     void queryClient.cancelQueries();
     queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== "session" });
     queryClient.getMutationCache().clear();
@@ -28,14 +31,15 @@ export function AuthBoundary({ children }: { children: ReactNode }) {
     window.addEventListener("perpay:session-expired", forget);
     return () => window.removeEventListener("perpay:session-expired", forget);
   }, []);
-  useEffect(() => { if (session.error instanceof ApiError && session.error.status === 401) forget(); }, [session.error]);
+  const rejected = session.error instanceof ApiError && [401, 403].includes(session.error.status);
+  useEffect(() => { if (rejected) forget(); }, [session.error]);
 
   if (session.isPending) return <div className="auth-loading"><Loading label="正在验证管理员会话…" /></div>;
-  if (session.isError && (!(session.error instanceof ApiError) || ![401, 403].includes(session.error.status))) {
+  if (session.isError && !session.data && !rejected) {
     return <div className="auth-loading"><ErrorNotice error={session.error} retry={() => { void session.refetch(); }} /></div>;
   }
-  if (!session.data || session.isError) return <AuthPage onLogin={() => { void session.refetch(); }} />;
-  return <SessionContext value={{ username: session.data.data.username, forget }}>{children}</SessionContext>;
+  if (!session.data || rejected) return <AuthPage onLogin={() => { void session.refetch(); }} />;
+  return <SessionContext value={{ username: session.data.data.username, forget, error: session.error, retry: () => { void session.refetch(); } }}>{children}</SessionContext>;
 }
 
 export function AuthPage({ onLogin }: { onLogin: () => void }) {
@@ -85,7 +89,7 @@ export function AuthPage({ onLogin }: { onLogin: () => void }) {
   return <main className="auth-layout">
     <ThemeControl className="auth-theme" />
     <section className="auth-story">
-      <Link className="brand" to="/"><img src="/admin/favicon.svg" width="36" height="36" alt="" /><span>PerPay</span></Link>
+      <Link className="brand" to="/"><span>PerPay</span></Link>
       <div className="auth-statement"><h2>每一笔收款，<br />都有据可查。</h2></div>
     </section>
     <section className="auth-form-area"><div className="auth-form-wrap">
@@ -93,7 +97,7 @@ export function AuthPage({ onLogin }: { onLogin: () => void }) {
         {setup && <p>为这个实例设置管理员密码。初始化完成后，此入口会永久关闭。</p>}</div>
       {configured && !setup && <Notice tone="success">管理员已创建，请使用刚设置的密码登录。</Notice>}
       <form onSubmit={(event) => { void submit(event); }} className="form-stack">
-        <Field label={setup ? "设置管理员密码" : "管理员密码"} hint={setup ? "至少 12 个字符，建议使用密码管理器生成并保存。" : undefined} error={invalidField === "password" && error instanceof Error ? error.message : undefined}>
+        <Field label={setup ? "设置管理员密码" : "管理员密码"} hint={setup ? `至少 ${MIN_ADMIN_PASSWORD_CHARACTERS} 个字符，建议使用密码管理器生成并保存。` : undefined} error={invalidField === "password" && error instanceof Error ? error.message : undefined}>
           <span className="password-field"><input name="password" type={visible ? "text" : "password"} autoComplete={setup ? "new-password" : "current-password"} required value={password} disabled={pending} onChange={(event) => setPassword(event.target.value)} />
             <button type="button" className="password-toggle" aria-label={visible ? "隐藏密码" : "显示密码"} onClick={() => setVisible(!visible)}>{visible ? <EyeOff size={18} /> : <Eye size={18} />}</button></span>
         </Field>

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PerPay 调用端 Demo</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="page-heading"><div><h1>PerPay 调用端 Demo</h1><p id="connection">正在连接本机示例服务…</p></div><button id="reload" type="button">刷新本地记录</button></header>
+  <main>
+    <div class="notice"><strong>这里创建的是真实订单，不是模拟支付。</strong><p>付款前核对收款方，按收银台的准确应付金额支付，金额可能包含尾差。示例只记录状态，不执行发货、充值或退款。</p></div>
+    <p id="notification-hint" class="muted"></p>
+    <p id="feedback" role="status" aria-live="polite"></p>
+    <div class="workspace">
+      <section class="editor" aria-labelledby="create-heading">
+        <h2 id="create-heading">创建一笔订单</h2>
+        <form id="order-form">
+          <label>业务单号<input name="merchant_order_no" id="merchant-no" required maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._\-]*" autocomplete="off"></label>
+          <p class="hint">同一笔订单重试时保留原单号和参数。</p>
+          <label>商品名称<input name="product_name" required maxlength="200" value="PerPay 接入演示"></label>
+          <label>金额（元）<input name="amount" required inputmode="decimal" value="0.01" pattern="(0|[1-9][0-9]{0,2})(\.[0-9]{1,2})?"></label>
+          <p class="hint">示例限制 0.01–100.00 元，不代表 PerPay API 的金额上限。</p>
+          <label>备注（可选）<input name="note" maxlength="500" placeholder="仅用于自己的接入验证"></label>
+          <label class="check"><input name="confirm_real_payment" type="checkbox" required><span>我了解这会创建真实收款订单。</span></label>
+          <button id="create" type="submit" class="primary" disabled>创建订单</button>
+          <button id="new-order" type="button">换一个新业务单号</button>
+        </form>
+      </section>
+      <section aria-labelledby="orders-heading"><div class="section-heading"><h2 id="orders-heading">本机订单记录</h2><span class="muted">最近 30 笔</span></div><p class="hint">从收银台回来后点击“查询 PerPay 状态”。页面跳转本身不表示付款成功。</p><div id="orders"><p class="empty">还没有订单，从左侧创建第一笔。</p></div></section>
+    </div>
+    <section class="events" aria-labelledby="events-heading"><h2 id="events-heading">已验签通知</h2><p class="hint">先校验原始正文，再持久化事件；重复事件不重复处理，旧版本不覆盖新状态。</p><ol id="events"><li class="muted">尚未接到通知。</li></ol></section>
+  </main>
+  <footer>仅供本机学习接入。不要把整个示例服务暴露到公网；通知联调只转发 /webhooks/perpay。先阅读压缩包中的 README.md。</footer>
+</body>
+</html>

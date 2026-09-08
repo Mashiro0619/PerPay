@@ -75,7 +75,15 @@
 .field > input, .field > select, .field > textarea { width: 100%; }
 .field-label { color: var(--ink); font-size: 13px; font-weight: 570; }
 .field-error { color: var(--danger); font-size: 12px; }
-.collection-code-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.collection-code { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.collection-code-dropzone { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.collection-code-upload { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 180px; padding: 24px 16px; border: 1px dashed var(--line-strong); border-radius: 9px; background: var(--surface); color: var(--ink); text-align: center; }
+.collection-code-upload > svg { color: var(--accent); }
+.collection-code-upload:not(:disabled):hover, .collection-code-dropzone.is-dragging .collection-code-upload { border-color: var(--accent); background: var(--accent-soft); }
+.collection-code-upload:disabled { opacity: 0.65; }
+.collection-code-upload-title { font-size: 14px; font-weight: 550; }
+.collection-code-upload-hint { color: var(--muted); font-size: 12px; }
+.collection-code-editor textarea { min-height: 64px; }
 .collection-code-status { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
 [aria-invalid="true"] { border-color: var(--danger); }
 .form-stack, .form-stack > fieldset { display: flex; flex-direction: column; gap: 22px; }

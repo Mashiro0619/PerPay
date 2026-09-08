@@ -2526,7 +2526,7 @@ components:
       properties:
         password:
           type: string
-          minLength: 12
+          minLength: 6
           x-perpay-max-utf8-bytes: 1024
     AdminLoginEnvelope:
       type: object
@@ -2570,7 +2570,7 @@ components:
       properties:
         new_password:
           type: string
-          minLength: 12
+          minLength: 6
           x-perpay-max-utf8-bytes: 1024
     AdminEmptyRequest:
       type: object

@@ -27,11 +27,16 @@ describe("financial input and operation identity", () => {
     expect(dateTime("2026-01-01T00:00:00+08:00")).toBe("2026/01/01 00:00");
   });
 
-  it("counts password Unicode characters rather than UTF-16 code units", () => {
-    expect(validatePassword("🔐".repeat(6))).not.toBeNull();
-    expect(validatePassword("🔐".repeat(12))).toBeNull();
+  it.each(["a", "密", "🔐"])("requires six Unicode characters for passwords containing %s", (character) => {
+    expect(validatePassword(character.repeat(5))).toBe("密码至少需要 6 个字符。");
+    expect(validatePassword(character.repeat(6))).toBeNull();
+  });
+
+  it("retains the UTF-8 byte limit and well-formed Unicode checks", () => {
+    expect(validatePassword("a".repeat(1024))).toBeNull();
+    expect(validatePassword("a".repeat(1025))).not.toBeNull();
     expect(validatePassword("文".repeat(400))).not.toBeNull();
-    expect(validatePassword("a".repeat(12) + "\ud800")).not.toBeNull();
+    expect(validatePassword("a".repeat(6) + "\ud800")).not.toBeNull();
   });
 
   it("reuses an operation ID only for an identical retried payload", () => {

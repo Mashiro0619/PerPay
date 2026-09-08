@@ -3,12 +3,12 @@ import {
   chmodSync,
   existsSync,
   fsyncSync,
+  linkSync,
   lstatSync,
   mkdirSync,
   openSync,
   closeSync,
   readFileSync,
-  renameSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -22,6 +22,7 @@ import {
   type TrustedProxyPolicy,
 } from "./infrastructure/network/trusted-proxy.ts";
 import { pathsOverlap } from "./infrastructure/storage/path-separation.ts";
+import { syncDirectory } from "./database/maintenance-lock.ts";
 
 const MASTER_KEY_BYTES = 32;
 const MASTER_KEY_HEX_LENGTH = MASTER_KEY_BYTES * 2;
@@ -141,18 +142,7 @@ function resolveMasterKey(
   if (existsSync(databasePath) && lstatSync(databasePath).size > 0 && !existsSync(path)) {
     throw new Error("configuration validation failed: master-key is missing for an existing database");
   }
-  if (existsSync(path)) {
-    const stat = lstatSync(path);
-    if (stat.isSymbolicLink() || !stat.isFile() || stat.nlink !== 1) {
-      throw new Error("configuration validation failed: master-key must be a private ordinary file");
-    }
-    if (process.platform !== "win32" && (stat.mode & 0o077) !== 0) chmodSync(path, 0o600);
-    const value = readFileSync(path, "utf8").trim();
-    if (!masterKeyHexPattern.test(value)) {
-      throw new Error("configuration validation failed: master-key file must contain 64 hexadecimal characters");
-    }
-    return Buffer.from(value, "hex");
-  }
+  if (existsSync(path)) return readMasterKey(path);
   const value = randomBytes(MASTER_KEY_BYTES).toString("hex");
   const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
   writeFileSync(temporary, `${value}\n`, { encoding: "utf8", flag: "wx", mode: 0o600 });
@@ -163,18 +153,28 @@ function resolveMasterKey(
       try { fsyncSync(handle); } finally { closeSync(handle); }
     }
     try {
-      renameSync(temporary, path);
+      linkSync(temporary, path);
     } catch (error) {
-      if (!existsSync(path)) throw error;
+      if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
     }
   } finally {
-    try { unlinkSync(temporary); } catch { /* another process published the key */ }
+    unlinkSync(temporary);
   }
-  const published = readFileSync(path, "utf8").trim();
-  if (!masterKeyHexPattern.test(published)) {
-    throw new Error("configuration validation failed: generated master-key file is invalid");
+  syncDirectory(secretsDirectory);
+  return readMasterKey(path);
+}
+
+function readMasterKey(path: string): Buffer {
+  const stat = lstatSync(path);
+  if (stat.isSymbolicLink() || !stat.isFile() || stat.nlink !== 1) {
+    throw new Error("configuration validation failed: master-key must be a private ordinary file");
   }
-  return Buffer.from(published, "hex");
+  if (process.platform !== "win32" && (stat.mode & 0o077) !== 0) chmodSync(path, 0o600);
+  const value = readFileSync(path, "utf8").trim();
+  if (!masterKeyHexPattern.test(value)) {
+    throw new Error("configuration validation failed: master-key file must contain 64 hexadecimal characters");
+  }
+  return Buffer.from(value, "hex");
 }
 
 function parsePublicUrl(value: string): URL {

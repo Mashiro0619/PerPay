@@ -1101,6 +1101,52 @@ describe("LedgerIngestScheduler", () => {
     });
   });
 
+  it("never establishes or advances successful collection time for skipped scans", async () => {
+    let now = NOW;
+    const service = new ScriptedScanService([
+      scanResult({ status: "SKIPPED" }),
+      scanResult({ status: "COMPLETED", pages: 1, normalCompleted: true }),
+      scanResult({ status: "SKIPPED" }),
+    ]);
+    const scheduler = new LedgerIngestScheduler({
+      service: service as unknown as LedgerIngestService, intervalMilliseconds: 5_000, clock: () => now,
+      setTimeout: () => ({ unref() {} }) as NodeJS.Timeout, clearTimeout: () => {},
+    });
+    try {
+      scheduler.start();
+      await scheduler.trigger("initial-skip");
+      assert.equal(scheduler.health().lastSuccessAt, null);
+      assert.equal(scheduler.health().state, "idle");
+      now += 10_000;
+      await scheduler.trigger("real-collection");
+      assert.equal(scheduler.health().lastSuccessAt, now);
+      assert.equal(scheduler.health().state, "healthy");
+      now += 120_000;
+      await scheduler.trigger("later-skip");
+      assert.equal(scheduler.health().lastSuccessAt, NOW + 10_000);
+    } finally { await scheduler.stop(); }
+  });
+
+  it("does not clear collection failures when no provider request occurs", async () => {
+    const service = new ScriptedScanService([
+      scanResult({ status: "FAILED", errorCode: "remote_authorization_failed" }),
+      scanResult({ status: "SKIPPED" }),
+    ]);
+    const scheduler = new LedgerIngestScheduler({
+      service: service as unknown as LedgerIngestService, intervalMilliseconds: 5_000, clock: () => NOW,
+      setTimeout: () => ({ unref() {} }) as NodeJS.Timeout, clearTimeout: () => {},
+    });
+    try {
+      scheduler.start();
+      await scheduler.trigger("failure");
+      await scheduler.trigger("no-request");
+      assert.equal(scheduler.health().lastSuccessAt, null);
+      assert.equal(scheduler.health().state, "degraded");
+      assert.equal(scheduler.health().lastErrorCode, "remote_authorization_failed");
+      assert.equal(scheduler.health().consecutiveFailures, 1);
+    } finally { await scheduler.stop(); }
+  });
+
   it("uses durable short variant delay even when the normal interval is one hour", async () => {
     const timers: Array<{ readonly delay: number; cleared: boolean }> = [];
     const service = new ScriptedScanService([

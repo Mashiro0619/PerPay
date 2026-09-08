@@ -17,6 +17,50 @@ const MASTER_KEY = "0123456789abcdef".repeat(4);
 const ADMIN_PASSWORD = "first-run-admin-password";
 
 describe("first-run administrator HTTP flow", () => {
+  for (const [name, password, replacement] of [
+    ["ASCII", "aB3!xY", "bC4!yZ"],
+    ["Unicode code point", "🔐".repeat(6), "密".repeat(6)],
+  ] as const) {
+    it(`accepts six ${name} characters for setup and password changes but rejects five`, async () => {
+      const fixture = await createFixture();
+      try {
+        const short = Array.from(password).slice(0, 5).join("");
+        const invalidSetup = await fixture.app.request("/api/admin/v1/setup", {
+          method: "POST", headers: jsonHeaders(), body: JSON.stringify({ password: short }),
+        });
+        assert.equal(invalidSetup.status, 422);
+        const setup = await fixture.app.request("/api/admin/v1/setup", {
+          method: "POST", headers: jsonHeaders(), body: JSON.stringify({ password }),
+        });
+        assert.equal(setup.status, 204);
+        assert.deepEqual(setup.headers.getSetCookie(), []);
+        const login = await fixture.app.request("/api/admin/v1/session/login", {
+          method: "POST", headers: jsonHeaders(), body: JSON.stringify({ password }),
+        });
+        assert.equal(login.status, 200);
+        const body = await login.json() as { data: { csrf_token: string } };
+        const cookie = login.headers.getSetCookie().map((value) => value.split(";", 1)[0]).join("; ");
+        const headers = { ...jsonHeaders(), cookie, "x-csrf-token": body.data.csrf_token };
+        const invalidChange = await fixture.app.request("/api/admin/v1/password", {
+          method: "POST", headers, body: JSON.stringify({ new_password: short }),
+        });
+        assert.equal(invalidChange.status, 422);
+        assert.equal((await fixture.app.request("/api/admin/v1/session", { headers: { cookie } })).status, 200);
+        const change = await fixture.app.request("/api/admin/v1/password", {
+          method: "POST", headers, body: JSON.stringify({ new_password: replacement }),
+        });
+        assert.equal(change.status, 204);
+        assert.equal((await fixture.app.request("/api/admin/v1/session", { headers: { cookie } })).status, 401);
+        const nextLogin = await fixture.app.request("/api/admin/v1/session/login", {
+          method: "POST", headers: jsonHeaders(), body: JSON.stringify({ password: replacement }),
+        });
+        assert.equal(nextLogin.status, 200);
+      } finally {
+        fixture.close();
+      }
+    });
+  }
+
   it("sets the password directly, creates no session, and permanently closes setup", async () => {
     const fixture = await createFixture();
     try {
@@ -38,7 +82,7 @@ describe("first-run administrator HTTP flow", () => {
       const tooShortUnicodePassword = await fixture.app.request("/api/admin/v1/setup", {
         method: "POST",
         headers: jsonHeaders(),
-        body: JSON.stringify({ password: "🔐".repeat(6) }),
+        body: JSON.stringify({ password: "🔐".repeat(5) }),
       });
       assert.equal(tooShortUnicodePassword.status, 422);
       assert.equal(

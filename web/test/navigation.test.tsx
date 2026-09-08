@@ -61,6 +61,10 @@ describe("navigation and draft protection", () => {
   it("keeps only accessible icon controls at the sidebar bottom without redundant instance information", async () => {
     const { container, fetchMock } = mount();
     await screen.findByLabelText("收银台有效期（秒）");
+    for (const brand of container.querySelectorAll(".brand")) {
+      expect(brand).toHaveTextContent("PerPay");
+      expect(brand.querySelector("img, svg")).toBeNull();
+    }
     expect(container.querySelector(".topbar")).toBeNull();
     expect(container.querySelector(".instance-label, .sidebar-version, .sidebar-bottom")).toBeNull();
     expect(container.querySelector(".workspace-footer")).toBeNull();

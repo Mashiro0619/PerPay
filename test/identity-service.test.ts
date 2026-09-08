@@ -46,6 +46,30 @@ async function fixture(
 }
 
 describe("IdentityService", () => {
+  it("enforces six Unicode characters for administrator setup and password replacement", async () => {
+    const test = await fixture(undefined, false);
+    try {
+      for (const password of ["short", "🔐".repeat(5)]) {
+        await assert.rejects(test.identity.setupAdmin(password), PasswordInputError);
+      }
+      await test.identity.setupAdmin("aB3!xY");
+      const login = await test.identity.login("aB3!xY");
+      const authenticated = test.identity.authenticate(login.sessionToken);
+      assert.ok(authenticated);
+      for (const password of ["short", "🔐".repeat(5)]) {
+        await assert.rejects(test.identity.changePassword(authenticated, password), PasswordInputError);
+        assert.ok(test.identity.authenticate(login.sessionToken));
+      }
+      const replacement = "🔐".repeat(6);
+      await test.identity.changePassword(authenticated, replacement);
+      assert.equal(test.identity.authenticate(login.sessionToken), undefined);
+      const replacementLogin = await test.identity.login(replacement);
+      assert.ok(test.identity.authenticate(replacementLogin.sessionToken));
+    } finally {
+      test.close();
+    }
+  });
+
   it("starts with an uninitialized administrator and keeps login closed", async () => {
     const test = await fixture(undefined, false);
     try {

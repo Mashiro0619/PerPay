@@ -92,10 +92,13 @@ export class LedgerIngestScheduler {
       this.#timer = null;
     }
     this.#lastAttemptAt = safeNow(this.#clock());
+    const previousState = this.#state;
     this.#state = "running";
     const operation = this.#service.run(reason)
       .then((result) => {
-        if (result.status === "COMPLETED" || result.status === "SKIPPED") {
+        if (result.status === "SKIPPED") {
+          this.#state = previousState;
+        } else if (result.status === "COMPLETED") {
           this.#state = "healthy";
           this.#lastSuccessAt = safeNow(this.#clock());
           this.#lastErrorCode = null;

@@ -25,7 +25,7 @@ function initialization(value: string) {
 }
 
 describe("administrator authentication", () => {
-  it("validates setup before sending a request and asks for a separate login", async () => {
+  it.each(["aB3!xY", "🔐".repeat(6)])("accepts six-character setup password %s and asks for a separate login", async (password) => {
     initialization("false");
     const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
@@ -33,16 +33,16 @@ describe("administrator authentication", () => {
     const user = userEvent.setup();
     renderPage(<AuthPage onLogin={onLogin} />, "/setup");
     expect(screen.getByText("为这个实例设置管理员密码。初始化完成后，此入口会永久关闭。")).toBeVisible();
-    expect(screen.getByText("至少 12 个字符，建议使用密码管理器生成并保存。")).toBeVisible();
+    expect(screen.getByText("至少 6 个字符，建议使用密码管理器生成并保存。")).toBeVisible();
     await user.type(screen.getByLabelText(/设置管理员密码/), "short");
     await user.type(screen.getByLabelText("再次输入密码"), "short");
     await user.click(screen.getByRole("button", { name: "创建管理员" }));
-    expect(await screen.findByText("密码至少需要 12 个字符。")).toBeVisible();
+    expect(await screen.findByText("密码至少需要 6 个字符。")).toBeVisible();
     expect(fetchMock).not.toHaveBeenCalled();
     await user.clear(screen.getByLabelText(/设置管理员密码/));
     await user.clear(screen.getByLabelText("再次输入密码"));
-    await user.type(screen.getByLabelText(/设置管理员密码/), "isolated-test-password");
-    await user.type(screen.getByLabelText("再次输入密码"), "isolated-test-password");
+    await user.type(screen.getByLabelText(/设置管理员密码/), password);
+    await user.type(screen.getByLabelText("再次输入密码"), password);
     await user.click(screen.getByRole("button", { name: "创建管理员" }));
     expect(await screen.findByRole("heading", { name: "登录管理后台" })).toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -54,6 +54,42 @@ describe("administrator authentication", () => {
     renderPage(<AuthPage onLogin={vi.fn()} />, "/setup");
     expect(screen.getByRole("heading", { name: "登录管理后台" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "创建管理员" })).not.toBeInTheDocument();
+  });
+
+  it.each(["aB3!xY", "🔐".repeat(6)])("validates a six-character replacement password %s before saving", async (password) => {
+    const fetchMock = vi.fn(async (_request: Request) => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    renderPage(<SecuritySettings settings={settings} onSaved={vi.fn()} />);
+    const field = screen.getByLabelText("新密码");
+    const confirmation = screen.getByLabelText("再次输入新密码");
+    const short = Array.from(password).slice(0, 5).join("");
+    expect(field).toHaveAccessibleDescription("至少 6 个字符。");
+    fireEvent.change(field, { target: { value: short } });
+    fireEvent.change(confirmation, { target: { value: short } });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("checkbox", { name: "已保存新密码，并了解所有会话将被注销。" }));
+    await user.click(screen.getByRole("button", { name: "修改密码并重新登录" }));
+    expect(screen.getByText("密码至少需要 6 个字符。")).toBeVisible();
+    expect(fetchMock).not.toHaveBeenCalled();
+    fireEvent.change(field, { target: { value: password } });
+    fireEvent.change(confirmation, { target: { value: password } });
+    await user.click(screen.getByRole("button", { name: "修改密码并重新登录" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    const request = fetchMock.mock.calls[0]![0];
+    expect(new URL(request.url).pathname).toBe("/api/admin/v1/password");
+    expect(await request.clone().json()).toEqual({ new_password: password });
+    await waitFor(() => expect(field).toHaveValue(""));
+  });
+
+  it.each(["login", "setup"])("uses a text-only brand while preserving authentication controls on %s", (page) => {
+    initialization(page === "setup" ? "false" : "true");
+    const { container } = renderPage(<AuthPage onLogin={vi.fn()} />, "/" + page);
+    const brand = screen.getByRole("link", { name: "PerPay" });
+    expect(brand).toHaveAttribute("href", "/");
+    expect(brand.querySelector("img, svg")).toBeNull();
+    expect(screen.getByRole("heading", { name: /每一笔收款/ })).toHaveTextContent("每一笔收款，都有据可查。");
+    expect(container.querySelectorAll(".auth-statement br")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "显示密码" }).querySelector("svg")).not.toBeNull();
   });
 
   it("keeps login labels without redundant decorations or implementation notes", () => {
@@ -108,7 +144,7 @@ describe("concise settings copy", () => {
     expect(screen.queryByText("有未保存的修改")).not.toBeInTheDocument();
     if (section === "collection") {
       expect(screen.getByLabelText("支付宝经营码内容")).not.toHaveAccessibleDescription();
-      expect(screen.getByRole("button", { name: "上传二维码图片" })).toBeVisible();
+      expect(screen.getByRole("button", { name: "点击或拖拽二维码图片" })).toBeVisible();
     }
     if (section === "backup") {
       expect(screen.getByRole("link", { name: "查看备份状态" })).toHaveAttribute("href", "/system");

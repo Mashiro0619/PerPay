@@ -9,8 +9,9 @@ import { Button, EmptyState, ErrorNotice, Loading, PageHeading } from "./compone
 import { RouteTransition } from "./components/RouteTransition";
 import { SelectionIndicator } from "./components/SelectionIndicator";
 import { DraftProvider, useDraftGuard } from "./drafts";
-import { Link, NavLink, NavigationContext } from "./navigation";
+import { Link, NavLink, NavigationContext, useNavigate } from "./navigation";
 import { ThemeControl } from "./theme";
+import { deferOnboarding, deferredInstance } from "./lib/onboarding";
 
 const navigation = [
   { to: "/", label: "收款概览", icon: LayoutDashboard },
@@ -25,6 +26,16 @@ const navigation = [
 function AppShell() {
   const session = useSession();
   const location = useLocation();
+  const navigate = useNavigate();
+  useEffect(() => {
+    const instance = deferredInstance(location.state);
+    if (instance) {
+      deferOnboarding(instance);
+      const state = { ...location.state };
+      delete state.deferOnboardingFor;
+      void navigate({ pathname: location.pathname, search: location.search, hash: location.hash }, { replace: true, state });
+    }
+  }, [location.key, location.state, location.pathname, location.search, location.hash, navigate]);
   const mobileNavigation = useRef<HTMLDialogElement>(null);
   const navigationTrigger = useRef<HTMLElement | null>(null);
   const { requestDiscard } = useDraftGuard();
@@ -41,7 +52,7 @@ function AppShell() {
     return () => desktop.removeEventListener("change", closeOnDesktop);
   }, []);
   const renderNavigation = () => <>
-    <Link className="brand" to="/" onClick={closeNavigation}><img src="/admin/favicon.svg" width="34" height="34" alt="" /><span>PerPay</span><span className="brand-tag">控制台</span></Link>
+    <Link className="brand" to="/" onClick={closeNavigation}><span>PerPay</span><span className="brand-tag">控制台</span></Link>
     <nav className="main-nav" aria-label="主导航"><SelectionIndicator active={location.pathname} />{navigation.map((item, index) => <div key={item.to}>
       {index === 5 && <span className="nav-section">实例管理</span>}
       <NavLink to={item.to} end={item.to === "/"} className={({ isActive }) => `nav-link ${isActive ? "is-active" : ""}`} onClick={closeNavigation}><item.icon size={19} strokeWidth={1.7} aria-hidden="true" /><span>{item.label}</span></NavLink>
@@ -68,6 +79,7 @@ function AppShell() {
     <div className="workspace">
     <main id="main-content" className="main-content" tabIndex={-1}>
       <ErrorNotice error={logout.error} />
+      <ErrorNotice error={session.error} retry={session.retry} />
       <RouteTransition><Outlet /></RouteTransition>
     </main>
     </div>
@@ -87,6 +99,7 @@ export const appRoutes = createRoutesFromElements(<Route errorElement={<AppFailu
     <Route path="reconciliation/:kind/:resourceId" lazy={async () => ({ Component: (await import("./pages/ReconciliationDetail")).default })} />
     <Route path="notifications" lazy={async () => ({ Component: (await import("./pages/Notifications")).default })} />
     <Route path="notifications/:deliveryId" lazy={async () => ({ Component: (await import("./pages/Notifications")).NotificationDetail })} />
+    <Route path="settings/onboarding/:step?" lazy={async () => ({ Component: (await import("./pages/Onboarding")).default })} />
     <Route path="settings/:section?" lazy={async () => ({ Component: (await import("./pages/Settings")).default })} />
     <Route path="system" lazy={async () => ({ Component: (await import("./pages/System")).default })} />
     <Route path="test-payment" lazy={async () => ({ Component: (await import("./pages/TestPayment")).default })} />

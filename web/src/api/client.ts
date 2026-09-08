@@ -1,4 +1,4 @@
-import { QueryClient } from "@tanstack/react-query";
+import { MutationCache, QueryClient } from "@tanstack/react-query";
 
 import { client } from "./generated/client.gen";
 import type { ErrorEnvelope } from "./generated/types.gen";
@@ -8,6 +8,22 @@ export * as api from "./generated/sdk.gen";
 export type * from "./generated/types.gen";
 
 export const sessionKey = ["session"] as const;
+let sessionGeneration = 0;
+let sessionController = new AbortController();
+const requestGenerations = new WeakMap<Request, number>();
+const mutationGenerations = new WeakMap<object, number>();
+
+export function invalidateSessionRequests(): void {
+  sessionGeneration += 1;
+  const previous = sessionController;
+  sessionController = new AbortController();
+  client.setConfig({ signal: sessionController.signal });
+  previous.abort();
+}
+
+function requireCurrentGeneration(generation: number | undefined): void {
+  if (generation !== sessionGeneration) throw new DOMException("管理员会话已变化，已忽略旧请求结果。", "AbortError");
+}
 
 export function readCsrfToken(cookie = document.cookie): string | null {
   const cookies = new Map(cookie.split(";").map((part) => {
@@ -44,9 +60,12 @@ client.setConfig({
   credentials: "same-origin",
   cache: "no-store",
   redirect: "error",
+  signal: sessionController.signal,
 });
 
 client.interceptors.request.use((request) => {
+  request.signal.throwIfAborted();
+  requestGenerations.set(request, sessionGeneration);
   if (new URL(request.url).origin !== window.location.origin) {
     throw new Error("管理请求不能发送到其他站点。");
   }
@@ -58,6 +77,8 @@ client.interceptors.request.use((request) => {
 });
 
 client.interceptors.response.use((response, request) => {
+  requireCurrentGeneration(requestGenerations.get(request));
+  request.signal.throwIfAborted();
   if (response.status === 401 && !/\/session(?:\/login)?$|\/setup$/.test(new URL(request.url).pathname)) {
     window.dispatchEvent(new Event("perpay:session-expired"));
   }
@@ -67,9 +88,11 @@ client.interceptors.response.use((response, request) => {
 export async function result<Data>(request: Promise<{
   data?: Data | undefined; error?: unknown; response?: Response | undefined;
 }>): Promise<Data> {
+  const generation = sessionGeneration;
   const response = await request;
+  requireCurrentGeneration(generation);
+  if (response.error instanceof Error && response.error.name === "AbortError") throw response.error;
   if (!response.response?.ok) {
-    if (response.error instanceof Error && response.error.name === "AbortError") throw response.error;
     throw new ApiError(response.response, response.error);
   }
   if (response.response.status !== 204 && !response.response.headers.get("content-type")?.includes("application/json")) {
@@ -79,11 +102,15 @@ export async function result<Data>(request: Promise<{
 }
 
 export const queryClient = new QueryClient({
+  mutationCache: new MutationCache({
+    onMutate: (_variables, mutation) => { mutationGenerations.set(mutation, sessionGeneration); },
+    onSuccess: (_data, _variables, _context, mutation) => { requireCurrentGeneration(mutationGenerations.get(mutation)); },
+  }),
   defaultOptions: {
     queries: {
       staleTime: 15_000,
       gcTime: 5 * 60_000,
-      retry: (attempt, error) => attempt < 1 && (!(error instanceof ApiError) || error.status === 0 || error.status >= 500),
+      retry: (attempt, error) => attempt < 1 && error.name !== "AbortError" && (!(error instanceof ApiError) || error.status === 0 || error.status >= 500),
       refetchOnWindowFocus: true,
     },
     mutations: { retry: false, gcTime: 0 },

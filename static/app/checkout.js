@@ -31,32 +31,32 @@
   const stateCopy = Object.freeze({
     UNPAID: Object.freeze({
       badge: "等待付款",
-      heading: "请支付以下准确金额",
-      detail: "付款后请停留在本页，系统确认后会自动更新。请勿重复付款。",
+      heading: "支付宝付款",
+      detail: "金额需完全一致，付款后自动确认。",
       badgeClass: "",
     }),
     CONFIRMED: Object.freeze({
       badge: "付款已确认",
       heading: "付款已确认",
-      detail: "订单已经完成确认，无需再次付款。",
+      detail: "已收到付款，请勿重复支付。",
       badgeClass: "is-success",
     }),
     DISPUTED: Object.freeze({
       badge: "付款有争议",
-      heading: "付款关联需要处理",
-      detail: "这笔付款的关联存在争议，请联系订单提供方处理，勿再次付款。",
+      heading: "付款需要核实",
+      detail: "请联系商家核实，勿再次付款。",
       badgeClass: "is-danger",
     }),
     CLOSED: Object.freeze({
       badge: "订单已关闭",
       heading: "订单已关闭",
-      detail: "此订单不再收款，请勿扫描或再次付款。",
+      detail: "此订单不再收款，请勿付款。",
       badgeClass: "is-warning",
     }),
     EXPIRED: Object.freeze({
       badge: "订单已过期",
       heading: "订单已过期",
-      detail: "付款时间已经结束，请返回订单提供方重新创建订单。",
+      detail: "付款时间已结束，请返回商家重新下单。",
       badgeClass: "is-warning",
     }),
   });
@@ -72,6 +72,11 @@
   let retryNotBefore = retryAfterMilliseconds > 0 ? Date.now() + retryAfterMilliseconds : 0;
   let refreshInFlight = false;
   let destroyed = false;
+  let paymentSuspended = false;
+  let qrLoadFailed = false;
+  let serverTime = Number(root.dataset.serverTime) || Date.now();
+  let serverTimeAnchor = window.performance?.getEntriesByType?.("navigation")[0]?.responseStart ?? monotonicNow();
+  let serverWallTimeAnchor = Date.now() - Math.max(0, monotonicNow() - serverTimeAnchor);
 
   wireQrControls();
   wireLifecycle();
@@ -154,8 +159,14 @@
     const reload = root.querySelector("[data-qr-reload]");
 
     expand?.addEventListener("click", () => {
+      if (!canUseQr() || qrLoadFailed) return;
+      if (qrDialogImage instanceof HTMLImageElement && !qrDialogImage.hasAttribute("src")) {
+        const source = resolveQrSource();
+        if (source !== null) qrDialogImage.src = source;
+      }
       if (qrDialog instanceof HTMLDialogElement && !qrDialog.open) qrDialog.showModal();
     });
+    qrDownload?.addEventListener("click", (event) => { if (!canUseQr() || qrLoadFailed) event.preventDefault(); });
     close?.addEventListener("click", () => {
       if (qrDialog instanceof HTMLDialogElement) qrDialog.close();
     });
@@ -171,6 +182,7 @@
       }
     }
     reload?.addEventListener("click", () => {
+      if (!canUseQr()) return;
       if (!(qrImage instanceof HTMLImageElement)) return;
       const originalSource = resolveQrSource();
       const retryUrl = originalSource === null ? null : sameOriginUrl(originalSource);
@@ -196,6 +208,7 @@
     updateManualRefreshButton();
     clearScheduledRefresh();
     const controller = new AbortController();
+    const requestStartedAt = monotonicNow();
     activeController = controller;
     let timedOut = false;
     const timeoutId = window.setTimeout(() => {
@@ -218,13 +231,19 @@
       }
       const payload = await response.json();
       const checkout = readCheckoutPayload(payload);
+      const responseTime = Date.parse(response.headers.get("date") ?? "");
+      if (Number.isFinite(responseTime)) {
+        serverTime = responseTime + 1_000 + Math.max(0, monotonicNow() - requestStartedAt);
+        serverTimeAnchor = monotonicNow();
+        serverWallTimeAnchor = Date.now();
+      }
       applyCheckout(checkout);
       retryFailures = 0;
       retryAfterMilliseconds = 0;
       retryNotBefore = 0;
       hideNetworkMessage();
       scheduleNext(intervalForState(lastVisualState));
-      if (manual && previousState === lastVisualState && hasCheckoutData) {
+      if (manual && previousState === lastVisualState && hasCheckoutData && !paymentSuspended) {
         showUpdateMessage("已检查，暂未确认付款。", "info");
       }
       return true;
@@ -295,18 +314,19 @@
       setStatus("UNAVAILABLE", {
         badge: "收款暂不可用",
         heading: "暂时无法确认付款",
-        detail: "自动确认服务尚未就绪，请暂勿付款。页面会自动重试。",
+        detail: "收款服务暂不可用，请勿付款。页面会自动重试。",
         badgeClass: "is-warning",
       });
       const qrDialogWasOpen = deactivateQr();
+      setHidden(countdownWrap, true);
+      updateReturnMerchant(null, "UNAVAILABLE");
       setHidden(qrPanel, true);
       setHidden(qrActions, true);
       setAllHidden("[data-payment-guidance]", true);
-      setHidden(root.querySelector("[data-service-alert]"), false);
       if (!hasCheckoutData) {
         showRouteError(
           "暂时无法确认付款",
-          "自动确认服务尚未就绪，请暂勿付款。页面会自动重试。",
+          "收款服务暂不可用，请勿付款。页面会自动重试。",
           errorPayload.code ?? "reconciliation_not_ready",
           true,
         );
@@ -332,12 +352,13 @@
     hasCheckoutData = true;
     lastVisualState = visualState;
     lastRefundStatus = checkout.refund.status;
+    paymentSuspended = false;
+    root.dataset.expiresAt = checkout.checkout.expires_at;
     const routeErrorHadFocus = routeError instanceof HTMLElement
       && routeError.contains(document.activeElement);
 
     setHidden(routeError, true);
     setHidden(content, false);
-    setHidden(root.querySelector("[data-service-alert]"), true);
     setStatus(visualState, stateCopy[visualState]);
     updateReturnMerchant(checkout.return_url, visualState);
 
@@ -360,6 +381,7 @@
         : "订单金额";
     setAllText("[data-amount-label]", amountLabel);
     setAllText("[data-payable-amount]", formatCents(displayedAmount));
+    setText(qrDialog?.querySelector("[data-qr-dialog-amount]"), formatMoney(displayedAmount, checkout.currency));
     const formattedAmount = formatCents(displayedAmount);
     setAllText("[data-amount-accessible]", `${amountLabel} ${formattedAmount} 元`);
     root.querySelectorAll(".checkout-amount").forEach((amount) => {
@@ -368,18 +390,16 @@
       amount.classList.toggle("is-very-long", formattedAmount.length >= 13);
     });
 
-    const qrCanBeShown = visualState === "UNPAID" && instructions !== null && ensureQrSource();
+    const qrCanBeShown = visualState === "UNPAID" && instructions !== null && !paymentWindowEnded() && ensureQrSource();
     const qrDialogWasOpen = qrCanBeShown ? false : deactivateQr();
     setHidden(qrPanel, !qrCanBeShown);
-    setHidden(qrActions, !qrCanBeShown);
-    setAllHidden("[data-payment-guidance]", !qrCanBeShown);
+    setHidden(qrActions, !qrCanBeShown || qrLoadFailed);
+    setAllHidden("[data-payment-guidance]", !qrCanBeShown || qrLoadFailed);
     const manualWasFocused = manualRefreshButton instanceof HTMLElement && manualRefreshButton === document.activeElement;
     setHidden(manualRefreshButton, !["UNPAID", "UNAVAILABLE"].includes(visualState));
     updatePaymentColumn();
     setHidden(countdownWrap, visualState !== "UNPAID");
-    root.dataset.expiresAt = checkout.checkout.expires_at;
     if (countdown instanceof HTMLTimeElement) countdown.dateTime = checkout.checkout.expires_at;
-    updateCountdown();
     updateRefund(checkout.refund.status);
 
     root.dataset.initialState = visualState;
@@ -391,16 +411,11 @@
 
     if (routeErrorHadFocus || qrDialogWasOpen || (manualWasFocused && manualRefreshButton instanceof HTMLElement && manualRefreshButton.hidden)) focusStatusHeading();
 
-    if (previousState !== visualState) {
-      showUpdateMessage(stateCopy[visualState].detail, visualState === "DISPUTED" ? "danger" : "success");
-    } else if (previousRefund !== checkout.refund.status) {
-      showUpdateMessage(
-        checkout.refund.status === "FULL" ? "此订单已更新为全额退款。" : "此订单的退款状态已更新。",
-        "info",
-      );
-    } else {
-      hideUpdateMessage();
+    hideUpdateMessage();
+    if (previousState === visualState && previousRefund !== checkout.refund.status) {
+      setText(root.querySelector("[data-state-announcement]"), "订单的退款记录已更新。");
     }
+    updateCountdown();
   }
 
   function setStatus(visualState, copy) {
@@ -411,7 +426,11 @@
       badge.classList.remove("is-success", "is-warning", "is-danger");
       if (copy.badgeClass) badge.classList.add(copy.badgeClass);
     }
-    setText(root.querySelector("[data-status-heading]"), copy.heading);
+    const heading = root.querySelector("[data-status-heading]");
+    if (heading?.textContent !== copy.heading) {
+      setText(root.querySelector("[data-state-announcement]"), `${copy.heading}。${copy.detail}`);
+    }
+    setText(heading, copy.heading);
     setText(root.querySelector("[data-status-detail]"), copy.detail);
     if (content instanceof HTMLElement) content.dataset.state = visualState;
   }
@@ -468,9 +487,10 @@
       countdown.textContent = "等待更新";
       return;
     }
-    const remaining = Math.max(0, expiresAt - Date.now());
+    const remaining = Math.max(0, expiresAt - estimatedServerTime());
     if (remaining === 0) {
-      countdown.textContent = "等待更新";
+      countdown.textContent = "等待确认";
+      suspendExpiredPayment();
       return;
     }
     const totalSeconds = Math.ceil(remaining / 1_000);
@@ -481,6 +501,40 @@
       ? `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
       : `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
     countdown.textContent = visible;
+  }
+
+  function monotonicNow() {
+    return window.performance?.now() ?? Date.now();
+  }
+
+  function estimatedServerTime() {
+    return serverTime + Math.max(0, monotonicNow() - serverTimeAnchor, Date.now() - serverWallTimeAnchor);
+  }
+
+  function paymentWindowEnded() {
+    const expiresAt = Date.parse(root.dataset.expiresAt ?? "");
+    return !Number.isFinite(expiresAt) || expiresAt <= estimatedServerTime();
+  }
+
+  function canUseQr() {
+    if (paymentWindowEnded()) suspendExpiredPayment();
+    return lastVisualState === "UNPAID" && !paymentSuspended && qrPanel instanceof HTMLElement && !qrPanel.hidden;
+  }
+
+  function suspendExpiredPayment() {
+    if (paymentSuspended || lastVisualState !== "UNPAID") return;
+    paymentSuspended = true;
+    const hadFocus = qrPanel?.contains(document.activeElement) || qrActions?.contains(document.activeElement);
+    const dialogWasOpen = deactivateQr();
+    setHidden(qrPanel, true);
+    setHidden(qrActions, true);
+    setAllHidden("[data-payment-guidance]", true);
+    setStatus("UNPAID", {
+      badge: "等待状态确认", heading: "请暂勿付款",
+      detail: "付款期限已到，请重新检查订单状态。", badgeClass: "is-warning",
+    });
+    updatePaymentColumn();
+    if (hadFocus || dialogWasOpen) focusStatusHeading();
   }
 
   function showRouteError(title, message, code, retryable) {
@@ -546,10 +600,13 @@
   }
 
   function setQrLoadError(failed) {
+    if (paymentSuspended || lastVisualState !== "UNPAID") return;
+    qrLoadFailed = failed;
     const qrDialogWasOpen = failed ? clearQrDialog() : false;
     setHidden(qrImage, failed);
     setHidden(qrError, !failed);
     setHidden(qrActions, failed);
+    setAllHidden("[data-payment-guidance]", failed);
     if (qrDialogWasOpen) {
       window.requestAnimationFrame(() => {
         const reload = root.querySelector("[data-qr-reload]");
@@ -560,10 +617,16 @@
 
   function ensureQrSource() {
     if (!(qrImage instanceof HTMLImageElement)) return false;
+    if (paymentSuspended || paymentWindowEnded()) return false;
     const originalSource = resolveQrSource();
     if (originalSource === null) return false;
-    if (!qrImage.hasAttribute("src")) qrImage.src = originalSource;
-    if (qrDialogImage instanceof HTMLImageElement && !qrDialogImage.hasAttribute("src")) {
+    if (!qrImage.hasAttribute("src")) {
+      qrLoadFailed = false;
+      qrImage.src = originalSource;
+    }
+    setHidden(qrImage, qrLoadFailed);
+    setHidden(qrError, !qrLoadFailed);
+    if (!qrLoadFailed && qrDialogImage instanceof HTMLImageElement && !qrDialogImage.hasAttribute("src")) {
       qrDialogImage.src = originalSource;
     }
     if (qrDownload instanceof HTMLAnchorElement && !qrDownload.hasAttribute("href")) {
@@ -586,8 +649,11 @@
   }
 
   function deactivateQr() {
+    qrLoadFailed = false;
     const qrDialogWasOpen = clearQrDialog();
-    setQrLoadError(false);
+    if (qrImage instanceof HTMLImageElement) qrImage.removeAttribute("src");
+    if (qrDownload instanceof HTMLAnchorElement) qrDownload.removeAttribute("href");
+    setHidden(qrError, true);
     return qrDialogWasOpen;
   }
 
@@ -618,7 +684,7 @@
     manualRefreshButton.disabled = busy || Date.now() < retryNotBefore;
     manualRefreshButton.setAttribute("aria-busy", String(busy));
     if (manualRefreshLabel instanceof HTMLElement) {
-      manualRefreshLabel.textContent = busy ? "正在检查" : "立即检查支付状态";
+      manualRefreshLabel.textContent = busy ? "正在查询…" : "查询付款状态";
     }
     manualRefreshButton.toggleAttribute("data-loading", busy);
   }
@@ -628,7 +694,7 @@
     const terminal = !["UNPAID", "UNAVAILABLE"].includes(lastVisualState);
     setHidden(manualRefreshButton, terminal || !hasCheckoutData);
     manualRefreshButton.disabled = refreshInFlight || destroyed || document.hidden || !navigator.onLine || Date.now() < retryNotBefore;
-    if (!refreshInFlight && manualRefreshLabel instanceof HTMLElement) manualRefreshLabel.textContent = "立即检查支付状态";
+    if (!refreshInFlight && manualRefreshLabel instanceof HTMLElement) manualRefreshLabel.textContent = "查询付款状态";
     updatePaymentColumn();
   }
 

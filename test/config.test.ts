@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import fs, { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { describe, it } from "node:test";
@@ -71,6 +72,61 @@ describe("deployment configuration", () => {
       const second = loadConfig(environment);
       assert.deepEqual(second.masterKey, first.masterKey);
     } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  for (const competingKey of ["ab".repeat(32), "invalid-key"]) {
+    it("never overwrites a concurrently published master key: " + competingKey.slice(0, 7), () => {
+      const root = mkdtempSync(resolve(tmpdir(), "perpay-config-key-race-"));
+      const target = resolve(root, "secrets", "master-key");
+      const originalLink = fs.linkSync;
+      const originalRename = fs.renameSync;
+      const publishCompetitor = (destination: fs.PathLike) => {
+        if (resolve(String(destination)) === target) {
+          writeFileSync(target, competingKey + "\n", { flag: "wx", mode: 0o600 });
+        }
+      };
+      fs.linkSync = (source, destination) => { publishCompetitor(destination); originalLink(source, destination); };
+      fs.renameSync = (source, destination) => { publishCompetitor(destination); originalRename(source, destination); };
+      syncBuiltinESMExports();
+      try {
+        const environment = {
+          PERPAY_DATA_DIR: resolve(root, "data"), PERPAY_BACKUP_DIR: resolve(root, "backups"),
+          PERPAY_SECRETS_DIR: resolve(root, "secrets"),
+        };
+        if (competingKey === "invalid-key") {
+          assert.throws(() => loadConfig(environment), /64 hexadecimal/);
+        } else {
+          assert.equal(loadConfig(environment).masterKey.toString("hex"), competingKey);
+        }
+        assert.equal(readFileSync(target, "utf8"), competingKey + "\n");
+        assert.deepEqual(readdirSync(resolve(root, "secrets")), ["master-key"]);
+      } finally {
+        fs.linkSync = originalLink;
+        fs.renameSync = originalRename;
+        syncBuiltinESMExports();
+        assert.equal(resolve(root, ".."), resolve(tmpdir()));
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  }
+
+  it("fails closed and removes its temporary key on publication errors", () => {
+    const root = mkdtempSync(resolve(tmpdir(), "perpay-config-key-error-"));
+    const originalLink = fs.linkSync;
+    fs.linkSync = () => { throw Object.assign(new Error("injected publication failure"), { code: "EACCES" }); };
+    syncBuiltinESMExports();
+    try {
+      assert.throws(() => loadConfig({
+        PERPAY_DATA_DIR: resolve(root, "data"), PERPAY_BACKUP_DIR: resolve(root, "backups"),
+        PERPAY_SECRETS_DIR: resolve(root, "secrets"),
+      }), /injected publication failure/);
+      assert.deepEqual(readdirSync(resolve(root, "secrets")), []);
+    } finally {
+      fs.linkSync = originalLink;
+      syncBuiltinESMExports();
+      assert.equal(resolve(root, ".."), resolve(tmpdir()));
       rmSync(root, { recursive: true, force: true });
     }
   });

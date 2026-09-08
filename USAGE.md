@@ -6,10 +6,14 @@
 
 ## 1. 准备配置
 
-推荐先访问 `/admin`：完成管理员初始化，按“支付宝接入 → 经营码与订单 → 密钥与安全”配置收款；在“业务通知”中填写业务网站的 HTTPS Origin。控制台的“测试收款”会创建真实小额订单，不是模拟支付。也可直接调用以下管理 API：
+首次配置见 [图文教程](docs/alipay-setup.md)，创建与查询订单可试用 [调用端 Demo](examples/node-client/README.md)。
+
+推荐先访问 `/admin`：完成管理员初始化并登录，跟随六步首次配置向导完成支付宝接入、经营码、网站 API 密钥、可选的业务通知与备份，并检查收款就绪。向导会区分上传至支付宝的应用公钥与从平台取回的支付宝公钥；请先确认应用具备账务明细查询接口权限。已有实例仍可使用“实例设置”的分类表单，也可从该页重新打开向导。
+
+启用业务通知时填写业务网站的 HTTPS Origin；跳过通知则由业务后端主动查询订单状态。备份策略保存并不代表已经验证可恢复，需同时保管主密钥卷。控制台的“测试收款”会创建真实小额订单，不是模拟支付，也不是完成配置的必选项。也可直接调用以下管理 API：
 
 1. 通过 `POST /api/admin/v1/setup` 设置管理员密码，再通过 `POST /api/admin/v1/session/login` 创建管理员会话。
-2. 使用 `POST /api/admin/v1/settings/provider/application-key/actions/generate` 和 `POST /api/admin/v1/settings/api-key/actions/rotate` 生成或轮换 `default` 客户端 API 密钥。
+2. 使用 `POST /api/admin/v1/settings/provider/application-key/actions/generate` 生成支付宝应用密钥，再配置支付宝接入与经营码；`POST /api/admin/v1/settings/api-key/actions/rotate` 生成或轮换的是业务端 `default` 客户端 API 密钥，两者不能混用。
 3. 使用 `PUT /api/admin/v1/settings/notifications` 启用通知并填写网站的 HTTPS Origin，例如 `https://shop.example.com`。这里只填写来源，不填写路径。
 4. 使用密钥 reveal 管理接口查看通知密钥，并只保存到网站后端的环境变量或密钥管理器。
 5. 创建订单时，将 `notify_url` 填成已允许来源下的完整地址，例如 `https://shop.example.com/webhooks/perpay`。
@@ -135,7 +139,9 @@ X-PerPay-Webhook-Signature
 
 接收端必须先读取原始请求体，再计算摘要和验签。不要先解析 JSON 再重新序列化：字段顺序、空白和编码变化都会使摘要不同。
 
-下面是 Node.js Fetch 风格的完整接收示例：
+注意通知的 `X-PerPay-Webhook-Timestamp` 使用 **Unix 毫秒**，与 API 请求签名的 Unix 秒不同。接收端应检查投递时间偏差、正文与请求头的事件 ID 一致性，并在数据库中按事件 ID 去重、按 `order_version` 防止乱序回退。
+
+下面演示 Node.js Fetch 风格的核心验签与 ACK；它不是可直接用于生产的完整接收器。可运行、包含时间校验、持久化去重和订单版本检查的版本见 [调用端示例](examples/node-client/README.md)：
 
 ```js
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";

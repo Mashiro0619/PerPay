@@ -27,6 +27,13 @@ const PASSWORD_WORK_TOTAL_LIMIT = PASSWORD_WORK_QUEUE_LIMIT + 1;
 const PASSWORD_WORK_ANONYMOUS_LIMIT = 1;
 const SESSION_TOUCH_INTERVAL_MS = 60 * 1000;
 const SOURCE_MAX_LENGTH = 256;
+export const MIN_ADMIN_PASSWORD_CHARACTERS = 6;
+
+function assertNewPasswordLength(password: string): void {
+  if (typeof password !== "string" || Array.from(password).length < MIN_ADMIN_PASSWORD_CHARACTERS) {
+    throw new PasswordInputError(`Password must contain at least ${MIN_ADMIN_PASSWORD_CHARACTERS} Unicode characters.`);
+  }
+}
 
 export type IdentityErrorCode =
   | "identity_not_initialized"
@@ -128,9 +135,7 @@ export class IdentityService {
     context: IdentityContext = {},
   ): Promise<SetupAdminResult> {
     if (this.isInitialized()) throw identityAlreadyInitialized();
-    if (typeof password !== "string" || Array.from(password).length < 12) {
-      throw new PasswordInputError("Password must contain at least 12 Unicode characters.");
-    }
+    assertNewPasswordLength(password);
 
     const sourceHash = this.sourceHash(context.sourceAddress);
     const attemptedAt = this.#clock();
@@ -354,6 +359,7 @@ export class IdentityService {
     if (!sessionBeforeWork || sessionBeforeWork.sessionId !== session.session.sessionId) {
       throw new IdentityError("session_invalid", "会话不存在或已过期");
     }
+    assertNewPasswordLength(nextPassword);
     const identity = this.#store.read((transaction) => transaction.adminIdentity());
     if (!identity) throw new IdentityError("identity_not_initialized", "管理员身份尚未初始化");
     const unchanged = await this.#verifyCredentialPassword(

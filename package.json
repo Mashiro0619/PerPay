@@ -8,6 +8,7 @@
     "node": ">=24.15.0 <25"
   },
   "scripts": {
+    "demo:package": "node scripts/package-client-demo.mjs",
     "build": "npm run build:admin && npm run build:server",
     "build:admin": "vite build --config web/vite.config.ts",
     "build:server": "tsc -p tsconfig.build.json",

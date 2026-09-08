@@ -47,16 +47,16 @@ describe("public checkout renderer", () => {
     assert.match(html, /data-requested-amount>¥ 10\.00<\/dd>/);
     assert.match(html, /data-initial-state="UNPAID"/);
     assert.match(html, /checkout-receipt-body has-qr/);
-    assert.match(html, /付款后请停留在本页/);
+    assert.match(html, /金额需完全一致，付款后自动确认/);
     assert.match(html, /data-checkout-api-url="\/api\/public\/v1\/checkouts\/pct1_test-token"/);
     assert.match(html, /data-checkout-qr-url="\/api\/public\/v1\/checkouts\/pct1_test-token\/qr\.svg"/);
-    assert.match(html, /data-checkout-refresh-label>立即检查支付状态/);
-    assert.match(html, />支付宝付款<\/h2>/);
+    assert.match(html, /data-checkout-refresh-label>查询付款状态/);
+    assert.match(html, />支付宝付款二维码<\/h2>/);
     assert.match(html, />放大二维码<\/button>/);
-    assert.ok(html.includes(CHECKOUT_PAGE_ASSETS.alipayIcon));
+    assert.doesNotMatch(html, /alipay\.png|checkout-exact-note|checkout-footer/);
     assert.doesNotMatch(html, /data-checkout-refresh[^>]*hidden/);
     assert.match(html, /<meta name="color-scheme" content="light dark">/);
-    assert.match(html, /<meta name="theme-color" content="#0b0b0c" media="\(prefers-color-scheme: dark\)">/);
+    assert.match(html, /<meta name="theme-color" content="#111214" media="\(prefers-color-scheme: dark\)">/);
     assert.match(html, new RegExp(`href="${escapeRegExp(CHECKOUT_PAGE_ASSETS.checkoutStylesheet)}"`));
     assert.equal((html.match(/<link rel="stylesheet"/g) ?? []).length, 1);
     assert.match(html, new RegExp(`src="${escapeRegExp(CHECKOUT_PAGE_ASSETS.checkoutScript)}" defer`));
@@ -66,9 +66,10 @@ describe("public checkout renderer", () => {
     assert.equal(html.includes(checkout.paymentInstructions.collectionCodePayload), false);
     assert.ok(html.indexOf("data-payable-amount") < html.indexOf("data-qr-image"));
     assert.ok(html.indexOf("data-qr-image") < html.indexOf("data-checkout-refresh"));
-    assert.ok(html.indexOf("data-qr-image") < html.lastIndexOf("data-payable-amount"));
-    assert.ok(html.lastIndexOf("data-payable-amount") < html.indexOf("data-checkout-refresh"));
-    assert.ok(html.indexOf("data-checkout-refresh") < html.indexOf("data-qr-expand"));
+    assert.equal((html.match(/data-payable-amount/g) ?? []).length, 1);
+    assert.ok(html.indexOf("data-qr-expand") < html.indexOf("data-checkout-refresh"));
+    assert.match(html, /data-qr-dialog-amount>¥ 10\.01/);
+    assert.match(html, /data-state-announcement role="status" aria-live="polite"/);
     assert.ok(html.indexOf("data-checkout-refresh") < html.indexOf("checkout-order-details"));
   });
 
@@ -196,7 +197,7 @@ describe("public checkout renderer", () => {
       },
     });
     assert.match(unavailable, /data-initial-state="UNAVAILABLE"/);
-    assert.match(unavailable, /请暂勿付款/);
+    assert.match(unavailable, /请勿付款/);
     assert.match(unavailable, /data-retry-after-seconds="5"/);
     assert.match(unavailable, /data-checkout-content hidden/);
     assert.match(unavailable, /data-checkout-refresh[^>]*hidden/);

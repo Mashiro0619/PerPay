@@ -9,19 +9,17 @@ const DraftContext = createContext({
 });
 
 export function DraftProvider({ children }: { children: ReactNode }) {
-  const [drafts, setDrafts] = useState<ReadonlySet<string>>(new Set());
+  const drafts = useRef(new Set<string>());
+  const [dirty, setHasDrafts] = useState(false);
   const [action, setAction] = useState<(() => void) | null>(null);
-  const dirty = drafts.size > 0;
-  const blocker = useBlocker(({ currentLocation, nextLocation }) => dirty &&
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => drafts.current.size > 0 &&
     (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search));
-  const setDirty = useCallback((id: string, value: boolean) => setDrafts((current) => {
-    if (current.has(id) === value) return current;
-    const next = new Set(current);
-    if (value) next.add(id); else next.delete(id);
-    return next;
-  }), []);
+  const setDirty = useCallback((id: string, value: boolean) => {
+    if (value) drafts.current.add(id); else drafts.current.delete(id);
+    setHasDrafts(drafts.current.size > 0);
+  }, []);
   const requestDiscard = (pendingAction: () => void) => {
-    if (dirty) setAction(() => pendingAction); else pendingAction();
+    if (drafts.current.size > 0) setAction(() => pendingAction); else pendingAction();
   };
   useEffect(() => {
     if (!dirty) return;
@@ -51,14 +49,20 @@ export function useDirtyDraft(dirty: boolean) {
   const { setDirty } = useDraftGuard();
   useEffect(() => { setDirty(id, dirty); }, [id, dirty, setDirty]);
   useEffect(() => () => setDirty(id, false), [id, setDirty]);
+  return () => setDirty(id, false);
 }
 
 export function useFormDraft() {
   const form = useRef<HTMLFormElement>(null);
   const baseline = useRef("");
   const [dirty, setDirty] = useState(false);
-  useDirtyDraft(dirty);
+  const clearGuard = useDirtyDraft(dirty);
   const snapshot = () => form.current ? JSON.stringify([...new FormData(form.current).entries()]) : "";
   useLayoutEffect(() => { baseline.current = snapshot(); }, []);
-  return { form, dirty, onChange: () => setDirty(snapshot() !== baseline.current) };
+  return { form, dirty, onChange: () => setDirty(snapshot() !== baseline.current), markSaved: (submitted: FormData) => {
+    // The fieldset may still be disabled while its save resolves; use the submitted snapshot.
+    baseline.current = JSON.stringify([...submitted.entries()]);
+    setDirty(false);
+    clearGuard();
+  } };
 }

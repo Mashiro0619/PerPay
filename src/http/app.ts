@@ -9,7 +9,7 @@ import { z } from "zod";
 import type { BackupHealth } from "../backup/runner.ts";
 import type { AppConfig } from "../config.ts";
 import type { AppDatabase } from "../database/database.ts";
-import { IdentityError, IdentityService, type AuthenticatedSession } from "../identity/service.ts";
+import { IdentityError, IdentityService, MIN_ADMIN_PASSWORD_CHARACTERS, type AuthenticatedSession } from "../identity/service.ts";
 import {
   LedgerConflictError,
   type LedgerConflict,
@@ -156,8 +156,8 @@ const newPasswordValueSchema = z.string().refine(
   (value) => value.isWellFormed(),
   { message: "must contain only Unicode scalar values" },
 ).refine(
-  (value) => Array.from(value).length >= 12,
-  { message: "must contain at least 12 Unicode characters" },
+  (value) => Array.from(value).length >= MIN_ADMIN_PASSWORD_CHARACTERS,
+  { message: `must contain at least ${MIN_ADMIN_PASSWORD_CHARACTERS} Unicode characters` },
 ).refine(
   (value) => Buffer.byteLength(value, "utf8") <= MAX_PASSWORD_BYTES,
   { message: `must contain at most ${MAX_PASSWORD_BYTES} UTF-8 bytes` },

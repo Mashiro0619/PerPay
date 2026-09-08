@@ -90,7 +90,7 @@
   .evidence-preview .details-grid { grid-template-columns: 1fr 1fr; }
   .notice { padding: 12px; font-size: 12px; }
   .auth-layout { grid-template-columns: minmax(0, 1fr); min-height: 100dvh; background: var(--surface); }
-  .auth-story { min-height: auto; padding: 26px 24px 0; background: var(--surface); }
+  .auth-story { grid-template-rows: auto; min-height: auto; padding: 26px 24px 0; background: var(--surface); }
   .auth-statement, .auth-footer { display: none; }
   .auth-form-area { place-items: start center; padding: 46px 24px 35px; }
   .auth-form-title { margin-bottom: 30px; }

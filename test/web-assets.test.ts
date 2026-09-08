@@ -32,16 +32,17 @@ describe("web asset manifest", () => {
     assert.ok(icon.body.byteLength < 16 * 1024);
   });
 
-  it("ships system theme tokens and a mobile-first checkout payment order", () => {
+  it("keeps a compact single-column payment order in both system themes", () => {
     const stylesheet = webAsset(WEB_ASSET_URLS.checkoutStylesheet)?.body;
     assert.equal(typeof stylesheet, "string");
     if (typeof stylesheet !== "string") return;
     assert.match(stylesheet, /@media \(prefers-color-scheme: dark\)/);
     assert.match(stylesheet, /color-scheme: light dark/);
     assert.match(stylesheet, /grid-template-areas:\s*"summary"\s*"payment"\s*"details"/);
-    assert.match(stylesheet, /@media \(min-width: 801px\)[\s\S]*grid-template-areas:\s*"summary payment"\s*"details payment"/);
+    assert.doesNotMatch(stylesheet, /"summary payment"|"payment"\s*"summary"|checkout-masthead::before/);
+    assert.match(stylesheet, /width: min\(calc\(100% - 32px\), 480px\)/);
     assert.match(stylesheet, /\.checkout-manual-refresh\s*\{[^}]*min-height: 44px/s);
-    assert.match(stylesheet, /@media \(max-width: 560px\)[\s\S]*\.checkout-code-figure img\s*\{[^}]*232px/s);
+    assert.match(stylesheet, /@media \(max-width: 560px\)[\s\S]*\.checkout-code-figure img\s*\{[^}]*216px/s);
     assert.match(stylesheet, /env\(safe-area-inset-top\)/);
     assert.match(stylesheet, /env\(safe-area-inset-bottom\)/);
   });
@@ -173,6 +174,6 @@ describe("web asset manifest", () => {
     assert.equal(button.disabled, true);
     assert.equal(button.attributes.get("aria-busy"), "true");
     assert.equal(button.attributes.has("data-loading"), true);
-    assert.equal(label.textContent, "正在检查");
+    assert.equal(label.textContent, "正在查询…");
   });
 });
