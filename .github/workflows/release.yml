@@ -338,8 +338,8 @@ jobs:
           trap cleanup EXIT
 
           compose config --quiet
-          test "$(compose config --services)" = "$(printf '%s\n%s' app backup)"
-          test "$(compose_with_maintenance config --services)" = "$(printf '%s\n%s\n%s' app backup maintenance)"
+          test "$(compose config --services | LC_ALL=C sort)" = "$(printf '%s\n%s' app backup)"
+          test "$(compose_with_maintenance config --services | LC_ALL=C sort)" = "$(printf '%s\n%s\n%s' app backup maintenance)"
           expected_images="$(printf '%s\n%s\n%s' "$PINNED_IMAGE" "$PINNED_IMAGE" "$PINNED_IMAGE")"
           test "$(compose_with_maintenance config --images)" = "$expected_images"
           compose up -d --wait --wait-timeout 900 app
