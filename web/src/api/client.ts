@@ -121,5 +121,5 @@ export const queryClient = new QueryClient({
 });
 
 export async function refreshOperationalData(): Promise<void> {
-  await queryClient.invalidateQueries({ predicate: (query) => !["session", "settings"].includes(String(query.queryKey[0])) });
+  await queryClient.invalidateQueries({ predicate: (query) => !["session", "settings", "official-update"].includes(String(query.queryKey[0])) });
 }

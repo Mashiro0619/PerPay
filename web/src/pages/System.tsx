@@ -6,10 +6,12 @@ import { api, result } from "../api/client";
 import { Badge, Button, CopyValue, Details, JsonDetails, Notice, PageHeading, Panel, QueryView } from "../components/ui";
 import { count, dateTime } from "../lib/format";
 import { label } from "../lib/labels";
+import { OfficialUpdatePanel } from "../updates";
 
 export default function System() {
   const status = useQuery({ queryKey: ["status"], queryFn: ({ signal }) => result(api.getAdministratorSystemStatus({ signal })), refetchInterval: 30_000 });
   return <><PageHeading title="运行状态" actions={<Button pending={status.isFetching} onClick={() => { void status.refetch(); }}><RefreshCw size={16} />立即刷新</Button>} />
+    <OfficialUpdatePanel />
     <QueryView query={status}>{({ data }) => <>
       <Panel title="实例概况" action={<Badge value={data.status} />} className="content-panel"><Details items={[["应用版本", `v${data.version}`], ["实例编号", <CopyValue value={data.instance_id} />], ["配置状态", data.configured ? "已完成" : <Link to="/settings">继续配置</Link>], ["配置版本 / 收款版本", `${data.settings_revision ?? "—"} / ${data.payment_revision}`], ["当前支付宝账户", data.provider_account_key ?? "尚未配置"], ["最后读取", dateTime(status.dataUpdatedAt)]]} /></Panel>
       {data.status === "not_ready" && <Notice tone="warning">当前不能创建新的收款订单。请检查配置、数据库及下方采集与自动确认状态。</Notice>}

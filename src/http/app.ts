@@ -94,6 +94,7 @@ import {
 import { SettingsFieldError } from "../settings/validation.ts";
 import { collectionCodeError } from "../shared/collection-code.ts";
 import { APP_VERSION } from "../version.ts";
+import { OfficialUpdateChecker, UpdateCheckUnavailable } from "../update/checker.ts";
 import { PublicCheckoutRateLimiter } from "./public-checkout-rate-limit.ts";
 import { parseStrictJson, StrictJsonError } from "./strict-json.ts";
 import {
@@ -199,6 +200,7 @@ export interface AppDependencies {
   readonly orders: OrderService;
   readonly startedAt: Date;
   readonly clock?: (() => number) | undefined;
+  readonly updateChecker?: Pick<OfficialUpdateChecker, "check"> | undefined;
   readonly backupHealth?: (() => BackupHealth | PromiseLike<BackupHealth>) | undefined;
   readonly ledger?: LedgerStore | undefined;
   readonly ledgerHealth?: (() => LedgerSchedulerHealth & {
@@ -285,6 +287,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   const publicCheckoutBudget = new PublicCheckoutRateLimiter();
   const collectionCodeCache = new CollectionCodeSvgCache();
   const adminFrontend = loadAdminFrontend();
+  const updateChecker = dependencies.updateChecker ?? new OfficialUpdateChecker();
 
   app.use("*", async (context, next) => {
     const supplied = context.req.header("x-request-id");
@@ -563,6 +566,19 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   app.get("/api/admin/v1/system/status", adminSession, async (context) =>
     context.json({ data: await systemStatus(dependencies) }),
   );
+
+  app.get("/api/admin/v1/system/update", adminSession, async (context) => {
+    if (new URL(context.req.url).searchParams.size !== 0) {
+      throw new HttpApiError(422, "validation_failed", "更新检查不接受自定义来源或查询参数");
+    }
+    try {
+      return context.json({ data: await updateChecker.check() });
+    } catch (error) {
+      if (!(error instanceof UpdateCheckUnavailable)) throw error;
+      context.header("retry-after", String(error.retryAfterSeconds));
+      throw new HttpApiError(503, "update_check_unavailable", error.message);
+    }
+  });
 
   app.get("/api/admin/v1/system/analytics", adminSession, (context) => {
     const values = new URL(context.req.url).searchParams;

@@ -199,6 +199,38 @@ paths:
               schema:
                 $ref: '#/components/schemas/SystemStatusEnvelope'
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
+  /api/admin/v1/system/update:
+    get:
+      tags: [System]
+      operationId: checkOfficialUpdate
+      summary: 检查官方最新稳定版本，不执行更新
+      description: >-
+        仅查询 GitHub Mashiro0619/PerPay 的正式 Release，不发送实例配置、订单或密钥。
+        并发检查合并，成功结果最多缓存 5 分钟，失败冷却 60 秒；不接受自定义来源或强制刷新参数。
+        不影响收款就绪判定，也不下载或执行更新。
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: 官方版本、发布时间及实际检查时间
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfficialUpdateEnvelope'
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503':
+          description: 官方版本读取失败，不沿用旧的成功结论
+          headers:
+            Retry-After:
+              description: 再次访问官方源前需等待的秒数
+              schema: { type: integer, minimum: 1 }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/admin/v1/system/analytics:
     get:
       tags: [System]
@@ -2545,6 +2577,29 @@ components:
               description: Same value set in the CSRF cookie; never place it in URLs or logs.
             idle_expires_at: { type: string, format: date-time }
             absolute_expires_at: { type: string, format: date-time }
+    OfficialUpdateEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/OfficialUpdate' }
+    OfficialUpdate:
+      type: object
+      additionalProperties: false
+      required: [status, current_version, latest_version, release_url, published_at, checked_at]
+      properties:
+        status:
+          type: string
+          enum: [update_available, up_to_date, ahead]
+          description: 有新版、与官方稳定版相同、当前版本高于官方稳定版
+        current_version: { type: string, pattern: '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$', maxLength: 64 }
+        latest_version: { type: string, pattern: '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$', maxLength: 64 }
+        release_url: { type: string, format: uri, pattern: '^https://github\.com/Mashiro0619/PerPay/releases/tag/v[0-9]+\.[0-9]+\.[0-9]+$' }
+        published_at: { type: string, format: date-time }
+        checked_at:
+          type: string
+          format: date-time
+          description: 服务端实际读取官方版本的时间，缓存命中不会改变此时间
     AdminSessionEnvelope:
       type: object
       additionalProperties: false
@@ -4549,6 +4604,7 @@ components:
         - system_not_configured
         - system_not_ready
         - unsupported_media_type
+        - update_check_unavailable
         - validation_failed
         - webhook_delivery_not_found
         - webhook_delivery_state_conflict

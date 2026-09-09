@@ -47,6 +47,7 @@ const messages: Record<string, string> = {
   webhook_target_invalid: "通知地址无效，请使用允许来源下的 HTTPS 地址。",
   webhook_unavailable: "通知服务暂时不可用，请查看运行状态。",
   webhook_signing_key_unavailable: "通知签名密钥暂不可用，请检查通知设置。",
+  update_check_unavailable: "暂时无法检查官方更新，请稍后重试。此检查不影响收款。",
   internal_error: "服务处理失败，请稍后重试；若持续失败，请使用请求编号检查服务日志。",
 };
 

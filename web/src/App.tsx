@@ -11,6 +11,7 @@ import { SelectionIndicator } from "./components/SelectionIndicator";
 import { DraftProvider, useDraftGuard } from "./drafts";
 import { Link, NavLink, NavigationContext, useNavigate } from "./navigation";
 import { ThemeControl } from "./theme";
+import { OfficialUpdateNotice } from "./updates";
 import { deferOnboarding, deferredInstance } from "./lib/onboarding";
 
 const navigation = [
@@ -80,6 +81,7 @@ function AppShell() {
     <main id="main-content" className="main-content" tabIndex={-1}>
       <ErrorNotice error={logout.error} />
       <ErrorNotice error={session.error} retry={session.retry} />
+      <OfficialUpdateNotice hidden={location.pathname === "/system"} />
       <RouteTransition><Outlet /></RouteTransition>
     </main>
     </div>

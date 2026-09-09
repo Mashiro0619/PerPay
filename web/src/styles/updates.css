@@ -1,0 +1,21 @@
+.official-update-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  margin-bottom: 24px;
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.official-update-banner > div { min-width: 0; }
+.official-update-banner p { margin: 5px 0 0; color: var(--muted); }
+.official-update-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
+.official-update-panel .official-update-actions { margin-top: 16px; }
+.official-update-panel > p { margin: 0 0 16px; }
+.official-update-banner, .official-update-panel { overflow-wrap: anywhere; }
+.official-update-panel .panel-heading { align-items: flex-start; flex-wrap: wrap; }
+.official-update-panel .panel-heading > div { flex: 1 1 240px; }
+.official-update-panel .panel-heading > .button { flex-shrink: 0; white-space: nowrap; }

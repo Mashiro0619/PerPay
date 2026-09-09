@@ -59,6 +59,7 @@ export const HTTP_ERROR_CODES = Object.freeze([
   "system_not_configured",
   "system_not_ready",
   "unsupported_media_type",
+  "update_check_unavailable",
   "validation_failed",
   "webhook_delivery_not_found",
   "webhook_delivery_state_conflict",
