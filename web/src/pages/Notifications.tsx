@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { RefreshCw, Send } from "lucide-react";
 import { useParams, useSearchParams } from "react-router";
 
-import { Link } from "../navigation";
+import { Link, useDetailBack } from "../navigation";
 
 import { api, refreshOperationalData, result, type WebhookDeliveryStatus } from "../api/client";
 import { ReasonDialog } from "../components/ReasonDialog";
@@ -32,7 +32,7 @@ function DeliveryPage({ status }: { status: WebhookDeliveryStatus | undefined })
       <td><Link className="table-primary" data-row-link to={`/notifications/${delivery.delivery_id}`}>{label(delivery.event.event_type)}</Link><span className="table-secondary mono">{shortId(delivery.delivery_id)}</span></td>
       <td><Link className="mono" to={`/orders/${delivery.event.order_id}`}>{shortId(delivery.event.order_id)}</Link></td><td><Badge value={delivery.status} /></td><td className="numeric">{delivery.attempt_count}</td><td>{dateTime(delivery.next_attempt_at)}</td>
     </LinkedTableRow>)}</tbody></table></div> : <EmptyState title="暂无符合条件的通知" description="启用通知并创建带通知地址的订单后，付款事件会自动投递。" />}
-      <Pagination page={pagination.page} count={page.data.length} hasNext={!!page.page.next_cursor} pending={deliveries.isFetching} onPrevious={pagination.previous} onNext={() => pagination.next(page.page.next_cursor)} />
+      <Pagination previousLabel={pagination.previousLabel} page={pagination.page} count={page.data.length} hasNext={!!page.page.next_cursor} pending={deliveries.isFetching} onPrevious={pagination.previous} onNext={() => pagination.next(page.page.next_cursor)} />
     </>}</QueryView>
   </>;
 }
@@ -43,11 +43,12 @@ export function NotificationDetail() {
 }
 
 function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
+  const back = useDetailBack("/notifications", "业务通知");
   const [redeliver, setRedeliver] = useState(false);
   const [newDeliveryId, setNewDeliveryId] = useState<string | null>(null);
   const delivery = useQuery({ queryKey: ["notification", deliveryId], queryFn: ({ signal }) => result(api.getWebhookDelivery({ path: { deliveryId }, signal })) });
   const attempts = useQuery({ queryKey: ["notification-attempts", deliveryId], queryFn: ({ signal }) => result(api.listWebhookDeliveryAttempts({ path: { deliveryId }, signal })) });
-  return <><PageHeading title="通知详情" back={{ to: "/notifications", label: "业务通知" }} actions={<Button pending={delivery.isFetching || attempts.isFetching} onClick={() => { void delivery.refetch(); void attempts.refetch(); }}><RefreshCw size={16} />刷新</Button>} />
+  return <><PageHeading title="通知详情" back={back} actions={<Button pending={delivery.isFetching || attempts.isFetching} onClick={() => { void delivery.refetch(); void attempts.refetch(); }}><RefreshCw size={16} />刷新</Button>} />
     {newDeliveryId && <Notice tone="success">重发请求已创建，等待后台投递。<Link to={`/notifications/${newDeliveryId}`}>查看新投递记录</Link></Notice>}
     <QueryView query={delivery}>{({ data }) => <>
       <Panel title={label(data.event.event_type)} action={<Badge value={data.delivery.status} />} className="content-panel">

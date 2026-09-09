@@ -194,3 +194,5 @@ html { min-width: 320px; min-height: 100%; scrollbar-color: var(--checkout-borde
 @media (prefers-reduced-motion: reduce) {
   .checkout-page *, .checkout-page *::before, .checkout-page *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+.checkout-album-hint, .checkout-save-message { color: var(--checkout-text-muted); font-size: 12px; text-align: center; overflow-wrap: anywhere; }

@@ -4,24 +4,26 @@ import { Navigate, useLocation, useSearchParams } from "react-router";
 
 import { Link } from "../navigation";
 
-import { api, refreshOperationalData, result, type RuntimeSettings } from "../api/client";
+import { api, refreshOperationalData, result, type RuntimeSettings, type SystemStatus } from "../api/client";
 import { TestPaymentLink } from "../App";
 import { OrderTable } from "../components/OrderTable";
 import { DailyChart } from "../components/DailyChart";
 import { SelectionIndicator } from "../components/SelectionIndicator";
 import { WorkItemList } from "../components/WorkItemList";
-import { Button, ErrorNotice, PageHeading, Panel, QueryView } from "../components/ui";
+import { Button, ErrorNotice, Notice, PageHeading, Panel, QueryView } from "../components/ui";
+import { useVisibleCheck } from "../lib/use-visible-check";
 import { count, money } from "../lib/format";
 import { deferredInstance, isOnboardingDeferred, onboardingPath } from "../lib/onboarding";
 
 export default function Dashboard() {
   const location = useLocation();
+  const view = useVisibleCheck();
   const [search, setSearch] = useSearchParams();
   const selectedRange = Number(search.get("range"));
   const range = selectedRange === 7 || selectedRange === 90 ? selectedRange : 30;
   const analytics = useQuery({ queryKey: ["analytics", range], queryFn: ({ signal }) => result(api.getAdministratorSystemAnalytics({ query: { range }, signal })), placeholderData: keepPreviousData, refetchInterval: 60_000 });
   const settings = useQuery({ queryKey: ["settings"], queryFn: ({ signal }) => result(api.getRuntimeSettings({ signal })), refetchOnWindowFocus: false });
-  const instance = useQuery({ queryKey: ["onboarding", "instance"], queryFn: ({ signal }) => result(api.getAdministratorSystemStatus({ signal })), enabled: settings.data?.data.completion.complete === false, staleTime: Infinity, refetchOnWindowFocus: false });
+  const instance = useQuery({ queryKey: ["dashboard", "status", view.epoch], queryFn: ({ signal }) => result(api.getAdministratorSystemStatus({ signal })), enabled: view.active, staleTime: 0, gcTime: 0, retry: false, refetchOnMount: "always", refetchOnWindowFocus: false, refetchOnReconnect: false, refetchInterval: view.active ? 30_000 : false, refetchIntervalInBackground: false });
   const orders = useQuery({ queryKey: ["orders", "recent"], queryFn: ({ signal }) => result(api.listAdministratorOrders({ query: { limit: 5 }, signal })) });
   const work = useQuery({ queryKey: ["work-items", "recent"], queryFn: ({ signal }) => result(api.listAdministratorWorkItems({ query: { limit: 4 }, signal })) });
 
@@ -31,6 +33,7 @@ export default function Dashboard() {
     <PageHeading title="收款概览" actions={<><Button pending={analytics.isFetching} onClick={() => { void refreshOperationalData(); }}><RefreshCw size={16} />刷新</Button><TestPaymentLink /></>} />
     {settings.data && !settings.data.data.completion.complete && <SetupProgress settings={settings.data.data} />}
     {settings.error && <ErrorNotice error={settings.error} />}
+    <PaymentHealth status={instance.data?.data} checking={instance.isFetching || instance.isPending} unavailable={!view.active || instance.isError || instance.isPaused} fresh={instance.isFetchedAfterMount} retry={() => { void instance.refetch(); }} />
     <QueryView query={analytics}>{({ data }) => <>
       <div className="section-toolbar"><div><h2>收款数据</h2><span className="muted" aria-live="polite" aria-atomic="true">{analytics.isPlaceholderData ? `正在读取近 ${range} 天，当前显示近 ${data.range_days} 天数据` : `${data.daily[0]?.date} 至 ${data.daily.at(-1)?.date} · 北京时间自然日`}</span></div>
         <div className="segmented" role="group" aria-label="统计周期"><SelectionIndicator active={range} />{([7, 30, 90] as const).map((days) => <button key={days} type="button" aria-pressed={range === days} onClick={() => setSearch({ range: String(days) }, { replace: true })}>近 {days} 天</button>)}</div>
@@ -50,6 +53,17 @@ export default function Dashboard() {
       <QueryView query={orders}>{(page) => <OrderTable orders={page.data} compact />}</QueryView>
     </Panel>
   </>;
+}
+
+function PaymentHealth({ status, checking, unavailable, fresh, retry }: { status: SystemStatus | undefined; checking: boolean; unavailable: boolean; fresh: boolean; retry: () => void }) {
+  if (unavailable) return <Notice tone="warning" title="暂时无法确认收款状态"><p>状态读取失败或网络已断开，请重新检查。</p><Button pending={checking} onClick={retry}>重新检查</Button> <Link to="/system">查看运行状态</Link></Notice>;
+  if (checking || !fresh || !status) return <Notice>正在检查收款状态…</Notice>;
+  const blocked = status.status === "not_ready" || !status.configured || !status.database.ok || !status.ledger.collection_ready || !status.reconciliation.confirmation_ready;
+  if (blocked) {
+    const reason = !status.configured ? "收款配置尚未完成。" : !status.database.ok ? "数据库暂不可用。" : !status.ledger.collection_ready ? "账本采集尚未就绪或已中断，请检查支付宝接入。" : !status.reconciliation.confirmation_ready ? "自动确认尚未就绪，请检查对账运行状态。" : "服务尚未就绪。";
+    return <Notice tone="danger" title="当前暂停新收款"><p>{reason}</p><Link to="/system">查看运行状态</Link></Notice>;
+  }
+  return status.status === "degraded" ? <Notice tone="warning" title="可以收款，但有运行告警"><Link to="/system">查看告警与处理建议</Link></Notice> : null;
 }
 
 function SetupProgress({ settings }: { settings: RuntimeSettings }) {

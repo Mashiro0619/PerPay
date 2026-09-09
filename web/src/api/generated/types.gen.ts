@@ -963,6 +963,9 @@ export type ErrorEnvelope = {
         code: ErrorCode;
         message: string;
         request_id: string;
+        fields?: {
+            [key: string]: string;
+        };
     };
 };
 export type RequestId = string;

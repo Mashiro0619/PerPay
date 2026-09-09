@@ -66,11 +66,13 @@ describe('caller demo distribution', () => {
     assert.equal([...content.values()].some(bytes => bytes.includes('synthetic-sensitive-do-not-package')), false);
     assert.equal(content.size, DEMO_FILES.length);
   });
-  it('refuses a filled-in secret in the supposedly safe environment template', async t => {
+  it('refuses either API or webhook secrets in the environment template', async t => {
     const directory = await copyFixture(t);
     const file = join(directory, '.env.example');
     const original = await readFile(file, 'utf8');
-    await writeFile(file, original.replace('PERPAY_API_SECRET=', 'PERPAY_API_SECRET=synthetic-do-not-package'));
-    await assert.rejects(buildDemoArchive(directory), /Refusing to package/);
+    for (const key of ['PERPAY_API_SECRET', 'PERPAY_WEBHOOK_SECRET']) {
+      await writeFile(file, original.replace(key + '=', key + '=synthetic-do-not-package'));
+      await assert.rejects(buildDemoArchive(directory), /Refusing to package/);
+    }
   });
 });

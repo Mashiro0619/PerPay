@@ -18,7 +18,7 @@ import { createConfiguredHttpServices } from './http-fixture.ts';
 
 const secret = Buffer.alloc(32, 0x54);
 const origin = 'http://127.0.0.1:6190';
-const config = { url: origin, secret: secret.toString('base64url'), database: ':memory:', notifyUrl: null, webhookSecret: secret };
+const config = { url: origin, secret: secret.toString('base64url'), database: ':memory:', notifyUrl: 'https://shop.example.com/webhooks/perpay', webhookSecret: secret };
 const input = { merchant_order_no: 'DEMO-integration-001', amount: '0.29', product_name: '中文商品 🍵', note: '逐字节签名', confirm_real_payment: true };
 
 async function fixture(t) {
@@ -30,6 +30,8 @@ async function fixture(t) {
     rmSync(directory, { recursive: true, force: true });
   });
   services = await createConfiguredHttpServices({ directory, apiSecret: config.secret, collectionCodePayload: 'https://qr.alipay.com/demo-isolated-fixture', publicUrl: origin });
+  await services.settings.saveWebhook({ revision: services.settings.view().revision, enabled: true, allowed_origin: 'https://shop.example.com', timeout_milliseconds: 5000, maximum_attempts: 5, retry_base_seconds: 10, retry_maximum_seconds: 600 }, { actorId: 'admin', requestId: 'demo-callback-fixture', remoteAddressHash: '0'.repeat(64) });
+  const demoConfig = { ...config, webhookSecret: Buffer.from(services.settings.snapshot().webhook.secret, 'base64url') };
   const health = () => ({ enabled: true, state: 'healthy', inFlight: false, lastAttemptAt: Date.now(), lastSuccessAt: Date.now(), lastErrorCode: null, consecutiveFailures: 0 });
   const app = createApp({ ...services, startedAt: new Date(), ledgerHealth: health, reconciliationHealth: () => ({ ...health(), pendingOrders: 0, continuationPending: false }) });
   const requests = [];
@@ -39,7 +41,7 @@ async function fixture(t) {
     requests.push({ url, options, status: response.status });
     return response;
   } });
-  return { ...services, app, client, requests };
+  return { ...services, app, client, requests, demoConfig };
 }
 
 describe('caller demo compatibility with PerPay', () => {
@@ -62,6 +64,7 @@ describe('caller demo compatibility with PerPay', () => {
     assert.equal(requests[0].status, 201);
     assert.equal(created.requested_amount_cents, 29);
     assert.equal(created.product_name, input.product_name);
+    assert.equal(created.notification.notify_url, config.notifyUrl);
     assert.equal(orderSnapshot(created, origin).checkout_status, 'OPEN');
     assert.equal((await client.createOrder(payload)).order_id, created.order_id);
     assert.equal(requests[1].status, 200);
@@ -95,12 +98,12 @@ describe('caller demo compatibility with PerPay', () => {
   });
 
   it('accepts the backend webhook signer and returns an ACK accepted by the backend', async t => {
-    const { client } = await fixture(t);
+    const { client, requests, demoConfig } = await fixture(t);
     const created = await client.createOrder(orderPayload(input, config));
     const store = new DemoStore(':memory:', origin);
     store.prepare(orderPayload(input, config));
     store.apply(orderSnapshot(created, origin), 'api');
-    const { server } = createDemoServer({ config, client, store });
+    const { server } = createDemoServer({ config: demoConfig, client, store });
     server.listen(0, '127.0.0.1'); await once(server, 'listening');
     t.after(async () => { await new Promise(done => server.close(done)); store.close(); });
     const eventId = randomUUID();
@@ -118,7 +121,7 @@ describe('caller demo compatibility with PerPay', () => {
         'x-perpay-webhook-key-id': keyId, 'x-perpay-webhook-timestamp': String(timestamp),
         'x-perpay-webhook-delivery-id': deliveryId, 'x-perpay-webhook-event-id': eventId,
         'x-perpay-webhook-attempt': String(attemptNumber),
-        'x-perpay-webhook-signature': webhookSignature({ secret: config.secret, keyId, timestamp, deliveryId, eventId, attemptNumber, body }),
+        'x-perpay-webhook-signature': webhookSignature({ secret: demoConfig.webhookSecret.toString('base64url'), keyId, timestamp, deliveryId, eventId, attemptNumber, body }),
       };
       const response = await fetch('http://127.0.0.1:' + server.address().port + '/webhooks/perpay', { method: 'POST', headers, body });
       const result = assessWebhookAck({ status: response.status, contentType: response.headers.get('content-type'), contentEncoding: response.headers.get('content-encoding'), body: new Uint8Array(await response.arrayBuffer()), eventId, deliveryId });
@@ -126,5 +129,9 @@ describe('caller demo compatibility with PerPay', () => {
     }
     assert.equal(store.events().length, 1);
     assert.equal(store.get(created.merchant_order_no).snapshot.payment_status, 'CONFIRMED');
+    const state = await fetch('http://127.0.0.1:' + server.address().port + '/demo/state').then(response => response.json());
+    assert.equal(state.orders[0].snapshot.source, 'webhook');
+    assert.equal(state.notifications, true); assert.equal(state.orders[0].notifications, true);
+    assert.equal(requests.length, 1); // Callback receipt and local refresh never query upstream.
   });
 });

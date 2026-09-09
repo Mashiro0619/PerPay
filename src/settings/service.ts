@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
 import type { ProviderIdentityActivation } from "../ledger/model.ts";
+import { SettingsFieldError } from "./validation.ts";
 
 import {
   advancedSettingsInputSchema,
@@ -268,7 +269,8 @@ export class RuntimeSettingsService {
         if (stagedApplicationKey && parsed.private_key !== undefined) {
           const suppliedApplicationKey = parseProviderApplicationPrivateKey(parsed.private_key);
           if (suppliedApplicationKey.fingerprint !== stagedApplicationKey.fingerprint) {
-            throw new RangeError(
+            throw new SettingsFieldError(
+              "private_key", "这把私钥与已生成的应用公钥不匹配，请使用对应的应用私钥。",
               "the supplied application private key does not match the generated application public key",
             );
           }
@@ -301,7 +303,7 @@ export class RuntimeSettingsService {
           identityChanged ? null : current.provider?.publicKeyPem ?? null
         );
         if (!privateKeyPem || !publicKeyPem) {
-          throw new RangeError("both provider keys are required for a new collection application");
+          throw new SettingsFieldError(!privateKeyPem ? "private_key" : "platform_public_key", !privateKeyPem ? "请先生成或导入应用私钥。" : "切换应用后需要重新填写支付宝公钥。", "both provider keys are required for a new collection application");
         }
         const provider = parseProviderKeys({
           environment: parsed.environment,

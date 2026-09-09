@@ -29,7 +29,7 @@ const SESSION_TOUCH_INTERVAL_MS = 60 * 1000;
 const SOURCE_MAX_LENGTH = 256;
 export const MIN_ADMIN_PASSWORD_CHARACTERS = 6;
 
-function assertNewPasswordLength(password: string): void {
+export function assertNewPasswordLength(password: string): void {
   if (typeof password !== "string" || Array.from(password).length < MIN_ADMIN_PASSWORD_CHARACTERS) {
     throw new PasswordInputError(`Password must contain at least ${MIN_ADMIN_PASSWORD_CHARACTERS} Unicode characters.`);
   }

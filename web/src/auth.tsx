@@ -105,6 +105,7 @@ export function AuthPage({ onLogin }: { onLogin: () => void }) {
         <ErrorNotice error={invalidField ? null : error} />
         <Button type="submit" variant="primary" pending={pending} className="auth-submit">{setup ? "创建管理员" : "登录"}<ArrowRight size={17} /></Button>
       </form>
+      {!setup && <details className="form-disclosure"><summary>忘记密码？</summary><p>请联系服务器管理员停服重设，无需删除数据。<a href="https://github.com/Mashiro0619/PerPay/blob/main/docs/maintenance.md#忘记管理员密码" target="_blank" rel="noreferrer">查看恢复步骤</a></p></details>}
       <div className="auth-switch">{setup ? <Link to="/login">已有管理员？前往登录</Link> : initialized !== "true" && <Link to="/setup">首次使用？初始化实例</Link>}</div>
     </div></section>
   </main>;

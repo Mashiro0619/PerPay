@@ -13,13 +13,13 @@ export function Button({ children, variant = "secondary", pending = false, class
 }
 
 export function PageHeading({ title, description, actions, back }: {
-  title: string; description?: string; actions?: ReactNode; back?: { to: string; label: string };
+  title: string; description?: string; actions?: ReactNode; back?: { to: string; label: string; state?: unknown };
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
   const openNavigation = useNavigationMenu();
   useEffect(() => { document.title = `${title} · PerPay`; heading.current?.focus({ preventScroll: true }); }, [title]);
   return <header className="page-heading">
-    <div>{back && <Link className="back-link" to={back.to}><ArrowLeft size={15} />{back.label}</Link>}
+    <div>{back && <Link className="back-link" to={back.to} state={back.state}><ArrowLeft size={15} />{back.label}</Link>}
       <div className="page-heading-title">{openNavigation && <Button className="mobile-menu icon-button" aria-label="打开导航" onClick={openNavigation}><Menu size={20} aria-hidden="true" /></Button>}<h1 tabIndex={-1} ref={heading}>{title}</h1></div>{description && <p>{description}</p>}
     </div>
     {actions && <div className="heading-actions">{actions}</div>}
@@ -143,24 +143,16 @@ export function JsonDetails({ data, label = "查看技术字段" }: { data: unkn
   return <details className="json-details"><summary>{label}</summary><pre>{JSON.stringify(data, null, 2)}</pre></details>;
 }
 
-export function Pagination({ page, hasNext, pending, onPrevious, onNext, count }: {
-  page: number; hasNext: boolean; pending?: boolean; onPrevious: () => void; onNext: () => void; count: number;
+export function Pagination({ page, hasNext, pending, onPrevious, onNext, count, previousLabel = "上一页" }: {
+  page: number; hasNext: boolean; pending?: boolean; onPrevious: () => void; onNext: () => void; count: number; previousLabel?: string;
 }) {
   return <nav className="pagination" aria-label="列表分页"><span role="status" aria-live="polite" aria-atomic="true">{pending ? `正在读取第 ${page} 页…` : `第 ${page} 页 · 本页 ${count} 条`}</span><div>
-    <Button aria-label="上一页" disabled={page <= 1 || pending} onClick={onPrevious}><ChevronLeft size={16} />上一页</Button>
+    <Button aria-label={previousLabel} disabled={page <= 1 || pending} onClick={onPrevious}><ChevronLeft size={16} />{previousLabel}</Button>
     <Button aria-label="下一页" disabled={!hasNext || pending} onClick={onNext}>下一页<ChevronRight size={16} /></Button>
   </div></nav>;
 }
 
-export function useCursor() {
-  const [cursors, setCursors] = useState<Array<string | undefined>>([undefined]);
-  return {
-    cursor: cursors.at(-1),
-    page: cursors.length,
-    previous: () => setCursors((current) => current.length > 1 ? current.slice(0, -1) : current),
-    next: (cursor: string | null | undefined) => { if (cursor) setCursors((current) => [...current, cursor]); },
-  };
-}
+export { useCursor } from "../lib/cursor";
 
 export function Dialog({ title, description, children, onClose, busy = false }: {
   title: string; description?: string; children: ReactNode; onClose: () => void; busy?: boolean;

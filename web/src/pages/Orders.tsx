@@ -3,7 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowRight, RefreshCw, Search } from "lucide-react";
 import { useParams, useSearchParams } from "react-router";
 
-import { Link, useNavigate } from "../navigation";
+import { Link, useDetailBack, useNavigate } from "../navigation";
 
 import { api, result, type CheckoutStatus, type PaymentStatus } from "../api/client";
 import { TestPaymentLink } from "../App";
@@ -21,12 +21,14 @@ export default function Orders() {
   function filter(key: string, value: string) {
     const next = new URLSearchParams(search);
     if (value) next.set(key, value); else next.delete(key);
+    next.delete("cursor"); next.delete("page");
     setSearch(next, { replace: true });
   }
   function clearFilters() {
     const next = new URLSearchParams(search);
     next.delete("payment");
     next.delete("checkout");
+    next.delete("cursor"); next.delete("page");
     setSearch(next, { replace: true });
   }
   return <><PageHeading title="订单" actions={<TestPaymentLink />} />
@@ -62,16 +64,17 @@ function OrderPage({ payment, checkout, onClearFilters }: { payment: PaymentStat
     } })),
   });
   return <QueryView query={orders}>{(page) => <>
-    {page.data.length === 0 && pagination.page > 1 ? <EmptyState title="这一页暂无订单" description="订单列表可能已更新，返回上一页继续查看。"><Button onClick={pagination.previous}>返回上一页</Button></EmptyState>
+    {page.data.length === 0 && pagination.page > 1 ? <EmptyState title="这一页暂无订单" description="订单列表可能已更新，返回上一页继续查看。"><Button onClick={pagination.previous}>{pagination.previousLabel === "返回首页" ? "返回首页" : "返回上一页"}</Button></EmptyState>
       : page.data.length === 0 && (payment || checkout) ? <EmptyState title="没有符合条件的订单" description="试试调整付款状态或收银台状态筛选。"><Button onClick={onClearFilters}>查看全部订单</Button></EmptyState> : <OrderTable orders={page.data} />}
-    <Pagination page={pagination.page} count={page.data.length} hasNext={!!page.page.next_cursor} pending={orders.isFetching} onPrevious={pagination.previous} onNext={() => pagination.next(page.page.next_cursor)} />
+    <Pagination previousLabel={pagination.previousLabel} page={pagination.page} count={page.data.length} hasNext={!!page.page.next_cursor} pending={orders.isFetching} onPrevious={pagination.previous} onNext={() => pagination.next(page.page.next_cursor)} />
   </>}</QueryView>;
 }
 
 export function OrderDetail() {
   const { orderId = "" } = useParams();
+  const back = useDetailBack("/orders", "全部订单");
   const order = useQuery({ queryKey: ["order", orderId], queryFn: ({ signal }) => result(api.getAdministratorOrder({ path: { orderId }, signal })) });
-  return <><PageHeading title="订单详情" back={{ to: "/orders", label: "全部订单" }} actions={<Button pending={order.isFetching} onClick={() => { void order.refetch(); }}><RefreshCw size={16} />刷新</Button>} />
+  return <><PageHeading title="订单详情" back={back} actions={<Button pending={order.isFetching} onClick={() => { void order.refetch(); }}><RefreshCw size={16} />刷新</Button>} />
     <QueryView query={order}>{({ data }) => <>
       <Panel title={data.product_name} action={<Badge value={data.payment.status} />} className="content-panel">
         <div className="order-amounts"><div><span>原始金额</span><strong>{money(data.requested_amount_cents)}</strong></div><div><span>应付金额（含尾差）</span><strong>{money(data.payable_amount_cents)}</strong></div><div><span>实收金额</span><strong>{money(data.received_amount_cents)}</strong></div></div>
@@ -97,6 +100,6 @@ function OrderNotifications({ orderId }: { orderId: string }) {
     {page.data.length ? <div className="table-scroll" role="region" aria-label="订单通知记录" tabIndex={0}><table className="data-table"><thead><tr><th>投递编号</th><th>事件</th><th>状态</th><th>尝试次数</th><th>创建时间</th></tr></thead><tbody>{page.data.map((item) => <tr key={item.delivery.delivery_id}>
       <td><Link className="mono" to={`/notifications/${item.delivery.delivery_id}`}>{shortId(item.delivery.delivery_id)}</Link></td><td>{label(item.event.event_type)}</td><td><Badge value={item.delivery.status} /></td><td>{item.delivery.attempt_count}</td><td>{dateTime(item.delivery.created_at)}</td>
     </tr>)}</tbody></table></div> : <EmptyState title="暂无通知投递" description="订单没有配置通知地址，或尚未产生需要通知的付款事件。" />}
-    <Pagination page={pagination.page} count={page.data.length} hasNext={!!page.page.next_cursor} pending={deliveries.isFetching} onPrevious={pagination.previous} onNext={() => pagination.next(page.page.next_cursor)} />
+    <Pagination previousLabel={pagination.previousLabel} page={pagination.page} count={page.data.length} hasNext={!!page.page.next_cursor} pending={deliveries.isFetching} onPrevious={pagination.previous} onNext={() => pagination.next(page.page.next_cursor)} />
   </>}</QueryView>;
 }

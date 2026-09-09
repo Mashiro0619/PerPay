@@ -28,7 +28,7 @@
           <button id="new-order" type="button">换一个新业务单号</button>
         </form>
       </section>
-      <section aria-labelledby="orders-heading"><div class="section-heading"><h2 id="orders-heading">本机订单记录</h2><span class="muted">最近 30 笔</span></div><p class="hint">从收银台回来后点击“查询 PerPay 状态”。页面跳转本身不表示付款成功。</p><div id="orders"><p class="empty">还没有订单，从左侧创建第一笔。</p></div></section>
+      <section aria-labelledby="orders-heading"><div class="section-heading"><h2 id="orders-heading">本机订单记录</h2><span class="muted">最近 30 笔</span></div><p class="hint">付款后等待回调，页面每 5 秒刷新本地记录；长时间未更新时可手动查单。</p><div id="orders"><p class="empty">还没有订单，从左侧创建第一笔。</p></div></section>
     </div>
     <section class="events" aria-labelledby="events-heading"><h2 id="events-heading">已验签通知</h2><p class="hint">先校验原始正文，再持久化事件；重复事件不重复处理，旧版本不覆盖新状态。</p><ol id="events"><li class="muted">尚未接到通知。</li></ol></section>
   </main>

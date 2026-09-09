@@ -9,7 +9,8 @@ import {
 import { z } from "zod";
 
 import { isValidWebhookDnsHostname } from "../infrastructure/network/public-address.ts";
-import { MAX_COLLECTION_CODE_PAYLOAD_BYTES } from "../orders/collection-profile.ts";
+import { collectionCodeError } from "../shared/collection-code.ts";
+import { SettingsFieldError } from "./validation.ts";
 
 export const API_CLIENT_ID = "default" as const;
 export const PRODUCTION_PROVIDER_ENDPOINT = "https://openapi.alipay.com" as const;
@@ -124,19 +125,10 @@ export interface RuntimeSettingsStatus {
 
 export const collectionSettingsInputSchema = z.object({
   revision: z.number().int().nonnegative(),
-  code_payload: z.string()
-    .refine((value) => value.isWellFormed() && Array.from(value).length >= 8, {
-      message: "must contain at least 8 Unicode scalar values",
-    })
-    .refine((value) => value === value.trim(), {
-      message: "must not contain leading or trailing whitespace",
-    })
-    .refine((value) => !/[\u0000-\u001f\u007f]/.test(value), {
-      message: "must not contain control characters",
-    })
-    .refine((value) => Buffer.byteLength(value, "utf8") <= MAX_COLLECTION_CODE_PAYLOAD_BYTES, {
-      message: `must contain at most ${MAX_COLLECTION_CODE_PAYLOAD_BYTES} UTF-8 bytes`,
-    }),
+  code_payload: z.string().superRefine((value, context) => {
+    const message = collectionCodeError(value);
+    if (message) context.addIssue({ code: "custom", message });
+  }),
   order_ttl_seconds: z.number().int().min(60).max(1_800),
   amount_offset_maximum_cents: z.number().int().min(1).max(99),
 }).strict();
@@ -229,13 +221,12 @@ export function parseProviderKeys(input: {
 }): ProviderSettings {
   const applicationKey = parseProviderApplicationPrivateKey(input.privateKey);
   const privateKeyPem = applicationKey.privateKeyPem;
-  const publicKeyPem = normalizeProviderKey(input.publicKey, "public");
+  const { publicKeyPem, publicKey } = parsePlatformPublicKey(input.publicKey);
   const privateKey = applicationKey.privateKey;
-  const publicKey = parseRsaKey(publicKeyPem, "public");
   const applicationKeyFingerprint = applicationKey.fingerprint;
   const platformKeyFingerprint = publicKeyFingerprint(publicKey);
   if (applicationKeyFingerprint === platformKeyFingerprint) {
-    throw new RangeError("platform public key cannot be the application's public key");
+    throw new SettingsFieldError("platform_public_key", "这是应用公钥，请改填支付宝平台提供的支付宝公钥。", "platform public key cannot be the application's public key");
   }
   return Object.freeze({
     environment: input.environment,
@@ -277,11 +268,26 @@ export function generateProviderApplicationKey(): Promise<ProviderApplicationKey
 }
 
 export function parseProviderApplicationPrivateKey(value: string): ProviderApplicationKeyMaterial {
-  const privateKeyPem = normalizeProviderKey(value, "private");
-  const privateKey = parseRsaKey(privateKeyPem, "private");
+  let privateKeyPem: string;
+  let privateKey: KeyObject;
+  try {
+    privateKeyPem = normalizeProviderKey(value, "private");
+    privateKey = parseRsaKey(privateKeyPem, "private");
+  } catch (error) {
+    throw new SettingsFieldError("private_key", "应用私钥格式不正确，请粘贴完整的 RSA 私钥（至少 2048 位）。", error instanceof Error ? error.message : undefined, { cause: error });
+  }
   const publicKey = createPublicKey(privateKey);
   const publicKeyPem = publicKey.export({ type: "spki", format: "pem" }).toString();
   return providerApplicationKeyMaterial(privateKeyPem, publicKeyPem, privateKey);
+}
+
+function parsePlatformPublicKey(value: string): { publicKeyPem: string; publicKey: KeyObject } {
+  try {
+    const publicKeyPem = normalizeProviderKey(value, "public");
+    return { publicKeyPem, publicKey: parseRsaKey(publicKeyPem, "public") };
+  } catch (error) {
+    throw new SettingsFieldError("platform_public_key", "支付宝公钥格式不正确，请粘贴支付宝平台提供的完整 RSA 公钥（至少 2048 位），不要填写应用公钥或私钥。", error instanceof Error ? error.message : undefined, { cause: error });
+  }
 }
 
 export function parseWebhookOrigin(value: string): string {

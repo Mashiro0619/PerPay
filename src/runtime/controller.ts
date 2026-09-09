@@ -26,6 +26,7 @@ import {
 } from "../reconciliation/index.ts";
 import type { RuntimeSettingsSnapshot } from "../settings/model.ts";
 import { SettingsError } from "../settings/store.ts";
+import { collectionCodeError } from "../shared/collection-code.ts";
 
 export interface RevisionedLedgerHealth extends LedgerSchedulerHealth {
   readonly enabled: boolean;
@@ -577,7 +578,7 @@ export class RuntimeController {
 }
 
 function isPaymentConfigured(snapshot: RuntimeSettingsSnapshot): boolean {
-  return snapshot.collection !== null &&
+  return snapshot.collection !== null && collectionCodeError(snapshot.collection.codePayload) === null &&
     snapshot.provider !== null &&
     snapshot.activeProviderAccountKey !== null &&
     snapshot.apiSecret !== null;

@@ -37,16 +37,17 @@ function renderOrders(orders, origin) {
       item.append(element('p', (labels[snapshot.payment_status] ?? snapshot.payment_status) + ' · ' + (labels[snapshot.refund_status] ?? snapshot.refund_status) + ' · 版本 ' + snapshot.version));
       item.append(element('p', '来源：' + (snapshot.source === 'webhook' ? '已验签通知' : 'PerPay 服务端响应'), 'muted'));
     }
+    if (!order.notifications) item.append(element('p', '此旧订单没有回调地址，需手动查单；新订单会使用当前回调配置。', 'muted'));
     if (order.last_error) item.append(element('p', order.last_error, 'error'));
     const actions = element('div', '', 'actions');
-    actions.append(orderAction(order.merchant_order_no, 'refresh', '查询 PerPay 状态'));
-    if (!snapshot || order.last_error) actions.append(orderAction(order.merchant_order_no, 'retry', '按原参数重试创建'));
     if (snapshot?.checkout_url && snapshot.payment_status === 'UNPAID' && snapshot.checkout_status === 'OPEN' && Date.parse(snapshot.expires_at) > Date.now()) {
       const url = new URL(snapshot.checkout_url);
       if (url.origin === origin && url.pathname.startsWith('/checkout/')) {
         const link = element('a', '打开收银台'); link.href = url.href; link.target = '_blank'; link.rel = 'noreferrer'; actions.append(link);
       }
     }
+    if (!snapshot || order.last_error) actions.append(orderAction(order.merchant_order_no, 'retry', '按原参数重试创建'));
+    actions.append(orderAction(order.merchant_order_no, 'refresh', '手动查单'));
     item.append(actions); container.append(item);
   }
   if (focus) Array.from(container.querySelectorAll('button')).find(button => button.dataset.order === focus.no && button.dataset.action === focus.action)?.focus();
@@ -54,7 +55,7 @@ function renderOrders(orders, origin) {
 async function refresh() {
   const state = await request('/demo/state'); csrf = state.csrf;
   document.querySelector('#connection').textContent = 'PerPay 地址：' + state.perpay_url + ' · 密钥仅保存在后端';
-  document.querySelector('#notification-hint').textContent = state.notifications ? '通知接收已配置；需要公开 HTTPS 回调地址才能由 PerPay 实际投递。' : '当前不接收通知。可通过“查询 PerPay 状态”主动确认订单。';
+  document.querySelector('#notification-hint').textContent = state.notifications ? '回调地址已配置：收到付款通知并验签后，订单状态自动更新。' : '回调配置缺失，请填写通知地址和签名密钥后重启 Demo。';
   // Unchanged polling must not replace focused controls. No upstream polling is automatic.
   const signature = JSON.stringify(state.orders) + state.orders.map(order => Date.parse(order.snapshot?.expires_at) > Date.now()).join();
   if (signature !== ordersSignature) { renderOrders(state.orders, state.perpay_url); ordersSignature = signature; }
@@ -80,7 +81,7 @@ form.addEventListener('submit', event => {
   event.preventDefault(); const data = new FormData(form);
   void operate(async () => {
     await request('/demo/orders', { merchant_order_no: data.get('merchant_order_no'), product_name: data.get('product_name'), amount: data.get('amount'), note: data.get('note'), confirm_real_payment: data.has('confirm_real_payment') });
-    report('订单已创建。核对金额后打开收银台；再次提交同一参数会复用原订单。');
+    report('订单已创建。打开收银台付款，收到回调后这里会自动更新。');
   });
 });
 document.querySelector('#new-order').addEventListener('click', () => { newNumber(); form.elements.confirm_real_payment.checked = false; report('已更换业务单号。之前的订单仍在本机记录中，重试请使用原订单的按钮。'); });

@@ -1,7 +1,12 @@
 name: perpay
 
+# 按需修改：宿主机 IP:宿主机端口:容器端口；默认仅宿主机可访问。
+# 端口冲突时只改中间的 6190，容器端口保持 6190。
 x-perpay-host-port: &perpay-host-port "127.0.0.1:6190:6190"
+# 必填：替换为你的 HTTPS 访问地址，不带路径。
 x-perpay-public-url: &perpay-public-url "https://pay.example.com"
+# HTTPS 部署必填：直连反向代理的 IP 或 CIDR 网段，多个用逗号分隔。
+# 以 PerPay 容器实际看到的来源为准；宿主机代理可能显示为 Docker 网关 IP。
 x-perpay-trusted-proxy-cidrs: &perpay-trusted-proxy-cidrs ""
 
 services:
@@ -12,6 +17,7 @@ services:
       PERPAY_SECRETS_DIR: "/run/perpay-secrets"
       PERPAY_PUBLIC_URL: *perpay-public-url
       PERPAY_TRUSTED_PROXY_CIDRS: *perpay-trusted-proxy-cidrs
+    # 可选：固定版本时，将 app、backup、maintenance 三处镜像统一改为同一版本。
     image: ghcr.io/mashiro0619/perpay:latest
     volumes:
       - perpay-data:/data

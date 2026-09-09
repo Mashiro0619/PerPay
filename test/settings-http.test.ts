@@ -25,7 +25,7 @@ describe("advanced settings HTTP contract", () => {
     const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
       directory,
       apiSecret,
-      collectionCodePayload: "https://qr.local.invalid/http-advanced-settings",
+      collectionCodePayload: "https://qr.alipay.com/http-advanced-settings",
       publicUrl: origin,
     });
     const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
@@ -126,7 +126,7 @@ describe("backup settings HTTP contract", () => {
     const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
       directory,
       apiSecret,
-      collectionCodePayload: "https://qr.local.invalid/http-backup-settings",
+      collectionCodePayload: "https://qr.alipay.com/http-backup-settings",
       publicUrl: origin,
     });
     const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
@@ -266,7 +266,7 @@ describe("provider application key HTTP contract", () => {
     const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
       directory,
       apiSecret,
-      collectionCodePayload: "https://qr.local.invalid/http-active-provider-key",
+      collectionCodePayload: "https://qr.alipay.com/http-active-provider-key",
       publicUrl: origin,
     });
     const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
@@ -345,3 +345,48 @@ async function loginOnly(app: ReturnType<typeof createApp>): Promise<{
     csrfToken: body.data.csrf_token,
   };
 }
+
+
+describe("actionable collection configuration errors", () => {
+  it("rejects non-Alipay content and locates invalid provider keys without losing saved configuration", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-field-validation-"));
+    const { config, database, identity, settings, orders } = await createConfiguredHttpServices({ directory, apiSecret, collectionCodePayload: "https://qr.alipay.com/field-validation-test", publicUrl: origin });
+    const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
+    try {
+      const headers = await loginHeaders(app);
+      const original = settings.view();
+      const invalid = await app.request("/api/admin/v1/settings/collection", { method: "PUT", headers, body: JSON.stringify({ revision: original.revision, code_payload: "not-a-payment-code", order_ttl_seconds: 300, amount_offset_maximum_cents: 99 }) });
+      assert.equal(invalid.status, 422);
+      assert.ok((await invalid.json() as { error: { fields: Record<string, string> } }).error.fields.code_payload);
+      const { provider_account_key: _account, ...provider } = original.provider!;
+      for (const platform_public_key of ["invalid-secret-key-test", original.application_public_key!]) {
+        const response = await app.request("/api/admin/v1/settings/provider", { method: "PUT", headers, body: JSON.stringify({ ...provider, revision: original.revision, platform_public_key }) });
+        assert.equal(response.status, 422);
+        const body = await response.json() as { error: { code: string; message: string; fields: Record<string, string> } };
+        assert.equal(body.error.code, "settings_validation_failed");
+        assert.match(body.error.fields.platform_public_key!, /支付宝.*公钥/);
+        assert.equal(JSON.stringify(body).includes(platform_public_key), false);
+      }
+      assert.deepEqual(settings.view(), original);
+    } finally {
+      database.close();
+      assert.ok(directory.startsWith(join(tmpdir(), "perpay-field-validation-")));
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("marks a legacy invalid payload incomplete but keeps it visible for correction", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-legacy-code-"));
+    const { database, settings, settingsStore, config, identity, orders } = await createConfiguredHttpServices({ directory, apiSecret, collectionCodePayload: "https://qr.alipay.com/legacy-test", publicUrl: origin });
+    try {
+      settingsStore.saveCollection({ revision: settings.view().revision, code_payload: "not-a-payment-code", order_ttl_seconds: 300, amount_offset_maximum_cents: 99 }, { actorId: "admin", requestId: "legacy-save", remoteAddressHash: "0".repeat(64) });
+      const view = settings.view();
+      assert.equal(view.completion.collection, false); assert.equal(view.completion.complete, false);
+      assert.equal(view.collection?.code_payload, "not-a-payment-code");
+      const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
+      const response = await app.request("/readyz"); assert.equal(response.status, 503);
+    } finally {
+      database.close(); assert.ok(directory.startsWith(join(tmpdir(), "perpay-legacy-code-"))); rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});

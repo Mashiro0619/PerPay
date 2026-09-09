@@ -56,6 +56,15 @@ function writes(fetchMock: ReturnType<typeof mount>["fetchMock"]) {
 beforeEach(() => { vi.mocked(decodeQrImage).mockReset(); });
 
 describe("collection QR image upload", () => {
+  it("rejects a decoded non-Alipay QR without replacing the current draft", async () => {
+    vi.mocked(decodeQrImage).mockResolvedValue("https://example.invalid/not-alipay");
+    const view = mount(); const field = await screen.findByLabelText("支付宝经营码内容");
+    fireEvent.change(field, { target: { value: "https://qr.alipay.com/retained-draft" } });
+    await userEvent.setup().upload(screen.getByLabelText("选择经营码二维码图片"), imageFile());
+    expect(await screen.findByRole("alert")).toHaveTextContent("请使用支付宝经营码");
+    expect(field).toHaveValue("https://qr.alipay.com/retained-draft"); expect(writes(view.fetchMock)).toHaveLength(0);
+  });
+
   it("puts a clickable upload card before a separate compact editor", async () => {
     mount();
     const field = await screen.findByLabelText("支付宝经营码内容");

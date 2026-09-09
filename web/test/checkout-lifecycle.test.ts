@@ -45,10 +45,12 @@ function mount(wallClockOffset = 0, loadingDelay = 0) {
   });
   const panel = document.querySelector<HTMLElement>("[data-qr-panel]")!;
   const image = document.querySelector<HTMLImageElement>("[data-qr-image]")!;
-  const download = document.querySelector<HTMLAnchorElement>("[data-qr-download]")!;
+  const download = document.querySelector<HTMLButtonElement>("[data-qr-download]")!;
   const dialog = document.querySelector<HTMLDialogElement>("[data-qr-dialog]")!;
   return {
     panel, image, download, dialog, fetchMock,
+    hide: () => { vi.spyOn(document, "hidden", "get").mockReturnValue(true); documentEvents.get("visibilitychange")!(); },
+    unload: () => browserEvents.get("pagehide")!(),
     offline: () => { navigator.onLine = false; browserEvents.get("offline")!(); },
     online: () => { navigator.onLine = true; browserEvents.get("online")!(); },
     advance: async (milliseconds: number) => { elapsed += milliseconds; await vi.advanceTimersByTimeAsync(milliseconds); },
@@ -64,7 +66,7 @@ function mount(wallClockOffset = 0, loadingDelay = 0) {
   };
 }
 
-afterEach(() => { document.body.innerHTML = ""; vi.clearAllTimers(); });
+afterEach(() => { document.body.innerHTML = ""; vi.clearAllTimers(); vi.restoreAllMocks(); });
 
 describe("public checkout expiry", () => {
   it("does not extend the payment window while the page script is loading", () => {
@@ -119,7 +121,7 @@ describe("public checkout expiry", () => {
     await page.advance(1);
     expect(page.panel.hidden).toBe(false);
     expect(page.image).toHaveAttribute("src", qrPath);
-    expect(page.download).toHaveAttribute("href", qrPath);
+    expect(page.download).not.toBeDisabled();
     expect(document.querySelector("[data-status-heading]")).toHaveTextContent("支付宝付款");
   });
 
@@ -241,4 +243,60 @@ describe("compact checkout presentation", () => {
     expect(document.querySelector<HTMLElement>(".checkout-code-actions")!.hidden).toBe(false);
   });
 
+});
+
+
+function pngFixture() {
+  const callbacks: BlobCallback[] = [];
+  const context = { fillStyle: "", imageSmoothingEnabled: true, fillRect: vi.fn(), drawImage: vi.fn() };
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context as unknown as CanvasRenderingContext2D);
+  vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(function (callback, type) { expect(type).toBe("image/png"); callbacks.push(callback); });
+  const createObjectURL = vi.fn(() => "blob:http://localhost:6190/png-test");
+  const revokeObjectURL = vi.fn();
+  const BaseURL = URL;
+  vi.stubGlobal("URL", class extends BaseURL { static createObjectURL = createObjectURL; static revokeObjectURL = revokeObjectURL; });
+  const downloads: Array<{ href: string; name: string }> = [];
+  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) { downloads.push({ href: this.href, name: this.download }); });
+  const page = mount();
+  Object.defineProperty(page.image, "complete", { configurable: true, value: true });
+  Object.defineProperty(page.image, "naturalWidth", { configurable: true, value: 328 });
+  Object.defineProperty(page.image, "currentSrc", { configurable: true, value: "http://localhost:6190" + qrPath });
+  return { ...page, callbacks, context, downloads, createObjectURL, revokeObjectURL };
+}
+
+describe("checkout PNG downloads", () => {
+  it("exports the currently displayed same-origin code as a white-backed PNG without another request", () => {
+    const page = pngFixture(); page.download.click();
+    expect(page.download).toBeDisabled(); expect(page.callbacks).toHaveLength(1);
+    page.callbacks[0]!(new Blob(["synthetic-png"], { type: "image/png" }));
+    expect(page.context.fillRect).toHaveBeenCalledWith(0, 0, 984, 984);
+    expect(page.context.drawImage).toHaveBeenCalledWith(page.image, 0, 0, 984, 984);
+    expect(page.context.imageSmoothingEnabled).toBe(false);
+    expect(page.downloads).toEqual([{ href: "blob:http://localhost:6190/png-test", name: "perpay-collection-code.png" }]);
+    expect(page.download).not.toBeDisabled(); expect(page.fetchMock).not.toHaveBeenCalled();
+    expect(document.querySelector("[data-qr-download-status]")).toHaveTextContent("已发起 PNG 下载");
+    page.unload(); expect(page.revokeObjectURL).toHaveBeenCalledWith("blob:http://localhost:6190/png-test");
+  });
+  it.each(["expiry", "hidden", "unload", "confirmed"])("drops a late PNG result after %s", async (ending) => {
+    const page = pngFixture(); page.download.click();
+    if (ending === "expiry") { page.offline(); await page.advance(3_000); }
+    if (ending === "hidden") page.hide();
+    if (ending === "unload") page.unload();
+    if (ending === "confirmed") { page.confirm("CONFIRMED"); document.querySelector<HTMLButtonElement>("[data-checkout-refresh]")!.click(); await page.advance(20); expect(document.querySelector("[data-status-heading]")).toHaveTextContent("付款已确认"); }
+    page.callbacks[0]!(new Blob(["synthetic-png"], { type: "image/png" }));
+    expect(page.downloads).toHaveLength(0); expect(page.createObjectURL).not.toHaveBeenCalled();
+    expect(page.download).toBeDisabled();
+  });
+  it("keeps the QR visible and allows retry when PNG conversion fails", () => {
+    const page = pngFixture(); page.download.click(); page.callbacks[0]!(null);
+    expect(page.panel.hidden).toBe(false); expect(page.image).toHaveAttribute("src");
+    expect(page.download).not.toBeDisabled(); expect(document.querySelector("[data-qr-download-status]")).toHaveTextContent("无法生成 PNG");
+    page.download.click(); page.callbacks[1]!(new Blob(["synthetic-png"], { type: "image/png" })); expect(page.downloads).toHaveLength(1);
+  });
+  it("prevents duplicate conversion and revokes an existing blob when hidden", () => {
+    const page = pngFixture(); page.download.click(); page.download.click(); expect(page.callbacks).toHaveLength(1);
+    page.callbacks[0]!(new Blob(["synthetic-png"], { type: "image/png" })); page.hide();
+    expect(page.revokeObjectURL).toHaveBeenCalledTimes(1);
+    expect(document.querySelector<HTMLElement>("[data-qr-download-status]")!.hidden).toBe(true);
+  });
 });

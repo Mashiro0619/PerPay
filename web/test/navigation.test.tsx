@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { appRoutes } from "../src/App";
 import { queryClient, type SystemAnalytics } from "../src/api/client";
 import { apiError, json, settings } from "./fixtures";
+import { systemStatus } from "./onboarding-fixture";
 
 function mount(options: { conflict?: boolean; logoutFailure?: boolean; path?: string; configured?: boolean } = {}) {
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
@@ -15,7 +16,7 @@ function mount(options: { conflict?: boolean; logoutFailure?: boolean; path?: st
   const fetchMock = vi.fn(async (request: Request) => {
     const path = new URL(request.url).pathname;
     if (path === "/api/admin/v1/session") return json({ data: { username: "admin", csrf_token_required: true, idle_expires_at: "2099-01-01T00:00:00Z", absolute_expires_at: "2099-01-01T00:00:00Z" } });
-    if (path === "/api/admin/v1/system/status") return json({ data: { status: "not_ready", version: "0.1.0" } });
+    if (path === "/api/admin/v1/system/status") return json({ data: options.configured ? { ...systemStatus(), status: "not_ready" } : { status: "not_ready", version: "0.1.0" } });
     if (path === "/api/admin/v1/system/analytics") return json({ data: {
       range_days: 30, from: "2026-08-08T16:00:00.000Z", to: "2026-09-07T16:00:00.000Z",
       orders: { created: 0, unpaid: 0, confirmed: 0, disputed: 0, closed: 0, expired: 0 },
@@ -85,7 +86,7 @@ describe("navigation and draft protection", () => {
     expect(fetchMock.mock.calls.some(([request]) => request.url.includes("/system/status"))).toBe(false);
   });
 
-  it("starts a configured overview with collection data rather than a redundant status pipeline", async () => {
+  it("keeps collection data prominent while surfacing operational outages on a configured overview", async () => {
     const { container, fetchMock } = mount({ path: "/", configured: true });
     await screen.findByRole("heading", { name: "每日收款与订单" });
     expect(screen.queryByRole("region", { name: "收款链路状态" })).not.toBeInTheDocument();
@@ -100,7 +101,8 @@ describe("navigation and draft protection", () => {
     expect(container.querySelector("main h2")).toHaveTextContent("收款数据");
     expect(screen.getByRole("heading", { name: "需要你关注" })).toBeVisible();
     expect(screen.getByRole("link", { name: "运行状态" })).toHaveAttribute("href", "/system");
-    expect(fetchMock.mock.calls.some(([request]) => request.url.includes("/system/status"))).toBe(false);
+    expect(fetchMock.mock.calls.some(([request]) => request.url.includes("/system/status"))).toBe(true);
+    expect(await screen.findByText("当前暂停新收款")).toBeVisible();
   });
 
   it("keeps the previous statistics and chart visible while loading a different period", async () => {

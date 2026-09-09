@@ -48,7 +48,7 @@ describe("runtime settings", () => {
 
       await settings.saveCollection({
         revision: 0,
-        code_payload: "https://qr.example.test/settings",
+        code_payload: "https://qr.alipay.com/settings",
         order_ttl_seconds: 300,
         amount_offset_maximum_cents: 19,
       }, audit("collection"));
@@ -770,7 +770,7 @@ describe("runtime settings", () => {
 
       const view = await settings.saveCollection({
         revision: 1,
-        code_payload: "https://qr.example.test/whole-apply-retry",
+        code_payload: "https://qr.alipay.com/whole-apply-retry",
         order_ttl_seconds: 300,
         amount_offset_maximum_cents: 19,
       }, audit("whole-retry-collection"));

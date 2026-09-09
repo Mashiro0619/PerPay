@@ -24,6 +24,6 @@ function WorkItemPage({ type }: { type: AdminWorkItemTypeFilter }) {
   const pagination = useCursor();
   const work = useQuery({ queryKey: ["work-items", type, pagination.cursor], queryFn: ({ signal }) => result(api.listAdministratorWorkItems({ signal, query: { type, limit: 20, ...(pagination.cursor ? { cursor: pagination.cursor } : {}) } })) });
   return <><div className="list-toolbar"><span>未解决事项</span><Button variant="quiet" pending={work.isFetching} onClick={() => { void work.refetch(); }}><RefreshCw size={15} />刷新</Button></div>
-    <QueryView query={work}>{(page) => <><WorkItemList items={page.data} /><Pagination page={pagination.page} count={page.data.length} hasNext={!!page.page.next_cursor} pending={work.isFetching} onPrevious={pagination.previous} onNext={() => pagination.next(page.page.next_cursor)} /></>}</QueryView>
+    <QueryView query={work}>{(page) => <><WorkItemList items={page.data} /><Pagination previousLabel={pagination.previousLabel} page={pagination.page} count={page.data.length} hasNext={!!page.page.next_cursor} pending={work.isFetching} onPrevious={pagination.previous} onNext={() => pagination.next(page.page.next_cursor)} /></>}</QueryView>
   </>;
 }

@@ -3,6 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type { AppDatabase } from "../database/database.ts";
 import { IdentityTransaction } from "../database/identity-store.ts";
 import { fingerprintApiSecret } from "../identity/service.ts";
+import { collectionCodeError } from "../shared/collection-code.ts";
 import {
   bindProviderIdentityInTransaction,
 } from "../ledger/store.ts";
@@ -173,7 +174,7 @@ export class RuntimeSettingsStore {
 
   status(): RuntimeSettingsStatus {
     const snapshot = this.snapshot();
-    const collectionConfigured = snapshot.collection !== null;
+    const collectionConfigured = snapshot.collection !== null && collectionCodeError(snapshot.collection.codePayload) === null;
     const providerConfigured = snapshot.provider !== null && snapshot.activeProviderAccountKey !== null;
     const apiConfigured = snapshot.apiSecret !== null;
     return {

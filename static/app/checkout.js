@@ -18,6 +18,7 @@
   const qrError = root.querySelector("[data-qr-error]");
   const qrActions = root.querySelector(".checkout-code-actions");
   const qrDownload = root.querySelector("[data-qr-download]");
+  const qrDownloadStatus = root.querySelector("[data-qr-download-status]");
   const qrDialog = document.querySelector("[data-qr-dialog]");
   const qrDialogImage = qrDialog?.querySelector("[data-qr-dialog-image]");
   const countdown = root.querySelector("[data-countdown]");
@@ -74,6 +75,11 @@
   let destroyed = false;
   let paymentSuspended = false;
   let qrLoadFailed = false;
+  let qrDownloadGeneration = 0;
+  let pngCanvas;
+  let pngUrl;
+  let pngUrlTimer;
+  let downloadingQr = false;
   let serverTime = Number(root.dataset.serverTime) || Date.now();
   let serverTimeAnchor = window.performance?.getEntriesByType?.("navigation")[0]?.responseStart ?? monotonicNow();
   let serverWallTimeAnchor = Date.now() - Math.max(0, monotonicNow() - serverTimeAnchor);
@@ -111,10 +117,12 @@
         clearScheduledRefresh();
         activeController?.abort();
         stopCountdown();
+        cancelQrDownload();
         updateManualRefreshButton();
         return;
       }
       startCountdown();
+      setQrDownloadBusy(false);
       updateManualRefreshButton();
       if (navigator.onLine && initialDelay() !== null) void refresh();
     });
@@ -136,6 +144,7 @@
 
     window.addEventListener("pagehide", () => {
       destroyed = true;
+      cancelQrDownload();
       clearScheduledRefresh();
       activeController?.abort();
       stopCountdown();
@@ -144,6 +153,7 @@
     window.addEventListener("pageshow", (event) => {
       if (!event.persisted) return;
       destroyed = false;
+      setQrDownloadBusy(false);
       activeController = undefined;
       startCountdown();
       if (navigator.onLine && initialDelay() !== null) {
@@ -151,6 +161,65 @@
         void refresh();
       }
     });
+  }
+
+  function setQrDownloadBusy(busy) {
+    downloadingQr = busy;
+    if (!(qrDownload instanceof HTMLElement)) return;
+    qrDownload.disabled = busy || destroyed || document.hidden || paymentSuspended || lastVisualState !== "UNPAID" || qrLoadFailed;
+    qrDownload.setAttribute("aria-busy", String(busy));
+    qrDownload.textContent = busy ? "正在生成 PNG…" : "保存二维码";
+  }
+
+  function cancelQrDownload() {
+    qrDownloadGeneration += 1;
+    if (pngCanvas) { pngCanvas.width = 0; pngCanvas.height = 0; pngCanvas = undefined; }
+    if (pngUrl) { URL.revokeObjectURL(pngUrl); pngUrl = undefined; }
+    if (pngUrlTimer !== undefined) window.clearTimeout(pngUrlTimer);
+    pngUrlTimer = undefined;
+    setQrDownloadBusy(false);
+    setHidden(qrDownloadStatus, true);
+  }
+
+  function saveQrPng() {
+    if (downloadingQr || destroyed || document.hidden || !canUseQr() || qrLoadFailed) return;
+    cancelQrDownload();
+    const generation = qrDownloadGeneration;
+    const isCurrent = () => generation === qrDownloadGeneration && !destroyed && !document.hidden && canUseQr() && !qrLoadFailed;
+    function failed() {
+      if (!isCurrent()) return;
+      cancelQrDownload();
+      setText(qrDownloadStatus, "无法生成 PNG，请重试或截图保存二维码。");
+      setHidden(qrDownloadStatus, false);
+    }
+    if (!(qrImage instanceof HTMLImageElement) || !qrImage.complete || qrImage.naturalWidth < 1 || sameOriginUrl(qrImage.currentSrc || qrImage.src) === null) { failed(); return; }
+    setQrDownloadBusy(true);
+    try {
+      const canvas = document.createElement("canvas");
+      pngCanvas = canvas;
+      const size = qrImage.naturalWidth * Math.max(1, Math.ceil(960 / qrImage.naturalWidth));
+      canvas.width = size; canvas.height = size;
+      const context = canvas.getContext("2d");
+      if (!context) { failed(); return; }
+      context.fillStyle = "#ffffff"; context.fillRect(0, 0, size, size);
+      context.imageSmoothingEnabled = false;
+      context.drawImage(qrImage, 0, 0, size, size);
+      canvas.toBlob((blob) => {
+        if (!isCurrent()) return;
+        if (!blob || blob.type !== "image/png") { failed(); return; }
+        try {
+          pngUrl = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = pngUrl; link.download = "perpay-collection-code.png";
+          document.body.append(link); link.click(); link.remove();
+          canvas.width = 0; canvas.height = 0; pngCanvas = undefined;
+          setQrDownloadBusy(false);
+          setText(qrDownloadStatus, "已发起 PNG 下载。若未存入相册，请从下载文件中保存图片。");
+          setHidden(qrDownloadStatus, false);
+          pngUrlTimer = window.setTimeout(() => { if (pngUrl) URL.revokeObjectURL(pngUrl); pngUrl = undefined; pngUrlTimer = undefined; }, 60_000);
+        } catch { failed(); }
+      }, "image/png");
+    } catch { failed(); }
   }
 
   function wireQrControls() {
@@ -166,7 +235,7 @@
       }
       if (qrDialog instanceof HTMLDialogElement && !qrDialog.open) qrDialog.showModal();
     });
-    qrDownload?.addEventListener("click", (event) => { if (!canUseQr() || qrLoadFailed) event.preventDefault(); });
+    qrDownload?.addEventListener("click", (event) => { event.preventDefault(); saveQrPng(); });
     close?.addEventListener("click", () => {
       if (qrDialog instanceof HTMLDialogElement) qrDialog.close();
     });
@@ -602,6 +671,8 @@
   function setQrLoadError(failed) {
     if (paymentSuspended || lastVisualState !== "UNPAID") return;
     qrLoadFailed = failed;
+    if (failed) cancelQrDownload();
+    setQrDownloadBusy(downloadingQr);
     const qrDialogWasOpen = failed ? clearQrDialog() : false;
     setHidden(qrImage, failed);
     setHidden(qrError, !failed);
@@ -629,9 +700,7 @@
     if (!qrLoadFailed && qrDialogImage instanceof HTMLImageElement && !qrDialogImage.hasAttribute("src")) {
       qrDialogImage.src = originalSource;
     }
-    if (qrDownload instanceof HTMLAnchorElement && !qrDownload.hasAttribute("href")) {
-      qrDownload.href = originalSource;
-    }
+    setQrDownloadBusy(downloadingQr);
     return true;
   }
 
@@ -652,7 +721,7 @@
     qrLoadFailed = false;
     const qrDialogWasOpen = clearQrDialog();
     if (qrImage instanceof HTMLImageElement) qrImage.removeAttribute("src");
-    if (qrDownload instanceof HTMLAnchorElement) qrDownload.removeAttribute("href");
+    cancelQrDownload();
     setHidden(qrError, true);
     return qrDialogWasOpen;
   }

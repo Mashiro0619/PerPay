@@ -8,6 +8,7 @@ import { ApplicationKey, SettingsEditor } from "../components/SettingsForms";
 import { Button, CopyValue, ErrorNotice, Notice, PageHeading, Panel, QueryView } from "../components/ui";
 import { useDraftGuard } from "../drafts";
 import { nextRequiredStep, onboardingPath, onboardingSteps, resolveOnboardingStep, type OnboardingStep } from "../lib/onboarding";
+import { useVisibleCheck } from "../lib/use-visible-check";
 import { Link, useNavigate } from "../navigation";
 import { RotateKeyDialog, SecretDialog } from "./SecuritySettings";
 
@@ -124,17 +125,6 @@ function OptionalSettings({ settings, onSaved }: { settings: RuntimeSettings; on
   </>;
 }
 
-function useVisibleCheck() {
-  const [view, setView] = useState({ active: !document.hidden && navigator.onLine, epoch: 0 });
-  useEffect(() => {
-    const update = () => setView((previous) => ({ active: !document.hidden && navigator.onLine, epoch: previous.epoch + 1 }));
-    document.addEventListener("visibilitychange", update);
-    window.addEventListener("online", update);
-    window.addEventListener("offline", update);
-    return () => { document.removeEventListener("visibilitychange", update); window.removeEventListener("online", update); window.removeEventListener("offline", update); };
-  }, []);
-  return view;
-}
 
 export function ReadinessCheck({ settings, instanceId, onReload }: { settings: RuntimeSettings; instanceId: string | null; onReload: () => void }) {
   const view = useVisibleCheck();

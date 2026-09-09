@@ -2684,6 +2684,7 @@ components:
           type: string
           minLength: 8
           x-perpay-max-utf8-bytes: 2331
+          description: Original Alipay collection link on qr.alipay.com (HTTP or HTTPS, case-insensitive). Format validation does not verify the recipient account.
         order_ttl_seconds: { type: integer, minimum: 60, maximum: 1800 }
         amount_offset_maximum_cents: { type: integer, minimum: 1, maximum: 99 }
     ProviderSettings:
@@ -4573,6 +4574,10 @@ components:
             code: { $ref: '#/components/schemas/ErrorCode' }
             message: { type: string }
             request_id: { type: string }
+            fields:
+              type: object
+              description: Safe validation hints keyed by the submitted field name; never includes submitted secrets.
+              additionalProperties: { type: string }
   responses:
     BadRequest:
       description: >-

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
 import { useParams } from "react-router";
 
-import { Link } from "../navigation";
+import { Link, useDetailBack } from "../navigation";
 
 import { api, refreshOperationalData, result } from "../api/client";
 import { ReasonDialog } from "../components/ReasonDialog";
@@ -23,7 +23,8 @@ export default function EvidenceDetail() {
 }
 
 function EvidenceHeading({ title, section }: { title: string; section?: string }) {
-  return <PageHeading title={title} back={{ to: `/reconciliation${section ? `?tab=${section}` : ""}`, label: "账本与对账" }} />;
+  const back = useDetailBack(`/reconciliation${section ? `?tab=${section}` : ""}`, "账本与对账");
+  return <PageHeading title={title} back={back} />;
 }
 
 function ConflictDetail({ resourceId }: { resourceId: string }) {

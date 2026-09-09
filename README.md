@@ -76,6 +76,8 @@ docker compose up -d
 
 **不要删除数据卷或执行 `docker compose down --volumes`。** 恢复步骤见 [维护说明](docs/maintenance.md#恢复数据库)。
 
+忘记管理员密码？见 [停服重设密码](docs/maintenance.md#忘记管理员密码)，无需删除数据。
+
 ## 其他文档
 
 - [业务网站接入](USAGE.md) · [调用端 Demo](examples/node-client/README.md)

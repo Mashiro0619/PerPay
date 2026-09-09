@@ -16,6 +16,21 @@ docker compose --profile maintenance run --rm maintenance health
 - `/readyz`：是否可以创建收款订单；支付宝配置、首次查账和自动确认未就绪时不会通过。
 - 收款异常可在管理后台的“运行状态”查看原因。
 
+## 忘记管理员密码
+
+在服务器上执行。使用与实例一致的镜像版本，先停止应用和备份：
+
+```sh
+docker compose stop app backup
+docker compose --profile maintenance run --rm --no-deps --entrypoint node maintenance dist/identity/recover.js --confirm-reset-admin-password
+```
+
+按提示输入新密码两次（不回显）。密码至少 6 个字符；成功后再执行 `docker compose up -d`。
+
+只修改管理员密码、注销旧会话并记录审计，订单、配置和各类密钥不变。不要删除数据卷。若提示数据库仍被占用，确认停服；异常退出后等待 30 秒再试。不会自动迁移数据库或重新生成主密钥。
+
+源码部署：停掉服务后，将 `PERPAY_DATA_DIR` 指向原数据目录，运行 `node dist/identity/recover.js --confirm-reset-admin-password`。自动化可加 `--password-stdin`，从标准输入传一行 UTF-8 密码；不要把密码写在命令参数、环境变量或 shell 历史中。
+
 ## 查看备份
 
 备份保存在 `perpay-backups` 卷，周期和保留数量在后台“实例设置 → 自动备份”调整。

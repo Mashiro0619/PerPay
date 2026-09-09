@@ -14,14 +14,12 @@ export function readConfig(env = process.env) {
   const url = perpayOrigin(env.PERPAY_URL ?? 'http://127.0.0.1:6190');
   const secret = env.PERPAY_API_SECRET ?? '';
   decodeKey(secret, 'PERPAY_API_SECRET');
-  const notifyUrl = env.DEMO_NOTIFY_URL || null;
-  const webhookSecret = env.PERPAY_WEBHOOK_SECRET ? decodeKey(env.PERPAY_WEBHOOK_SECRET, 'PERPAY_WEBHOOK_SECRET') : null;
-  if (Boolean(notifyUrl) !== Boolean(webhookSecret)) throw new Error('启用通知时必须同时填写 DEMO_NOTIFY_URL 和 PERPAY_WEBHOOK_SECRET；不使用时两者均留空。');
-  if (notifyUrl) {
-    let notify;
-    try { notify = new URL(notifyUrl); } catch { throw new Error('DEMO_NOTIFY_URL 不是完整 URL。'); }
-    if (notify.protocol !== 'https:' || notify.username || notify.password || notify.search || notify.hash || notify.pathname !== '/webhooks/perpay') throw new Error('DEMO_NOTIFY_URL 必须是公开 HTTPS 来源下的 /webhooks/perpay 地址，不带查询参数。');
-  }
+  const notifyUrl = env.DEMO_NOTIFY_URL;
+  if (!notifyUrl || !env.PERPAY_WEBHOOK_SECRET) throw new Error('Demo 默认使用回调通知，请在 .env 填写 DEMO_NOTIFY_URL 和 PERPAY_WEBHOOK_SECRET，并在 PerPay 启用业务通知。');
+  const webhookSecret = decodeKey(env.PERPAY_WEBHOOK_SECRET, 'PERPAY_WEBHOOK_SECRET');
+  let notify;
+  try { notify = new URL(notifyUrl); } catch { throw new Error('DEMO_NOTIFY_URL 不是完整 URL。'); }
+  if (notify.protocol !== 'https:' || notify.username || notify.password || notify.port || notify.search || notify.hash || notify.pathname !== '/webhooks/perpay') throw new Error('DEMO_NOTIFY_URL 必须是公开 HTTPS 来源下的 /webhooks/perpay 地址，不带端口或查询参数。');
   return { port, url, secret, notifyUrl, webhookSecret, database: join(resolve(directory, env.DEMO_DATA_DIR ?? 'data'), 'demo.sqlite3') };
 }
 function json(response, status, data) {
@@ -55,7 +53,7 @@ export function orderPayload(input, config) {
   const product = typeof input.product_name === 'string' ? input.product_name.trim() : '';
   const note = typeof input.note === 'string' ? input.note.trim() : '';
   if (!product || Array.from(product).length > 200 || !product.isWellFormed() || /[\u0000-\u001f\u007f]/.test(product) || Array.from(note).length > 500 || !note.isWellFormed() || /[\u0000-\u001f\u007f]/.test(note)) throw new DemoError(400, '商品名或备注无效；商品名最多 200 字，备注最多 500 字，不含控制字符。');
-  return { idempotency_key: 'demo:' + input.merchant_order_no, merchant_order_no: input.merchant_order_no, amount_cents: cents, product_name: product, ...(note ? { note } : {}), ...(config.notifyUrl ? { notify_url: config.notifyUrl } : {}) };
+  return { idempotency_key: 'demo:' + input.merchant_order_no, merchant_order_no: input.merchant_order_no, amount_cents: cents, product_name: product, ...(note ? { note } : {}), notify_url: config.notifyUrl };
 }
 export function createDemoServer({ config, client = new PerPayClient(config), store = new DemoStore(config.database, config.url) }) {
   const csrf = randomBytes(32).toString('base64url');
@@ -136,6 +134,7 @@ if (import.meta.main) {
     server.on('error', error => { console.error(error.code === 'EADDRINUSE' ? '端口已被占用，请修改 DEMO_PORT。' : '示例服务无法启动。'); store.close(); process.exitCode = 1; });
     server.listen(config.port, '127.0.0.1', () => {
       console.log('PerPay 调用端 Demo：http://127.0.0.1:' + config.port);
+      console.log('付款后由回调通知更新状态，手动查单仅用于补偿。');
       console.log('创建的是真实收款订单。API 密钥仅保留在后端；示例不会自动付款或发货。');
     });
     let closing = false;

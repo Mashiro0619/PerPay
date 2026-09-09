@@ -40,6 +40,7 @@ export class ApiError extends Error {
   readonly code: string;
   readonly requestId: string | null;
   readonly retryAfter: number | null;
+  readonly fields: Readonly<Record<string, string>>;
 
   constructor(response: Response | undefined, payload: unknown) {
     const envelope = payload as Partial<ErrorEnvelope> | null | undefined;
@@ -47,6 +48,8 @@ export class ApiError extends Error {
     const message = apiErrorMessage(detail?.code, detail?.message, response?.status);
     super(message);
     this.name = "ApiError";
+    this.fields = detail?.fields && typeof detail.fields === "object"
+      ? Object.fromEntries(Object.entries(detail.fields).filter((entry): entry is [string, string] => typeof entry[1] === "string")) : {};
     this.status = response?.status ?? 0;
     this.code = typeof detail?.code === "string" ? detail.code : "request_failed";
     this.requestId = typeof detail?.request_id === "string" ? detail.request_id : response?.headers.get("x-request-id") ?? null;

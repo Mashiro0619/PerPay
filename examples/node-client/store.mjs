@@ -73,7 +73,7 @@ export class DemoStore {
   list() {
     return this.db.prepare('SELECT merchant_order_no FROM orders ORDER BY created_at DESC LIMIT 30').all().map(({ merchant_order_no }) => {
       const row = this.get(merchant_order_no);
-      return { merchant_order_no, product_name: row.request.product_name, amount_cents: row.request.amount_cents, note: row.request.note ?? '', snapshot: row.snapshot, last_error: row.last_error, updated_at: row.updated_at };
+      return { merchant_order_no, product_name: row.request.product_name, amount_cents: row.request.amount_cents, note: row.request.note ?? '', notifications: Boolean(row.request.notify_url), snapshot: row.snapshot, last_error: row.last_error, updated_at: row.updated_at };
     });
   }
   events() { return this.db.prepare('SELECT event_id, merchant_order_no, event_type, order_version, disposition, received_at FROM received_events ORDER BY received_at DESC LIMIT 30').all(); }

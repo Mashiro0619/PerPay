@@ -16,7 +16,7 @@ import {
 
 const ADMIN_PASSWORD = HTTP_TEST_ADMIN_PASSWORD;
 const API_SECRET = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-const COLLECTION_CODE = "https://qr.local.invalid/ledger-conflict-http";
+const COLLECTION_CODE = "https://qr.alipay.com/ledger-conflict-http";
 const PUBLIC_ORIGIN = "http://localhost:6190";
 const BASE_TIME = Date.now();
 const WINDOW = {

@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type ChangeEvent, type DragEvent } 
 import { Check, ImageUp, LoaderCircle } from "lucide-react";
 
 import { decodeQrImage, qrImageAccept } from "../qr-image";
+import { collectionCodeError } from "../../../src/shared/collection-code";
 import { Field } from "./ui";
 
 type Feedback = { kind: "idle" | "pending" | "success" } | { kind: "error"; message: string };
@@ -10,8 +11,8 @@ function hasFiles(dataTransfer: DataTransfer | null): dataTransfer is DataTransf
   return Boolean(dataTransfer && (dataTransfer.types.includes("Files") || dataTransfer.files.length > 0));
 }
 
-export function CollectionCodeField({ defaultValue, onDecoded, onPendingChange, disabled = false }: {
-  defaultValue: string; onDecoded: () => void; onPendingChange: (pending: boolean) => void; disabled?: boolean;
+export function CollectionCodeField({ defaultValue, onDecoded, onPendingChange, disabled = false, error }: {
+  defaultValue: string; onDecoded: () => void; onPendingChange: (pending: boolean) => void; disabled?: boolean; error?: string | undefined;
 }) {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
@@ -63,6 +64,8 @@ export function CollectionCodeField({ defaultValue, onDecoded, onPendingChange, 
     try {
       const payload = await decodeQrImage(file, current.signal);
       if (current.signal.aborted || !textarea.current) return;
+      const issue = collectionCodeError(payload);
+      if (issue) throw new Error(issue);
       textarea.current.value = payload;
       onDecoded();
       setFeedback({ kind: "success" });
@@ -130,7 +133,7 @@ export function CollectionCodeField({ defaultValue, onDecoded, onPendingChange, 
       <span className={feedback.kind === "success" ? "collection-code-status" : "sr-only"} role="status">{feedback.kind === "success" ? <><Check size={16} aria-hidden="true" />已识别，请核对后保存。</> : feedback.kind === "pending" ? "正在识别二维码图片。" : dragging ? "松开即可识别。" : ""}</span>
       {feedback.kind === "error" && <span id={feedbackId} className="field-error" role="alert">{feedback.message}</span>}
     </div>
-    <Field label="支付宝经营码内容" className="collection-code-editor">
+    <Field label="支付宝经营码内容" className="collection-code-editor" error={error}>
       <textarea ref={textarea} name="code_payload" rows={2} required minLength={8} maxLength={2331} defaultValue={defaultValue} disabled={disabled}
         onChange={cancelReading} autoComplete="off" spellCheck={false} placeholder="识别后自动填入，也可直接粘贴或修改" />
     </Field>

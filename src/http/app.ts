@@ -91,6 +91,8 @@ import {
   webhookSettingsInputSchema,
   type RuntimeSecretName,
 } from "../settings/index.ts";
+import { SettingsFieldError } from "../settings/validation.ts";
+import { collectionCodeError } from "../shared/collection-code.ts";
 import { APP_VERSION } from "../version.ts";
 import { PublicCheckoutRateLimiter } from "./public-checkout-rate-limit.ts";
 import { parseStrictJson, StrictJsonError } from "./strict-json.ts";
@@ -1280,6 +1282,9 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         "受信代理提供的 X-Forwarded-For 无效",
       );
     }
+    if (error instanceof SettingsFieldError) {
+      return errorResponse(context, 422, "settings_validation_failed", error.hint, { [error.field]: error.hint });
+    }
     if (error instanceof HttpApiError) {
       if (error.retryAfterSeconds !== undefined) {
         context.header("retry-after", String(error.retryAfterSeconds));
@@ -1394,6 +1399,7 @@ async function settingsOperation<T>(operation: () => Promise<T>): Promise<T> {
   try {
     return await operation();
   } catch (error) {
+    if (error instanceof SettingsFieldError) throw error;
     if (error instanceof RangeError) {
       throw new HttpApiError(422, "settings_validation_failed", error.message);
     }
@@ -1627,6 +1633,10 @@ function parseJsonBytes<T>(bytes: Uint8Array, schema: z.ZodType<T>): T {
   }
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
+    if ((schema as z.ZodType) === collectionSettingsInputSchema) {
+      const issue = parsed.error.issues.find((item) => item.path[0] === "code_payload");
+      if (issue) throw new SettingsFieldError("code_payload", "请上传支付宝经营码，或粘贴 qr.alipay.com 开头的完整收款链接（最多 2331 字节）。");
+    }
     throw new HttpApiError(422, "validation_failed", "请求字段校验失败");
   }
   return parsed.data;
@@ -1794,7 +1804,7 @@ function currentRuntimeStatus(dependencies: AppDependencies): PaymentRuntimeStat
   const snapshot = dependencies.settings?.snapshot();
   return {
     configured: snapshot !== undefined &&
-      snapshot.collection !== null &&
+      snapshot.collection !== null && collectionCodeError(snapshot.collection.codePayload) === null &&
       snapshot.provider !== null &&
       snapshot.apiSecret !== null &&
       snapshot.activeProviderAccountKey !== null,
@@ -3455,6 +3465,7 @@ function errorResponse(
   status: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 429 | 500 | 503,
   code: HttpErrorCode,
   message: string,
+  fields?: Readonly<Record<string, string>>,
 ): Response {
   return context.json(
     {
@@ -3462,6 +3473,7 @@ function errorResponse(
         code,
         message,
         request_id: context.get("requestId"),
+        ...(fields ? { fields } : {}),
       },
     },
     status,

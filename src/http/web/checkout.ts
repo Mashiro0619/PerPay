@@ -258,8 +258,10 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
 
           <div class="checkout-code-actions"${hiddenAttribute(!qrVisible)}>
             <button class="checkout-button checkout-button--quiet" type="button" data-qr-expand>放大二维码</button>
-            <a class="checkout-button checkout-button--quiet"${linkHrefAttribute(qrVisible ? input.qrImageUrl : null)} download="perpay-collection-code.svg" data-qr-download>保存二维码</a>
+            <button class="checkout-button checkout-button--quiet" type="button" data-qr-download${qrVisible ? "" : " disabled"}>保存二维码</button>
           </div>
+          <p class="checkout-album-hint" data-payment-guidance${hiddenAttribute(!qrVisible)}>同一部手机付款：保存图片 → 支付宝扫一扫 → 相册。</p>
+          <p class="checkout-save-message" data-qr-download-status role="status" hidden></p>
           <button class="checkout-button checkout-button--primary checkout-manual-refresh" type="button" data-checkout-refresh${hiddenAttribute(!manualRefreshVisible)}>
             <span data-checkout-refresh-label>查询付款状态</span>
           </button>
