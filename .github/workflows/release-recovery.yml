@@ -1,0 +1,55 @@
+name: Release recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "已通过发布验收的版本，不含 v"
+        required: true
+        type: string
+      source_run_id:
+        description: "仅在推广 latest 步骤失败的 Release 运行编号"
+        required: true
+        type: string
+      target_digest:
+        description: "该次验收使用的固定版本镜像摘要（sha256:…）"
+        required: true
+        type: string
+      expected_latest_digest:
+        description: "当前损坏的 latest 摘要；不匹配时禁止修改"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  packages: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out recovery tooling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Use the pinned Node.js release
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.20.0
+
+      # 只修复旧 latest 缺失架构清单的情况；不重建、不改固定标签、不跳过安全扫描。
+      - name: Recover the validated latest image
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          TARGET_IMAGE_DIGEST: ${{ inputs.target_digest }}
+          EXPECTED_LATEST_DIGEST: ${{ inputs.expected_latest_digest }}
+        run: node scripts/recover-release-promotion.mjs
