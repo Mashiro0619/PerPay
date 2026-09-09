@@ -161,10 +161,12 @@ describe("first-run administrator HTTP flow", () => {
   });
 
   it("rate limits setup from persisted source attempts before password hashing", async () => {
-    const fixture = await createFixture();
+    const now = Date.UTC(2026, 0, 1);
+    const fixture = await createFixture(() => now);
     const sourceHash = fixture.identity.sourceHash("unknown");
     try {
-      const seededAt = Date.now();
+      // Keep seeded attempts before the request clock; future timestamps are already blocked.
+      const seededAt = now - AUTH_FAILURE_THRESHOLD;
       fixture.identity.store.transaction((transaction) => {
         for (let attempt = 1; attempt < AUTH_FAILURE_THRESHOLD; attempt += 1) {
           transaction.recordAuthFailure(sourceHash, seededAt + attempt);
@@ -212,7 +214,7 @@ describe("first-run administrator HTTP flow", () => {
   });
 });
 
-async function createFixture() {
+async function createFixture(clock: () => number = Date.now) {
   const directory = mkdtempSync(join(tmpdir(), "perpay-initial-setup-http-"));
   const config = loadConfig({
     PERPAY_MASTER_KEY: MASTER_KEY,
@@ -221,7 +223,7 @@ async function createFixture() {
     PERPAY_PUBLIC_URL: PUBLIC_ORIGIN,
   });
   const database = await AppDatabase.open(config.databasePath);
-  const identity = new IdentityService(database);
+  const identity = new IdentityService(database, clock);
   await identity.initialize();
   const settings = new RuntimeSettingsService({
     store: new RuntimeSettingsStore(database, config.masterKey),
