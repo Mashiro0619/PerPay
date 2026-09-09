@@ -294,6 +294,8 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/render-release-compose.mjs release-assets/docker-compose.yml
+          npm run demo:package
+          cp dist/demo.zip release-assets/demo.zip
           docker compose -f release-assets/docker-compose.yml config --quiet
           expected_image="${IMAGE_NAME}:latest"
           expected_images="$(printf '%s\n%s\n%s' "$expected_image" "$expected_image" "$expected_image")"
@@ -510,22 +512,30 @@ jobs:
           test "$public_digest" = "$RELEASE_IMAGE_DIGEST"
 
           compose_sha256="$(sha256sum release-assets/docker-compose.yml | cut -d ' ' -f1)"
-          cat > release-notes.md <<EOF
-          ## Container image
+          demo_sha256="$(sha256sum release-assets/demo.zip | cut -d ' ' -f1)"
+          if [ -f "docs/releases/${GITHUB_REF_NAME}.md" ]; then
+            cat "docs/releases/${GITHUB_REF_NAME}.md" > release-notes.md
+            printf '\n' >> release-notes.md
+          else
+            printf '# %s\n\n' "$GITHUB_REF_NAME" > release-notes.md
+          fi
+          cat >> release-notes.md <<EOF
+          ## 镜像与附件
 
-          - Fixed rollback image: \`${RELEASE_IMAGE}@${RELEASE_IMAGE_DIGEST}\`
-          - Default update channel: \`${IMAGE_NAME}:latest\`
-          - Platforms: \`linux/amd64\`, \`linux/arm64\`
-          - Supported database schema range: \`${DATABASE_MINIMUM}..${DATABASE_MAXIMUM}\`
-          - Compose SHA-256: \`${compose_sha256}\`
+          - 固定版本镜像： \`${RELEASE_IMAGE}@${RELEASE_IMAGE_DIGEST}\`
+          - 默认更新通道： \`${IMAGE_NAME}:latest\`
+          - 支持平台： \`linux/amd64\`, \`linux/arm64\`
+          - 数据库结构范围： \`${DATABASE_MINIMUM}..${DATABASE_MAXIMUM}\`
+          - 部署配置校验值（SHA-256）：\`${compose_sha256}\`
+          - 调用示例校验值（SHA-256）：\`${demo_sha256}\`
 
-          First installation: download the attached \`docker-compose.yml\`, fill its placeholders, and run \`docker compose up -d\`. Existing installations update with \`docker compose pull\` followed by \`docker compose up -d\`. The fixed image reference above is retained for manual rollback.
+          首次部署下载附件 \`docker-compose.yml\`，按中文注释填写域名和代理配置，再执行 \`docker compose up -d\`。调用端示例见附件 \`demo.zip\`。
 
-          Verify the attachment on Linux with \`echo "${compose_sha256}  docker-compose.yml" | sha256sum -c -\`.
+          Linux 校验附件：\`echo "${compose_sha256}  docker-compose.yml" | sha256sum -c -\`。
 
           EOF
-          gh release create "$GITHUB_REF_NAME" release-assets/docker-compose.yml \
+          gh release create "$GITHUB_REF_NAME" release-assets/docker-compose.yml release-assets/demo.zip \
             --verify-tag \
-            --title "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME 正式版" \
             --notes-file release-notes.md \
             --latest

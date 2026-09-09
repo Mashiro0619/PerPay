@@ -233,6 +233,8 @@ test("release builds, scans, verifies, and publishes fixed and latest images", (
   );
   assert.match(render?.run ?? "", /render-release-compose\.mjs/u);
   assert.match(render?.run ?? "", /config --quiet/u);
+  assert.match(render?.run ?? "", /npm run demo:package/u);
+  assert.match(render?.run ?? "", /cp dist\/demo\.zip release-assets\/demo\.zip/u);
   assert.match(render?.run ?? "", /--profile maintenance -f .*config --images/u);
 
   const smoke = publishSteps.find(
@@ -266,6 +268,12 @@ test("release builds, scans, verifies, and publishes fixed and latest images", (
   assert.equal(publishSteps.indexOf(smoke) < publishSteps.indexOf(latest), true);
   assert.equal(publishSteps.indexOf(latest) < publishSteps.indexOf(publish), true);
   assert.match(publish?.run ?? "", /gh release create/u);
+  assert.match(publish?.run ?? "", /release-assets\/docker-compose\.yml release-assets\/demo\.zip/u);
+  assert.match(publish?.run ?? "", /docs\/releases\/\$\{GITHUB_REF_NAME\}\.md/u);
+  assert.match(publish?.run ?? "", /--title "\$GITHUB_REF_NAME 正式版"/u);
+  assert.match(publish?.run ?? "", /镜像与附件/u);
+  assert.match(publish?.run ?? "", /调用示例校验值/u);
+  assert.doesNotMatch(publish?.run ?? "", /First installation:|Verify the attachment|## Container image/u);
   assert.match(publish?.run ?? "", /--latest(?:\s|$)/u);
   assert.doesNotMatch(publish?.run ?? "", /--latest=false/u);
   assert.match(releaseWorkflowText, /\$\{IMAGE_NAME\}:latest/u);
