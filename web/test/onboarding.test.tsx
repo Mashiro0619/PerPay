@@ -41,24 +41,29 @@ describe("first collection onboarding", () => {
   it("takes a new instance from the overview to the first step", async () => {
     const view = mountOnboarding({ path: "/" });
     await pathIs(view, "application");
-    expect(await screen.findByRole("heading", { name: "准备应用密钥" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "应用密钥" })).toBeVisible();
     expect(view.writes()).toHaveLength(0);
   });
-  it("explains how to obtain a business code before generating keys", async () => {
+  it("keeps prerequisites in optional help without repeating long instructions", async () => {
     const view = mountOnboarding();
-    expect(await screen.findByText(/打开支付宝，搜索“经营码”，按页面提示申请/)).toBeVisible();
-    expect(screen.getByRole("link", { name: "打开支付宝应用管理" })).toHaveAttribute("href", "https://open.alipay.com/develop/manage");
-    expect(screen.getByText(/并非所有账户或应用都具备这些权限/)).toBeVisible();
+    const help = await screen.findByText("接入前准备");
+    expect(help.closest("details")).not.toHaveAttribute("open");
+    expect(screen.getByText(/支付宝搜索“经营码”申请/)).not.toBeVisible();
+    await userEvent.setup().click(help);
+    expect(screen.getByText(/支付宝搜索“经营码”申请/)).toBeVisible();
+    expect(screen.getByText(/支付宝应用需有账务明细查询权限/)).toBeVisible();
+    expect(screen.getByRole("link", { name: "图文教程" })).toHaveAttribute("href", "https://github.com/Mashiro0619/PerPay/blob/main/docs/alipay-setup.md");
     expect(view.writes()).toHaveLength(0);
   });
-  it("guides platform key setup without treating an application gateway as required", async () => {
+  it("keeps the provider step focused on App ID and the Alipay public key", async () => {
     const view = mountOnboarding({ stage: 1 });
-    expect(await screen.findByText("密钥（普通适用）")).toBeVisible();
-    expect(screen.getByText(/无需再用平台工具生成另一套/)).toBeVisible();
-    const gateway = screen.getByText("需要填写支付宝“应用网关”吗？");
-    expect(gateway.closest("details")).not.toHaveAttribute("open");
-    await userEvent.setup().click(gateway);
-    expect(screen.getByText(/不使用支付宝应用网关接收异步通知，因此无需填写/)).toBeVisible();
+    expect(await screen.findByLabelText("应用 ID（App ID）")).toBeVisible();
+    expect(screen.getByLabelText("支付宝公钥")).toBeVisible();
+    expect(screen.getByLabelText("支付宝环境")).not.toBeVisible();
+    expect(screen.getByLabelText("请求超时（毫秒）")).not.toBeVisible();
+    expect(screen.getByRole("link", { name: "支付宝应用管理" })).toHaveAttribute("href", "https://open.alipay.com/develop/manage");
+    expect(screen.queryByText(/应用网关|生成密钥文件|保存只完成配置/)).not.toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: "支付宝接入" })).toHaveLength(1);
     expect(view.writes()).toHaveLength(0);
   });
   it.each(["/orders", "/settings/provider"])("does not force explicit %s navigation through onboarding", async (path) => {
@@ -105,14 +110,14 @@ describe("first collection onboarding", () => {
     await pathIs(view, "application");
     expect(view.writes()).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "生成应用密钥" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "下一步：配置支付宝" }));
+    await user.click(screen.getByRole("button", { name: "下一步" }));
     await pathIs(view, "provider");
   });
   it("saves provider defaults before advancing without a discard prompt", async () => {
     const view = mountOnboarding({ stage: 1 });
     await screen.findByLabelText("应用 ID（App ID）");
     edit("应用 ID（App ID）", "my-app"); edit("支付宝公钥", "synthetic-platform-public-key");
-    expect(screen.getByText("高级参数（通常无需修改）").closest("details")).not.toHaveAttribute("open");
+    expect(screen.getByText("高级设置").closest("details")).not.toHaveAttribute("open");
     await userEvent.setup().click(screen.getByRole("button", { name: "保存并继续" }));
     await pathIs(view, "collection");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -132,7 +137,7 @@ describe("first collection onboarding", () => {
   it("saves a manual collection payload with the current revision before continuing", async () => {
     const view = mountOnboarding({ stage: 2 });
     const field = await screen.findByLabelText("支付宝经营码内容");
-    expect(screen.getByText(/在支付宝搜索“经营码”，按页面提示申请/)).toBeVisible();
+    expect(screen.getByText("上传接入账户的经营码，核对识别结果后保存。")).toBeVisible();
     expect(field).toHaveAttribute("rows", "2");
     expect(screen.getByRole("button", { name: "点击或拖拽二维码图片" })).toBeVisible();
     edit("支付宝经营码内容", "https://qr.alipay.com/onboarding");
@@ -145,8 +150,7 @@ describe("first collection onboarding", () => {
     const view = mountOnboarding({ stage: 3 });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "生成 API 密钥" }));
-    await user.click(screen.getByRole("checkbox"));
-    await user.click(screen.getByRole("button", { name: "确认生成新密钥" }));
+    await user.click(screen.getByRole("button", { name: "生成密钥" }));
     expect(await screen.findByText(syntheticSecret)).toBeVisible();
     await pathIs(view, "api");
     expect(JSON.stringify(sessionStorage)).not.toContain(syntheticSecret);
@@ -157,9 +161,9 @@ describe("first collection onboarding", () => {
   });
   it("reuses an existing API key and does not rotate it on revisit", async () => {
     const view = mountOnboarding({ stage: 4, path: onboardingPath("api") });
-    expect(await screen.findByRole("button", { name: "安全查看网站 API 密钥" })).toBeVisible();
+    expect(await screen.findByRole("button", { name: "查看密钥" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "生成 API 密钥" })).not.toBeInTheDocument();
-    await userEvent.setup().click(screen.getByRole("button", { name: "密钥已妥善保存，下一步" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "已保存，下一步" }));
     await pathIs(view, "optional");
     expect(view.writes()).toHaveLength(0);
   });
@@ -168,7 +172,7 @@ describe("first collection onboarding", () => {
     let finish: (response: Response) => void = () => {};
     const view = mountOnboarding({ stage: 3, handle: (request) => request.url.endsWith("/api-key/actions/rotate") ? new Promise<Response>((resolve) => { finish = resolve; }) : undefined });
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "生成 API 密钥" })); await user.click(screen.getByRole("checkbox")); await user.click(screen.getByRole("button", { name: "确认生成新密钥" }));
+    await user.click(await screen.findByRole("button", { name: "生成 API 密钥" })); await user.click(screen.getByRole("button", { name: "生成密钥" }));
     hidden.mockReturnValue(true); fireEvent(document, new Event("visibilitychange"));
     await act(async () => { finish(json({ data: { settings: configuredThrough(4), secret: syntheticSecret, client_id: "default" } })); });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -178,7 +182,7 @@ describe("first collection onboarding", () => {
   it("clears revealed API plaintext after sixty seconds without advancing", async () => {
     const view = mountOnboarding({ stage: 4, path: onboardingPath("api") });
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "安全查看网站 API 密钥" }));
+    await user.click(await screen.findByRole("button", { name: "查看密钥" }));
     vi.useFakeTimers();
     fireEvent.click(screen.getByRole("button", { name: "读取明文" }));
     await act(async () => { await vi.advanceTimersByTimeAsync(10); });
@@ -190,32 +194,34 @@ describe("first collection onboarding", () => {
   });
   it("preserves the other optional form while saving each with the latest revision", async () => {
     const view = mountOnboarding({ stage: 4, path: onboardingPath("optional") });
+    await userEvent.setup().click(await screen.findByText("调整备份策略"));
     await screen.findByLabelText("备份间隔（秒）");
     edit("备份间隔（秒）", "172800");
     fireEvent.click(screen.getByRole("checkbox", { name: "启用业务通知" }));
     edit("允许的通知网站 Origin", "https://shop.example.com");
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "保存业务通知" }));
-    await screen.findByRole("button", { name: "安全查看通知签名密钥" });
+    await user.click(screen.getByRole("button", { name: "保存通知" }));
+    await screen.findByRole("button", { name: "查看签名密钥" });
     expect(screen.getByLabelText("备份间隔（秒）")).toHaveValue(172800);
     expect(screen.getAllByText("有未保存的修改")).toHaveLength(1);
-    await user.click(screen.getByRole("button", { name: "保存备份策略" }));
+    await user.click(screen.getByRole("button", { name: "保存备份" }));
     await waitFor(() => expect(screen.queryByText("有未保存的修改")).not.toBeInTheDocument());
     expect(await view.writes()[0]!.clone().json()).toMatchObject({ revision: 3, enabled: true, allowed_origin: "https://shop.example.com" });
     expect(await view.writes()[1]!.clone().json()).toEqual({ revision: 4, interval_seconds: 172800, keep_count: 7 });
   });
   it("skips optional settings without writing or treating disabled notifications as enabled", async () => {
     const view = mountOnboarding({ stage: 4, path: onboardingPath("optional") });
-    await userEvent.setup().click(await screen.findByRole("link", { name: "跳过，保留当前设置" }));
+    await userEvent.setup().click(await screen.findByRole("link", { name: "继续" }));
     await pathIs(view, "check");
-    expect(await screen.findByText("业务通知未启用，业务网站需要主动查询订单状态。")).toBeVisible();
+    expect(await screen.findByText("业务通知未启用，请由网站主动查单。")).toBeVisible();
     expect(view.writes()).toHaveLength(0);
   });
   it("confirms dirty optional settings before skipping and never saves them implicitly", async () => {
     const view = mountOnboarding({ stage: 4, path: onboardingPath("optional") });
+    await userEvent.setup().click(await screen.findByText("调整备份策略"));
     await screen.findByLabelText("备份间隔（秒）"); edit("备份间隔（秒）", "172800");
     const user = userEvent.setup();
-    await user.click(screen.getByRole("link", { name: "跳过，保留当前设置" }));
+    await user.click(screen.getByRole("link", { name: "继续" }));
     await user.click(await screen.findByRole("button", { name: "放弃修改并继续" }));
     await pathIs(view, "check");
     expect(view.saved.backup.interval_seconds).toBe(86400);

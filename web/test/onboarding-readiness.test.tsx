@@ -28,12 +28,12 @@ describe("onboarding payment readiness", () => {
     const { fetchMock } = mount(() => json({ data: status }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
     expect(screen.queryByRole("link", { name: "进入控制台" })).not.toBeInTheDocument();
-    expect(screen.queryByText("收款已就绪，可以开始接入业务网站。")).not.toBeInTheDocument();
+    expect(screen.queryByText("收款已就绪。")).not.toBeInTheDocument();
   });
   it("accepts degraded payment readiness but keeps the operational warning", async () => {
     const status = { ...systemStatus(), status: "degraded" as const };
     const { fetchMock } = mount(() => json({ data: status }));
-    expect(await screen.findByText("收款入口已就绪，但仍有运行告警需要关注。")).toBeVisible();
+    expect(await screen.findByText("可以收款，仍有事项待处理。")).toBeVisible();
     expect(screen.getByRole("link", { name: "进入控制台" })).toBeVisible();
     expect(screen.getByRole("link", { name: "小额真实测试" })).toHaveAttribute("href", "/test-payment");
     expect(fetchMock).toHaveBeenCalledOnce();

@@ -1,12 +1,12 @@
 import type { RuntimeSettings } from "../api/client";
 
 export const onboardingSteps = [
-  { id: "application", title: "准备应用密钥", description: "生成并保管支付宝应用密钥" },
-  { id: "provider", title: "配置支付宝接入", description: "在支付宝平台与 PerPay 之间完成接入" },
-  { id: "collection", title: "设置经营码", description: "上传并核对实际收款的经营码" },
-  { id: "api", title: "准备网站 API 密钥", description: "让业务网站安全调用 PerPay" },
-  { id: "optional", title: "业务通知与备份", description: "可选，按需设置或稍后再配" },
-  { id: "check", title: "检查收款就绪", description: "等待首次采集与自动确认准备完成" },
+  { id: "application", title: "应用密钥" },
+  { id: "provider", title: "支付宝接入" },
+  { id: "collection", title: "经营码" },
+  { id: "api", title: "网站 API 密钥" },
+  { id: "optional", title: "通知与备份" },
+  { id: "check", title: "收款检查" },
 ] as const;
 export type OnboardingStep = typeof onboardingSteps[number]["id"];
 export const onboardingPath = (step?: OnboardingStep) => "/settings/onboarding" + (step ? "/" + step : "");

@@ -125,3 +125,5 @@ summary { cursor: pointer; font-size: 12px; }
 .password-field input { padding-right: 44px; }
 .password-toggle { position: absolute; top: 2px; right: 3px; display: grid; place-items: center; width: 37px; height: calc(100% - 4px); padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--muted); }
 .password-toggle:hover { background: var(--surface-muted); }
+
+.notification-fields:not([hidden]) { display: flex; flex-direction: column; gap: 18px; }

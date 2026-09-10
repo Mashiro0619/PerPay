@@ -85,4 +85,5 @@ docker compose up -d
 - [业务网站接入](USAGE.md) · [调用端 Demo](examples/node-client/README.md)
 - [开发说明](web/README.md) · [API 文档](openapi.yaml)
 
-[MIT License](LICENSE)
+友链
+[Linux Do](https://linux.do/)

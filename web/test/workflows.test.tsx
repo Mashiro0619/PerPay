@@ -223,7 +223,7 @@ describe("state-changing workflows", () => {
     const user = userEvent.setup();
     renderPage(<SecuritySettings settings={configured} onSaved={vi.fn()} />);
     await user.click(screen.getByRole("button", { name: "显示网站 API 密钥" }));
-    expect(screen.getByText("60 秒后或离开当前标签页时自动清除明文。")).toBeVisible();
+    expect(screen.getByText("60 秒后或切换标签页时自动清除。")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "读取明文" }));
     expect(await screen.findByText("ephemeral-test-secret")).toBeVisible();
     expect(localStorage.length).toBe(0);

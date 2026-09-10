@@ -15,7 +15,7 @@ describe("secret visibility lifecycle", () => {
     const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(false);
     let finish: (response: Response) => void = () => {};
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => { finish = resolve; })));
-    const configured = { ...settings, secrets: { ...settings.secrets, api_secret: { ...settings.secrets.api_secret, configured: true } } };
+    const configured = { ...settings, completion: { ...settings.completion, api: true }, secrets: { ...settings.secrets, api_secret: { ...settings.secrets.api_secret, configured: true } } };
     const onSaved = vi.fn();
     render(<QueryClientProvider client={queryClient}><MemoryRouter><SecuritySettings settings={configured} onSaved={onSaved} /></MemoryRouter></QueryClientProvider>);
     const user = userEvent.setup();
@@ -23,9 +23,9 @@ describe("secret visibility lifecycle", () => {
       await user.click(screen.getByRole("button", { name: "显示网站 API 密钥" }));
       await user.click(screen.getByRole("button", { name: "读取明文" }));
     } else {
-      await user.click(screen.getByRole("button", { name: "生成 API 密钥" }));
-      await user.click(screen.getByRole("checkbox", { name: "我已了解影响，并准备好更新业务服务端。" }));
-      await user.click(screen.getByRole("button", { name: "确认生成新密钥" }));
+      await user.click(screen.getByRole("button", { name: "轮换 API 密钥" }));
+      await user.click(screen.getByRole("checkbox", { name: "确认轮换，旧密钥立即失效。" }));
+      await user.click(screen.getByRole("button", { name: "确认轮换" }));
     }
     hidden.mockReturnValue(true);
     fireEvent(document, new Event("visibilitychange"));

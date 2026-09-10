@@ -1,37 +1,41 @@
-.onboarding-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); align-items: start; gap: 36px; max-width: 1120px; }
+.onboarding-layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); align-items: start; gap: 28px; max-width: 1080px; }
 .onboarding-steps { position: sticky; top: 28px; min-width: 0; }
 .onboarding-progress { margin: 0 12px 16px; color: var(--muted); font-size: 12px; }
 .onboarding-step-toggle { display: none; }
 .onboarding-steps ol { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.onboarding-steps li > a, .onboarding-step-locked { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 12px; border-radius: 8px; color: var(--muted); font-size: 13px; }
+.onboarding-steps li > a, .onboarding-step-locked { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 12px; border-radius: 8px; color: var(--muted); font-size: 13px; }
 .onboarding-steps li > a:hover { background: var(--surface-muted); color: var(--ink); text-decoration: none; }
 .onboarding-steps li > a.is-current { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .onboarding-step-number { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 25px; height: 25px; border: 1px solid var(--line-strong); border-radius: 50%; font-size: 12px; }
 .is-current .onboarding-step-number { border-color: currentColor; }
 .onboarding-steps small { display: block; margin-top: 2px; font-weight: 400; }
-.onboarding-content { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+.onboarding-content { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .onboarding-heading h2 { font-size: 22px; line-height: 1.45; }
-.onboarding-heading p { margin-top: 6px; color: var(--muted); }
 .onboarding-content > .notice, .onboarding-content > .panel { margin-bottom: 0; }
-.onboarding-instruction, .onboarding-instructions { max-width: 70ch; }
-.onboarding-instructions { margin: 0; padding-left: 22px; }
-.onboarding-instructions li + li { margin-top: 12px; }
+.onboarding-instructions { margin: 0; padding-left: 22px; font-size: 13px; }
+.onboarding-instructions li + li { margin-top: 6px; }
 .onboarding-instructions a { text-decoration: underline; }
 .onboarding-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding-top: 20px; border-top: 1px solid var(--line); }
 .onboarding-checks { margin: 0; padding: 0; list-style: none; }
-.onboarding-checks li { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 16px 0; }
+.onboarding-checks li { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 12px 0; }
 .onboarding-checks li + li { border-top: 1px solid var(--line); }
 .onboarding-checks li > div { min-width: 0; overflow-wrap: anywhere; }
 .onboarding-checks li > a { flex-shrink: 0; font-size: 12px; }
 .onboarding-checks .field-error { display: block; }
 @media (max-width: 850px) {
-  .onboarding-layout { grid-template-columns: minmax(0, 1fr); gap: 24px; }
-  .onboarding-steps { position: static; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
-  .onboarding-progress { margin: 0 0 8px; }
+  .onboarding-layout { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .onboarding-steps { position: static; display: grid; grid-template-columns: 1fr auto; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+  .onboarding-progress { margin: 0; }
   .onboarding-step-toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0; border: 0; background: none; color: var(--accent); font-size: 13px; }
   .onboarding-steps:not(.is-expanded) ol { display: none; }
-  .onboarding-steps.is-expanded ol { margin-top: 12px; }
+  .onboarding-steps.is-expanded ol { grid-column: 1 / -1; margin-top: 12px; }
   .onboarding-heading h2 { font-size: 20px; }
   .onboarding-content > .form-actions { align-items: stretch; }
   .onboarding-content > .form-actions > .button { justify-content: center; }
 }
+.onboarding-content .form-stack, .onboarding-content .form-stack > fieldset { gap: 18px; }
+.onboarding-content > .form-disclosure[open] > :not(summary) { margin-top: 12px; }
+.onboarding-key { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; }
+.onboarding-key > .form-disclosure { width: 100%; }
+.onboarding-backup { margin: 14px 0; }
+.onboarding-backup[open] > form { padding-top: 16px; }

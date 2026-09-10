@@ -72,10 +72,9 @@ export function SecretDialog({ name, title, onClose }: { name: RuntimeSecretName
     } catch (failure) { if (!operation.signal.aborted && canDisplay()) setError(failure); }
     finally { if (!operation.signal.aborted && canDisplay()) setPending(false); }
   }
-  return <Dialog title={title} description="60 秒后或离开当前标签页时自动清除明文。" onClose={onClose}>
-    <Notice tone="warning">请确认周围没有他人，且未进行屏幕共享。读取行为会被审计；复制后请注意剪贴板安全。</Notice>
+  return <Dialog title={title} description="60 秒后或切换标签页时自动清除。" onClose={onClose}>
     {value !== null ? <CopyValue value={value} label={`复制${title}`} secret /> : <Button variant="primary" pending={pending} onClick={() => { void reveal(); }}><Eye size={16} />读取明文</Button>}
-    <ErrorNotice error={error} /><div className="form-actions"><Button onClick={onClose}>关闭并清除显示</Button></div>
+    <ErrorNotice error={error} /><div className="form-actions"><Button onClick={onClose}>关闭</Button></div>
   </Dialog>;
 }
 
@@ -94,11 +93,11 @@ export function RotateKeyDialog({ settings, onSaved, onClose, onStored }: { sett
       onSaved(response.data.settings, "API 密钥已更新，请同步更新业务服务端的签名配置。");
     } catch (failure) { if (canDisplay()) setError(failure); } finally { if (canDisplay()) setPending(false); }
   }
-  return <Dialog title={secret ? "新的 API 密钥" : replacing ? "轮换 API 密钥" : "生成 API 密钥"} description={secret ? "请安全保存到业务服务端。明文显示会在 60 秒后自动关闭。" : replacing ? "密钥更新立即生效，旧密钥签名的请求会被拒绝。" : "为业务网站生成独立的访问密钥，生成后请安全保存。"} onClose={onClose} busy={pending}>
+  return <Dialog title={secret ? "新的 API 密钥" : replacing ? "轮换 API 密钥" : "生成 API 密钥"} description={secret ? "60 秒后或切换标签页时自动清除。" : replacing ? "旧密钥将立即失效，请同步更新业务网站。" : "密钥仅用于业务网站后端。"} onClose={onClose} busy={pending}>
     {secret ? <><CopyValue value={secret} label="复制新的 API 密钥" secret /><div className="form-actions"><Button onClick={() => { onClose(); onStored?.(); }}>已妥善保存</Button></div></> : <>
-      <Notice tone="warning">{replacing ? "如果正在收款，请安排业务端密钥同步。" : "生成后请将密钥保存在业务网站后端，不要放入浏览器代码。"}网络中断时先重新读取配置并查看当前密钥，不要盲目再次轮换。</Notice>
-      <label className="checkbox-field"><input type="checkbox" checked={accepted} disabled={pending} onChange={(event) => setAccepted(event.target.checked)} /><span>我已了解影响，并准备好更新业务服务端。</span></label><ErrorNotice error={error} />
-      <div className="form-actions"><Button disabled={pending} onClick={onClose}>取消</Button><Button variant={replacing ? "danger" : "primary"} pending={pending} disabled={!accepted} onClick={() => { void rotate(); }}>确认生成新密钥</Button></div>
+      {error && <p className="field-hint">结果不确定时，先查看当前密钥，不要再次轮换。</p>}
+      {replacing && <label className="checkbox-field"><input type="checkbox" checked={accepted} disabled={pending} onChange={(event) => setAccepted(event.target.checked)} /><span>确认轮换，旧密钥立即失效。</span></label>}<ErrorNotice error={error} />
+      <div className="form-actions"><Button disabled={pending} onClick={onClose}>取消</Button><Button variant={replacing ? "danger" : "primary"} pending={pending} disabled={replacing && !accepted} onClick={() => { void rotate(); }}>{replacing ? "确认轮换" : "生成密钥"}</Button></div>
     </>}
   </Dialog>;
 }

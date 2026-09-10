@@ -1,0 +1,7 @@
+.test-payment-page { width: 100%; max-width: 560px; margin-inline: auto; }
+.test-payment-page > .page-heading > div { width: 100%; }
+.test-payment-page .page-heading-title { position: relative; justify-content: center; padding-inline: 48px; text-align: center; }
+.test-payment-page .page-heading-title > .mobile-menu { position: absolute; left: 0; top: 50%; transform: translateY(-50%); }
+.test-payment-page .form-actions { justify-content: center; }
+.test-payment-form > .form-actions { margin-top: 0; }
+.test-payment-form > .form-actions > .button { width: 100%; }
