@@ -17,9 +17,13 @@ export interface LedgerSchedulerHealth {
   readonly consecutiveFailures: number;
 }
 
+type LedgerScheduleKind = "normal" | "continuation" | "retry";
+
 export interface LedgerIngestSchedulerOptions {
   readonly service: LedgerIngestService;
   readonly intervalMilliseconds: number;
+  /** Re-evaluated after scans and when order activity changes. */
+  readonly getIntervalMilliseconds?: () => number;
   readonly clock?: () => number;
   /** Injectable only for deterministic scheduler tests. */
   readonly setTimeout?: (callback: () => void, delayMilliseconds: number) => NodeJS.Timeout;
@@ -32,13 +36,18 @@ export interface LedgerIngestSchedulerOptions {
 /** One timer and one in-flight promise own all automatic and manual scans. */
 export class LedgerIngestScheduler {
   readonly #service: LedgerIngestService;
-  readonly #intervalMilliseconds: number;
+  readonly #getIntervalMilliseconds: (() => number) | undefined;
   readonly #clock: () => number;
   readonly #setTimeout: NonNullable<LedgerIngestSchedulerOptions["setTimeout"]>;
   readonly #clearTimeout: NonNullable<LedgerIngestSchedulerOptions["clearTimeout"]>;
   readonly #onResult: LedgerIngestSchedulerOptions["onResult"];
   readonly #onUnexpectedError: LedgerIngestSchedulerOptions["onUnexpectedError"];
+  #resolvedIntervalMilliseconds: number;
   #timer: NodeJS.Timeout | null = null;
+  #nextRunAt: number | null = null;
+  #scheduledIntervalMilliseconds: number | null = null;
+  #scheduleKind: LedgerScheduleKind | null = null;
+  #lastCompletedAt: number | null = null;
   #current: Promise<LedgerScanResult> | null = null;
   #started = false;
   #stopped = false;
@@ -64,7 +73,8 @@ export class LedgerIngestScheduler {
       throw new RangeError("ledger scan interval is invalid");
     }
     this.#service = options.service;
-    this.#intervalMilliseconds = options.intervalMilliseconds;
+    this.#resolvedIntervalMilliseconds = options.intervalMilliseconds;
+    this.#getIntervalMilliseconds = options.getIntervalMilliseconds;
     this.#clock = options.clock ?? (() => Date.now());
     this.#setTimeout = options.setTimeout ?? ((callback, delayMilliseconds) =>
       setTimeout(callback, delayMilliseconds));
@@ -80,6 +90,20 @@ export class LedgerIngestScheduler {
     void this.trigger("startup").catch(() => undefined);
   }
 
+  /** Order activity may change a normal wait, never a continuation or retry deadline. */
+  refreshSchedule(): void {
+    if (!this.#started || this.#stopped || this.#current || this.#scheduleKind !== "normal") return;
+    const previousInterval = this.#scheduledIntervalMilliseconds;
+    if (previousInterval === null || this.#nextRunAt === null) return;
+    const interval = this.#readIntervalMilliseconds();
+    if (interval === previousInterval) return;
+    const now = safeNow(this.#clock());
+    const nextRunAt = interval < previousInterval
+      ? Math.min(this.#nextRunAt, now + interval)
+      : Math.max(now, (this.#lastCompletedAt ?? now) + interval);
+    this.#scheduleAt(nextRunAt, interval, "normal");
+  }
+
   trigger(reason = "manual"): Promise<LedgerScanResult> {
     if (!this.#started || this.#stopped) {
       return Promise.reject(new Error("ledger scheduler is not running"));
@@ -87,10 +111,7 @@ export class LedgerIngestScheduler {
     if (this.#current) return this.#current;
     // A manual trigger is an explicit operator action. Cancel a pending
     // automatic timer so it cannot race the requested scan.
-    if (reason !== "scheduled" && this.#timer) {
-      this.#clearTimeout(this.#timer);
-      this.#timer = null;
-    }
+    if (reason !== "scheduled") this.#clearTimer();
     this.#lastAttemptAt = safeNow(this.#clock());
     const previousState = this.#state;
     this.#state = "running";
@@ -141,10 +162,7 @@ export class LedgerIngestScheduler {
   async stop(): Promise<void> {
     if (this.#stopped) return;
     this.#stopped = true;
-    if (this.#timer) {
-      this.#clearTimeout(this.#timer);
-      this.#timer = null;
-    }
+    this.#clearTimer();
     this.#service.stop();
     try {
       await this.#current;
@@ -174,28 +192,81 @@ export class LedgerIngestScheduler {
     }
   }
 
+  #readIntervalMilliseconds(): number {
+    try {
+      const interval = this.#getIntervalMilliseconds?.() ?? this.#resolvedIntervalMilliseconds;
+      if (!Number.isSafeInteger(interval) || interval < 1_000 || interval > 3_600_000) {
+        throw new RangeError("ledger scan interval is invalid");
+      }
+      this.#resolvedIntervalMilliseconds = interval;
+    } catch (error) {
+      // A failed policy read must not strand the timer or break a committed order's notification.
+      this.#notifyUnexpected(error);
+    }
+    return this.#resolvedIntervalMilliseconds;
+  }
+
+  #clearTimer(): void {
+    if (this.#timer) this.#clearTimeout(this.#timer);
+    this.#timer = null;
+    this.#nextRunAt = null;
+    this.#scheduledIntervalMilliseconds = null;
+    this.#scheduleKind = null;
+  }
+
+  #scheduleAt(nextRunAt: number, interval: number, kind: LedgerScheduleKind): void {
+    this.#clearTimer();
+    this.#nextRunAt = nextRunAt;
+    this.#scheduledIntervalMilliseconds = interval;
+    this.#scheduleKind = kind;
+    const timer = this.#setTimeout(() => {
+      if (this.#timer !== timer) return;
+      this.#timer = null;
+      this.#nextRunAt = null;
+      this.#scheduledIntervalMilliseconds = null;
+      this.#scheduleKind = null;
+      if (kind === "normal") {
+        const currentInterval = this.#readIntervalMilliseconds();
+        const now = safeNow(this.#clock());
+        const dueAt = (this.#lastCompletedAt ?? now) + currentInterval;
+        // Expiry, tail completion, and manual settlement may have happened without an event.
+        if (currentInterval > interval && dueAt > now) {
+          this.#scheduleAt(dueAt, currentInterval, "normal");
+          return;
+        }
+      }
+      void this.trigger("scheduled").catch(() => undefined);
+    }, Math.max(0, nextRunAt - safeNow(this.#clock())));
+    this.#timer = timer;
+    timer.unref?.();
+  }
+
   #scheduleNext(result: LedgerScanResult | null): void {
     if (!this.#started || this.#stopped || this.#timer !== null) return;
-    let delay = this.#intervalMilliseconds;
+    this.#lastCompletedAt = safeNow(this.#clock());
+    const interval = this.#readIntervalMilliseconds();
+    let delay = interval;
+    let kind: LedgerScheduleKind = "normal";
     if (result?.status === "PARTIAL") {
-      // Durable catch-up and compensation work yields in bounded batches.
-      // Continue promptly so a long sweep is interleaved with normal tails.
+      // Keep durable catch-up and compensation continuations ahead of ordinary waits.
       delay = 0;
+      kind = "continuation";
     }
-    if (result?.status === "FAILED") {
-      if (result.cooldownActive) {
+    if (result === null || result.status === "FAILED") {
+      kind = "retry";
+      if (result?.cooldownActive) {
         delay = Math.min(
           LedgerIngestScheduler.#maximumRetryDelayMilliseconds,
           Math.max(1_000, (result.retryAfterSeconds ?? 1) * 1_000),
         );
-      } else if (!result.retryable) {
-        delay = Math.max(
-          this.#intervalMilliseconds,
-          (result.retryAfterSeconds ?? LedgerIngestScheduler.#nonRetryableDelayMilliseconds / 1_000) * 1_000,
+      } else if (result && !result.retryable) {
+        delay = Math.min(
+          LedgerIngestScheduler.#maximumRetryDelayMilliseconds,
+          Math.max(interval,
+            (result.retryAfterSeconds ?? LedgerIngestScheduler.#nonRetryableDelayMilliseconds / 1_000) * 1_000),
         );
-      } else if (result.errorCode === "pagination_variant") {
-        // The durable store already applies bounded exponential backoff for
-        // consecutive variants. Do not impose the ordinary scan interval.
+      } else if (result?.errorCode === "pagination_variant") {
+        // The durable store already owns the bounded retry deadline for page variants.
         delay = Math.min(
           LedgerIngestScheduler.#maximumRetryDelayMilliseconds,
           Math.max(1_000, (result.retryAfterSeconds ?? 1) * 1_000),
@@ -203,25 +274,19 @@ export class LedgerIngestScheduler {
       } else {
         const exponential = Math.min(
           LedgerIngestScheduler.#maximumRetryDelayMilliseconds,
-          this.#intervalMilliseconds * 2 ** Math.max(0, this.#consecutiveFailures - 1),
+          interval * 2 ** Math.max(0, this.#consecutiveFailures - 1),
         );
-        const retryAfter =
-          result.retryAfterSeconds !== null &&
-          Number.isFinite(result.retryAfterSeconds) &&
-          result.retryAfterSeconds >= 0
-            ? result.retryAfterSeconds * 1_000
-            : 0;
+        const retryAfter = result?.retryAfterSeconds !== null &&
+          result?.retryAfterSeconds !== undefined &&
+          Number.isFinite(result.retryAfterSeconds) && result.retryAfterSeconds >= 0
+          ? result.retryAfterSeconds * 1_000 : 0;
         delay = Math.min(
           LedgerIngestScheduler.#maximumRetryDelayMilliseconds,
-          Math.max(this.#intervalMilliseconds, exponential, retryAfter),
+          Math.max(interval, exponential, retryAfter),
         );
       }
     }
-    this.#timer = this.#setTimeout(() => {
-      this.#timer = null;
-      void this.trigger("scheduled").catch(() => undefined);
-    }, delay);
-    this.#timer.unref?.();
+    this.#scheduleAt(this.#lastCompletedAt + delay, interval, kind);
   }
 }
 

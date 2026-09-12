@@ -49,6 +49,7 @@ export interface ProviderSettings {
   readonly platformKeyFingerprint: string;
   readonly timeoutMilliseconds: number;
   readonly scanIntervalMilliseconds: number;
+  readonly activeScanIntervalMilliseconds: number;
   readonly safetyLagMilliseconds: number;
   readonly maximumSuccessAgeMilliseconds: number;
 }
@@ -141,9 +142,17 @@ export const providerSettingsInputSchema = z.object({
   platform_public_key: z.string().min(1).max(16 * 1024).optional(),
   timeout_milliseconds: z.number().int().min(1_000).max(120_000),
   scan_interval_seconds: z.number().int().min(5).max(3_600),
+  active_scan_interval_seconds: z.number().int().min(5).max(3_600).optional(),
   safety_lag_seconds: z.number().int().min(5).max(300),
   maximum_success_age_seconds: z.number().int().min(10).max(86_400),
 }).strict().superRefine((input, context) => {
+  if ((input.active_scan_interval_seconds ?? input.scan_interval_seconds) > input.scan_interval_seconds) {
+    context.addIssue({
+      code: "custom",
+      path: ["active_scan_interval_seconds"],
+      message: "must not exceed the normal scan interval",
+    });
+  }
   if (input.maximum_success_age_seconds < input.scan_interval_seconds * 2) {
     context.addIssue({
       code: "custom",
@@ -216,6 +225,7 @@ export function parseProviderKeys(input: {
   readonly publicKey: string;
   readonly timeoutMilliseconds: number;
   readonly scanIntervalMilliseconds: number;
+  readonly activeScanIntervalMilliseconds: number;
   readonly safetyLagMilliseconds: number;
   readonly maximumSuccessAgeMilliseconds: number;
 }): ProviderSettings {
@@ -240,6 +250,7 @@ export function parseProviderKeys(input: {
     platformKeyFingerprint,
     timeoutMilliseconds: input.timeoutMilliseconds,
     scanIntervalMilliseconds: input.scanIntervalMilliseconds,
+    activeScanIntervalMilliseconds: input.activeScanIntervalMilliseconds,
     safetyLagMilliseconds: input.safetyLagMilliseconds,
     maximumSuccessAgeMilliseconds: input.maximumSuccessAgeMilliseconds,
   });

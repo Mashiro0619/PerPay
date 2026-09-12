@@ -39,6 +39,7 @@ interface ConfigurationRow {
   readonly provider_account_key: string | null;
   readonly provider_timeout_milliseconds: bigint | number;
   readonly provider_scan_interval_milliseconds: bigint | number;
+  readonly provider_active_scan_interval_milliseconds: bigint | number;
   readonly provider_safety_lag_milliseconds: bigint | number;
   readonly provider_maximum_success_age_milliseconds: bigint | number;
   readonly webhook_enabled: bigint | number;
@@ -242,6 +243,7 @@ export class RuntimeSettingsStore {
     readonly publicKeyFingerprint: string;
     readonly timeoutMilliseconds: number;
     readonly scanIntervalMilliseconds: number;
+    readonly activeScanIntervalMilliseconds: number;
     readonly safetyLagMilliseconds: number;
     readonly maximumSuccessAgeMilliseconds: number;
     readonly providerIdentity: {
@@ -284,6 +286,7 @@ export class RuntimeSettingsStore {
                 provider_account_key = ?,
                 provider_timeout_milliseconds = ?,
                 provider_scan_interval_milliseconds = ?,
+                provider_active_scan_interval_milliseconds = ?,
                 provider_safety_lag_milliseconds = ?,
                 provider_maximum_success_age_milliseconds = ?,
                 updated_at = ?
@@ -294,6 +297,7 @@ export class RuntimeSettingsStore {
         input.accountKey,
         input.timeoutMilliseconds,
         input.scanIntervalMilliseconds,
+        input.activeScanIntervalMilliseconds,
         input.safetyLagMilliseconds,
         input.maximumSuccessAgeMilliseconds,
         now,
@@ -591,6 +595,10 @@ export class RuntimeSettingsStore {
           row.provider_scan_interval_milliseconds,
           "provider scan interval",
         ),
+        activeScanIntervalMilliseconds: safeInteger(
+          row.provider_active_scan_interval_milliseconds,
+          "provider active scan interval",
+        ),
         safetyLagMilliseconds: safeInteger(
           row.provider_safety_lag_milliseconds,
           "provider safety lag",
@@ -665,6 +673,7 @@ function readConfiguration(connection: DatabaseSync): ConfigurationRow {
             provider_environment, provider_app_id, provider_account_key,
             provider_timeout_milliseconds,
             provider_scan_interval_milliseconds,
+            provider_active_scan_interval_milliseconds,
             provider_safety_lag_milliseconds,
             provider_maximum_success_age_milliseconds,
             webhook_enabled, webhook_allowed_origin,

@@ -7,6 +7,7 @@ import {
 import {
   LedgerIngestScheduler,
   LedgerIngestService,
+  LedgerScanCadencePolicy,
   normalLedgerOverlapMilliseconds,
   type LedgerSchedulerHealth,
   type LedgerStore,
@@ -189,6 +190,7 @@ export class RuntimeController {
   }
 
   async triggerOrder(orderId: string): Promise<void> {
+    this.#ledgerScheduler?.refreshSchedule();
     await this.#reconciliationScheduler?.triggerOrder(orderId);
   }
 
@@ -442,6 +444,15 @@ export class RuntimeController {
     if (!activation || activation.providerAccountKey !== providerAccountKey) {
       throw new Error("active provider generation does not match runtime settings");
     }
+    const cadence = new LedgerScanCadencePolicy({
+      database: this.#database,
+      providerAccountKey,
+      normalIntervalMilliseconds: providerSettings.scanIntervalMilliseconds,
+      activeIntervalMilliseconds: providerSettings.activeScanIntervalMilliseconds,
+      safetyLagMilliseconds: providerSettings.safetyLagMilliseconds,
+      clock: this.#clock,
+    });
+    const getIntervalMilliseconds = () => cadence.current().intervalMilliseconds;
     const provider = new AlipayLedgerProvider({
       appId: providerSettings.appId,
       privateKey: providerSettings.privateKey,
@@ -459,6 +470,7 @@ export class RuntimeController {
       windowMilliseconds: 24 * 60 * 60 * 1_000,
       safetyLagMilliseconds: providerSettings.safetyLagMilliseconds,
       scanIntervalMilliseconds: providerSettings.scanIntervalMilliseconds,
+      getScanIntervalMilliseconds: getIntervalMilliseconds,
       maxRequestsPerRun: 32,
       initialWindowStartMilliseconds: activation.activatedAt,
       clock: this.#clock,
@@ -466,11 +478,15 @@ export class RuntimeController {
     return new LedgerIngestScheduler({
       service,
       intervalMilliseconds: providerSettings.scanIntervalMilliseconds,
+      getIntervalMilliseconds,
       clock: this.#clock,
       onResult: (result, health) => {
+        const currentCadence = cadence.current();
         console.log(JSON.stringify({
           level: result.status === "FAILED" ? "warn" : "info",
           event: "ledger_scan_finished",
+          scan_mode: currentCadence.mode,
+          scan_interval_milliseconds: currentCadence.intervalMilliseconds,
           payment_revision: snapshot.paymentRevision,
           provider_account_key: providerAccountKey,
           status: result.status,
@@ -514,6 +530,7 @@ export class RuntimeController {
           continuation_pending: result.continuationPending,
           consecutive_failures: health.consecutiveFailures,
         }));
+        if (this.#ledgerRevision === paymentRevision) this.#ledgerScheduler?.refreshSchedule();
       },
       onAutoSettled: () => {
         void this.triggerWebhook("auto_settlement").catch((error: unknown) => {

@@ -121,7 +121,7 @@ describe("first collection onboarding", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "保存并继续" }));
     await pathIs(view, "collection");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(await view.writes()[0]!.clone().json()).toMatchObject({ revision: 3, app_id: "my-app", timeout_milliseconds: 8000, scan_interval_seconds: 10, safety_lag_seconds: 10, maximum_success_age_seconds: 60 });
+    expect(await view.writes()[0]!.clone().json()).toMatchObject({ revision: 3, app_id: "my-app", timeout_milliseconds: 8000, scan_interval_seconds: 30, active_scan_interval_seconds: 5, safety_lag_seconds: 10, maximum_success_age_seconds: 60 });
     const unload = new Event("beforeunload", { cancelable: true }); window.dispatchEvent(unload); expect(unload.defaultPrevented).toBe(false);
   });
   it("preserves a conflicted draft and stays on the same step", async () => {

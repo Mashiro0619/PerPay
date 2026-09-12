@@ -951,6 +951,79 @@ describe("LedgerIngestService", () => {
   });
 });
 
+describe("adaptive ledger ingestion cadence", () => {
+  it("uses the new active interval when interleaving a short normal tail with compensation", async () => {
+    await withDatabase(async ({ store }) => {
+      let now = NOW;
+      let interval = 30_000;
+      const scripted = new ScriptedProvider([
+        providerPage(1, 1, 0, false, []),
+        providerPage(1, 1, 2, true, [detail("adaptive-probe", "1.00", "2026-08-14 11:59:00")]),
+        ...Array.from({ length: 4 }, () => providerPage(1, 1, 0, false, [])),
+      ]);
+      const provider: LedgerProvider = {
+        async queryPage(input) {
+          const page = await scripted.queryPage(input);
+          if (scripted.requests.length > 1) now += 6_000;
+          return page;
+        },
+      };
+      const service = serviceFor(provider, store, {
+        maxRequestsPerRun: 32, scanIntervalMilliseconds: 30_000,
+        getScanIntervalMilliseconds: () => interval,
+        overlapMilliseconds: normalLedgerOverlapMilliseconds(30_000), clock: () => now,
+      });
+      assert.equal((await service.run("adaptive-baseline")).status, "COMPLETED");
+      now = NOW + 60_000;
+      const compensation = await service.run("adaptive-compensation");
+      assert.equal(store.getRun(compensation.ingestRunId!)?.scanKind, "COMPENSATION_10M");
+      assert.equal(compensation.status, "PARTIAL");
+      const firstTail = await service.run("adaptive-first-tail");
+      assert.equal(firstTail.normalCompleted, true);
+      assert.equal(store.getRun(firstTail.ingestRunId!)?.scanKind, "NORMAL");
+      const resumed = await service.run("adaptive-resume-compensation");
+      assert.equal(resumed.ingestRunId, compensation.ingestRunId);
+      assert.equal(resumed.status, "PARTIAL");
+      interval = 5_000;
+      const activeTail = await service.run("adaptive-short-tail");
+      assert.equal(activeTail.normalCompleted, true);
+      assert.equal(store.getRun(activeTail.ingestRunId!)?.scanKind, "NORMAL");
+      const cursor = store.getCursor("primary", "NORMAL")!;
+      assert.equal(cursor.overlapMilliseconds, 60_000);
+      interval = 30_000;
+      const completed = await service.run("adaptive-finish-compensation");
+      assert.equal(completed.ingestRunId, compensation.ingestRunId);
+      assert.equal(store.getCursor("primary", "NORMAL")?.windowEnd, cursor.windowEnd);
+    });
+  });
+
+  it("persists retries using the run's active interval and never clears cooldown when activity changes", async () => {
+    await withDatabase(async ({ store }) => {
+      let now = NOW;
+      let interval = 5_000;
+      const provider = new ScriptedProvider([
+        new AlipayProviderError({ kind: "network", code: "transport_network", message: "injected network error" }),
+        providerPage(1, 1, 0, false, []),
+      ]);
+      const service = serviceFor(provider, store, {
+        maxRequestsPerRun: 1, scanIntervalMilliseconds: 30_000,
+        getScanIntervalMilliseconds: () => interval, clock: () => now,
+      });
+      const failed = await service.run("adaptive-retry");
+      assert.equal(failed.status, "FAILED");
+      assert.equal(store.getIngestScheduleState("primary")?.cooldownUntil, NOW + 5_000);
+      interval = 30_000;
+      const skipped = await service.run("adaptive-during-cooldown");
+      assert.equal(skipped.cooldownActive, true);
+      assert.equal(provider.requests.length, 1);
+      assert.equal(store.getIngestScheduleState("primary")?.cooldownUntil, NOW + 5_000);
+      now += 5_000;
+      assert.notEqual((await service.run("adaptive-after-cooldown")).status, "FAILED");
+      assert.equal(provider.requests.length, 2);
+    });
+  });
+});
+
 describe("LedgerIngestScheduler", () => {
   it("starts immediately, reports sanitized health, coalesces triggers, and stops cleanly", async () => {
     await withDatabase(async ({ store }) => {
@@ -1301,6 +1374,7 @@ function serviceFor(
     readonly overlapMilliseconds?: number;
     readonly windowMilliseconds?: number;
     readonly scanIntervalMilliseconds?: number;
+    readonly getScanIntervalMilliseconds?: () => number;
     readonly safetyLagMilliseconds?: number;
     readonly clock?: () => number;
   },
@@ -1313,6 +1387,7 @@ function serviceFor(
     windowMilliseconds: options.windowMilliseconds ?? 60 * 60 * 1000,
     safetyLagMilliseconds: options.safetyLagMilliseconds ?? 0,
     scanIntervalMilliseconds: options.scanIntervalMilliseconds ?? 10_000,
+    ...(options.getScanIntervalMilliseconds ? { getScanIntervalMilliseconds: options.getScanIntervalMilliseconds } : {}),
     maxRequestsPerRun: options.maxRequestsPerRun,
     clock: options.clock ?? (() => NOW),
   });

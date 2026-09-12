@@ -29,7 +29,7 @@ describe("minimal onboarding", () => {
     expect(screen.getByText("高级设置 · 沙箱环境")).toBeVisible();
     await userEvent.setup().click(screen.getByRole("button", { name: "保存并继续" }));
     await waitFor(() => expect(view.router.state.location.pathname).toBe(onboardingPath("collection")));
-    expect(await view.writes()[0]!.clone().json()).toMatchObject({ environment: "SANDBOX", timeout_milliseconds: 8000, scan_interval_seconds: 10, safety_lag_seconds: 10, maximum_success_age_seconds: 60 });
+    expect(await view.writes()[0]!.clone().json()).toMatchObject({ environment: "SANDBOX", timeout_milliseconds: 8000, scan_interval_seconds: 10, active_scan_interval_seconds: 10, safety_lag_seconds: 10, maximum_success_age_seconds: 60 });
   });
 
   it("opens advanced settings and focuses an invalid field returned by the server", async () => {

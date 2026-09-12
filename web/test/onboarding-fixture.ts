@@ -15,7 +15,7 @@ export function configuredThrough(stage: number): RuntimeSettings {
   for (const name of Object.keys(value.secrets) as Array<keyof typeof value.secrets>) value.secrets[name] = { ...value.secrets[name] };
   value.application_public_key = stage >= 1 ? "synthetic-application-public-key" : null;
   value.collection = stage >= 3 ? value.collection : null;
-  value.provider = stage >= 2 ? { provider_account_key: "synthetic-provider", environment: "PRODUCTION", app_id: "test-app-id", timeout_milliseconds: 8000, scan_interval_seconds: 10, safety_lag_seconds: 10, maximum_success_age_seconds: 60 } : null;
+  value.provider = stage >= 2 ? { provider_account_key: "synthetic-provider", environment: "PRODUCTION", app_id: "test-app-id", timeout_milliseconds: 8000, scan_interval_seconds: 10, active_scan_interval_seconds: 10, safety_lag_seconds: 10, maximum_success_age_seconds: 60 } : null;
   value.secrets.api_secret.configured = stage >= 4;
   value.secrets.provider_private_key.configured = stage >= 1;
   value.secrets.provider_public_key.configured = stage >= 2;

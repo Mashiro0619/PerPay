@@ -877,6 +877,7 @@ describe("database recovery boundaries", () => {
       });
         try {
           legacy.exec(`
+          ${schemaTwentyDowngradeSql()}
           ${schemaNineteenDowngradeSql()}
 
           DROP TRIGGER payment_orders_product_metadata_immutable;
@@ -1411,9 +1412,10 @@ async function createVersionEighteenCompensationDatabase(
   });
   try {
     legacy.exec(`
-      ${schemaNineteenDowngradeSql()}
+      ${schemaTwentyDowngradeSql()}
+          ${schemaNineteenDowngradeSql()}
 
-      DELETE FROM schema_migrations WHERE version = 19;
+      DELETE FROM schema_migrations WHERE version >= 19;
     `);
     legacy.prepare(
       "INSERT INTO system_metadata(key, value, updated_at) VALUES (?, ?, '2026-08-24T00:00:00.000Z')",
@@ -1421,6 +1423,15 @@ async function createVersionEighteenCompensationDatabase(
   } finally {
     legacy.close();
   }
+}
+
+function schemaTwentyDowngradeSql(): string {
+  return `
+    DROP INDEX collection_profile_provider_accounts_account_idx;
+    DROP INDEX payment_orders_active_scan_idx;
+    DROP INDEX payment_orders_scan_tail_idx;
+    ALTER TABLE runtime_configuration DROP COLUMN provider_active_scan_interval_milliseconds;
+  `;
 }
 
 function schemaNineteenDowngradeSql(): string {
@@ -1535,6 +1546,7 @@ function configureRuntimeSettings(
       .toString(),
     timeoutMilliseconds: 8_000,
     scanIntervalMilliseconds: 10_000,
+    activeScanIntervalMilliseconds: 10_000,
     safetyLagMilliseconds: 10_000,
     maximumSuccessAgeMilliseconds: 60_000,
   });
@@ -1549,6 +1561,7 @@ function configureRuntimeSettings(
     publicKeyFingerprint: provider.platformKeyFingerprint,
     timeoutMilliseconds: provider.timeoutMilliseconds,
     scanIntervalMilliseconds: provider.scanIntervalMilliseconds,
+    activeScanIntervalMilliseconds: provider.activeScanIntervalMilliseconds,
     safetyLagMilliseconds: provider.safetyLagMilliseconds,
     maximumSuccessAgeMilliseconds: provider.maximumSuccessAgeMilliseconds,
     providerIdentity: {

@@ -4612,4 +4612,45 @@ export const migrations: readonly Migration[] = [
        WHERE substr(key, 1, 23) = 'ledger_compensation_at:';
     `,
   },
+  {
+    version: 20,
+    name: "adaptive_ledger_scan_intervals",
+    sql: `
+      ALTER TABLE runtime_configuration
+        ADD COLUMN provider_active_scan_interval_milliseconds INTEGER NOT NULL
+        DEFAULT 5000
+        CHECK (
+          provider_active_scan_interval_milliseconds BETWEEN 5000 AND 3600000 AND
+          provider_active_scan_interval_milliseconds <= provider_scan_interval_milliseconds
+        );
+
+      -- Preserve both the configured frequency and revision of existing installations.
+      DROP TRIGGER runtime_configuration_revision_guard;
+
+      UPDATE runtime_configuration
+         SET provider_active_scan_interval_milliseconds = provider_scan_interval_milliseconds;
+
+      CREATE TRIGGER runtime_configuration_revision_guard
+      BEFORE UPDATE ON runtime_configuration
+      WHEN
+        NEW.singleton_key != OLD.singleton_key OR
+        NEW.revision != OLD.revision + 1 OR
+        NEW.payment_revision NOT IN (OLD.payment_revision, OLD.payment_revision + 1) OR
+        NEW.updated_at < OLD.updated_at
+      BEGIN
+        SELECT RAISE(ABORT, 'runtime configuration revision is invalid');
+      END;
+
+      CREATE INDEX collection_profile_provider_accounts_account_idx
+        ON collection_profile_provider_accounts(provider_account_key, profile_id);
+
+      CREATE INDEX payment_orders_active_scan_idx
+        ON payment_orders(collection_profile_id, expires_at)
+        WHERE checkout_status = 'OPEN' AND payment_status = 'UNPAID';
+
+      CREATE INDEX payment_orders_scan_tail_idx
+        ON payment_orders(collection_profile_id, CASE WHEN checkout_status = 'CLOSED' THEN closed_at ELSE expires_at END)
+        WHERE payment_status = 'UNPAID';
+    `,
+  },
 ] as const;

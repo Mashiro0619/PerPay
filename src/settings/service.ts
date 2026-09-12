@@ -58,6 +58,7 @@ export interface RuntimeSettingsView {
     readonly provider_account_key: string;
     readonly timeout_milliseconds: number;
     readonly scan_interval_seconds: number;
+    readonly active_scan_interval_seconds: number;
     readonly safety_lag_seconds: number;
     readonly maximum_success_age_seconds: number;
   } | null;
@@ -182,6 +183,7 @@ export class RuntimeSettingsService {
             provider_account_key: snapshot.activeProviderAccountKey,
             timeout_milliseconds: snapshot.provider.timeoutMilliseconds,
             scan_interval_seconds: snapshot.provider.scanIntervalMilliseconds / 1_000,
+            active_scan_interval_seconds: snapshot.provider.activeScanIntervalMilliseconds / 1_000,
             safety_lag_seconds: snapshot.provider.safetyLagMilliseconds / 1_000,
             maximum_success_age_seconds: snapshot.provider.maximumSuccessAgeMilliseconds / 1_000,
           }
@@ -312,6 +314,7 @@ export class RuntimeSettingsService {
           publicKey: publicKeyPem,
           timeoutMilliseconds: parsed.timeout_milliseconds,
           scanIntervalMilliseconds: parsed.scan_interval_seconds * 1_000,
+          activeScanIntervalMilliseconds: (parsed.active_scan_interval_seconds ?? parsed.scan_interval_seconds) * 1_000,
           safetyLagMilliseconds: parsed.safety_lag_seconds * 1_000,
           maximumSuccessAgeMilliseconds: parsed.maximum_success_age_seconds * 1_000,
         });
@@ -339,6 +342,7 @@ export class RuntimeSettingsService {
           publicKeyFingerprint: provider.platformKeyFingerprint,
           timeoutMilliseconds: provider.timeoutMilliseconds,
           scanIntervalMilliseconds: provider.scanIntervalMilliseconds,
+          activeScanIntervalMilliseconds: provider.activeScanIntervalMilliseconds,
           safetyLagMilliseconds: provider.safetyLagMilliseconds,
           maximumSuccessAgeMilliseconds: provider.maximumSuccessAgeMilliseconds,
           providerIdentity: {

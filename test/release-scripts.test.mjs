@@ -270,7 +270,7 @@ test("release builds, scans, verifies, and publishes fixed and latest images", (
   assert.match(publish?.run ?? "", /gh release create/u);
   assert.match(publish?.run ?? "", /release-assets\/docker-compose\.yml release-assets\/demo\.zip/u);
   assert.match(publish?.run ?? "", /docs\/releases\/\$\{GITHUB_REF_NAME\}\.md/u);
-  assert.match(publish?.run ?? "", /--title "\$GITHUB_REF_NAME 正式版"/u);
+  assert.match(publish?.run ?? "", /--title "PerPay \$GITHUB_REF_NAME"/u);
   assert.match(publish?.run ?? "", /镜像与附件/u);
   assert.match(publish?.run ?? "", /调用示例校验值/u);
   assert.doesNotMatch(publish?.run ?? "", /First installation:|Verify the attachment|## Container image/u);

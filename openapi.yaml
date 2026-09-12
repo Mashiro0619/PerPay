@@ -2760,6 +2760,7 @@ components:
         - provider_account_key
         - timeout_milliseconds
         - scan_interval_seconds
+        - active_scan_interval_seconds
         - safety_lag_seconds
         - maximum_success_age_seconds
       properties:
@@ -2769,7 +2770,21 @@ components:
           type: string
           description: Internal immutable account-generation identifier; not a provider credential.
         timeout_milliseconds: { type: integer, minimum: 1000, maximum: 120000 }
-        scan_interval_seconds: { type: integer, minimum: 5, maximum: 3600 }
+        scan_interval_seconds:
+          type: integer
+          minimum: 5
+          maximum: 3600
+          description: Normal wait after a completed scan when no payable orders or tail observation remain. New setup defaults to 30 seconds.
+        active_scan_interval_seconds:
+          type: integer
+          minimum: 5
+          maximum: 3600
+          description: >-
+            Wait after a completed scan while an unexpired OPEN/UNPAID order exists for the active account,
+            or a closed/expired UNPAID order remains within max(60 seconds, safety_lag_seconds plus this interval)
+            of its end time. Must not exceed scan_interval_seconds. Omitted in legacy update requests to use
+            scan_interval_seconds for both intervals. New setup defaults to 5 seconds. Existing configurations
+            retain their previous interval for both modes. Provider cooldowns and catch-up scheduling still apply.
         safety_lag_seconds:
           type: integer
           minimum: 5
@@ -2901,7 +2916,21 @@ components:
           maxLength: 16384
           description: Required when changing environment or application ID; omitted to retain the current key.
         timeout_milliseconds: { type: integer, minimum: 1000, maximum: 120000 }
-        scan_interval_seconds: { type: integer, minimum: 5, maximum: 3600 }
+        scan_interval_seconds:
+          type: integer
+          minimum: 5
+          maximum: 3600
+          description: Normal wait after a completed scan when no payable orders or tail observation remain. New setup defaults to 30 seconds.
+        active_scan_interval_seconds:
+          type: integer
+          minimum: 5
+          maximum: 3600
+          description: >-
+            Wait after a completed scan while an unexpired OPEN/UNPAID order exists for the active account,
+            or a closed/expired UNPAID order remains within max(60 seconds, safety_lag_seconds plus this interval)
+            of its end time. Must not exceed scan_interval_seconds. Omitted in legacy update requests to use
+            scan_interval_seconds for both intervals. New setup defaults to 5 seconds. Existing configurations
+            retain their previous interval for both modes. Provider cooldowns and catch-up scheduling still apply.
         safety_lag_seconds:
           type: integer
           minimum: 5

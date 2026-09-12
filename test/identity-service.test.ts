@@ -268,15 +268,17 @@ describe("IdentityService", () => {
       assert.equal(remembered.absoluteExpiresAt - remembered.createdAt, IDENTITY_LIMITS.rememberSessionMs);
       assert.equal(remembered.idleExpiresAt, remembered.absoluteExpiresAt);
 
-      // 超过普通会话的空闲上限后仍然有效。
       test.clock.now += IDENTITY_LIMITS.sessionIdleMs + 60_000;
       assert.ok(test.identity.authenticate(remembered.sessionToken));
 
-      // 空闲窗口不会因触碰而滑动：登录满 30 天后必须重新登录。
-      test.clock.now = remembered.createdAt + IDENTITY_LIMITS.rememberSessionMs + 1;
+      test.clock.now = remembered.absoluteExpiresAt - 1;
+      const nearExpiry = test.identity.authenticate(remembered.sessionToken);
+      assert.ok(nearExpiry);
+      assert.equal(nearExpiry.session.idleExpiresAt, remembered.absoluteExpiresAt);
+      assert.equal(nearExpiry.session.absoluteExpiresAt, remembered.absoluteExpiresAt);
+      test.clock.now = remembered.absoluteExpiresAt;
       assert.equal(test.identity.authenticate(remembered.sessionToken), undefined);
 
-      // 普通登录保持原有 30 分钟空闲 / 12 小时绝对上限。
       const plain = await test.identity.login(adminPassword, { sourceAddress: "127.0.0.3" });
       assert.equal(plain.idleExpiresAt - plain.createdAt, IDENTITY_LIMITS.sessionIdleMs);
       assert.equal(plain.absoluteExpiresAt - plain.createdAt, IDENTITY_LIMITS.sessionAbsoluteMs);
@@ -284,6 +286,49 @@ describe("IdentityService", () => {
       test.close();
     }
   });
+
+  it("restores remembered sessions after restart with their original CSRF token and absolute expiry", async () => {
+    const test = await fixture();
+    try {
+      const login = await test.identity.login(adminPassword, {}, { remember: true });
+      test.database.close();
+      test.clock.now += 7 * 24 * 60 * 60 * 1000;
+      const reopened = await AppDatabase.open(test.config.databasePath);
+      try {
+        const identity = new IdentityService(reopened, () => test.clock.now);
+        await identity.initialize();
+        const session = identity.authenticate(login.sessionToken);
+        assert.ok(session);
+        assert.equal(session.session.absoluteExpiresAt, login.absoluteExpiresAt);
+        assert.equal(session.session.idleExpiresAt, login.absoluteExpiresAt);
+        assert.equal(identity.verifyCsrf(session, login.csrfToken), true);
+        assert.equal(reopened.integrityCheck().ok, true);
+      } finally {
+        reopened.close();
+      }
+    } finally {
+      test.close();
+    }
+  });
+
+  for (const action of ["logout", "change_password", "revoke_all"] as const) {
+    it("immediately revokes remembered sessions through " + action, async () => {
+      const test = await fixture();
+      try {
+        const login = await test.identity.login(adminPassword, {}, { remember: true });
+        test.clock.now += 7 * 24 * 60 * 60 * 1000;
+        const session = test.identity.authenticate(login.sessionToken);
+        assert.ok(session);
+        if (action === "logout") test.identity.logout(session);
+        else if (action === "change_password") await test.identity.changePassword(session, "replacement-remembered-password");
+        else test.identity.revokeAllSessions(session);
+        assert.equal(test.identity.authenticate(login.sessionToken), undefined);
+        assert.equal(test.identity.verifyCsrf(session, login.csrfToken), false);
+      } finally {
+        test.close();
+      }
+    });
+  }
 
   it("rate limits repeated login failures by a salted source hash", async () => {
     const test = await fixture();

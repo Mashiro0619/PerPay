@@ -289,6 +289,7 @@ export type ProviderSettings = {
     provider_account_key: string;
     timeout_milliseconds: number;
     scan_interval_seconds: number;
+    active_scan_interval_seconds: number;
     safety_lag_seconds: number;
     maximum_success_age_seconds: number;
 };
@@ -343,6 +344,7 @@ export type ProviderSettingsRequest = {
     platform_public_key?: string;
     timeout_milliseconds: number;
     scan_interval_seconds: number;
+    active_scan_interval_seconds?: number;
     safety_lag_seconds: number;
     maximum_success_age_seconds: number;
 };

@@ -149,6 +149,44 @@ describe("backup settings HTTP contract", () => {
   });
 });
 
+describe("adaptive scan settings HTTP contract", () => {
+  it("round-trips both intervals, reports field errors and accepts legacy updates", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-http-adaptive-settings-"));
+    const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
+      directory, apiSecret, collectionCodePayload: "https://qr.alipay.com/adaptive-settings", publicUrl: origin,
+    });
+    const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
+    try {
+      const headers = await loginHeaders(app);
+      const original = settings.view();
+      const { provider_account_key: _account, ...provider } = original.provider!;
+      const update = (body: unknown) => app.request("/api/admin/v1/settings/provider", {
+        method: "PUT", headers, body: JSON.stringify(body),
+      });
+      for (const invalid of [4, 31, 3601, 5.5]) {
+        const response = await update({ ...provider, revision: original.revision, scan_interval_seconds: 30, active_scan_interval_seconds: invalid });
+        assert.equal(response.status, 422);
+        const body = await response.json() as { error: { fields: Record<string, string> } };
+        assert.ok(body.error.fields.active_scan_interval_seconds);
+      }
+      assert.deepEqual(settings.view(), original);
+      const saved = await update({ ...provider, revision: original.revision, scan_interval_seconds: 30, active_scan_interval_seconds: 5 });
+      assert.equal(saved.status, 200);
+      const body = await saved.json() as { data: { revision: number; provider: { scan_interval_seconds: number; active_scan_interval_seconds: number } } };
+      assert.equal(body.data.provider.scan_interval_seconds, 30);
+      assert.equal(body.data.provider.active_scan_interval_seconds, 5);
+      const { active_scan_interval_seconds: _active, ...legacy } = provider;
+      const restored = await update({ ...legacy, revision: body.data.revision, scan_interval_seconds: 10 });
+      assert.equal(restored.status, 200);
+      assert.equal(settings.view().provider?.active_scan_interval_seconds, 10);
+    } finally {
+      database.close();
+      assert.ok(directory.startsWith(join(tmpdir(), "perpay-http-adaptive-settings-")));
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("provider application key HTTP contract", () => {
   it("generates the initial application key without returning the private key", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-http-provider-key-"));

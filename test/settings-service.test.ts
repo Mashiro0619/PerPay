@@ -54,6 +54,7 @@ describe("runtime settings", () => {
       }, audit("collection"));
       await settings.saveProvider(providerInput(1, "2026000000000001"), audit("provider"));
       assert.equal(settings.view().provider?.safety_lag_seconds, 10);
+      assert.equal(settings.view().provider?.active_scan_interval_seconds, 10);
       const rotated = await settings.rotateApiSecret(2, audit("api"));
       assert.equal(rotated.client_id, "default");
       assert.match(rotated.secret, /^[A-Za-z0-9_-]{43}$/);
@@ -117,6 +118,50 @@ describe("runtime settings", () => {
       assert.equal(correct.status().complete, true);
     } finally {
       restored.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("persists and applies both scan intervals while legacy updates restore a fixed cadence", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-adaptive-settings-"));
+    const database = await AppDatabase.open(join(directory, "perpay.sqlite3"));
+    try {
+      const applied: Array<{ normal: number; active: number; paymentRevision: number }> = [];
+      const settings = new RuntimeSettingsService({
+        store: new RuntimeSettingsStore(database, masterKey),
+        onApplied: (snapshot) => {
+          if (snapshot.provider) applied.push({
+            normal: snapshot.provider.scanIntervalMilliseconds,
+            active: snapshot.provider.activeScanIntervalMilliseconds,
+            paymentRevision: snapshot.paymentRevision,
+          });
+        },
+      });
+      settings.initialize();
+      const first = await settings.saveProvider({
+        ...providerInput(0, "2026000000000001"), scan_interval_seconds: 30, active_scan_interval_seconds: 5,
+      }, audit("adaptive-first"));
+      assert.equal(first.provider?.scan_interval_seconds, 30);
+      assert.equal(first.provider?.active_scan_interval_seconds, 5);
+      assert.equal(new RuntimeSettingsStore(database, masterKey).snapshot().provider?.activeScanIntervalMilliseconds, 5_000);
+      const account = first.provider?.provider_account_key;
+      const changed = await settings.saveProvider({
+        ...providerInput(1, "2026000000000001"), scan_interval_seconds: 60,
+        active_scan_interval_seconds: 10, maximum_success_age_seconds: 120,
+      }, audit("adaptive-change"));
+      assert.equal(changed.provider?.provider_account_key, account);
+      const legacy = await settings.saveProvider(providerInput(2, "2026000000000001"), audit("adaptive-legacy"));
+      assert.equal(legacy.provider?.scan_interval_seconds, 10);
+      assert.equal(legacy.provider?.active_scan_interval_seconds, 10);
+      assert.deepEqual(applied, [
+        { normal: 30_000, active: 5_000, paymentRevision: 1 },
+        { normal: 60_000, active: 10_000, paymentRevision: 2 },
+        { normal: 10_000, active: 10_000, paymentRevision: 3 },
+      ]);
+      assert.equal(database.integrityCheck().ok, true);
+    } finally {
+      database.close();
+      assert.ok(directory.startsWith(join(tmpdir(), "perpay-adaptive-settings-")));
       rmSync(directory, { recursive: true, force: true });
     }
   });

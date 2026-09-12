@@ -78,7 +78,8 @@ export function SettingsEditor({ section, settings, onSaved, guided = false, sub
       <div className={guided ? "form-stack" : "form-grid"}>{!guided && environment}<Field label="应用 ID（App ID）" error={fieldErrors.app_id}><input name="app_id" required maxLength={64} pattern="[A-Za-z0-9._-]+" defaultValue={settings.provider?.app_id ?? ""} autoComplete="off" placeholder="支付宝开放平台的应用 ID" /></Field></div>
       <Field label="支付宝公钥" error={fieldErrors.platform_public_key} hint={settings.secrets.provider_public_key.configured ? "已配置，留空不变。" : "从支付宝平台复制，不是应用公钥。"}><textarea name="platform_public_key" rows={4} required={!settings.secrets.provider_public_key.configured} maxLength={16384} autoComplete="off" spellCheck={false} placeholder="粘贴支付宝公钥（Base64 或 PEM）" /></Field>
       {!guided && <details className="form-disclosure"><summary>导入已有应用私钥（可选）</summary><Field label="应用私钥" error={fieldErrors.private_key} hint="留空使用已生成的私钥。替换密钥前，请确认支付宝平台中的应用公钥已同步。"><textarea name="private_key" rows={4} maxLength={16384} autoComplete="off" spellCheck={false} /></Field></details>}
-      <AdvancedFields collapsed={guided} label={settings.provider?.environment === "SANDBOX" ? "高级设置 · 沙箱环境" : "高级设置"}><div className="form-grid">{guided && environment}<NumberField name="timeout_milliseconds" error={fieldErrors.timeout_milliseconds} label="请求超时（毫秒）" value={settings.provider?.timeout_milliseconds ?? 8000} min={1000} max={120000} /><NumberField name="scan_interval_seconds" error={fieldErrors.scan_interval_seconds} label="账本采集间隔（秒）" value={settings.provider?.scan_interval_seconds ?? 10} min={5} max={3600} />
+      <AdvancedFields collapsed={guided} label={settings.provider?.environment === "SANDBOX" ? "高级设置 · 沙箱环境" : "高级设置"}><div className="form-grid">{guided && environment}<NumberField name="timeout_milliseconds" error={fieldErrors.timeout_milliseconds} label="请求超时（毫秒）" value={settings.provider?.timeout_milliseconds ?? 8000} min={1000} max={120000} /><NumberField name="scan_interval_seconds" error={fieldErrors.scan_interval_seconds} label="常规采集间隔（秒）" value={settings.provider?.scan_interval_seconds ?? 30} min={5} max={3600} hint="没有待支付订单且收尾结束时使用。采集有效时限须至少为此间隔的两倍。" />
+        <NumberField name="active_scan_interval_seconds" error={fieldErrors.active_scan_interval_seconds} label="活跃采集间隔（秒）" value={settings.provider?.active_scan_interval_seconds ?? settings.provider?.scan_interval_seconds ?? 5} min={5} max={3600} hint="待支付订单及自动收尾期使用，不得大于常规间隔。关闭或过期后收尾至少 60 秒；限流退避仍然生效。" />
         <NumberField name="safety_lag_seconds" error={fieldErrors.safety_lag_seconds} label="安全延迟（秒）" value={settings.provider?.safety_lag_seconds ?? 10} min={5} max={300} hint="避开支付宝尚未稳定返回的最新账单。" /><NumberField name="maximum_success_age_seconds" error={fieldErrors.maximum_success_age_seconds} label="采集有效时限（秒）" value={settings.provider?.maximum_success_age_seconds ?? 60} min={10} max={86400} hint="超过此时限未成功采集，会暂停新订单收款入口。" /></div></AdvancedFields>
     </>}
     {section === "collection" && <>
@@ -141,7 +142,21 @@ async function saveSettings(section: ConfigurationSection, form: FormData, setti
     if (error) throw new SettingsInputError("code_payload", error);
     return (await result(api.updateCollectionSettings({ body: { revision, code_payload: code, order_ttl_seconds: integer("order_ttl_seconds"), amount_offset_maximum_cents: integer("amount_offset_maximum_cents") } }))).data;
   }
-  if (section === "provider") return (await result(api.updateProviderSettings({ body: { revision, environment: text("environment") === "SANDBOX" ? "SANDBOX" : "PRODUCTION", app_id: text("app_id"), timeout_milliseconds: integer("timeout_milliseconds"), scan_interval_seconds: integer("scan_interval_seconds"), safety_lag_seconds: integer("safety_lag_seconds"), maximum_success_age_seconds: integer("maximum_success_age_seconds"), ...(text("private_key") ? { private_key: text("private_key") } : {}), ...(text("platform_public_key") ? { platform_public_key: text("platform_public_key") } : {}) } }))).data;
+  if (section === "provider") {
+    const normalInterval = integer("scan_interval_seconds");
+    const activeInterval = integer("active_scan_interval_seconds");
+    const maximumSuccessAge = integer("maximum_success_age_seconds");
+    if (activeInterval > normalInterval) throw new SettingsInputError("active_scan_interval_seconds", "活跃采集间隔不能大于常规采集间隔。");
+    if (maximumSuccessAge < normalInterval * 2) throw new SettingsInputError("maximum_success_age_seconds", "采集有效时限须至少为常规采集间隔的两倍。");
+    return (await result(api.updateProviderSettings({ body: {
+      revision, environment: text("environment") === "SANDBOX" ? "SANDBOX" : "PRODUCTION",
+      app_id: text("app_id"), timeout_milliseconds: integer("timeout_milliseconds"),
+      scan_interval_seconds: normalInterval, active_scan_interval_seconds: activeInterval,
+      safety_lag_seconds: integer("safety_lag_seconds"), maximum_success_age_seconds: maximumSuccessAge,
+      ...(text("private_key") ? { private_key: text("private_key") } : {}),
+      ...(text("platform_public_key") ? { platform_public_key: text("platform_public_key") } : {}),
+    } }))).data;
+  }
   if (section === "notifications") {
     const enabled = form.has("enabled");
     const notificationNumber = (key: "timeout_milliseconds" | "maximum_attempts" | "retry_base_seconds" | "retry_maximum_seconds") => form.has(key) ? integer(key) : settings.notifications[key];

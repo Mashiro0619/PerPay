@@ -1654,6 +1654,17 @@ function parseJsonBytes<T>(bytes: Uint8Array, schema: z.ZodType<T>): T {
       const issue = parsed.error.issues.find((item) => item.path[0] === "code_payload");
       if (issue) throw new SettingsFieldError("code_payload", "请上传支付宝经营码，或粘贴 qr.alipay.com 开头的完整收款链接（最多 2331 字节）。");
     }
+    if ((schema as z.ZodType) === providerSettingsInputSchema) {
+      const timingHints = {
+        scan_interval_seconds: "常规采集间隔须为 5～3600 秒的整数。",
+        active_scan_interval_seconds: "活跃采集间隔须为 5～3600 秒的整数，且不能大于常规采集间隔。",
+        safety_lag_seconds: "安全延迟须为 5～300 秒的整数，且不能超过采集有效时限。",
+        maximum_success_age_seconds: "采集有效时限须为 10～86400 秒的整数，且至少为常规采集间隔的两倍。",
+      };
+      for (const [field, hint] of Object.entries(timingHints)) {
+        if (parsed.error.issues.some((issue) => issue.path[0] === field)) throw new SettingsFieldError(field, hint);
+      }
+    }
     throw new HttpApiError(422, "validation_failed", "请求字段校验失败");
   }
   return parsed.data;

@@ -536,6 +536,6 @@ jobs:
           EOF
           gh release create "$GITHUB_REF_NAME" release-assets/docker-compose.yml release-assets/demo.zip \
             --verify-tag \
-            --title "$GITHUB_REF_NAME 正式版" \
+            --title "PerPay $GITHUB_REF_NAME" \
             --notes-file release-notes.md \
             --latest

@@ -108,6 +108,32 @@ describe("administrator authentication", () => {
     expect(screen.queryByText("此实例只有一个管理员账户，无需输入用户名。")).not.toBeInTheDocument();
   });
 
+  it.each([false, true])("sends the explicit keep-signed-in choice without storing a password (%s)", async (remember) => {
+    initialization("true");
+    const fetchMock = vi.fn(async (_request: Request) => apiError("invalid_credentials", "管理员密码错误", 401));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    renderPage(<AuthPage onLogin={vi.fn()} />, "/login");
+    const checkbox = screen.getByRole("checkbox", { name: "在此设备保持登录 30 天" });
+    expect(checkbox).not.toBeChecked();
+    if (remember) await user.click(checkbox);
+    await user.type(screen.getByLabelText("管理员密码"), "remember-choice-test-password");
+    await user.click(screen.getByRole("button", { name: "登录" }));
+    await screen.findByText("管理员密码错误");
+    expect(await fetchMock.mock.calls[0]![0].json()).toEqual(remember
+      ? { password: "remember-choice-test-password", remember_me: true }
+      : { password: "remember-choice-test-password" });
+    expect(Object.values(localStorage)).not.toContain("remember-choice-test-password");
+    expect(Object.values(sessionStorage)).not.toContain("remember-choice-test-password");
+    expect(checkbox).toHaveProperty("checked", remember);
+  });
+
+  it("does not offer persistent login during administrator setup", () => {
+    initialization("false");
+    renderPage(<AuthPage onLogin={vi.fn()} />, "/setup");
+    expect(screen.queryByRole("checkbox", { name: "在此设备保持登录 30 天" })).not.toBeInTheDocument();
+  });
+
   it("preserves an unsuccessful login and never sends a username field", async () => {
     initialization("true");
     const fetchMock = vi.fn(async () => apiError("invalid_credentials", "管理员密码错误", 401));

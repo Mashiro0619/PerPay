@@ -578,9 +578,31 @@ describe("identity HTTP contract", () => {
         headers: { "content-type": "application/json", origin: "http://localhost:6190" },
         body: JSON.stringify({ password: HTTP_TEST_ADMIN_PASSWORD }),
       });
+      assert.equal(plain.status, 200);
       const plainCookie = plain.headers.getSetCookie().find((value) => value.startsWith("perpay_session="));
       assert.ok(plainCookie);
       assert.equal(Number(plainCookie.match(/max-age=(\d+)/i)?.[1]), 12 * 60 * 60);
+      const csrfCookie = remembered.headers.getSetCookie().find((value) => value.startsWith("perpay_csrf="));
+      assert.ok(csrfCookie);
+      assert.equal(Number(csrfCookie.match(/max-age=(\d+)/i)?.[1]), 30 * 24 * 60 * 60);
+      assert.match(rememberedCookie, /HttpOnly/i);
+      assert.match(rememberedCookie, /SameSite=Strict/i);
+      assert.doesNotMatch(csrfCookie, /HttpOnly/i);
+      for (const remember_me of [false, "true", 1, null]) {
+        const response = await app.request("/api/admin/v1/session/login", {
+          method: "POST",
+          headers: { "content-type": "application/json", origin: "http://localhost:6190" },
+          body: JSON.stringify({ password: HTTP_TEST_ADMIN_PASSWORD, remember_me }),
+        });
+        if (remember_me === false) {
+          assert.equal(response.status, 200);
+          const cookie = response.headers.getSetCookie().find((value) => value.startsWith("perpay_session="))!;
+          assert.equal(Number(cookie.match(/max-age=(\d+)/i)?.[1]), 12 * 60 * 60);
+        } else {
+          assert.equal(response.status, 422);
+          assert.equal(response.headers.getSetCookie().length, 0);
+        }
+      }
     } finally {
       database.close();
       rmSync(directory, { recursive: true, force: true });

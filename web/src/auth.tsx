@@ -60,8 +60,6 @@ export function AuthPage({ onLogin }: { onLogin: () => void }) {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    // 浏览器只把提交时刻仍为 password 类型的字段当作登录凭据保存，
-    // 明文显示状态下提交会导致密码管理器不弹出保存提示。
     if (visible) setVisible(false);
     setError(null);
     setInvalidField(null);
@@ -107,7 +105,7 @@ export function AuthPage({ onLogin }: { onLogin: () => void }) {
         </Field>
         {setup && <Field label="再次输入密码" error={invalidField === "confirmation" && error instanceof Error ? error.message : undefined}><input name="password-confirmation" type={visible ? "text" : "password"} autoComplete="new-password" required value={confirmation} disabled={pending} onChange={(event) => setConfirmation(event.target.value)} /></Field>}
         <ErrorNotice error={invalidField ? null : error} />
-        {!setup && <label className="checkbox-field auth-remember"><input name="remember-me" type="checkbox" checked={remember} disabled={pending} onChange={(event) => setRemember(event.target.checked)} /><span>记住密码，30 天内免登录</span></label>}
+        {!setup && <label className="checkbox-field auth-remember"><input name="remember-me" type="checkbox" checked={remember} disabled={pending} onChange={(event) => setRemember(event.target.checked)} /><span>在此设备保持登录 30 天</span></label>}
         <Button type="submit" variant="primary" pending={pending} className="auth-submit">{setup ? "创建管理员" : "登录"}<ArrowRight size={17} /></Button>
       </form>
       {!setup && <details className="form-disclosure"><summary>忘记密码？</summary><p>请联系服务器管理员停服重设，无需删除数据。<a href="https://github.com/Mashiro0619/PerPay/blob/main/docs/maintenance.md#忘记管理员密码" target="_blank" rel="noreferrer">查看恢复步骤</a></p></details>}

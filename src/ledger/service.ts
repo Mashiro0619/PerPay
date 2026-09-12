@@ -50,6 +50,8 @@ export interface LedgerIngestServiceOptions {
   readonly windowMilliseconds?: number;
   readonly safetyLagMilliseconds?: number;
   readonly scanIntervalMilliseconds?: number;
+  /** Capture the current adaptive cadence once per run, including compensation and retries. */
+  readonly getScanIntervalMilliseconds?: () => number;
   readonly maxRequestsPerRun?: number;
   readonly initialWindowStartMilliseconds?: number;
   readonly clock?: () => number;
@@ -90,6 +92,7 @@ export class LedgerIngestService {
   readonly #windowMilliseconds: number;
   readonly #safetyLagMilliseconds: number;
   readonly #scanIntervalMilliseconds: number;
+  readonly #getScanIntervalMilliseconds: (() => number) | undefined;
   readonly #maxRequestsPerRun: number;
   readonly #initialWindowStartMilliseconds: number | undefined;
   readonly #clock: () => number;
@@ -105,6 +108,7 @@ export class LedgerIngestService {
     this.#windowMilliseconds = options.windowMilliseconds ?? DEFAULT_WINDOW_MILLISECONDS;
     this.#safetyLagMilliseconds = options.safetyLagMilliseconds ?? DEFAULT_SAFETY_LAG_MILLISECONDS;
     this.#scanIntervalMilliseconds = options.scanIntervalMilliseconds ?? 10_000;
+    this.#getScanIntervalMilliseconds = options.getScanIntervalMilliseconds;
     this.#maxRequestsPerRun = options.maxRequestsPerRun ?? DEFAULT_MAX_REQUESTS_PER_RUN;
     this.#initialWindowStartMilliseconds = options.initialWindowStartMilliseconds;
     this.#clock = options.clock ?? (() => Date.now());
@@ -191,6 +195,10 @@ export class LedgerIngestService {
         };
       }
     }
+    const scanIntervalMilliseconds = this.#getScanIntervalMilliseconds?.() ?? this.#scanIntervalMilliseconds;
+    if (!Number.isSafeInteger(scanIntervalMilliseconds) || scanIntervalMilliseconds < 1_000 || scanIntervalMilliseconds > 3_600_000) {
+      throw new RangeError("ledger scanner interval is invalid");
+    }
     const normalCursor = this.#store.getCursor(this.#providerAccountKey, "NORMAL");
     const compensationCursor = this.#store.getCursor(this.#providerAccountKey, "COMPENSATION");
     const compensationState = this.#store.getCompensationState(this.#providerAccountKey);
@@ -200,7 +208,7 @@ export class LedgerIngestService {
       now,
       this.#windowMilliseconds,
       this.#safetyLagMilliseconds,
-      this.#scanIntervalMilliseconds,
+      scanIntervalMilliseconds,
       this.#initialWindowStartMilliseconds,
       compensationState,
     );
@@ -265,7 +273,7 @@ export class LedgerIngestService {
           ingestRunId: run.ingestRunId,
           ingestSegmentId: activeSegment.ingestSegmentId,
           page,
-          retryIntervalMilliseconds: this.#scanIntervalMilliseconds,
+          retryIntervalMilliseconds: scanIntervalMilliseconds,
           now: safeNow(this.#clock()),
         });
         if (recorded.kind === "variant") {
@@ -407,7 +415,7 @@ export class LedgerIngestService {
             ? {}
             : {
                 retrySchedule: {
-                  intervalMilliseconds: this.#scanIntervalMilliseconds,
+                  intervalMilliseconds: scanIntervalMilliseconds,
                   retryAfterSeconds: providerError?.retryAfterSeconds ?? null,
                 },
               }),

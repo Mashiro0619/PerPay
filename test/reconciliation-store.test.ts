@@ -10,6 +10,7 @@ import { OrderStore, type StoredOrderAggregate } from "../src/database/order-sto
 import type { AccountLogDetail } from "../src/infrastructure/alipay/types.ts";
 import type { LedgerEntry } from "../src/ledger/model.ts";
 import { LedgerStore } from "../src/ledger/store.ts";
+import { LedgerScanCadencePolicy, type LedgerScanCadenceOptions } from "../src/ledger/cadence.ts";
 import {
   ReconciliationStore,
 } from "../src/reconciliation/index.ts";
@@ -668,6 +669,175 @@ describe("automatic reconciliation settlement", () => {
     });
   });
 });
+
+describe("ledger cadence from durable orders", () => {
+  it("stays active until every payable order is confirmed and does not tail confirmed orders", async () => {
+    await withStores(({ database, orders, reconciliation, recordCredit }) => {
+      let now = BASE_TIME;
+      const policy = cadencePolicy(database, () => now);
+      assert.deepEqual(policy.current(), { mode: "normal", intervalMilliseconds: 30_000 });
+      const first = createOrder(orders, "cadence-first", 1_000);
+      const second = createOrder(orders, "cadence-second", 2_000);
+      assert.deepEqual(policy.current(), { mode: "active", intervalMilliseconds: 5_000 });
+      const firstCredit = recordCredit("cadence-first-credit", first.order.payableAmountCents, EVENT_TIME);
+      now = BASE_TIME + 120_000;
+      assert.equal(reconciliation.reconcileEntry(firstCredit.ledgerEntryId, now).kind, "auto_settled");
+      assert.equal(policy.current().mode, "active");
+      const secondCredit = recordCredit("cadence-second-credit", second.order.payableAmountCents, EVENT_TIME);
+      assert.equal(reconciliation.reconcileEntry(secondCredit.ledgerEntryId, now + 1).kind, "auto_settled");
+      assert.equal(policy.current().mode, "normal");
+      now = second.order.expiresAt + 1;
+      assert.equal(policy.current().mode, "normal");
+    });
+  });
+
+  it("starts a closed order's tail at closed_at, not expiry or the first policy read", async () => {
+    await withStores(({ database, orders, setNow }) => {
+      let now = BASE_TIME;
+      const policy = cadencePolicy(database, () => now);
+      const order = createOrder(orders, "cadence-closed", 1_000);
+      now += 10_000;
+      setNow(now);
+      const closed = orders.closeOrder(API_CLIENT_ID, order.order.orderId)!;
+      const endedAt = closed.order.closedAt!;
+      assert.ok(endedAt < order.order.expiresAt);
+      now = endedAt + 40_000;
+      assert.deepEqual(policy.current(), { mode: "tail", intervalMilliseconds: 5_000 });
+      now = endedAt + 59_999;
+      assert.equal(policy.current().mode, "tail");
+      now += 1;
+      assert.equal(policy.current().mode, "normal");
+    });
+  });
+
+  it("recognizes an expiry before its state is written and never extends the tail on later sweeps", async () => {
+    await withStores(({ database, orders, setNow }) => {
+      const order = createOrder(orders, "cadence-expired", 1_000);
+      let now = order.order.expiresAt - 1;
+      const policy = cadencePolicy(database, () => now);
+      const storedStatus = () => database.read((connection) => (connection.prepare(
+        "SELECT checkout_status FROM payment_orders WHERE order_id = ?",
+      ).get(order.order.orderId) as { checkout_status: string }).checkout_status);
+      assert.equal(policy.current().mode, "active");
+      now += 1;
+      assert.equal(policy.current().mode, "tail");
+      assert.equal(storedStatus(), "OPEN", "cadence reads must not mutate orders");
+      now += 30_000;
+      setNow(now);
+      assert.equal(orders.orderById(API_CLIENT_ID, order.order.orderId)?.order.checkoutStatus, "EXPIRED");
+      assert.equal(policy.current().mode, "tail");
+      now = order.order.expiresAt + 60_000;
+      assert.equal(policy.current().mode, "normal");
+    });
+  });
+
+  it("extends the tail to cover a large safety lag plus an active interval", async () => {
+    await withStores(({ database, orders }) => {
+      const order = createOrder(orders, "cadence-long-lag", 1_000);
+      let now = order.order.expiresAt + 60_000;
+      const policy = cadencePolicy(database, () => now, {
+        activeIntervalMilliseconds: 10_000,
+        safetyLagMilliseconds: 90_000,
+      });
+      assert.deepEqual(policy.current(), { mode: "tail", intervalMilliseconds: 10_000 });
+      now = order.order.expiresAt + 99_999;
+      assert.equal(policy.current().mode, "tail");
+      now += 1;
+      assert.equal(policy.current().mode, "normal");
+    });
+  });
+
+  it("prioritizes other open orders and uses the latest unresolved ending for the tail", async () => {
+    await withStores(({ database, orders, setNow }) => {
+      let now = BASE_TIME;
+      const policy = cadencePolicy(database, () => now);
+      const first = createOrder(orders, "cadence-close-first", 1_000);
+      const second = createOrder(orders, "cadence-close-second", 2_000);
+      now += 10_000;
+      setNow(now);
+      orders.closeOrder(API_CLIENT_ID, first.order.orderId);
+      assert.equal(policy.current().mode, "active");
+      now += 10_000;
+      setNow(now);
+      const closed = orders.closeOrder(API_CLIENT_ID, second.order.orderId)!;
+      assert.equal(policy.current().mode, "tail");
+      now = closed.order.closedAt! + 59_999;
+      assert.equal(policy.current().mode, "tail");
+      now += 1;
+      assert.equal(policy.current().mode, "normal");
+    });
+  });
+
+  it("does not accelerate one account for another account's pending orders", async () => {
+    await withStores(({ database, orders, setNow }) => {
+      let now = BASE_TIME;
+      const primary = cadencePolicy(database, () => now);
+      const other = cadencePolicy(database, () => now, { providerAccountKey: "other" });
+      const order = createOrder(orders, "cadence-primary", 1_000);
+      assert.equal(primary.current().mode, "active");
+      assert.equal(other.current().mode, "normal");
+      now += 10_000;
+      setNow(now);
+      orders.closeOrder(API_CLIENT_ID, order.order.orderId);
+      new LedgerStore(database).bindProviderIdentity({
+        ...PROVIDER_IDENTITY, providerAccountKey: "other", externalAccountId: "other-app",
+      }, now);
+      const payload = "https://qr.example.test/other";
+      const fingerprint = fingerprintCollectionCodeProfile(payload, "other");
+      orders.syncCollectionProfile({ providerAccountKey: "other", codePayload: payload, ...fingerprint });
+      createOrder(orders, "cadence-other", 2_000);
+      assert.equal(other.current().mode, "active");
+      assert.equal(primary.current().mode, "tail");
+      now += 60_000;
+      assert.equal(primary.current().mode, "normal");
+      assert.equal(other.current().mode, "active");
+    });
+  });
+
+  it("reconstructs active and tail modes after reopening the database and applying new intervals", async () => {
+    await withStores(async ({ database, databasePath, orders }) => {
+      const order = createOrder(orders, "cadence-restart", 1_000);
+      database.close();
+      const reopened = await AppDatabase.open(databasePath);
+      try {
+        let now = order.order.expiresAt - 1;
+        const policy = cadencePolicy(reopened, () => now);
+        assert.equal(policy.current().mode, "active");
+        const updated = cadencePolicy(reopened, () => now, { activeIntervalMilliseconds: 10_000 });
+        assert.deepEqual(updated.current(), { mode: "active", intervalMilliseconds: 10_000 });
+        now = order.order.expiresAt + 1;
+        assert.equal(cadencePolicy(reopened, () => now).current().mode, "tail");
+        now = order.order.expiresAt + 60_000;
+        assert.equal(policy.current().mode, "normal");
+      } finally {
+        reopened.close();
+      }
+    });
+  });
+
+  it("keeps the same interval in all modes when adaptive acceleration is disabled", async () => {
+    await withStores(({ database, orders }) => {
+      let now = BASE_TIME;
+      const policy = cadencePolicy(database, () => now, { activeIntervalMilliseconds: 30_000 });
+      assert.equal(policy.current().intervalMilliseconds, 30_000);
+      const order = createOrder(orders, "cadence-fixed", 1_000);
+      assert.deepEqual(policy.current(), { mode: "active", intervalMilliseconds: 30_000 });
+      now = order.order.expiresAt;
+      assert.deepEqual(policy.current(), { mode: "tail", intervalMilliseconds: 30_000 });
+    });
+  });
+});
+
+function cadencePolicy(
+  database: AppDatabase,
+  clock: () => number,
+  overrides: Partial<Omit<LedgerScanCadenceOptions, "database" | "clock">> = {},
+): LedgerScanCadencePolicy {
+  return new LedgerScanCadencePolicy({
+    database, clock, providerAccountKey: "primary", normalIntervalMilliseconds: 30_000,
+    activeIntervalMilliseconds: 5_000, safetyLagMilliseconds: 10_000, ...overrides,
+  });
+}
 
 interface StoreTestContext {
   readonly database: AppDatabase;
