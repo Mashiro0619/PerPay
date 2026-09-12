@@ -208,6 +208,7 @@ export type BackupHealth = {
 export type ResourceId = string;
 export type AdminLoginRequest = {
     password: string;
+    remember_me?: boolean;
 };
 export type AdminSetupRequest = {
     password: string;

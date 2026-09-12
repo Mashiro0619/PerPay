@@ -13,6 +13,8 @@ export const ADMIN_USERNAME = "admin" as const;
 
 export const SESSION_IDLE_TTL_MS = 30 * 60 * 1000;
 export const SESSION_ABSOLUTE_TTL_MS = 12 * 60 * 60 * 1000;
+// "记住我"会话没有滑动空闲窗口：空闲上限与绝对上限同为 30 天，到期必须重新登录。
+export const REMEMBER_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const AUTH_WINDOW_MS = 15 * 60 * 1000;
 export const AUTH_FAILURE_THRESHOLD = 5;
 export const API_SIGNATURE_SKEW_MS = 5 * 60 * 1000;
@@ -306,7 +308,7 @@ export class IdentityTransaction extends IdentityReadTransaction {
       .prepare(
         `UPDATE admin_sessions
             SET last_seen_at = ?,
-                idle_expires_at = min(absolute_expires_at, ?)
+                idle_expires_at = min(absolute_expires_at, max(idle_expires_at, ?))
           WHERE session_id = ?
             AND revoked_at IS NULL
             AND idle_expires_at > ?

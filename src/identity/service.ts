@@ -7,6 +7,7 @@ import {
   AUTH_WINDOW_MS,
   API_SIGNATURE_SKEW_MS,
   IdentityStore,
+  REMEMBER_SESSION_TTL_MS,
   SESSION_ABSOLUTE_TTL_MS,
   SESSION_IDLE_TTL_MS,
   type AdminSession,
@@ -187,6 +188,7 @@ export class IdentityService {
   async login(
     password: string,
     context: IdentityContext = {},
+    options: { remember?: boolean } = {},
   ): Promise<LoginResult> {
     const now = this.#clock();
     const sourceHash = this.sourceHash(context.sourceAddress);
@@ -225,8 +227,8 @@ export class IdentityService {
     const csrfToken = issueCsrfToken();
     const sessionId = randomUUID();
     const authenticatedAt = this.#clock();
-    const idleExpiresAt = authenticatedAt + SESSION_IDLE_TTL_MS;
-    const absoluteExpiresAt = authenticatedAt + SESSION_ABSOLUTE_TTL_MS;
+    const idleExpiresAt = authenticatedAt + (options.remember ? REMEMBER_SESSION_TTL_MS : SESSION_IDLE_TTL_MS);
+    const absoluteExpiresAt = authenticatedAt + (options.remember ? REMEMBER_SESSION_TTL_MS : SESSION_ABSOLUTE_TTL_MS);
     this.#store.transaction((transaction) => {
       const currentIdentity = transaction.adminIdentity();
       if (
@@ -596,6 +598,7 @@ class PasswordWorkGate {
 export const IDENTITY_LIMITS = Object.freeze({
   sessionIdleMs: SESSION_IDLE_TTL_MS,
   sessionAbsoluteMs: SESSION_ABSOLUTE_TTL_MS,
+  rememberSessionMs: REMEMBER_SESSION_TTL_MS,
   authWindowMs: AUTH_WINDOW_MS,
   apiSignatureSkewMs: API_SIGNATURE_SKEW_MS,
 });

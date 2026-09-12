@@ -2551,6 +2551,15 @@ components:
           type: string
           minLength: 1
           x-perpay-max-utf8-bytes: 1024
+        remember_me:
+          type: boolean
+          default: false
+          description: >-
+            When true, the issued session is remembered for 30 days: the idle
+            timeout no longer applies and the absolute expiry extends to 30
+            days after login, so the administrator does not need to sign in
+            again on this device. Defaults to false (30 minutes idle / 12 hours
+            absolute).
     AdminSetupRequest:
       type: object
       additionalProperties: false

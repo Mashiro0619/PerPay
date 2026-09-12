@@ -166,7 +166,7 @@ const newPasswordValueSchema = z.string().refine(
   { message: `must contain at most ${MAX_PASSWORD_BYTES} UTF-8 bytes` },
 );
 
-const loginSchema = z.object({ password: passwordValueSchema }).strict();
+const loginSchema = z.object({ password: passwordValueSchema, remember_me: z.boolean().optional() }).strict();
 const setupSchema = z.object({ password: newPasswordValueSchema }).strict();
 const settingsRevisionSchema = z.object({ revision: z.number().int().nonnegative() }).strict();
 const emptyObjectSchema = z.object({}).strict();
@@ -531,6 +531,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const result = await dependencies.identity.login(
       body.password,
       identityContext(context, dependencies.config.trustedProxy),
+      { remember: body.remember_me === true },
     );
     setAuthenticationCookies(
       context,

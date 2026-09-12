@@ -551,6 +551,42 @@ describe("identity HTTP contract", () => {
     }
   });
 
+  it("issues a 30-day remembered session only when login asks to be remembered", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-http-remember-"));
+    const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
+      directory,
+      apiSecret,
+      collectionCodePayload,
+      publicUrl: "http://localhost:6190",
+    });
+    const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
+    try {
+      const remembered = await app.request("/api/admin/v1/session/login", {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: "http://localhost:6190" },
+        body: JSON.stringify({ password: HTTP_TEST_ADMIN_PASSWORD, remember_me: true }),
+      });
+      assert.equal(remembered.status, 200);
+      const rememberedCookie = remembered.headers.getSetCookie().find((value) => value.startsWith("perpay_session="));
+      assert.ok(rememberedCookie);
+      assert.equal(Number(rememberedCookie.match(/max-age=(\d+)/i)?.[1]), 30 * 24 * 60 * 60);
+      const rememberedBody = (await remembered.json()) as { data: { idle_expires_at: string; absolute_expires_at: string } };
+      assert.equal(rememberedBody.data.idle_expires_at, rememberedBody.data.absolute_expires_at);
+
+      const plain = await app.request("/api/admin/v1/session/login", {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: "http://localhost:6190" },
+        body: JSON.stringify({ password: HTTP_TEST_ADMIN_PASSWORD }),
+      });
+      const plainCookie = plain.headers.getSetCookie().find((value) => value.startsWith("perpay_session="));
+      assert.ok(plainCookie);
+      assert.equal(Number(plainCookie.match(/max-age=(\d+)/i)?.[1]), 12 * 60 * 60);
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("rejects invalid UTF-8 and passwords over the byte limit before password work", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-http-validation-"));
     const { config, database, identity, settings, orders } = await createConfiguredHttpServices({

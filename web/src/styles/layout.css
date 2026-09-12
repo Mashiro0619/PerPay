@@ -93,4 +93,5 @@
 .auth-form-title h1 { font-size: 26px; }
 .auth-form-title p { margin-top: 10px; color: var(--muted); font-size: 13px; line-height: 1.75; }
 .auth-submit { justify-content: space-between; min-height: 44px; margin-top: 4px; padding-inline: 16px; }
+.auth-form-wrap > .form-disclosure { margin-top: 22px; }
 .auth-switch { min-height: 24px; margin-top: 22px; text-align: center; font-size: 12px; }

@@ -257,6 +257,34 @@ describe("IdentityService", () => {
     }
   });
 
+  it("extends remembered sessions to a fixed 30-day window without idle sliding", async () => {
+    const test = await fixture();
+    try {
+      const remembered = await test.identity.login(
+        adminPassword,
+        { sourceAddress: "127.0.0.1" },
+        { remember: true },
+      );
+      assert.equal(remembered.absoluteExpiresAt - remembered.createdAt, IDENTITY_LIMITS.rememberSessionMs);
+      assert.equal(remembered.idleExpiresAt, remembered.absoluteExpiresAt);
+
+      // 超过普通会话的空闲上限后仍然有效。
+      test.clock.now += IDENTITY_LIMITS.sessionIdleMs + 60_000;
+      assert.ok(test.identity.authenticate(remembered.sessionToken));
+
+      // 空闲窗口不会因触碰而滑动：登录满 30 天后必须重新登录。
+      test.clock.now = remembered.createdAt + IDENTITY_LIMITS.rememberSessionMs + 1;
+      assert.equal(test.identity.authenticate(remembered.sessionToken), undefined);
+
+      // 普通登录保持原有 30 分钟空闲 / 12 小时绝对上限。
+      const plain = await test.identity.login(adminPassword, { sourceAddress: "127.0.0.3" });
+      assert.equal(plain.idleExpiresAt - plain.createdAt, IDENTITY_LIMITS.sessionIdleMs);
+      assert.equal(plain.absoluteExpiresAt - plain.createdAt, IDENTITY_LIMITS.sessionAbsoluteMs);
+    } finally {
+      test.close();
+    }
+  });
+
   it("rate limits repeated login failures by a salted source hash", async () => {
     const test = await fixture();
     try {
