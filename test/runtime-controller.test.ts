@@ -45,7 +45,7 @@ describe("runtime settings controller", () => {
     });
     const snapshot: RuntimeSettingsSnapshot = {
       ...unconfiguredSettings, revision: 1, paymentRevision: 1, provider,
-      collection: { codePayload: "https://qr.alipay.com/runtime-cadence", orderTtlSeconds: 300, amountOffsetMaximumCents: 99 },
+      collection: { codePayload: "https://qr.alipay.com/runtime-cadence", orderTtlSeconds: 300, amountOffsetMaximumCents: 99, amountReuseCooldownSeconds: 600 },
       apiSecret: "a".repeat(43), activeProviderAccountKey: "primary",
     };
     const started: LedgerIngestScheduler[] = [];

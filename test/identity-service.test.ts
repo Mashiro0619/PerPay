@@ -6,7 +6,7 @@ import { describe, it } from "node:test";
 
 import { loadConfig } from "../src/config.ts";
 import { AppDatabase } from "../src/database/database.ts";
-import { appendAuditEvent } from "../src/database/identity-store.ts";
+import { ANONYMOUS_PASSWORD_BURST, ANONYMOUS_PASSWORD_INTERVAL_MS, appendAuditEvent } from "../src/database/identity-store.ts";
 import { PasswordInputError } from "../src/identity/crypto.ts";
 import { IDENTITY_LIMITS, IdentityError, IdentityService, fingerprintApiSecret } from "../src/identity/service.ts";
 
@@ -355,6 +355,85 @@ describe("IdentityService", () => {
     }
   });
 
+  it("shares IPv6 failures across a /64 while retaining each source in the audit trail", async () => {
+    const test = await fixture();
+    try {
+      const sources = [1, 2, 3, 4, 5].map((suffix) => "2001:db8:1:2::" + suffix);
+      for (const sourceAddress of sources) {
+        await assert.rejects(test.identity.login("wrong-password", { sourceAddress }),
+          (error: unknown) => error instanceof IdentityError && error.code === "invalid_credentials");
+      }
+      await assert.rejects(test.identity.login(adminPassword, { sourceAddress: "2001:0db8:0001:0002::ffff" }),
+        (error: unknown) => error instanceof IdentityError && error.code === "auth_rate_limited");
+      const limit = test.identity.store.read((transaction) =>
+        transaction.authLimit(test.identity.authSourceHash(sources[0])),
+      );
+      assert.equal(limit?.failureCount, 5);
+      const audits = test.database.read((connection) => connection.prepare(
+        "SELECT remote_address_hash FROM audit_events WHERE action = 'admin.login' ORDER BY sequence",
+      ).all() as Array<{ remote_address_hash: string }>);
+      assert.deepEqual(audits.map((row) => row.remote_address_hash), sources.map((source) => test.identity.sourceHash(source)));
+      await test.identity.login(adminPassword, { sourceAddress: "2001:db8:1:3::1" });
+    } finally { test.close(); }
+  });
+
+  it("honors an existing /128 ban during the /64 transition", async () => {
+    const test = await fixture();
+    try {
+      const sourceAddress = "2001:db8:2:3::1";
+      test.identity.store.transaction((transaction) => {
+        for (let i = 0; i < 5; i += 1) transaction.recordAuthFailure(test.identity.sourceHash(sourceAddress), test.clock.now);
+      });
+      await assert.rejects(test.identity.login(adminPassword, { sourceAddress }),
+        (error: unknown) => error instanceof IdentityError && error.code === "auth_rate_limited");
+      test.clock.now += 30_000;
+      await test.identity.login(adminPassword, { sourceAddress });
+      assert.equal(test.identity.store.read((transaction) => transaction.authLimit(test.identity.sourceHash(sourceAddress))), undefined);
+    } finally { test.close(); }
+  });
+
+  it("caps rotating sources without blocking authenticated password changes or refilling on login success", async () => {
+    const test = await fixture();
+    try {
+      const login = await test.identity.login(adminPassword, { sourceAddress: "192.0.2.200" });
+      const authenticated = test.identity.authenticate(login.sessionToken);
+      assert.ok(authenticated);
+      // Setup and this successful login each consumed one actual anonymous password operation.
+      for (let i = 0; i < ANONYMOUS_PASSWORD_BURST - 2; i += 1) {
+        await assert.rejects(test.identity.login("wrong-password", { sourceAddress: "198.51.100." + (i + 1) }),
+          (error: unknown) => error instanceof IdentityError && error.code === "invalid_credentials");
+      }
+      const expectBudget = (error: unknown): boolean => error instanceof IdentityError &&
+        error.code === "auth_rate_limited" && error.retryAfterSeconds === 5;
+      await assert.rejects(test.identity.login(adminPassword, { sourceAddress: "203.0.113.1" }), expectBudget);
+      await test.identity.changePassword(authenticated, "next-secure-password");
+      test.clock.now += ANONYMOUS_PASSWORD_INTERVAL_MS;
+      await test.identity.login("next-secure-password", { sourceAddress: "203.0.113.2" });
+      await assert.rejects(test.identity.login("next-secure-password", { sourceAddress: "203.0.113.3" }), expectBudget);
+    } finally { test.close(); }
+  });
+
+  it("persists the anonymous budget across restart and does not mint tokens on clock rollback", async () => {
+    const test = await fixture(undefined, false);
+    let reopened: AppDatabase | undefined;
+    try {
+      const initialNow = test.clock.now;
+      for (let i = 0; i < ANONYMOUS_PASSWORD_BURST; i += 1) {
+        assert.equal(test.identity.store.transaction((transaction) => transaction.takeAnonymousPasswordBudget(initialNow)), undefined);
+      }
+      assert.equal(test.identity.store.transaction((transaction) => transaction.takeAnonymousPasswordBudget(initialNow)), 5);
+      assert.equal(test.identity.store.transaction((transaction) => transaction.takeAnonymousPasswordBudget(initialNow - 60_000)), 65);
+      test.database.close();
+      reopened = await AppDatabase.open(test.config.databasePath);
+      const identity = new IdentityService(reopened, () => test.clock.now);
+      await identity.initialize();
+      assert.equal(identity.store.transaction((transaction) => transaction.takeAnonymousPasswordBudget(initialNow)), 5);
+      assert.equal(identity.store.transaction((transaction) => transaction.takeAnonymousPasswordBudget(initialNow + 4_999)), 1);
+      assert.equal(identity.store.transaction((transaction) => transaction.takeAnonymousPasswordBudget(initialNow + 5_000)), undefined);
+      assert.equal(identity.store.transaction((transaction) => transaction.takeAnonymousPasswordBudget(initialNow)), 10);
+    } finally { reopened?.close(); test.close(); }
+  });
+
   it("counts malformed login credentials but not malformed replacement passwords", async () => {
     const test = await fixture();
     try {
@@ -450,6 +529,9 @@ describe("IdentityService", () => {
       const authenticated = test.identity.authenticate(login.sessionToken);
       assert.ok(authenticated);
 
+      const budgetBefore = test.database.read((connection) => Number((connection.prepare(
+        "SELECT theoretical_arrival_at AS value FROM anonymous_password_budget WHERE singleton_key = 1",
+      ).get() as { value: bigint }).value));
       const anonymousAttempts = [51, 52, 53].map((suffix) =>
         test.identity.login("wrong-password-value", {
           sourceAddress: `192.0.2.${suffix}`,
@@ -463,6 +545,10 @@ describe("IdentityService", () => {
         passwordChange,
       ]);
 
+      const budgetAfter = test.database.read((connection) => Number((connection.prepare(
+        "SELECT theoretical_arrival_at AS value FROM anonymous_password_budget WHERE singleton_key = 1",
+      ).get() as { value: bigint }).value));
+      assert.equal(budgetAfter - budgetBefore, ANONYMOUS_PASSWORD_INTERVAL_MS);
       const rejectedCodes = anonymousResults
         .filter((result): result is PromiseRejectedResult => result.status === "rejected")
         .map((result) => (result.reason as IdentityError).code)

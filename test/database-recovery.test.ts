@@ -45,6 +45,7 @@ import {
   RuntimeSettingsStore,
 } from "../src/settings/index.ts";
 import { DATABASE_COMPATIBILITY } from "../src/version.ts";
+import { securityHardeningDowngradeSql } from "./security-schema-fixture.ts";
 
 const API_SECRET = "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc";
 const COLLECTION_CODE = "https://qr.local.invalid/recovery-test";
@@ -1427,6 +1428,7 @@ async function createVersionEighteenCompensationDatabase(
 
 function schemaTwentyDowngradeSql(): string {
   return `
+    ${securityHardeningDowngradeSql()}
     DROP INDEX collection_profile_provider_accounts_account_idx;
     DROP INDEX payment_orders_active_scan_idx;
     DROP INDEX payment_orders_scan_tail_idx;

@@ -7,6 +7,7 @@ import { describe, it } from "node:test";
 
 import { AppDatabase } from "../src/database/database.ts";
 import { migrationChecksum, migrations } from "../src/database/migrations.ts";
+import { DATABASE_COMPATIBILITY } from "../src/version.ts";
 import { ADMIN_USERNAME } from "../src/database/identity-store.ts";
 import { API_CLIENT_ID } from "../src/settings/model.ts";
 import { normalizeProviderIdentity } from "../src/ledger/model.ts";
@@ -74,7 +75,7 @@ describe("fixed account namespace migration", () => {
       assert.equal(state.orderClient.api_client_id, API_CLIENT_ID);
       assert.equal(state.webhookClient.api_client_id, API_CLIENT_ID);
       assert.equal(state.legacyReferences, 0);
-      assert.equal(state.schemaVersion, 20);
+      assert.equal(state.schemaVersion, DATABASE_COMPATIBILITY.maximum);
       assert.equal(database.integrityCheck().ok, true);
       const historicalOrder = new OrderStore(database).orderById(
         API_CLIENT_ID,

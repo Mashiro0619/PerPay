@@ -7,7 +7,7 @@ const emptySecret = { configured: false, version: null, fingerprint: null, maske
 export const settings: RuntimeSettings = {
   revision: 3, payment_revision: 1, updated_at: "2026-09-06T00:00:00.000Z",
   completion: { complete: false, application_key: false, collection: true, provider: false, api: false, notifications: false, next_step: "GENERATE_APPLICATION_KEY" },
-  collection: { code_payload: "https://qr.alipay.com/test-fixture", order_ttl_seconds: 300, amount_offset_maximum_cents: 99 },
+  collection: { code_payload: "https://qr.alipay.com/test-fixture", order_ttl_seconds: 300, amount_offset_maximum_cents: 99, amount_reuse_cooldown_seconds: 600 },
   provider: null, application_public_key: null, application_key_fingerprint: null, provider_generations: [],
   notifications: { enabled: false, allowed_origin: null, timeout_milliseconds: 5000, maximum_attempts: 5, retry_base_seconds: 10, retry_maximum_seconds: 600 },
   advanced: { checkout_key_rotation_days: 90, checkout_terminal_observation_seconds: 86400 },

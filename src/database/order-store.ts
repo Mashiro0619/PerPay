@@ -4,6 +4,9 @@ import type { DatabaseSync } from "node:sqlite";
 
 import {
   CREATE_ORDER_REQUEST_FINGERPRINT_VERSION,
+  DEFAULT_AMOUNT_REUSE_COOLDOWN_SECONDS,
+  MIN_AMOUNT_REUSE_COOLDOWN_SECONDS,
+  MAX_AMOUNT_REUSE_COOLDOWN_SECONDS,
   IDEMPOTENCY_KEY_DIGEST_VERSION,
   MAX_REQUESTED_AMOUNT_CENTS,
   MAX_ORDER_CLOCK_AHEAD_MILLISECONDS,
@@ -111,6 +114,7 @@ export interface CreateStoredOrderInput {
   readonly requestFingerprint: string;
   readonly ttlMilliseconds: number;
   readonly amountOffsetMaximumCents: number;
+  readonly amountReuseCooldownSeconds?: number | undefined;
   /** Runtime checkout policy captured when this order is created. */
   readonly checkoutKeyRotationMilliseconds?: number | undefined;
   readonly checkoutTerminalObservationMilliseconds?: number | undefined;
@@ -293,6 +297,12 @@ export class OrderStore {
   ): CreateStoredOrderResult {
     validateWebhookTargetInput(input);
     validateReturnUrlInput(input);
+    const amountReuseCooldownSeconds = input.amountReuseCooldownSeconds ?? DEFAULT_AMOUNT_REUSE_COOLDOWN_SECONDS;
+    if (!Number.isSafeInteger(amountReuseCooldownSeconds) ||
+      amountReuseCooldownSeconds < MIN_AMOUNT_REUSE_COOLDOWN_SECONDS ||
+      amountReuseCooldownSeconds > MAX_AMOUNT_REUSE_COOLDOWN_SECONDS) {
+      throw new RangeError("amount reuse cooldown is invalid");
+    }
     const checkoutKeyRotationMilliseconds = input.checkoutKeyRotationMilliseconds ??
       this.#checkoutKeyRotationMilliseconds;
     const checkoutTerminalObservationMilliseconds =
@@ -433,7 +443,8 @@ export class OrderStore {
       }
 
       const expiresAt = now + input.ttlMilliseconds;
-      if (!Number.isSafeInteger(expiresAt) || expiresAt <= now) {
+      if (!Number.isSafeInteger(expiresAt) || expiresAt <= now ||
+        !Number.isSafeInteger(expiresAt + amountReuseCooldownSeconds * 1_000)) {
         throw new RangeError("order expiry is outside the safe integer range");
       }
 
@@ -456,14 +467,14 @@ export class OrderStore {
              request_fingerprint, request_fingerprint_version,
              webhook_target_request_fingerprint,
              requested_amount_cents, payable_amount_cents,
-             allocation_offset_max_cents, received_amount_cents, currency,
+             allocation_offset_max_cents, amount_reuse_cooldown_seconds, received_amount_cents, currency,
              product_name, note, note_fingerprint, note_fingerprint_version,
              return_url, return_url_fingerprint, return_url_fingerprint_version,
              collection_profile_id, checkout_status, payment_status,
              refund_status, payment_basis, eligible_from, created_at, expires_at,
              closed_at, updated_at, version
            ) VALUES (
-             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'CNY',
+             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'CNY',
              ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', 'UNPAID', 'NONE', 'NONE', ?, ?, ?, NULL, ?, 1
            )`,
         )
@@ -479,6 +490,7 @@ export class OrderStore {
           input.request.amount_cents,
           allocation.payableAmountCents,
           input.amountOffsetMaximumCents,
+          amountReuseCooldownSeconds,
           input.request.product_name,
           input.request.note ?? null,
           fingerprintOrderNote(input.request.note ?? null),
@@ -850,57 +862,79 @@ function allocateAmountSlot(
   now: number,
 ): AmountAllocationResult {
   let earliestAvailableAt: number | undefined;
+  let reusable: { payableAmountCents: number; generation: number; endedAt: number } | undefined;
   for (let offset = 1; offset <= maximumOffsetCents; offset += 1) {
     const payableAmountCents = requestedAmountCents + offset;
     if (payableAmountCents > MAX_PAYABLE_AMOUNT_CENTS) break;
 
-    const open = connection
-      .prepare(
-        `SELECT order_id, expires_at
-           FROM payment_orders
-          WHERE payable_amount_cents = ? AND checkout_status = 'OPEN'`,
-      )
-      .get(payableAmountCents) as
-      | { order_id: string; expires_at: bigint | number }
-      | undefined;
+    const open = connection.prepare(
+      `SELECT order_id, expires_at, amount_reuse_cooldown_seconds
+         FROM payment_orders
+        WHERE payable_amount_cents = ? AND checkout_status = 'OPEN'`,
+    ).get(payableAmountCents) as {
+      order_id: string;
+      expires_at: bigint | number;
+      amount_reuse_cooldown_seconds: bigint | number;
+    } | undefined;
     if (open) {
       const expiresAt = toSafeInteger(open.expires_at, "order expiry");
       if (expiresAt <= now) {
         expireOrder(connection, open.order_id, now);
       } else {
-        earliestAvailableAt = minimumDefined(earliestAvailableAt, expiresAt);
+        earliestAvailableAt = minimumDefined(earliestAvailableAt, amountReuseAvailableAt(
+          expiresAt, toSafeInteger(open.amount_reuse_cooldown_seconds, "amount reuse cooldown"),
+        ));
         continue;
       }
     }
 
-    const latest = connection
-      .prepare(
-        `SELECT generation, released_at
-           FROM amount_slots
-          WHERE payable_amount_cents = ?
-          ORDER BY generation DESC
-          LIMIT 1`,
-      )
-      .get(payableAmountCents) as
-      | { generation: bigint | number; released_at: bigint | number | null }
-      | undefined;
-    if (latest?.released_at === null) {
+    const latest = connection.prepare(
+      `SELECT slot.generation, slot.released_at, orders.checkout_status,
+              orders.closed_at, orders.expires_at, orders.amount_reuse_cooldown_seconds
+         FROM amount_slots AS slot
+         JOIN payment_orders AS orders ON orders.order_id = slot.order_id
+        WHERE slot.payable_amount_cents = ?
+        ORDER BY slot.generation DESC
+        LIMIT 1`,
+    ).get(payableAmountCents) as {
+      generation: bigint | number;
+      released_at: bigint | number | null;
+      checkout_status: CheckoutStatus;
+      closed_at: bigint | number | null;
+      expires_at: bigint | number;
+      amount_reuse_cooldown_seconds: bigint | number;
+    } | undefined;
+    // Offsets are visited in ascending order, so the first unused amount is optimal.
+    if (!latest) return { kind: "allocated", payableAmountCents, generation: 1 };
+    if (latest.released_at === null) {
       throw new Error("active amount slot is detached from its open order");
     }
-    if (latest !== undefined) {
-      const releasedAt = toSafeInteger(latest.released_at, "amount slot release time");
-      if (releasedAt > now) {
-        earliestAvailableAt = minimumDefined(earliestAvailableAt, releasedAt);
-        continue;
-      }
+    if (latest.checkout_status === "OPEN" || latest.closed_at === null) {
+      throw new Error("released amount slot has no terminal order");
     }
-    const generation = latest
-      ? toSafeInteger(latest.generation, "amount slot generation") + 1
-      : 1;
+    // A delayed expiry sweep must not restart the cooldown at its later closed_at.
+    const endedAt = latest.checkout_status === "EXPIRED"
+      ? toSafeInteger(latest.expires_at, "order expiry")
+      : toSafeInteger(latest.closed_at, "order close time");
+    const availableAt = Math.max(
+      toSafeInteger(latest.released_at, "amount slot release time"),
+      amountReuseAvailableAt(endedAt, toSafeInteger(latest.amount_reuse_cooldown_seconds, "amount reuse cooldown")),
+    );
+    if (availableAt > now) {
+      earliestAvailableAt = minimumDefined(earliestAvailableAt, availableAt);
+      continue;
+    }
+    const generation = toSafeInteger(latest.generation, "amount slot generation") + 1;
     if (!Number.isSafeInteger(generation)) {
       throw new Error("amount slot generation is outside the safe integer range");
     }
-    return { kind: "allocated", payableAmountCents, generation };
+    // Keep reusing the least recently ended amount, rather than immediately cycling the smallest tail.
+    if (!reusable || endedAt < reusable.endedAt) {
+      reusable = { payableAmountCents, generation, endedAt };
+    }
+  }
+  if (reusable) {
+    return { kind: "allocated", payableAmountCents: reusable.payableAmountCents, generation: reusable.generation };
   }
   if (earliestAvailableAt === undefined || earliestAvailableAt <= now) {
     throw new Error("exhausted amount slots have no future release time");
@@ -909,6 +943,14 @@ function allocateAmountSlot(
     kind: "exhausted",
     retryAfterSeconds: Math.max(1, Math.ceil((earliestAvailableAt - now) / 1_000)),
   };
+}
+
+function amountReuseAvailableAt(endedAt: number, cooldownSeconds: number): number {
+  const availableAt = endedAt + cooldownSeconds * 1_000;
+  if (!Number.isSafeInteger(availableAt)) {
+    throw new Error("amount reuse time is outside the safe integer range");
+  }
+  return availableAt;
 }
 
 function minimumDefined(current: number | undefined, candidate: number): number {
@@ -1021,6 +1063,7 @@ type AggregateRow = {
   requested_amount_cents: bigint | number;
   payable_amount_cents: bigint | number;
   allocation_offset_max_cents: bigint | number;
+  amount_reuse_cooldown_seconds: bigint | number;
   received_amount_cents: bigint | number | null;
   currency: "CNY";
   product_name: string;
@@ -1075,6 +1118,7 @@ const AGGREGATE_SELECT = `
     orders.requested_amount_cents,
     orders.payable_amount_cents,
     orders.allocation_offset_max_cents,
+    orders.amount_reuse_cooldown_seconds,
     orders.received_amount_cents,
     orders.currency,
     orders.product_name,
@@ -1375,6 +1419,7 @@ function mapAggregate(row: AggregateRow): Omit<StoredOrderAggregate, "checkoutTo
       row.allocation_offset_max_cents,
       "allocation offset maximum",
     ),
+    amountReuseCooldownSeconds: toSafeInteger(row.amount_reuse_cooldown_seconds, "amount reuse cooldown"),
     receivedAmountCents: nullableSafeInteger(row.received_amount_cents, "received amount"),
     currency: row.currency,
     productName: row.product_name,

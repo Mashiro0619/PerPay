@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "node:test";
 
 import { AppDatabase } from "../src/database/database.ts";
+import { securityHardeningDowngradeSql } from "./security-schema-fixture.ts";
 
 const priorSchemaVersion = 19;
 
@@ -26,6 +27,7 @@ describe("adaptive ledger interval migration", () => {
                 provider_maximum_success_age_milliseconds = ?`)
             .run(interval, interval, interval * 2);
           legacy.exec(`
+            ${securityHardeningDowngradeSql()}
             DROP INDEX collection_profile_provider_accounts_account_idx;
             DROP INDEX payment_orders_active_scan_idx;
             DROP INDEX payment_orders_scan_tail_idx;

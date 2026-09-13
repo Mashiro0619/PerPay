@@ -15,6 +15,9 @@ export const IDEMPOTENCY_KEY_DIGEST_ALGORITHM = "sha256";
 export const CREATE_ORDER_REQUEST_FINGERPRINT_VERSION = 1;
 export const ORDER_RETURN_URL_FINGERPRINT_VERSION = 1;
 export const MAX_ORDER_CLOCK_AHEAD_MILLISECONDS = 5 * 60 * 1000;
+export const DEFAULT_AMOUNT_REUSE_COOLDOWN_SECONDS = 600;
+export const MIN_AMOUNT_REUSE_COOLDOWN_SECONDS = 60;
+export const MAX_AMOUNT_REUSE_COOLDOWN_SECONDS = 3600;
 
 export function digestIdempotencyKey(apiClientId: string, idempotencyKey: string): string {
   return createHash(IDEMPOTENCY_KEY_DIGEST_ALGORITHM)
@@ -177,6 +180,7 @@ export interface PaymentOrder {
   readonly requestedAmountCents: number;
   readonly payableAmountCents: number;
   readonly allocationOffsetMaximumCents: number;
+  readonly amountReuseCooldownSeconds: number;
   readonly receivedAmountCents: number | null;
   readonly currency: Currency;
   readonly productName: string;

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 
 import { AppDatabase } from "../src/database/database.ts";
+import { createLegacyAmountReuseOrder } from "./legacy-amount-reuse-fixture.ts";
 import { OrderClockError, OrderStore } from "../src/database/order-store.ts";
 import { LedgerStore } from "../src/ledger/store.ts";
 import { digestCheckoutToken, isCanonicalCheckoutToken } from "../src/orders/checkout-token.ts";
@@ -539,8 +540,130 @@ describe("OrderStore", () => {
     });
   });
 
-  it("allocates distinct active amounts, exhausts the configured range, and reuses by generation", async () => {
+  it("keeps a closed amount cooling, preserves the snapshot on replay, and releases at the exact boundary", async () => {
+    await withStore(async ({ database, store, setNow }) => {
+      syncProfile(store, "https://qr.example.test/cooldown");
+      const request = requestFor("cooldown-old", "cooldown-old", 1_000);
+      const first = createdAggregate(store.createOrder(createInput(request, 1)));
+      assert.equal(first.order.amountReuseCooldownSeconds, 600);
+      setNow(TEST_START_MS + 5_000);
+      store.closeOrder(API_CLIENT_ID, first.order.orderId);
+      const nextInput = { ...createInput(requestFor("cooldown-next", "cooldown-next", 1_000), 1), amountReuseCooldownSeconds: 60 };
+      assert.deepEqual(store.createOrder(nextInput), { kind: "amount_slots_exhausted", retryAfterSeconds: 600 });
+      const replay = store.createOrder({ ...createInput(request, 1), amountReuseCooldownSeconds: 60 });
+      assert.equal(replay.kind, "existing");
+      if (replay.kind !== "existing") assert.fail("expected replay");
+      assert.equal(replay.aggregate.order.amountReuseCooldownSeconds, 600);
+      assert.equal(replay.aggregate.order.checkoutStatus, "CLOSED");
+      assert.throws(() => database.write((connection) => connection.prepare(
+        "UPDATE payment_orders SET amount_reuse_cooldown_seconds = 60 WHERE order_id = ?",
+      ).run(first.order.orderId)), /reuse policy is immutable/);
+      setNow(TEST_START_MS + 604_999);
+      assert.deepEqual(store.createOrder(nextInput), { kind: "amount_slots_exhausted", retryAfterSeconds: 1 });
+      setNow(TEST_START_MS + 605_000);
+      const next = createdAggregate(store.createOrder(nextInput));
+      assert.equal(next.order.payableAmountCents, first.order.payableAmountCents);
+      assert.equal(next.order.amountReuseCooldownSeconds, 60);
+    });
+  });
+
+  it("anchors expiry cooldown to expires_at rather than the delayed expiry sweep", async () => {
+    await withStore(async ({ store, setNow }) => {
+      syncProfile(store, "https://qr.example.test/expiry-cooldown");
+      const first = createdAggregate(store.createOrder(createInput(requestFor("expiry-old", "expiry-old", 1_000), 1, 60_000)));
+      const next = createInput(requestFor("expiry-new", "expiry-new", 1_000), 1);
+      setNow(TEST_START_MS + 659_999);
+      assert.deepEqual(store.createOrder(next), { kind: "amount_slots_exhausted", retryAfterSeconds: 1 });
+      assert.equal(store.orderById(API_CLIENT_ID, first.order.orderId)?.order.checkoutStatus, "EXPIRED");
+      setNow(TEST_START_MS + 660_000);
+      assert.equal(createdAggregate(store.createOrder(next)).order.payableAmountCents, first.order.payableAmountCents);
+    });
+  });
+
+  it("prefers unused amounts, then the oldest ended reusable amount instead of the smallest tail", async () => {
+    await withStore(async ({ store, setNow }) => {
+      syncProfile(store, "https://qr.example.test/reuse-order");
+      const first = createdAggregate(store.createOrder(createInput(requestFor("reuse-a", "reuse-a", 1_000), 2)));
+      setNow(TEST_START_MS + 1_000);
+      const second = createdAggregate(store.createOrder(createInput(requestFor("reuse-b", "reuse-b", 1_000), 2)));
+      setNow(TEST_START_MS + 2_000);
+      store.closeOrder(API_CLIENT_ID, second.order.orderId);
+      setNow(TEST_START_MS + 3_000);
+      store.closeOrder(API_CLIENT_ID, first.order.orderId);
+      setNow(TEST_START_MS + 604_000);
+      const unused = createdAggregate(store.createOrder(createInput(requestFor("reuse-c", "reuse-c", 1_000), 3)));
+      assert.equal(unused.order.payableAmountCents, 1_003);
+      const oldest = createdAggregate(store.createOrder(createInput(requestFor("reuse-d", "reuse-d", 1_000), 2)));
+      assert.equal(oldest.order.payableAmountCents, second.order.payableAmountCents);
+    });
+  });
+
+  it("keeps cooling amounts unavailable across collection-code changes and restart", async () => {
+    await withStore(async ({ databasePath, store, setNow, close }) => {
+      syncProfile(store, "https://qr.example.test/restart-before");
+      const first = createdAggregate(store.createOrder(createInput(requestFor("restart-old", "restart-old", 1_000), 1)));
+      setNow(TEST_START_MS + 5_000);
+      store.closeOrder(API_CLIENT_ID, first.order.orderId);
+      syncProfile(store, "https://qr.example.test/restart-after");
+      close();
+      const reopened = await AppDatabase.open(databasePath);
+      try {
+        const afterRestart = new OrderStore(reopened, () => TEST_START_MS + 10_000);
+        assert.deepEqual(afterRestart.createOrder(createInput(requestFor("restart-new", "restart-new", 1_000), 1)),
+          { kind: "amount_slots_exhausted", retryAfterSeconds: 595 });
+      } finally { reopened.close(); }
+    });
+  });
+
+  it("enforces cooldown at the database boundary even when the application allocator is bypassed", async () => {
+    await withStore(async ({ database, store, setNow }) => {
+      syncProfile(store, "https://qr.example.test/cooldown-guard");
+      const first = createdAggregate(store.createOrder(createInput(requestFor("guard-old", "guard-old", 1_000))));
+      setNow(TEST_START_MS + 400);
+      store.closeOrder(API_CLIENT_ID, first.order.orderId);
+      assert.throws(() => createLegacyAmountReuseOrder(database,
+        createInput(requestFor("guard-new", "guard-new", 1_000)), TEST_START_MS + 600,
+        first.order.payableAmountCents, false), /amount slot is still cooling down/);
+      assert.equal(database.read((connection) => Number((connection.prepare(
+        "SELECT count(*) AS count FROM payment_orders",
+      ).get() as { count: bigint }).count)), 1);
+      assert.equal(database.integrityCheck().ok, true);
+    });
+  });
+
+  it("bounds a 99-tail burst and recovers capacity after expiry plus cooldown", async () => {
+    await withStore(async ({ store, setNow }) => {
+      syncProfile(store, "https://qr.example.test/full-cooldown-pool");
+      const amounts = new Set<number>();
+      for (let i = 0; i < 99; i += 1) {
+        amounts.add(createdAggregate(store.createOrder(createInput(requestFor("pool-" + i, "pool-" + i, 1_000)))).order.payableAmountCents);
+      }
+      assert.equal(amounts.size, 99);
+      const next = createInput(requestFor("pool-next", "pool-next", 1_000));
+      assert.deepEqual(store.createOrder(next), { kind: "amount_slots_exhausted", retryAfterSeconds: 900 });
+      setNow(TEST_START_MS + 899_999);
+      assert.deepEqual(store.createOrder(next), { kind: "amount_slots_exhausted", retryAfterSeconds: 1 });
+      setNow(TEST_START_MS + 900_000);
+      assert.equal(createdAggregate(store.createOrder(next)).order.payableAmountCents, 1_001);
+    });
+  });
+
+  it("validates cooldown bounds without writing partial orders", async () => {
     await withStore(async ({ database, store }) => {
+      syncProfile(store, "https://qr.example.test/cooldown-validation");
+      const input = createInput(requestFor("invalid-cooldown", "invalid-cooldown", 1_000));
+      for (const amountReuseCooldownSeconds of [0, 59, 3601, 60.5, NaN, Infinity]) {
+        assert.throws(() => store.createOrder({ ...input, amountReuseCooldownSeconds }), /cooldown is invalid/);
+      }
+      assert.equal(database.read((connection) => Number((connection.prepare(
+        "SELECT count(*) AS count FROM payment_orders",
+      ).get() as { count: bigint }).count)), 0);
+      assert.equal(createdAggregate(store.createOrder({ ...input, amountReuseCooldownSeconds: 60 })).order.amountReuseCooldownSeconds, 60);
+    });
+  });
+
+  it("allocates distinct active amounts, exhausts the configured range, and reuses by generation", async () => {
+    await withStore(async ({ database, store, setNow }) => {
       syncProfile(store, "https://qr.example.test/profile-a");
       const first = store.createOrder(
         createInput(requestFor("idem-a", "merchant-a", 100), 2, 120_000),
@@ -559,7 +682,7 @@ describe("OrderStore", () => {
       );
       assert.deepEqual(exhausted, {
         kind: "amount_slots_exhausted",
-        retryAfterSeconds: 60,
+        retryAfterSeconds: 660,
       });
 
       const closed = store.closeOrder(API_CLIENT_ID, first.aggregate.order.orderId);
@@ -567,6 +690,7 @@ describe("OrderStore", () => {
       const closedAgain = store.closeOrder(API_CLIENT_ID, first.aggregate.order.orderId);
       assert.equal(closedAgain?.order.checkoutStatus, "CLOSED");
       assert.equal(closedAgain?.order.version, closed?.order.version);
+      setNow(TEST_START_MS + 600_000);
       const reused = store.createOrder(
         createInput(requestFor("idem-d", "merchant-d", 100), 2),
       );
@@ -638,12 +762,15 @@ describe("OrderStore", () => {
       assert.equal(expired?.order.closedAt, TEST_START_MS + 60_000);
 
       setNow(TEST_START_MS - 10_000);
+      assert.deepEqual(store.createOrder(createInput(requestFor("idem-during-rollback", "merchant-during-rollback", 900), 1)),
+        { kind: "amount_slots_exhausted", retryAfterSeconds: 600 });
+      setNow(TEST_START_MS + 660_000);
       const reused = store.createOrder(
         createInput(requestFor("idem-after-rollback", "merchant-after-rollback", 900), 1),
       );
       assert.equal(reused.kind, "created");
       if (reused.kind !== "created") return;
-      assert.equal(reused.aggregate.order.createdAt, TEST_START_MS + 60_000);
+      assert.equal(reused.aggregate.order.createdAt, TEST_START_MS + 660_000);
 
       database.read((connection) => {
         const generations = connection
@@ -654,7 +781,7 @@ describe("OrderStore", () => {
               ORDER BY generation`,
           )
           .all() as Array<Record<string, bigint | number | null>>;
-        assert.equal(Number(generations[0]?.released_at), Number(generations[1]?.occupied_from));
+        assert.equal(Number(generations[1]?.occupied_from) - Number(generations[0]?.released_at), 600_000);
         assert.deepEqual(generations.map((row) => Number(row.generation)), [1, 2]);
       });
     });
@@ -1127,6 +1254,11 @@ function requestFor(
     amount_cents: amountCents,
     product_name: productName ?? merchantOrderNo,
   });
+}
+
+function createdAggregate(result: ReturnType<OrderStore["createOrder"]>) {
+  if (result.kind !== "created") assert.fail("expected created order, received " + result.kind);
+  return result.aggregate;
 }
 
 function createInput(

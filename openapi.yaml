@@ -2742,7 +2742,7 @@ components:
     CollectionSettings:
       type: object
       additionalProperties: false
-      required: [code_payload, order_ttl_seconds, amount_offset_maximum_cents]
+      required: [code_payload, order_ttl_seconds, amount_offset_maximum_cents, amount_reuse_cooldown_seconds]
       properties:
         code_payload:
           type: string
@@ -2751,6 +2751,11 @@ components:
           description: Original Alipay collection link on qr.alipay.com (HTTP or HTTPS, case-insensitive). Format validation does not verify the recipient account.
         order_ttl_seconds: { type: integer, minimum: 60, maximum: 1800 }
         amount_offset_maximum_cents: { type: integer, minimum: 1, maximum: 99 }
+        amount_reuse_cooldown_seconds:
+          type: integer
+          minimum: 60
+          maximum: 3600
+          description: Amount reuse cooldown after checkout closure or effective expiry. Defaults to 600 seconds; it does not extend the payment window.
     ProviderSettings:
       type: object
       additionalProperties: false
@@ -2886,6 +2891,11 @@ components:
           x-perpay-max-utf8-bytes: 2331
         order_ttl_seconds: { type: integer, minimum: 60, maximum: 1800 }
         amount_offset_maximum_cents: { type: integer, minimum: 1, maximum: 99 }
+        amount_reuse_cooldown_seconds:
+          type: integer
+          minimum: 60
+          maximum: 3600
+          description: Applies to newly created orders only. Omission preserves the current value; new installations default to 600 seconds. This is not a late-payment grace period.
     ProviderSettingsRequest:
       type: object
       additionalProperties: false

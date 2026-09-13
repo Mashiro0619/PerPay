@@ -1620,7 +1620,7 @@ describe("order HTTP contract", () => {
       };
       assert.equal(
         replacementBodyResponse.data.payable_amount_cents,
-        1_001,
+        1_002, // The closed order's amount is still cooling down.
       );
       assert.deepEqual(reconciliationTriggers, [
         createdBody.data.order_id,

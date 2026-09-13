@@ -34,6 +34,7 @@ interface ConfigurationRow {
   readonly collection_code_payload: string | null;
   readonly order_ttl_seconds: bigint | number;
   readonly amount_offset_maximum_cents: bigint | number;
+  readonly amount_reuse_cooldown_seconds: bigint | number;
   readonly provider_environment: ProviderEnvironment | null;
   readonly provider_app_id: string | null;
   readonly provider_account_key: string | null;
@@ -214,12 +215,14 @@ export class RuntimeSettingsStore {
                 collection_code_payload = ?,
                 order_ttl_seconds = ?,
                 amount_offset_maximum_cents = ?,
+                amount_reuse_cooldown_seconds = coalesce(?, amount_reuse_cooldown_seconds),
                 updated_at = ?
           WHERE singleton_key = 1 AND revision = ?`,
       ).run(
         input.code_payload,
         input.order_ttl_seconds,
         input.amount_offset_maximum_cents,
+        input.amount_reuse_cooldown_seconds ?? null,
         now,
         input.revision,
       );
@@ -625,6 +628,7 @@ export class RuntimeSettingsStore {
               row.amount_offset_maximum_cents,
               "amount offset maximum",
             ),
+            amountReuseCooldownSeconds: safeInteger(row.amount_reuse_cooldown_seconds, "amount reuse cooldown"),
           },
       provider,
       apiSecret: apiRow ? decryptSecret(this.#cipher, apiRow) : null,
@@ -669,7 +673,7 @@ export { API_CLIENT_ID };
 function readConfiguration(connection: DatabaseSync): ConfigurationRow {
   const row = connection.prepare(
     `SELECT revision, payment_revision, collection_code_payload,
-            order_ttl_seconds, amount_offset_maximum_cents,
+            order_ttl_seconds, amount_offset_maximum_cents, amount_reuse_cooldown_seconds,
             provider_environment, provider_app_id, provider_account_key,
             provider_timeout_milliseconds,
             provider_scan_interval_milliseconds,

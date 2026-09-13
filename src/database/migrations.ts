@@ -4653,4 +4653,60 @@ export const migrations: readonly Migration[] = [
         WHERE payment_status = 'UNPAID';
     `,
   },
+  {
+    version: 21,
+    name: "persistent_anonymous_password_budget",
+    sql: `
+      CREATE TABLE anonymous_password_budget (
+        singleton_key INTEGER PRIMARY KEY CHECK (singleton_key = 1),
+        theoretical_arrival_at INTEGER NOT NULL CHECK (theoretical_arrival_at >= 0),
+        updated_at INTEGER NOT NULL CHECK (updated_at >= 0)
+      ) STRICT;
+
+      INSERT INTO anonymous_password_budget(singleton_key, theoretical_arrival_at, updated_at)
+      VALUES (1, 0, 0);
+    `,
+  },
+  {
+    version: 22,
+    name: "amount_reuse_cooldown",
+    sql: `
+      ALTER TABLE runtime_configuration
+        ADD COLUMN amount_reuse_cooldown_seconds INTEGER NOT NULL DEFAULT 600
+        CHECK (amount_reuse_cooldown_seconds BETWEEN 60 AND 3600);
+
+      -- This snapshot changes allocation only, never a historical payment window.
+      ALTER TABLE payment_orders
+        ADD COLUMN amount_reuse_cooldown_seconds INTEGER NOT NULL DEFAULT 600
+        CHECK (amount_reuse_cooldown_seconds BETWEEN 60 AND 3600);
+
+      CREATE TRIGGER payment_orders_cooldown_immutable
+      BEFORE UPDATE OF amount_reuse_cooldown_seconds ON payment_orders
+      BEGIN
+        SELECT RAISE(ABORT, 'order amount reuse policy is immutable');
+      END;
+
+      CREATE TRIGGER amount_slots_cooldown_guard
+      BEFORE INSERT ON amount_slots
+      WHEN EXISTS (
+        SELECT 1
+          FROM amount_slots AS previous
+          JOIN payment_orders AS orders ON orders.order_id = previous.order_id
+         WHERE previous.payable_amount_cents = NEW.payable_amount_cents
+           AND previous.generation = (
+             SELECT MAX(generation) FROM amount_slots
+              WHERE payable_amount_cents = NEW.payable_amount_cents
+           )
+           AND previous.released_at IS NOT NULL
+           AND NEW.occupied_from < (
+             CASE WHEN orders.checkout_status = 'EXPIRED'
+               THEN orders.expires_at ELSE orders.closed_at END
+             + orders.amount_reuse_cooldown_seconds * 1000
+           )
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'amount slot is still cooling down');
+      END;
+    `,
+  },
 ] as const;

@@ -10,6 +10,7 @@ import { z } from "zod";
 
 import { isValidWebhookDnsHostname } from "../infrastructure/network/public-address.ts";
 import { collectionCodeError } from "../shared/collection-code.ts";
+import { MIN_AMOUNT_REUSE_COOLDOWN_SECONDS, MAX_AMOUNT_REUSE_COOLDOWN_SECONDS } from "../orders/model.ts";
 import { SettingsFieldError } from "./validation.ts";
 
 export const API_CLIENT_ID = "default" as const;
@@ -35,6 +36,7 @@ export interface CollectionSettings {
   readonly codePayload: string;
   readonly orderTtlSeconds: number;
   readonly amountOffsetMaximumCents: number;
+  readonly amountReuseCooldownSeconds: number;
 }
 
 export interface ProviderSettings {
@@ -132,6 +134,8 @@ export const collectionSettingsInputSchema = z.object({
   }),
   order_ttl_seconds: z.number().int().min(60).max(1_800),
   amount_offset_maximum_cents: z.number().int().min(1).max(99),
+  amount_reuse_cooldown_seconds: z.number().int()
+    .min(MIN_AMOUNT_REUSE_COOLDOWN_SECONDS).max(MAX_AMOUNT_REUSE_COOLDOWN_SECONDS).optional(),
 }).strict();
 
 export const providerSettingsInputSchema = z.object({

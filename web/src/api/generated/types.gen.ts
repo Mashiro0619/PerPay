@@ -282,6 +282,7 @@ export type CollectionSettings = {
     code_payload: string;
     order_ttl_seconds: number;
     amount_offset_maximum_cents: number;
+    amount_reuse_cooldown_seconds: number;
 };
 export type ProviderSettings = {
     environment: 'PRODUCTION' | 'SANDBOX';
@@ -335,6 +336,7 @@ export type CollectionSettingsRequest = {
     code_payload: string;
     order_ttl_seconds: number;
     amount_offset_maximum_cents: number;
+    amount_reuse_cooldown_seconds?: number;
 };
 export type ProviderSettingsRequest = {
     revision: number;

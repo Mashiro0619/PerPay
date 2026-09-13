@@ -143,6 +143,7 @@ export class OrderService {
           requestFingerprint: fingerprintCreateOrderRequest(request),
           ttlMilliseconds: settings.collection.orderTtlSeconds * 1000,
           amountOffsetMaximumCents: settings.collection.amountOffsetMaximumCents,
+          amountReuseCooldownSeconds: settings.collection.amountReuseCooldownSeconds,
           checkoutKeyRotationMilliseconds: settings.advanced.checkoutKeyRotationDays *
             24 * 60 * 60 * 1_000,
           checkoutTerminalObservationMilliseconds: settings.advanced

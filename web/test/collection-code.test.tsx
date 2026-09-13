@@ -86,6 +86,9 @@ describe("collection QR image upload", () => {
     const user = userEvent.setup();
     const ttl = screen.getByLabelText("收银台有效期（秒）");
     await user.clear(ttl); await user.type(ttl, "450");
+    const cooldown = screen.getByLabelText("金额复用冷却（秒）");
+    expect(cooldown).toHaveValue(600);
+    await user.clear(cooldown); await user.type(cooldown, "1200");
     if (source === "picker") await user.upload(screen.getByLabelText("选择经营码二维码图片"), imageFile());
     else expect(dropFiles(uploadZone(), [imageFile()]).defaultPrevented).toBe(true);
     expect(await screen.findByText("已识别，请核对后保存。")).toBeVisible();
@@ -99,7 +102,7 @@ describe("collection QR image upload", () => {
     await user.click(screen.getByRole("button", { name: "保存配置" }));
     expect(await screen.findByText(/配置已保存/)).toBeVisible();
     expect(writes(fetchMock)).toHaveLength(1);
-    expect(await writes(fetchMock)[0]!.json()).toEqual({ revision: 3, code_payload: recognizedLink, order_ttl_seconds: 450, amount_offset_maximum_cents: 99 });
+    expect(await writes(fetchMock)[0]!.json()).toEqual({ revision: 3, code_payload: recognizedLink, order_ttl_seconds: 450, amount_offset_maximum_cents: 99, amount_reuse_cooldown_seconds: 1200 });
     expect(screen.getByLabelText("支付宝经营码内容")).toHaveValue(recognizedLink);
     expect(screen.queryByText("有未保存的修改")).not.toBeInTheDocument();
   });

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import type { AppDatabase } from "../database/database.ts";
+import { aggregateRateLimitSource } from "../infrastructure/network/rate-limit-source.ts";
 import {
   ADMIN_USERNAME,
   AUTH_FAILURE_THRESHOLD,
@@ -139,8 +140,9 @@ export class IdentityService {
     assertNewPasswordLength(password);
 
     const sourceHash = this.sourceHash(context.sourceAddress);
+    const authSourceHash = this.authSourceHash(context.sourceAddress);
     const attemptedAt = this.#clock();
-    const setupAttempt = this.#recordSetupAttempt(sourceHash, attemptedAt);
+    const setupAttempt = this.#recordSetupAttempt(authSourceHash, sourceHash, attemptedAt);
     try {
       // Another process may have completed setup after the initial fast-path
       // check. Preserve this request's persisted attempt, but avoid needless
@@ -156,7 +158,7 @@ export class IdentityService {
         if (!transaction.initializeAdmin(passwordHash, initializedAt)) {
           throw identityAlreadyInitialized();
         }
-        transaction.resetAuthLimitThrough(sourceHash, setupAttempt, initializedAt);
+        transaction.resetAuthLimitThrough(authSourceHash, setupAttempt, initializedAt);
         transaction.appendAudit({
           occurredAt: initializedAt,
           actorType: "ANONYMOUS",
@@ -176,7 +178,7 @@ export class IdentityService {
       // still running, so restore one persisted attempt for the loser without
       // double-counting ordinary hash or transaction failures.
       try {
-        this.#retainSetupAttempt(sourceHash, this.#clock());
+        this.#retainSetupAttempt(authSourceHash, this.#clock());
       } catch {
         // Preserve the setup failure. The original attempt normally remains;
         // this fallback is only needed when a competing success cleared it.
@@ -192,7 +194,8 @@ export class IdentityService {
   ): Promise<LoginResult> {
     const now = this.#clock();
     const sourceHash = this.sourceHash(context.sourceAddress);
-    this.#assertAuthAttemptAllowed(sourceHash, now);
+    const authSourceHash = this.authSourceHash(context.sourceAddress);
+    this.#assertAuthAttemptAllowed(authSourceHash, sourceHash, now);
 
     const identity = this.#store.read((transaction) => transaction.adminIdentity());
     if (!identity) throw new IdentityError("identity_not_initialized", "管理员身份尚未初始化");
@@ -206,7 +209,7 @@ export class IdentityService {
     if (!valid) {
       const failureAt = this.#clock();
       this.#store.transaction((transaction) => {
-        const next = transaction.recordAuthFailure(sourceHash, failureAt);
+        const next = transaction.recordAuthFailure(authSourceHash, failureAt);
         transaction.appendAudit({
           occurredAt: failureAt,
           actorType: "ANONYMOUS",
@@ -240,7 +243,8 @@ export class IdentityService {
         throw new IdentityError("invalid_credentials", "管理员凭据已发生变化，请重新登录");
       }
       transaction.pruneIdentityState(authenticatedAt);
-      transaction.resetAuthLimit(sourceHash);
+      transaction.resetAuthLimit(authSourceHash);
+      if (sourceHash !== authSourceHash) transaction.resetAuthLimit(sourceHash);
       transaction.createSession({
         sessionId,
         tokenDigest: sessionToken.digest,
@@ -459,14 +463,26 @@ export class IdentityService {
       .digest("hex");
   }
 
-  #assertAuthAttemptAllowed(sourceHash: string, now: number): void {
-    const limit = this.#store.read((transaction) => transaction.authLimit(sourceHash));
-    this.#assertAuthLimitAllowed(limit, now);
+  authSourceHash(sourceAddress: string | undefined): string {
+    return this.sourceHash(aggregateRateLimitSource(normalizeSource(sourceAddress)));
   }
 
-  #recordSetupAttempt(sourceHash: string, now: number): AuthLimit {
+  #assertAuthAttemptAllowed(sourceHash: string, legacySourceHash: string, now: number): void {
+    this.#store.read((transaction) => {
+      this.#assertAuthLimitAllowed(transaction.authLimit(sourceHash), now);
+      // Existing /128 bans cannot be reverse-mapped to /64; honor them until expiry.
+      if (legacySourceHash !== sourceHash) {
+        this.#assertAuthLimitAllowed(transaction.authLimit(legacySourceHash), now);
+      }
+    });
+  }
+
+  #recordSetupAttempt(sourceHash: string, legacySourceHash: string, now: number): AuthLimit {
     return this.#store.transaction((transaction) => {
       this.#assertAuthLimitAllowed(transaction.authLimit(sourceHash), now);
+      if (legacySourceHash !== sourceHash) {
+        this.#assertAuthLimitAllowed(transaction.authLimit(legacySourceHash), now);
+      }
       return transaction.recordAuthFailure(sourceHash, now);
     });
   }
@@ -522,7 +538,17 @@ export class IdentityService {
 
   async #runPasswordWork<T>(lane: PasswordWorkLane, operation: () => Promise<T>): Promise<T> {
     try {
-      return await this.#passwordGate.run(lane, operation);
+      return await this.#passwordGate.run(lane, () => {
+        if (lane === "anonymous") {
+          const retryAfter = this.#store.transaction((transaction) =>
+            transaction.takeAnonymousPasswordBudget(this.#clock()),
+          );
+          if (retryAfter !== undefined) {
+            throw new IdentityError("auth_rate_limited", "密码验证请求过于频繁，请稍后重试", retryAfter);
+          }
+        }
+        return operation();
+      });
     } catch (error) {
       if (error instanceof PasswordWorkBusyError) {
         throw new IdentityError("password_work_busy", "密码验证服务当前繁忙，请稍后重试", 1);

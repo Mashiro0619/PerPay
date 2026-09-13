@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 
 import { AppDatabase } from "../src/database/database.ts";
+import { createLegacyAmountReuseOrder } from "./legacy-amount-reuse-fixture.ts";
 import { OrderStore, type StoredOrderAggregate } from "../src/database/order-store.ts";
 import type { AccountLogDetail } from "../src/infrastructure/alipay/types.ts";
 import type { LedgerEntry } from "../src/ledger/model.ts";
@@ -220,7 +221,7 @@ describe("automatic reconciliation settlement", () => {
       setNow(BASE_TIME + 400);
       assert.ok(orders.closeOrder(API_CLIENT_ID, firstOrder.order.orderId));
       setNow(BASE_TIME + 600);
-      const secondOrder = createOrder(orders, "settled-overlap-second", 999);
+      const secondOrder = createOrder(orders, "settled-overlap-second", 999, { database, now: BASE_TIME + 600 });
       assert.equal(secondOrder.order.payableAmountCents, firstOrder.order.payableAmountCents);
       const secondEntry = recordCredit(
         "settled-overlap-second-entry",
@@ -304,7 +305,7 @@ describe("automatic reconciliation settlement", () => {
       assert.ok(orders.closeOrder(API_CLIENT_ID, firstOrder.order.orderId));
 
       setNow(EVENT_TIME + 400);
-      const secondOrder = createOrder(orders, "multiple-overlap-second", 999);
+      const secondOrder = createOrder(orders, "multiple-overlap-second", 999, { database, now: EVENT_TIME + 400 });
       const secondEntry = recordCredit(
         "multiple-overlap-second-entry",
         secondOrder.order.payableAmountCents,
@@ -322,7 +323,7 @@ describe("automatic reconciliation settlement", () => {
       assert.ok(orders.closeOrder(API_CLIENT_ID, secondOrder.order.orderId));
 
       setNow(EVENT_TIME + 900);
-      const thirdOrder = createOrder(orders, "multiple-overlap-third", 999);
+      const thirdOrder = createOrder(orders, "multiple-overlap-third", 999, { database, now: EVENT_TIME + 900 });
       const broadEntry = recordCredit(
         "multiple-overlap-third-entry",
         thirdOrder.order.payableAmountCents,
@@ -362,7 +363,7 @@ describe("automatic reconciliation settlement", () => {
       assert.ok(orders.closeOrder(API_CLIENT_ID, firstOrder.order.orderId));
 
       setNow(BASE_TIME + 1_000);
-      const secondOrder = createOrder(orders, "settled-boundary-second", 999);
+      const secondOrder = createOrder(orders, "settled-boundary-second", 999, { database, now: BASE_TIME + 1_000 });
       const secondEntry = recordCredit(
         "settled-boundary-second-entry",
         secondOrder.order.payableAmountCents,
@@ -445,7 +446,7 @@ describe("automatic reconciliation settlement", () => {
       setNow(BASE_TIME + 400);
       assert.ok(orders.closeOrder(API_CLIENT_ID, first.order.orderId));
       setNow(BASE_TIME + 600);
-      const second = createOrder(orders, "ambiguous-second", 999);
+      const second = createOrder(orders, "ambiguous-second", 999, { database, now: BASE_TIME + 600 });
       assert.equal(first.order.payableAmountCents, second.order.payableAmountCents);
       const entry = recordCredit("ambiguous-entry", first.order.payableAmountCents, BASE_TIME);
 
@@ -464,6 +465,55 @@ describe("automatic reconciliation settlement", () => {
       assert.equal(database.integrityCheck().ok, true);
     });
   });
+
+  for (const ending of ["closed", "expired"] as const) {
+    it("does not confirm either order for an actual late payment after checkout is " + ending, async () => {
+      await withStores(async ({ database, orders, reconciliation, setNow }) => {
+        const first = createOrder(orders, "late-" + ending + "-old", 999);
+        if (ending === "closed") {
+          setNow(BASE_TIME + 60_000);
+          orders.closeOrder(API_CLIENT_ID, first.order.orderId);
+        }
+        const laterAt = BASE_TIME + (ending === "closed" ? 62_000 : 302_000);
+        setNow(laterAt);
+        const second = createOrder(orders, "late-" + ending + "-new", 999);
+        assert.notEqual(second.order.payableAmountCents, first.order.payableAmountCents);
+        const entry = recordLedgerEntry(new LedgerStore(database), "late-" + ending,
+          first.order.payableAmountCents, laterAt + 3_000, laterAt + 6_000, "CREDIT");
+        setNow(laterAt + 10_000);
+        const result = reconciliation.reconcileEntry(entry.ledgerEntryId, laterAt + 10_000);
+        assert.equal(result.kind, "unmatched");
+        if (result.kind !== "unmatched") assert.fail("late payment must remain unallocated");
+        assert.equal(reconciliation.exception(result.exceptionId)?.exceptionType, "CHECKOUT_ENDED_PAYMENT");
+        assert.equal(orders.orderById(API_CLIENT_ID, first.order.orderId)?.order.paymentStatus, "UNPAID");
+        assert.equal(orders.orderById(API_CLIENT_ID, second.order.orderId)?.order.paymentStatus, "UNPAID");
+        assert.equal(database.read((connection) => readCount(connection, "outbox_events")), 0);
+        assert.equal(database.integrityCheck().ok, true);
+      });
+    });
+
+    it("still confirms a timely payment discovered after checkout is " + ending, async () => {
+      await withStores(async ({ database, orders, reconciliation, setNow }) => {
+        const first = createOrder(orders, "timely-" + ending + "-old", 999);
+        if (ending === "closed") {
+          setNow(BASE_TIME + 60_000);
+          orders.closeOrder(API_CLIENT_ID, first.order.orderId);
+        }
+        const laterAt = BASE_TIME + (ending === "closed" ? 62_000 : 302_000);
+        setNow(laterAt);
+        const second = createOrder(orders, "timely-" + ending + "-new", 999);
+        const paidAt = BASE_TIME + (ending === "closed" ? 55_000 : 299_000);
+        const entry = recordLedgerEntry(new LedgerStore(database), "timely-" + ending,
+          first.order.payableAmountCents, paidAt, laterAt + 6_000, "CREDIT");
+        setNow(laterAt + 10_000);
+        assert.equal(reconciliation.reconcileEntry(entry.ledgerEntryId, laterAt + 10_000).kind, "auto_settled");
+        assert.equal(orders.orderById(API_CLIENT_ID, first.order.orderId)?.order.paymentStatus, "CONFIRMED");
+        assert.equal(orders.orderById(API_CLIENT_ID, second.order.orderId)?.order.paymentStatus, "UNPAID");
+        assert.equal(database.read((connection) => readCount(connection, "outbox_events")), 1);
+        assert.equal(database.integrityCheck().ok, true);
+      });
+    });
+  }
 
   it("does not settle wrong amount, late, debit, or conflicted evidence", async () => {
     await withStores(async ({ database, orders, reconciliation, recordCredit, recordDebit, recordConflict }) => {
@@ -902,21 +952,23 @@ async function withStores(operation: (context: StoreTestContext) => Promise<void
   }
 }
 
-function createOrder(store: OrderStore, suffix: string, requestedAmountCents: number): StoredOrderAggregate {
+function createOrder(store: OrderStore, suffix: string, requestedAmountCents: number, legacy?: { database: AppDatabase; now: number }): StoredOrderAggregate {
   const request = createOrderRequestSchema.parse({
     idempotency_key: `idem-${suffix}`,
     merchant_order_no: `merchant-${suffix}`,
     amount_cents: requestedAmountCents,
     product_name: `merchant-${suffix}`,
   });
-  const result = store.createOrder({
+  const input = {
     apiClientId: API_CLIENT_ID,
     request,
     idempotencyKeyDigest: digestIdempotencyKey(API_CLIENT_ID, request.idempotency_key),
     requestFingerprint: fingerprintCreateOrderRequest(request),
     ttlMilliseconds: 5 * 60 * 1_000,
     amountOffsetMaximumCents: 99,
-  });
+  };
+  if (legacy) return createLegacyAmountReuseOrder(legacy.database, input, legacy.now, requestedAmountCents + 1);
+  const result = store.createOrder(input);
   if (result.kind !== "created") throw new Error(`expected a created order, received ${result.kind}`);
   return result.aggregate;
 }

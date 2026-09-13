@@ -84,7 +84,7 @@ export function SettingsEditor({ section, settings, onSaved, guided = false, sub
     </>}
     {section === "collection" && <>
       <CollectionCodeField defaultValue={settings.collection?.code_payload ?? ""} onDecoded={() => { draft.onChange(); setFieldErrors({}); setSavedMessage(null); }} error={fieldErrors.code_payload} onPendingChange={setDecoding} disabled={save.isPending} />
-      <AdvancedFields collapsed={guided}><div className="form-grid"><NumberField name="order_ttl_seconds" error={fieldErrors.order_ttl_seconds} label="收银台有效期（秒）" value={settings.collection?.order_ttl_seconds ?? 300} min={60} max={1800} /><NumberField name="amount_offset_maximum_cents" error={fieldErrors.amount_offset_maximum_cents} label="最大金额尾差（分）" value={settings.collection?.amount_offset_maximum_cents ?? 99} min={1} max={99} hint="为订单分配唯一应付金额；付款人必须支付收银台显示的准确金额。" /></div></AdvancedFields>
+      <AdvancedFields collapsed={guided}><div className="form-grid"><NumberField name="order_ttl_seconds" error={fieldErrors.order_ttl_seconds} label="收银台有效期（秒）" value={settings.collection?.order_ttl_seconds ?? 300} min={60} max={1800} /><NumberField name="amount_offset_maximum_cents" error={fieldErrors.amount_offset_maximum_cents} label="最大金额尾差（分）" value={settings.collection?.amount_offset_maximum_cents ?? 99} min={1} max={99} hint="为订单分配唯一应付金额；付款人必须支付收银台显示的准确金额。" /><NumberField name="amount_reuse_cooldown_seconds" error={fieldErrors.amount_reuse_cooldown_seconds} label="金额复用冷却（秒）" value={settings.collection?.amount_reuse_cooldown_seconds ?? 600} min={60} max={3600} hint="关闭或过期后暂不复用应付金额，默认 10 分钟。仅影响新订单，不延长付款有效期；冷却越长，同额订单容量越小。" /></div></AdvancedFields>
       {!guided && <Notice>经营码或支付宝账户变更会影响后续收款。已有订单仍保留其创建时的配置与账务证据。</Notice>}
     </>}
     {section === "notifications" && <>
@@ -140,7 +140,7 @@ async function saveSettings(section: ConfigurationSection, form: FormData, setti
     const code = text("code_payload");
     const error = collectionCodeError(code);
     if (error) throw new SettingsInputError("code_payload", error);
-    return (await result(api.updateCollectionSettings({ body: { revision, code_payload: code, order_ttl_seconds: integer("order_ttl_seconds"), amount_offset_maximum_cents: integer("amount_offset_maximum_cents") } }))).data;
+    return (await result(api.updateCollectionSettings({ body: { revision, code_payload: code, order_ttl_seconds: integer("order_ttl_seconds"), amount_offset_maximum_cents: integer("amount_offset_maximum_cents"), amount_reuse_cooldown_seconds: integer("amount_reuse_cooldown_seconds") } }))).data;
   }
   if (section === "provider") {
     const normalInterval = integer("scan_interval_seconds");

@@ -25,6 +25,27 @@ const platformPublicKey = platformKeys.publicKey
   .toString();
 
 describe("runtime settings", () => {
+  it("defaults the amount cooldown and preserves it when an older client omits the field", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-cooldown-settings-"));
+    const database = await AppDatabase.open(join(directory, "database.sqlite3"));
+    try {
+      const settings = service(database, masterKey);
+      const base = { code_payload: "https://qr.alipay.com/cooldown-settings", order_ttl_seconds: 300, amount_offset_maximum_cents: 99 };
+      const first = await settings.saveCollection({ revision: 0, ...base }, audit("cooldown-default"));
+      assert.equal(first.collection?.amount_reuse_cooldown_seconds, 600);
+      const changed = await settings.saveCollection({ revision: first.revision, ...base, amount_reuse_cooldown_seconds: 1200 }, audit("cooldown-change"));
+      assert.equal(changed.collection?.amount_reuse_cooldown_seconds, 1200);
+      const legacy = await settings.saveCollection({ revision: changed.revision, ...base, order_ttl_seconds: 450 }, audit("cooldown-legacy"));
+      assert.equal(legacy.collection?.amount_reuse_cooldown_seconds, 1200);
+      assert.equal(settings.snapshot().collection?.amountReuseCooldownSeconds, 1200);
+      for (const value of [0, 59, 3601, 600.5]) {
+        await assert.rejects(settings.saveCollection({ revision: legacy.revision, ...base, amount_reuse_cooldown_seconds: value }, audit("cooldown-invalid")));
+      }
+      assert.equal(settings.view().revision, legacy.revision);
+    } finally { database.close(); rmSync(directory, { recursive: true, force: true }); }
+  });
+
+
   it("encrypts secrets, enforces revisions, and rejects the wrong deployment key", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-settings-"));
     const databasePath = join(directory, "perpay.sqlite3");

@@ -30,6 +30,7 @@ const defaultCollection: CollectionSettings = Object.freeze({
   codePayload: "https://qr.local.invalid/service-test",
   orderTtlSeconds: 300,
   amountOffsetMaximumCents: 9,
+  amountReuseCooldownSeconds: 600,
 });
 const disabledWebhook: WebhookSettings = Object.freeze({
   enabled: false,
@@ -94,6 +95,7 @@ describe("order service", () => {
           codePayload: "https://qr.local.invalid/collection-a",
           orderTtlSeconds: 60,
           amountOffsetMaximumCents: 1,
+          amountReuseCooldownSeconds: 600,
         },
       });
       const orders = new OrderService(database, () => settings, () => now);
@@ -111,6 +113,7 @@ describe("order service", () => {
           codePayload: "https://qr.local.invalid/collection-b",
           orderTtlSeconds: 120,
           amountOffsetMaximumCents: 2,
+          amountReuseCooldownSeconds: 600,
         },
       });
       const nextProfile = orders.syncCollectionProfile(
@@ -223,6 +226,7 @@ describe("order service", () => {
         codePayload: "https://qr.local.invalid/same-code",
         orderTtlSeconds: 300,
         amountOffsetMaximumCents: 9,
+        amountReuseCooldownSeconds: 600,
       } satisfies CollectionSettings;
       const orders = new OrderService(
         database,
@@ -296,6 +300,7 @@ describe("order service", () => {
           ...defaultCollection,
           orderTtlSeconds: 60,
           amountOffsetMaximumCents: 1,
+          amountReuseCooldownSeconds: 600,
         },
       });
       const orders = new OrderService(database, () => settings, () => 2_000_000_000_000);
@@ -307,7 +312,7 @@ describe("order service", () => {
         (error: unknown) =>
           error instanceof OrderError &&
           error.code === "amount_slots_exhausted" &&
-          error.retryAfterSeconds === 60,
+          error.retryAfterSeconds === 660,
       );
     });
   });

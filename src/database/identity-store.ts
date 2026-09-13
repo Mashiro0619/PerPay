@@ -16,6 +16,8 @@ export const SESSION_ABSOLUTE_TTL_MS = 12 * 60 * 60 * 1000;
 export const REMEMBER_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const AUTH_WINDOW_MS = 15 * 60 * 1000;
 export const AUTH_FAILURE_THRESHOLD = 5;
+export const ANONYMOUS_PASSWORD_BURST = 10;
+export const ANONYMOUS_PASSWORD_INTERVAL_MS = 5_000;
 export const API_SIGNATURE_SKEW_MS = 5 * 60 * 1000;
 const SESSION_RECORD_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -208,6 +210,35 @@ export class IdentityReadTransaction {
 }
 
 export class IdentityTransaction extends IdentityReadTransaction {
+  /** GCRA budget, persisted so a restart cannot restore the anonymous burst. */
+  takeAnonymousPasswordBudget(now: number): number | undefined {
+    if (!Number.isSafeInteger(now) || now < 0) {
+      throw new RangeError("anonymous password budget time is invalid");
+    }
+    const row = this.connection.prepare(
+      "SELECT theoretical_arrival_at, updated_at FROM anonymous_password_budget WHERE singleton_key = 1",
+    ).get() as { theoretical_arrival_at: bigint | number; updated_at: bigint | number } | undefined;
+    if (!row) throw new Error("anonymous password budget is missing");
+    const previousArrival = Number(row.theoretical_arrival_at);
+    const previousTime = Number(row.updated_at);
+    if (!Number.isSafeInteger(previousArrival) || !Number.isSafeInteger(previousTime)) {
+      throw new Error("anonymous password budget is outside the safe integer range");
+    }
+    const effectiveNow = Math.max(now, previousTime);
+    const allowedAt = previousArrival - (ANONYMOUS_PASSWORD_BURST - 1) * ANONYMOUS_PASSWORD_INTERVAL_MS;
+    if (effectiveNow < allowedAt) {
+      return Math.max(1, Math.ceil((allowedAt - now) / 1_000));
+    }
+    const nextArrival = Math.max(previousArrival, effectiveNow) + ANONYMOUS_PASSWORD_INTERVAL_MS;
+    if (!Number.isSafeInteger(nextArrival)) {
+      throw new RangeError("anonymous password budget time is outside the safe integer range");
+    }
+    this.connection.prepare(
+      "UPDATE anonymous_password_budget SET theoretical_arrival_at = ?, updated_at = ? WHERE singleton_key = 1",
+    ).run(nextArrival, effectiveNow);
+    return undefined;
+  }
+
   initializeAdmin(passwordHash: string, now: number): boolean {
     const existing = this.adminIdentity();
     if (existing) {

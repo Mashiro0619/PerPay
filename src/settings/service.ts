@@ -51,6 +51,7 @@ export interface RuntimeSettingsView {
     readonly code_payload: string;
     readonly order_ttl_seconds: number;
     readonly amount_offset_maximum_cents: number;
+    readonly amount_reuse_cooldown_seconds: number;
   } | null;
   readonly provider: {
     readonly environment: "PRODUCTION" | "SANDBOX";
@@ -174,6 +175,7 @@ export class RuntimeSettingsService {
             code_payload: snapshot.collection.codePayload,
             order_ttl_seconds: snapshot.collection.orderTtlSeconds,
             amount_offset_maximum_cents: snapshot.collection.amountOffsetMaximumCents,
+            amount_reuse_cooldown_seconds: snapshot.collection.amountReuseCooldownSeconds,
           }
         : null,
       provider: snapshot.provider && snapshot.activeProviderAccountKey
