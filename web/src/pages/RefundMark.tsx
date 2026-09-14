@@ -13,6 +13,7 @@ export function RefundMarkPanel({ order }: { order: AdminOrderDetail }) {
   const [message, setMessage] = useState("");
   const mark = order.refund_mark;
   const eligible = ["CONFIRMED", "DISPUTED"].includes(order.payment.status) && (order.received_amount_cents ?? 0) > 0;
+  if (!eligible && !mark.marked && order.refund_mark_history.length === 0) return null;
   return <Panel title="管理员退款标记" className="content-panel" action={<Badge value={mark.marked ? "ADMIN_REFUND_MARK" : "NONE"} label={mark.marked ? "已退款（管理员标记）" : "未标记"} />}>
     {message && <Notice tone="success">{message}</Notice>}
     <Notice>{disclaimer}</Notice>

@@ -76,10 +76,44 @@ describe("administrator-only refund marks", () => {
     expect(screen.queryByRole("button", { name: "确认标记已退款" })).not.toBeInTheDocument();
   });
 
-  it.each(["UNPAID", "CONFIRMED", "DISPUTED"] as const)("only allows a received %s order to be marked", (status) => {
-    render(wrap(<RefundMarkPanel order={{ ...paid, payment: { ...paid.payment, status }, received_amount_cents: status === "UNPAID" ? null : 101 }} />));
-    const button = screen.getByRole("button", { name: "标记已退款" });
-    if (status === "UNPAID") expect(button).toBeDisabled(); else expect(button).toBeEnabled();
+  it.each(["OPEN", "CLOSED", "EXPIRED"] as const)("hides the entire refund panel for an unpaid %s checkout", (status) => {
+    const view = render(wrap(<RefundMarkPanel order={{ ...order, checkout: { ...order.checkout, status } }} />));
+    expect(view.container).toBeEmptyDOMElement();
+  });
+
+  it.each(["CONFIRMED", "DISPUTED"] as const)("shows refund marking for a received %s order", (status) => {
+    render(wrap(<RefundMarkPanel order={{ ...paid, payment: { ...paid.payment, status } }} />));
+    expect(screen.getByRole("heading", { name: "管理员退款标记" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "标记已退款" })).toBeEnabled();
+  });
+
+  it.each([
+    { status: "CONFIRMED", amount: null }, { status: "CONFIRMED", amount: 0 },
+    { status: "DISPUTED", amount: null }, { status: "DISPUTED", amount: 0 },
+  ] as const)("hides an unused refund panel for $status with received amount $amount", ({ status, amount }) => {
+    const view = render(wrap(<RefundMarkPanel order={{ ...order, payment: { ...order.payment, status, received_amount_cents: amount }, received_amount_cents: amount }} />));
+    expect(view.container).toBeEmptyDOMElement();
+  });
+
+  it("shows the refund panel after an unpaid order receives payment", () => {
+    const view = render(wrap(<RefundMarkPanel order={order} />));
+    expect(view.container).toBeEmptyDOMElement();
+    view.rerender(wrap(<RefundMarkPanel order={paid} />));
+    expect(screen.getByRole("button", { name: "标记已退款" })).toBeEnabled();
+  });
+
+  it.each([true, false])("preserves existing refund history when no longer eligible with marked=%s", async (marked) => {
+    const original = { marked: true, version: 1, note: "外部退款记录", updated_at: "2026-09-07T12:00:00Z", updated_by: "admin" };
+    const current = marked ? original : { ...original, marked: false, version: 2, note: "撤销错误标记" };
+    const history = [{ ...original, operation_id: "original-mark" }];
+    if (!marked) history.unshift({ ...current, operation_id: "reverted-mark" });
+    render(wrap(<RefundMarkPanel order={{ ...order, payment: { ...order.payment, status: "DISPUTED" }, refund_mark: current, refund_mark_history: history }} />));
+    expect(screen.getByRole("heading", { name: "管理员退款标记" })).toBeVisible();
+    const button = screen.getByRole("button", { name: marked ? "撤销退款标记" : "标记已退款" });
+    if (marked) expect(button).toBeEnabled(); else expect(button).toBeDisabled();
+    await userEvent.setup().click(screen.getByText("查看标记修改历史"));
+    expect(screen.getAllByText("外部退款记录").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("操作人 admin").length).toBeGreaterThan(0);
   });
 
   it("displays the mark separately from payment state and preserves actor, time and history", async () => {
