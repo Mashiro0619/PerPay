@@ -961,6 +961,7 @@ export class LedgerStore {
     status: LedgerConflictStatus | "ALL" = "OPEN",
     cursor: LedgerConflictCursor | null = null,
     limit = 100,
+    options: { readonly excludeIgnoredReminders?: boolean } = {},
   ): LedgerConflictPage {
     const account = normalizeProviderAccountKey(providerAccountKey);
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) {
@@ -980,6 +981,12 @@ export class LedgerStore {
              FROM ledger_conflicts
             WHERE provider_account_key = ?
               AND (? = 'ALL' OR status = ?)
+              AND (? = 0 OR NOT EXISTS (
+                SELECT 1 FROM admin_work_item_states AS reminder
+                WHERE reminder.kind = 'LEDGER_CONFLICT'
+                  AND reminder.item_id = ledger_conflicts.conflict_id
+                  AND reminder.ignored = 1
+              ))
               AND (
                 ? IS NULL OR created_at > ? OR
                 (created_at = ? AND conflict_id > ?)
@@ -991,6 +998,7 @@ export class LedgerStore {
           account,
           status,
           status,
+          options.excludeIgnoredReminders ? 1 : 0,
           cursor?.createdAt ?? null,
           cursor?.createdAt ?? null,
           cursor?.createdAt ?? null,

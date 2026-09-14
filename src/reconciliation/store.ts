@@ -937,6 +937,7 @@ export class ReconciliationStore {
     providerAccountKey = "primary",
     cursor: FinancialExceptionCursor | null = null,
     limit = 100,
+    options: { readonly excludeIgnoredReminders?: boolean } = {},
   ): FinancialExceptionPage {
     if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(providerAccountKey)) {
       throw new RangeError("provider account key is invalid");
@@ -955,6 +956,12 @@ export class ReconciliationStore {
           `${EXCEPTION_COLUMNS}
             WHERE provider_account_key = ? AND status = 'OPEN'
               AND exception_type NOT IN ('UNMATCHED_DEBIT', 'UNLINKED_REFUND')
+              AND (? = 0 OR NOT EXISTS (
+                SELECT 1 FROM admin_work_item_states AS reminder
+                WHERE reminder.kind = 'FINANCIAL_EXCEPTION'
+                  AND reminder.item_id = financial_exceptions.exception_id
+                  AND reminder.ignored = 1
+              ))
               AND (
                 ? IS NULL OR created_at > ? OR
                 (created_at = ? AND exception_id > ?)
@@ -964,6 +971,7 @@ export class ReconciliationStore {
         )
         .all(
           providerAccountKey,
+          options.excludeIgnoredReminders ? 1 : 0,
           cursor?.createdAt ?? null,
           cursor?.createdAt ?? null,
           cursor?.createdAt ?? null,

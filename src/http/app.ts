@@ -894,7 +894,9 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       return context.json({ data: [], page: { next_cursor: null } });
     }
     const page = requireLedgerStore(dependencies)
-      .conflictPage(query.providerAccountKey, query.status, query.cursor, query.limit);
+      .conflictPage(query.providerAccountKey, query.status, query.cursor, query.limit, {
+        excludeIgnoredReminders: query.status === "OPEN",
+      });
     return context.json({
       data: page.conflicts.map(serializeLedgerConflict),
       page: {
@@ -1040,7 +1042,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       return context.json({ data: [], page: { next_cursor: null } });
     }
     const page = requireReconciliationStore(dependencies)
-      .openExceptionPage(query.providerAccountKey, query.cursor, query.limit);
+      .openExceptionPage(query.providerAccountKey, query.cursor, query.limit, { excludeIgnoredReminders: true });
     return context.json({
       data: page.exceptions.map(serializeFinancialException),
       page: {

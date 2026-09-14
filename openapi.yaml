@@ -1053,7 +1053,7 @@ paths:
       tags: [Ledger Operations]
       operationId: listLedgerConflicts
       summary: Page through retained ledger conflicts
-      description: Cursors are bound to the selected status and cannot be reused with another filter.
+      description: OPEN (the default) returns only conflicts whose reminders have not been ignored. The reminder filter is applied before pagination; ALL, RESOLVED and IGNORED retain their underlying ledger-status semantics and include ignored reminders. IGNORED is the isolated ledger-conflict status, not reminder visibility. Ignoring a reminder does not resolve the conflict or alter runtime counts. Use the work-items API with type=LEDGER_CONFLICT and visibility=IGNORED to review or restore ignored reminders. Cursors are bound to the selected status and provider account and cannot be reused with another filter.
       security:
         - AdminSessionCookie: []
       parameters:
@@ -1295,7 +1295,7 @@ paths:
       tags: [Reconciliation]
       operationId: listOpenFinancialExceptions
       summary: Page through open financial exceptions
-      description: Returns only open exceptions for the configured primary provider account.
+      description: Returns only open exceptions whose reminders have not been ignored for the selected provider account (the active account by default). The reminder filter and exclusion of historical UNMATCHED_DEBIT and UNLINKED_REFUND warnings are applied before pagination. Underlying exception state, detail endpoints and runtime counts are unchanged by reminder dismissal. Use the work-items API with type=FINANCIAL_EXCEPTION and visibility=IGNORED to review or restore ignored reminders.
       security:
         - AdminSessionCookie: []
       parameters:
