@@ -191,9 +191,11 @@ describe("concise settings copy", () => {
     expect(screen.queryByText(/基于配置版本/)).not.toBeInTheDocument();
   });
 
-  it("keeps the no-transfer warning inside the refund action", () => {
-    renderPage(<FinancialDialog mode="refund" onClose={vi.fn()} onSuccess={vi.fn()} />);
-    expect(screen.getByRole("dialog", { name: "登记已发生退款" })).toHaveAccessibleDescription("仅登记已采集的退款支出流水，不会调用支付宝退款，也不会向付款人转账。");
+  it("only offers income association in the financial dialog", () => {
+    renderPage(<FinancialDialog onClose={vi.fn()} onSuccess={vi.fn()} />);
+    expect(screen.getByRole("dialog", { name: "人工关联收款" })).toBeVisible();
+    expect(screen.getByLabelText("收入流水编号")).toBeVisible();
+    expect(screen.queryByText(/退款/)).not.toBeInTheDocument();
   });
 });
 
@@ -220,7 +222,7 @@ describe("state-changing workflows", () => {
     const fetchMock = vi.fn(async (request: Request) => json({ data: new URL(request.url).pathname.includes("ledger-entries") ? { ...ledger, direction: "DEBIT" } : order }));
     vi.stubGlobal("fetch", fetchMock);
     const user = userEvent.setup();
-    renderPage(<FinancialDialog mode="settlement" initialOrderId={orderId} initialLedgerId={ledgerId} onClose={vi.fn()} onSuccess={vi.fn()} />);
+    renderPage(<FinancialDialog initialOrderId={orderId} initialLedgerId={ledgerId} onClose={vi.fn()} onSuccess={vi.fn()} />);
     await user.click(screen.getByRole("button", { name: "读取并核对证据" }));
     expect(await screen.findByText(/流水方向不匹配/)).toBeVisible();
     await user.type(screen.getByLabelText(/操作理由/), "核对测试证据");

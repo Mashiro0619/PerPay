@@ -22,6 +22,7 @@ export const order: AdminOrderDetail = {
   payment: { status: "UNPAID", basis: "NONE", received_amount_cents: null }, refund: { status: "NONE" },
   eligible_from: "2026-09-06T00:00:00.000Z", notification: { notify_url: null },
   events: [], reconciliation: { matches: [], exceptions: [] },
+  refund_mark: { marked: false, version: 0, note: null, updated_at: null, updated_by: null }, refund_mark_history: [],
   created_at: "2026-09-06T00:00:00.000Z", updated_at: "2026-09-06T00:00:00.000Z", version: 1,
 };
 

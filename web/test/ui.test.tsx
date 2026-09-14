@@ -1,12 +1,12 @@
 import { StrictMode, useState } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
 import type { AdminWorkItem, WebhookAttemptOutcome } from "../src/api/client";
 import { WorkItemList } from "../src/components/WorkItemList";
-import { Button, Dialog, Field } from "../src/components/ui";
+import { Button, CopyValue, Dialog, Field } from "../src/components/ui";
 import { label } from "../src/lib/labels";
 
 function DialogHarness() {
@@ -61,6 +61,7 @@ const workItem: AdminWorkItem = {
   type: "FINANCIAL_EXCEPTION", status: "OPEN", exception_type: "UNMATCHED_CREDIT", candidate_id: null,
   resource_id: "00000000-0000-4000-8000-000000000001", provider_account_key: "synthetic-account",
   order_id: null, ledger_entry_id: null, created_at: "2026-09-06T12:00:00Z", actionable_at: "2026-09-06T12:00:00Z",
+  ignored_at: null, ignored_by: null, ended: false,
   detail_url: "/api/admin/v1/reconciliation/exceptions/00000000-0000-4000-8000-000000000001",
 };
 
@@ -85,5 +86,36 @@ const attemptLabels: Record<WebhookAttemptOutcome, string> = {
 describe("notification attempt labels", () => {
   it.each(Object.entries(attemptLabels))("explains %s in Chinese", (outcome, expected) => {
     expect(label(outcome)).toBe(expected);
+  });
+});
+
+const syntheticPem = "-----BEGIN PRIVATE KEY-----\r\n" + "synthetic-content-not-a-real-key".repeat(12) + "\r\n-----END PRIVATE KEY-----\r\n";
+
+describe("copyable secret layout", () => {
+  it.each([true, false])("separates multiline content from the copy toolbar (secret=%s) without changing copied bytes", async (secret) => {
+    const user = userEvent.setup();
+    const copy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+    render(<CopyValue value={syntheticPem} label="复制测试密钥" secret={secret} />);
+    const region = screen.getByRole("region", { name: secret ? "密钥内容" : "可复制内容" });
+    expect(region).toHaveAttribute("tabindex", "0");
+    expect(region.querySelector("code")?.textContent).toBe(syntheticPem);
+    expect(within(region).queryByRole("button")).not.toBeInTheDocument();
+    const button = screen.getByRole("button", { name: "复制测试密钥" });
+    expect(button.closest(".copy-value-toolbar")).not.toBeNull();
+    await user.click(button);
+    expect(copy).toHaveBeenCalledExactlyOnceWith(syntheticPem);
+    expect(button).toHaveTextContent("已复制");
+  });
+
+  it("keeps short identifiers compact and offers selection when the clipboard is unavailable", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(navigator.clipboard, "writeText").mockRejectedValue(new Error("clipboard unavailable"));
+    render(<CopyValue value="short-identifier" label="复制编号" />);
+    expect(screen.queryByRole("region")).not.toBeInTheDocument();
+    const button = screen.getByRole("button", { name: "复制编号" });
+    expect(button).toHaveClass("icon-button");
+    await user.click(button);
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("无法自动复制，请选中文本手动复制。"));
+    expect(screen.getByText("short-identifier")).toBeVisible();
   });
 });

@@ -41,3 +41,20 @@ describe("secret visibility lifecycle", () => {
     if (operation === "rotate") expect(onSaved).toHaveBeenCalledOnce();
   });
 });
+
+it("still clears a displayed multiline key after sixty seconds", async () => {
+  vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+  const value = "-----BEGIN PRIVATE KEY-----\nsynthetic-private-key\n-----END PRIVATE KEY-----";
+  vi.stubGlobal("fetch", vi.fn(async () => json({ data: { value } })));
+  const configured = { ...settings, secrets: { ...settings.secrets, provider_private_key: { ...settings.secrets.provider_private_key, configured: true } } };
+  render(<QueryClientProvider client={queryClient}><MemoryRouter><SecuritySettings settings={configured} onSaved={vi.fn()} /></MemoryRouter></QueryClientProvider>);
+  vi.useFakeTimers();
+  fireEvent.click(screen.getByRole("button", { name: "显示应用私钥" }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "读取明文" })); await vi.advanceTimersByTimeAsync(10); });
+  expect(screen.getByRole("region", { name: "密钥内容" })).toBeVisible();
+  await act(async () => { await vi.advanceTimersByTimeAsync(59_000); });
+  expect(screen.getByRole("dialog", { name: "应用私钥" })).toBeVisible();
+  await act(async () => { await vi.advanceTimersByTimeAsync(1_010); });
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.queryByText(/synthetic-private-key/)).not.toBeInTheDocument();
+});

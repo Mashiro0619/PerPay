@@ -16,6 +16,7 @@ import { DatabaseSync, backup as sqliteBackup } from "node:sqlite";
 
 import { migrations, migrationChecksum, type Migration } from "./migrations.ts";
 import { inspectAuditChain } from "./audit-chain.ts";
+import { countAdminOperationViolations } from "./admin-operation-integrity.ts";
 import {
   conflictFingerprint,
   ledgerConflictOperationEvidence,
@@ -1027,7 +1028,8 @@ function countDomainViolations(connection: DatabaseSync): number {
     countOrderDomainViolations(connection) +
     countLedgerDomainViolations(connection) +
     countReconciliationDomainViolations(connection) +
-    countWebhookDomainViolations(connection);
+    countWebhookDomainViolations(connection) +
+    countAdminOperationViolations(connection);
 }
 
 function countRuntimeSettingsDomainViolations(connection: DatabaseSync): number {

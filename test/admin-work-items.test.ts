@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { migrations } from "../src/database/migrations.ts";
+import { AdminOperationError } from "../src/database/admin-operation-store.ts";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,7 +11,7 @@ import { describe, it } from "node:test";
 import { AppDatabase } from "../src/database/database.ts";
 import { createApp } from "../src/http/app.ts";
 import {
-  adminWorkItemPage,
+  adminWorkItemPage, ignoreAllAdminWorkItems, restoreAdminWorkItem,
   type AdminWorkItem,
   type AdminWorkItemCursor,
   type AdminWorkItemType,
@@ -158,6 +161,92 @@ describe("administrator work item projection", () => {
     });
   });
 
+  for (const type of ["ALL", "FINANCIAL_EXCEPTION", "LEDGER_CONFLICT", "NOTIFICATION_FAILURE"] as const) {
+    it("ignores the entire " + type + " scope across pages without changing underlying state", () => {
+      withFixture(({ database, connection }) => {
+        for (let i = 0; i < 35; i += 1) connection.prepare(
+          "INSERT INTO financial_exceptions VALUES (?, 'primary', 'UNMATCHED_CREDIT', NULL, NULL, NULL, 'OPEN', ?)",
+        ).run(randomUUID(), 500 + i);
+        const before = adminWorkItemPage(database, { type: "ALL", cursor: null, limit: 200 }).items;
+        const underlyingBefore = connection.prepare("SELECT * FROM webhook_deliveries ORDER BY delivery_id").all();
+        const op = { operation_id: randomUUID(), type };
+        const result = ignoreAllAdminWorkItems(database, op, { actorId: "admin", now: 1000 });
+        const expected = before.filter((item) => type === "ALL" || item.kind === type);
+        assert.equal(result.ignored_count, expected.length);
+        assert.deepEqual(adminWorkItemPage(database, { type: "ALL", cursor: null, limit: 200 }).items.map(itemIdentity),
+          before.filter((item) => type !== "ALL" && item.kind !== type).map(itemIdentity));
+        const ignored = adminWorkItemPage(database, { type, visibility: "IGNORED", cursor: null, limit: 200 });
+        assert.equal(ignored.items.length, expected.length);
+        assert.ok(ignored.items.every((item) => item.ignoredAt === 1000 && item.ignoredBy === "admin" && !item.ended));
+        assert.deepEqual(connection.prepare("SELECT * FROM webhook_deliveries ORDER BY delivery_id").all(), underlyingBefore);
+        assert.equal(Number((connection.prepare("SELECT count(*) AS n FROM admin_work_item_operations WHERE operation_id = ?").get(op.operation_id) as { n: bigint }).n), expected.length);
+        assert.equal(connection.prepare("SELECT status FROM ledger_conflicts WHERE conflict_id = ?").get(IDS.conflict)?.status, "OPEN");
+        assert.deepEqual(ignoreAllAdminWorkItems(database, op, { actorId: "admin", now: 2000 }), result);
+        assert.throws(() => ignoreAllAdminWorkItems(database, { ...op, type: type === "ALL" ? "FINANCIAL_EXCEPTION" : "ALL" }, { actorId: "admin" }),
+          (e: unknown) => e instanceof AdminOperationError && e.code === "admin_operation_conflict");
+      });
+    });
+  }
+
+  it("does not swallow new records on retry, persists per-resource ignores through retries, and restores only live items", () => {
+    withFixture(({ database, connection }) => {
+      const op = { operation_id: randomUUID(), type: "ALL" as const };
+      const first = ignoreAllAdminWorkItems(database, op, { actorId: "admin", now: 1000 });
+      const added = randomUUID();
+      connection.prepare("INSERT INTO financial_exceptions VALUES (?, 'primary', 'UNMATCHED_CREDIT', NULL, NULL, NULL, 'OPEN', 1500)").run(added);
+      assert.deepEqual(ignoreAllAdminWorkItems(database, op, { actorId: "admin", now: 2000 }), first);
+      assert.deepEqual(adminWorkItemPage(database, { type: "ALL", cursor: null, limit: 200 }).items.map((x) => x.itemId), [added]);
+      for (const status of ["LEASED", "RETRY_WAIT", "DEAD_LETTER"]) {
+        connection.prepare("UPDATE webhook_deliveries SET status = ?, updated_at = updated_at + 1 WHERE delivery_id = ?").run(status, IDS.retryNewest);
+        assert.equal(adminWorkItemPage(database, { type: "NOTIFICATION_FAILURE", cursor: null, limit: 200 }).items.length, 0);
+        assert.equal(adminWorkItemPage(database, { type: "NOTIFICATION_FAILURE", visibility: "IGNORED", cursor: null, limit: 200 }).items.find((x) => x.itemId === IDS.retryNewest)?.ended, false);
+      }
+      const restore = { operation_id: randomUUID(), type: "FINANCIAL_EXCEPTION" as const, resource_id: IDS.exceptionLower };
+      const restored = restoreAdminWorkItem(database, restore, { actorId: "admin", now: 3000 });
+      assert.equal(restored.restored, true);
+      assert.ok(adminWorkItemPage(database, { type: "ALL", cursor: null, limit: 200 }).items.some((x) => x.itemId === IDS.exceptionLower));
+      ignoreAllAdminWorkItems(database, { operation_id: randomUUID(), type: "FINANCIAL_EXCEPTION" }, { actorId: "admin", now: 4000 });
+      assert.deepEqual(restoreAdminWorkItem(database, restore, { actorId: "admin", now: 5000 }), restored);
+      assert.equal(adminWorkItemPage(database, { type: "FINANCIAL_EXCEPTION", cursor: null, limit: 200 }).items.length, 0);
+      connection.prepare("UPDATE webhook_deliveries SET status = 'ACKNOWLEDGED' WHERE delivery_id = ?").run(IDS.retryNewest);
+      const ended = adminWorkItemPage(database, { type: "ALL", visibility: "IGNORED", cursor: null, limit: 200 }).items.find((x) => x.itemId === IDS.retryNewest);
+      assert.equal(ended?.ended, true);
+      assert.throws(() => restoreAdminWorkItem(database, { operation_id: randomUUID(), type: "NOTIFICATION_FAILURE", resource_id: IDS.retryNewest }, { actorId: "admin" }),
+        (e: unknown) => e instanceof AdminOperationError && e.code === "work_item_ended");
+      connection.prepare("UPDATE webhook_deliveries SET status = 'RETRY_WAIT' WHERE delivery_id = ?").run(IDS.successor);
+      assert.ok(adminWorkItemPage(database, { type: "NOTIFICATION_FAILURE", cursor: null, limit: 200 }).items.some((x) => x.itemId === IDS.successor));
+    });
+  });
+
+  it("rolls back batch membership, reminder state and audit together on a write failure", () => {
+    withFixture(({ database, connection }) => {
+      connection.exec("CREATE TRIGGER test_fail_ignore BEFORE INSERT ON admin_work_item_states BEGIN SELECT RAISE(ABORT, 'injected failure'); END");
+      assert.throws(() => ignoreAllAdminWorkItems(database, { operation_id: randomUUID(), type: "ALL" }, { actorId: "admin", now: 1000 }), /injected failure/);
+      for (const table of ["admin_work_item_states", "admin_work_item_operations", "admin_operation_log", "audit_events"]) {
+        assert.equal(Number((connection.prepare("SELECT count(*) AS n FROM " + table).get() as { n: bigint }).n), 0);
+      }
+      assert.equal(adminWorkItemPage(database, { type: "ALL", cursor: null, limit: 200 }).items.length, 6);
+    });
+  });
+
+  it("paginates ignored history stably and excludes retired debit warnings without rewriting them", () => {
+    withFixture(({ database, connection }) => {
+      for (const category of ["UNMATCHED_DEBIT", "UNLINKED_REFUND"]) {
+        connection.prepare("INSERT INTO financial_exceptions VALUES (?, 'primary', ?, NULL, NULL, NULL, 'OPEN', 700)").run(randomUUID(), category);
+      }
+      assert.equal(adminWorkItemPage(database, { type: "ALL", cursor: null, limit: 200 }).items.length, 6);
+      ignoreAllAdminWorkItems(database, { operation_id: randomUUID(), type: "ALL" }, { actorId: "admin", now: 1000 });
+      const seen: string[] = [];
+      let cursor: AdminWorkItemCursor | null = null;
+      do {
+        const page = adminWorkItemPage(database, { type: "ALL", visibility: "IGNORED", cursor, limit: 1 });
+        seen.push(...page.items.map(itemIdentity)); cursor = page.nextCursor;
+      } while (cursor);
+      assert.equal(seen.length, 6); assert.equal(new Set(seen).size, 6);
+      assert.equal(Number((connection.prepare("SELECT count(*) AS n FROM financial_exceptions WHERE exception_type IN ('UNMATCHED_DEBIT', 'UNLINKED_REFUND') AND status = 'OPEN'").get() as { n: bigint }).n), 2);
+    });
+  });
+
   it("exposes an authenticated, filter-bound HTTP cursor contract", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-admin-work-items-http-"));
     const services = await createConfiguredHttpServices({
@@ -244,6 +333,8 @@ describe("administrator work item projection", () => {
       assert.equal(financialBody.data.every((item) => item.type === "FINANCIAL_EXCEPTION"), true);
       assert.equal(financialBody.data.every((item) => item.status === "OPEN"), true);
 
+      const wrongVisibility = await app.request("/api/admin/v1/work-items?visibility=IGNORED&cursor=" + encodeURIComponent(firstBody.page.next_cursor!), { headers: { cookie } });
+      assert.equal(wrongVisibility.status, 422);
       const rebound = await app.request(
         "/api/admin/v1/work-items?type=NOTIFICATION_FAILURE&limit=1" +
           `&cursor=${encodeURIComponent(firstBody.page.next_cursor!)}`,
@@ -297,6 +388,7 @@ function withFixture(
   operation: (context: {
     readonly database: AppDatabase;
     readonly readCount: () => number;
+    readonly connection: DatabaseSync;
   }) => void,
 ): void {
   const connection = new DatabaseSync(":memory:", { readBigInts: true });
@@ -306,11 +398,16 @@ function withFixture(
       reads += 1;
       return read(connection);
     },
+    write<T>(operation: (connection: DatabaseSync) => T): T {
+      connection.exec("BEGIN IMMEDIATE");
+      try { const result = operation(connection); connection.exec("COMMIT"); return result; }
+      catch (error) { connection.exec("ROLLBACK"); throw error; }
+    },
   } as AppDatabase;
   try {
     createSchema(connection);
     seedFixture(connection);
-    operation({ database, readCount: () => reads });
+    operation({ database, connection, readCount: () => reads });
   } finally {
     connection.close();
   }
@@ -366,7 +463,13 @@ function createSchema(connection: DatabaseSync): void {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
+    CREATE TABLE audit_events (
+      sequence INTEGER PRIMARY KEY, event_id TEXT, occurred_at INTEGER, actor_type TEXT, actor_id TEXT,
+      action TEXT, outcome TEXT, subject_type TEXT, subject_id TEXT, request_id TEXT, remote_address_hash TEXT,
+      details_json TEXT, previous_hash TEXT, event_hash TEXT
+    );
   `);
+  connection.exec(migrations.find((migration) => migration.version === 23)!.sql);
 }
 
 function seedFixture(connection: DatabaseSync): void {

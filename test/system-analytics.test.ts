@@ -61,6 +61,15 @@ describe("system analytics", () => {
     });
   });
 
+  it("excludes only retired debit warnings from pending exception counts", () => {
+    withFixture((database, connection) => {
+      connection.exec("INSERT INTO financial_exceptions VALUES ('OPEN', 'UNMATCHED_DEBIT'), ('OPEN', 'UNLINKED_REFUND'), ('OPEN', 'UNMATCHED_CREDIT'), ('RESOLVED', 'UNMATCHED_CREDIT')");
+      connection.exec("INSERT INTO ledger_conflicts VALUES ('OPEN')");
+      assert.equal(systemAnalytics(database, 7).pending.exceptions, 1);
+      assert.equal(systemAnalytics(database, 7).pending.conflicts, 1);
+    });
+  });
+
   for (const days of [7, 30, 90] as const) {
     it(`groups orders, confirmations and notifications into ${days} Beijing days with exclusive end boundaries`, () => {
       withFixture((database, connection) => {
@@ -127,7 +136,7 @@ function withFixture(operation: (database: AppDatabase, connection: DatabaseSync
       );
       CREATE TABLE order_events (order_id TEXT NOT NULL, event_type TEXT NOT NULL, occurred_at INTEGER NOT NULL);
       CREATE TABLE webhook_deliveries (created_at INTEGER NOT NULL, status TEXT NOT NULL);
-      CREATE TABLE financial_exceptions (status TEXT NOT NULL);
+      CREATE TABLE financial_exceptions (status TEXT NOT NULL, exception_type TEXT NOT NULL);
       CREATE TABLE ledger_conflicts (status TEXT NOT NULL);
     `);
     operation(database, connection);

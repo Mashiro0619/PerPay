@@ -20,6 +20,7 @@ import {
 } from "../src/ledger/model.ts";
 import { LedgerStore } from "../src/ledger/store.ts";
 import { ReconciliationStore } from "../src/reconciliation/store.ts";
+import { adminWorkItemPage, ignoreAllAdminWorkItems } from "../src/http/admin-work-items.ts";
 
 const WINDOW = { start: "2026-08-14 00:00:00", end: "2026-08-14 01:00:00" } as const;
 const STARTED_AT = 1_800_000_000_000;
@@ -1781,6 +1782,10 @@ describe("LedgerStore segment ingestion", () => {
       const existing = store.getLedgerEntry("primary", "duplicate-resolution");
       assert.ok(existing);
       const reconciliation = new ReconciliationStore(database);
+      ignoreAllAdminWorkItems(database, { operation_id: randomUUID(), type: "LEDGER_CONFLICT" }, { actorId: "admin", now: STARTED_AT + 10_000 });
+      assert.equal(adminWorkItemPage(database, { type: "LEDGER_CONFLICT", cursor: null, limit: 20 }).items.length, 0);
+      assert.equal(store.listOpenConflicts().filter((conflict) => conflict.conflictType === "DUPLICATE_EXTERNAL_ID").length, 2);
+      assert.equal(reconciliation.pendingLedgerPage(null).ledgerEntryIds.includes(existing.ledgerEntryId), false);
       assert.equal(reconciliation.reconcileEntry(existing.ledgerEntryId, STARTED_AT + 10_000).kind, "ignored");
 
       assert.throws(

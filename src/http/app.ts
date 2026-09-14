@@ -59,7 +59,6 @@ import {
   type ReconciliationErrorCode,
   type ReconciliationSchedulerHealth,
   type ReconciliationStore,
-  type RefundRecordResult,
 } from "../reconciliation/index.ts";
 import {
   webhookReplayRequestSchema,
@@ -106,9 +105,14 @@ import { WEB_ASSET_PATHS, webAsset } from "./web/assets.ts";
 import { loadAdminFrontend } from "./web/admin.ts";
 import { type HttpErrorCode } from "./error-codes.ts";
 import { systemAnalytics } from "./system-analytics.ts";
+import { AdminOperationError } from "../database/admin-operation-store.ts";
+import { adminRefundMarks, adminRefundMarkHistory, refundMarkRequestSchema, setAdminRefundMark } from "../database/admin-refund-mark-store.ts";
 import {
   ADMIN_WORK_ITEM_TYPES,
+  ADMIN_WORK_ITEM_VISIBILITIES,
   adminWorkItemPage,
+  ignoreAllAdminWorkItems, ignoreAllWorkItemsSchema, restoreAdminWorkItem, restoreWorkItemSchema,
+  type AdminWorkItemVisibility, type AdminWorkItemKind,
   type AdminWorkItem,
   type AdminWorkItemCursor,
   type AdminWorkItemType,
@@ -596,7 +600,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     return context.json({
       data: page.items.map(serializeAdminWorkItem),
       page: {
-        next_cursor: encodeAdminWorkItemCursor(page.nextCursor, query.type),
+        next_cursor: encodeAdminWorkItemCursor(page.nextCursor, query.type, query.visibility),
       },
     });
   });
@@ -644,8 +648,9 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   app.get("/api/admin/v1/orders", adminSession, (context) => {
     const query = readAdminOrderPageQuery(context);
     const page = dependencies.orders.adminPage(query.filters, query.cursor, query.limit);
+    const marks = adminRefundMarks(dependencies.database, page.orders.map((order) => order.orderId));
     return context.json({
-      data: page.orders.map(serializeAdminOrderSummary),
+      data: page.orders.map((order) => ({ ...serializeAdminOrderSummary(order), refund_mark: marks.get(order.orderId)! })),
       page: {
         next_cursor: encodeAdminOrderCursor(page.nextCursor, query.filters),
       },
@@ -659,7 +664,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       const parsed = merchantOrderNumberSchema.safeParse(context.req.param("merchantOrderNo"));
       if (!parsed.success) throw orderNotFoundHttpError();
       const order = dependencies.orders.adminGetByMerchantOrderNumber(parsed.data);
-      return context.json({ data: serializeAdminOrderDetail(order, dependencies.reconciliation) });
+      return context.json({ data: { ...serializeAdminOrderDetail(order, dependencies.reconciliation), refund_mark: adminRefundMarks(dependencies.database, [order.orderId]).get(order.orderId)!, refund_mark_history: adminRefundMarkHistory(dependencies.database, order.orderId) } });
     },
   );
 
@@ -686,7 +691,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
 
   app.get("/api/admin/v1/orders/:orderId", adminSession, (context) => {
     const order = dependencies.orders.adminGet(requireOrderId(context.req.param("orderId")));
-    return context.json({ data: serializeAdminOrderDetail(order, dependencies.reconciliation) });
+    return context.json({ data: { ...serializeAdminOrderDetail(order, dependencies.reconciliation), refund_mark: adminRefundMarks(dependencies.database, [order.orderId]).get(order.orderId)!, refund_mark_history: adminRefundMarkHistory(dependencies.database, order.orderId) } });
   });
 
   const financialWrite = requireFinancialWrite(
@@ -694,6 +699,25 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     dependencies.config.publicOrigin,
     dependencies.config.secureCookies,
   );
+
+  app.post("/api/admin/v1/work-items/actions/ignore-all", adminSession, financialWrite, async (context) => {
+    const body = await readJson(context, ignoreAllWorkItemsSchema, MAX_JSON_BODY_BYTES);
+    return context.json({ data: ignoreAllAdminWorkItems(dependencies.database, body, settingsAuditContext(context, dependencies)) });
+  });
+
+  app.post("/api/admin/v1/work-items/:type/:resourceId/actions/restore", adminSession, financialWrite, async (context) => {
+    const type = context.req.param("type");
+    if (type === "ALL" || !ADMIN_WORK_ITEM_TYPES.includes(type as AdminWorkItemType)) throw new HttpApiError(422, "validation_failed", "提醒类型无效");
+    const resourceId = requireResourceId(context.req.param("resourceId"), "work_item_not_found", "提醒记录不存在");
+    const body = await readJson(context, restoreWorkItemSchema, MAX_JSON_BODY_BYTES);
+    return context.json({ data: restoreAdminWorkItem(dependencies.database, { ...body, type: type as AdminWorkItemKind, resource_id: resourceId }, settingsAuditContext(context, dependencies)) });
+  });
+
+  app.put("/api/admin/v1/orders/:orderId/refund-mark", adminSession, financialWrite, async (context) => {
+    const orderId = requireOrderId(context.req.param("orderId"));
+    const body = await readJson(context, refundMarkRequestSchema, MAX_JSON_BODY_BYTES);
+    return context.json({ data: setAdminRefundMark(dependencies.database, orderId, body, settingsAuditContext(context, dependencies)) });
+  });
 
   app.get("/api/admin/v1/settings", adminSession, (context) => {
     return context.json({ data: requireSettingsService(dependencies).view() });
@@ -1089,21 +1113,10 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     adminSession,
     financialWrite,
     async (context) => {
-      const body = await readJson(
-        context,
-        linkedFinancialDecisionRequestSchema,
-        MAX_JSON_BODY_BYTES,
-      );
-      const session = requireCurrentSession(context, dependencies.identity);
-      const result = requireReconciliationStore(dependencies).recordRefund({
-        financialOperationId: body.financial_operation_id,
-        orderId: body.order_id,
-        ledgerEntryId: body.ledger_entry_id,
-        actorId: session.session.username,
-        reason: body.reason,
-      });
-      notifyWebhookAvailable(dependencies, context);
-      return context.json({ data: serializeRefundDecision(result) });
+      await readJson(context, linkedFinancialDecisionRequestSchema, MAX_JSON_BODY_BYTES);
+      requireCurrentSession(context, dependencies.identity);
+      throw new AdminOperationError(410, "refund_recording_retired",
+        "退款流水登记接口已退役；请在订单详情中使用管理员退款标记。PerPay 不执行或验证退款。");
     },
   );
 
@@ -1291,6 +1304,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   );
 
   app.onError((error, context) => {
+    if (error instanceof AdminOperationError) return errorResponse(context, error.status, error.code, error.message);
     if (error instanceof ForwardedAddressError) {
       return errorResponse(
         context,
@@ -2280,81 +2294,46 @@ function requireResourceId(value: string, code: HttpErrorCode, message: string):
 }
 
 function readAdminWorkItemPageQuery(context: Context<AppEnvironment>): {
-  readonly type: AdminWorkItemType;
-  readonly limit: number;
-  readonly cursor: AdminWorkItemCursor | null;
+  readonly type: AdminWorkItemType; readonly visibility: AdminWorkItemVisibility; readonly limit: number; readonly cursor: AdminWorkItemCursor | null;
 } {
   const values = new URL(context.req.url).searchParams;
   for (const key of values.keys()) {
-    if (key !== "type" && key !== "limit" && key !== "cursor") {
+    if (!["type", "visibility", "limit", "cursor"].includes(key) || values.getAll(key).length > 1) {
       throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
     }
   }
-  const types = values.getAll("type");
-  const limits = values.getAll("limit");
-  const cursors = values.getAll("cursor");
-  if (
-    types.length > 1 ||
-    limits.length > 1 ||
-    cursors.length > 1 ||
-    (types.length === 1 && !ADMIN_WORK_ITEM_TYPES.includes(types[0] as AdminWorkItemType)) ||
-    (limits.length === 1 && !/^[1-9][0-9]{0,2}$/.test(limits[0] ?? ""))
-  ) {
+  const type = values.get("type") ?? "ALL";
+  const visibility = values.get("visibility") ?? "ACTIVE";
+  const limitText = values.get("limit") ?? "100";
+  if (!ADMIN_WORK_ITEM_TYPES.includes(type as AdminWorkItemType) || !ADMIN_WORK_ITEM_VISIBILITIES.includes(visibility as AdminWorkItemVisibility) ||
+    !/^[1-9][0-9]{0,2}$/.test(limitText) || Number(limitText) > 200) {
     throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
   }
-  const type = (types[0] ?? "ALL") as AdminWorkItemType;
-  const limit = limits.length === 0 ? 100 : Number(limits[0]);
-  if (limit > 200) {
-    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
-  }
-  return {
-    type,
-    limit,
-    cursor: cursors.length === 0
-      ? null
-      : decodeAdminWorkItemCursor(cursors[0] ?? "", type),
-  };
+  return { type: type as AdminWorkItemType, visibility: visibility as AdminWorkItemVisibility, limit: Number(limitText),
+    cursor: values.has("cursor") ? decodeAdminWorkItemCursor(values.get("cursor")!, type as AdminWorkItemType, visibility as AdminWorkItemVisibility) : null };
 }
 
-function encodeAdminWorkItemCursor(
-  cursor: AdminWorkItemCursor | null,
-  type: AdminWorkItemType,
-): string | null {
+function encodeAdminWorkItemCursor(cursor: AdminWorkItemCursor | null, type: AdminWorkItemType, visibility: AdminWorkItemVisibility): string | null {
   if (!cursor) return null;
-  return Buffer.from(
-    `perpay:admin-work-items:v1\n${type}\n${cursor.actionableAt}\n${cursor.kind}\n${cursor.itemId}`,
-    "ascii",
-  ).toString("base64url");
+  return Buffer.from(["perpay:admin-work-items:v2", type, visibility, cursor.actionableAt, cursor.kind, cursor.itemId].join("\n"), "ascii").toString("base64url");
 }
 
-function decodeAdminWorkItemCursor(
-  value: string,
-  expectedType: AdminWorkItemType,
-): AdminWorkItemCursor {
-  if (!/^[A-Za-z0-9_-]{1,256}$/.test(value)) {
-    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
-  }
+function decodeAdminWorkItemCursor(value: string, expectedType: AdminWorkItemType, visibility: AdminWorkItemVisibility): AdminWorkItemCursor {
+  const invalid = () => new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  if (!/^[A-Za-z0-9_-]{1,256}$/.test(value)) throw invalid();
   const decoded = Buffer.from(value, "base64url");
-  if (decoded.toString("base64url") !== value || decoded.some((byte) => byte > 0x7f)) {
-    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
+  if (decoded.toString("base64url") !== value || decoded.some((byte) => byte > 0x7f)) throw invalid();
+  const parts = decoded.toString("ascii").split("\n");
+  // Old cursors identify the ACTIVE view only; all new cursors bind both filters.
+  if (parts[0] === "perpay:admin-work-items:v1" && parts.length === 5 && visibility === "ACTIVE") {
+    parts[0] = "perpay:admin-work-items:v2"; parts.splice(2, 0, "ACTIVE");
   }
-  const match =
-    /^perpay:admin-work-items:v1\n(ALL|FINANCIAL_EXCEPTION|LEDGER_CONFLICT|NOTIFICATION_FAILURE)\n(0|[1-9][0-9]*)\n(FINANCIAL_EXCEPTION|LEDGER_CONFLICT|NOTIFICATION_FAILURE)\n([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/
-      .exec(decoded.toString("ascii"));
-  const actionableAt = Number(match?.[2]);
-  if (
-    !match ||
-    !Number.isSafeInteger(actionableAt) ||
-    match[1] !== expectedType ||
-    (expectedType !== "ALL" && match[3] !== expectedType)
-  ) {
-    throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
-  }
-  return {
-    actionableAt,
-    kind: match[3] as AdminWorkItemCursor["kind"],
-    itemId: match[4]!,
-  };
+  const time = Number(parts[3]);
+  if (parts.length !== 6 || parts[0] !== "perpay:admin-work-items:v2" || parts[1] !== expectedType || parts[2] !== visibility ||
+    !/^(0|[1-9][0-9]*)$/.test(parts[3] ?? "") || !Number.isSafeInteger(time) || time < 0 ||
+    !["FINANCIAL_EXCEPTION", "LEDGER_CONFLICT", "NOTIFICATION_FAILURE"].includes(parts[4] ?? "") ||
+    (expectedType !== "ALL" && expectedType !== parts[4]) || !ORDER_ID_PATTERN.test(parts[5] ?? "")) throw invalid();
+  return { actionableAt: time, kind: parts[4] as AdminWorkItemKind, itemId: parts[5]! };
 }
 
 function readAdminOrderPageQuery(context: Context<AppEnvironment>): {
@@ -2928,6 +2907,7 @@ function serializeAdminWorkItem(item: AdminWorkItem) {
     ledger_entry_id: item.ledgerEntryId,
     created_at: new Date(item.createdAt).toISOString(),
     actionable_at: new Date(item.actionableAt).toISOString(),
+    ignored_at: nullableIsoTime(item.ignoredAt), ignored_by: item.ignoredBy, ended: item.ended,
   };
   switch (item.kind) {
     case "FINANCIAL_EXCEPTION":
@@ -3373,18 +3353,6 @@ function serializeFinancialDecision(result: FinancialDecisionResult) {
   };
 }
 
-function serializeRefundDecision(result: RefundRecordResult) {
-  return {
-    operation: serializeFinancialOperation(result.operation),
-    refund_record_id: result.refundRecordId,
-    order_id: result.orderId,
-    ledger_entry_id: result.ledgerEntryId,
-    refund_status: result.refundStatus,
-    order_version: result.orderVersion,
-    replayed: result.replayed,
-  };
-}
-
 function serializeFinancialException(exception: FinancialException) {
   return {
     exception_id: exception.exceptionId,
@@ -3490,7 +3458,7 @@ function serializeFinancialExceptionSummary(summary: FinancialExceptionSummary |
 
 function errorResponse(
   context: Context<AppEnvironment>,
-  status: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 429 | 500 | 503,
+  status: 400 | 401 | 403 | 404 | 409 | 410 | 413 | 415 | 422 | 429 | 500 | 503,
   code: HttpErrorCode,
   message: string,
   fields?: Readonly<Record<string, string>>,

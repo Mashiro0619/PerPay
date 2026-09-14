@@ -10,6 +10,7 @@ import { OrderStore } from "../src/database/order-store.ts";
 import { createOrderRequestSchema, fingerprintCreateOrderRequest, digestIdempotencyKey } from "../src/orders/model.ts";
 import { createConfiguredHttpServices } from "./http-fixture.ts";
 import { securityHardeningDowngradeSql } from "./security-schema-fixture.ts";
+import { DATABASE_COMPATIBILITY } from "../src/version.ts";
 
 it("upgrades schema 20 without changing historical payment windows, events or audit evidence", async () => {
   const directory = mkdtempSync(join(tmpdir(), "perpay-security-migration-"));
@@ -59,7 +60,7 @@ it("upgrades schema 20 without changing historical payment windows, events or au
     assert.equal(reopened.integrityCheck().ok, true);
     assert.equal(reopened.read((connection) => Number((connection.prepare(
       "SELECT max(version) AS value FROM schema_migrations",
-    ).get() as { value: bigint }).value)), 22);
+    ).get() as { value: bigint }).value)), DATABASE_COMPATIBILITY.maximum);
     now = base + 62_000;
     const upgraded = new OrderStore(reopened, () => now);
     assert.deepEqual(upgraded.createOrder(input("blocked-after-upgrade", 1_000)),

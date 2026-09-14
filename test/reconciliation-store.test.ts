@@ -7,6 +7,7 @@ import { describe, it } from "node:test";
 
 import { AppDatabase } from "../src/database/database.ts";
 import { createLegacyAmountReuseOrder } from "./legacy-amount-reuse-fixture.ts";
+import { seedLegacyRefund } from "./legacy-refund-fixture.ts";
 import { OrderStore, type StoredOrderAggregate } from "../src/database/order-store.ts";
 import type { AccountLogDetail } from "../src/infrastructure/alipay/types.ts";
 import type { LedgerEntry } from "../src/ledger/model.ts";
@@ -521,7 +522,9 @@ describe("automatic reconciliation settlement", () => {
       const wrong = recordCredit("wrong-amount", order.order.payableAmountCents + 1, EVENT_TIME);
       assert.equal(reconciliation.reconcileEntry(wrong.ledgerEntryId, BASE_TIME + 120_000).kind, "unmatched");
       const debit = recordDebit("debit-entry", order.order.payableAmountCents, EVENT_TIME + 1_000);
-      assert.equal(reconciliation.reconcileEntry(debit.ledgerEntryId, BASE_TIME + 120_000).kind, "unmatched");
+      assert.equal(reconciliation.reconcileEntry(debit.ledgerEntryId, BASE_TIME + 120_000).kind, "ignored");
+      assert.equal(reconciliation.pendingLedgerPage(null).ledgerEntryIds.includes(debit.ledgerEntryId), false);
+      assert.equal(reconciliation.ledgerEntry(debit.ledgerEntryId)?.state, "UNALLOCATED");
       const late = recordCredit("late-entry", order.order.payableAmountCents, BASE_TIME + 60 * 60 * 1_000);
       assert.equal(reconciliation.reconcileEntry(late.ledgerEntryId, BASE_TIME + 120_000).kind, "unmatched");
       const conflict = recordConflict("conflict-entry", order.order.payableAmountCents, EVENT_TIME + 2_000, "CREDIT");
@@ -530,6 +533,22 @@ describe("automatic reconciliation settlement", () => {
       database.read((connection) => {
         assert.equal(readCount(connection, "payment_matches"), 0);
         assert.equal(readCount(connection, "outbox_events"), 0);
+      });
+      assert.equal(database.integrityCheck().ok, true);
+    });
+  });
+
+  it("does not rescan ordinary debit evidence but still detects real debit conflicts", async () => {
+    await withStores(async ({ database, reconciliation, recordDebit, recordConflict }) => {
+      const debit = recordDebit("debit-noise", 499, EVENT_TIME);
+      assert.equal(reconciliation.reconcileEntry(debit.ledgerEntryId, BASE_TIME + 120_000).kind, "ignored");
+      assert.equal(reconciliation.reconcilePending(1, BASE_TIME + 120_000).processed, 0);
+      const conflict = recordConflict("debit-real-conflict", 499, EVENT_TIME + 1000, "DEBIT");
+      assert.equal(reconciliation.reconcileEntry(conflict.ledgerEntryId, BASE_TIME + 120_000).kind, "ignored");
+      assert.equal(reconciliation.ledgerEntry(conflict.ledgerEntryId)?.state, "UNALLOCATED");
+      database.read((connection) => {
+        assert.equal(readCount(connection, "financial_exceptions"), 0);
+        assert.ok(readCountWhere(connection, "ledger_conflicts", "status = 'OPEN'") > 0);
       });
       assert.equal(database.integrityCheck().ok, true);
     });
@@ -563,7 +582,7 @@ describe("automatic reconciliation settlement", () => {
     });
   });
 
-  it("supports exceptional manual claim, reversal, and partial-to-full refund without changing evidence semantics", async () => {
+  it("supports manual claim and reversal while retaining legacy partial-to-full refund history", async () => {
     await withStores(async ({ database, orders, reconciliation, recordCredit, recordDebit }) => {
       const order = createOrder(orders, "manual", 999);
       const credit = recordCredit("manual-credit", order.order.payableAmountCents + 7, EVENT_TIME);
@@ -612,7 +631,7 @@ describe("automatic reconciliation settlement", () => {
       }));
       const partialAmountCents = 40_000;
       const partialDebit = recordDebit("refund-debit-partial", partialAmountCents, BASE_TIME + 181_000);
-      const partialRefund = reconciliation.recordRefund({
+      const partialRefund = seedLegacyRefund(database, {
         financialOperationId: randomUUID(),
         orderId: refundOrder.order.orderId,
         ledgerEntryId: partialDebit.ledgerEntryId,
@@ -625,7 +644,7 @@ describe("automatic reconciliation settlement", () => {
 
       const remainingAmountCents = refundOrder.order.payableAmountCents - partialAmountCents;
       const finalDebit = recordDebit("refund-debit-final", remainingAmountCents, BASE_TIME + 182_000);
-      const finalRefund = reconciliation.recordRefund({
+      const finalRefund = seedLegacyRefund(database, {
         financialOperationId: randomUUID(),
         orderId: refundOrder.order.orderId,
         ledgerEntryId: finalDebit.ledgerEntryId,

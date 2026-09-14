@@ -4709,4 +4709,90 @@ export const migrations: readonly Migration[] = [
       END;
     `,
   },
+  {
+    version: 23,
+    name: "administrator_reminders_and_refund_marks",
+    sql: `
+      CREATE TABLE admin_operation_log (
+        operation_id TEXT PRIMARY KEY CHECK (length(operation_id) = 36),
+        action TEXT NOT NULL CHECK (action IN ('work_items.ignore_all', 'work_items.restore', 'orders.refund_mark')),
+        actor_id TEXT NOT NULL CHECK (length(actor_id) BETWEEN 1 AND 128),
+        request_fingerprint TEXT NOT NULL CHECK (length(request_fingerprint) = 64),
+        result_json TEXT NOT NULL CHECK (json_valid(result_json) AND json_type(result_json) = 'object'),
+        created_at INTEGER NOT NULL CHECK (created_at >= 0)
+      ) STRICT;
+      CREATE INDEX admin_operation_log_created_idx ON admin_operation_log(created_at);
+      CREATE TRIGGER admin_operation_log_no_update BEFORE UPDATE ON admin_operation_log
+      BEGIN SELECT RAISE(ABORT, 'administrator operations are immutable'); END;
+      CREATE TRIGGER admin_operation_log_no_delete BEFORE DELETE ON admin_operation_log
+      BEGIN SELECT RAISE(ABORT, 'administrator operations cannot be deleted'); END;
+
+      CREATE TABLE admin_work_item_operations (
+        operation_id TEXT NOT NULL REFERENCES admin_operation_log(operation_id),
+        kind TEXT NOT NULL CHECK (kind IN ('FINANCIAL_EXCEPTION', 'LEDGER_CONFLICT', 'NOTIFICATION_FAILURE')),
+        item_id TEXT NOT NULL CHECK (length(item_id) = 36),
+        PRIMARY KEY (operation_id, kind, item_id)
+      ) STRICT;
+      CREATE TRIGGER admin_work_item_operations_no_update BEFORE UPDATE ON admin_work_item_operations
+      BEGIN SELECT RAISE(ABORT, 'reminder operation membership is immutable'); END;
+      CREATE TRIGGER admin_work_item_operations_no_delete BEFORE DELETE ON admin_work_item_operations
+      BEGIN SELECT RAISE(ABORT, 'reminder operation membership cannot be deleted'); END;
+
+      CREATE TABLE admin_work_item_states (
+        kind TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        ignored INTEGER NOT NULL CHECK (ignored IN (0, 1)),
+        operation_id TEXT NOT NULL,
+        updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
+        PRIMARY KEY (kind, item_id),
+        FOREIGN KEY (operation_id, kind, item_id) REFERENCES admin_work_item_operations(operation_id, kind, item_id)
+      ) STRICT;
+      CREATE INDEX admin_work_item_states_visibility_idx
+        ON admin_work_item_states(ignored, updated_at DESC, kind DESC, item_id DESC);
+      CREATE TRIGGER admin_work_item_states_valid_insert BEFORE INSERT ON admin_work_item_states
+      WHEN NOT EXISTS (
+        SELECT 1 FROM admin_operation_log AS op WHERE op.operation_id = NEW.operation_id
+          AND op.action = CASE NEW.ignored WHEN 1 THEN 'work_items.ignore_all' ELSE 'work_items.restore' END
+          AND op.created_at = NEW.updated_at
+      ) BEGIN SELECT RAISE(ABORT, 'reminder state requires its operation'); END;
+      CREATE TRIGGER admin_work_item_states_valid_update BEFORE UPDATE ON admin_work_item_states
+      WHEN NEW.kind != OLD.kind OR NEW.item_id != OLD.item_id OR NEW.updated_at < OLD.updated_at OR NOT EXISTS (
+        SELECT 1 FROM admin_operation_log AS op WHERE op.operation_id = NEW.operation_id
+          AND op.action = CASE NEW.ignored WHEN 1 THEN 'work_items.ignore_all' ELSE 'work_items.restore' END
+          AND op.created_at = NEW.updated_at
+      ) BEGIN SELECT RAISE(ABORT, 'reminder state transition is invalid'); END;
+      CREATE TRIGGER admin_work_item_states_no_delete BEFORE DELETE ON admin_work_item_states
+      BEGIN SELECT RAISE(ABORT, 'reminder state cannot be deleted'); END;
+
+      CREATE TABLE admin_refund_mark_events (
+        operation_id TEXT PRIMARY KEY REFERENCES admin_operation_log(operation_id),
+        order_id TEXT NOT NULL REFERENCES payment_orders(order_id),
+        version INTEGER NOT NULL CHECK (version >= 1),
+        marked INTEGER NOT NULL CHECK (marked IN (0, 1)),
+        note TEXT CHECK (note IS NULL OR (length(CAST(note AS BLOB)) <= 2000 AND instr(note, char(0)) = 0)),
+        UNIQUE (order_id, version)
+      ) STRICT;
+      CREATE TRIGGER admin_refund_mark_events_valid_insert BEFORE INSERT ON admin_refund_mark_events
+      WHEN NOT EXISTS (
+        SELECT 1 FROM admin_operation_log WHERE operation_id = NEW.operation_id AND action = 'orders.refund_mark'
+      ) BEGIN SELECT RAISE(ABORT, 'refund mark requires an administrator operation'); END;
+      CREATE TRIGGER admin_refund_mark_events_no_update BEFORE UPDATE ON admin_refund_mark_events
+      BEGIN SELECT RAISE(ABORT, 'refund mark history is immutable'); END;
+      CREATE TRIGGER admin_refund_mark_events_no_delete BEFORE DELETE ON admin_refund_mark_events
+      BEGIN SELECT RAISE(ABORT, 'refund mark history cannot be deleted'); END;
+
+      CREATE TABLE admin_refund_marks (
+        order_id TEXT PRIMARY KEY REFERENCES payment_orders(order_id),
+        version INTEGER NOT NULL CHECK (version >= 1),
+        FOREIGN KEY (order_id, version) REFERENCES admin_refund_mark_events(order_id, version)
+      ) STRICT;
+      CREATE TRIGGER admin_refund_marks_valid_insert BEFORE INSERT ON admin_refund_marks
+      WHEN NEW.version != 1 BEGIN SELECT RAISE(ABORT, 'refund mark must start at version one'); END;
+      CREATE TRIGGER admin_refund_marks_valid_update BEFORE UPDATE ON admin_refund_marks
+      WHEN NEW.order_id != OLD.order_id OR NEW.version != OLD.version + 1
+      BEGIN SELECT RAISE(ABORT, 'refund mark version is invalid'); END;
+      CREATE TRIGGER admin_refund_marks_no_delete BEFORE DELETE ON admin_refund_marks
+      BEGIN SELECT RAISE(ABORT, 'refund mark state cannot be deleted'); END;
+    `,
+  },
 ] as const;

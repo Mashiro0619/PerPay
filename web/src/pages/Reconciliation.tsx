@@ -17,14 +17,14 @@ type Section = "matches" | "conflicts" | "exceptions";
 
 export default function Reconciliation() {
   const [search, setSearch] = useSearchParams();
-  const [operation, setOperation] = useState<"settlement" | "refund" | null>(null);
+  const [operation, setOperation] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [ledgerId, setLedgerId] = useState("");
   const navigate = useNavigate();
   const section: Section = search.get("tab") === "conflicts" ? "conflicts" : search.get("tab") === "exceptions" ? "exceptions" : "matches";
   const allowed = section === "matches" ? ["SETTLED", "REVERSED"] : ["OPEN", "RESOLVED", "IGNORED", "ALL"];
   const status = allowed.includes(search.get("status") ?? "") ? search.get("status")! : allowed[0]!;
-  return <><PageHeading title="账本与对账" actions={<><Button onClick={() => setOperation("refund")}>登记已发生退款</Button><Button variant="primary" onClick={() => setOperation("settlement")}>人工关联收款</Button></>} />
+  return <><PageHeading title="账本与对账" actions={<Button variant="primary" onClick={() => setOperation(true)}>人工关联收款</Button>} />
     {completed && <Notice tone="success">账务操作已记录，相关订单和待处理事项已刷新。</Notice>}
     <Panel><div className="tabs" role="group" aria-label="对账记录类型"><SelectionIndicator active={section} underline />{([["matches", "支付关联"], ["exceptions", "账务异常"], ["conflicts", "账本冲突"]] as const).map(([value, text]) => <button type="button" key={value} aria-pressed={section === value} onClick={() => setSearch({ tab: value }, { replace: true })}>{text}</button>)}</div>
       <div className="list-toolbar"><form className="inline-search" onSubmit={(event) => { event.preventDefault(); navigate(`/reconciliation/ledger/${ledgerId.trim()}`); }}>
@@ -32,7 +32,7 @@ export default function Reconciliation() {
       </form>{section !== "exceptions" && <label><span className="sr-only">对账状态筛选</span><select value={status} onChange={(event) => setSearch({ tab: section, status: event.target.value }, { replace: true })}>{allowed.map((value) => <option key={value} value={value}>{({ SETTLED: "已关联", REVERSED: "已撤销", OPEN: "待处理", RESOLVED: "已处理", IGNORED: "已隔离", ALL: "全部状态" } as Record<string, string>)[value]}</option>)}</select></label>}</div>
       <ReconciliationList key={`${section}:${status}`} section={section} status={status} />
     </Panel>
-    {operation && <FinancialDialog mode={operation} onClose={() => setOperation(null)} onSuccess={() => { setOperation(null); setCompleted(true); }} />}
+    {operation && <FinancialDialog onClose={() => setOperation(false)} onSuccess={() => { setOperation(false); setCompleted(true); }} />}
   </>;
 }
 

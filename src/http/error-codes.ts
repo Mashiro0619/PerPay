@@ -1,5 +1,11 @@
 /** Every code that can be returned in the public HTTP error envelope. */
 export const HTTP_ERROR_CODES = Object.freeze([
+  "admin_operation_conflict",
+  "refund_mark_version_conflict",
+  "refund_mark_not_allowed",
+  "refund_recording_retired",
+  "work_item_not_found",
+  "work_item_ended",
   "amount_slots_exhausted",
   "api_authentication_failed",
   "api_client_invalid",

@@ -125,16 +125,18 @@ export function Details({ items }: { items: Array<[string, ReactNode]> }) {
 export function CopyValue({ value, label, secret = false }: { value: string; label?: string; secret?: boolean }) {
   const [copied, setCopied] = useState(false);
   const [failed, setFailed] = useState(false);
+  const block = secret || /[\r\n]/.test(value);
   useEffect(() => {
     if (!copied) return;
     const timer = window.setTimeout(() => setCopied(false), 2000);
     return () => window.clearTimeout(timer);
   }, [copied]);
-  return <div className={`copy-value ${secret ? "copy-value--secret" : ""}`}>
-    <code>{value}</code><Button aria-label={label ?? "复制内容"} title={label ?? "复制内容"} className="icon-button" onClick={() => {
-      void navigator.clipboard?.writeText(value).then(() => { setCopied(true); setFailed(false); }).catch(() => setFailed(true));
-      if (!navigator.clipboard) setFailed(true);
-    }}>{copied ? <Check size={16} /> : <Copy size={16} />}</Button>
+  const action = <Button aria-label={label ?? "复制内容"} title={label ?? "复制内容"} variant={block ? "quiet" : "secondary"} className={block ? "copy-value-action" : "icon-button"} onClick={() => {
+    void navigator.clipboard?.writeText(value).then(() => { setCopied(true); setFailed(false); }).catch(() => setFailed(true));
+    if (!navigator.clipboard) setFailed(true);
+  }}>{copied ? <Check size={16} /> : <Copy size={16} />}{block && (copied ? "已复制" : "复制")}</Button>;
+  return <div className={["copy-value", secret && "copy-value--secret", block && "copy-value--block"].filter(Boolean).join(" ")}>
+    {block ? <><div className="copy-value-toolbar">{action}</div><pre className="copy-value-content" tabIndex={0} role="region" aria-label={secret ? "密钥内容" : "可复制内容"}><code>{value}</code></pre></> : <><code>{value}</code>{action}</>}
     <span className={failed ? "field-hint" : "sr-only"} role="status">{failed ? "无法自动复制，请选中文本手动复制。" : copied ? "已复制" : ""}</span>
   </div>;
 }

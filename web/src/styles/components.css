@@ -1,4 +1,6 @@
 .work-item-list { margin: 0; padding: 0; list-style: none; }
+.reminder-toolbar-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.reminder-actions { padding: 0 22px 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .work-item-list > li + li { border-top: 1px solid var(--line); }
 .work-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 22px; color: var(--ink); transition: background-color 150ms ease-out; }
 .work-item:hover { background: var(--surface-muted); text-decoration: none; }
@@ -99,6 +101,13 @@ summary { cursor: pointer; font-size: 12px; }
 .copy-value code { align-self: center; max-height: 200px; overflow: auto; overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.7; }
 .copy-value .field-hint { grid-column: 1 / -1; }
 .copy-value--secret { margin: 20px 0; border-color: var(--line-strong); }
+.copy-value--block { display: block; padding: 0; overflow: hidden; }
+.copy-value-toolbar { display: flex; justify-content: flex-end; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+.copy-value-action { min-height: 32px; padding: 5px 8px; font-size: 12px; }
+.copy-value-content { margin: 0; padding: 14px 16px; max-height: min(260px, 40dvh); overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+.copy-value-content:focus-visible { outline-offset: -3px; }
+.copy-value-content code { display: block; max-height: none; overflow: visible; line-height: 1.75; }
+.copy-value--block > .field-hint { padding: 0 16px 12px; }
 .copy-value + .field-hint { margin-top: 12px; }
 .json-details { margin: 14px 0; color: var(--muted); }
 .json-details summary { width: fit-content; padding: 5px 0; }
@@ -127,3 +136,5 @@ summary { cursor: pointer; font-size: 12px; }
 .password-toggle:hover { background: var(--surface-muted); }
 
 .notification-fields:not([hidden]) { display: flex; flex-direction: column; gap: 18px; }
+
+.preserve-whitespace { white-space: pre-wrap; overflow-wrap: anywhere; }

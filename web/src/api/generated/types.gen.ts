@@ -74,6 +74,50 @@ export type SystemAnalytics = {
         notifications_failed: number;
     }>;
 };
+export type AdminOperationRequest = {
+    operation_id: ResourceId;
+};
+export type IgnoreAllWorkItemsRequest = {
+    operation_id: ResourceId;
+    type: AdminWorkItemTypeFilter;
+};
+export type IgnoreAllWorkItemsEnvelope = {
+    data: {
+        operation_id: ResourceId;
+        type: AdminWorkItemTypeFilter;
+        ignored_count: number;
+    };
+};
+export type RestoreWorkItemEnvelope = {
+    data: {
+        operation_id: ResourceId;
+        type: 'FINANCIAL_EXCEPTION' | 'LEDGER_CONFLICT' | 'NOTIFICATION_FAILURE';
+        resource_id: ResourceId;
+        restored: boolean;
+    };
+};
+export type AdminRefundMark = {
+    marked: boolean;
+    version: number;
+    note: string | null;
+    updated_at: string | null;
+    updated_by: string | null;
+};
+export type AdminRefundMarkEvent = AdminRefundMark & {
+    operation_id: ResourceId;
+};
+export type AdminRefundMarkRequest = {
+    operation_id: ResourceId;
+    version: number;
+    marked: boolean;
+    note?: string;
+};
+export type AdminRefundMarkEnvelope = {
+    data: {
+        operation_id: ResourceId;
+        refund_mark: AdminRefundMark;
+    };
+};
 export type AdminWorkItemTypeFilter = 'ALL' | 'FINANCIAL_EXCEPTION' | 'LEDGER_CONFLICT' | 'NOTIFICATION_FAILURE';
 export type AdminWorkItemPageEnvelope = {
     data: Array<AdminWorkItem>;
@@ -96,23 +140,26 @@ export type AdminWorkItemBase = {
     ledger_entry_id: ResourceId | null;
     created_at: string;
     actionable_at: string;
+    ignored_at: string | null;
+    ignored_by: string | null;
+    ended: boolean;
     detail_url: string;
 };
 export type AdminFinancialExceptionWorkItem = AdminWorkItemBase & {
     type?: 'FINANCIAL_EXCEPTION';
-    status: 'OPEN';
+    status: 'OPEN' | 'RESOLVED';
     exception_type: 'UNMATCHED_CREDIT' | 'UNMATCHED_DEBIT' | 'AMBIGUOUS_MATCH' | 'CHECKOUT_ENDED_PAYMENT' | 'DUPLICATE_PAYMENT' | 'AMOUNT_MISMATCH' | 'UNLINKED_REFUND' | 'RECONCILIATION_CONFLICT';
     candidate_id: ResourceId | null;
 };
 export type AdminLedgerConflictWorkItem = AdminWorkItemBase & {
     type?: 'LEDGER_CONFLICT';
-    status: 'OPEN';
+    status: 'OPEN' | 'RESOLVED' | 'IGNORED';
     conflict_type: LedgerConflictType;
     external_event_id: string | null;
 };
 export type AdminNotificationFailureWorkItem = AdminWorkItemBase & {
     type?: 'NOTIFICATION_FAILURE';
-    status: 'RETRY_WAIT' | 'DEAD_LETTER';
+    status: 'PENDING' | 'LEASED' | 'RETRY_WAIT' | 'ACKNOWLEDGED' | 'DEAD_LETTER';
     event_type: string;
     attempt_count: number;
     next_attempt_at: string | null;
@@ -414,6 +461,7 @@ export type AdminOrderSummary = {
     checkout: CheckoutState;
     payment: PaymentState;
     refund: RefundState;
+    refund_mark: AdminRefundMark;
     eligible_from: string;
     created_at: string;
     updated_at: string;
@@ -432,6 +480,8 @@ export type AdminOrderDetail = {
     checkout: CheckoutState;
     payment: PaymentState;
     refund: RefundState;
+    refund_mark: AdminRefundMark;
+    refund_mark_history: Array<AdminRefundMarkEvent>;
     eligible_from: string;
     notification: OrderNotification;
     events: Array<AdminOrderEvent>;
@@ -973,7 +1023,7 @@ export type WebhookRedeliveryEnvelope = {
     };
 };
 export type Sha256Fingerprint = string;
-export type ErrorCode = 'amount_slots_exhausted' | 'api_authentication_failed' | 'api_client_invalid' | 'api_nonce_replayed' | 'asset_not_found' | 'auth_rate_limited' | 'candidate_not_found' | 'candidate_set_changed' | 'checkout_code_generation_failed' | 'checkout_code_not_found' | 'checkout_not_found' | 'csrf_invalid' | 'duplicate_json_key' | 'event_not_found' | 'financial_clock_unavailable' | 'financial_exception_not_found' | 'forwarded_header_invalid' | 'idempotency_conflict' | 'identity_already_initialized' | 'identity_not_initialized' | 'internal_error' | 'invalid_content_length' | 'invalid_credentials' | 'invalid_json' | 'ledger_conflict_action_not_allowed' | 'ledger_conflict_not_found' | 'ledger_conflict_operation_conflict' | 'ledger_conflict_state_conflict' | 'ledger_entry_not_found' | 'ledger_unavailable' | 'match_not_found' | 'match_state_conflict' | 'merchant_order_no_conflict' | 'operation_conflict' | 'order_clock_unavailable' | 'order_not_found' | 'origin_not_allowed' | 'password_unchanged' | 'password_work_busy' | 'provider_application_key_missing' | 'provider_application_key_rotation_not_supported' | 'provider_switch_blocked' | 'public_checkout_rate_limited' | 'reconciliation_not_ready' | 'reconciliation_unavailable' | 'request_body_too_large' | 'request_body_unreadable' | 'return_url_invalid' | 'return_url_not_allowed' | 'route_not_found' | 'secret_not_found' | 'session_invalid' | 'settings_not_configured' | 'settings_revision_conflict' | 'settings_unavailable' | 'settings_validation_failed' | 'system_not_configured' | 'system_not_ready' | 'unsupported_media_type' | 'update_check_unavailable' | 'validation_failed' | 'webhook_delivery_not_found' | 'webhook_delivery_state_conflict' | 'webhook_disabled' | 'webhook_event_not_found' | 'webhook_operation_conflict' | 'webhook_signing_key_rollback' | 'webhook_signing_key_unavailable' | 'webhook_target_inactive' | 'webhook_target_invalid' | 'webhook_target_not_allowed' | 'webhook_unavailable';
+export type ErrorCode = 'admin_operation_conflict' | 'refund_mark_version_conflict' | 'refund_mark_not_allowed' | 'refund_recording_retired' | 'work_item_not_found' | 'work_item_ended' | 'amount_slots_exhausted' | 'api_authentication_failed' | 'api_client_invalid' | 'api_nonce_replayed' | 'asset_not_found' | 'auth_rate_limited' | 'candidate_not_found' | 'candidate_set_changed' | 'checkout_code_generation_failed' | 'checkout_code_not_found' | 'checkout_not_found' | 'csrf_invalid' | 'duplicate_json_key' | 'event_not_found' | 'financial_clock_unavailable' | 'financial_exception_not_found' | 'forwarded_header_invalid' | 'idempotency_conflict' | 'identity_already_initialized' | 'identity_not_initialized' | 'internal_error' | 'invalid_content_length' | 'invalid_credentials' | 'invalid_json' | 'ledger_conflict_action_not_allowed' | 'ledger_conflict_not_found' | 'ledger_conflict_operation_conflict' | 'ledger_conflict_state_conflict' | 'ledger_entry_not_found' | 'ledger_unavailable' | 'match_not_found' | 'match_state_conflict' | 'merchant_order_no_conflict' | 'operation_conflict' | 'order_clock_unavailable' | 'order_not_found' | 'origin_not_allowed' | 'password_unchanged' | 'password_work_busy' | 'provider_application_key_missing' | 'provider_application_key_rotation_not_supported' | 'provider_switch_blocked' | 'public_checkout_rate_limited' | 'reconciliation_not_ready' | 'reconciliation_unavailable' | 'request_body_too_large' | 'request_body_unreadable' | 'return_url_invalid' | 'return_url_not_allowed' | 'route_not_found' | 'secret_not_found' | 'session_invalid' | 'settings_not_configured' | 'settings_revision_conflict' | 'settings_unavailable' | 'settings_validation_failed' | 'system_not_configured' | 'system_not_ready' | 'unsupported_media_type' | 'update_check_unavailable' | 'validation_failed' | 'webhook_delivery_not_found' | 'webhook_delivery_state_conflict' | 'webhook_disabled' | 'webhook_event_not_found' | 'webhook_operation_conflict' | 'webhook_signing_key_rollback' | 'webhook_signing_key_unavailable' | 'webhook_target_inactive' | 'webhook_target_invalid' | 'webhook_target_not_allowed' | 'webhook_unavailable';
 export type ErrorEnvelope = {
     error: {
         code: ErrorCode;
@@ -1134,6 +1184,7 @@ export type ListAdministratorWorkItemsData = {
     path?: never;
     query?: {
         type?: AdminWorkItemTypeFilter;
+        visibility?: 'ACTIVE' | 'IGNORED';
         limit?: number;
         cursor?: string;
     };
@@ -1149,6 +1200,85 @@ export type ListAdministratorWorkItemsResponses = {
     200: AdminWorkItemPageEnvelope;
 };
 export type ListAdministratorWorkItemsResponse = ListAdministratorWorkItemsResponses[keyof ListAdministratorWorkItemsResponses];
+export type IgnoreAllAdministratorWorkItemsData = {
+    body: IgnoreAllWorkItemsRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/admin/v1/work-items/actions/ignore-all';
+};
+export type IgnoreAllAdministratorWorkItemsErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+};
+export type IgnoreAllAdministratorWorkItemsError = IgnoreAllAdministratorWorkItemsErrors[keyof IgnoreAllAdministratorWorkItemsErrors];
+export type IgnoreAllAdministratorWorkItemsResponses = {
+    200: IgnoreAllWorkItemsEnvelope;
+};
+export type IgnoreAllAdministratorWorkItemsResponse = IgnoreAllAdministratorWorkItemsResponses[keyof IgnoreAllAdministratorWorkItemsResponses];
+export type RestoreAdministratorWorkItemData = {
+    body: AdminOperationRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        type: 'FINANCIAL_EXCEPTION' | 'LEDGER_CONFLICT' | 'NOTIFICATION_FAILURE';
+        resourceId: ResourceId;
+    };
+    query?: never;
+    url: '/api/admin/v1/work-items/{type}/{resourceId}/actions/restore';
+};
+export type RestoreAdministratorWorkItemErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+};
+export type RestoreAdministratorWorkItemError = RestoreAdministratorWorkItemErrors[keyof RestoreAdministratorWorkItemErrors];
+export type RestoreAdministratorWorkItemResponses = {
+    200: RestoreWorkItemEnvelope;
+};
+export type RestoreAdministratorWorkItemResponse = RestoreAdministratorWorkItemResponses[keyof RestoreAdministratorWorkItemResponses];
+export type SetAdministratorRefundMarkData = {
+    body: AdminRefundMarkRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        orderId: ResourceId;
+    };
+    query?: never;
+    url: '/api/admin/v1/orders/{orderId}/refund-mark';
+};
+export type SetAdministratorRefundMarkErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+};
+export type SetAdministratorRefundMarkError = SetAdministratorRefundMarkErrors[keyof SetAdministratorRefundMarkErrors];
+export type SetAdministratorRefundMarkResponses = {
+    200: AdminRefundMarkEnvelope;
+};
+export type SetAdministratorRefundMarkResponse = SetAdministratorRefundMarkResponses[keyof SetAdministratorRefundMarkResponses];
 export type LogoutAdministratorSessionData = {
     body: AdminEmptyRequest;
     headers?: {
@@ -1853,18 +1983,12 @@ export type RecordCollectedRefundDebitErrors = {
     400: ErrorEnvelope;
     401: ErrorEnvelope;
     403: ErrorEnvelope;
-    404: ErrorEnvelope;
-    409: ErrorEnvelope;
+    410: ErrorEnvelope;
     413: ErrorEnvelope;
     415: ErrorEnvelope;
     422: ErrorEnvelope;
-    503: ErrorEnvelope;
 };
 export type RecordCollectedRefundDebitError = RecordCollectedRefundDebitErrors[keyof RecordCollectedRefundDebitErrors];
-export type RecordCollectedRefundDebitResponses = {
-    200: RefundDecisionEnvelope;
-};
-export type RecordCollectedRefundDebitResponse = RecordCollectedRefundDebitResponses[keyof RecordCollectedRefundDebitResponses];
 export type ListWebhookDeliveriesData = {
     body?: never;
     headers?: {

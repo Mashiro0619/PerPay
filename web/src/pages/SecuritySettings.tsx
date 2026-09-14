@@ -5,7 +5,7 @@ import { Eye, KeyRound, LogOut, ShieldCheck } from "lucide-react";
 import { api, result, type RuntimeSecretName, type RuntimeSettings } from "../api/client";
 import { useSession } from "../auth";
 import { Badge, Button, CopyValue, Dialog, ErrorNotice, Field, Notice, Panel } from "../components/ui";
-import { MIN_ADMIN_PASSWORD_CHARACTERS, shortId, validatePassword } from "../lib/format";
+import { MIN_ADMIN_PASSWORD_CHARACTERS, dateTime, validatePassword } from "../lib/format";
 import { useDirtyDraft, useDraftGuard } from "../drafts";
 
 const secrets: Array<[RuntimeSecretName, string]> = [["api_secret", "网站 API 密钥"], ["provider_private_key", "应用私钥"], ["provider_public_key", "支付宝公钥"], ["webhook_secret", "通知签名密钥"]];
@@ -24,7 +24,11 @@ export function SecuritySettings({ settings, onSaved }: { settings: RuntimeSetti
       <Button onClick={() => setRotate(true)} variant={settings.completion.api ? "secondary" : "primary"}><KeyRound size={16} />{settings.completion.api ? "轮换 API 密钥" : "生成 API 密钥"}</Button>
     </Panel>
     <Panel title="密钥保管">
-      <ul className="secret-list">{secrets.map(([name, title]) => <li key={name}><div><strong>{title}</strong><span className="field-hint">{settings.secrets[name].configured ? `版本 ${settings.secrets[name].version} · 指纹 ${shortId(settings.secrets[name].fingerprint)}` : "尚未配置"}</span></div><Badge value={settings.secrets[name].configured ? "CONFIRMED" : "UNPAID"} label={settings.secrets[name].configured ? "已配置" : "未配置"} /><Button disabled={!settings.secrets[name].configured} onClick={() => setReveal(name)} aria-label={`显示${title}`}><Eye size={15} />显示</Button></li>)}</ul>
+      <ul className="secret-list">{secrets.map(([name, title]) => {
+        const metadata = settings.secrets[name];
+        return <li key={name}><div><strong>{title}</strong>{metadata.configured && metadata.updatedAt !== null && <time className="field-hint" dateTime={new Date(metadata.updatedAt).toISOString()}>更新于 {dateTime(metadata.updatedAt)}</time>}</div>
+          <Badge value={metadata.configured ? "CONFIRMED" : "UNPAID"} label={metadata.configured ? "已配置" : "未配置"} /><Button disabled={!metadata.configured} onClick={() => setReveal(name)} aria-label={"显示" + title}><Eye size={15} />显示</Button></li>;
+      })}</ul>
     </Panel>
     <PasswordForm />
     <Panel title="管理员会话" className="content-panel"><Button variant="danger" onClick={() => requestDiscard(() => setRevoke(true))}><LogOut size={16} />注销全部会话</Button></Panel>

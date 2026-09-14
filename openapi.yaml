@@ -1,7 +1,7 @@
 openapi: 3.1.1
 info:
   title: PerPay Native API
-  version: 0.2.1
+  version: 0.2.2
   summary: Self-hosted collection-code payment and reconciliation API
   license:
     name: MIT
@@ -262,13 +262,17 @@ paths:
     get:
       tags: [System]
       operationId: listAdministratorWorkItems
-      summary: Page through unresolved work across financial, ledger, and notification domains
+      summary: Page through active or dismissed administrator reminders
       description: |
-        Combines open financial exceptions, open ledger conflicts, retry-wait notifications, and
-        latest dead-letter notifications from every retained provider generation. Results use a
-        single SQLite snapshot and descending actionable-time, type, and resource-ID ordering.
-        The cursor is bound to the selected type filter. Each item links to its existing detailed
-        resource endpoint; normal pending or in-flight notification work is not included.
+        ACTIVE combines undismissed open financial exceptions, open ledger conflicts, retry-wait
+        notifications and latest dead-letter notifications from every retained provider generation.
+        Legacy UNMATCHED_DEBIT and UNLINKED_REFUND warnings are excluded without changing their status.
+        A single SQLite snapshot drives this list and home-page reminders. ACTIVE sorts by descending
+        actionable time, type and resource ID; IGNORED sorts by dismissal time, type and resource ID.
+        The cursor is bound to type and visibility. IGNORED retains resolved or acknowledged records
+        with ended=true and keeps ignored notifications visible during subsequent pending/leased retries.
+        Each item links to its original detailed resource endpoint. Dismissal changes neither financial
+        facts nor conflict constraints and never stops notification retries.
       security:
         - AdminSessionCookie: []
       parameters:
@@ -278,6 +282,10 @@ paths:
           required: false
           schema:
             $ref: '#/components/schemas/AdminWorkItemTypeFilter'
+        - name: visibility
+          in: query
+          required: false
+          schema: { type: string, enum: [ACTIVE, IGNORED], default: ACTIVE }
         - name: limit
           in: query
           required: false
@@ -297,13 +305,122 @@ paths:
             pattern: '^[A-Za-z0-9_-]+$'
       responses:
         '200':
-          description: One globally ordered page of unresolved work
+          description: One globally ordered page of active or ignored reminders
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AdminWorkItemPageEnvelope' }
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/Unavailable' }
+  /api/admin/v1/work-items/actions/ignore-all:
+    post:
+      tags: [System]
+      operationId: ignoreAllAdministratorWorkItems
+      summary: Dismiss every current reminder in the selected category, across all pages
+      description: Dismisses reminders only. Underlying evidence, conflicts and notification retries are unchanged. The operation UUID replays its original result without dismissing newer items.
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IgnoreAllWorkItemsRequest' }
+      responses:
+        '200':
+          description: Original batch result, including on replay
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IgnoreAllWorkItemsEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '409': { $ref: '#/components/responses/AdminOperationConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /api/admin/v1/work-items/{type}/{resourceId}/actions/restore:
+    post:
+      tags: [System]
+      operationId: restoreAdministratorWorkItem
+      summary: Restore a dismissed reminder without changing its underlying record
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+        - name: type
+          in: path
+          required: true
+          schema: { type: string, enum: [FINANCIAL_EXCEPTION, LEDGER_CONFLICT, NOTIFICATION_FAILURE] }
+        - name: resourceId
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/ResourceId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminOperationRequest' }
+      responses:
+        '200':
+          description: Reminder restored or original result replayed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RestoreWorkItemEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '404': { $ref: '#/components/responses/AdminResourceNotFound' }
+        '409': { $ref: '#/components/responses/AdminOperationConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /api/admin/v1/orders/{orderId}/refund-mark:
+    put:
+      tags: [Orders]
+      operationId: setAdministratorRefundMark
+      summary: Set or clear an administrator-only declaration of an external refund
+      description: Does not transfer funds, verify a refund, change payment facts or emit a webhook. Marking requires a received amount and CONFIRMED or DISPUTED payment; history is retained. The version is independent from the business order version.
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+        - name: orderId
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/ResourceId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminRefundMarkRequest' }
+      responses:
+        '200':
+          description: Administrator mark recorded or original result replayed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminRefundMarkEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '404': { $ref: '#/components/responses/AdminResourceNotFound' }
+        '409': { $ref: '#/components/responses/AdminOperationConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
   /api/admin/v1/session/logout:
     post:
       tags: [Admin Session]
@@ -1301,11 +1418,14 @@ paths:
     post:
       tags: [Reconciliation]
       operationId: recordCollectedRefundDebit
-      summary: Explicitly register a collected debit as an order refund
+      deprecated: true
+      summary: Retired legacy refund recording endpoint
       description: |
-        This records an already observed provider debit; it does not initiate a provider refund.
-        Debits are never linked automatically. The cumulative registered amount may not exceed
-        the order's confirmed received amount; an over-refund returns HTTP 409 atomically.
+        Authenticated, same-origin, CSRF-protected JSON requests with a valid legacy body return
+        HTTP 410 with refund_recording_retired. This endpoint never writes a refund record,
+        ledger posting, order event or notification. Use the administrator-only order refund mark
+        for external refund declarations. Existing refund records and queued notifications retain
+        their original meaning and are not converted into marks.
       x-perpay-requires-same-origin: true
       security:
         - AdminSessionCookie: []
@@ -1317,21 +1437,17 @@ paths:
       requestBody:
         $ref: '#/components/requestBodies/LinkedFinancialDecision'
       responses:
-        '200':
-          description: Refund debit registered or exactly replayed
+        '410':
+          description: Legacy refund recording has been retired (refund_recording_retired)
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/RefundDecisionEnvelope'
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
         '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
-        '404': { $ref: '#/components/responses/ReconciliationNotFound' }
-        '409': { $ref: '#/components/responses/FinancialConflict' }
         '413': { $ref: '#/components/responses/TooLarge' }
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
-        '503': { $ref: '#/components/responses/ReconciliationUnavailable' }
   /api/admin/v1/webhooks/deliveries:
     get:
       tags: [Notifications]
@@ -2117,6 +2233,84 @@ components:
               confirmed_amount_cents: { type: integer, minimum: 0 }
               notifications_acknowledged: { type: integer, minimum: 0 }
               notifications_failed: { type: integer, minimum: 0 }
+    AdminOperationRequest:
+      type: object
+      additionalProperties: false
+      required: [operation_id]
+      properties:
+        operation_id: { $ref: '#/components/schemas/ResourceId' }
+    IgnoreAllWorkItemsRequest:
+      type: object
+      additionalProperties: false
+      required: [operation_id, type]
+      properties:
+        operation_id: { $ref: '#/components/schemas/ResourceId' }
+        type: { $ref: '#/components/schemas/AdminWorkItemTypeFilter' }
+    IgnoreAllWorkItemsEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [operation_id, type, ignored_count]
+          properties:
+            operation_id: { $ref: '#/components/schemas/ResourceId' }
+            type: { $ref: '#/components/schemas/AdminWorkItemTypeFilter' }
+            ignored_count: { type: integer, minimum: 0 }
+    RestoreWorkItemEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [operation_id, type, resource_id, restored]
+          properties:
+            operation_id: { $ref: '#/components/schemas/ResourceId' }
+            type: { type: string, enum: [FINANCIAL_EXCEPTION, LEDGER_CONFLICT, NOTIFICATION_FAILURE] }
+            resource_id: { $ref: '#/components/schemas/ResourceId' }
+            restored: { type: boolean }
+    AdminRefundMark:
+      type: object
+      required: [marked, version, note, updated_at, updated_by]
+      properties:
+        marked: { type: boolean }
+        version: { type: integer, minimum: 0 }
+        note: { type: [string, 'null'], maxLength: 500 }
+        updated_at: { type: [string, 'null'], format: date-time }
+        updated_by: { type: [string, 'null'] }
+    AdminRefundMarkEvent:
+      allOf:
+        - $ref: '#/components/schemas/AdminRefundMark'
+        - type: object
+          required: [operation_id]
+          properties:
+            operation_id: { $ref: '#/components/schemas/ResourceId' }
+      unevaluatedProperties: false
+    AdminRefundMarkRequest:
+      type: object
+      additionalProperties: false
+      required: [operation_id, version, marked]
+      properties:
+        operation_id: { $ref: '#/components/schemas/ResourceId' }
+        version: { type: integer, minimum: 0, maximum: 9007199254740990 }
+        marked: { type: boolean }
+        note: { type: string, maxLength: 500, description: Optional administrator-only note of at most 500 Unicode characters; trimmed. Line breaks and tabs are allowed; other control characters are rejected. }
+    AdminRefundMarkEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [operation_id, refund_mark]
+          properties:
+            operation_id: { $ref: '#/components/schemas/ResourceId' }
+            refund_mark: { $ref: '#/components/schemas/AdminRefundMark' }
     AdminWorkItemTypeFilter:
       type: string
       enum: [ALL, FINANCIAL_EXCEPTION, LEDGER_CONFLICT, NOTIFICATION_FAILURE]
@@ -2160,6 +2354,9 @@ components:
         - created_at
         - actionable_at
         - detail_url
+        - ignored_at
+        - ignored_by
+        - ended
       properties:
         type:
           type: string
@@ -2184,6 +2381,9 @@ components:
             Sorting time for the unresolved work: resource creation for financial and ledger
             items, the latest retry failure update for retry-wait notifications, or the terminal
             dead-letter time.
+        ignored_at: { type: [string, 'null'], format: date-time }
+        ignored_by: { type: [string, 'null'] }
+        ended: { type: boolean, description: Underlying issue was resolved or isolated, or notification was acknowledged or superseded. It cannot be restored. Pending and leased retries are not ended. }
         detail_url:
           type: string
           pattern: '^/api/admin/v1/'
@@ -2195,7 +2395,7 @@ components:
           required: [status, exception_type, candidate_id]
           properties:
             type: { const: FINANCIAL_EXCEPTION }
-            status: { const: OPEN }
+            status: { type: string, enum: [OPEN, RESOLVED] }
             exception_type:
               type: string
               enum:
@@ -2220,7 +2420,7 @@ components:
           required: [status, conflict_type, external_event_id]
           properties:
             type: { const: LEDGER_CONFLICT }
-            status: { const: OPEN }
+            status: { type: string, enum: [OPEN, RESOLVED, IGNORED] }
             conflict_type: { $ref: '#/components/schemas/LedgerConflictType' }
             external_event_id: { type: [string, 'null'] }
       unevaluatedProperties: false
@@ -2241,7 +2441,7 @@ components:
             type: { const: NOTIFICATION_FAILURE }
             status:
               type: string
-              enum: [RETRY_WAIT, DEAD_LETTER]
+              enum: [PENDING, LEASED, RETRY_WAIT, ACKNOWLEDGED, DEAD_LETTER]
             event_type: { type: string }
             attempt_count: { type: integer, minimum: 1 }
             next_attempt_at: { type: [string, 'null'], format: date-time }
@@ -3092,6 +3292,7 @@ components:
         - checkout
         - payment
         - refund
+        - refund_mark
         - eligible_from
         - created_at
         - updated_at
@@ -3115,6 +3316,7 @@ components:
         checkout: { $ref: '#/components/schemas/CheckoutState' }
         payment: { $ref: '#/components/schemas/PaymentState' }
         refund: { $ref: '#/components/schemas/RefundState' }
+        refund_mark: { $ref: '#/components/schemas/AdminRefundMark' }
         eligible_from: { type: string, format: date-time }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
@@ -3135,6 +3337,8 @@ components:
         - checkout
         - payment
         - refund
+        - refund_mark
+        - refund_mark_history
         - eligible_from
         - notification
         - events
@@ -3162,6 +3366,10 @@ components:
         checkout: { $ref: '#/components/schemas/CheckoutState' }
         payment: { $ref: '#/components/schemas/PaymentState' }
         refund: { $ref: '#/components/schemas/RefundState' }
+        refund_mark: { $ref: '#/components/schemas/AdminRefundMark' }
+        refund_mark_history:
+          type: array
+          items: { $ref: '#/components/schemas/AdminRefundMarkEvent' }
         eligible_from: { type: string, format: date-time }
         notification: { $ref: '#/components/schemas/OrderNotification' }
         events:
@@ -4593,6 +4801,12 @@ components:
     ErrorCode:
       type: string
       enum:
+        - admin_operation_conflict
+        - refund_mark_version_conflict
+        - refund_mark_not_allowed
+        - refund_recording_retired
+        - work_item_not_found
+        - work_item_ended
         - amount_slots_exhausted
         - api_authentication_failed
         - api_client_invalid
@@ -4683,6 +4897,16 @@ components:
               description: Safe validation hints keyed by the submitted field name; never includes submitted secrets.
               additionalProperties: { type: string }
   responses:
+    AdminOperationConflict:
+      description: Operation UUID reuse, stale mark version, ineligible order, or an ended reminder.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    AdminResourceNotFound:
+      description: Order or reminder resource does not exist.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     BadRequest:
       description: >-
         Malformed or ambiguous request, including an invalid `X-Forwarded-For` chain supplied

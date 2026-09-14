@@ -116,6 +116,14 @@ describe("ledger conflict HTTP operations", () => {
       assert.equal(readyBefore.status, 200);
       assert.deepEqual(await readyBefore.json(), { status: "degraded", code: null });
 
+      const ignored = await app.request("/api/admin/v1/work-items/actions/ignore-all", {
+        method: "POST", headers: writeHeaders(auth), body: JSON.stringify({ operation_id: randomUUID(), type: "LEDGER_CONFLICT" }),
+      });
+      assert.equal(ignored.status, 200);
+      assert.equal((await responseData<{ ignored_count: number }>(ignored)).ignored_count, 1);
+      const home = await app.request("/api/admin/v1/work-items?limit=4", { headers: { cookie: auth.cookie } });
+      assert.deepEqual(await responseData(home), []);
+      assert.equal(ledger.conflict(conflict.conflictId)?.conflict.status, "OPEN");
       const adminStatus = await app.request("/api/admin/v1/system/status", {
         headers: { cookie: auth.cookie },
       });
@@ -206,6 +214,13 @@ describe("ledger conflict HTTP operations", () => {
       assert.equal(changedReplay.status, 409);
       assert.equal(await errorCode(changedReplay), "ledger_conflict_operation_conflict");
 
+      const ignoredHistory = await app.request("/api/admin/v1/work-items?visibility=IGNORED", { headers: { cookie: auth.cookie } });
+      assert.equal((await responseData<Array<{ ended: boolean }>>(ignoredHistory))[0]?.ended, true);
+      const restoreEnded = await app.request("/api/admin/v1/work-items/LEDGER_CONFLICT/" + conflict.conflictId + "/actions/restore", {
+        method: "POST", headers: writeHeaders(auth), body: JSON.stringify({ operation_id: randomUUID() }),
+      });
+      assert.equal(restoreEnded.status, 409); assert.equal(await errorCode(restoreEnded), "work_item_ended");
+      assert.equal(database.integrityCheck().ok, true);
       const readyAfter = await app.request("/readyz");
       assert.equal(readyAfter.status, 200);
       assert.deepEqual(await readyAfter.json(), { status: "ready", code: null });

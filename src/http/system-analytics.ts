@@ -131,7 +131,8 @@ function readAnalytics(
     SELECT
       (SELECT COUNT(*) FROM payment_orders
         WHERE checkout_status = 'OPEN' AND payment_status = 'UNPAID') AS orders,
-      (SELECT COUNT(*) FROM financial_exceptions WHERE status = 'OPEN') AS exceptions,
+      (SELECT COUNT(*) FROM financial_exceptions
+         WHERE status = 'OPEN' AND exception_type NOT IN ('UNMATCHED_DEBIT', 'UNLINKED_REFUND')) AS exceptions,
       (SELECT COUNT(*) FROM ledger_conflicts WHERE status = 'OPEN') AS conflicts,
       (SELECT COUNT(*) FROM webhook_deliveries
         WHERE status IN ('PENDING', 'LEASED', 'RETRY_WAIT')) AS notifications

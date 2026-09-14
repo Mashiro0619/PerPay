@@ -13,7 +13,7 @@ export default function System() {
   return <><PageHeading title="运行状态" actions={<Button pending={status.isFetching} onClick={() => { void status.refetch(); }}><RefreshCw size={16} />立即刷新</Button>} />
     <OfficialUpdatePanel />
     <QueryView query={status}>{({ data }) => <>
-      <Panel title="实例概况" action={<Badge value={data.status} />} className="content-panel"><Details items={[["应用版本", `v${data.version}`], ["实例编号", <CopyValue value={data.instance_id} />], ["配置状态", data.configured ? "已完成" : <Link to="/settings">继续配置</Link>], ["配置版本 / 收款版本", `${data.settings_revision ?? "—"} / ${data.payment_revision}`], ["当前支付宝账户", data.provider_account_key ?? "尚未配置"], ["最后读取", dateTime(status.dataUpdatedAt)]]} /></Panel>
+      <Panel title="实例概况" action={<Badge value={data.status} />} className="content-panel"><Details items={[["应用版本", `v${data.version}`], ["实例编号", <CopyValue value={data.instance_id} />], ["配置状态", data.configured ? "已完成" : <Link to="/settings">继续配置</Link>], ["当前支付宝账户", data.provider_account_key ?? "尚未配置"], ["最后读取", dateTime(status.dataUpdatedAt)]]} /></Panel>
       {data.status === "not_ready" && <Notice tone="warning">当前不能创建新的收款订单。请检查配置、数据库及下方采集与自动确认状态。</Notice>}
       <div className="two-column">
         <Panel title="账本采集" action={<HealthIndicator enabled={data.ledger.enabled} healthy={data.ledger.collection_ready && data.ledger.consecutive_failures === 0} />} className="content-panel"><Details items={[["调度状态", label(data.ledger.state)], ["正在采集", data.ledger.in_flight ? "是" : "否"], ["最近成功", dateTime(data.ledger.last_success_at)], ["连续失败", data.ledger.consecutive_failures], ["最近错误", data.ledger.last_error_code ?? "无"], ["开放冲突", <Link to="/reconciliation?tab=conflicts">{data.ledger.conflicts?.open ?? "—"}</Link>]]} /></Panel>

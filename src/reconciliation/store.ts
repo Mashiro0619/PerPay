@@ -20,7 +20,6 @@ import {
   financialOperationFingerprint,
   manualSettlementEvidence,
   outboxPayloadFingerprint,
-  refundRecordEvidence,
   type CandidateFingerprintInput,
   type FinancialException,
   type FinancialExceptionType,
@@ -157,25 +156,6 @@ export interface ManualSettlementInput {
   readonly actorId: string;
   readonly reason: string;
   readonly now?: number | undefined;
-}
-
-export interface RefundRecordInput {
-  readonly financialOperationId: string;
-  readonly orderId: string;
-  readonly ledgerEntryId: string;
-  readonly actorId: string;
-  readonly reason: string;
-  readonly now?: number | undefined;
-}
-
-export interface RefundRecordResult {
-  readonly operation: FinancialOperation;
-  readonly refundRecordId: string;
-  readonly orderId: string;
-  readonly ledgerEntryId: string;
-  readonly refundStatus: "PARTIAL" | "FULL";
-  readonly orderVersion: number;
-  readonly replayed: boolean;
 }
 
 export interface FinancialDecisionResult {
@@ -376,29 +356,16 @@ export class ReconciliationStore {
         return { kind: "ignored", ledgerEntryId };
       }
 
+      // Outgoing funds are retained as ledger evidence, not payment-match work.
+      // This also leaves previously allocated legacy refund debits untouched.
+      if (entry.direction === "DEBIT") return { kind: "ignored", ledgerEntryId };
+
       const activeMatch = readActiveMatchForEntry(connection, ledgerEntryId);
       if (activeMatch) {
         return { kind: "allocated", ledgerEntryId, paymentMatchId: activeMatch.paymentMatchId };
       }
       if (entry.state === "ALLOCATED") {
         throw new ReconciliationError("match_state_conflict", "allocated ledger entry has no active match");
-      }
-
-      if (entry.direction === "DEBIT") {
-        const exception = ensureException(connection, {
-          providerAccountKey: entry.provider_account_key,
-          exceptionType: "UNMATCHED_DEBIT",
-          ledgerEntryId,
-          orderId: null,
-          candidateId: null,
-          contextKey: latestMatchContext(connection, ledgerEntryId),
-          details: {
-            reason: "debit_requires_verified_refund_link",
-            refund_classification: "not_inferred",
-          },
-          now,
-        });
-        return { kind: "unmatched", ledgerEntryId, exceptionId: exception.exceptionId };
       }
 
       const settledOrderOverlap = readSettledOrderOverlap(connection, entry);
@@ -491,7 +458,7 @@ export class ReconciliationStore {
       .prepare(
         `SELECT ledger_entry_id, occurred_at
           FROM ledger_entries
-          WHERE state IN ('UNALLOCATED', 'CANDIDATE')
+          WHERE state IN ('UNALLOCATED', 'CANDIDATE') AND direction = 'CREDIT'
             AND NOT EXISTS (
               SELECT 1
                 FROM ledger_conflicts AS conflict
@@ -702,145 +669,6 @@ export class ReconciliationStore {
         now,
       );
       return decisionResult(connection, operation, paymentMatchId, false);
-    });
-  }
-
-  recordRefund(input: RefundRecordInput): RefundRecordResult {
-    validateRefundRecordInput(input);
-    return this.#database.write((connection) => {
-      const now = financialNow(connection, input.now);
-      const operationInput: FinancialOperationFingerprintInput = {
-        operationType: "RECORD_REFUND",
-        actorType: "ADMIN",
-        actorId: input.actorId,
-        orderId: input.orderId,
-        ledgerEntryId: input.ledgerEntryId,
-        candidateId: null,
-        paymentMatchId: null,
-        reversesOperationId: null,
-        reason: input.reason,
-      };
-      const replay = readDecisionReplay(connection, input.financialOperationId, operationInput);
-      if (replay) return refundDecisionResult(connection, replay, true);
-
-      const entry = requireLedgerEntry(connection, input.ledgerEntryId);
-      const order = requireOrderDecision(connection, input.orderId);
-      if (
-        entry.direction !== "DEBIT" ||
-        entry.currency !== order.currency ||
-        !["UNALLOCATED", "CONFLICT"].includes(entry.state) ||
-        !["CONFIRMED", "DISPUTED"].includes(order.payment_status) ||
-        order.refund_status === "FULL" ||
-        !orderUsesProviderAccount(connection, order.order_id, entry.provider_account_key)
-      ) {
-        throw new ReconciliationError("match_state_conflict", "refund facts are not eligible");
-      }
-
-      const amountCents = toSafeInteger(entry.amount_cents, "refund ledger amount");
-      const receivedAmountCents = toSafeInteger(order.received_amount_cents, "received amount");
-      if (amountCents > 9_999_999_999) {
-        throw new ReconciliationError("match_state_conflict", "refund amount exceeds the order boundary");
-      }
-      const previousRefunded = readRecordedRefundTotal(connection, order.order_id);
-      const refundedAmountCents = previousRefunded + amountCents;
-      if (
-        !Number.isSafeInteger(refundedAmountCents) ||
-        refundedAmountCents > receivedAmountCents
-      ) {
-        throw new ReconciliationError(
-          "match_state_conflict",
-          "cumulative refund amount exceeds the received amount",
-        );
-      }
-
-      const operation = insertFinancialOperation(connection, {
-        financialOperationId: input.financialOperationId,
-        operationKey: `admin:${input.financialOperationId}`,
-        fingerprintInput: operationInput,
-        orderId: order.order_id,
-        ledgerEntryId: entry.ledger_entry_id,
-        reversesOperationId: null,
-        reason: input.reason,
-        now,
-      });
-      postAccountingTransaction(connection, {
-        operation,
-        orderId: order.order_id,
-        ledgerEntryId: entry.ledger_entry_id,
-        transactionType: "REFUND",
-        amountCents,
-        debitAccount: "REFUND_CLEARING",
-        creditAccount: "PROVIDER_CASH",
-        now,
-      });
-      const refundRecordId = randomUUID();
-      assertChangedOnce(
-        connection
-          .prepare(
-            `INSERT INTO refund_records(
-               refund_record_id, financial_operation_id, ledger_entry_id,
-               order_id, amount_cents, evidence_json, created_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          )
-          .run(
-            refundRecordId,
-            operation.financialOperationId,
-            entry.ledger_entry_id,
-            order.order_id,
-            amountCents,
-            JSON.stringify(refundRecordEvidence({
-              financialOperationId: operation.financialOperationId,
-              actorId: input.actorId,
-              reason: input.reason,
-            })),
-            now,
-          ).changes,
-        "refund record insert",
-      );
-      setLedgerState(connection, entry, "ALLOCATED", now);
-      const refundStatus = refundedAmountCents >= receivedAmountCents ? "FULL" : "PARTIAL";
-      const nextVersion = updateOrderRefund(connection, order, refundStatus, now);
-      insertOrderEvent(connection, {
-        orderId: order.order_id,
-        sequence: nextVersion,
-        type: "REFUND_UPDATED",
-        now,
-        details: {
-          financial_operation_id: operation.financialOperationId,
-          refund_record_id: refundRecordId,
-          refund_amount_cents: amountCents,
-          refunded_amount_cents: refundedAmountCents,
-          refund_status: refundStatus,
-        },
-      });
-      insertOutboxEvent(connection, {
-        operation,
-        order: { ...order, refund_status: refundStatus, version: nextVersion },
-        eventType: "REFUND_UPDATED",
-        eventDetails: {
-          refund_record_id: refundRecordId,
-          refund_amount_cents: amountCents,
-          refunded_amount_cents: refundedAmountCents,
-        },
-        now,
-      });
-      resolveEntryExceptions(
-        connection,
-        entry.ledger_entry_id,
-        operation,
-        "refund_recorded",
-        refundRecordId,
-        now,
-      );
-      return Object.freeze({
-        operation,
-        refundRecordId,
-        orderId: order.order_id,
-        ledgerEntryId: entry.ledger_entry_id,
-        refundStatus,
-        orderVersion: nextVersion,
-        replayed: false,
-      });
     });
   }
 
@@ -1083,7 +911,7 @@ export class ReconciliationStore {
       const row = connection
         .prepare(
           `SELECT
-             SUM(CASE WHEN status = 'OPEN' THEN 1 ELSE 0 END) AS open_count,
+             SUM(CASE WHEN status = 'OPEN' AND exception_type NOT IN ('UNMATCHED_DEBIT', 'UNLINKED_REFUND') THEN 1 ELSE 0 END) AS open_count,
              SUM(CASE WHEN status = 'RESOLVED' THEN 1 ELSE 0 END) AS resolved_count,
              COUNT(*) AS total_count
              FROM financial_exceptions
@@ -1126,6 +954,7 @@ export class ReconciliationStore {
         .prepare(
           `${EXCEPTION_COLUMNS}
             WHERE provider_account_key = ? AND status = 'OPEN'
+              AND exception_type NOT IN ('UNMATCHED_DEBIT', 'UNLINKED_REFUND')
               AND (
                 ? IS NULL OR created_at > ? OR
                 (created_at = ? AND exception_id > ?)
@@ -2270,39 +2099,6 @@ function updateOrderPayment(
   return nextVersion;
 }
 
-function updateOrderRefund(
-  connection: DatabaseSync,
-  order: OrderDecisionRow,
-  refundStatus: "PARTIAL" | "FULL",
-  now: number,
-): number {
-  const nextVersion = toSafeInteger(order.version, "order version") + 1;
-  const result = order.refund_status === refundStatus
-    ? connection
-      .prepare(
-        `UPDATE payment_orders
-            SET updated_at = ?, version = version + 1
-          WHERE order_id = ? AND version = ? AND refund_status = ?`,
-      )
-      .run(now, order.order_id, order.version, order.refund_status)
-    : connection
-      .prepare(
-        `UPDATE payment_orders
-            SET refund_status = ?, updated_at = ?, version = version + 1
-          WHERE order_id = ? AND version = ? AND refund_status = ?`,
-      )
-      .run(refundStatus, now, order.order_id, order.version, order.refund_status);
-  assertChangedOnce(result.changes, "payment order refund update");
-  return nextVersion;
-}
-
-function readRecordedRefundTotal(connection: DatabaseSync, orderId: string): number {
-  const row = connection
-    .prepare("SELECT COALESCE(SUM(amount_cents), 0) AS total FROM refund_records WHERE order_id = ?")
-    .get(orderId) as { total: bigint | number };
-  return toSafeInteger(row.total, "recorded refund total");
-}
-
 function setLedgerState(
   connection: DatabaseSync,
   entry: LedgerEntryRow,
@@ -2328,10 +2124,10 @@ function postAccountingTransaction(
     readonly operation: FinancialOperation;
     readonly orderId: string;
     readonly ledgerEntryId: string;
-    readonly transactionType: "SETTLEMENT" | "REVERSAL" | "REFUND";
+    readonly transactionType: "SETTLEMENT" | "REVERSAL";
     readonly amountCents: number;
-    readonly debitAccount: "PROVIDER_CASH" | "ORDER_SETTLEMENT" | "REFUND_CLEARING";
-    readonly creditAccount: "PROVIDER_CASH" | "ORDER_SETTLEMENT" | "REFUND_CLEARING";
+    readonly debitAccount: "PROVIDER_CASH" | "ORDER_SETTLEMENT";
+    readonly creditAccount: "PROVIDER_CASH" | "ORDER_SETTLEMENT";
     readonly now: number;
   },
 ): void {
@@ -2406,8 +2202,7 @@ function insertOrderEvent(
     readonly sequence: number;
     readonly type:
       | "PAYMENT_CONFIRMED"
-      | "PAYMENT_DISPUTED"
-      | "REFUND_UPDATED";
+      | "PAYMENT_DISPUTED";
     readonly now: number;
     readonly details: Readonly<Record<string, unknown>>;
   },
@@ -2439,7 +2234,7 @@ function insertOutboxEvent(
   input: {
     readonly operation: FinancialOperation;
     readonly order: OrderDecisionRow;
-    readonly eventType: "PAYMENT_CONFIRMED" | "PAYMENT_DISPUTED" | "REFUND_UPDATED";
+    readonly eventType: "PAYMENT_CONFIRMED" | "PAYMENT_DISPUTED";
     readonly eventDetails: Readonly<Record<string, unknown>>;
     readonly now: number;
   },
@@ -2562,42 +2357,6 @@ function replayedPaymentMatch(
     resolvedByOperationId: operation.financialOperationId,
     updatedAt: operation.createdAt,
     resolvedAt: operation.createdAt,
-  });
-}
-
-function refundDecisionResult(
-  connection: DatabaseSync,
-  operation: FinancialOperation,
-  replayed: boolean,
-): RefundRecordResult {
-  const row = connection
-    .prepare(
-      `SELECT refund.refund_record_id, refund.order_id, refund.ledger_entry_id,
-              outbox.aggregate_version,
-              json_extract(outbox.payload_json, '$.refund_status') AS refund_status
-         FROM refund_records AS refund
-         JOIN outbox_events AS outbox
-           ON outbox.financial_operation_id = refund.financial_operation_id
-        WHERE refund.financial_operation_id = ?`,
-    )
-    .get(operation.financialOperationId) as unknown as {
-      refund_record_id: string;
-      order_id: string;
-      ledger_entry_id: string;
-      aggregate_version: bigint | number;
-      refund_status: "PARTIAL" | "FULL";
-    } | undefined;
-  if (!row || !["PARTIAL", "FULL"].includes(row.refund_status)) {
-    throw new ReconciliationError("match_state_conflict", "refund operation has no committed result");
-  }
-  return Object.freeze({
-    operation,
-    refundRecordId: row.refund_record_id,
-    orderId: row.order_id,
-    ledgerEntryId: row.ledger_entry_id,
-    refundStatus: row.refund_status,
-    orderVersion: toSafeInteger(row.aggregate_version, "refund order version"),
-    replayed,
   });
 }
 
@@ -2738,13 +2497,6 @@ function validateAdministratorOperationInput(actorId: string, reason: string): v
 }
 
 function validateManualSettlementInput(input: ManualSettlementInput): void {
-  requireIdentifier(input.financialOperationId, "financial operation ID");
-  requireIdentifier(input.orderId, "payment order ID");
-  requireIdentifier(input.ledgerEntryId, "ledger entry ID");
-  validateAdministratorOperationInput(input.actorId, input.reason);
-}
-
-function validateRefundRecordInput(input: RefundRecordInput): void {
   requireIdentifier(input.financialOperationId, "financial operation ID");
   requireIdentifier(input.orderId, "payment order ID");
   requireIdentifier(input.ledgerEntryId, "ledger entry ID");

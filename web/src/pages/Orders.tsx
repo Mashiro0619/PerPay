@@ -11,6 +11,7 @@ import { OrderTable } from "../components/OrderTable";
 import { Badge, Button, CopyValue, Details, EmptyState, ErrorNotice, JsonDetails, PageHeading, Pagination, Panel, QueryView, useCursor } from "../components/ui";
 import { dateTime, money, shortId } from "../lib/format";
 import { label } from "../lib/labels";
+import { RefundMarkPanel } from "./RefundMark";
 
 export default function Orders() {
   const [search, setSearch] = useSearchParams();
@@ -78,13 +79,14 @@ export function OrderDetail() {
     <QueryView query={order}>{({ data }) => <>
       <Panel title={data.product_name} action={<Badge value={data.payment.status} />} className="content-panel">
         <div className="order-amounts"><div><span>原始金额</span><strong>{money(data.requested_amount_cents)}</strong></div><div><span>应付金额（含尾差）</span><strong>{money(data.payable_amount_cents)}</strong></div><div><span>实收金额</span><strong>{money(data.received_amount_cents)}</strong></div></div>
-        <Details items={[["商户订单号", <CopyValue value={data.merchant_order_no} />], ["内部订单编号", <CopyValue value={data.order_id} />], ["付款依据", <Badge value={data.payment.basis} />], ["收银台状态", <Badge value={data.checkout.status} />], ["退款记录", <Badge value={data.refund.status} />], ["订单版本", data.version], ["创建时间", dateTime(data.created_at)], ["收银台过期时间", dateTime(data.checkout.expires_at)], ["备注", data.note ?? "无备注"]]} />
+        <Details items={[["商户订单号", <CopyValue value={data.merchant_order_no} />], ["内部订单编号", <CopyValue value={data.order_id} />], ["付款依据", <Badge value={data.payment.basis} />], ["收银台状态", <Badge value={data.checkout.status} />], ["历史退款状态（只读）", <Badge value={data.refund.status} />], ["创建时间", dateTime(data.created_at)], ["收银台过期时间", dateTime(data.checkout.expires_at)], ["备注", data.note ?? "无备注"]]} />
       </Panel>
+      <RefundMarkPanel key={data.order_id} order={data} />
       <div className="two-column"><Panel title="订单时间线"><ol className="timeline">{data.events.map((event) => <li key={event.event_id}><span className="timeline-node" /><div><strong>{label(event.event_type)}</strong><time>{dateTime(event.occurred_at)}</time><JsonDetails data={event.details} label="查看事件详情" /></div></li>)}</ol></Panel>
         <Panel title="对账依据" className="content-panel">
           {data.reconciliation.matches.length === 0 && data.reconciliation.exceptions.length === 0 ? <EmptyState title="暂无对账记录" /> : <ul className="related-list">
             {data.reconciliation.matches.map((match) => <li key={match.payment_match_id}><Link to={`/reconciliation/matches/${match.payment_match_id}`}><span><strong>{money(match.ledger_entry.amount_cents)}</strong><small>{match.evidence_type === "MANUAL" ? "人工关联" : "金额推断关联"} · {dateTime(match.created_at)}</small></span><Badge value={match.status} /><ArrowRight size={16} /></Link></li>)}
-            {data.reconciliation.exceptions.map((exception) => <li key={exception.exception_id}><Link to={`/reconciliation/exceptions/${exception.exception_id}`}><span>{label(exception.exception_type)}</span><Badge value={exception.status} label={exception.status === "OPEN" ? "待处理" : "已处理"} /><ArrowRight size={16} /></Link></li>)}
+            {data.reconciliation.exceptions.map((exception) => <li key={exception.exception_id}><Link to={`/reconciliation/exceptions/${exception.exception_id}`}><span>{label(exception.exception_type)}</span><Badge value={exception.status} label={["UNMATCHED_DEBIT", "UNLINKED_REFUND"].includes(exception.exception_type) ? "历史记录" : exception.status === "OPEN" ? "待处理" : "已处理"} /><ArrowRight size={16} /></Link></li>)}
           </ul>}
         </Panel></div>
       <Panel title="业务通知历史"><OrderNotifications key={orderId} orderId={orderId} /></Panel>
