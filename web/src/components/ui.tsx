@@ -1,9 +1,9 @@
 import { Children, cloneElement, isValidElement, useEffect, useId, useLayoutEffect, useRef, useState, type ComponentPropsWithRef, type ReactElement, type ReactNode } from "react";
-import { AlertCircle, ArrowLeft, Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, Inbox, LoaderCircle, Menu, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, Inbox, LoaderCircle, X } from "lucide-react";
 import type { UseQueryResult } from "@tanstack/react-query";
 
 import { ApiError } from "../api/client";
-import { Link, useNavigationMenu } from "../navigation";
+import { Link } from "../navigation";
 
 export function Button({ children, variant = "secondary", pending = false, className = "", disabled, ...props }:
   ComponentPropsWithRef<"button"> & { variant?: "primary" | "secondary" | "danger" | "quiet"; pending?: boolean }) {
@@ -16,11 +16,10 @@ export function PageHeading({ title, description, actions, back }: {
   title: string; description?: string; actions?: ReactNode; back?: { to: string; label: string; state?: unknown };
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
-  const openNavigation = useNavigationMenu();
   useEffect(() => { document.title = `${title} · PerPay`; heading.current?.focus({ preventScroll: true }); }, [title]);
   return <header className="page-heading">
     <div>{back && <Link className="back-link" to={back.to} state={back.state}><ArrowLeft size={15} />{back.label}</Link>}
-      <div className="page-heading-title">{openNavigation && <Button className="mobile-menu icon-button" aria-label="打开导航" onClick={openNavigation}><Menu size={20} aria-hidden="true" /></Button>}<h1 tabIndex={-1} ref={heading}>{title}</h1></div>{description && <p>{description}</p>}
+      <div className="page-heading-title"><h1 tabIndex={-1} ref={heading}>{title}</h1></div>{description && <p>{description}</p>}
     </div>
     {actions && <div className="heading-actions">{actions}</div>}
   </header>;
@@ -47,13 +46,13 @@ export function Notice({ children, tone = "info", title }: {
 export function ErrorNotice({ error, retry }: { error: unknown; retry?: (() => void) | undefined }) {
   if (!error) return null;
   const message = error instanceof Error ? error.message : "请求失败，请稍后重试。";
-  return <Notice tone="danger" title="操作未完成">
+  return <Notice tone="danger" title="未能完成">
     <p>{message}</p>
     {error instanceof ApiError && <>
-      {error.retryAfter !== null && <p>请至少等待 {error.retryAfter} 秒后重试。</p>}
-      {error.requestId && <p className="request-id">请求编号：<code>{error.requestId}</code></p>}
+      {error.retryAfter !== null && <p>{error.retryAfter} 秒后可重试。</p>}
+      {error.requestId && <details className="error-details"><summary>错误详情</summary><span className="request-id">请求编号：<code>{error.requestId}</code></span></details>}
     </>}
-    {retry && <Button onClick={retry}>重新加载</Button>}
+    {retry && <Button onClick={retry}>重试</Button>}
   </Notice>;
 }
 
@@ -148,6 +147,7 @@ export function JsonDetails({ data, label = "查看技术字段" }: { data: unkn
 export function Pagination({ page, hasNext, pending, onPrevious, onNext, count, previousLabel = "上一页" }: {
   page: number; hasNext: boolean; pending?: boolean; onPrevious: () => void; onNext: () => void; count: number; previousLabel?: string;
 }) {
+  if (page === 1 && !hasNext) return null;
   return <nav className="pagination" aria-label="列表分页"><span role="status" aria-live="polite" aria-atomic="true">{pending ? `正在读取第 ${page} 页…` : `第 ${page} 页 · 本页 ${count} 条`}</span><div>
     <Button aria-label={previousLabel} disabled={page <= 1 || pending} onClick={onPrevious}><ChevronLeft size={16} />{previousLabel}</Button>
     <Button aria-label="下一页" disabled={!hasNext || pending} onClick={onNext}>下一页<ChevronRight size={16} /></Button>

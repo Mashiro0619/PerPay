@@ -39,8 +39,8 @@ export function DailyChart({ analytics }: { analytics: SystemAnalytics }) {
   const orders = analytics.daily.map((day) => day.orders_created);
   const amountScale = chartScale(amounts);
   const orderScale = chartScale(orders);
-  const amountBounds = { left: 62, right: width - 14, top: 38, bottom: 136 };
-  const orderBounds = { ...amountBounds, top: 208, bottom: 290 };
+  const amountBounds = { left: 62, right: width - 14, top: 32, bottom: 108 };
+  const orderBounds = { ...amountBounds, top: 164, bottom: 234 };
   const amountGeometry = areaGeometry(amounts, amountBounds, amountScale.maximum);
   const orderGeometry = areaGeometry(orders, orderBounds, orderScale.maximum);
 
@@ -76,12 +76,12 @@ export function DailyChart({ analytics }: { analytics: SystemAnalytics }) {
         event.preventDefault();
         choose(destination);
       }}>
-        <svg viewBox={`0 0 ${width} 330`} aria-hidden="true" onPointerMove={point} onPointerDown={point}>
+        <svg viewBox={`0 0 ${width} 274`} aria-hidden="true" onPointerMove={point} onPointerDown={point}>
           <text x="0" y="16" className="chart-series-title">付款确认金额 · 元</text>
           {grid(amountBounds, amountScale, 100)}
           <path d={amountGeometry.area} className="chart-area" data-series="amount" />
           <path d={amountGeometry.line} pathLength={1} className="chart-line" />
-          <text x="0" y="186" className="chart-series-title">新建订单 · 笔</text>
+          <text x="0" y="142" className="chart-series-title">新建订单 · 笔</text>
           {grid(orderBounds, orderScale, 1)}
           <path d={orderGeometry.area} className="chart-area chart-area--orders" data-series="orders" />
           <path d={orderGeometry.line} pathLength={1} className="chart-line chart-line--orders" />
@@ -95,13 +95,13 @@ export function DailyChart({ analytics }: { analytics: SystemAnalytics }) {
           })}
           {analytics.daily.map((day, dayIndex) => {
             if (![0, Math.floor((analytics.daily.length - 1) / 2), analytics.daily.length - 1].includes(dayIndex)) return null;
-            return <text key={day.date} x={amountGeometry.points[dayIndex]!.horizontal} y="316" textAnchor={dayIndex === 0 ? "start" : dayIndex === analytics.daily.length - 1 ? "end" : "middle"} className="chart-label">{dateFormatter.format(new Date(`${day.date}T00:00:00+08:00`))}</text>;
+            return <text key={day.date} x={amountGeometry.points[dayIndex]!.horizontal} y="260" textAnchor={dayIndex === 0 ? "start" : dayIndex === analytics.daily.length - 1 ? "end" : "middle"} className="chart-label">{dateFormatter.format(new Date(`${day.date}T00:00:00+08:00`))}</text>;
           })}
-          {!amounts.some(Boolean) && <text x={(amountBounds.left + amountBounds.right) / 2} y="92" textAnchor="middle" className="chart-label">暂无付款确认记录</text>}
-          {!orders.some(Boolean) && <text x={(orderBounds.left + orderBounds.right) / 2} y="256" textAnchor="middle" className="chart-label">暂无新建订单</text>}
+          {!amounts.some(Boolean) && <text x={(amountBounds.left + amountBounds.right) / 2} y="76" textAnchor="middle" className="chart-label">暂无付款确认记录</text>}
+          {!orders.some(Boolean) && <text x={(orderBounds.left + orderBounds.right) / 2} y="204" textAnchor="middle" className="chart-label">暂无新建订单</text>}
         </svg>
       </div>
-      <div className="chart-controls"><p id={helpId}>悬停、轻点或使用 ← → 查看每日数据</p><div>
+      <div className="chart-controls"><p id={helpId}>轻点图表或用 ← → 查看日期</p><div>
         <Button variant="quiet" className="icon-button" aria-label="前一天" disabled={index === 0} onClick={() => choose(index - 1)}><ChevronLeft size={17} aria-hidden="true" /></Button>
         <Button variant="quiet" className="icon-button" aria-label="后一天" disabled={index === analytics.daily.length - 1} onClick={() => choose(index + 1)}><ChevronRight size={17} aria-hidden="true" /></Button>
       </div></div>

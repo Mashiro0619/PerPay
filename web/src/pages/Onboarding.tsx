@@ -14,16 +14,17 @@ import { RotateKeyDialog, SecretDialog } from "./SecuritySettings";
 
 export default function Onboarding() {
   const [editorVersion, setEditorVersion] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   const { requestDiscard } = useDraftGuard();
   const settings = useQuery({ queryKey: ["settings"], queryFn: ({ signal }) => result(api.getRuntimeSettings({ signal })), staleTime: Infinity, refetchOnMount: "always", refetchOnWindowFocus: false, refetchOnReconnect: false });
   const instance = useQuery({ queryKey: ["onboarding", "instance"], queryFn: ({ signal }) => result(api.getAdministratorSystemStatus({ signal })), staleTime: Infinity, refetchOnWindowFocus: false });
   function reload() {
-    requestDiscard(() => { void settings.refetch().then((response) => { if (!response.isError) setEditorVersion((value) => value + 1); }); });
+    requestDiscard(() => { setRefreshing(true); void settings.refetch().then((response) => { if (!response.isError) setEditorVersion((value) => value + 1); setRefreshing(false); }, () => setRefreshing(false)); });
   }
   return <>
-    <PageHeading title="首次收款配置" actions={<><a className="text-link" href="https://github.com/Mashiro0619/PerPay/blob/main/docs/alipay-setup.md" target="_blank" rel="noreferrer">图文教程</a><Button variant="quiet" pending={settings.isFetching} onClick={reload}>重新读取</Button></>} />
+    <PageHeading title="首次收款配置" actions={<><a className="text-link" href="https://github.com/Mashiro0619/PerPay/blob/main/docs/alipay-setup.md" target="_blank" rel="noreferrer">图文教程</a><Button variant="quiet" pending={settings.isFetching} onClick={reload}>刷新</Button></>} />
     <ErrorNotice error={instance.error} retry={() => { void instance.refetch(); }} />
-    <QueryView query={settings}>{({ data }) => <OnboardingFlow key={editorVersion} settings={data} instanceId={instance.data?.data.instance_id ?? null} onReload={reload} />}</QueryView>
+    <QueryView query={settings}>{({ data }) => <div inert={refreshing} aria-busy={refreshing}><OnboardingFlow key={editorVersion} settings={data} instanceId={instance.data?.data.instance_id ?? null} onReload={reload} /></div>}</QueryView>
   </>;
 }
 
@@ -98,7 +99,7 @@ function ApiKeyStep({ settings, onSaved, onContinue }: { settings: RuntimeSettin
       {settings.completion.api ? <><p>API 密钥已配置</p><Button onClick={() => setReveal(true)}>查看密钥</Button></> : <Button variant="primary" onClick={() => setGenerate(true)}>生成 API 密钥</Button>}
       <details className="form-disclosure"><summary>客户端 ID</summary><CopyValue value="default" label="复制 API 客户端 ID" /></details>
     </Panel>
-    <div className="form-actions"><Button variant="primary" disabled={!settings.completion.api} onClick={onContinue}>已保存，下一步</Button></div>
+    <div className="form-actions"><Button variant="primary" disabled={!settings.completion.api} onClick={onContinue}>下一步</Button></div>
     {generate && <RotateKeyDialog settings={settings} onSaved={onSaved} onClose={() => setGenerate(false)} onStored={onContinue} />}
     {reveal && <SecretDialog name="api_secret" title="网站 API 密钥" onClose={() => setReveal(false)} />}
   </>;
@@ -128,15 +129,16 @@ export function ReadinessCheck({ settings, instanceId, onReload }: { settings: R
   const fresh = view.active && query.isFetchedAfterMount && !query.isFetching && !query.isError && !query.isPaused && status?.instance_id === instanceId;
   const matches = status?.settings_revision === settings.revision && status?.payment_revision === settings.payment_revision;
   const ready = Boolean(fresh && matches && settings.completion.complete && status?.configured && status.database.ok && status.ledger.collection_ready && status.reconciliation.confirmation_ready && status.status !== "not_ready");
+  const missingConfiguration = [[settings.completion.application_key, "应用密钥"], [settings.completion.provider, "支付宝接入"], [settings.completion.collection, "经营码"], [settings.completion.api, "API 密钥"]].filter(([complete]) => !complete).map(([, name]) => name).join("、");
   function health(value: boolean | undefined, pending: string) { return fresh && matches ? value ? "已通过" : pending : "待检查"; }
   return <>
     {!view.active && <p role="status">检查已暂停，返回页面并恢复网络后继续。</p>}
     <ErrorNotice error={query.error} retry={() => { void query.refetch(); }} />
-    {fresh && !matches && <Notice tone="warning">配置已变化，请重新读取。<Button onClick={onReload}>重新读取配置</Button></Notice>}
+    {fresh && !matches && <Notice tone="warning">配置已变化，请刷新。<Button onClick={onReload}>刷新配置</Button></Notice>}
     {ready ? <p role="status">{status?.status === "degraded" ? "可以收款，仍有事项待处理。" : "收款已就绪。"}</p> : view.active && !query.isError && (!fresh || matches) && <p className="field-hint" role="status">等待下方检查通过，自动刷新。</p>}
     <Panel className="content-panel">
       <ul className="onboarding-checks">
-        <CheckRow title="核心配置" status={health(settings.completion.complete && status?.configured, "尚未完成配置")} action={fresh && matches && (!settings.completion.complete || !status?.configured) && <Link to={onboardingPath(nextRequiredStep(settings) === "check" ? "provider" : nextRequiredStep(settings))}>查看配置</Link>} />
+        <CheckRow title="核心配置" status={health(settings.completion.complete && status?.configured, missingConfiguration ? "尚缺：" + missingConfiguration : "配置正在应用")} action={fresh && matches && (!settings.completion.complete || !status?.configured) && <Link to={onboardingPath(nextRequiredStep(settings) === "check" ? "provider" : nextRequiredStep(settings))}>查看配置</Link>} />
         <CheckRow title="数据库" status={health(status?.database.ok, "数据库暂不可用")} />
         <CheckRow title="账本采集" status={health(status?.ledger.collection_ready, "等待成功采集")} error={fresh && matches ? status?.ledger.last_error_code : null} action={fresh && matches && !status?.ledger.collection_ready && <Link to={onboardingPath("provider")}>检查支付宝接入</Link>} />
         <CheckRow title="自动确认" status={health(status?.reconciliation.confirmation_ready, "等待自动确认就绪")} error={fresh && matches ? status?.reconciliation.last_error_code : null} />
@@ -144,7 +146,7 @@ export function ReadinessCheck({ settings, instanceId, onReload }: { settings: R
     </Panel>
     <div className="form-actions">
       {ready && <><Link className="button button--primary" to="/">进入控制台</Link><Link className="button" to="/test-payment">小额真实测试</Link></>}
-      <Button pending={query.isFetching} disabled={!view.active} onClick={() => { void query.refetch(); }}>重新检查</Button>
+      <Button pending={query.isFetching} disabled={!view.active} onClick={() => { void query.refetch(); }}>刷新</Button>
       {(!ready || status?.status === "degraded") && <Link className="text-link" to="/system">运行状态</Link>}
     </div>
     {!settings.notifications.enabled && <p className="field-hint">业务通知未启用，请由网站主动查单。</p>}

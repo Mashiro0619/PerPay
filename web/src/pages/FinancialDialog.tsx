@@ -12,7 +12,6 @@ export function FinancialDialog({ initialOrderId = "", initialLedgerId = "", loc
   const [orderId, setOrderId] = useState(initialOrderId);
   const [ledgerId, setLedgerId] = useState(initialLedgerId);
   const [reason, setReason] = useState("");
-  const [accepted, setAccepted] = useState(false);
   const key = useOperationKey();
   const preview = useMutation({ mutationFn: async () => {
     const [order, ledger] = await Promise.all([
@@ -33,28 +32,27 @@ export function FinancialDialog({ initialOrderId = "", initialLedgerId = "", loc
   const busy = preview.isPending || save.isPending;
   const directionValid = preview.data?.ledger.direction === "CREDIT";
   const stateValid = preview.data?.order.payment.status === "UNPAID" && preview.data.order.payment.basis === "NONE" && ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(preview.data.ledger.state);
-  function resetPreview() { preview.reset(); save.reset(); setAccepted(false); }
+  function resetPreview() { preview.reset(); save.reset(); }
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
     if (!preview.data) { preview.mutate(); return; }
-    if (directionValid && stateValid && accepted && reason.trim()) save.mutate();
+    if (directionValid && stateValid && reason.trim()) save.mutate();
   }
-  return <Dialog title="人工关联收款" description="将已采集的一笔收入明确关联到订单。必须先核对订单及流水，不会自动推断你的决定。" onClose={onClose} busy={busy}>
+  return <Dialog title="人工关联收款" description="将这笔收入关联到订单并确认付款。请核对下方信息。" onClose={onClose} busy={busy}>
     <form className="form-stack" onSubmit={submit}>
-      {lockContext && initialOrderId ? <p className="detail-context">关联订单：{orderLabel ?? "当前订单（已带入）"}</p> : <Field label="内部订单编号"><input name="order-id" required pattern={resourceIdPattern.source} value={orderId} disabled={busy} onChange={(event) => { setOrderId(event.target.value); resetPreview(); }} placeholder="UUID 格式的订单编号" /></Field>}
-      {lockContext && initialLedgerId ? <p className="detail-context">收入流水：{ledgerLabel ?? "当前流水（已带入）"}</p> : <Field label="收入流水编号"><input name="ledger-entry-id" required pattern={resourceIdPattern.source} value={ledgerId} disabled={busy} onChange={(event) => { setLedgerId(event.target.value); resetPreview(); }} placeholder="UUID 格式的账本流水编号" /></Field>}
+      {lockContext && initialOrderId ? !preview.data && <p className="detail-context">关联订单：{orderLabel ?? "当前订单"}</p> : <Field label="内部订单编号"><input name="order-id" required pattern={resourceIdPattern.source} value={orderId} disabled={busy} onChange={(event) => { setOrderId(event.target.value); resetPreview(); }} placeholder="UUID 格式的订单编号" /></Field>}
+      {lockContext && initialLedgerId ? !preview.data && <p className="detail-context">收入流水：{ledgerLabel ?? "当前流水"}</p> : <Field label="收入流水编号"><input name="ledger-entry-id" required pattern={resourceIdPattern.source} value={ledgerId} disabled={busy} onChange={(event) => { setLedgerId(event.target.value); resetPreview(); }} placeholder="UUID 格式的账本流水编号" /></Field>}
       <ErrorNotice error={preview.error} />
       {preview.data && <>
         <div className="evidence-preview"><h3>请核对这笔关联</h3><Details items={[["商品", preview.data.order.product_name], ["商户订单号", preview.data.order.merchant_order_no], ["订单应付", money(preview.data.order.payable_amount_cents)], ["付款状态", <Badge value={preview.data.order.payment.status} />], ["流水金额", money(preview.data.ledger.amount_cents)], ["收支方向", <Badge value={preview.data.ledger.direction} />], ["支付宝流水号", preview.data.ledger.provider_order_no], ["流水时间", dateTime(preview.data.ledger.occurred_at)]]} /></div>
-        {!directionValid && <Notice tone="danger">流水方向不匹配。收款关联只能选择收入流水。请更换流水编号。</Notice>}
-        {!stateValid && <Notice tone="warning">订单或流水状态已变化，当前不能建立新的收款关联。请关闭并刷新相关记录。</Notice>}
-        {preview.data.order.payable_amount_cents !== preview.data.ledger.amount_cents && <Notice tone="warning">流水金额与订单应付金额不同。请再次核实，且在理由中说明差异。</Notice>}
-        <Field label="操作理由" hint="请填写核对依据，不要在这里粘贴任何私钥或密码。"><textarea name="reason" required maxLength={500} rows={3} value={reason} disabled={busy} onChange={(event) => setReason(event.target.value)} /></Field>
-        <label className="checkbox-field"><input type="checkbox" required checked={accepted} disabled={busy} onChange={(event) => setAccepted(event.target.checked)} /><span>已核实订单和这笔收入确实属于同一交易。</span></label>
+        {!directionValid && <Notice tone="danger">只能关联收入流水，请更换流水编号。</Notice>}
+        {!stateValid && <Notice tone="warning">订单或流水状态已变化，请关闭后刷新。</Notice>}
+        {preview.data.order.payable_amount_cents !== preview.data.ledger.amount_cents && <Notice tone="warning">金额与订单应付不同，请在理由中说明。</Notice>}
+        <Field label="操作理由" hint="简要说明关联依据。"><textarea name="reason" required maxLength={500} rows={3} value={reason} disabled={busy} onChange={(event) => setReason(event.target.value)} /></Field>
         <ErrorNotice error={save.error} />
       </>}
-      <div className="form-actions"><Button onClick={onClose} disabled={busy}>取消</Button><Button type="submit" variant={preview.data ? "danger" : "primary"} pending={busy} disabled={!!preview.data && (!directionValid || !stateValid || !accepted || !reason.trim())}>{!preview.data ? "读取并核对证据" : "确认关联收款"}</Button></div>
+      <div className="form-actions"><Button onClick={onClose} disabled={busy}>取消</Button><Button type="submit" variant={preview.data ? "danger" : "primary"} pending={busy} disabled={!!preview.data && (!directionValid || !stateValid || !reason.trim())}>{!preview.data ? "查看关联信息" : "确认关联收款"}</Button></div>
     </form>
   </Dialog>;
 }

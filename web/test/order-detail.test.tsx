@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { describe, expect, it, vi } from "vitest";
@@ -7,6 +7,7 @@ import { queryClient, type AdminOrderDetail, type OrderWebhookDeliveryDetail } f
 import { OrderDetail } from "../src/pages/OrderDetail";
 import EvidenceDetail from "../src/pages/ReconciliationDetail";
 import { DeliveryCard } from "../src/components/detail/NotificationEvidence";
+import { recordAction } from "./menu-helper";
 import { apiError, json, ledgerId, order, orderId } from "./fixtures";
 import { candidate, candidateId, delivery, detailLedger, financialException, matchId, operation, paidOrder, paymentMatch } from "./detail-fixtures";
 
@@ -35,7 +36,7 @@ function mockData(initialOrder = paidOrder, initialDeliveries: OrderWebhookDeliv
 async function confirmReason(user: ReturnType<typeof userEvent.setup>, reason: string, action: string) {
   const dialog = screen.getByRole("dialog");
   await user.type(within(dialog).getByLabelText("操作理由"), reason);
-  await user.click(within(dialog).getByRole("checkbox"));
+  expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
   await user.click(within(dialog).getByRole("button", { name: action }));
 }
 
@@ -47,9 +48,12 @@ describe("order detail work surface", () => {
     expect(screen.getByText(detailLedger.provider_order_no!)).toBeVisible();
     expect(screen.getByText("测试买家")).toBeVisible();
     expect(screen.getByText("测试交易备注")).toBeVisible();
-    expect(screen.getByText(/并非支付平台按商户订单号确认/)).toBeVisible();
+    expect(screen.queryByText("金额占用窗口")).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByText("匹配依据"));
+    expect(screen.getByText(/按金额和付款时间推断，不是平台按订单号确认/)).toBeVisible();
     expect(screen.getByText("金额占用窗口")).toBeVisible();
-    expect(screen.getByRole("button", { name: "标记已退款" })).toBeVisible();
+    expect(recordAction("标记已退款")).toBeVisible();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     expect(screen.queryByText("历史退款（只读）")).not.toBeInTheDocument();
     expect(screen.queryByText("无备注")).not.toBeInTheDocument();
     expect(screen.queryByText("撤销时间")).not.toBeInTheDocument();
@@ -58,7 +62,7 @@ describe("order detail work surface", () => {
     expect(requests.some(request => /\/reconciliation\/|\/webhooks\/deliveries/.test(new URL(request.url).pathname))).toBe(false);
     const user = userEvent.setup(); await user.click(screen.getByText("投递尝试（1）"));
     expect(screen.getByRole("columnheader", { name: "HTTP / ACK" })).toBeVisible();
-    await user.click(screen.getByText("业务事件与载荷"));
+    await user.click(recordAction("技术详情", "通知记录操作"));
     expect(screen.getByLabelText("当前页面")).toHaveTextContent("/orders/" + orderId);
     expect(requests).toHaveLength(2);
   });
@@ -66,7 +70,8 @@ describe("order detail work surface", () => {
   it.each(["OPEN", "EXPIRED", "CLOSED"] as const)("keeps an unpaid %s checkout free of refund and empty history panels", async status => {
     mockData({ ...order, checkout: { ...order.checkout, status } }, []); mount();
     expect(await screen.findByText("此订单未配置业务通知。")).toBeVisible();
-    expect(screen.queryByRole("button", { name: "标记已退款" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "订单操作" }));
+    expect(screen.queryByRole("menuitem", { name: "标记已退款" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "管理员退款标记" })).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "列表分页" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "人工关联收款" })).toBeVisible();
@@ -79,7 +84,7 @@ describe("order detail work surface", () => {
     await userEvent.setup().click(screen.getByText("异常历史（1）"));
     expect(await screen.findByRole("heading", { name: "实收金额不符" })).toBeVisible();
     expect(screen.getByText("已忽略提醒")).toBeVisible();
-    expect(screen.getByText(/原始异常尚未解决/)).toBeVisible();
+    expect(screen.getByText(/异常尚未解决/)).toBeVisible();
     expect(screen.queryByRole("heading", { name: "账务异常 · 1" })).not.toBeInTheDocument();
     expect(requests).toHaveLength(2);
   });
@@ -87,7 +92,7 @@ describe("order detail work surface", () => {
   it("shows live exceptions before collection evidence and separates financial state from reminder state", async () => {
     mockData({ ...paidOrder, reconciliation: { matches: [paymentMatch], exceptions: [financialException] } }); mount();
     const heading = await screen.findByRole("heading", { name: "账务异常 · 1" });
-    expect(heading.compareDocumentPosition(screen.getByRole("heading", { name: "收款与依据" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(heading.compareDocumentPosition(screen.getByRole("heading", { name: "收款" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText(/流水金额 ¥1.02 与可能关联订单的应付 ¥1.01 不一致/)).toBeVisible();
   });
 
@@ -99,7 +104,8 @@ describe("order detail work surface", () => {
     expect(await screen.findByText("撤销时间")).toBeVisible();
     expect(screen.getByText("平台记录归属不符")).toBeVisible();
     expect(screen.getByText("对照交易号确认")).toBeVisible();
-    expect(screen.queryByRole("button", { name: "撤销错误关联" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "收款记录操作" }));
+    expect(screen.queryByRole("menuitem", { name: "撤销错误关联" })).not.toBeInTheDocument();
   });
 
   it("reverses an association without navigation and refreshes the current order", async () => {
@@ -108,7 +114,8 @@ describe("order detail work surface", () => {
       state.order = { ...paidOrder, payment: { ...paidOrder.payment, status: "DISPUTED" }, reconciliation: { matches: [{ ...paymentMatch, status: "REVERSED", resolution_operation: { ...operation, operation_type: "REVERSE_SETTLEMENT", reason: "测试撤销原因" } }], exceptions: [] } };
       return json({ data: {} });
     }); mount(); const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "撤销错误关联" }));
+    await screen.findByRole("button", { name: "收款记录操作" });
+    await user.click(recordAction("撤销错误关联", "收款记录操作"));
     await confirmReason(user, "测试撤销原因", "确认撤销关联");
     expect(await screen.findByText("测试撤销原因")).toBeVisible();
     expect(screen.getByLabelText("当前页面")).toHaveTextContent("/orders/" + orderId);
@@ -120,18 +127,20 @@ describe("order detail work surface", () => {
     const bodies: unknown[] = [];
     const terminal = { ...delivery, delivery: { ...delivery.delivery, status: "DEAD_LETTER" as const } };
     mockData(paidOrder, [terminal], async request => { bodies.push(await request.json()); return bodies.length === 1 ? apiError("internal_error", "lost response", 500) : json({ data: { delivery: { delivery_id: "new-delivery" } } }); }); mount(); const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "重新投递" }));
+    await screen.findByRole("button", { name: "通知记录操作" });
+    await user.click(recordAction("重新投递", "通知记录操作"));
     await confirmReason(user, "业务已修复", "确认重新投递");
     await screen.findByText(/服务处理失败/);
     await user.click(screen.getByRole("button", { name: "确认重新投递" }));
-    expect(await screen.findByText(/已创建新的投递记录/)).toBeVisible();
+    expect(await screen.findByText(/已创建新投递，等待发送/)).toBeVisible();
     expect(bodies).toHaveLength(2); expect(bodies[1]).toEqual(bodies[0]);
     expect(screen.getByLabelText("当前页面")).toHaveTextContent("/orders/" + orderId);
   });
 
   it.each(["PENDING", "LEASED", "RETRY_WAIT", "ACKNOWLEDGED", "DEAD_LETTER"] as const)("does not offer redelivery on a superseded %s record", status => {
     render(<QueryClientProvider client={queryClient}><MemoryRouter><DeliveryCard detail={{ ...delivery, is_latest: false, delivery: { ...delivery.delivery, status } }} /></MemoryRouter></QueryClientProvider>);
-    expect(screen.queryByRole("button", { name: "重新投递" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "通知记录操作" }));
+    expect(screen.queryByRole("menuitem", { name: "重新投递" })).not.toBeInTheDocument();
   });
 
   it("keeps order evidence usable when notification reads fail and refresh retries secondary data", async () => {
@@ -141,8 +150,8 @@ describe("order detail work surface", () => {
       attempts += 1; return apiError("webhook_unavailable", "temporary", 503);
     })); mount();
     expect(await screen.findByText(detailLedger.provider_order_no!)).toBeVisible();
-    await screen.findByRole("button", { name: "重新加载" });
-    const before = attempts; await userEvent.setup().click(screen.getByRole("button", { name: "重新加载" }));
+    await screen.findByRole("button", { name: "重试" });
+    const before = attempts; await userEvent.setup().click(screen.getByRole("button", { name: "重试" }));
     await waitFor(() => expect(attempts).toBeGreaterThan(before));
     expect(screen.queryByText("此订单未配置业务通知。")).not.toBeInTheDocument();
   });
@@ -162,7 +171,7 @@ describe("order detail work surface", () => {
     expect(within(dialog).queryByLabelText("收入流水编号")).not.toBeInTheDocument();
     expect(await within(dialog).findByText("请核对这笔关联")).toBeVisible();
     expect(within(dialog).getByRole("button", { name: "确认关联收款" })).toBeDisabled();
-    expect(within(dialog).getByRole("checkbox")).not.toBeChecked();
+    expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
     expect(screen.getByLabelText("当前页面")).toHaveTextContent("/reconciliation/candidates/" + candidateId);
   });
   it("loads only the selected notification page and keeps historical redelivery disabled", async () => {
@@ -177,7 +186,8 @@ describe("order detail work surface", () => {
     expect(requests).toHaveLength(2);
     await user.click(screen.getByRole("button", { name: "下一页" }));
     expect(await screen.findByText("历史投递")).toBeVisible();
-    expect(screen.queryByRole("button", { name: "重新投递" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "通知记录操作" }));
+    expect(screen.queryByRole("menuitem", { name: "重新投递" })).not.toBeInTheDocument();
     expect(requests).toHaveLength(3);
     expect(new URL(requests[2]!.url).searchParams.get("cursor")).toBe("next-delivery-page");
     expect(screen.getByLabelText("当前页面")).toHaveTextContent("/orders/" + orderId);
@@ -192,12 +202,14 @@ describe("order detail work surface", () => {
       state.order = { ...paidOrder, refund_mark: mark, refund_mark_history: [{ ...mark, operation_id: body.operation_id }] };
       return json({ data: { operation_id: body.operation_id, refund_mark: mark } });
     }); mount(); const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "标记已退款" }));
+    await screen.findByRole("button", { name: "订单操作" });
+    await user.click(recordAction("标记已退款"));
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveAccessibleDescription(/PerPay 不执行转账，也未验证退款/);
     await user.type(within(dialog).getByLabelText("备注（可选）"), "外部退款已完成");
     await user.click(within(dialog).getByRole("button", { name: "确认标记已退款" }));
-    expect(await screen.findByRole("button", { name: "撤销退款标记" })).toBeVisible();
+    await screen.findByText("已退款（管理员标记）");
+    expect(recordAction("撤销退款标记")).toBeVisible();
     expect(state.order.payment).toEqual(paidOrder.payment);
     expect(state.order.received_amount_cents).toBe(paidOrder.received_amount_cents);
     expect(requests.filter(request => request.method !== "GET")).toHaveLength(1);

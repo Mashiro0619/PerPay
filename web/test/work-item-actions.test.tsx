@@ -39,8 +39,8 @@ describe("reminder dismissal", () => {
     renderPage("?type=" + type + "&cursor=later-page&page=3");
     await waitFor(() => expect(screen.getByRole("button", { name: "全部忽略" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "全部忽略" }));
-    const dialog = screen.getByRole("dialog", { name: "忽略全部" + name + "提醒" });
-    expect(dialog).toHaveAccessibleDescription(/所有分页.*仅关闭提醒.*不停止通知自动重试/);
+    const dialog = screen.getByRole("dialog", { name: "全部忽略 · " + name });
+    expect(dialog).toHaveAccessibleDescription(/所有分页.*仅关闭提醒.*不停止通知重试/);
     expect(within(dialog).queryByRole("textbox")).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "确认全部忽略" }));
     expect(await screen.findByText("已忽略“" + name + "”中的 35 条提醒。")).toBeVisible();
@@ -98,7 +98,7 @@ describe("reminder dismissal", () => {
     }));
     const user = userEvent.setup(); renderPage("?type=FINANCIAL_EXCEPTION");
     await screen.findByRole("heading", { name: "收入尚未匹配订单" });
-    await user.click(screen.getByRole("button", { name: "查看已忽略" }));
+    await user.click(screen.getByRole("button", { name: "已忽略" }));
     expect(await screen.findByRole("button", { name: "已结束" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "全部忽略" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("link").some((link) => link.getAttribute("href") === "/reconciliation/exceptions/" + item.resource_id)).toBe(true);
@@ -109,6 +109,6 @@ describe("reminder dismissal", () => {
     expect(await write.json()).toEqual({ operation_id: expect.any(String) });
     await user.click(screen.getByRole("button", { name: "账本冲突" }));
     await waitFor(() => expect(requests.some((request) => new URL(request.url).searchParams.get("type") === "LEDGER_CONFLICT" && new URL(request.url).searchParams.get("visibility") === "IGNORED")).toBe(true));
-    expect(screen.getByRole("button", { name: "返回未忽略" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "未忽略" })).toBeVisible();
   });
 });

@@ -58,10 +58,10 @@ describe("reconciliation reminder navigation", () => {
     expect(await screen.findByText("暂无符合条件的记录")).toBeVisible();
     expect(screen.queryByRole("link", { name: scenario.title })).not.toBeInTheDocument();
     if (scenario.tab === "conflicts") {
-      expect(screen.getByRole("option", { name: "待处理（未忽略）" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "未忽略" })).toBeInTheDocument();
       await user.selectOptions(screen.getByLabelText("对账状态筛选"), "ALL");
       expect(await screen.findByRole("link", { name: scenario.title })).toBeVisible();
-      expect(screen.getByRole("option", { name: "全部记录（含已忽略）" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "全部记录" })).toBeInTheDocument();
       await user.selectOptions(screen.getByLabelText("对账状态筛选"), "OPEN");
       await screen.findByText("暂无符合条件的记录");
     }
@@ -69,9 +69,9 @@ describe("reconciliation reminder navigation", () => {
     expect(historyLink).toHaveAttribute("href", "/work-items?type=" + scenario.type + "&visibility=IGNORED");
     await user.click(historyLink);
     expect(await screen.findByRole("heading", { name: scenario.title })).toBeVisible();
-    expect(screen.getByText("已忽略提醒")).toBeVisible();
+    expect(screen.getByRole("button", { name: "已忽略" })).toBeVisible();
     await user.click(screen.getByRole("button", { name: "恢复提醒" }));
-    await screen.findByText("暂时没有已忽略提醒");
+    await screen.findByText("暂无已忽略提醒");
     await user.click(screen.getByRole("link", { name: "账本记录" }));
     expect(await screen.findByRole("link", { name: scenario.title })).toBeVisible();
     expect(requests.filter(request => new URL(request.url).pathname === scenario.endpoint).length).toBeGreaterThanOrEqual(3);

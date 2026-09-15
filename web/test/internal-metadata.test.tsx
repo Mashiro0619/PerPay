@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { queryClient } from "../src/api/client";
 import { dateTime } from "../src/lib/format";
 import { SecuritySettings } from "../src/pages/SecuritySettings";
+import { recordAction } from "./menu-helper";
 import { json, ledger, ledgerId, order, orderId, settings } from "./fixtures";
 import { mountOnboarding } from "./onboarding-fixture";
 
@@ -19,7 +20,7 @@ describe("ordinary administrator views", () => {
     const updatedAt = Date.UTC(2026, 8, 13, 12);
     const configured = { ...settings, secrets: { ...settings.secrets, provider_private_key: { ...settings.secrets.provider_private_key, configured: true, version: 777, updatedAt, fingerprint: "f".repeat(64) } } };
     render(<QueryClientProvider client={queryClient}><MemoryRouter><SecuritySettings settings={configured} onSaved={vi.fn()} /></MemoryRouter></QueryClientProvider>);
-    const row = screen.getByRole("button", { name: "显示应用私钥" }).closest("li")!;
+    const row = screen.getByRole("button", { name: "查看应用私钥" }).closest("li")!;
     expect(within(row).getByText("已配置")).toBeVisible();
     expect(within(row).getByText("更新于 " + dateTime(updatedAt))).toBeVisible();
     expect(row).not.toHaveTextContent(/版本|指纹|777/);
@@ -32,7 +33,8 @@ describe("ordinary administrator views", () => {
       if (request.url.includes("webhook-deliveries")) return json({ data: [], page: { next_cursor: null } });
       return undefined;
     } });
-    await screen.findByRole("button", { name: "撤销退款标记" });
+    await screen.findByRole("button", { name: "订单操作" });
+    expect(recordAction("撤销退款标记")).toBeEnabled();
     await userEvent.setup().click(screen.getByText("查看标记修改历史"));
     expect(screen.getByText("操作人 admin")).toBeVisible();
     expect(screen.queryByText("订单版本")).not.toBeInTheDocument();
@@ -42,7 +44,7 @@ describe("ordinary administrator views", () => {
   it("keeps matching evidence while hiding its internal rule version", async () => {
     mountOnboarding({ stage: 4, path: "/reconciliation/candidates/" + candidateId, handle: (request) => request.url.endsWith("/candidates/" + candidateId) ? json({ data: candidate }) : undefined });
     expect(await screen.findByRole("heading", { name: "金额推断候选" })).toBeVisible();
-    expect(screen.getByText("查看推断规则与证据")).toBeVisible();
+    expect(screen.getByText("匹配依据")).toBeVisible();
     expect(screen.queryByText(/规则版本/)).not.toBeInTheDocument();
   });
 
@@ -58,8 +60,7 @@ describe("ordinary administrator views", () => {
 
   it("keeps the application release version for upgrades but hides configuration revision counters", async () => {
     mountOnboarding({ stage: 4, path: "/system" });
-    expect(await screen.findByText("应用版本")).toBeVisible();
-    expect(screen.getByText("v0.1.0")).toBeVisible();
+    expect(await screen.findByText("v0.1.0")).toBeVisible();
     expect(screen.queryByText(/配置版本|收款版本/)).not.toBeInTheDocument();
   });
 });

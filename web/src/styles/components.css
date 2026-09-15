@@ -128,7 +128,7 @@ summary { cursor: pointer; font-size: 12px; }
 .secret-list strong { display: block; margin-bottom: 5px; font-size: 13px; }
 .secret-list .field-hint { overflow-wrap: anywhere; font-size: 11px; }
 .health-indicator { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
-.health-indicator.is-healthy { color: var(--accent); }
+.health-indicator.is-healthy { color: var(--success); }
 .health-indicator.is-warning { color: var(--warning); }
 .password-field { position: relative; display: flex; }
 .password-field input { padding-right: 44px; }

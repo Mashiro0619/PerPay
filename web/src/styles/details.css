@@ -45,7 +45,7 @@
 .detail-record-footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px; }
 .detail-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
 .detail-page .detail-actions .button, .detail-refund .button { min-height: 34px; padding: 6px 11px; font-size: 12px; }
-.detail-feedback { font-size: 12px; color: var(--accent); overflow-wrap: anywhere; }
+.detail-feedback { font-size: 12px; color: var(--success); overflow-wrap: anywhere; }
 .detail-link { display: inline-flex; gap: 5px; align-items: center; flex-shrink: 0; font-size: 12px; }
 .detail-related, .detail-order-facts { margin-bottom: 14px; }
 .detail-related > .detail-order-facts { margin-bottom: 0; }

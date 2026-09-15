@@ -35,17 +35,17 @@ export default function Dashboard() {
     {settings.error && <ErrorNotice error={settings.error} />}
     <PaymentHealth status={instance.data?.data} checking={instance.isFetching || instance.isPending} unavailable={!view.active || instance.isError || instance.isPaused} fresh={instance.isFetchedAfterMount} retry={() => { void instance.refetch(); }} />
     <QueryView query={analytics}>{({ data }) => <>
-      <div className="section-toolbar"><div><h2>收款数据</h2><span className="muted" aria-live="polite" aria-atomic="true">{analytics.isPlaceholderData ? `正在读取近 ${range} 天，当前显示近 ${data.range_days} 天数据` : `${data.daily[0]?.date} 至 ${data.daily.at(-1)?.date} · 北京时间自然日`}</span></div>
+      <div className="section-toolbar"><div className="statistics-caption"><span className="muted" aria-live="polite" aria-atomic="true">{analytics.isPlaceholderData ? `正在读取近 ${range} 天，当前显示近 ${data.range_days} 天数据` : `${data.daily[0]?.date} 至 ${data.daily.at(-1)?.date} · 北京时间`}</span><details className="statistics-help"><summary>统计口径</summary><p>付款确认金额不是净结算收入，不扣除退款或费用。订单按创建时间，付款按确认时间统计；待付款为当前开放且未付款的订单。</p></details></div>
         <div className="segmented" role="group" aria-label="统计周期"><SelectionIndicator active={range} />{([7, 30, 90] as const).map((days) => <button key={days} type="button" aria-pressed={range === days} onClick={() => setSearch({ range: String(days) }, { replace: true })}>近 {days} 天</button>)}</div>
       </div>
       <div className="metrics-row" aria-busy={analytics.isPlaceholderData}>
         <div className="metric"><span>付款确认金额</span><strong className="metric-money">{money(data.confirmations.amount_cents)}</strong><small>非净结算收入</small></div>
         <div className="metric"><span>新建订单</span><strong>{count(data.orders.created)}<small>笔</small></strong></div>
         <div className="metric"><span>付款确认</span><strong>{count(data.confirmations.count)}<small>次</small></strong></div>
-        <div className="metric"><span>待付款订单</span><strong>{count(data.pending.orders)}<small>笔</small></strong><small>当前收银台开放且未付款</small></div>
+        <div className="metric"><span>待付款订单</span><strong>{count(data.pending.orders)}<small>笔</small></strong></div>
       </div>
       <div className="dashboard-grid" aria-busy={analytics.isPlaceholderData}>
-        <Panel title="每日收款与订单" className="chart-panel"><DailyChart analytics={data} /></Panel>
+        <Panel title="收款趋势" className="chart-panel"><DailyChart analytics={data} /></Panel>
         <Panel title="需要你关注" action={<Link className="text-link" to="/work-items">查看全部<ArrowUpRight size={15} /></Link>}><QueryView query={work}>{(page) => <WorkItemList items={page.data} headingLevel={3} />}</QueryView></Panel>
       </div>
     </>}</QueryView>
@@ -56,7 +56,7 @@ export default function Dashboard() {
 }
 
 function PaymentHealth({ status, checking, unavailable, fresh, retry }: { status: SystemStatus | undefined; checking: boolean; unavailable: boolean; fresh: boolean; retry: () => void }) {
-  if (unavailable) return <Notice tone="warning" title="暂时无法确认收款状态"><p>状态读取失败或网络已断开，请重新检查。</p><Button pending={checking} onClick={retry}>重新检查</Button> <Link to="/system">查看运行状态</Link></Notice>;
+  if (unavailable) return <Notice tone="warning" title="暂时无法确认收款状态"><p>状态读取失败或网络已断开，请重新检查。</p><Button pending={checking} onClick={retry}>重试</Button> <Link to="/system">查看运行状态</Link></Notice>;
   if (checking || !fresh || !status) return <Notice>正在检查收款状态…</Notice>;
   const blocked = status.status === "not_ready" || !status.configured || !status.database.ok || !status.ledger.collection_ready || !status.reconciliation.confirmation_ready;
   if (blocked) {
@@ -73,7 +73,7 @@ function SetupProgress({ settings }: { settings: RuntimeSettings }) {
     [settings.completion.collection, "设置经营码", "/settings/collection"],
     [settings.completion.api, "生成 API 密钥", "/settings/security"],
   ] as const;
-  return <section className="setup-progress"><div><h2>完成配置，开始收款</h2><p>跟随向导完成收款配置，再检查首次采集与自动确认是否就绪。</p><Link className="button button--primary" to={onboardingPath()}>继续配置<ArrowRight size={16} /></Link></div>
+  return <section className="setup-progress"><div><h2>完成配置，开始收款</h2><p>尚有配置未完成。</p><Link className="button button--primary" to={onboardingPath()}>继续配置<ArrowRight size={16} /></Link></div>
     <ol>{steps.map(([complete, title, to], index) => <li key={title} data-complete={complete}><Link to={to}><span>{complete ? <Check size={13} /> : index + 1}</span>{title}</Link></li>)}</ol>
   </section>;
 }

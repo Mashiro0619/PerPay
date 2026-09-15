@@ -110,7 +110,7 @@ input:where(:not([type="checkbox"]):not([type="radio"])):focus-visible, textarea
 select:disabled { cursor: not-allowed; }
 .badge { display: inline-flex; align-items: center; gap: 6px; width: fit-content; min-height: 24px; padding: 3px 8px; border-radius: 5px; font-size: 11px; font-weight: 580; line-height: 1.4; white-space: nowrap; }
 .status-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
-.badge--success { background: var(--accent-soft); color: var(--accent); }
+.badge--success { background: var(--success-soft); color: var(--success); }
 .badge--neutral { background: var(--surface-muted); color: var(--muted); }
 .badge--warning { background: var(--warning-soft); color: var(--warning); }
 .badge--danger { background: var(--danger-soft); color: var(--danger); }
@@ -121,7 +121,7 @@ select:disabled { cursor: not-allowed; }
 .notice strong { display: block; margin-bottom: 3px; }
 .notice p + p, .notice .button { margin-top: 8px; }
 .notice a { color: inherit; font-weight: 650; text-decoration: underline; }
-.notice--success { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 18%, var(--surface)); }
+.notice--success { color: var(--success); background: var(--success-soft); border-color: color-mix(in srgb, var(--success) 24%, var(--surface)); }
 .notice--warning { color: var(--warning); background: var(--warning-soft); border-color: color-mix(in srgb, var(--warning) 18%, var(--surface)); }
 .notice--danger { color: var(--danger); background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 18%, var(--surface)); }
 .request-id { font-size: 11px; }

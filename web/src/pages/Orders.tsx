@@ -30,10 +30,10 @@ export default function Orders() {
     setSearch(next, { replace: true });
   }
   return <><PageHeading title="订单" actions={<TestPaymentLink />} />
-    <Panel><div className="orders-toolbar"><OrderSearch /><div className="filter-group">
+    <Panel><div className="list-toolbar orders-toolbar"><OrderSearch /><div className="filter-group">
       <label><span className="sr-only">付款状态筛选</span><select value={payment ?? ""} onChange={(event) => filter("payment", event.target.value)}><option value="">全部付款状态</option><option value="UNPAID">未付款</option><option value="CONFIRMED">已确认</option><option value="DISPUTED">有争议</option></select></label>
       <label><span className="sr-only">收银台状态筛选</span><select value={checkout ?? ""} onChange={(event) => filter("checkout", event.target.value)}><option value="">全部收银台状态</option><option value="OPEN">开放中</option><option value="CLOSED">已关闭</option><option value="EXPIRED">已过期</option></select></label>
-    </div></div>{(payment || checkout) && <div className="list-subtoolbar active-filters"><span>已筛选 {[payment, checkout].filter(Boolean).length} 项</span><Button variant="quiet" onClick={clearFilters}>清除筛选</Button></div>}<OrderPage key={`${payment}:${checkout}`} payment={payment} checkout={checkout} onClearFilters={clearFilters} /></Panel>
+    {(payment || checkout) && <Button variant="quiet" onClick={clearFilters}>清除筛选</Button>}</div></div><OrderPage key={`${payment}:${checkout}`} payment={payment} checkout={checkout} onClearFilters={clearFilters} /></Panel>
   </>;
 }
 
@@ -45,7 +45,7 @@ function OrderSearch() {
     mutationFn: () => kind === "merchant" ? result(api.getAdministratorOrderByMerchantNumber({ path: { merchantOrderNo: value.trim() } })) : result(api.getAdministratorOrder({ path: { orderId: value.trim() } })),
     onSuccess: ({ data }) => navigate(`/orders/${data.order_id}`),
   });
-  function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (value.trim()) lookup.mutate(); }
+  function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (value.trim() && !lookup.isPending) lookup.mutate(); }
   return <div className="order-search-wrap"><form className="order-search" onSubmit={submit} role="search">
     <label><span className="sr-only">订单查询方式</span><select value={kind} disabled={lookup.isPending} onChange={(event) => { setKind(event.target.value); lookup.reset(); }}><option value="merchant">商户订单号</option><option value="internal">内部订单编号</option></select></label>
     <label className="search-input"><Search size={16} aria-hidden="true" /><span className="sr-only">订单号</span><input name="order-query" type="search" value={value} maxLength={128} disabled={lookup.isPending} required autoComplete="off" placeholder="输入完整订单号" onChange={(event) => { setValue(event.target.value); lookup.reset(); }} /></label>
@@ -62,8 +62,8 @@ function OrderPage({ payment, checkout, onClearFilters }: { payment: PaymentStat
     } })),
   });
   return <QueryView query={orders}>{(page) => <>
-    {page.data.length === 0 && pagination.page > 1 ? <EmptyState title="这一页暂无订单" description="订单列表可能已更新，返回上一页继续查看。"><Button onClick={pagination.previous}>{pagination.previousLabel === "返回首页" ? "返回首页" : "返回上一页"}</Button></EmptyState>
-      : page.data.length === 0 && (payment || checkout) ? <EmptyState title="没有符合条件的订单" description="试试调整付款状态或收银台状态筛选。"><Button onClick={onClearFilters}>查看全部订单</Button></EmptyState> : <OrderTable orders={page.data} />}
+    {page.data.length === 0 && pagination.page > 1 ? <EmptyState title="这一页暂无订单" description="返回上一页继续查看。"><Button onClick={pagination.previous}>{pagination.previousLabel === "返回首页" ? "返回首页" : "返回上一页"}</Button></EmptyState>
+      : page.data.length === 0 && (payment || checkout) ? <EmptyState title="没有符合条件的订单" description="调整筛选或查看全部订单。"><Button onClick={onClearFilters}>查看全部订单</Button></EmptyState> : <OrderTable orders={page.data} />}
     <Pagination previousLabel={pagination.previousLabel} page={pagination.page} count={page.data.length} hasNext={!!page.page.next_cursor} pending={orders.isFetching} onPrevious={pagination.previous} onNext={() => pagination.next(page.page.next_cursor)} />
   </>}</QueryView>;
 }

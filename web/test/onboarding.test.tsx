@@ -73,7 +73,7 @@ describe("first collection onboarding", () => {
   });
   it("does not reopen setup for an already configured instance with a runtime outage", async () => {
     const view = mountOnboarding({ stage: 4, path: "/", status: (value) => ({ ...systemStatus(value), status: "not_ready" }) });
-    await screen.findByText("收款数据");
+    await screen.findByText("付款确认金额");
     expect(view.router.state.location.pathname).toBe("/");
     expect(screen.queryByRole("heading", { name: "首次收款配置" })).not.toBeInTheDocument();
   });
@@ -132,7 +132,7 @@ describe("first collection onboarding", () => {
     expect(await screen.findByRole("alert")).toBeVisible();
     await pathIs(view, "collection");
     expect(screen.getByLabelText("支付宝经营码内容")).toHaveValue("https://qr.alipay.com/conflict-draft");
-    expect(screen.getByText("有未保存的修改")).toBeVisible();
+    expect(screen.getByText("未保存")).toBeVisible();
   });
   it("saves a manual collection payload with the current revision before continuing", async () => {
     const view = mountOnboarding({ stage: 2 });
@@ -154,7 +154,7 @@ describe("first collection onboarding", () => {
     expect(await screen.findByText(syntheticSecret)).toBeVisible();
     await pathIs(view, "api");
     expect(JSON.stringify(sessionStorage)).not.toContain(syntheticSecret);
-    await user.click(screen.getByRole("button", { name: "已妥善保存" }));
+    await user.click(screen.getByRole("button", { name: "完成" }));
     await pathIs(view, "optional");
     expect(screen.queryByText(syntheticSecret)).not.toBeInTheDocument();
     expect(view.writes()).toHaveLength(1);
@@ -163,7 +163,7 @@ describe("first collection onboarding", () => {
     const view = mountOnboarding({ stage: 4, path: onboardingPath("api") });
     expect(await screen.findByRole("button", { name: "查看密钥" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "生成 API 密钥" })).not.toBeInTheDocument();
-    await userEvent.setup().click(screen.getByRole("button", { name: "已保存，下一步" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "下一步" }));
     await pathIs(view, "optional");
     expect(view.writes()).toHaveLength(0);
   });
@@ -181,10 +181,9 @@ describe("first collection onboarding", () => {
   });
   it("clears revealed API plaintext after sixty seconds without advancing", async () => {
     const view = mountOnboarding({ stage: 4, path: onboardingPath("api") });
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "查看密钥" }));
+    const viewKey = await screen.findByRole("button", { name: "查看密钥" });
     vi.useFakeTimers();
-    fireEvent.click(screen.getByRole("button", { name: "读取明文" }));
+    fireEvent.click(viewKey);
     await act(async () => { await vi.advanceTimersByTimeAsync(10); });
     expect(screen.getByText(syntheticSecret)).toBeVisible();
     await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
@@ -198,14 +197,14 @@ describe("first collection onboarding", () => {
     await screen.findByLabelText("备份间隔（秒）");
     edit("备份间隔（秒）", "172800");
     fireEvent.click(screen.getByRole("checkbox", { name: "启用业务通知" }));
-    edit("允许的通知网站 Origin", "https://shop.example.com");
+    edit("通知网站（HTTPS 域名）", "https://shop.example.com");
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "保存通知" }));
     await screen.findByRole("button", { name: "查看签名密钥" });
     expect(screen.getByLabelText("备份间隔（秒）")).toHaveValue(172800);
-    expect(screen.getAllByText("有未保存的修改")).toHaveLength(1);
+    expect(screen.getAllByText("未保存")).toHaveLength(1);
     await user.click(screen.getByRole("button", { name: "保存备份" }));
-    await waitFor(() => expect(screen.queryByText("有未保存的修改")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText("未保存")).not.toBeInTheDocument());
     expect(await view.writes()[0]!.clone().json()).toMatchObject({ revision: 3, enabled: true, allowed_origin: "https://shop.example.com" });
     expect(await view.writes()[1]!.clone().json()).toEqual({ revision: 4, interval_seconds: 172800, keep_count: 7 });
   });

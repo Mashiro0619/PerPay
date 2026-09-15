@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, refreshOperationalData, result, type OrderWebhookDeliveryDetail, type WebhookDeliveryDetail, type WebhookAttempt } from "../../api/client";
-import { Badge, Button, CopyValue, ErrorNotice, JsonDetails, Pagination, useCursor } from "../ui";
+import { Badge, CopyValue, ErrorNotice, Pagination, useCursor } from "../ui";
 import { ReasonDialog } from "../ReasonDialog";
 import { attemptResult, latestAttempt, notificationErrorName } from "../../lib/detail-summary";
 import { dateTime } from "../../lib/format";
 import { label } from "../../lib/labels";
-import { DetailFields, DetailLink, LazyDetails, TechnicalDetails } from "./DetailPrimitives";
+import { DetailFields, LazyDetails } from "./DetailPrimitives";
+
+import { SuccessMessage } from "../Feedback";
+import { RecordTools } from "./RecordTools";
 
 type DeliveryContext = WebhookDeliveryDetail & { attempts: readonly WebhookAttempt[] };
 export function DeliveryCard({ detail, embedded = false, attemptsAvailable = true, sectionTitle }: { detail: DeliveryContext; embedded?: boolean; attemptsAvailable?: boolean; sectionTitle?: string }) {
@@ -25,16 +28,12 @@ export function DeliveryCard({ detail, embedded = false, attemptsAvailable = tru
       ...(delivery.requested_by_type === "ADMIN" ? [["发起人", delivery.requested_by_actor_id ?? "管理员"] as const] : []),
       ...(delivery.reason ? [["重发理由", delivery.reason] as const] : []),
     ]} />
-    <div className="detail-record-footer"><div className="detail-actions">{terminal && detail.is_latest && <Button disabled={sent} onClick={() => setSnapshot(detail)}>重新投递</Button>}
-      {!terminal && <span className="detail-muted">仍在自动投递流程中，无需手动重发。</span>}{terminal && !detail.is_latest && <span className="detail-muted">已有后续投递，旧记录不能再次重发。</span>}
-      {sent && <span role="status" className="detail-feedback">已创建新的投递记录，等待后台发送。</span>}
-    </div>{embedded && <DetailLink to={"/notifications/" + delivery.delivery_id} />}</div>
+    <SuccessMessage message={sent ? "已创建新投递，等待发送" : ""} />
     <LazyDetails className="detail-disclosure" summary={"投递尝试（" + detail.attempts.length + "）"}>{detail.attempts.length ? <div className="detail-attempts"><table><thead><tr><th>次数 / 开始时间</th><th>结果</th><th>HTTP / ACK</th></tr></thead><tbody>{detail.attempts.map(attempt => <tr key={attempt.attempt_id}><td>第 {attempt.attempt_number} 次<time dateTime={attempt.started_at}>{dateTime(attempt.started_at)}</time></td><td>{label(attempt.outcome)}</td><td>{attemptResult(attempt)}</td></tr>)}</tbody></table></div> : <p className="detail-empty">{attemptsAvailable ? "尚未开始投递" : "投递尝试尚未读取，请稍后重试。"}</p>}
-      <JsonDetails data={detail.attempts} label="查看投递技术字段" />
     </LazyDetails>
-    <JsonDetails data={detail.event.payload} label="业务事件与载荷" />
-    <TechnicalDetails data={{ delivery, target: detail.target, event_id: detail.event.event_id }} identifiers={[["投递编号", delivery.delivery_id], ["事件编号", detail.event.event_id]]} label="通知技术详情" />
-    {snapshot && <ReasonDialog title="重新投递业务通知" description="这会新建一代投递记录。业务接收方必须按事件编号幂等处理，即使以前已经确认过该事件。" action="确认重新投递" onClose={() => setSnapshot(null)}
+    <RecordTools label="通知记录操作" data={detail} identifiers={[["投递编号", delivery.delivery_id], ["事件编号", detail.event.event_id]]} to={embedded ? "/notifications/" + delivery.delivery_id : undefined}
+      actions={terminal && detail.is_latest ? [{ label: "重新投递", disabled: sent, onSelect: () => setSnapshot(detail) }] : []} />
+    {snapshot && <ReasonDialog title="重新投递业务通知" description="再次发送同一事件，业务方需避免重复处理。" action="确认重新投递" onClose={() => setSnapshot(null)}
       execute={(reason, operationId) => result(api.redeliverWebhookDelivery({ path: { deliveryId: snapshot.delivery.delivery_id }, body: { reason, redelivery_id: operationId } }))}
       onSuccess={() => { setSnapshot(null); setSent(true); void refreshOperationalData(); }}><DetailFields items={[["事件", label(snapshot.event.event_type)], ["通知地址", snapshot.target.target_url]]} /></ReasonDialog>}
   </article>;

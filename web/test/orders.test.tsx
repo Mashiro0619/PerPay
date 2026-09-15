@@ -33,7 +33,8 @@ describe("order browsing", () => {
     const user = userEvent.setup();
     renderOrders("/orders?payment=UNPAID&checkout=OPEN&source=overview");
     expect(await screen.findByRole("heading", { name: "没有符合条件的订单" })).toBeVisible();
-    expect(screen.getByText("已筛选 2 项")).toBeVisible();
+    expect(screen.getByLabelText("付款状态筛选")).toHaveValue("UNPAID");
+    expect(screen.getByLabelText("收银台状态筛选")).toHaveValue("OPEN");
     await user.click(screen.getByRole("button", { name: "清除筛选" }));
     expect(await screen.findByRole("link", { name: order.product_name })).toBeVisible();
     expect(screen.getByLabelText("付款状态筛选")).toHaveValue("");
@@ -118,8 +119,7 @@ describe("order browsing", () => {
     renderOrders();
     expect(await screen.findByRole("heading", { name: "还没有订单" })).toBeVisible();
     expect(screen.getByRole("link", { name: "创建测试订单" })).toHaveAttribute("href", "/test-payment");
-    expect(screen.getByRole("button", { name: "上一页" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
+    expect(screen.queryByRole("navigation", { name: "列表分页" })).not.toBeInTheDocument();
   });
 });
 

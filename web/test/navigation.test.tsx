@@ -74,21 +74,21 @@ describe("navigation and draft protection", () => {
     expect(screen.queryByText("金额：人民币 · 时间与日统计：北京时间（UTC+8）")).not.toBeInTheDocument();
     expect(screen.queryByText("个人收款实例")).not.toBeInTheDocument();
     const logout = screen.getByRole("button", { name: "退出登录" });
-    const theme = screen.getByRole("button", { name: /切换主题/ });
+    const theme = screen.getByRole("button", { name: /外观/ });
     expect(logout.closest("aside")).not.toBeNull();
     expect(theme.closest(".sidebar-controls")).toBe(logout.closest(".sidebar-controls"));
     expect(logout.textContent).toBe("");
-    expect(theme.textContent).toBe("");
+    expect(theme).toHaveTextContent("外观");
     expect(logout).toHaveAttribute("title", "退出登录");
-    expect(theme).toHaveAttribute("title", "切换主题，当前跟随系统");
+    expect(theme).toHaveAttribute("title", "外观：经典蓝 · 跟随系统");
     expect(logout.querySelector("svg")).not.toBeNull();
-    expect(screen.getByRole("button", { name: "打开导航" }).closest(".page-heading")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "打开导航" }).closest(".mobile-app-bar")).not.toBeNull();
     expect(fetchMock.mock.calls.some(([request]) => request.url.includes("/system/status"))).toBe(false);
   });
 
   it("keeps collection data prominent while surfacing operational outages on a configured overview", async () => {
     const { container, fetchMock } = mount({ path: "/", configured: true });
-    await screen.findByRole("heading", { name: "每日收款与订单" });
+    await screen.findByRole("heading", { name: "收款趋势" });
     expect(screen.queryByRole("region", { name: "收款链路状态" })).not.toBeInTheDocument();
     expect(container.querySelector(".payment-pipeline")).toBeNull();
     expect(container.querySelector(".dashboard-footnote, .page-heading p, .panel-heading p")).toBeNull();
@@ -96,9 +96,10 @@ describe("navigation and draft protection", () => {
     expect(screen.queryByText("所选周期内创建")).not.toBeInTheDocument();
     expect(screen.queryByText("所选周期内的确认事件")).not.toBeInTheDocument();
     expect(screen.getByText("非净结算收入")).toBeVisible();
-    expect(screen.getByText("当前收银台开放且未付款")).toBeVisible();
+    await userEvent.setup().click(screen.getByText("统计口径"));
+    expect(screen.getByText(/待付款为当前开放且未付款的订单/)).toBeVisible();
     expect(screen.queryByRole("heading", { name: "完成配置，开始收款" })).not.toBeInTheDocument();
-    expect(container.querySelector("main h2")).toHaveTextContent("收款数据");
+    expect(container.querySelector("main h2")).toHaveTextContent("收款趋势");
     expect(screen.getByRole("heading", { name: "需要你关注" })).toBeVisible();
     expect(screen.getByRole("link", { name: "运行状态" })).toHaveAttribute("href", "/system");
     expect(fetchMock.mock.calls.some(([request]) => request.url.includes("/system/status"))).toBe(true);
@@ -107,7 +108,7 @@ describe("navigation and draft protection", () => {
 
   it("keeps the previous statistics and chart visible while loading a different period", async () => {
     const { container, fetchMock } = mount({ path: "/", configured: true });
-    await screen.findByRole("heading", { name: "每日收款与订单" });
+    await screen.findByRole("heading", { name: "收款趋势" });
     const initialChart = container.querySelector(".daily-chart");
     const previous = queryClient.getQueryData<{ data: SystemAnalytics }>(["analytics", 30])!;
     const originalFetch = fetchMock.getMockImplementation()!;
@@ -128,7 +129,7 @@ describe("navigation and draft protection", () => {
 
   it("does not replace the selected period with a late response after rapid switching", async () => {
     const { container, fetchMock } = mount({ path: "/", configured: true });
-    await screen.findByRole("heading", { name: "每日收款与订单" });
+    await screen.findByRole("heading", { name: "收款趋势" });
     const previous = queryClient.getQueryData<{ data: SystemAnalytics }>(["analytics", 30])!;
     const originalFetch = fetchMock.getMockImplementation()!;
     const pending = new Map<string, (response: Response) => void>();
@@ -207,8 +208,8 @@ describe("navigation and draft protection", () => {
     await user.clear(field); await user.type(field, "300");
     expect(unloadIsBlocked()).toBe(false);
     await user.clear(field); await user.type(field, "450");
-    await user.click(screen.getByRole("button", { name: "保存配置" }));
-    await screen.findByText(/配置已保存/);
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await screen.findByText(/已保存/);
     await waitFor(() => expect(unloadIsBlocked()).toBe(false));
     await user.click(screen.getByRole("link", { name: "自动备份" }));
     expect(await screen.findByLabelText("备份间隔（秒）")).toBeVisible();
@@ -218,10 +219,10 @@ describe("navigation and draft protection", () => {
   it("preserves a conflicted draft and resets it only after an explicit reload", async () => {
     mount({ conflict: true });
     const { user, field } = await edit();
-    await user.click(screen.getByRole("button", { name: "保存配置" }));
+    await user.click(screen.getByRole("button", { name: "保存" }));
     expect(await screen.findByText(/配置已在其他会话中更新/)).toBeVisible();
     expect(field).toHaveValue(450);
-    await user.click(screen.getByRole("button", { name: "重新读取" }));
+    await user.click(screen.getByRole("button", { name: "刷新" }));
     await user.click(screen.getByRole("button", { name: "放弃修改并继续" }));
     await waitFor(() => expect(screen.getByLabelText("收银台有效期（秒）")).toHaveValue(300));
     expect(unloadIsBlocked()).toBe(false);

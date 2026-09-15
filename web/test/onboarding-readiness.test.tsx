@@ -41,7 +41,7 @@ describe("onboarding payment readiness", () => {
   it.each(["settings_revision", "payment_revision"] as const)("rejects an outdated %s and offers explicit configuration reload", async (version) => {
     const status = systemStatus(); status[version] = 0;
     const { onReload } = mount(() => json({ data: status }));
-    await userEvent.setup().click(await screen.findByRole("button", { name: "重新读取配置" }));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "刷新配置" }));
     expect(onReload).toHaveBeenCalledOnce();
     expect(screen.queryByRole("link", { name: "进入控制台" })).not.toBeInTheDocument();
   });
@@ -60,11 +60,11 @@ describe("onboarding payment readiness", () => {
     mount(() => fail ? apiError("internal_error", "temporary outage", 503) : json({ data: systemStatus() }));
     await screen.findByRole("link", { name: "进入控制台" });
     fail = true;
-    await userEvent.setup().click(screen.getByRole("button", { name: "重新检查" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "刷新" }));
     await screen.findByRole("alert");
     expect(screen.queryByRole("link", { name: "进入控制台" })).not.toBeInTheDocument();
     fail = false;
-    await userEvent.setup().click(screen.getByRole("button", { name: "重新检查" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "刷新" }));
     expect(await screen.findByRole("link", { name: "进入控制台" })).toBeVisible();
   });
   it("polls every five seconds, pauses while hidden and refreshes on return", async () => {
@@ -90,7 +90,7 @@ describe("onboarding payment readiness", () => {
     mount(); await screen.findByRole("link", { name: "进入控制台" });
     online.mockReturnValue(false); fireEvent(window, new Event("offline"));
     expect(screen.queryByRole("link", { name: "进入控制台" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "重新检查" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "刷新" })).toBeDisabled();
     online.mockReturnValue(true); fireEvent(window, new Event("online"));
     expect(await screen.findByRole("link", { name: "进入控制台" })).toBeVisible();
   });

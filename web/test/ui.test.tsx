@@ -73,7 +73,7 @@ describe("work item heading hierarchy", () => {
 
   it.each([2, 3] as const)("uses level %i in empty lists", (headingLevel) => {
     render(<WorkItemList items={[]} headingLevel={headingLevel} />);
-    expect(screen.getByRole("heading", { level: headingLevel, name: "暂时没有待处理事项" })).toBeVisible();
+    expect(screen.getByRole("heading", { level: headingLevel, name: "暂无待处理提醒" })).toBeVisible();
     expect(screen.queryByText("账务异常、账本冲突和失败通知会汇总到这里。")).not.toBeInTheDocument();
   });
 });

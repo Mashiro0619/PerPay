@@ -25,7 +25,7 @@ describe("adaptive ledger scan settings", () => {
     expect(active).toHaveAttribute("min", "5");
     expect(active).toHaveAttribute("max", "3600");
     expect(active).toHaveAttribute("step", "1");
-    expect(active).toHaveAccessibleDescription(/收尾至少 60 秒/);
+    expect(active).toHaveAccessibleDescription(/待支付及收尾时使用，不得大于常规间隔/);
     expect(screen.queryByLabelText(/收尾.*秒/)).not.toBeInTheDocument();
     fireEvent.change(active, { target: { value: "4" } });
     expect(active).not.toBeValid();
@@ -48,7 +48,7 @@ describe("adaptive ledger scan settings", () => {
     renderEditor(settings, onSaved);
     fireEvent.change(screen.getByLabelText("常规采集间隔（秒）"), { target: { value: "30" } });
     fireEvent.change(screen.getByLabelText("活跃采集间隔（秒）"), { target: { value: "5" } });
-    await userEvent.setup().click(screen.getByRole("button", { name: "保存配置" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const request = fetchMock.mock.calls[0]![0];
@@ -65,11 +65,16 @@ describe("adaptive ledger scan settings", () => {
     vi.stubGlobal("fetch", fetchMock);
     renderEditor(configuredThrough(2));
     const active = screen.getByLabelText("活跃采集间隔（秒）");
+    const originalFocus = active.focus.bind(active); const focusWhileDisabled: boolean[] = [];
+    vi.spyOn(active, "focus").mockImplementation(options => { focusWhileDisabled.push(active.matches(":disabled")); originalFocus(options); });
     fireEvent.change(active, { target: { value: "30" } });
-    await userEvent.setup().click(screen.getByRole("button", { name: "保存配置" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(active).toHaveFocus());
     expect(active).toHaveAccessibleDescription(/活跃采集间隔不能大于常规采集间隔/);
     expect(active).toHaveValue(30);
+    expect(active).toBeEnabled();
+    expect(active.closest("details")).toHaveAttribute("open");
+    expect(focusWhileDisabled).not.toContain(true);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -79,7 +84,7 @@ describe("adaptive ledger scan settings", () => {
     renderEditor(configuredThrough(2));
     fireEvent.change(screen.getByLabelText("常规采集间隔（秒）"), { target: { value: "60" } });
     fireEvent.change(screen.getByLabelText("活跃采集间隔（秒）"), { target: { value: "5" } });
-    await userEvent.setup().click(screen.getByRole("button", { name: "保存配置" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "保存" }));
     const freshness = screen.getByLabelText("采集有效时限（秒）");
     await waitFor(() => expect(freshness).toHaveFocus());
     expect(freshness).toHaveAccessibleDescription(/至少为常规采集间隔的两倍/);

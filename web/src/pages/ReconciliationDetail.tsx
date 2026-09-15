@@ -6,7 +6,8 @@ import { api, refreshOperationalData, result } from "../api/client";
 import { Badge, Button, PageHeading, Panel, QueryView } from "../components/ui";
 import { CandidateCard, ExceptionCard, LedgerFacts, MatchCard } from "../components/detail/PaymentEvidence";
 import { ConflictCard } from "../components/detail/ConflictEvidence";
-import { DetailFields, useDetailFetching, TechnicalDetails } from "../components/detail/DetailPrimitives";
+import { DetailFields, useDetailFetching } from "../components/detail/DetailPrimitives";
+import { RecordTools } from "../components/detail/RecordTools";
 import { AssociateIncomeAction } from "../components/detail/FinancialActions";
 import { dateTime, money } from "../lib/format";
 import { label } from "../lib/labels";
@@ -43,9 +44,9 @@ function LedgerDetail({ resourceId }: { resourceId: string }) {
   return <div className="detail-page"><EvidenceHeading title="账本流水" /><QueryView query={ledger}>{({ data }) => <>
     <Panel className="detail-panel"><article className="detail-record"><div className="detail-record-heading"><h2>{money(data.amount_cents)}</h2><Badge value={data.direction} /></div><LedgerFacts entry={data} />
       <DetailFields items={[["分配状态", label(data.state)], ["采集入库时间", dateTime(data.created_at)]]} />
-      {data.direction === "DEBIT" ? <p className="detail-caution">支出不参与自动收款匹配，此处仅保留流水证据。历史退款记录仍按原有语义保留。</p> : ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(data.state) && <div className="detail-actions"><AssociateIncomeAction ledgerId={resourceId} ledgerLabel={money(data.amount_cents) + " · " + dateTime(data.occurred_at)} /></div>}
-      <TechnicalDetails data={data} identifiers={[["流水编号", resourceId], ["外部事件编号", data.external_event_id]]} label="流水技术详情" /></article></Panel>
-    {data.direction === "CREDIT" && <Panel title="匹配候选" className="detail-panel"><QueryView query={candidates}>{({ data: records }) => records.length ? records.map(candidate => <CandidateCard key={candidate.candidate_id} candidate={candidate} ledger={data} embedded />) : <p className="detail-empty">这笔收入暂未找到符合自动匹配规则的订单。</p>}</QueryView></Panel>}
+      {data.direction === "DEBIT" ? <p className="detail-caution">支出仅作流水留存，不参与收款匹配。</p> : ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(data.state) && <div className="detail-actions"><AssociateIncomeAction ledgerId={resourceId} ledgerLabel={money(data.amount_cents) + " · " + dateTime(data.occurred_at)} /></div>}
+      <RecordTools data={data} identifiers={[["流水编号", resourceId], ["外部事件编号", data.external_event_id]]} label="流水记录操作" /></article></Panel>
+    {data.direction === "CREDIT" && <Panel title="匹配候选" className="detail-panel"><QueryView query={candidates}>{({ data: records }) => records.length ? records.map(candidate => <CandidateCard key={candidate.candidate_id} candidate={candidate} ledger={data} embedded />) : <p className="detail-empty">暂无匹配候选。</p>}</QueryView></Panel>}
   </>}</QueryView></div>;
 }
 function CandidateDetail({ resourceId }: { resourceId: string }) {

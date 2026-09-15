@@ -1,6 +1,6 @@
 import { Component, useEffect, useRef, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Activity, ArrowUpRight, Bell, ClipboardList, LayoutDashboard, ListChecks, LogOut, ScanLine, Settings2, WalletCards, X } from "lucide-react";
+import { Activity, ArrowUpRight, Bell, ClipboardList, LayoutDashboard, ListChecks, LogOut, ScanLine, Settings2, WalletCards, Menu, X } from "lucide-react";
 import { createRoutesFromElements, Navigate, Outlet, Route, useLocation } from "react-router";
 
 import { api, result } from "./api/client";
@@ -64,10 +64,11 @@ function AppShell() {
       }}>{!logout.isPending && <LogOut size={18} aria-hidden="true" />}</Button></div>
   </>;
 
-  return <NavigationContext value={() => {
+  function openMobileNavigation() {
     navigationTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     mobileNavigation.current?.showModal();
-  }}><div className="app-shell">
+  }
+  return <NavigationContext value={openMobileNavigation}><div className="app-shell">
     <a className="skip-link" href="#main-content">跳转到主要内容</a>
     <aside className="sidebar">{renderNavigation()}</aside>
     <dialog className="mobile-navigation" ref={mobileNavigation} aria-label="导航菜单" onCancel={(event) => { event.preventDefault(); closeNavigation(); }} onClick={(event) => {
@@ -78,6 +79,7 @@ function AppShell() {
       <Button className="mobile-navigation-close icon-button" aria-label="关闭导航" onClick={closeNavigation}><X size={20} aria-hidden="true" /></Button>{renderNavigation()}
     </dialog>
     <div className="workspace">
+    <header className="mobile-app-bar"><Button variant="quiet" className="icon-button" aria-label="打开导航" onClick={openMobileNavigation}><Menu size={20} /></Button><Link to="/" className="mobile-brand">PerPay</Link></header>
     <main id="main-content" className="main-content" tabIndex={-1}>
       <ErrorNotice error={logout.error} />
       <ErrorNotice error={session.error} retry={session.retry} />
@@ -89,7 +91,7 @@ function AppShell() {
 }
 
 export function TestPaymentLink() {
-  return <Link className="button button--primary" to="/test-payment"><ScanLine size={17} />测试收款<ArrowUpRight size={15} /></Link>;
+  return <Link className="button" to="/test-payment"><ScanLine size={17} />测试收款<ArrowUpRight size={15} /></Link>;
 }
 
 export const appRoutes = createRoutesFromElements(<Route errorElement={<AppFailure />} hydrateFallbackElement={<Loading label="正在打开页面…" />} element={<AuthBoundary><DraftProvider><AppShell /></DraftProvider></AuthBoundary>}>

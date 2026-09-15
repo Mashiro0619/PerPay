@@ -34,7 +34,7 @@ function pendingDecode() {
 function mount(conflict = false) {
   const fetchMock = vi.fn(async (request: Request) => {
     if (request.method === "PUT") {
-      if (conflict) return apiError("settings_revision_conflict", "配置版本冲突，请重新读取");
+      if (conflict) return apiError("settings_revision_conflict", "配置版本冲突，请刷新");
       const { revision, ...collection } = await request.clone().json();
       return json({ data: { ...settings, revision: revision + 1, collection } });
     }
@@ -94,17 +94,17 @@ describe("collection QR image upload", () => {
     expect(await screen.findByText("已识别，请核对后保存。")).toBeVisible();
     expect(field).toHaveValue(recognizedLink);
     expect(ttl).toHaveValue(450);
-    expect(screen.getByText("有未保存的修改")).toBeVisible();
+    expect(screen.getByText("未保存")).toBeVisible();
     expect(writes(fetchMock)).toHaveLength(0);
     expect(container.querySelector("[style]")).toBeNull();
     const unload = new Event("beforeunload", { cancelable: true }); window.dispatchEvent(unload);
     expect(unload.defaultPrevented).toBe(true);
-    await user.click(screen.getByRole("button", { name: "保存配置" }));
-    expect(await screen.findByText(/配置已保存/)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    expect(await screen.findByText(/已保存/)).toBeVisible();
     expect(writes(fetchMock)).toHaveLength(1);
     expect(await writes(fetchMock)[0]!.json()).toEqual({ revision: 3, code_payload: recognizedLink, order_ttl_seconds: 450, amount_offset_maximum_cents: 99, amount_reuse_cooldown_seconds: 1200 });
     expect(screen.getByLabelText("支付宝经营码内容")).toHaveValue(recognizedLink);
-    expect(screen.queryByText("有未保存的修改")).not.toBeInTheDocument();
+    expect(screen.queryByText("未保存")).not.toBeInTheDocument();
   });
 
   it("allows selecting the same image again and does not make an unchanged payload dirty", async () => {
@@ -119,7 +119,7 @@ describe("collection QR image upload", () => {
     expect(picker).not.toHaveAttribute("name");
     await user.upload(picker, file);
     await waitFor(() => expect(decodeQrImage).toHaveBeenCalledTimes(2));
-    expect(screen.queryByText("有未保存的修改")).not.toBeInTheDocument();
+    expect(screen.queryByText("未保存")).not.toBeInTheDocument();
   });
 
   it("keeps existing content on failure and supports retrying the same file", async () => {
@@ -133,7 +133,7 @@ describe("collection QR image upload", () => {
     expect(screen.getByRole("button", { name: "点击或拖拽二维码图片" })).toHaveAccessibleDescription(/未识别到二维码，请上传清晰、完整的二维码图片。/);
     expect(field).toHaveValue(settings.collection!.code_payload);
     expect(field).not.toHaveAttribute("aria-invalid");
-    expect(screen.queryByText("有未保存的修改")).not.toBeInTheDocument();
+    expect(screen.queryByText("未保存")).not.toBeInTheDocument();
     expect(writes(fetchMock)).toHaveLength(0);
     await user.upload(picker, file);
     expect(await screen.findByText("已识别，请核对后保存。")).toBeVisible();
@@ -146,11 +146,11 @@ describe("collection QR image upload", () => {
     const picker = await screen.findByLabelText("选择经营码二维码图片");
     await userEvent.setup().upload(picker, imageFile());
     expect(screen.getByRole("button", { name: "正在识别…" })).toHaveAttribute("aria-busy", "true");
-    expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
     fireEvent.submit(picker.closest("form")!);
     expect(writes(fetchMock)).toHaveLength(0);
     await act(async () => { pending.resolve(recognizedLink); });
-    expect(screen.getByRole("button", { name: "保存配置" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
     expect(writes(fetchMock)).toHaveLength(0);
   });
 
@@ -164,7 +164,7 @@ describe("collection QR image upload", () => {
     const signal = vi.mocked(decodeQrImage).mock.calls[0]![1];
     await user.clear(field); await user.type(field, "https://qr.alipay.com/manual-edit");
     expect(signal.aborted).toBe(true);
-    expect(screen.getByRole("button", { name: "保存配置" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
     await act(async () => { if (outcome === "success") pending.resolve(recognizedLink); else pending.reject(new Error("late failure")); });
     expect(field).toHaveValue("https://qr.alipay.com/manual-edit");
     expect(screen.queryByText("已识别，请核对后保存。")).not.toBeInTheDocument();
@@ -183,10 +183,10 @@ describe("collection QR image upload", () => {
     expect(previousSignal.aborted).toBe(true);
     await act(async () => { first.resolve("https://qr.alipay.com/older-image"); });
     expect(screen.getByLabelText("支付宝经营码内容")).toHaveValue(settings.collection!.code_payload);
-    expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
     await act(async () => { second.resolve(recognizedLink); });
     expect(screen.getByLabelText("支付宝经营码内容")).toHaveValue(recognizedLink);
-    expect(screen.getByRole("button", { name: "保存配置" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
   });
 
   it.each(["picker", "drop"])("cancels %s decoding on section changes and ignores results after unmount", async (source) => {
@@ -202,7 +202,7 @@ describe("collection QR image upload", () => {
     expect(screen.queryByText("已识别，请核对后保存。")).not.toBeInTheDocument();
     await act(async () => { await router.navigate("/settings/collection"); });
     expect(screen.getByLabelText("支付宝经营码内容")).toHaveValue(settings.collection!.code_payload);
-    expect(screen.queryByText("有未保存的修改")).not.toBeInTheDocument();
+    expect(screen.queryByText("未保存")).not.toBeInTheDocument();
     expect(writes(fetchMock)).toHaveLength(0);
   });
 
@@ -227,10 +227,10 @@ describe("collection QR image upload", () => {
     const user = userEvent.setup();
     await user.upload(await screen.findByLabelText("选择经营码二维码图片"), imageFile());
     await screen.findByText("已识别，请核对后保存。");
-    await user.click(screen.getByRole("button", { name: "保存配置" }));
-    expect(await screen.findByText("配置版本冲突，请重新读取")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    expect(await screen.findByText("配置版本冲突，请刷新")).toBeVisible();
     expect(screen.getByLabelText("支付宝经营码内容")).toHaveValue(recognizedLink);
-    expect(screen.getByText("有未保存的修改")).toBeVisible();
+    expect(screen.getByText("未保存")).toBeVisible();
     expect(await writes(fetchMock)[0]!.json()).toMatchObject({ revision: 3, code_payload: recognizedLink });
   });
 
@@ -240,7 +240,7 @@ describe("collection QR image upload", () => {
     fireEvent.change(picker, { target: { files: [] } });
     expect(decodeQrImage).not.toHaveBeenCalled();
     expect(screen.getByLabelText("支付宝经营码内容")).toHaveValue(settings.collection!.code_payload);
-    expect(screen.queryByText("有未保存的修改")).not.toBeInTheDocument();
+    expect(screen.queryByText("未保存")).not.toBeInTheDocument();
   });
 
   it("keeps the drag highlight across nested controls and clears it on leaving the target", async () => {
@@ -285,7 +285,7 @@ describe("collection QR image upload", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("一次只能识别一张二维码图片，请重新选择。");
     expect(decodeQrImage).not.toHaveBeenCalled();
     expect(field).toHaveValue(settings.collection!.code_payload);
-    expect(screen.queryByText("有未保存的修改")).not.toBeInTheDocument();
+    expect(screen.queryByText("未保存")).not.toBeInTheDocument();
     expect(writes(fetchMock)).toHaveLength(0);
   });
 
@@ -295,19 +295,21 @@ describe("collection QR image upload", () => {
     const field = await screen.findByLabelText("支付宝经营码内容");
     dropFiles(uploadZone(), [imageFile()]);
     const signal = vi.mocked(decodeQrImage).mock.calls[0]![1];
-    expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
     dropFiles(uploadZone(), Array.from({ length: count }, imageFile));
     expect(signal.aborted).toBe(true);
     const message = count === 0 ? "请拖入一张 PNG、JPG 或 WebP 二维码图片。" : "一次只能识别一张二维码图片，请重新选择。";
     expect(screen.getByRole("alert")).toHaveTextContent(message);
-    expect(screen.getByRole("button", { name: "保存配置" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
     await act(async () => { if (outcome === "success") pending.resolve(recognizedLink); else pending.reject(new Error("late failure")); });
     expect(field).toHaveValue(settings.collection!.code_payload);
     expect(screen.getByRole("alert")).toHaveTextContent(message);
     expect(screen.queryByText("已识别，请核对后保存。")).not.toBeInTheDocument();
-    expect(screen.queryByText("有未保存的修改")).not.toBeInTheDocument();
+    expect(screen.queryByText("未保存")).not.toBeInTheDocument();
     expect(decodeQrImage).toHaveBeenCalledOnce();
     expect(writes(fetchMock)).toHaveLength(0);
+    fireEvent.change(screen.getByLabelText("收银台有效期（秒）"), { target: { value: "450" } });
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
   });
 
   it.each(["format", "size"])("applies the existing image %s validation to dropped files", async (invalid) => {
@@ -320,7 +322,9 @@ describe("collection QR image upload", () => {
     dropFiles(uploadZone(), [file]);
     expect(await screen.findByRole("alert")).toHaveTextContent(invalid === "format" ? "请选择 PNG、JPG 或 WebP 图片。" : "图片不能超过 10 MB");
     expect(field).toHaveValue(settings.collection!.code_payload);
-    expect(screen.getByRole("button", { name: "保存配置" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("收银台有效期（秒）"), { target: { value: "450" } });
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
   });
 
   it("prevents accidental file navigation outside the target only while the field is mounted", async () => {
@@ -373,7 +377,8 @@ describe("collection QR image upload", () => {
     const zone = screen.getByRole("group", { name: "二维码图片上传" });
     fireEvent.dragEnter(uploadZone(), { dataTransfer: { types: ["Files"], files: [] } });
     expect(zone).toHaveClass("is-dragging");
-    await userEvent.setup().click(screen.getByRole("button", { name: "保存配置" }));
+    fireEvent.change(screen.getByLabelText("收银台有效期（秒）"), { target: { value: "450" } });
+    await userEvent.setup().click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(writes(fetchMock)).toHaveLength(1));
     expect(field).toBeDisabled();
     expect(zone).not.toHaveClass("is-dragging");

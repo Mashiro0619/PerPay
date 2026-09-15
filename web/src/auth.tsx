@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, Eye, EyeOff, LockKeyhole } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router";
@@ -52,6 +52,7 @@ export function AuthPage({ onLogin }: { onLogin: () => void }) {
   const [visible, setVisible] = useState(false);
   const [remember, setRemember] = useState(false);
   const [pending, setPending] = useState(false);
+  const submitting = useRef(false);
   const [error, setError] = useState<unknown>(null);
   const [invalidField, setInvalidField] = useState<"password" | "confirmation" | null>(null);
   const [configured, setConfigured] = useState(false);
@@ -60,6 +61,7 @@ export function AuthPage({ onLogin }: { onLogin: () => void }) {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submitting.current) return;
     if (visible) setVisible(false);
     setError(null);
     setInvalidField(null);
@@ -72,7 +74,7 @@ export function AuthPage({ onLogin }: { onLogin: () => void }) {
         return;
       }
     }
-    setPending(true);
+    submitting.current = true; setPending(true);
     try {
       if (setup) {
         await result(api.setupAdministrator({ body: { password } }));
@@ -85,25 +87,24 @@ export function AuthPage({ onLogin }: { onLogin: () => void }) {
         onLogin();
         if (["/login", "/setup"].includes(location.pathname)) navigate("/", { replace: true });
       }
-    } catch (failure) { setError(failure); } finally { setPending(false); }
+    } catch (failure) { setError(failure); } finally { submitting.current = false; setPending(false); }
   }
 
   return <main className="auth-layout">
     <ThemeControl className="auth-theme" />
     <section className="auth-story">
       <Link className="brand" to="/"><span>PerPay</span></Link>
-      <div className="auth-statement"><h2>每一笔收款，<br />都有据可查。</h2></div>
     </section>
     <section className="auth-form-area"><div className="auth-form-wrap">
       <div className="auth-form-title"><LockKeyhole size={23} aria-hidden="true" /><h1>{setup ? "开始使用 PerPay" : "登录管理后台"}</h1>
-        {setup && <p>为这个实例设置管理员密码。初始化完成后，此入口会永久关闭。</p>}</div>
+        {setup && <p>设置此实例的管理员密码。</p>}</div>
       {configured && !setup && <Notice tone="success">管理员已创建，请使用刚设置的密码登录。</Notice>}
       <form onSubmit={(event) => { void submit(event); }} className="form-stack">
-        <Field label={setup ? "设置管理员密码" : "管理员密码"} hint={setup ? `至少 ${MIN_ADMIN_PASSWORD_CHARACTERS} 个字符，建议使用密码管理器生成并保存。` : undefined} error={invalidField === "password" && error instanceof Error ? error.message : undefined}>
-          <span className="password-field"><input name="password" type={visible ? "text" : "password"} autoComplete={setup ? "new-password" : "current-password"} required value={password} disabled={pending} onChange={(event) => setPassword(event.target.value)} />
+        <Field label={setup ? "设置管理员密码" : "管理员密码"} hint={setup ? `至少 ${MIN_ADMIN_PASSWORD_CHARACTERS} 个字符。` : undefined} error={invalidField === "password" && error instanceof Error ? error.message : undefined}>
+          <span className="password-field"><input name="password" type={visible ? "text" : "password"} autoComplete={setup ? "new-password" : "current-password"} required value={password} disabled={pending} onChange={(event) => { setPassword(event.target.value); setError(null); setInvalidField(null); }} />
             <button type="button" className="password-toggle" aria-label={visible ? "隐藏密码" : "显示密码"} onClick={() => setVisible(!visible)}>{visible ? <EyeOff size={18} /> : <Eye size={18} />}</button></span>
         </Field>
-        {setup && <Field label="再次输入密码" error={invalidField === "confirmation" && error instanceof Error ? error.message : undefined}><input name="password-confirmation" type={visible ? "text" : "password"} autoComplete="new-password" required value={confirmation} disabled={pending} onChange={(event) => setConfirmation(event.target.value)} /></Field>}
+        {setup && <Field label="再次输入密码" error={invalidField === "confirmation" && error instanceof Error ? error.message : undefined}><input name="password-confirmation" type={visible ? "text" : "password"} autoComplete="new-password" required value={confirmation} disabled={pending} onChange={(event) => { setConfirmation(event.target.value); setError(null); setInvalidField(null); }} /></Field>}
         <ErrorNotice error={invalidField ? null : error} />
         {!setup && <label className="checkbox-field auth-remember"><input name="remember-me" type="checkbox" checked={remember} disabled={pending} onChange={(event) => setRemember(event.target.checked)} /><span>在此设备保持登录 30 天</span></label>}
         <Button type="submit" variant="primary" pending={pending} className="auth-submit">{setup ? "创建管理员" : "登录"}<ArrowRight size={17} /></Button>

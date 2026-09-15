@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { X, ArrowUpCircle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
 import { api, ApiError, queryClient, result, sessionKey } from "./api/client";
@@ -42,10 +43,10 @@ export function OfficialUpdateNotice({ hidden = false }: { hidden?: boolean }) {
   const data = update.data?.data;
   if (hidden || update.isFetching || update.isError || data?.status !== "update_available" || dismissedVersion === data.latest_version) return null;
   return <aside className="official-update-banner" role="status" aria-label="官方版本更新">
-    <div><strong>发现新版本 v{data.latest_version}</strong><p>当前使用 v{data.current_version}。升级前请备份数据库和主密钥。</p></div>
+    <div className="update-banner-text"><ArrowUpCircle size={17} aria-hidden="true" /><span>有新版本 v{data.latest_version}</span></div>
     <div className="official-update-actions">
-      <a className="button" href={data.release_url} target="_blank" rel="noopener noreferrer">查看更新</a>
-      <Button variant="quiet" onClick={() => setDismissedVersion(data.latest_version)}>暂不提醒</Button>
+      <a className="text-link" href={data.release_url} target="_blank" rel="noopener noreferrer">查看更新</a>
+      <Button variant="quiet" className="icon-button" aria-label="关闭更新提示" onClick={() => setDismissedVersion(data.latest_version)}><X size={17} /></Button>
     </div>
   </aside>;
 }
@@ -54,13 +55,14 @@ export function OfficialUpdatePanel() {
   const update = useOfficialUpdate();
   const data = update.data?.data;
   const retryAfter = update.error instanceof ApiError ? update.error.retryAfter : null;
-  return <Panel title="官方更新" description="登录后自动检查 GitHub 正式版，结果最多缓存 5 分钟；不会自动升级。" className="content-panel official-update-panel"
+  return <Panel title="官方更新" className="content-panel official-update-panel"
     action={<Button pending={update.isFetching} onClick={() => { void update.refetch(); }}>检查更新</Button>}>
-    {update.isFetching || update.isPending ? <p role="status">正在检查官方更新，不影响后台使用…</p>
-      : update.isError ? <Notice tone="warning">暂时无法检查官方更新，不影响后台使用或收款。请检查服务器能否访问 GitHub，稍后重试。{retryAfter !== null && <p>请至少等待 {retryAfter} 秒后重试。</p>}</Notice>
+    {update.isFetching || update.isPending ? <p role="status">正在检查更新…</p>
+      : update.isError ? <Notice tone="warning">暂时无法检查更新，不影响收款。请稍后重试。{retryAfter !== null && <p>请至少等待 {retryAfter} 秒后重试。</p>}</Notice>
       : data && <>
-        <p role="status">{data.status === "update_available" ? "有可用更新：v" + data.latest_version : data.status === "ahead" ? "当前版本高于官方稳定版，无需降级。" : "当前已是最新稳定版。"}</p>
-        <Details items={[["当前版本", "v" + data.current_version], ["官方稳定版", "v" + data.latest_version], ["发布时间", dateTime(data.published_at)], ["检查时间", dateTime(data.checked_at)]]} />
+        <p role="status">{data.status === "update_available" ? "有可用更新：v" + data.latest_version : data.status === "ahead" ? "当前版本高于官方稳定版，无需降级。" : "已是最新稳定版。"}</p>
+        <details className="form-disclosure"><summary>版本信息</summary><Details items={[["当前版本", "v" + data.current_version], ["官方稳定版", "v" + data.latest_version], ["发布时间", dateTime(data.published_at)], ["检查时间", dateTime(data.checked_at)]]} /></details>
+        {data.status === "update_available" && <p className="field-hint">更新前请备份数据库和主密钥，不会自动升级。</p>}
         <div className="official-update-actions"><a href={data.release_url} target="_blank" rel="noopener noreferrer">查看发布说明</a><a href={upgradeGuide} target="_blank" rel="noopener noreferrer">更新方法</a></div>
       </>}
   </Panel>;

@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { queryClient } from "../src/api/client";
 import { SecuritySettings } from "../src/pages/SecuritySettings";
+import { recordAction } from "./menu-helper";
 import { json, settings } from "./fixtures";
 
 const syntheticSecret = "synthetic-test-key-never-real";
@@ -20,11 +21,10 @@ describe("secret visibility lifecycle", () => {
     render(<QueryClientProvider client={queryClient}><MemoryRouter><SecuritySettings settings={configured} onSaved={onSaved} /></MemoryRouter></QueryClientProvider>);
     const user = userEvent.setup();
     if (operation === "read") {
-      await user.click(screen.getByRole("button", { name: "显示网站 API 密钥" }));
-      await user.click(screen.getByRole("button", { name: "读取明文" }));
+      await user.click(screen.getByRole("button", { name: "查看网站 API 密钥" }));
     } else {
-      await user.click(screen.getByRole("button", { name: "轮换 API 密钥" }));
-      await user.click(screen.getByRole("checkbox", { name: "确认轮换，旧密钥立即失效。" }));
+      await user.click(recordAction("轮换 API 密钥", "API 密钥操作"));
+      expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
       await user.click(screen.getByRole("button", { name: "确认轮换" }));
     }
     hidden.mockReturnValue(true);
@@ -49,8 +49,8 @@ it("still clears a displayed multiline key after sixty seconds", async () => {
   const configured = { ...settings, secrets: { ...settings.secrets, provider_private_key: { ...settings.secrets.provider_private_key, configured: true } } };
   render(<QueryClientProvider client={queryClient}><MemoryRouter><SecuritySettings settings={configured} onSaved={vi.fn()} /></MemoryRouter></QueryClientProvider>);
   vi.useFakeTimers();
-  fireEvent.click(screen.getByRole("button", { name: "显示应用私钥" }));
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "读取明文" })); await vi.advanceTimersByTimeAsync(10); });
+  fireEvent.click(screen.getByRole("button", { name: "查看应用私钥" }));
+  await act(async () => { await vi.advanceTimersByTimeAsync(10); });
   expect(screen.getByRole("region", { name: "密钥内容" })).toBeVisible();
   await act(async () => { await vi.advanceTimersByTimeAsync(59_000); });
   expect(screen.getByRole("dialog", { name: "应用私钥" })).toBeVisible();

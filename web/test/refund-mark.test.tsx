@@ -10,6 +10,7 @@ import { OrderTable } from "../src/components/OrderTable";
 import { RefundMarkDialog, RefundMarkPanel } from "../src/pages/RefundMark";
 import Reconciliation from "../src/pages/Reconciliation";
 import EvidenceDetail from "../src/pages/ReconciliationDetail";
+import { recordAction } from "./menu-helper";
 import { apiError, json, ledger, order, orderId } from "./fixtures";
 
 function wrap(children: ReactNode) { return <QueryClientProvider client={queryClient}><MemoryRouter>{children}</MemoryRouter></QueryClientProvider>; }
@@ -22,10 +23,10 @@ describe("administrator-only refund marks", () => {
     const user = userEvent.setup(); const onSuccess = vi.fn();
     render(wrap(<RefundMarkDialog orderId={orderId} version={marked ? 0 : 3} marked={marked} onClose={vi.fn()} onSuccess={onSuccess} />));
     const dialog = screen.getByRole("dialog");
-    expect(dialog).toHaveAccessibleDescription("仅记录管理员已在外部完成退款，PerPay 不执行转账，也未验证退款。");
+    expect(dialog).toHaveAccessibleDescription("仅记录外部已完成的退款。PerPay 不执行转账，也未验证退款。");
     expect(within(dialog).getByLabelText("备注（可选）")).not.toBeRequired();
     expect(within(dialog).queryByLabelText(/流水编号/)).not.toBeInTheDocument();
-    expect(within(dialog).getByText(/不会通知业务网站/)).toBeVisible();
+    expect(within(dialog).getByText(marked ? /不会通知业务网站/ : /只撤销标记/)).toBeVisible();
     await user.click(within(dialog).getByRole("button", { name: marked ? "确认标记已退款" : "确认撤销标记" }));
     await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce());
     expect(requests).toHaveLength(1);
@@ -67,7 +68,7 @@ describe("administrator-only refund marks", () => {
     vi.stubGlobal("fetch", vi.fn(async (request: Request) => { bodies.push(await request.json()); return apiError("refund_mark_version_conflict", "version changed"); }));
     const user = userEvent.setup();
     const view = render(wrap(<RefundMarkPanel order={paid} />));
-    await user.click(screen.getByRole("button", { name: "标记已退款" }));
+    await user.click(recordAction("标记已退款"));
     view.rerender(wrap(<RefundMarkPanel order={{ ...paid, refund_mark: { marked: true, version: 1, note: "other request", updated_at: "2026-09-07T12:00:00Z", updated_by: "admin" } }} />));
     await user.click(screen.getByRole("button", { name: "确认标记已退款" }));
     await screen.findByText(/当前修改未覆盖已有记录/);
@@ -83,10 +84,10 @@ describe("administrator-only refund marks", () => {
 
   it.each(["CONFIRMED", "DISPUTED"] as const)("shows refund marking for a received %s order", (status) => {
     render(wrap(<RefundMarkPanel order={{ ...paid, payment: { ...paid.payment, status } }} />));
-    expect(screen.getByRole("region", { name: "管理员退款标记" })).toBeVisible();
+    expect(screen.queryByRole("region", { name: "管理员退款标记" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "管理员退款标记" })).not.toBeInTheDocument();
     expect(screen.queryByText("无备注")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "标记已退款" })).toBeEnabled();
+    expect(recordAction("标记已退款")).toBeEnabled();
   });
 
   it.each([
@@ -101,7 +102,7 @@ describe("administrator-only refund marks", () => {
     const view = render(wrap(<RefundMarkPanel order={order} />));
     expect(view.container).toBeEmptyDOMElement();
     view.rerender(wrap(<RefundMarkPanel order={paid} />));
-    expect(screen.getByRole("button", { name: "标记已退款" })).toBeEnabled();
+    expect(recordAction("标记已退款")).toBeEnabled();
   });
 
   it.each([true, false])("preserves existing refund history when no longer eligible with marked=%s", async (marked) => {
@@ -111,8 +112,9 @@ describe("administrator-only refund marks", () => {
     if (!marked) history.unshift({ ...current, operation_id: "reverted-mark" });
     render(wrap(<RefundMarkPanel order={{ ...order, payment: { ...order.payment, status: "DISPUTED" }, refund_mark: current, refund_mark_history: history }} />));
     expect(screen.getByRole("heading", { name: "管理员退款标记" })).toBeVisible();
-    const button = screen.getByRole("button", { name: marked ? "撤销退款标记" : "标记已退款" });
-    if (marked) expect(button).toBeEnabled(); else expect(button).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "订单操作" }));
+    if (marked) expect(screen.getByRole("menuitem", { name: "撤销退款标记" })).toBeEnabled();
+    else expect(screen.queryByRole("menuitem", { name: "标记已退款" })).not.toBeInTheDocument();
     await userEvent.setup().click(screen.getByText("查看标记修改历史"));
     expect(screen.getAllByText("外部退款记录").length).toBeGreaterThan(0);
     expect(screen.getAllByText("操作人 admin").length).toBeGreaterThan(0);
@@ -124,7 +126,7 @@ describe("administrator-only refund marks", () => {
     render(wrap(<><OrderTable orders={[marked]} /><RefundMarkPanel order={marked} /></>));
     expect(screen.getByRole("cell", { name: /已确认/ })).toBeVisible();
     expect(screen.getAllByText("已退款（管理员标记）")).toHaveLength(2);
-    expect(screen.getByRole("button", { name: "撤销退款标记" })).toBeVisible();
+    expect(recordAction("撤销退款标记")).toBeVisible();
     await userEvent.setup().click(screen.getByText("查看标记修改历史"));
     expect(screen.getByText("操作人 admin")).toBeVisible();
     expect(screen.queryByText(/标记版本/)).not.toBeInTheDocument();
@@ -143,7 +145,7 @@ describe("administrator-only refund marks", () => {
     const requests: Request[] = [];
     vi.stubGlobal("fetch", vi.fn(async (request: Request) => { requests.push(request); return json({ data: { ...ledger, direction: "DEBIT" } }); }));
     render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={["/reconciliation/ledger/" + ledger.ledger_entry_id]}><Routes><Route path="/reconciliation/:kind/:resourceId" element={<EvidenceDetail />} /></Routes></MemoryRouter></QueryClientProvider>);
-    expect(await screen.findByText(/支出不参与自动收款匹配/)).toBeVisible();
+    expect(await screen.findByText(/支出仅作流水留存，不参与收款匹配/)).toBeVisible();
     expect(screen.queryByRole("heading", { name: "匹配候选" })).not.toBeInTheDocument();
     expect(requests).toHaveLength(1);
     expect(screen.queryByRole("button", { name: /退款/ })).not.toBeInTheDocument();

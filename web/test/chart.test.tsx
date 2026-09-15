@@ -87,7 +87,7 @@ describe("linked amount and order charts", () => {
     vi.spyOn(graph, "getBoundingClientRect").mockReturnValue({ width: 620, left: 0 } as DOMRect);
     fireEvent(graph, new MouseEvent("pointerdown", { bubbles: true, clientX: 62 }));
     expect(container.querySelector(".chart-readout time")).toHaveAttribute("datetime", "2026-06-01");
-    expect([...container.querySelectorAll(".chart-point")].map((element) => element.parentElement?.getAttribute("transform"))).toEqual(["translate(62 136)", "translate(62 290)"]);
+    expect([...container.querySelectorAll(".chart-point")].map((element) => element.parentElement?.getAttribute("transform"))).toEqual(["translate(62 108)", "translate(62 234)"]);
   });
 
 

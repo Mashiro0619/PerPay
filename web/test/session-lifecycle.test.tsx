@@ -36,12 +36,12 @@ describe("administrator session lifecycle", () => {
     await screen.findByRole("alert");
     expect(screen.getByLabelText("收银台有效期（秒）")).toBe(ttl);
     expect(ttl).toHaveValue(450);
-    expect(screen.getByText("有未保存的修改")).toBeVisible();
+    expect(screen.getByText("未保存")).toBeVisible();
     await user.click(screen.getByRole("link", { name: "自动备份" }));
     expect(await screen.findByRole("dialog", { name: "放弃未保存的修改？" })).toBeVisible();
     await user.click(screen.getByRole("button", { name: "继续编辑" }));
     unavailable = false;
-    await user.click(screen.getByRole("button", { name: "重新加载" }));
+    await user.click(screen.getByRole("button", { name: "重试" }));
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
     expect(screen.getByLabelText("收银台有效期（秒）")).toBe(ttl);
     expect(ttl).toHaveValue(450);
@@ -69,7 +69,7 @@ describe("administrator session lifecycle", () => {
     const user = userEvent.setup();
     const ttl = await screen.findByLabelText("收银台有效期（秒）");
     await user.clear(ttl); await user.type(ttl, "450");
-    await user.click(screen.getByRole("button", { name: "保存配置" }));
+    await user.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([request]) => request.method === "PUT")).toBe(true));
     fireEvent(window, new Event("perpay:session-expired"));
     expect(await screen.findByRole("heading", { name: "登录管理后台" })).toBeVisible();
