@@ -110,7 +110,7 @@ import { adminRefundMarks, adminRefundMarkHistory, refundMarkRequestSchema, setA
 import {
   ADMIN_WORK_ITEM_TYPES,
   ADMIN_WORK_ITEM_VISIBILITIES,
-  adminWorkItemPage,
+  adminWorkItemPage, adminIgnoredWorkItemIds,
   ignoreAllAdminWorkItems, ignoreAllWorkItemsSchema, restoreAdminWorkItem, restoreWorkItemSchema,
   type AdminWorkItemVisibility, type AdminWorkItemKind,
   type AdminWorkItem,
@@ -664,7 +664,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       const parsed = merchantOrderNumberSchema.safeParse(context.req.param("merchantOrderNo"));
       if (!parsed.success) throw orderNotFoundHttpError();
       const order = dependencies.orders.adminGetByMerchantOrderNumber(parsed.data);
-      return context.json({ data: { ...serializeAdminOrderDetail(order, dependencies.reconciliation), refund_mark: adminRefundMarks(dependencies.database, [order.orderId]).get(order.orderId)!, refund_mark_history: adminRefundMarkHistory(dependencies.database, order.orderId) } });
+      return context.json({ data: { ...serializeAdminOrderDetail(order, dependencies.database, dependencies.reconciliation), refund_mark: adminRefundMarks(dependencies.database, [order.orderId]).get(order.orderId)!, refund_mark_history: adminRefundMarkHistory(dependencies.database, order.orderId) } });
     },
   );
 
@@ -691,7 +691,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
 
   app.get("/api/admin/v1/orders/:orderId", adminSession, (context) => {
     const order = dependencies.orders.adminGet(requireOrderId(context.req.param("orderId")));
-    return context.json({ data: { ...serializeAdminOrderDetail(order, dependencies.reconciliation), refund_mark: adminRefundMarks(dependencies.database, [order.orderId]).get(order.orderId)!, refund_mark_history: adminRefundMarkHistory(dependencies.database, order.orderId) } });
+    return context.json({ data: { ...serializeAdminOrderDetail(order, dependencies.database, dependencies.reconciliation), refund_mark: adminRefundMarks(dependencies.database, [order.orderId]).get(order.orderId)!, refund_mark_history: adminRefundMarkHistory(dependencies.database, order.orderId) } });
   });
 
   const financialWrite = requireFinancialWrite(
@@ -898,7 +898,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         excludeIgnoredReminders: query.status === "OPEN",
       });
     return context.json({
-      data: page.conflicts.map(serializeLedgerConflict),
+      data: serializeLedgerConflicts(page.conflicts, dependencies.database),
       page: {
         next_cursor: encodeLedgerConflictCursor(
           page.nextCursor,
@@ -919,7 +919,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     if (!detail) {
       throw new HttpApiError(404, "ledger_conflict_not_found", "账务冲突不存在");
     }
-    return context.json({ data: serializeLedgerConflictDetail(detail) });
+    return context.json({ data: serializeLedgerConflictDetail(detail, dependencies.database) });
   });
 
   app.post(
@@ -952,7 +952,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       return context.json(
         {
           data: {
-            conflict: serializeLedgerConflict(result.conflict),
+            conflict: serializeLedgerConflicts([result.conflict], dependencies.database)[0]!,
             operation: serializeLedgerConflictOperation(result.operation),
             replayed: result.replayed,
           },
@@ -1044,7 +1044,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const page = requireReconciliationStore(dependencies)
       .openExceptionPage(query.providerAccountKey, query.cursor, query.limit, { excludeIgnoredReminders: true });
     return context.json({
-      data: page.exceptions.map(serializeFinancialException),
+      data: serializeFinancialExceptions(page.exceptions, dependencies.database),
       page: {
         next_cursor: encodeExceptionCursor(page.nextCursor, query.providerAccountKey),
       },
@@ -1061,7 +1061,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     if (!exception) {
       throw new HttpApiError(404, "financial_exception_not_found", "资金异常不存在");
     }
-    return context.json({ data: serializeFinancialException(exception) });
+    return context.json({ data: serializeFinancialExceptions([exception], dependencies.database)[0]! });
   });
 
   app.post(
@@ -2946,11 +2946,11 @@ function serializeAdminWorkItem(item: AdminWorkItem) {
   }
 }
 
-function serializeAdminOrderDetail(order: AdminOrderDetailProjection, reconciliation?: ReconciliationStore) {
+function serializeAdminOrderDetail(order: AdminOrderDetailProjection, database: AppDatabase, reconciliation?: ReconciliationStore) {
   const financialContext = reconciliation
     ? {
       matches: reconciliation.paymentMatchDetailsForOrder(order.orderId).map(serializePaymentMatchDetail),
-      exceptions: reconciliation.financialExceptionsForOrder(order.orderId).map(serializeFinancialException),
+      exceptions: serializeFinancialExceptions(reconciliation.financialExceptionsForOrder(order.orderId), database),
     }
     : { matches: [], exceptions: [] };
   return {
@@ -3034,6 +3034,7 @@ function serializeWebhookDeliverySummary(summary: WebhookDeliverySummary) {
 
 function serializeWebhookDeliveryDetail(detail: WebhookDeliveryDetail) {
   return {
+    is_latest: detail.isLatest,
     delivery: serializeWebhookDelivery(detail.delivery),
     event: serializeWebhookEvent(detail.event),
     target: {
@@ -3170,6 +3171,8 @@ function serializePaymentMatchDetail(review: PaymentMatchDetail) {
   return {
     ...serializePaymentMatch(review.paymentMatch),
     candidate: review.candidate ? serializeCandidate(review.candidate) : null,
+    creation_operation: serializeFinancialOperation(review.creationOperation),
+    resolution_operation: review.resolutionOperation ? serializeFinancialOperation(review.resolutionOperation) : null,
     ledger_entry: serializeReconciliationLedger(review.ledgerEntry),
     order: serializeReconciliationOrder(review.order),
   };
@@ -3236,9 +3239,15 @@ function serializeFinancialOperation(result: FinancialDecisionResult["operation"
   };
 }
 
-function serializeLedgerConflict(conflict: LedgerConflict) {
+function serializeLedgerConflicts(conflicts: readonly LedgerConflict[], database: AppDatabase) {
+  const ignored = adminIgnoredWorkItemIds(database, "LEDGER_CONFLICT", conflicts.map((item) => item.conflictId));
+  return conflicts.map((conflict) => serializeLedgerConflict(conflict, ignored.has(conflict.conflictId)));
+}
+
+function serializeLedgerConflict(conflict: LedgerConflict, reminderIgnored: boolean) {
   return {
     conflict_id: conflict.conflictId,
+    reminder_ignored: reminderIgnored,
     provider_account_key: conflict.providerAccountKey,
     conflict_type: conflict.conflictType,
     raw_page_id: conflict.rawPageId,
@@ -3273,9 +3282,9 @@ function serializeLedgerConflictOperation(operation: LedgerConflictOperation) {
   };
 }
 
-function serializeLedgerConflictDetail(detail: LedgerConflictDetail) {
+function serializeLedgerConflictDetail(detail: LedgerConflictDetail, database: AppDatabase) {
   return {
-    conflict: serializeLedgerConflict(detail.conflict),
+    conflict: serializeLedgerConflicts([detail.conflict], database)[0]!,
     raw_page: detail.rawPage === null
       ? null
       : {
@@ -3355,9 +3364,15 @@ function serializeFinancialDecision(result: FinancialDecisionResult) {
   };
 }
 
-function serializeFinancialException(exception: FinancialException) {
+function serializeFinancialExceptions(exceptions: readonly FinancialException[], database: AppDatabase) {
+  const ignored = adminIgnoredWorkItemIds(database, "FINANCIAL_EXCEPTION", exceptions.map((item) => item.exceptionId));
+  return exceptions.map((exception) => serializeFinancialException(exception, ignored.has(exception.exceptionId)));
+}
+
+function serializeFinancialException(exception: FinancialException, reminderIgnored: boolean) {
   return {
     exception_id: exception.exceptionId,
+    reminder_ignored: reminderIgnored,
     provider_account_key: exception.providerAccountKey,
     exception_type: exception.exceptionType,
     ledger_entry_id: exception.ledgerEntryId,

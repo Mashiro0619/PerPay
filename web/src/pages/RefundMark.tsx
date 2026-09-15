@@ -2,7 +2,8 @@ import { useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 
 import { ApiError, api, refreshOperationalData, result, type AdminOrderDetail } from "../api/client";
-import { Badge, Button, Details, Dialog, ErrorNotice, Field, Notice, Panel } from "../components/ui";
+import { Badge, Button, Dialog, ErrorNotice, Field } from "../components/ui";
+import { DetailFields } from "../components/detail/DetailPrimitives";
 import { dateTime } from "../lib/format";
 import { useOperationKey } from "../lib/idempotency";
 
@@ -13,18 +14,20 @@ export function RefundMarkPanel({ order }: { order: AdminOrderDetail }) {
   const [message, setMessage] = useState("");
   const mark = order.refund_mark;
   const eligible = ["CONFIRMED", "DISPUTED"].includes(order.payment.status) && (order.received_amount_cents ?? 0) > 0;
-  if (!eligible && !mark.marked && order.refund_mark_history.length === 0) return null;
-  return <Panel title="管理员退款标记" className="content-panel" action={<Badge value={mark.marked ? "ADMIN_REFUND_MARK" : "NONE"} label={mark.marked ? "已退款（管理员标记）" : "未标记"} />}>
-    {message && <Notice tone="success">{message}</Notice>}
-    <Notice>{disclaimer}</Notice>
-    <Details items={[["最后操作人", mark.updated_by], ["最后操作时间", dateTime(mark.updated_at)], ["标记备注", mark.note ? <span className="preserve-whitespace">{mark.note}</span> : "无备注"]]} />
-    <div className="form-actions"><Button disabled={!mark.marked && !eligible} onClick={() => setDraft({ version: mark.version, marked: !mark.marked })}>{mark.marked ? "撤销退款标记" : "标记已退款"}</Button></div>
-    {!mark.marked && !eligible && <p className="muted">只有存在实收金额的已确认或争议订单可以标记。</p>}
-    {order.refund_mark_history.length > 0 && <details><summary>查看标记修改历史</summary><ol className="timeline">{order.refund_mark_history.map((event) => <li key={event.operation_id}><span className="timeline-node" /><div>
+  const hasHistory = order.refund_mark_history.length > 0;
+  if (!eligible && !mark.marked && !hasHistory) return null;
+  return <section className="detail-refund" aria-label="管理员退款标记">
+    {(mark.marked || hasHistory) && <><div className="detail-record-heading"><h3>管理员退款标记</h3><Badge value={mark.marked ? "ADMIN_REFUND_MARK" : "NONE"} label={mark.marked ? "已退款（管理员标记）" : "标记已撤销"} /></div>
+      <p className="detail-muted">仅为外部退款的管理员声明</p>
+      <DetailFields items={[["操作人", mark.updated_by], ["操作时间", dateTime(mark.updated_at)], ...(mark.note ? [["标记备注", mark.note] as const] : [])]} /></>}
+    {message && <p className="detail-feedback" role="status">{message}</p>}
+    <div className="detail-actions"><Button disabled={!mark.marked && !eligible} onClick={() => setDraft({ version: mark.version, marked: !mark.marked })}>{mark.marked ? "撤销退款标记" : "标记已退款"}</Button></div>
+    {!mark.marked && !eligible && <p className="detail-muted">当前订单不可重新标记；原修改记录仍保留。</p>}
+    {hasHistory && <details className="detail-disclosure"><summary>查看标记修改历史</summary><ol className="detail-event-list">{order.refund_mark_history.map((event) => <li key={event.operation_id}>
       <strong>{event.marked ? "标记已退款" : "撤销退款标记"}</strong><time>{dateTime(event.updated_at)}</time><p>操作人 {event.updated_by}</p>{event.note && <p className="preserve-whitespace">{event.note}</p>}
-    </div></li>)}</ol></details>}
+    </li>)}</ol></details>}
     {draft && <RefundMarkDialog orderId={order.order_id} version={draft.version} marked={draft.marked} onClose={() => setDraft(null)} onSuccess={() => { setMessage(draft.marked ? "已保存管理员退款标记，订单资金状态未改变。" : "已撤销管理员退款标记，订单资金状态未改变。"); setDraft(null); void refreshOperationalData(); }} />}
-  </Panel>;
+  </section>;
 }
 
 export function RefundMarkDialog({ orderId, version, marked, onClose, onSuccess }: {

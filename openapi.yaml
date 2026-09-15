@@ -3750,6 +3750,7 @@ components:
       type: object
       additionalProperties: false
       required:
+        - reminder_ignored
         - conflict_id
         - provider_account_key
         - conflict_type
@@ -3769,6 +3770,9 @@ components:
         - created_at
         - resolved_at
       properties:
+        reminder_ignored:
+          type: boolean
+          description: Administrator reminder visibility only; does not change the underlying resource status.
         conflict_id: { $ref: '#/components/schemas/ResourceId' }
         provider_account_key: { type: string }
         conflict_type: { $ref: '#/components/schemas/LedgerConflictType' }
@@ -4095,6 +4099,8 @@ components:
       type: object
       additionalProperties: false
       required:
+        - creation_operation
+        - resolution_operation
         - payment_match_id
         - ledger_entry_id
         - order_id
@@ -4111,6 +4117,12 @@ components:
         - ledger_entry
         - order
       properties:
+        creation_operation: { $ref: '#/components/schemas/FinancialOperation' }
+        resolution_operation:
+          description: The operation referenced by resolved_by_operation_id; it is not necessarily a reversal. Interpret it together with the match status.
+          oneOf:
+            - $ref: '#/components/schemas/FinancialOperation'
+            - type: 'null'
         payment_match_id: { $ref: '#/components/schemas/ResourceId' }
         ledger_entry_id: { $ref: '#/components/schemas/ResourceId' }
         order_id: { $ref: '#/components/schemas/ResourceId' }
@@ -4355,6 +4367,7 @@ components:
       type: object
       additionalProperties: false
       required:
+        - reminder_ignored
         - exception_id
         - provider_account_key
         - exception_type
@@ -4370,6 +4383,9 @@ components:
         - created_at
         - resolved_at
       properties:
+        reminder_ignored:
+          type: boolean
+          description: Administrator reminder visibility only; does not change the underlying resource status.
         exception_id: { $ref: '#/components/schemas/ResourceId' }
         provider_account_key:
           type: string
@@ -4651,8 +4667,11 @@ components:
     WebhookDeliveryDetail:
       type: object
       additionalProperties: false
-      required: [delivery, event, target]
+      required: [delivery, event, target, is_latest]
       properties:
+        is_latest:
+          type: boolean
+          description: Latest delivery for the event and target, independent of pagination. Writes still revalidate eligibility.
         delivery: { $ref: '#/components/schemas/WebhookDelivery' }
         event: { $ref: '#/components/schemas/WebhookEvent' }
         target: { $ref: '#/components/schemas/WebhookTarget' }
@@ -4665,8 +4684,11 @@ components:
     OrderWebhookDeliveryDetail:
       type: object
       additionalProperties: false
-      required: [delivery, event, target, attempts]
+      required: [delivery, event, target, attempts, is_latest]
       properties:
+        is_latest:
+          type: boolean
+          description: Latest delivery for the event and target, independent of pagination. Writes still revalidate eligibility.
         delivery: { $ref: '#/components/schemas/WebhookDelivery' }
         event: { $ref: '#/components/schemas/WebhookEvent' }
         target: { $ref: '#/components/schemas/WebhookTarget' }

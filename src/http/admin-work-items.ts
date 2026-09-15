@@ -120,6 +120,14 @@ export function adminWorkItemPage(database: AppDatabase, input: AdminWorkItemPag
   });
 }
 
+/** Read reminder visibility in one query without changing the underlying resource state. */
+export function adminIgnoredWorkItemIds(database: AppDatabase, kind: AdminWorkItemKind, ids: readonly string[]): ReadonlySet<string> {
+  if (ids.length === 0) return new Set();
+  return database.read((connection) => new Set((connection.prepare(
+    "SELECT item_id FROM admin_work_item_states WHERE kind = ? AND ignored = 1 AND item_id IN (SELECT value FROM json_each(?))",
+  ).all(kind, JSON.stringify(ids)) as Array<{ item_id: string }>).map((row) => row.item_id)));
+}
+
 export interface IgnoreAllResult { readonly operation_id: string; readonly type: AdminWorkItemType; readonly ignored_count: number; }
 export function ignoreAllAdminWorkItems(database: AppDatabase, input: z.infer<typeof ignoreAllWorkItemsSchema>, context: AdminOperationContext): IgnoreAllResult {
   const parsed = ignoreAllWorkItemsSchema.parse(input);

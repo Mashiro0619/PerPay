@@ -129,7 +129,8 @@ describe("notification HTTP contract", () => {
       const auth = await login(fixture.app);
       const detail = await fixture.app.request(deliveryPath, { headers: { cookie: auth.cookie } });
       assert.equal(detail.status, 200);
-      const detailData = await responseData<{ event: { order_id: string } }>(detail);
+      const detailData = await responseData<{ is_latest: boolean; event: { order_id: string } }>(detail);
+      assert.equal(detailData.is_latest, true);
       const attempts = await fixture.app.request(attemptsPath, { headers: { cookie: auth.cookie } });
       assert.equal(attempts.status, 200);
       const attemptText = await attempts.text();
@@ -227,6 +228,8 @@ describe("notification HTTP contract", () => {
       assert.equal(replayedData.replayed, true);
       assert.equal(replayedData.delivery.delivery_id, createdData.delivery.delivery_id);
 
+      const historical = await fixture.app.request(deliveryPath, { headers: { cookie: auth.cookie } });
+      assert.equal((await responseData<{ is_latest: boolean }>(historical)).is_latest, false);
       const orderId = detailData.event.order_id;
       const orderDeliveryPath =
         `/api/admin/v1/orders/${encodeURIComponent(orderId)}/notifications/deliveries`;
@@ -241,6 +244,7 @@ describe("notification HTTP contract", () => {
           event: { order_id: string };
           target: { order_id: string };
           attempts: Array<{ attempt_number: number }>;
+          is_latest: boolean;
         }>;
         page: { next_cursor: string | null };
       };
@@ -258,6 +262,7 @@ describe("notification HTTP contract", () => {
         data: Array<{
           delivery: { delivery_id: string };
           attempts: Array<{ attempt_number: number }>;
+          is_latest: boolean;
         }>;
         page: { next_cursor: string | null };
       };
@@ -275,6 +280,9 @@ describe("notification HTTP contract", () => {
         secondOrderDeliveryBody.data[0]!,
       ].find((item) => item.delivery.delivery_id === original.deliveryId);
       assert.deepEqual(originalProjection?.attempts.map((attempt) => attempt.attempt_number), [1]);
+      assert.equal(originalProjection?.is_latest, false);
+      const latestProjection = [firstOrderDeliveryBody.data[0]!, secondOrderDeliveryBody.data[0]!].find(item => item.delivery.delivery_id === createdData.delivery.delivery_id);
+      assert.equal(latestProjection?.is_latest, true);
       const orderDeliveryText = JSON.stringify([
         firstOrderDeliveryBody.data,
         secondOrderDeliveryBody.data,

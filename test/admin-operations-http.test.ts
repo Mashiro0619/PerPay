@@ -48,10 +48,12 @@ describe("administrator operation HTTP contracts", () => {
         const response = await fixture.app.request(path, { headers: signedHeaders(path) });
         assert.equal(response.status, 200, await response.clone().text());
         const text = await response.text(); assert.equal(text.includes("refund_mark"), false); assert.equal(text.includes("私有退款说明"), false);
+        for (const key of ["creation_operation", "resolution_operation", "reminder_ignored", "is_latest"]) assert.equal(text.includes(key), false);
       }
       for (const path of ["/api/public/v1/checkouts/" + order.checkoutToken, "/checkout/" + order.checkoutToken]) {
         const response = await fixture.app.request(path); assert.equal(response.status, 200);
         const text = await response.text(); assert.equal(text.includes("refund_mark"), false); assert.equal(text.includes("私有退款说明"), false);
+        for (const key of ["creation_operation", "resolution_operation", "reminder_ignored", "is_latest"]) assert.equal(text.includes(key), false);
       }
       const stale = await mark(fixture, auth, order.orderId, { ...body, operation_id: randomUUID(), marked: false });
       assert.equal(stale.status, 409); assert.equal(await responseErrorCode(stale), "refund_mark_version_conflict");

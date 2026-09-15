@@ -52,7 +52,7 @@ describe("ordinary administrator views", () => {
       if (request.url.endsWith("/ledger-entries/" + ledgerId + "/candidates")) return json({ data: [candidate] });
       return undefined;
     } });
-    expect(await screen.findByText("金额推断")).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "金额推断候选" })).toBeVisible();
     expect(screen.queryByText(/规则版本/)).not.toBeInTheDocument();
   });
 

@@ -127,6 +127,8 @@ export interface ReconciliationOrderProjection {
 
 export interface PaymentMatchDetail {
   readonly paymentMatch: PaymentMatch;
+  readonly creationOperation: FinancialOperation;
+  readonly resolutionOperation: FinancialOperation | null;
   readonly candidate: MatchCandidate | null;
   readonly ledgerEntry: ReconciliationLedgerProjection;
   readonly order: ReconciliationOrderProjection;
@@ -1102,11 +1104,16 @@ function requirePaymentMatchDetail(
 ): PaymentMatchDetail {
   const ledgerEntry = readReviewLedgerEntry(connection, paymentMatch.ledgerEntryId);
   const order = readReviewOrder(connection, paymentMatch.orderId);
-  if (!ledgerEntry || !order) {
+  const creationOperation = readOperation(connection, paymentMatch.createdByOperationId);
+  const resolutionOperation = paymentMatch.resolvedByOperationId === null
+    ? null : readOperation(connection, paymentMatch.resolvedByOperationId);
+  if (!ledgerEntry || !order || !creationOperation || (paymentMatch.resolvedByOperationId !== null && !resolutionOperation)) {
     throw new Error("payment match facts are incomplete");
   }
   return Object.freeze({
     paymentMatch,
+    creationOperation,
+    resolutionOperation,
     candidate: paymentMatch.candidateId
       ? readCandidate(connection, paymentMatch.candidateId)
       : null,
@@ -1152,16 +1159,29 @@ function readPaymentMatchDetails(
         return [order.orderId, order] as const;
       }),
   );
+  const operationIds = [...new Set(paymentMatches.flatMap((match) =>
+    [match.createdByOperationId, ...(match.resolvedByOperationId ? [match.resolvedByOperationId] : [])]
+  ))];
+  const operations = new Map(
+    (connection.prepare(
+      `${OPERATION_COLUMNS} WHERE financial_operation_id IN (SELECT value FROM json_each(?))`
+    ).all(JSON.stringify(operationIds)) as unknown as FinancialOperationRow[]).map((row) => {
+      const operation = mapOperation(row);
+      return [operation.financialOperationId, operation] as const;
+    }),
+  );
   return Object.freeze(paymentMatches.map((paymentMatch) => {
     const ledgerEntry = ledgerEntries.get(paymentMatch.ledgerEntryId);
     const order = orders.get(paymentMatch.orderId);
     const candidate = paymentMatch.candidateId === null
       ? null
       : candidates.get(paymentMatch.candidateId);
-    if (!ledgerEntry || !order || candidate === undefined) {
+    const creationOperation = operations.get(paymentMatch.createdByOperationId);
+    const resolutionOperation = paymentMatch.resolvedByOperationId === null ? null : operations.get(paymentMatch.resolvedByOperationId);
+    if (!ledgerEntry || !order || candidate === undefined || !creationOperation || resolutionOperation === undefined) {
       throw new Error("payment match facts are incomplete");
     }
-    return Object.freeze({ paymentMatch, candidate, ledgerEntry, order });
+    return Object.freeze({ paymentMatch, candidate, ledgerEntry, order, creationOperation, resolutionOperation });
   }));
 }
 

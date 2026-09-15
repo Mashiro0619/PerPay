@@ -617,6 +617,7 @@ export type LedgerConflictResolutionEnvelope = {
     };
 };
 export type LedgerConflict = {
+    reminder_ignored: boolean;
     conflict_id: ResourceId;
     provider_account_key: string;
     conflict_type: LedgerConflictType;
@@ -759,6 +760,8 @@ export type PaymentMatch = {
     resolved_at: string | null;
 };
 export type PaymentMatchDetail = {
+    creation_operation: FinancialOperation;
+    resolution_operation: FinancialOperation | null;
     payment_match_id: ResourceId;
     ledger_entry_id: ResourceId;
     order_id: ResourceId;
@@ -861,6 +864,7 @@ export type FinancialExceptionPageEnvelope = {
     };
 };
 export type FinancialException = {
+    reminder_ignored: boolean;
     exception_id: ResourceId;
     provider_account_key: string;
     exception_type: 'UNMATCHED_CREDIT' | 'UNMATCHED_DEBIT' | 'AMBIGUOUS_MATCH' | 'CHECKOUT_ENDED_PAYMENT' | 'DUPLICATE_PAYMENT' | 'AMOUNT_MISMATCH' | 'UNLINKED_REFUND' | 'RECONCILIATION_CONFLICT';
@@ -971,6 +975,7 @@ export type WebhookTarget = {
     created_at: string;
 };
 export type WebhookDeliveryDetail = {
+    is_latest: boolean;
     delivery: WebhookDelivery;
     event: WebhookEvent;
     target: WebhookTarget;
@@ -979,6 +984,7 @@ export type WebhookDeliveryDetailEnvelope = {
     data: WebhookDeliveryDetail;
 };
 export type OrderWebhookDeliveryDetail = {
+    is_latest: boolean;
     delivery: WebhookDelivery;
     event: WebhookEvent;
     target: WebhookTarget;

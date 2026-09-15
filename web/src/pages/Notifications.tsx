@@ -1,14 +1,14 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw, Send } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { useParams, useSearchParams } from "react-router";
 
 import { Link, useDetailBack } from "../navigation";
 
 import { api, refreshOperationalData, result, type WebhookDeliveryStatus } from "../api/client";
-import { ReasonDialog } from "../components/ReasonDialog";
+import { DeliveryCard } from "../components/detail/NotificationEvidence";
+import { RelatedOrder } from "../components/detail/DetailPrimitives";
 import { LinkedTableRow } from "../components/LinkedTableRow";
-import { Badge, Button, CopyValue, Details, EmptyState, JsonDetails, Notice, PageHeading, Pagination, Panel, QueryView, useCursor } from "../components/ui";
+import { Badge, Button, EmptyState, ErrorNotice, PageHeading, Pagination, Panel, QueryView, useCursor } from "../components/ui";
 import { dateTime, shortId } from "../lib/format";
 import { label } from "../lib/labels";
 
@@ -41,26 +41,14 @@ export function NotificationDetail() {
   const { deliveryId = "" } = useParams();
   return <DeliveryDetail key={deliveryId} deliveryId={deliveryId} />;
 }
-
 function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
   const back = useDetailBack("/notifications", "业务通知");
-  const [redeliver, setRedeliver] = useState(false);
-  const [newDeliveryId, setNewDeliveryId] = useState<string | null>(null);
   const delivery = useQuery({ queryKey: ["notification", deliveryId], queryFn: ({ signal }) => result(api.getWebhookDelivery({ path: { deliveryId }, signal })) });
   const attempts = useQuery({ queryKey: ["notification-attempts", deliveryId], queryFn: ({ signal }) => result(api.listWebhookDeliveryAttempts({ path: { deliveryId }, signal })) });
-  return <><PageHeading title="通知详情" back={back} actions={<Button pending={delivery.isFetching || attempts.isFetching} onClick={() => { void delivery.refetch(); void attempts.refetch(); }}><RefreshCw size={16} />刷新</Button>} />
-    {newDeliveryId && <Notice tone="success">重发请求已创建，等待后台投递。<Link to={`/notifications/${newDeliveryId}`}>查看新投递记录</Link></Notice>}
-    <QueryView query={delivery}>{({ data }) => <>
-      <Panel title={label(data.event.event_type)} action={<Badge value={data.delivery.status} />} className="content-panel">
-        <Details items={[["投递编号", <CopyValue value={data.delivery.delivery_id} />], ["关联订单", <Link to={`/orders/${data.event.order_id}`}>{shortId(data.event.order_id)}</Link>], ["通知地址", <CopyValue value={data.target.target_url} />], ["创建时间", dateTime(data.delivery.created_at)], ["尝试次数", data.delivery.attempt_count], ["投递代次", data.delivery.generation], ["下次尝试", dateTime(data.delivery.next_attempt_at)], ["确认时间", dateTime(data.delivery.acknowledged_at)], ["最近错误", data.delivery.last_error_code ?? "无"], ["发起方", data.delivery.requested_by_type === "ADMIN" ? "管理员" : "系统"], ["上一次投递", data.delivery.predecessor_delivery_id ? <Link to={`/notifications/${data.delivery.predecessor_delivery_id}`}>{shortId(data.delivery.predecessor_delivery_id)}</Link> : "原始投递"], ["重发理由", data.delivery.reason ?? "—"]]} />
-        {["ACKNOWLEDGED", "DEAD_LETTER"].includes(data.delivery.status) ? <div className="form-actions"><Button onClick={() => setRedeliver(true)} disabled={!!newDeliveryId}><Send size={16} />重新投递</Button><span className="field-hint">仅最新一代的已确认或失败通知允许人工重发。</span></div> : <Notice>此通知仍在自动投递流程中。请先等待完成，避免同时发起重复投递。</Notice>}
-      </Panel>
-      <Panel title="投递尝试"><QueryView query={attempts}>{({ data: records }) => records.length ? <div className="table-scroll" role="region" aria-label="通知投递尝试" tabIndex={0}><table className="data-table"><thead><tr><th>次数</th><th>开始时间</th><th>结果</th><th>HTTP 状态</th><th>确认码 / 错误</th></tr></thead><tbody>{records.map((attempt) => <tr key={attempt.attempt_id}><td>第 {attempt.attempt_number} 次</td><td>{dateTime(attempt.started_at)}</td><td>{label(attempt.outcome)}</td><td>{attempt.http_status ?? "—"}</td><td><code>{attempt.error_code ?? attempt.ack_code ?? "—"}</code></td></tr>)}</tbody></table></div> : <EmptyState title="尚未开始投递" headingLevel={3} />}</QueryView></Panel>
-      <JsonDetails data={data.event} label="查看业务事件与负载" />
-      {redeliver && <ReasonDialog title="重新投递业务通知" description="这会新建一代投递记录。业务接收方必须按事件编号幂等处理，即使以前已经确认过该事件。" action="确认重新投递" onClose={() => setRedeliver(false)} execute={async (reason, operationId) => {
-        const response = await result(api.redeliverWebhookDelivery({ path: { deliveryId }, body: { reason, redelivery_id: operationId } }));
-        setNewDeliveryId(response.data.delivery.delivery_id);
-      }} onSuccess={() => { setRedeliver(false); void refreshOperationalData(); }}><Details items={[["事件", label(data.event.event_type)], ["通知地址", data.target.target_url]]} /></ReasonDialog>}
-    </>}</QueryView>
-  </>;
+  return <div className="detail-page"><PageHeading title="通知详情" back={back} actions={<Button pending={delivery.isFetching || attempts.isFetching} onClick={() => { void refreshOperationalData(); }}><RefreshCw size={16} />刷新</Button>} />
+    <QueryView query={delivery}>{({ data }) => <Panel className="detail-panel"><RelatedOrder orderId={data.event.order_id} />
+      <ErrorNotice error={attempts.error} retry={() => { void attempts.refetch(); }} />
+      <DeliveryCard detail={{ ...data, attempts: attempts.data?.data ?? [] }} attemptsAvailable={!!attempts.data} />
+    </Panel>}</QueryView>
+  </div>;
 }

@@ -4,7 +4,7 @@ import { describe, it } from "node:test";
 
 import { login, postFinancial, withHttpFixture, type ReconciliationHttpFixture } from "./reconciliation-http-fixture.ts";
 
-interface ReviewItem { status: string; exception_id?: string; conflict_id?: string; }
+interface ReviewItem { status: string; reminder_ignored: boolean; exception_id?: string; conflict_id?: string; }
 interface ReviewPage { data: ReviewItem[]; page: { next_cursor: string | null }; }
 const cases = [
   { type: "FINANCIAL_EXCEPTION", path: "/api/admin/v1/reconciliation/exceptions", idKey: "exception_id", seed: seedExceptions },
@@ -33,6 +33,7 @@ describe("reconciliation reminder visibility", () => {
           do {
             assert.ok(pages.length < 10, "pagination must terminate");
             const page: ReviewPage = await get<ReviewPage>(scenario.path + "?limit=2" + (cursor ? "&cursor=" + encodeURIComponent(cursor) : ""));
+            assert.ok(page.data.every(item => item.reminder_ignored === false));
             if (page.page.next_cursor) assert.equal(page.data.length, 2, "ignored rows must not consume the page limit");
             pages.push(page); cursor = page.page.next_cursor;
           } while (cursor);
@@ -57,13 +58,14 @@ describe("reconciliation reminder visibility", () => {
         assert.deepEqual(new Set(ignored.data.map(item => item.resource_id)), new Set(ids));
         assert.ok(ignored.data.every(item => !item.ended));
         for (const id of ids) {
-          const detail = await get<{ data: { status?: string; conflict?: { status: string } } }>(scenario.path + "/" + id);
+          const detail = await get<{ data: { status?: string; reminder_ignored: boolean; conflict?: { status: string; reminder_ignored: boolean } } }>(scenario.path + "/" + id);
           assert.equal(detail.data.conflict?.status ?? detail.data.status, "OPEN");
+          assert.equal(detail.data.conflict?.reminder_ignored ?? detail.data.reminder_ignored, true);
         }
         if (scenario.type === "LEDGER_CONFLICT") {
           assert.deepEqual(new Set(fixture.ledger.listOpenConflicts(account).map(item => item.conflictId)), new Set(ids));
           const all = await get<ReviewPage>(scenario.path + "?status=ALL");
-          assert.ok(ids.every(id => all.data.some(item => item.conflict_id === id)));
+          assert.ok(ids.every(id => all.data.some(item => item.conflict_id === id && item.reminder_ignored === true)));
         } else {
           assert.deepEqual(new Set(fixture.reconciliation.listOpenExceptions(account).map(item => item.exceptionId)), new Set(ids));
         }

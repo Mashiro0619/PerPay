@@ -83,7 +83,9 @@ describe("administrator-only refund marks", () => {
 
   it.each(["CONFIRMED", "DISPUTED"] as const)("shows refund marking for a received %s order", (status) => {
     render(wrap(<RefundMarkPanel order={{ ...paid, payment: { ...paid.payment, status } }} />));
-    expect(screen.getByRole("heading", { name: "管理员退款标记" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "管理员退款标记" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "管理员退款标记" })).not.toBeInTheDocument();
+    expect(screen.queryByText("无备注")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "标记已退款" })).toBeEnabled();
   });
 
