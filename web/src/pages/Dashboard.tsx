@@ -1,79 +1,259 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { ArrowRight, ArrowUpRight, Check, RefreshCw } from "lucide-react";
-import { Navigate, useLocation, useSearchParams } from "react-router";
-
-import { Link } from "../navigation";
-
-import { api, refreshOperationalData, result, type RuntimeSettings, type SystemStatus } from "../api/client";
-import { TestPaymentLink } from "../App";
-import { OrderTable } from "../components/OrderTable";
-import { DailyChart } from "../components/DailyChart";
-import { SelectionIndicator } from "../components/SelectionIndicator";
-import { WorkItemList } from "../components/WorkItemList";
-import { Button, ErrorNotice, Notice, PageHeading, Panel, QueryView } from "../components/ui";
-import { useVisibleCheck } from "../lib/use-visible-check";
-import { count, money } from "../lib/format";
-import { deferredInstance, isOnboardingDeferred, onboardingPath } from "../lib/onboarding";
+import {
+  AlertCircle,
+  ArrowRight,
+  ChevronRight,
+  ListChecks,
+} from "lucide-react";
+import { Navigate, useLocation } from "react-router";
+import { Link } from "@/navigation";
+import { useOverview } from "@/features/overview/use-overview";
+import {
+  deferredInstance,
+  isOnboardingDeferred,
+  onboardingPath,
+} from "@/lib/onboarding";
+import { dateTime } from "@/lib/format";
+import { workItemHref, workItemTitle } from "@/lib/labels";
+import { SectionCards } from "@/components/section-cards";
+import { ChartAreaInteractive } from "@/components/chart-area-interactive";
+import { DataTable } from "@/components/data-table";
+import { ErrorNotice, QueryView } from "@/components/request-state";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  CardAction,
+} from "@/components/ui/card";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import {
+  Item,
+  ItemGroup,
+  ItemContent,
+  ItemTitle,
+  ItemDescription,
+  ItemActions,
+  ItemSeparator,
+} from "@/components/ui/item";
+import { Fragment } from "react";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 
 export default function Dashboard() {
+  const {
+    range,
+    analytics,
+    settings,
+    status,
+    orders,
+    work,
+    unavailable,
+    checking,
+    changeRange,
+  } = useOverview();
   const location = useLocation();
-  const view = useVisibleCheck();
-  const [search, setSearch] = useSearchParams();
-  const selectedRange = Number(search.get("range"));
-  const range = selectedRange === 7 || selectedRange === 90 ? selectedRange : 30;
-  const analytics = useQuery({ queryKey: ["analytics", range], queryFn: ({ signal }) => result(api.getAdministratorSystemAnalytics({ query: { range }, signal })), placeholderData: keepPreviousData, refetchInterval: 60_000 });
-  const settings = useQuery({ queryKey: ["settings"], queryFn: ({ signal }) => result(api.getRuntimeSettings({ signal })), refetchOnWindowFocus: false });
-  const instance = useQuery({ queryKey: ["dashboard", "status", view.epoch], queryFn: ({ signal }) => result(api.getAdministratorSystemStatus({ signal })), enabled: view.active, staleTime: 0, gcTime: 0, retry: false, refetchOnMount: "always", refetchOnWindowFocus: false, refetchOnReconnect: false, refetchInterval: view.active ? 30_000 : false, refetchIntervalInBackground: false });
-  const orders = useQuery({ queryKey: ["orders", "recent"], queryFn: ({ signal }) => result(api.listAdministratorOrders({ query: { limit: 5 }, signal })) });
-  const work = useQuery({ queryKey: ["work-items", "recent"], queryFn: ({ signal }) => result(api.listAdministratorWorkItems({ query: { limit: 4 }, signal })) });
-
-  const instanceId = instance.data?.data.instance_id;
-  if (settings.data && !settings.isError && !settings.data.data.completion.complete && instanceId && deferredInstance(location.state) !== instanceId && !isOnboardingDeferred(instanceId)) return <Navigate to={onboardingPath()} replace />;
-  return <>
-    <PageHeading title="收款概览" actions={<><Button pending={analytics.isFetching} onClick={() => { void refreshOperationalData(); }}><RefreshCw size={16} />刷新</Button><TestPaymentLink /></>} />
-    {settings.data && !settings.data.data.completion.complete && <SetupProgress settings={settings.data.data} />}
-    {settings.error && <ErrorNotice error={settings.error} />}
-    <PaymentHealth status={instance.data?.data} checking={instance.isFetching || instance.isPending} unavailable={!view.active || instance.isError || instance.isPaused} fresh={instance.isFetchedAfterMount} retry={() => { void instance.refetch(); }} />
-    <QueryView query={analytics}>{({ data }) => <>
-      <div className="section-toolbar"><div className="statistics-caption"><span className="muted" aria-live="polite" aria-atomic="true">{analytics.isPlaceholderData ? `正在读取近 ${range} 天，当前显示近 ${data.range_days} 天数据` : `${data.daily[0]?.date} 至 ${data.daily.at(-1)?.date} · 北京时间`}</span><details className="statistics-help"><summary>统计口径</summary><p>付款确认金额不是净结算收入，不扣除退款或费用。订单按创建时间，付款按确认时间统计；待付款为当前开放且未付款的订单。</p></details></div>
-        <div className="segmented" role="group" aria-label="统计周期"><SelectionIndicator active={range} />{([7, 30, 90] as const).map((days) => <button key={days} type="button" aria-pressed={range === days} onClick={() => setSearch({ range: String(days) }, { replace: true })}>近 {days} 天</button>)}</div>
+  const instanceId = status.data?.data.instance_id;
+  if (
+    settings.data &&
+    !settings.isError &&
+    !settings.data.data.completion.complete &&
+    instanceId &&
+    deferredInstance(location.state) !== instanceId &&
+    !isOnboardingDeferred(instanceId)
+  )
+    return <Navigate to={onboardingPath()} replace />;
+  const state = status.data?.data;
+  const blocked =
+    state &&
+    (state.status === "not_ready" ||
+      !state.configured ||
+      !state.database.ok ||
+      !state.ledger.collection_ready ||
+      !state.reconciliation.confirmation_ready);
+  const reason = !state?.configured
+    ? "收款配置尚未完成"
+    : !state.database.ok
+      ? "数据库暂不可用"
+      : !state.ledger.collection_ready
+        ? "账本采集尚未就绪，请检查支付宝接入"
+        : !state.reconciliation.confirmation_ready
+          ? "自动确认尚未就绪，请检查对账状态"
+          : "服务尚未就绪";
+  const data = analytics.isPlaceholderData ? undefined : analytics.data?.data;
+  const needsStatus =
+    checking || blocked || state?.status === "degraded" || settings.error;
+  return (
+    <>
+      {needsStatus && (
+        <div className="flex flex-col gap-4 px-4 lg:px-6">
+          <ErrorNotice
+            error={settings.error}
+            retry={() => {
+              void settings.refetch();
+            }}
+          />
+          {checking ? (
+            <Alert>
+              <AlertCircle />
+              <AlertTitle>
+                {unavailable ? "暂时无法确认收款状态" : "正在检查收款状态…"}
+              </AlertTitle>
+              <AlertDescription>
+                <div className="flex items-center gap-2">
+                  {(status.isError || status.isPaused) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        void status.refetch();
+                      }}
+                    >
+                      重试
+                    </Button>
+                  )}
+                  <Link to="/system" className="underline underline-offset-4">
+                    运行状态
+                  </Link>
+                </div>
+              </AlertDescription>
+            </Alert>
+          ) : blocked ? (
+            <Alert variant="destructive">
+              <AlertCircle />
+              <AlertTitle>当前暂停新收款</AlertTitle>
+              <AlertDescription>
+                <p>{reason}</p>
+                <Link
+                  to={
+                    settings.data && !settings.data.data.completion.complete
+                      ? onboardingPath()
+                      : "/system"
+                  }
+                  className="underline underline-offset-4"
+                >
+                  {settings.data && !settings.data.data.completion.complete
+                    ? "继续配置"
+                    : "查看运行状态"}
+                </Link>
+              </AlertDescription>
+            </Alert>
+          ) : (
+            state?.status === "degraded" && (
+              <Alert>
+                <AlertCircle />
+                <AlertTitle>可以收款，有运行告警</AlertTitle>
+                <AlertDescription>
+                  <Link to="/system" className="underline underline-offset-4">
+                    查看告警
+                  </Link>
+                </AlertDescription>
+              </Alert>
+            )
+          )}
+        </div>
+      )}
+      <SectionCards analytics={data} />
+      <div className="grid min-w-0 items-start gap-4 px-4 lg:px-6 @5xl/main:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
+        <div className="flex min-w-0 flex-col gap-4">
+          <ErrorNotice
+            error={analytics.error}
+            retry={() => {
+              void analytics.refetch();
+            }}
+          />
+          <ChartAreaInteractive
+            analytics={data}
+            chartType={
+              settings.data?.data.display?.dashboard_chart_type ?? "AREA"
+            }
+            range={range}
+            onRangeChange={changeRange}
+            pending={analytics.isPending || analytics.isPlaceholderData}
+          />
+        </div>
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle role="heading" aria-level={2}>
+              待处理
+            </CardTitle>
+            <CardAction>
+              <Link
+                to="/work-items"
+                className={buttonVariants({ variant: "ghost", size: "sm" })}
+              >
+                查看全部
+                <ArrowRight data-icon="inline-end" />
+              </Link>
+            </CardAction>
+          </CardHeader>
+          <CardContent>
+            <QueryView query={work}>
+              {(page) =>
+                page.data.length ? (
+                  <ItemGroup>
+                    {page.data.map((item, index) => (
+                      <Fragment key={item.type + item.resource_id}>
+                        {index > 0 && <ItemSeparator />}
+                        <Item
+                          size="xs"
+                          render={<Link to={workItemHref(item)} />}
+                        >
+                          <ItemContent>
+                            <ItemTitle>{workItemTitle(item)}</ItemTitle>
+                            <ItemDescription>
+                              {dateTime(item.actionable_at)}
+                            </ItemDescription>
+                          </ItemContent>
+                          <ItemActions>
+                            <ChevronRight />
+                          </ItemActions>
+                        </Item>
+                      </Fragment>
+                    ))}
+                  </ItemGroup>
+                ) : (
+                  <Empty>
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon">
+                        <ListChecks />
+                      </EmptyMedia>
+                      <EmptyTitle>暂无待处理提醒</EmptyTitle>
+                    </EmptyHeader>
+                  </Empty>
+                )
+              }
+            </QueryView>
+          </CardContent>
+        </Card>
       </div>
-      <div className="metrics-row" aria-busy={analytics.isPlaceholderData}>
-        <div className="metric"><span>付款确认金额</span><strong className="metric-money">{money(data.confirmations.amount_cents)}</strong><small>非净结算收入</small></div>
-        <div className="metric"><span>新建订单</span><strong>{count(data.orders.created)}<small>笔</small></strong></div>
-        <div className="metric"><span>付款确认</span><strong>{count(data.confirmations.count)}<small>次</small></strong></div>
-        <div className="metric"><span>待付款订单</span><strong>{count(data.pending.orders)}<small>笔</small></strong></div>
+      <div className="px-4 lg:px-6">
+        <Card>
+          <CardHeader>
+            <CardTitle role="heading" aria-level={2}>
+              最近订单
+            </CardTitle>
+            <CardAction>
+              <Link
+                to="/orders"
+                className={buttonVariants({ variant: "ghost", size: "sm" })}
+              >
+                全部订单
+                <ArrowRight data-icon="inline-end" />
+              </Link>
+            </CardAction>
+          </CardHeader>
+          <CardContent>
+            <QueryView query={orders}>
+              {(page) => <DataTable data={page.data} />}
+            </QueryView>
+          </CardContent>
+        </Card>
       </div>
-      <div className="dashboard-grid" aria-busy={analytics.isPlaceholderData}>
-        <Panel title="收款趋势" className="chart-panel"><DailyChart analytics={data} /></Panel>
-        <Panel title="需要你关注" action={<Link className="text-link" to="/work-items">查看全部<ArrowUpRight size={15} /></Link>}><QueryView query={work}>{(page) => <WorkItemList items={page.data} headingLevel={3} />}</QueryView></Panel>
-      </div>
-    </>}</QueryView>
-    <Panel title="最近订单" action={<Link className="text-link" to="/orders">全部订单<ArrowRight size={15} /></Link>}>
-      <QueryView query={orders}>{(page) => <OrderTable orders={page.data} compact />}</QueryView>
-    </Panel>
-  </>;
-}
-
-function PaymentHealth({ status, checking, unavailable, fresh, retry }: { status: SystemStatus | undefined; checking: boolean; unavailable: boolean; fresh: boolean; retry: () => void }) {
-  if (unavailable) return <Notice tone="warning" title="暂时无法确认收款状态"><p>状态读取失败或网络已断开，请重新检查。</p><Button pending={checking} onClick={retry}>重试</Button> <Link to="/system">查看运行状态</Link></Notice>;
-  if (checking || !fresh || !status) return <Notice>正在检查收款状态…</Notice>;
-  const blocked = status.status === "not_ready" || !status.configured || !status.database.ok || !status.ledger.collection_ready || !status.reconciliation.confirmation_ready;
-  if (blocked) {
-    const reason = !status.configured ? "收款配置尚未完成。" : !status.database.ok ? "数据库暂不可用。" : !status.ledger.collection_ready ? "账本采集尚未就绪或已中断，请检查支付宝接入。" : !status.reconciliation.confirmation_ready ? "自动确认尚未就绪，请检查对账运行状态。" : "服务尚未就绪。";
-    return <Notice tone="danger" title="当前暂停新收款"><p>{reason}</p><Link to="/system">查看运行状态</Link></Notice>;
-  }
-  return status.status === "degraded" ? <Notice tone="warning" title="可以收款，但有运行告警"><Link to="/system">查看告警与处理建议</Link></Notice> : null;
-}
-
-function SetupProgress({ settings }: { settings: RuntimeSettings }) {
-  const steps = [
-    [settings.completion.application_key, "生成应用密钥", "/settings/provider"],
-    [settings.completion.provider, "配置支付宝", "/settings/provider"],
-    [settings.completion.collection, "设置经营码", "/settings/collection"],
-    [settings.completion.api, "生成 API 密钥", "/settings/security"],
-  ] as const;
-  return <section className="setup-progress"><div><h2>完成配置，开始收款</h2><p>尚有配置未完成。</p><Link className="button button--primary" to={onboardingPath()}>继续配置<ArrowRight size={16} /></Link></div>
-    <ol>{steps.map(([complete, title, to], index) => <li key={title} data-complete={complete}><Link to={to}><span>{complete ? <Check size={13} /> : index + 1}</span>{title}</Link></li>)}</ol>
-  </section>;
+    </>
+  );
 }

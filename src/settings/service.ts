@@ -7,6 +7,7 @@ import {
   advancedSettingsInputSchema,
   backupSettingsInputSchema,
   collectionSettingsInputSchema,
+  displaySettingsInputSchema,
   generateProviderApplicationKey,
   parseProviderApplicationPrivateKey,
   parseProviderKeys,
@@ -16,6 +17,8 @@ import {
   webhookSettingsInputSchema,
   type AdvancedSettingsInput,
   type BackupSettingsInput,
+  type DashboardChartType,
+  type DisplaySettingsInput,
   type CollectionSettingsInput,
   type ApiCredentialSnapshot,
   type ProviderSettingsInput,
@@ -88,6 +91,10 @@ export interface RuntimeSettingsView {
     readonly interval_seconds: number;
     readonly keep_count: number;
   };
+  readonly display: {
+    readonly checkout_show_product_name: boolean;
+    readonly dashboard_chart_type: DashboardChartType;
+  };
   readonly secrets: Readonly<Record<RuntimeSecretName, ReturnType<RuntimeSettingsStore["secretMetadata"]>>>;
 }
 
@@ -134,6 +141,10 @@ export class RuntimeSettingsService {
   initialize(): RuntimeSettingsSnapshot {
     this.#store.initialize();
     return this.#store.snapshot();
+  }
+
+  display() {
+    return this.#store.display();
   }
 
   snapshot(): RuntimeSettingsSnapshot {
@@ -217,6 +228,10 @@ export class RuntimeSettingsService {
       backup: {
         interval_seconds: snapshot.backup?.intervalSeconds ?? 86_400,
         keep_count: snapshot.backup?.keepCount ?? 7,
+      },
+      display: {
+        checkout_show_product_name: snapshot.display?.checkoutShowProductName ?? true,
+        dashboard_chart_type: snapshot.display?.dashboardChartType ?? "AREA",
       },
       secrets: {
         api_secret: this.#store.secretMetadata("api_secret"),
@@ -463,6 +478,14 @@ export class RuntimeSettingsService {
     return this.#exclusive(async () => {
       const parsed = backupSettingsInputSchema.parse(input);
       this.#store.saveBackup(parsed, audit);
+      return this.view();
+    });
+  }
+
+  saveDisplay(input: DisplaySettingsInput, audit: SettingsAuditContext): Promise<RuntimeSettingsView> {
+    return this.#exclusive(async () => {
+      const parsed = displaySettingsInputSchema.parse(input);
+      this.#store.saveDisplay(parsed, audit);
       return this.view();
     });
   }

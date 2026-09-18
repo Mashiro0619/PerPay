@@ -314,6 +314,7 @@ export type RuntimeSettings = {
     notifications: NotificationSettings;
     advanced: AdvancedSettings;
     backup: BackupSettings;
+    display: DisplaySettings;
     secrets: RuntimeSecretMetadataMap;
 };
 export type SettingsCompletion = {
@@ -359,6 +360,11 @@ export type NotificationSettings = {
 export type AdvancedSettings = {
     checkout_key_rotation_days: number;
     checkout_terminal_observation_seconds: number;
+};
+export type DashboardChartType = 'AREA' | 'BAR' | 'LINE';
+export type DisplaySettings = {
+    checkout_show_product_name: boolean;
+    dashboard_chart_type: DashboardChartType;
 };
 export type BackupSettings = {
     interval_seconds: number;
@@ -410,6 +416,11 @@ export type AdvancedSettingsRequest = {
     revision: number;
     checkout_key_rotation_days: number;
     checkout_terminal_observation_seconds: number;
+};
+export type DisplaySettingsRequest = {
+    revision: number;
+    checkout_show_product_name: boolean;
+    dashboard_chart_type: DashboardChartType;
 };
 export type BackupSettingsRequest = {
     revision: number;
@@ -1553,6 +1564,31 @@ export type RotateApiClientSecretResponses = {
     201: ApiSecretRotationEnvelope;
 };
 export type RotateApiClientSecretResponse = RotateApiClientSecretResponses[keyof RotateApiClientSecretResponses];
+export type UpdateDisplaySettingsData = {
+    body: DisplaySettingsRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/admin/v1/settings/display';
+};
+export type UpdateDisplaySettingsErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type UpdateDisplaySettingsError = UpdateDisplaySettingsErrors[keyof UpdateDisplaySettingsErrors];
+export type UpdateDisplaySettingsResponses = {
+    200: RuntimeSettingsEnvelope;
+};
+export type UpdateDisplaySettingsResponse = UpdateDisplaySettingsResponses[keyof UpdateDisplaySettingsResponses];
 export type UpdateBackupSettingsData = {
     body: BackupSettingsRequest;
     headers?: {

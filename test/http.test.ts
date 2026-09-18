@@ -1,3 +1,4 @@
+import { readCheckoutInitial } from "./checkout-view-fixture.ts";
 import assert from "node:assert/strict";
 import fs, { mkdtempSync, rmSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
@@ -1378,7 +1379,7 @@ describe("order HTTP contract", () => {
       assert.equal(unsafeCheckoutPage.status, 503);
       assert.match(unsafeCheckoutPage.headers.get("content-type") ?? "", /^text\/html/);
       const unsafeCheckoutHtml = await unsafeCheckoutPage.text();
-      assert.match(unsafeCheckoutHtml, /data-initial-state="UNAVAILABLE"/);
+      assert.equal(readCheckoutInitial(unsafeCheckoutHtml).initialError?.status, 503);
       assert.match(unsafeCheckoutHtml, /order_clock_unavailable/);
 
       const unsafeRequestBody = Buffer.from(JSON.stringify({
@@ -1544,7 +1545,7 @@ describe("order HTTP contract", () => {
         /script-src 'self'; style-src-elem 'self' 'nonce-[A-Za-z0-9+/=]+'; style-src-attr 'none'; connect-src 'self'; img-src 'self'/,
       );
       const checkoutHtml = await checkoutPage.text();
-      assert.match(checkoutHtml, /data-payable-amount[^>]*>10\.01<\/strong>/);
+      assert.match(checkoutHtml, /data-payable-amount[^>]*>¥10\.01<\/strong>/);
       assert.ok(checkoutHtml.includes(WEB_ASSET_URLS.checkoutStylesheet));
       assert.match(checkoutHtml, /\/api\/public\/v1\/checkouts\/[^" ]+\/qr\.svg/);
       assert.equal(checkoutHtml.includes(collectionCodePayload), false);
@@ -1725,7 +1726,7 @@ describe("order HTTP contract", () => {
       assert.equal(oversizedCheckoutPage.status, 404);
       assert.match(oversizedCheckoutPage.headers.get("content-type") ?? "", /^text\/html/);
       const oversizedCheckoutHtml = await oversizedCheckoutPage.text();
-      assert.match(oversizedCheckoutHtml, /data-initial-state="NOT_FOUND"/);
+      assert.equal(readCheckoutInitial(oversizedCheckoutHtml).initialError?.status, 404);
       assert.equal(oversizedCheckoutHtml.includes(oversizedCheckoutToken), false);
 
       let rateLimited: Response | undefined;

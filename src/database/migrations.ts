@@ -4795,4 +4795,17 @@ export const migrations: readonly Migration[] = [
       BEGIN SELECT RAISE(ABORT, 'refund mark state cannot be deleted'); END;
     `,
   },
+  {
+    version: 24,
+    name: "checkout_and_dashboard_display_settings",
+    sql: `
+      ALTER TABLE runtime_configuration
+        ADD COLUMN checkout_show_product_name INTEGER NOT NULL DEFAULT 1
+        CHECK (checkout_show_product_name IN (0, 1));
+
+      ALTER TABLE runtime_configuration
+        ADD COLUMN dashboard_chart_type TEXT NOT NULL DEFAULT 'AREA'
+        CHECK (dashboard_chart_type IN ('AREA', 'BAR', 'LINE'));
+    `,
+  },
 ] as const;

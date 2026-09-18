@@ -12,49 +12,110 @@ import { json, settings } from "./fixtures";
 const syntheticSecret = "synthetic-test-key-never-real";
 
 describe("secret visibility lifecycle", () => {
-  it.each(["read", "rotate"])("closes the %s dialog when hidden before its response and never displays late plaintext", async (operation) => {
-    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(false);
-    let finish: (response: Response) => void = () => {};
-    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => { finish = resolve; })));
-    const configured = { ...settings, completion: { ...settings.completion, api: true }, secrets: { ...settings.secrets, api_secret: { ...settings.secrets.api_secret, configured: true } } };
-    const onSaved = vi.fn();
-    render(<QueryClientProvider client={queryClient}><MemoryRouter><SecuritySettings settings={configured} onSaved={onSaved} /></MemoryRouter></QueryClientProvider>);
-    const user = userEvent.setup();
-    if (operation === "read") {
-      await user.click(screen.getByRole("button", { name: "查看网站 API 密钥" }));
-    } else {
-      await user.click(recordAction("轮换 API 密钥", "API 密钥操作"));
-      expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-      await user.click(screen.getByRole("button", { name: "确认轮换" }));
-    }
-    hidden.mockReturnValue(true);
-    fireEvent(document, new Event("visibilitychange"));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    await act(async () => { finish(json({ data: operation === "read"
-      ? { value: syntheticSecret }
-      : { secret: syntheticSecret, settings: { ...settings, revision: 4 } } })); });
-    expect(screen.queryByText(syntheticSecret)).not.toBeInTheDocument();
-    hidden.mockReturnValue(false);
-    fireEvent(document, new Event("visibilitychange"));
-    expect(screen.queryByText(syntheticSecret)).not.toBeInTheDocument();
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    if (operation === "rotate") expect(onSaved).toHaveBeenCalledOnce();
-  });
+  it.each(["read", "rotate"])(
+    "closes the %s dialog when hidden before its response and never displays late plaintext",
+    async (operation) => {
+      const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+      let finish: (response: Response) => void = () => {};
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          () =>
+            new Promise<Response>((resolve) => {
+              finish = resolve;
+            }),
+        ),
+      );
+      const configured = {
+        ...settings,
+        completion: { ...settings.completion, api: true },
+        secrets: {
+          ...settings.secrets,
+          api_secret: { ...settings.secrets.api_secret, configured: true },
+        },
+      };
+      const onSaved = vi.fn();
+      render(
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter>
+            <SecuritySettings settings={configured} onSaved={onSaved} />
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+      const user = userEvent.setup();
+      if (operation === "read") {
+        await user.click(
+          screen.getByRole("button", { name: "查看网站 API 密钥" }),
+        );
+      } else {
+        await user.click(await recordAction("轮换 API 密钥", "API 密钥操作"));
+        expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+        await user.click(screen.getByRole("button", { name: "确认轮换" }));
+      }
+      hidden.mockReturnValue(true);
+      fireEvent(document, new Event("visibilitychange"));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      await act(async () => {
+        finish(
+          json({
+            data:
+              operation === "read"
+                ? { value: syntheticSecret }
+                : {
+                    secret: syntheticSecret,
+                    settings: { ...settings, revision: 4 },
+                  },
+          }),
+        );
+      });
+      expect(screen.queryByText(syntheticSecret)).not.toBeInTheDocument();
+      hidden.mockReturnValue(false);
+      fireEvent(document, new Event("visibilitychange"));
+      expect(screen.queryByText(syntheticSecret)).not.toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      if (operation === "rotate") expect(onSaved).toHaveBeenCalledOnce();
+    },
+  );
 });
 
 it("still clears a displayed multiline key after sixty seconds", async () => {
   vi.spyOn(document, "hidden", "get").mockReturnValue(false);
-  const value = "-----BEGIN PRIVATE KEY-----\nsynthetic-private-key\n-----END PRIVATE KEY-----";
-  vi.stubGlobal("fetch", vi.fn(async () => json({ data: { value } })));
-  const configured = { ...settings, secrets: { ...settings.secrets, provider_private_key: { ...settings.secrets.provider_private_key, configured: true } } };
-  render(<QueryClientProvider client={queryClient}><MemoryRouter><SecuritySettings settings={configured} onSaved={vi.fn()} /></MemoryRouter></QueryClientProvider>);
+  const value =
+    "-----BEGIN PRIVATE KEY-----\nsynthetic-private-key\n-----END PRIVATE KEY-----";
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => json({ data: { value } })),
+  );
+  const configured = {
+    ...settings,
+    secrets: {
+      ...settings.secrets,
+      provider_private_key: {
+        ...settings.secrets.provider_private_key,
+        configured: true,
+      },
+    },
+  };
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <SecuritySettings settings={configured} onSaved={vi.fn()} />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
   vi.useFakeTimers();
   fireEvent.click(screen.getByRole("button", { name: "查看应用私钥" }));
-  await act(async () => { await vi.advanceTimersByTimeAsync(10); });
-  expect(screen.getByRole("region", { name: "密钥内容" })).toBeVisible();
-  await act(async () => { await vi.advanceTimersByTimeAsync(59_000); });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(10);
+  });
+  expect(screen.getByRole("textbox", { name: "密钥内容" })).toBeVisible();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(59_000);
+  });
   expect(screen.getByRole("dialog", { name: "应用私钥" })).toBeVisible();
-  await act(async () => { await vi.advanceTimersByTimeAsync(1_010); });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1_010);
+  });
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(screen.queryByText(/synthetic-private-key/)).not.toBeInTheDocument();
 });

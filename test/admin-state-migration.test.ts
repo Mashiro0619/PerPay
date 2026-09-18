@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { it } from "node:test";
 
 import { AppDatabase, inspectDatabaseIntegrity } from "../src/database/database.ts";
+import { DATABASE_COMPATIBILITY } from "../src/version.ts";
 import { adminRefundMarks, adminRefundMarkHistory, setAdminRefundMark } from "../src/database/admin-refund-mark-store.ts";
 import { adminWorkItemPage, ignoreAllAdminWorkItems } from "../src/http/admin-work-items.ts";
 import { WebhookStore } from "../src/notifications/store.ts";
@@ -41,7 +42,7 @@ it("upgrades schema 22 without rewriting historical money, refund evidence, queu
     let upgraded = await AppDatabase.open(databasePath);
     try {
       assert.deepEqual(historicalSnapshot(upgraded), before);
-      assert.equal(Number(upgraded.read((connection) => (connection.prepare("SELECT max(version) AS version FROM schema_migrations").get() as { version: bigint }).version)), 23);
+      assert.equal(Number(upgraded.read((connection) => (connection.prepare("SELECT max(version) AS version FROM schema_migrations").get() as { version: bigint }).version)), DATABASE_COMPATIBILITY.maximum);
       assert.equal(adminRefundMarks(upgraded, [order.orderId]).get(order.orderId)?.version, 0, "legacy refunds must not be converted to admin marks");
       assert.equal(adminWorkItemPage(upgraded, { type: "ALL", cursor: null, limit: 100 }).items.length, 1);
       const context = { actorId: "admin", requestId: "migration-state-persistence", remoteAddressHash: "b".repeat(64) };

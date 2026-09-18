@@ -81,6 +81,13 @@ export interface AdvancedSettings {
   readonly checkoutTerminalObservationSeconds: number;
 }
 
+export type DashboardChartType = "AREA" | "BAR" | "LINE";
+
+export interface DisplaySettings {
+  readonly checkoutShowProductName: boolean;
+  readonly dashboardChartType: DashboardChartType;
+}
+
 export interface BackupSettings {
   readonly intervalSeconds: number;
   readonly keepCount: number;
@@ -97,6 +104,7 @@ export interface RuntimeSettingsSnapshot {
   readonly webhook: WebhookSettings;
   readonly advanced: AdvancedSettings;
   readonly backup?: BackupSettings;
+  readonly display?: DisplaySettings;
   readonly activeProviderAccountKey: string | null;
 }
 
@@ -204,6 +212,12 @@ export const advancedSettingsInputSchema = z.object({
   checkout_terminal_observation_seconds: z.number().int().min(60).max(604_800),
 }).strict();
 
+export const displaySettingsInputSchema = z.object({
+  revision: z.number().int().nonnegative(),
+  checkout_show_product_name: z.boolean(),
+  dashboard_chart_type: z.enum(["AREA", "BAR", "LINE"]),
+}).strict();
+
 export const backupSettingsInputSchema = z.object({
   revision: z.number().int().nonnegative(),
   interval_seconds: z.number().int().min(3_600).max(7 * 24 * 60 * 60),
@@ -215,6 +229,7 @@ export type ProviderSettingsInput = z.infer<typeof providerSettingsInputSchema>;
 export type WebhookSettingsInput = z.infer<typeof webhookSettingsInputSchema>;
 export type AdvancedSettingsInput = z.infer<typeof advancedSettingsInputSchema>;
 export type BackupSettingsInput = z.infer<typeof backupSettingsInputSchema>;
+export type DisplaySettingsInput = z.infer<typeof displaySettingsInputSchema>;
 
 export function providerEndpoint(environment: ProviderEnvironment): ProviderSettings["endpoint"] {
   return environment === "PRODUCTION"

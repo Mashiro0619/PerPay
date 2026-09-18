@@ -1,179 +1,91 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
-import { runInNewContext } from "node:vm";
-
-import { WEB_ASSET_PATHS, WEB_ASSET_URLS, webAsset } from "../src/http/web/assets.ts";
-
-describe("web asset manifest", () => {
-  it("binds every immutable URL to the complete SHA-256 digest of its content", () => {
-    assert.equal(WEB_ASSET_PATHS.length, 3);
+import {
+  WEB_ASSET_PATHS,
+  WEB_ASSET_URLS,
+  webAsset,
+} from "../src/http/web/assets.ts";
+function text(path: string): string {
+  const asset = webAsset(path);
+  assert.ok(asset);
+  return typeof asset.body === "string"
+    ? asset.body
+    : Buffer.from(asset.body).toString("utf8");
+}
+describe("web asset build manifest", () => {
+  it("serves only registered, fingerprinted assets with complete SHA-256 ETags", () => {
+    assert.ok(WEB_ASSET_PATHS.length >= 3);
     assert.equal(new Set(WEB_ASSET_PATHS).size, WEB_ASSET_PATHS.length);
-
-    for (const path of Object.values(WEB_ASSET_URLS)) {
-      const match = /^\/assets\/app\/([0-9a-f]{64})\/[^/]+$/.exec(path);
-      assert.ok(match, `asset path is not content addressed: ${path}`);
+    for (const path of WEB_ASSET_PATHS) {
+      assert.match(
+        path,
+        /^\/assets\/(?:app\/[0-9a-f]{64}\/alipay\.png|checkout\/(?:assets\/[\w.-]+-[\w-]+\.(?:js|css|woff2)|theme-[0-9a-f]+\.js))$/,
+      );
       const asset = webAsset(path);
       assert.ok(asset);
-      assert.equal(match[1], createHash("sha256").update(asset.body).digest("hex"));
+      assert.equal(
+        asset.etag,
+        '"' + createHash("sha256").update(asset.body).digest("base64url") + '"',
+      );
     }
   });
-
-  it("does not serve former version-only or vendor paths", () => {
-    assert.equal(webAsset("/assets/vendor/legacy/legacy.min.css"), null);
+  it("never publishes the private SSR renderer, source files, source maps or build manifests", () => {
+    for (const path of [
+      "/assets/checkout/renderer.cjs",
+      "/assets/checkout/checkout-ssr/renderer.cjs",
+      "/assets/checkout/.vite/manifest.json",
+      "/assets/checkout/src/checkout/entry-server.tsx",
+      WEB_ASSET_URLS.checkoutScript + ".map",
+      "/assets/vendor/legacy/legacy.min.css",
+      "/assets/app/checkout.js",
+      "/assets/app/checkout.css",
+    ])
+      assert.equal(webAsset(path), null, path);
+    assert.ok(
+      WEB_ASSET_PATHS.every((path) => !/\.(?:cjs|map|tsx?|json)$/.test(path)),
+    );
   });
-
-  it("serves the optimized Alipay icon as a content-addressed PNG", () => {
-    const icon = webAsset(WEB_ASSET_URLS.alipayIcon);
-    assert.ok(icon);
-    assert.equal(icon.contentType, "image/png");
-    assert.ok(icon.body instanceof Uint8Array);
-    assert.deepEqual([...icon.body.slice(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
-    assert.ok(icon.body.byteLength < 16 * 1024);
+  it("retains the original content-addressed icon without unrelated image changes", () => {
+    const asset = webAsset(WEB_ASSET_URLS.alipayIcon);
+    assert.ok(asset);
+    assert.equal(asset.contentType, "image/png");
+    assert.ok(asset.body instanceof Uint8Array);
+    assert.deepEqual(
+      [...asset.body.slice(0, 8)],
+      [137, 80, 78, 71, 13, 10, 26, 10],
+    );
+    assert.ok(asset.body.byteLength < 16 * 1024);
   });
-
-  it("keeps a compact single-column payment order in both system themes", () => {
-    const stylesheet = webAsset(WEB_ASSET_URLS.checkoutStylesheet)?.body;
-    assert.equal(typeof stylesheet, "string");
-    if (typeof stylesheet !== "string") return;
-    assert.match(stylesheet, /@media \(prefers-color-scheme: dark\)/);
-    assert.match(stylesheet, /color-scheme: light dark/);
-    assert.match(stylesheet, /grid-template-areas:\s*"summary"\s*"payment"\s*"details"/);
-    assert.doesNotMatch(stylesheet, /"summary payment"|"payment"\s*"summary"|checkout-masthead::before/);
-    assert.match(stylesheet, /width: min\(calc\(100% - 32px\), 480px\)/);
-    assert.match(stylesheet, /\.checkout-manual-refresh\s*\{[^}]*min-height: 44px/s);
-    assert.match(stylesheet, /@media \(max-width: 560px\)[\s\S]*\.checkout-code-figure img\s*\{[^}]*216px/s);
-    assert.match(stylesheet, /env\(safe-area-inset-top\)/);
-    assert.match(stylesheet, /env\(safe-area-inset-bottom\)/);
+  it("builds official theme styles with a no-JavaScript dark fallback", () => {
+    const css = text(WEB_ASSET_URLS.checkoutStylesheet);
+    assert.match(css, /prefers-color-scheme:dark|prefers-color-scheme: dark/);
+    assert.match(css, /:root:not\(\[data-theme\]\)/);
+    assert.match(css, /--background/);
+    assert.doesNotMatch(css, /checkout-receipt-body|data-palette/);
   });
-
-  it("keeps a final not-found checkout inert across browser lifecycle events", () => {
-    const checkoutScript = webAsset(WEB_ASSET_URLS.checkoutScript)?.body;
-    assert.equal(typeof checkoutScript, "string");
-    if (typeof checkoutScript !== "string") return;
-
-    class FakeHTMLElement {
-      readonly dataset: Record<string, string> = {
-        checkoutApiUrl: "", checkoutQrUrl: "", initialState: "NOT_FOUND",
-        refundStatus: "NONE", retryAfterSeconds: "",
-      };
-      readonly children = new Map<string, FakeHTMLElement>();
-      hidden = false;
-      textContent = "";
-      querySelector(selector: string): FakeHTMLElement | null {
-        return this.children.get(selector) ?? null;
-      }
-    }
-    class FakeHTMLDialogElement extends FakeHTMLElement {}
-    class FakeHTMLImageElement extends FakeHTMLElement {}
-    class FakeHTMLTimeElement extends FakeHTMLElement {}
-    class FakeHTMLAnchorElement extends FakeHTMLElement {}
-
-    const root = new FakeHTMLElement();
-    const routeError = new FakeHTMLElement();
-    const routeErrorTitle = new FakeHTMLElement();
-    routeErrorTitle.textContent = "找不到这个订单";
-    routeError.children.set("[data-route-error-title]", routeErrorTitle);
-    root.children.set("[data-route-error]", routeError);
-    const documentListeners = new Map<string, () => void>();
-    const windowListeners = new Map<string, () => void>();
-    let fetchCount = 0;
-    const document = {
-      activeElement: null, hidden: false, title: "",
-      querySelector: (selector: string) => selector === "[data-checkout-root]" ? root : null,
-      addEventListener: (name: string, listener: () => void) => documentListeners.set(name, listener),
-    };
-    const window = {
-      location: { origin: "https://checkout.example.test" },
-      addEventListener: (name: string, listener: () => void) => windowListeners.set(name, listener),
-      setInterval: () => 1, clearInterval() {}, setTimeout: () => 1, clearTimeout() {},
-      requestAnimationFrame(callback: () => void) { callback(); return 1; },
-    };
-    runInNewContext(checkoutScript, {
-      AbortController, Date, HTMLAnchorElement: FakeHTMLAnchorElement,
-      HTMLDialogElement: FakeHTMLDialogElement, HTMLElement: FakeHTMLElement,
-      HTMLImageElement: FakeHTMLImageElement, HTMLTimeElement: FakeHTMLTimeElement,
-      Math, Number, Object, Promise, String, URL, document,
-      fetch() { fetchCount += 1; return new Promise(() => undefined); },
-      navigator: { onLine: true }, window,
-    });
-    documentListeners.get("visibilitychange")?.();
-    windowListeners.get("online")?.();
-    assert.equal(fetchCount, 0);
-    assert.equal(routeErrorTitle.textContent, "找不到这个订单");
+  it("keeps the checkout client independent from administration and secret workflows", () => {
+    const scripts = WEB_ASSET_PATHS.filter(
+      (path) => path.startsWith("/assets/checkout/") && path.endsWith(".js"),
+    )
+      .map(text)
+      .join("\n");
+    assert.doesNotMatch(
+      scripts,
+      /\/api\/admin|refund_mark|provider_private_key|rotateApiClientSecret|sourceMappingURL/,
+    );
+    assert.match(scripts, /pagehide/);
+    assert.match(scripts, /visibilitychange/);
   });
-
-  it("coalesces repeated manual checkout status checks", () => {
-    const checkoutScript = webAsset(WEB_ASSET_URLS.checkoutScript)?.body;
-    assert.equal(typeof checkoutScript, "string");
-    if (typeof checkoutScript !== "string") return;
-
-    class FakeHTMLElement {
-      readonly dataset: Record<string, string> = {};
-      readonly listeners = new Map<string, () => void>();
-      readonly attributes = new Map<string, string>();
-      hidden = false;
-      disabled = false;
-      textContent = "";
-      querySelector(_selector: string): FakeHTMLElement | null { return null; }
-      addEventListener(name: string, listener: () => void): void { this.listeners.set(name, listener); }
-      setAttribute(name: string, value: string): void { this.attributes.set(name, value); }
-      toggleAttribute(name: string, force: boolean): void {
-        if (force) this.attributes.set(name, "");
-        else this.attributes.delete(name);
-      }
-      click(): void { this.listeners.get("click")?.(); }
-    }
-    class FakeHTMLDialogElement extends FakeHTMLElement {}
-    class FakeHTMLImageElement extends FakeHTMLElement {}
-    class FakeHTMLTimeElement extends FakeHTMLElement {}
-    class FakeHTMLAnchorElement extends FakeHTMLElement {}
-
-    const label = new FakeHTMLElement();
-    label.textContent = "立即检查支付状态";
-    const button = new FakeHTMLElement();
-    button.querySelector = (selector: string) =>
-      selector === "[data-checkout-refresh-label]" ? label : null;
-    const content = new FakeHTMLElement();
-    const root = new FakeHTMLElement();
-    root.dataset.checkoutApiUrl = "/api/public/v1/checkouts/pct1_manual";
-    root.dataset.initialState = "UNPAID";
-    root.dataset.refundStatus = "NONE";
-    root.dataset.retryAfterSeconds = "";
-    root.querySelector = (selector: string) => {
-      if (selector === "[data-checkout-content]") return content;
-      if (selector === "[data-checkout-refresh]") return button;
-      return null;
-    };
-
-    let fetchCount = 0;
-    const document = {
-      activeElement: null, hidden: false, title: "",
-      querySelector: (selector: string) => selector === "[data-checkout-root]" ? root : null,
-      addEventListener() {},
-    };
-    const window = {
-      location: { origin: "https://checkout.example.test" },
-      addEventListener() {},
-      setInterval: () => 1, clearInterval() {}, setTimeout: () => 1, clearTimeout() {},
-      requestAnimationFrame(callback: () => void) { callback(); return 1; },
-    };
-    runInNewContext(checkoutScript, {
-      AbortController, Date, HTMLAnchorElement: FakeHTMLAnchorElement,
-      HTMLDialogElement: FakeHTMLDialogElement, HTMLElement: FakeHTMLElement,
-      HTMLImageElement: FakeHTMLImageElement, HTMLTimeElement: FakeHTMLTimeElement,
-      Math, Number, Object, Promise, String, URL, document,
-      fetch() { fetchCount += 1; return new Promise(() => undefined); },
-      navigator: { onLine: true }, window,
-    });
-
-    button.click();
-    button.click();
-
-    assert.equal(fetchCount, 1);
-    assert.equal(button.disabled, true);
-    assert.equal(button.attributes.get("aria-busy"), "true");
-    assert.equal(button.attributes.has("data-loading"), true);
-    assert.equal(label.textContent, "正在查询…");
+  it("bundles the SSR runtime instead of requiring pruned frontend development dependencies", () => {
+    const ssr = readFileSync(
+      new URL("../web-dist/checkout-ssr/renderer.cjs", import.meta.url),
+      "utf8",
+    );
+    assert.doesNotMatch(
+      ssr,
+      /require\(["'](?:react(?:-dom)?(?:\/[^"']*)?|@base-ui\/react(?:\/[^"']*)?)["']\)/,
+    );
   });
 });

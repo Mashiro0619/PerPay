@@ -12,6 +12,7 @@ export const settings: RuntimeSettings = {
   notifications: { enabled: false, allowed_origin: null, timeout_milliseconds: 5000, maximum_attempts: 5, retry_base_seconds: 10, retry_maximum_seconds: 600 },
   advanced: { checkout_key_rotation_days: 90, checkout_terminal_observation_seconds: 86400 },
   backup: { interval_seconds: 86400, keep_count: 7 },
+  display: { checkout_show_product_name: true, dashboard_chart_type: "AREA" },
   secrets: { api_secret: emptySecret, provider_private_key: emptySecret, provider_public_key: emptySecret, webhook_secret: emptySecret },
 };
 

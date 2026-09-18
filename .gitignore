@@ -9,6 +9,7 @@ coverage/
 *.iml
 .DS_Store
 .playwright-cli/
+.playwright-mcp/
 
 # Local configuration and secrets
 .env
@@ -27,3 +28,6 @@ backups/
 *.sqlite3
 *.sqlite-shm
 *.sqlite-wal
+
+# Literal directory created by local tooling
+/%SystemDrive%/

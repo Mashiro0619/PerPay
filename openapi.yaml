@@ -839,6 +839,43 @@ paths:
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
         '422': { $ref: '#/components/responses/SettingsValidationFailed' }
         '503': { $ref: '#/components/responses/SettingsUnavailable' }
+  /api/admin/v1/settings/display:
+    put:
+      tags: [Admin Settings]
+      operationId: updateDisplaySettings
+      summary: Save checkout and dashboard display preferences
+      description: >-
+        Persists instance-wide presentation settings. Applies to newly opened checkout pages and
+        administrator dashboards. Does not change orders, notifications, payment revisions, or collection timing.
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DisplaySettingsRequest' }
+      responses:
+        '200':
+          description: Display settings saved and runtime settings returned
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RuntimeSettingsEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '409': { $ref: '#/components/responses/SettingsConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/SettingsValidationFailed' }
+        '503': { $ref: '#/components/responses/SettingsUnavailable' }
   /api/admin/v1/settings/backup:
     put:
       tags: [Admin Settings]
@@ -2873,6 +2910,7 @@ components:
         - notifications
         - advanced
         - backup
+        - display
         - secrets
       properties:
         revision: { type: integer, minimum: 0 }
@@ -2910,6 +2948,8 @@ components:
           $ref: '#/components/schemas/AdvancedSettings'
         backup:
           $ref: '#/components/schemas/BackupSettings'
+        display:
+          $ref: '#/components/schemas/DisplaySettings'
         secrets:
           $ref: '#/components/schemas/RuntimeSecretMetadataMap'
     SettingsCompletion:
@@ -2988,7 +3028,7 @@ components:
             Wait after a completed scan while an unexpired OPEN/UNPAID order exists for the active account,
             or a closed/expired UNPAID order remains within max(60 seconds, safety_lag_seconds plus this interval)
             of its end time. Must not exceed scan_interval_seconds. Omitted in legacy update requests to use
-            scan_interval_seconds for both intervals. New setup defaults to 5 seconds. Existing configurations
+            scan_interval_seconds for both intervals. New setup defaults to 8 seconds (60 seconds when idle). Existing configurations
             retain their previous interval for both modes. Provider cooldowns and catch-up scheduling still apply.
         safety_lag_seconds:
           type: integer
@@ -3042,6 +3082,20 @@ components:
           minimum: 60
           maximum: 604800
           description: How long a newly created checkout remains readable after reaching a terminal state.
+    DashboardChartType:
+      type: string
+      enum: [AREA, BAR, LINE]
+    DisplaySettings:
+      type: object
+      additionalProperties: false
+      required: [checkout_show_product_name, dashboard_chart_type]
+      properties:
+        checkout_show_product_name:
+          type: boolean
+          default: true
+          description: Shows the product name on checkout pages; order APIs and notification payloads are unchanged.
+        dashboard_chart_type:
+          $ref: '#/components/schemas/DashboardChartType'
     BackupSettings:
       type: object
       additionalProperties: false
@@ -3139,7 +3193,7 @@ components:
             Wait after a completed scan while an unexpired OPEN/UNPAID order exists for the active account,
             or a closed/expired UNPAID order remains within max(60 seconds, safety_lag_seconds plus this interval)
             of its end time. Must not exceed scan_interval_seconds. Omitted in legacy update requests to use
-            scan_interval_seconds for both intervals. New setup defaults to 5 seconds. Existing configurations
+            scan_interval_seconds for both intervals. New setup defaults to 8 seconds (60 seconds when idle). Existing configurations
             retain their previous interval for both modes. Provider cooldowns and catch-up scheduling still apply.
         safety_lag_seconds:
           type: integer
@@ -3190,6 +3244,14 @@ components:
           type: integer
           minimum: 60
           maximum: 604800
+    DisplaySettingsRequest:
+      type: object
+      additionalProperties: false
+      required: [revision, checkout_show_product_name, dashboard_chart_type]
+      properties:
+        revision: { type: integer, minimum: 0 }
+        checkout_show_product_name: { type: boolean }
+        dashboard_chart_type: { $ref: '#/components/schemas/DashboardChartType' }
     BackupSettingsRequest:
       type: object
       additionalProperties: false

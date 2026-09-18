@@ -1,302 +1,546 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { runInNewContext } from "node:vm";
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-import { renderCheckoutPage } from "../../src/http/web/checkout";
-
-vi.mock("../../src/http/web/assets", () => ({ WEB_ASSET_URLS: {
-  alipayIcon: "/assets/app/alipay.png", checkoutStylesheet: "/assets/app/checkout.css", checkoutScript: "/assets/app/checkout.js",
-} }));
-
-const script = readFileSync(resolve(process.cwd(), "static/app/checkout.js"), "utf8");
-const now = Date.parse("2026-09-08T04:00:00.000Z");
-const qrPath = "/api/public/v1/checkouts/pct1_lifecycle-test/qr.svg";
-
-function mount(wallClockOffset = 0, loadingDelay = 0) {
-  vi.useFakeTimers(); vi.setSystemTime(now);
-  const expiresAt = now + 2_000;
-  const html = renderCheckoutPage({
-    checkoutToken: "pct1_lifecycle-test", qrImageUrl: qrPath, initialError: null,
-    checkout: {
-      merchantOrderNo: "lifecycle-test", requestedAmountCents: 100, currency: "CNY", productName: "测试订单", returnUrl: null,
-      paymentInstructions: { payableAmountCents: 101, currency: "CNY", collectionCodePayload: "https://qr.alipay.com/test" },
-      checkout: { status: "OPEN", expiresAt, closedAt: null },
-      payment: { status: "UNPAID", basis: "NONE", receivedAmountCents: null }, refund: { status: "NONE" },
-    },
-  });
-  document.body.innerHTML = new DOMParser().parseFromString(html, "text/html").body.innerHTML;
-  vi.setSystemTime(now + wallClockOffset + loadingDelay);
-  const browserEvents = new Map<string, () => void>();
-  const documentEvents = new Map<string, () => void>();
-  vi.spyOn(document, "addEventListener").mockImplementation((type, listener) => { documentEvents.set(type, listener as () => void); });
-  let elapsed = loadingDelay;
-  const navigator = { onLine: true };
-  const fetchMock = vi.fn<() => Promise<Response>>(async () => { throw new Error("network unavailable"); });
-  const host = {
-    location: { origin: "http://localhost:6190" }, performance: { now: () => elapsed, getEntriesByType: () => [{ responseStart: 0 }] },
-    addEventListener: (type: string, listener: () => void) => browserEvents.set(type, listener),
-    setInterval, clearInterval, setTimeout, clearTimeout,
-    requestAnimationFrame: (callback: () => void) => { callback(); return 1; },
-  };
-  runInNewContext(script, {
-    window: host, document, navigator, Date, URL, AbortController, fetch: fetchMock,
-    HTMLElement, HTMLImageElement, HTMLDialogElement, HTMLAnchorElement, HTMLTimeElement,
-  });
-  const panel = document.querySelector<HTMLElement>("[data-qr-panel]")!;
-  const image = document.querySelector<HTMLImageElement>("[data-qr-image]")!;
-  const download = document.querySelector<HTMLButtonElement>("[data-qr-download]")!;
-  const dialog = document.querySelector<HTMLDialogElement>("[data-qr-dialog]")!;
+import { createElement } from "react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createCheckoutController,
+  retryDelay,
+} from "../src/checkout/controller";
+import { CheckoutApp } from "../src/checkout/CheckoutApp";
+import {
+  checkoutMoney,
+  parseCheckoutPayload,
+  type CheckoutInitial,
+  type CheckoutViewOrder,
+} from "../../src/shared/checkout-view";
+const epoch = Date.UTC(2026, 8, 16, 6);
+let hidden = false,
+  online = true;
+const cleanups: Array<() => void> = [];
+function initial(overrides: Partial<CheckoutInitial> = {}): CheckoutInitial {
   return {
-    panel, image, download, dialog, fetchMock,
-    hide: () => { vi.spyOn(document, "hidden", "get").mockReturnValue(true); documentEvents.get("visibilitychange")!(); },
-    unload: () => browserEvents.get("pagehide")!(),
-    offline: () => { navigator.onLine = false; browserEvents.get("offline")!(); },
-    online: () => { navigator.onLine = true; browserEvents.get("online")!(); },
-    advance: async (milliseconds: number) => { elapsed += milliseconds; await vi.advanceTimersByTimeAsync(milliseconds); },
-    sleep: async (milliseconds: number) => { await vi.advanceTimersByTimeAsync(milliseconds); },
-    confirm: (status: "OPEN" | "CONFIRMED") => {
-      fetchMock.mockImplementation(async () => Response.json({ data: {
-        merchant_order_no: "lifecycle-test", requested_amount_cents: 100, currency: "CNY", product_name: "测试订单", return_url: null,
-        checkout: { status: "OPEN", expires_at: new Date(now + 30_000).toISOString() },
-        payment: { status: status === "CONFIRMED" ? "CONFIRMED" : "UNPAID", basis: status === "CONFIRMED" ? "INFERRED" : "NONE", received_amount_cents: status === "CONFIRMED" ? 101 : null },
-        refund: { status: "NONE" }, payment_instructions: status === "CONFIRMED" ? null : { payable_amount_cents: 101, currency: "CNY" },
-      } }, { headers: { date: new Date(now + elapsed).toUTCString() } }));
+    serverTime: epoch,
+    apiUrl: "/api/public/v1/checkouts/pct1_test",
+    qrUrl: "/api/public/v1/checkouts/pct1_test/qr.svg",
+    qrAvailable: true,
+    initialError: null,
+    checkout: {
+      merchant_order_no: "preview-order",
+      product_name: "测试商品",
+      requested_amount_cents: 1000,
+      currency: "CNY",
+      return_url: "https://shop.example.com/done",
+      payment_instructions: { payable_amount_cents: 1001, currency: "CNY" },
+      checkout: {
+        status: "OPEN",
+        expires_at: new Date(epoch + 60000).toISOString(),
+        closed_at: null,
+      },
+      payment: { status: "UNPAID", basis: "NONE", received_amount_cents: null },
+      refund: { status: "NONE" },
     },
+    ...overrides,
   };
 }
-
-afterEach(() => { document.body.innerHTML = ""; vi.clearAllTimers(); vi.restoreAllMocks(); });
-
-describe("public checkout expiry", () => {
-  it("does not extend the payment window while the page script is loading", () => {
-    const page = mount(0, 5_000);
-    expect(page.panel.hidden).toBe(true);
-    expect(page.image).not.toHaveAttribute("src");
+function response(order: CheckoutViewOrder = initial().checkout!) {
+  return new Response(JSON.stringify({ data: order }), {
+    headers: {
+      "content-type": "application/json",
+      date: new Date(Date.now()).toUTCString(),
+    },
   });
-
-  it("expires while the operating system suspends its performance clock", async () => {
-    const page = mount(); page.offline();
-    await page.sleep(5_000);
-    expect(page.panel.hidden).toBe(true);
-    expect(page.image).not.toHaveAttribute("src");
-  });
-
-  it.each(["offline", "network failure"])("removes every payment entry after the known deadline during %s", async (failure) => {
-    const page = mount();
-    expect(page.panel.hidden).toBe(false);
-    page.dialog.showModal();
-    if (failure === "offline") page.offline();
-    await page.advance(3_000);
-    expect(page.panel.hidden).toBe(true);
-    expect(page.dialog.open).toBe(false);
-    expect(page.image).not.toHaveAttribute("src");
-    expect(page.download).not.toHaveAttribute("href");
-    expect(document.querySelector("[data-qr-dialog-image]")).not.toHaveAttribute("src");
-    expect(document.querySelector<HTMLElement>("[data-payment-guidance]")!.hidden).toBe(true);
-    expect(document.querySelector("[data-status-heading]")).toHaveTextContent("请暂勿付款");
-    expect(document.querySelector("[data-checkout-root]")).toHaveAttribute("data-payment-status", "UNPAID");
-    expect(document.querySelector<HTMLElement>("[data-checkout-refresh]")!.hidden).toBe(false);
-    page.image.dispatchEvent(new Event("load"));
-    expect(document.querySelector<HTMLElement>(".checkout-code-actions")!.hidden).toBe(true);
-    document.querySelector<HTMLButtonElement>("[data-qr-expand]")!.click();
-    document.querySelector<HTMLButtonElement>("[data-qr-reload]")!.click();
-    expect(page.dialog.open).toBe(false);
-    expect(page.image).not.toHaveAttribute("src");
-  });
-
-  it.each([-3_600_000, 3_600_000])("uses server time rather than a client clock offset of %s milliseconds", async (offset) => {
-    const page = mount(offset);
-    expect(page.panel.hidden).toBe(false);
-    page.offline();
-    await page.advance(3_000);
-    expect(page.panel.hidden).toBe(true);
-  });
-
-  it("reopens payment only after the server confirms a valid payment window", async () => {
-    const page = mount(); page.offline();
-    await page.advance(3_000);
-    expect(page.panel.hidden).toBe(true);
-    page.confirm("OPEN"); page.online();
-    await page.advance(1);
-    expect(page.panel.hidden).toBe(false);
-    expect(page.image).toHaveAttribute("src", qrPath);
-    expect(page.download).not.toBeDisabled();
-    expect(document.querySelector("[data-status-heading]")).toHaveTextContent("支付宝付款");
-  });
-
-  it("displays a late confirmed payment without reopening the QR code", async () => {
-    const page = mount(); page.offline();
-    await page.advance(3_000);
-    page.confirm("CONFIRMED"); page.online();
-    await page.advance(1);
-    expect(document.querySelector("[data-status-heading]")).toHaveTextContent("付款已确认");
-    expect(page.panel.hidden).toBe(true);
-    expect(page.image).not.toHaveAttribute("src");
-    expect(page.download).not.toHaveAttribute("href");
-  });
-});
-
-function orderResponse(options: {
-  payment?: "UNPAID" | "CONFIRMED" | "DISPUTED";
-  checkout?: "OPEN" | "CLOSED" | "EXPIRED";
-  refund?: "NONE" | "PARTIAL" | "FULL";
-  amount?: number;
-  returnUrl?: string | null;
-} = {}) {
-  const payment = options.payment ?? "UNPAID";
-  const checkout = options.checkout ?? "OPEN";
-  return Response.json({ data: {
-    merchant_order_no: "lifecycle-test", requested_amount_cents: 100, currency: "CNY",
-    product_name: "测试订单", return_url: options.returnUrl ?? null,
-    checkout: { status: checkout, expires_at: new Date(now + 60_000).toISOString() },
-    payment: { status: payment, basis: payment === "UNPAID" ? "NONE" : "INFERRED", received_amount_cents: payment === "UNPAID" ? null : options.amount ?? 101 },
-    refund: { status: options.refund ?? "NONE" },
-    payment_instructions: payment === "UNPAID" && checkout === "OPEN" ? { payable_amount_cents: options.amount ?? 101, currency: "CNY" } : null,
-  } }, { headers: { date: new Date(now).toUTCString() } });
 }
-
-describe("compact checkout presentation", () => {
-  it("keeps a single main amount above the QR and secondary controls before the query action", () => {
-    mount();
-    const amount = document.querySelector("[data-payable-amount]")!;
-    const qr = document.querySelector("[data-qr-image]")!;
-    const query = document.querySelector("[data-checkout-refresh]")!;
-    expect(document.querySelectorAll("[data-payable-amount]")).toHaveLength(1);
-    expect(amount.compareDocumentPosition(qr) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(document.querySelector("[data-qr-expand]")!.compareDocumentPosition(query) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(document.querySelector(".checkout-footer, .checkout-exact-note, img[aria-hidden]" )).toBeNull();
-    expect(document.querySelector("[data-qr-dialog-amount]")).toHaveTextContent("¥ 1.01");
+function controller(value = initial()) {
+  const result = createCheckoutController(value);
+  cleanups.push(result.start());
+  return result;
+}
+function pendingFetch() {
+  let finish!: (response: Response) => void;
+  const fetch = vi.fn(
+    (_url: URL, _init?: RequestInit) =>
+      new Promise<Response>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  vi.stubGlobal("fetch", fetch);
+  return { fetch, finish: (response: Response) => finish(response) };
+}
+beforeEach(() => {
+  vi.useFakeTimers({
+    toFake: [
+      "setTimeout",
+      "clearTimeout",
+      "setInterval",
+      "clearInterval",
+      "Date",
+      "performance",
+    ],
   });
-
-  it("updates the main and enlarged-code amounts from the same response", async () => {
-    const page = mount();
-    page.fetchMock.mockResolvedValueOnce(orderResponse({ amount: 123 }));
-    document.querySelector<HTMLButtonElement>("[data-checkout-refresh]")!.click();
-    await page.advance(1);
-    expect(document.querySelector("[data-payable-amount]")).toHaveTextContent("1.23");
-    expect(document.querySelector("[data-qr-dialog-amount]")).toHaveTextContent("¥ 1.23");
-    expect(document.querySelector("[data-amount-accessible]")).toHaveTextContent("应付金额 1.23 元");
-    expect(document.querySelector("[data-checkout-refresh-label]")).toHaveTextContent("查询付款状态");
-  });
-
-  it.each([
-    { payment: "CONFIRMED" as const, heading: "付款已确认", refund: "PARTIAL" as const },
-    { payment: "DISPUTED" as const, heading: "付款需要核实" },
-    { checkout: "CLOSED" as const, heading: "订单已关闭" },
-    { checkout: "EXPIRED" as const, heading: "订单已过期" },
-  ])("removes payment actions and announces $heading without a second status panel", async options => {
-    const page = mount();
-    page.dialog.showModal();
-    page.fetchMock.mockResolvedValueOnce(orderResponse({ ...options, returnUrl: "https://shop.example.com/orders/1" }));
-    document.querySelector<HTMLButtonElement>("[data-checkout-refresh]")!.click();
-    await page.advance(1);
-    expect(document.querySelector("[data-status-heading]")).toHaveTextContent(options.heading);
-    expect(document.querySelector("[data-state-announcement]")).toHaveTextContent(options.heading);
-    expect(page.dialog.open).toBe(false);
-    expect(page.image).not.toHaveAttribute("src");
-    expect(page.download).not.toHaveAttribute("href");
-    expect(document.querySelector<HTMLElement>("[data-payment-column]")!.hidden).toBe(true);
-    expect(document.querySelector<HTMLElement>("[data-update-message]")!.hidden).toBe(true);
-    expect(document.activeElement).toBe(document.querySelector("[data-status-heading]"));
-    const returnLink = document.querySelector<HTMLAnchorElement>("[data-return-merchant]")!;
-    expect(returnLink.hidden).toBe(options.payment !== "CONFIRMED");
-    if (options.payment !== "CONFIRMED") expect(returnLink).not.toHaveAttribute("href");
-    if (options.refund) expect(document.querySelector<HTMLElement>("[data-refund-message]")!.hidden).toBe(false);
-  });
-
-  it("hides the countdown and QR during service failure, then recovers from a fresh response", async () => {
-    const page = mount(); page.dialog.showModal();
-    page.fetchMock.mockResolvedValueOnce(Response.json({ error: { code: "reconciliation_not_ready" } }, { status: 503, headers: { "retry-after": "5" } }));
-    document.querySelector<HTMLButtonElement>("[data-checkout-refresh]")!.click();
-    await page.advance(1);
-    expect(page.panel.hidden).toBe(true);
-    expect(page.dialog.open).toBe(false);
-    expect(page.download).not.toHaveAttribute("href");
-    expect(document.querySelector<HTMLElement>("[data-countdown-wrap]")!.hidden).toBe(true);
-    expect(document.querySelector("[data-status-detail]")).toHaveTextContent("请勿付款");
-    expect(document.querySelector("[data-service-alert]")).toBeNull();
-    expect(document.activeElement).toBe(document.querySelector("[data-status-heading]"));
-    page.fetchMock.mockResolvedValue(orderResponse());
-    await page.advance(5_000);
-    expect(page.panel.hidden).toBe(false);
-    expect(document.querySelector<HTMLElement>("[data-countdown-wrap]")!.hidden).toBe(false);
-    expect(document.querySelector("[data-status-heading]")).toHaveTextContent("支付宝付款");
-  });
-  it("keeps a QR image failure visible across status polling until the image is retried", async () => {
-    const page = mount(); page.dialog.showModal();
-    page.image.dispatchEvent(new Event("error"));
-    expect(page.dialog.open).toBe(false);
-    expect(document.querySelector<HTMLElement>("[data-qr-error]")!.hidden).toBe(false);
-    page.fetchMock.mockResolvedValue(orderResponse());
-    document.querySelector<HTMLButtonElement>("[data-checkout-refresh]")!.click();
-    await page.advance(1);
-    expect(page.image.hidden).toBe(true);
-    expect(document.querySelector<HTMLElement>("[data-qr-error]")!.hidden).toBe(false);
-    expect(document.querySelector<HTMLElement>(".checkout-code-actions")!.hidden).toBe(true);
-    expect(document.querySelector<HTMLElement>("[data-payment-guidance]")!.hidden).toBe(true);
-    document.querySelector<HTMLButtonElement>("[data-qr-reload]")!.click();
-    expect(page.image.getAttribute("src")).toContain("retry=");
-    page.image.dispatchEvent(new Event("load"));
-    expect(page.image.hidden).toBe(false);
-    expect(document.querySelector<HTMLElement>("[data-qr-error]")!.hidden).toBe(true);
-    expect(document.querySelector<HTMLElement>(".checkout-code-actions")!.hidden).toBe(false);
-  });
-
+  vi.setSystemTime(epoch);
+  hidden = false;
+  online = true;
+  vi.spyOn(document, "hidden", "get").mockImplementation(() => hidden);
+  vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => response()),
+  );
 });
-
-
-function pngFixture() {
+afterEach(() => {
+  cleanups.splice(0).forEach((dispose) => dispose());
+});
+describe("checkout controller", () => {
+  it.each([429, 503] as const)(
+    "preserves hidden product names when the initial %i page recovers",
+    async (status) => {
+      const { container } = render(
+        createElement(CheckoutApp, {
+          initial: initial({
+            showProductName: false,
+            checkout: null,
+            qrAvailable: false,
+            initialError: {
+              status,
+              code: "temporarily_unavailable",
+              message: "wait",
+              retryAfterSeconds: 1,
+            },
+          }),
+        }),
+      );
+      expect(container.querySelector("[data-qr-image]")).toBeNull();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2500);
+      });
+      expect(fetch).toHaveBeenCalled();
+      expect(container.querySelector("[data-qr-image]")).not.toBeNull();
+      expect(
+        container.querySelector("[data-payable-amount]"),
+      ).toHaveTextContent("¥10.01");
+      expect(container.querySelector("[data-product-name]")).toBeNull();
+      expect(screen.queryByText("测试商品")).not.toBeInTheDocument();
+    },
+  );
+  it("keeps the product name hidden after a public polling response and retains the payment amount", async () => {
+    const { container } = render(
+      createElement(CheckoutApp, {
+        initial: initial({ showProductName: false }),
+      }),
+    );
+    expect(container.querySelector("[data-product-name]")).toBeNull();
+    expect(container.querySelector("[data-brand=alipay]")).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "查询付款状态" }));
+      await vi.advanceTimersByTimeAsync(2500);
+    });
+    expect(fetch).toHaveBeenCalled();
+    expect(container.querySelector("[data-product-name]")).toBeNull();
+    expect(screen.queryByText("测试商品")).not.toBeInTheDocument();
+    expect(container.querySelector("[data-payable-amount]")).toHaveTextContent(
+      "¥10.01",
+    );
+    expect(container.querySelector("footer")).toBeNull();
+  });
+  it("does not extend a payment window while the client bundle loads", () => {
+    vi.advanceTimersByTime(61000);
+    const view = controller();
+    expect(view.getSnapshot().suspended).toBe(true);
+    expect(view.getSnapshot().now).toBeGreaterThanOrEqual(epoch + 61000);
+  });
+  it.each([-86400000, 86400000])(
+    "uses server time despite a client clock offset of %i",
+    (offset) => {
+      vi.setSystemTime(epoch + offset);
+      const view = controller();
+      expect(view.getSnapshot().now).toBe(epoch);
+      expect(view.getSnapshot().suspended).toBe(false);
+    },
+  );
+  it("expires after OS suspension even when the performance clock stops", () => {
+    const view = controller();
+    vi.spyOn(performance, "now").mockReturnValue(0);
+    vi.setSystemTime(epoch + 61000);
+    vi.advanceTimersByTime(1000);
+    expect(view.getSnapshot().suspended).toBe(true);
+  });
+  it("coalesces repeated manual checks into one request", async () => {
+    const pending = pendingFetch();
+    const view = controller();
+    const first = view.refresh(true);
+    await view.refresh(true);
+    await view.refresh();
+    expect(pending.fetch).toHaveBeenCalledOnce();
+    pending.finish(response());
+    await first;
+    expect(view.getSnapshot().feedback).toBe("已检查，暂未确认付款。");
+  });
+  it.each(["offline", "hidden", "pagehide"])(
+    "aborts an active request and rejects its late result on %s",
+    async (event) => {
+      const pending = pendingFetch();
+      const view = controller();
+      const request = view.refresh();
+      const signal = pending.fetch.mock.calls[0]![1]!.signal!;
+      if (event === "offline") {
+        online = false;
+        window.dispatchEvent(new Event("offline"));
+      } else if (event === "hidden") {
+        hidden = true;
+        document.dispatchEvent(new Event("visibilitychange"));
+      } else window.dispatchEvent(new Event("pagehide"));
+      expect(signal.aborted).toBe(true);
+      pending.finish(
+        response({ ...initial().checkout!, product_name: "stale" }),
+      );
+      await request;
+      expect(view.getSnapshot().order?.product_name).toBe("测试商品");
+    },
+  );
+  it("counts time spent in BFCache before showing any payment entry", async () => {
+    pendingFetch();
+    const view = controller();
+    window.dispatchEvent(new Event("pagehide"));
+    await vi.advanceTimersByTimeAsync(61000);
+    window.dispatchEvent(
+      new PageTransitionEvent("pageshow", { persisted: true }),
+    );
+    expect(view.getSnapshot().suspended).toBe(true);
+  });
+  it("retains a retry-after deadline across offline/online transitions", async () => {
+    const fetch = vi.fn(
+      async () =>
+        new Response("", { status: 429, headers: { "retry-after": "10" } }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const view = controller();
+    await view.refresh();
+    online = false;
+    window.dispatchEvent(new Event("offline"));
+    online = true;
+    window.dispatchEvent(new Event("online"));
+    await vi.advanceTimersByTimeAsync(9999);
+    expect(fetch).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+  it.each(["manual", "visibility", "online", "bfcache"] as const)(
+    "keeps a 503 Retry-After deadline across %s refreshes",
+    async (cause) => {
+      const fetch = vi
+        .fn(async () => response())
+        .mockResolvedValueOnce(
+          new Response("", { status: 503, headers: { "retry-after": "10" } }),
+        );
+      vi.stubGlobal("fetch", fetch);
+      const view = controller();
+      await view.refresh();
+      if (cause === "manual") await view.refresh(true);
+      if (cause === "visibility") {
+        hidden = true;
+        document.dispatchEvent(new Event("visibilitychange"));
+        hidden = false;
+        document.dispatchEvent(new Event("visibilitychange"));
+      }
+      if (cause === "online") {
+        online = false;
+        window.dispatchEvent(new Event("offline"));
+        online = true;
+        window.dispatchEvent(new Event("online"));
+      }
+      if (cause === "bfcache") {
+        window.dispatchEvent(new Event("pagehide"));
+        window.dispatchEvent(
+          new PageTransitionEvent("pageshow", { persisted: true }),
+        );
+      }
+      await vi.advanceTimersByTimeAsync(9999);
+      expect(fetch).toHaveBeenCalledOnce();
+      expect(view.getSnapshot()).toMatchObject({
+        visual: "UNAVAILABLE",
+        qrAvailable: false,
+        retryAt: epoch + 10000,
+      });
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(view.getSnapshot()).toMatchObject({
+        visual: "UNPAID",
+        retryAt: 0,
+      });
+    },
+  );
+  it("waits before retrying an initial route-level rate limit", async () => {
+    const fetch = vi.mocked(globalThis.fetch);
+    const view = controller(
+      initial({
+        checkout: null,
+        qrAvailable: false,
+        initialError: {
+          status: 429,
+          code: "limited",
+          message: "wait",
+          retryAfterSeconds: 5,
+        },
+      }),
+    );
+    await view.refresh(true);
+    expect(fetch).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+  it("closes payment on a service failure and only restores it from a fresh server response", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("", { status: 503 }))
+      .mockResolvedValueOnce(response());
+    vi.stubGlobal("fetch", fetch);
+    const view = controller();
+    await view.refresh();
+    expect(view.getSnapshot()).toMatchObject({
+      visual: "UNAVAILABLE",
+      qrAvailable: false,
+    });
+    await view.refresh();
+    expect(view.getSnapshot()).toMatchObject({
+      visual: "UNPAID",
+      qrAvailable: true,
+      suspended: false,
+    });
+  });
+  it("can show a late confirmed payment without reopening payment instructions", async () => {
+    const value = initial();
+    const paid = {
+      ...value.checkout!,
+      payment: {
+        status: "CONFIRMED" as const,
+        basis: "INFERRED" as const,
+        received_amount_cents: 1001,
+      },
+      payment_instructions: null,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => response(paid)),
+    );
+    const view = controller(value);
+    await vi.advanceTimersByTimeAsync(61000);
+    await view.refresh(true);
+    expect(view.getSnapshot()).toMatchObject({
+      visual: "CONFIRMED",
+      order: { payment_instructions: null },
+    });
+  });
+  it.each([false, true])(
+    "makes a final 404 inert across browser events (initial=%s)",
+    async (fromStart) => {
+      const fetch = vi.fn(async () => new Response("", { status: 404 }));
+      vi.stubGlobal("fetch", fetch);
+      const view = controller(
+        fromStart
+          ? initial({
+              checkout: null,
+              apiUrl: "",
+              qrUrl: "",
+              qrAvailable: false,
+              initialError: {
+                status: 404,
+                code: "missing",
+                message: "missing",
+                retryAfterSeconds: null,
+              },
+            })
+          : initial(),
+      );
+      if (!fromStart) await view.refresh();
+      const count = fetch.mock.calls.length;
+      window.dispatchEvent(new Event("offline"));
+      window.dispatchEvent(new Event("online"));
+      window.dispatchEvent(
+        new PageTransitionEvent("pageshow", { persisted: true }),
+      );
+      document.dispatchEvent(new Event("visibilitychange"));
+      await vi.advanceTimersByTimeAsync(120000);
+      await view.refresh(true);
+      expect(fetch).toHaveBeenCalledTimes(count);
+      expect(view.getSnapshot()).toMatchObject({
+        visual: "NOT_FOUND",
+        order: null,
+        qrAvailable: false,
+        message: "",
+      });
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+  it("drops requests after unmount and aborts their signal", async () => {
+    const pending = pendingFetch();
+    const view = createCheckoutController(initial());
+    const dispose = view.start();
+    const request = view.refresh();
+    dispose();
+    expect(pending.fetch.mock.calls[0]![1]!.signal!.aborted).toBe(true);
+    pending.finish(response());
+    await request;
+    expect(view.getSnapshot().busy).toBe(false);
+  });
+  it("rejects malformed currency data and strips all admin-only properties", () => {
+    const order = initial().checkout!;
+    expect(
+      parseCheckoutPayload({
+        data: { ...order, refund_mark: { note: "private" }, note: "private" },
+      }),
+    ).toEqual(order);
+    expect(() =>
+      parseCheckoutPayload({ data: { ...order, requested_amount_cents: 1.5 } }),
+    ).toThrow();
+    expect(checkoutMoney(1)).toBe("¥0.01");
+    expect(checkoutMoney(100000001)).toBe("¥1,000,000.01");
+  });
+  it("parses both forms of Retry-After without unbounded retry loops", () => {
+    expect(retryDelay("5", 1000)).toBe(5000);
+    expect(retryDelay(new Date(epoch + 10000).toUTCString(), 1000, epoch)).toBe(
+      10000,
+    );
+    expect(retryDelay("invalid", 2000)).toBe(2000);
+    expect(retryDelay("99999", 1000)).toBe(60000);
+  });
+});
+function prepareDownload() {
   const callbacks: BlobCallback[] = [];
-  const context = { fillStyle: "", imageSmoothingEnabled: true, fillRect: vi.fn(), drawImage: vi.fn() };
-  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context as unknown as CanvasRenderingContext2D);
-  vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(function (callback, type) { expect(type).toBe("image/png"); callbacks.push(callback); });
-  const createObjectURL = vi.fn(() => "blob:http://localhost:6190/png-test");
-  const revokeObjectURL = vi.fn();
-  const BaseURL = URL;
-  vi.stubGlobal("URL", class extends BaseURL { static createObjectURL = createObjectURL; static revokeObjectURL = revokeObjectURL; });
-  const downloads: Array<{ href: string; name: string }> = [];
-  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) { downloads.push({ href: this.href, name: this.download }); });
-  const page = mount();
-  Object.defineProperty(page.image, "complete", { configurable: true, value: true });
-  Object.defineProperty(page.image, "naturalWidth", { configurable: true, value: 328 });
-  Object.defineProperty(page.image, "currentSrc", { configurable: true, value: "http://localhost:6190" + qrPath });
-  return { ...page, callbacks, context, downloads, createObjectURL, revokeObjectURL };
+  const context = {
+    imageSmoothingEnabled: true,
+    fillStyle: "",
+    fillRect: vi.fn(),
+    drawImage: vi.fn(),
+  };
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(
+    context as unknown as CanvasRenderingContext2D,
+  );
+  vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(
+    (callback) => {
+      callbacks.push(callback);
+    },
+  );
+  const create = vi.fn(() => "blob:" + location.origin + "/synthetic"),
+    revoke = vi.fn();
+  const ActualURL = globalThis.URL;
+  vi.stubGlobal(
+    "URL",
+    class extends ActualURL {
+      static createObjectURL = create;
+      static revokeObjectURL = revoke;
+    },
+  );
+  const click = vi
+    .spyOn(HTMLAnchorElement.prototype, "click")
+    .mockImplementation(() => {});
+  const view = render(createElement(CheckoutApp, { initial: initial() }));
+  const image = screen.getByAltText("用于支付此订单的支付宝付款二维码");
+  Object.defineProperties(image, {
+    complete: { configurable: true, value: true },
+    naturalWidth: { configurable: true, value: 256 },
+  });
+  return { ...view, callbacks, context, create, revoke, click, image };
 }
-
-describe("checkout PNG downloads", () => {
-  it("exports the currently displayed same-origin code as a white-backed PNG without another request", () => {
-    const page = pngFixture(); page.download.click();
-    expect(page.download).toBeDisabled(); expect(page.callbacks).toHaveLength(1);
-    page.callbacks[0]!(new Blob(["synthetic-png"], { type: "image/png" }));
-    expect(page.context.fillRect).toHaveBeenCalledWith(0, 0, 984, 984);
-    expect(page.context.drawImage).toHaveBeenCalledWith(page.image, 0, 0, 984, 984);
-    expect(page.context.imageSmoothingEnabled).toBe(false);
-    expect(page.downloads).toEqual([{ href: "blob:http://localhost:6190/png-test", name: "perpay-collection-code.png" }]);
-    expect(page.download).not.toBeDisabled(); expect(page.fetchMock).not.toHaveBeenCalled();
-    expect(document.querySelector("[data-qr-download-status]")).toHaveTextContent("已发起 PNG 下载");
-    page.unload(); expect(page.revokeObjectURL).toHaveBeenCalledWith("blob:http://localhost:6190/png-test");
+describe("checkout shadcn view and PNG lifecycle", () => {
+  it("exports the displayed same-origin QR as a white-backed PNG without another request", () => {
+    const view = prepareDownload();
+    fireEvent.click(screen.getByRole("button", { name: "保存二维码" }));
+    expect(view.context.fillStyle).toBe("#ffffff");
+    expect(view.context.fillRect).toHaveBeenCalledWith(0, 0, 1024, 1024);
+    expect(view.context.imageSmoothingEnabled).toBe(false);
+    expect(view.context.drawImage).toHaveBeenCalledWith(
+      view.image,
+      0,
+      0,
+      1024,
+      1024,
+    );
+    act(() => view.callbacks[0]!(new Blob(["png"], { type: "image/png" })));
+    expect(view.create).toHaveBeenCalledOnce();
+    expect(view.click).toHaveBeenCalledOnce();
+    expect(fetch).not.toHaveBeenCalled();
   });
-  it.each(["expiry", "hidden", "unload", "confirmed"])("drops a late PNG result after %s", async (ending) => {
-    const page = pngFixture(); page.download.click();
-    if (ending === "expiry") { page.offline(); await page.advance(3_000); }
-    if (ending === "hidden") page.hide();
-    if (ending === "unload") page.unload();
-    if (ending === "confirmed") { page.confirm("CONFIRMED"); document.querySelector<HTMLButtonElement>("[data-checkout-refresh]")!.click(); await page.advance(20); expect(document.querySelector("[data-status-heading]")).toHaveTextContent("付款已确认"); }
-    page.callbacks[0]!(new Blob(["synthetic-png"], { type: "image/png" }));
-    expect(page.downloads).toHaveLength(0); expect(page.createObjectURL).not.toHaveBeenCalled();
-    expect(page.download).toBeDisabled();
+  it.each(["hidden", "pagehide", "expired", "unmount"])(
+    "discards a late PNG result after %s",
+    async (cause) => {
+      const view = prepareDownload();
+      fireEvent.click(screen.getByRole("button", { name: "保存二维码" }));
+      if (cause === "hidden") {
+        hidden = true;
+        act(() => document.dispatchEvent(new Event("visibilitychange")));
+      } else if (cause === "pagehide")
+        act(() => window.dispatchEvent(new Event("pagehide")));
+      else if (cause === "unmount") view.unmount();
+      else {
+        vi.stubGlobal(
+          "fetch",
+          vi.fn(() => new Promise<Response>(() => {})),
+        );
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(61000);
+        });
+        expect(
+          screen.queryByAltText("用于支付此订单的支付宝付款二维码"),
+        ).not.toBeInTheDocument();
+      }
+      act(() => view.callbacks[0]!(new Blob(["png"], { type: "image/png" })));
+      expect(view.create).not.toHaveBeenCalled();
+      expect(view.click).not.toHaveBeenCalled();
+    },
+  );
+  it("keeps a failed QR visible across polling until the user retries its image", async () => {
+    const view = prepareDownload();
+    fireEvent.error(view.image);
+    expect(screen.getByText("二维码加载失败")).toBeVisible();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(screen.getByText("二维码加载失败")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "重新加载二维码" }));
+    expect(view.image.getAttribute("src")).toContain("retry=");
   });
-  it("keeps the QR visible and allows retry when PNG conversion fails", () => {
-    const page = pngFixture(); page.download.click(); page.callbacks[0]!(null);
-    expect(page.panel.hidden).toBe(false); expect(page.image).toHaveAttribute("src");
-    expect(page.download).not.toBeDisabled(); expect(document.querySelector("[data-qr-download-status]")).toHaveTextContent("无法生成 PNG");
-    page.download.click(); page.callbacks[1]!(new Blob(["synthetic-png"], { type: "image/png" })); expect(page.downloads).toHaveLength(1);
+  it("lets the user retry a PNG conversion without hiding the QR", () => {
+    const view = prepareDownload();
+    fireEvent.click(screen.getByRole("button", { name: "保存二维码" }));
+    act(() => view.callbacks[0]!(null));
+    expect(screen.getByText(/无法生成 PNG/)).toBeVisible();
+    expect(view.image).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "保存二维码" }));
+    expect(view.callbacks).toHaveLength(2);
   });
-  it("prevents duplicate conversion and revokes an existing blob when hidden", () => {
-    const page = pngFixture(); page.download.click(); page.download.click(); expect(page.callbacks).toHaveLength(1);
-    page.callbacks[0]!(new Blob(["synthetic-png"], { type: "image/png" })); page.hide();
-    expect(page.revokeObjectURL).toHaveBeenCalledTimes(1);
-    expect(document.querySelector<HTMLElement>("[data-qr-download-status]")!.hidden).toBe(true);
+  it("prevents duplicate conversions and revokes an existing object URL when hidden", () => {
+    const view = prepareDownload();
+    const button = screen.getByRole("button", { name: "保存二维码" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(view.callbacks).toHaveLength(1);
+    act(() => view.callbacks[0]!(new Blob(["png"], { type: "image/png" })));
+    hidden = true;
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    expect(view.revoke).toHaveBeenCalledExactlyOnceWith(
+      "blob:" + location.origin + "/synthetic",
+    );
+  });
+  it("updates main and expanded amounts from the same public response", async () => {
+    prepareDownload();
+    fireEvent.click(screen.getByRole("button", { name: "放大二维码" }));
+    expect(
+      screen.getByRole("dialog", { name: "支付宝付款二维码" }),
+    ).toHaveTextContent("¥10.01");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        response({
+          ...initial().checkout!,
+          payment_instructions: { payable_amount_cents: 1002, currency: "CNY" },
+        }),
+      ),
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(screen.getByRole("dialog")).toHaveTextContent("¥10.02");
+    expect(document.querySelector("[data-payable-amount]")).toHaveTextContent(
+      "¥10.02",
+    );
   });
 });

@@ -1,126 +1,300 @@
-import { Component, useEffect, useRef, type ReactNode } from "react";
+import {
+  Component,
+  useEffect,
+  type ReactNode,
+  type CSSProperties,
+} from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Activity, ArrowUpRight, Bell, ClipboardList, LayoutDashboard, ListChecks, LogOut, ScanLine, Settings2, WalletCards, Menu, X } from "lucide-react";
-import { createRoutesFromElements, Navigate, Outlet, Route, useLocation } from "react-router";
-
-import { api, result } from "./api/client";
-import { AuthBoundary, useSession } from "./auth";
-import { Button, EmptyState, ErrorNotice, Loading, PageHeading } from "./components/ui";
-import { RouteTransition } from "./components/RouteTransition";
-import { SelectionIndicator } from "./components/SelectionIndicator";
-import { DraftProvider, useDraftGuard } from "./drafts";
-import { Link, NavLink, NavigationContext, useNavigate } from "./navigation";
-import { ThemeControl } from "./theme";
-import { OfficialUpdateNotice } from "./updates";
-import { deferOnboarding, deferredInstance } from "./lib/onboarding";
-
-const navigation = [
-  { to: "/", label: "收款概览", icon: LayoutDashboard },
-  { to: "/orders", label: "订单", icon: ClipboardList },
-  { to: "/work-items", label: "待处理", icon: ListChecks },
-  { to: "/reconciliation", label: "账本与对账", icon: WalletCards },
-  { to: "/notifications", label: "业务通知", icon: Bell },
-  { to: "/settings", label: "实例设置", icon: Settings2 },
-  { to: "/system", label: "运行状态", icon: Activity },
-];
+import { ScanLine } from "lucide-react";
+import {
+  createRoutesFromElements,
+  Navigate,
+  Outlet,
+  Route,
+  useLocation,
+} from "react-router";
+import { api, result } from "@/api/client";
+import { AuthBoundary, useSession } from "@/auth";
+import { DraftProvider, useDraftGuard } from "@/drafts";
+import { Link, NavigationContext, useNavigate } from "@/navigation";
+import { OfficialUpdateNotice } from "@/updates";
+import { deferOnboarding, deferredInstance } from "@/lib/onboarding";
+import { cn } from "@/lib/utils";
+import { AppSidebar, navigation } from "@/components/app-sidebar";
+import { SiteHeader } from "@/components/site-header";
+import { ErrorNotice, Loading } from "@/components/request-state";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyContent,
+} from "@/components/ui/empty";
+import {
+  SidebarProvider,
+  SidebarInset,
+  useSidebar,
+} from "@/components/ui/sidebar";
 
 function AppShell() {
+  return (
+    <SidebarProvider
+      style={
+        {
+          "--sidebar-width": "calc(var(--spacing) * 72)",
+          "--header-height": "calc(var(--spacing) * 12)",
+        } as CSSProperties
+      }
+    >
+      <Workspace />
+    </SidebarProvider>
+  );
+}
+function Workspace() {
+  const { setOpenMobile, toggleSidebar } = useSidebar();
   const session = useSession();
   const location = useLocation();
   const navigate = useNavigate();
+  const { requestDiscard } = useDraftGuard();
+  const logout = useMutation({
+    mutationFn: () => result(api.logoutAdministratorSession({ body: {} })),
+    onSuccess: session.forget,
+  });
   useEffect(() => {
     const instance = deferredInstance(location.state);
     if (instance) {
       deferOnboarding(instance);
       const state = { ...location.state };
       delete state.deferOnboardingFor;
-      void navigate({ pathname: location.pathname, search: location.search, hash: location.hash }, { replace: true, state });
+      void navigate(
+        {
+          pathname: location.pathname,
+          search: location.search,
+          hash: location.hash,
+        },
+        { replace: true, state },
+      );
     }
-  }, [location.key, location.state, location.pathname, location.search, location.hash, navigate]);
-  const mobileNavigation = useRef<HTMLDialogElement>(null);
-  const navigationTrigger = useRef<HTMLElement | null>(null);
-  const { requestDiscard } = useDraftGuard();
-  const logout = useMutation({ mutationFn: () => result(api.logoutAdministratorSession({ body: {} })), onSuccess: session.forget });
-  function closeNavigation() {
-    mobileNavigation.current?.close();
-    navigationTrigger.current?.focus({ preventScroll: true });
-  }
-  useEffect(() => { mobileNavigation.current?.close(); }, [location.key]);
+  }, [
+    location.key,
+    location.state,
+    location.pathname,
+    location.search,
+    location.hash,
+    navigate,
+  ]);
   useEffect(() => {
-    const desktop = window.matchMedia("(min-width: 851px)");
-    const closeOnDesktop = () => { if (desktop.matches) mobileNavigation.current?.close(); };
-    desktop.addEventListener("change", closeOnDesktop);
-    return () => desktop.removeEventListener("change", closeOnDesktop);
-  }, []);
-  const renderNavigation = () => <>
-    <Link className="brand" to="/" onClick={closeNavigation}><span>PerPay</span><span className="brand-tag">控制台</span></Link>
-    <nav className="main-nav" aria-label="主导航"><SelectionIndicator active={location.pathname} />{navigation.map((item, index) => <div key={item.to}>
-      {index === 5 && <span className="nav-section">实例管理</span>}
-      <NavLink to={item.to} end={item.to === "/"} className={({ isActive }) => `nav-link ${isActive ? "is-active" : ""}`} onClick={closeNavigation}><item.icon size={19} strokeWidth={1.7} aria-hidden="true" /><span>{item.label}</span></NavLink>
-    </div>)}</nav>
-    <div className="sidebar-controls" role="group" aria-label="外观与账户操作"><ThemeControl /><Button className="sidebar-logout icon-button" variant="quiet" aria-label="退出登录" title="退出登录" pending={logout.isPending} onClick={() => {
-        closeNavigation();
-        requestDiscard(() => logout.mutate());
-      }}>{!logout.isPending && <LogOut size={18} aria-hidden="true" />}</Button></div>
-  </>;
-
-  function openMobileNavigation() {
-    navigationTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    mobileNavigation.current?.showModal();
-  }
-  return <NavigationContext value={openMobileNavigation}><div className="app-shell">
-    <a className="skip-link" href="#main-content">跳转到主要内容</a>
-    <aside className="sidebar">{renderNavigation()}</aside>
-    <dialog className="mobile-navigation" ref={mobileNavigation} aria-label="导航菜单" onCancel={(event) => { event.preventDefault(); closeNavigation(); }} onClick={(event) => {
-      if (event.target !== event.currentTarget) return;
-      const bounds = event.currentTarget.getBoundingClientRect();
-      if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) closeNavigation();
-    }}>
-      <Button className="mobile-navigation-close icon-button" aria-label="关闭导航" onClick={closeNavigation}><X size={20} aria-hidden="true" /></Button>{renderNavigation()}
-    </dialog>
-    <div className="workspace">
-    <header className="mobile-app-bar"><Button variant="quiet" className="icon-button" aria-label="打开导航" onClick={openMobileNavigation}><Menu size={20} /></Button><Link to="/" className="mobile-brand">PerPay</Link></header>
-    <main id="main-content" className="main-content" tabIndex={-1}>
-      <ErrorNotice error={logout.error} />
-      <ErrorNotice error={session.error} retry={session.retry} />
-      <OfficialUpdateNotice hidden={location.pathname === "/system"} />
-      <RouteTransition><Outlet /></RouteTransition>
-    </main>
-    </div>
-  </div></NavigationContext>;
+    setOpenMobile(false);
+  }, [location.key, setOpenMobile]);
+  const current = [...navigation]
+    .reverse()
+    .find((item) =>
+      item.url === "/"
+        ? location.pathname === "/"
+        : location.pathname.startsWith(item.url),
+    );
+  const title =
+    location.pathname === "/test-payment"
+      ? "测试收款"
+      : location.pathname.startsWith("/settings/onboarding")
+        ? "配置向导"
+        : (current?.title ?? "PerPay");
+  const overview = location.pathname === "/";
+  useEffect(() => {
+    document.title = title + " · PerPay";
+  }, [title]);
+  return (
+    <NavigationContext value={toggleSidebar}>
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:p-4"
+      >
+        跳转到主要内容
+      </a>
+      <AppSidebar
+        variant="inset"
+        pathname={location.pathname}
+        username={session.username}
+        logoutPending={logout.isPending}
+        onLogout={() => requestDiscard(() => logout.mutate())}
+      />
+      <SidebarInset className="min-w-0">
+        <SiteHeader title={title} overview={overview} />
+        <div
+          id="main-content"
+          tabIndex={-1}
+          className="@container/main flex min-w-0 flex-1 flex-col gap-2 outline-none"
+        >
+          <div
+            className={cn(
+              "flex min-w-0 flex-col gap-4 py-4 md:gap-6 md:py-6",
+              !overview && "px-4 lg:px-6",
+            )}
+          >
+            {(logout.error || session.error) && (
+              <div
+                className={cn(
+                  "flex flex-col gap-4",
+                  overview && "px-4 lg:px-6",
+                )}
+              >
+                <ErrorNotice error={logout.error} />
+                <ErrorNotice error={session.error} retry={session.retry} />
+              </div>
+            )}
+            <OfficialUpdateNotice
+              hidden={location.pathname === "/system"}
+              className={overview ? "mx-4 w-auto lg:mx-6" : undefined}
+            />
+            <Outlet />
+          </div>
+        </div>
+      </SidebarInset>
+    </NavigationContext>
+  );
 }
-
 export function TestPaymentLink() {
-  return <Link className="button" to="/test-payment"><ScanLine size={17} />测试收款<ArrowUpRight size={15} /></Link>;
+  return (
+    <Link to="/test-payment" className={buttonVariants({ variant: "outline" })}>
+      <ScanLine data-icon="inline-start" />
+      测试收款
+    </Link>
+  );
 }
-
-export const appRoutes = createRoutesFromElements(<Route errorElement={<AppFailure />} hydrateFallbackElement={<Loading label="正在打开页面…" />} element={<AuthBoundary><DraftProvider><AppShell /></DraftProvider></AuthBoundary>}>
-    <Route index lazy={async () => ({ Component: (await import("./pages/Dashboard")).default })} />
-    <Route path="orders" lazy={async () => ({ Component: (await import("./pages/Orders")).default })} />
-    <Route path="orders/:orderId" lazy={async () => ({ Component: (await import("./pages/Orders")).OrderDetail })} />
-    <Route path="work-items" lazy={async () => ({ Component: (await import("./pages/WorkItems")).default })} />
-    <Route path="reconciliation" lazy={async () => ({ Component: (await import("./pages/Reconciliation")).default })} />
-    <Route path="reconciliation/:kind/:resourceId" lazy={async () => ({ Component: (await import("./pages/ReconciliationDetail")).default })} />
-    <Route path="notifications" lazy={async () => ({ Component: (await import("./pages/Notifications")).default })} />
-    <Route path="notifications/:deliveryId" lazy={async () => ({ Component: (await import("./pages/Notifications")).NotificationDetail })} />
-    <Route path="settings/onboarding/:step?" lazy={async () => ({ Component: (await import("./pages/Onboarding")).default })} />
-    <Route path="settings/:section?" lazy={async () => ({ Component: (await import("./pages/Settings")).default })} />
-    <Route path="system" lazy={async () => ({ Component: (await import("./pages/System")).default })} />
-    <Route path="test-payment" lazy={async () => ({ Component: (await import("./pages/TestPayment")).default })} />
+export const appRoutes = createRoutesFromElements(
+  <Route
+    errorElement={<AppFailure />}
+    hydrateFallbackElement={<Loading label="正在打开页面…" />}
+    element={
+      <AuthBoundary>
+        <DraftProvider>
+          <AppShell />
+        </DraftProvider>
+      </AuthBoundary>
+    }
+  >
+    <Route
+      index
+      lazy={async () => ({
+        Component: (await import("./pages/Dashboard")).default,
+      })}
+    />
+    <Route
+      path="orders"
+      lazy={async () => ({
+        Component: (await import("./pages/Orders")).default,
+      })}
+    />
+    <Route
+      path="orders/:orderId"
+      lazy={async () => ({
+        Component: (await import("./pages/Orders")).OrderDetail,
+      })}
+    />
+    <Route
+      path="work-items"
+      lazy={async () => ({
+        Component: (await import("./pages/WorkItems")).default,
+      })}
+    />
+    <Route
+      path="reconciliation"
+      lazy={async () => ({
+        Component: (await import("./pages/Reconciliation")).default,
+      })}
+    />
+    <Route
+      path="reconciliation/:kind/:resourceId"
+      lazy={async () => ({
+        Component: (await import("./pages/ReconciliationDetail")).default,
+      })}
+    />
+    <Route
+      path="notifications"
+      lazy={async () => ({
+        Component: (await import("./pages/Notifications")).default,
+      })}
+    />
+    <Route
+      path="notifications/:deliveryId"
+      lazy={async () => ({
+        Component: (await import("./pages/Notifications")).NotificationDetail,
+      })}
+    />
+    <Route
+      path="settings/onboarding/:step?"
+      lazy={async () => ({
+        Component: (await import("./pages/Onboarding")).default,
+      })}
+    />
+    <Route
+      path="settings/:section?"
+      lazy={async () => ({
+        Component: (await import("./pages/Settings")).default,
+      })}
+    />
+    <Route
+      path="system"
+      lazy={async () => ({
+        Component: (await import("./pages/System")).default,
+      })}
+    />
+    <Route
+      path="test-payment"
+      lazy={async () => ({
+        Component: (await import("./pages/TestPayment")).default,
+      })}
+    />
     <Route path="login" element={<Navigate to="/" replace />} />
     <Route path="setup" element={<Navigate to="/settings" replace />} />
-    <Route path="*" element={<><PageHeading title="找不到这个页面" /><EmptyState headingLevel={2} title="地址可能已变更"><Link to="/" className="button button--primary">返回收款概览</Link></EmptyState></>} />
-  </Route>);
+    <Route
+      path="*"
+      element={
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle role="heading" aria-level={2}>
+              找不到这个页面
+            </EmptyTitle>
+            <EmptyDescription>地址可能已变更。</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Link to="/" className={buttonVariants()}>
+              返回收款概览
+            </Link>
+          </EmptyContent>
+        </Empty>
+      }
+    />
+  </Route>,
+);
 
 function AppFailure() {
-  return <main className="auth-loading"><EmptyState title="页面未能正常加载" description="请重新加载页面；未提交的内容将不会保存。"><Button variant="primary" onClick={() => window.location.reload()}>重新加载页面</Button></EmptyState></main>;
+  return (
+    <main className="flex min-h-svh items-center justify-center p-6">
+      <Empty>
+        <EmptyHeader>
+          <EmptyTitle role="heading" aria-level={2}>
+            页面未能正常加载
+          </EmptyTitle>
+          <EmptyDescription>重新加载会丢失未保存内容。</EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Button onClick={() => window.location.reload()}>重新加载页面</Button>
+        </EmptyContent>
+      </Empty>
+    </main>
+  );
 }
-
-export class AppErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+export class AppErrorBoundary extends Component<
+  { children: ReactNode },
+  { failed: boolean }
+> {
   override state = { failed: false };
-  static getDerivedStateFromError() { return { failed: true }; }
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
   override render() {
-    if (this.state.failed) return <AppFailure />;
-    return this.props.children;
+    return this.state.failed ? <AppFailure /> : this.props.children;
   }
 }

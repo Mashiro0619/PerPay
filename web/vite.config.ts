@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
@@ -9,7 +10,8 @@ const backend = process.env.PERPAY_DEV_API_URL ?? "http://localhost:6190";
 export default defineConfig({
   root,
   base: "/admin/",
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
+  resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   build: {
     outDir: "../web-dist/admin",
     emptyOutDir: true,
@@ -27,7 +29,10 @@ export default defineConfig({
         configure(proxy) {
           proxy.on("proxyReq", (proxyRequest, request) => {
             const origin = request.headers.origin;
-            if (origin === "http://127.0.0.1:6191" || origin === "http://localhost:6191") {
+            if (
+              origin === "http://127.0.0.1:6191" ||
+              origin === "http://localhost:6191"
+            ) {
               proxyRequest.setHeader("origin", new URL(backend).origin);
             }
           });
@@ -35,6 +40,7 @@ export default defineConfig({
       },
       "/checkout": { target: backend, changeOrigin: true },
       "/assets/app": { target: backend, changeOrigin: true },
+      "/assets/checkout": { target: backend, changeOrigin: true },
     },
   },
   test: {
@@ -43,5 +49,7 @@ export default defineConfig({
     include: ["test/**/*.test.{ts,tsx}"],
     clearMocks: true,
     restoreMocks: true,
+    maxWorkers: 4,
+    testTimeout: 15000,
   },
 });

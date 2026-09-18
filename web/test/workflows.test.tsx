@@ -11,10 +11,22 @@ import { ReasonDialog } from "../src/components/ReasonDialog";
 import { FinancialDialog } from "../src/pages/FinancialDialog";
 import { SecuritySettings } from "../src/pages/SecuritySettings";
 import Settings from "../src/pages/Settings";
-import { apiError, json, ledger, ledgerId, order, orderId, settings } from "./fixtures";
+import {
+  apiError,
+  json,
+  ledger,
+  ledgerId,
+  order,
+  orderId,
+  settings,
+} from "./fixtures";
 
 function renderPage(children: ReactNode, path = "/") {
-  return render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={[path]}>{children}</MemoryRouter></QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[path]}>{children}</MemoryRouter>
+    </QueryClientProvider>,
+  );
 }
 
 function initialization(value: string) {
@@ -25,168 +37,292 @@ function initialization(value: string) {
 }
 
 describe("administrator authentication", () => {
-  it.each(["aB3!xY", "🔐".repeat(6)])("accepts six-character setup password %s and asks for a separate login", async (password) => {
-    initialization("false");
-    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
-    vi.stubGlobal("fetch", fetchMock);
-    const onLogin = vi.fn();
-    const user = userEvent.setup();
-    renderPage(<AuthPage onLogin={onLogin} />, "/setup");
-    expect(screen.getByText("设置此实例的管理员密码。")).toBeVisible();
-    expect(screen.getByText("至少 6 个字符。")).toBeVisible();
-    await user.type(screen.getByLabelText(/设置管理员密码/), "short");
-    await user.type(screen.getByLabelText("再次输入密码"), "short");
-    await user.click(screen.getByRole("button", { name: "创建管理员" }));
-    expect(await screen.findByText("密码至少需要 6 个字符。")).toBeVisible();
-    expect(fetchMock).not.toHaveBeenCalled();
-    await user.clear(screen.getByLabelText(/设置管理员密码/));
-    await user.clear(screen.getByLabelText("再次输入密码"));
-    await user.type(screen.getByLabelText(/设置管理员密码/), password);
-    await user.type(screen.getByLabelText("再次输入密码"), password);
-    await user.click(screen.getByRole("button", { name: "创建管理员" }));
-    expect(await screen.findByRole("heading", { name: "登录管理后台" })).toBeVisible();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(onLogin).not.toHaveBeenCalled();
-  });
+  it.each(["aB3!xY", "🔐".repeat(6)])(
+    "accepts six-character setup password %s and asks for a separate login",
+    async (password) => {
+      initialization("false");
+      const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+      vi.stubGlobal("fetch", fetchMock);
+      const onLogin = vi.fn();
+      const user = userEvent.setup();
+      renderPage(<AuthPage onLogin={onLogin} />, "/setup");
+      expect(
+        screen.queryByText("设置此实例的管理员密码。"),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText("至少 6 个字符。")).toBeVisible();
+      await user.type(screen.getByLabelText(/设置管理员密码/), "short");
+      await user.type(screen.getByLabelText("再次输入密码"), "short");
+      await user.click(screen.getByRole("button", { name: "创建管理员" }));
+      expect(await screen.findByText("密码至少需要 6 个字符。")).toBeVisible();
+      expect(fetchMock).not.toHaveBeenCalled();
+      await user.clear(screen.getByLabelText(/设置管理员密码/));
+      await user.clear(screen.getByLabelText("再次输入密码"));
+      await user.type(screen.getByLabelText(/设置管理员密码/), password);
+      await user.type(screen.getByLabelText("再次输入密码"), password);
+      await user.click(screen.getByRole("button", { name: "创建管理员" }));
+      expect(
+        await screen.findByRole("heading", { name: "登录管理后台" }),
+      ).toBeVisible();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(onLogin).not.toHaveBeenCalled();
+    },
+  );
 
   it("does not expose a setup form after initialization", () => {
     initialization("true");
     renderPage(<AuthPage onLogin={vi.fn()} />, "/setup");
     expect(screen.getByRole("heading", { name: "登录管理后台" })).toBeVisible();
-    expect(screen.queryByRole("button", { name: "创建管理员" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "创建管理员" }),
+    ).not.toBeInTheDocument();
   });
 
-  it.each(["aB3!xY", "🔐".repeat(6)])("validates a six-character replacement password %s before saving", async (password) => {
-    const fetchMock = vi.fn(async (_request: Request) => new Response(null, { status: 204 }));
+  it("associates a mismatched password confirmation with its official field error", async () => {
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     renderPage(<SecuritySettings settings={settings} onSaved={vi.fn()} />);
-    const field = screen.getByLabelText("新密码");
+    const password = screen.getByLabelText("新密码");
     const confirmation = screen.getByLabelText("再次输入新密码");
-    const short = Array.from(password).slice(0, 5).join("");
-    expect(field).toHaveAccessibleDescription("至少 6 个字符。");
-    fireEvent.change(field, { target: { value: short } });
-    fireEvent.change(confirmation, { target: { value: short } });
+    fireEvent.change(password, { target: { value: "test-password-one" } });
+    fireEvent.change(confirmation, { target: { value: "test-password-two" } });
     const user = userEvent.setup();
-    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "修改并重新登录" }));
-    expect(screen.getByText("密码至少需要 6 个字符。")).toBeVisible();
+    expect(confirmation).toHaveFocus();
+    expect(confirmation).toHaveAttribute("aria-invalid", "true");
+    expect(confirmation).toHaveAccessibleDescription("两次输入的密码不一致。");
     expect(fetchMock).not.toHaveBeenCalled();
-    fireEvent.change(field, { target: { value: password } });
-    fireEvent.change(confirmation, { target: { value: password } });
-    await user.click(screen.getByRole("button", { name: "修改并重新登录" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
-    const request = fetchMock.mock.calls[0]![0];
-    expect(new URL(request.url).pathname).toBe("/api/admin/v1/password");
-    expect(await request.clone().json()).toEqual({ new_password: password });
-    await waitFor(() => expect(field).toHaveValue(""));
+    fireEvent.change(confirmation, { target: { value: "test-password-one" } });
+    expect(confirmation).not.toHaveAttribute("aria-describedby");
+    expect(
+      screen.queryByText("两次输入的密码不一致。"),
+    ).not.toBeInTheDocument();
   });
 
-  it.each(["login", "setup"])("uses a text-only brand while preserving authentication controls on %s", (page) => {
-    initialization(page === "setup" ? "false" : "true");
-    const { container } = renderPage(<AuthPage onLogin={vi.fn()} />, "/" + page);
-    const brand = screen.getByRole("link", { name: "PerPay" });
-    expect(brand).toHaveAttribute("href", "/");
-    expect(brand.querySelector("img, svg")).toBeNull();
-    expect(screen.queryByRole("heading", { name: /每一笔收款/ })).not.toBeInTheDocument();
-    expect(container.querySelector(".auth-statement")).toBeNull();
-    expect(screen.getByRole("button", { name: "显示密码" }).querySelector("svg")).not.toBeNull();
-  });
+  it.each(["aB3!xY", "🔐".repeat(6)])(
+    "validates a six-character replacement password %s before saving",
+    async (password) => {
+      const fetchMock = vi.fn(
+        async (_request: Request) => new Response(null, { status: 204 }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      renderPage(<SecuritySettings settings={settings} onSaved={vi.fn()} />);
+      const field = screen.getByLabelText("新密码");
+      const confirmation = screen.getByLabelText("再次输入新密码");
+      const short = Array.from(password).slice(0, 5).join("");
+      expect(field).toHaveAccessibleDescription("至少 6 个字符。");
+      fireEvent.change(field, { target: { value: short } });
+      fireEvent.change(confirmation, { target: { value: short } });
+      const user = userEvent.setup();
+      expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "修改并重新登录" }));
+      expect(screen.getByText("密码至少需要 6 个字符。")).toBeVisible();
+      expect(fetchMock).not.toHaveBeenCalled();
+      fireEvent.change(field, { target: { value: password } });
+      fireEvent.change(confirmation, { target: { value: password } });
+      await user.click(screen.getByRole("button", { name: "修改并重新登录" }));
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+      const request = fetchMock.mock.calls[0]![0];
+      expect(new URL(request.url).pathname).toBe("/api/admin/v1/password");
+      expect(await request.clone().json()).toEqual({ new_password: password });
+      await waitFor(() => expect(field).toHaveValue(""));
+    },
+  );
+
+  it.each(["login", "setup"])(
+    "uses a text-only brand while preserving authentication controls on %s",
+    (page) => {
+      initialization(page === "setup" ? "false" : "true");
+      const { container } = renderPage(
+        <AuthPage onLogin={vi.fn()} />,
+        "/" + page,
+      );
+      const brand = screen.getByRole("link", { name: "PerPay" });
+      expect(brand).toHaveAttribute("href", "/");
+      expect(brand.querySelector("img")).toBeNull();
+      expect(
+        screen.queryByRole("heading", { name: /每一笔收款/ }),
+      ).not.toBeInTheDocument();
+      expect(container.querySelector(".auth-statement")).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "显示密码" }).querySelector("svg"),
+      ).not.toBeNull();
+    },
+  );
 
   it("keeps login labels without redundant decorations or implementation notes", () => {
     initialization("true");
     const { container } = renderPage(<AuthPage onLogin={vi.fn()} />, "/login");
     expect(screen.getByRole("heading", { name: "登录管理后台" })).toBeVisible();
-    expect(screen.queryByRole("heading", { name: /每一笔收款/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: /每一笔收款/ }),
+    ).not.toBeInTheDocument();
     expect(screen.getByLabelText("管理员密码")).toBeRequired();
     expect(screen.queryByText("为个人开发者而建")).not.toBeInTheDocument();
-    expect(screen.queryByText("密码不会保存在浏览器中")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("密码不会保存在浏览器中"),
+    ).not.toBeInTheDocument();
     expect(container.querySelector(".auth-emblem")).toBeNull();
     expect(container.querySelector(".auth-process")).toBeNull();
-    expect(screen.queryByText(/经营码收款，账本自动核对/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/经营码收款，账本自动核对/),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("你的实例，你的数据。")).not.toBeInTheDocument();
-    expect(screen.queryByText("使用管理员密码，查看收款与实例状态。")).not.toBeInTheDocument();
-    expect(screen.queryByText("此实例只有一个管理员账户，无需输入用户名。")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("使用管理员密码，查看收款与实例状态。"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("此实例只有一个管理员账户，无需输入用户名。"),
+    ).not.toBeInTheDocument();
   });
 
-  it.each([false, true])("sends the explicit keep-signed-in choice without storing a password (%s)", async (remember) => {
-    initialization("true");
-    const fetchMock = vi.fn(async (_request: Request) => apiError("invalid_credentials", "管理员密码错误", 401));
-    vi.stubGlobal("fetch", fetchMock);
-    const user = userEvent.setup();
-    renderPage(<AuthPage onLogin={vi.fn()} />, "/login");
-    const checkbox = screen.getByRole("checkbox", { name: "在此设备保持登录 30 天" });
-    expect(checkbox).not.toBeChecked();
-    if (remember) await user.click(checkbox);
-    await user.type(screen.getByLabelText("管理员密码"), "remember-choice-test-password");
-    await user.click(screen.getByRole("button", { name: "登录" }));
-    await screen.findByText("管理员密码错误");
-    expect(await fetchMock.mock.calls[0]![0].json()).toEqual(remember
-      ? { password: "remember-choice-test-password", remember_me: true }
-      : { password: "remember-choice-test-password" });
-    expect(Object.values(localStorage)).not.toContain("remember-choice-test-password");
-    expect(Object.values(sessionStorage)).not.toContain("remember-choice-test-password");
-    expect(checkbox).toHaveProperty("checked", remember);
-  });
+  it.each([false, true])(
+    "sends the explicit keep-signed-in choice without storing a password (%s)",
+    async (remember) => {
+      initialization("true");
+      const fetchMock = vi.fn(async (_request: Request) =>
+        apiError("invalid_credentials", "管理员密码错误", 401),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      const user = userEvent.setup();
+      renderPage(<AuthPage onLogin={vi.fn()} />, "/login");
+      const checkbox = screen.getByRole("checkbox", {
+        name: "在此设备保持登录 30 天",
+      });
+      expect(checkbox).not.toBeChecked();
+      if (remember) await user.click(checkbox);
+      await user.type(
+        screen.getByLabelText("管理员密码"),
+        "remember-choice-test-password",
+      );
+      await user.click(screen.getByRole("button", { name: "登录" }));
+      await screen.findByText("管理员密码错误");
+      expect(await fetchMock.mock.calls[0]![0].json()).toEqual(
+        remember
+          ? { password: "remember-choice-test-password", remember_me: true }
+          : { password: "remember-choice-test-password" },
+      );
+      expect(Object.values(localStorage)).not.toContain(
+        "remember-choice-test-password",
+      );
+      expect(Object.values(sessionStorage)).not.toContain(
+        "remember-choice-test-password",
+      );
+      expect(checkbox).toHaveAttribute("aria-checked", String(remember));
+    },
+  );
 
   it("does not offer persistent login during administrator setup", () => {
     initialization("false");
     renderPage(<AuthPage onLogin={vi.fn()} />, "/setup");
-    expect(screen.queryByRole("checkbox", { name: "在此设备保持登录 30 天" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("checkbox", { name: "在此设备保持登录 30 天" }),
+    ).not.toBeInTheDocument();
   });
 
   it("preserves an unsuccessful login and never sends a username field", async () => {
     initialization("true");
-    const fetchMock = vi.fn(async () => apiError("invalid_credentials", "管理员密码错误", 401));
+    const fetchMock = vi.fn(async () =>
+      apiError("invalid_credentials", "管理员密码错误", 401),
+    );
     vi.stubGlobal("fetch", fetchMock);
     const onLogin = vi.fn();
     const user = userEvent.setup();
     renderPage(<AuthPage onLogin={onLogin} />, "/login");
-    await user.type(screen.getByLabelText(/管理员密码/), "incorrect-test-password");
+    await user.type(
+      screen.getByLabelText(/管理员密码/),
+      "incorrect-test-password",
+    );
     await user.click(screen.getByRole("button", { name: "登录" }));
     expect(await screen.findByText("管理员密码错误")).toBeVisible();
-    const request = (fetchMock.mock.calls as unknown as Array<[Request]>)[0]![0];
-    expect(await request.json()).toEqual({ password: "incorrect-test-password" });
+    const request = (
+      fetchMock.mock.calls as unknown as Array<[Request]>
+    )[0]![0];
+    expect(await request.json()).toEqual({
+      password: "incorrect-test-password",
+    });
     expect(onLogin).not.toHaveBeenCalled();
   });
 
   it("clears cached business data when a session check returns 401", async () => {
     initialization("true");
     queryClient.setQueryData(["orders"], { private: "cached-order-details" });
-    vi.stubGlobal("fetch", vi.fn(async () => apiError("session_invalid", "登录已失效", 401)));
-    renderPage(<AuthBoundary><p>受保护内容</p></AuthBoundary>);
-    expect(await screen.findByRole("heading", { name: "登录管理后台" })).toBeVisible();
-    await waitFor(() => expect(queryClient.getQueryData(["orders"])).toBeUndefined());
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => apiError("session_invalid", "登录已失效", 401)),
+    );
+    renderPage(
+      <AuthBoundary>
+        <p>受保护内容</p>
+      </AuthBoundary>,
+    );
+    expect(
+      await screen.findByRole("heading", { name: "登录管理后台" }),
+    ).toBeVisible();
+    await waitFor(() =>
+      expect(queryClient.getQueryData(["orders"])).toBeUndefined(),
+    );
     expect(screen.queryByText("受保护内容")).not.toBeInTheDocument();
   });
 });
 
 describe("concise settings copy", () => {
-  it.each(["provider", "collection", "notifications", "security", "backup", "advanced"])("omits revision and implementation notes in %s", async (section) => {
-    vi.stubGlobal("fetch", vi.fn(async () => json({ data: settings })));
-    const { container } = renderPage(<Routes><Route path="/settings/:section" element={<Settings />} /></Routes>, `/settings/${section}`);
-    await screen.findByRole("navigation", { name: "设置分类" });
+  it.each([
+    "provider",
+    "collection",
+    "notifications",
+    "security",
+    "backup",
+    "advanced",
+  ])("omits revision and implementation notes in %s", async (section) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => json({ data: settings })),
+    );
+    const { container } = renderPage(
+      <Routes>
+        <Route path="/settings/:section" element={<Settings />} />
+      </Routes>,
+      `/settings/${section}`,
+    );
+    await screen.findByRole("tablist", { name: "设置分类" });
     expect(container.querySelector(".page-note, .page-heading p")).toBeNull();
-    expect(screen.queryByText(/基于配置版本|配置版本 \d|页面不会在后台覆盖/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/基于配置版本|配置版本 \d|页面不会在后台覆盖/),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("未保存")).not.toBeInTheDocument();
     if (section === "collection") {
-      expect(screen.getByLabelText("支付宝经营码内容")).not.toHaveAccessibleDescription();
-      expect(screen.getByRole("button", { name: "点击或拖拽二维码图片" })).toBeVisible();
+      expect(
+        screen.getByLabelText("支付宝经营码内容"),
+      ).not.toHaveAccessibleDescription();
+      expect(screen.getByRole("button", { name: "上传二维码" })).toBeVisible();
     }
     if (section === "backup") {
-      expect(screen.getByRole("link", { name: "查看备份状态" })).toHaveAttribute("href", "/system");
+      expect(
+        screen.getByRole("link", { name: "查看备份状态" }),
+      ).toHaveAttribute("href", "/system");
       expect(screen.getByText(/恢复需要数据库备份和主密钥/)).toBeVisible();
     }
   });
 
   it("shows the unsaved status only while the configuration differs", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => json({ data: settings })));
-    renderPage(<Routes><Route path="/settings/:section" element={<Settings />} /></Routes>, "/settings/collection");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => json({ data: settings })),
+    );
+    renderPage(
+      <Routes>
+        <Route path="/settings/:section" element={<Settings />} />
+      </Routes>,
+      "/settings/collection",
+    );
     const field = await screen.findByLabelText("收银台有效期（秒）");
     const user = userEvent.setup();
     expect(screen.queryByText("未保存")).not.toBeInTheDocument();
-    await user.clear(field); await user.type(field, "450");
+    await user.clear(field);
+    await user.type(field, "450");
     expect(screen.getByText("未保存")).toBeVisible();
-    await user.clear(field); await user.type(field, "300");
+    await user.clear(field);
+    await user.type(field, "300");
     expect(screen.queryByText("未保存")).not.toBeInTheDocument();
     expect(screen.queryByText(/基于配置版本/)).not.toBeInTheDocument();
   });
@@ -201,41 +337,82 @@ describe("concise settings copy", () => {
 
 describe("state-changing workflows", () => {
   it("keeps an unsaved settings draft after a revision conflict", async () => {
-    const fetchMock = vi.fn(async (request: Request) => request.method === "PUT"
-      ? apiError("settings_revision_conflict", "配置版本冲突，请刷新")
-      : json({ data: settings }));
+    const fetchMock = vi.fn(async (request: Request) =>
+      request.method === "PUT"
+        ? apiError("settings_revision_conflict", "配置版本冲突，请刷新")
+        : json({ data: settings }),
+    );
     vi.stubGlobal("fetch", fetchMock);
     const user = userEvent.setup();
-    renderPage(<Routes><Route path="/settings/:section" element={<Settings />} /></Routes>, "/settings/collection");
+    renderPage(
+      <Routes>
+        <Route path="/settings/:section" element={<Settings />} />
+      </Routes>,
+      "/settings/collection",
+    );
     const ttl = await screen.findByLabelText("收银台有效期（秒）");
-    await user.clear(ttl); await user.type(ttl, "450");
+    await user.clear(ttl);
+    await user.type(ttl, "450");
     await user.click(screen.getByRole("button", { name: "保存" }));
     expect(await screen.findByText("配置版本冲突，请刷新")).toBeVisible();
     expect(ttl).toHaveValue(450);
-    const writes = fetchMock.mock.calls.map(([request]) => request).filter((request) => request.method === "PUT");
+    const writes = fetchMock.mock.calls
+      .map(([request]) => request)
+      .filter((request) => request.method === "PUT");
     expect(writes).toHaveLength(1);
-    expect(await writes[0]!.json()).toMatchObject({ revision: 3, order_ttl_seconds: 450 });
+    expect(await writes[0]!.json()).toMatchObject({
+      revision: 3,
+      order_ttl_seconds: 450,
+    });
     expect(queryClient.getQueryData(["settings"])).toEqual({ data: settings });
   });
 
   it("requires direction-compatible evidence before recording a collection", async () => {
-    const fetchMock = vi.fn(async (request: Request) => json({ data: new URL(request.url).pathname.includes("ledger-entries") ? { ...ledger, direction: "DEBIT" } : order }));
+    const fetchMock = vi.fn(async (request: Request) =>
+      json({
+        data: new URL(request.url).pathname.includes("ledger-entries")
+          ? { ...ledger, direction: "DEBIT" }
+          : order,
+      }),
+    );
     vi.stubGlobal("fetch", fetchMock);
     const user = userEvent.setup();
-    renderPage(<FinancialDialog initialOrderId={orderId} initialLedgerId={ledgerId} lockContext onClose={vi.fn()} onSuccess={vi.fn()} />);
+    renderPage(
+      <FinancialDialog
+        initialOrderId={orderId}
+        initialLedgerId={ledgerId}
+        lockContext
+        onClose={vi.fn()}
+        onSuccess={vi.fn()}
+      />,
+    );
     // Known objects load their latest evidence when the dialog opens.
     expect(await screen.findByText(/只能关联收入流水/)).toBeVisible();
     await user.type(screen.getByLabelText(/操作理由/), "核对测试证据");
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "确认关联收款" })).toBeDisabled();
-    expect(fetchMock.mock.calls.every(([request]) => request.method === "GET")).toBe(true);
+    expect(
+      fetchMock.mock.calls.every(([request]) => request.method === "GET"),
+    ).toBe(true);
   });
 
   it("reuses the operation ID when retrying a failed confirmed action", async () => {
-    const execute = vi.fn().mockRejectedValueOnce(new Error("临时网络中断")).mockResolvedValueOnce(undefined);
+    const execute = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("临时网络中断"))
+      .mockResolvedValueOnce(undefined);
     const complete = vi.fn();
     const user = userEvent.setup();
-    renderPage(<ReasonDialog title="撤销测试关联" description="测试确认流程" action="确认撤销" execute={execute} onClose={vi.fn()} onSuccess={complete} />);
+    renderPage(
+      <ReasonDialog
+        title="撤销测试关联"
+        description="测试确认流程"
+        action="确认撤销"
+        execute={execute}
+        onClose={vi.fn()}
+        onSuccess={complete}
+      />,
+    );
     await user.type(screen.getByLabelText(/操作理由/), "订单关联核对错误");
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "确认撤销" }));
@@ -246,8 +423,25 @@ describe("state-changing workflows", () => {
   });
 
   it("clears revealed secrets when the tab becomes hidden", async () => {
-    const configured = { ...settings, secrets: { ...settings.secrets, api_secret: { configured: true, version: 1, fingerprint: "a".repeat(64), masked: "test…secret", updatedAt: 0 } } };
-    vi.stubGlobal("fetch", vi.fn(async () => json({ data: { name: "api_secret", value: "ephemeral-test-secret" } })));
+    const configured = {
+      ...settings,
+      secrets: {
+        ...settings.secrets,
+        api_secret: {
+          configured: true,
+          version: 1,
+          fingerprint: "a".repeat(64),
+          masked: "test…secret",
+          updatedAt: 0,
+        },
+      },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        json({ data: { name: "api_secret", value: "ephemeral-test-secret" } }),
+      ),
+    );
     const user = userEvent.setup();
     renderPage(<SecuritySettings settings={configured} onSaved={vi.fn()} />);
     await user.click(screen.getByRole("button", { name: "查看网站 API 密钥" }));
@@ -257,11 +451,19 @@ describe("state-changing workflows", () => {
     expect(sessionStorage.length).toBe(0);
     const original = Object.getOwnPropertyDescriptor(document, "hidden");
     try {
-      Object.defineProperty(document, "hidden", { configurable: true, value: true });
+      Object.defineProperty(document, "hidden", {
+        configurable: true,
+        value: true,
+      });
       fireEvent(document, new Event("visibilitychange"));
-      await waitFor(() => expect(screen.queryByText("ephemeral-test-secret")).not.toBeInTheDocument());
+      await waitFor(() =>
+        expect(
+          screen.queryByText("ephemeral-test-secret"),
+        ).not.toBeInTheDocument(),
+      );
     } finally {
-      if (original) Object.defineProperty(document, "hidden", original); else Reflect.deleteProperty(document, "hidden");
+      if (original) Object.defineProperty(document, "hidden", original);
+      else Reflect.deleteProperty(document, "hidden");
     }
   });
 });

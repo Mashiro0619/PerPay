@@ -1,133 +1,203 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-
 import type { SystemAnalytics } from "../src/api/client";
-import { DailyChart } from "../src/components/DailyChart";
-import { areaGeometry, chartIndex, chartScale } from "../src/lib/chart";
-
-const bounds = { left: 62, right: 600, top: 38, bottom: 136 };
+import { ChartAreaInteractive } from "../src/components/chart-area-interactive";
 function analytics(days: 7 | 30 | 90 = 7): SystemAnalytics {
   return {
-    range_days: days, from: "2026-06-01", to: "2026-09-01",
-    orders: { created: 28, confirmed: 2, unpaid: 26, disputed: 0, closed: 0, expired: 0 },
-    confirmations: { count: 2, amount_cents: 10001 }, notifications: { acknowledged: 0, failed: 0, pending: 0 },
+    range_days: days,
+    from: "2026-06-01",
+    to: "2026-09-01",
+    orders: {
+      created: 28,
+      confirmed: 2,
+      unpaid: 26,
+      disputed: 0,
+      closed: 0,
+      expired: 0,
+    },
+    confirmations: { count: 2, amount_cents: 10001 },
+    notifications: { acknowledged: 0, failed: 0, pending: 0 },
     pending: { orders: 26, exceptions: 0, conflicts: 0, notifications: 0 },
     daily: Array.from({ length: days }, (_, index) => ({
       date: new Date(Date.UTC(2026, 5, index + 1)).toISOString().slice(0, 10),
       orders_created: index === 1 ? 2000 : index,
       confirmed_amount_cents: index === 2 ? 1 : index === days - 1 ? 10000 : 0,
       confirmations: index === 2 || index === days - 1 ? 1 : 0,
-      notifications_acknowledged: 0, notifications_failed: 0,
+      notifications_acknowledged: 0,
+      notifications_failed: 0,
     })),
   };
 }
 
-describe("area chart geometry", () => {
-  it.each([[], [0], [1], [0, 100, 0], [3, 9, 12, 8], [1_000_000_000]].map((values) => ({ values })))("keeps a finite zero baseline for $values", ({ values }) => {
-    const scale = chartScale(values);
-    const geometry = areaGeometry(values, bounds, scale.maximum);
-    expect(scale.maximum).toBeGreaterThanOrEqual(Math.max(1, ...values));
-    expect(geometry.area).not.toMatch(/NaN|Infinity|C|Q/);
-    expect(geometry.points.every((point) => point.vertical >= bounds.top && point.vertical <= bounds.bottom)).toBe(true);
-    expect(scale.ticks.every(Number.isInteger)).toBe(true);
+describe("official shadcn interactive chart", () => {
+  it.each([
+    ["AREA", ".recharts-area"],
+    ["BAR", ".recharts-bar"],
+    ["LINE", ".recharts-line"],
+  ] as const)(
+    "uses the configured %s chart with the same money and keyboard layer",
+    async (chartType, selector) => {
+      const { container } = render(
+        <ChartAreaInteractive
+          analytics={analytics()}
+          range={7}
+          onRangeChange={vi.fn()}
+          pending={false}
+          chartType={chartType}
+        />,
+      );
+      expect(container.querySelector("[data-slot=chart]")).toHaveAttribute(
+        "data-chart-type",
+        chartType,
+      );
+      expect(container.querySelectorAll(selector)).toHaveLength(1);
+      expect(
+        container.querySelector('svg[role="application"]'),
+      ).toHaveAttribute("tabindex", "0");
+      expect(container.querySelector("[data-slot=chart] style")).toBeNull();
+      await userEvent
+        .setup()
+        .click(screen.getByRole("button", { name: "每日数据" }));
+      expect(screen.getAllByRole("row")).toHaveLength(8);
+      expect(screen.getByText("¥0.01")).toBeVisible();
+      expect(screen.getByText("¥100.00")).toBeVisible();
+    },
+  );
+  it.each([7, 30, 90] as const)(
+    "renders one financial series and an exact daily table for %i days",
+    async (days) => {
+      const { container } = render(
+        <ChartAreaInteractive
+          analytics={analytics(days)}
+          range={days}
+          onRangeChange={vi.fn()}
+          pending={false}
+        />,
+      );
+      expect(screen.getByRole("heading", { name: "收款趋势" })).toBeVisible();
+      expect(container.querySelectorAll("[data-slot=chart]")).toHaveLength(1);
+      expect(container.querySelector("[data-slot=chart] style")).toBeNull();
+      expect(container.querySelector(".chart-line")).toBeNull();
+      await userEvent
+        .setup()
+        .click(screen.getByRole("button", { name: "每日数据" }));
+      expect(screen.getAllByRole("row")).toHaveLength(days + 1);
+      const last = screen.getAllByRole("row").at(-1)!;
+      expect(within(last).getByText("¥100.00")).toBeVisible();
+      expect(within(last).getAllByRole("cell")).toHaveLength(4);
+      expect(
+        screen.getByRole("columnheader", { name: "确认次数" }),
+      ).toBeVisible();
+    },
+  );
+  it("switches period through the official toggle group without fetching records itself", async () => {
+    const change = vi.fn();
+    render(
+      <ChartAreaInteractive
+        analytics={analytics()}
+        range={7}
+        onRangeChange={change}
+        pending={false}
+      />,
+    );
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "近 30 天" }));
+    expect(change).toHaveBeenCalledExactlyOnceWith("30");
   });
-
-  it("does not combine the currency and count scales", () => {
-    expect(chartScale([1]).maximum).toBe(1);
-    expect(chartScale([2000]).maximum).toBeGreaterThanOrEqual(2000);
-    expect(areaGeometry([1], bounds, 1).points[0]?.vertical).toBe(bounds.top);
-  });
-
-  it("clamps pointer selection and handles empty or singleton series", () => {
-    expect(chartIndex(-200, bounds, 7)).toBe(0);
-    expect(chartIndex(900, bounds, 7)).toBe(6);
-    expect(chartIndex(330, bounds, 7)).toBe(3);
-    expect(chartIndex(330, bounds, 0)).toBe(0);
-    expect(chartIndex(330, bounds, 1)).toBe(0);
-  });
-});
-
-describe("linked amount and order charts", () => {
-  it.each([7, 30, 90] as const)("renders two truthful area series for %i days", (days) => {
-    const { container } = render(<DailyChart analytics={analytics(days)} />);
-    expect(container.querySelectorAll("path.chart-area")).toHaveLength(2);
-    expect([...container.querySelectorAll("path.chart-line")].map((line) => line.getAttribute("pathLength"))).toEqual(["1", "1"]);
-    expect(container.querySelectorAll(".chart-point")).toHaveLength(2);
-    expect(container.querySelector("svg")).not.toHaveAttribute("style");
-    expect(container.querySelectorAll("[style]")).toHaveLength(0);
-    expect(container.querySelector(".chart-readout")).toHaveTextContent("¥100.00");
-  });
-
-  it("shares the selected day across keyboard, buttons and data table", async () => {
+  it("switches counts and currency instead of stacking incompatible units", async () => {
+    const { container } = render(
+      <ChartAreaInteractive
+        analytics={analytics()}
+        range={7}
+        onRangeChange={vi.fn()}
+        pending={false}
+      />,
+    );
     const user = userEvent.setup();
-    const { container } = render(<DailyChart analytics={analytics()} />);
-    const graph = screen.getByRole("group", { name: "每日金额与新建订单趋势" });
-    graph.focus();
-    fireEvent.keyDown(graph, { key: "Home" });
-    expect(container.querySelector(".chart-readout time")).toHaveAttribute("datetime", "2026-06-01");
-    expect(screen.getByRole("button", { name: "前一天" })).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "后一天" }));
-    expect(screen.getByText("2,000 笔")).toBeVisible();
-    fireEvent.keyDown(graph, { key: "ArrowRight" });
-    expect(container.querySelector(".chart-readout")).toHaveTextContent("¥0.01");
-    fireEvent.keyDown(graph, { key: "End" });
-    expect(screen.getByRole("button", { name: "后一天" })).toBeDisabled();
-    await user.click(screen.getByText("查看每日数据表 · 北京时间"));
-    expect(screen.getByRole("region", { name: "每日收款数据" })).toBeVisible();
-    expect(screen.getByRole("columnheader", { name: "日期（北京时间）" })).toBeVisible();
-    expect(container.querySelector(".chart-readout time")).toHaveTextContent("北京时间");
-    expect(container.querySelector("svg")).toHaveTextContent("06/01");
-    expect(screen.getAllByRole("row")).toHaveLength(8);
+    await user.click(screen.getByRole("combobox", { name: "趋势指标" }));
+    await user.click(await screen.findByRole("option", { name: "新建订单" }));
+    expect(
+      screen.getByRole("combobox", { name: "趋势指标" }),
+    ).toHaveTextContent("新建订单");
+    expect(container.querySelector("[data-slot=chart]")).toHaveAttribute(
+      "aria-label",
+      expect.stringContaining("每日新建订单"),
+    );
+    expect(container.querySelectorAll(".recharts-area")).toHaveLength(1);
   });
-
-  it("selects both series on pointer input without blocking scrolling", () => {
-    const { container } = render(<DailyChart analytics={analytics()} />);
-    const graph = container.querySelector("svg")!;
-    vi.spyOn(graph, "getBoundingClientRect").mockReturnValue({ width: 620, left: 0 } as DOMRect);
-    fireEvent(graph, new MouseEvent("pointerdown", { bubbles: true, clientX: 62 }));
-    expect(container.querySelector(".chart-readout time")).toHaveAttribute("datetime", "2026-06-01");
-    expect([...container.querySelectorAll(".chart-point")].map((element) => element.parentElement?.getAttribute("transform"))).toEqual(["translate(62 108)", "translate(62 234)"]);
+  it("does not relabel old data as the requested period", () => {
+    const { container } = render(
+      <ChartAreaInteractive
+        analytics={undefined}
+        range={90}
+        onRangeChange={vi.fn()}
+        pending
+      />,
+    );
+    expect(screen.getByText("正在读取近 90 天…")).toBeVisible();
+    expect(container.querySelector("[data-slot=chart]")).toBeNull();
+    expect(container.querySelector("[data-slot=skeleton]")).not.toBeNull();
   });
-
-
-
-  it("keeps the graph, keyboard focus, selected date and expanded table across periods", async () => {
-    const { container, rerender } = render(<DailyChart analytics={analytics(7)} />);
-    const graph = screen.getByRole("group", { name: "每日金额与新建订单趋势" });
-    await userEvent.setup().click(screen.getByText("查看每日数据表 · 北京时间"));
-    graph.focus();
-    fireEvent.keyDown(graph, { key: "Home" });
-    fireEvent.keyDown(graph, { key: "ArrowRight" });
-    const chart = container.querySelector(".daily-chart");
-    rerender(<DailyChart analytics={analytics(30)} />);
-    expect(container.querySelector(".daily-chart")).toBe(chart);
-    expect(graph).toHaveFocus();
-    expect(container.querySelector(".chart-readout time")).toHaveAttribute("datetime", "2026-06-02");
-    expect(container.querySelector("details")).toHaveAttribute("open");
+  it("uses the Recharts keyboard accessibility layer and default tooltip", async () => {
+    const { container } = render(
+      <ChartAreaInteractive
+        analytics={analytics()}
+        range={7}
+        onRangeChange={vi.fn()}
+        pending={false}
+      />,
+    );
+    const application = container.querySelector<SVGElement>(
+      'svg[role="application"]',
+    )!;
+    expect(application).not.toBeNull();
+    expect(application).toHaveAttribute("tabindex", "0");
+    fireEvent.focus(application);
+    fireEvent.keyDown(application, { key: "ArrowRight" });
+    await waitFor(() =>
+      expect(
+        container.querySelector(".recharts-tooltip-wrapper"),
+      ).not.toBeNull(),
+    );
+  });
+  it("retains an opened daily table while periods change and renders empty data without inventing values", async () => {
+    const { rerender } = render(
+      <ChartAreaInteractive
+        analytics={analytics(7)}
+        range={7}
+        onRangeChange={vi.fn()}
+        pending={false}
+      />,
+    );
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "每日数据" }));
+    rerender(
+      <ChartAreaInteractive
+        analytics={analytics(30)}
+        range={30}
+        onRangeChange={vi.fn()}
+        pending={false}
+      />,
+    );
     expect(screen.getAllByRole("row")).toHaveLength(31);
-    expect(container.querySelector("[style]")).toBeNull();
-  });
-
-  it("follows the newest date by default and clamps a selected day outside the new period", () => {
-    const { container, rerender } = render(<DailyChart analytics={analytics(7)} />);
-    const extended = analytics(30);
-    rerender(<DailyChart analytics={extended} />);
-    expect(container.querySelector(".chart-readout time")).toHaveAttribute("datetime", "2026-06-30");
-    fireEvent.keyDown(screen.getByRole("group", { name: "每日金额与新建订单趋势" }), { key: "Home" });
-    expect(container.querySelector(".chart-readout time")).toHaveAttribute("datetime", "2026-06-01");
-    rerender(<DailyChart analytics={{ ...extended, range_days: 7, daily: extended.daily.slice(-7) }} />);
-    expect(container.querySelector(".chart-readout time")).toHaveAttribute("datetime", "2026-06-30");
-    expect(screen.getByRole("button", { name: "后一天" })).toBeDisabled();
-  });
-
-  it("shows zero and missing data explicitly instead of fake peaks", () => {
-    const data = analytics();
-    data.daily = data.daily.map((day) => ({ ...day, orders_created: 0, confirmed_amount_cents: 0, confirmations: 0 }));
-    const { rerender } = render(<DailyChart analytics={data} />);
-    expect(screen.getByText("暂无付款确认记录")).toBeInTheDocument();
-    expect(screen.getByText("暂无新建订单")).toBeInTheDocument();
-    rerender(<DailyChart analytics={{ ...data, daily: [] }} />);
-    expect(screen.getByRole("heading", { name: "暂无每日统计" })).toBeVisible();
+    rerender(
+      <ChartAreaInteractive
+        analytics={{ ...analytics(), daily: [] }}
+        range={7}
+        onRangeChange={vi.fn()}
+        pending={false}
+      />,
+    );
+    expect(screen.getByText("暂无数据")).toBeVisible();
+    expect(screen.getAllByRole("row")).toHaveLength(1);
   });
 });

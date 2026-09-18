@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-
 import {
   CHECKOUT_PAGE_ASSETS,
   checkoutApiPath,
@@ -8,8 +7,9 @@ import {
   deriveCheckoutVisualState,
   renderCheckoutPage,
 } from "../src/http/web/checkout.ts";
+import { initialCheckoutState } from "../src/shared/checkout-view.ts";
 import type { PublicCheckoutProjection } from "../src/orders/model.ts";
-
+import { checkoutText, readCheckoutInitial } from "./checkout-view-fixture.ts";
 const checkout = Object.freeze({
   merchantOrderNo: "merchant-order-1",
   requestedAmountCents: 1_000,
@@ -23,7 +23,7 @@ const checkout = Object.freeze({
   }),
   checkout: Object.freeze({
     status: "OPEN",
-    expiresAt: Date.parse("2026-08-18T08:30:00.000Z"),
+    expiresAt: Date.now() + 300_000,
     closedAt: null,
   }),
   payment: Object.freeze({
@@ -34,235 +34,249 @@ const checkout = Object.freeze({
   refund: Object.freeze({ status: "NONE" }),
 }) satisfies PublicCheckoutProjection;
 
-describe("public checkout renderer", () => {
-  it("renders exact payable amount, same-origin assets, and no inline executable content", () => {
+describe("public checkout SSR", () => {
+  it("renders exact money and a usable QR without JavaScript, using only same-origin external assets", () => {
     const html = renderCheckoutPage({
       checkoutToken: "pct1_test-token",
       checkout,
       qrImageUrl: "/api/public/v1/checkouts/pct1_test-token/qr.svg",
       initialError: null,
     });
-
-    assert.match(html, /data-payable-amount[^>]*>10\.01<\/strong>/);
-    assert.match(html, /data-requested-amount>¥ 10\.00<\/dd>/);
-    assert.match(html, /data-initial-state="UNPAID"/);
-    assert.match(html, /checkout-receipt-body has-qr/);
-    assert.match(html, /金额需完全一致，付款后自动确认/);
-    assert.match(html, /data-checkout-api-url="\/api\/public\/v1\/checkouts\/pct1_test-token"/);
-    assert.match(html, /data-checkout-qr-url="\/api\/public\/v1\/checkouts\/pct1_test-token\/qr\.svg"/);
-    assert.match(html, /data-checkout-refresh-label>查询付款状态/);
-    assert.match(html, />支付宝付款二维码<\/h2>/);
-    assert.match(html, />放大二维码<\/button>/);
-    assert.doesNotMatch(html, /alipay\.png|checkout-exact-note|checkout-footer/);
-    assert.doesNotMatch(html, /data-checkout-refresh[^>]*hidden/);
-    assert.match(html, /<meta name="color-scheme" content="light dark">/);
-    assert.match(html, /<meta name="theme-color" content="#111214" media="\(prefers-color-scheme: dark\)">/);
-    assert.match(html, new RegExp(`href="${escapeRegExp(CHECKOUT_PAGE_ASSETS.checkoutStylesheet)}"`));
-    assert.equal((html.match(/<link rel="stylesheet"/g) ?? []).length, 1);
-    assert.match(html, new RegExp(`src="${escapeRegExp(CHECKOUT_PAGE_ASSETS.checkoutScript)}" defer`));
-    assert.doesNotMatch(html, /<script(?![^>]*\bsrc=)[^>]*>/i);
-    assert.doesNotMatch(html, /\sstyle=/i);
-    assert.doesNotMatch(html, /\son[a-z]+=/i);
-    assert.equal(html.includes(checkout.paymentInstructions.collectionCodePayload), false);
-    assert.ok(html.indexOf("data-payable-amount") < html.indexOf("data-qr-image"));
-    assert.ok(html.indexOf("data-qr-image") < html.indexOf("data-checkout-refresh"));
+    const initial = readCheckoutInitial(html);
+    assert.equal(
+      initial.checkout?.payment_instructions?.payable_amount_cents,
+      1001,
+    );
+    assert.equal(initial.checkout?.requested_amount_cents, 1000);
+    assert.equal(initial.apiUrl, "/api/public/v1/checkouts/pct1_test-token");
+    assert.equal(
+      initial.qrUrl,
+      "/api/public/v1/checkouts/pct1_test-token/qr.svg",
+    );
+    assert.match(html, /data-payable-amount[^>]*>¥10\.01<\/strong>/);
+    assert.match(
+      html,
+      /<img[^>]*src="\/api\/public\/v1\/checkouts\/pct1_test-token\/qr\.svg"[^>]*data-qr-image/,
+    );
+    assert.match(checkoutText(html), /应付金额（请勿修改）/);
+    assert.match(html, /data-brand="alipay"/);
+    assert.doesNotMatch(html, /<footer|金额需完全一致，付款后自动确认/);
+    assert.match(checkoutText(html), /放大二维码.*保存二维码.*查询付款状态/);
+    assert.ok(
+      html.includes('href="' + CHECKOUT_PAGE_ASSETS.checkoutStylesheet + '"'),
+    );
+    assert.ok(
+      html.includes('src="' + CHECKOUT_PAGE_ASSETS.checkoutScript + '"'),
+    );
+    assert.match(html, /<script type="module" src="\/assets\/checkout\//);
+    assert.doesNotMatch(
+      html,
+      /<script(?![^>]*\bsrc=)[^>]*>|<style|\sstyle=|\son[a-z]+=/i,
+    );
+    assert.equal(
+      html.includes(checkout.paymentInstructions.collectionCodePayload),
+      false,
+    );
     assert.equal((html.match(/data-payable-amount/g) ?? []).length, 1);
-    assert.ok(html.indexOf("data-qr-expand") < html.indexOf("data-checkout-refresh"));
-    assert.match(html, /data-qr-dialog-amount>¥ 10\.01/);
-    assert.match(html, /data-state-announcement role="status" aria-live="polite"/);
-    assert.ok(html.indexOf("data-checkout-refresh") < html.indexOf("checkout-order-details"));
+    assert.ok(
+      html.indexOf("data-payable-amount") < html.indexOf("data-qr-image"),
+    );
+    assert.match(html, /<noscript>/);
+    assert.match(html, /name="color-scheme" content="light dark"/);
   });
-
-  it("escapes all merchant-controlled text and attributes", () => {
-    const hostileCheckout: PublicCheckoutProjection = {
+  it("escapes both the shared SSR view and the JSON bootstrap", () => {
+    const hostile = {
       ...checkout,
-      merchantOrderNo: `order"><script>alert(1)</script>`,
-      productName: `</dd><img src=x onerror="alert(1)"> & 'quoted'`,
+      merchantOrderNo: 'order"><script>alert(1)</script>',
+      productName: "</dd><img src=x onerror=\"alert(1)\"> & 'quoted'",
     };
     const html = renderCheckoutPage({
-      checkoutToken: `pct1_"><script>alert(2)</script>`,
-      checkout: hostileCheckout,
+      checkoutToken: 'pct1_"><script>alert(2)</script>',
+      checkout: hostile,
       qrImageUrl: "/qr.svg?name=%22safe%22",
       initialError: null,
     });
-
     assert.equal(html.includes("<script>alert(1)</script>"), false);
     assert.equal(html.includes("<script>alert(2)</script>"), false);
-    assert.equal(html.includes("onerror=\"alert(1)\""), false);
-    assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
-    assert.match(html, /&amp; &#39;quoted&#39;/);
+    assert.equal(html.includes('onerror="alert(1)"'), false);
+    assert.equal(
+      readCheckoutInitial(html).checkout?.product_name,
+      hostile.productName,
+    );
+    assert.ok(checkoutText(html).includes(hostile.productName));
   });
-
-  it("does not render payment instructions for terminal states", () => {
+  it("never serializes administrator marks, notes, keys or full collection payloads", () => {
+    const source = {
+      ...checkout,
+      refund_mark: { marked: true, note: "private-marker" },
+      note: "private-note",
+      private_key: "private-key",
+    };
+    const html = renderCheckoutPage({
+      checkoutToken: "pct1_private",
+      checkout: source,
+      qrImageUrl: "/qr.svg",
+      initialError: null,
+    });
+    assert.doesNotMatch(
+      html,
+      /private-marker|private-note|private-key|refund_mark|private_key/,
+    );
+    assert.doesNotMatch(html, /https:\/\/qr\.alipay\.com\/example/);
+  });
+  it("retains historical refunds without treating an administrator mark as a refund", () => {
     const confirmed: PublicCheckoutProjection = {
       ...checkout,
       paymentInstructions: null,
-      payment: { status: "CONFIRMED", basis: "INFERRED", receivedAmountCents: 1_001 },
+      payment: {
+        status: "CONFIRMED",
+        basis: "INFERRED",
+        receivedAmountCents: 1001,
+      },
       refund: { status: "PARTIAL" },
     };
     const html = renderCheckoutPage({
-      checkoutToken: "pct1_confirmed",
+      checkoutToken: "pct1_paid",
       checkout: confirmed,
       qrImageUrl: "/qr.svg",
       initialError: null,
     });
-
     assert.equal(deriveCheckoutVisualState(confirmed), "CONFIRMED");
-    assert.match(html, /data-initial-state="CONFIRMED"/);
-    assert.match(html, /data-qr-panel hidden/);
-    assert.match(html, /checkout-receipt-body is-summary-only/);
-    assert.match(html, /data-payment-column hidden/);
-    assert.match(html, /付款已确认/);
-    assert.doesNotMatch(html, /checkout-evidence|付款确认进度|流水核对/);
-    assert.match(html, /款项已部分退款/);
-    assert.match(html, /data-checkout-refresh[^>]*hidden/);
+    assert.equal(readCheckoutInitial(html).checkout?.refund.status, "PARTIAL");
+    assert.match(checkoutText(html), /付款已确认/);
+    assert.match(checkoutText(html), /款项已部分退款/);
+    assert.doesNotMatch(html, /data-qr-image/);
   });
-
-  it("only renders the merchant return action after confirmation", () => {
-    const unpaidHtml = renderCheckoutPage({
-      checkoutToken: "pct1_return_unpaid",
-      checkout,
+  it("only provides a safe merchant return action after confirmation", () => {
+    const unpaid = renderCheckoutPage({
+      checkoutToken: "pct1_return",
+      checkout: { ...checkout, returnUrl: "https://shop.example.com/done" },
       qrImageUrl: "/qr.svg",
       initialError: null,
     });
-    assert.match(unpaidHtml, /data-return-merchant[^>]*hidden/);
-
-    const confirmedHtml = renderCheckoutPage({
-      checkoutToken: "pct1_return_confirmed",
-      checkout: {
-        ...checkout,
-        returnUrl: "https://shop.example.com/orders/1?paid=1",
-        paymentInstructions: null,
-        payment: { status: "CONFIRMED", basis: "INFERRED", receivedAmountCents: 1_001 },
+    assert.doesNotMatch(
+      unpaid,
+      /<a[^>]+href="https:\/\/shop\.example\.com\/done"/,
+    );
+    const confirmed: PublicCheckoutProjection = {
+      ...checkout,
+      returnUrl: "https://shop.example.com/done",
+      paymentInstructions: null,
+      payment: {
+        status: "CONFIRMED",
+        basis: "INFERRED",
+        receivedAmountCents: 1001,
       },
+    };
+    const html = renderCheckoutPage({
+      checkoutToken: "pct1_return",
+      checkout: confirmed,
       qrImageUrl: null,
       initialError: null,
     });
-    assert.match(
-      confirmedHtml,
-      /<a[^>]+data-return-merchant[^>]+href="https:\/\/shop\.example\.com\/orders\/1\?paid=1"[^>]*>返回商家<\/a>/,
-    );
-    assert.doesNotMatch(confirmedHtml, /data-return-merchant[^>]*hidden/);
+    assert.match(html, /<a[^>]+href="https:\/\/shop\.example\.com\/done"/);
+    assert.match(checkoutText(html), /返回商家/);
+    const unsafe = renderCheckoutPage({
+      checkoutToken: "pct1_return",
+      checkout: { ...confirmed, returnUrl: "javascript:alert(1)" },
+      qrImageUrl: null,
+      initialError: null,
+    });
+    assert.equal(readCheckoutInitial(unsafe).checkout?.return_url, null);
+    assert.doesNotMatch(unsafe, /javascript:|返回商家/);
   });
-
-  it("hides the payment column and its controls for every terminal state", () => {
-    const terminalCases: readonly PublicCheckoutProjection[] = [
-      {
-        ...checkout,
-        paymentInstructions: null,
-        payment: { status: "CONFIRMED", basis: "INFERRED", receivedAmountCents: 1_001 },
-      },
-      {
-        ...checkout,
-        paymentInstructions: null,
-        payment: { status: "DISPUTED", basis: "INFERRED", receivedAmountCents: 1_001 },
-      },
-      {
-        ...checkout,
-        paymentInstructions: null,
-        checkout: { ...checkout.checkout, status: "CLOSED", closedAt: Date.parse("2026-08-18T08:00:00.000Z") },
-      },
-      {
-        ...checkout,
-        paymentInstructions: null,
-        checkout: { ...checkout.checkout, status: "EXPIRED" },
-      },
-    ];
-
-    for (const terminalCheckout of terminalCases) {
+  for (const state of ["CONFIRMED", "DISPUTED", "CLOSED", "EXPIRED"] as const)
+    it("omits all payment controls for " + state, () => {
+      const value: PublicCheckoutProjection =
+        state === "CONFIRMED" || state === "DISPUTED"
+          ? {
+              ...checkout,
+              paymentInstructions: null,
+              payment: {
+                status: state,
+                basis: "INFERRED",
+                receivedAmountCents: 1001,
+              },
+            }
+          : {
+              ...checkout,
+              paymentInstructions: null,
+              checkout: { ...checkout.checkout, status: state },
+            };
       const html = renderCheckoutPage({
-        checkoutToken: `pct1_${terminalCheckout.payment.status}_${terminalCheckout.checkout.status}`,
-        checkout: terminalCheckout,
+        checkoutToken: "pct1_terminal",
+        checkout: value,
         qrImageUrl: null,
         initialError: null,
       });
-      assert.match(html, /checkout-receipt-body is-summary-only/);
-      assert.match(html, /data-payment-column hidden/);
-      assert.match(html, /data-qr-panel hidden/);
-      assert.match(html, /data-checkout-refresh hidden/);
-      assert.match(html, /checkout-code-actions" hidden/);
-    }
-  });
-
-  it("renders retryable 503 and final 404 states without exposing a QR panel", () => {
-    const unavailable = renderCheckoutPage({
-      checkoutToken: "pct1_unavailable",
-      checkout: null,
-      qrImageUrl: "/qr.svg",
-      initialError: {
-        status: 503,
-        code: "reconciliation_not_ready",
-        message: "internal message is not presentation copy",
-        retryAfterSeconds: 5,
-      },
+      assert.equal(initialCheckoutState(readCheckoutInitial(html)), state);
+      assert.doesNotMatch(
+        html,
+        /data-qr-image|data-countdown|放大二维码|保存二维码|查询付款状态/,
+      );
+      assert.match(html, /data-product-name/);
     });
-    assert.match(unavailable, /data-initial-state="UNAVAILABLE"/);
-    assert.match(unavailable, /请勿付款/);
-    assert.match(unavailable, /data-retry-after-seconds="5"/);
-    assert.match(unavailable, /data-checkout-content hidden/);
-    assert.match(unavailable, /data-checkout-refresh[^>]*hidden/);
-    assert.match(unavailable, /data-route-error[^>]*role="alert"[^>]*aria-live="assertive"/);
-    assert.match(unavailable, /data-route-error-title tabindex="-1"/);
-    assert.match(unavailable, /data-checkout-qr-url="\/qr\.svg"/);
-
-    const degraded = renderCheckoutPage({
-      checkoutToken: "pct1_degraded",
+  for (const [status, state, heading] of [
+    [503, "UNAVAILABLE", "暂时无法确认付款"],
+    [429, "RATE_LIMITED", "请求过于频繁"],
+    [404, "NOT_FOUND", "找不到这个订单"],
+  ] as const)
+    it("preserves the meaning of route status " + status, () => {
+      const html = renderCheckoutPage({
+        checkoutToken: "pct1_error",
+        checkout: null,
+        qrImageUrl: null,
+        initialError: {
+          status,
+          code: "test-error",
+          message: "internal-only-detail",
+          retryAfterSeconds: status === 404 ? null : 5,
+        },
+      });
+      const initial = readCheckoutInitial(html);
+      assert.equal(initialCheckoutState(initial), state);
+      assert.equal(initial.initialError?.status, status);
+      assert.equal(
+        initial.initialError?.retryAfterSeconds,
+        status === 404 ? null : 5,
+      );
+      assert.match(checkoutText(html), new RegExp(heading));
+      assert.doesNotMatch(html, /data-qr-image|<img[^>]+src=""/);
+      assert.doesNotMatch(checkoutText(html), /internal-only-detail/);
+      if (status === 404) {
+        assert.equal(initial.apiUrl, "");
+        assert.equal(initial.qrUrl, "");
+        assert.doesNotMatch(checkoutText(html), /重新获取订单|查询付款状态/);
+      } else assert.match(checkoutText(html), /重新获取订单/);
+    });
+  it("disables an existing order during a service outage", () => {
+    const html = renderCheckoutPage({
+      checkoutToken: "pct1_outage",
       checkout,
       qrImageUrl: null,
       initialError: {
         status: 503,
-        code: "reconciliation_not_ready",
+        code: "not-ready",
         message: "not ready",
         retryAfterSeconds: 5,
       },
     });
-    assert.match(degraded, /data-qr-panel hidden/);
-    assert.doesNotMatch(degraded, /data-payment-column[^>]*hidden/);
-    assert.doesNotMatch(degraded, /data-checkout-refresh[^>]*hidden/);
-
-    const rateLimited = renderCheckoutPage({
-      checkoutToken: "pct1_rate_limited",
-      checkout: null,
-      qrImageUrl: null,
-      initialError: {
-        status: 429,
-        code: "public_checkout_rate_limited",
-        message: "rate limited",
-        retryAfterSeconds: 1,
-      },
-    });
-    assert.match(
-      rateLimited,
-      /data-checkout-qr-url="\/api\/public\/v1\/checkouts\/pct1_rate_limited\/qr\.svg"/,
+    assert.equal(
+      initialCheckoutState(readCheckoutInitial(html)),
+      "UNAVAILABLE",
     );
-    assert.match(rateLimited, /data-qr-image\s+data-original-src=""/);
-
-    const missing = renderCheckoutPage({
-      checkoutToken: "pct1_missing",
-      checkout: null,
-      qrImageUrl: null,
-      initialError: {
-        status: 404,
-        code: "checkout_not_found",
-        message: "not found",
-        retryAfterSeconds: null,
-      },
-    });
-    assert.match(missing, /data-initial-state="NOT_FOUND"/);
-    assert.match(missing, /找不到这个订单/);
-    assert.match(missing, /data-checkout-retry hidden/);
-    assert.match(missing, /data-checkout-refresh[^>]*hidden/);
-    assert.doesNotMatch(missing, /<img\s+src=""/);
+    assert.doesNotMatch(html, /data-qr-image/);
+    assert.match(checkoutText(html), /查询付款状态/);
   });
-
   it("rejects external QR assets and preserves token path encoding", () => {
     assert.throws(
-      () => renderCheckoutPage({
-        checkoutToken: "pct1_external",
-        checkout,
-        qrImageUrl: "https://example.com/qr.svg",
-        initialError: null,
-      }),
+      () =>
+        renderCheckoutPage({
+          checkoutToken: "pct1_bad",
+          checkout,
+          qrImageUrl: "https://elsewhere.test/qr.svg",
+          initialError: null,
+        }),
       /same-origin absolute path/,
     );
     assert.equal(
@@ -275,7 +289,3 @@ describe("public checkout renderer", () => {
     );
   });
 });
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}

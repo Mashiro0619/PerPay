@@ -1,3 +1,5 @@
+import { CSPProvider } from "@base-ui/react/csp-provider";
+import { TooltipProvider } from "./components/ui/tooltip";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -12,6 +14,16 @@ if (!root) throw new Error("找不到管理界面挂载点。");
 
 const router = createBrowserRouter(appRoutes, { basename: "/admin" });
 
-createRoot(root).render(<StrictMode><AppErrorBoundary><QueryClientProvider client={queryClient}>
-  <RouterProvider router={router} />
-</QueryClientProvider></AppErrorBoundary></StrictMode>);
+createRoot(root).render(
+  <StrictMode>
+    <CSPProvider disableStyleElements>
+      <TooltipProvider>
+        <AppErrorBoundary>
+          <QueryClientProvider client={queryClient}>
+            <RouterProvider router={router} />
+          </QueryClientProvider>
+        </AppErrorBoundary>
+      </TooltipProvider>
+    </CSPProvider>
+  </StrictMode>,
+);

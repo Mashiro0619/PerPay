@@ -1,3 +1,4 @@
+import { checkoutFrontend } from "./checkout-frontend.ts";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
@@ -15,7 +16,9 @@ interface AssetSource {
 
 function staticAsset(fileName: string, contentType: string): AssetSource {
   return {
-    bytes: readFileSync(new URL(`../../../static/app/${fileName}`, import.meta.url)),
+    bytes: readFileSync(
+      new URL(`../../../static/app/${fileName}`, import.meta.url),
+    ),
     contentType,
     fileName,
   };
@@ -23,8 +26,6 @@ function staticAsset(fileName: string, contentType: string): AssetSource {
 
 const sources = Object.freeze({
   alipayIcon: staticAsset("alipay.png", "image/png"),
-  checkoutStylesheet: staticAsset("checkout.css", "text/css; charset=utf-8"),
-  checkoutScript: staticAsset("checkout.js", "text/javascript; charset=utf-8"),
 });
 
 function contentAddress(source: AssetSource): string {
@@ -34,14 +35,16 @@ function contentAddress(source: AssetSource): string {
 
 export const WEB_ASSET_URLS = Object.freeze({
   alipayIcon: contentAddress(sources.alipayIcon),
-  checkoutStylesheet: contentAddress(sources.checkoutStylesheet),
-  checkoutScript: contentAddress(sources.checkoutScript),
+  checkoutStylesheet: checkoutFrontend?.styles[0] ?? "",
+  checkoutScript: checkoutFrontend?.script ?? "",
 });
 
 const assets = new Map<string, WebAsset>(
   (Object.keys(sources) as Array<keyof typeof sources>).map((key) => {
     const source = sources[key];
-    const digest = createHash("sha256").update(source.bytes).digest("base64url");
+    const digest = createHash("sha256")
+      .update(source.bytes)
+      .digest("base64url");
     return [
       WEB_ASSET_URLS[key],
       Object.freeze({
@@ -54,6 +57,9 @@ const assets = new Map<string, WebAsset>(
     ];
   }),
 );
+
+for (const [path, asset] of checkoutFrontend?.assets ?? [])
+  assets.set(path, asset);
 
 export const WEB_ASSET_PATHS = Object.freeze([...assets.keys()]);
 

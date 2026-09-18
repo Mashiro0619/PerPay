@@ -82,6 +82,7 @@ import type {
 import {
   advancedSettingsInputSchema,
   backupSettingsInputSchema,
+  displaySettingsInputSchema,
   collectionSettingsInputSchema,
   providerSettingsInputSchema,
   RUNTIME_SECRET_NAMES,
@@ -427,6 +428,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         checkoutToken: token,
         checkout: null,
         qrImageUrl: null,
+        showProductName: checkoutProductNameVisible(dependencies),
         initialError: {
           status: 429,
           code: "public_checkout_rate_limited",
@@ -478,6 +480,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     return context.html(renderCheckoutPage({
       checkoutToken: token,
       checkout,
+      showProductName: checkoutProductNameVisible(dependencies),
       qrImageUrl: checkout?.paymentInstructions === null || checkout === null
         ? null
         : `/api/public/v1/checkouts/${encodeURIComponent(token)}/qr.svg`,
@@ -825,6 +828,22 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       const body = await readJson(context, advancedSettingsInputSchema, MAX_JSON_BODY_BYTES);
       const data = await settingsOperation(() =>
         requireSettingsService(dependencies).saveAdvanced(
+          body,
+          settingsAuditContext(context, dependencies),
+        )
+      );
+      return context.json({ data });
+    },
+  );
+
+  app.put(
+    "/api/admin/v1/settings/display",
+    adminSession,
+    financialWrite,
+    async (context) => {
+      const body = await readJson(context, displaySettingsInputSchema, MAX_JSON_BODY_BYTES);
+      const data = await settingsOperation(() =>
+        requireSettingsService(dependencies).saveDisplay(
           body,
           settingsAuditContext(context, dependencies),
         )
@@ -1405,6 +1424,16 @@ function requireFinancialWrite(
     requireJsonContentType(context);
     await next();
   };
+}
+
+function checkoutProductNameVisible(dependencies: AppDependencies): boolean {
+  try {
+    return dependencies.settings?.display().checkoutShowProductName ?? true;
+  } catch {
+    // Keep recoverable error pages renderable if configuration storage also fails.
+    // Hiding the optional label is safer than undoing an administrator's choice.
+    return false;
+  }
 }
 
 function requireSettingsService(dependencies: AppDependencies): RuntimeSettingsService {
