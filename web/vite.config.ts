@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
+import { adminInitialization } from "./dev/initialization";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const backend = process.env.PERPAY_DEV_API_URL ?? "http://localhost:6190";
@@ -10,7 +11,7 @@ const backend = process.env.PERPAY_DEV_API_URL ?? "http://localhost:6190";
 export default defineConfig({
   root,
   base: "/admin/",
-  plugins: [react(), tailwindcss()],
+  plugins: [adminInitialization(backend), react(), tailwindcss()],
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   build: {
     outDir: "../web-dist/admin",

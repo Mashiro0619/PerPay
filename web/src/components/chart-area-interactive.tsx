@@ -8,6 +8,7 @@ import {
   LineChart,
   CartesianGrid,
   XAxis,
+  YAxis,
 } from "recharts";
 import { ChevronDown, Info } from "lucide-react";
 import type { DashboardChartType, SystemAnalytics } from "@/api/client";
@@ -60,7 +61,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 const chartConfig = {
   amount: { label: "确认金额" },
   orders: { label: "新建订单" },
-  confirmations: { label: "确认次数" },
 } satisfies ChartConfig;
 const periods = [
   { value: "7", label: "近 7 天" },
@@ -68,7 +68,7 @@ const periods = [
   { value: "90", label: "近 90 天" },
 ];
 const metrics = [
-  { value: "amount", label: "付款确认金额" },
+  { value: "amount", label: "确认金额" },
   { value: "orders", label: "新建订单" },
 ];
 
@@ -119,6 +119,8 @@ export function ChartAreaInteractive({
               if (value[0]) onRangeChange(value[0]);
             }}
             variant="outline"
+            spacing={0}
+            size="sm"
             className="hidden @[650px]/card:flex"
             aria-label="统计周期"
           >
@@ -155,28 +157,23 @@ export function ChartAreaInteractive({
         </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 px-2 sm:px-4">
-        <div className="flex items-center gap-2 px-2 sm:px-0">
-          <Select
-            items={metrics}
-            value={metric}
-            onValueChange={(value) => {
-              if (value) setMetric(value);
-            }}
-          >
-            <SelectTrigger size="sm" aria-label="趋势指标">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {metrics.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </div>
+        <ToggleGroup
+          value={[metric]}
+          onValueChange={(value) => {
+            if (value[0]) setMetric(value[0]);
+          }}
+          variant="outline"
+          spacing={0}
+          size="sm"
+          aria-label="趋势指标"
+          className="mx-2 w-fit sm:mx-0"
+        >
+          {metrics.map((item) => (
+            <ToggleGroupItem key={item.value} value={item.value}>
+              {item.label}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
         {pending || !analytics ? (
           <Skeleton className="h-[250px] w-full" />
         ) : (
@@ -216,47 +213,43 @@ export function ChartAreaInteractive({
                   value.slice(5).replace("-", "/")
                 }
               />
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                width={60}
+                tickFormatter={(value: number) =>
+                  (metric === "amount" ? "¥" : "") +
+                  new Intl.NumberFormat("zh-CN", {
+                    notation: "compact",
+                    maximumFractionDigits: 1,
+                  }).format(value)
+                }
+              />
               <ChartTooltip
                 cursor={false}
-                content={({ active, payload, label }) => {
-                  const day = payload?.[0]?.payload as
-                    | (typeof data)[number]
-                    | undefined;
-                  return (
-                    <ChartTooltipContent
-                      active={active}
-                      label={label}
-                      indicator="dot"
-                      payload={
-                        day
-                          ? [
-                              {
-                                graphicalItemId: "amount",
-                                dataKey: "amount",
-                                name: "amount",
-                                value: money(day.confirmed_amount_cents),
-                                color: "var(--primary)",
-                              },
-                              {
-                                graphicalItemId: "confirmations",
-                                dataKey: "confirmations",
-                                name: "confirmations",
-                                value: day.confirmations,
-                                color: "var(--muted-foreground)",
-                              },
-                              {
-                                graphicalItemId: "orders",
-                                dataKey: "orders",
-                                name: "orders",
-                                value: day.orders,
-                                color: "var(--muted-foreground)",
-                              },
-                            ]
-                          : []
-                      }
-                    />
-                  );
-                }}
+                content={
+                  <ChartTooltipContent
+                    className="min-w-48 w-max"
+                    labelFormatter={(value) =>
+                      String(value).replaceAll("-", "/")
+                    }
+                    formatter={(value, name) => (
+                      <div className="flex w-full items-center justify-between gap-6">
+                        <span className="flex items-center gap-2 text-muted-foreground">
+                          <span className="size-2.5 shrink-0 rounded-[2px] bg-primary" />
+                          {chartConfig[name as keyof typeof chartConfig]
+                            ?.label ?? name}
+                        </span>
+                        <span className="whitespace-nowrap font-mono font-medium tabular-nums text-foreground">
+                          {name === "amount"
+                            ? money(Math.round(Number(value) * 100))
+                            : Number(value).toLocaleString("zh-CN")}
+                        </span>
+                      </div>
+                    )}
+                  />
+                }
               />
               {chartType === "BAR" ? (
                 <Bar

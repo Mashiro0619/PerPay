@@ -1,5 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ChevronDown, RefreshCw } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  Clock3,
+  Plus,
+  RefreshCw,
+} from "lucide-react";
 import { useParams } from "react-router";
 import {
   api,
@@ -30,7 +37,6 @@ import {
   CardHeader,
   CardTitle,
   CardDescription,
-  CardAction,
   CardContent,
   CardFooter,
 } from "@/components/ui/card";
@@ -51,6 +57,7 @@ import {
   ItemTitle,
   ItemDescription,
   ItemGroup,
+  ItemMedia,
 } from "@/components/ui/item";
 import { RefundMarkPanel } from "./RefundMark";
 export function OrderDetail() {
@@ -63,7 +70,7 @@ export function OrderDetail() {
       result(api.getAdministratorOrder({ path: { orderId }, signal })),
   });
   return (
-    <div className="flex w-full min-w-0 max-w-6xl flex-col gap-4">
+    <div className="@container/order flex w-full min-w-0 flex-col gap-4">
       <div className="flex items-center justify-between gap-4">
         <Link
           to={back.to}
@@ -117,63 +124,95 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
     .find((event) => event.event_type === "PAYMENT_CONFIRMED");
   return (
     <>
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>
-            <h2>{order.product_name}</h2>
-          </CardTitle>
-          <CardDescription>
-            收银台
-            {order.checkout.status === "OPEN"
-              ? "开放中"
-              : order.checkout.status === "EXPIRED"
-                ? "已过期"
-                : "已关闭"}
-          </CardDescription>
-          <CardAction>
-            <StatusBadge value={order.payment.status} />
-          </CardAction>
-        </CardHeader>
-        <CardContent className="flex min-w-0 flex-col gap-2">
-          <div className="grid gap-4 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
-            <div className="flex flex-col gap-1">
-              <p className="text-sm text-muted-foreground">实收金额</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-2xl font-semibold tracking-tight">
+          {order.product_name}
+        </h2>
+        <StatusBadge value={order.payment.status} />
+      </div>
+      <div className="grid min-w-0 items-start gap-4 @3xl/order:grid-cols-[minmax(0,1.6fr)_minmax(16rem,1fr)] @5xl/order:grid-cols-[minmax(16rem,1fr)_minmax(0,1.6fr)_minmax(16rem,1fr)]">
+        <section
+          aria-label="金额与订单信息"
+          className="grid min-w-0 items-start gap-4 @3xl/order:col-span-2 @3xl/order:grid-cols-2 @5xl/order:col-span-1 @5xl/order:grid-cols-1"
+        >
+          <Card>
+            <CardHeader>
+              <CardDescription>实收金额</CardDescription>
               <p className="text-3xl font-semibold tabular-nums">
                 {money(order.received_amount_cents)}
               </p>
-              <p className="text-sm text-muted-foreground">
-                应付 {money(order.payable_amount_cents)}
-                {order.requested_amount_cents !== order.payable_amount_cents
-                  ? " · 原始 " + money(order.requested_amount_cents)
-                  : ""}
-              </p>
-            </div>
-            <DetailFields
-              compact
-              items={[
-                [
-                  "商户订单号",
-                  <CopyValue
-                    value={order.merchant_order_no}
-                    label="复制商户订单号"
-                  />,
-                ],
-                ["创建时间", dateTime(order.created_at)],
-                ...(confirmed
-                  ? [["付款确认时间", dateTime(confirmed.occurred_at)] as const]
-                  : []),
-                ["付款截止", dateTime(order.checkout.expires_at)],
-              ]}
-            />
-          </div>
-          <RefundMarkPanel
-            key={order.order_id}
-            order={order}
-            includeOrderTools
-          />
-        </CardContent>
-      </Card>
-      <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_18rem]">
+            </CardHeader>
+            <CardContent>
+              <ItemGroup>
+                <Item variant="muted" size="sm">
+                  <ItemContent>
+                    <ItemDescription>应付金额</ItemDescription>
+                  </ItemContent>
+                  <span className="font-medium tabular-nums">
+                    {money(order.payable_amount_cents)}
+                  </span>
+                </Item>
+                <Item size="sm">
+                  <ItemContent>
+                    <ItemDescription>原始金额</ItemDescription>
+                  </ItemContent>
+                  <span className="tabular-nums">
+                    {money(order.requested_amount_cents)}
+                  </span>
+                </Item>
+              </ItemGroup>
+            </CardContent>
+            <CardFooter>
+              <CardDescription>
+                收银台
+                {order.checkout.status === "OPEN"
+                  ? "开放中"
+                  : order.checkout.status === "EXPIRED"
+                    ? "已过期"
+                    : "已关闭"}
+              </CardDescription>
+            </CardFooter>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle role="heading" aria-level={2}>
+                订单信息
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <DetailFields
+                compact
+                className="sm:grid-cols-1"
+                items={[
+                  [
+                    "商户订单号",
+                    <CopyValue
+                      value={order.merchant_order_no}
+                      label="复制商户订单号"
+                    />,
+                  ],
+                  ["创建时间", dateTime(order.created_at)],
+                  ...(confirmed
+                    ? [
+                        [
+                          "付款确认时间",
+                          dateTime(confirmed.occurred_at),
+                        ] as const,
+                      ]
+                    : []),
+                  ["付款截止", dateTime(order.checkout.expires_at)],
+                ]}
+              />
+            </CardContent>
+            <CardFooter className="block">
+              <RefundMarkPanel
+                key={order.order_id}
+                order={order}
+                includeOrderTools
+              />
+            </CardFooter>
+          </Card>
+        </section>
         <div className="flex min-w-0 flex-col gap-4">
           {exceptions.map((exception) => (
             <ExceptionCard
@@ -281,7 +320,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
           className="flex min-w-0 flex-col gap-4"
           aria-label="订单动态与辅助信息"
         >
-          <Card size="sm">
+          <Card>
             <CardHeader>
               <CardTitle role="heading" aria-level={2}>
                 订单动态
@@ -348,7 +387,16 @@ function OrderTimeline({
             : undefined;
         const explanation = eventExplanation(event);
         return (
-          <Item key={event.event_id} size="xs">
+          <Item key={event.event_id} size="sm" variant="muted">
+            <ItemMedia variant="icon">
+              {event.event_type === "PAYMENT_CONFIRMED" ? (
+                <Check />
+              ) : event.event_type === "CREATED" ? (
+                <Plus />
+              ) : (
+                <Clock3 />
+              )}
+            </ItemMedia>
             <ItemContent>
               <ItemTitle>{label(event.event_type)}</ItemTitle>
               <ItemDescription>

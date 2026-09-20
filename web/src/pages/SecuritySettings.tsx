@@ -42,6 +42,7 @@ import {
   CardDescription,
   CardAction,
   CardContent,
+  CardFooter,
 } from "@/components/ui/card";
 import {
   Table,
@@ -103,152 +104,160 @@ export function SecuritySettings({
   });
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle role="heading" aria-level={2}>
-            密钥
-          </CardTitle>
-          <CardDescription>API 客户端 ID：default</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>用途</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead className="text-right">操作</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {secrets.map(([name, title, purpose]) => {
-                const metadata = settings.secrets[name];
-                return (
-                  <TableRow key={name}>
-                    <TableCell className="whitespace-normal py-3">
-                      <div className="flex flex-col gap-1">
-                        <span className="font-medium">{title}</span>
-                        <span className="text-sm text-muted-foreground">
-                          {purpose}
-                        </span>
-                        {metadata.configured && metadata.updatedAt !== null && (
-                          <time
-                            className="text-xs text-muted-foreground"
-                            dateTime={new Date(
-                              metadata.updatedAt,
-                            ).toISOString()}
-                          >
-                            更新于 {dateTime(metadata.updatedAt)}
-                          </time>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge
-                        value={metadata.configured ? "CONFIRMED" : "UNPAID"}
-                        label={metadata.configured ? "已配置" : "未配置"}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap items-center justify-end gap-1">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={!metadata.configured}
-                          onClick={(event) => {
-                            dialogOrigin.current = event.currentTarget;
-                            setReveal(name);
-                          }}
-                          aria-label={"查看" + title}
-                        >
-                          <Eye data-icon="inline-start" />
-                          查看
-                        </Button>
-                        {name === "api_secret" &&
-                          (settings.completion.api ? (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger
-                                render={
-                                  <Button
-                                    ref={rotateTrigger}
-                                    size="icon-sm"
-                                    variant="ghost"
-                                    aria-label="API 密钥操作"
-                                  />
-                                }
+      <div className="grid min-w-0 items-start gap-4 @5xl/settings:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle role="heading" aria-level={2}>
+              密钥
+            </CardTitle>
+            <CardDescription>API 客户端 ID：default</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>用途</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {secrets.map(([name, title, purpose]) => {
+                  const metadata = settings.secrets[name];
+                  const status = (
+                    <StatusBadge
+                      value={metadata.configured ? "CONFIRMED" : "UNPAID"}
+                      label={metadata.configured ? "已配置" : "未配置"}
+                    />
+                  );
+                  return (
+                    <TableRow key={name}>
+                      <TableCell className="whitespace-normal py-3">
+                        <div className="flex flex-col gap-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-medium">{title}</span>
+                            {status}
+                          </div>
+                          <span className="text-sm text-muted-foreground">
+                            {purpose}
+                          </span>
+                          {metadata.configured &&
+                            metadata.updatedAt !== null && (
+                              <time
+                                className="text-xs text-muted-foreground"
+                                dateTime={new Date(
+                                  metadata.updatedAt,
+                                ).toISOString()}
                               >
-                                <MoreHorizontal />
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuGroup>
-                                  <DropdownMenuItem
-                                    variant="destructive"
-                                    onClick={() => {
-                                      dialogOrigin.current =
-                                        rotateTrigger.current;
-                                      setRotate(true);
-                                    }}
-                                  >
-                                    轮换 API 密钥
-                                  </DropdownMenuItem>
-                                </DropdownMenuGroup>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          ) : (
-                            <Button
-                              size="sm"
-                              onClick={(event) => {
-                                dialogOrigin.current = event.currentTarget;
-                                setRotate(true);
-                              }}
-                            >
-                              <KeyRound data-icon="inline-start" />
-                              生成 API 密钥
-                            </Button>
-                          ))}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-      <PasswordForm />
-      <Card>
-        <CardHeader>
-          <CardTitle role="heading" aria-level={2}>
-            登录会话
-          </CardTitle>
-          <CardDescription>注销所有设备上的管理员会话。</CardDescription>
-          <CardAction>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button
-                    ref={revokeTrigger}
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="会话操作"
-                  />
-                }
-              >
-                <MoreHorizontal />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuGroup>
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onClick={() => requestDiscard(() => setRevoke(true))}
+                                更新于 {dateTime(metadata.updatedAt)}
+                              </time>
+                            )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap items-center justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={!metadata.configured}
+                            onClick={(event) => {
+                              dialogOrigin.current = event.currentTarget;
+                              setReveal(name);
+                            }}
+                            aria-label={"查看" + title}
+                          >
+                            <Eye data-icon="inline-start" />
+                            查看
+                          </Button>
+                          {name === "api_secret" &&
+                            (settings.completion.api ? (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger
+                                  render={
+                                    <Button
+                                      ref={rotateTrigger}
+                                      size="icon-sm"
+                                      variant="ghost"
+                                      aria-label="API 密钥操作"
+                                    />
+                                  }
+                                >
+                                  <MoreHorizontal />
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuGroup>
+                                    <DropdownMenuItem
+                                      variant="destructive"
+                                      onClick={() => {
+                                        dialogOrigin.current =
+                                          rotateTrigger.current;
+                                        setRotate(true);
+                                      }}
+                                    >
+                                      轮换 API 密钥
+                                    </DropdownMenuItem>
+                                  </DropdownMenuGroup>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            ) : (
+                              <Button
+                                size="sm"
+                                aria-label="生成 API 密钥"
+                                onClick={(event) => {
+                                  dialogOrigin.current = event.currentTarget;
+                                  setRotate(true);
+                                }}
+                              >
+                                <KeyRound data-icon="inline-start" />
+                                生成
+                              </Button>
+                            ))}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+        <FieldGroup className="min-w-0 gap-4">
+          <PasswordForm />
+          <Card>
+            <CardHeader>
+              <CardTitle role="heading" aria-level={2}>
+                登录会话
+              </CardTitle>
+              <CardDescription>注销所有设备上的管理员会话。</CardDescription>
+              <CardAction>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button
+                        ref={revokeTrigger}
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="会话操作"
+                      />
+                    }
                   >
-                    注销全部会话
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </CardAction>
-        </CardHeader>
-      </Card>
+                    <MoreHorizontal />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => requestDiscard(() => setRevoke(true))}
+                      >
+                        注销全部会话
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </CardAction>
+            </CardHeader>
+          </Card>
+        </FieldGroup>
+      </div>
       {reveal && (
         <SecretDialog
           finalFocus={() => dialogOrigin.current}
@@ -582,15 +591,15 @@ function PasswordForm() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle role="heading" aria-level={2}>
-          修改密码
-        </CardTitle>
-        <CardDescription>修改后所有设备都需重新登录。</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={submit}>
+    <form onSubmit={submit} className="min-w-0">
+      <Card>
+        <CardHeader>
+          <CardTitle role="heading" aria-level={2}>
+            修改密码
+          </CardTitle>
+          <CardDescription>修改后所有设备都需重新登录。</CardDescription>
+        </CardHeader>
+        <CardContent>
           <FieldSet disabled={change.isPending}>
             <FieldGroup>
               <FieldGroup className="grid sm:grid-cols-2">
@@ -653,23 +662,23 @@ function PasswordForm() {
                 </Field>
               </FieldGroup>
               <ErrorNotice error={change.error} />
-              <Field orientation="horizontal">
-                <Button
-                  type="submit"
-                  disabled={!password || !confirmation || change.isPending}
-                >
-                  {change.isPending ? (
-                    <Spinner aria-hidden="true" data-icon="inline-start" />
-                  ) : (
-                    <ShieldCheck data-icon="inline-start" />
-                  )}
-                  修改并重新登录
-                </Button>
-              </Field>
             </FieldGroup>
           </FieldSet>
-        </form>
-      </CardContent>
-    </Card>
+        </CardContent>
+        <CardFooter className="justify-end">
+          <Button
+            type="submit"
+            disabled={!password || !confirmation || change.isPending}
+          >
+            {change.isPending ? (
+              <Spinner aria-hidden="true" data-icon="inline-start" />
+            ) : (
+              <ShieldCheck data-icon="inline-start" />
+            )}
+            修改并重新登录
+          </Button>
+        </CardFooter>
+      </Card>
+    </form>
   );
 }

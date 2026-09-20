@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { AlertCircle } from "lucide-react";
-import { api, refreshOperationalData, result } from "@/api/client";
+import { ApiError, api, refreshOperationalData, result } from "@/api/client";
 import { resourceIdPattern } from "@/lib/format";
 import { useOperationKey } from "@/lib/idempotency";
 import { ErrorNotice } from "@/components/request-state";
@@ -29,6 +29,7 @@ export function FinancialDialog({
   ledgerLabel,
   onClose,
   onSuccess,
+  finalFocus,
 }: {
   initialOrderId?: string;
   initialLedgerId?: string;
@@ -37,6 +38,7 @@ export function FinancialDialog({
   ledgerLabel?: string | undefined;
   onClose: () => void;
   onSuccess: () => void;
+  finalFocus?: (() => HTMLElement | null) | undefined;
 }) {
   const [orderId, setOrderId] = useState(initialOrderId);
   const [ledgerId, setLedgerId] = useState(initialLedgerId);
@@ -89,6 +91,9 @@ export function FinancialDialog({
     }
   }, [lockContext, initialOrderId, initialLedgerId, preview.mutate]);
   const busy = preview.isPending || save.isPending;
+  const stale =
+    save.error instanceof ApiError &&
+    save.error.code === "match_state_conflict";
   const directionValid = preview.data?.ledger.direction === "CREDIT";
   const stateValid =
     preview.data?.order.payment.status === "UNPAID" &&
@@ -100,9 +105,14 @@ export function FinancialDialog({
     preview.reset();
     save.reset();
   }
+  function recheckEvidence() {
+    if (busy) return;
+    save.reset();
+    preview.mutate();
+  }
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || stale) return;
     if (!preview.data) {
       preview.mutate();
       return;
@@ -122,16 +132,17 @@ export function FinancialDialog({
     >
       <DialogContent
         showCloseButton={!busy}
-        className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-xl"
+        finalFocus={finalFocus}
+        className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-xl"
       >
-        <DialogHeader>
+        <DialogHeader className="shrink-0">
           <DialogTitle>人工关联收款</DialogTitle>
           <DialogDescription>
             将这笔收入关联到订单并确认付款。
           </DialogDescription>
         </DialogHeader>
         <form className="contents" onSubmit={submit}>
-          <FieldGroup>
+          <FieldGroup className="-mx-4 min-h-0 w-auto overflow-y-auto px-4 pb-1">
             {lockContext && initialOrderId ? (
               !preview.data && (
                 <p className="text-sm text-muted-foreground">
@@ -231,7 +242,7 @@ export function FinancialDialog({
               </>
             )}
           </FieldGroup>
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button
               type="button"
               variant="outline"
@@ -241,15 +252,21 @@ export function FinancialDialog({
               取消
             </Button>
             <Button
-              type="submit"
+              type={stale ? "button" : "submit"}
+              onClick={stale ? recheckEvidence : undefined}
               disabled={
                 busy ||
-                (!!preview.data &&
+                (!stale &&
+                  !!preview.data &&
                   (!directionValid || !stateValid || !reason.trim()))
               }
             >
               {busy && <Spinner aria-hidden="true" data-icon="inline-start" />}
-              {preview.data ? "确认关联收款" : "查看关联信息"}
+              {stale
+                ? "重新核对证据"
+                : preview.data
+                  ? "确认关联收款"
+                  : "查看关联信息"}
             </Button>
           </DialogFooter>
         </form>

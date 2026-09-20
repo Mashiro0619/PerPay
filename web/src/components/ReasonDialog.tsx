@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { ApiError, refreshOperationalData } from "@/api/client";
 import { useOperationKey } from "@/lib/idempotency";
 import { ErrorNotice } from "@/components/request-state";
 import { Button } from "@/components/ui/button";
@@ -39,34 +40,45 @@ export function ReasonDialog({
     mutationFn: () => execute(reason.trim(), operationKey(reason.trim())),
     onSuccess,
   });
+  // These commands use a captured snapshot; a conflict requires fresh evidence.
+  const conflict =
+    mutation.error instanceof ApiError && mutation.error.status === 409;
+  function close() {
+    if (mutation.isPending) return;
+    onClose();
+    if (conflict) void refreshOperationalData();
+  }
   return (
     <Dialog
       open
       onOpenChange={(open, event) => {
         if (!open) {
           if (mutation.isPending) event.cancel();
-          else onClose();
+          else close();
         }
       }}
     >
       <DialogContent
         showCloseButton={!mutation.isPending}
-        finalFocus={finalFocus}
-        className="max-h-[calc(100dvh-2rem)] overflow-y-auto"
+        finalFocus={
+          conflict ? () => document.getElementById("main-content") : finalFocus
+        }
+        className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden"
       >
-        <DialogHeader>
+        <DialogHeader className="shrink-0">
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        {children}
         <form
           className="contents"
           onSubmit={(event) => {
             event.preventDefault();
-            if (reason.trim() && !mutation.isPending) mutation.mutate();
+            if (reason.trim() && !mutation.isPending && !conflict)
+              mutation.mutate();
           }}
         >
-          <FieldGroup>
+          <FieldGroup className="-mx-4 min-h-0 w-auto overflow-y-auto px-4 pb-1">
+            {children}
             <Field>
               <FieldLabel htmlFor="operation-reason">操作理由</FieldLabel>
               <Textarea
@@ -82,23 +94,24 @@ export function ReasonDialog({
             </Field>
             <ErrorNotice error={mutation.error} />
           </FieldGroup>
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button
               type="button"
               variant="outline"
-              onClick={onClose}
+              onClick={close}
               disabled={mutation.isPending}
             >
               取消
             </Button>
             <Button
-              type="submit"
-              disabled={!reason.trim() || mutation.isPending}
+              type={conflict ? "button" : "submit"}
+              onClick={conflict ? close : undefined}
+              disabled={mutation.isPending || (!conflict && !reason.trim())}
             >
               {mutation.isPending && (
                 <Spinner aria-hidden="true" data-icon="inline-start" />
               )}
-              {action}
+              {conflict ? "关闭并刷新" : action}
             </Button>
           </DialogFooter>
         </form>

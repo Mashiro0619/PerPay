@@ -1,6 +1,15 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw } from "lucide-react";
+import {
+  DatabaseBackup,
+  KeyRound,
+  Mail,
+  Monitor,
+  QrCode,
+  RefreshCw,
+  SlidersHorizontal,
+  Wallet,
+} from "lucide-react";
 import { useParams } from "react-router";
 import { Link, useNavigate } from "@/navigation";
 import { SettingsEditor, sections } from "@/components/SettingsForms";
@@ -22,6 +31,16 @@ import {
   NativeSelectOption,
 } from "@/components/ui/native-select";
 import { SecuritySettings } from "./SecuritySettings";
+
+const sectionIcons = {
+  provider: Wallet,
+  collection: QrCode,
+  notifications: Mail,
+  security: KeyRound,
+  backup: DatabaseBackup,
+  display: Monitor,
+  advanced: SlidersHorizontal,
+};
 
 export default function Settings() {
   const { section: requestedSection } = useParams();
@@ -58,26 +77,34 @@ export default function Settings() {
     });
   }
   return (
-    <div className="@container/settings flex w-full min-w-0 max-w-4xl flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Link
-          className={buttonVariants({ variant: "outline" })}
-          to="/settings/onboarding"
-        >
-          配置向导
-        </Link>
-        <Button
-          variant="outline"
-          disabled={settings.isFetching}
-          onClick={refresh}
-        >
-          {settings.isFetching ? (
-            <Spinner aria-hidden="true" data-icon="inline-start" />
-          ) : (
-            <RefreshCw data-icon="inline-start" />
-          )}
-          刷新
-        </Button>
+    <div className="@container/settings flex w-full min-w-0 flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-2xl font-semibold tracking-tight">实例设置</h2>
+          <p className="text-sm text-muted-foreground">
+            管理收款接入、订单和界面显示。
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link
+            className={buttonVariants({ variant: "outline" })}
+            to="/settings/onboarding"
+          >
+            配置向导
+          </Link>
+          <Button
+            variant="outline"
+            disabled={settings.isFetching}
+            onClick={refresh}
+          >
+            {settings.isFetching ? (
+              <Spinner aria-hidden="true" data-icon="inline-start" />
+            ) : (
+              <RefreshCw data-icon="inline-start" />
+            )}
+            刷新
+          </Button>
+        </div>
       </div>
       <QueryView query={settings}>
         {({ data }) => {
@@ -93,11 +120,11 @@ export default function Settings() {
             <Tabs
               value={section}
               onValueChange={changeSection}
-              className="min-w-0 gap-4"
+              className="min-w-0 gap-6"
             >
               <NativeSelect
                 aria-label="设置分类"
-                className="w-full @2xl/settings:hidden"
+                className="w-full @3xl/settings:hidden"
                 value={section}
                 onChange={(event) => changeSection(event.currentTarget.value)}
               >
@@ -109,13 +136,18 @@ export default function Settings() {
               </NativeSelect>
               <TabsList
                 aria-label="设置分类"
-                className="hidden @2xl/settings:inline-flex"
+                variant="line"
+                className="hidden w-full justify-start @3xl/settings:inline-flex"
               >
-                {sections.map(([value, title]) => (
-                  <TabsTrigger key={value} value={value}>
-                    {title}
-                  </TabsTrigger>
-                ))}
+                {sections.map(([value, title]) => {
+                  const Icon = sectionIcons[value];
+                  return (
+                    <TabsTrigger key={value} value={value}>
+                      <Icon />
+                      {title}
+                    </TabsTrigger>
+                  );
+                })}
               </TabsList>
               <TabsContent value={section}>
                 <div

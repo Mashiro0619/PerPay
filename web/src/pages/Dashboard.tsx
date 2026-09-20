@@ -158,25 +158,46 @@ export default function Dashboard() {
         </div>
       )}
       <SectionCards analytics={data} />
+      <div className="flex min-w-0 flex-col gap-4 px-4 lg:px-6">
+        <ErrorNotice
+          error={analytics.error}
+          retry={() => {
+            void analytics.refetch();
+          }}
+        />
+        <ChartAreaInteractive
+          analytics={data}
+          chartType={
+            settings.data?.data.display?.dashboard_chart_type ?? "AREA"
+          }
+          range={range}
+          onRangeChange={changeRange}
+          pending={analytics.isPending || analytics.isPlaceholderData}
+        />
+      </div>
       <div className="grid min-w-0 items-start gap-4 px-4 lg:px-6 @5xl/main:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
-        <div className="flex min-w-0 flex-col gap-4">
-          <ErrorNotice
-            error={analytics.error}
-            retry={() => {
-              void analytics.refetch();
-            }}
-          />
-          <ChartAreaInteractive
-            analytics={data}
-            chartType={
-              settings.data?.data.display?.dashboard_chart_type ?? "AREA"
-            }
-            range={range}
-            onRangeChange={changeRange}
-            pending={analytics.isPending || analytics.isPlaceholderData}
-          />
-        </div>
-        <Card size="sm">
+        <Card>
+          <CardHeader>
+            <CardTitle role="heading" aria-level={2}>
+              最近订单
+            </CardTitle>
+            <CardAction>
+              <Link
+                to="/orders"
+                className={buttonVariants({ variant: "ghost", size: "sm" })}
+              >
+                全部订单
+                <ArrowRight data-icon="inline-end" />
+              </Link>
+            </CardAction>
+          </CardHeader>
+          <CardContent>
+            <QueryView query={orders}>
+              {(page) => <DataTable data={page.data} />}
+            </QueryView>
+          </CardContent>
+        </Card>
+        <Card>
           <CardHeader>
             <CardTitle role="heading" aria-level={2}>
               待处理
@@ -200,7 +221,7 @@ export default function Dashboard() {
                       <Fragment key={item.type + item.resource_id}>
                         {index > 0 && <ItemSeparator />}
                         <Item
-                          size="xs"
+                          size="sm"
                           render={<Link to={workItemHref(item)} />}
                         >
                           <ItemContent>
@@ -227,29 +248,6 @@ export default function Dashboard() {
                   </Empty>
                 )
               }
-            </QueryView>
-          </CardContent>
-        </Card>
-      </div>
-      <div className="px-4 lg:px-6">
-        <Card>
-          <CardHeader>
-            <CardTitle role="heading" aria-level={2}>
-              最近订单
-            </CardTitle>
-            <CardAction>
-              <Link
-                to="/orders"
-                className={buttonVariants({ variant: "ghost", size: "sm" })}
-              >
-                全部订单
-                <ArrowRight data-icon="inline-end" />
-              </Link>
-            </CardAction>
-          </CardHeader>
-          <CardContent>
-            <QueryView query={orders}>
-              {(page) => <DataTable data={page.data} />}
             </QueryView>
           </CardContent>
         </Card>

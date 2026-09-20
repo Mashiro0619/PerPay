@@ -20,6 +20,13 @@ function mount(
     mobile?: boolean;
   } = {},
 ) {
+  if (!document.querySelector('meta[name="perpay-initialized"]')) {
+    const metadata = document.createElement("meta");
+    metadata.name = "perpay-initialized";
+    metadata.content = "true";
+    document.head.append(metadata);
+  }
+
   vi.stubGlobal("innerWidth", options.mobile ? 390 : 1440);
   vi.stubGlobal(
     "matchMedia",

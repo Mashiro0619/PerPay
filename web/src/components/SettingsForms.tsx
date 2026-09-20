@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useEffect,
   useRef,
   useState,
@@ -23,6 +24,7 @@ import {
   type DashboardChartType,
 } from "@/api/client";
 import { Link } from "@/navigation";
+import { cn } from "@/lib/utils";
 import { useDraftGuard, useFormDraft } from "@/drafts";
 import { SuccessMessage, useFeedback } from "@/components/Feedback";
 import { CollectionCodeField } from "@/components/CollectionCodeField";
@@ -53,6 +55,7 @@ import {
   CardTitle,
   CardDescription,
   CardContent,
+  CardFooter,
 } from "@/components/ui/card";
 import {
   Collapsible,
@@ -152,7 +155,9 @@ export function SettingsEditor({
   // Keep defaults stable for this mounted draft when a sibling form saves.
   // Explicit refreshes remount the editor; saves still use the latest revision.
   const [initialSettings] = useState(settings);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(
+    !guided && (section === "collection" || section === "provider"),
+  );
   const [privateOpen, setPrivateOpen] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
   function revealField(field: HTMLElement) {
@@ -234,6 +239,559 @@ export function SettingsEditor({
     save.mutate(new FormData(event.currentTarget));
   }
 
+  const providerIdentity = (
+    <FieldGroup>
+      <Field data-invalid={!!fieldErrors.app_id}>
+        <FieldLabel htmlFor="setting-app-id">应用 ID（App ID）</FieldLabel>
+        <Input
+          id="setting-app-id"
+          name="app_id"
+          required
+          maxLength={64}
+          pattern="[A-Za-z0-9._-]+"
+          defaultValue={initialSettings.provider?.app_id ?? ""}
+          autoComplete="off"
+          aria-invalid={!!fieldErrors.app_id}
+          aria-describedby={
+            fieldErrors.app_id ? "setting-app-id-error" : undefined
+          }
+        />
+        {fieldErrors.app_id && (
+          <FieldError id="setting-app-id-error">
+            {fieldErrors.app_id}
+          </FieldError>
+        )}
+      </Field>
+      <Field data-invalid={!!fieldErrors.platform_public_key}>
+        <FieldLabel htmlFor="setting-platform-key">支付宝公钥</FieldLabel>
+        <Textarea
+          id="setting-platform-key"
+          name="platform_public_key"
+          rows={4}
+          required={!settings.secrets.provider_public_key.configured}
+          maxLength={16384}
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="Base64 或 PEM"
+          aria-invalid={!!fieldErrors.platform_public_key}
+          aria-describedby={
+            fieldErrors.platform_public_key
+              ? "setting-platform-key-error" + " setting-platform-key-hint"
+              : "setting-platform-key-hint"
+          }
+        />
+        <FieldDescription id="setting-platform-key-hint">
+          {settings.secrets.provider_public_key.configured
+            ? "已配置，留空不变。"
+            : "从支付宝平台复制，不是应用公钥。"}
+        </FieldDescription>
+        {fieldErrors.platform_public_key && (
+          <FieldError id="setting-platform-key-error">
+            {fieldErrors.platform_public_key}
+          </FieldError>
+        )}
+      </Field>
+      {!guided && (
+        <Collapsible
+          open={privateOpen}
+          onOpenChange={setPrivateOpen}
+          data-settings-private
+        >
+          <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
+            <ChevronDown data-icon="inline-start" />
+            导入已有应用私钥（可选）
+          </CollapsibleTrigger>
+          <CollapsibleContent keepMounted>
+            <Field className="pt-4" data-invalid={!!fieldErrors.private_key}>
+              <FieldLabel htmlFor="setting-private-key">应用私钥</FieldLabel>
+              <Textarea
+                id="setting-private-key"
+                name="private_key"
+                rows={4}
+                maxLength={16384}
+                autoComplete="off"
+                spellCheck={false}
+                aria-invalid={!!fieldErrors.private_key}
+                aria-describedby={
+                  fieldErrors.private_key
+                    ? "setting-private-key-error" + " setting-private-key-hint"
+                    : "setting-private-key-hint"
+                }
+              />
+              <FieldDescription id="setting-private-key-hint">
+                留空使用已生成的私钥。替换前，请同步支付宝平台中的应用公钥。
+              </FieldDescription>
+              {fieldErrors.private_key && (
+                <FieldError id="setting-private-key-error">
+                  {fieldErrors.private_key}
+                </FieldError>
+              )}
+            </Field>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+    </FieldGroup>
+  );
+  const providerCollection = (
+    <FieldGroup>
+      <Collapsible
+        open={advancedOpen}
+        onOpenChange={setAdvancedOpen}
+        data-settings-advanced
+      >
+        <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
+          <ChevronDown data-icon="inline-start" />
+          {settings.provider?.environment === "SANDBOX"
+            ? "高级设置 · 沙箱环境"
+            : "高级设置"}
+        </CollapsibleTrigger>
+        <CollapsibleContent keepMounted>
+          <FieldGroup className="grid gap-5 pt-4 sm:grid-cols-2">
+            <Field data-invalid={!!fieldErrors.environment}>
+              <FieldLabel htmlFor="setting-environment">支付宝环境</FieldLabel>
+              <NativeSelect
+                id="setting-environment"
+                name="environment"
+                defaultValue={
+                  initialSettings.provider?.environment ?? "PRODUCTION"
+                }
+                aria-invalid={!!fieldErrors.environment}
+                aria-describedby={
+                  fieldErrors.environment
+                    ? "setting-environment-error"
+                    : undefined
+                }
+              >
+                <NativeSelectOption value="PRODUCTION">
+                  生产环境
+                </NativeSelectOption>
+                <NativeSelectOption value="SANDBOX">
+                  沙箱环境
+                </NativeSelectOption>
+              </NativeSelect>
+              {fieldErrors.environment && (
+                <FieldError id="setting-environment-error">
+                  {fieldErrors.environment}
+                </FieldError>
+              )}
+            </Field>
+            <NumberField
+              name="timeout_milliseconds"
+              error={fieldErrors.timeout_milliseconds}
+              label="请求超时（毫秒）"
+              value={initialSettings.provider?.timeout_milliseconds ?? 8000}
+              min={1000}
+              max={120000}
+            />
+            <NumberField
+              name="scan_interval_seconds"
+              error={fieldErrors.scan_interval_seconds}
+              label="常规采集间隔（秒）"
+              value={initialSettings.provider?.scan_interval_seconds ?? 60}
+              min={5}
+              max={3600}
+              hint="空闲时使用；有效时限至少为此间隔的两倍。"
+            />
+            <NumberField
+              name="active_scan_interval_seconds"
+              error={fieldErrors.active_scan_interval_seconds}
+              label="活跃采集间隔（秒）"
+              value={
+                initialSettings.provider?.active_scan_interval_seconds ??
+                initialSettings.provider?.scan_interval_seconds ??
+                8
+              }
+              min={5}
+              max={3600}
+              hint="待支付及收尾时使用，不得大于常规间隔。"
+            />
+            <NumberField
+              name="safety_lag_seconds"
+              error={fieldErrors.safety_lag_seconds}
+              label="安全延迟（秒）"
+              value={initialSettings.provider?.safety_lag_seconds ?? 10}
+              min={5}
+              max={300}
+              hint="避开支付宝尚未稳定返回的最新账单。"
+            />
+            <NumberField
+              name="maximum_success_age_seconds"
+              error={fieldErrors.maximum_success_age_seconds}
+              label="采集有效时限（秒）"
+              value={
+                initialSettings.provider?.maximum_success_age_seconds ?? 120
+              }
+              min={10}
+              max={86400}
+              hint="超过此时限未成功采集，会暂停新订单收款入口。"
+            />
+          </FieldGroup>
+        </CollapsibleContent>
+      </Collapsible>
+    </FieldGroup>
+  );
+  const collectionIdentity = (
+    <FieldGroup>
+      <CollectionCodeField
+        defaultValue={initialSettings.collection?.code_payload ?? ""}
+        onDecoded={() => {
+          draft.onChange();
+          setFieldErrors({});
+          setSavedMessage("");
+        }}
+        error={fieldErrors.code_payload}
+        onPendingChange={setDecoding}
+        disabled={save.isPending}
+      />
+    </FieldGroup>
+  );
+  const collectionRules = (
+    <FieldGroup>
+      <NumberField
+        name="order_ttl_seconds"
+        error={fieldErrors.order_ttl_seconds}
+        label="收银台有效期（秒）"
+        value={initialSettings.collection?.order_ttl_seconds ?? 300}
+        min={60}
+        max={1800}
+      />
+      <Collapsible
+        open={advancedOpen}
+        onOpenChange={setAdvancedOpen}
+        data-settings-advanced
+      >
+        <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
+          <ChevronDown data-icon="inline-start" />
+          高级设置
+        </CollapsibleTrigger>
+        <CollapsibleContent keepMounted>
+          <FieldGroup className="grid gap-5 pt-4 sm:grid-cols-2">
+            <NumberField
+              name="amount_offset_maximum_cents"
+              error={fieldErrors.amount_offset_maximum_cents}
+              label="最大金额尾差（分）"
+              value={
+                initialSettings.collection?.amount_offset_maximum_cents ?? 99
+              }
+              min={1}
+              max={99}
+            />
+            <NumberField
+              name="amount_reuse_cooldown_seconds"
+              error={fieldErrors.amount_reuse_cooldown_seconds}
+              label="金额复用冷却（秒）"
+              value={
+                initialSettings.collection?.amount_reuse_cooldown_seconds ?? 600
+              }
+              min={60}
+              max={3600}
+              hint="结束后暂不复用应付金额，不延长订单有效期。"
+            />
+          </FieldGroup>
+        </CollapsibleContent>
+      </Collapsible>
+    </FieldGroup>
+  );
+  const notificationFields = (
+    <FieldGroup>
+      <Field orientation="horizontal">
+        <Switch
+          id="setting-enabled"
+          name="enabled"
+          checked={notificationEnabled}
+          onCheckedChange={setNotificationEnabled}
+        />
+        <FieldLabel htmlFor="setting-enabled">启用业务通知</FieldLabel>
+      </Field>
+      {!notificationEnabled && (
+        <FieldDescription>通知未启用，网站需主动查单。</FieldDescription>
+      )}
+      <FieldSet hidden={!notificationEnabled} disabled={!notificationEnabled}>
+        <FieldGroup>
+          <Field data-invalid={!!fieldErrors.allowed_origin}>
+            <FieldLabel htmlFor="setting-origin">
+              通知网站（HTTPS 域名）
+            </FieldLabel>
+            <Input
+              id="setting-origin"
+              name="allowed_origin"
+              type="url"
+              required={notificationEnabled}
+              defaultValue={initialSettings.notifications.allowed_origin ?? ""}
+              placeholder="https://shop.example.com"
+              aria-invalid={!!fieldErrors.allowed_origin}
+              aria-describedby={
+                fieldErrors.allowed_origin
+                  ? "setting-origin-error" + " setting-origin-hint"
+                  : "setting-origin-hint"
+              }
+            />
+            <FieldDescription id="setting-origin-hint">
+              不含端口或路径。
+            </FieldDescription>
+            {fieldErrors.allowed_origin && (
+              <FieldError id="setting-origin-error">
+                {fieldErrors.allowed_origin}
+              </FieldError>
+            )}
+          </Field>
+          <Collapsible
+            open={advancedOpen}
+            onOpenChange={setAdvancedOpen}
+            data-settings-advanced
+          >
+            <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
+              <ChevronDown data-icon="inline-start" />
+              高级设置
+            </CollapsibleTrigger>
+            <CollapsibleContent keepMounted>
+              <FieldGroup className="grid gap-5 pt-4 sm:grid-cols-2">
+                <NumberField
+                  name="timeout_milliseconds"
+                  error={fieldErrors.timeout_milliseconds}
+                  label="通知超时（毫秒）"
+                  value={initialSettings.notifications.timeout_milliseconds}
+                  min={1000}
+                  max={30000}
+                />
+                <NumberField
+                  name="maximum_attempts"
+                  error={fieldErrors.maximum_attempts}
+                  label="最大尝试次数"
+                  value={initialSettings.notifications.maximum_attempts}
+                  min={1}
+                  max={100}
+                />
+                <NumberField
+                  name="retry_base_seconds"
+                  error={fieldErrors.retry_base_seconds}
+                  label="首次重试间隔（秒）"
+                  value={initialSettings.notifications.retry_base_seconds}
+                  min={1}
+                  max={3600}
+                />
+                <NumberField
+                  name="retry_maximum_seconds"
+                  error={fieldErrors.retry_maximum_seconds}
+                  label="最大重试间隔（秒）"
+                  value={initialSettings.notifications.retry_maximum_seconds}
+                  min={1}
+                  max={86400}
+                />
+              </FieldGroup>
+            </CollapsibleContent>
+          </Collapsible>
+        </FieldGroup>
+      </FieldSet>
+    </FieldGroup>
+  );
+  const backupFields = (
+    <FieldGroup>
+      <FieldGroup className="grid sm:grid-cols-2">
+        <NumberField
+          name="interval_seconds"
+          error={fieldErrors.interval_seconds}
+          label="备份间隔（秒）"
+          value={initialSettings.backup.interval_seconds}
+          min={3600}
+          max={604800}
+        />
+        <NumberField
+          name="keep_count"
+          error={fieldErrors.keep_count}
+          label="保留备份数量"
+          value={initialSettings.backup.keep_count}
+          min={1}
+          max={365}
+        />
+      </FieldGroup>
+      {!guided && (
+        <Link
+          className={buttonVariants({
+            variant: "link",
+            size: "sm",
+            className: "w-fit",
+          })}
+          to="/system"
+        >
+          查看备份状态
+        </Link>
+      )}
+    </FieldGroup>
+  );
+  const checkoutDisplay = (
+    <FieldGroup>
+      <Field orientation="horizontal">
+        <FieldContent>
+          <FieldLabel htmlFor="checkout-show-product-name">
+            收银台显示商品名称
+          </FieldLabel>
+          <FieldDescription id="checkout-product-hint">
+            只影响收银台页面，不修改订单或通知内容。
+          </FieldDescription>
+        </FieldContent>
+        <Switch
+          id="checkout-show-product-name"
+          name="checkout_show_product_name"
+          checked={showProductName}
+          onCheckedChange={setShowProductName}
+          aria-describedby="checkout-product-hint"
+        />
+      </Field>
+    </FieldGroup>
+  );
+  const chartDisplay = (
+    <FieldGroup>
+      <Field>
+        <FieldLabel id="dashboard-chart-type-label">首页图表样式</FieldLabel>
+        <input type="hidden" name="dashboard_chart_type" value={chartType} />
+        <ToggleGroup
+          spacing={0}
+          variant="outline"
+          value={[chartType]}
+          onValueChange={(values) => {
+            const value = values[0];
+            if (value === "AREA" || value === "BAR" || value === "LINE")
+              setChartType(value);
+          }}
+          aria-labelledby="dashboard-chart-type-label"
+          aria-describedby="dashboard-chart-type-hint"
+        >
+          <ToggleGroupItem value="AREA">
+            <ChartArea />
+            面积图
+          </ToggleGroupItem>
+          <ToggleGroupItem value="BAR">
+            <ChartColumn />
+            柱状图
+          </ToggleGroupItem>
+          <ToggleGroupItem value="LINE">
+            <ChartLine />
+            折线图
+          </ToggleGroupItem>
+        </ToggleGroup>
+        <FieldDescription id="dashboard-chart-type-hint">
+          全体管理员共用，统计口径不变。
+        </FieldDescription>
+      </Field>
+    </FieldGroup>
+  );
+  const advancedFields = (
+    <FieldGroup>
+      <FieldGroup className="grid sm:grid-cols-2">
+        <NumberField
+          name="checkout_key_rotation_days"
+          error={fieldErrors.checkout_key_rotation_days}
+          label="收银台密钥轮换（天）"
+          value={initialSettings.advanced.checkout_key_rotation_days}
+          min={1}
+          max={3650}
+        />
+        <NumberField
+          name="checkout_terminal_observation_seconds"
+          error={fieldErrors.checkout_terminal_observation_seconds}
+          label="终态观察期（秒）"
+          value={initialSettings.advanced.checkout_terminal_observation_seconds}
+          min={60}
+          max={604800}
+          hint="收银台结束后继续观察迟到付款的时间窗口。"
+        />
+      </FieldGroup>
+    </FieldGroup>
+  );
+
+  const panels: Array<{
+    title: string;
+    description?: string;
+    fields: ReactNode;
+  }> =
+    section === "provider"
+      ? [
+          {
+            title: "支付宝接入",
+            description: "应用身份与请求凭据",
+            fields: providerIdentity,
+          },
+          {
+            title: "账单采集",
+            description: "采集频率、超时与有效时限",
+            fields: providerCollection,
+          },
+        ]
+      : section === "collection"
+        ? [
+            {
+              title: "支付宝经营码",
+              description: "上传二维码，或粘贴经营码内容",
+              fields: collectionIdentity,
+            },
+            {
+              title: "订单规则",
+              description: "收银台有效期与金额分配",
+              fields: collectionRules,
+            },
+          ]
+        : section === "display"
+          ? [
+              {
+                title: "收银台",
+                description: "付款人看到的商品信息",
+                fields: checkoutDisplay,
+              },
+              {
+                title: "收款概览",
+                description: "管理台首页的图表显示",
+                fields: chartDisplay,
+              },
+            ]
+          : [
+              {
+                title:
+                  sections.find(([value]) => value === section)?.[1] ?? "设置",
+                description:
+                  section === "backup"
+                    ? "恢复需要数据库备份和主密钥。"
+                    : undefined,
+                fields:
+                  section === "notifications"
+                    ? notificationFields
+                    : section === "backup"
+                      ? backupFields
+                      : advancedFields,
+              },
+            ];
+
+  const actions = (
+    <FieldGroup>
+      <ErrorNotice
+        error={
+          save.error instanceof SettingsInputError ||
+          (save.error instanceof ApiError &&
+            Object.keys(save.error.fields).length)
+            ? null
+            : save.error
+        }
+      />
+      <Field orientation="horizontal" className="flex-wrap justify-end">
+        <Button type="submit" disabled={decoding || !canSave || save.isPending}>
+          {save.isPending ? (
+            <Spinner aria-hidden="true" data-icon="inline-start" />
+          ) : (
+            !guided && <Save data-icon="inline-start" />
+          )}
+          {submitLabel}
+        </Button>
+        {secondaryAction}
+        {draft.dirty && (
+          <span className="text-sm text-muted-foreground" role="status">
+            未保存
+          </span>
+        )}
+        <SuccessMessage message={savedMessage} />
+      </Field>
+    </FieldGroup>
+  );
+
   const editor = (
     <form
       ref={draft.form}
@@ -263,585 +821,81 @@ export function SettingsEditor({
     >
       <FieldSet disabled={save.isPending}>
         <FieldGroup>
-          {section === "provider" && (
-            <>
-              <Field data-invalid={!!fieldErrors.app_id}>
-                <FieldLabel htmlFor="setting-app-id">
-                  应用 ID（App ID）
-                </FieldLabel>
-                <Input
-                  id="setting-app-id"
-                  name="app_id"
-                  required
-                  maxLength={64}
-                  pattern="[A-Za-z0-9._-]+"
-                  defaultValue={initialSettings.provider?.app_id ?? ""}
-                  autoComplete="off"
-                  aria-invalid={!!fieldErrors.app_id}
-                  aria-describedby={
-                    fieldErrors.app_id ? "setting-app-id-error" : undefined
-                  }
-                />
-                {fieldErrors.app_id && (
-                  <FieldError id="setting-app-id-error">
-                    {fieldErrors.app_id}
-                  </FieldError>
-                )}
-              </Field>
-              <Field data-invalid={!!fieldErrors.platform_public_key}>
-                <FieldLabel htmlFor="setting-platform-key">
-                  支付宝公钥
-                </FieldLabel>
-                <Textarea
-                  id="setting-platform-key"
-                  name="platform_public_key"
-                  rows={4}
-                  required={!settings.secrets.provider_public_key.configured}
-                  maxLength={16384}
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder="Base64 或 PEM"
-                  aria-invalid={!!fieldErrors.platform_public_key}
-                  aria-describedby={
-                    fieldErrors.platform_public_key
-                      ? "setting-platform-key-error" +
-                        " setting-platform-key-hint"
-                      : "setting-platform-key-hint"
-                  }
-                />
-                <FieldDescription id="setting-platform-key-hint">
-                  {settings.secrets.provider_public_key.configured
-                    ? "已配置，留空不变。"
-                    : "从支付宝平台复制，不是应用公钥。"}
-                </FieldDescription>
-                {fieldErrors.platform_public_key && (
-                  <FieldError id="setting-platform-key-error">
-                    {fieldErrors.platform_public_key}
-                  </FieldError>
-                )}
-              </Field>
-              {!guided && (
-                <Collapsible
-                  open={privateOpen}
-                  onOpenChange={setPrivateOpen}
-                  data-settings-private
+          {guided ? (
+            panels.map((panel) => (
+              <Fragment key={panel.title}>{panel.fields}</Fragment>
+            ))
+          ) : (
+            <FieldGroup className="grid items-start gap-4 @3xl/settings:grid-cols-2">
+              {panels.map((panel, index) => (
+                <FieldGroup
+                  key={panel.title}
+                  className={cn(
+                    "min-w-0 gap-4",
+                    panels.length === 1 && "@3xl/settings:col-span-2",
+                  )}
                 >
-                  <CollapsibleTrigger
-                    render={<Button variant="ghost" size="sm" />}
-                  >
-                    <ChevronDown data-icon="inline-start" />
-                    导入已有应用私钥（可选）
-                  </CollapsibleTrigger>
-                  <CollapsibleContent keepMounted>
-                    <Field
-                      className="pt-4"
-                      data-invalid={!!fieldErrors.private_key}
-                    >
-                      <FieldLabel htmlFor="setting-private-key">
-                        应用私钥
-                      </FieldLabel>
-                      <Textarea
-                        id="setting-private-key"
-                        name="private_key"
-                        rows={4}
-                        maxLength={16384}
-                        autoComplete="off"
-                        spellCheck={false}
-                        aria-invalid={!!fieldErrors.private_key}
-                        aria-describedby={
-                          fieldErrors.private_key
-                            ? "setting-private-key-error" +
-                              " setting-private-key-hint"
-                            : "setting-private-key-hint"
-                        }
-                      />
-                      <FieldDescription id="setting-private-key-hint">
-                        留空使用已生成的私钥。替换前，请同步支付宝平台中的应用公钥。
-                      </FieldDescription>
-                      {fieldErrors.private_key && (
-                        <FieldError id="setting-private-key-error">
-                          {fieldErrors.private_key}
-                        </FieldError>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle role="heading" aria-level={2}>
+                        {panel.title}
+                      </CardTitle>
+                      {panel.description && (
+                        <CardDescription>{panel.description}</CardDescription>
                       )}
-                    </Field>
-                  </CollapsibleContent>
-                </Collapsible>
-              )}
-              <Collapsible
-                open={advancedOpen}
-                onOpenChange={setAdvancedOpen}
-                data-settings-advanced
-              >
-                <CollapsibleTrigger
-                  render={<Button variant="ghost" size="sm" />}
-                >
-                  <ChevronDown data-icon="inline-start" />
-                  {settings.provider?.environment === "SANDBOX"
-                    ? "高级设置 · 沙箱环境"
-                    : "高级设置"}
-                </CollapsibleTrigger>
-                <CollapsibleContent keepMounted>
-                  <FieldGroup className="grid gap-5 pt-4 sm:grid-cols-2">
-                    <Field data-invalid={!!fieldErrors.environment}>
-                      <FieldLabel htmlFor="setting-environment">
-                        支付宝环境
-                      </FieldLabel>
-                      <NativeSelect
-                        id="setting-environment"
-                        name="environment"
-                        defaultValue={
-                          initialSettings.provider?.environment ?? "PRODUCTION"
-                        }
-                        aria-invalid={!!fieldErrors.environment}
-                        aria-describedby={
-                          fieldErrors.environment
-                            ? "setting-environment-error"
-                            : undefined
-                        }
-                      >
-                        <NativeSelectOption value="PRODUCTION">
-                          生产环境
-                        </NativeSelectOption>
-                        <NativeSelectOption value="SANDBOX">
-                          沙箱环境
-                        </NativeSelectOption>
-                      </NativeSelect>
-                      {fieldErrors.environment && (
-                        <FieldError id="setting-environment-error">
-                          {fieldErrors.environment}
-                        </FieldError>
-                      )}
-                    </Field>
-                    <NumberField
-                      name="timeout_milliseconds"
-                      error={fieldErrors.timeout_milliseconds}
-                      label="请求超时（毫秒）"
-                      value={
-                        initialSettings.provider?.timeout_milliseconds ?? 8000
-                      }
-                      min={1000}
-                      max={120000}
-                    />
-                    <NumberField
-                      name="scan_interval_seconds"
-                      error={fieldErrors.scan_interval_seconds}
-                      label="常规采集间隔（秒）"
-                      value={
-                        initialSettings.provider?.scan_interval_seconds ?? 60
-                      }
-                      min={5}
-                      max={3600}
-                      hint="空闲时使用；有效时限至少为此间隔的两倍。"
-                    />
-                    <NumberField
-                      name="active_scan_interval_seconds"
-                      error={fieldErrors.active_scan_interval_seconds}
-                      label="活跃采集间隔（秒）"
-                      value={
-                        initialSettings.provider
-                          ?.active_scan_interval_seconds ??
-                        initialSettings.provider?.scan_interval_seconds ??
-                        8
-                      }
-                      min={5}
-                      max={3600}
-                      hint="待支付及收尾时使用，不得大于常规间隔。"
-                    />
-                    <NumberField
-                      name="safety_lag_seconds"
-                      error={fieldErrors.safety_lag_seconds}
-                      label="安全延迟（秒）"
-                      value={initialSettings.provider?.safety_lag_seconds ?? 10}
-                      min={5}
-                      max={300}
-                      hint="避开支付宝尚未稳定返回的最新账单。"
-                    />
-                    <NumberField
-                      name="maximum_success_age_seconds"
-                      error={fieldErrors.maximum_success_age_seconds}
-                      label="采集有效时限（秒）"
-                      value={
-                        initialSettings.provider?.maximum_success_age_seconds ??
-                        120
-                      }
-                      min={10}
-                      max={86400}
-                      hint="超过此时限未成功采集，会暂停新订单收款入口。"
-                    />
-                  </FieldGroup>
-                </CollapsibleContent>
-              </Collapsible>
-            </>
-          )}
-          {section === "collection" && (
-            <>
-              <CollectionCodeField
-                defaultValue={initialSettings.collection?.code_payload ?? ""}
-                onDecoded={() => {
-                  draft.onChange();
-                  setFieldErrors({});
-                  setSavedMessage("");
-                }}
-                error={fieldErrors.code_payload}
-                onPendingChange={setDecoding}
-                disabled={save.isPending}
-              />
-              <NumberField
-                name="order_ttl_seconds"
-                error={fieldErrors.order_ttl_seconds}
-                label="收银台有效期（秒）"
-                value={initialSettings.collection?.order_ttl_seconds ?? 300}
-                min={60}
-                max={1800}
-              />
-              <Collapsible
-                open={advancedOpen}
-                onOpenChange={setAdvancedOpen}
-                data-settings-advanced
-              >
-                <CollapsibleTrigger
-                  render={<Button variant="ghost" size="sm" />}
-                >
-                  <ChevronDown data-icon="inline-start" />
-                  高级设置
-                </CollapsibleTrigger>
-                <CollapsibleContent keepMounted>
-                  <FieldGroup className="grid gap-5 pt-4 sm:grid-cols-2">
-                    <NumberField
-                      name="amount_offset_maximum_cents"
-                      error={fieldErrors.amount_offset_maximum_cents}
-                      label="最大金额尾差（分）"
-                      value={
-                        initialSettings.collection
-                          ?.amount_offset_maximum_cents ?? 99
-                      }
-                      min={1}
-                      max={99}
-                    />
-                    <NumberField
-                      name="amount_reuse_cooldown_seconds"
-                      error={fieldErrors.amount_reuse_cooldown_seconds}
-                      label="金额复用冷却（秒）"
-                      value={
-                        initialSettings.collection
-                          ?.amount_reuse_cooldown_seconds ?? 600
-                      }
-                      min={60}
-                      max={3600}
-                      hint="结束后暂不复用应付金额，不延长订单有效期。"
-                    />
-                  </FieldGroup>
-                </CollapsibleContent>
-              </Collapsible>
-            </>
-          )}
-          {section === "notifications" && (
-            <>
-              <Field orientation="horizontal">
-                <Switch
-                  id="setting-enabled"
-                  name="enabled"
-                  checked={notificationEnabled}
-                  onCheckedChange={setNotificationEnabled}
-                />
-                <FieldLabel htmlFor="setting-enabled">启用业务通知</FieldLabel>
-              </Field>
-              {!notificationEnabled && (
-                <FieldDescription>
-                  通知未启用，网站需主动查单。
-                </FieldDescription>
-              )}
-              <FieldSet
-                hidden={!notificationEnabled}
-                disabled={!notificationEnabled}
-              >
-                <FieldGroup>
-                  <Field data-invalid={!!fieldErrors.allowed_origin}>
-                    <FieldLabel htmlFor="setting-origin">
-                      通知网站（HTTPS 域名）
-                    </FieldLabel>
-                    <Input
-                      id="setting-origin"
-                      name="allowed_origin"
-                      type="url"
-                      required={notificationEnabled}
-                      defaultValue={
-                        initialSettings.notifications.allowed_origin ?? ""
-                      }
-                      placeholder="https://shop.example.com"
-                      aria-invalid={!!fieldErrors.allowed_origin}
-                      aria-describedby={
-                        fieldErrors.allowed_origin
-                          ? "setting-origin-error" + " setting-origin-hint"
-                          : "setting-origin-hint"
-                      }
-                    />
-                    <FieldDescription id="setting-origin-hint">
-                      不含端口或路径。
-                    </FieldDescription>
-                    {fieldErrors.allowed_origin && (
-                      <FieldError id="setting-origin-error">
-                        {fieldErrors.allowed_origin}
-                      </FieldError>
+                    </CardHeader>
+                    <CardContent>{panel.fields}</CardContent>
+                    {index === panels.length - 1 && (
+                      <CardFooter>{actions}</CardFooter>
                     )}
-                  </Field>
-                  <Collapsible
-                    open={advancedOpen}
-                    onOpenChange={setAdvancedOpen}
-                    data-settings-advanced
-                  >
-                    <CollapsibleTrigger
-                      render={<Button variant="ghost" size="sm" />}
-                    >
-                      <ChevronDown data-icon="inline-start" />
-                      高级设置
-                    </CollapsibleTrigger>
-                    <CollapsibleContent keepMounted>
-                      <FieldGroup className="grid gap-5 pt-4 sm:grid-cols-2">
-                        <NumberField
-                          name="timeout_milliseconds"
-                          error={fieldErrors.timeout_milliseconds}
-                          label="通知超时（毫秒）"
-                          value={
-                            initialSettings.notifications.timeout_milliseconds
-                          }
-                          min={1000}
-                          max={30000}
-                        />
-                        <NumberField
-                          name="maximum_attempts"
-                          error={fieldErrors.maximum_attempts}
-                          label="最大尝试次数"
-                          value={initialSettings.notifications.maximum_attempts}
-                          min={1}
-                          max={100}
-                        />
-                        <NumberField
-                          name="retry_base_seconds"
-                          error={fieldErrors.retry_base_seconds}
-                          label="首次重试间隔（秒）"
-                          value={
-                            initialSettings.notifications.retry_base_seconds
-                          }
-                          min={1}
-                          max={3600}
-                        />
-                        <NumberField
-                          name="retry_maximum_seconds"
-                          error={fieldErrors.retry_maximum_seconds}
-                          label="最大重试间隔（秒）"
-                          value={
-                            initialSettings.notifications.retry_maximum_seconds
-                          }
-                          min={1}
-                          max={86400}
-                        />
-                      </FieldGroup>
-                    </CollapsibleContent>
-                  </Collapsible>
+                  </Card>
+                  {section === "provider" && index === 0 && (
+                    <ApplicationKey settings={settings} onSaved={onSaved} />
+                  )}
                 </FieldGroup>
-              </FieldSet>
-            </>
-          )}
-          {section === "backup" && (
-            <>
-              <FieldGroup className="grid sm:grid-cols-2">
-                <NumberField
-                  name="interval_seconds"
-                  error={fieldErrors.interval_seconds}
-                  label="备份间隔（秒）"
-                  value={initialSettings.backup.interval_seconds}
-                  min={3600}
-                  max={604800}
-                />
-                <NumberField
-                  name="keep_count"
-                  error={fieldErrors.keep_count}
-                  label="保留备份数量"
-                  value={initialSettings.backup.keep_count}
-                  min={1}
-                  max={365}
-                />
-              </FieldGroup>
-              {!guided && (
-                <Link
-                  className={buttonVariants({
-                    variant: "link",
-                    size: "sm",
-                    className: "w-fit",
-                  })}
-                  to="/system"
-                >
-                  查看备份状态
-                </Link>
-              )}
-            </>
-          )}
-          {section === "display" && (
-            <>
-              <Field orientation="horizontal">
-                <FieldContent>
-                  <FieldLabel htmlFor="checkout-show-product-name">
-                    收银台显示商品名称
-                  </FieldLabel>
-                  <FieldDescription id="checkout-product-hint">
-                    只影响收银台页面，不修改订单或通知内容。
-                  </FieldDescription>
-                </FieldContent>
-                <Switch
-                  id="checkout-show-product-name"
-                  name="checkout_show_product_name"
-                  checked={showProductName}
-                  onCheckedChange={setShowProductName}
-                  aria-describedby="checkout-product-hint"
-                />
-              </Field>
-              <Field>
-                <FieldLabel id="dashboard-chart-type-label">
-                  首页图表样式
-                </FieldLabel>
-                <input
-                  type="hidden"
-                  name="dashboard_chart_type"
-                  value={chartType}
-                />
-                <ToggleGroup
-                  variant="outline"
-                  value={[chartType]}
-                  onValueChange={(values) => {
-                    const value = values[0];
-                    if (value === "AREA" || value === "BAR" || value === "LINE")
-                      setChartType(value);
-                  }}
-                  aria-labelledby="dashboard-chart-type-label"
-                  aria-describedby="dashboard-chart-type-hint"
-                >
-                  <ToggleGroupItem value="AREA">
-                    <ChartArea />
-                    面积图
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="BAR">
-                    <ChartColumn />
-                    柱状图
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="LINE">
-                    <ChartLine />
-                    折线图
-                  </ToggleGroupItem>
-                </ToggleGroup>
-                <FieldDescription id="dashboard-chart-type-hint">
-                  全体管理员共用，统计口径不变。
-                </FieldDescription>
-              </Field>
-            </>
-          )}
-          {section === "advanced" && (
-            <FieldGroup className="grid sm:grid-cols-2">
-              <NumberField
-                name="checkout_key_rotation_days"
-                error={fieldErrors.checkout_key_rotation_days}
-                label="收银台密钥轮换（天）"
-                value={initialSettings.advanced.checkout_key_rotation_days}
-                min={1}
-                max={3650}
-              />
-              <NumberField
-                name="checkout_terminal_observation_seconds"
-                error={fieldErrors.checkout_terminal_observation_seconds}
-                label="终态观察期（秒）"
-                value={
-                  initialSettings.advanced.checkout_terminal_observation_seconds
-                }
-                min={60}
-                max={604800}
-                hint="收银台结束后继续观察迟到付款的时间窗口。"
-              />
+              ))}
             </FieldGroup>
           )}
-          <ErrorNotice
-            error={
-              save.error instanceof SettingsInputError ||
-              (save.error instanceof ApiError &&
-                Object.keys(save.error.fields).length)
-                ? null
-                : save.error
-            }
-          />
-          <Field orientation="horizontal" className="flex-wrap">
-            <Button
-              type="submit"
-              disabled={decoding || !canSave || save.isPending}
-            >
-              {save.isPending ? (
-                <Spinner aria-hidden="true" data-icon="inline-start" />
-              ) : (
-                !guided && <Save data-icon="inline-start" />
-              )}
-              {submitLabel}
-            </Button>
-            {secondaryAction}
-            {draft.dirty && (
-              <span className="text-sm text-muted-foreground" role="status">
-                未保存
-              </span>
-            )}
-            <SuccessMessage message={savedMessage} />
-          </Field>
+          {guided && actions}
         </FieldGroup>
       </FieldSet>
     </form>
   );
-  const title = sections.find(([value]) => value === section)?.[1] ?? "设置";
+  if (!guided) return editor;
   return (
-    <>
-      {section === "provider" && !guided && (
-        <ApplicationKey settings={settings} onSaved={onSaved} />
-      )}
-      <Card>
-        {!guided && (
-          <CardHeader>
-            <CardTitle role="heading" aria-level={2}>
-              {title}
-            </CardTitle>
-            {section === "backup" && (
-              <CardDescription>恢复需要数据库备份和主密钥。</CardDescription>
-            )}
-          </CardHeader>
+    <Card>
+      <CardContent className="flex flex-col gap-4">
+        {guided && section === "backup" ? (
+          <>
+            <p className="text-sm">
+              {backupInterval(settings.backup.interval_seconds)}备份，保留{" "}
+              {settings.backup.keep_count} 份。
+            </p>
+            <Collapsible
+              open={backupOpen}
+              onOpenChange={setBackupOpen}
+              data-settings-backup
+            >
+              <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
+                <ChevronDown data-icon="inline-start" />
+                调整备份策略
+              </CollapsibleTrigger>
+              <CollapsibleContent keepMounted>
+                <div className="pt-4">{editor}</div>
+              </CollapsibleContent>
+            </Collapsible>
+            <p className="text-sm text-muted-foreground">
+              恢复需同时保留数据库备份和主密钥。
+            </p>
+          </>
+        ) : (
+          editor
         )}
-        <CardContent className="flex flex-col gap-4">
-          {guided && section === "backup" ? (
-            <>
-              <p className="text-sm">
-                {backupInterval(settings.backup.interval_seconds)}备份，保留{" "}
-                {settings.backup.keep_count} 份。
-              </p>
-              <Collapsible
-                open={backupOpen}
-                onOpenChange={setBackupOpen}
-                data-settings-backup
-              >
-                <CollapsibleTrigger
-                  render={<Button variant="ghost" size="sm" />}
-                >
-                  <ChevronDown data-icon="inline-start" />
-                  调整备份策略
-                </CollapsibleTrigger>
-                <CollapsibleContent keepMounted>
-                  <div className="pt-4">{editor}</div>
-                </CollapsibleContent>
-              </Collapsible>
-              <p className="text-sm text-muted-foreground">
-                恢复需同时保留数据库备份和主密钥。
-              </p>
-            </>
-          ) : (
-            editor
-          )}
-        </CardContent>
-      </Card>
-    </>
+      </CardContent>
+    </Card>
   );
 }
+
 export function ApplicationKey({
   settings,
   onSaved,

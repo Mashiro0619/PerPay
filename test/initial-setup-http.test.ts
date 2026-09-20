@@ -68,9 +68,12 @@ describe("first-run administrator HTTP flow", () => {
       assert.equal(root.status, 302);
       assert.equal(root.headers.get("location"), "/admin");
 
-      const setupPage = await fixture.app.request("/admin/setup");
-      assert.equal(setupPage.status, 200);
-      assert.match(await setupPage.text(), /name="perpay-initialized" content="false"/);
+      for (const path of ["/admin", "/admin/", "/admin/login", "/admin/setup"]) {
+        const page = await fixture.app.request(path);
+        assert.equal(page.status, 200);
+        assert.equal(page.headers.get("cache-control"), "no-store");
+        assert.match(await page.text(), /name="perpay-initialized" content="false"/);
+      }
 
       const unexpectedField = await fixture.app.request("/api/admin/v1/setup", {
         method: "POST",
@@ -98,9 +101,12 @@ describe("first-run administrator HTTP flow", () => {
       assert.equal(setup.status, 204);
       assert.deepEqual(setup.headers.getSetCookie(), []);
 
-      const setupAfterInitialization = await fixture.app.request("/admin/setup");
-      assert.equal(setupAfterInitialization.status, 200);
-      assert.match(await setupAfterInitialization.text(), /name="perpay-initialized" content="true"/);
+      for (const path of ["/admin", "/admin/", "/admin/login", "/admin/setup"]) {
+        const page = await fixture.app.request(path);
+        assert.equal(page.status, 200);
+        assert.equal(page.headers.get("cache-control"), "no-store");
+        assert.match(await page.text(), /name="perpay-initialized" content="true"/);
+      }
 
       const repeatedSetup = await fixture.app.request("/api/admin/v1/setup", {
         method: "POST",

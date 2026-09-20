@@ -25,9 +25,16 @@ export function AssociateIncomeAction({
 }) {
   const [open, setOpen] = useState(false);
   const [saved, setSaved] = useState(false);
+  const finalFocus = useRef<HTMLElement | null>(null);
   return (
     <>
-      <Button disabled={saved} onClick={() => setOpen(true)}>
+      <Button
+        disabled={saved}
+        onClick={(event) => {
+          finalFocus.current = event.currentTarget;
+          setOpen(true);
+        }}
+      >
         人工关联收款
       </Button>
       <SuccessMessage message={saved ? "关联已保存" : ""} />
@@ -36,10 +43,13 @@ export function AssociateIncomeAction({
           initialOrderId={orderId}
           initialLedgerId={ledgerId}
           lockContext
+          finalFocus={() => finalFocus.current}
           orderLabel={orderLabel}
           ledgerLabel={ledgerLabel}
           onClose={() => setOpen(false)}
           onSuccess={() => {
+            // The completed action can disappear when the parent reloads its evidence.
+            finalFocus.current = document.getElementById("main-content");
             setOpen(false);
             setSaved(true);
           }}
@@ -56,7 +66,7 @@ export function ReverseMatchAction({
   embedded?: boolean;
 }) {
   const [snapshot, setSnapshot] = useState<PaymentMatchDetail | null>(null);
-  const finalFocus = useRef<HTMLButtonElement | null>(null);
+  const finalFocus = useRef<HTMLElement | null>(null);
   const [saved, setSaved] = useState(false);
   return (
     <>
@@ -106,6 +116,9 @@ export function ReverseMatchAction({
             )
           }
           onSuccess={() => {
+            // Embedded matches can move into history after reversal.
+            if (embedded)
+              finalFocus.current = document.getElementById("main-content");
             setSnapshot(null);
             setSaved(true);
             void refreshOperationalData();

@@ -24,6 +24,13 @@ const session = {
 };
 
 function mount() {
+  if (!document.querySelector('meta[name="perpay-initialized"]')) {
+    const metadata = document.createElement("meta");
+    metadata.name = "perpay-initialized";
+    metadata.content = "true";
+    document.head.append(metadata);
+  }
+
   vi.stubGlobal(
     "matchMedia",
     vi.fn(() => ({

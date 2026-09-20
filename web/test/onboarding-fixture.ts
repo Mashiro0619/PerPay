@@ -139,6 +139,14 @@ export function mountOnboarding(
     handle?: (request: Request) => Response | Promise<Response> | undefined;
   } = {},
 ) {
+  // A configured instance's HTML carries this even when its session has expired.
+  if (!document.querySelector('meta[name="perpay-initialized"]')) {
+    const meta = document.createElement("meta");
+    meta.name = "perpay-initialized";
+    meta.content = "true";
+    document.head.append(meta);
+  }
+
   vi.stubGlobal(
     "matchMedia",
     vi.fn(() => ({

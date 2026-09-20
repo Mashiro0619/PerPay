@@ -1,5 +1,12 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
@@ -8,6 +15,8 @@ import type { ReactNode } from "react";
 import { queryClient } from "../src/api/client";
 import { AuthBoundary, AuthPage } from "../src/auth";
 import { ReasonDialog } from "../src/components/ReasonDialog";
+import { DetailFields } from "../src/components/detail/DetailPrimitives";
+import { AssociateIncomeAction } from "../src/components/detail/FinancialActions";
 import { FinancialDialog } from "../src/pages/FinancialDialog";
 import { SecuritySettings } from "../src/pages/SecuritySettings";
 import Settings from "../src/pages/Settings";
@@ -335,6 +344,83 @@ describe("concise settings copy", () => {
   });
 });
 
+describe("operation dialog layout", () => {
+  it.each(["reason", "financial"] as const)(
+    "keeps long evidence in the scroll body and cancellation outside it (%s)",
+    async (kind) => {
+      const productName = "长商品名称与核对说明".repeat(20);
+      const fetchMock = vi.fn(async (request: Request) =>
+        json({
+          data: new URL(request.url).pathname.includes("ledger-entries")
+            ? ledger
+            : { ...order, product_name: productName },
+        }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      const execute = vi.fn();
+      const onClose = vi.fn();
+      const onSuccess = vi.fn();
+      renderPage(
+        kind === "reason" ? (
+          <ReasonDialog
+            title="撤销收款关联？"
+            description="仅撤销账务关联，不会转出资金。"
+            action="确认撤销关联"
+            execute={execute}
+            onClose={onClose}
+            onSuccess={onSuccess}
+          >
+            <DetailFields items={[["商品", productName]]} />
+          </ReasonDialog>
+        ) : (
+          <FinancialDialog
+            initialOrderId={orderId}
+            initialLedgerId={ledgerId}
+            lockContext
+            onClose={onClose}
+            onSuccess={onSuccess}
+          />
+        ),
+      );
+      const evidence = await screen.findByText(productName);
+      const dialog = screen.getByRole("dialog");
+      const body = dialog.querySelector<HTMLElement>("[data-slot=field-group]");
+      const header = dialog.querySelector<HTMLElement>(
+        "[data-slot=dialog-header]",
+      );
+      const footer = dialog.querySelector<HTMLElement>(
+        "[data-slot=dialog-footer]",
+      );
+      expect(dialog).toHaveClass(
+        "flex-col",
+        "overflow-hidden",
+        "max-h-[calc(100dvh-2rem)]",
+      );
+      expect(body).toHaveClass("min-h-0", "w-auto", "overflow-y-auto", "pb-1");
+      expect(body).toContainElement(evidence);
+      expect(body).toContainElement(screen.getByLabelText("操作理由"));
+      expect(header).toHaveClass("shrink-0");
+      expect(footer).toHaveClass("shrink-0");
+      expect(body).not.toContainElement(header);
+      expect(body).not.toContainElement(footer);
+      expect(dialog).toHaveAccessibleDescription(
+        kind === "reason"
+          ? "仅撤销账务关联，不会转出资金。"
+          : "将这笔收入关联到订单并确认付款。",
+      );
+      const user = userEvent.setup();
+      await user.type(screen.getByLabelText("操作理由"), "核对长文本证据");
+      await user.click(within(dialog).getByRole("button", { name: "取消" }));
+      expect(onClose).toHaveBeenCalledOnce();
+      expect(execute).not.toHaveBeenCalled();
+      expect(onSuccess).not.toHaveBeenCalled();
+      expect(
+        fetchMock.mock.calls.every(([request]) => request.method === "GET"),
+      ).toBe(true);
+    },
+  );
+});
+
 describe("state-changing workflows", () => {
   it("keeps an unsaved settings draft after a revision conflict", async () => {
     const fetchMock = vi.fn(async (request: Request) =>
@@ -395,6 +481,195 @@ describe("state-changing workflows", () => {
       fetchMock.mock.calls.every(([request]) => request.method === "GET"),
     ).toBe(true);
   });
+
+  it.each([false, true])(
+    "rechecks financial conflicts without repeating a write (read failure: %s)",
+    async (readFails) => {
+      let conflicted = false;
+      let orderReads = 0;
+      let ledgerReads = 0;
+      const writes: Request[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (request: Request) => {
+          if (request.method === "POST") {
+            writes.push(request.clone());
+            conflicted = true;
+            return apiError(
+              "match_state_conflict",
+              "资金事实或处理状态已经变化",
+            );
+          }
+          const isLedger = new URL(request.url).pathname.includes(
+            "ledger-entries",
+          );
+          const count = isLedger ? ++ledgerReads : ++orderReads;
+          if (readFails && conflicted && count === 2)
+            return apiError(
+              "reconciliation_unavailable",
+              "无法读取最新证据",
+              503,
+            );
+          return json({
+            data: isLedger
+              ? { ...ledger, state: conflicted ? "ALLOCATED" : "UNALLOCATED" }
+              : conflicted
+                ? {
+                    ...order,
+                    received_amount_cents: ledger.amount_cents,
+                    payment: {
+                      status: "CONFIRMED",
+                      basis: "MANUAL",
+                      received_amount_cents: ledger.amount_cents,
+                    },
+                  }
+                : order,
+          });
+        }),
+      );
+      renderPage(
+        <FinancialDialog
+          initialOrderId={orderId}
+          initialLedgerId={ledgerId}
+          lockContext
+          onClose={vi.fn()}
+          onSuccess={vi.fn()}
+        />,
+      );
+      const user = userEvent.setup();
+      const reason = await screen.findByLabelText("操作理由");
+      await user.type(reason, "初次核对理由");
+      await user.click(screen.getByRole("button", { name: "确认关联收款" }));
+      await screen.findByText("资金事实或处理状态已经变化");
+      const recheck = await screen.findByRole("button", {
+        name: "重新核对证据",
+      });
+      expect(recheck).toHaveAttribute("type", "button");
+      expect(
+        screen.queryByRole("button", { name: "确认关联收款" }),
+      ).not.toBeInTheDocument();
+      await act(async () => {
+        fireEvent.submit(reason.closest("form")!);
+      });
+      expect(writes).toHaveLength(1);
+      if (readFails) await user.clear(reason);
+      await user.click(recheck);
+      if (readFails) {
+        await screen.findByText("无法读取最新证据");
+        expect(
+          screen.queryByRole("button", { name: "确认关联收款" }),
+        ).not.toBeInTheDocument();
+        expect(writes).toHaveLength(1);
+        await user.click(screen.getByRole("button", { name: "查看关联信息" }));
+      }
+      await screen.findByText("订单或流水状态已变化，请关闭后刷新。");
+      expect(
+        screen.getByRole("button", { name: "确认关联收款" }),
+      ).toBeDisabled();
+      expect(screen.getByLabelText("操作理由")).toHaveValue(
+        readFails ? "" : "初次核对理由",
+      );
+      expect(orderReads).toBe(readFails ? 3 : 2);
+      expect(ledgerReads).toBe(readFails ? 3 : 2);
+      expect(writes).toHaveLength(1);
+    },
+  );
+
+  it("retries an uncertain financial response with the same operation ID and payload", async () => {
+    const writes: Request[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (request: Request) => {
+        if (request.method === "POST") {
+          writes.push(request.clone());
+          if (writes.length === 1) throw new TypeError("Failed to fetch");
+          return json({ data: {} });
+        }
+        return json({
+          data: new URL(request.url).pathname.includes("ledger-entries")
+            ? ledger
+            : order,
+        });
+      }),
+    );
+    const onSuccess = vi.fn();
+    renderPage(
+      <FinancialDialog
+        initialOrderId={orderId}
+        initialLedgerId={ledgerId}
+        lockContext
+        onClose={vi.fn()}
+        onSuccess={onSuccess}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("操作理由"), "保持原请求重试");
+    await user.click(screen.getByRole("button", { name: "确认关联收款" }));
+    await screen.findByText("无法连接服务，请检查网络后重试。");
+    expect(
+      screen.queryByRole("button", { name: "重新核对证据" }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "确认关联收款" }));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce());
+    expect(writes).toHaveLength(2);
+    const first = await writes[0]!.json();
+    expect(first).toMatchObject({
+      order_id: orderId,
+      ledger_entry_id: ledgerId,
+      reason: "保持原请求重试",
+      financial_operation_id: expect.any(String),
+    });
+    expect(await writes[1]!.json()).toEqual(first);
+  });
+
+  it.each([false, true])(
+    "returns financial focus to the trigger on cancel or stable content after saving (saved: %s)",
+    async (saved) => {
+      const writes: Request[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (request: Request) => {
+          if (request.method === "POST") {
+            writes.push(request.clone());
+            return json({ data: {} });
+          }
+          return json({
+            data: new URL(request.url).pathname.includes("ledger-entries")
+              ? ledger
+              : order,
+          });
+        }),
+      );
+      renderPage(
+        <main id="main-content" aria-label="订单内容" tabIndex={-1}>
+          <AssociateIncomeAction orderId={orderId} ledgerId={ledgerId} />
+        </main>,
+      );
+      const user = userEvent.setup();
+      const trigger = screen.getByRole("button", { name: "人工关联收款" });
+      await user.click(trigger);
+      await user.type(
+        await screen.findByLabelText("操作理由"),
+        "核对后确认关联",
+      );
+      await user.click(
+        screen.getByRole("button", { name: saved ? "确认关联收款" : "取消" }),
+      );
+      await waitFor(() =>
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+      );
+      if (saved) {
+        expect(trigger).toBeDisabled();
+        expect(screen.getByText("关联已保存")).toBeVisible();
+        await waitFor(() =>
+          expect(screen.getByRole("main", { name: "订单内容" })).toHaveFocus(),
+        );
+      } else {
+        await waitFor(() => expect(trigger).toHaveFocus());
+      }
+      expect(writes).toHaveLength(saved ? 1 : 0);
+    },
+  );
 
   it("reuses the operation ID when retrying a failed confirmed action", async () => {
     const execute = vi

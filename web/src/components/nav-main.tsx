@@ -18,12 +18,11 @@ export function NavMain({
 }) {
   return (
     <SidebarGroup>
-      <SidebarGroupContent className="flex flex-col gap-2">
-        <SidebarMenu className="gap-1.5">
+      <SidebarGroupContent>
+        <SidebarMenu>
           {items.map((item) => (
             <SidebarMenuItem key={item.url}>
               <SidebarMenuButton
-                size="lg"
                 tooltip={item.title}
                 isActive={
                   item.url === "/"

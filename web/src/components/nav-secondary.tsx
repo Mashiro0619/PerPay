@@ -18,11 +18,10 @@ export function NavSecondary({
   return (
     <SidebarGroup {...props}>
       <SidebarGroupContent>
-        <SidebarMenu className="gap-1.5">
+        <SidebarMenu>
           {items.map((item) => (
             <SidebarMenuItem key={item.url}>
               <SidebarMenuButton
-                size="lg"
                 render={<Link to={item.url} />}
                 isActive={pathname.startsWith(item.url)}
               >

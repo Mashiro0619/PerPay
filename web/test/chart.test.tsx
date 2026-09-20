@@ -122,11 +122,14 @@ describe("official shadcn interactive chart", () => {
       />,
     );
     const user = userEvent.setup();
-    await user.click(screen.getByRole("combobox", { name: "趋势指标" }));
-    await user.click(await screen.findByRole("option", { name: "新建订单" }));
+    const metrics = screen.getByRole("group", { name: "趋势指标" });
+    await user.click(within(metrics).getByRole("button", { name: "新建订单" }));
     expect(
-      screen.getByRole("combobox", { name: "趋势指标" }),
-    ).toHaveTextContent("新建订单");
+      within(metrics).getByRole("button", { name: "新建订单" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      within(metrics).getByRole("button", { name: "确认金额" }),
+    ).toHaveAttribute("aria-pressed", "false");
     expect(container.querySelector("[data-slot=chart]")).toHaveAttribute(
       "aria-label",
       expect.stringContaining("每日新建订单"),
@@ -200,4 +203,44 @@ describe("official shadcn interactive chart", () => {
     expect(screen.getByText("暂无数据")).toBeVisible();
     expect(screen.getAllByRole("row")).toHaveLength(1);
   });
+  it.each(["AREA", "BAR", "LINE"] as const)(
+    "uses only the plotted %s series in a separated currency tooltip",
+    async (chartType) => {
+      const data = analytics();
+      data.daily = data.daily.map((day) => ({
+        ...day,
+        confirmed_amount_cents: 132443,
+      }));
+      const { container } = render(
+        <ChartAreaInteractive
+          analytics={data}
+          chartType={chartType}
+          range={7}
+          onRangeChange={vi.fn()}
+          pending={false}
+        />,
+      );
+      const chart = container.querySelector<SVGElement>(
+        'svg[role="application"]',
+      )!;
+      fireEvent.focus(chart);
+      fireEvent.keyDown(chart, { key: "ArrowRight" });
+      await waitFor(() =>
+        expect(
+          container.querySelector(".recharts-tooltip-wrapper"),
+        ).toHaveTextContent("¥1,324.43"),
+      );
+      const tooltip = container.querySelector<HTMLElement>(
+        ".recharts-tooltip-wrapper",
+      )!;
+      expect(
+        within(tooltip).getByText("确认金额", { exact: true }),
+      ).toBeVisible();
+      expect(
+        within(tooltip).getByText("¥1,324.43", { exact: true }),
+      ).toHaveClass("whitespace-nowrap", "tabular-nums");
+      expect(within(tooltip).queryByText("确认次数")).not.toBeInTheDocument();
+      expect(within(tooltip).queryByText("新建订单")).not.toBeInTheDocument();
+    },
+  );
 });
