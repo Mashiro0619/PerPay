@@ -48,7 +48,7 @@ export function ThemeControl({ className }: { className?: string }) {
           }
         >
           <Icon data-icon="inline-start" />
-          外观
+          <span className="sr-only sm:not-sr-only">外观</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuRadioGroup

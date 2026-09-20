@@ -25,7 +25,11 @@ function mount(
     path: "/test-payment",
     handle: (request) =>
       handle?.(request) ??
-      (isCreate(request) ? json({ data: createdOrder }, 201) : undefined),
+      (isCreate(request)
+        ? json({ data: createdOrder }, 201)
+        : new URL(request.url).pathname === "/api/admin/v1/orders/" + orderId
+          ? json({ data: { ...createdOrder, checkout: order.checkout } })
+          : undefined),
   });
 }
 
@@ -153,7 +157,7 @@ describe("minimal test payment page", () => {
     await screen.findByRole("alert");
     expect(screen.getByLabelText("测试金额（元）")).toHaveValue("1.23");
     expect(view.writes()).toHaveLength(1);
-    await user.click(screen.getByRole("button", { name: "创建测试订单" }));
+    await user.click(screen.getByRole("button", { name: "重试原请求" }));
     await screen.findByRole("heading", { name: "测试订单已创建" });
     const first = await view.writes()[0]!.clone().json();
     const retry = await view.writes()[1]!.clone().json();

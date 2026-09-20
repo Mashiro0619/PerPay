@@ -79,7 +79,7 @@ describe("fixed-evidence operation recovery", () => {
       expect(recovery).toBeEnabled();
       if (close === "recovery") await user.click(recovery);
       else if (close === "cancel")
-        await user.click(screen.getByRole("button", { name: "取消" }));
+        await user.click(screen.getByRole("button", { name: "关闭对话框" }));
       else await user.keyboard("{Escape}");
       await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
       expect(invalidate).toHaveBeenCalledOnce();
@@ -88,7 +88,7 @@ describe("fixed-evidence operation recovery", () => {
     },
   );
 
-  it.each([400, 503])(
+  it.each([422, 503])(
     "preserves an intentional same-command retry after HTTP %s",
     async (status) => {
       const invalidate = vi
@@ -99,7 +99,7 @@ describe("fixed-evidence operation recovery", () => {
         .mockRejectedValueOnce(
           rejected(
             status,
-            status === 400 ? "validation_failed" : "internal_error",
+            status === 422 ? "validation_failed" : "internal_error",
           ),
         )
         .mockResolvedValueOnce(undefined);
@@ -117,14 +117,20 @@ describe("fixed-evidence operation recovery", () => {
       const user = userEvent.setup();
       await user.type(screen.getByLabelText("操作理由"), "保持原请求重试");
       await user.click(screen.getByRole("button", { name: "确认处理" }));
-      await screen.findByText("请求未完成");
+      await screen.findByText(status === 503 ? "操作结果待确认" : "请求未完成");
       expect(
-        screen.queryByRole("button", { name: "关闭并刷新" }),
+        screen.queryByRole("button", { name: "重新核对证据" }),
       ).not.toBeInTheDocument();
-      await user.click(screen.getByRole("button", { name: "确认处理" }));
+      await user.click(
+        screen.getByRole("button", {
+          name: status === 503 ? "重试原操作" : "确认处理",
+        }),
+      );
       await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce());
       expect(execute).toHaveBeenCalledTimes(2);
-      expect(execute.mock.calls[1]).toEqual(execute.mock.calls[0]);
+      expect(execute.mock.calls[1]!.slice(0, 2)).toEqual(
+        execute.mock.calls[0]!.slice(0, 2),
+      );
       expect(invalidate).not.toHaveBeenCalled();
     },
   );

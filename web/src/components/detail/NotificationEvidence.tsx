@@ -200,9 +200,10 @@ export function DeliveryCard({
           description="再次发送同一事件，业务方需避免重复处理。"
           action="确认重新投递"
           onClose={() => setSnapshot(null)}
-          execute={(reason, operationId) =>
+          execute={(reason, operationId, signal) =>
             result(
               api.redeliverWebhookDelivery({
+                signal,
                 path: { deliveryId: snapshot.delivery.delivery_id },
                 body: { reason, redelivery_id: operationId },
               }),

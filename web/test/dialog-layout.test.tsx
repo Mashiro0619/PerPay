@@ -41,6 +41,7 @@ describe("bounded secret content", () => {
       await user.click(screen.getByRole("button", { name: "复制测试内容" }));
       expect(copy).toHaveBeenCalledExactlyOnceWith(longValue);
       expect(screen.getByRole("status")).toHaveTextContent("已复制");
+      expect(screen.getByRole("status").parentElement).toHaveClass("relative");
     },
   );
 

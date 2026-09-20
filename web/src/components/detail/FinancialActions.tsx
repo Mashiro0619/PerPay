@@ -107,9 +107,10 @@ export function ReverseMatchAction({
           description="订单将进入争议状态。仅撤销账务关联，不会转出资金。"
           action="确认撤销关联"
           onClose={() => setSnapshot(null)}
-          execute={(reason, operationId) =>
+          execute={(reason, operationId, signal) =>
             result(
               api.reversePaymentSettlement({
+                signal,
                 path: { paymentMatchId: snapshot.payment_match_id },
                 body: { reason, financial_operation_id: operationId },
               }),

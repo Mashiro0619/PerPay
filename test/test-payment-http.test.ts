@@ -120,6 +120,27 @@ describe("administrator test payment HTTP contract", () => {
       assert.equal(replayBody.data.checkout.checkout_url, createdBody.data.checkout.checkout_url);
       assert.deepEqual(triggeredOrderIds, [createdBody.data.order_id, createdBody.data.order_id]);
 
+      // Recovery must return the existing order even when the background workers are no longer ready.
+      const unreadyReplay = await unready.request(target, {
+        method: "POST",
+        headers: login.headers,
+        body: JSON.stringify(request),
+      });
+      assert.equal(unreadyReplay.status, 200);
+      const recovered = await unreadyReplay.json() as { data: TestPaymentResponse };
+      assert.equal(recovered.data.order_id, createdBody.data.order_id);
+      assert.equal(recovered.data.checkout.checkout_url, createdBody.data.checkout.checkout_url);
+      assert.equal(orderCount(services.database), 1);
+
+      const unreadyNewRequest = await unready.request(target, {
+        method: "POST",
+        headers: login.headers,
+        body: JSON.stringify({ ...request, test_payment_id: "12345678-1234-4123-8123-123456789abd" }),
+      });
+      assert.equal(unreadyNewRequest.status, 503);
+      assert.equal(await errorCode(unreadyNewRequest), "reconciliation_not_ready");
+      assert.equal(orderCount(services.database), 1);
+
       const conflictingReplay = await ready.request(target, {
         method: "POST",
         headers: login.headers,

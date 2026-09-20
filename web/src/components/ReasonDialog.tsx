@@ -1,12 +1,19 @@
-import { useState, type ReactNode } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { ApiError, refreshOperationalData } from "@/api/client";
+import { useId, useRef, useState, type ReactNode } from "react";
+import { refreshOperationalData } from "@/api/client";
 import { useOperationKey } from "@/lib/idempotency";
+import { operationReasonError, useFixedOperation } from "@/lib/fixed-operation";
 import { ErrorNotice } from "@/components/request-state";
+import { OperationRecoveryNotice } from "@/components/operation-recovery-notice";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import { Field, FieldLabel, FieldGroup } from "@/components/ui/field";
+import {
+  Field,
+  FieldLabel,
+  FieldGroup,
+  FieldDescription,
+  FieldError,
+} from "@/components/ui/field";
 import {
   Dialog,
   DialogContent,
@@ -29,31 +36,62 @@ export function ReasonDialog({
   description: string;
   action: string;
   children?: ReactNode;
-  execute: (reason: string, operationId: string) => Promise<unknown>;
+  execute: (
+    reason: string,
+    operationId: string,
+    signal?: AbortSignal,
+  ) => Promise<unknown>;
   onClose: () => void;
   onSuccess: () => void;
   finalFocus?: (() => HTMLElement | null) | undefined;
 }) {
+  // The evidence being confirmed must not silently change under an open dialog.
+  const [snapshot] = useState(() => ({
+    title,
+    description,
+    action,
+    children,
+    execute,
+  }));
   const [reason, setReason] = useState("");
+  const [validation, setValidation] = useState<string | null>(null);
+  const reasonField = useRef<HTMLTextAreaElement>(null);
+  const hintId = useId();
   const operationKey = useOperationKey();
-  const mutation = useMutation({
-    mutationFn: () => execute(reason.trim(), operationKey(reason.trim())),
+  const mutation = useFixedOperation({
+    execute: (input: { reason: string; operationId: string }, signal) =>
+      snapshot.execute(input.reason, input.operationId, signal),
     onSuccess,
   });
-  // These commands use a captured snapshot; a conflict requires fresh evidence.
-  const conflict =
-    mutation.error instanceof ApiError && mutation.error.status === 409;
+  const needsRefresh = mutation.conflict || !!mutation.recovery;
   function close() {
-    if (mutation.isPending) return;
+    if (mutation.isBusy()) return;
     onClose();
-    if (conflict) void refreshOperationalData();
+    if (needsRefresh) void refreshOperationalData();
+  }
+  function submit() {
+    if (mutation.isBusy() || mutation.conflict) return;
+    if (mutation.recovery) {
+      mutation.submit(mutation.recovery);
+      return;
+    }
+    const error = operationReasonError(reason);
+    setValidation(error);
+    if (error) {
+      reasonField.current?.focus();
+      return;
+    }
+    mutation.submit({
+      reason: reason.trim(),
+      operationId: operationKey(reason.trim()),
+    });
   }
   return (
     <Dialog
       open
       onOpenChange={(open, event) => {
         if (!open) {
-          if (mutation.isPending) event.cancel();
+          if (mutation.isBusy()) event.cancel();
           else close();
         }
       }}
@@ -61,27 +99,39 @@ export function ReasonDialog({
       <DialogContent
         showCloseButton={!mutation.isPending}
         finalFocus={
-          conflict ? () => document.getElementById("main-content") : finalFocus
+          needsRefresh
+            ? () =>
+                document.getElementById("main-content") ??
+                finalFocus?.() ??
+                null
+            : finalFocus
         }
         className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden"
       >
-        <DialogHeader className="shrink-0">
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
+        <DialogHeader className="shrink-0 pr-8">
+          <DialogTitle>{snapshot.title}</DialogTitle>
+          <DialogDescription>{snapshot.description}</DialogDescription>
         </DialogHeader>
         <form
           className="contents"
           onSubmit={(event) => {
             event.preventDefault();
-            if (reason.trim() && !mutation.isPending && !conflict)
-              mutation.mutate();
+            submit();
           }}
         >
           <FieldGroup className="-mx-4 min-h-0 w-auto overflow-y-auto px-4 pb-1">
-            {children}
-            <Field>
+            {mutation.recovery && (
+              <OperationRecoveryNotice
+                operationId={mutation.recovery.operationId}
+                conflict={mutation.conflict}
+                error={mutation.error}
+              />
+            )}
+            {snapshot.children}
+            <Field data-invalid={!!validation}>
               <FieldLabel htmlFor="operation-reason">操作理由</FieldLabel>
               <Textarea
+                ref={reasonField}
                 id="operation-reason"
                 name="reason"
                 required
@@ -89,30 +139,50 @@ export function ReasonDialog({
                 rows={3}
                 value={reason}
                 disabled={mutation.isPending}
-                onChange={(event) => setReason(event.target.value)}
+                readOnly={!!mutation.recovery}
+                aria-invalid={!!validation}
+                aria-describedby={
+                  mutation.recovery || validation ? hintId : undefined
+                }
+                onChange={(event) => {
+                  if (mutation.isBusy() || mutation.recovery) return;
+                  setReason(event.target.value);
+                  setValidation(null);
+                  if (!mutation.conflict) mutation.reset();
+                }}
               />
+              {mutation.recovery ? (
+                <FieldDescription id={hintId}>
+                  已锁定原操作的理由与证据，重试不会更改请求。
+                </FieldDescription>
+              ) : (
+                validation && <FieldError id={hintId}>{validation}</FieldError>
+              )}
             </Field>
-            <ErrorNotice error={mutation.error} />
+            {!mutation.recovery && <ErrorNotice error={mutation.error} />}
           </FieldGroup>
-          <DialogFooter className="shrink-0">
+          <DialogFooter className="shrink-0 flex-row flex-wrap justify-end">
             <Button
               type="button"
               variant="outline"
               onClick={close}
               disabled={mutation.isPending}
             >
-              取消
+              {needsRefresh ? "关闭并刷新" : "取消"}
             </Button>
-            <Button
-              type={conflict ? "button" : "submit"}
-              onClick={conflict ? close : undefined}
-              disabled={mutation.isPending || (!conflict && !reason.trim())}
-            >
-              {mutation.isPending && (
-                <Spinner aria-hidden="true" data-icon="inline-start" />
-              )}
-              {conflict ? "关闭并刷新" : action}
-            </Button>
+            {!mutation.conflict && (
+              <Button
+                type="submit"
+                disabled={
+                  mutation.isPending || (!mutation.recovery && !reason.trim())
+                }
+              >
+                {mutation.isPending && (
+                  <Spinner aria-hidden="true" data-icon="inline-start" />
+                )}
+                {mutation.recovery ? "重试原操作" : snapshot.action}
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>

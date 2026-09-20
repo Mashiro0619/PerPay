@@ -45,7 +45,7 @@ export function CopyValue({
     </Button>
   );
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1">
+    <div className="relative flex min-w-0 flex-wrap items-center gap-1">
       {block ? (
         <div className="flex w-full flex-col gap-2">
           <div className="flex justify-end">{action}</div>

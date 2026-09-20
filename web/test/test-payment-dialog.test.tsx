@@ -31,7 +31,11 @@ function mount(
     path: "/orders",
     handle: (request) =>
       handle?.(request) ??
-      (isCreate(request) ? json({ data: createdOrder }, 201) : undefined),
+      (isCreate(request)
+        ? json({ data: createdOrder }, 201)
+        : new URL(request.url).pathname === "/api/admin/v1/orders/" + orderId
+          ? json({ data: { ...createdOrder, checkout: order.checkout } })
+          : undefined),
   });
 }
 async function open(user: ReturnType<typeof userEvent.setup>) {
@@ -116,15 +120,15 @@ describe("test-payment dialog lifecycle", () => {
     await user.click(
       within(dialog).getByRole("button", { name: "创建测试订单" }),
     );
-    await within(dialog).findByRole("alert");
-    await user.click(within(dialog).getByRole("button", { name: "取消" }));
+    await within(dialog).findByText("创建结果待确认");
+    await user.click(within(dialog).getByRole("button", { name: "暂时关闭" }));
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
     await user.click(trigger);
     await user.click(
       within(await screen.findByRole("dialog")).getByRole("button", {
-        name: "创建测试订单",
+        name: "重试原请求",
       }),
     );
     await screen.findByRole("heading", { name: "测试订单已创建" });

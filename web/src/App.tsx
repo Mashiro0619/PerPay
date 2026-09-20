@@ -11,6 +11,7 @@ import {
   Outlet,
   Route,
   useLocation,
+  useMatch,
 } from "react-router";
 import { api, result } from "@/api/client";
 import { AuthBoundary, useSession } from "@/auth";
@@ -95,12 +96,12 @@ function Workspace() {
         ? location.pathname === "/"
         : location.pathname.startsWith(item.url),
     );
-  const title =
-    location.pathname === "/test-payment"
-      ? "测试收款"
-      : location.pathname.startsWith("/settings/onboarding")
-        ? "配置向导"
-        : (current?.title ?? "PerPay");
+  const testPaymentPage = useMatch("/test-payment");
+  const title = testPaymentPage
+    ? "测试收款"
+    : location.pathname.startsWith("/settings/onboarding")
+      ? "配置向导"
+      : (current?.title ?? "PerPay");
   const overview = location.pathname === "/";
   useEffect(() => {
     document.title = title + " · PerPay";

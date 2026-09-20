@@ -1,14 +1,15 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useId, useRef, type FormEvent } from "react";
 import { ArrowLeft, AlertCircle } from "lucide-react";
 import { Link } from "@/navigation";
-import { api, refreshOperationalData, result } from "@/api/client";
-import { money, parseAmount, safeCheckoutUrl } from "@/lib/format";
-import { useOperationKey } from "@/lib/idempotency";
-import { StatusBadge } from "@/components/business-status";
+import { useCurrentTestPayment } from "@/lib/test-payment-request";
+import { CopyValue } from "@/components/copy-value";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { ErrorNotice, QueryView } from "@/components/request-state";
-import { RecordTools } from "@/components/detail/RecordTools";
-import { DetailFields } from "@/components/detail/DetailPrimitives";
+import { TestPaymentResult } from "@/components/test-payment-result";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -20,6 +21,7 @@ import {
 import {
   Field,
   FieldLabel,
+  FieldTitle,
   FieldDescription,
   FieldError,
   FieldGroup,
@@ -29,10 +31,9 @@ import {
   CardHeader,
   CardTitle,
   CardContent,
-  CardAction,
   CardFooter,
 } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import {
   Dialog,
   DialogContent,
@@ -49,7 +50,7 @@ type TestPaymentDialogProps = {
 };
 
 export default function TestPayment() {
-  const [generation, setGeneration] = useState(0);
+  const { generation } = useCurrentTestPayment();
   return (
     <div className="flex w-full max-w-xl flex-col gap-4">
       <Link
@@ -63,213 +64,152 @@ export default function TestPayment() {
         <ArrowLeft data-icon="inline-start" />
         收款概览
       </Link>
-      <TestPaymentForm
-        key={generation}
-        onNew={() => setGeneration((value) => value + 1)}
-      />
+      <TestPaymentForm key={generation} />
     </div>
   );
 }
 
 export function TestPaymentDialog(props: TestPaymentDialogProps) {
-  const [generation, setGeneration] = useState(0);
-  return (
-    <TestPaymentForm
-      key={generation}
-      dialog={props}
-      onNew={() => setGeneration((value) => value + 1)}
-    />
-  );
+  const { generation } = useCurrentTestPayment();
+  return <TestPaymentForm key={generation} dialog={props} />;
 }
 
-function TestPaymentForm({
-  onNew,
-  dialog,
-}: {
-  onNew: () => void;
-  dialog?: TestPaymentDialogProps;
-}) {
-  const [amount, setAmount] = useState("0.01");
+function TestPaymentForm({ dialog }: { dialog?: TestPaymentDialogProps }) {
+  const request = useCurrentTestPayment();
+  const { amount, validation, recovery, create, status, canCreate, startNew } =
+    request;
   const amountField = useRef<HTMLInputElement>(null);
   const dialogTitle = useRef<HTMLHeadingElement>(null);
-  const resultTitle = useRef<HTMLHeadingElement>(null);
-  const submitting = useRef(false);
-  const [validation, setValidation] = useState<Error | null>(null);
   const formId = useId();
   const errorId = useId();
-  const operationKey = useOperationKey();
-  const status = useQuery({
-    queryKey: ["status"],
-    queryFn: ({ signal }) =>
-      result(api.getAdministratorSystemStatus({ signal })),
-    enabled: !dialog || dialog.open,
-    staleTime: 0,
-  });
-  const create = useMutation({
-    mutationFn: (cents: number) =>
-      result(
-        api.createAdministratorTestPayment({
-          body: { amount_cents: cents, test_payment_id: operationKey(cents) },
-        }),
-      ),
-    onSuccess: () => {
-      void refreshOperationalData();
-    },
-    onSettled: () => {
-      submitting.current = false;
-    },
-  });
-  const canCreate =
-    !!status.data &&
-    !status.isError &&
-    !status.isFetching &&
-    status.data.data.status !== "not_ready";
-  useEffect(() => {
-    if (create.data && (!dialog || dialog.open)) resultTitle.current?.focus();
-  }, [create.data, dialog?.open]);
-
+  const recoveryHintId = useId();
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (submitting.current || create.isPending || !canCreate) return;
-    try {
-      const cents = parseAmount(amount);
-      setValidation(null);
-      submitting.current = true;
-      create.mutate(cents);
-    } catch (error) {
-      setValidation(error as Error);
-      amountField.current?.focus();
-    }
+    if (request.submit() === "invalid") amountField.current?.focus();
   }
 
   const order = create.data?.data;
-  const checkoutUrl = order
-    ? safeCheckoutUrl(order.checkout.checkout_url)
-    : null;
-  const resultHeading = order && (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <h3 ref={resultTitle} tabIndex={-1} className="font-medium">
-        测试订单已创建
-      </h3>
-      <StatusBadge value={order.payment.status} />
-    </div>
-  );
-  const content = order ? (
-    <div className="flex min-w-0 flex-col gap-4">
-      {dialog && resultHeading}
-      <DetailFields
-        items={[
-          ["测试金额", money(order.requested_amount_cents)],
-          [
-            "实际应付",
-            <strong className="tabular-nums">
-              {money(order.payable_amount_cents)}
-            </strong>,
-          ],
-          ["商户订单号", order.merchant_order_no],
-        ]}
-      />
-      <div className="flex flex-wrap items-center gap-2">
-        <Link
-          className={buttonVariants({ variant: "outline" })}
-          to={"/orders/" + order.order_id}
-        >
-          查看订单
-        </Link>
-        <Button variant="ghost" onClick={onNew}>
-          再创建一笔
-        </Button>
-      </div>
-      {!checkoutUrl && (
-        <Alert>
-          <AlertCircle />
-          <AlertDescription>
-            收银台地址不可用，请打开订单查看。
-          </AlertDescription>
-        </Alert>
-      )}
-      <RecordTools data={order} identifiers={[["订单编号", order.order_id]]} />
-    </div>
-  ) : (
-    <QueryView query={status}>
-      {({ data }) => (
-        <div className="flex flex-col gap-4">
-          {data.status === "not_ready" && (
-            <Alert>
-              <AlertCircle />
-              <AlertDescription>
-                暂不能收款，请<Link to="/settings">完成配置</Link>或查看
-                <Link to="/system">运行状态</Link>。
-              </AlertDescription>
-            </Alert>
+  const form = (
+    <form id={formId} onSubmit={submit}>
+      <FieldGroup>
+        {recovery && (
+          <Alert>
+            <AlertCircle />
+            <AlertTitle>创建结果待确认</AlertTitle>
+            <AlertDescription>
+              未收到完整结果，订单可能已创建。重试会沿用原金额和请求编号；已有订单会直接返回，若尚未创建则完成这一次创建。
+            </AlertDescription>
+          </Alert>
+        )}
+        <Field data-invalid={!!validation}>
+          <FieldLabel htmlFor="test-payment-amount">测试金额（元）</FieldLabel>
+          <InputGroup>
+            <InputGroupInput
+              id="test-payment-amount"
+              ref={amountField}
+              name="amount"
+              inputMode="decimal"
+              autoComplete="off"
+              required
+              value={amount}
+              disabled={create.isPending}
+              readOnly={!!recovery}
+              onChange={(event) => request.editAmount(event.target.value)}
+              aria-invalid={!!validation}
+              aria-describedby={
+                recovery
+                  ? recoveryHintId
+                  : validation
+                    ? "test-payment-hint " + errorId
+                    : "test-payment-hint"
+              }
+            />
+            <InputGroupAddon align="inline-start">
+              <InputGroupText>¥</InputGroupText>
+            </InputGroupAddon>
+          </InputGroup>
+          <FieldDescription
+            id={recovery ? recoveryHintId : "test-payment-hint"}
+          >
+            {recovery
+              ? "原金额已锁定，请先恢复这笔订单，再创建另一笔。"
+              : "真实付款，以收银台金额为准。"}
+          </FieldDescription>
+          {validation && (
+            <FieldError id={errorId}>{validation.message}</FieldError>
           )}
-          <form id={formId} onSubmit={submit}>
-            <FieldGroup>
-              <Field data-invalid={!!validation}>
-                <FieldLabel htmlFor="test-payment-amount">
-                  测试金额（元）
-                </FieldLabel>
-                <InputGroup>
-                  <InputGroupAddon>
-                    <InputGroupText>¥</InputGroupText>
-                  </InputGroupAddon>
-                  <InputGroupInput
-                    id="test-payment-amount"
-                    ref={amountField}
-                    name="amount"
-                    inputMode="decimal"
-                    autoComplete="off"
-                    required
-                    value={amount}
-                    disabled={create.isPending}
-                    onChange={(event) => {
-                      setAmount(event.target.value);
-                      setValidation(null);
-                      create.reset();
-                    }}
-                    aria-invalid={!!validation}
-                    aria-describedby={
-                      validation
-                        ? "test-payment-hint " + errorId
-                        : "test-payment-hint"
-                    }
-                  />
-                </InputGroup>
-                <FieldDescription id="test-payment-hint">
-                  真实付款，以收银台金额为准。
-                </FieldDescription>
-                {validation && (
-                  <FieldError id={errorId}>{validation.message}</FieldError>
-                )}
-              </Field>
-              <ErrorNotice error={create.error} />
-            </FieldGroup>
-          </form>
-        </div>
-      )}
-    </QueryView>
+        </Field>
+        {recovery ? (
+          <>
+            <Field>
+              <FieldTitle>商户订单号</FieldTitle>
+              <CopyValue
+                value={"test-" + recovery.test_payment_id}
+                label="复制商户订单号"
+              />
+              <FieldDescription>
+                暂时关闭后仍可恢复。刷新页面或退出登录前，请复制此编号，之后可在订单列表核查。
+              </FieldDescription>
+            </Field>
+            {create.error && (
+              <Collapsible>
+                <CollapsibleTrigger
+                  render={<Button variant="ghost" size="sm" />}
+                >
+                  失败详情
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <ErrorNotice error={create.error} />
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+            <Link
+              className={buttonVariants({
+                variant: "link",
+                size: "sm",
+                className: "w-fit",
+              })}
+              to="/orders"
+            >
+              查看订单列表
+            </Link>
+          </>
+        ) : (
+          <ErrorNotice error={create.error} />
+        )}
+      </FieldGroup>
+    </form>
   );
-  const primaryAction = order ? (
-    checkoutUrl && (
-      <a
-        className={buttonVariants()}
-        href={checkoutUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        打开收银台
-      </a>
-    )
-  ) : (
+  const content = (
+    <div className="flex flex-col gap-4">
+      {!recovery && (
+        <QueryView query={status}>
+          {({ data }) =>
+            data.status === "not_ready" ? (
+              <Alert>
+                <AlertCircle />
+                <AlertDescription>
+                  暂不能收款，请<Link to="/settings">完成配置</Link>或查看
+                  <Link to="/system">运行状态</Link>。
+                </AlertDescription>
+              </Alert>
+            ) : null
+          }
+        </QueryView>
+      )}
+      {(recovery || status.data) && form}
+    </div>
+  );
+  const primaryAction = (
     <Button
       type="submit"
       form={formId}
-      disabled={create.isPending || !canCreate}
+      disabled={create.isPending || (!recovery && !canCreate)}
     >
       {create.isPending && (
         <Spinner aria-hidden="true" data-icon="inline-start" />
       )}
-      创建测试订单
+      {recovery ? "重试原请求" : "创建测试订单"}
     </Button>
   );
 
@@ -278,7 +218,7 @@ function TestPaymentForm({
       <Dialog
         open={dialog.open}
         onOpenChange={(open, event) => {
-          if (!open && (submitting.current || create.isPending)) event.cancel();
+          if (!open && request.isSubmitting()) event.cancel();
           else dialog.onOpenChange(open);
         }}
       >
@@ -296,42 +236,49 @@ function TestPaymentForm({
               创建真实收款订单，付款以收银台金额为准。
             </DialogDescription>
           </DialogHeader>
-          <div className="-mx-4 min-h-0 overflow-auto px-4 pb-1">{content}</div>
-          <DialogFooter className="shrink-0">
-            <Button
-              variant="outline"
-              disabled={create.isPending}
-              onClick={() => {
-                if (!submitting.current && !create.isPending)
-                  dialog.onOpenChange(false);
-              }}
-            >
-              {order ? "关闭" : "取消"}
-            </Button>
-            {primaryAction}
-          </DialogFooter>
+          {order ? (
+            <TestPaymentResult
+              created={order}
+              onNew={startNew}
+              onClose={() => dialog.onOpenChange(false)}
+            />
+          ) : (
+            <>
+              <div className="-mx-4 min-h-0 overflow-auto px-4 pb-1">
+                {content}
+              </div>
+              <DialogFooter className="shrink-0 flex-row justify-end">
+                <Button
+                  variant="outline"
+                  disabled={create.isPending}
+                  onClick={() => {
+                    if (!request.isSubmitting()) dialog.onOpenChange(false);
+                  }}
+                >
+                  {recovery ? "暂时关闭" : "取消"}
+                </Button>
+                {primaryAction}
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     );
   return (
     <Card>
-      <CardHeader>
-        <CardTitle
-          role="heading"
-          aria-level={2}
-          ref={resultTitle}
-          tabIndex={order ? -1 : undefined}
-        >
-          {order ? "测试订单已创建" : "创建测试订单"}
-        </CardTitle>
-        {order && (
-          <CardAction>
-            <StatusBadge value={order.payment.status} />
-          </CardAction>
-        )}
-      </CardHeader>
-      <CardContent>{content}</CardContent>
-      <CardFooter>{primaryAction}</CardFooter>
+      {order ? (
+        <TestPaymentResult created={order} onNew={startNew} />
+      ) : (
+        <>
+          <CardHeader>
+            <CardTitle role="heading" aria-level={2}>
+              创建测试订单
+            </CardTitle>
+          </CardHeader>
+          <CardContent>{content}</CardContent>
+          <CardFooter>{primaryAction}</CardFooter>
+        </>
+      )}
     </Card>
   );
 }

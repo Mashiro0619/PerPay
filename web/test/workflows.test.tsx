@@ -605,11 +605,11 @@ describe("state-changing workflows", () => {
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText("操作理由"), "保持原请求重试");
     await user.click(screen.getByRole("button", { name: "确认关联收款" }));
-    await screen.findByText("无法连接服务，请检查网络后重试。");
+    await screen.findByText("操作结果待确认");
     expect(
       screen.queryByRole("button", { name: "重新核对证据" }),
     ).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "确认关联收款" }));
+    await user.click(screen.getByRole("button", { name: "重试原操作" }));
     await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce());
     expect(writes).toHaveLength(2);
     const first = await writes[0]!.json();
@@ -691,10 +691,14 @@ describe("state-changing workflows", () => {
     await user.type(screen.getByLabelText(/操作理由/), "订单关联核对错误");
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "确认撤销" }));
+    expect(await screen.findByText("操作结果待确认")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "响应详情" }));
     expect(await screen.findByText("临时网络中断")).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "确认撤销" }));
+    await user.click(screen.getByRole("button", { name: "重试原操作" }));
     await waitFor(() => expect(complete).toHaveBeenCalledTimes(1));
-    expect(execute.mock.calls[0]).toEqual(execute.mock.calls[1]);
+    expect(execute.mock.calls[0]!.slice(0, 2)).toEqual(
+      execute.mock.calls[1]!.slice(0, 2),
+    );
   });
 
   it("clears revealed secrets when the tab becomes hidden", async () => {

@@ -49,11 +49,22 @@ describe("context-preserving secondary dialogs", () => {
     async (path) => {
       const view = mountOnboarding({ stage: 4, path });
       const trigger = await screen.findByRole("button", { name: "测试收款" });
+      if (path === "/") {
+        expect(trigger).not.toHaveClass("hidden");
+        expect(within(trigger).getByText("测试收款")).toHaveClass(
+          "sr-only",
+          "sm:not-sr-only",
+        );
+      }
       const user = userEvent.setup();
       await user.click(trigger);
       const dialog = await screen.findByRole("dialog", { name: "测试收款" });
       expect(within(dialog).getByLabelText("测试金额（元）")).toHaveValue(
         "0.01",
+      );
+      expect(dialog.querySelector("[data-slot=dialog-footer]")).toHaveClass(
+        "shrink-0",
+        "flex-row",
       );
       expect(view.router.state.location.pathname).toBe(path);
       expect(view.writes()).toHaveLength(0);

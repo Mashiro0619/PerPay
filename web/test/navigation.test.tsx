@@ -174,14 +174,19 @@ describe("navigation and draft protection", () => {
       view.fetchMock.mock.calls.some(([request]) => request.method !== "GET"),
     ).toBe(false);
   });
-  it("merges responsive button styles without overriding hidden mobile actions", async () => {
+  it("keeps the test-payment action accessible while compacting its visible label on small screens", async () => {
     const { container } = mount({ path: "/", configured: true });
     await screen.findByRole("heading", { name: "收款趋势" });
     const testPayment = container.querySelector(
       'header button[aria-haspopup="dialog"]',
     );
-    expect(testPayment).toHaveClass("hidden", "sm:inline-flex");
-    expect(testPayment).not.toHaveClass("inline-flex");
+    expect(testPayment).not.toHaveClass("hidden");
+    expect(testPayment).toHaveClass("inline-flex");
+    expect(testPayment).toHaveAccessibleName("测试收款");
+    expect(testPayment?.querySelector("span")).toHaveClass(
+      "sr-only",
+      "sm:not-sr-only",
+    );
   });
   it("uses the official account menu without duplicate branding or palette controls", async () => {
     const { container, fetchMock } = mount();

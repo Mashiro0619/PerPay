@@ -209,9 +209,10 @@ export function ConflictCard({ detail }: { detail: LedgerConflictDetail }) {
           }
           action="确认处理冲突"
           onClose={() => setConfirm(false)}
-          execute={(reason, operationId) =>
+          execute={(reason, operationId, signal) =>
             result(
               api.resolveLedgerConflict({
+                signal,
                 path: { conflictId: conflict.conflict_id },
                 body: { reason, action, conflict_operation_id: operationId },
               }),

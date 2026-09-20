@@ -7,9 +7,13 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react";
-import { useLocation } from "react-router";
+import { useLocation, useMatch } from "react-router";
 import { ScanLine } from "lucide-react";
 import { TestPaymentDialog } from "@/pages/TestPayment";
+import {
+  TestPaymentRequestContext,
+  useTestPaymentRequest,
+} from "@/lib/test-payment-request";
 import { Button } from "@/components/ui/button";
 
 const TestPaymentContext = createContext<
@@ -20,6 +24,8 @@ export function TestPaymentProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
   const [open, setOpen] = useState(false);
   const [started, setStarted] = useState(false);
+  const standalone = useMatch("/test-payment") !== null;
+  const request = useTestPaymentRequest(open || standalone);
   const trigger = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     setOpen(false);
@@ -32,18 +38,20 @@ export function TestPaymentProvider({ children }: { children: ReactNode }) {
         setOpen(true);
       }}
     >
-      {children}
-      {started && (
-        <TestPaymentDialog
-          open={open}
-          onOpenChange={setOpen}
-          finalFocus={() =>
-            trigger.current?.isConnected
-              ? trigger.current
-              : document.getElementById("main-content")
-          }
-        />
-      )}
+      <TestPaymentRequestContext value={request}>
+        {children}
+        {started && !standalone && (
+          <TestPaymentDialog
+            open={open}
+            onOpenChange={setOpen}
+            finalFocus={() =>
+              trigger.current?.isConnected
+                ? trigger.current
+                : document.getElementById("main-content")
+            }
+          />
+        )}
+      </TestPaymentRequestContext>
     </TestPaymentContext>
   );
 }
@@ -53,7 +61,7 @@ export function TestPaymentButton({
   ...props
 }: Pick<
   ComponentProps<typeof Button>,
-  "children" | "className" | "size" | "variant"
+  "children" | "className" | "size" | "variant" | "title"
 >) {
   const show = useContext(TestPaymentContext);
   if (!show) throw new Error("TestPaymentButton requires TestPaymentProvider");

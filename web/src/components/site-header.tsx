@@ -39,7 +39,9 @@ export function SiteHeader({
               >
                 {fetching ? <Spinner aria-hidden="true" /> : <RefreshCw />}
               </Button>
-              <TestPaymentButton size="sm" className="hidden sm:inline-flex" />
+              <TestPaymentButton size="sm" title="测试收款">
+                <span className="sr-only sm:not-sr-only">测试收款</span>
+              </TestPaymentButton>
             </>
           )}
           <ThemeControl />
