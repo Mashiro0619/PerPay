@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { useIsFetching, useQuery } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 import {
@@ -15,10 +15,14 @@ import { StatusBadge } from "@/components/business-status";
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
-} from "@/components/ui/collapsible";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
 import {
   Item,
   ItemContent,
@@ -82,45 +86,61 @@ export function DetailFields({
     </dl>
   );
 }
-export function TechnicalDetails({
+export function TechnicalDetailsDialog({
+  open,
+  onOpenChange,
+  finalFocus,
   data,
   identifiers = [],
-  label = "技术详情",
 }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  finalFocus: () => HTMLElement | null;
   data: unknown;
   identifiers?: ReadonlyArray<readonly [string, string | null]>;
-  label?: string;
 }) {
+  const title = useRef<HTMLHeadingElement>(null);
   return (
-    <Collapsible>
-      <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
-        {label}
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="flex min-w-0 flex-col gap-4 py-4">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-3xl"
+        initialFocus={title}
+        finalFocus={finalFocus}
+      >
+        <DialogHeader className="shrink-0 pr-8">
+          <DialogTitle ref={title} tabIndex={-1}>
+            技术详情
+          </DialogTitle>
+          <DialogDescription>
+            当前记录的标识与原始数据，仅供排查，不会修改业务状态。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="-mx-4 flex min-h-0 flex-col gap-4 overflow-auto px-4 pb-1">
           {identifiers.length > 0 && (
             <DetailFields
               items={identifiers
                 .filter(
-                  (entry): entry is readonly [string, string] =>
-                    entry[1] !== null,
+                  (entry): entry is readonly [string, string] => !!entry[1],
                 )
-                .map(([name, id]) => [
+                .map(([name, value]) => [
                   name,
-                  <CopyValue value={id} label={"复制" + name} />,
+                  <CopyValue value={value} label={"复制" + name} />,
                 ])}
             />
           )}
           <pre
             tabIndex={0}
-            aria-label={label}
-            className="max-h-80 overflow-auto rounded-md bg-muted p-4 text-xs"
+            aria-label="技术详情"
+            className="shrink-0 rounded-md bg-muted p-4 text-xs whitespace-pre-wrap break-all"
           >
             {JSON.stringify(data, null, 2)}
           </pre>
         </div>
-      </CollapsibleContent>
-    </Collapsible>
+        <DialogFooter className="shrink-0">
+          <DialogClose render={<Button variant="outline" />}>关闭</DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 export function DetailLink({

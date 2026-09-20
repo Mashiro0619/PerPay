@@ -1,3 +1,4 @@
+import { TestPaymentButton } from "@/components/test-payment-provider";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -497,13 +498,13 @@ export function ReadinessCheck({
     status?.payment_revision === settings.payment_revision;
   const ready = Boolean(
     fresh &&
-    matches &&
-    settings.completion.complete &&
-    status?.configured &&
-    status.database.ok &&
-    status.ledger.collection_ready &&
-    status.reconciliation.confirmation_ready &&
-    status.status !== "not_ready",
+      matches &&
+      settings.completion.complete &&
+      status?.configured &&
+      status.database.ok &&
+      status.ledger.collection_ready &&
+      status.reconciliation.confirmation_ready &&
+      status.status !== "not_ready",
   );
   const missingConfiguration = [
     [settings.completion.application_key, "应用密钥"],
@@ -634,12 +635,7 @@ export function ReadinessCheck({
             <Link className={buttonVariants()} to="/">
               进入控制台
             </Link>
-            <Link
-              className={buttonVariants({ variant: "outline" })}
-              to="/test-payment"
-            >
-              小额真实测试
-            </Link>
+            <TestPaymentButton>小额真实测试</TestPaymentButton>
           </>
         )}
         <Button

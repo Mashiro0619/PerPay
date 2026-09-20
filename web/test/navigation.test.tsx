@@ -172,7 +172,7 @@ describe("navigation and draft protection", () => {
     const { container } = mount({ path: "/", configured: true });
     await screen.findByRole("heading", { name: "收款趋势" });
     const testPayment = container.querySelector(
-      'header a[href="/test-payment"]',
+      'header button[aria-haspopup="dialog"]',
     );
     expect(testPayment).toHaveClass("hidden", "sm:inline-flex");
     expect(testPayment).not.toHaveClass("inline-flex");

@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { queryClient, type SystemStatus } from "../src/api/client";
 import { ReadinessCheck } from "../src/pages/Onboarding";
+import { TestPaymentProvider } from "../src/components/test-payment-provider";
 import { apiError, json } from "./fixtures";
 import { configuredThrough, instanceId, systemStatus } from "./onboarding-fixture";
 
@@ -13,7 +14,7 @@ function mount(read: () => Response | Promise<Response> = () => json({ data: sys
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
   const fetchMock = vi.fn(read); vi.stubGlobal("fetch", fetchMock);
   const onReload = vi.fn();
-  const view = render(<QueryClientProvider client={queryClient}><MemoryRouter><ReadinessCheck settings={configuredThrough(4)} instanceId={instanceId} onReload={onReload} /></MemoryRouter></QueryClientProvider>);
+  const view = render(<QueryClientProvider client={queryClient}><MemoryRouter><TestPaymentProvider><ReadinessCheck settings={configuredThrough(4)} instanceId={instanceId} onReload={onReload} /></TestPaymentProvider></MemoryRouter></QueryClientProvider>);
   return { ...view, fetchMock, onReload };
 }
 
@@ -35,7 +36,7 @@ describe("onboarding payment readiness", () => {
     const { fetchMock } = mount(() => json({ data: status }));
     expect(await screen.findByText("可以收款，仍有事项待处理。")).toBeVisible();
     expect(screen.getByRole("link", { name: "进入控制台" })).toBeVisible();
-    expect(screen.getByRole("link", { name: "小额真实测试" })).toHaveAttribute("href", "/test-payment");
+    expect(screen.getByRole("button", { name: "小额真实测试" })).toHaveAttribute("aria-haspopup", "dialog");
     expect(fetchMock).toHaveBeenCalledOnce();
   });
   it.each(["settings_revision", "payment_revision"] as const)("rejects an outdated %s and offers explicit configuration reload", async (version) => {

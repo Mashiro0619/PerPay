@@ -1,13 +1,12 @@
-import { RefreshCw, ScanLine } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { useIsFetching } from "@tanstack/react-query";
-import { Link } from "@/navigation";
 import { refreshOperationalData } from "@/api/client";
 import { ThemeControl } from "@/theme";
-import { cn } from "@/lib/utils";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
+import { TestPaymentButton } from "@/components/test-payment-provider";
 
 export function SiteHeader({
   title,
@@ -40,16 +39,7 @@ export function SiteHeader({
               >
                 {fetching ? <Spinner aria-hidden="true" /> : <RefreshCw />}
               </Button>
-              <Link
-                to="/test-payment"
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" }),
-                  "hidden sm:inline-flex",
-                )}
-              >
-                <ScanLine data-icon="inline-start" />
-                测试收款
-              </Link>
+              <TestPaymentButton size="sm" className="hidden sm:inline-flex" />
             </>
           )}
           <ThemeControl />

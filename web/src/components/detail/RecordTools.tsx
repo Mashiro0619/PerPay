@@ -1,9 +1,7 @@
 import { useRef, useState } from "react";
 import { MoreHorizontal, Code, ExternalLink } from "lucide-react";
 import { Link } from "@/navigation";
-import { CopyValue } from "@/components/copy-value";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -12,7 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { DetailFields } from "./DetailPrimitives";
+import { TechnicalDetailsDialog } from "./DetailPrimitives";
 export type RecordAction = {
   label: string;
   danger?: boolean;
@@ -36,7 +34,7 @@ export function RecordTools({
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement | null>(null);
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
+    <>
       <div className="flex justify-end">
         <DropdownMenu>
           <DropdownMenuTrigger
@@ -72,9 +70,9 @@ export function RecordTools({
               </>
             )}
             <DropdownMenuGroup>
-              <DropdownMenuItem onClick={() => setOpen(!open)}>
+              <DropdownMenuItem onClick={() => setOpen(true)}>
                 <Code />
-                {open ? "收起技术详情" : "技术详情"}
+                技术详情
               </DropdownMenuItem>
               {to && (
                 <DropdownMenuItem render={<Link to={to} />}>
@@ -86,29 +84,13 @@ export function RecordTools({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <CollapsibleContent>
-        <div className="flex min-w-0 flex-col gap-4 pt-4">
-          {identifiers.length > 0 && (
-            <DetailFields
-              items={identifiers
-                .filter(
-                  (entry): entry is readonly [string, string] => !!entry[1],
-                )
-                .map(([name, value]) => [
-                  name,
-                  <CopyValue value={value} label={"复制" + name} />,
-                ])}
-            />
-          )}
-          <pre
-            tabIndex={0}
-            aria-label="技术详情"
-            className="max-h-80 overflow-auto rounded-md bg-muted p-4 text-xs"
-          >
-            {JSON.stringify(data, null, 2)}
-          </pre>
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
+      <TechnicalDetailsDialog
+        open={open}
+        onOpenChange={setOpen}
+        finalFocus={() => trigger.current}
+        data={data}
+        identifiers={identifiers}
+      />
+    </>
   );
 }

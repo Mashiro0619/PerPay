@@ -10,7 +10,7 @@ import {
   type PaymentStatus,
 } from "@/api/client";
 import { useCursor } from "@/lib/cursor";
-import { TestPaymentLink } from "@/App";
+import { TestPaymentButton } from "@/components/test-payment-provider";
 import { DataTable } from "@/components/data-table";
 import { CursorPagination } from "@/components/cursor-pagination";
 import { ErrorNotice, QueryView } from "@/components/request-state";
@@ -83,7 +83,7 @@ export default function Orders() {
     <div className="flex min-w-0 flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <OrderSearch />
-        <TestPaymentLink />
+        <TestPaymentButton />
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Select

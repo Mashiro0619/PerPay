@@ -12,7 +12,16 @@ import "./styles.css";
 const root = document.getElementById("root");
 if (!root) throw new Error("找不到管理界面挂载点。");
 
-const router = createBrowserRouter(appRoutes, { basename: "/admin" });
+const basename = import.meta.env.BASE_URL;
+// The backend also serves /admin; canonicalize it before the router matches /admin/.
+if (window.location.pathname === basename.slice(0, -1)) {
+  window.history.replaceState(
+    window.history.state,
+    "",
+    basename + window.location.search + window.location.hash,
+  );
+}
+const router = createBrowserRouter(appRoutes, { basename });
 
 createRoot(root).render(
   <StrictMode>

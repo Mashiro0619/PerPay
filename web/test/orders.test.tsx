@@ -9,6 +9,7 @@ import { DataTable } from "../src/components/data-table";
 import { CursorPagination as Pagination } from "../src/components/cursor-pagination";
 import { dateTime, money } from "../src/lib/format";
 import Orders from "../src/pages/Orders";
+import { TestPaymentProvider } from "../src/components/test-payment-provider";
 import { apiError, json, order, orderId } from "./fixtures";
 
 function CurrentLocation() {
@@ -25,11 +26,13 @@ function renderOrders(initialPath = "/orders") {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialPath]}>
-        <Routes>
-          <Route path="/orders" element={<Orders />} />
-          <Route path="/orders/:orderId" element={<h1>测试订单详情</h1>} />
-        </Routes>
-        <CurrentLocation />
+        <TestPaymentProvider>
+          <Routes>
+            <Route path="/orders" element={<Orders />} />
+            <Route path="/orders/:orderId" element={<h1>测试订单详情</h1>} />
+          </Routes>
+          <CurrentLocation />
+        </TestPaymentProvider>
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -199,9 +202,9 @@ describe("order browsing", () => {
     expect(
       await screen.findByRole("heading", { name: "暂无订单" }),
     ).toBeVisible();
-    expect(screen.getByRole("link", { name: "测试收款" })).toHaveAttribute(
-      "href",
-      "/test-payment",
+    expect(screen.getByRole("button", { name: "测试收款" })).toHaveAttribute(
+      "aria-haspopup",
+      "dialog",
     );
     expect(
       screen.queryByRole("navigation", { name: "列表分页" }),

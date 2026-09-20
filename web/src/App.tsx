@@ -5,7 +5,6 @@ import {
   type CSSProperties,
 } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { ScanLine } from "lucide-react";
 import {
   createRoutesFromElements,
   Navigate,
@@ -22,6 +21,8 @@ import { deferOnboarding, deferredInstance } from "@/lib/onboarding";
 import { cn } from "@/lib/utils";
 import { AppSidebar, navigation } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
+import { TestPaymentProvider } from "@/components/test-payment-provider";
+import TestPayment from "@/pages/TestPayment";
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -154,14 +155,6 @@ function Workspace() {
     </NavigationContext>
   );
 }
-export function TestPaymentLink() {
-  return (
-    <Link to="/test-payment" className={buttonVariants({ variant: "outline" })}>
-      <ScanLine data-icon="inline-start" />
-      测试收款
-    </Link>
-  );
-}
 export const appRoutes = createRoutesFromElements(
   <Route
     errorElement={<AppFailure />}
@@ -169,7 +162,9 @@ export const appRoutes = createRoutesFromElements(
     element={
       <AuthBoundary>
         <DraftProvider>
-          <AppShell />
+          <TestPaymentProvider>
+            <AppShell />
+          </TestPaymentProvider>
         </DraftProvider>
       </AuthBoundary>
     }
@@ -240,12 +235,7 @@ export const appRoutes = createRoutesFromElements(
         Component: (await import("./pages/System")).default,
       })}
     />
-    <Route
-      path="test-payment"
-      lazy={async () => ({
-        Component: (await import("./pages/TestPayment")).default,
-      })}
-    />
+    <Route path="test-payment" element={<TestPayment />} />
     <Route path="login" element={<Navigate to="/" replace />} />
     <Route path="setup" element={<Navigate to="/settings" replace />} />
     <Route

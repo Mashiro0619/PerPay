@@ -8,6 +8,7 @@ import { queryClient } from "../src/api/client";
 import { LinkedTableRow } from "../src/components/LinkedTableRow";
 import Notifications from "../src/pages/Notifications";
 import Orders from "../src/pages/Orders";
+import { TestPaymentProvider } from "../src/components/test-payment-provider";
 import Reconciliation from "../src/pages/Reconciliation";
 import { json, order, orderId } from "./fixtures";
 
@@ -236,11 +237,13 @@ describe("detail navigation from actual list pages", () => {
       const { container } = render(
         <QueryClientProvider client={queryClient}>
           <MemoryRouter initialEntries={[path]}>
-            <Routes>
-              <Route path={path.split("?")[0]} element={element} />
-              <Route path="*" element={<p>已打开详情</p>} />
-            </Routes>
-            <CurrentLocation />
+            <TestPaymentProvider>
+              <Routes>
+                <Route path={path.split("?")[0]} element={element} />
+                <Route path="*" element={<p>已打开详情</p>} />
+              </Routes>
+              <CurrentLocation />
+            </TestPaymentProvider>
           </MemoryRouter>
         </QueryClientProvider>,
       );
