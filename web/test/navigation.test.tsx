@@ -157,7 +157,13 @@ describe("navigation and draft protection", () => {
     const { user, field } = await edit();
     const selector = screen.getByRole("combobox", { name: "设置分类" });
     await user.selectOptions(selector, "display");
-    expect(await screen.findByRole("alertdialog")).toBeVisible();
+    const confirmation = await screen.findByRole("alertdialog");
+    expect(confirmation).toBeVisible();
+    expect(confirmation).toHaveClass(
+      "max-h-[calc(100dvh-2rem)]",
+      "w-[calc(100%-2rem)]",
+      "overflow-y-auto",
+    );
     await user.click(screen.getByRole("button", { name: "继续编辑" }));
     expect(view.router.state.location.pathname).toBe("/settings/collection");
     expect(field).toHaveValue(450);

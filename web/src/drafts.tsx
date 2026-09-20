@@ -65,7 +65,7 @@ export function DraftProvider({ children }: { children: ReactNode }) {
           if (!open) cancel();
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto">
           <AlertDialogHeader>
             <AlertDialogTitle>放弃未保存的修改？</AlertDialogTitle>
             <AlertDialogDescription>

@@ -243,4 +243,129 @@ describe("official shadcn interactive chart", () => {
       expect(within(tooltip).queryByText("新建订单")).not.toBeInTheDocument();
     },
   );
+  it.each(["AREA", "LINE"] as const)(
+    "reuses the active %s dot and applies reduced-motion-safe coordinate transitions",
+    async (chartType) => {
+      const data = analytics();
+      data.daily = data.daily.map((day, index) => ({
+        ...day,
+        confirmed_amount_cents: (index + 1) * 1000,
+      }));
+      const { container } = render(
+        <ChartAreaInteractive
+          analytics={data}
+          chartType={chartType}
+          range={7}
+          onRangeChange={vi.fn()}
+          pending={false}
+        />,
+      );
+      const chart = container.querySelector<SVGElement>(
+        'svg[role="application"]',
+      )!;
+      fireEvent.focus(chart);
+      fireEvent.keyDown(chart, { key: "ArrowRight" });
+      await waitFor(() =>
+        expect(
+          container.querySelector(".recharts-active-dot circle"),
+        ).not.toBeNull(),
+      );
+      const dot = container.querySelector(".recharts-active-dot circle")!;
+      const firstX = dot.getAttribute("cx");
+      const firstY = dot.getAttribute("cy");
+      expect(dot).toHaveClass(
+        "motion-safe:transition-[cx,cy]",
+        "motion-safe:duration-200",
+        "motion-safe:ease-out",
+        "motion-reduce:transition-none",
+      );
+      expect(dot).toHaveAttribute("stroke", "var(--card)");
+      expect(dot).not.toHaveAttribute("style");
+      fireEvent.keyDown(chart, { key: "ArrowRight" });
+      await waitFor(() => expect(dot.getAttribute("cx")).not.toBe(firstX));
+      expect(dot.getAttribute("cy")).not.toBe(firstY);
+      expect(container.querySelector(".recharts-active-dot circle")).toBe(dot);
+      expect(
+        container.querySelectorAll(".recharts-active-dot circle"),
+      ).toHaveLength(1);
+    },
+  );
+
+  it("highlights the active bar and moves its date band with keyboard navigation", async () => {
+    const data = analytics();
+    data.daily = data.daily.map((day) => ({
+      ...day,
+      confirmed_amount_cents: 12345,
+    }));
+    const { container } = render(
+      <ChartAreaInteractive
+        analytics={data}
+        chartType="BAR"
+        range={7}
+        onRangeChange={vi.fn()}
+        pending={false}
+      />,
+    );
+    const chart = container.querySelector<SVGElement>(
+      'svg[role="application"]',
+    )!;
+    fireEvent.focus(chart);
+    fireEvent.keyDown(chart, { key: "ArrowRight" });
+    await waitFor(() =>
+      expect(
+        container.querySelector(".recharts-active-bar .recharts-rectangle"),
+      ).not.toBeNull(),
+    );
+    const active = container.querySelector(
+      ".recharts-active-bar .recharts-rectangle",
+    )!;
+    const inactive = container.querySelector(
+      ".recharts-inactive-bar .recharts-rectangle",
+    )!;
+    expect(active).toHaveAttribute("fill-opacity", "1");
+    expect(inactive).toHaveAttribute("fill-opacity", "0.55");
+    const cursor = container.querySelector(".recharts-tooltip-cursor")!;
+    expect(cursor).not.toBeNull();
+    const firstX = cursor.getAttribute("x");
+    fireEvent.keyDown(chart, { key: "ArrowRight" });
+    await waitFor(() => {
+      const nextCursor = container.querySelector(".recharts-tooltip-cursor");
+      expect(nextCursor).not.toBeNull();
+      expect(nextCursor?.getAttribute("x")).not.toBe(firstX);
+      expect(container.querySelectorAll(".recharts-active-bar")).toHaveLength(
+        1,
+      );
+    });
+  });
+
+  it("still marks a zero-value day with a date band without inventing bar height", async () => {
+    const data = analytics();
+    data.daily = data.daily.map((day) => ({
+      ...day,
+      confirmed_amount_cents: 0,
+    }));
+    const { container } = render(
+      <ChartAreaInteractive
+        analytics={data}
+        chartType="BAR"
+        range={7}
+        onRangeChange={vi.fn()}
+        pending={false}
+      />,
+    );
+    const chart = container.querySelector<SVGElement>(
+      'svg[role="application"]',
+    )!;
+    fireEvent.focus(chart);
+    fireEvent.keyDown(chart, { key: "ArrowRight" });
+    await waitFor(() =>
+      expect(
+        container.querySelector(".recharts-tooltip-wrapper"),
+      ).toHaveTextContent("¥0.00"),
+    );
+    expect(container.querySelector(".recharts-tooltip-cursor")).not.toBeNull();
+    expect(
+      container.querySelector(".recharts-active-bar .recharts-rectangle"),
+    ).toBeNull();
+  });
 });

@@ -62,6 +62,13 @@ const chartConfig = {
   amount: { label: "确认金额" },
   orders: { label: "新建订单" },
 } satisfies ChartConfig;
+// Native coordinate transitions can retarget mid-flight; transition-none also cancels them when motion is reduced.
+const activeDot = {
+  r: 5,
+  stroke: "var(--card)",
+  className:
+    "motion-safe:transition-[cx,cy] motion-safe:duration-200 motion-safe:ease-out motion-reduce:transition-none",
+};
 const periods = [
   { value: "7", label: "近 7 天" },
   { value: "30", label: "近 30 天" },
@@ -227,7 +234,7 @@ export function ChartAreaInteractive({
                 }
               />
               <ChartTooltip
-                cursor={false}
+                cursor={chartType === "BAR" ? { fillOpacity: 0.5 } : false}
                 content={
                   <ChartTooltipContent
                     className="min-w-48 w-max"
@@ -255,6 +262,8 @@ export function ChartAreaInteractive({
                 <Bar
                   dataKey={metric}
                   fill="var(--primary)"
+                  fillOpacity={0.55}
+                  activeBar={{ fillOpacity: 1 }}
                   radius={4}
                   isAnimationActive={false}
                 />
@@ -265,6 +274,7 @@ export function ChartAreaInteractive({
                   stroke="var(--primary)"
                   strokeWidth={2}
                   dot={false}
+                  activeDot={activeDot}
                   isAnimationActive={false}
                 />
               ) : (
@@ -273,6 +283,7 @@ export function ChartAreaInteractive({
                   type="monotone"
                   fill={"url(#" + gradientId + ")"}
                   stroke="var(--primary)"
+                  activeDot={activeDot}
                   isAnimationActive={false}
                 />
               )}

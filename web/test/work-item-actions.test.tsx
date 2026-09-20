@@ -77,6 +77,11 @@ describe("reminder dismissal", () => {
       const dialog = await screen.findByRole("alertdialog", {
         name: "全部忽略 · " + name,
       });
+      expect(dialog).toHaveClass(
+        "max-h-[calc(100dvh-2rem)]",
+        "w-[calc(100%-2rem)]",
+        "overflow-y-auto",
+      );
       expect(dialog).toHaveAccessibleDescription(
         /所有分页.*仅关闭提醒.*不停止通知重试/,
       );

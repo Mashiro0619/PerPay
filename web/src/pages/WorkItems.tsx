@@ -142,7 +142,10 @@ export default function WorkItems() {
           }
         }}
       >
-        <AlertDialogContent finalFocus={() => finalFocus.current}>
+        <AlertDialogContent
+          finalFocus={() => finalFocus.current}
+          className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto"
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>全部忽略 · {batch?.name}</AlertDialogTitle>
             <AlertDialogDescription>

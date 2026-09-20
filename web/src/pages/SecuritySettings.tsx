@@ -281,7 +281,10 @@ export function SecuritySettings({
           else setRevoke(open);
         }}
       >
-        <AlertDialogContent finalFocus={() => revokeTrigger.current}>
+        <AlertDialogContent
+          finalFocus={() => revokeTrigger.current}
+          className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto"
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>注销全部会话？</AlertDialogTitle>
             <AlertDialogDescription>
@@ -397,27 +400,29 @@ export function SecretDialog({
     >
       <DialogContent
         finalFocus={finalFocus}
-        className="max-h-[calc(100dvh-2rem)] overflow-y-auto"
+        className="flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-xl"
       >
-        <DialogHeader>
+        <DialogHeader className="shrink-0 pr-8">
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>60 秒后或切换标签页时自动清除。</DialogDescription>
         </DialogHeader>
-        {pending && <Loading label="正在读取密钥…" />}
-        {value !== null && (
-          <CopyValue value={value} label={"复制" + title} secret />
-        )}
-        <ErrorNotice
-          error={error}
-          retry={
-            pending
-              ? undefined
-              : () => {
-                  void reveal();
-                }
-          }
-        />
-        <DialogFooter>
+        <div className="-mx-4 flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-1">
+          {pending && <Loading label="正在读取密钥…" />}
+          {value !== null && (
+            <CopyValue value={value} label={"复制" + title} secret />
+          )}
+          <ErrorNotice
+            error={error}
+            retry={
+              pending
+                ? undefined
+                : () => {
+                    void reveal();
+                  }
+            }
+          />
+        </div>
+        <DialogFooter className="shrink-0">
           <Button onClick={onClose}>关闭</Button>
         </DialogFooter>
       </DialogContent>
@@ -475,9 +480,9 @@ export function RotateKeyDialog({
       <DialogContent
         finalFocus={finalFocus}
         showCloseButton={!pending}
-        className="max-h-[calc(100dvh-2rem)] overflow-y-auto"
+        className="flex max-h-[calc(100dvh-2rem)] flex-col"
       >
-        <DialogHeader>
+        <DialogHeader className="shrink-0 pr-8">
           <DialogTitle>
             {secret
               ? "新的 API 密钥"
@@ -495,8 +500,10 @@ export function RotateKeyDialog({
         </DialogHeader>
         {secret ? (
           <>
-            <CopyValue value={secret} label="复制新的 API 密钥" secret />
-            <DialogFooter>
+            <div className="-mx-4 flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-1">
+              <CopyValue value={secret} label="复制新的 API 密钥" secret />
+            </div>
+            <DialogFooter className="shrink-0">
               <Button
                 onClick={() => {
                   onClose();
@@ -509,13 +516,15 @@ export function RotateKeyDialog({
           </>
         ) : (
           <>
-            <ErrorNotice error={error} />
             {error !== null && (
-              <p className="text-sm text-muted-foreground">
-                结果未确认，请关闭后刷新配置并查看当前密钥。本次不再重试。
-              </p>
+              <div className="-mx-4 flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-1">
+                <ErrorNotice error={error} />
+                <p className="text-sm text-muted-foreground">
+                  结果未确认，请关闭后刷新配置并查看当前密钥。本次不再重试。
+                </p>
+              </div>
             )}
-            <DialogFooter>
+            <DialogFooter className="shrink-0">
               <Button variant="outline" disabled={pending} onClick={onClose}>
                 {error ? "关闭" : "取消"}
               </Button>
