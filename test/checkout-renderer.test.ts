@@ -58,8 +58,19 @@ describe("public checkout SSR", () => {
       html,
       /<img[^>]*src="\/api\/public\/v1\/checkouts\/pct1_test-token\/qr\.svg"[^>]*data-qr-image/,
     );
-    assert.match(checkoutText(html), /应付金额（请勿修改）/);
+    assert.match(checkoutText(html), /应付金额/);
+    assert.doesNotMatch(checkoutText(html), /请勿修改|扫码付款/);
+    assert.match(
+      html,
+      /data-slot="badge"[^>]*>等待付款[\s\S]*?<time[^>]*role="timer"[^>]*aria-live="off"[^>]*data-countdown/,
+    );
+    assert.equal((html.match(/data-countdown/g) ?? []).length, 1);
     assert.match(html, /data-brand="alipay"/);
+    assert.match(html, /data-has-order="true"/);
+    assert.match(html, /data-checkout-page/);
+    assert.match(html, /data-checkout-payment/);
+    assert.match(html, /<section[^>]*aria-label="订单信息"[^>]*data-checkout-summary/);
+    assert.match(html, /data-checkout-actions/);
     assert.doesNotMatch(html, /<footer|金额需完全一致，付款后自动确认/);
     assert.match(checkoutText(html), /放大二维码.*保存二维码.*查询付款状态/);
     assert.ok(
@@ -79,10 +90,32 @@ describe("public checkout SSR", () => {
     );
     assert.equal((html.match(/data-payable-amount/g) ?? []).length, 1);
     assert.ok(
-      html.indexOf("data-payable-amount") < html.indexOf("data-qr-image"),
+      html.indexOf('data-brand="alipay"') < html.indexOf("data-qr-image"),
+    );
+    assert.ok(
+      html.indexOf("data-qr-image") < html.indexOf("data-payable-amount"),
     );
     assert.match(html, /<noscript>/);
     assert.match(html, /name="color-scheme" content="light dark"/);
+  });
+  it("renders a compact summary without exposing or reserving the hidden product name", () => {
+    const html = renderCheckoutPage({
+      checkoutToken: "pct1_hidden-product",
+      checkout,
+      qrImageUrl: "/api/public/v1/checkouts/pct1_hidden-product/qr.svg",
+      initialError: null,
+      showProductName: false,
+    });
+    const initial = readCheckoutInitial(html);
+    assert.equal(initial.showProductName, false);
+    assert.equal(initial.checkout?.product_name, "");
+    assert.doesNotMatch(html, /data-product-name|测试订单/);
+    assert.match(html, /md:max-w-3xl/);
+    assert.match(html, /<p[^>]*data-checkout-desktop-guide/);
+    assert.match(checkoutText(html), /商户订单号.*查询付款状态/);
+    assert.ok(
+      html.indexOf('data-brand="alipay"') < html.indexOf("data-qr-image"),
+    );
   });
   it("escapes both the shared SSR view and the JSON bootstrap", () => {
     const hostile = {
@@ -235,6 +268,8 @@ describe("public checkout SSR", () => {
       });
       const initial = readCheckoutInitial(html);
       assert.equal(initialCheckoutState(initial), state);
+      assert.match(html, /data-has-order="false"/);
+      assert.doesNotMatch(html, /data-checkout-summary|data-checkout-desktop-guide/);
       assert.equal(initial.initialError?.status, status);
       assert.equal(
         initial.initialError?.retryAfterSeconds,

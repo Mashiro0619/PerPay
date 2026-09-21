@@ -89,6 +89,254 @@ beforeEach(() => {
 afterEach(() => {
   cleanups.splice(0).forEach((dispose) => dispose());
 });
+describe("checkout payment layout", () => {
+  it("places the brand above the QR and the inline amount below, with a single status countdown", () => {
+    const { container } = render(
+      createElement(CheckoutApp, { initial: initial() }),
+    );
+    const brand = container.querySelector("[data-brand=alipay]")!;
+    const amount = container.querySelector<HTMLElement>("[data-payable-amount]")!;
+    const qr = container.querySelector("[data-qr-image]")!;
+    expect(
+      brand.compareDocumentPosition(qr) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      qr.compareDocumentPosition(amount) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(container.querySelector("[data-amount-label]")).toHaveTextContent(
+      /^应付金额$/,
+    );
+    const amountRow = container.querySelector("[data-checkout-amount]");
+    expect(amountRow).toContainElement(amount);
+    expect(amountRow).toContainElement(container.querySelector("[data-amount-label]"));
+    expect(amountRow).toHaveClass("flex", "items-baseline", "justify-center");
+    expect(amountRow).not.toHaveClass("flex-col", "flex-wrap");
+    expect(screen.queryByText(/请勿修改|扫码付款/)).not.toBeInTheDocument();
+    const timer = screen.getByRole("timer");
+    expect(timer).toHaveTextContent("剩余 01:00");
+    expect(timer).toHaveAttribute(
+      "dateTime",
+      initial().checkout!.checkout.expires_at,
+    );
+    expect(timer.closest('[data-slot="badge"]')).toHaveTextContent(
+      "等待付款",
+    );
+    expect(timer.closest('[data-slot="card-action"]')).not.toBeNull();
+    expect(container.querySelectorAll("[data-countdown]")).toHaveLength(1);
+    expect(timer).toHaveAttribute("aria-live", "off");
+  });
+  it("updates the merged countdown without announcing each second or changing its badge", async () => {
+    render(createElement(CheckoutApp, { initial: initial() }));
+    const timer = screen.getByRole("timer");
+    const badge = timer.closest('[data-slot="badge"]');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(screen.getByRole("timer")).toBe(timer);
+    expect(timer.closest('[data-slot="badge"]')).toBe(badge);
+    expect(timer).toHaveTextContent("剩余 00:59");
+    expect(
+      screen.getAllByRole("status").some((status) => status.contains(timer)),
+    ).toBe(false);
+  });
+  it("keeps the hour segment for payment windows longer than one hour", () => {
+    const value = initial();
+    value.checkout!.checkout.expires_at = new Date(epoch + 3661000).toISOString();
+    render(createElement(CheckoutApp, { initial: value }));
+    expect(screen.getByRole("timer")).toHaveTextContent("剩余 01:01:01");
+  });
+  it("replaces the countdown with state confirmation and removes the QR at local expiry", async () => {
+    const value = initial();
+    value.checkout!.checkout.expires_at = new Date(epoch + 1000).toISOString();
+    pendingFetch();
+    const { container } = render(
+      createElement(CheckoutApp, { initial: value }),
+    );
+    expect(screen.getByRole("timer")).toHaveTextContent("剩余 00:01");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(screen.queryByRole("timer")).not.toBeInTheDocument();
+    expect(container.querySelector('[data-slot="badge"]')).toHaveTextContent(
+      "等待状态确认",
+    );
+    expect(container.querySelector("[data-qr-image]")).toBeNull();
+  });
+  it.each(["CONFIRMED", "DISPUTED", "CLOSED", "EXPIRED"] as const)(
+    "does not retain a payment countdown after a %s response",
+    async (status) => {
+      const { finish } = pendingFetch();
+      const { container } = render(
+        createElement(CheckoutApp, { initial: initial() }),
+      );
+      expect(screen.getByRole("timer")).toBeInTheDocument();
+      const order = initial().checkout!;
+      order.payment_instructions = null;
+      if (status === "CONFIRMED" || status === "DISPUTED") {
+        order.payment = {
+          status,
+          basis: "INFERRED",
+          received_amount_cents: 1001,
+        };
+      } else {
+        order.checkout = { ...order.checkout, status };
+      }
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "查询付款状态" }));
+        finish(response(order));
+      });
+      expect(screen.queryByRole("timer")).not.toBeInTheDocument();
+      expect(container.querySelector("[data-qr-image]")).toBeNull();
+      expect(
+        container.querySelector('[data-slot="badge"]'),
+      ).not.toHaveTextContent("等待付款");
+    },
+  );
+});
+
+describe("checkout desktop composition", () => {
+  it("separates the payment area from one order summary and its actions", () => {
+    const { container } = render(
+      createElement(CheckoutApp, { initial: initial() }),
+    );
+    const payment = container.querySelector("[data-checkout-payment]")!;
+    const summary = screen.getByRole("region", { name: "订单信息" });
+    expect(payment).toContainElement(container.querySelector("[data-qr-image]"));
+    expect(payment).toContainElement(container.querySelector("[data-payable-amount]"));
+    expect(summary).toContainElement(screen.getByText("测试商品"));
+    expect(summary).toContainElement(
+      screen.getByRole("button", { name: "复制商户订单号" }),
+    );
+    expect(summary).toContainElement(
+      screen.getByRole("button", { name: "查询付款状态" }),
+    );
+    expect(payment).not.toContainElement(summary);
+    expect(container.querySelectorAll("[data-qr-image]")).toHaveLength(1);
+    expect(container.querySelectorAll("[data-payable-amount]")).toHaveLength(1);
+    expect(container.querySelectorAll("[data-countdown]")).toHaveLength(1);
+    expect(summary.querySelector("[data-checkout-desktop-guide]")).toHaveTextContent(
+      "支付宝扫描二维码",
+    );
+  });
+  it("keeps the same QR and in-flight read while resizing instead of mounting another checkout", async () => {
+    const { fetch: read, finish } = pendingFetch();
+    const { container } = render(
+      createElement(CheckoutApp, { initial: initial() }),
+    );
+    const qr = container.querySelector("[data-qr-image]");
+    const query = screen.getByRole("button", { name: "查询付款状态" });
+    fireEvent.click(query);
+    fireEvent(window, new Event("resize"));
+    expect(container.querySelector("[data-qr-image]")).toBe(qr);
+    expect(screen.getByRole("button", { name: "查询付款状态" })).toBe(query);
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(read.mock.calls[0]?.[1]?.signal?.aborted).toBe(false);
+    await act(async () => { finish(response()); });
+    expect(container.querySelector("[data-checkout-actions]")).toContainElement(
+      screen.getByText("已检查，暂未确认付款。"),
+    );
+  });
+  it("puts the confirmed return action in the summary and removes desktop payment guidance", async () => {
+    const { finish } = pendingFetch();
+    const { container } = render(
+      createElement(CheckoutApp, { initial: initial() }),
+    );
+    const paid = initial().checkout!;
+    paid.payment_instructions = null;
+    paid.payment = {
+      status: "CONFIRMED", basis: "INFERRED", received_amount_cents: 1001,
+    };
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "查询付款状态" }));
+      finish(response(paid));
+    });
+    const summary = screen.getByRole("region", { name: "订单信息" });
+    expect(summary).toContainElement(screen.getByRole("link", { name: "返回商家" }));
+    expect(container.querySelector("[data-checkout-desktop-guide]")).toBeNull();
+    expect(container.querySelector("[data-qr-image]")).toBeNull();
+    expect(container.querySelector("[data-countdown]")).toBeNull();
+  });
+  it.each([404, 429, 503] as const)(
+    "uses a compact error view without an empty summary for a %i response",
+    (status) => {
+      const { container } = render(createElement(CheckoutApp, {
+        initial: initial({
+          checkout: null,
+          qrAvailable: false,
+          initialError: {
+            status, code: "unavailable", message: "unavailable",
+            retryAfterSeconds: status === 404 ? null : 5,
+          },
+        }),
+      }));
+      expect(screen.queryByRole("region", { name: "订单信息" })).not.toBeInTheDocument();
+      expect(container.querySelector("[data-checkout-layout]")).toHaveAttribute(
+        "data-has-order", "false",
+      );
+      expect(container.querySelector("[data-checkout-desktop-guide]")).toBeNull();
+      expect(container.querySelector("[data-qr-image]")).toBeNull();
+      expect(container.querySelector("[data-payable-amount]")).toBeNull();
+    },
+  );
+});
+
+describe("checkout compact QR and page shell", () => {
+  it("uses the complete server QR without a second padded border in either view", () => {
+    const { container } = render(
+      createElement(CheckoutApp, { initial: initial() }),
+    );
+    const image = container.querySelector("[data-qr-image]")!;
+    const extraPadding = /(?:^|\s)(?:[\w-]+:)*p(?:[xytrblse])?-\S+/;
+    expect(image.getAttribute("class")).not.toMatch(extraPadding);
+    fireEvent.click(screen.getByRole("button", { name: "放大二维码" }));
+    const expanded = document.querySelector("[data-qr-dialog-image]")!;
+    expect(expanded.getAttribute("class")).not.toMatch(extraPadding);
+    expect(expanded).toHaveAttribute("src", image.getAttribute("src"));
+    expect(screen.getByRole("dialog")).toHaveTextContent("¥10.01");
+  });
+  it("centers an intrinsic-height checkout between flexible page tracks without fixing its position", () => {
+    const { container } = render(
+      createElement(CheckoutApp, { initial: initial() }),
+    );
+    const page = container.querySelector("[data-checkout-page]");
+    expect(page).toHaveClass(
+      "grid", "h-svh", "min-h-min", "grid-rows-[1fr_auto_1fr]",
+    );
+    expect(screen.getByRole("banner")).toHaveClass("self-start");
+    expect(screen.getByRole("main")).not.toHaveClass("flex-1");
+    expect(
+      container.querySelector("[data-checkout-layout]"),
+    ).not.toHaveClass("fixed", "absolute");
+  });
+});
+
+describe("checkout compact order summary", () => {
+  it.each([true, false])(
+    "keeps one natural-flow action group and unboxed guidance when product visibility is %s",
+    (showProductName) => {
+      const { container } = render(
+        createElement(CheckoutApp, { initial: initial({ showProductName }) }),
+      );
+      const summary = screen.getByRole("region", { name: "订单信息" });
+      const guide = summary.querySelector("[data-checkout-desktop-guide]")!;
+      expect(guide.tagName).toBe("P");
+      expect(guide.closest('[data-slot="alert"]')).toBeNull();
+      const actions = summary.querySelector("[data-checkout-actions]");
+      expect(actions).not.toHaveClass("mt-auto");
+      expect(actions).toHaveClass("md:contents");
+      expect(actions).toContainElement(
+        screen.getByRole("button", { name: "查询付款状态" }),
+      );
+      expect(summary.querySelectorAll("dt")).toHaveLength(showProductName ? 2 : 1);
+      expect(container.querySelectorAll("[data-product-name]")).toHaveLength(
+        showProductName ? 1 : 0,
+      );
+      expect(container.querySelectorAll("[data-brand=alipay]")).toHaveLength(1);
+      expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    },
+  );
+});
+
 describe("checkout controller", () => {
   it.each([429, 503] as const)(
     "preserves hidden product names when the initial %i page recovers",

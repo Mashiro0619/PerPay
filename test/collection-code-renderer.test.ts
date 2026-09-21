@@ -18,6 +18,25 @@ describe("collection code renderer", () => {
     assert.match(renderCollectionCodeSvg(mixedBoundary), /^<svg/);
   });
 
+  it("includes exactly four white modules around small and dense QR symbols", () => {
+    for (const payload of ["https://qr.alipay.com/example", "a".repeat(1800)]) {
+      const svg = renderCollectionCodeSvg(payload);
+      const dimensions = /viewBox="0 0 (\d+) (\d+)"/.exec(svg);
+      assert.ok(dimensions);
+      const width = Number(dimensions[1]);
+      assert.equal(width, Number(dimensions[2]));
+      const modules = [...svg.matchAll(/M(\d+),(\d+)h(\d+)v(\d+)h-\d+z/g)]
+        .map((match) => ({ x: Number(match[1]), y: Number(match[2]), size: Number(match[3]) }));
+      assert.ok(modules.length > 0);
+      assert.ok(modules.every((module) => module.size === 8));
+      assert.equal(Math.min(...modules.map((module) => module.x)), 4 * 8);
+      assert.equal(Math.min(...modules.map((module) => module.y)), 4 * 8);
+      assert.equal(Math.max(...modules.map((module) => module.x + module.size)), width - 4 * 8);
+      assert.equal(Math.max(...modules.map((module) => module.y + module.size)), width - 4 * 8);
+      assert.match(svg, /<rect fill="#ffffff"/);
+    }
+  });
+
   it("turns an oversized or malformed payload into a bounded renderer error", () => {
     assert.throws(
       () => renderCollectionCodeSvg("a".repeat(MAX_COLLECTION_CODE_PAYLOAD_BYTES + 1)),
