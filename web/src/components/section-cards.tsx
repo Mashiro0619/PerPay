@@ -1,6 +1,6 @@
-import { Banknote, ClipboardList, CircleCheck, Clock3 } from "lucide-react";
+import { CircleCheck, Clock3 } from "lucide-react";
 import type { SystemAnalytics } from "@/api/client";
-import { money, count } from "@/lib/format";
+import { count } from "@/lib/format";
 import {
   Card,
   CardDescription,
@@ -12,41 +12,40 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export function SectionCards({
   analytics,
+  pending = false,
 }: {
   analytics: SystemAnalytics | undefined;
+  pending?: boolean;
 }) {
   const values = analytics
-    ? [
-        money(analytics.confirmations.amount_cents),
-        count(analytics.orders.created),
-        count(analytics.confirmations.count),
-        count(analytics.pending.orders),
-      ]
+    ? [count(analytics.confirmations.count), count(analytics.pending.orders)]
     : [];
-  const icons = [Banknote, ClipboardList, CircleCheck, Clock3];
+  const icons = [CircleCheck, Clock3];
   return (
-    <div className="grid grid-cols-1 gap-3 px-4 *:data-[slot=card]:bg-linear-to-t *:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card *:data-[slot=card]:shadow-xs lg:px-6 @sm/main:grid-cols-2 @3xl/main:grid-cols-4 dark:*:data-[slot=card]:bg-card">
-      {["付款确认金额", "新建订单", "付款确认次数", "当前待付款"].map(
-        (title, index) => {
-          const Icon = icons[index]!;
-          return (
-            <Card key={title} className="@container/card">
-              <CardHeader>
-                <CardDescription>{title}</CardDescription>
-                <CardAction>
-                  <Icon
-                    className="size-4 text-muted-foreground"
-                    aria-hidden="true"
-                  />
-                </CardAction>
-                <CardTitle className="overflow-x-auto text-xl font-semibold whitespace-nowrap tabular-nums @[200px]/card:text-2xl">
-                  {values[index] ?? <Skeleton className="h-9 w-3/4" />}
-                </CardTitle>
-              </CardHeader>
-            </Card>
-          );
-        },
-      )}
+    <div className="grid grid-cols-1 gap-3 px-4 lg:px-6 @sm/main:grid-cols-2">
+      {["确认次数", "当前待付款"].map((title, index) => {
+        const Icon = icons[index]!;
+        return (
+          <Card key={title} className="@container/card" aria-busy={pending}>
+            <CardHeader>
+              <CardDescription>{title}</CardDescription>
+              <CardAction>
+                <Icon
+                  className="size-4 text-muted-foreground"
+                  aria-hidden="true"
+                />
+              </CardAction>
+              <CardTitle className="overflow-x-auto text-xl font-semibold whitespace-nowrap tabular-nums @[200px]/card:text-2xl">
+                {pending ? (
+                  <Skeleton className="h-9 w-3/4" />
+                ) : (
+                  (values[index] ?? "—")
+                )}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        );
+      })}
     </div>
   );
 }

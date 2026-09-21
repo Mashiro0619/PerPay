@@ -136,9 +136,7 @@ describe("first collection onboarding", () => {
       path: "/",
       status: (value) => ({ ...systemStatus(value), status: "not_ready" }),
     });
-    await screen.findByText("付款确认金额", {
-      selector: "[data-slot=card-description]",
-    });
+    await screen.findByRole("heading", { name: "收款趋势" });
     expect(view.router.state.location.pathname).toBe("/");
     expect(
       screen.queryByRole("heading", { name: "首次收款配置" }),

@@ -7,8 +7,8 @@
 | 页面/区域 | 当前组件 | 官方参考 | 决定 | 阶段/验收 |
 | --- | --- | --- | --- | --- |
 | 主/次导航 | Sidebar | [Sidebar](https://ui.shadcn.com/docs/components/base/sidebar) | 业务组合使用4px间距；精确匹配路由边界，声明当前页；不改官方原语 | 1：已通过，4px/触屏44px/选中与焦点 |
-| 收款概览图表 | Card、Chart、ToggleGroup | [Chart / Interactive](https://ui.shadcn.com/docs/components/base/chart) | 指标汇总与切换进图表头，保留三图形与周期 | 2：待实施 |
-| 每日数据 | Collapsible、Table | [Table](https://ui.shadcn.com/docs/components/base/table) | 常驻表格、日期倒序、10条分页；宽屏与图表2:1并排 | 2：待实施 |
+| 收款概览图表 | Card、Chart、ToggleGroup | [Chart / Interactive](https://ui.shadcn.com/docs/components/base/chart) | 指标汇总与切换进图表头，保留三图形与周期 | 2：已通过，鼠标/键盘/明暗/周期 |
+| 每日数据 | Card、Table、Pagination | [Table](https://ui.shadcn.com/docs/components/base/table) | 常驻表格、日期倒序、10条分页；宽屏与图表2:1并排 | 2：已通过，1100px容器断点/跨页/空态 |
 | 设置分类/表单 | Tabs line、NativeSelect、Card、Field | [Tabs](https://ui.shadcn.com/docs/components/base/tabs)、[Field](https://ui.shadcn.com/docs/components/base/field) | 默认Tabs，窄屏横滚；完整卡片和字段组，保留草稿保护 | 3：待实施 |
 | 密钥与安全 | Card、Dialog、AlertDialog、Field | [Dialog](https://ui.shadcn.com/docs/components/base/dialog) | 保留独立敏感操作及短时秘密展示，检查表单组合 | 3/7：待复核 |
 | 订单 | Table、InputGroup、Select | [Data Table](https://ui.shadcn.com/docs/components/base/data-table) | 服务端搜索排序、统一表格/列显示；保留编号直达 | 4/6：待实施 |
@@ -34,3 +34,12 @@
 ### 第1段
 - 目标导航回归与全量检查通过：752项后端、663项前端，3项平台跳过。
 - 独立6270实例实测1440/390宽度、明暗主题，菜单相邻间距均4px、移动命中高度至少44px、唯一当前页。截图stage-1-*与stage-1-browser.json。未更改官方Sidebar原语及收银台。
+
+### 第2段
+- 官方结构参考：[Bar Chart - Interactive](https://ui.shadcn.com/charts/bar#chart-bar-interactive)及其[示例源码](https://ui.shadcn.com/code/apps/v4/registry/new-york-v4/charts/chart-bar-interactive.tsx)；组件API对照[Base Chart](https://ui.shadcn.com/docs/components/base/chart)、[Toggle Group](https://ui.shadcn.com/docs/components/base/toggle-group)、[Table](https://ui.shadcn.com/docs/components/base/table)、[Pagination](https://ui.shadcn.com/docs/components/base/pagination)。图表集合示例是new-york-v4来源，仅采用“标题/范围 + 可切换指标汇总 + 图表”的信息结构，继续组合现有Base UI / Nova原语，未覆盖官方组件源码。
+- 确认金额、新建订单汇总进入图表头部；独立汇总卡仅保留确认次数、当前待付款。沿用服务端汇总口径，不由每日行重新推算汇总；面积、柱状、折线和7/30/90天均保留。使用现有chart-1/chart-2语义颜色，不引入违反CSP的动态style块；tooltip读取原始分值，不将图表浮点坐标反推为金额。
+- 每日数据默认直显，日期倒序、每页10天；周期变化回到第一页，加载时不显示旧周期行，空结果与读取失败分开呈现。客户端分页仅处理最多90条聚合日记录，不用于后续业务列表的全局查询。
+- 必要布局适配：主内容容器不足1100px时上下排列，达到1100px按2:1并排。实测容器1099px为单列；1100px为690.66/345.34px；1440px视口下为720/360px。长金额仅在表格自身滚动，整页无横向溢出。保留最近订单、待处理与统计口径说明。
+- 目标回归70项通过；完整npm run check通过：752项后端、671项前端，3项平台跳过。覆盖单序列、精确金额、指标键盘切换、三图形高亮、跨页无遗漏、周期切换与异步乱序、空态及失败态。浏览器负向验收发现并修复统计失败后汇总卡永久显示Skeleton的问题。
+- 浏览器20项场景通过，包含1440/390宽度×明暗×三图形、1100px临界断点、7/90天、长金额、加载和读取失败；鼠标、键盘、分页均实测，页面错误为0。独立6270/6271合成测试库验证真实页面与鉴权；图形矩阵使用固定合成analytics/settings只读响应，以便复现实验，不修改原预览数据或账号。
+- 验收资产位于本轮线程01a0c4e1-7a3f-7f33-9c58-3544a5e40529的admin-ui-rework目录：stage-2-browser.cjs、stage-2-browser.json、stage-2-check.log、stage-2-1440/390-{light,dark}-{area,bar,line}.png，以及loading、failed-read、long-values截图。

@@ -16,6 +16,7 @@ import { dateTime } from "@/lib/format";
 import { workItemHref, workItemTitle } from "@/lib/labels";
 import { SectionCards } from "@/components/section-cards";
 import { ChartAreaInteractive } from "@/components/chart-area-interactive";
+import { DailyAnalytics } from "@/components/daily-analytics";
 import { DataTable } from "@/components/data-table";
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -157,7 +158,10 @@ export default function Dashboard() {
           )}
         </div>
       )}
-      <SectionCards analytics={data} />
+      <SectionCards
+        analytics={data}
+        pending={analytics.isPending || analytics.isPlaceholderData}
+      />
       <div className="flex min-w-0 flex-col gap-4 px-4 lg:px-6">
         <ErrorNotice
           error={analytics.error}
@@ -165,15 +169,22 @@ export default function Dashboard() {
             void analytics.refetch();
           }}
         />
-        <ChartAreaInteractive
-          analytics={data}
-          chartType={
-            settings.data?.data.display?.dashboard_chart_type ?? "AREA"
-          }
-          range={range}
-          onRangeChange={changeRange}
-          pending={analytics.isPending || analytics.isPlaceholderData}
-        />
+        <div className="grid min-w-0 gap-4 @[1100px]/main:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <ChartAreaInteractive
+            analytics={data}
+            chartType={
+              settings.data?.data.display?.dashboard_chart_type ?? "AREA"
+            }
+            range={range}
+            onRangeChange={changeRange}
+            pending={analytics.isPending || analytics.isPlaceholderData}
+          />
+          <DailyAnalytics
+            analytics={data}
+            range={range}
+            pending={analytics.isPending || analytics.isPlaceholderData}
+          />
+        </div>
       </div>
       <div className="grid min-w-0 items-start gap-4 px-4 lg:px-6 @5xl/main:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
         <Card>

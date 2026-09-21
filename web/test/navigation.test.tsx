@@ -1,6 +1,6 @@
 // Preload the real chart module outside per-interaction timeouts.
 import "../src/pages/Dashboard";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -253,6 +253,10 @@ describe("navigation and draft protection", () => {
       .click(screen.getByRole("button", { name: "近 7 天" }));
     expect(await screen.findByText("正在读取近 7 天…")).toBeVisible();
     expect(container.querySelector("[data-slot=chart]")).toBeNull();
+    expect(screen.getByRole("heading", { name: "每日数据" })).toBeVisible();
+    const daily = screen.getByRole("region", { name: "每日数据" });
+    expect(daily).toHaveAttribute("aria-busy", "true");
+    expect(within(daily).queryAllByRole("cell")).toHaveLength(0);
     await act(async () => {
       finishRange(
         json({
@@ -270,6 +274,8 @@ describe("navigation and draft protection", () => {
       expect(container.querySelector("[data-slot=chart]")).not.toBeNull(),
     );
     expect(screen.queryByText("正在读取近 7 天…")).not.toBeInTheDocument();
+    expect(daily).not.toHaveAttribute("aria-busy", "true");
+    expect(within(daily).getAllByRole("row")).toHaveLength(8);
   });
   it("does not replace the selected period with a late response after rapid switching", async () => {
     const { fetchMock } = mount({ path: "/", configured: true });

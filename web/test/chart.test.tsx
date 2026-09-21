@@ -9,6 +9,8 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { SystemAnalytics } from "../src/api/client";
 import { ChartAreaInteractive } from "../src/components/chart-area-interactive";
+import { DailyAnalytics } from "../src/components/daily-analytics";
+import { SectionCards } from "../src/components/section-cards";
 function analytics(days: 7 | 30 | 90 = 7): SystemAnalytics {
   return {
     range_days: days,
@@ -62,20 +64,24 @@ describe("official shadcn interactive chart", () => {
         container.querySelector('svg[role="application"]'),
       ).toHaveAttribute("tabindex", "0");
       expect(container.querySelector("[data-slot=chart] style")).toBeNull();
-      await userEvent
-        .setup()
-        .click(screen.getByRole("button", { name: "每日数据" }));
-      expect(screen.getAllByRole("row")).toHaveLength(8);
-      expect(screen.getByText("¥0.01")).toBeVisible();
-      expect(screen.getByText("¥100.00")).toBeVisible();
+      const metrics = screen.getByRole("group", { name: "趋势指标" });
+      expect(metrics.closest("[data-slot=card-header]")).not.toBeNull();
+      expect(
+        within(metrics).getByRole("button", { name: "确认金额" }),
+      ).toHaveAccessibleDescription("¥100.01");
+      expect(
+        within(metrics).getByRole("button", { name: "新建订单" }),
+      ).toHaveAccessibleDescription("28");
+      expect(screen.queryByRole("table")).not.toBeInTheDocument();
     },
   );
   it.each([7, 30, 90] as const)(
-    "renders one financial series and an exact daily table for %i days",
-    async (days) => {
+    "renders one financial series and authoritative summary values for %i days",
+    (days) => {
+      const data = analytics(days);
       const { container } = render(
         <ChartAreaInteractive
-          analytics={analytics(days)}
+          analytics={data}
           range={days}
           onRangeChange={vi.fn()}
           pending={false}
@@ -84,17 +90,16 @@ describe("official shadcn interactive chart", () => {
       expect(screen.getByRole("heading", { name: "收款趋势" })).toBeVisible();
       expect(container.querySelectorAll("[data-slot=chart]")).toHaveLength(1);
       expect(container.querySelector("[data-slot=chart] style")).toBeNull();
-      expect(container.querySelector(".chart-line")).toBeNull();
-      await userEvent
-        .setup()
-        .click(screen.getByRole("button", { name: "每日数据" }));
-      expect(screen.getAllByRole("row")).toHaveLength(days + 1);
-      const last = screen.getAllByRole("row").at(-1)!;
-      expect(within(last).getByText("¥100.00")).toBeVisible();
-      expect(within(last).getAllByRole("cell")).toHaveLength(4);
       expect(
-        screen.getByRole("columnheader", { name: "确认次数" }),
-      ).toBeVisible();
+        screen.getByRole("button", { name: "确认金额" }),
+      ).toHaveAccessibleDescription("¥100.01");
+      // The aggregate contract, not a browser recomputation of the daily rows, owns the totals.
+      expect(
+        screen.getByRole("button", { name: "新建订单" }),
+      ).toHaveAccessibleDescription("28");
+      expect(
+        screen.queryByRole("button", { name: "每日数据" }),
+      ).not.toBeInTheDocument();
     },
   );
   it("switches period through the official toggle group without fetching records itself", async () => {
@@ -171,37 +176,52 @@ describe("official shadcn interactive chart", () => {
       ).not.toBeNull(),
     );
   });
-  it("retains an opened daily table while periods change and renders empty data without inventing values", async () => {
-    const { rerender } = render(
+  it("renders empty and unavailable states without an endless skeleton or invented values", () => {
+    const data = analytics();
+    data.daily = [];
+    const { container, rerender } = render(
       <ChartAreaInteractive
-        analytics={analytics(7)}
+        analytics={data}
         range={7}
         onRangeChange={vi.fn()}
         pending={false}
       />,
     );
-    await userEvent
-      .setup()
-      .click(screen.getByRole("button", { name: "每日数据" }));
+    expect(screen.getByText("暂无每日数据")).toBeVisible();
+    expect(container.querySelector("[data-slot=chart]")).toBeNull();
     rerender(
       <ChartAreaInteractive
-        analytics={analytics(30)}
-        range={30}
-        onRangeChange={vi.fn()}
-        pending={false}
-      />,
-    );
-    expect(screen.getAllByRole("row")).toHaveLength(31);
-    rerender(
-      <ChartAreaInteractive
-        analytics={{ ...analytics(), daily: [] }}
+        analytics={undefined}
         range={7}
         onRangeChange={vi.fn()}
         pending={false}
       />,
     );
-    expect(screen.getByText("暂无数据")).toBeVisible();
-    expect(screen.getAllByRole("row")).toHaveLength(1);
+    expect(screen.getByText("统计数据暂不可用")).toBeVisible();
+    expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "确认金额" }),
+    ).toHaveAccessibleDescription("—");
+  });
+
+  it("switches header metrics with the keyboard without clearing the active metric", async () => {
+    render(
+      <ChartAreaInteractive
+        analytics={analytics()}
+        range={7}
+        onRangeChange={vi.fn()}
+        pending={false}
+      />,
+    );
+    const user = userEvent.setup();
+    const amount = screen.getByRole("button", { name: "确认金额" });
+    const orders = screen.getByRole("button", { name: "新建订单" });
+    amount.focus();
+    await user.keyboard("{ArrowRight}{Enter}");
+    expect(orders).toHaveFocus();
+    expect(orders).toHaveAttribute("aria-pressed", "true");
+    await user.keyboard("{Enter}");
+    expect(orders).toHaveAttribute("aria-pressed", "true");
   });
   it.each(["AREA", "BAR", "LINE"] as const)(
     "uses only the plotted %s series in a separated currency tooltip",
@@ -367,5 +387,118 @@ describe("official shadcn interactive chart", () => {
     expect(
       container.querySelector(".recharts-active-bar .recharts-rectangle"),
     ).toBeNull();
+  });
+});
+
+describe("always-visible daily analytics", () => {
+  it.each([7, 30, 90] as const)(
+    "shows %i days newest-first, ten per page, without hiding evidence",
+    async (range) => {
+      const data = analytics(range);
+      const dates = data.daily.map((day) => day.date);
+      render(<DailyAnalytics analytics={data} range={range} pending={false} />);
+      const table = screen.getByRole("table", { name: "每日收款数据" });
+      expect(screen.getByRole("heading", { name: "每日数据" })).toBeVisible();
+      expect(
+        screen.queryByRole("button", { name: "每日数据" }),
+      ).not.toBeInTheDocument();
+      expect(within(table).getAllByRole("row")).toHaveLength(
+        Math.min(10, range) + 1,
+      );
+      const first = within(table).getAllByRole("row")[1]!;
+      expect(first).toHaveTextContent(dates.at(-1)!);
+      expect(within(first).getByText("¥100.00")).toBeVisible();
+      expect(within(first).getAllByRole("cell")).toHaveLength(4);
+      expect(
+        screen.getByRole("button", { name: "每日数据上一页" }),
+      ).toBeDisabled();
+      const next = screen.getByRole("button", { name: "每日数据下一页" });
+      const seen: string[] = [];
+      const user = userEvent.setup();
+      for (let page = 1; page <= Math.ceil(range / 10); page++) {
+        const rows = within(table).getAllByRole("row").slice(1);
+        seen.push(
+          ...rows.map(
+            (row) => within(row).getAllByRole("cell")[0]!.textContent!,
+          ),
+        );
+        expect(screen.getByRole("status")).toHaveTextContent(
+          "第 " + page + " / " + Math.ceil(range / 10) + " 页",
+        );
+        if (page < Math.ceil(range / 10)) await user.click(next);
+      }
+      expect(next).toBeDisabled();
+      expect(seen).toEqual([...dates].reverse());
+      expect(data.daily.map((day) => day.date)).toEqual(dates);
+      expect(within(table).getByText("¥0.01")).toBeVisible();
+    },
+  );
+
+  it("resets pagination on period changes, hides stale values while pending and clamps a shortened response", async () => {
+    const user = userEvent.setup();
+    const { rerender, container } = render(
+      <DailyAnalytics analytics={analytics(90)} range={90} pending={false} />,
+    );
+    await user.click(screen.getByRole("button", { name: "每日数据下一页" }));
+    expect(screen.getByRole("status")).toHaveTextContent("第 2 / 9 页");
+    rerender(<DailyAnalytics analytics={analytics(90)} range={30} pending />);
+    expect(screen.getByRole("status")).toHaveTextContent("正在读取每日数据");
+    expect(screen.queryByText("¥100.00")).not.toBeInTheDocument();
+    expect(container.querySelector("[data-slot=skeleton]")).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "每日数据下一页" }),
+    ).toBeDisabled();
+    rerender(
+      <DailyAnalytics analytics={analytics(30)} range={30} pending={false} />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("第 1 / 3 页");
+    await user.click(screen.getByRole("button", { name: "每日数据下一页" }));
+    rerender(
+      <DailyAnalytics
+        analytics={{ ...analytics(30), daily: analytics(7).daily }}
+        range={30}
+        pending={false}
+      />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("第 1 / 1 页");
+    rerender(
+      <DailyAnalytics analytics={analytics(90)} range={90} pending={false} />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("第 1 / 9 页");
+  });
+
+  it("keeps zero days distinct from a failed read without inventing money", () => {
+    const data = { ...analytics(), daily: [] };
+    const { rerender, container } = render(
+      <DailyAnalytics analytics={data} range={7} pending={false} />,
+    );
+    expect(screen.getByText("暂无每日数据")).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent("共 0 天");
+    expect(screen.queryByText("¥0.00")).not.toBeInTheDocument();
+    rerender(
+      <DailyAnalytics analytics={undefined} range={7} pending={false} />,
+    );
+    expect(screen.getByText("统计数据暂不可用")).toBeVisible();
+    expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
+  });
+
+  it("distinguishes loading summary cards from unavailable statistics", () => {
+    const { container, rerender } = render(
+      <SectionCards analytics={undefined} pending />,
+    );
+    expect(container.querySelectorAll("[data-slot=skeleton]")).toHaveLength(2);
+    rerender(<SectionCards analytics={undefined} pending={false} />);
+    expect(container.querySelectorAll("[data-slot=skeleton]")).toHaveLength(0);
+    expect(screen.getAllByText("—")).toHaveLength(2);
+    expect(screen.queryByText("0")).not.toBeInTheDocument();
+  });
+
+  it("leaves only confirmation count and current unpaid orders in the summary cards", () => {
+    const { container } = render(<SectionCards analytics={analytics()} />);
+    expect(container.querySelectorAll("[data-slot=card]")).toHaveLength(2);
+    expect(screen.getByText("确认次数")).toBeVisible();
+    expect(screen.getByText("当前待付款")).toBeVisible();
+    expect(screen.queryByText("付款确认金额")).not.toBeInTheDocument();
+    expect(screen.queryByText("新建订单")).not.toBeInTheDocument();
   });
 });
