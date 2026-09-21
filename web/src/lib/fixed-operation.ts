@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
 
-type Command<Input> = {
+type Command<Input, Output> = {
   input: Input;
-  execute: (input: Input, signal: AbortSignal) => Promise<unknown>;
+  execute: (input: Input, signal: AbortSignal) => Promise<Output>;
 };
 const rejectedBeforeExecution: Readonly<Record<string, number>> = {
   validation_failed: 422,
@@ -19,15 +19,17 @@ const isRejected = (error: unknown) =>
   rejectedBeforeExecution[error.code] === error.status;
 
 /** Keeps a fixed command after an uncertain response; caller owns its evidence and close/refresh policy. */
-export function useFixedOperation<Input>({
+export function useFixedOperation<Input, Output = unknown>({
   execute,
   onSuccess,
+  warnBeforeUnload = true,
 }: {
-  execute: Command<Input>["execute"];
-  onSuccess: () => void;
+  execute: Command<Input, Output>["execute"];
+  onSuccess: (value: Output) => void;
+  warnBeforeUnload?: boolean;
 }) {
-  const [recovery, setRecovery] = useState<Command<Input> | null>(null);
-  const unresolved = useRef<Command<Input> | null>(null);
+  const [recovery, setRecovery] = useState<Command<Input, Output> | null>(null);
+  const unresolved = useRef<Command<Input, Output> | null>(null);
   const sending = useRef(false);
   const alive = useRef(true);
   const controller = useRef<AbortController | null>(null);
@@ -41,7 +43,7 @@ export function useFixedOperation<Input>({
   const mutation = useMutation({
     networkMode: "always",
     retry: false,
-    mutationFn: async (command: Command<Input>) => {
+    mutationFn: async (command: Command<Input, Output>) => {
       const operation = new AbortController();
       controller.current = operation;
       let detach = () => {};
@@ -85,11 +87,11 @@ export function useFixedOperation<Input>({
         setRecovery(command);
       }
     },
-    onSuccess: () => {
+    onSuccess: (value) => {
       if (!alive.current) return;
       unresolved.current = null;
       setRecovery(null);
-      onSuccess();
+      onSuccess(value);
     },
     onSettled: () => {
       sending.current = false;
@@ -97,19 +99,25 @@ export function useFixedOperation<Input>({
   });
   const conflict = isConflict(mutation.error);
   useEffect(() => {
-    if (!mutation.isPending && !recovery) return;
+    if (!warnBeforeUnload || (!mutation.isPending && !recovery)) return;
     const beforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", beforeUnload);
     return () => window.removeEventListener("beforeunload", beforeUnload);
-  }, [mutation.isPending, recovery]);
+  }, [mutation.isPending, recovery, warnBeforeUnload]);
   return {
     error: mutation.error,
     isPending: mutation.isPending,
+    isSuccess: mutation.isSuccess,
     conflict,
     recovery: recovery?.input ?? null,
+    submitted: mutation.variables?.input ?? null,
+    stopWaiting() {
+      alive.current = false;
+      controller.current?.abort();
+    },
     isBusy: () => sending.current || mutation.isPending,
     submit(input: Input) {
       if (

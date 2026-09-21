@@ -53,11 +53,17 @@ export function WorkItemsTable({
               <div className="flex flex-col gap-1">
                 <Link
                   data-row-link
+                  data-reminder-id={item.type + ":" + item.resource_id}
                   className="font-medium hover:underline"
                   to={workItemHref(item)}
                 >
                   {workItemTitle(item)}
                 </Link>
+                {item.type === "LEDGER_CONFLICT" && item.external_event_id && (
+                  <span className="text-sm break-all text-muted-foreground">
+                    {item.external_event_id}
+                  </span>
+                )}
                 {item.type === "NOTIFICATION_FAILURE" && (
                   <span className="text-sm text-muted-foreground">
                     {item.last_error_code
@@ -71,9 +77,9 @@ export function WorkItemsTable({
                 )}
                 <time
                   className="text-xs text-muted-foreground sm:hidden"
-                  dateTime={item.ignored_at ?? item.actionable_at}
+                  dateTime={item.actionable_at}
                 >
-                  {dateTime(item.ignored_at ?? item.actionable_at)}
+                  提醒时间 {dateTime(item.actionable_at)}
                 </time>
                 {item.ignored_at && (
                   <span className="text-xs text-muted-foreground">

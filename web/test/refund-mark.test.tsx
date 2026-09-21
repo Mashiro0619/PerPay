@@ -11,7 +11,11 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 
-import { queryClient, type AdminOrderDetail } from "../src/api/client";
+import {
+  queryClient,
+  type AdminOrderDetail,
+  type AdminRefundMarkRequest,
+} from "../src/api/client";
 import { DataTable } from "../src/components/data-table";
 import { RefundMarkDialog, RefundMarkPanel } from "../src/pages/RefundMark";
 import Reconciliation from "../src/pages/Reconciliation";
@@ -35,6 +39,21 @@ const paid: AdminOrderDetail = {
     received_amount_cents: 101,
   },
 };
+
+function savedMark(body: AdminRefundMarkRequest) {
+  return {
+    data: {
+      operation_id: body.operation_id,
+      refund_mark: {
+        marked: body.marked,
+        version: body.version + 1,
+        note: body.note ?? null,
+        updated_at: "2026-09-21T00:00:00Z",
+        updated_by: "admin",
+      },
+    },
+  };
+}
 
 describe("administrator-only refund marks", () => {
   it("contains long refund details in the official scrollable dialog without changing cancellation behavior", async () => {
@@ -84,7 +103,7 @@ describe("administrator-only refund marks", () => {
         "fetch",
         vi.fn(async (request: Request) => {
           requests.push(request.clone());
-          return json({ data: {} });
+          return json(savedMark(await request.json()));
         }),
       );
       const user = userEvent.setup();
@@ -136,7 +155,7 @@ describe("administrator-only refund marks", () => {
       "fetch",
       vi.fn(async (request: Request) => {
         requests.push(request.clone());
-        return json({ data: {} });
+        return json(savedMark(await request.json()));
       }),
     );
     const user = userEvent.setup();
@@ -164,14 +183,14 @@ describe("administrator-only refund marks", () => {
   });
 
   it("uses the same operation UUID on retry and retains the note", async () => {
-    const bodies: unknown[] = [];
+    const bodies: AdminRefundMarkRequest[] = [];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (request: Request) => {
         bodies.push(await request.json());
         return bodies.length === 1
           ? apiError("internal_error", "lost response", 500)
-          : json({ data: {} });
+          : json(savedMark(bodies.at(-1)!));
       }),
     );
     const user = userEvent.setup();
@@ -189,9 +208,11 @@ describe("administrator-only refund marks", () => {
     );
     await user.type(screen.getByLabelText("备注（可选）"), "已在外部处理");
     await user.click(screen.getByRole("button", { name: "确认标记已退款" }));
+    await screen.findByText("标记结果待确认", { exact: true });
+    await user.click(screen.getByRole("button", { name: "响应详情" }));
     await screen.findByText(/服务处理失败/);
     expect(screen.getByLabelText("备注（可选）")).toHaveValue("已在外部处理");
-    await user.click(screen.getByRole("button", { name: "确认标记已退款" }));
+    await user.click(screen.getByRole("button", { name: "重试原标记" }));
     await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce());
     expect(bodies).toHaveLength(2);
     expect(bodies[1]).toEqual(bodies[0]);
@@ -389,6 +410,10 @@ describe("administrator-only refund marks", () => {
     ).toHaveTextContent("admin");
     expect(screen.queryByText(/标记版本/)).not.toBeInTheDocument();
     expect(screen.getAllByText("外部退款说明")).toHaveLength(2);
+    expect(
+      screen.getByRole("button", { name: "复制标记操作编号" }),
+    ).toBeVisible();
+    expect(screen.getByRole("listitem")).toHaveTextContent("操作编号1");
   });
 
   it("removes refund recording from reconciliation without removing manual income association", async () => {

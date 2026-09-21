@@ -1,3 +1,4 @@
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { AlertCircle } from "lucide-react";
 import { CopyValue } from "@/components/copy-value";
 import { ErrorNotice } from "@/components/request-state";
@@ -14,21 +15,41 @@ export function OperationRecoveryNotice({
   operationId,
   conflict,
   error,
+  focusOnError = true,
+  heading = "操作结果待确认",
+  description,
 }: {
   operationId: string;
   conflict: boolean;
   error: unknown;
+  focusOnError?: boolean;
+  heading?: string;
+  description?: ReactNode;
 }) {
+  const title = useRef<HTMLDivElement>(null);
+  const descriptionId = useId();
+  useEffect(() => {
+    // The user may be at the end of a long, scrolled form when this reply arrives.
+    if (focusOnError && error != null) title.current?.focus();
+  }, [error, focusOnError]);
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <Alert>
         <AlertCircle />
-        <AlertTitle>操作结果待确认</AlertTitle>
-        <AlertDescription>
-          {conflict
-            ? "服务返回状态冲突。请关闭并刷新，核对原操作是否已经生效，再决定下一步。"
-            : "未收到完整响应，操作可能已生效。重试将使用原对象、理由和操作编号，找回结果或完成这一次操作。"}
-          <p>关闭不会撤销已执行的操作。请先核对结果，勿直接发起另一笔操作。</p>
+        <AlertTitle ref={title} tabIndex={-1} aria-describedby={descriptionId}>
+          {heading}
+        </AlertTitle>
+        <AlertDescription id={descriptionId}>
+          {description ?? (
+            <>
+              {conflict
+                ? "服务返回状态冲突。请关闭并刷新，核对原操作是否已经生效，再决定下一步。"
+                : "未收到完整响应，操作可能已生效。重试将使用原对象、理由和操作编号，找回结果或完成这一次操作。"}
+              <p>
+                关闭不会撤销已执行的操作。请先核对结果，勿直接发起另一笔操作。
+              </p>
+            </>
+          )}
         </AlertDescription>
       </Alert>
       <Field>

@@ -94,9 +94,16 @@ export async function result<Data>(request: Promise<{
   const generation = sessionGeneration;
   const response = await request;
   requireCurrentGeneration(generation);
-  if (response.error instanceof Error && response.error.name === "AbortError") throw response.error;
+  if ((response.error instanceof Error || response.error instanceof DOMException) && response.error.name === "AbortError") throw response.error;
   if (!response.response?.ok) {
     throw new ApiError(response.response, response.error);
+  }
+  // A 2xx status does not prove the SDK finished reading and decoding the body.
+  if (response.error !== undefined || (response.response.status !== 204 && response.data === undefined)) {
+    throw new ApiError(response.response, { error: {
+      code: "invalid_response",
+      message: "服务响应未完整读取或无法解析，暂时无法确认结果。请刷新核查，或重试原操作。",
+    } });
   }
   if (response.response.status !== 204 && !response.response.headers.get("content-type")?.includes("application/json")) {
     throw new ApiError(response.response, { error: { code: "invalid_response", message: "服务未返回有效的 JSON，请检查反向代理配置。" } });

@@ -116,6 +116,52 @@ describe("administrator API boundary", () => {
     await expect(result(api.getAdministratorSession())).rejects.toMatchObject({ code: "invalid_response" });
   });
 
+  it("does not turn a truncated JSON success response into a successful command", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response('{"data":', {
+      status: 200,
+      headers: { "content-type": "application/json", "x-request-id": "truncated-response" },
+    })));
+    await expect(result(api.reversePaymentSettlement({
+      path: { paymentMatchId: "match-for-response-recovery" },
+      body: { financial_operation_id: "original-operation", reason: "核查原操作结果" },
+    }))).rejects.toMatchObject({
+      name: "ApiError", code: "invalid_response", status: 200, requestId: "truncated-response",
+    });
+  });
+
+  it("rejects a response body read failure after successful headers without reporting mutation success", async () => {
+    const response = json({ data: {} }, 201);
+    vi.spyOn(response, "text").mockRejectedValue(new TypeError("connection lost while reading response"));
+    const fetchMock = vi.fn(async () => response);
+    vi.stubGlobal("fetch", fetchMock);
+    const onSuccess = vi.fn();
+    const mutation = queryClient.getMutationCache().build(queryClient, {
+      mutationFn: () => result(api.resolveLedgerConflict({
+        path: { conflictId: "conflict-for-response-recovery" },
+        body: { conflict_operation_id: "original-operation", action: "ACKNOWLEDGE_ISOLATED", reason: "核查原操作结果" },
+      })), onSuccess,
+    });
+    await expect(mutation.execute(undefined)).rejects.toMatchObject({ code: "invalid_response", status: 201 });
+    expect(onSuccess).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("keeps an intentional no-content response valid and preserves an explicit body-read abort", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
+    await result(api.logoutAdministratorSession({ body: {} }));
+    const response = json({ data: {} });
+    const aborted = new DOMException("query was canceled", "AbortError");
+    vi.spyOn(response, "text").mockRejectedValue(aborted);
+    vi.stubGlobal("fetch", vi.fn(async () => response));
+    await expect(result(api.listAdministratorOrders())).rejects.toBe(aborted);
+  });
+
+  it("does not accept missing decoded data merely because the response status is successful", async () => {
+    await expect(result(Promise.resolve({
+      response: new Response(null, { status: 200, headers: { "content-type": "application/json" } }),
+    }))).rejects.toMatchObject({ code: "invalid_response", status: 200 });
+  });
+
   it("prevents configured cross-origin requests before fetch", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

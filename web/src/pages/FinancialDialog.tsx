@@ -13,6 +13,8 @@ import { resourceIdPattern } from "@/lib/format";
 import { useOperationKey } from "@/lib/idempotency";
 import { operationReasonError, useFixedOperation } from "@/lib/fixed-operation";
 import { OperationRecoveryNotice } from "@/components/operation-recovery-notice";
+import { OperationNavigationDialog } from "@/components/operation-navigation-dialog";
+import { useOperationNavigation } from "@/drafts";
 import { ErrorNotice } from "@/components/request-state";
 import { OrderFacts } from "@/components/detail/DetailPrimitives";
 import { LedgerFacts } from "@/components/detail/PaymentEvidence";
@@ -68,6 +70,7 @@ export function FinancialDialog({
   const key = useOperationKey();
   const [validation, setValidation] = useState<string | null>(null);
   const reasonField = useRef<HTMLTextAreaElement>(null);
+  const content = useRef<HTMLDivElement>(null);
   const hintId = useId();
   const previewController = useRef<AbortController | null>(null);
   const recheckedConflict = useRef(false);
@@ -134,6 +137,10 @@ export function FinancialDialog({
       onSuccess();
     },
   });
+  const navigation = useOperationNavigation(
+    save.isPending || !!save.recovery,
+    () => save.isBusy() || !!save.recovery,
+  );
   const busy = preview.isPending || save.isPending;
   const stale =
     !save.recovery &&
@@ -203,9 +210,10 @@ export function FinancialDialog({
       }}
     >
       <DialogContent
+        ref={content}
         showCloseButton={!save.isPending}
         finalFocus={
-          needsRefresh
+          needsRefresh || navigation.blocked
             ? () =>
                 document.getElementById("main-content") ??
                 finalFocus?.() ??
@@ -227,6 +235,7 @@ export function FinancialDialog({
                 operationId={save.recovery.financial_operation_id}
                 conflict={save.conflict}
                 error={save.error}
+                focusOnError={!navigation.blocked}
               />
             )}
             {context.lockContext && context.initialOrderId ? (
@@ -387,6 +396,17 @@ export function FinancialDialog({
             )}
           </DialogFooter>
         </form>
+        <OperationNavigationDialog
+          navigation={navigation}
+          operationId={save.submitted?.financial_operation_id}
+          pending={save.isPending}
+          finalFocus={() => content.current}
+          onLeave={() => {
+            save.stopWaiting();
+            void refreshOperationalData();
+            onClose();
+          }}
+        />
       </DialogContent>
     </Dialog>
   );

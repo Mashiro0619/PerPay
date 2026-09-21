@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
-import { useSearchParams } from "react-router";
+import { useLocation, useSearchParams } from "react-router";
 import {
   api,
   refreshOperationalData,
@@ -9,7 +9,12 @@ import {
   type AdminWorkItem,
   type AdminWorkItemTypeFilter,
 } from "@/api/client";
-import { useOperationKey } from "@/lib/idempotency";
+import {
+  useReminderRestores,
+  needsReminderRefresh,
+  type ReminderRestoreState,
+} from "@/lib/reminder-restore-requests";
+import { restoreMessages, type RestoreOutcome } from "@/lib/reminder-restore";
 import { useCursor } from "@/lib/cursor";
 import { WorkItemsTable } from "@/components/work-items-table";
 import { ErrorNotice, QueryView } from "@/components/request-state";
@@ -17,6 +22,14 @@ import { CursorPagination } from "@/components/cursor-pagination";
 import { SuccessMessage, useFeedback } from "@/components/Feedback";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverDescription,
+} from "@/components/ui/popover";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
@@ -191,7 +204,39 @@ function WorkItemPage({
 }) {
   const mounted = useMounted();
   const pagination = useCursor();
-  const [, setSearch] = useSearchParams();
+  const list = useRef<HTMLDivElement>(null);
+  const location = useLocation();
+  const locationKey = useRef(location.key);
+  locationKey.current = location.key;
+  const restores = useReminderRestores();
+  type Position = {
+    sequence: number;
+    cursor: string | undefined;
+    waitingFrom?: string;
+    locationKey: string;
+    id: string;
+    neighbors: string[];
+    index: number;
+    trigger: HTMLElement;
+    focus: boolean;
+    completed: boolean;
+  };
+  const latestAction = useRef<Position | null>(null);
+  const focusing = useRef(false);
+  const [position, setPosition] = useState<Position | null>(null);
+  useEffect(() => {
+    const moved = (event: Event) => {
+      const action = latestAction.current;
+      if (action && !focusing.current && event.target !== action.trigger)
+        action.focus = false;
+    };
+    document.addEventListener("focusin", moved);
+    document.addEventListener("pointerdown", moved);
+    return () => {
+      document.removeEventListener("focusin", moved);
+      document.removeEventListener("pointerdown", moved);
+    };
+  }, []);
   const work = useQuery({
     queryKey: ["work-items", type, visibility, pagination.cursor],
     queryFn: ({ signal }) =>
@@ -208,20 +253,134 @@ function WorkItemPage({
       ),
   });
   const [restoredMessage, setRestoredMessage] = useFeedback();
-  function restored() {
-    setRestoredMessage("已恢复提醒");
-    void refreshOperationalData();
-    if (!mounted.current) return;
-    setSearch(
-      (current) => {
-        const next = new URLSearchParams(current);
-        next.delete("cursor");
-        next.delete("page");
-        return next;
-      },
-      { replace: true },
-    );
+  function restore(item: AdminWorkItem, trigger: HTMLElement) {
+    if (item.ended || restores.get(item)?.status === "pending") return;
+    const id = item.type + ":" + item.resource_id;
+    const ids =
+      work.data?.data.map(
+        (candidate) => candidate.type + ":" + candidate.resource_id,
+      ) ?? [];
+    const index = Math.max(0, ids.indexOf(id));
+    const action: Position = {
+      sequence: (latestAction.current?.sequence ?? 0) + 1,
+      completed: false,
+      cursor: pagination.cursor,
+      locationKey: location.key,
+      id,
+      index,
+      neighbors: [...ids.slice(index + 1), ...ids.slice(0, index).reverse()],
+      trigger,
+      focus:
+        document.activeElement === trigger ||
+        document.activeElement === document.body,
+    };
+    const completed = async (outcome: RestoreOutcome | "refresh") => {
+      action.completed = true;
+      await refreshOperationalData();
+      if (!mounted.current) return;
+      const latest = latestAction.current;
+      if (!latest?.completed || locationKey.current !== latest.locationKey)
+        return;
+      if (latest === action && outcome !== "refresh")
+        setRestoredMessage(restoreMessages[outcome]);
+      setPosition({ ...latest });
+    };
+    const readAgain = needsReminderRefresh(restores.get(item));
+    if (
+      !readAgain &&
+      !restores.submit(item, (outcome) => {
+        void completed(outcome);
+      })
+    )
+      return;
+    latestAction.current = action;
+    setPosition(null);
+    setRestoredMessage("");
+    if (readAgain) void completed("refresh");
   }
+  useEffect(() => {
+    if (!position || work.isFetching) return;
+    if (latestAction.current?.sequence !== position.sequence) {
+      setPosition(null);
+      return;
+    }
+    if (
+      position.cursor !== pagination.cursor &&
+      position.waitingFrom !== undefined &&
+      position.waitingFrom === pagination.cursor
+    )
+      return;
+    if (position.cursor !== pagination.cursor || work.isError || !work.data) {
+      setPosition(null);
+      return;
+    }
+    if (work.data.data.length === 0 && pagination.page > 1) {
+      const cursor = pagination.replacePrevious();
+      setPosition({
+        ...position,
+        cursor,
+        waitingFrom: pagination.cursor,
+        index: Number.MAX_SAFE_INTEGER,
+        neighbors: [],
+      });
+      return;
+    }
+    // Returning from an action should not undo the user's subsequent navigation or focus.
+    const active = document.activeElement;
+    if (
+      latestAction.current?.focus &&
+      (active === position.trigger ||
+        active === document.body ||
+        !active?.isConnected)
+    ) {
+      const rows = [
+        ...(list.current?.querySelectorAll<HTMLTableRowElement>("tbody tr") ??
+          []),
+      ];
+      const same = rows.find(
+        (row) =>
+          row
+            .querySelector("[data-reminder-id]")
+            ?.getAttribute("data-reminder-id") === position.id,
+      );
+      const neighbor = position.neighbors
+        .map((id) =>
+          rows.find(
+            (row) =>
+              row
+                .querySelector("[data-reminder-id]")
+                ?.getAttribute("data-reminder-id") === id,
+          ),
+        )
+        .find(
+          (row) =>
+            row &&
+            !row.querySelector(
+              "button[data-reminder-restore]:disabled:not([data-reminder-ended])",
+            ),
+        );
+      const row =
+        same ??
+        neighbor ??
+        (position.neighbors.length === 0
+          ? rows[Math.min(position.index, rows.length - 1)]
+          : undefined);
+      const target =
+        row?.querySelector<HTMLElement>(
+          "button[data-reminder-restore]:not(:disabled)",
+        ) ??
+        row?.querySelector<HTMLElement>("[data-row-link]") ??
+        list.current;
+      if (target) {
+        focusing.current = true;
+        latestAction.current!.trigger = target;
+        target.focus({ preventScroll: true });
+        target.scrollIntoView({ block: "nearest" });
+        focusing.current = false;
+      }
+    }
+    setPosition(null);
+  }, [position, work.data, work.isFetching, work.isError, pagination]);
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -266,10 +425,23 @@ function WorkItemPage({
         </div>
       </div>
       <SuccessMessage message={message || restoredMessage} />
+      {restores.pendingCount > 0 && (
+        <p role="status" className="text-sm text-muted-foreground">
+          {restores.pendingCount} 条提醒正在恢复…
+        </p>
+      )}
       <QueryView query={work}>
         {(page) => (
           <>
-            <div className="overflow-hidden rounded-lg border">
+            <div
+              ref={list}
+              tabIndex={-1}
+              role="region"
+              aria-label={
+                visibility === "IGNORED" ? "已忽略提醒列表" : "待处理提醒列表"
+              }
+              className="overflow-hidden rounded-lg border outline-none"
+            >
               <WorkItemsTable
                 items={page.data}
                 emptyTitle={
@@ -278,7 +450,12 @@ function WorkItemPage({
                 actions={
                   visibility === "IGNORED"
                     ? (item) => (
-                        <RestoreReminder item={item} onRestored={restored} />
+                        <RestoreReminder
+                          key={item.ignored_at}
+                          item={item}
+                          state={restores.get(item)}
+                          onRestore={(trigger) => restore(item, trigger)}
+                        />
                       )
                     : undefined
                 }
@@ -301,44 +478,58 @@ function WorkItemPage({
 }
 function RestoreReminder({
   item,
-  onRestored,
+  state,
+  onRestore,
 }: {
   item: AdminWorkItem;
-  onRestored: () => void;
+  state: ReminderRestoreState | undefined;
+  onRestore: (trigger: HTMLElement) => void;
 }) {
-  const operationKey = useOperationKey();
-  const restore = useMutation({
-    mutationFn: () =>
-      result(
-        api.restoreAdministratorWorkItem({
-          path: { type: item.type, resourceId: item.resource_id },
-          body: {
-            operation_id: operationKey([
-              item.type,
-              item.resource_id,
-              item.ignored_at,
-            ]),
-          },
-        }),
-      ),
-    onSuccess: onRestored,
-  });
+  const readAgain = needsReminderRefresh(state);
+  const pending = state?.status === "pending";
   return (
     <div className="flex flex-col items-end gap-2">
       <Button
+        data-reminder-restore
+        data-reminder-ended={item.ended || undefined}
         size="sm"
         variant="outline"
-        disabled={item.ended || restore.isPending}
-        onClick={() => {
-          if (!restore.isPending && !item.ended) restore.mutate();
-        }}
+        disabled={item.ended || pending}
+        onClick={(event) => onRestore(event.currentTarget)}
       >
-        {restore.isPending && (
-          <Spinner aria-hidden="true" data-icon="inline-start" />
-        )}
-        {item.ended ? "已结束" : "恢复提醒"}
+        {pending && <Spinner aria-hidden="true" data-icon="inline-start" />}
+        {item.ended
+          ? "已结束"
+          : readAgain
+            ? "刷新列表"
+            : state?.error
+              ? "重试恢复"
+              : "恢复提醒"}
       </Button>
-      <ErrorNotice error={restore.error} />
+      {!!state?.error && (
+        <>
+          <span role="status" className="sr-only">
+            恢复结果暂未确认，请重试或查看响应详情。
+          </span>
+          <Popover>
+            <PopoverTrigger render={<Button variant="ghost" size="sm" />}>
+              响应详情
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              className="max-h-[calc(100dvh-2rem)] max-w-[calc(100vw-2rem)] overflow-y-auto"
+            >
+              <PopoverHeader>
+                <PopoverTitle>恢复提醒的响应</PopoverTitle>
+                <PopoverDescription>
+                  只调整提醒，不改变事项处理状态。
+                </PopoverDescription>
+              </PopoverHeader>
+              <ErrorNotice error={state.error} />
+            </PopoverContent>
+          </Popover>
+        </>
+      )}
     </div>
   );
 }

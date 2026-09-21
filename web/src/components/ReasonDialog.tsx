@@ -4,6 +4,8 @@ import { useOperationKey } from "@/lib/idempotency";
 import { operationReasonError, useFixedOperation } from "@/lib/fixed-operation";
 import { ErrorNotice } from "@/components/request-state";
 import { OperationRecoveryNotice } from "@/components/operation-recovery-notice";
+import { OperationNavigationDialog } from "@/components/operation-navigation-dialog";
+import { useOperationNavigation } from "@/drafts";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
@@ -56,6 +58,7 @@ export function ReasonDialog({
   const [reason, setReason] = useState("");
   const [validation, setValidation] = useState<string | null>(null);
   const reasonField = useRef<HTMLTextAreaElement>(null);
+  const content = useRef<HTMLDivElement>(null);
   const hintId = useId();
   const operationKey = useOperationKey();
   const mutation = useFixedOperation({
@@ -63,6 +66,10 @@ export function ReasonDialog({
       snapshot.execute(input.reason, input.operationId, signal),
     onSuccess,
   });
+  const navigation = useOperationNavigation(
+    mutation.isPending || !!mutation.recovery,
+    () => mutation.isBusy() || !!mutation.recovery,
+  );
   const needsRefresh = mutation.conflict || !!mutation.recovery;
   function close() {
     if (mutation.isBusy()) return;
@@ -97,9 +104,10 @@ export function ReasonDialog({
       }}
     >
       <DialogContent
+        ref={content}
         showCloseButton={!mutation.isPending}
         finalFocus={
-          needsRefresh
+          needsRefresh || navigation.blocked
             ? () =>
                 document.getElementById("main-content") ??
                 finalFocus?.() ??
@@ -125,6 +133,7 @@ export function ReasonDialog({
                 operationId={mutation.recovery.operationId}
                 conflict={mutation.conflict}
                 error={mutation.error}
+                focusOnError={!navigation.blocked}
               />
             )}
             {snapshot.children}
@@ -185,6 +194,17 @@ export function ReasonDialog({
             )}
           </DialogFooter>
         </form>
+        <OperationNavigationDialog
+          navigation={navigation}
+          operationId={mutation.submitted?.operationId}
+          pending={mutation.isPending}
+          finalFocus={() => content.current}
+          onLeave={() => {
+            mutation.stopWaiting();
+            void refreshOperationalData();
+            onClose();
+          }}
+        />
       </DialogContent>
     </Dialog>
   );
