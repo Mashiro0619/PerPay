@@ -9,6 +9,9 @@ import {
 } from "@/components/ui/sidebar";
 
 export type NavigationItem = { title: string; url: string; icon: LucideIcon };
+export const isNavigationItemActive = (pathname: string, url: string) =>
+  pathname === url || (url !== "/" && pathname.startsWith(url + "/"));
+
 export function NavMain({
   items,
   pathname,
@@ -19,16 +22,13 @@ export function NavMain({
   return (
     <SidebarGroup>
       <SidebarGroupContent>
-        <SidebarMenu>
+        <SidebarMenu className="gap-1">
           {items.map((item) => (
             <SidebarMenuItem key={item.url}>
               <SidebarMenuButton
                 tooltip={item.title}
-                isActive={
-                  item.url === "/"
-                    ? pathname === "/"
-                    : pathname.startsWith(item.url)
-                }
+                isActive={isNavigationItemActive(pathname, item.url)}
+                aria-current={isNavigationItemActive(pathname, item.url) ? "page" : undefined}
                 render={<Link to={item.url} />}
               >
                 <item.icon />

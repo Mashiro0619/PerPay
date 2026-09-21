@@ -4,7 +4,7 @@ import { ClipboardList, LayoutDashboard, Settings } from "lucide-react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryClient } from "../src/api/client";
-import { NavMain } from "../src/components/nav-main";
+import { NavMain, isNavigationItemActive } from "../src/components/nav-main";
 import { NavSecondary } from "../src/components/nav-secondary";
 import { SettingsEditor } from "../src/components/SettingsForms";
 import { SidebarProvider } from "../src/components/ui/sidebar";
@@ -29,7 +29,7 @@ describe("official block composition", () => {
     );
   });
   it.each(["/", "/orders/order-id", "/settings/collection"])(
-    "keeps both navigation groups at the official default density for %s",
+    "keeps default button sizing with separated navigation groups for %s",
     (pathname) => {
       const { container } = render(
         <MemoryRouter initialEntries={[pathname]}>
@@ -50,6 +50,9 @@ describe("official block composition", () => {
       );
       const links = screen.getAllByRole("link");
       expect(links).toHaveLength(3);
+      for (const menu of container.querySelectorAll("[data-sidebar=menu]"))
+        expect(menu).toHaveClass("gap-1");
+      expect(container.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
       for (const link of links)
         expect(link).toHaveAttribute("data-size", "default");
       expect(
@@ -59,6 +62,16 @@ describe("official block composition", () => {
       ).toHaveLength(1);
     },
   );
+
+  it.each([
+    ["/orders-old", "/orders", false],
+    ["/settings-old", "/settings", false],
+    ["/orders/order-id", "/orders", true],
+    ["/settings/provider", "/settings", true],
+    ["/orders", "/", false],
+  ] as const)("matches navigation path boundaries for %s", (pathname, url, expected) => {
+    expect(isNavigationItemActive(pathname, url)).toBe(expected);
+  });
 
   it.each([
     ["collection", "支付宝经营码", "订单规则"],

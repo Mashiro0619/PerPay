@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import type { NavigationItem } from "@/components/nav-main";
+import { isNavigationItemActive, type NavigationItem } from "@/components/nav-main";
 import { Link } from "@/navigation";
 import {
   SidebarGroup,
@@ -18,12 +18,13 @@ export function NavSecondary({
   return (
     <SidebarGroup {...props}>
       <SidebarGroupContent>
-        <SidebarMenu>
+        <SidebarMenu className="gap-1">
           {items.map((item) => (
             <SidebarMenuItem key={item.url}>
               <SidebarMenuButton
                 render={<Link to={item.url} />}
-                isActive={pathname.startsWith(item.url)}
+                isActive={isNavigationItemActive(pathname, item.url)}
+                aria-current={isNavigationItemActive(pathname, item.url) ? "page" : undefined}
               >
                 <item.icon />
                 <span>{item.title}</span>
