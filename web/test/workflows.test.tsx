@@ -339,7 +339,8 @@ describe("concise settings copy", () => {
   it("only offers income association in the financial dialog", () => {
     renderPage(<FinancialDialog onClose={vi.fn()} onSuccess={vi.fn()} />);
     expect(screen.getByRole("dialog", { name: "人工关联收款" })).toBeVisible();
-    expect(screen.getByLabelText("收入流水编号")).toBeVisible();
+    expect(screen.getByRole("searchbox", { name: "搜索订单" })).toBeVisible();
+    expect(screen.queryByLabelText("收入流水编号")).not.toBeInTheDocument();
     expect(screen.queryByText(/退款/)).not.toBeInTheDocument();
   });
 });

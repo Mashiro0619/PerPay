@@ -3,6 +3,22 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 export type Webhooks = ReceivePaymentOrderWebhookWebhookRequest;
+export type ManualSettlementPageInfo = {
+    next_cursor: string | null;
+};
+export type ManualSettlementRecommendation = {
+    amount_match: boolean;
+    time_window_overlap: boolean;
+    time_distance_milliseconds: number;
+};
+export type ManualSettlementOrderCandidate = {
+    order: ReconciliationOrder;
+    recommendation: ManualSettlementRecommendation | null;
+};
+export type ManualSettlementLedgerCandidate = {
+    ledger_entry: ReconciliationLedgerEntry;
+    recommendation: ManualSettlementRecommendation | null;
+};
 export type Health = {
     status: 'healthy' | 'unhealthy';
     version: string;
@@ -2002,6 +2018,64 @@ export type ReversePaymentSettlementResponses = {
     200: FinancialDecisionEnvelope;
 };
 export type ReversePaymentSettlementResponse = ReversePaymentSettlementResponses[keyof ReversePaymentSettlementResponses];
+export type ListManualSettlementOrdersData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path?: never;
+    query?: {
+        ledger_entry_id?: string;
+        q?: string;
+        view?: 'recommended' | 'all';
+        limit?: number;
+        cursor?: string;
+    };
+    url: '/api/admin/v1/reconciliation/settlements/manual/orders';
+};
+export type ListManualSettlementOrdersErrors = {
+    401: ErrorEnvelope;
+    404: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type ListManualSettlementOrdersError = ListManualSettlementOrdersErrors[keyof ListManualSettlementOrdersErrors];
+export type ListManualSettlementOrdersResponses = {
+    200: {
+        data: Array<ManualSettlementOrderCandidate>;
+        page: ManualSettlementPageInfo;
+    };
+};
+export type ListManualSettlementOrdersResponse = ListManualSettlementOrdersResponses[keyof ListManualSettlementOrdersResponses];
+export type ListManualSettlementLedgerEntriesData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path?: never;
+    query: {
+        order_id: string;
+        q?: string;
+        view?: 'recommended' | 'all';
+        limit?: number;
+        cursor?: string;
+    };
+    url: '/api/admin/v1/reconciliation/settlements/manual/ledger-entries';
+};
+export type ListManualSettlementLedgerEntriesErrors = {
+    401: ErrorEnvelope;
+    404: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type ListManualSettlementLedgerEntriesError = ListManualSettlementLedgerEntriesErrors[keyof ListManualSettlementLedgerEntriesErrors];
+export type ListManualSettlementLedgerEntriesResponses = {
+    200: {
+        data: Array<ManualSettlementLedgerCandidate>;
+        page: ManualSettlementPageInfo;
+    };
+};
+export type ListManualSettlementLedgerEntriesResponse = ListManualSettlementLedgerEntriesResponses[keyof ListManualSettlementLedgerEntriesResponses];
 export type CreateManualSettlementData = {
     body: LinkedFinancialDecision;
     headers?: {

@@ -95,3 +95,10 @@
 ### 修订1：指标数字无内部滚动
 - 根因：overflow-x-auto同时使纵向溢出计算为auto，leading-none的24px行高容不下27px字形。移除滚动容器、使用正常紧凑行高与可换行网格，窄屏上下排列，完整金额不缩写；只改业务组合，不覆盖[官方Toggle Group](https://ui.shadcn.com/docs/components/base/toggle-group)。
 - 目标44项通过；完整npm run check后端762/前端693通过，3项平台跳过。隔离实例21项浏览器场景通过、0页面错误：1440/390/320×明暗×三图形、常驻滚动条配置、125%/150%布局缩放及长数值、加载态；实测数值client/scroll尺寸并人工看图。截图和日志在本任务admin-ui-revisions目录part-1-*。其余三段尚待完成。
+
+### 修订2：人工关联推荐候选与服务端搜索
+- [Dialog](https://ui.shadcn.com/docs/components/base/dialog)、[Item](https://ui.shadcn.com/docs/components/base/item)、InputGroup组合：订单选收入、收入选订单、通用入口先选订单，两侧已知直接核对；推荐/全部视图及Enter搜索、10条游标分页。不要求内部编号，不自动确认。
+- 新增只读manual/orders与manual/ledger-entries接口，SQLite先筛选再分页，使用历史账户归属、原人工结算资格、整数分匹配和原金额占用时间窗口；推荐优先窗口重叠，再按窗口距离及记录时间/编号稳定排序。GET不产生候选或财务写入，关闭/过期未付款订单仍可选，最终POST保护不变。游标绑定资源/上下文/q/视图。API类型重新生成，无新迁移。
+- 改选清除旧理由与证据，取消旧读取；结果未知时只能重试原对象/理由/操作ID，离开保护与焦点回归保留。旧编号输入断言改为原提交对象、无改选入口及没有额外证据读取断言，未删除安全覆盖。
+- 服务端5场景及前端79项、导航11项目标回归通过；完整npm run check后端767/前端702通过，3项平台跳过。32项隔离浏览器验收、0错误，覆盖1440/390/320×明暗的选择/核对/空结果/反向选择/跨页，另有读取失败及真实人工结算丢响应同操作重试；人工复核修正了原始OPEN状态码展示。
+- 独立10000订单/10000收入读投影基准：首屏1.9—77.8ms、翻页1.2—104.9ms（本机观察，不是SLA）。只批量装载合成投影，测量前恢复全部触发器，不作为财务写正确性证据。脚本scripts/benchmark-manual-candidates.ts；日志part-2-targeted.log、part-2-check-final.log、part-2-benchmark.json与part-2-browser.json及截图。

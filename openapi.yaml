@@ -1486,6 +1486,114 @@ paths:
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ReconciliationUnavailable' }
+  /api/admin/v1/reconciliation/settlements/manual/orders:
+    get:
+      tags: [Reconciliation]
+      operationId: listManualSettlementOrders
+      summary: Search eligible orders for an administrator manual settlement
+      description: |
+        Read-only discovery; never creates matching candidates or financial facts. Eligibility preserves
+        unpaid/no-basis orders, compatible historical provider ownership and currency, unallocated credit
+        entries, and the absence of an active settlement. Closed/expired unpaid orders remain eligible.
+        Recommended view restricts to equal amounts, prioritizes overlap of the order/amount-slot window
+        with the transaction timestamp interval, then time distance; ties use record time and ID descending.
+        All view uses record time and ID descending. Search happens before pagination, treats percent and
+        underscore literally, and also matches a valid positive decimal amount by exact integer cents.
+        Cursors bind this endpoint, context, normalized keyword and view. Results remain live, not snapshots.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - name: ledger_entry_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 100 }
+          description: Literal substring over identifiers and product name (orders) or counterparty (ledger). Notes, financial reasons and raw payloads are not searched.
+        - name: view
+          in: query
+          schema: { type: string, enum: [recommended, all] }
+          description: Defaults to recommended with context, otherwise all. Recommended requires context.
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+        - name: cursor
+          in: query
+          schema: { type: string, minLength: 1, maxLength: 2048 }
+      responses:
+        '200':
+          description: Eligible records with advisory recommendation evidence
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, page]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ManualSettlementOrderCandidate' }
+                  page: { $ref: '#/components/schemas/ManualSettlementPageInfo' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/admin/v1/reconciliation/settlements/manual/ledger-entries:
+    get:
+      tags: [Reconciliation]
+      operationId: listManualSettlementLedgerEntries
+      summary: Search eligible ledger-entries for an administrator manual settlement
+      description: |
+        Read-only discovery; never creates matching candidates or financial facts. Eligibility preserves
+        unpaid/no-basis orders, compatible historical provider ownership and currency, unallocated credit
+        entries, and the absence of an active settlement. Closed/expired unpaid orders remain eligible.
+        Recommended view restricts to equal amounts, prioritizes overlap of the order/amount-slot window
+        with the transaction timestamp interval, then time distance; ties use record time and ID descending.
+        All view uses record time and ID descending. Search happens before pagination, treats percent and
+        underscore literally, and also matches a valid positive decimal amount by exact integer cents.
+        Cursors bind this endpoint, context, normalized keyword and view. Results remain live, not snapshots.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - name: order_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 100 }
+          description: Literal substring over identifiers and product name (orders) or counterparty (ledger). Notes, financial reasons and raw payloads are not searched.
+        - name: view
+          in: query
+          schema: { type: string, enum: [recommended, all] }
+          description: Defaults to recommended with context, otherwise all. Recommended requires context.
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+        - name: cursor
+          in: query
+          schema: { type: string, minLength: 1, maxLength: 2048 }
+      responses:
+        '200':
+          description: Eligible records with advisory recommendation evidence
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, page]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ManualSettlementLedgerCandidate' }
+                  page: { $ref: '#/components/schemas/ManualSettlementPageInfo' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/Unavailable' }
   /api/admin/v1/reconciliation/settlements/manual:
     post:
       tags: [Reconciliation]
@@ -2198,6 +2306,40 @@ components:
           schema:
             $ref: '#/components/schemas/LinkedFinancialDecisionRequest'
   schemas:
+    ManualSettlementPageInfo:
+      type: object
+      additionalProperties: false
+      required: [next_cursor]
+      properties:
+        next_cursor: { type: [string, 'null'] }
+    ManualSettlementRecommendation:
+      type: object
+      additionalProperties: false
+      required: [amount_match, time_window_overlap, time_distance_milliseconds]
+      properties:
+        amount_match: { type: boolean }
+        time_window_overlap: { type: boolean }
+        time_distance_milliseconds: { type: integer, minimum: 0 }
+    ManualSettlementOrderCandidate:
+      type: object
+      additionalProperties: false
+      required: [order, recommendation]
+      properties:
+        order: { $ref: '#/components/schemas/ReconciliationOrder' }
+        recommendation:
+          oneOf:
+            - $ref: '#/components/schemas/ManualSettlementRecommendation'
+            - { type: 'null' }
+    ManualSettlementLedgerCandidate:
+      type: object
+      additionalProperties: false
+      required: [ledger_entry, recommendation]
+      properties:
+        ledger_entry: { $ref: '#/components/schemas/ReconciliationLedgerEntry' }
+        recommendation:
+          oneOf:
+            - $ref: '#/components/schemas/ManualSettlementRecommendation'
+            - { type: 'null' }
     Health:
       type: object
       additionalProperties: false

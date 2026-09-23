@@ -1,3 +1,5 @@
+import { readManualCandidateQuery } from "./manual-candidates.ts";
+import type { ManualRecommendation } from "../reconciliation/manual-candidates.ts";
 import { MATCH_SORT_FIELDS, CONFLICT_SORT_FIELDS, EXCEPTION_SORT_FIELDS, WORK_ITEM_SORT_FIELDS, type MatchSort, type ConflictSort, type ExceptionSort, type WorkItemSort } from "../shared/list-query.ts";
 import { ListQueryError, readListQuery, isDefaultQuery, ORDER_SORT_FIELDS, DELIVERY_SORT_FIELDS, type ListQuery, type OrderSort, type DeliverySort } from "../shared/list-query.ts";
 import { encodeListCursor, decodeListCursor } from "./list-cursor.ts";
@@ -1031,6 +1033,20 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       return context.json({ data: candidates });
     },
   );
+
+
+  app.get("/api/admin/v1/reconciliation/settlements/manual/orders", adminSession, context => {
+    const {query, encode} = readManualCandidateQuery(new URL(context.req.url).searchParams, "orders");
+    const page = requireReconciliationStore(dependencies).manualOrderPage(query);
+    if (!page) throw new HttpApiError(404, "ledger_entry_not_found", "账务流水不存在");
+    return context.json({data: page.items.map(item => ({order: serializeReconciliationOrder(item.record), recommendation: serializeManualRecommendation(item.recommendation)})), page: {next_cursor: encode(page.nextPosition)}});
+  });
+  app.get("/api/admin/v1/reconciliation/settlements/manual/ledger-entries", adminSession, context => {
+    const {query, encode} = readManualCandidateQuery(new URL(context.req.url).searchParams, "ledger-entries");
+    const page = requireReconciliationStore(dependencies).manualLedgerPage(query);
+    if (!page) throw new HttpApiError(404, "order_not_found", "订单不存在");
+    return context.json({data: page.items.map(item => ({ledger_entry: serializeReconciliationLedger(item.record), recommendation: serializeManualRecommendation(item.recommendation)})), page: {next_cursor: encode(page.nextPosition)}});
+  });
 
   app.get("/api/admin/v1/reconciliation/matches", adminSession, (context) => {
     const query = readPaymentMatchHistoryPageQuery(context);
@@ -3572,4 +3588,8 @@ class HttpApiError extends Error {
     this.code = code;
     this.retryAfterSeconds = retryAfterSeconds;
   }
+}
+
+function serializeManualRecommendation(value: ManualRecommendation | null) {
+  return value ? {amount_match: value.amountMatch, time_window_overlap: value.timeWindowOverlap, time_distance_milliseconds: value.timeDistanceMilliseconds} : null;
 }

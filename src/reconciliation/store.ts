@@ -1,3 +1,4 @@
+import { readManualCandidates, type ManualCandidateQuery, type ManualCandidatePage } from "./manual-candidates.ts";
 import { normalizeListQuery, MATCH_SORT_FIELDS, EXCEPTION_SORT_FIELDS, type MatchSort, type ExceptionSort, type ListQuery, type ListPosition } from "../shared/list-query.ts";
 import { listKeyset, listSearch } from "../database/list-query.ts";
 import { randomUUID } from "node:crypto";
@@ -541,6 +542,28 @@ export class ReconciliationStore {
       processed: results.length,
       results: Object.freeze(results),
       hasMore: ids.length > limit,
+    });
+  }
+
+
+  manualOrderPage(query: ManualCandidateQuery): ManualCandidatePage<ReconciliationOrderProjection> | null {
+    return this.#database.read(connection => {
+      const page = readManualCandidates(connection, "orders", query);
+      if (!page) return null;
+      const rows = connection.prepare(REVIEW_ORDER_COLUMNS + " WHERE order_id IN (SELECT value FROM json_each(?))")
+        .all(JSON.stringify(page.selections.map(item => item.id))) as unknown as ReviewOrderRow[];
+      const records = new Map(rows.map(row => [row.order_id, mapReviewOrder(row)]));
+      return { items: page.selections.map(item => ({record: records.get(item.id)!, recommendation: item.recommendation})), nextPosition: page.nextPosition };
+    });
+  }
+  manualLedgerPage(query: ManualCandidateQuery): ManualCandidatePage<ReconciliationLedgerProjection> | null {
+    return this.#database.read(connection => {
+      const page = readManualCandidates(connection, "ledger-entries", query);
+      if (!page) return null;
+      const rows = connection.prepare(REVIEW_LEDGER_COLUMNS + " WHERE ledger_entry_id IN (SELECT value FROM json_each(?))")
+        .all(JSON.stringify(page.selections.map(item => item.id))) as unknown as ReviewLedgerRow[];
+      const records = new Map(rows.map(row => [row.ledger_entry_id, mapReviewLedger(row)]));
+      return { items: page.selections.map(item => ({record: records.get(item.id)!, recommendation: item.recommendation})), nextPosition: page.nextPosition };
     });
   }
 

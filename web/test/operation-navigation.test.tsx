@@ -264,8 +264,6 @@ describe("financial operation navigation protection", () => {
       }),
     );
     const manual = mount({ manual: true });
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "查看关联信息" }));
     await waitFor(() => expect(readSignals).toHaveLength(2));
     await act(async () => {
       await manual.router.navigate(-1);
@@ -334,8 +332,11 @@ describe("financial operation navigation protection", () => {
     await user.click(
       within(confirmation).getByRole("button", { name: "留在此页" }),
     );
-    expect(screen.getByLabelText("内部订单编号")).toHaveValue(orderId);
-    expect(screen.getByLabelText("收入流水编号")).toHaveValue(ledgerId);
+    expect(body.order_id).toBe(orderId);
+    expect(body.ledger_entry_id).toBe(ledgerId);
+    expect(screen.queryByRole("button", { name: "返回选择" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+    expect(requests.filter(r => r.method === "GET")).toHaveLength(2);
     expect(screen.getByLabelText("操作理由")).toHaveAttribute("readonly");
     expect(requests.filter((r) => r.method === "POST")).toHaveLength(1);
   });

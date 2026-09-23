@@ -9,7 +9,6 @@ import {
 import { useMutation } from "@tanstack/react-query";
 import { AlertCircle } from "lucide-react";
 import { ApiError, api, refreshOperationalData, result } from "@/api/client";
-import { resourceIdPattern } from "@/lib/format";
 import { useOperationKey } from "@/lib/idempotency";
 import { operationReasonError, useFixedOperation } from "@/lib/fixed-operation";
 import { OperationRecoveryNotice } from "@/components/operation-recovery-notice";
@@ -20,7 +19,7 @@ import { OrderFacts } from "@/components/detail/DetailPrimitives";
 import { LedgerFacts } from "@/components/detail/PaymentEvidence";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { Input } from "@/components/ui/input";
+import { ManualCandidatePicker } from "@/components/detail/ManualCandidatePicker";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Field,
@@ -67,6 +66,17 @@ export function FinancialDialog({
   const [orderId, setOrderId] = useState(initialOrderId);
   const [ledgerId, setLedgerId] = useState(initialLedgerId);
   const [reason, setReason] = useState("");
+  const [orderTitle, setOrderTitle] = useState(orderLabel ?? "当前订单");
+  const [ledgerTitle, setLedgerTitle] = useState(ledgerLabel ?? "当前流水");
+  const [selecting, setSelecting] = useState<
+    "orders" | "ledger-entries" | null
+  >(
+    initialOrderId && initialLedgerId
+      ? null
+      : initialOrderId
+        ? "ledger-entries"
+        : "orders",
+  );
   const key = useOperationKey();
   const [validation, setValidation] = useState<string | null>(null);
   const reasonField = useRef<HTMLTextAreaElement>(null);
@@ -95,6 +105,8 @@ export function FinancialDialog({
           }),
         ),
       ]);
+      if (input.signal.aborted)
+        throw new DOMException("Evidence read aborted", "AbortError");
       return { order: order.data, ledger: ledger.data };
     },
   });
@@ -112,11 +124,7 @@ export function FinancialDialog({
     [preview.mutate],
   );
   useEffect(() => {
-    if (
-      context.lockContext &&
-      context.initialOrderId &&
-      context.initialLedgerId
-    )
+    if (context.initialOrderId && context.initialLedgerId)
       readEvidence(context.initialOrderId, context.initialLedgerId);
     return () => {
       previewController.current?.abort();
@@ -174,7 +182,7 @@ export function FinancialDialog({
   }
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || save.isBusy() || save.conflict) return;
+    if (selecting || busy || save.isBusy() || save.conflict) return;
     if (save.recovery) {
       save.submit(save.recovery);
       return;
@@ -238,61 +246,57 @@ export function FinancialDialog({
                 focusOnError={!navigation.blocked}
               />
             )}
-            {context.lockContext && context.initialOrderId ? (
-              !preview.data && (
-                <p className="text-sm text-muted-foreground">
-                  关联订单：{context.orderLabel ?? "当前订单"}
-                </p>
-              )
-            ) : (
-              <Field>
-                <FieldLabel htmlFor="financial-order-id">
-                  内部订单编号
-                </FieldLabel>
-                <Input
-                  id="financial-order-id"
-                  name="order-id"
-                  required
-                  pattern={resourceIdPattern.source}
-                  value={orderId}
-                  disabled={busy}
-                  readOnly={!!save.recovery}
-                  onChange={(event) => {
-                    if (busy || save.isBusy() || save.recovery) return;
-                    setOrderId(event.target.value);
-                    resetPreview();
-                  }}
-                  placeholder="输入完整订单编号"
-                />
-              </Field>
+            {!preview.data && orderId && (
+              <p className="text-sm text-muted-foreground">
+                关联订单：{orderTitle}
+              </p>
             )}
-            {context.lockContext && context.initialLedgerId ? (
-              !preview.data && (
-                <p className="text-sm text-muted-foreground">
-                  收入流水：{context.ledgerLabel ?? "当前流水"}
-                </p>
-              )
-            ) : (
-              <Field>
-                <FieldLabel htmlFor="financial-ledger-id">
-                  收入流水编号
-                </FieldLabel>
-                <Input
-                  id="financial-ledger-id"
-                  name="ledger-entry-id"
-                  required
-                  pattern={resourceIdPattern.source}
-                  value={ledgerId}
-                  disabled={busy}
-                  readOnly={!!save.recovery}
-                  onChange={(event) => {
-                    if (busy || save.isBusy() || save.recovery) return;
-                    setLedgerId(event.target.value);
-                    resetPreview();
-                  }}
-                  placeholder="输入完整流水编号"
-                />
-              </Field>
+            {!preview.data && ledgerId && (
+              <p className="text-sm text-muted-foreground">
+                收入流水：{ledgerTitle}
+              </p>
+            )}
+            {selecting && (
+              <ManualCandidatePicker
+                key={
+                  selecting +
+                  ":" +
+                  (selecting === "orders" ? context.initialLedgerId : orderId)
+                }
+                kind={selecting}
+                contextId={
+                  selecting === "orders"
+                    ? context.lockContext
+                      ? context.initialLedgerId
+                      : ""
+                    : orderId
+                }
+                disabled={busy || !!save.recovery}
+                onSelect={(id, title) => {
+                  if (busy || save.isBusy() || save.recovery) return;
+                  previewController.current?.abort();
+                  resetPreview();
+                  setReason("");
+                  setValidation(null);
+                  if (selecting === "orders") {
+                    setOrderId(id);
+                    setOrderTitle(title);
+                    if (context.lockContext && context.initialLedgerId) {
+                      setSelecting(null);
+                      readEvidence(id, context.initialLedgerId);
+                    } else {
+                      setLedgerId("");
+                      setLedgerTitle("");
+                      setSelecting("ledger-entries");
+                    }
+                  } else {
+                    setLedgerId(id);
+                    setLedgerTitle(title);
+                    setSelecting(null);
+                    readEvidence(orderId, id);
+                  }
+                }}
+              />
             )}
             <ErrorNotice error={preview.error} />
             {preview.data && (
@@ -303,7 +307,7 @@ export function FinancialDialog({
                   <Alert variant="destructive">
                     <AlertCircle />
                     <AlertDescription>
-                      只能关联收入流水，请更换流水编号。
+                      只能关联收入流水，请返回选择其他流水。
                     </AlertDescription>
                   </Alert>
                 )}
@@ -370,7 +374,46 @@ export function FinancialDialog({
             >
               {needsRefresh ? "关闭并刷新" : "取消"}
             </Button>
-            {(!save.conflict || stale) && (
+            {!save.recovery &&
+              !save.isPending &&
+              !(
+                context.lockContext &&
+                context.initialOrderId &&
+                context.initialLedgerId
+              ) &&
+              (preview.data ||
+                preview.error ||
+                (selecting === "ledger-entries" &&
+                  !(context.lockContext && context.initialOrderId))) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => {
+                    if (busy || save.isBusy()) return;
+                    previewController.current?.abort();
+                    resetPreview();
+                    setReason("");
+                    setValidation(null);
+                    if (selecting === "ledger-entries") {
+                      setOrderId("");
+                      setLedgerId("");
+                      setSelecting("orders");
+                    } else if (context.lockContext && context.initialLedgerId) {
+                      setOrderId("");
+                      setOrderTitle("");
+                      setSelecting("orders");
+                    } else {
+                      setLedgerId("");
+                      setLedgerTitle("");
+                      setSelecting("ledger-entries");
+                    }
+                  }}
+                >
+                  返回选择
+                </Button>
+              )}
+            {!selecting && (!save.conflict || stale) && (
               <Button
                 type={stale ? "button" : "submit"}
                 onClick={stale ? recheckEvidence : undefined}

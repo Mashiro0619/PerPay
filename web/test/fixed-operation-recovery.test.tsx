@@ -97,7 +97,6 @@ function manual(
   };
 }
 async function submitManual(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: "查看关联信息" }));
   await user.type(await screen.findByLabelText("操作理由"), "原始人工关联理由");
   await user.click(screen.getByRole("button", { name: "确认关联收款" }));
 }
@@ -326,8 +325,6 @@ describe("manual settlement recovery and evidence reading", () => {
     await screen.findByText("操作结果待确认");
     const first = await view.writes()[0]!.clone().json();
     for (const [name, value] of [
-      ["内部订单编号", orderId],
-      ["收入流水编号", ledgerId],
       ["操作理由", "原始人工关联理由"],
     ]) {
       const field = screen.getByLabelText(name!);
@@ -335,6 +332,10 @@ describe("manual settlement recovery and evidence reading", () => {
       fireEvent.change(field, { target: { value: "modified" } });
       expect(field).toHaveValue(value);
     }
+    expect(first.order_id).toBe(orderId);
+    expect(first.ledger_entry_id).toBe(ledgerId);
+    expect(screen.queryByRole("button", { name: "返回选择" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
     expect(view.requests.filter((r) => r.method === "GET")).toHaveLength(2);
     expect(
       screen.queryByRole("button", { name: "重新核对证据" }),
@@ -514,9 +515,6 @@ describe("operation reason feedback", () => {
       const execute = vi.fn();
       const view = kind === "financial" ? manual() : null;
       if (!view) render(wrap(reasonDialog(execute)));
-      const user = userEvent.setup();
-      if (view)
-        await user.click(screen.getByRole("button", { name: "查看关联信息" }));
       const input = await screen.findByLabelText("操作理由");
       fireEvent.change(input, { target: { value: "第一行\n第二行" } });
       fireEvent.submit(input.closest("form")!);
