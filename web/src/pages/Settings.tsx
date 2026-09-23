@@ -132,7 +132,7 @@ export default function Settings() {
                   ref={tabList}
                   aria-label="设置分类"
                   activateOnFocus={false}
-                  className="min-w-max justify-start"
+                  className="min-w-max justify-start pointer-coarse:group-data-horizontal/tabs:h-auto"
                 >
                   {sections.map(([value, title]) => {
                     const Icon = sectionIcons[value];

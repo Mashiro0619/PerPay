@@ -1,6 +1,5 @@
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown } from "lucide-react";
 import {
   api,
   refreshOperationalData,
@@ -23,7 +22,6 @@ import { ErrorNotice, Loading } from "@/components/request-state";
 import { CursorPagination } from "@/components/cursor-pagination";
 import { ReasonDialog } from "@/components/ReasonDialog";
 import { SuccessMessage } from "@/components/Feedback";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardHeader,
@@ -33,19 +31,6 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "@/components/ui/table";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
   Accordion,
   AccordionItem,
   AccordionTrigger,
@@ -53,6 +38,7 @@ import {
 } from "@/components/ui/accordion";
 import { DetailFields } from "./DetailPrimitives";
 import { RecordTools } from "./RecordTools";
+import { DeliveryAttempts } from "./DeliveryAttempts";
 type DeliveryContext = WebhookDeliveryDetail & {
   attempts: readonly WebhookAttempt[];
 };
@@ -82,8 +68,12 @@ export function DeliveryCard({
           {!detail.is_latest && " · 历史投递"}
         </CardTitle>
         <CardDescription>
-          {attemptsAvailable ? attemptResult(last) : "投递尝试尚未读取"} ·
-          已尝试 {delivery.attempt_count} 次
+          {attemptsAvailable
+            ? delivery.attempt_count === 0
+              ? attemptResult(undefined)
+              : "投递尝试按时间倒序显示"
+            : "投递尝试尚未读取"}{" "}
+          · 已尝试 {delivery.attempt_count} 次
         </CardDescription>
         <CardAction>
           <StatusBadge value={delivery.status} />
@@ -129,46 +119,11 @@ export function DeliveryCard({
           ]}
         />
         <SuccessMessage message={sent ? "已创建新投递，等待发送" : ""} />
-        {detail.attempts.length > 0 && (
-          <Collapsible>
-            <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
-              <ChevronDown data-icon="inline-start" />
-              投递尝试（{detail.attempts.length}）
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>次数 / 开始时间</TableHead>
-                    <TableHead>结果</TableHead>
-                    <TableHead>HTTP / ACK</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {detail.attempts.map((attempt) => (
-                    <TableRow key={attempt.attempt_id}>
-                      <TableCell>
-                        <div className="flex flex-col gap-1">
-                          第 {attempt.attempt_number} 次
-                          <time
-                            className="text-xs text-muted-foreground"
-                            dateTime={attempt.started_at}
-                          >
-                            {dateTime(attempt.started_at)}
-                          </time>
-                        </div>
-                      </TableCell>
-                      <TableCell>{label(attempt.outcome)}</TableCell>
-                      <TableCell className="whitespace-normal">
-                        {attemptResult(attempt)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CollapsibleContent>
-          </Collapsible>
-        )}
+        <DeliveryAttempts
+          key={delivery.delivery_id}
+          attempts={detail.attempts}
+          available={attemptsAvailable}
+        />
         <RecordTools
           label="通知记录操作"
           data={detail}

@@ -95,7 +95,7 @@ async function confirmReason(
 }
 
 describe("order detail work surface", () => {
-  it("does not create an empty attempt disclosure or repeat generic event descriptions", async () => {
+  it("shows an explicit empty attempt table without adding a disclosure or repeating event descriptions", async () => {
     mockData(paidOrder, [
       {
         ...delivery,
@@ -110,7 +110,13 @@ describe("order detail work surface", () => {
     ]);
     mount();
     expect(await screen.findByText(/尚未开始投递/)).toBeVisible();
-    expect(screen.queryByText("投递尝试（0）")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "投递尝试（0）" }),
+    ).toBeVisible();
+    expect(screen.getByText("暂无尝试明细")).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: /投递尝试/ }),
+    ).not.toBeInTheDocument();
     const timeline = screen
       .getByRole("heading", { name: "订单动态" })
       .closest<HTMLElement>("[data-slot=card]")!;
@@ -135,8 +141,11 @@ describe("order detail work surface", () => {
     expect(screen.getByText(detailLedger.provider_order_no!)).toBeVisible();
     expect(screen.getByText("测试买家")).toBeVisible();
     expect(screen.getByText("测试交易备注")).toBeVisible();
-    expect(screen.queryByText("金额占用窗口")).not.toBeInTheDocument();
-    await userEvent.setup().click(screen.getByText("匹配依据"));
+    expect(screen.getByText("金额占用窗口")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "匹配依据" })).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "匹配依据" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByText(/按金额和付款时间推断，不是平台按订单号确认/),
     ).not.toBeInTheDocument();
@@ -158,7 +167,9 @@ describe("order detail work surface", () => {
       ),
     ).toBe(false);
     const user = userEvent.setup();
-    await user.click(screen.getByText("投递尝试（1）"));
+    expect(
+      screen.getByRole("heading", { name: "投递尝试（1）" }),
+    ).toBeVisible();
     expect(
       screen.getByRole("columnheader", { name: "HTTP / ACK" }),
     ).toBeVisible();

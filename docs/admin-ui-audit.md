@@ -10,17 +10,17 @@
 | 收款概览图表 | Card、Chart、ToggleGroup | [Chart / Interactive](https://ui.shadcn.com/docs/components/base/chart) | 指标汇总与切换进图表头，保留三图形与周期 | 2：已通过，鼠标/键盘/明暗/周期 |
 | 每日数据 | Card、Table、Pagination | [Table](https://ui.shadcn.com/docs/components/base/table) | 常驻表格、日期倒序、10条分页；宽屏与图表2:1并排 | 2：已通过，1100px容器断点/跨页/空态 |
 | 设置分类/表单 | Tabs、Card、FieldSet、FieldGroup | [Tabs](https://ui.shadcn.com/docs/components/base/tabs)、[Field](https://ui.shadcn.com/docs/components/base/field) | 默认Tabs，窄屏横滚；完整卡片和字段组，保留草稿保护 | 3：已通过，默认Tabs/横滚/明确激活/草稿保护 |
-| 密钥与安全 | Card、Dialog、AlertDialog、Field | [Dialog](https://ui.shadcn.com/docs/components/base/dialog) | 保留独立敏感操作及短时秘密展示，检查表单组合 | 3/7：待复核 |
+| 密钥与安全 | Card、Dialog、AlertDialog、Field | [Dialog](https://ui.shadcn.com/docs/components/base/dialog) | 保留独立敏感操作及短时秘密展示，不合并“保存全部” | 3/7：已复核，独立动作/秘密生命周期/明暗与窄屏 |
 | 订单 | Table、InputGroup、Select | [Data Table](https://ui.shadcn.com/docs/components/base/data-table) | 服务端搜索排序、统一表格/列显示；保留编号直达 | 4/6：已通过，服务端查询/URL恢复/列显隐 |
-| 业务通知 | Table、Select | [Data Table](https://ui.shadcn.com/docs/components/base/data-table) | 全局搜索排序、统一表格；不加无用途勾选 | 4/6：待实施 |
-| 支付关联/冲突/异常 | Tabs、Table、Select | [Data Table](https://ui.shadcn.com/docs/components/base/data-table) | 保留分类语义，服务端查询与统一表格 | 5/6：已通过，查询绑定/范围忽略/并发恢复 |
+| 业务通知 | Table、InputGroup、Select | [Data Table](https://ui.shadcn.com/docs/components/base/data-table) | 全局搜索排序、统一表格；不加无用途勾选 | 4/6：已通过，服务端查询/URL恢复/列显隐 |
+| 支付关联/冲突/异常 | Tabs、Table、InputGroup、Select | [Data Table](https://ui.shadcn.com/docs/components/base/data-table) | 保留分类语义，服务端查询与统一表格 | 5/6：已通过，服务端检索/查询绑定/URL恢复/列显隐 |
 | 待处理 | Table、Popover、Dialog | [Data Table](https://ui.shadcn.com/docs/components/base/data-table) | 搜索排序绑定游标；按筛选结果忽略，保留逐条并发恢复 | 5/6：已通过，查询绑定/范围忽略/并发恢复 |
-| 订单/关联详情 | Card、Accordion、Collapsible | [Card](https://ui.shadcn.com/docs/components/base/card) | 主要匹配依据直显，附加历史保留按需查看 | 7：待实施 |
-| 通知投递尝试 | Collapsible、Table | [Table](https://ui.shadcn.com/docs/components/base/table) | 直显、倒序、10条分页 | 7：待实施 |
-| 交易对照/采集摘要 | Table、Collapsible | [Table](https://ui.shadcn.com/docs/components/base/table) | 具名两/三列表格、无已有流水不重复空列；摘要直显 | 7：待实施 |
-| 运行状态 | Card、Item、Badge | [Item](https://ui.shadcn.com/docs/components/base/item) | 保留结构，复核状态说明与操作可达性 | 7：待复核 |
-| 配置引导 | Field、Card、Collapsible | [Field](https://ui.shadcn.com/docs/components/base/field) | 保留向导及可选高级/私钥导入，检查常用字段直显 | 7：待复核 |
-| 登录/初始化 | 官方login组合、Field | [官方块](https://ui.shadcn.com/blocks) | 保留初始化事实分流、验证及安全边界 | 7：待复核 |
+| 订单/关联详情 | Card、Accordion、Collapsible | [Card](https://ui.shadcn.com/docs/components/base/card) | 主要匹配依据直显，附加历史保留按需查看 | 7：已通过，具名证据/长商品名/财务动作回归 |
+| 通知投递尝试 | Table、Pagination、Empty | [Table](https://ui.shadcn.com/docs/components/base/table) | 直显、倒序、10条分页；未读取与真实空记录分开 | 7：已通过，21条跨页/同值排序/读取失败/键盘翻页 |
+| 交易对照/采集摘要 | Table、DetailFields、Dialog | [Table](https://ui.shadcn.com/docs/components/base/table) | 具名两/三列表格、无已有流水不重复空列；摘要直显，原始报文按需 | 7：已通过，异常原值/差异标记/明暗与窄屏 |
+| 运行状态 | Card、Item、Badge | [Item](https://ui.shadcn.com/docs/components/base/item) | 保留结构、状态说明及操作入口，不强行重写 | 7：已复核，桌面/手机/明暗/读取状态 |
+| 配置引导 | Tabs、Field、Card、Collapsible | [Field](https://ui.shadcn.com/docs/components/base/field)、[Tabs](https://ui.shadcn.com/docs/components/base/tabs) | 保留向导及可选高级/私钥导入；活动步骤滚入可见范围，触屏页签不裁切 | 7：已通过，常用字段直显/默认与深链入口/草稿及焦点回归 |
+| 登录/初始化 | 官方login组合、Field | [官方块](https://ui.shadcn.com/blocks) | 保留初始化事实分流、验证及安全边界 | 7：已复核，独立已配置/全新实例与明暗/窄屏 |
 | 公开收银台 | Card、Badge、Dialog | 已单独验收的613f947 | 本轮不改 | 保留 |
 
 ## 数据与安全边界
@@ -73,3 +73,19 @@
 - 提醒忽略明确显示当前分类与关键词、跨页范围，丢响应重试继续使用原操作ID与原q；连续恢复仍复用逐条状态机、乱序响应及焦点保护。完整回归发现并修复FlexRender随回调函数变化重建单元格、导致按钮节点与焦点丢失的问题；使用稳定单元格组件类型，未删除焦点断言，24项连续恢复回归全部通过。
 - 完整npm run check通过：后端762项、前端683项，3项平台跳过；新增查询提交/Unicode上限、六类排序请求、列控制、没有客户端重排、详情返回及乱序响应测试。
 - 独立6270实例27项浏览器验收通过，0页面错误：1440/390×明暗×六类列表24场景，真实API排序/空态/列控制/长商品名/页面无横向溢出，另含搜索分页后详情返回、筛选忽略丢响应幂等重试及恢复、读取失败仍可检索。导航验收等待真实数据及视图过渡完成，不把SPA请求开始当成页面就绪。资产stage-6-browser.cjs/json、stage-6-check.log、stage-6-restore-regression.log、stage-6-{width}-{theme}-{page}.png。
+
+### 第7段
+- 官方来源：[Base Table](https://ui.shadcn.com/docs/components/base/table)、[Pagination](https://ui.shadcn.com/docs/components/base/pagination)、[Card](https://ui.shadcn.com/docs/components/base/card)、[Empty](https://ui.shadcn.com/docs/components/base/empty)、[Tabs](https://ui.shadcn.com/docs/components/base/tabs)及[Base UI Tabs API](https://base-ui.com/react/components/tabs)。沿用已安装的 Base UI / Nova 原语，通过 CLI docs 核对组合；不引入新的组件体系或覆盖官方源码。
+- 投递尝试改为常驻具名表格，按开始时间倒序，同值按尝试次数/编号确定顺序，每页10条；不修改传入证据数组。切换投递重置分页，缩短读取结果时夹到有效页。真实空记录显示空态；未获得尝试明细明确说明不能据此判断未曾投递。摘要避免重复列出表格已有的结果。
+- 匹配依据、采集摘要直接呈现；与收款记录重复的事实继续去重。有已有流水时显示字段/传入记录/已有流水三列，没有时只保留两列且仅说明一次“无可对照流水”。固定字段列、边框、差异标记和换行均在业务层实现；保留1.001等异常原始值，不舍入或替换证据。
+- 原始报文仍经记录菜单在技术详情 Dialog 中按需查看，补充历史保留折叠；重新投递、撤销关联、退款标记和冲突处理等确认与幂等状态机未改。运行状态、登录/初始化及密钥安全结构复核后保留，不为组件数量重写。
+- 人工看图发现并修正手机上 ACK/时间文本过早拆字，以及引导页当前步骤落在横向滚动区之外、44px触屏页签被固定容器高度裁切的问题。采用仅在必要时断开长词的换行，设置/向导的触屏页签容器自适应高度；向导默认路由归一化及显式步骤变化均滚入活动项且保留标题焦点。未更改官方 Tabs 原语、敏感信息展示或草稿保护。
+- 最终目标回归127项及前端类型检查通过，覆盖详情/元数据/摘要、两种对照列数、异常金额原值、空/失败区别、21条分页、稳定排序、技术证据按需、向导默认及深链入口和导航草稿。新增7项证据布局与2项向导入口回归。最后一次完整 npm run check 通过：后端762项、前端692项，3项平台跳过；包括构建、版本一致性、生成API检查、资金与连续恢复等既有回归。
+- 新独立6270/6271实例最终51项浏览器验收通过，0页面错误：1440/390×明暗×12类页面/布局共48场景，另含默认向导入口、设置键盘明确激活和投递尝试读取失败。验证两/三列与1.001原值、长文本单元格及整页无横向溢出、21条投递尝试分页/键盘翻页、技术详情按需、活动页签完整可见且触屏高度至少44px。通知的21条尝试仅为确定性的只读响应覆写，其余数据和鉴权来自真实隔离服务；不冒充21次真实发送，没有启动支付宝或通知传输器。实测本机浏览器的长页截图会改变触屏媒体条件，因此手机采用真实视口及滚动后视口截图，并在截图前后断言coarse pointer，避免将截图工具偏差当成业务布局。
+- 本段日志：stage-7-targeted-final.log、stage-7-check-final.log、stage-7-browser-final.log、stage-7-browser.cjs/json；截图stage-7-{width}-{theme}-{page}.png，以及默认向导入口、设置键盘激活和投递读取失败截图。保留早期验收日志以区分人工复核前后的运行，最终以上述final日志及最后浏览器结果为准。
+
+## 最终交付边界
+
+- 七段计划全部完成，并按段独立提交；没有推送或升版。应用版本仍为0.2.2；数据库兼容范围最终为24—26，新增部分仅为第4/5段的查询索引迁移，旧迁移与财务历史不改。
+- 公开收银台保持基线613f947的界面与交互；所有业务写入验收均在隔离合成数据库中进行，原预览服务、账号与数据未改。
+- 主要业务证据直接可见；原始报文、补充历史和秘密继续按需查看。没有把当前页过滤/排序冒充全局搜索，也没有增加无对应业务操作的选择框或假总页数。

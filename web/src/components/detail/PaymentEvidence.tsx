@@ -1,5 +1,5 @@
+import { useId } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown } from "lucide-react";
 import {
   api,
   result,
@@ -32,12 +32,6 @@ import {
   CardContent,
   CardFooter,
 } from "@/components/ui/card";
-import {
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
-} from "@/components/ui/collapsible";
-import { Button } from "@/components/ui/button";
 import { AssociateIncomeAction, ReverseMatchAction } from "./FinancialActions";
 import { DetailFields, OrderFacts, useRelatedOrder } from "./DetailPrimitives";
 import { RecordTools } from "./RecordTools";
@@ -142,6 +136,7 @@ export function CandidateEvidence({
   candidate: MatchCandidate;
   ledger?: ReconciliationLedgerEntry | undefined;
 }) {
+  const titleId = useId();
   const facts = candidateFacts(candidate);
   const shownFacts = facts.filter(
     ([name]) =>
@@ -155,20 +150,15 @@ export function CandidateEvidence({
           : true),
   );
   return (
-    <Collapsible>
-      <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
-        <ChevronDown data-icon="inline-start" />
+    <section className="flex min-w-0 flex-col gap-4" aria-labelledby={titleId}>
+      <h3 id={titleId} className="text-sm font-medium">
         匹配依据
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="flex flex-col gap-4 pt-4">
-          {facts.length < 3 && (
-            <p className="text-sm text-muted-foreground">匹配依据不完整</p>
-          )}
-          <DetailFields items={shownFacts} />
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
+      </h3>
+      {facts.length < 3 && (
+        <p className="text-sm text-muted-foreground">匹配依据不完整</p>
+      )}
+      <DetailFields items={shownFacts} />
+    </section>
   );
 }
 export function MatchCard({

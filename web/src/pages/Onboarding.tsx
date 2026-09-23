@@ -149,9 +149,13 @@ function OnboardingFlow({
   );
   const navigate = useNavigate();
   const heading = useRef<HTMLHeadingElement>(null);
+  const tabList = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    tabList.current
+      ?.querySelector<HTMLElement>('[aria-selected="true"]')
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
     heading.current?.focus({ preventScroll: true });
-  }, [step]);
+  }, [requested, step]);
   const deferredState = { deferOnboardingFor: instanceId };
   function saved(data: RuntimeSettings, next?: OnboardingStep) {
     queryClient.setQueryData(["settings"], { data });
@@ -173,13 +177,24 @@ function OnboardingFlow({
       }}
       className="min-w-0 gap-6"
     >
-      <div className="overflow-x-auto">
-        <TabsList aria-label="配置步骤">
+      <div className="min-w-0 overflow-x-auto p-1">
+        <TabsList
+          ref={tabList}
+          aria-label="配置步骤"
+          className="min-w-max justify-start pointer-coarse:group-data-horizontal/tabs:h-auto"
+        >
           {onboardingSteps.map((item, position) => (
             <TabsTrigger
               key={item.id}
               value={item.id}
               disabled={position > firstMissing}
+              className="shrink-0"
+              onFocus={(event) =>
+                event.currentTarget.scrollIntoView({
+                  block: "nearest",
+                  inline: "nearest",
+                })
+              }
             >
               {completed[position] ? (
                 <Check data-icon="inline-start" aria-label="已配置" />
@@ -498,13 +513,13 @@ export function ReadinessCheck({
     status?.payment_revision === settings.payment_revision;
   const ready = Boolean(
     fresh &&
-      matches &&
-      settings.completion.complete &&
-      status?.configured &&
-      status.database.ok &&
-      status.ledger.collection_ready &&
-      status.reconciliation.confirmation_ready &&
-      status.status !== "not_ready",
+    matches &&
+    settings.completion.complete &&
+    status?.configured &&
+    status.database.ok &&
+    status.ledger.collection_ready &&
+    status.reconciliation.confirmation_ready &&
+    status.status !== "not_ready",
   );
   const missingConfiguration = [
     [settings.completion.application_key, "应用密钥"],
