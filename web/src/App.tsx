@@ -1,3 +1,4 @@
+import { SystemStatusBoundary } from "@/features/system-status";
 import {
   Component,
   useEffect,
@@ -164,7 +165,7 @@ export const appRoutes = createRoutesFromElements(
       <AuthBoundary>
         <DraftProvider>
           <TestPaymentProvider>
-            <AppShell />
+            <SystemStatusBoundary><AppShell /></SystemStatusBoundary>
           </TestPaymentProvider>
         </DraftProvider>
       </AuthBoundary>

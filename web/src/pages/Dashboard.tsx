@@ -1,3 +1,4 @@
+import { SystemStatusBoundary } from "@/features/system-status";
 import {
   AlertCircle,
   ArrowRight,
@@ -46,6 +47,13 @@ import {
 } from "@/components/ui/empty";
 
 export default function Dashboard() {
+  return (
+    <SystemStatusBoundary>
+      <DashboardContent />
+    </SystemStatusBoundary>
+  );
+}
+function DashboardContent() {
   const {
     range,
     analytics,
@@ -86,8 +94,7 @@ export default function Dashboard() {
           ? "自动确认尚未就绪，请检查对账状态"
           : "服务尚未就绪";
   const data = analytics.isPlaceholderData ? undefined : analytics.data?.data;
-  const needsStatus =
-    checking || blocked || state?.status === "degraded" || settings.error;
+  const needsStatus = checking || blocked || settings.error;
   return (
     <>
       {needsStatus && (
@@ -143,19 +150,7 @@ export default function Dashboard() {
                 </Link>
               </AlertDescription>
             </Alert>
-          ) : (
-            state?.status === "degraded" && (
-              <Alert>
-                <AlertCircle />
-                <AlertTitle>可以收款，有运行告警</AlertTitle>
-                <AlertDescription>
-                  <Link to="/system" className="underline underline-offset-4">
-                    查看告警
-                  </Link>
-                </AlertDescription>
-              </Alert>
-            )
-          )}
+          ) : null}
         </div>
       )}
       <SectionCards

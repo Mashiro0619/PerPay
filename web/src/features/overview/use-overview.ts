@@ -1,12 +1,12 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
 import { api, result } from "@/api/client";
-import { useVisibleCheck } from "@/lib/use-visible-check";
+import { useSystemStatus } from "@/features/system-status";
 export function useOverview() {
   const [search, setSearch] = useSearchParams();
   const selected = Number(search.get("range"));
   const range = selected === 7 || selected === 90 ? selected : 30;
-  const view = useVisibleCheck();
+  const { status, unavailable, checking } = useSystemStatus();
   const analytics = useQuery({
     queryKey: ["analytics", range],
     queryFn: ({ signal }) =>
@@ -18,20 +18,6 @@ export function useOverview() {
     queryKey: ["settings"],
     queryFn: ({ signal }) => result(api.getRuntimeSettings({ signal })),
     refetchOnWindowFocus: false,
-  });
-  const status = useQuery({
-    queryKey: ["dashboard", "status", view.epoch],
-    queryFn: ({ signal }) =>
-      result(api.getAdministratorSystemStatus({ signal })),
-    enabled: view.active,
-    staleTime: 0,
-    gcTime: 0,
-    retry: false,
-    refetchOnMount: "always",
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-    refetchInterval: view.active ? 30000 : false,
-    refetchIntervalInBackground: false,
   });
   const orders = useQuery({
     queryKey: ["orders", "recent"],
@@ -50,13 +36,8 @@ export function useOverview() {
     status,
     orders,
     work,
-    unavailable: !view.active || status.isError || status.isPaused,
-    checking:
-      !view.active ||
-      status.isPending ||
-      status.isError ||
-      status.isPaused ||
-      !status.isFetchedAfterMount,
+    unavailable,
+    checking,
     changeRange: (value: string) => {
       if (["7", "30", "90"].includes(value))
         setSearch({ range: value }, { replace: true });

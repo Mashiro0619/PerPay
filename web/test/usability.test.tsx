@@ -407,7 +407,13 @@ describe("short feedback and safe settings", () => {
       "href",
       "/notifications?status=DEAD_LETTER",
     );
-    expect(screen.getByText("有运行告警")).toBeVisible();
+    expect(screen.getByText("有业务事项待处理")).toBeVisible();
+    expect(screen.queryByText("有运行告警")).not.toBeInTheDocument();
+    for (const name of ["账本采集", "自动确认"]) {
+      const row = screen.getByText(name).closest("[data-slot=item]")! as HTMLElement;
+      expect(within(row).getByText("正常")).toBeVisible();
+      expect(within(row).queryByText("需关注")).not.toBeInTheDocument();
+    }
     await waitFor(() =>
       expect(screen.queryByText("收款链路运行正常。")).not.toBeInTheDocument(),
     );

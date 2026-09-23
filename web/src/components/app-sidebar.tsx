@@ -1,3 +1,4 @@
+import { useOptionalSystemStatus } from "@/features/system-status";
 import type { ComponentProps } from "react";
 import {
   Activity,
@@ -42,6 +43,12 @@ export function AppSidebar({
   logoutPending: boolean;
   onLogout: () => void;
 }) {
+  const sharedStatus = useOptionalSystemStatus();
+  const statusNotice = sharedStatus?.checking
+    ? sharedStatus.unavailable
+      ? "状态未知"
+      : "正在检查状态"
+    : sharedStatus?.presentation?.notice;
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader>
@@ -64,6 +71,7 @@ export function AppSidebar({
         <NavSecondary
           items={navigation.slice(5)}
           pathname={pathname}
+          notice={statusNotice ?? null}
           className="mt-auto"
         />
       </SidebarContent>

@@ -58,15 +58,17 @@ describe("homepage collection health", () => {
           ? apiError("internal_error", "unavailable", 503)
           : undefined,
     });
-    expect(await screen.findByText("可以收款，有运行告警")).toBeVisible();
+    expect(await screen.findByText("需关注")).toBeVisible();
+    expect(screen.queryByText("可以收款，有运行告警")).not.toBeInTheDocument();
     expect(screen.queryByText("当前暂停新收款")).not.toBeInTheDocument();
     fail = true;
     await act(async () => {
       await queryClient.invalidateQueries({
-        queryKey: ["dashboard", "status"],
+        queryKey: ["status", "shared"],
       });
     });
     expect(await screen.findByText("暂时无法确认收款状态")).toBeVisible();
+    expect(screen.getByText("状态未知")).toBeVisible();
     expect(screen.queryByText("可以收款，有运行告警")).not.toBeInTheDocument();
   });
   it("invalidates health immediately when offline", async () => {
@@ -76,10 +78,11 @@ describe("homepage collection health", () => {
       path: "/",
       status: (settings) => ({ ...systemStatus(settings), status: "degraded" }),
     });
-    await screen.findByText("可以收款，有运行告警");
+    await screen.findByText("需关注");
     online.mockReturnValue(false);
     fireEvent(window, new Event("offline"));
     expect(screen.getByText("暂时无法确认收款状态")).toBeVisible();
+    expect(screen.getByText("状态未知")).toBeVisible();
     expect(screen.queryByText("可以收款，有运行告警")).not.toBeInTheDocument();
   });
   it("polls while visible, pauses while hidden, and reads afresh on return", async () => {
