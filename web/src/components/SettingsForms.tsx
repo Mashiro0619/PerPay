@@ -47,6 +47,7 @@ import {
   FieldDescription,
   FieldError,
   FieldSet,
+  FieldLegend,
   FieldGroup,
 } from "@/components/ui/field";
 import {
@@ -826,42 +827,50 @@ export function SettingsEditor({
               <Fragment key={panel.title}>{panel.fields}</Fragment>
             ))
           ) : (
-            <FieldGroup className="grid items-start gap-4 @3xl/settings:grid-cols-2">
-              {panels.map((panel, index) => (
+            <Card>
+              <CardHeader>
+                <CardTitle role="heading" aria-level={2}>
+                  {sections.find(([value]) => value === section)?.[1] ?? "设置"}
+                </CardTitle>
+                <CardDescription>
+                  本页修改统一保存，其他分类不受影响。
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
                 <FieldGroup
-                  key={panel.title}
                   className={cn(
-                    "min-w-0 gap-4",
-                    panels.length === 1 && "@3xl/settings:col-span-2",
+                    "grid items-start gap-6",
+                    panels.length > 1 && "@3xl/settings:grid-cols-2",
                   )}
                 >
-                  <Card>
-                    <CardHeader>
-                      <CardTitle role="heading" aria-level={2}>
-                        {panel.title}
-                      </CardTitle>
+                  {panels.map((panel) => (
+                    <FieldSet key={panel.title} className="min-w-0">
+                      <FieldLegend>{panel.title}</FieldLegend>
                       {panel.description && (
-                        <CardDescription>{panel.description}</CardDescription>
+                        <FieldDescription>{panel.description}</FieldDescription>
                       )}
-                    </CardHeader>
-                    <CardContent>{panel.fields}</CardContent>
-                    {index === panels.length - 1 && (
-                      <CardFooter>{actions}</CardFooter>
-                    )}
-                  </Card>
-                  {section === "provider" && index === 0 && (
-                    <ApplicationKey settings={settings} onSaved={onSaved} />
-                  )}
+                      {panel.fields}
+                    </FieldSet>
+                  ))}
                 </FieldGroup>
-              ))}
-            </FieldGroup>
+              </CardContent>
+              <CardFooter>{actions}</CardFooter>
+            </Card>
           )}
           {guided && actions}
         </FieldGroup>
       </FieldSet>
     </form>
   );
-  if (!guided) return editor;
+  if (!guided)
+    return (
+      <div className="flex min-w-0 flex-col gap-4">
+        {editor}
+        {section === "provider" && (
+          <ApplicationKey settings={settings} onSaved={onSaved} />
+        )}
+      </div>
+    );
   return (
     <Card>
       <CardContent className="flex flex-col gap-4">

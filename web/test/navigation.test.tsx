@@ -138,25 +138,37 @@ function unloadIsBlocked() {
 }
 
 describe("navigation and draft protection", () => {
-  it("keeps a directly opened settings section selected in the compact official selector", async () => {
-    const view = mount({ path: "/settings/display", configured: true });
-    const selector = await screen.findByRole("combobox", { name: "设置分类" });
-    expect(selector).toHaveValue("display");
+  it("keeps the same default tabs on narrow screens and activates explicitly", async () => {
+    const view = mount({
+      path: "/settings/display",
+      configured: true,
+      mobile: true,
+    });
+    const list = await screen.findByRole("tablist", { name: "设置分类" });
+    expect(list).toHaveAttribute("data-variant", "default");
+    const selector = screen.getByRole("tab", { name: "界面显示" });
+    expect(selector).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.queryByRole("combobox", { name: "设置分类" }),
+    ).not.toBeInTheDocument();
     const user = userEvent.setup();
-    await user.selectOptions(selector, "collection");
+    await user.click(screen.getByRole("tab", { name: "经营码与订单" }));
     await screen.findByLabelText("收银台有效期（秒）");
     expect(view.router.state.location.pathname).toBe("/settings/collection");
-    expect(selector).toHaveValue("collection");
+    expect(screen.getByRole("tab", { name: "经营码与订单" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     expect(
       view.fetchMock.mock.calls.some(([request]) => request.method !== "GET"),
     ).toBe(false);
   });
 
-  it("preserves a dirty form and the selected settings section after cancelling compact navigation", async () => {
+  it("preserves a dirty form and the selected settings tab after cancelling navigation", async () => {
     const view = mount();
     const { user, field } = await edit();
-    const selector = screen.getByRole("combobox", { name: "设置分类" });
-    await user.selectOptions(selector, "display");
+    const selector = screen.getByRole("tab", { name: "界面显示" });
+    await user.click(selector);
     const confirmation = await screen.findByRole("alertdialog");
     expect(confirmation).toBeVisible();
     expect(confirmation).toHaveClass(
@@ -167,13 +179,32 @@ describe("navigation and draft protection", () => {
     await user.click(screen.getByRole("button", { name: "继续编辑" }));
     expect(view.router.state.location.pathname).toBe("/settings/collection");
     expect(field).toHaveValue(450);
-    expect(selector).toHaveValue("collection");
+    expect(screen.getByRole("tab", { name: "经营码与订单" })).toHaveAttribute("aria-selected", "true");
     await waitFor(() => expect(selector).toHaveFocus());
     expect(unloadIsBlocked()).toBe(true);
     expect(
       view.fetchMock.mock.calls.some(([request]) => request.method !== "GET"),
     ).toBe(false);
   });
+  it("moves tab focus with arrows without discarding drafts until Enter activates", async () => {
+    const view = mount({ mobile: true });
+    const { user, field } = await edit();
+    const selected = screen.getByRole("tab", { name: "经营码与订单" });
+    selected.focus();
+    await user.keyboard("{ArrowRight}");
+    const notifications = screen.getByRole("tab", { name: "业务通知" });
+    expect(notifications).toHaveFocus();
+    expect(selected).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(field).toHaveValue(450);
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("alertdialog")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "继续编辑" }));
+    expect(view.router.state.location.pathname).toBe("/settings/collection");
+    expect(selected).toHaveAttribute("aria-selected", "true");
+    expect(field).toHaveValue(450);
+  });
+
   it("keeps the test-payment action accessible while compacting its visible label on small screens", async () => {
     const { container } = mount({ path: "/", configured: true });
     await screen.findByRole("heading", { name: "收款趋势" });

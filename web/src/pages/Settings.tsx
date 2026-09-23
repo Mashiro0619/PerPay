@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   DatabaseBackup,
@@ -26,10 +26,6 @@ import { SuccessMessage, useFeedback } from "@/components/Feedback";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
 import { SecuritySettings } from "./SecuritySettings";
 
 const sectionIcons = {
@@ -45,6 +41,7 @@ const sectionIcons = {
 export default function Settings() {
   const { section: requestedSection } = useParams();
   const navigate = useNavigate();
+  const tabList = useRef<HTMLDivElement>(null);
   const [success, setSuccess] = useFeedback();
   const [editorVersion, setEditorVersion] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -56,6 +53,11 @@ export default function Settings() {
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
+  useEffect(() => {
+    tabList.current
+      ?.querySelector<HTMLElement>('[aria-selected="true"]')
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [requestedSection, settings.isSuccess]);
   function saved(data: RuntimeSettings, message = "已保存") {
     queryClient.setQueryData(["settings"], { data });
     setSuccess(message);
@@ -122,33 +124,37 @@ export default function Settings() {
               onValueChange={changeSection}
               className="min-w-0 gap-6"
             >
-              <NativeSelect
-                aria-label="设置分类"
-                className="w-full @3xl/settings:hidden"
-                value={section}
-                onChange={(event) => changeSection(event.currentTarget.value)}
+              <div
+                className="min-w-0 overflow-x-auto p-1"
+                data-settings-tabs-scroll
               >
-                {sections.map(([value, title]) => (
-                  <NativeSelectOption key={value} value={value}>
-                    {title}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-              <TabsList
-                aria-label="设置分类"
-                variant="line"
-                className="hidden w-full justify-start @3xl/settings:inline-flex"
-              >
-                {sections.map(([value, title]) => {
-                  const Icon = sectionIcons[value];
-                  return (
-                    <TabsTrigger key={value} value={value}>
-                      <Icon />
-                      {title}
-                    </TabsTrigger>
-                  );
-                })}
-              </TabsList>
+                <TabsList
+                  ref={tabList}
+                  aria-label="设置分类"
+                  activateOnFocus={false}
+                  className="min-w-max justify-start"
+                >
+                  {sections.map(([value, title]) => {
+                    const Icon = sectionIcons[value];
+                    return (
+                      <TabsTrigger
+                        key={value}
+                        value={value}
+                        className="shrink-0"
+                        onFocus={(event) =>
+                          event.currentTarget.scrollIntoView({
+                            block: "nearest",
+                            inline: "nearest",
+                          })
+                        }
+                      >
+                        <Icon />
+                        {title}
+                      </TabsTrigger>
+                    );
+                  })}
+                </TabsList>
+              </div>
               <TabsContent value={section}>
                 <div
                   data-settings-content

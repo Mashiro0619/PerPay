@@ -9,7 +9,7 @@
 | 主/次导航 | Sidebar | [Sidebar](https://ui.shadcn.com/docs/components/base/sidebar) | 业务组合使用4px间距；精确匹配路由边界，声明当前页；不改官方原语 | 1：已通过，4px/触屏44px/选中与焦点 |
 | 收款概览图表 | Card、Chart、ToggleGroup | [Chart / Interactive](https://ui.shadcn.com/docs/components/base/chart) | 指标汇总与切换进图表头，保留三图形与周期 | 2：已通过，鼠标/键盘/明暗/周期 |
 | 每日数据 | Card、Table、Pagination | [Table](https://ui.shadcn.com/docs/components/base/table) | 常驻表格、日期倒序、10条分页；宽屏与图表2:1并排 | 2：已通过，1100px容器断点/跨页/空态 |
-| 设置分类/表单 | Tabs line、NativeSelect、Card、Field | [Tabs](https://ui.shadcn.com/docs/components/base/tabs)、[Field](https://ui.shadcn.com/docs/components/base/field) | 默认Tabs，窄屏横滚；完整卡片和字段组，保留草稿保护 | 3：待实施 |
+| 设置分类/表单 | Tabs、Card、FieldSet、FieldGroup | [Tabs](https://ui.shadcn.com/docs/components/base/tabs)、[Field](https://ui.shadcn.com/docs/components/base/field) | 默认Tabs，窄屏横滚；完整卡片和字段组，保留草稿保护 | 3：已通过，默认Tabs/横滚/明确激活/草稿保护 |
 | 密钥与安全 | Card、Dialog、AlertDialog、Field | [Dialog](https://ui.shadcn.com/docs/components/base/dialog) | 保留独立敏感操作及短时秘密展示，检查表单组合 | 3/7：待复核 |
 | 订单 | Table、InputGroup、Select | [Data Table](https://ui.shadcn.com/docs/components/base/data-table) | 服务端搜索排序、统一表格/列显示；保留编号直达 | 4/6：待实施 |
 | 业务通知 | Table、Select | [Data Table](https://ui.shadcn.com/docs/components/base/data-table) | 全局搜索排序、统一表格；不加无用途勾选 | 4/6：待实施 |
@@ -43,3 +43,10 @@
 - 目标回归70项通过；完整npm run check通过：752项后端、671项前端，3项平台跳过。覆盖单序列、精确金额、指标键盘切换、三图形高亮、跨页无遗漏、周期切换与异步乱序、空态及失败态。浏览器负向验收发现并修复统计失败后汇总卡永久显示Skeleton的问题。
 - 浏览器20项场景通过，包含1440/390宽度×明暗×三图形、1100px临界断点、7/90天、长金额、加载和读取失败；鼠标、键盘、分页均实测，页面错误为0。独立6270/6271合成测试库验证真实页面与鉴权；图形矩阵使用固定合成analytics/settings只读响应，以便复现实验，不修改原预览数据或账号。
 - 验收资产位于本轮线程01a0c4e1-7a3f-7f33-9c58-3544a5e40529的admin-ui-rework目录：stage-2-browser.cjs、stage-2-browser.json、stage-2-check.log、stage-2-1440/390-{light,dark}-{area,bar,line}.png，以及loading、failed-read、long-values截图。
+
+### 第3段
+- 官方来源：[Base Tabs](https://ui.shadcn.com/docs/components/base/tabs)、[Field](https://ui.shadcn.com/docs/components/base/field)、[Card](https://ui.shadcn.com/docs/components/base/card)；通过CLI docs核对组件API。只改业务组合，不覆盖原语。
+- 七分类统一默认TabsList，窄屏同一套横向滚动页签；activateOnFocus=false，方向键仅移焦点，Enter/Space明确切换；深链所选页签滚入可见范围。保留导航、刷新和页面离开草稿保护。
+- 普通分类一个完整CardHeader/Content/Footer，内部FieldSet/Legend/Group划分领域，唯一保存按钮明确属于整个分类表单；应用密钥生成移出普通保存表单，密码/密钥/注销仍分别确认。常用字段直显，高级参数及私钥导入保留具名折叠和字段错误展开聚焦。
+- 完整npm run check通过：后端752项、前端672项，3项平台测试跳过；目标63项涵盖默认页签、键盘激活、取消切换后的选中与草稿、分组表单、显示设置和引导兼容。
+- 独立6270合成库实测1440/390×明暗×七分类28个页面及4组键盘/草稿交互，整页无横向溢出；390下页签自身714px可滚动、容器358px，长表单与保存可达，页面错误0。记录stage-3-browser.json、stage-3-check.log和stage-3-{width}-{theme}-{section}.png。

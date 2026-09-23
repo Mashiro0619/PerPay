@@ -52,7 +52,9 @@ describe("official block composition", () => {
       expect(links).toHaveLength(3);
       for (const menu of container.querySelectorAll("[data-sidebar=menu]"))
         expect(menu).toHaveClass("gap-1");
-      expect(container.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+      expect(container.querySelectorAll('[aria-current="page"]')).toHaveLength(
+        1,
+      );
       for (const link of links)
         expect(link).toHaveAttribute("data-size", "default");
       expect(
@@ -69,15 +71,18 @@ describe("official block composition", () => {
     ["/orders/order-id", "/orders", true],
     ["/settings/provider", "/settings", true],
     ["/orders", "/", false],
-  ] as const)("matches navigation path boundaries for %s", (pathname, url, expected) => {
-    expect(isNavigationItemActive(pathname, url)).toBe(expected);
-  });
+  ] as const)(
+    "matches navigation path boundaries for %s",
+    (pathname, url, expected) => {
+      expect(isNavigationItemActive(pathname, url)).toBe(expected);
+    },
+  );
 
   it.each([
     ["collection", "支付宝经营码", "订单规则"],
     ["display", "收银台", "收款概览"],
   ] as const)(
-    "groups %s fields in official cards with one form and a contextual save footer",
+    "groups %s fields in one official card with fieldsets and a form-wide save footer",
     (section, first, second) => {
       const { container } = render(
         <QueryClientProvider client={queryClient}>
@@ -91,13 +96,14 @@ describe("official block composition", () => {
         </QueryClientProvider>,
       );
       const firstCard = screen
-        .getByRole("heading", { name: first })
+        .getByRole("group", { name: first })
         .closest("[data-slot=card]");
       const secondCard = screen
-        .getByRole("heading", { name: second })
+        .getByRole("group", { name: second })
         .closest("[data-slot=card]");
       expect(firstCard).not.toBeNull();
-      expect(secondCard).not.toBe(firstCard);
+      expect(secondCard).toBe(firstCard);
+      expect(container.querySelectorAll("[data-slot=card]")).toHaveLength(1);
       expect(container.querySelectorAll("form")).toHaveLength(1);
       const save = screen.getByRole("button", { name: "保存" });
       expect(save.closest("[data-slot=card-footer]")).not.toBeNull();
