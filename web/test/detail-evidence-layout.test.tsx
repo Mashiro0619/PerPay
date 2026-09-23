@@ -10,6 +10,7 @@ import {
 } from "../src/api/client";
 import { DeliveryAttempts } from "../src/components/detail/DeliveryAttempts";
 import { ConflictCard } from "../src/components/detail/ConflictEvidence";
+import { ConflictComparison } from "../src/components/detail/ConflictComparison";
 import { CandidateEvidence } from "../src/components/detail/PaymentEvidence";
 import { candidate, failedAttempt, detailLedger } from "./detail-fixtures";
 const id = "11111111-1111-4111-8111-111111111111";
@@ -175,7 +176,7 @@ describe("always-visible detail evidence", () => {
       mountConflict(existing);
       const table = screen.getByRole("table", { name: "交易对照" });
       expect(within(table).getAllByRole("columnheader")).toHaveLength(
-        existing ? 3 : 2,
+        existing ? 4 : 3,
       );
       expect(within(table).getByText("1.001")).toBeVisible();
       expect(screen.queryByText("无已有记录")).not.toBeInTheDocument();
@@ -186,9 +187,18 @@ describe("always-visible detail evidence", () => {
         .getByRole("rowheader", { name: /交易金额/ })
         .closest("tr")!;
       expect(amount).toHaveAttribute("data-different", "true");
+      expect(within(amount).getByRole("rowheader")).toHaveTextContent(
+        /^交易金额$/,
+      );
+      expect(within(amount).getByText("异常").closest("td")).toHaveAttribute(
+        "data-comparison-result",
+      );
       expect(
-        within(amount).getByText(existing ? "不同" : "异常"),
+        within(table).getByRole("columnheader", {
+          name: existing ? "差异" : "校验结果",
+        }),
       ).toBeVisible();
+      expect(within(amount).getByText("异常")).toBeVisible();
       expect(screen.getByRole("heading", { name: "采集摘要" })).toBeVisible();
       expect(screen.getByText("已通过")).toBeVisible();
       expect(
@@ -216,5 +226,75 @@ describe("always-visible detail evidence", () => {
     expect(
       screen.queryByRole("button", { name: "匹配依据" }),
     ).not.toBeInTheDocument();
+  });
+  it("keeps valid differences in their own result cell rather than under the field name", () => {
+    const detail = conflict(true);
+    detail.incoming_event!.amount_text = "2.50";
+    render(<ConflictComparison detail={detail} />);
+    const table = screen.getByRole("table", { name: "交易对照" });
+    const row = within(table)
+      .getByRole("rowheader", { name: "交易金额" })
+      .closest("tr")!;
+    expect(within(row).getByRole("rowheader")).toHaveTextContent(/^交易金额$/);
+    expect(within(row).getByText("不同").closest("td")).toHaveAttribute(
+      "data-comparison-result",
+    );
+    expect(row.querySelector('[data-slot="badge"]')).toBeNull();
+    expect(within(row).getByText("2.50")).toBeVisible();
+    expect(within(row).getByText("¥1.00")).toBeVisible();
+    expect(
+      within(table).getByRole("rowheader", { name: "商户订单号" }),
+    ).toBeVisible();
+  });
+  it.each([false, true])(
+    "keeps mobile values paired field-by-field without repeating the unavailable ledger (existing=%s)",
+    (existing) => {
+      const detail = conflict(existing);
+      detail.incoming_event!.trans_memo = "第一行\n第二行 <原始文字>";
+      const { container } = render(<ConflictComparison detail={detail} />);
+      const mobile = container.querySelector(
+        "[data-comparison-mobile]",
+      )! as HTMLElement;
+      const amount = within(mobile).getByRole("group", { name: "交易金额" });
+      expect(mobile).toHaveAttribute("role", "group");
+      expect(mobile).toHaveAccessibleName("逐字段交易对照");
+      // ItemHeader fills a row; flex-col would instead make it fill the column.
+      expect(amount).toHaveClass("flex-wrap");
+      expect(amount).not.toHaveClass("flex-col");
+      const header = amount.querySelector('[data-slot="item-header"]')!;
+      const content = amount.querySelector('[data-slot="item-content"]')!;
+      expect(header).toHaveClass("basis-full");
+      expect(header.nextElementSibling).toBe(content);
+      expect(header.querySelector('[data-slot="item-title"]')).toHaveTextContent(
+        /^交易金额$/,
+      );
+      expect(within(header as HTMLElement).getByText("异常")).toBeInTheDocument();
+      expect(
+        [...amount.querySelectorAll("dt")].map((e) => e.textContent),
+      ).toEqual(existing ? ["传入记录", "已有流水"] : ["传入记录"]);
+      expect(
+        [...amount.querySelectorAll("dd")].map((e) => e.textContent),
+      ).toEqual(existing ? ["1.001", "¥1.00"] : ["1.001"]);
+      expect(
+        within(amount).getByText("异常").closest("[data-comparison-result]"),
+      ).not.toBeNull();
+      const memo = within(mobile).getByRole("group", { name: "交易备注" });
+      expect(memo.querySelector("dd")?.textContent).toBe(
+        detail.incoming_event!.trans_memo,
+      );
+      expect(container.querySelector("[data-conflict-comparison]")).toHaveClass(
+        "max-w-5xl",
+      );
+      expect(screen.queryAllByText("无可对照流水")).toHaveLength(
+        existing ? 0 : 1,
+      );
+    },
+  );
+  it("does not invent a comparison when no transaction evidence is available", () => {
+    const detail = conflict(false);
+    detail.incoming_event = null;
+    render(<ConflictComparison detail={detail} />);
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.queryByText("交易对照")).not.toBeInTheDocument();
   });
 });

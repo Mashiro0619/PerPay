@@ -6,13 +6,12 @@ import {
   type LedgerConflictDetail,
 } from "@/api/client";
 import { dateTime } from "@/lib/format";
-import { conflictComparison } from "@/lib/conflict-comparison";
+import { ConflictComparison } from "./ConflictComparison";
 import { label } from "@/lib/labels";
 import { ReasonDialog } from "@/components/ReasonDialog";
 import { StatusBadge } from "@/components/business-status";
 import { SuccessMessage } from "@/components/Feedback";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardHeader,
@@ -22,14 +21,6 @@ import {
   CardContent,
   CardFooter,
 } from "@/components/ui/card";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "@/components/ui/table";
 import { DetailFields } from "./DetailPrimitives";
 import { RecordTools } from "./RecordTools";
 const explanations: Record<string, string> = {
@@ -55,8 +46,6 @@ export function ConflictCard({ detail }: { detail: LedgerConflictDetail }) {
     conflict.conflict_type === "DUPLICATE_EXTERNAL_ID"
       ? "KEEP_EXISTING"
       : "ACKNOWLEDGE_ISOLATED";
-  const rows = conflictComparison(detail);
-  const comparisonId = useId();
   const collectionId = useId();
   return (
     <Card aria-label="账本冲突证据">
@@ -91,67 +80,7 @@ export function ConflictCard({ detail }: { detail: LedgerConflictDetail }) {
               : []),
           ]}
         />
-        {rows.length > 0 && (
-          <section
-            className="flex min-w-0 flex-col gap-3"
-            aria-labelledby={comparisonId}
-          >
-            <div className="flex flex-wrap items-baseline gap-2">
-              <h3 id={comparisonId} className="text-sm font-medium">
-                交易对照
-              </h3>
-              {!existing && (
-                <p className="text-xs text-muted-foreground">无可对照流水</p>
-              )}
-            </div>
-            <div className="min-w-0 overflow-hidden rounded-lg border">
-              <Table aria-labelledby={comparisonId} className="table-fixed">
-                <colgroup>
-                  <col className="w-24 sm:w-32" />
-                  <col />
-                  {existing && <col />}
-                </colgroup>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>字段</TableHead>
-                    <TableHead>传入记录</TableHead>
-                    {existing && <TableHead>已有流水</TableHead>}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map((row) => (
-                    <TableRow
-                      key={row.name}
-                      data-different={row.differs || undefined}
-                    >
-                      <TableHead
-                        scope="row"
-                        className="align-top whitespace-normal"
-                      >
-                        <div className="flex flex-col gap-1">
-                          {row.name}
-                          {row.differs && (
-                            <Badge variant="destructive">
-                              {existing ? "不同" : "异常"}
-                            </Badge>
-                          )}
-                        </div>
-                      </TableHead>
-                      <TableCell className="align-top whitespace-pre-wrap wrap-anywhere">
-                        {row.incoming ?? "未提供"}
-                      </TableCell>
-                      {existing && (
-                        <TableCell className="align-top whitespace-pre-wrap wrap-anywhere">
-                          {row.existing ?? "未提供"}
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </section>
-        )}
+        <ConflictComparison detail={detail} />
         {detail.raw_page && (
           <section
             className="flex min-w-0 flex-col gap-3"
