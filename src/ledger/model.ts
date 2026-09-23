@@ -1,3 +1,4 @@
+import type { ListPosition } from "../shared/list-query.ts";
 import { createHash } from "node:crypto";
 
 import type { AccountLogDetail, AccountLogPage } from "../infrastructure/alipay/types.ts";
@@ -299,6 +300,7 @@ export interface LedgerConflictDetail {
 }
 
 export interface LedgerConflictCursor {
+  readonly position?: ListPosition;
   readonly createdAt: number;
   readonly conflictId: string;
 }

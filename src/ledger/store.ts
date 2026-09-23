@@ -1,3 +1,5 @@
+import { normalizeListQuery, CONFLICT_SORT_FIELDS, type ConflictSort, type ListQuery } from "../shared/list-query.ts";
+import { listKeyset, listSearch } from "../database/list-query.ts";
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 
@@ -961,7 +963,7 @@ export class LedgerStore {
     status: LedgerConflictStatus | "ALL" = "OPEN",
     cursor: LedgerConflictCursor | null = null,
     limit = 100,
-    options: { readonly excludeIgnoredReminders?: boolean } = {},
+    options: { readonly excludeIgnoredReminders?: boolean; readonly query?: ListQuery<ConflictSort> } = {},
   ): LedgerConflictPage {
     const account = normalizeProviderAccountKey(providerAccountKey);
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) {
@@ -974,7 +976,11 @@ export class LedgerStore {
       requireUuid(cursor.conflictId, "ledger conflict cursor ID");
       safeTimestamp(cursor.createdAt, "ledger conflict cursor time");
     }
+    const query = normalizeListQuery(options.query, CONFLICT_SORT_FIELDS, "created_at", "asc");
     return this.#database.read((connection) => {
+      const search = listSearch(["conflict_id", "existing_ledger_entry_id", "external_event_id", "conflict_type"], query.q);
+      const position = cursor?.position ?? (cursor ? {value: cursor.createdAt, keys: [cursor.conflictId]} : null);
+      const seek = listKeyset(query.sortBy, ["conflict_id"], query.sortOrder, position, query.sortBy === "external_event_id");
       const rows = connection
         .prepare(
           `SELECT ${CONFLICT_COLUMNS}
@@ -987,11 +993,9 @@ export class LedgerStore {
                   AND reminder.item_id = ledger_conflicts.conflict_id
                   AND reminder.ignored = 1
               ))
-              AND (
-                ? IS NULL OR created_at > ? OR
-                (created_at = ? AND conflict_id > ?)
-              )
-            ORDER BY created_at, conflict_id
+              ${search.where ? "AND " + search.where : ""}
+              ${seek.where ? "AND " + seek.where : ""}
+            ORDER BY ${seek.orderBy}
             LIMIT ?`,
         )
         .all(
@@ -999,10 +1003,7 @@ export class LedgerStore {
           status,
           status,
           options.excludeIgnoredReminders ? 1 : 0,
-          cursor?.createdAt ?? null,
-          cursor?.createdAt ?? null,
-          cursor?.createdAt ?? null,
-          cursor?.conflictId ?? null,
+          ...search.parameters, ...seek.parameters,
           limit + 1,
         ) as unknown as ConflictRow[];
       const selected = rows.slice(0, limit);
@@ -1013,6 +1014,7 @@ export class LedgerStore {
           ? Object.freeze({
               createdAt: toSafeInteger(last.created_at, "ledger conflict cursor time"),
               conflictId: last.conflict_id,
+              ...(options.query ? {position: {value: query.sortBy === "external_event_id" ? last.external_event_id : toSafeInteger(last.created_at, "conflict sort time"), keys: [last.conflict_id]}} : {}),
             })
           : null,
       });

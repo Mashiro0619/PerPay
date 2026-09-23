@@ -264,12 +264,13 @@ paths:
       operationId: listAdministratorWorkItems
       summary: Page through active or dismissed administrator reminders
       description: |
+        Searches item and related business IDs, product name, external event ID, notification URL and error/type codes before paging. ignored_at sorting is valid only for IGNORED. New cursors bind keyword, sort, type and visibility; old cursors only with original defaults. Pagination is a live list, not a persistent database snapshot.
         ACTIVE combines undismissed open financial exceptions, open ledger conflicts, retry-wait
         notifications and latest dead-letter notifications from every retained provider generation.
         Legacy UNMATCHED_DEBIT and UNLINKED_REFUND warnings are excluded without changing their status.
-        A single SQLite snapshot drives this list and home-page reminders. ACTIVE sorts by descending
+        A single SQLite read drives each page and home-page reminders. By default ACTIVE sorts by descending
         actionable time, type and resource ID; IGNORED sorts by dismissal time, type and resource ID.
-        The cursor is bound to type and visibility. IGNORED retains resolved or acknowledged records
+        IGNORED retains resolved or acknowledged records
         with ended=true and keeps ignored notifications visible during subsequent pending/leased retries.
         Each item links to its original detailed resource endpoint. Dismissal changes neither financial
         facts nor conflict constraints and never stops notification retries.
@@ -286,6 +287,19 @@ paths:
           in: query
           required: false
           schema: { type: string, enum: [ACTIVE, IGNORED], default: ACTIVE }
+        - name: q
+          in: query
+          required: false
+          description: Trimmed literal substring, at most 100 Unicode characters. No wildcard expansion and no raw payload, secret or financial-reason search.
+          schema: { type: string, maxLength: 100 }
+        - name: sort_by
+          in: query
+          required: false
+          schema: { type: string, enum: [actionable_at, created_at, ignored_at] }
+        - name: sort_order
+          in: query
+          required: false
+          schema: { type: string, enum: [asc, desc], default: desc }
         - name: limit
           in: query
           required: false
@@ -301,7 +315,7 @@ paths:
           schema:
             type: string
             minLength: 1
-            maxLength: 256
+            maxLength: 2048
             pattern: '^[A-Za-z0-9_-]+$'
       responses:
         '200':
@@ -1117,6 +1131,19 @@ paths:
             type: string
             enum: [OPEN, RESOLVED, IGNORED, ALL]
             default: OPEN
+        - name: q
+          in: query
+          required: false
+          description: Trimmed literal substring, at most 100 Unicode characters. No wildcard expansion and no raw payload, secret or financial-reason search.
+          schema: { type: string, maxLength: 100 }
+        - name: sort_by
+          in: query
+          required: false
+          schema: { type: string, enum: [created_at, external_event_id] }
+        - name: sort_order
+          in: query
+          required: false
+          schema: { type: string, enum: [asc, desc], default: asc }
         - name: limit
           in: query
           required: false
@@ -1132,7 +1159,7 @@ paths:
           schema:
             type: string
             minLength: 1
-            maxLength: 256
+            maxLength: 2048
             pattern: '^[A-Za-z0-9_-]+$'
       responses:
         '200':
@@ -1281,6 +1308,7 @@ paths:
       operationId: listPaymentMatches
       summary: Page through settled payment associations
       description: |
+        Searches match/order/merchant/ledger-entry/external event IDs before paging. Default sort is event_sequence ascending. New cursors bind keyword, sort and status. ID tie-breaks; old cursors only for original defaults.
         Defaults to `SETTLED`. Each item includes immutable association evidence, normalized
         ledger facts, and the order summary. Cursors are bound to the selected status and cannot
         be reused with another filter. Open anomalies are exposed by the exceptions endpoint.
@@ -1295,6 +1323,19 @@ paths:
             type: string
             enum: [SETTLED, REVERSED]
             default: SETTLED
+        - name: q
+          in: query
+          required: false
+          description: Trimmed literal substring, at most 100 Unicode characters. No wildcard expansion and no raw payload, secret or financial-reason search.
+          schema: { type: string, maxLength: 100 }
+        - name: sort_by
+          in: query
+          required: false
+          schema: { type: string, enum: [event_sequence, created_at, amount_cents] }
+        - name: sort_order
+          in: query
+          required: false
+          schema: { type: string, enum: [asc, desc], default: asc }
         - name: limit
           in: query
           required: false
@@ -1310,7 +1351,7 @@ paths:
           schema:
             type: string
             minLength: 1
-            maxLength: 256
+            maxLength: 2048
             pattern: '^[A-Za-z0-9_-]+$'
       responses:
         '200':
@@ -1352,6 +1393,19 @@ paths:
         - AdminSessionCookie: []
       parameters:
         - $ref: '#/components/parameters/RequestId'
+        - name: q
+          in: query
+          required: false
+          description: Trimmed literal substring, at most 100 Unicode characters. No wildcard expansion and no raw payload, secret or financial-reason search.
+          schema: { type: string, maxLength: 100 }
+        - name: sort_by
+          in: query
+          required: false
+          schema: { type: string, enum: [created_at] }
+        - name: sort_order
+          in: query
+          required: false
+          schema: { type: string, enum: [asc, desc], default: asc }
         - name: limit
           in: query
           required: false
@@ -2314,6 +2368,10 @@ components:
       properties:
         operation_id: { $ref: '#/components/schemas/ResourceId' }
         type: { $ref: '#/components/schemas/AdminWorkItemTypeFilter' }
+        q:
+          type: string
+          maxLength: 100
+          description: Optional normalized keyword defining the complete matching scope across pages. Retry must keep the same operation ID and normalized keyword. Empty keywords preserve legacy request fingerprints.
     IgnoreAllWorkItemsEnvelope:
       type: object
       additionalProperties: false
@@ -2327,6 +2385,7 @@ components:
             operation_id: { $ref: '#/components/schemas/ResourceId' }
             type: { $ref: '#/components/schemas/AdminWorkItemTypeFilter' }
             ignored_count: { type: integer, minimum: 0 }
+            q: { type: string, maxLength: 100, description: Normalized nonempty keyword recorded for this operation. }
     RestoreWorkItemEnvelope:
       type: object
       additionalProperties: false

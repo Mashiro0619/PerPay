@@ -80,12 +80,14 @@ export type AdminOperationRequest = {
 export type IgnoreAllWorkItemsRequest = {
     operation_id: ResourceId;
     type: AdminWorkItemTypeFilter;
+    q?: string;
 };
 export type IgnoreAllWorkItemsEnvelope = {
     data: {
         operation_id: ResourceId;
         type: AdminWorkItemTypeFilter;
         ignored_count: number;
+        q?: string;
     };
 };
 export type RestoreWorkItemEnvelope = {
@@ -1202,6 +1204,9 @@ export type ListAdministratorWorkItemsData = {
     query?: {
         type?: AdminWorkItemTypeFilter;
         visibility?: 'ACTIVE' | 'IGNORED';
+        q?: string;
+        sort_by?: 'actionable_at' | 'created_at' | 'ignored_at';
+        sort_order?: 'asc' | 'desc';
         limit?: number;
         cursor?: string;
     };
@@ -1745,6 +1750,9 @@ export type ListLedgerConflictsData = {
     path?: never;
     query?: {
         status?: 'OPEN' | 'RESOLVED' | 'IGNORED' | 'ALL';
+        q?: string;
+        sort_by?: 'created_at' | 'external_event_id';
+        sort_order?: 'asc' | 'desc';
         limit?: number;
         cursor?: string;
     };
@@ -1881,6 +1889,9 @@ export type ListPaymentMatchesData = {
     path?: never;
     query?: {
         status?: 'SETTLED' | 'REVERSED';
+        q?: string;
+        sort_by?: 'event_sequence' | 'created_at' | 'amount_cents';
+        sort_order?: 'asc' | 'desc';
         limit?: number;
         cursor?: string;
     };
@@ -1924,6 +1935,9 @@ export type ListOpenFinancialExceptionsData = {
     };
     path?: never;
     query?: {
+        q?: string;
+        sort_by?: 'created_at';
+        sort_order?: 'asc' | 'desc';
         limit?: number;
         cursor?: string;
     };

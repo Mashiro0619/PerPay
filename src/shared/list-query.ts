@@ -79,3 +79,23 @@ export function isDefaultQuery(
 ): boolean {
   return query.q === "" && query.sortBy === field && query.sortOrder === order;
 }
+
+export const MATCH_SORT_FIELDS = [
+  "event_sequence",
+  "created_at",
+  "amount_cents",
+] as const;
+export type MatchSort = (typeof MATCH_SORT_FIELDS)[number];
+export const CONFLICT_SORT_FIELDS = [
+  "created_at",
+  "external_event_id",
+] as const;
+export type ConflictSort = (typeof CONFLICT_SORT_FIELDS)[number];
+export const EXCEPTION_SORT_FIELDS = ["created_at"] as const;
+export type ExceptionSort = (typeof EXCEPTION_SORT_FIELDS)[number];
+export const WORK_ITEM_SORT_FIELDS = [
+  "actionable_at",
+  "created_at",
+  "ignored_at",
+] as const;
+export type WorkItemSort = (typeof WORK_ITEM_SORT_FIELDS)[number];

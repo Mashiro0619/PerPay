@@ -38,6 +38,25 @@ await withHttpFixture(async (f) => {
     "https://bench.example.test/notify/template",
   );
   f.webhooks.materialize(20, Date.now());
+  const reminderBenchmark = process.argv[3] === "work-items";
+  if (reminderBenchmark) {
+    const claim = f.webhooks.claimNext({
+      now: Date.now(),
+      leaseMilliseconds: 30000,
+      maximumAttempts: 3,
+    })!;
+    f.webhooks.completeAttempt({
+      deliveryId: claim.delivery.deliveryId,
+      attemptId: claim.attempt.attemptId,
+      leaseToken: claim.attempt.leaseToken,
+      outcome: "RETRYABLE_FAILURE",
+      now: Date.now(),
+      maximumAttempts: 3,
+      retryBaseMilliseconds: 600000,
+      retryMaximumMilliseconds: 600000,
+      errorCode: "benchmark_timeout",
+    });
+  }
   // A read-query benchmark, NOT a financial-write benchmark. Clone one validated synthetic
   // projection in this disposable fixture; omit write triggers only during bulk snapshot loading.
   // Correctness/security tests use the complete production schema and real operations instead.
@@ -140,6 +159,15 @@ await withHttpFixture(async (f) => {
     ["webhooks/deliveries", "q=notify/&sort_by=created_at&sort_order=asc"],
     ["webhooks/deliveries", "q=bench-&sort_by=attempt_count&sort_order=desc"],
     ["webhooks/deliveries", "sort_by=next_attempt_at&sort_order=desc"],
+    ...(reminderBenchmark
+      ? ([
+          ["work-items", "q=基准中文&sort_by=created_at&sort_order=asc"],
+          [
+            "work-items",
+            "q=benchmark_timeout&sort_by=actionable_at&sort_order=desc",
+          ],
+        ] as const)
+      : []),
   ] as const) {
     const path = "/api/admin/v1/" + resource + "?limit=20&" + query;
     const start = performance.now();

@@ -1,3 +1,5 @@
+import { normalizeListQuery, MATCH_SORT_FIELDS, EXCEPTION_SORT_FIELDS, type MatchSort, type ExceptionSort, type ListQuery, type ListPosition } from "../shared/list-query.ts";
+import { listKeyset, listSearch } from "../database/list-query.ts";
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 
@@ -69,6 +71,7 @@ export interface PendingLedgerPage {
 }
 
 export interface FinancialExceptionCursor {
+  readonly position?: ListPosition;
   readonly createdAt: number;
   readonly exceptionId: string;
 }
@@ -135,6 +138,7 @@ export interface PaymentMatchDetail {
 }
 
 export interface PaymentMatchHistoryCursor {
+  readonly position?: ListPosition;
   readonly eventSequence: number;
 }
 
@@ -241,6 +245,7 @@ interface PaymentMatchRow {
 }
 
 interface PaymentMatchHistoryPageRow extends PaymentMatchRow {
+  readonly list_sort_value: number | bigint;
   readonly event_sequence: bigint | number;
 }
 
@@ -815,6 +820,7 @@ export class ReconciliationStore {
     status: PaymentMatchStatus = "SETTLED",
     cursor: PaymentMatchHistoryCursor | null = null,
     limit = 100,
+    requestedQuery?: ListQuery<MatchSort>,
   ): PaymentMatchHistoryPage {
     if (!PAYMENT_MATCH_STATUSES.has(status)) {
       throw new RangeError("payment match history status is invalid");
@@ -827,7 +833,13 @@ export class ReconciliationStore {
         throw new RangeError("payment match history cursor sequence is invalid");
       }
     }
+    const query = normalizeListQuery(requestedQuery, MATCH_SORT_FIELDS, "event_sequence", "asc");
     return this.#database.read((connection) => {
+      const columns = {event_sequence: "match_event.event_sequence", created_at: "payment_match.created_at", amount_cents: "entry.amount_cents"};
+      const expression = columns[query.sortBy];
+      const position = cursor?.position ?? (cursor ? {value: cursor.eventSequence, keys: ["\uffff"]} : null);
+      const seek = listKeyset(expression, ["payment_match.payment_match_id"], query.sortOrder, position);
+      const search = listSearch(["payment_match.payment_match_id", "payment_match.order_id", "orders.merchant_order_no", "payment_match.ledger_entry_id", "entry.external_event_id"], query.q);
       const rows = connection
         .prepare(
           `SELECT payment_match.payment_match_id, payment_match.ledger_entry_id,
@@ -836,20 +848,22 @@ export class ReconciliationStore {
                   payment_match.status, payment_match.created_by_operation_id,
                   payment_match.resolved_by_operation_id, payment_match.created_at,
                   payment_match.updated_at, payment_match.resolved_at,
-                  match_event.event_sequence
+                  match_event.event_sequence, ${expression} AS list_sort_value
              FROM payment_match_events AS match_event
              JOIN payment_matches AS payment_match
                ON payment_match.payment_match_id = match_event.payment_match_id
               AND payment_match.status = match_event.status
+             JOIN payment_orders AS orders ON orders.order_id = payment_match.order_id
+             JOIN ledger_entries AS entry ON entry.ledger_entry_id = payment_match.ledger_entry_id
             WHERE match_event.status = ?
-              AND (? IS NULL OR match_event.event_sequence > ?)
-            ORDER BY match_event.event_sequence
+              ${search.where ? "AND " + search.where : ""}
+              ${seek.where ? "AND " + seek.where : ""}
+            ORDER BY ${seek.orderBy}
             LIMIT ?`,
         )
         .all(
           status,
-          cursor?.eventSequence ?? null,
-          cursor?.eventSequence ?? null,
+          ...search.parameters, ...seek.parameters,
           limit + 1,
         ) as unknown as PaymentMatchHistoryPageRow[];
       const selected = rows.slice(0, limit);
@@ -858,6 +872,7 @@ export class ReconciliationStore {
         matches: readPaymentMatchDetails(connection, selected.map(mapPaymentMatch)),
         nextCursor: rows.length > limit && last
           ? Object.freeze({
+              ...(requestedQuery ? {position: {value: toSafeInteger(last.list_sort_value, "match sort value"), keys: [last.payment_match_id]}} : {}),
               eventSequence: toSafeInteger(
                 last.event_sequence,
                 "payment match history cursor sequence",
@@ -939,7 +954,7 @@ export class ReconciliationStore {
     providerAccountKey = "primary",
     cursor: FinancialExceptionCursor | null = null,
     limit = 100,
-    options: { readonly excludeIgnoredReminders?: boolean } = {},
+    options: { readonly excludeIgnoredReminders?: boolean; readonly query?: ListQuery<ExceptionSort> } = {},
   ): FinancialExceptionPage {
     if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(providerAccountKey)) {
       throw new RangeError("provider account key is invalid");
@@ -953,6 +968,10 @@ export class ReconciliationStore {
         throw new RangeError("financial exception cursor time is invalid");
       }
     }
+    const query = normalizeListQuery(options.query, EXCEPTION_SORT_FIELDS, "created_at", "asc");
+    const search = listSearch(["exception_id", "order_id", "ledger_entry_id", "candidate_id", "exception_type"], query.q);
+    const position = cursor?.position ?? (cursor ? {value: cursor.createdAt, keys: [cursor.exceptionId]} : null);
+    const seek = listKeyset("created_at", ["exception_id"], query.sortOrder, position);
     const rows = this.#database.read((connection) => connection
         .prepare(
           `${EXCEPTION_COLUMNS}
@@ -964,20 +983,15 @@ export class ReconciliationStore {
                   AND reminder.item_id = financial_exceptions.exception_id
                   AND reminder.ignored = 1
               ))
-              AND (
-                ? IS NULL OR created_at > ? OR
-                (created_at = ? AND exception_id > ?)
-              )
-            ORDER BY created_at, exception_id
+              ${search.where ? "AND " + search.where : ""}
+              ${seek.where ? "AND " + seek.where : ""}
+            ORDER BY ${seek.orderBy}
             LIMIT ?`,
         )
         .all(
           providerAccountKey,
           options.excludeIgnoredReminders ? 1 : 0,
-          cursor?.createdAt ?? null,
-          cursor?.createdAt ?? null,
-          cursor?.createdAt ?? null,
-          cursor?.exceptionId ?? null,
+          ...search.parameters, ...seek.parameters,
           limit + 1,
         ) as unknown as ExceptionRow[]);
     const selected = rows.slice(0, limit);
@@ -988,6 +1002,7 @@ export class ReconciliationStore {
         ? Object.freeze({
             createdAt: toSafeInteger(last.created_at, "financial exception cursor time"),
             exceptionId: last.exception_id,
+            ...(options.query ? {position: {value: toSafeInteger(last.created_at, "exception sort value"), keys: [last.exception_id]}} : {}),
           })
         : null,
     });

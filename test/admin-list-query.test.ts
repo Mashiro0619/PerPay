@@ -356,6 +356,17 @@ describe("administrator global list queries", () => {
       };
       const all = (await get("limit=200")).data;
       assert.equal(all.length, 6);
+      for (const q of ["query_timeout", "query.example.test"]) {
+        const reminders = await f.app.request(
+          "/api/admin/v1/work-items?q=" + encodeURIComponent(q),
+          { headers: { cookie: auth.cookie } },
+        );
+        assert.equal(reminders.status, 200);
+        assert.equal(
+          ((await reminders.json()) as { data: unknown[] }).data.length,
+          1,
+        );
+      }
       for (const q of [
         orders[0]!.orderId,
         orders[0]!.merchantOrderNo,

@@ -1,3 +1,4 @@
+import { MATCH_SORT_FIELDS, CONFLICT_SORT_FIELDS, EXCEPTION_SORT_FIELDS, WORK_ITEM_SORT_FIELDS, type MatchSort, type ConflictSort, type ExceptionSort, type WorkItemSort } from "../shared/list-query.ts";
 import { ListQueryError, readListQuery, isDefaultQuery, ORDER_SORT_FIELDS, DELIVERY_SORT_FIELDS, type ListQuery, type OrderSort, type DeliverySort } from "../shared/list-query.ts";
 import { encodeListCursor, decodeListCursor } from "./list-cursor.ts";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -605,7 +606,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     return context.json({
       data: page.items.map(serializeAdminWorkItem),
       page: {
-        next_cursor: encodeAdminWorkItemCursor(page.nextCursor, query.type, query.visibility),
+        next_cursor: encodeAdminWorkItemCursor(page.nextCursor, query.type, query.visibility, query.query),
       },
     });
   });
@@ -916,7 +917,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     }
     const page = requireLedgerStore(dependencies)
       .conflictPage(query.providerAccountKey, query.status, query.cursor, query.limit, {
-        excludeIgnoredReminders: query.status === "OPEN",
+        excludeIgnoredReminders: query.status === "OPEN", query: query.query,
       });
     return context.json({
       data: serializeLedgerConflicts(page.conflicts, dependencies.database),
@@ -924,7 +925,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         next_cursor: encodeLedgerConflictCursor(
           page.nextCursor,
           query.status,
-          query.providerAccountKey,
+          query.providerAccountKey, query.query,
         ),
       },
     });
@@ -1034,11 +1035,11 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   app.get("/api/admin/v1/reconciliation/matches", adminSession, (context) => {
     const query = readPaymentMatchHistoryPageQuery(context);
     const page = requireReconciliationStore(dependencies)
-      .paymentMatchHistoryPage(query.status, query.cursor, query.limit);
+      .paymentMatchHistoryPage(query.status, query.cursor, query.limit, query.query);
     return context.json({
       data: page.matches.map(serializePaymentMatchDetail),
       page: {
-        next_cursor: encodePaymentMatchHistoryCursor(page.nextCursor, query.status),
+        next_cursor: encodePaymentMatchHistoryCursor(page.nextCursor, query.status, query.query),
       },
     });
   });
@@ -1063,11 +1064,11 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       return context.json({ data: [], page: { next_cursor: null } });
     }
     const page = requireReconciliationStore(dependencies)
-      .openExceptionPage(query.providerAccountKey, query.cursor, query.limit, { excludeIgnoredReminders: true });
+      .openExceptionPage(query.providerAccountKey, query.cursor, query.limit, { excludeIgnoredReminders: true, query: query.query });
     return context.json({
       data: serializeFinancialExceptions(page.exceptions, dependencies.database),
       page: {
-        next_cursor: encodeExceptionCursor(page.nextCursor, query.providerAccountKey),
+        next_cursor: encodeExceptionCursor(page.nextCursor, query.providerAccountKey, query.query),
       },
     });
   });
@@ -2329,11 +2330,12 @@ function requireResourceId(value: string, code: HttpErrorCode, message: string):
 }
 
 function readAdminWorkItemPageQuery(context: Context<AppEnvironment>): {
+  readonly query: ListQuery<WorkItemSort>;
   readonly type: AdminWorkItemType; readonly visibility: AdminWorkItemVisibility; readonly limit: number; readonly cursor: AdminWorkItemCursor | null;
 } {
   const values = new URL(context.req.url).searchParams;
   for (const key of values.keys()) {
-    if (!["type", "visibility", "limit", "cursor"].includes(key) || values.getAll(key).length > 1) {
+    if (!["type", "visibility", "limit", "cursor", "q", "sort_by", "sort_order"].includes(key) || values.getAll(key).length > 1) {
       throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
     }
   }
@@ -2344,16 +2346,24 @@ function readAdminWorkItemPageQuery(context: Context<AppEnvironment>): {
     !/^[1-9][0-9]{0,2}$/.test(limitText) || Number(limitText) > 200) {
     throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
   }
-  return { type: type as AdminWorkItemType, visibility: visibility as AdminWorkItemVisibility, limit: Number(limitText),
-    cursor: values.has("cursor") ? decodeAdminWorkItemCursor(values.get("cursor")!, type as AdminWorkItemType, visibility as AdminWorkItemVisibility) : null };
+  const query = readListQuery(values, WORK_ITEM_SORT_FIELDS, visibility === "IGNORED" ? "ignored_at" : "actionable_at", "desc");
+  if (query.sortBy === "ignored_at" && visibility !== "IGNORED") throw new ListQueryError("忽略时间仅能用于已忽略视图");
+  return { query, type: type as AdminWorkItemType, visibility: visibility as AdminWorkItemVisibility, limit: Number(limitText),
+    cursor: values.has("cursor") ? decodeAdminWorkItemCursor(values.get("cursor")!, type as AdminWorkItemType, visibility as AdminWorkItemVisibility, query) : null };
 }
 
-function encodeAdminWorkItemCursor(cursor: AdminWorkItemCursor | null, type: AdminWorkItemType, visibility: AdminWorkItemVisibility): string | null {
-  if (!cursor) return null;
-  return Buffer.from(["perpay:admin-work-items:v2", type, visibility, cursor.actionableAt, cursor.kind, cursor.itemId].join("\n"), "ascii").toString("base64url");
+function encodeAdminWorkItemCursor(cursor: AdminWorkItemCursor | null, type: AdminWorkItemType, visibility: AdminWorkItemVisibility, query: ListQuery<WorkItemSort>): string | null {
+  return encodeListCursor("work-items", [query, type, visibility], cursor ? cursor.position ?? {value: cursor.actionableAt, keys: [cursor.kind, cursor.itemId]} : null);
 }
 
-function decodeAdminWorkItemCursor(value: string, expectedType: AdminWorkItemType, visibility: AdminWorkItemVisibility): AdminWorkItemCursor {
+function decodeAdminWorkItemCursor(value: string, expectedType: AdminWorkItemType, visibility: AdminWorkItemVisibility, query: ListQuery<WorkItemSort>): AdminWorkItemCursor {
+  const position = decodeListCursor(value, "work-items", [query, expectedType, visibility], "number", 2);
+  if (position) {
+    const kind = position.keys[0] as AdminWorkItemKind;
+    if (position.value === null || !["FINANCIAL_EXCEPTION", "LEDGER_CONFLICT", "NOTIFICATION_FAILURE"].includes(kind) || (expectedType !== "ALL" && expectedType !== kind) || !ORDER_ID_PATTERN.test(position.keys[1]!)) throw new ListQueryError("分页游标无效");
+    return {actionableAt: position.value as number, kind, itemId: position.keys[1]!, position};
+  }
+  if (!isDefaultQuery(query, visibility === "IGNORED" ? "ignored_at" : "actionable_at", "desc")) throw new ListQueryError("旧游标仅能用于默认查询");
   const invalid = () => new HttpApiError(422, "validation_failed", "查询参数校验失败");
   if (!/^[A-Za-z0-9_-]{1,256}$/.test(value)) throw invalid();
   const decoded = Buffer.from(value, "base64url");
@@ -2476,18 +2486,20 @@ function readLedgerConflictPageQuery(
   context: Context<AppEnvironment>,
   activeProviderAccountKey: string | null,
 ): {
+  readonly query: ListQuery<ConflictSort>;
   readonly limit: number;
   readonly status: LedgerConflictStatus | "ALL";
   readonly providerAccountKey: string | null;
   readonly cursor: LedgerConflictCursor | null;
 } {
   const values = new URL(context.req.url).searchParams;
+  const query = readListQuery(values, CONFLICT_SORT_FIELDS, "created_at", "asc");
   for (const key of values.keys()) {
     if (
       key !== "limit" &&
       key !== "status" &&
       key !== "cursor" &&
-      key !== "provider_account_key"
+      key !== "provider_account_key" && key !== "q" && key !== "sort_by" && key !== "sort_order"
     ) {
       throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
     }
@@ -2524,32 +2536,31 @@ function readLedgerConflictPageQuery(
     throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
   }
   return {
-    limit,
+    limit, query,
     status,
     providerAccountKey,
     cursor: cursors.length === 0
       ? null
-      : decodeLedgerConflictCursor(cursors[0] ?? "", status, providerAccountKey),
+      : decodeLedgerConflictCursor(cursors[0] ?? "", status, providerAccountKey, query),
   };
 }
 
-function encodeLedgerConflictCursor(
-  cursor: LedgerConflictCursor | null,
-  status: LedgerConflictStatus | "ALL",
-  providerAccountKey: string,
-): string | null {
-  if (!cursor) return null;
-  return Buffer.from(
-    `perpay:ledger-conflicts:v2\n${providerAccountKey}\n${status}\n${cursor.createdAt}\n${cursor.conflictId}`,
-    "ascii",
-  ).toString("base64url");
+function encodeLedgerConflictCursor(cursor: LedgerConflictCursor | null, status: LedgerConflictStatus | "ALL", providerAccountKey: string, query: ListQuery<ConflictSort>): string | null {
+  return encodeListCursor("conflicts", [query, status, providerAccountKey], cursor ? cursor.position ?? {value: cursor.createdAt, keys: [cursor.conflictId]} : null);
 }
 
 function decodeLedgerConflictCursor(
   value: string,
   expectedStatus: LedgerConflictStatus | "ALL",
   expectedProviderAccountKey: string | null,
+  query: ListQuery<ConflictSort>,
 ): LedgerConflictCursor {
+  const position = decodeListCursor(value, "conflicts", [query, expectedStatus, expectedProviderAccountKey], query.sortBy === "external_event_id" ? "string" : "number");
+  if (position) {
+    if (expectedProviderAccountKey === null || !ORDER_ID_PATTERN.test(position.keys[0]!) || (position.value === null && query.sortBy !== "external_event_id")) throw new ListQueryError("分页游标无效");
+    return {createdAt: query.sortBy === "created_at" ? position.value as number : 0, conflictId: position.keys[0]!, position};
+  }
+  if (!isDefaultQuery(query, "created_at", "asc")) throw new ListQueryError("旧游标仅能用于默认查询");
   if (expectedProviderAccountKey === null) {
     throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
   }
@@ -2575,13 +2586,15 @@ function decodeLedgerConflictCursor(
 }
 
 function readPaymentMatchHistoryPageQuery(context: Context<AppEnvironment>): {
+  readonly query: ListQuery<MatchSort>;
   readonly limit: number;
   readonly status: PaymentMatchStatus;
   readonly cursor: PaymentMatchHistoryCursor | null;
 } {
   const values = new URL(context.req.url).searchParams;
+  const query = readListQuery(values, MATCH_SORT_FIELDS, "event_sequence", "asc");
   for (const key of values.keys()) {
-    if (key !== "limit" && key !== "status" && key !== "cursor") {
+    if (key !== "limit" && key !== "status" && key !== "cursor" && key !== "q" && key !== "sort_by" && key !== "sort_order") {
       throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
     }
   }
@@ -2610,19 +2623,21 @@ function readPaymentMatchHistoryPageQuery(context: Context<AppEnvironment>): {
     throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
   }
   return {
-    limit,
+    limit, query,
     status,
     cursor: cursors.length === 0
       ? null
-      : decodePaymentMatchHistoryCursor(cursors[0] ?? "", status),
+      : decodePaymentMatchHistoryCursor(cursors[0] ?? "", status, query),
   };
 }
 
 function encodePaymentMatchHistoryCursor(
   cursor: PaymentMatchHistoryCursor | null,
   status: PaymentMatchStatus,
+  query: ListQuery<MatchSort>,
 ): string | null {
   if (!cursor) return null;
+  if (cursor.position) return encodeListCursor("matches", [query, status], cursor.position);
   return Buffer.from(
     `perpay:payment-match-history:v1\n${status}\n${cursor.eventSequence}`,
     "ascii",
@@ -2632,7 +2647,14 @@ function encodePaymentMatchHistoryCursor(
 function decodePaymentMatchHistoryCursor(
   value: string,
   expectedStatus: PaymentMatchStatus,
+  query: ListQuery<MatchSort>,
 ): PaymentMatchHistoryCursor {
+  const position = decodeListCursor(value, "matches", [query, expectedStatus], "number");
+  if (position) {
+    if (position.value === null || !ORDER_ID_PATTERN.test(position.keys[0]!) || (query.sortBy === "event_sequence" && Number(position.value) < 1)) throw new ListQueryError("分页游标无效");
+    return {eventSequence: query.sortBy === "event_sequence" ? position.value as number : 1, position};
+  }
+  if (!isDefaultQuery(query, "event_sequence", "asc")) throw new ListQueryError("旧游标仅能用于默认查询");
   if (!/^[A-Za-z0-9_-]{1,256}$/.test(value)) {
     throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
   }
@@ -2661,13 +2683,15 @@ function readExceptionPageQuery(
   context: Context<AppEnvironment>,
   activeProviderAccountKey: string | null,
 ): {
+  readonly query: ListQuery<ExceptionSort>;
   readonly limit: number;
   readonly providerAccountKey: string | null;
   readonly cursor: FinancialExceptionCursor | null;
 } {
   const values = new URL(context.req.url).searchParams;
+  const query = readListQuery(values, EXCEPTION_SORT_FIELDS, "created_at", "asc");
   for (const key of values.keys()) {
-    if (key !== "limit" && key !== "cursor" && key !== "provider_account_key") {
+    if (key !== "limit" && key !== "cursor" && key !== "provider_account_key" && key !== "q" && key !== "sort_by" && key !== "sort_order") {
       throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
     }
   }
@@ -2691,29 +2715,29 @@ function readExceptionPageQuery(
     throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
   }
   return {
-    limit,
+    limit, query,
     providerAccountKey,
     cursor: cursors.length === 0
       ? null
-      : decodeExceptionCursor(cursors[0] ?? "", providerAccountKey),
+      : decodeExceptionCursor(cursors[0] ?? "", providerAccountKey, query),
   };
 }
 
-function encodeExceptionCursor(
-  cursor: FinancialExceptionCursor | null,
-  providerAccountKey: string,
-): string | null {
-  if (!cursor) return null;
-  return Buffer.from(
-    `perpay:financial-exceptions:v2\n${providerAccountKey}\n${cursor.createdAt}\n${cursor.exceptionId}`,
-    "ascii",
-  ).toString("base64url");
+function encodeExceptionCursor(cursor: FinancialExceptionCursor | null, providerAccountKey: string, query: ListQuery<ExceptionSort>): string | null {
+  return encodeListCursor("exceptions", [query, providerAccountKey], cursor ? cursor.position ?? {value: cursor.createdAt, keys: [cursor.exceptionId]} : null);
 }
 
 function decodeExceptionCursor(
   value: string,
   expectedProviderAccountKey: string | null,
+  query: ListQuery<ExceptionSort>,
 ): FinancialExceptionCursor {
+  const position = decodeListCursor(value, "exceptions", [query, expectedProviderAccountKey], "number");
+  if (position) {
+    if (position.value === null || expectedProviderAccountKey === null || !ORDER_ID_PATTERN.test(position.keys[0]!)) throw new ListQueryError("分页游标无效");
+    return {createdAt: position.value as number, exceptionId: position.keys[0]!, position};
+  }
+  if (!isDefaultQuery(query, "created_at", "asc")) throw new ListQueryError("旧游标仅能用于默认查询");
   if (
     expectedProviderAccountKey === null ||
     !/^[A-Za-z0-9_-]{1,512}$/.test(value)

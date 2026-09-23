@@ -4821,4 +4821,14 @@ export const migrations: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 26,
+    name: "administrator_reconciliation_query_indexes",
+    sql: `
+      CREATE INDEX payment_matches_status_created_list_idx ON payment_matches(status, created_at, payment_match_id);
+      CREATE INDEX ledger_conflicts_external_list_idx ON ledger_conflicts(provider_account_key, external_event_id, conflict_id);
+      CREATE INDEX webhook_deliveries_predecessor_list_idx ON webhook_deliveries(predecessor_delivery_id)
+        WHERE predecessor_delivery_id IS NOT NULL;
+    `,
+  },
 ] as const;
