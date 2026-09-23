@@ -1057,6 +1057,21 @@ describe("OrderStore", () => {
     });
   });
 
+  it("searches and sorts lazily expired orders beyond the expiry sweep without reopening them", async () => {
+    await withStore(async ({ setNow, store }) => {
+      syncProfile(store, "https://qr.example.test/admin-query-expired");
+      for (let index=0; index<270; index++) store.createOrder(createInput(requestFor("query-expired-"+index,"merchant-expired-"+index,1000+index*100),99,60000));
+      setNow(TEST_START_MS + 60000);
+      const query = {q:"merchant-expired-26",sortBy:"payable_amount_cents",sortOrder:"desc"} as const;
+      const page = store.adminOrderPage({checkoutStatus:"EXPIRED",paymentStatus:"UNPAID"},null,200,query);
+      assert.equal(page.orders.length,11);
+      assert.ok(page.orders.every(row=>row.order.checkoutStatus==="EXPIRED"));
+      const amounts=page.orders.map(row=>row.order.payableAmountCents);
+      assert.deepEqual(amounts, amounts.toSorted((a,b)=>b-a));
+      assert.equal(store.adminOrderPage({checkoutStatus:"OPEN",paymentStatus:null},null,200,query).orders.length,0);
+    });
+  });
+
   it("keeps the expiry sweep and both expired-order branches on ordered indexes", async () => {
     await withStore(async ({ database }) => {
       const plans = database.read((connection) => [

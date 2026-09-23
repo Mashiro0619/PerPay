@@ -960,8 +960,10 @@ paths:
       operationId: listAdministratorOrders
       summary: Page through orders for operational inspection
       description: |
-        Results use a stable creation-time and order-ID ordering. The opaque cursor is bound to
-        the exact `checkout_status` and `payment_status` filters that produced it. Checkout tokens,
+        Search covers order ID, merchant order number and product name before pagination. Default order is
+        creation time descending, then order ID. Sorting uses an ID tie-breaker and puts nulls last.
+        New cursors bind the normalized keyword, sort and both status filters; old cursors are accepted
+        only with their original default query. Lists remain live, not database snapshots. Checkout tokens,
         token digests, idempotency digests, request fingerprints, and secrets are never returned.
       security:
         - AdminSessionCookie: []
@@ -975,6 +977,19 @@ paths:
           in: query
           required: false
           schema: { $ref: '#/components/schemas/PaymentStatus' }
+        - name: q
+          in: query
+          required: false
+          description: Trimmed literal substring, at most 100 Unicode characters. Percent and underscore are ordinary text; secrets, raw payloads and financial reasons are not searched.
+          schema: { type: string, maxLength: 100 }
+        - name: sort_by
+          in: query
+          required: false
+          schema: { type: string, enum: [created_at, payable_amount_cents, received_amount_cents], default: created_at }
+        - name: sort_order
+          in: query
+          required: false
+          schema: { type: string, enum: [asc, desc], default: desc }
         - name: limit
           in: query
           required: false
@@ -990,7 +1005,7 @@ paths:
           schema:
             type: string
             minLength: 1
-            maxLength: 256
+            maxLength: 2048
             pattern: '^[A-Za-z0-9_-]+$'
       responses:
         '200':
@@ -1491,8 +1506,11 @@ paths:
       operationId: listWebhookDeliveries
       summary: Page through notification deliveries
       description: |
-        Results are ordered by creation time and delivery ID. A cursor is bound to the exact
-        `status` filter used to create it and is rejected if reused with another filter.
+        Search covers delivery/event/order IDs, merchant order number, target URL and error code before
+        pagination. Default order is creation time ascending, then delivery ID. Nulls are always last;
+        next_attempt_at is null outside PENDING/RETRY_WAIT, matching the returned projection.
+        New cursors bind keyword, sort and status; old cursors work only with the original default query.
+        This is a live list, not a database snapshot.
       security:
         - AdminSessionCookie: []
       parameters:
@@ -1502,6 +1520,19 @@ paths:
           required: false
           schema:
             $ref: '#/components/schemas/WebhookDeliveryStatus'
+        - name: q
+          in: query
+          required: false
+          description: Trimmed literal substring, at most 100 Unicode characters. Percent and underscore are ordinary text; secrets, raw payloads and financial reasons are not searched.
+          schema: { type: string, maxLength: 100 }
+        - name: sort_by
+          in: query
+          required: false
+          schema: { type: string, enum: [created_at, attempt_count, next_attempt_at], default: created_at }
+        - name: sort_order
+          in: query
+          required: false
+          schema: { type: string, enum: [asc, desc], default: asc }
         - name: limit
           in: query
           required: false
@@ -1517,7 +1548,7 @@ paths:
           schema:
             type: string
             minLength: 1
-            maxLength: 256
+            maxLength: 2048
             pattern: '^[A-Za-z0-9_-]+$'
       responses:
         '200':

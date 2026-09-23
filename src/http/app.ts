@@ -1,3 +1,5 @@
+import { ListQueryError, readListQuery, isDefaultQuery, ORDER_SORT_FIELDS, DELIVERY_SORT_FIELDS, type ListQuery, type OrderSort, type DeliverySort } from "../shared/list-query.ts";
+import { encodeListCursor, decodeListCursor } from "./list-cursor.ts";
 import { randomBytes, randomUUID } from "node:crypto";
 
 import type { HttpBindings } from "@hono/node-server";
@@ -650,12 +652,12 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
 
   app.get("/api/admin/v1/orders", adminSession, (context) => {
     const query = readAdminOrderPageQuery(context);
-    const page = dependencies.orders.adminPage(query.filters, query.cursor, query.limit);
+    const page = dependencies.orders.adminPage(query.filters, query.cursor, query.limit, query.query);
     const marks = adminRefundMarks(dependencies.database, page.orders.map((order) => order.orderId));
     return context.json({
       data: page.orders.map((order) => ({ ...serializeAdminOrderSummary(order), refund_mark: marks.get(order.orderId)! })),
       page: {
-        next_cursor: encodeAdminOrderCursor(page.nextCursor, query.filters),
+        next_cursor: encodeAdminOrderCursor(page.nextCursor, query.filters, query.query),
       },
     });
   });
@@ -1145,13 +1147,14 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const query = readWebhookDeliveryPageQuery(context);
     const page = requireWebhookStore(dependencies).listDeliveries({
       status: query.status ?? undefined,
+      query: query.query,
       cursor: query.cursor,
       limit: query.limit,
     });
     return context.json({
       data: page.deliveries.map(serializeWebhookDeliverySummary),
       page: {
-        next_cursor: encodeWebhookDeliveryCursor(page.nextCursor, query.status),
+        next_cursor: encodeWebhookDeliveryCursor(page.nextCursor, query.status, query.query),
       },
     });
   });
@@ -1337,6 +1340,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     if (error instanceof SettingsFieldError) {
       return errorResponse(context, 422, "settings_validation_failed", error.hint, { [error.field]: error.hint });
     }
+    if (error instanceof ListQueryError) return errorResponse(context, 422, "validation_failed", error.message);
     if (error instanceof HttpApiError) {
       if (error.retryAfterSeconds !== undefined) {
         context.header("retry-after", String(error.retryAfterSeconds));
@@ -2369,16 +2373,18 @@ function decodeAdminWorkItemCursor(value: string, expectedType: AdminWorkItemTyp
 
 function readAdminOrderPageQuery(context: Context<AppEnvironment>): {
   readonly limit: number;
+  readonly query: ListQuery<OrderSort>;
   readonly filters: AdminOrderFilters;
   readonly cursor: AdminOrderCursor | null;
 } {
   const values = new URL(context.req.url).searchParams;
+  const query = readListQuery(values, ORDER_SORT_FIELDS, "created_at", "desc");
   for (const key of values.keys()) {
     if (
       key !== "limit" &&
       key !== "checkout_status" &&
       key !== "payment_status" &&
-      key !== "cursor"
+      key !== "cursor" && key !== "q" && key !== "sort_by" && key !== "sort_order"
     ) {
       throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
     }
@@ -2421,28 +2427,29 @@ function readAdminOrderPageQuery(context: Context<AppEnvironment>): {
   }
   return {
     limit,
+    query,
     filters,
     cursor: cursors.length === 0
       ? null
-      : decodeAdminOrderCursor(cursors[0] ?? "", filters),
+      : decodeAdminOrderCursor(cursors[0] ?? "", filters, query),
   };
 }
 
-function encodeAdminOrderCursor(
-  cursor: AdminOrderCursor | null,
-  filters: AdminOrderFilters,
-): string | null {
-  if (!cursor) return null;
-  return Buffer.from(
-    `perpay:admin-orders:v1\n${filters.checkoutStatus ?? "*"}\n${filters.paymentStatus ?? "*"}\n${cursor.createdAt}\n${cursor.orderId}`,
-    "ascii",
-  ).toString("base64url");
+function encodeAdminOrderCursor(cursor: AdminOrderCursor | null, filters: AdminOrderFilters, query: ListQuery<OrderSort>): string | null {
+  return encodeListCursor("orders", [query, filters], cursor ? cursor.position ?? {value: cursor.createdAt, keys: [cursor.orderId]} : null);
 }
 
 function decodeAdminOrderCursor(
   value: string,
   expectedFilters: AdminOrderFilters,
+  query: ListQuery<OrderSort>,
 ): AdminOrderCursor {
+  const position = decodeListCursor(value, "orders", [query, expectedFilters], "number");
+  if (position) {
+    if (!ORDER_ID_PATTERN.test(position.keys[0]!) || (position.value === null && query.sortBy !== "received_amount_cents")) throw new ListQueryError("分页游标无效");
+    return {createdAt: query.sortBy === "created_at" ? position.value as number : 0, orderId: position.keys[0]!, position};
+  }
+  if (!isDefaultQuery(query, "created_at", "desc")) throw new ListQueryError("旧游标仅能用于默认查询");
   if (!/^[A-Za-z0-9_-]{1,256}$/.test(value)) {
     throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
   }
@@ -2739,12 +2746,14 @@ function requireProviderAccountKey(value: string): string {
 
 function readWebhookDeliveryPageQuery(context: Context<AppEnvironment>): {
   readonly limit: number;
+  readonly query: ListQuery<DeliverySort>;
   readonly status: WebhookDeliveryStatus | null;
   readonly cursor: WebhookDeliveryCursor | null;
 } {
   const values = new URL(context.req.url).searchParams;
+  const query = readListQuery(values, DELIVERY_SORT_FIELDS, "created_at", "asc");
   for (const key of values.keys()) {
-    if (key !== "limit" && key !== "status" && key !== "cursor") {
+    if (key !== "limit" && key !== "status" && key !== "cursor" && key !== "q" && key !== "sort_by" && key !== "sort_order") {
       throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
     }
   }
@@ -2777,10 +2786,11 @@ function readWebhookDeliveryPageQuery(context: Context<AppEnvironment>): {
   }
   return {
     limit,
+    query,
     status: status ?? null,
     cursor: cursors.length === 0
       ? null
-      : decodeWebhookDeliveryCursor(cursors[0] ?? "", status ?? null),
+      : decodeWebhookDeliveryCursor(cursors[0] ?? "", status ?? null, query),
   };
 }
 
@@ -2852,22 +2862,21 @@ function decodeOrderWebhookDeliveryCursor(
   return { createdAt, deliveryId: match[3]! };
 }
 
-function encodeWebhookDeliveryCursor(
-  cursor: WebhookDeliveryCursor | null,
-  status: WebhookDeliveryStatus | null,
-): string | null {
-  if (!cursor) return null;
-  const filter = status ?? "*";
-  return Buffer.from(
-    `perpay:webhook-deliveries:v1\n${filter}\n${cursor.createdAt}\n${cursor.deliveryId}`,
-    "ascii",
-  ).toString("base64url");
+function encodeWebhookDeliveryCursor(cursor: WebhookDeliveryCursor | null, status: WebhookDeliveryStatus | null, query: ListQuery<DeliverySort>): string | null {
+  return encodeListCursor("deliveries", [query, status], cursor ? cursor.position ?? {value: cursor.createdAt, keys: [cursor.deliveryId]} : null);
 }
 
 function decodeWebhookDeliveryCursor(
   value: string,
   expectedStatus: WebhookDeliveryStatus | null,
+  query: ListQuery<DeliverySort>,
 ): WebhookDeliveryCursor {
+  const position = decodeListCursor(value, "deliveries", [query, expectedStatus], "number");
+  if (position) {
+    if (!ORDER_ID_PATTERN.test(position.keys[0]!) || (position.value === null && query.sortBy !== "next_attempt_at")) throw new ListQueryError("分页游标无效");
+    return {createdAt: query.sortBy === "created_at" ? position.value as number : 0, deliveryId: position.keys[0]!, position};
+  }
+  if (!isDefaultQuery(query, "created_at", "asc")) throw new ListQueryError("旧游标仅能用于默认查询");
   if (!/^[A-Za-z0-9_-]{1,256}$/.test(value)) {
     throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
   }

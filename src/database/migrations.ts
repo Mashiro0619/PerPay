@@ -4808,4 +4808,17 @@ export const migrations: readonly Migration[] = [
         CHECK (dashboard_chart_type IN ('AREA', 'BAR', 'LINE'));
     `,
   },
+  {
+    version: 25,
+    name: "administrator_order_delivery_query_indexes",
+    sql: `
+      CREATE INDEX payment_orders_payable_list_idx ON payment_orders(payable_amount_cents, order_id);
+      CREATE INDEX payment_orders_received_list_idx ON payment_orders(received_amount_cents, order_id);
+      CREATE INDEX webhook_deliveries_created_list_idx ON webhook_deliveries(created_at, delivery_id);
+      CREATE INDEX webhook_deliveries_attempt_list_idx ON webhook_deliveries(attempt_count, delivery_id);
+      CREATE INDEX webhook_deliveries_retry_list_idx ON webhook_deliveries(
+        CASE WHEN status IN ('PENDING', 'RETRY_WAIT') THEN next_attempt_at END, delivery_id
+      );
+    `,
+  },
 ] as const;

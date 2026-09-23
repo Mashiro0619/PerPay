@@ -1,3 +1,4 @@
+import type { ListQuery, OrderSort } from "../shared/list-query.ts";
 import type { AppDatabase } from "../database/database.ts";
 import {
   OrderClockError,
@@ -204,9 +205,10 @@ export class OrderService {
     filters: AdminOrderFilters,
     cursor: AdminOrderCursor | null,
     limit: number,
+    query?: ListQuery<OrderSort>,
   ): AdminOrderPageProjection {
     const page = this.#runStoreOperation(() =>
-      this.#store.adminOrderPage(filters, cursor, limit),
+      this.#store.adminOrderPage(filters, cursor, limit, query),
     );
     return {
       orders: page.orders.map((order) => this.#projectAdminOrder(order)),

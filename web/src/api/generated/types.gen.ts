@@ -1652,6 +1652,9 @@ export type ListAdministratorOrdersData = {
     query?: {
         checkout_status?: CheckoutStatus;
         payment_status?: PaymentStatus;
+        q?: string;
+        sort_by?: 'created_at' | 'payable_amount_cents' | 'received_amount_cents';
+        sort_order?: 'asc' | 'desc';
         limit?: number;
         cursor?: string;
     };
@@ -2039,6 +2042,9 @@ export type ListWebhookDeliveriesData = {
     path?: never;
     query?: {
         status?: WebhookDeliveryStatus;
+        q?: string;
+        sort_by?: 'created_at' | 'attempt_count' | 'next_attempt_at';
+        sort_order?: 'asc' | 'desc';
         limit?: number;
         cursor?: string;
     };

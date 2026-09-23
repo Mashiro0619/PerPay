@@ -1,3 +1,5 @@
+import { normalizeListQuery, DELIVERY_SORT_FIELDS, type DeliverySort, type ListQuery, type ListPosition } from "../shared/list-query.ts";
+import { listKeyset, listSearch } from "../database/list-query.ts";
 import { randomUUID } from "node:crypto";
 import { isIP } from "node:net";
 import type { DatabaseSync } from "node:sqlite";
@@ -88,6 +90,7 @@ export interface WebhookDeliverySummary {
 }
 
 export interface WebhookDeliveryCursor {
+  readonly position?: ListPosition;
   readonly createdAt: number;
   readonly deliveryId: string;
 }
@@ -845,6 +848,7 @@ export class WebhookStore {
     readonly status?: WebhookDeliveryStatus | undefined;
     readonly cursor?: WebhookDeliveryCursor | null | undefined;
     readonly limit: number;
+    readonly query?: ListQuery<DeliverySort>;
   }): WebhookDeliveryPage {
     assertPositiveInteger(input.limit, "webhook delivery page limit");
     if (input.limit > 200) throw new RangeError("webhook delivery page limit is too large");
@@ -856,9 +860,16 @@ export class WebhookStore {
     ) {
       throw new RangeError("webhook delivery status filter is invalid");
     }
+    const query = normalizeListQuery(input.query, DELIVERY_SORT_FIELDS, "created_at", "asc");
     return this.#database.read((connection) => {
-      const where: string[] = [];
-      const parameters: Array<string | number> = [];
+      const expression = query.sortBy === "next_attempt_at"
+        ? "CASE WHEN delivery.status IN ('PENDING', 'RETRY_WAIT') THEN delivery.next_attempt_at END"
+        : "delivery." + query.sortBy;
+      const position = input.cursor?.position ?? (input.cursor ? {value: input.cursor.createdAt, keys: [input.cursor.deliveryId]} : null);
+      const seek = listKeyset(expression, ["delivery.delivery_id"], query.sortOrder, position, query.sortBy === "next_attempt_at");
+      const search = listSearch(["delivery.delivery_id", "delivery.outbox_event_id", "outbox.aggregate_id", "orders.merchant_order_no", "target.target_url", "delivery.last_error_code"], query.q);
+      const where = [seek.where, search.where].filter(Boolean);
+      const parameters: Array<string | number> = [...seek.parameters, ...search.parameters];
       if (input.status) {
         where.push("delivery.status = ?");
         parameters.push(input.status);
@@ -866,10 +877,6 @@ export class WebhookStore {
       if (input.cursor) {
         assertTime(input.cursor.createdAt, "webhook delivery cursor time");
         assertUuid(input.cursor.deliveryId, "webhook delivery cursor ID");
-        where.push(
-          "(delivery.created_at > ? OR (delivery.created_at = ? AND delivery.delivery_id > ?))",
-        );
-        parameters.push(input.cursor.createdAt, input.cursor.createdAt, input.cursor.deliveryId);
       }
       const rows = connection
         .prepare(
@@ -878,10 +885,11 @@ export class WebhookStore {
              FROM webhook_deliveries AS delivery
              JOIN outbox_events AS outbox
                ON outbox.outbox_event_id = delivery.outbox_event_id
+             JOIN payment_orders AS orders ON orders.order_id = outbox.aggregate_id
              JOIN webhook_targets AS target
                ON target.target_id = delivery.target_id
             ${where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""}
-            ORDER BY delivery.created_at, delivery.delivery_id LIMIT ?`,
+            ORDER BY ${seek.orderBy} LIMIT ?`,
         )
         .all(...parameters, input.limit + 1) as unknown as DeliverySummaryRow[];
       const hasMore = rows.length > input.limit;
@@ -896,7 +904,8 @@ export class WebhookStore {
           targetUrlFingerprint: row.url_fingerprint,
         })),
         nextCursor: hasMore && last
-          ? { createdAt: toSafeInteger(last.created_at, "webhook cursor time"), deliveryId: last.delivery_id }
+          ? { createdAt: toSafeInteger(last.created_at, "webhook cursor time"), deliveryId: last.delivery_id,
+              position: {value: query.sortBy === "next_attempt_at" && !["PENDING", "RETRY_WAIT"].includes(last.status) ? null : toSafeInteger(last[query.sortBy], "webhook sort value"), keys: [last.delivery_id]} }
           : null,
       };
     });

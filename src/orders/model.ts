@@ -1,3 +1,4 @@
+import type { ListPosition } from "../shared/list-query.ts";
 import { createHash } from "node:crypto";
 
 import { z } from "zod";
@@ -255,6 +256,7 @@ export interface OrderProjection {
 }
 
 export interface AdminOrderCursor {
+  readonly position?: ListPosition;
   readonly createdAt: number;
   readonly orderId: string;
 }

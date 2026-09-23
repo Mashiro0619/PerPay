@@ -1,3 +1,5 @@
+import { normalizeListQuery, isDefaultQuery, ORDER_SORT_FIELDS, type ListQuery, type OrderSort } from "../shared/list-query.ts";
+import { listKeyset, listSearch } from "./list-query.ts";
 import { randomBytes, randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import type { DatabaseSync } from "node:sqlite";
@@ -610,11 +612,36 @@ export class OrderStore {
     filters: AdminOrderFilters,
     cursor: AdminOrderCursor | null,
     limit: number,
+    requestedQuery?: ListQuery<OrderSort>,
   ): StoredAdminOrderPage {
     validateAdminOrderPageInput(filters, cursor, limit);
+    const query = normalizeListQuery(requestedQuery, ORDER_SORT_FIELDS, "created_at", "desc");
     return this.#database.write((connection) => {
       const now = this.#logicalNow(connection);
       expireDueOrders(connection, now, EXPIRY_SWEEP_LIMIT);
+      if (!isDefaultQuery(query, "created_at", "desc")) {
+        const search = listSearch(["orders.order_id", "orders.merchant_order_no", "orders.product_name"], query.q);
+        const seek = listKeyset("orders." + query.sortBy, ["orders.order_id"], query.sortOrder, cursor?.position, query.sortBy === "received_amount_cents");
+        const where = [search.where, seek.where].filter(Boolean);
+        const parameters: Array<string | number> = [...search.parameters, ...seek.parameters];
+        if (filters.paymentStatus !== null) { where.push("orders.payment_status = ?"); parameters.push(filters.paymentStatus); }
+        if (filters.checkoutStatus === "EXPIRED") {
+          where.push("(orders.checkout_status = 'EXPIRED' OR (orders.checkout_status = 'OPEN' AND orders.expires_at <= ?))"); parameters.push(now);
+        } else if (filters.checkoutStatus === "OPEN") {
+          where.push("orders.checkout_status = 'OPEN' AND orders.expires_at > ?"); parameters.push(now);
+        } else if (filters.checkoutStatus === "CLOSED") where.push("orders.checkout_status = 'CLOSED'");
+        const statement = connection.prepare(
+          `${AGGREGATE_SELECT} ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY ${seek.orderBy} LIMIT ?`
+        );
+        const readRows = () => statement.all(...parameters, limit + 1) as unknown as AggregateRow[];
+        let rows = readRows();
+        let expired = false;
+        for (const row of rows) if (row.checkout_status === "OPEN" && toSafeInteger(row.expires_at, "order expiry") <= now) {
+          expireOrder(connection, row.order_id, now); expired = true;
+        }
+        if (expired) rows = readRows();
+        return buildStoredAdminOrderPage(rows, limit, query);
+      }
       if (filters.checkoutStatus === "EXPIRED") {
         let rows = readExpiredAdminOrderRows(
           connection,
@@ -1275,6 +1302,7 @@ function compareAdminOrderRows(left: AggregateRow, right: AggregateRow): number 
 function buildStoredAdminOrderPage(
   rows: readonly AggregateRow[],
   limit: number,
+  query?: ListQuery<OrderSort>,
 ): StoredAdminOrderPage {
   const selected = rows.slice(0, limit);
   const last = selected.at(-1);
@@ -1284,6 +1312,7 @@ function buildStoredAdminOrderPage(
       ? Object.freeze({
           createdAt: toSafeInteger(last.created_at, "administrator order cursor time"),
           orderId: last.order_id,
+          ...(query ? { position: { value: last[query.sortBy] === null ? null : toSafeInteger(last[query.sortBy]!, "order sort value"), keys: [last.order_id] } } : {}),
         })
       : null,
   });
