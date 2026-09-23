@@ -164,9 +164,9 @@ export function ChartAreaInteractive({
             if (value[0]) setMetric(value[0]);
           }}
           variant="outline"
-          spacing={0}
+          spacing={2}
           aria-label="趋势指标"
-          className="grid w-full grid-cols-2 items-stretch @[650px]/card:w-1/2"
+          className="grid w-full grid-cols-[repeat(auto-fit,minmax(min(100%,10rem),1fr))] items-stretch @[650px]/card:w-1/2"
         >
           {metrics.map((item) => (
             <ToggleGroupItem
@@ -181,10 +181,11 @@ export function ChartAreaInteractive({
               </span>
               <span
                 id={summaryId + item.value}
-                className="max-w-full overflow-x-auto text-left text-xl leading-none font-semibold tabular-nums @[500px]/card:text-2xl"
+                data-metric-value
+                className="max-w-full text-left text-xl leading-tight font-semibold whitespace-normal tabular-nums wrap-anywhere @[500px]/card:text-2xl"
               >
                 {pending ? (
-                  <Skeleton className="h-7 w-24" />
+                  <Skeleton className="h-7 w-24 max-w-full" />
                 ) : !analytics ? (
                   "—"
                 ) : item.value === "amount" ? (

@@ -39,6 +39,21 @@ function analytics(days: 7 | 30 | 90 = 7): SystemAnalytics {
 }
 
 describe("official shadcn interactive chart", () => {
+  it("keeps complete metric values in wrapping text rather than inner scroll containers", () => {
+    const data = analytics();
+    data.confirmations.amount_cents = 4270937;
+    data.orders.created = 1105;
+    const { container } = render(<ChartAreaInteractive analytics={data} range={7} onRangeChange={vi.fn()} pending={false} />);
+    const values = container.querySelectorAll("[data-metric-value]");
+    expect(values).toHaveLength(2);
+    expect(values[0]).toHaveTextContent("¥42,709.37");
+    expect(values[1]).toHaveTextContent("1,105");
+    for (const value of values) {
+      expect(value).not.toHaveClass("overflow-x-auto", "leading-none");
+      expect(value).toHaveClass("whitespace-normal", "wrap-anywhere", "leading-tight");
+    }
+    expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+  });
   it.each([
     ["AREA", ".recharts-area"],
     ["BAR", ".recharts-bar"],
