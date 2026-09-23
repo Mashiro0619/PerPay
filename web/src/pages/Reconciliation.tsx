@@ -1,3 +1,11 @@
+import {
+  useListQuery,
+  MATCH_SORT_FIELDS,
+  CONFLICT_SORT_FIELDS,
+  EXCEPTION_SORT_FIELDS,
+} from "@/lib/list-query";
+import { ListQueryToolbar } from "@/components/list-query-toolbar";
+import { BusinessTable } from "@/components/business-table";
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCw, Search } from "lucide-react";
@@ -5,9 +13,8 @@ import { useSearchParams } from "react-router";
 import { Link, useNavigate } from "@/navigation";
 import { api, result } from "@/api/client";
 import { useCursor } from "@/lib/cursor";
-import { dateTime, resourceIdPattern, shortId } from "@/lib/format";
+import { dateTime, money, resourceIdPattern, shortId } from "@/lib/format";
 import { label } from "@/lib/labels";
-import { LinkedTableRow } from "@/components/LinkedTableRow";
 import { StatusBadge } from "@/components/business-status";
 import { QueryView } from "@/components/request-state";
 import { CursorPagination } from "@/components/cursor-pagination";
@@ -29,14 +36,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "@/components/ui/table";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { FinancialDialog } from "./FinancialDialog";
 type Section = "matches" | "conflicts" | "exceptions";
@@ -114,7 +113,17 @@ export default function Reconciliation() {
         value={section}
         className="gap-4"
         onValueChange={(value) =>
-          setSearch({ tab: String(value) }, { replace: true })
+          setSearch(
+            (current) => {
+              const next = new URLSearchParams(current);
+              next.set("tab", String(value));
+              ["status", "cursor", "page", "sort_by", "sort_order"].forEach(
+                (key) => next.delete(key),
+              );
+              return next;
+            },
+            { replace: true },
+          )
         }
       >
         <TabsList aria-label="对账记录类型">
@@ -126,6 +135,7 @@ export default function Reconciliation() {
         </TabsList>
         <TabsContent value={section}>
           <ReconciliationList
+            key={section}
             section={section}
             status={status}
             message={completed}
@@ -137,7 +147,14 @@ export default function Reconciliation() {
                   onValueChange={(value) => {
                     if (value)
                       setSearch(
-                        { tab: section, status: value },
+                        (current) => {
+                          const next = new URLSearchParams(current);
+                          next.set("tab", section);
+                          next.set("status", value);
+                          next.delete("cursor");
+                          next.delete("page");
+                          return next;
+                        },
                         { replace: true },
                       );
                   }}
@@ -184,11 +201,35 @@ function ReconciliationList({
   message: string;
 }) {
   const pagination = useCursor();
+  const [search] = useSearchParams();
+  const provider = search.get("provider_account_key") || undefined;
+  const fields =
+    section === "matches"
+      ? MATCH_SORT_FIELDS
+      : section === "conflicts"
+        ? CONFLICT_SORT_FIELDS
+        : EXCEPTION_SORT_FIELDS;
+  const listQuery = useListQuery<string>(fields, fields[0], "asc");
+  const sortNames: Record<string, string> = {
+    event_sequence: "关联事件顺序",
+    created_at: section === "matches" ? "关联时间" : "发现时间",
+    amount_cents: "流水金额",
+    external_event_id: "外部流水号",
+  };
   const query = useQuery({
-    queryKey: ["reconciliation", section, status, pagination.cursor],
+    queryKey: [
+      "reconciliation",
+      section,
+      status,
+      pagination.cursor,
+      listQuery.scope,
+      provider,
+    ],
     queryFn: async ({ signal }) => {
       const pageQuery = {
         limit: 20,
+        ...(listQuery.query.q ? { q: listQuery.query.q } : {}),
+        sort_order: listQuery.query.sortOrder,
         ...(pagination.cursor ? { cursor: pagination.cursor } : {}),
       };
       if (section === "conflicts") {
@@ -197,6 +238,9 @@ function ReconciliationList({
             signal,
             query: {
               ...pageQuery,
+              sort_by: listQuery.query
+                .sortBy as (typeof CONFLICT_SORT_FIELDS)[number],
+              ...(provider ? { provider_account_key: provider } : {}),
               status: status as "OPEN" | "RESOLVED" | "IGNORED" | "ALL",
             },
           }),
@@ -206,6 +250,8 @@ function ReconciliationList({
           items: page.data.map((item) => ({
             id: item.conflict_id,
             title: label(item.conflict_type),
+            externalEventId: item.external_event_id,
+            amountCents: null,
             orderId: null,
             reminderIgnored: item.reminder_ignored,
             status: item.status,
@@ -215,13 +261,22 @@ function ReconciliationList({
       }
       if (section === "exceptions") {
         const page = await result(
-          api.listOpenFinancialExceptions({ signal, query: pageQuery }),
+          api.listOpenFinancialExceptions({
+            signal,
+            query: {
+              ...pageQuery,
+              sort_by: "created_at",
+              ...(provider ? { provider_account_key: provider } : {}),
+            },
+          }),
         );
         return {
           page: page.page,
           items: page.data.map((item) => ({
             id: item.exception_id,
             title: label(item.exception_type),
+            externalEventId: null,
+            amountCents: null,
             orderId: item.order_id,
             reminderIgnored: item.reminder_ignored,
             status: item.status,
@@ -232,7 +287,12 @@ function ReconciliationList({
       const page = await result(
         api.listPaymentMatches({
           signal,
-          query: { ...pageQuery, status: status as "SETTLED" | "REVERSED" },
+          query: {
+            ...pageQuery,
+            sort_by: listQuery.query
+              .sortBy as (typeof MATCH_SORT_FIELDS)[number],
+            status: status as "SETTLED" | "REVERSED",
+          },
         }),
       );
       return {
@@ -240,6 +300,8 @@ function ReconciliationList({
         items: page.data.map((item) => ({
           id: item.payment_match_id,
           title: item.evidence_type === "MANUAL" ? "人工关联" : "金额推断关联",
+          externalEventId: item.ledger_entry.external_event_id,
+          amountCents: item.ledger_entry.amount_cents,
           orderId: item.order_id,
           reminderIgnored: false,
           status: item.status,
@@ -281,79 +343,124 @@ function ReconciliationList({
           </Button>
         </div>
       </div>
+      <ListQueryToolbar
+        control={listQuery}
+        label="对账关键词搜索"
+        sorts={fields.map((value) => ({ value, label: sortNames[value]! }))}
+      />
       <SuccessMessage message={message} />
       <QueryView query={query}>
         {(page) => (
           <>
-            <div className="overflow-hidden rounded-lg border">
+            <div className="min-w-0">
               {page.items.length ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>记录</TableHead>
-                      <TableHead>状态</TableHead>
-                      <TableHead className="hidden md:table-cell">
-                        关联订单
-                      </TableHead>
-                      <TableHead className="hidden sm:table-cell">
-                        创建时间
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {page.items.map((item) => (
-                      <LinkedTableRow key={item.id}>
-                        <TableCell className="w-full max-w-md whitespace-normal py-3">
-                          <div className="flex flex-col gap-1">
-                            <Link
-                              data-row-link
-                              className="font-medium hover:underline"
-                              to={"/reconciliation/" + section + "/" + item.id}
-                            >
-                              {item.title}
-                            </Link>
-                            <time
-                              className="text-xs text-muted-foreground sm:hidden"
-                              dateTime={item.createdAt}
-                            >
-                              {dateTime(item.createdAt)}
-                            </time>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col gap-1">
-                            <StatusBadge
-                              value={item.status}
-                              label={
-                                item.status === "OPEN" ? "未处理" : undefined
-                              }
-                            />
-                            {item.reminderIgnored && (
-                              <span className="text-xs text-muted-foreground">
-                                提醒已忽略
-                              </span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell">
-                          {item.orderId ? (
-                            <Link
-                              className="underline underline-offset-4"
-                              to={"/orders/" + item.orderId}
-                            >
-                              {shortId(item.orderId)}
-                            </Link>
-                          ) : (
-                            "—"
+                <BusinessTable
+                  id={"reconciliation-" + section}
+                  items={page.items}
+                  rowId={(item) => item.id}
+                  control={listQuery}
+                  columns={[
+                    {
+                      id: "identity",
+                      label: "记录",
+                      hideable: false,
+                      className: "w-full max-w-md whitespace-normal py-3",
+                      cell: (item) => (
+                        <div className="flex flex-col gap-1">
+                          <Link
+                            data-row-link
+                            className="font-medium hover:underline"
+                            to={"/reconciliation/" + section + "/" + item.id}
+                          >
+                            {item.title}
+                          </Link>
+                          <span className="text-xs text-muted-foreground">
+                            {shortId(item.id)}
+                          </span>
+                          <time
+                            className="text-xs text-muted-foreground sm:hidden"
+                            dateTime={item.createdAt}
+                          >
+                            {dateTime(item.createdAt)}
+                          </time>
+                          {item.amountCents !== null && (
+                            <span className="text-xs tabular-nums text-muted-foreground sm:hidden">
+                              流水 {money(item.amountCents)}
+                            </span>
                           )}
-                        </TableCell>
-                        <TableCell className="hidden text-muted-foreground sm:table-cell">
-                          {dateTime(item.createdAt)}
-                        </TableCell>
-                      </LinkedTableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                        </div>
+                      ),
+                    },
+                    {
+                      id: "status",
+                      label: "状态",
+                      cell: (item) => (
+                        <div className="flex flex-col gap-1">
+                          <StatusBadge
+                            value={item.status}
+                            label={
+                              item.status === "OPEN" ? "未处理" : undefined
+                            }
+                          />
+                          {item.reminderIgnored && (
+                            <span className="text-xs text-muted-foreground">
+                              提醒已忽略
+                            </span>
+                          )}
+                        </div>
+                      ),
+                    },
+                    {
+                      id: "order",
+                      label: "关联订单",
+                      className: "hidden md:table-cell",
+                      cell: (item) =>
+                        item.orderId ? (
+                          <Link
+                            className="underline underline-offset-4"
+                            to={"/orders/" + item.orderId}
+                          >
+                            {shortId(item.orderId)}
+                          </Link>
+                        ) : (
+                          "—"
+                        ),
+                    },
+                    ...(section === "matches"
+                      ? [
+                          {
+                            id: "amount_cents",
+                            sortBy: "amount_cents",
+                            label: "流水金额",
+                            align: "right" as const,
+                            className: "hidden sm:table-cell",
+                            cell: (item: (typeof page.items)[number]) =>
+                              money(item.amountCents),
+                          },
+                        ]
+                      : []),
+                    ...(section === "conflicts"
+                      ? [
+                          {
+                            id: "external_event_id",
+                            sortBy: "external_event_id",
+                            label: "外部流水号",
+                            className:
+                              "hidden max-w-56 whitespace-normal break-all md:table-cell",
+                            cell: (item: (typeof page.items)[number]) =>
+                              item.externalEventId ?? "—",
+                          },
+                        ]
+                      : []),
+                    {
+                      id: "created_at",
+                      sortBy: "created_at",
+                      label: section === "matches" ? "关联时间" : "发现时间",
+                      className: "hidden sm:table-cell",
+                      cell: (item) => dateTime(item.createdAt),
+                    },
+                  ]}
+                />
               ) : (
                 <Empty>
                   <EmptyHeader>

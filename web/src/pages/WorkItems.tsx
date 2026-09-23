@@ -1,3 +1,5 @@
+import { useListQuery, WORK_ITEM_SORT_FIELDS } from "@/lib/list-query";
+import { ListQueryToolbar } from "@/components/list-query-toolbar";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
@@ -59,6 +61,7 @@ export default function WorkItems() {
   const [batch, setBatch] = useState<{
     type: AdminWorkItemTypeFilter;
     name: string;
+    q: string;
     operation_id: string;
   } | null>(null);
   const finalFocus = useRef<HTMLElement | null>(null);
@@ -67,7 +70,11 @@ export default function WorkItems() {
     mutationFn: (input: NonNullable<typeof batch>) =>
       result(
         api.ignoreAllAdministratorWorkItems({
-          body: { operation_id: input.operation_id, type: input.type },
+          body: {
+            operation_id: input.operation_id,
+            type: input.type,
+            ...(input.q ? { q: input.q } : {}),
+          },
         }),
       ),
     onSuccess: ({ data }, input) => {
@@ -75,7 +82,13 @@ export default function WorkItems() {
       if (!mounted.current) return;
       setBatch(null);
       setMessage(
-        "已忽略“" + input.name + "”中的 " + data.ignored_count + " 条提醒。",
+        "已忽略“" +
+          input.name +
+          "”" +
+          (input.q ? "关键词“" + input.q + "”" : "") +
+          "中的 " +
+          data.ignored_count +
+          " 条提醒。",
       );
       setSearch(
         (current) => {
@@ -93,9 +106,22 @@ export default function WorkItems() {
     nextVisibility: Visibility,
   ) {
     setSearch(
-      {
-        type: nextType,
-        ...(nextVisibility === "IGNORED" ? { visibility: nextVisibility } : {}),
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.set("type", nextType);
+        if (nextVisibility === "IGNORED")
+          next.set("visibility", nextVisibility);
+        else next.delete("visibility");
+        if (
+          nextVisibility !== "IGNORED" &&
+          next.get("sort_by") === "ignored_at"
+        ) {
+          next.delete("sort_by");
+          next.delete("sort_order");
+        }
+        next.delete("cursor");
+        next.delete("page");
+        return next;
       },
       { replace: true },
     );
@@ -139,6 +165,7 @@ export default function WorkItems() {
               ignore.reset();
               setBatch({
                 type,
+                q: (search.get("q") ?? "").trim(),
                 name: filters.find(([value]) => value === type)![1],
                 operation_id: crypto.randomUUID(),
               });
@@ -160,9 +187,19 @@ export default function WorkItems() {
           className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto"
         >
           <AlertDialogHeader>
-            <AlertDialogTitle>全部忽略 · {batch?.name}</AlertDialogTitle>
+            <AlertDialogTitle>
+              忽略当前筛选结果 · {batch?.name}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              包括此分类的所有分页。仅关闭提醒，不删除记录、不解决冲突，也不停止通知重试。新事项仍会提醒。
+              {batch?.q ? (
+                <>
+                  关键词“{batch.q}
+                  ”在此分类中的全部匹配项（跨分页），不影响其他提醒。
+                </>
+              ) : (
+                <>此分类的全部匹配项（跨分页）。</>
+              )}
+              仅关闭提醒，不删除记录、不解决冲突，也不停止通知重试。重试不会追加忽略新增事项。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <ErrorNotice error={ignore.error} />
@@ -179,7 +216,7 @@ export default function WorkItems() {
               {ignore.isPending && (
                 <Spinner aria-hidden="true" data-icon="inline-start" />
               )}
-              确认全部忽略
+              确认忽略当前筛选结果
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -204,6 +241,15 @@ function WorkItemPage({
 }) {
   const mounted = useMounted();
   const pagination = useCursor();
+  const sortFields =
+    visibility === "IGNORED"
+      ? WORK_ITEM_SORT_FIELDS
+      : WORK_ITEM_SORT_FIELDS.filter((field) => field !== "ignored_at");
+  const listQuery = useListQuery(
+    sortFields,
+    visibility === "IGNORED" ? "ignored_at" : "actionable_at",
+    "desc",
+  );
   const list = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const locationKey = useRef(location.key);
@@ -238,7 +284,13 @@ function WorkItemPage({
     };
   }, []);
   const work = useQuery({
-    queryKey: ["work-items", type, visibility, pagination.cursor],
+    queryKey: [
+      "work-items",
+      type,
+      visibility,
+      pagination.cursor,
+      listQuery.scope,
+    ],
     queryFn: ({ signal }) =>
       result(
         api.listAdministratorWorkItems({
@@ -247,6 +299,7 @@ function WorkItemPage({
             type,
             visibility,
             limit: 20,
+            ...listQuery.apiQuery,
             ...(pagination.cursor ? { cursor: pagination.cursor } : {}),
           },
         }),
@@ -408,7 +461,7 @@ function WorkItemPage({
               }
               onClick={onIgnore}
             >
-              全部忽略
+              忽略当前筛选结果
             </Button>
           )}
           <Button
@@ -424,6 +477,19 @@ function WorkItemPage({
           </Button>
         </div>
       </div>
+      <ListQueryToolbar
+        control={listQuery}
+        label="提醒关键词搜索"
+        disabled={busy}
+        sorts={sortFields.map((value) => ({
+          value,
+          label: {
+            actionable_at: "提醒时间",
+            created_at: "创建时间",
+            ignored_at: "忽略时间",
+          }[value],
+        }))}
+      />
       <SuccessMessage message={message || restoredMessage} />
       {restores.pendingCount > 0 && (
         <p role="status" className="text-sm text-muted-foreground">
@@ -440,12 +506,17 @@ function WorkItemPage({
               aria-label={
                 visibility === "IGNORED" ? "已忽略提醒列表" : "待处理提醒列表"
               }
-              className="overflow-hidden rounded-lg border outline-none"
+              className="min-w-0 outline-none"
             >
               <WorkItemsTable
                 items={page.data}
+                control={listQuery}
                 emptyTitle={
-                  visibility === "IGNORED" ? "暂无已忽略提醒" : undefined
+                  listQuery.query.q
+                    ? "没有符合条件的提醒"
+                    : visibility === "IGNORED"
+                      ? "暂无已忽略提醒"
+                      : undefined
                 }
                 actions={
                   visibility === "IGNORED"

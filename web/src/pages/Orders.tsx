@@ -1,3 +1,5 @@
+import { useListQuery, ORDER_SORT_FIELDS } from "@/lib/list-query";
+import { ListQueryToolbar } from "@/components/list-query-toolbar";
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
@@ -74,9 +76,15 @@ export default function Orders() {
   }
   function clearFilters() {
     const next = new URLSearchParams(search);
-    ["payment", "checkout", "cursor", "page"].forEach((key) =>
-      next.delete(key),
-    );
+    [
+      "payment",
+      "checkout",
+      "cursor",
+      "page",
+      "q",
+      "sort_by",
+      "sort_order",
+    ].forEach((key) => next.delete(key));
     setSearch(next, { replace: true });
   }
   return (
@@ -232,14 +240,16 @@ function OrderPage({
   onClearFilters: () => void;
 }) {
   const pagination = useCursor();
+  const listQuery = useListQuery(ORDER_SORT_FIELDS, "created_at", "desc");
   const orders = useQuery({
-    queryKey: ["orders", payment, checkout, pagination.cursor],
+    queryKey: ["orders", payment, checkout, pagination.cursor, listQuery.scope],
     queryFn: ({ signal }) =>
       result(
         api.listAdministratorOrders({
           signal,
           query: {
             limit: 20,
+            ...listQuery.apiQuery,
             ...(payment ? { payment_status: payment } : {}),
             ...(checkout ? { checkout_status: checkout } : {}),
             ...(pagination.cursor ? { cursor: pagination.cursor } : {}),
@@ -248,51 +258,67 @@ function OrderPage({
       ),
   });
   return (
-    <QueryView query={orders}>
-      {(page) => (
-        <>
-          <div className="overflow-hidden rounded-lg border">
-            {!page.data.length &&
-            (pagination.page > 1 || payment || checkout) ? (
-              <Empty>
-                <EmptyHeader>
-                  <EmptyTitle role="heading" aria-level={2}>
-                    {pagination.page > 1
-                      ? "这一页暂无订单"
-                      : "没有符合条件的订单"}
-                  </EmptyTitle>
-                </EmptyHeader>
-                <EmptyContent>
-                  <Button
-                    variant="outline"
-                    onClick={
-                      pagination.page > 1 ? pagination.previous : onClearFilters
-                    }
-                  >
-                    {pagination.page > 1
-                      ? pagination.previousLabel === "返回首页"
-                        ? "返回首页"
-                        : "返回上一页"
-                      : "查看全部订单"}
-                  </Button>
-                </EmptyContent>
-              </Empty>
-            ) : (
-              <DataTable data={page.data} />
-            )}
-          </div>
-          <CursorPagination
-            previousLabel={pagination.previousLabel}
-            page={pagination.page}
-            count={page.data.length}
-            hasNext={!!page.page.next_cursor}
-            pending={orders.isFetching}
-            onPrevious={pagination.previous}
-            onNext={() => pagination.next(page.page.next_cursor)}
-          />
-        </>
-      )}
-    </QueryView>
+    <>
+      <ListQueryToolbar
+        control={listQuery}
+        label="订单关键词搜索"
+        sorts={[
+          { value: "created_at", label: "创建时间" },
+          { value: "payable_amount_cents", label: "应付金额" },
+          { value: "received_amount_cents", label: "实收金额" },
+        ]}
+      />
+      <QueryView query={orders}>
+        {(page) => (
+          <>
+            <div className="min-w-0">
+              {!page.data.length &&
+              (pagination.page > 1 ||
+                payment ||
+                checkout ||
+                listQuery.query.q) ? (
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyTitle role="heading" aria-level={2}>
+                      {pagination.page > 1
+                        ? "这一页暂无订单"
+                        : "没有符合条件的订单"}
+                    </EmptyTitle>
+                  </EmptyHeader>
+                  <EmptyContent>
+                    <Button
+                      variant="outline"
+                      onClick={
+                        pagination.page > 1
+                          ? pagination.previous
+                          : onClearFilters
+                      }
+                    >
+                      {pagination.page > 1
+                        ? pagination.previousLabel === "返回首页"
+                          ? "返回首页"
+                          : "返回上一页"
+                        : "查看全部订单"}
+                    </Button>
+                  </EmptyContent>
+                </Empty>
+              ) : (
+                <DataTable data={page.data} control={listQuery} />
+              )}
+            </div>
+            <CursorPagination
+              previousLabel={pagination.previousLabel}
+              page={pagination.page}
+              count={page.data.length}
+              hasNext={!!page.page.next_cursor}
+              pending={orders.isFetching}
+              onPrevious={pagination.previous}
+              onNext={() => pagination.next(page.page.next_cursor)}
+            />
+          </>
+        )}
+      </QueryView>
+    </>
   );
 }
 export { OrderDetail } from "./OrderDetail";

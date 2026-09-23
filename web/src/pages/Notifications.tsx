@@ -1,3 +1,6 @@
+import { useListQuery, DELIVERY_SORT_FIELDS } from "@/lib/list-query";
+import { ListQueryToolbar } from "@/components/list-query-toolbar";
+import { BusinessTable } from "@/components/business-table";
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, RefreshCw } from "lucide-react";
@@ -15,7 +18,6 @@ import { notificationErrorName } from "@/lib/detail-summary";
 import { label } from "@/lib/labels";
 import { DeliveryCard } from "@/components/detail/NotificationEvidence";
 import { RelatedOrder } from "@/components/detail/DetailPrimitives";
-import { LinkedTableRow } from "@/components/LinkedTableRow";
 import { StatusBadge } from "@/components/business-status";
 import { QueryView, ErrorNotice } from "@/components/request-state";
 import { CursorPagination } from "@/components/cursor-pagination";
@@ -29,14 +31,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "@/components/ui/table";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 const statuses = [
   { value: "", label: "全部状态" },
@@ -50,18 +44,20 @@ export default function Notifications() {
   const [search, setSearch] = useSearchParams();
   const status =
     statuses.find((item) => item.value === search.get("status"))?.value ?? "";
+  function changeStatus(value: string | null) {
+    const next = new URLSearchParams(search);
+    if (value) next.set("status", value);
+    else next.delete("status");
+    next.delete("cursor");
+    next.delete("page");
+    setSearch(next, { replace: true });
+  }
   return (
     <DeliveryPage
       status={status || undefined}
       filters={
         <>
-          <Select
-            items={statuses}
-            value={status}
-            onValueChange={(value) =>
-              setSearch(value ? { status: value } : {}, { replace: true })
-            }
-          >
+          <Select items={statuses} value={status} onValueChange={changeStatus}>
             <SelectTrigger aria-label="通知状态筛选">
               <SelectValue />
             </SelectTrigger>
@@ -76,10 +72,7 @@ export default function Notifications() {
             </SelectContent>
           </Select>
           {status && (
-            <Button
-              variant="ghost"
-              onClick={() => setSearch({}, { replace: true })}
-            >
+            <Button variant="ghost" onClick={() => changeStatus(null)}>
               清除筛选
             </Button>
           )}
@@ -96,14 +89,16 @@ function DeliveryPage({
   filters: ReactNode;
 }) {
   const pagination = useCursor();
+  const listQuery = useListQuery(DELIVERY_SORT_FIELDS, "created_at", "asc");
   const deliveries = useQuery({
-    queryKey: ["notifications", status, pagination.cursor],
+    queryKey: ["notifications", status, pagination.cursor, listQuery.scope],
     queryFn: ({ signal }) =>
       result(
         api.listWebhookDeliveries({
           signal,
           query: {
             limit: 20,
+            ...listQuery.apiQuery,
             ...(status ? { status } : {}),
             ...(pagination.cursor ? { cursor: pagination.cursor } : {}),
           },
@@ -138,85 +133,112 @@ function DeliveryPage({
           </Button>
         </div>
       </div>
+      <ListQueryToolbar
+        control={listQuery}
+        label="通知关键词搜索"
+        sorts={[
+          { value: "created_at", label: "创建时间" },
+          { value: "attempt_count", label: "尝试次数" },
+          { value: "next_attempt_at", label: "下次重试时间" },
+        ]}
+      />
       <QueryView query={deliveries}>
         {(page) => (
           <>
-            <div className="overflow-hidden rounded-lg border">
+            <div className="min-w-0">
               {page.data.length ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>通知事件</TableHead>
-                      <TableHead>送达结果</TableHead>
-                      <TableHead className="hidden text-right sm:table-cell">
-                        尝试次数
-                      </TableHead>
-                      <TableHead className="hidden lg:table-cell">
-                        关联订单
-                      </TableHead>
-                      <TableHead className="hidden md:table-cell">
-                        下次尝试
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {page.data.map((delivery) => (
-                      <LinkedTableRow key={delivery.delivery_id}>
-                        <TableCell className="w-full whitespace-normal py-3">
-                          <div className="flex flex-col gap-1">
-                            <Link
-                              data-row-link
-                              className="font-medium hover:underline"
-                              to={"/notifications/" + delivery.delivery_id}
-                            >
-                              {label(delivery.event.event_type)}
-                            </Link>
-                            <time
-                              className="text-xs text-muted-foreground"
-                              dateTime={delivery.created_at}
-                            >
-                              {dateTime(delivery.created_at)}
-                            </time>
-                            <span className="text-xs text-muted-foreground sm:hidden">
-                              已尝试 {delivery.attempt_count} 次
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="max-w-xs whitespace-normal">
-                          <div className="flex flex-col gap-1">
-                            <StatusBadge value={delivery.status} />
-                            {delivery.last_error_code && (
-                              <span className="text-xs text-muted-foreground">
-                                {notificationErrorName(
-                                  delivery.last_error_code,
-                                )}
-                              </span>
-                            )}
-                            {delivery.next_attempt_at && (
-                              <span className="text-xs text-muted-foreground md:hidden">
-                                下次 {dateTime(delivery.next_attempt_at)}
-                              </span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="hidden text-right tabular-nums sm:table-cell">
-                          {delivery.attempt_count}
-                        </TableCell>
-                        <TableCell className="hidden lg:table-cell">
+                <BusinessTable
+                  id="notifications"
+                  items={page.data}
+                  rowId={(item) => item.delivery_id}
+                  control={listQuery}
+                  columns={[
+                    {
+                      id: "identity",
+                      label: "通知事件",
+                      hideable: false,
+                      className: "w-full max-w-md whitespace-normal py-3",
+                      cell: (delivery) => (
+                        <div className="flex flex-col gap-1">
                           <Link
-                            className="underline underline-offset-4"
-                            to={"/orders/" + delivery.event.order_id}
+                            data-row-link
+                            className="font-medium hover:underline"
+                            to={"/notifications/" + delivery.delivery_id}
                           >
-                            {shortId(delivery.event.order_id)}
+                            {label(delivery.event.event_type)}
                           </Link>
-                        </TableCell>
-                        <TableCell className="hidden text-muted-foreground md:table-cell">
-                          {dateTime(delivery.next_attempt_at)}
-                        </TableCell>
-                      </LinkedTableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                          <span className="text-xs text-muted-foreground">
+                            {shortId(delivery.delivery_id)}
+                          </span>
+                          <time
+                            className="text-xs text-muted-foreground md:hidden"
+                            dateTime={delivery.created_at}
+                          >
+                            {dateTime(delivery.created_at)}
+                          </time>
+                          <span className="text-xs text-muted-foreground sm:hidden">
+                            已尝试 {delivery.attempt_count} 次
+                          </span>
+                        </div>
+                      ),
+                    },
+                    {
+                      id: "status",
+                      label: "送达结果",
+                      className: "max-w-xs whitespace-normal",
+                      cell: (delivery) => (
+                        <div className="flex flex-col gap-1">
+                          <StatusBadge value={delivery.status} />
+                          {delivery.last_error_code && (
+                            <span className="text-xs text-muted-foreground">
+                              {notificationErrorName(delivery.last_error_code)}
+                            </span>
+                          )}
+                          {delivery.next_attempt_at && (
+                            <span className="text-xs text-muted-foreground md:hidden">
+                              下次 {dateTime(delivery.next_attempt_at)}
+                            </span>
+                          )}
+                        </div>
+                      ),
+                    },
+                    {
+                      id: "attempt_count",
+                      sortBy: "attempt_count",
+                      label: "尝试次数",
+                      align: "right",
+                      className: "hidden sm:table-cell",
+                      cell: (delivery) => delivery.attempt_count,
+                    },
+                    {
+                      id: "order",
+                      label: "关联订单",
+                      className: "hidden lg:table-cell",
+                      cell: (delivery) => (
+                        <Link
+                          className="underline underline-offset-4"
+                          to={"/orders/" + delivery.event.order_id}
+                        >
+                          {shortId(delivery.event.order_id)}
+                        </Link>
+                      ),
+                    },
+                    {
+                      id: "created_at",
+                      sortBy: "created_at",
+                      label: "创建时间",
+                      className: "hidden md:table-cell",
+                      cell: (delivery) => dateTime(delivery.created_at),
+                    },
+                    {
+                      id: "next_attempt_at",
+                      sortBy: "next_attempt_at",
+                      label: "下次尝试",
+                      className: "hidden md:table-cell",
+                      cell: (delivery) => dateTime(delivery.next_attempt_at),
+                    },
+                  ]}
+                />
               ) : (
                 <Empty>
                   <EmptyHeader>

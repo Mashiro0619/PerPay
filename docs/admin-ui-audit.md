@@ -11,10 +11,10 @@
 | 每日数据 | Card、Table、Pagination | [Table](https://ui.shadcn.com/docs/components/base/table) | 常驻表格、日期倒序、10条分页；宽屏与图表2:1并排 | 2：已通过，1100px容器断点/跨页/空态 |
 | 设置分类/表单 | Tabs、Card、FieldSet、FieldGroup | [Tabs](https://ui.shadcn.com/docs/components/base/tabs)、[Field](https://ui.shadcn.com/docs/components/base/field) | 默认Tabs，窄屏横滚；完整卡片和字段组，保留草稿保护 | 3：已通过，默认Tabs/横滚/明确激活/草稿保护 |
 | 密钥与安全 | Card、Dialog、AlertDialog、Field | [Dialog](https://ui.shadcn.com/docs/components/base/dialog) | 保留独立敏感操作及短时秘密展示，检查表单组合 | 3/7：待复核 |
-| 订单 | Table、InputGroup、Select | [Data Table](https://ui.shadcn.com/docs/components/base/data-table) | 服务端搜索排序、统一表格/列显示；保留编号直达 | 4/6：待实施 |
+| 订单 | Table、InputGroup、Select | [Data Table](https://ui.shadcn.com/docs/components/base/data-table) | 服务端搜索排序、统一表格/列显示；保留编号直达 | 4/6：已通过，服务端查询/URL恢复/列显隐 |
 | 业务通知 | Table、Select | [Data Table](https://ui.shadcn.com/docs/components/base/data-table) | 全局搜索排序、统一表格；不加无用途勾选 | 4/6：待实施 |
-| 支付关联/冲突/异常 | Tabs、Table、Select | [Data Table](https://ui.shadcn.com/docs/components/base/data-table) | 保留分类语义，服务端查询与统一表格 | 5/6：待实施 |
-| 待处理 | Table、Popover、Dialog | [Data Table](https://ui.shadcn.com/docs/components/base/data-table) | 搜索排序绑定游标；按筛选结果忽略，保留逐条并发恢复 | 5/6：待实施 |
+| 支付关联/冲突/异常 | Tabs、Table、Select | [Data Table](https://ui.shadcn.com/docs/components/base/data-table) | 保留分类语义，服务端查询与统一表格 | 5/6：已通过，查询绑定/范围忽略/并发恢复 |
+| 待处理 | Table、Popover、Dialog | [Data Table](https://ui.shadcn.com/docs/components/base/data-table) | 搜索排序绑定游标；按筛选结果忽略，保留逐条并发恢复 | 5/6：已通过，查询绑定/范围忽略/并发恢复 |
 | 订单/关联详情 | Card、Accordion、Collapsible | [Card](https://ui.shadcn.com/docs/components/base/card) | 主要匹配依据直显，附加历史保留按需查看 | 7：待实施 |
 | 通知投递尝试 | Collapsible、Table | [Table](https://ui.shadcn.com/docs/components/base/table) | 直显、倒序、10条分页 | 7：待实施 |
 | 交易对照/采集摘要 | Table、Collapsible | [Table](https://ui.shadcn.com/docs/components/base/table) | 具名两/三列表格、无已有流水不重复空列；摘要直显 | 7：待实施 |
@@ -65,3 +65,11 @@
 - 追加迁移26：关联状态/创建索引、冲突账户/外部编号索引，以及通知predecessor索引；复用异常及事件序号既有索引。万条提醒实测发现原后继投递判断缺索引导致二次扫描及租约超时，补索引后首查43—53ms、翻页46—177ms（本机观察），没有放宽租约保护。
 - 正确性回归使用真实完整schema及合成财务操作，覆盖关键词后续页命中、中文/字面符号、金额/外部编号/时间双向排序、空值/同值、旧游标及跨筛选拒绝、provider隔离；批量忽略跨页仅命中、同编号不同q拒绝、空q兼容旧指纹、首次执行后新增提醒不被重试吞入、资金异常事实不变。完整npm run check通过：后端762项、前端672项，3项平台跳过。
 - 基准沿用独立10000订单/10000通知读投影，其中10000条为失败提醒；装载后恢复触发器再测API，不作为财务写入测试。文件stage-5-benchmark.json、stage-5-check.log、stage-5-targeted-existing.log；用户可见筛选范围提示和统一表格在第6段接入并做浏览器验收。
+
+### 第6段
+- 官方来源：[Base Data Table v9指南](https://ui.shadcn.com/docs/components/base/data-table)、[Table](https://ui.shadcn.com/docs/components/base/table)、[Dropdown Menu](https://ui.shadcn.com/docs/components/base/dropdown-menu)、[Input Group](https://ui.shadcn.com/docs/components/base/input-group)。已核对发布版本并锁定开发依赖@tanstack/react-table@9.2.4；只进入管理后台包。
+- 六类列表统一Table/表头/行导航/列显隐组合；仅启用columnVisibilityFeature和rowSortingFeature，manualSorting=true，不装载客户端筛选/排序/分页模型，没有无业务用途的勾选框或假页数。关键词Enter/搜索按钮提交，筛选/排序清游标，URL保存q/sort/原有筛选；保留完整编号直达。
+- 列显隐是本地非敏感UI偏好，主标识和恢复动作列固定；窄屏保留核心信息与原生详情链接，金额对齐，辅助字段可在详情查看。游标路径和详情返回保留原搜索及排序位置。
+- 提醒忽略明确显示当前分类与关键词、跨页范围，丢响应重试继续使用原操作ID与原q；连续恢复仍复用逐条状态机、乱序响应及焦点保护。完整回归发现并修复FlexRender随回调函数变化重建单元格、导致按钮节点与焦点丢失的问题；使用稳定单元格组件类型，未删除焦点断言，24项连续恢复回归全部通过。
+- 完整npm run check通过：后端762项、前端683项，3项平台跳过；新增查询提交/Unicode上限、六类排序请求、列控制、没有客户端重排、详情返回及乱序响应测试。
+- 独立6270实例27项浏览器验收通过，0页面错误：1440/390×明暗×六类列表24场景，真实API排序/空态/列控制/长商品名/页面无横向溢出，另含搜索分页后详情返回、筛选忽略丢响应幂等重试及恢复、读取失败仍可检索。导航验收等待真实数据及视图过渡完成，不把SPA请求开始当成页面就绪。资产stage-6-browser.cjs/json、stage-6-check.log、stage-6-restore-regression.log、stage-6-{width}-{theme}-{page}.png。

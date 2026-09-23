@@ -178,8 +178,9 @@ const listCases = [
       attempt_count: 1,
       next_attempt_at: null,
       event: { event_type: "PAYMENT_CONFIRMED", order_id: orderId },
+      created_at: timestamp,
     },
-    columns: 5,
+    columns: 6,
   },
   {
     name: "payment matches",
@@ -188,12 +189,16 @@ const listCases = [
     target: `/reconciliation/matches/${recordId}`,
     record: {
       payment_match_id: recordId,
+      ledger_entry: {
+        external_event_id: "ledger-example",
+        amount_cents: 10000,
+      },
       evidence_type: "MANUAL",
       order_id: orderId,
       status: "SETTLED",
       created_at: timestamp,
     },
-    columns: 4,
+    columns: 5,
   },
   {
     name: "ledger conflicts",
@@ -203,10 +208,11 @@ const listCases = [
     record: {
       conflict_id: recordId,
       conflict_type: "RAW_PAGE_VARIANT",
+      external_event_id: null,
       status: "OPEN",
       created_at: timestamp,
     },
-    columns: 4,
+    columns: 5,
   },
   {
     name: "financial exceptions",

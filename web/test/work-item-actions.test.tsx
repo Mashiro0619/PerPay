@@ -71,11 +71,15 @@ describe("reminder dismissal", () => {
       const user = userEvent.setup();
       renderPage("?type=" + type + "&cursor=later-page&page=3");
       await waitFor(() =>
-        expect(screen.getByRole("button", { name: "全部忽略" })).toBeEnabled(),
+        expect(
+          screen.getByRole("button", { name: "忽略当前筛选结果" }),
+        ).toBeEnabled(),
       );
-      await user.click(screen.getByRole("button", { name: "全部忽略" }));
+      await user.click(
+        screen.getByRole("button", { name: "忽略当前筛选结果" }),
+      );
       const dialog = await screen.findByRole("alertdialog", {
-        name: "全部忽略 · " + name,
+        name: "忽略当前筛选结果 · " + name,
       });
       expect(dialog).toHaveClass(
         "max-h-[calc(100dvh-2rem)]",
@@ -83,11 +87,11 @@ describe("reminder dismissal", () => {
         "overflow-y-auto",
       );
       expect(dialog).toHaveAccessibleDescription(
-        /所有分页.*仅关闭提醒.*不停止通知重试/,
+        /跨分页.*仅关闭提醒.*不停止通知重试/,
       );
       expect(within(dialog).queryByRole("textbox")).not.toBeInTheDocument();
       await user.click(
-        within(dialog).getByRole("button", { name: "确认全部忽略" }),
+        within(dialog).getByRole("button", { name: "确认忽略当前筛选结果" }),
       );
       expect(
         await screen.findByText("已忽略“" + name + "”中的 35 条提醒。"),
@@ -148,12 +152,18 @@ describe("reminder dismissal", () => {
     const user = userEvent.setup();
     renderPage("?type=LEDGER_CONFLICT");
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "全部忽略" })).toBeEnabled(),
+      expect(
+        screen.getByRole("button", { name: "忽略当前筛选结果" }),
+      ).toBeEnabled(),
     );
-    await user.click(screen.getByRole("button", { name: "全部忽略" }));
-    await user.click(screen.getByRole("button", { name: "确认全部忽略" }));
+    await user.click(screen.getByRole("button", { name: "忽略当前筛选结果" }));
+    await user.click(
+      screen.getByRole("button", { name: "确认忽略当前筛选结果" }),
+    );
     await waitFor(() => expect(writes).toHaveLength(1));
-    expect(screen.getByRole("button", { name: "确认全部忽略" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "确认忽略当前筛选结果" }),
+    ).toBeDisabled();
     for (const [, name] of scopes)
       expect(screen.getByRole("tab", { name, hidden: true })).toHaveAttribute(
         "aria-disabled",
@@ -161,15 +171,21 @@ describe("reminder dismissal", () => {
       );
     finish(apiError("internal_error", "response lost", 500));
     await screen.findByText(/服务处理失败/);
-    await user.click(screen.getByRole("button", { name: "确认全部忽略" }));
+    await user.click(
+      screen.getByRole("button", { name: "确认忽略当前筛选结果" }),
+    );
     await screen.findByText("已忽略“账本冲突”中的 35 条提醒。");
     expect(writes[1]).toEqual(writes[0]);
     await user.click(screen.getByRole("tab", { name: "通知失败" }));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "全部忽略" })).toBeEnabled(),
+      expect(
+        screen.getByRole("button", { name: "忽略当前筛选结果" }),
+      ).toBeEnabled(),
     );
-    await user.click(screen.getByRole("button", { name: "全部忽略" }));
-    await user.click(screen.getByRole("button", { name: "确认全部忽略" }));
+    await user.click(screen.getByRole("button", { name: "忽略当前筛选结果" }));
+    await user.click(
+      screen.getByRole("button", { name: "确认忽略当前筛选结果" }),
+    );
     await screen.findByText("已忽略“通知失败”中的 35 条提醒。");
     expect(writes[2]!.type).toBe("NOTIFICATION_FAILURE");
     expect(writes[2]!.operation_id).not.toBe(writes[0]!.operation_id);
@@ -216,7 +232,7 @@ describe("reminder dismissal", () => {
       await screen.findByRole("button", { name: "已结束" }),
     ).toBeDisabled();
     expect(
-      screen.queryByRole("button", { name: "全部忽略" }),
+      screen.queryByRole("button", { name: "忽略当前筛选结果" }),
     ).not.toBeInTheDocument();
     expect(
       screen
@@ -253,4 +269,49 @@ describe("reminder dismissal", () => {
     );
     expect(screen.getByRole("button", { name: "未忽略" })).toBeVisible();
   });
+});
+
+it("captures the keyword in the batch receipt and reuses it after a lost response", async () => {
+  const bodies: Array<Record<string, unknown>> = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (request: Request) => {
+      if (request.method === "POST") {
+        const body = await request.json();
+        bodies.push(body);
+        if (bodies.length === 1) throw new TypeError("Lost response");
+        return json({ data: { ...body, ignored_count: 1 } });
+      }
+      return page();
+    }),
+  );
+  const user = userEvent.setup();
+  renderPage(
+    "?q=" +
+      encodeURIComponent("  精确%_  ") +
+      "&type=FINANCIAL_EXCEPTION&sort_order=asc",
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "忽略当前筛选结果" }),
+    ).toBeEnabled(),
+  );
+  await user.click(screen.getByRole("button", { name: "忽略当前筛选结果" }));
+  const dialog = await screen.findByRole("alertdialog");
+  expect(dialog).toHaveTextContent("关键词“精确%_”");
+  await user.click(
+    within(dialog).getByRole("button", { name: "确认忽略当前筛选结果" }),
+  );
+  await waitFor(() => expect(bodies).toHaveLength(1));
+  await waitFor(() =>
+    expect(
+      within(dialog).getByRole("button", { name: "确认忽略当前筛选结果" }),
+    ).toBeEnabled(),
+  );
+  await user.click(
+    within(dialog).getByRole("button", { name: "确认忽略当前筛选结果" }),
+  );
+  await waitFor(() => expect(bodies).toHaveLength(2));
+  expect(bodies[1]).toEqual(bodies[0]);
+  expect(bodies[0]).toMatchObject({ q: "精确%_", type: "FINANCIAL_EXCEPTION" });
 });
