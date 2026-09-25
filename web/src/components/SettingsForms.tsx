@@ -16,6 +16,7 @@ import {
   Save,
 } from "lucide-react";
 import { collectionCodeError } from "../../../src/shared/collection-code";
+import { PROVIDER_TIMING_DEFAULTS } from "../../../src/shared/provider-defaults";
 import {
   ApiError,
   api,
@@ -388,7 +389,10 @@ export function SettingsEditor({
               name="scan_interval_seconds"
               error={fieldErrors.scan_interval_seconds}
               label="常规采集间隔（秒）"
-              value={initialSettings.provider?.scan_interval_seconds ?? 60}
+              value={
+                initialSettings.provider?.scan_interval_seconds ??
+                PROVIDER_TIMING_DEFAULTS.scanIntervalSeconds
+              }
               min={5}
               max={3600}
               hint="空闲时使用；有效时限至少为此间隔的两倍。"
@@ -400,7 +404,7 @@ export function SettingsEditor({
               value={
                 initialSettings.provider?.active_scan_interval_seconds ??
                 initialSettings.provider?.scan_interval_seconds ??
-                8
+                PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds
               }
               min={5}
               max={3600}
@@ -420,7 +424,8 @@ export function SettingsEditor({
               error={fieldErrors.maximum_success_age_seconds}
               label="采集有效时限（秒）"
               value={
-                initialSettings.provider?.maximum_success_age_seconds ?? 120
+                initialSettings.provider?.maximum_success_age_seconds ??
+                PROVIDER_TIMING_DEFAULTS.maximumSuccessAgeSeconds
               }
               min={10}
               max={86400}

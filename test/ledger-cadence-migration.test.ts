@@ -63,7 +63,7 @@ describe("adaptive ledger interval migration", () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-cadence-constraints-"));
     const database = await AppDatabase.open(join(directory, "database.sqlite3"));
     try {
-      for (const active of [4_999, 10_001, 3_600_001]) {
+      for (const active of [4_999, 60_001, 3_600_001]) {
         assert.throws(() => database.write((connection) => connection.prepare(`UPDATE runtime_configuration
           SET revision = revision + 1, provider_active_scan_interval_milliseconds = ?`).run(active)), /constraint/i);
       }

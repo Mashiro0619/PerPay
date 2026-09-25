@@ -24,7 +24,7 @@ function renderEditor(settings: RuntimeSettings, onSaved = vi.fn()) {
 }
 
 describe("adaptive ledger scan settings", () => {
-  it("defaults new provider setup to 60s normal and 8s active without a tail setting", () => {
+  it("defaults new provider setup to 60s normal, 8s active and 120s freshness", () => {
     renderEditor(configuredThrough(1));
     const normal = screen.getByLabelText("常规采集间隔（秒）");
     const active = screen.getByLabelText("活跃采集间隔（秒）");
@@ -42,10 +42,39 @@ describe("adaptive ledger scan settings", () => {
     expect(active).not.toBeValid();
   });
 
+  it("submits all three initial defaults even after advanced settings are collapsed", async () => {
+    const settings = configuredThrough(1);
+    const saved = configuredThrough(2);
+    const fetchMock = vi.fn(async (_request: Request) => json({ data: saved }));
+    vi.stubGlobal("fetch", fetchMock);
+    const onSaved = vi.fn();
+    renderEditor(settings, onSaved);
+    fireEvent.change(screen.getByLabelText("应用 ID（App ID）"), {
+      target: { value: "new-provider-app" },
+    });
+    fireEvent.change(screen.getByLabelText("支付宝公钥"), {
+      target: { value: "synthetic-platform-public-key" },
+    });
+    await userEvent.setup().click(screen.getByRole("button", { name: "高级设置" }));
+    expect(screen.getByRole("button", { name: "高级设置" })).toHaveAttribute(
+      "aria-expanded", "false",
+    );
+    await userEvent.setup().click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(await fetchMock.mock.calls[0]![0].json()).toMatchObject({
+      revision: settings.revision,
+      scan_interval_seconds: 60,
+      active_scan_interval_seconds: 8,
+      maximum_success_age_seconds: 120,
+    });
+  });
+
   it("preserves the migrated fixed frequency instead of silently adopting new defaults", () => {
     renderEditor(configuredThrough(2));
     expect(screen.getByLabelText("常规采集间隔（秒）")).toHaveValue(10);
     expect(screen.getByLabelText("活跃采集间隔（秒）")).toHaveValue(10);
+    expect(screen.getByLabelText("采集有效时限（秒）")).toHaveValue(60);
   });
 
   it("submits both custom intervals and keeps the existing configuration revision", async () => {

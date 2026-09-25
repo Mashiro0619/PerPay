@@ -66,6 +66,7 @@ import {
   type FinancialOperationType,
 } from "../reconciliation/model.ts";
 import { APP_VERSION, DATABASE_COMPATIBILITY } from "../version.ts";
+import { PROVIDER_TIMING_DEFAULTS } from "../shared/provider-defaults.ts";
 import {
   ensurePrivateDirectory,
   hardenExistingPrivateFile,
@@ -181,6 +182,7 @@ export class AppDatabase {
         throw new Error("database schema integrity check failed: schema=invalid");
       }
       startupLeaseHeartbeat.assertHealthy();
+      initializeFreshRuntimeConfiguration(connection);
       initializeRuntimeSecrets(connection);
       const integrity = inspectDatabaseIntegrity(connection);
       if (!integrity.ok) {
@@ -948,6 +950,49 @@ function recordApplicationVersion(connection: DatabaseSync): void {
   const schemaVersion = Number(applied.version ?? 0n);
   if (schemaVersion < DATABASE_COMPATIBILITY.minimum || schemaVersion > DATABASE_COMPATIBILITY.maximum) throw new Error(`database schema ${schemaVersion} is outside application ${APP_VERSION} compatibility ${DATABASE_COMPATIBILITY.minimum}-${DATABASE_COMPATIBILITY.maximum}`);
   connection.prepare("INSERT INTO system_metadata(key, value, updated_at) VALUES ('last_started_version', ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").run(APP_VERSION);
+}
+
+/** Seed current defaults without changing immutable migration SQL or saved settings. */
+function initializeFreshRuntimeConfiguration(connection: DatabaseSync): void {
+  // This marker is written only after a completed startup. Seeding remains
+  // retryable if initialization was interrupted after schema creation.
+  if (connection.prepare("SELECT 1 FROM system_metadata WHERE key = 'last_started_version'").get()) return;
+
+  connection.exec("BEGIN IMMEDIATE");
+  try {
+    const untouched = connection.prepare(
+      `SELECT 1 FROM runtime_configuration
+        WHERE singleton_key = 1 AND revision = 0 AND payment_revision = 0
+          AND collection_code_payload IS NULL AND provider_environment IS NULL
+          AND provider_app_id IS NULL AND provider_account_key IS NULL
+          AND NOT EXISTS (SELECT 1 FROM runtime_secrets)`,
+    ).get();
+    if (untouched) {
+      const guard = connection.prepare(
+        "SELECT sql FROM sqlite_schema WHERE type = 'trigger' AND name = 'runtime_configuration_revision_guard'",
+      ).get() as { sql: string } | undefined;
+      if (!guard?.sql) throw new Error("runtime configuration revision guard is missing");
+      // Bootstrap is not a user edit: keep revision zero. Drop and restore only
+      // this guard in the same transaction, before the instance starts serving.
+      connection.exec("DROP TRIGGER runtime_configuration_revision_guard");
+      connection.prepare(
+        `UPDATE runtime_configuration
+            SET provider_scan_interval_milliseconds = ?,
+                provider_active_scan_interval_milliseconds = ?,
+                provider_maximum_success_age_milliseconds = ?
+          WHERE singleton_key = 1`,
+      ).run(
+        PROVIDER_TIMING_DEFAULTS.scanIntervalSeconds * 1_000,
+        PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds * 1_000,
+        PROVIDER_TIMING_DEFAULTS.maximumSuccessAgeSeconds * 1_000,
+      );
+      connection.exec(guard.sql);
+    }
+    connection.exec("COMMIT");
+  } catch (error) {
+    if (connection.isTransaction) connection.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 function initializeRuntimeSecrets(connection: DatabaseSync): void {
