@@ -42,7 +42,7 @@ describe("adaptive ledger scan settings", () => {
     expect(active).not.toBeValid();
   });
 
-  it("submits all three initial defaults even after advanced settings are collapsed", async () => {
+  it("shows and submits all three initial defaults without an advanced disclosure", async () => {
     const settings = configuredThrough(1);
     const saved = configuredThrough(2);
     const fetchMock = vi.fn(async (_request: Request) => json({ data: saved }));
@@ -55,10 +55,10 @@ describe("adaptive ledger scan settings", () => {
     fireEvent.change(screen.getByLabelText("支付宝公钥"), {
       target: { value: "synthetic-platform-public-key" },
     });
-    await userEvent.setup().click(screen.getByRole("button", { name: "高级设置" }));
-    expect(screen.getByRole("button", { name: "高级设置" })).toHaveAttribute(
-      "aria-expanded", "false",
-    );
+    expect(screen.queryByRole("button", { name: "高级设置" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("常规采集间隔（秒）")).toBeVisible();
+    expect(screen.getByLabelText("活跃采集间隔（秒）")).toBeVisible();
+    expect(screen.getByLabelText("采集有效时限（秒）")).toBeVisible();
     await userEvent.setup().click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -134,10 +134,7 @@ describe("adaptive ledger scan settings", () => {
     );
     expect(active).toHaveValue(30);
     expect(active).toBeEnabled();
-    expect(screen.getByRole("button", { name: "高级设置" })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
+    expect(active).toBeVisible();
     expect(focusWhileDisabled).not.toContain(true);
     expect(fetchMock).not.toHaveBeenCalled();
   });

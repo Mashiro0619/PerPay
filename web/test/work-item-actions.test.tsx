@@ -47,6 +47,59 @@ function renderPage(search = "") {
 const page = (items: AdminWorkItem[] = [item]) =>
   json({ data: items, page: { next_cursor: "next-page" } });
 
+describe("reminder type tab layout", () => {
+  it.each([false, true])(
+    "keeps padded scroll edges and keyboard filtering in the empty state (ignored: %s)",
+    async (ignored) => {
+      const reveal = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
+      const requests: Request[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (request: Request) => {
+          requests.push(request);
+          return json({ data: [], page: { next_cursor: null } });
+        }),
+      );
+      const user = userEvent.setup();
+      renderPage(ignored ? "?visibility=IGNORED" : "");
+      await screen.findByText(
+        ignored ? "暂无已忽略提醒" : "暂无待处理提醒",
+      );
+      const tabs = screen.getByRole("tablist", { name: "待处理类型" });
+      expect(tabs.parentElement).toHaveClass(
+        "min-w-0",
+        "overflow-x-auto",
+        "scroll-p-1",
+        "p-1",
+        "-m-1",
+      );
+      expect(tabs.parentElement).not.toHaveClass("overflow-hidden");
+      expect(within(tabs).getAllByRole("tab")).toHaveLength(scopes.length);
+      await user.tab();
+      expect(within(tabs).getByRole("tab", { name: "全部事项" })).toHaveFocus();
+      for (const [type, name] of scopes.slice(1)) {
+        await user.keyboard("{ArrowRight}");
+        const tab = within(tabs).getByRole("tab", { name });
+        expect(tab).toHaveFocus();
+        expect(reveal.mock.contexts).toContain(tab);
+        expect(reveal).toHaveBeenLastCalledWith({
+          block: "nearest",
+          inline: "nearest",
+        });
+        await user.keyboard("{Enter}");
+        expect(tab).toHaveAttribute("aria-selected", "true");
+        expect(screen.getByLabelText("当前地址")).toHaveTextContent("type=" + type);
+      }
+      await user.keyboard("{Home}{Enter}");
+      expect(within(tabs).getByRole("tab", { name: "全部事项" })).toHaveFocus();
+      await screen.findByText(
+        ignored ? "暂无已忽略提醒" : "暂无待处理提醒",
+      );
+      expect(requests.every((request) => request.method === "GET")).toBe(true);
+    },
+  );
+});
+
 describe("reminder dismissal", () => {
   it.each(scopes)(
     "dismisses all pages only within %s and refreshes home and every scope",

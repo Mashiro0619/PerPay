@@ -38,7 +38,7 @@ describe("minimal onboarding", () => {
     },
   );
 
-  it("keeps an existing sandbox selection in advanced settings and preserves it when saving", async () => {
+  it("shows an existing sandbox selection directly and preserves it when saving", async () => {
     const settings = configuredThrough(4);
     settings.provider = { ...settings.provider!, environment: "SANDBOX" };
     const view = mountOnboarding({
@@ -50,9 +50,9 @@ describe("minimal onboarding", () => {
           : undefined,
     });
     const environment = await screen.findByLabelText("支付宝环境");
-    expect(environment).not.toBeVisible();
+    expect(environment).toBeVisible();
     expect(environment).toHaveValue("SANDBOX");
-    expect(screen.getByText("高级设置 · 沙箱环境")).toBeVisible();
+    expect(screen.queryByRole("button", { name: /高级设置/ })).not.toBeInTheDocument();
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "保存并继续" }));
@@ -71,7 +71,7 @@ describe("minimal onboarding", () => {
     });
   });
 
-  it("opens advanced settings and focuses an invalid field returned by the server", async () => {
+  it("focuses a visible settings field returned as invalid by the server", async () => {
     const view = mountOnboarding({
       stage: 1,
       handle: (request) =>
@@ -99,17 +99,15 @@ describe("minimal onboarding", () => {
     await waitFor(() =>
       expect(screen.getByLabelText("请求超时（毫秒）")).toHaveFocus(),
     );
-    expect(screen.getByRole("button", { name: "高级设置" })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
+    expect(screen.getByLabelText("请求超时（毫秒）")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "高级设置" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("应用 ID（App ID）")).toHaveValue("app-id");
     expect(view.router.state.location.pathname).toBe(
       onboardingPath("provider"),
     );
   });
 
-  it("shows only the notification switch and a real backup summary until requested", async () => {
+  it("shows backup controls directly while disabled notifications stay inactive", async () => {
     const view = mountOnboarding({
       stage: 4,
       path: onboardingPath("optional"),
@@ -120,7 +118,9 @@ describe("minimal onboarding", () => {
     expect(screen.getByLabelText("通知网站（HTTPS 域名）")).not.toBeVisible();
     expect(screen.getByLabelText("通知网站（HTTPS 域名）")).toBeDisabled();
     expect(screen.getByLabelText("最大尝试次数")).not.toBeVisible();
-    expect(screen.getByLabelText("备份间隔（秒）")).not.toBeVisible();
+    expect(screen.getByLabelText("备份间隔（秒）")).toBeVisible();
+    expect(screen.getByLabelText("保留备份数量")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "调整备份策略" })).not.toBeInTheDocument();
     expect(screen.getByText("每天备份，保留 7 份。")).toBeVisible();
     expect(screen.getAllByRole("link", { name: "继续" })).toHaveLength(1);
     expect(
@@ -168,7 +168,7 @@ describe("minimal onboarding", () => {
       screen.getByLabelText("通知网站（HTTPS 域名）"),
       "invalid-origin",
     );
-    await user.click(screen.getByText("高级设置"));
+    expect(screen.getByLabelText("最大尝试次数")).toBeVisible();
     fireEvent.change(screen.getByLabelText("最大尝试次数"), {
       target: { value: "0" },
     });
@@ -202,7 +202,7 @@ describe("minimal onboarding", () => {
     );
     const origin = screen.getByLabelText("通知网站（HTTPS 域名）");
     await user.type(origin, "https://draft.example.com");
-    await user.click(screen.getByText("调整备份策略"));
+    expect(screen.getByLabelText("备份间隔（秒）")).toBeVisible();
     fireEvent.change(screen.getByLabelText("备份间隔（秒）"), {
       target: { value: "172800" },
     });
@@ -238,11 +238,12 @@ describe("minimal onboarding", () => {
     expect(consoleError).not.toHaveBeenCalled();
   });
 
-  it("reveals nested advanced controls for native validation", async () => {
+  it("focuses a directly visible parameter for native validation", async () => {
     mountOnboarding({ stage: 1 });
     const timeout = await screen.findByLabelText("请求超时（毫秒）");
-    expect(timeout).not.toBeVisible();
+    expect(timeout).toBeVisible();
     fireEvent.invalid(timeout);
+    await waitFor(() => expect(timeout).toHaveFocus());
     expect(timeout).toBeVisible();
   });
 

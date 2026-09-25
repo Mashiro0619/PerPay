@@ -142,8 +142,8 @@ describe("collection QR image upload", () => {
       const ttl = screen.getByLabelText("收银台有效期（秒）");
       await user.clear(ttl);
       await user.type(ttl, "450");
-      await user.click(screen.getByRole("button", { name: "高级设置" }));
       const cooldown = screen.getByLabelText("金额复用冷却（秒）");
+      expect(cooldown).toBeVisible();
       expect(cooldown).toHaveValue(600);
       await user.clear(cooldown);
       await user.type(cooldown, "1200");

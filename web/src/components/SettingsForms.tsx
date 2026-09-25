@@ -157,15 +157,9 @@ export function SettingsEditor({
   // Keep defaults stable for this mounted draft when a sibling form saves.
   // Explicit refreshes remount the editor; saves still use the latest revision.
   const [initialSettings] = useState(settings);
-  const [advancedOpen, setAdvancedOpen] = useState(
-    !guided && (section === "collection" || section === "provider"),
-  );
   const [privateOpen, setPrivateOpen] = useState(false);
-  const [backupOpen, setBackupOpen] = useState(false);
   function revealField(field: HTMLElement) {
-    if (field.closest("[data-settings-advanced]")) setAdvancedOpen(true);
     if (field.closest("[data-settings-private]")) setPrivateOpen(true);
-    if (field.closest("[data-settings-backup]")) setBackupOpen(true);
     requestAnimationFrame(() => {
       if (field.isConnected && !field.matches(":disabled")) field.focus();
     });
@@ -335,105 +329,89 @@ export function SettingsEditor({
     </FieldGroup>
   );
   const providerCollection = (
-    <FieldGroup>
-      <Collapsible
-        open={advancedOpen}
-        onOpenChange={setAdvancedOpen}
-        data-settings-advanced
-      >
-        <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
-          <ChevronDown data-icon="inline-start" />
-          {settings.provider?.environment === "SANDBOX"
-            ? "高级设置 · 沙箱环境"
-            : "高级设置"}
-        </CollapsibleTrigger>
-        <CollapsibleContent keepMounted>
-          <FieldGroup className="grid gap-5 pt-4 sm:grid-cols-2">
-            <Field data-invalid={!!fieldErrors.environment}>
-              <FieldLabel htmlFor="setting-environment">支付宝环境</FieldLabel>
-              <NativeSelect
-                id="setting-environment"
-                name="environment"
-                defaultValue={
-                  initialSettings.provider?.environment ?? "PRODUCTION"
-                }
-                aria-invalid={!!fieldErrors.environment}
-                aria-describedby={
-                  fieldErrors.environment
-                    ? "setting-environment-error"
-                    : undefined
-                }
-              >
-                <NativeSelectOption value="PRODUCTION">
-                  生产环境
-                </NativeSelectOption>
-                <NativeSelectOption value="SANDBOX">
-                  沙箱环境
-                </NativeSelectOption>
-              </NativeSelect>
-              {fieldErrors.environment && (
-                <FieldError id="setting-environment-error">
-                  {fieldErrors.environment}
-                </FieldError>
-              )}
-            </Field>
-            <NumberField
-              name="timeout_milliseconds"
-              error={fieldErrors.timeout_milliseconds}
-              label="请求超时（毫秒）"
-              value={initialSettings.provider?.timeout_milliseconds ?? 8000}
-              min={1000}
-              max={120000}
-            />
-            <NumberField
-              name="scan_interval_seconds"
-              error={fieldErrors.scan_interval_seconds}
-              label="常规采集间隔（秒）"
-              value={
-                initialSettings.provider?.scan_interval_seconds ??
-                PROVIDER_TIMING_DEFAULTS.scanIntervalSeconds
-              }
-              min={5}
-              max={3600}
-              hint="空闲时使用；有效时限至少为此间隔的两倍。"
-            />
-            <NumberField
-              name="active_scan_interval_seconds"
-              error={fieldErrors.active_scan_interval_seconds}
-              label="活跃采集间隔（秒）"
-              value={
-                initialSettings.provider?.active_scan_interval_seconds ??
-                initialSettings.provider?.scan_interval_seconds ??
-                PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds
-              }
-              min={5}
-              max={3600}
-              hint="待支付及收尾时使用，不得大于常规间隔。"
-            />
-            <NumberField
-              name="safety_lag_seconds"
-              error={fieldErrors.safety_lag_seconds}
-              label="安全延迟（秒）"
-              value={initialSettings.provider?.safety_lag_seconds ?? 10}
-              min={5}
-              max={300}
-              hint="避开支付宝尚未稳定返回的最新账单。"
-            />
-            <NumberField
-              name="maximum_success_age_seconds"
-              error={fieldErrors.maximum_success_age_seconds}
-              label="采集有效时限（秒）"
-              value={
-                initialSettings.provider?.maximum_success_age_seconds ??
-                PROVIDER_TIMING_DEFAULTS.maximumSuccessAgeSeconds
-              }
-              min={10}
-              max={86400}
-              hint="超过此时限未成功采集，会暂停新订单收款入口。"
-            />
-          </FieldGroup>
-        </CollapsibleContent>
-      </Collapsible>
+    <FieldGroup className="grid sm:grid-cols-2">
+      <Field data-invalid={!!fieldErrors.environment}>
+        <FieldLabel htmlFor="setting-environment">支付宝环境</FieldLabel>
+        <NativeSelect
+          id="setting-environment"
+          name="environment"
+          defaultValue={
+            initialSettings.provider?.environment ?? "PRODUCTION"
+          }
+          aria-invalid={!!fieldErrors.environment}
+          aria-describedby={
+            fieldErrors.environment
+              ? "setting-environment-error"
+              : undefined
+          }
+        >
+          <NativeSelectOption value="PRODUCTION">
+            生产环境
+          </NativeSelectOption>
+          <NativeSelectOption value="SANDBOX">
+            沙箱环境
+          </NativeSelectOption>
+        </NativeSelect>
+        {fieldErrors.environment && (
+          <FieldError id="setting-environment-error">
+            {fieldErrors.environment}
+          </FieldError>
+        )}
+      </Field>
+      <NumberField
+        name="timeout_milliseconds"
+        error={fieldErrors.timeout_milliseconds}
+        label="请求超时（毫秒）"
+        value={initialSettings.provider?.timeout_milliseconds ?? 8000}
+        min={1000}
+        max={120000}
+      />
+      <NumberField
+        name="scan_interval_seconds"
+        error={fieldErrors.scan_interval_seconds}
+        label="常规采集间隔（秒）"
+        value={
+          initialSettings.provider?.scan_interval_seconds ??
+          PROVIDER_TIMING_DEFAULTS.scanIntervalSeconds
+        }
+        min={5}
+        max={3600}
+        hint="空闲时使用；有效时限至少为此间隔的两倍。"
+      />
+      <NumberField
+        name="active_scan_interval_seconds"
+        error={fieldErrors.active_scan_interval_seconds}
+        label="活跃采集间隔（秒）"
+        value={
+          initialSettings.provider?.active_scan_interval_seconds ??
+          initialSettings.provider?.scan_interval_seconds ??
+          PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds
+        }
+        min={5}
+        max={3600}
+        hint="待支付及收尾时使用，不得大于常规间隔。"
+      />
+      <NumberField
+        name="safety_lag_seconds"
+        error={fieldErrors.safety_lag_seconds}
+        label="安全延迟（秒）"
+        value={initialSettings.provider?.safety_lag_seconds ?? 10}
+        min={5}
+        max={300}
+        hint="避开支付宝尚未稳定返回的最新账单。"
+      />
+      <NumberField
+        name="maximum_success_age_seconds"
+        error={fieldErrors.maximum_success_age_seconds}
+        label="采集有效时限（秒）"
+        value={
+          initialSettings.provider?.maximum_success_age_seconds ??
+          PROVIDER_TIMING_DEFAULTS.maximumSuccessAgeSeconds
+        }
+        min={10}
+        max={86400}
+        hint="超过此时限未成功采集，会暂停新订单收款入口。"
+      />
     </FieldGroup>
   );
   const collectionIdentity = (
@@ -461,41 +439,29 @@ export function SettingsEditor({
         min={60}
         max={1800}
       />
-      <Collapsible
-        open={advancedOpen}
-        onOpenChange={setAdvancedOpen}
-        data-settings-advanced
-      >
-        <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
-          <ChevronDown data-icon="inline-start" />
-          高级设置
-        </CollapsibleTrigger>
-        <CollapsibleContent keepMounted>
-          <FieldGroup className="grid gap-5 pt-4 sm:grid-cols-2">
-            <NumberField
-              name="amount_offset_maximum_cents"
-              error={fieldErrors.amount_offset_maximum_cents}
-              label="最大金额尾差（分）"
-              value={
-                initialSettings.collection?.amount_offset_maximum_cents ?? 99
-              }
-              min={1}
-              max={99}
-            />
-            <NumberField
-              name="amount_reuse_cooldown_seconds"
-              error={fieldErrors.amount_reuse_cooldown_seconds}
-              label="金额复用冷却（秒）"
-              value={
-                initialSettings.collection?.amount_reuse_cooldown_seconds ?? 600
-              }
-              min={60}
-              max={3600}
-              hint="结束后暂不复用应付金额，不延长订单有效期。"
-            />
-          </FieldGroup>
-        </CollapsibleContent>
-      </Collapsible>
+      <FieldGroup className="grid sm:grid-cols-2">
+        <NumberField
+          name="amount_offset_maximum_cents"
+          error={fieldErrors.amount_offset_maximum_cents}
+          label="最大金额尾差（分）"
+          value={
+            initialSettings.collection?.amount_offset_maximum_cents ?? 99
+          }
+          min={1}
+          max={99}
+        />
+        <NumberField
+          name="amount_reuse_cooldown_seconds"
+          error={fieldErrors.amount_reuse_cooldown_seconds}
+          label="金额复用冷却（秒）"
+          value={
+            initialSettings.collection?.amount_reuse_cooldown_seconds ?? 600
+          }
+          min={60}
+          max={3600}
+          hint="结束后暂不复用应付金额，不延长订单有效期。"
+        />
+      </FieldGroup>
     </FieldGroup>
   );
   const notificationFields = (
@@ -541,52 +507,40 @@ export function SettingsEditor({
               </FieldError>
             )}
           </Field>
-          <Collapsible
-            open={advancedOpen}
-            onOpenChange={setAdvancedOpen}
-            data-settings-advanced
-          >
-            <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
-              <ChevronDown data-icon="inline-start" />
-              高级设置
-            </CollapsibleTrigger>
-            <CollapsibleContent keepMounted>
-              <FieldGroup className="grid gap-5 pt-4 sm:grid-cols-2">
-                <NumberField
-                  name="timeout_milliseconds"
-                  error={fieldErrors.timeout_milliseconds}
-                  label="通知超时（毫秒）"
-                  value={initialSettings.notifications.timeout_milliseconds}
-                  min={1000}
-                  max={30000}
-                />
-                <NumberField
-                  name="maximum_attempts"
-                  error={fieldErrors.maximum_attempts}
-                  label="最大尝试次数"
-                  value={initialSettings.notifications.maximum_attempts}
-                  min={1}
-                  max={100}
-                />
-                <NumberField
-                  name="retry_base_seconds"
-                  error={fieldErrors.retry_base_seconds}
-                  label="首次重试间隔（秒）"
-                  value={initialSettings.notifications.retry_base_seconds}
-                  min={1}
-                  max={3600}
-                />
-                <NumberField
-                  name="retry_maximum_seconds"
-                  error={fieldErrors.retry_maximum_seconds}
-                  label="最大重试间隔（秒）"
-                  value={initialSettings.notifications.retry_maximum_seconds}
-                  min={1}
-                  max={86400}
-                />
-              </FieldGroup>
-            </CollapsibleContent>
-          </Collapsible>
+          <FieldGroup className="grid sm:grid-cols-2">
+            <NumberField
+              name="timeout_milliseconds"
+              error={fieldErrors.timeout_milliseconds}
+              label="通知超时（毫秒）"
+              value={initialSettings.notifications.timeout_milliseconds}
+              min={1000}
+              max={30000}
+            />
+            <NumberField
+              name="maximum_attempts"
+              error={fieldErrors.maximum_attempts}
+              label="最大尝试次数"
+              value={initialSettings.notifications.maximum_attempts}
+              min={1}
+              max={100}
+            />
+            <NumberField
+              name="retry_base_seconds"
+              error={fieldErrors.retry_base_seconds}
+              label="首次重试间隔（秒）"
+              value={initialSettings.notifications.retry_base_seconds}
+              min={1}
+              max={3600}
+            />
+            <NumberField
+              name="retry_maximum_seconds"
+              error={fieldErrors.retry_maximum_seconds}
+              label="最大重试间隔（秒）"
+              value={initialSettings.notifications.retry_maximum_seconds}
+              min={1}
+              max={86400}
+            />
+          </FieldGroup>
         </FieldGroup>
       </FieldSet>
     </FieldGroup>
@@ -885,19 +839,7 @@ export function SettingsEditor({
               {backupInterval(settings.backup.interval_seconds)}备份，保留{" "}
               {settings.backup.keep_count} 份。
             </p>
-            <Collapsible
-              open={backupOpen}
-              onOpenChange={setBackupOpen}
-              data-settings-backup
-            >
-              <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
-                <ChevronDown data-icon="inline-start" />
-                调整备份策略
-              </CollapsibleTrigger>
-              <CollapsibleContent keepMounted>
-                <div className="pt-4">{editor}</div>
-              </CollapsibleContent>
-            </Collapsible>
+            {editor}
             <p className="text-sm text-muted-foreground">
               恢复需同时保留数据库备份和主密钥。
             </p>

@@ -136,13 +136,20 @@ export default function WorkItems() {
         }
         className="gap-4"
       >
-        <div className="overflow-x-auto">
+        {/* Keep tab indicators and focus rings inside the horizontal scroller. */}
+        <div className="-m-1 min-w-0 scroll-p-1 overflow-x-auto p-1">
           <TabsList aria-label="待处理类型">
             {filters.map(([value, name]) => (
               <TabsTrigger
                 key={value}
                 value={value}
                 disabled={ignore.isPending}
+                onFocus={(event) =>
+                  event.currentTarget.scrollIntoView({
+                    block: "nearest",
+                    inline: "nearest",
+                  })
+                }
               >
                 {name}
               </TabsTrigger>

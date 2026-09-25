@@ -130,12 +130,12 @@ describe("first collection onboarding", () => {
     );
     expect(view.writes()).toHaveLength(0);
   });
-  it("keeps the provider step focused on App ID and the Alipay public key", async () => {
+  it("shows provider credentials and collection parameters together", async () => {
     const view = mountOnboarding({ stage: 1 });
     expect(await screen.findByLabelText("应用 ID（App ID）")).toBeVisible();
     expect(screen.getByLabelText("支付宝公钥")).toBeVisible();
-    expect(screen.getByLabelText("支付宝环境")).not.toBeVisible();
-    expect(screen.getByLabelText("请求超时（毫秒）")).not.toBeVisible();
+    expect(screen.getByLabelText("支付宝环境")).toBeVisible();
+    expect(screen.getByLabelText("请求超时（毫秒）")).toBeVisible();
     expect(
       screen.getByRole("link", { name: "支付宝应用管理" }),
     ).toHaveAttribute("href", "https://open.alipay.com/develop/manage");
@@ -226,10 +226,8 @@ describe("first collection onboarding", () => {
     await screen.findByLabelText("应用 ID（App ID）");
     edit("应用 ID（App ID）", "my-app");
     edit("支付宝公钥", "synthetic-platform-public-key");
-    expect(screen.getByRole("button", { name: "高级设置" })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
+    expect(screen.queryByRole("button", { name: "高级设置" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("常规采集间隔（秒）")).toBeVisible();
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "保存并继续" }));
@@ -371,7 +369,6 @@ describe("first collection onboarding", () => {
       stage: 4,
       path: onboardingPath("optional"),
     });
-    await userEvent.setup().click(await screen.findByText("调整备份策略"));
     await screen.findByLabelText("备份间隔（秒）");
     edit("备份间隔（秒）", "172800");
     fireEvent.click(screen.getByRole("switch", { name: "启用业务通知" }));
@@ -415,7 +412,6 @@ describe("first collection onboarding", () => {
       stage: 4,
       path: onboardingPath("optional"),
     });
-    await userEvent.setup().click(await screen.findByText("调整备份策略"));
     await screen.findByLabelText("备份间隔（秒）");
     edit("备份间隔（秒）", "172800");
     const user = userEvent.setup();
