@@ -1,6 +1,6 @@
 {
   "name": "perpay",
-  "version": "0.2.2",
+  "version": "0.3.0-alpha.1",
   "private": true,
   "license": "MIT",
   "type": "module",
