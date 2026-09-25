@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { isReleaseVersion, isPrereleaseVersion } from "../../src/shared/release-version";
 import { X, ArrowUpCircle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError, queryClient, result, sessionKey } from "@/api/client";
@@ -33,15 +34,11 @@ function useOfficialUpdate() {
     queryFn: async ({ signal }) => {
       const response = await result(api.checkOfficialUpdate({ signal }));
       const data = response?.data;
-      const stable = (value: unknown) =>
-        typeof value === "string" &&
-        value.length <= 64 &&
-        value.trim() === value &&
-        /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value);
       if (
         !data ||
-        !stable(data.current_version) ||
-        !stable(data.latest_version) ||
+        !isReleaseVersion(data.current_version) ||
+        !isReleaseVersion(data.latest_version) ||
+        (!isPrereleaseVersion(data.current_version) && isPrereleaseVersion(data.latest_version)) ||
         !["update_available", "up_to_date", "ahead"].includes(data.status) ||
         data.release_url !==
           "https://github.com/Mashiro0619/PerPay/releases/tag/v" +
@@ -87,7 +84,7 @@ export function OfficialUpdateNotice({
     <Alert className={className} role="status" aria-label="官方版本更新">
       <ArrowUpCircle />
       <AlertTitle>
-        有新版本 v{data.latest_version} ·{" "}
+        有新版本 v{data.latest_version}{isPrereleaseVersion(data.latest_version) ? "（预发布）" : ""} ·{" "}
         <a href={data.release_url} target="_blank" rel="noopener noreferrer">
           查看更新
         </a>
@@ -108,6 +105,8 @@ export function OfficialUpdateNotice({
 export function OfficialUpdatePanel() {
   const update = useOfficialUpdate();
   const data = update.data?.data;
+  const prereleaseChannel = isPrereleaseVersion(data?.current_version);
+  const latestIsPrerelease = isPrereleaseVersion(data?.latest_version);
   const retryAfter =
     update.error instanceof ApiError ? update.error.retryAfter : null;
   return (
@@ -148,11 +147,16 @@ export function OfficialUpdatePanel() {
             <>
               <p role="status" className="text-sm">
                 {data.status === "update_available"
-                  ? "有可用更新：v" + data.latest_version
+                  ? "有可用更新：v" + data.latest_version + (latestIsPrerelease ? "（预发布）" : "")
                   : data.status === "ahead"
-                    ? "当前版本高于官方稳定版。"
-                    : "已是最新稳定版。"}
+                    ? prereleaseChannel ? "当前版本高于官方已发布版本。" : "当前版本高于官方稳定版。"
+                    : prereleaseChannel ? "已是当前通道最新版本。" : "已是最新稳定版。"}
               </p>
+              {prereleaseChannel && (
+                <p className="text-sm text-muted-foreground">
+                  当前使用预发布版本，同时检查正式版和预发布版。
+                </p>
+              )}
               <Collapsible>
                 <CollapsibleTrigger
                   render={<Button variant="ghost" size="sm" />}
@@ -164,7 +168,7 @@ export function OfficialUpdatePanel() {
                     <DetailFields
                       items={[
                         ["当前版本", "v" + data.current_version],
-                        ["官方稳定版", "v" + data.latest_version],
+                        [latestIsPrerelease ? "官方预发布版" : "官方稳定版", "v" + data.latest_version],
                         ["发布时间", dateTime(data.published_at)],
                         ["检查时间", dateTime(data.checked_at)],
                       ]}

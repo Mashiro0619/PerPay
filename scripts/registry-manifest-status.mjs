@@ -1,8 +1,8 @@
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
+import { isReleaseVersion } from "../src/shared/release-version.ts";
 
 const IMAGE_PATTERN = /^ghcr\.io\/([a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)+)$/u;
-const REFERENCE_PATTERN = /^(?:latest|(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*))$/u;
 const DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/u;
 const ACCEPT = [
   "application/vnd.oci.image.index.v1+json",
@@ -52,8 +52,8 @@ async function requestManifest(fetchImpl, manifestUrl, token) {
 function manifestRequestDetails(image, version, fetchImpl) {
   const imageMatch = IMAGE_PATTERN.exec(image);
   if (imageMatch === null) throw new Error("image must be a lowercase ghcr.io repository");
-  if (!REFERENCE_PATTERN.test(version)) {
-    throw new Error("reference must be latest or a stable semantic version");
+  if (version !== "latest" && !isReleaseVersion(version)) {
+    throw new Error("reference must be latest or a canonical release version");
   }
   if (typeof fetchImpl !== "function") throw new TypeError("fetch implementation is required");
 

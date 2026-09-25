@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "已通过发布验收的版本，不含 v"
+        description: "已通过发布验收的正式版本，不含 v 或预发布后缀"
         required: true
         type: string
       source_run_id:

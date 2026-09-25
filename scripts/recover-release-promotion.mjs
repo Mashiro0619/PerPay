@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { compareReleaseVersions, isStableReleaseVersion } from '../src/shared/release-version.ts';
 
 const REPOSITORY = 'Mashiro0619/PerPay';
 const IMAGE = 'ghcr.io/mashiro0619/perpay';
 const REGISTRY = 'https://ghcr.io/v2/mashiro0619/perpay';
-const VERSION = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 const DIGEST = /^sha256:[a-f0-9]{64}$/;
 const ACCEPT = 'application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json';
 const REQUIRED_STEPS = [
@@ -16,12 +16,13 @@ const REQUIRED_STEPS = [
   'Scan the arm64 image for high-risk vulnerabilities',
   'Publish or verify the fixed version image',
   'Require the fixed version image to be public',
-  'Render and validate the latest-channel release Compose',
+  ['Render and validate the release Compose', 'Render and validate the latest-channel release Compose'],
   'Exercise Linux Compose, backup, restore, and persistence',
 ];
 const digestOf = bytes => 'sha256:' + createHash('sha256').update(bytes).digest('hex');
 
 export function validateRecoverySource(run, jobs, version) {
+  assert.ok(isStableReleaseVersion(version), 'Only stable releases may recover latest');
   assert.equal(run.name, 'Release');
   assert.equal(run.path, '.github/workflows/release.yml');
   assert.equal(run.event, 'push');
@@ -38,23 +39,22 @@ export function validateRecoverySource(run, jobs, version) {
   assert.deepEqual(publish.steps.filter(step => step.conclusion === 'failure').map(step => step.name), [
     'Promote the validated image to latest',
   ]);
-  for (const name of REQUIRED_STEPS) {
-    assert.equal(publish.steps.filter(step => step.name === name && step.conclusion === 'success').length, 1, name + ' did not pass');
+  for (const required of REQUIRED_STEPS) {
+    const names = Array.isArray(required) ? required : [required];
+    assert.equal(publish.steps.filter(step => names.includes(step.name) && step.conclusion === 'success').length, 1, names[0] + ' did not pass');
   }
   assert.equal(publish.steps.find(step => step.name === 'Publish the GitHub Release')?.conclusion, 'skipped');
   return run.head_sha;
 }
 
 export function validatePreviousRelease(release, version, expectedDigest) {
+  assert.ok(isStableReleaseVersion(version), 'Only stable releases may recover latest');
   assert.equal(release.draft, false);
   assert.equal(release.prerelease, false);
   const previous = release.tag_name?.replace(/^v/, '');
   assert.equal(release.tag_name, 'v' + previous);
-  assert.match(previous, VERSION);
-  const left = previous.split('.').map(BigInt);
-  const right = version.split('.').map(BigInt);
-  const firstDifference = left.findIndex((part, index) => part !== right[index]);
-  assert.ok(firstDifference !== -1 && left[firstDifference] < right[firstDifference], 'Recovery cannot downgrade or replace the same release');
+  assert.ok(isStableReleaseVersion(previous));
+  assert.equal(compareReleaseVersions(previous, version), -1, 'Recovery cannot downgrade or replace the same release');
   assert.ok(release.body.includes(IMAGE + ':' + previous + '@' + expectedDigest), 'Previous release does not attest the expected latest digest');
   return previous;
 }
@@ -67,7 +67,7 @@ export function validateIndex(index) {
 
 export async function recoverLatest(options, fetchImpl = fetch) {
   const { version, sourceRunId, targetDigest, expectedLatestDigest, githubToken, actor } = options;
-  assert.match(version, VERSION);
+  assert.ok(isStableReleaseVersion(version), 'Only stable releases may recover latest');
   assert.match(sourceRunId, /^[1-9][0-9]*$/);
   assert.match(targetDigest, DIGEST);
   assert.match(expectedLatestDigest, DIGEST);

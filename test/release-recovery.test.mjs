@@ -33,7 +33,7 @@ function fixture(change = {}) {
     'Build the untagged amd64 image', 'Build the untagged arm64 image', 'Select the platform image digests',
     'Scan the amd64 image for high-risk vulnerabilities', 'Scan the arm64 image for high-risk vulnerabilities',
     'Publish or verify the fixed version image', 'Require the fixed version image to be public',
-    'Render and validate the latest-channel release Compose', 'Exercise Linux Compose, backup, restore, and persistence',
+    change.currentStepName ? 'Render and validate the release Compose' : 'Render and validate the latest-channel release Compose', 'Exercise Linux Compose, backup, restore, and persistence',
   ].map(name => ({ name, conclusion: 'success' }));
   steps.push({ name: 'Promote the validated image to latest', conclusion: 'failure' });
   steps.push({ name: 'Publish the GitHub Release', conclusion: 'skipped' });
@@ -114,7 +114,7 @@ for (const [name, change] of [
 
 test('recovery refuses malformed inputs and mismatching operator-confirmed digests', async () => {
   for (const overrides of [
-    { version: '0.2.0; echo unsafe' }, { sourceRunId: '../123' },
+    { version: '0.2.0; echo unsafe' }, { version: '0.3.0-rc.1' }, { version: '0.3.0-alpha.1' }, { sourceRunId: '../123' },
     { targetDigest: 'sha256:' + 'e'.repeat(64) }, { expectedLatestDigest: 'sha256:' + 'f'.repeat(64) },
   ]) {
     const state = fixture();
@@ -141,4 +141,15 @@ test('release recovery is manual, serialized with releases, and uses only the ep
   assert.equal(step.run, 'node scripts/recover-release-promotion.mjs');
   assert.match(step.env.GITHUB_TOKEN, /secrets\.GITHUB_TOKEN/);
   assert.equal(job.steps[0].with['persist-credentials'], false);
+});
+
+test('recovery accepts current stable release workflow step names without relaxing latest protection', async () => {
+  const state = fixture({ currentStepName: true });
+  assert.equal((await recoverLatest(state.options, state.fetchImpl)).version, '0.2.0');
+});
+
+test('recovery rejects prerelease versions before contacting GitHub or the registry', async () => {
+  const state = fixture();
+  await assert.rejects(recoverLatest({ ...state.options, version: '0.3.0-rc.1' }, state.fetchImpl), /Only stable releases/);
+  assert.equal(state.calls.length, 0);
 });

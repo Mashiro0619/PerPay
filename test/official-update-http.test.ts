@@ -11,7 +11,7 @@ import { IdentityService } from "../src/identity/service.ts";
 import { OrderService } from "../src/orders/service.ts";
 import { RuntimeSettingsService, RuntimeSettingsStore } from "../src/settings/index.ts";
 import { OfficialUpdateChecker } from "../src/update/checker.ts";
-import { APP_VERSION } from "../src/version.ts";
+const CURRENT_VERSION = "0.2.2";
 
 test("official update checks require a session and never gate login or collection readiness", async () => {
   const directory = mkdtempSync(join(tmpdir(), "perpay-update-http-"));
@@ -26,10 +26,10 @@ test("official update checks require a session and never gate login or collectio
     settings.initialize();
     const orders = new OrderService(database, () => settings.snapshot());
     let requests = 0, clock = Date.now(), unavailable = false;
-    const updateChecker = new OfficialUpdateChecker({ clock: () => clock, fetch: async () => {
+    const updateChecker = new OfficialUpdateChecker({ currentVersion: CURRENT_VERSION, clock: () => clock, fetch: async () => {
       requests++;
       if (unavailable) throw new Error("not returned to the browser");
-      return Response.json({ tag_name: "v" + APP_VERSION, html_url: "https://github.com/Mashiro0619/PerPay/releases/tag/v" + APP_VERSION,
+      return Response.json({ tag_name: "v" + CURRENT_VERSION, html_url: "https://github.com/Mashiro0619/PerPay/releases/tag/v" + CURRENT_VERSION,
         draft: false, prerelease: false, published_at: "2026-09-09T09:00:00Z" });
     } });
     const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(), updateChecker });
@@ -49,8 +49,8 @@ test("official update checks require a session and never gate login or collectio
     assert.equal(response.headers.get("cache-control"), "no-store");
     const result = await response.json() as { data: { status: string; current_version: string; latest_version: string } };
     assert.equal(result.data.status, "up_to_date");
-    assert.equal(result.data.current_version, APP_VERSION);
-    assert.equal(result.data.latest_version, APP_VERSION);
+    assert.equal(result.data.current_version, CURRENT_VERSION);
+    assert.equal(result.data.latest_version, CURRENT_VERSION);
     assert.equal(requests, 1);
     assert.equal((await app.request("/api/admin/v1/system/update?url=https://evil.invalid", { headers })).status, 422);
     assert.equal((await app.request("/api/admin/v1/system/update?force=true", { headers })).status, 422);

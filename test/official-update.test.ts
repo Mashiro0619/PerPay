@@ -3,9 +3,9 @@ import { setTimeout as delay } from "node:timers/promises";
 import { describe, it } from "node:test";
 
 import { compareReleaseVersions, OfficialUpdateChecker, UpdateCheckUnavailable } from "../src/update/checker.ts";
-import { APP_VERSION } from "../src/version.ts";
+const CURRENT_VERSION = "0.2.2";
 
-const parts = APP_VERSION.split(".");
+const parts = CURRENT_VERSION.split(".");
 const nextVersion = [parts[0], parts[1], String(BigInt(parts[2]!) + 1n)].join(".");
 const now = Date.UTC(2026, 8, 10);
 function release(version = nextVersion, overrides: Record<string, unknown> = {}) {
@@ -19,15 +19,15 @@ describe("official update checks", () => {
     assert.equal(compareReleaseVersions("2.0.0", "1.99.99"), 1);
     assert.equal(compareReleaseVersions("0.2.0", "0.2.0"), 0);
     assert.equal(compareReleaseVersions("0.2.9007199254740992", "0.2.9007199254740993"), -1);
-    for (const invalid of ["v0.2.0", "0.2", "00.2.0", "0.2.0-beta.1", "0.2.0+build", "0.2.0\n", "1".repeat(70) + ".0.0"]) {
-      assert.throws(() => compareReleaseVersions(invalid, APP_VERSION));
-      assert.throws(() => compareReleaseVersions(APP_VERSION, invalid));
+    for (const invalid of ["v0.2.0", "0.2", "00.2.0", "0.2.0-beta.01", "0.2.0+build", "0.2.0\n", "1".repeat(70) + ".0.0"]) {
+      assert.throws(() => compareReleaseVersions(invalid, CURRENT_VERSION));
+      assert.throws(() => compareReleaseVersions(CURRENT_VERSION, invalid));
     }
   });
 
   it("only requests the official HTTPS endpoint without credentials or instance data", async () => {
     let calls = 0;
-    const checker = new OfficialUpdateChecker({ clock: () => now, fetch: async (url, options) => {
+    const checker = new OfficialUpdateChecker({ currentVersion: CURRENT_VERSION, clock: () => now, fetch: async (url, options) => {
       calls++;
       assert.equal(url, "https://api.github.com/repos/Mashiro0619/PerPay/releases/latest");
       assert.equal(options?.method, "GET");
@@ -40,7 +40,7 @@ describe("official update checks", () => {
     } });
     assert.equal(calls, 0);
     const result = await checker.check();
-    assert.deepEqual(result, { status: "update_available", current_version: APP_VERSION, latest_version: nextVersion,
+    assert.deepEqual(result, { status: "update_available", current_version: CURRENT_VERSION, latest_version: nextVersion,
       release_url: "https://github.com/Mashiro0619/PerPay/releases/tag/v" + nextVersion,
       published_at: "2026-09-09T12:00:00.000Z", checked_at: new Date(now).toISOString() });
     assert.equal(calls, 1);
@@ -48,8 +48,8 @@ describe("official update checks", () => {
   });
 
   it("distinguishes the current stable release from a newer local build", async () => {
-    for (const [version, status] of [[APP_VERSION, "up_to_date"], ["0.0.0", "ahead"]]) {
-      const checker = new OfficialUpdateChecker({ fetch: async () => Response.json(release(version)) });
+    for (const [version, status] of [[CURRENT_VERSION, "up_to_date"], ["0.0.0", "ahead"]]) {
+      const checker = new OfficialUpdateChecker({ currentVersion: CURRENT_VERSION, fetch: async () => Response.json(release(version)) });
       assert.equal((await checker.check()).status, status);
     }
   });
@@ -58,7 +58,7 @@ describe("official update checks", () => {
     let clock = now;
     let calls = 0;
     let resolve!: (response: Response) => void;
-    const checker = new OfficialUpdateChecker({ clock: () => clock, fetch: async () => {
+    const checker = new OfficialUpdateChecker({ currentVersion: CURRENT_VERSION, clock: () => clock, fetch: async () => {
       calls++;
       if (calls === 1) return new Promise<Response>(done => { resolve = done; });
       return Response.json(release());
@@ -78,10 +78,10 @@ describe("official update checks", () => {
 
   it("replaces expired success with a bounded failure cooldown and can recover", async () => {
     let clock = now, calls = 0, fail = false;
-    const checker = new OfficialUpdateChecker({ clock: () => clock, fetch: async () => {
+    const checker = new OfficialUpdateChecker({ currentVersion: CURRENT_VERSION, clock: () => clock, fetch: async () => {
       calls++;
       if (fail) throw new Error("sensitive upstream diagnostics");
-      return Response.json(release(APP_VERSION));
+      return Response.json(release(CURRENT_VERSION));
     } });
     assert.equal((await checker.check()).status, "up_to_date");
     clock += 300_000; fail = true;
@@ -116,14 +116,14 @@ describe("official update checks", () => {
     ["oversized declared response", () => new Response("{}", { headers: { "content-type": "application/json", "content-length": "262145" } })],
   ] as const) {
     it("rejects " + name + " without claiming the instance is up to date", async () => {
-      const checker = new OfficialUpdateChecker({ fetch: async () => response() });
+      const checker = new OfficialUpdateChecker({ currentVersion: CURRENT_VERSION, fetch: async () => response() });
       await assert.rejects(checker.check(), UpdateCheckUnavailable);
     });
   }
 
   it("bounds chunked response size and closes the response stream", async () => {
     let cancelled = false;
-    const checker = new OfficialUpdateChecker({ fetch: async () => new Response(new ReadableStream({
+    const checker = new OfficialUpdateChecker({ currentVersion: CURRENT_VERSION, fetch: async () => new Response(new ReadableStream({
       start(controller) { controller.enqueue(new Uint8Array(262145)); },
       cancel() { cancelled = true; },
     }), { headers: { "content-type": "application/json" } }) });
@@ -133,7 +133,7 @@ describe("official update checks", () => {
 
   it("aborts slow checks without returning an old green result", async () => {
     let signal: AbortSignal | null | undefined;
-    const checker = new OfficialUpdateChecker({ timeoutMilliseconds: 5, fetch: async (_url, options) => {
+    const checker = new OfficialUpdateChecker({ currentVersion: CURRENT_VERSION, timeoutMilliseconds: 5, fetch: async (_url, options) => {
       signal = options?.signal;
       await delay(15);
       signal?.throwIfAborted();

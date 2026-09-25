@@ -7,6 +7,8 @@ import { test } from "node:test";
 import { parse } from "yaml";
 
 import { inspectComposeContract, replaceComposeImage } from "../scripts/compose-contract.mjs";
+import { renderReleaseCompose } from "../scripts/render-release-compose.mjs";
+import { releasePolicy } from "../scripts/release-policy.mjs";
 import {
   queryGhcrManifestDigest,
   queryGhcrVersionTag,
@@ -128,7 +130,7 @@ test("Compose contract rejects privilege and volume-boundary escapes", () => {
   )));
 });
 
-test("render-release-compose copies the validated latest-channel template", () => {
+test("render-release-compose follows the package version channel without changing the root template", () => {
   const outputDirectory = mkdtempSync(join(tmpdir(), "perpay-release-compose-"));
   try {
     const output = join(outputDirectory, "docker-compose.yml");
@@ -138,8 +140,9 @@ test("render-release-compose copies the validated latest-channel template", () =
     ], { encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);
     const rendered = readFileSync(output, "utf8");
-    assert.equal(rendered, validCompose);
-    assert.equal(inspectComposeContract(rendered).image, "ghcr.io/mashiro0619/perpay:latest");
+    const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
+    assert.equal(rendered, renderReleaseCompose(validCompose, version));
+    assert.equal(inspectComposeContract(rendered).image, "ghcr.io/mashiro0619/perpay:" + releasePolicy(version).composeImageTag);
     assert.doesNotMatch(rendered, /perpay:latest@sha256:/u);
   } finally {
     rmSync(outputDirectory, { recursive: true, force: true });
@@ -229,7 +232,7 @@ test("release builds, scans, verifies, and publishes fixed and latest images", (
   assert.match(latest?.run ?? "", /target version but a different digest/u);
 
   const render = publishSteps.find(
-    (step) => step.name === "Render and validate the latest-channel release Compose",
+    (step) => step.name === "Render and validate the release Compose",
   );
   assert.match(render?.run ?? "", /render-release-compose\.mjs/u);
   assert.match(render?.run ?? "", /config --quiet/u);
@@ -274,8 +277,16 @@ test("release builds, scans, verifies, and publishes fixed and latest images", (
   assert.match(publish?.run ?? "", /镜像与附件/u);
   assert.match(publish?.run ?? "", /调用示例校验值/u);
   assert.doesNotMatch(publish?.run ?? "", /First installation:|Verify the attachment|## Container image/u);
-  assert.match(publish?.run ?? "", /--latest(?:\s|$)/u);
-  assert.doesNotMatch(publish?.run ?? "", /--latest=false/u);
+  assert.match(publish?.run ?? "", /release_flags=\(--latest\)/u);
+  assert.match(publish?.run ?? "", /release_flags=\(--prerelease --latest=false\)/u);
+  assert.match(publish?.run ?? "", /"\$\{release_flags\[@\]\}"/u);
+  assert.equal(latest.if, "${{ needs.verify.outputs.prerelease == 'false' }}");
+  assert.match(latest.run, /test "\$RELEASE_PRERELEASE" = false/u);
+  assert.equal(latest.env.RELEASE_PRERELEASE, "${{ needs.verify.outputs.prerelease }}");
+  assert.equal(publish.env.RELEASE_PRERELEASE, "${{ needs.verify.outputs.prerelease }}");
+  assert.equal(render.env.RELEASE_COMPOSE_TAG, "${{ needs.verify.outputs.compose_image_tag }}");
+  assert.equal(workflow.jobs.verify.outputs.prerelease, "${{ steps.release.outputs.prerelease }}");
+  assert.match(render.run, /expected_image="\$\{IMAGE_NAME\}:\$\{RELEASE_COMPOSE_TAG\}"/u);
   assert.match(releaseWorkflowText, /\$\{IMAGE_NAME\}:latest/u);
   assert.doesNotMatch(releaseWorkflowText, /attest-build-provenance|\.sbom|candidate|bootstrap/iu);
   assert.equal(
@@ -422,6 +433,6 @@ test("registry status rejects malformed authentication and input boundaries", as
   await assert.rejects(
     () => queryGhcrVersionTag("ghcr.io/mashiro0619/perpay", "nightly", async () =>
       new Response(null, { status: 404 })),
-    /latest or a stable semantic version/u,
+    /latest or a canonical release version/u,
   );
 });

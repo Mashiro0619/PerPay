@@ -203,9 +203,11 @@ paths:
     get:
       tags: [System]
       operationId: checkOfficialUpdate
-      summary: 检查官方最新稳定版本，不执行更新
+      summary: 按当前版本通道检查官方更新，不执行更新
       description: >-
-        仅查询 GitHub Mashiro0619/PerPay 的正式 Release，不发送实例配置、订单或密钥。
+        仅查询 GitHub Mashiro0619/PerPay 的公开 Release，不发送实例配置、订单或密钥。
+        正式版仅检查最新稳定版；预发布版检查正式版及预发布版，按 SemVer 优先级选择最高版本。
+        预发布列表分页读取有界，超出上限或读取失败时返回不可用，不把不完整结果当作最新版本。
         并发检查合并，成功结果最多缓存 5 分钟，失败冷却 60 秒；不接受自定义来源或强制刷新参数。
         不影响收款就绪判定，也不下载或执行更新。
       security:
@@ -3069,10 +3071,10 @@ components:
         status:
           type: string
           enum: [update_available, up_to_date, ahead]
-          description: 有新版、与官方稳定版相同、当前版本高于官方稳定版
-        current_version: { type: string, pattern: '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$', maxLength: 64 }
-        latest_version: { type: string, pattern: '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$', maxLength: 64 }
-        release_url: { type: string, format: uri, pattern: '^https://github\.com/Mashiro0619/PerPay/releases/tag/v[0-9]+\.[0-9]+\.[0-9]+$' }
+          description: 有新版、与当前通道最高版本相同、当前版本高于当前通道最高版本
+        current_version: { type: string, pattern: '^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?$', maxLength: 64 }
+        latest_version: { type: string, pattern: '^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?$', maxLength: 64 }
+        release_url: { type: string, format: uri, pattern: '^https://github\.com/Mashiro0619/PerPay/releases/tag/v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?$' }
         published_at: { type: string, format: date-time }
         checked_at:
           type: string

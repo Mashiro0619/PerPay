@@ -292,4 +292,46 @@ describe("automatic official update checks", () => {
       screen.queryByRole("status", { name: "官方版本更新" }),
     ).not.toBeInTheDocument();
   });
+  it.each([
+    ["0.3.0-rc.2", "0.3.0-rc.10", "update_available", "有可用更新：v0.3.0-rc.10（预发布）"],
+    ["0.3.0-rc.2", "0.3.0", "update_available", "有可用更新：v0.3.0"],
+    ["0.3.0-rc.2", "0.3.0-rc.2", "up_to_date", "已是当前通道最新版本。"],
+    ["0.3.0-rc.2", "0.3.0-rc.1", "ahead", "当前版本高于官方已发布版本。"],
+  ] as const)("displays %s -> %s with the correct channel semantics", async (current, latest, status, message) => {
+    const prereleaseUpdate: OfficialUpdate = {
+      ...update, current_version: current, latest_version: latest, status,
+      release_url: "https://github.com/Mashiro0619/PerPay/releases/tag/v" + latest,
+    };
+    const view = mount(request => isUpdate(request) ? json({ data: prereleaseUpdate }) : undefined, "/system");
+    expect(await screen.findByText(message)).toBeVisible();
+    expect(screen.getByText("当前使用预发布版本，同时检查正式版和预发布版。")).toBeVisible();
+    await userEvent.setup().click(screen.getByRole("button", { name: "版本信息" }));
+    expect(screen.getByText(latest.includes("-") ? "官方预发布版" : "官方稳定版")).toBeVisible();
+    expect(screen.getByRole("link", { name: "查看发布说明" })).toHaveAttribute("href", prereleaseUpdate.release_url);
+    expect(view.fetchMock.mock.calls.filter(([request]) => isUpdate(request))).toHaveLength(1);
+  });
+
+  it("labels a prerelease update in the nonblocking banner", async () => {
+    mount(request => isUpdate(request) ? json({ data: {
+      ...update, current_version: "0.3.0-alpha.1", latest_version: "0.3.0-rc.1",
+      release_url: "https://github.com/Mashiro0619/PerPay/releases/tag/v0.3.0-rc.1",
+    } }) : undefined);
+    const notice = await screen.findByRole("status", { name: "官方版本更新" });
+    expect(notice).toHaveTextContent("有新版本 v0.3.0-rc.1（预发布）");
+    expect(screen.getByLabelText("收银台有效期（秒）")).toBeVisible();
+  });
+
+  it.each([
+    ["0.3.0", "0.4.0-alpha.1"],
+    ["0.3.0-rc.01", "0.3.0"],
+    ["0.3.0-alpha.1", "0.3.0-rc.01"],
+  ])("rejects invalid or cross-channel update data %s -> %s", async (current, latest) => {
+    mount(request => isUpdate(request) ? json({ data: {
+      ...update, current_version: current, latest_version: latest,
+      release_url: "https://github.com/Mashiro0619/PerPay/releases/tag/v" + latest,
+    } }) : undefined, "/system");
+    await screen.findByText(/暂时无法检查更新，不影响收款/);
+    expect(screen.queryByRole("link", { name: "查看发布说明" })).not.toBeInTheDocument();
+  });
+
 });
