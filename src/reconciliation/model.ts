@@ -46,6 +46,19 @@ export type LinkedFinancialDecisionRequest = z.infer<
   typeof linkedFinancialDecisionRequestSchema
 >;
 
+// Missing, null and blank manual notes are the same canonical absence. Nonempty
+// notes retain the existing length, control-character and trimming rules.
+export const optionalManualSettlementReasonSchema = z.string()
+  .max(MAX_FINANCIAL_REASON_CHARACTERS)
+  .transform((value) => value.trim() === "" ? null : value)
+  .pipe(financialDecisionReasonSchema.nullable())
+  .nullish()
+  .transform((value) => value ?? null);
+
+export const manualSettlementRequestSchema = linkedFinancialDecisionRequestSchema
+  .extend({ reason: optionalManualSettlementReasonSchema })
+  .strict();
+
 export type CandidateStatus = "ELIGIBLE" | "SELECTED" | "SUPERSEDED";
 
 export type PaymentMatchStatus = "SETTLED" | "REVERSED";
@@ -185,14 +198,14 @@ export interface FinancialOperationFingerprintInput {
 export interface ManualSettlementEvidenceInput {
   readonly financialOperationId: string;
   readonly actorId: string;
-  readonly reason: string;
+  readonly reason: string | null;
 }
 
 export function manualSettlementEvidence(
   input: ManualSettlementEvidenceInput,
 ): Readonly<Record<string, unknown>> {
   return Object.freeze({
-    schema: "perpay:manual-settlement:v1",
+    schema: input.reason === null ? "perpay:manual-settlement:v2" : "perpay:manual-settlement:v1",
     financial_operation_id: input.financialOperationId,
     actor_id: input.actorId,
     reason: input.reason,

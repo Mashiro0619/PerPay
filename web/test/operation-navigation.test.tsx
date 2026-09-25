@@ -314,8 +314,7 @@ describe("financial operation navigation protection", () => {
     );
     const view = mount({ manual: true });
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "查看关联信息" }));
-    await user.type(await screen.findByLabelText("操作理由"), "人工核查原证据");
+    await user.type(await screen.findByLabelText("操作理由（可选）"), "人工核查原证据");
     await user.click(screen.getByRole("button", { name: "确认关联收款" }));
     await screen.findByText("操作结果待确认", { exact: true });
     const body = await requests
@@ -334,10 +333,11 @@ describe("financial operation navigation protection", () => {
     );
     expect(body.order_id).toBe(orderId);
     expect(body.ledger_entry_id).toBe(ledgerId);
+    expect(body.reason).toBe("人工核查原证据");
     expect(screen.queryByRole("button", { name: "返回选择" })).not.toBeInTheDocument();
     expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
     expect(requests.filter(r => r.method === "GET")).toHaveLength(2);
-    expect(screen.getByLabelText("操作理由")).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("操作理由（可选）")).toHaveAttribute("readonly");
     expect(requests.filter((r) => r.method === "POST")).toHaveLength(1);
   });
   it("lets session expiry clear a blocked operation without replaying or retaining its identifiers", async () => {

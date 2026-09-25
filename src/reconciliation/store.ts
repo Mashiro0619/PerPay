@@ -22,6 +22,7 @@ import {
   financialExceptionResolutionFingerprint,
   financialOperationFingerprint,
   manualSettlementEvidence,
+  optionalManualSettlementReasonSchema,
   outboxPayloadFingerprint,
   type CandidateFingerprintInput,
   type FinancialException,
@@ -161,7 +162,7 @@ export interface ManualSettlementInput {
   readonly orderId: string;
   readonly ledgerEntryId: string;
   readonly actorId: string;
-  readonly reason: string;
+  readonly reason?: string | null;
   readonly now?: number | undefined;
 }
 
@@ -568,7 +569,7 @@ export class ReconciliationStore {
   }
 
   settleManually(input: ManualSettlementInput): FinancialDecisionResult {
-    validateManualSettlementInput(input);
+    const reason = validateManualSettlementInput(input);
     return this.#database.write((connection) => {
       const now = financialNow(connection, input.now);
       const existingOperation = readOperation(connection, input.financialOperationId);
@@ -585,7 +586,7 @@ export class ReconciliationStore {
         candidateId: null,
         paymentMatchId,
         reversesOperationId: null,
-        reason: input.reason,
+        reason,
       };
       const replay = readDecisionReplay(connection, input.financialOperationId, operationInput);
       if (replay) return decisionResult(connection, replay, paymentMatchId, true);
@@ -612,7 +613,7 @@ export class ReconciliationStore {
         orderId: order.order_id,
         ledgerEntryId: entry.ledger_entry_id,
         reversesOperationId: null,
-        reason: input.reason,
+        reason,
         now,
       });
       const receivedAmountCents = toSafeInteger(entry.amount_cents, "ledger amount");
@@ -629,7 +630,7 @@ export class ReconciliationStore {
       const evidence = manualSettlementEvidence({
         financialOperationId: operation.financialOperationId,
         actorId: input.actorId,
-        reason: input.reason,
+        reason,
       });
       assertChangedOnce(
         connection
@@ -2547,26 +2548,31 @@ function validateDecisionInput(input: FinancialDecisionInput): void {
   validateAdministratorOperationInput(input.actorId, input.reason);
 }
 
-function validateAdministratorOperationInput(actorId: string, reason: string): void {
+function validateAdministratorOperationInput(actorId: string, reason: string | null, optionalReason = false): void {
   if (
     actorId.length < 1 ||
     actorId.length > 128 ||
     actorId.includes("\0") ||
-    reason.length < 1 ||
-    reason.length > 512 ||
-    Buffer.byteLength(reason, "utf8") > MAX_FINANCIAL_REASON_BYTES ||
-    reason !== reason.trim() ||
-    /\p{Cc}/u.test(reason)
+    (reason === null ? !optionalReason : (
+      reason.length < 1 ||
+      reason.length > 512 ||
+      Buffer.byteLength(reason, "utf8") > MAX_FINANCIAL_REASON_BYTES ||
+      reason !== reason.trim() ||
+      /\p{Cc}/u.test(reason)
+    ))
   ) {
     throw new RangeError("financial decision input is invalid");
   }
 }
 
-function validateManualSettlementInput(input: ManualSettlementInput): void {
+function validateManualSettlementInput(input: ManualSettlementInput): string | null {
   requireIdentifier(input.financialOperationId, "financial operation ID");
   requireIdentifier(input.orderId, "payment order ID");
   requireIdentifier(input.ledgerEntryId, "ledger entry ID");
-  validateAdministratorOperationInput(input.actorId, input.reason);
+  const parsed = optionalManualSettlementReasonSchema.safeParse(input.reason);
+  if (!parsed.success) throw new RangeError("financial decision input is invalid");
+  validateAdministratorOperationInput(input.actorId, parsed.data, true);
+  return parsed.data;
 }
 
 function requireIdentifier(value: string, label: string): void {

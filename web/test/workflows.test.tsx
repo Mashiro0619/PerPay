@@ -399,7 +399,8 @@ describe("operation dialog layout", () => {
       );
       expect(body).toHaveClass("min-h-0", "w-auto", "overflow-y-auto", "pb-1");
       expect(body).toContainElement(evidence);
-      expect(body).toContainElement(screen.getByLabelText("操作理由"));
+      const reason = screen.getByLabelText(kind === "financial" ? "操作理由（可选）" : "操作理由");
+      expect(body).toContainElement(reason);
       expect(header).toHaveClass("shrink-0");
       expect(footer).toHaveClass("shrink-0");
       expect(body).not.toContainElement(header);
@@ -410,7 +411,7 @@ describe("operation dialog layout", () => {
           : "将这笔收入关联到订单并确认付款。",
       );
       const user = userEvent.setup();
-      await user.type(screen.getByLabelText("操作理由"), "核对长文本证据");
+      await user.type(reason, "核对长文本证据");
       await user.click(within(dialog).getByRole("button", { name: "取消" }));
       expect(onClose).toHaveBeenCalledOnce();
       expect(execute).not.toHaveBeenCalled();
@@ -538,7 +539,7 @@ describe("state-changing workflows", () => {
         />,
       );
       const user = userEvent.setup();
-      const reason = await screen.findByLabelText("操作理由");
+      const reason = await screen.findByLabelText("操作理由（可选）");
       await user.type(reason, "初次核对理由");
       await user.click(screen.getByRole("button", { name: "确认关联收款" }));
       await screen.findByText("资金事实或处理状态已经变化");
@@ -567,7 +568,7 @@ describe("state-changing workflows", () => {
       expect(
         screen.getByRole("button", { name: "确认关联收款" }),
       ).toBeDisabled();
-      expect(screen.getByLabelText("操作理由")).toHaveValue(
+      expect(screen.getByLabelText("操作理由（可选）")).toHaveValue(
         readFails ? "" : "初次核对理由",
       );
       expect(orderReads).toBe(readFails ? 3 : 2);
@@ -604,7 +605,7 @@ describe("state-changing workflows", () => {
       />,
     );
     const user = userEvent.setup();
-    await user.type(await screen.findByLabelText("操作理由"), "保持原请求重试");
+    await user.type(await screen.findByLabelText("操作理由（可选）"), "保持原请求重试");
     await user.click(screen.getByRole("button", { name: "确认关联收款" }));
     await screen.findByText("操作结果待确认");
     expect(
@@ -650,7 +651,7 @@ describe("state-changing workflows", () => {
       const trigger = screen.getByRole("button", { name: "人工关联收款" });
       await user.click(trigger);
       await user.type(
-        await screen.findByLabelText("操作理由"),
+        await screen.findByLabelText("操作理由（可选）"),
         "核对后确认关联",
       );
       await user.click(

@@ -135,7 +135,7 @@ export function FinancialDialog({
       body: {
         order_id: string;
         ledger_entry_id: string;
-        reason: string;
+        reason: string | null;
         financial_operation_id: string;
       },
       signal,
@@ -191,7 +191,7 @@ export function FinancialDialog({
       readEvidence(orderId, ledgerId);
       return;
     }
-    const error = operationReasonError(reason);
+    const error = operationReasonError(reason, { required: false });
     setValidation(error);
     if (error) {
       reasonField.current?.focus();
@@ -201,7 +201,7 @@ export function FinancialDialog({
       const body = {
         order_id: preview.data.order.order_id,
         ledger_entry_id: preview.data.ledger.ledger_entry_id,
-        reason: reason.trim(),
+        reason: reason.trim() || null,
       };
       save.submit({ ...body, financial_operation_id: key(body) });
     }
@@ -324,17 +324,16 @@ export function FinancialDialog({
                   <Alert>
                     <AlertCircle />
                     <AlertDescription>
-                      金额与订单应付不同，请在理由中说明。
+                      流水金额与订单应付不同，请核对后确认。
                     </AlertDescription>
                   </Alert>
                 )}
                 <Field data-invalid={!!validation}>
-                  <FieldLabel htmlFor="financial-reason">操作理由</FieldLabel>
+                  <FieldLabel htmlFor="financial-reason">操作理由（可选）</FieldLabel>
                   <Textarea
                     ref={reasonField}
                     id="financial-reason"
                     name="reason"
-                    required
                     maxLength={500}
                     rows={3}
                     value={reason}
@@ -415,6 +414,7 @@ export function FinancialDialog({
               )}
             {!selecting && (!save.conflict || stale) && (
               <Button
+                key={preview.data ? "confirm" : "read"}
                 type={stale ? "button" : "submit"}
                 onClick={stale ? recheckEvidence : undefined}
                 disabled={
@@ -422,7 +422,7 @@ export function FinancialDialog({
                   (!stale &&
                     !save.recovery &&
                     !!preview.data &&
-                    (!directionValid || !stateValid || !reason.trim()))
+                    (!directionValid || !stateValid))
                 }
               >
                 {busy && (

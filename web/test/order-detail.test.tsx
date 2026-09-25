@@ -89,7 +89,7 @@ async function confirmReason(
   action: string,
 ) {
   const dialog = screen.getByRole("dialog");
-  await user.type(within(dialog).getByLabelText("操作理由"), reason);
+  await user.type(within(dialog).getByLabelText(/^操作理由(?:（可选）)?$/), reason);
   expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
   await user.click(within(dialog).getByRole("button", { name: action }));
 }
@@ -448,7 +448,7 @@ describe("order detail work surface", () => {
     ).not.toBeInTheDocument();
     expect(
       within(dialog).getByRole("button", { name: "确认关联收款" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
     expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
     expect(screen.getByLabelText("当前页面")).toHaveTextContent(
       "/reconciliation/candidates/" + candidateId,

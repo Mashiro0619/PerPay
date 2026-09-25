@@ -3400,6 +3400,11 @@ function countReconciliationCryptographicDomainViolations(connection: DatabaseSy
     return 0;
   }
 
+  const schemaVersion = Number((connection.prepare(
+    "SELECT COALESCE(MAX(version), 0) AS version FROM schema_migrations",
+  ).get() as { version: bigint | number }).version);
+  const optionalManualReason = schemaVersion >= 27;
+
   let violations = 0;
   for (const row of connection
     .prepare(
@@ -3540,7 +3545,9 @@ function countReconciliationCryptographicDomainViolations(connection: DatabaseSy
           "manual settlement operation",
         ),
         actorId: requireIntegrityString(row.actor_id, "manual settlement actor"),
-        reason: requireIntegrityString(row.reason, "manual settlement reason"),
+        reason: optionalManualReason
+          ? nullableIntegrityString(row.reason, "manual settlement reason")
+          : requireIntegrityString(row.reason, "manual settlement reason"),
       }));
       if (row.evidence_json !== expected) violations += 1;
     } catch {

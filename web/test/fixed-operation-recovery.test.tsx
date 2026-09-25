@@ -97,7 +97,7 @@ function manual(
   };
 }
 async function submitManual(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(await screen.findByLabelText("操作理由"), "原始人工关联理由");
+  await user.type(await screen.findByLabelText("操作理由（可选）"), "原始人工关联理由");
   await user.click(screen.getByRole("button", { name: "确认关联收款" }));
 }
 
@@ -325,7 +325,7 @@ describe("manual settlement recovery and evidence reading", () => {
     await screen.findByText("操作结果待确认");
     const first = await view.writes()[0]!.clone().json();
     for (const [name, value] of [
-      ["操作理由", "原始人工关联理由"],
+      ["操作理由（可选）", "原始人工关联理由"],
     ]) {
       const field = screen.getByLabelText(name!);
       expect(field).toHaveAttribute("readonly");
@@ -375,7 +375,7 @@ describe("manual settlement recovery and evidence reading", () => {
       ),
     );
     const user = userEvent.setup();
-    await user.type(await screen.findByLabelText("操作理由"), "固定关联上下文");
+    await user.type(await screen.findByLabelText("操作理由（可选）"), "固定关联上下文");
     await user.click(screen.getByRole("button", { name: "确认关联收款" }));
     await screen.findByText("操作结果待确认");
     view.rerender(
@@ -503,19 +503,30 @@ it("restarts the initial read cleanly under StrictMode without submitting a fina
       </StrictMode>,
     ),
   );
-  await screen.findByLabelText("操作理由");
-  expect(screen.getByRole("button", { name: "确认关联收款" })).toBeDisabled();
+  await screen.findByLabelText("操作理由（可选）");
+  expect(screen.getByRole("button", { name: "确认关联收款" })).toBeEnabled();
   expect(requests.every((request) => request.method === "GET")).toBe(true);
 });
 
 describe("operation reason feedback", () => {
+  it("still requires a reason for other administrator decisions", async () => {
+    const execute = vi.fn();
+    render(wrap(reasonDialog(execute)));
+    const input = screen.getByLabelText("操作理由");
+    expect(input).toBeRequired();
+    expect(screen.getByRole("button", { name: "确认撤销关联" })).toBeDisabled();
+    fireEvent.submit(input.closest("form")!);
+    expect(await screen.findByText("请填写操作理由。")).toBeVisible();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   it.each(["reason", "financial"])(
     "keeps invalid multiline reasons local in the %s workflow",
     async (kind) => {
       const execute = vi.fn();
       const view = kind === "financial" ? manual() : null;
       if (!view) render(wrap(reasonDialog(execute)));
-      const input = await screen.findByLabelText("操作理由");
+      const input = await screen.findByLabelText(kind === "financial" ? "操作理由（可选）" : "操作理由");
       fireEvent.change(input, { target: { value: "第一行\n第二行" } });
       fireEvent.submit(input.closest("form")!);
       expect(input).toHaveAttribute("aria-invalid", "true");

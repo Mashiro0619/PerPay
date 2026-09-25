@@ -49,6 +49,7 @@ import { OrderError, type OrderErrorCode, type OrderService } from "../orders/se
 import {
   financialDecisionRequestSchema,
   linkedFinancialDecisionRequestSchema,
+  manualSettlementRequestSchema,
   ReconciliationError,
   type FinancialDecisionResult,
   type FinancialException,
@@ -1132,7 +1133,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     async (context) => {
       const body = await readJson(
         context,
-        linkedFinancialDecisionRequestSchema,
+        manualSettlementRequestSchema,
         MAX_JSON_BODY_BYTES,
       );
       const session = requireCurrentSession(context, dependencies.identity);

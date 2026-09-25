@@ -94,7 +94,7 @@ describe("provider timing defaults", () => {
 
   it("finishes first-start seeding after schema creation was interrupted before startup completed", async () => {
     await withDatabasePath(async (databasePath) => {
-      historicalDatabase(databasePath, 26);
+      historicalDatabase(databasePath, migrations.at(-1)!.version);
       const database = await AppDatabase.open(databasePath);
       try {
         assert.deepEqual(database.read(timings), initialTimings);
@@ -107,7 +107,7 @@ describe("provider timing defaults", () => {
 
   it("preserves a previously started installation's old defaults and migration checksums", async () => {
     await withDatabasePath(async (databasePath) => {
-      historicalDatabase(databasePath, 26, true);
+      historicalDatabase(databasePath, migrations.at(-1)!.version, true);
       const database = await AppDatabase.open(databasePath);
       try {
         assert.deepEqual(database.read(timings), {
@@ -128,7 +128,7 @@ describe("provider timing defaults", () => {
   for (const started of [false, true]) {
     it("preserves saved timings and revisions (startup marker present: " + started + ")", async () => {
       await withDatabasePath(async (databasePath) => {
-        historicalDatabase(databasePath, 26, started);
+        historicalDatabase(databasePath, migrations.at(-1)!.version, started);
         const raw = new DatabaseSync(databasePath);
         try {
           raw.exec(`UPDATE runtime_configuration

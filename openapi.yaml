@@ -1613,7 +1613,7 @@ paths:
         - $ref: '#/components/parameters/RequestId'
         - $ref: '#/components/parameters/AdminOrigin'
       requestBody:
-        $ref: '#/components/requestBodies/LinkedFinancialDecision'
+        $ref: '#/components/requestBodies/ManualSettlement'
       responses:
         '200':
           description: Credit associated with the order or exactly replayed
@@ -2307,6 +2307,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/LinkedFinancialDecisionRequest'
+    ManualSettlement:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ManualSettlementRequest'
   schemas:
     ManualSettlementPageInfo:
       type: object
@@ -3979,6 +3985,27 @@ components:
           maxLength: 512
           x-perpay-max-utf8-bytes: 2048
           description: Must be trimmed and contain no Unicode control characters.
+        order_id: { $ref: '#/components/schemas/ResourceId' }
+        ledger_entry_id: { $ref: '#/components/schemas/ResourceId' }
+    ManualSettlementRequest:
+      type: object
+      additionalProperties: false
+      required: [financial_operation_id, order_id, ledger_entry_id]
+      properties:
+        financial_operation_id:
+          allOf:
+            - $ref: '#/components/schemas/ResourceId'
+          description: >-
+            Client-generated idempotency identifier. Exact replay is accepted; reuse for
+            different input returns `operation_conflict` with HTTP 409.
+        reason:
+          type: [string, "null"]
+          maxLength: 512
+          x-perpay-max-utf8-bytes: 2048
+          description: >-
+            Optional administrator note. Omitted, null, empty and whitespace-only values
+            are stored as null and share the same idempotent request. Nonempty notes
+            must be trimmed and contain no Unicode control characters.
         order_id: { $ref: '#/components/schemas/ResourceId' }
         ledger_entry_id: { $ref: '#/components/schemas/ResourceId' }
     LedgerConflictType:

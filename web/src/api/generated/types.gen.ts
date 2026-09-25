@@ -623,6 +623,12 @@ export type LinkedFinancialDecisionRequest = {
     order_id: ResourceId;
     ledger_entry_id: ResourceId;
 };
+export type ManualSettlementRequest = {
+    financial_operation_id: ResourceId;
+    reason?: string | null;
+    order_id: ResourceId;
+    ledger_entry_id: ResourceId;
+};
 export type LedgerConflictType = 'RAW_PAGE_VARIANT' | 'DUPLICATE_EXTERNAL_ID' | 'MISSING_EXTERNAL_ID' | 'INVALID_AMOUNT' | 'INVALID_TIMESTAMP' | 'INVALID_DIRECTION' | 'INVALID_SHAPE';
 export type LedgerConflictResolutionRequest = {
     conflict_operation_id: ResourceId;
@@ -1088,6 +1094,7 @@ export type WebhookEventIdHeader = ResourceId;
 export type WebhookAttemptHeader = string;
 export type FinancialDecision = FinancialDecisionRequest;
 export type LinkedFinancialDecision = LinkedFinancialDecisionRequest;
+export type ManualSettlement = ManualSettlementRequest;
 export type SetupAdministratorData = {
     body: AdminSetupRequest;
     headers?: {
@@ -2077,7 +2084,7 @@ export type ListManualSettlementLedgerEntriesResponses = {
 };
 export type ListManualSettlementLedgerEntriesResponse = ListManualSettlementLedgerEntriesResponses[keyof ListManualSettlementLedgerEntriesResponses];
 export type CreateManualSettlementData = {
-    body: LinkedFinancialDecision;
+    body: ManualSettlement;
     headers?: {
         'X-Request-Id'?: string;
         Origin?: string;

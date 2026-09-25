@@ -1,6 +1,8 @@
 /** Test-only reconstruction of schema 23, never a production downgrade. */
 export function displaySettingsDowngradeSql(): string {
   return `
+    DROP TRIGGER IF EXISTS financial_operations_reason_required;
+    DELETE FROM schema_migrations WHERE version = 27;
     DROP INDEX IF EXISTS payment_matches_status_created_list_idx;
     DROP INDEX IF EXISTS ledger_conflicts_external_list_idx;
     DROP INDEX IF EXISTS webhook_deliveries_predecessor_list_idx;

@@ -4831,4 +4831,21 @@ export const migrations: readonly Migration[] = [
         WHERE predecessor_delivery_id IS NOT NULL;
     `,
   },
+  {
+    version: 27,
+    name: "optional_manual_settlement_reason",
+    sql: `
+      -- Absence of a manual note is now valid evidence. The data version keeps
+      -- older readers from treating new null-reason settlements as corruption.
+      -- Other administrator financial decisions retain their required reason.
+      CREATE TRIGGER financial_operations_reason_required
+      BEFORE INSERT ON financial_operations
+      WHEN NEW.actor_type = 'ADMIN'
+        AND NEW.operation_type != 'MANUAL_SETTLEMENT'
+        AND NEW.reason IS NULL
+      BEGIN
+        SELECT RAISE(ABORT, 'financial operation reason is required');
+      END;
+    `,
+  },
 ] as const;

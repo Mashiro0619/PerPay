@@ -97,11 +97,12 @@ describe("manual settlement selection instead of ID entry", () => {
       }
       if (kind === "order" || kind === "none")
         await user.click(await chooseLedger());
-      expect(await screen.findByLabelText("操作理由")).toBeVisible();
+      expect(await screen.findByLabelText("操作理由（可选）")).toBeVisible();
       expect(view.requests.filter((r) => r.method === "POST")).toHaveLength(0);
+      expect(screen.getByLabelText("操作理由（可选）")).not.toBeRequired();
       expect(
         screen.getByRole("button", { name: "确认关联收款" }),
-      ).toBeDisabled();
+      ).toBeEnabled();
       expect(
         view.requests.filter((r) =>
           new URL(r.url).pathname.endsWith("/orders/" + orderId),
@@ -162,11 +163,11 @@ describe("manual settlement selection instead of ID entry", () => {
     const view = mount({ initialOrderId: orderId, lockContext: true });
     const user = userEvent.setup();
     await user.click(await chooseLedger());
-    await user.type(await screen.findByLabelText("操作理由"), "旧理由");
+    await user.type(await screen.findByLabelText("操作理由（可选）"), "旧理由");
     await user.click(screen.getByRole("button", { name: "返回选择" }));
-    expect(screen.queryByLabelText("操作理由")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("操作理由（可选）")).not.toBeInTheDocument();
     await user.click(await chooseLedger());
-    expect(await screen.findByLabelText("操作理由")).toHaveValue("");
+    expect(await screen.findByLabelText("操作理由（可选）")).toHaveValue("");
     expect(view.requests.every((r) => r.method === "GET")).toBe(true);
   });
   it("does not apply a late search response or select a stale list after query changes", async () => {
@@ -228,14 +229,14 @@ describe("manual settlement selection instead of ID entry", () => {
     );
     const user = userEvent.setup();
     await user.click(await chooseLedger());
-    await user.type(await screen.findByLabelText("操作理由"), "核对所选记录");
+    await user.type(await screen.findByLabelText("操作理由（可选）"), "核对所选记录");
     await user.click(screen.getByRole("button", { name: "确认关联收款" }));
     await screen.findByText("操作结果待确认");
     expect(
       screen.queryByRole("button", { name: "返回选择" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
-    const reason = screen.getByLabelText("操作理由");
+    const reason = screen.getByLabelText("操作理由（可选）");
     expect(reason).toHaveAttribute("readonly");
     fireEvent.change(reason, { target: { value: "不能替换" } });
     expect(reason).toHaveValue("核对所选记录");
@@ -248,4 +249,77 @@ describe("manual settlement selection instead of ID entry", () => {
     );
     expect(view.requests.filter((r) => r.method === "GET")).toHaveLength(reads);
   });
+  it.each(["", "   "])("allows an explicit confirmation with a blank optional reason %j", async (reason) => {
+    const view = mount({ initialOrderId: orderId, initialLedgerId: ledgerId, lockContext: true }, request => {
+      if (request.method === "POST") return json({ data: {} });
+      if (new URL(request.url).pathname.endsWith("/ledger-entries/" + ledgerId)) return json({ data: { ...ledger, amount_cents: order.payable_amount_cents + 100 } });
+    });
+    const user = userEvent.setup();
+    const note = await screen.findByLabelText("操作理由（可选）");
+    expect(note).not.toBeRequired();
+    expect(screen.getByText("流水金额与订单应付不同，请核对后确认。")).toBeVisible();
+    expect(screen.queryByText(/请在理由中说明/)).not.toBeInTheDocument();
+    if (reason) await user.type(note, reason);
+    expect(view.requests.filter(r => r.method === "POST")).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "确认关联收款" }));
+    await waitFor(() => expect(view.success).toHaveBeenCalledOnce());
+    const writes = view.requests.filter(r => r.method === "POST");
+    expect(writes).toHaveLength(1);
+    expect(await writes[0]!.json()).toMatchObject({ order_id: orderId, ledger_entry_id: ledgerId, reason: null, financial_operation_id: expect.any(String) });
+  });
+
+  it("does not turn an evidence-loading gesture into a financial confirmation", async () => {
+    let finish!: (response: Response) => void;
+    const view = mount({ initialOrderId: orderId, initialLedgerId: ledgerId, lockContext: true }, request => {
+      if (request.method === "POST") return json({ data: {} });
+      if (new URL(request.url).pathname.endsWith("/ledger-entries/" + ledgerId))
+        return new Promise<Response>(resolve => { finish = resolve; });
+    });
+    const user = userEvent.setup();
+    const read = screen.getByRole("button", { name: "查看关联信息" });
+    await user.pointer({ target: read, keys: "[MouseLeft>]" });
+    await act(async () => finish(json({ data: ledger })));
+    const confirm = await screen.findByRole("button", { name: "确认关联收款" });
+    await user.pointer({ target: confirm, keys: "[/MouseLeft]" });
+    expect(view.requests.filter(r => r.method === "POST")).toHaveLength(0);
+    expect(view.success).not.toHaveBeenCalled();
+    await user.click(confirm);
+    await waitFor(() => expect(view.success).toHaveBeenCalledOnce());
+    expect(view.requests.filter(r => r.method === "POST")).toHaveLength(1);
+  });
+
+  it("locks and retries an empty-reason operation with the exact same ID and payload", async () => {
+    let attempts = 0;
+    const view = mount({ initialOrderId: orderId, initialLedgerId: ledgerId, lockContext: true }, request => {
+      if (request.method === "POST") return ++attempts === 1 ? apiError("temporarily_unavailable", "结果未知", 503) : json({ data: {} });
+    });
+    const user = userEvent.setup();
+    const note = await screen.findByLabelText("操作理由（可选）");
+    await user.click(screen.getByRole("button", { name: "确认关联收款" }));
+    await screen.findByText("操作结果待确认");
+    expect(note).toHaveValue("");
+    expect(note).toHaveAttribute("readonly");
+    expect(screen.queryByRole("button", { name: "返回选择" })).not.toBeInTheDocument();
+    await user.type(note, "不能修改原请求");
+    expect(note).toHaveValue("");
+    await user.click(screen.getByRole("button", { name: "重试原操作" }));
+    await waitFor(() => expect(view.success).toHaveBeenCalledOnce());
+    const writes = view.requests.filter(r => r.method === "POST");
+    expect(writes).toHaveLength(2);
+    const first = await writes[0]!.json();
+    expect(first.reason).toBeNull();
+    expect(await writes[1]!.json()).toEqual(first);
+  });
+
+  it("still validates a supplied reason without losing the optional note", async () => {
+    const view = mount({ initialOrderId: orderId, initialLedgerId: ledgerId, lockContext: true });
+    const note = await screen.findByLabelText("操作理由（可选）");
+    fireEvent.change(note, { target: { value: "第一行\n第二行" } });
+    await userEvent.setup().click(screen.getByRole("button", { name: "确认关联收款" }));
+    expect(await screen.findByText(/不能包含换行或控制字符/)).toBeVisible();
+    expect(note).toHaveFocus();
+    expect(note).toHaveValue("第一行\n第二行");
+    expect(view.requests.filter(r => r.method === "POST")).toHaveLength(0);
+  });
+
 });
