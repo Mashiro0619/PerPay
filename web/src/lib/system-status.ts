@@ -30,7 +30,10 @@ export function presentSystemStatus(data: SystemStatus) {
     !data.backup.recovery_required &&
     !data.backup.configuration_mismatch &&
     !data.backup.clock_moved_backwards;
-  const businessPending =
+  const businessPending = (data.work_items?.total ?? 0) > 0;
+  // The API retains diagnostic totals, including ignored records. They explain
+  // a legacy degraded status, but must not become a new pending/failure notice.
+  const unresolvedRecords =
     (data.ledger.conflicts?.open ?? 0) > 0 ||
     (data.reconciliation.exceptions?.open ?? 0) > 0 ||
     data.webhook.dead_letters > 0;
@@ -38,6 +41,7 @@ export function presentSystemStatus(data: SystemStatus) {
     !ledgerHealthy ||
     !reconciliationHealthy ||
     !webhookHealthy ||
+    data.work_items == null ||
     (data.backup.enabled && !backupHealthy) ||
     data.backup.recovery_required ||
     data.backup.configuration_mismatch ||
@@ -45,7 +49,7 @@ export function presentSystemStatus(data: SystemStatus) {
     (data.status === "degraded" &&
       (data.ledger.conflicts === null ||
         data.reconciliation.exceptions === null ||
-        !businessPending));
+        (!unresolvedRecords && !businessPending)));
   return {
     canReceive,
     ledgerHealthy,

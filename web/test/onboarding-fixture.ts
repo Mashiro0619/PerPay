@@ -86,6 +86,7 @@ export function systemStatus(value = configuredThrough(4)): SystemStatus {
     payment_revision: value.payment_revision,
     provider_account_key: "synthetic-provider",
     database: { ok: true, result: "ok" },
+    work_items: { total: 0, financial_exceptions: 0, ledger_conflicts: 0, notification_failures: 0 },
     ledger: {
       ...health,
       collection_ready: true,

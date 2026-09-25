@@ -117,9 +117,9 @@ import { adminRefundMarks, adminRefundMarkHistory, refundMarkRequestSchema, setA
 import {
   ADMIN_WORK_ITEM_TYPES,
   ADMIN_WORK_ITEM_VISIBILITIES,
-  adminWorkItemPage, adminIgnoredWorkItemIds,
+  adminWorkItemPage, adminWorkItemSummary, adminIgnoredWorkItemIds,
   ignoreAllAdminWorkItems, ignoreAllWorkItemsSchema, restoreAdminWorkItem, restoreWorkItemSchema,
-  type AdminWorkItemVisibility, type AdminWorkItemKind,
+  type AdminWorkItemVisibility, type AdminWorkItemKind, type AdminWorkItemSummary,
   type AdminWorkItem,
   type AdminWorkItemCursor,
   type AdminWorkItemType,
@@ -1913,6 +1913,7 @@ function currentRuntimeStatus(dependencies: AppDependencies): PaymentRuntimeStat
 }
 
 interface OperationalSummaries {
+  readonly workItems: AdminWorkItemSummary | null;
   readonly conflicts: LedgerConflictSummary | null;
   readonly exceptions: FinancialExceptionSummary | null;
   readonly unavailable: boolean;
@@ -1923,7 +1924,7 @@ function operationalSummaries(
   databaseReady: boolean,
 ): OperationalSummaries {
   if (!databaseReady) {
-    return { conflicts: null, exceptions: null, unavailable: false };
+    return { conflicts: null, exceptions: null, workItems: null, unavailable: false };
   }
   let conflicts: LedgerConflictSummary | null = null;
   let exceptions: FinancialExceptionSummary | null = null;
@@ -1947,7 +1948,13 @@ function operationalSummaries(
       unavailable = true;
     }
   }
-  return { conflicts, exceptions, unavailable };
+  let workItems: AdminWorkItemSummary | null = null;
+  try {
+    workItems = adminWorkItemSummary(dependencies.database);
+  } catch {
+    unavailable = true;
+  }
+  return { conflicts, exceptions, workItems, unavailable };
 }
 
 async function systemStatus(dependencies: AppDependencies) {
@@ -1991,6 +1998,7 @@ async function systemStatus(dependencies: AppDependencies) {
       exceptions: serializeFinancialExceptionSummary(operations.exceptions),
     },
     webhook: serializeWebhookHealth(webhook),
+    work_items: operations.workItems,
     backup,
   };
 }

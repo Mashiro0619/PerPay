@@ -11,7 +11,7 @@ import { describe, it } from "node:test";
 import { AppDatabase } from "../src/database/database.ts";
 import { createApp } from "../src/http/app.ts";
 import {
-  adminWorkItemPage, ignoreAllAdminWorkItems, restoreAdminWorkItem,
+  adminWorkItemPage, adminWorkItemSummary, ignoreAllAdminWorkItems, restoreAdminWorkItem,
   type AdminWorkItem,
   type AdminWorkItemCursor,
   type AdminWorkItemType,
@@ -42,6 +42,7 @@ describe("administrator work item projection", () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-admin-work-items-"));
     const database = await AppDatabase.open(join(directory, "perpay.sqlite3"));
     try {
+      assert.deepEqual(adminWorkItemSummary(database), { total: 0, financial_exceptions: 0, ledger_conflicts: 0, notification_failures: 0 });
       assert.deepEqual(
         adminWorkItemPage(database, { type: "ALL", cursor: null, limit: 20 }),
         { items: [], nextCursor: null },
@@ -86,6 +87,62 @@ describe("administrator work item projection", () => {
       assert.equal(page.items.some((item) => item.itemId === IDS.excludedPending), false);
       assert.equal(page.items.some((item) => item.itemId === IDS.excludedLeased), false);
       assert.equal(page.items.some((item) => item.itemId === IDS.excludedAcknowledged), false);
+    });
+  });
+
+  it("counts exactly the global active projection in one read without a page limit", () => {
+    withFixture(({ database, connection, readCount }) => {
+      assert.deepEqual(adminWorkItemSummary(database), {
+        total: 6, financial_exceptions: 2, ledger_conflicts: 1, notification_failures: 3,
+      });
+      assert.equal(readCount(), 1);
+      for (let index = 0; index < 205; index += 1) {
+        connection.prepare("INSERT INTO financial_exceptions VALUES (?, 'older-generation', 'UNMATCHED_CREDIT', NULL, NULL, NULL, 'OPEN', 1500)").run(randomUUID());
+      }
+      assert.deepEqual(adminWorkItemSummary(database), {
+        total: 211, financial_exceptions: 207, ledger_conflicts: 1, notification_failures: 3,
+      });
+    });
+  });
+
+  it("keeps counts synchronized with ignore, restore, retry, redelivery and resolved history", () => {
+    withFixture(({ database, connection }) => {
+      const check = () => {
+        const items = adminWorkItemPage(database, { type: "ALL", cursor: null, limit: 200 }).items;
+        const summary = adminWorkItemSummary(database);
+        assert.deepEqual(summary, {
+          total: items.length,
+          financial_exceptions: items.filter(item => item.kind === "FINANCIAL_EXCEPTION").length,
+          ledger_conflicts: items.filter(item => item.kind === "LEDGER_CONFLICT").length,
+          notification_failures: items.filter(item => item.kind === "NOTIFICATION_FAILURE").length,
+        });
+        return summary;
+      };
+      for (const category of ["UNMATCHED_DEBIT", "UNLINKED_REFUND"]) {
+        connection.prepare("INSERT INTO financial_exceptions VALUES (?, 'primary', ?, NULL, NULL, NULL, 'OPEN', 700)").run(randomUUID(), category);
+      }
+      assert.equal(check().total, 6);
+      const ignore = { operation_id: randomUUID(), type: "ALL" as const };
+      ignoreAllAdminWorkItems(database, ignore, { actorId: "admin", now: 1000 });
+      assert.equal(check().total, 0);
+      assert.equal(adminWorkItemPage(database, { type: "ALL", visibility: "IGNORED", cursor: null, limit: 200 }).items.length, 6);
+      connection.prepare("UPDATE webhook_deliveries SET status = 'DEAD_LETTER', updated_at = 1500 WHERE delivery_id = ?").run(IDS.retryNewest);
+      assert.equal(check().total, 0);
+      const restore = { operation_id: randomUUID(), type: "NOTIFICATION_FAILURE" as const, resource_id: IDS.retryNewest };
+      restoreAdminWorkItem(database, restore, { actorId: "admin", now: 2000 });
+      assert.equal(check().notification_failures, 1);
+      // An exact batch retry must not re-ignore a restored reminder.
+      ignoreAllAdminWorkItems(database, ignore, { actorId: "admin", now: 3000 });
+      assert.equal(check().notification_failures, 1);
+      connection.prepare("UPDATE webhook_deliveries SET status = 'ACKNOWLEDGED' WHERE delivery_id = ?").run(IDS.retryNewest);
+      assert.equal(check().total, 0);
+      connection.prepare("UPDATE webhook_deliveries SET status = 'RETRY_WAIT' WHERE delivery_id = ?").run(IDS.successor);
+      assert.equal(check().notification_failures, 1);
+      restoreAdminWorkItem(database, { operation_id: randomUUID(), type: "FINANCIAL_EXCEPTION", resource_id: IDS.exceptionLower }, { actorId: "admin", now: 4000 });
+      assert.equal(check().financial_exceptions, 1);
+      connection.prepare("UPDATE financial_exceptions SET status = 'RESOLVED' WHERE exception_id = ?").run(IDS.exceptionLower);
+      assert.equal(check().financial_exceptions, 0);
+      assert.equal(check().notification_failures, 1);
     });
   });
 
@@ -258,6 +315,8 @@ describe("administrator work item projection", () => {
     createSchema(projectionConnection);
     seedFixture(projectionConnection);
     const projectionDatabase = {
+      health: () => services.database.health(),
+      instanceId: () => services.database.instanceId(),
       read<T>(operation: (connection: DatabaseSync) => T): T {
         return operation(projectionConnection);
       },
@@ -276,6 +335,10 @@ describe("administrator work item projection", () => {
       assert.equal(await errorCode(anonymous), "session_invalid");
 
       const cookie = await login(app);
+      const statusResponse = await app.request("/api/admin/v1/system/status", { headers: { cookie } });
+      assert.equal(statusResponse.status, 200);
+      const status = await statusResponse.json() as { data: { work_items: unknown } };
+      assert.deepEqual(status.data.work_items, { total: 6, financial_exceptions: 2, ledger_conflicts: 1, notification_failures: 3 });
       const first = await app.request("/api/admin/v1/work-items?limit=1", {
         headers: { cookie },
       });
@@ -357,6 +420,11 @@ describe("administrator work item projection", () => {
         assert.equal(invalid.status, 422, query);
         assert.equal(await errorCode(invalid), "validation_failed");
       }
+      // A failed reminder query must never be reported as an empty queue.
+      projectionConnection.exec("DROP TABLE admin_work_item_states");
+      const failedStatus = await app.request("/api/admin/v1/system/status", { headers: { cookie } });
+      assert.equal(failedStatus.status, 200);
+      assert.equal((await failedStatus.json() as { data: { work_items: unknown } }).data.work_items, null);
     } finally {
       projectionConnection.close();
       services.database.close();

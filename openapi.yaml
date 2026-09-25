@@ -2411,13 +2411,15 @@ components:
         - reconciliation
         - webhook
         - backup
+        - work_items
       properties:
         status:
           type: string
           enum: [ready, degraded, not_ready]
           description: >-
             Open ledger conflicts, financial exceptions, or an unhealthy backup degrade the
-            status without making the core service unready.
+            status without making the core service unready. These diagnostic totals include
+            ignored reminders; use work_items for administrator pending indicators.
         version: { type: string }
         instance_id: { type: string, pattern: '^[0-9a-f]{32}$' }
         initialized: { type: boolean }
@@ -2440,6 +2442,24 @@ components:
           $ref: '#/components/schemas/WebhookHealth'
         backup:
           $ref: '#/components/schemas/BackupHealth'
+        work_items:
+          $ref: '#/components/schemas/AdminWorkItemSummary'
+    AdminWorkItemSummary:
+      type: [object, 'null']
+      additionalProperties: false
+      description: >-
+        Counts the same global ACTIVE view as GET /api/admin/v1/work-items, across
+        provider generations and before keyword filtering or pagination. Excludes
+        ignored or no-longer-actionable records, retired debit exceptions, and
+        notification failures superseded by a redelivery. Notification failures
+        include both RETRY_WAIT and DEAD_LETTER. Null means unavailable, not zero.
+        Raw conflict, exception, and worker totals remain unchanged.
+      required: [total, financial_exceptions, ledger_conflicts, notification_failures]
+      properties:
+        total: { type: integer, minimum: 0 }
+        financial_exceptions: { type: integer, minimum: 0 }
+        ledger_conflicts: { type: integer, minimum: 0 }
+        notification_failures: { type: integer, minimum: 0 }
     SystemAnalyticsEnvelope:
       type: object
       additionalProperties: false

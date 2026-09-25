@@ -51,9 +51,15 @@ describe("reconciliation reminder visibility", () => {
         assert.deepEqual(await get<ReviewPage>(scenario.path), { data: [], page: { next_cursor: null } });
         assert.deepEqual((await get<ReviewPage>(other.path)).data.map(item => item[other.idKey]), otherIds);
         assert.deepEqual({ conflicts: fixture.ledger.conflictSummary(account), exceptions: fixture.reconciliation.exceptionSummary(account) }, summaries);
-        const runtime = await get<{ data: { ledger: { conflicts: { open: number } }; reconciliation: { exceptions: { open: number } } } }>("/api/admin/v1/system/status");
+        const runtime = await get<{ data: { work_items: { total: number; financial_exceptions: number; ledger_conflicts: number; notification_failures: number }; ledger: { conflicts: { open: number } }; reconciliation: { exceptions: { open: number } } } }>("/api/admin/v1/system/status");
         assert.equal(runtime.data.ledger.conflicts.open, summaries.conflicts.open);
         assert.equal(runtime.data.reconciliation.exceptions.open, summaries.exceptions.open);
+        assert.deepEqual(runtime.data.work_items, {
+          total: 1,
+          financial_exceptions: scenario.type === "FINANCIAL_EXCEPTION" ? 0 : 1,
+          ledger_conflicts: scenario.type === "LEDGER_CONFLICT" ? 0 : 1,
+          notification_failures: 0,
+        });
         const ignored = await get<{ data: Array<{ resource_id: string; ended: boolean }> }>("/api/admin/v1/work-items?type=" + scenario.type + "&visibility=IGNORED");
         assert.deepEqual(new Set(ignored.data.map(item => item.resource_id)), new Set(ids));
         assert.ok(ignored.data.every(item => !item.ended));

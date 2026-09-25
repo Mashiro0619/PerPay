@@ -213,7 +213,7 @@ describe("short feedback and safe settings", () => {
     mountOnboarding({ stage: 4, path: "/system" });
     const heading = await screen.findByRole("heading", { name: "可以收款" });
     expect(heading.parentElement?.querySelector("p")).toBeNull();
-    expect(screen.getByText("以下统计包含已忽略记录。")).toBeVisible();
+    expect(screen.getByText("提醒数仅包含未忽略且仍需处理的事项。")).toBeVisible();
     expect(screen.queryByText("收款链路运行正常。")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/详见下方|可查看结果后|仍保留校验约束/),
@@ -359,7 +359,7 @@ describe("short feedback and safe settings", () => {
     );
     expect(screen.queryByText(syntheticSecret)).not.toBeInTheDocument();
   });
-  it("retains true conflict and failure totals, without linking them to an active-only reminder list", async () => {
+  it("shows active reminder counts and links matching those counts instead of raw diagnostic totals", async () => {
     mountOnboarding({
       stage: 4,
       path: "/system",
@@ -367,6 +367,7 @@ describe("short feedback and safe settings", () => {
         const status = systemStatus(settings);
         return {
           ...status,
+          work_items: { total: 4, financial_exceptions: 1, ledger_conflicts: 2, notification_failures: 1 },
           ledger: {
             ...status.ledger,
             conflicts: {
@@ -395,18 +396,16 @@ describe("short feedback and safe settings", () => {
         };
       },
     });
-    expect(await screen.findByText("未处理冲突 8")).toBeVisible();
-    expect(screen.getByText("待核对订单 0 · 未处理异常 6")).toBeVisible();
-    expect(screen.getByText("以下统计包含已忽略记录。")).toBeVisible();
-    expect(
-      screen.getByRole("link", { name: "查看全部冲突记录" }),
-    ).toHaveAttribute("href", "/reconciliation?tab=conflicts&status=ALL");
-    expect(screen.queryByRole("link", { name: "8" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "6" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "3" })).toHaveAttribute(
-      "href",
-      "/notifications?status=DEAD_LETTER",
-    );
+    expect(await screen.findByText("冲突提醒 2")).toBeVisible();
+    expect(screen.getByText("待核对订单 0 · 异常提醒 1")).toBeVisible();
+    expect(screen.getByText("待投递 2 · 失败提醒 1")).toBeVisible();
+    expect(screen.getByText("提醒数仅包含未忽略且仍需处理的事项。")).toBeVisible();
+    for (const [title, type] of [["账本采集", "LEDGER_CONFLICT"], ["自动确认", "FINANCIAL_EXCEPTION"], ["业务通知", "NOTIFICATION_FAILURE"]]) {
+      const row = screen.getByText(title!, { selector: '[data-slot="item-title"]' }).closest("[data-slot=item]")! as HTMLElement;
+      expect(within(row).getByRole("link", { name: "查看未忽略提醒" })).toHaveAttribute("href", "/work-items?type=" + type);
+    }
+    expect(screen.queryByText("未处理冲突 8")).not.toBeInTheDocument();
+    expect(screen.queryByText("待核对订单 0 · 未处理异常 6")).not.toBeInTheDocument();
     expect(screen.getByText("有业务事项待处理")).toBeVisible();
     expect(screen.queryByText("有运行告警")).not.toBeInTheDocument();
     for (const name of ["账本采集", "自动确认"]) {

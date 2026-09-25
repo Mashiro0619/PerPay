@@ -86,8 +86,9 @@ function SystemContent() {
               runtimeWarning,
               businessPending,
             } = presentSystemStatus(data);
-            const conflicts = data.ledger.conflicts?.open ?? 0;
-            const exceptions = data.reconciliation.exceptions?.open ?? 0;
+            const conflicts = data.work_items?.ledger_conflicts ?? 0;
+            const exceptions = data.work_items?.financial_exceptions ?? 0;
+            const notificationFailures = data.work_items?.notification_failures ?? 0;
             const explanation = !data.configured
               ? "收款配置未完成。"
               : !data.database.ok
@@ -151,7 +152,11 @@ function SystemContent() {
                     <CardTitle role="heading" aria-level={2}>
                       运行环节
                     </CardTitle>
-                    <CardDescription>以下统计包含已忽略记录。</CardDescription>
+                    <CardDescription>
+                      {data.work_items === null
+                        ? "提醒统计暂不可用，请刷新重试。"
+                        : "提醒数仅包含未忽略且仍需处理的事项。"}
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ItemGroup>
@@ -163,7 +168,7 @@ function SystemContent() {
                           "最近成功 " + dateTime(data.ledger.last_success_at)
                         }
                         metrics={
-                          "未处理冲突 " + (data.ledger.conflicts?.open ?? "—")
+                          "冲突提醒 " + (data.work_items?.ledger_conflicts ?? "—")
                         }
                         action={
                           <>
@@ -185,9 +190,9 @@ function SystemContent() {
                                   variant: "outline",
                                   size: "sm",
                                 })}
-                                to="/reconciliation?tab=conflicts&status=ALL"
+                                to="/work-items?type=LEDGER_CONFLICT"
                               >
-                                查看全部冲突记录
+                                查看未忽略提醒
                               </Link>
                             )}
                           </>
@@ -214,8 +219,8 @@ function SystemContent() {
                         metrics={
                           "待核对订单 " +
                           data.reconciliation.pending_orders +
-                          " · 未处理异常 " +
-                          (data.reconciliation.exceptions?.open ?? "—")
+                          " · 异常提醒 " +
+                          (data.work_items?.financial_exceptions ?? "—")
                         }
                         action={
                           exceptions > 0 && (
@@ -254,29 +259,29 @@ function SystemContent() {
                         }
                         metrics={
                           <>
-                            待投递 {data.webhook.pending_deliveries} · 投递失败{" "}
-                            {data.webhook.dead_letters > 0 ? (
-                              <Link to="/notifications?status=DEAD_LETTER">
-                                {data.webhook.dead_letters}
-                              </Link>
-                            ) : (
-                              0
-                            )}
+                            待投递 {data.webhook.pending_deliveries} · 失败提醒{" "}
+                            {data.work_items?.notification_failures ?? "—"}
                           </>
                         }
                         action={
-                          (!webhookHealthy ||
-                            data.webhook.dead_letters > 0) && (
-                            <Link
-                              className={buttonVariants({
-                                variant: "outline",
-                                size: "sm",
-                              })}
-                              to="/notifications"
-                            >
-                              查看投递
-                            </Link>
-                          )
+                          <>
+                            {notificationFailures > 0 && (
+                              <Link
+                                className={buttonVariants({ variant: "outline", size: "sm" })}
+                                to="/work-items?type=NOTIFICATION_FAILURE"
+                              >
+                                查看未忽略提醒
+                              </Link>
+                            )}
+                            {!webhookHealthy && (
+                              <Link
+                                className={buttonVariants({ variant: "outline", size: "sm" })}
+                                to="/notifications"
+                              >
+                                查看投递
+                              </Link>
+                            )}
+                          </>
                         }
                       >
                         {data.webhook.last_error_code && (

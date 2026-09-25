@@ -50,7 +50,14 @@ export type SystemStatus = {
     reconciliation: ReconciliationHealth;
     webhook: WebhookHealth;
     backup: BackupHealth;
+    work_items: AdminWorkItemSummary;
 };
+export type AdminWorkItemSummary = {
+    total: number;
+    financial_exceptions: number;
+    ledger_conflicts: number;
+    notification_failures: number;
+} | null;
 export type SystemAnalyticsEnvelope = {
     data: SystemAnalytics;
 };

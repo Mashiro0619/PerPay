@@ -126,7 +126,7 @@ interface WorkItemRow {
   readonly sort_at: number | bigint;
 }
 
-// One projection drives tabs, home-page reminders, bulk selection and restore checks.
+// One projection drives tabs, home-page reminders, status counts, bulk selection and restore checks.
 // It includes ended records so ignored history survives the underlying resolution.
 const WORK_ITEMS_CTE = `
   WITH resources AS (
@@ -174,6 +174,34 @@ const WORK_ITEMS_CTE = `
     LEFT JOIN admin_work_item_states AS state ON state.kind = resources.kind AND state.item_id = resources.item_id
     LEFT JOIN admin_operation_log AS operation ON operation.operation_id = state.operation_id
   )`;
+
+const ACTIVE_WORK_ITEMS = "ignored = 0 AND actionable = 1";
+
+export interface AdminWorkItemSummary {
+  readonly total: number;
+  readonly financial_exceptions: number;
+  readonly ledger_conflicts: number;
+  readonly notification_failures: number;
+}
+
+/** Same global ACTIVE view as the list, without search, pagination or account-generation filters. */
+export function adminWorkItemSummary(database: AppDatabase): AdminWorkItemSummary {
+  return database.read((connection) => {
+    const row = connection.prepare(WORK_ITEMS_CTE + `
+      SELECT COUNT(*) AS total,
+        COALESCE(SUM(kind = 'FINANCIAL_EXCEPTION'), 0) AS financial_exceptions,
+        COALESCE(SUM(kind = 'LEDGER_CONFLICT'), 0) AS ledger_conflicts,
+        COALESCE(SUM(kind = 'NOTIFICATION_FAILURE'), 0) AS notification_failures
+      FROM work_items WHERE ${ACTIVE_WORK_ITEMS}
+    `).get() as Record<keyof AdminWorkItemSummary, number | bigint>;
+    return Object.freeze({
+      total: safeInteger(row.total),
+      financial_exceptions: safeInteger(row.financial_exceptions),
+      ledger_conflicts: safeInteger(row.ledger_conflicts),
+      notification_failures: safeInteger(row.notification_failures),
+    });
+  });
+}
 
 function workItemSearch(q: string) {
   const direct = listSearch(
@@ -256,7 +284,7 @@ export function adminWorkItemPage(
     const condition =
       visibility === "IGNORED"
         ? "ignored = 1"
-        : "ignored = 0 AND actionable = 1";
+        : ACTIVE_WORK_ITEMS;
     const rows = connection
       .prepare(
         WORK_ITEMS_CTE +

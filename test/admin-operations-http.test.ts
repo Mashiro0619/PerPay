@@ -129,6 +129,7 @@ describe("administrator operation HTTP contracts", () => {
       assert.deepEqual(await okData(await fixture.app.request("/api/admin/v1/work-items?limit=4", { headers: { cookie: auth.cookie } })), []);
       const runtime = await okData<Record<string, any>>(await fixture.app.request("/api/admin/v1/system/status", { headers: { cookie: auth.cookie } }));
       assert.equal(runtime.reconciliation.exceptions.open, 25);
+      assert.deepEqual(runtime.work_items, { total: 0, financial_exceptions: 0, ledger_conflicts: 0, notification_failures: 0 });
       const analytics = await okData<Record<string, any>>(await fixture.app.request("/api/admin/v1/system/analytics", { headers: { cookie: auth.cookie } }));
       assert.equal(analytics.pending.exceptions, 25);
       const ignored = await fixture.app.request("/api/admin/v1/work-items?visibility=IGNORED&type=FINANCIAL_EXCEPTION&limit=2", { headers: { cookie: auth.cookie } });

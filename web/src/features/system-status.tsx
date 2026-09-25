@@ -12,7 +12,14 @@ function useStatusObservation() {
     queryFn: async ({ signal }) => {
       const response = await result(api.getAdministratorSystemStatus({ signal }));
       const data = response.data;
-      if (!data || !["ready", "degraded", "not_ready"].includes(data.status) ||
+      const workItems = data?.work_items;
+      const validWorkItems = workItems === null || (
+        workItems && typeof workItems === "object" && !Array.isArray(workItems) &&
+        [workItems.total, workItems.financial_exceptions, workItems.ledger_conflicts, workItems.notification_failures]
+          .every(value => Number.isSafeInteger(value) && value >= 0) &&
+        workItems.total === workItems.financial_exceptions + workItems.ledger_conflicts + workItems.notification_failures
+      );
+      if (!data || !validWorkItems || !["ready", "degraded", "not_ready"].includes(data.status) ||
           ![data.database, data.ledger, data.reconciliation, data.webhook, data.backup].every(value => value && typeof value === "object") ||
           ![data.configured, data.database?.ok, data.ledger?.collection_ready, data.reconciliation?.confirmation_ready].every(value => typeof value === "boolean")) {
         throw new Error("运行状态响应不完整，请重试。");
