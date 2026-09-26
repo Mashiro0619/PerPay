@@ -1,9 +1,12 @@
 import { useListQuery, DELIVERY_SORT_FIELDS } from "@/lib/list-query";
 import { ListQueryToolbar } from "@/components/list-query-toolbar";
+import { ListActionsMenu } from "@/components/list-actions-menu";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { BusinessTable } from "@/components/business-table";
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import { ArrowLeft, RefreshCw, Settings2 } from "lucide-react";
 import { useParams, useSearchParams } from "react-router";
 import { Link, useDetailBack } from "@/navigation";
 import {
@@ -88,6 +91,7 @@ function DeliveryPage({
   status: WebhookDeliveryStatus | undefined;
   filters: ReactNode;
 }) {
+  const isMobile = useIsMobile();
   const pagination = useCursor();
   const listQuery = useListQuery(DELIVERY_SORT_FIELDS, "created_at", "asc");
   const deliveries = useQuery({
@@ -107,35 +111,68 @@ function DeliveryPage({
   });
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        {filters}
-        <div className="ml-auto flex items-center gap-2">
-          <Link
-            to="/settings/notifications"
-            className={buttonVariants({ variant: "outline" })}
-          >
-            通知设置
-          </Link>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="刷新"
-            disabled={deliveries.isFetching}
-            onClick={() => {
-              void deliveries.refetch();
-            }}
-          >
-            {deliveries.isFetching ? (
-              <Spinner aria-hidden="true" />
-            ) : (
-              <RefreshCw />
-            )}
-          </Button>
+      {!isMobile && (
+        <div className="flex flex-wrap items-center gap-2">
+          {filters}
+          <div className="ml-auto flex items-center gap-2">
+            <Link
+              to="/settings/notifications"
+              className={buttonVariants({ variant: "outline" })}
+            >
+              通知设置
+            </Link>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="刷新"
+              disabled={deliveries.isFetching}
+              onClick={() => {
+                void deliveries.refetch();
+              }}
+            >
+              {deliveries.isFetching ? (
+                <Spinner aria-hidden="true" />
+              ) : (
+                <RefreshCw />
+              )}
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
       <ListQueryToolbar
         control={listQuery}
         label="通知关键词搜索"
+        filters={[
+          {
+            key: "status",
+            label: "通知状态",
+            value: status ?? "",
+            options: statuses,
+          },
+        ]}
+        mobileActions={
+          <ListActionsMenu label="更多通知操作">
+            {() => (
+              <>
+                <DropdownMenuItem
+                  render={<Link to="/settings/notifications" />}
+                >
+                  <Settings2 />
+                  通知设置
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={deliveries.isFetching}
+                  onClick={() => {
+                    void deliveries.refetch();
+                  }}
+                >
+                  <RefreshCw />
+                  刷新
+                </DropdownMenuItem>
+              </>
+            )}
+          </ListActionsMenu>
+        }
         sorts={[
           { value: "created_at", label: "创建时间" },
           { value: "attempt_count", label: "尝试次数" },

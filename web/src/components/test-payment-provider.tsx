@@ -6,6 +6,7 @@ import {
   useState,
   type ComponentProps,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { useLocation, useMatch } from "react-router";
 import { ScanLine } from "lucide-react";
@@ -15,6 +16,7 @@ import {
   useTestPaymentRequest,
 } from "@/lib/test-payment-request";
 import { Button } from "@/components/ui/button";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 
 const TestPaymentContext = createContext<
   ((trigger: HTMLButtonElement) => void) | null
@@ -76,5 +78,25 @@ export function TestPaymentButton({
       <ScanLine data-icon="inline-start" />
       {children}
     </Button>
+  );
+}
+
+export function TestPaymentMenuItem({
+  returnFocus,
+}: {
+  returnFocus: RefObject<HTMLButtonElement | null>;
+}) {
+  const show = useContext(TestPaymentContext);
+  if (!show)
+    throw new Error("TestPaymentMenuItem requires TestPaymentProvider");
+  return (
+    <DropdownMenuItem
+      onClick={() => {
+        if (returnFocus.current) show(returnFocus.current);
+      }}
+    >
+      <ScanLine data-icon="inline-start" />
+      测试收款
+    </DropdownMenuItem>
   );
 }

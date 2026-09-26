@@ -60,5 +60,5 @@ export function useListQuery<S extends string>(
 }
 export type ListQueryControl = Pick<
   ReturnType<typeof useListQuery>,
-  "query" | "setKeyword" | "setSort" | "clear"
+  "query" | "setKeyword" | "setSort" | "clear" | "update"
 >;

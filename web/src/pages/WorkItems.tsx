@@ -1,8 +1,11 @@
 import { useListQuery, WORK_ITEM_SORT_FIELDS } from "@/lib/list-query";
 import { ListQueryToolbar } from "@/components/list-query-toolbar";
+import { ListActionsMenu } from "@/components/list-actions-menu";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, EyeOff } from "lucide-react";
 import { useLocation, useSearchParams } from "react-router";
 import {
   api,
@@ -164,11 +167,12 @@ export default function WorkItems() {
             busy={ignore.isPending}
             message={message}
             onVisibility={(next) => select(type, next)}
-            onIgnore={() => {
+            onIgnore={(trigger) => {
               finalFocus.current =
-                document.activeElement instanceof HTMLElement
+                trigger ??
+                (document.activeElement instanceof HTMLElement
                   ? document.activeElement
-                  : null;
+                  : null);
               ignore.reset();
               setBatch({
                 type,
@@ -244,8 +248,9 @@ function WorkItemPage({
   busy: boolean;
   message: string;
   onVisibility: (value: Visibility) => void;
-  onIgnore: () => void;
+  onIgnore: (trigger?: HTMLElement | null) => void;
 }) {
+  const isMobile = useIsMobile();
   const mounted = useMounted();
   const pagination = useCursor();
   const sortFields =
@@ -441,52 +446,84 @@ function WorkItemPage({
     }
     setPosition(null);
   }, [position, work.data, work.isFetching, work.isError, pagination]);
+  const cannotIgnore =
+    busy ||
+    work.isPending ||
+    work.isError ||
+    (!work.data?.data.length && pagination.page === 1);
+  const visibilityControl = (
+    <ToggleGroup
+      variant="outline"
+      value={[visibility]}
+      disabled={busy}
+      onValueChange={(value) => {
+        if (value[0]) onVisibility(value[0] as Visibility);
+      }}
+      aria-label="提醒可见性"
+    >
+      <ToggleGroupItem value="ACTIVE">未忽略</ToggleGroupItem>
+      <ToggleGroupItem value="IGNORED">已忽略</ToggleGroupItem>
+    </ToggleGroup>
+  );
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <ToggleGroup
-          variant="outline"
-          value={[visibility]}
-          disabled={busy}
-          onValueChange={(value) => {
-            if (value[0]) onVisibility(value[0] as Visibility);
-          }}
-          aria-label="提醒可见性"
-        >
-          <ToggleGroupItem value="ACTIVE">未忽略</ToggleGroupItem>
-          <ToggleGroupItem value="IGNORED">已忽略</ToggleGroupItem>
-        </ToggleGroup>
-        <div className="flex items-center gap-2">
-          {visibility === "ACTIVE" && (
+      {!isMobile && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {visibilityControl}
+          <div className="flex items-center gap-2">
+            {visibility === "ACTIVE" && (
+              <Button
+                variant="outline"
+                disabled={cannotIgnore}
+                onClick={(event) => onIgnore(event.currentTarget)}
+              >
+                忽略当前筛选结果
+              </Button>
+            )}
             <Button
-              variant="outline"
-              disabled={
-                busy ||
-                work.isPending ||
-                work.isError ||
-                (!work.data?.data.length && pagination.page === 1)
-              }
-              onClick={onIgnore}
+              variant="ghost"
+              size="icon"
+              aria-label="刷新"
+              disabled={busy || work.isFetching}
+              onClick={() => {
+                void work.refetch();
+              }}
             >
-              忽略当前筛选结果
+              {work.isFetching ? <Spinner aria-hidden="true" /> : <RefreshCw />}
             </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="刷新"
-            disabled={busy || work.isFetching}
-            onClick={() => {
-              void work.refetch();
-            }}
-          >
-            {work.isFetching ? <Spinner aria-hidden="true" /> : <RefreshCw />}
-          </Button>
+          </div>
         </div>
-      </div>
+      )}
       <ListQueryToolbar
         control={listQuery}
         label="提醒关键词搜索"
+        mobileLeading={visibilityControl}
+        mobileActions={
+          <ListActionsMenu label="更多提醒操作" disabled={busy}>
+            {(trigger) => (
+              <>
+                {visibility === "ACTIVE" && (
+                  <DropdownMenuItem
+                    disabled={cannotIgnore}
+                    onClick={() => onIgnore(trigger.current)}
+                  >
+                    <EyeOff />
+                    忽略当前筛选结果
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem
+                  disabled={busy || work.isFetching}
+                  onClick={() => {
+                    void work.refetch();
+                  }}
+                >
+                  <RefreshCw />
+                  刷新
+                </DropdownMenuItem>
+              </>
+            )}
+          </ListActionsMenu>
+        }
         disabled={busy}
         sorts={sortFields.map((value) => ({
           value,

@@ -1,5 +1,10 @@
 import { useListQuery, ORDER_SORT_FIELDS } from "@/lib/list-query";
-import { ListQueryToolbar } from "@/components/list-query-toolbar";
+import {
+  ListQueryToolbar,
+  type ListQueryLookup,
+} from "@/components/list-query-toolbar";
+import { ListActionsMenu } from "@/components/list-actions-menu";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
@@ -12,7 +17,10 @@ import {
   type PaymentStatus,
 } from "@/api/client";
 import { useCursor } from "@/lib/cursor";
-import { TestPaymentButton } from "@/components/test-payment-provider";
+import {
+  TestPaymentButton,
+  TestPaymentMenuItem,
+} from "@/components/test-payment-provider";
 import { DataTable } from "@/components/data-table";
 import { CursorPagination } from "@/components/cursor-pagination";
 import { ErrorNotice, QueryView } from "@/components/request-state";
@@ -55,6 +63,8 @@ const searchOptions = [
   { value: "internal", label: "内部订单编号" },
 ];
 export default function Orders() {
+  const isMobile = useIsMobile();
+  const lookup = useOrderLookup();
   const [search, setSearch] = useSearchParams();
   const paymentValue = search.get("payment");
   const checkoutValue = search.get("checkout");
@@ -89,55 +99,74 @@ export default function Orders() {
   }
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <OrderSearch />
-        <TestPaymentButton />
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Select
-          items={paymentOptions}
-          value={payment ?? ""}
-          onValueChange={(value) => filter("payment", value)}
-        >
-          <SelectTrigger aria-label="付款状态筛选">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {paymentOptions.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        <Select
-          items={checkoutOptions}
-          value={checkout ?? ""}
-          onValueChange={(value) => filter("checkout", value)}
-        >
-          <SelectTrigger aria-label="收银台状态筛选">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {checkoutOptions.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        {(payment || checkout) && (
-          <Button variant="ghost" onClick={clearFilters}>
-            清除筛选
-          </Button>
-        )}
-      </div>
+      {!isMobile && (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <OrderSearch lookup={lookup} />
+            <TestPaymentButton />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select
+              items={paymentOptions}
+              value={payment ?? ""}
+              onValueChange={(value) => filter("payment", value)}
+            >
+              <SelectTrigger aria-label="付款状态筛选">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {paymentOptions.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            <Select
+              items={checkoutOptions}
+              value={checkout ?? ""}
+              onValueChange={(value) => filter("checkout", value)}
+            >
+              <SelectTrigger aria-label="收银台状态筛选">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {checkoutOptions.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            {(payment || checkout) && (
+              <Button variant="ghost" onClick={clearFilters}>
+                清除筛选
+              </Button>
+            )}
+          </div>
+        </>
+      )}
       <OrderPage
-        key={payment + ":" + checkout}
+        lookup={{
+          modes: searchOptions.map((option) => ({
+            ...option,
+            placeholder:
+              option.value === "merchant"
+                ? "输入完整商户订单号"
+                : "输入完整内部订单编号",
+          })),
+          inputLabel: "订单号",
+          inputName: "order-query",
+          maxLength: 128,
+          pending: lookup.isPending,
+          error: lookup.error,
+          onReset: () => lookup.reset(),
+          onSubmit: (kind, value) => lookup.mutate({ kind, value }),
+        }}
         payment={payment}
         checkout={checkout}
         onClearFilters={clearFilters}
@@ -145,26 +174,31 @@ export default function Orders() {
     </div>
   );
 }
-function OrderSearch() {
-  const [value, setValue] = useState("");
-  const [kind, setKind] = useState("merchant");
+function useOrderLookup() {
   const navigate = useNavigate();
-  const lookup = useMutation({
-    mutationFn: () =>
+  return useMutation({
+    mutationFn: ({ kind, value }: { kind: string; value: string }) =>
       kind === "merchant"
         ? result(
             api.getAdministratorOrderByMerchantNumber({
-              path: { merchantOrderNo: value.trim() },
+              path: { merchantOrderNo: value },
             }),
           )
-        : result(
-            api.getAdministratorOrder({ path: { orderId: value.trim() } }),
-          ),
+        : result(api.getAdministratorOrder({ path: { orderId: value } })),
     onSuccess: ({ data }) => navigate("/orders/" + data.order_id),
   });
+}
+function OrderSearch({
+  lookup,
+}: {
+  lookup: ReturnType<typeof useOrderLookup>;
+}) {
+  const [value, setValue] = useState("");
+  const [kind, setKind] = useState("merchant");
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (value.trim() && !lookup.isPending) lookup.mutate();
+    if (value.trim() && !lookup.isPending)
+      lookup.mutate({ kind, value: value.trim() });
   }
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-2">
@@ -231,10 +265,12 @@ function OrderSearch() {
   );
 }
 function OrderPage({
+  lookup,
   payment,
   checkout,
   onClearFilters,
 }: {
+  lookup: ListQueryLookup;
   payment: PaymentStatus | undefined;
   checkout: CheckoutStatus | undefined;
   onClearFilters: () => void;
@@ -262,6 +298,26 @@ function OrderPage({
       <ListQueryToolbar
         control={listQuery}
         label="订单关键词搜索"
+        lookup={lookup}
+        filters={[
+          {
+            key: "payment",
+            label: "付款状态",
+            value: payment ?? "",
+            options: paymentOptions,
+          },
+          {
+            key: "checkout",
+            label: "收银台状态",
+            value: checkout ?? "",
+            options: checkoutOptions,
+          },
+        ]}
+        mobileActions={
+          <ListActionsMenu label="更多订单操作">
+            {(trigger) => <TestPaymentMenuItem returnFocus={trigger} />}
+          </ListActionsMenu>
+        }
         sorts={[
           { value: "created_at", label: "创建时间" },
           { value: "payable_amount_cents", label: "应付金额" },

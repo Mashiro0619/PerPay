@@ -40,6 +40,20 @@ Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
 });
 
 beforeEach(() => {
+  // Default to a desktop media environment; mobile tests override width and media queries.
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn((media: string) => ({
+      media,
+      matches: false,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  );
   queryClient.clear();
   queryClient.setDefaultOptions({
     queries: { retry: false, staleTime: Infinity },

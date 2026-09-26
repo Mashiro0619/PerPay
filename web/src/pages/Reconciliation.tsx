@@ -4,11 +4,17 @@ import {
   CONFLICT_SORT_FIELDS,
   EXCEPTION_SORT_FIELDS,
 } from "@/lib/list-query";
-import { ListQueryToolbar } from "@/components/list-query-toolbar";
+import {
+  ListQueryToolbar,
+  type ListFilter,
+} from "@/components/list-query-toolbar";
+import { ListActionsMenu } from "@/components/list-actions-menu";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { BusinessTable } from "@/components/business-table";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw, Search } from "lucide-react";
+import { RefreshCw, Search, Link2, EyeOff } from "lucide-react";
 import { useSearchParams } from "react-router";
 import { Link, useNavigate } from "@/navigation";
 import { api, result } from "@/api/client";
@@ -53,6 +59,12 @@ const statusNames: Record<string, string> = {
   ALL: "全部记录",
 };
 export default function Reconciliation() {
+  const isMobile = useIsMobile();
+  const operationTrigger = useRef<HTMLButtonElement | null>(null);
+  function showOperation(trigger: HTMLButtonElement | null) {
+    operationTrigger.current = trigger;
+    setOperation(true);
+  }
   const [search, setSearch] = useSearchParams();
   const [operation, setOperation] = useState(false);
   const [completed, setCompleted] = useFeedback();
@@ -73,42 +85,50 @@ export default function Reconciliation() {
     : allowed[0]!;
   const statuses = allowed.map((value) => ({
     value,
-    label: statusNames[value],
+    label: statusNames[value] ?? value,
   }));
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <form
-          className="min-w-0 flex-1"
-          role="search"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (resourceIdPattern.test(ledgerId.trim()))
-              navigate("/reconciliation/ledger/" + ledgerId.trim());
-          }}
-        >
-          <FieldGroup className="flex-row flex-wrap items-center gap-2">
-            <InputGroup className="min-w-40 flex-1 md:max-w-sm">
-              <InputGroupAddon>
-                <Search />
-              </InputGroupAddon>
-              <InputGroupInput
-                aria-label="账本流水编号"
-                name="ledger-lookup"
-                required
-                pattern={resourceIdPattern.source}
-                value={ledgerId}
-                onChange={(event) => setLedgerId(event.target.value)}
-                placeholder="输入完整流水编号"
-              />
-            </InputGroup>
-            <Button variant="outline" type="submit" disabled={!ledgerId.trim()}>
-              查询流水
-            </Button>
-          </FieldGroup>
-        </form>
-        <Button onClick={() => setOperation(true)}>人工关联收款</Button>
-      </div>
+      {!isMobile && (
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <form
+            className="min-w-0 flex-1"
+            role="search"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (resourceIdPattern.test(ledgerId.trim()))
+                navigate("/reconciliation/ledger/" + ledgerId.trim());
+            }}
+          >
+            <FieldGroup className="flex-row flex-wrap items-center gap-2">
+              <InputGroup className="min-w-40 flex-1 md:max-w-sm">
+                <InputGroupAddon>
+                  <Search />
+                </InputGroupAddon>
+                <InputGroupInput
+                  aria-label="账本流水编号"
+                  name="ledger-lookup"
+                  required
+                  pattern={resourceIdPattern.source}
+                  value={ledgerId}
+                  onChange={(event) => setLedgerId(event.target.value)}
+                  placeholder="输入完整流水编号"
+                />
+              </InputGroup>
+              <Button
+                variant="outline"
+                type="submit"
+                disabled={!ledgerId.trim()}
+              >
+                查询流水
+              </Button>
+            </FieldGroup>
+          </form>
+          <Button onClick={(event) => showOperation(event.currentTarget)}>
+            人工关联收款
+          </Button>
+        </div>
+      )}
       <Tabs
         value={section}
         className="gap-4"
@@ -136,6 +156,20 @@ export default function Reconciliation() {
         <TabsContent value={section}>
           <ReconciliationList
             key={section}
+            onManual={showOperation}
+            mobileFilters={
+              section === "exceptions"
+                ? []
+                : [
+                    {
+                      key: "status",
+                      label: "对账状态",
+                      value: status,
+                      defaultValue: allowed[0]!,
+                      options: statuses,
+                    },
+                  ]
+            }
             section={section}
             status={status}
             message={completed}
@@ -179,6 +213,7 @@ export default function Reconciliation() {
       </Tabs>
       {operation && (
         <FinancialDialog
+          finalFocus={() => operationTrigger.current}
           onClose={() => setOperation(false)}
           onSuccess={() => {
             setOperation(false);
@@ -190,16 +225,22 @@ export default function Reconciliation() {
   );
 }
 function ReconciliationList({
+  onManual,
+  mobileFilters,
   section,
   status,
   filters,
   message,
 }: {
+  onManual: (trigger: HTMLButtonElement | null) => void;
+  mobileFilters: readonly ListFilter[];
   section: Section;
   status: string;
   filters: ReactNode;
   message: string;
 }) {
+  const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const pagination = useCursor();
   const [search] = useSearchParams();
   const provider = search.get("provider_account_key") || undefined;
@@ -313,39 +354,101 @@ function ReconciliationList({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {filters}
-        <div className="ml-auto flex items-center gap-2">
-          {section !== "matches" && (
-            <Link
-              className={buttonVariants({ variant: "ghost", size: "sm" })}
-              to={
-                "/work-items?type=" +
-                (section === "exceptions"
-                  ? "FINANCIAL_EXCEPTION"
-                  : "LEDGER_CONFLICT") +
-                "&visibility=IGNORED"
-              }
+      {!isMobile && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {filters}
+          <div className="ml-auto flex items-center gap-2">
+            {section !== "matches" && (
+              <Link
+                className={buttonVariants({ variant: "ghost", size: "sm" })}
+                to={
+                  "/work-items?type=" +
+                  (section === "exceptions"
+                    ? "FINANCIAL_EXCEPTION"
+                    : "LEDGER_CONFLICT") +
+                  "&visibility=IGNORED"
+                }
+              >
+                查看已忽略
+              </Link>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="刷新"
+              disabled={query.isFetching}
+              onClick={() => {
+                void query.refetch();
+              }}
             >
-              查看已忽略
-            </Link>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="刷新"
-            disabled={query.isFetching}
-            onClick={() => {
-              void query.refetch();
-            }}
-          >
-            {query.isFetching ? <Spinner aria-hidden="true" /> : <RefreshCw />}
-          </Button>
+              {query.isFetching ? (
+                <Spinner aria-hidden="true" />
+              ) : (
+                <RefreshCw />
+              )}
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
       <ListQueryToolbar
         control={listQuery}
         label="对账关键词搜索"
+        filters={mobileFilters}
+        lookup={{
+          modes: [
+            {
+              value: "ledger",
+              label: "流水编号",
+              placeholder: "输入完整流水编号",
+              pattern: resourceIdPattern.source,
+            },
+          ],
+          inputLabel: "账本流水编号",
+          inputName: "ledger-lookup",
+          onSubmit: (_mode, value) => {
+            if (resourceIdPattern.test(value))
+              navigate("/reconciliation/ledger/" + value);
+          },
+        }}
+        mobileActions={
+          <ListActionsMenu label="更多对账操作">
+            {(trigger) => (
+              <>
+                <DropdownMenuItem onClick={() => onManual(trigger.current)}>
+                  <Link2 />
+                  人工关联收款
+                </DropdownMenuItem>
+                {section !== "matches" && (
+                  <DropdownMenuItem
+                    render={
+                      <Link
+                        to={
+                          "/work-items?type=" +
+                          (section === "exceptions"
+                            ? "FINANCIAL_EXCEPTION"
+                            : "LEDGER_CONFLICT") +
+                          "&visibility=IGNORED"
+                        }
+                      />
+                    }
+                  >
+                    <EyeOff />
+                    查看已忽略
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem
+                  disabled={query.isFetching}
+                  onClick={() => {
+                    void query.refetch();
+                  }}
+                >
+                  <RefreshCw />
+                  刷新
+                </DropdownMenuItem>
+              </>
+            )}
+          </ListActionsMenu>
+        }
         sorts={fields.map((value) => ({ value, label: sortNames[value]! }))}
       />
       <SuccessMessage message={message} />

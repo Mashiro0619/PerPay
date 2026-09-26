@@ -150,6 +150,7 @@ describe("server-driven business queries", () => {
             query: { q: "", sortBy: "amount", sortOrder: "asc" },
             setSort,
             setKeyword: vi.fn(),
+            update: vi.fn(),
             clear: vi.fn(),
           }}
           columns={[
