@@ -90,6 +90,70 @@ describe("official shadcn interactive chart", () => {
       expect(screen.queryByRole("table")).not.toBeInTheDocument();
     },
   );
+  it.each(["AREA", "BAR", "LINE"] as const)(
+    "keeps the %s series, active mark and tooltip on the same semantic color",
+    async (chartType) => {
+      const data = analytics();
+      data.daily = data.daily.map((day) => ({
+        ...day,
+        confirmed_amount_cents: 132443,
+        orders_created: 40,
+      }));
+      const { container } = render(
+        <ChartAreaInteractive
+          analytics={data}
+          chartType={chartType}
+          range={7}
+          onRangeChange={vi.fn()}
+          pending={false}
+        />,
+      );
+      const user = userEvent.setup();
+      for (const [label, token, value] of [
+        ["确认金额", "chart-1", "¥1,324.43"],
+        ["新建订单", "chart-2", "40"],
+      ] as const) {
+        await user.click(screen.getByRole("button", { name: label }));
+        const color = "var(--" + token + ")";
+        const chart = container.querySelector<SVGElement>('svg[role="application"]')!;
+        fireEvent.focus(chart);
+        fireEvent.keyDown(chart, { key: "ArrowRight" });
+        await waitFor(() =>
+          expect(container.querySelector(".recharts-tooltip-wrapper")).toHaveTextContent(value),
+        );
+        const tooltip = container.querySelector<HTMLElement>(".recharts-tooltip-wrapper")!;
+        expect(within(tooltip).getByText(label, { exact: true })).toBeVisible();
+        expect(tooltip.querySelector(".bg-" + token)).not.toBeNull();
+        if (chartType === "BAR") {
+          await waitFor(() =>
+            expect(container.querySelector(".recharts-active-bar .recharts-rectangle")).toHaveAttribute("fill", color),
+          );
+          const active = container.querySelector(".recharts-active-bar .recharts-rectangle");
+          const inactive = container.querySelector(".recharts-inactive-bar .recharts-rectangle");
+          expect(active).toHaveAttribute("fill", color);
+          expect(active).toHaveAttribute("fill-opacity", "1");
+          expect(inactive).toHaveAttribute("fill", color);
+          expect(inactive).toHaveAttribute("fill-opacity", "0.85");
+        } else {
+          const curve = container.querySelector(chartType === "AREA" ? ".recharts-area-curve" : ".recharts-line-curve");
+          expect(curve).toHaveAttribute("stroke", color);
+          expect(curve).toHaveAttribute("stroke-width", "2");
+          expect(container.querySelector(".recharts-active-dot circle")).toHaveAttribute("fill", color);
+          if (chartType === "AREA") {
+            expect(container.querySelector(".recharts-area-area")).toHaveAttribute("fill-opacity", "1");
+            const stops = container.querySelectorAll("linearGradient stop");
+            expect(stops).toHaveLength(2);
+            expect(stops[0]).toHaveAttribute("stop-color", color);
+            expect(stops[0]).toHaveAttribute("stop-opacity", "0.18");
+            expect(stops[1]).toHaveAttribute("stop-color", color);
+            expect(stops[1]).toHaveAttribute("stop-opacity", "0.02");
+          }
+        }
+        expect(container.querySelector("[data-slot=chart] style")).toBeNull();
+      }
+    },
+  );
+
   it.each([7, 30, 90] as const)(
     "renders one financial series and authoritative summary values for %i days",
     (days) => {
@@ -358,7 +422,7 @@ describe("official shadcn interactive chart", () => {
       ".recharts-inactive-bar .recharts-rectangle",
     )!;
     expect(active).toHaveAttribute("fill-opacity", "1");
-    expect(inactive).toHaveAttribute("fill-opacity", "0.55");
+    expect(inactive).toHaveAttribute("fill-opacity", "0.85");
     const cursor = container.querySelector(".recharts-tooltip-cursor")!;
     expect(cursor).not.toBeNull();
     const firstX = cursor.getAttribute("x");

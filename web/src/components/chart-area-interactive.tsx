@@ -223,11 +223,11 @@ export function ChartAreaInteractive({
             <Chart accessibilityLayer data={data}>
               <defs>
                 <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={seriesColor} stopOpacity={0.8} />
+                  <stop offset="5%" stopColor={seriesColor} stopOpacity={0.18} />
                   <stop
                     offset="95%"
                     stopColor={seriesColor}
-                    stopOpacity={0.1}
+                    stopOpacity={0.02}
                   />
                 </linearGradient>
               </defs>
@@ -290,7 +290,7 @@ export function ChartAreaInteractive({
                 <Bar
                   dataKey={metric}
                   fill={seriesColor}
-                  fillOpacity={0.55}
+                  fillOpacity={0.85}
                   activeBar={{ fillOpacity: 1 }}
                   radius={4}
                   isAnimationActive={false}
@@ -310,7 +310,9 @@ export function ChartAreaInteractive({
                   dataKey={metric}
                   type="monotone"
                   fill={"url(#" + gradientId + ")"}
+                  fillOpacity={1}
                   stroke={seriesColor}
+                  strokeWidth={2}
                   activeDot={activeDot}
                   isAnimationActive={false}
                 />
