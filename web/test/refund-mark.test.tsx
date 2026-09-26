@@ -17,6 +17,7 @@ import {
   type AdminRefundMarkRequest,
 } from "../src/api/client";
 import { DataTable } from "../src/components/data-table";
+import { mobileMedia } from "./mobile-media";
 import { RefundMarkDialog, RefundMarkPanel } from "../src/pages/RefundMark";
 import Reconciliation from "../src/pages/Reconciliation";
 import EvidenceDetail from "../src/pages/ReconciliationDetail";
@@ -372,49 +373,52 @@ describe("administrator-only refund marks", () => {
     },
   );
 
-  it("displays the mark separately from payment state and preserves actor, time and history", async () => {
-    const mark = {
-      marked: true,
-      version: 2,
-      note: "外部退款说明",
-      updated_at: "2026-09-07T12:00:00Z",
-      updated_by: "admin",
-    };
-    const marked = {
-      ...paid,
-      refund_mark: mark,
-      refund_mark_history: [{ ...mark, operation_id: "1" }],
-    };
-    render(
-      wrap(
-        <>
-          <DataTable data={[marked]} />
-          <RefundMarkPanel order={marked} />
-        </>,
-      ),
-    );
-    const cells = within(screen.getAllByRole("row")[1]!).getAllByRole("cell");
-    for (const cell of [cells[0]!, cells[3]!]) {
-      expect(within(cell).getByText("已确认")).toBeVisible();
-      expect(within(cell).getByText("已标记退款")).toBeVisible();
-    }
-    expect(
-      within(screen.getByRole("region", { name: "管理员退款标记" })).getByText(
-        "已标记退款",
-      ),
-    ).toBeVisible();
-    expect(await recordAction("撤销退款标记")).toBeVisible();
-    await userEvent.setup().click(screen.getByText("标记历史"));
-    expect(
-      screen.getByRole("region", { name: "管理员退款标记" }),
-    ).toHaveTextContent("admin");
-    expect(screen.queryByText(/标记版本/)).not.toBeInTheDocument();
-    expect(screen.getAllByText("外部退款说明")).toHaveLength(2);
-    expect(
-      screen.getByRole("button", { name: "复制标记操作编号" }),
-    ).toBeVisible();
-    expect(screen.getByRole("listitem")).toHaveTextContent("操作编号1");
-  });
+  it.each([390, 1280])(
+    "displays the mark separately from payment state and preserves actor, time and history at %ipx",
+    async (width) => {
+      mobileMedia(width);
+      const mark = {
+        marked: true,
+        version: 2,
+        note: "外部退款说明",
+        updated_at: "2026-09-07T12:00:00Z",
+        updated_by: "admin",
+      };
+      const marked = {
+        ...paid,
+        refund_mark: mark,
+        refund_mark_history: [{ ...mark, operation_id: "1" }],
+      };
+      render(
+        wrap(
+          <>
+            <DataTable data={[marked]} />
+            <RefundMarkPanel order={marked} />
+          </>,
+        ),
+      );
+      const cells = within(screen.getAllByRole("row")[1]!).getAllByRole("cell");
+      const statusCell = width < 768 ? cells[0]! : cells[3]!;
+      expect(within(statusCell).getByText("已确认")).toBeVisible();
+      expect(within(statusCell).getByText("已标记退款")).toBeVisible();
+      expect(
+        within(
+          screen.getByRole("region", { name: "管理员退款标记" }),
+        ).getByText("已标记退款"),
+      ).toBeVisible();
+      expect(await recordAction("撤销退款标记")).toBeVisible();
+      await userEvent.setup().click(screen.getByText("标记历史"));
+      expect(
+        screen.getByRole("region", { name: "管理员退款标记" }),
+      ).toHaveTextContent("admin");
+      expect(screen.queryByText(/标记版本/)).not.toBeInTheDocument();
+      expect(screen.getAllByText("外部退款说明")).toHaveLength(2);
+      expect(
+        screen.getByRole("button", { name: "复制标记操作编号" }),
+      ).toBeVisible();
+      expect(screen.getByRole("listitem")).toHaveTextContent("操作编号1");
+    },
+  );
 
   it("removes refund recording from reconciliation without removing manual income association", async () => {
     vi.stubGlobal(

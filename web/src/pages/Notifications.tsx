@@ -2,7 +2,7 @@ import { useListQuery, DELIVERY_SORT_FIELDS } from "@/lib/list-query";
 import { ListQueryToolbar } from "@/components/list-query-toolbar";
 import { ListActionsMenu } from "@/components/list-actions-menu";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useCompactList } from "@/hooks/use-compact-list";
 import { BusinessTable } from "@/components/business-table";
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -91,7 +91,7 @@ function DeliveryPage({
   status: WebhookDeliveryStatus | undefined;
   filters: ReactNode;
 }) {
-  const isMobile = useIsMobile();
+  const compact = useCompactList();
   const pagination = useCursor();
   const listQuery = useListQuery(DELIVERY_SORT_FIELDS, "created_at", "asc");
   const deliveries = useQuery({
@@ -111,7 +111,7 @@ function DeliveryPage({
   });
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      {!isMobile && (
+      {!compact && (
         <div className="flex flex-wrap items-center gap-2">
           {filters}
           <div className="ml-auto flex items-center gap-2">
@@ -195,7 +195,7 @@ function DeliveryPage({
                       label: "通知事件",
                       hideable: false,
                       className: "w-full max-w-md whitespace-normal py-3",
-                      cell: (delivery) => (
+                      cell: (delivery, context) => (
                         <div className="flex flex-col gap-1">
                           <Link
                             data-row-link
@@ -207,15 +207,19 @@ function DeliveryPage({
                           <span className="text-xs text-muted-foreground">
                             {shortId(delivery.delivery_id)}
                           </span>
-                          <time
-                            className="text-xs text-muted-foreground md:hidden"
-                            dateTime={delivery.created_at}
-                          >
-                            {dateTime(delivery.created_at)}
-                          </time>
-                          <span className="text-xs text-muted-foreground sm:hidden">
-                            已尝试 {delivery.attempt_count} 次
-                          </span>
+                          {context.showInSummary("created_at") && (
+                            <time
+                              className="text-xs text-muted-foreground"
+                              dateTime={delivery.created_at}
+                            >
+                              {dateTime(delivery.created_at)}
+                            </time>
+                          )}
+                          {context.showInSummary("attempt_count") && (
+                            <span className="text-xs text-muted-foreground">
+                              已尝试 {delivery.attempt_count} 次
+                            </span>
+                          )}
                         </div>
                       ),
                     },
@@ -223,7 +227,7 @@ function DeliveryPage({
                       id: "status",
                       label: "送达结果",
                       className: "max-w-xs whitespace-normal",
-                      cell: (delivery) => (
+                      cell: (delivery, context) => (
                         <div className="flex flex-col gap-1">
                           <StatusBadge value={delivery.status} />
                           {delivery.last_error_code && (
@@ -231,11 +235,12 @@ function DeliveryPage({
                               {notificationErrorName(delivery.last_error_code)}
                             </span>
                           )}
-                          {delivery.next_attempt_at && (
-                            <span className="text-xs text-muted-foreground md:hidden">
-                              下次 {dateTime(delivery.next_attempt_at)}
-                            </span>
-                          )}
+                          {delivery.next_attempt_at &&
+                            context.showInSummary("next_attempt_at") && (
+                              <span className="text-xs text-muted-foreground">
+                                下次 {dateTime(delivery.next_attempt_at)}
+                              </span>
+                            )}
                         </div>
                       ),
                     },
@@ -244,13 +249,13 @@ function DeliveryPage({
                       sortBy: "attempt_count",
                       label: "尝试次数",
                       align: "right",
-                      className: "hidden sm:table-cell",
+                      responsive: { minWidthRem: 40 },
                       cell: (delivery) => delivery.attempt_count,
                     },
                     {
                       id: "order",
                       label: "关联订单",
-                      className: "hidden lg:table-cell",
+                      responsive: { minWidthRem: 64 },
                       cell: (delivery) => (
                         <Link
                           className="underline underline-offset-4"
@@ -264,14 +269,14 @@ function DeliveryPage({
                       id: "created_at",
                       sortBy: "created_at",
                       label: "创建时间",
-                      className: "hidden md:table-cell",
+                      responsive: { minWidthRem: 48 },
                       cell: (delivery) => dateTime(delivery.created_at),
                     },
                     {
                       id: "next_attempt_at",
                       sortBy: "next_attempt_at",
                       label: "下次尝试",
-                      className: "hidden md:table-cell",
+                      responsive: { minWidthRem: 48 },
                       cell: (delivery) => dateTime(delivery.next_attempt_at),
                     },
                   ]}

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, ChevronDown, Search, X } from "lucide-react";
 import { normalizeKeyword, type ListQueryControl } from "@/lib/list-query";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useCompactList } from "@/hooks/use-compact-list";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
@@ -72,7 +72,7 @@ export function ListQueryToolbar({
   mobileLeading?: ReactNode;
   mobileActions?: ReactNode;
 }) {
-  const isMobile = useIsMobile();
+  const compact = useCompactList();
   const [draft, setDraft] = useState(control.query.q);
   const [lookupDraft, setLookupDraft] = useState("");
   const [mode, setMode] = useState("");
@@ -81,10 +81,10 @@ export function ListQueryToolbar({
     setDraft(control.query.q);
     setError("");
   }, [control.query.q]);
-  const selectedMode = isMobile
+  const selectedMode = compact
     ? lookup?.modes.find((item) => item.value === mode)
     : undefined;
-  const busy = disabled || !!(isMobile && lookup?.pending);
+  const busy = disabled || !!(compact && lookup?.pending);
   const activeFilters = filters.filter(
     (filter) => filter.value !== (filter.defaultValue ?? ""),
   );
@@ -130,7 +130,7 @@ export function ListQueryToolbar({
                 name={selectedMode ? lookup!.inputName : "q"}
                 placeholder={
                   selectedMode?.placeholder ??
-                  (isMobile ? "输入关键词" : "输入关键词，按 Enter 搜索")
+                  (compact ? "输入关键词" : "输入关键词，按 Enter 搜索")
                 }
                 value={selectedMode ? lookupDraft : draft}
                 required={!!selectedMode}
@@ -148,7 +148,7 @@ export function ListQueryToolbar({
                 }}
               />
               <InputGroupAddon>
-                {isMobile && lookup ? (
+                {compact && lookup ? (
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       render={
@@ -199,12 +199,10 @@ export function ListQueryToolbar({
             variant="outline"
             disabled={busy || (!!selectedMode && !lookupDraft.trim())}
           >
-            {isMobile && lookup?.pending && (
-              <Spinner data-icon="inline-start" />
-            )}
+            {compact && lookup?.pending && <Spinner data-icon="inline-start" />}
             {selectedMode ? "查找" : "搜索"}
           </Button>
-          {!isMobile && (
+          {!compact && (
             <>
               <Select
                 items={sorts}
@@ -264,7 +262,7 @@ export function ListQueryToolbar({
           )}
         </FieldGroup>
       </form>
-      {isMobile && (
+      {compact && (
         <>
           {selectedMode && <ErrorNotice error={lookup?.error} />}
           <div
@@ -332,7 +330,7 @@ export function ListQueryToolbar({
       {children && (
         <div className="flex flex-wrap items-center gap-2">{children}</div>
       )}
-      {!isMobile && control.query.q && (
+      {!compact && control.query.q && (
         <p className="text-xs break-all text-muted-foreground">
           当前关键词：{control.query.q} · 搜索全部匹配记录，不仅当前页
         </p>

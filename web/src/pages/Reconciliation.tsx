@@ -10,7 +10,7 @@ import {
 } from "@/components/list-query-toolbar";
 import { ListActionsMenu } from "@/components/list-actions-menu";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useCompactList } from "@/hooks/use-compact-list";
 import { BusinessTable } from "@/components/business-table";
 import { useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -59,7 +59,7 @@ const statusNames: Record<string, string> = {
   ALL: "全部记录",
 };
 export default function Reconciliation() {
-  const isMobile = useIsMobile();
+  const compact = useCompactList();
   const operationTrigger = useRef<HTMLButtonElement | null>(null);
   function showOperation(trigger: HTMLButtonElement | null) {
     operationTrigger.current = trigger;
@@ -89,7 +89,7 @@ export default function Reconciliation() {
   }));
   return (
     <>
-      {!isMobile && (
+      {!compact && (
         <div className="flex flex-wrap items-center justify-between gap-4">
           <form
             className="min-w-0 flex-1"
@@ -239,7 +239,7 @@ function ReconciliationList({
   filters: ReactNode;
   message: string;
 }) {
-  const isMobile = useIsMobile();
+  const compact = useCompactList();
   const navigate = useNavigate();
   const pagination = useCursor();
   const [search] = useSearchParams();
@@ -354,7 +354,7 @@ function ReconciliationList({
 
   return (
     <div className="flex flex-col gap-4">
-      {!isMobile && (
+      {!compact && (
         <div className="flex flex-wrap items-center justify-between gap-3">
           {filters}
           <div className="ml-auto flex items-center gap-2">
@@ -468,7 +468,7 @@ function ReconciliationList({
                       label: "记录",
                       hideable: false,
                       className: "w-full max-w-md whitespace-normal py-3",
-                      cell: (item) => (
+                      cell: (item, context) => (
                         <div className="flex flex-col gap-1">
                           <Link
                             data-row-link
@@ -480,17 +480,20 @@ function ReconciliationList({
                           <span className="text-xs text-muted-foreground">
                             {shortId(item.id)}
                           </span>
-                          <time
-                            className="text-xs text-muted-foreground sm:hidden"
-                            dateTime={item.createdAt}
-                          >
-                            {dateTime(item.createdAt)}
-                          </time>
-                          {item.amountCents !== null && (
-                            <span className="text-xs tabular-nums text-muted-foreground sm:hidden">
-                              流水 {money(item.amountCents)}
-                            </span>
+                          {context.showInSummary("created_at") && (
+                            <time
+                              className="text-xs text-muted-foreground"
+                              dateTime={item.createdAt}
+                            >
+                              {dateTime(item.createdAt)}
+                            </time>
                           )}
+                          {item.amountCents !== null &&
+                            context.showInSummary("amount_cents") && (
+                              <span className="text-xs tabular-nums text-muted-foreground">
+                                流水 {money(item.amountCents)}
+                              </span>
+                            )}
                         </div>
                       ),
                     },
@@ -516,7 +519,7 @@ function ReconciliationList({
                     {
                       id: "order",
                       label: "关联订单",
-                      className: "hidden md:table-cell",
+                      responsive: { minWidthRem: 48 },
                       cell: (item) =>
                         item.orderId ? (
                           <Link
@@ -536,7 +539,7 @@ function ReconciliationList({
                             sortBy: "amount_cents",
                             label: "流水金额",
                             align: "right" as const,
-                            className: "hidden sm:table-cell",
+                            responsive: { minWidthRem: 40 },
                             cell: (item: (typeof page.items)[number]) =>
                               money(item.amountCents),
                           },
@@ -548,8 +551,8 @@ function ReconciliationList({
                             id: "external_event_id",
                             sortBy: "external_event_id",
                             label: "外部流水号",
-                            className:
-                              "hidden max-w-56 whitespace-normal break-all md:table-cell",
+                            className: "max-w-56 whitespace-normal break-all",
+                            responsive: { minWidthRem: 48 },
                             cell: (item: (typeof page.items)[number]) =>
                               item.externalEventId ?? "—",
                           },
@@ -559,7 +562,7 @@ function ReconciliationList({
                       id: "created_at",
                       sortBy: "created_at",
                       label: section === "matches" ? "关联时间" : "发现时间",
-                      className: "hidden sm:table-cell",
+                      responsive: { minWidthRem: 40 },
                       cell: (item) => dateTime(item.createdAt),
                     },
                   ]}

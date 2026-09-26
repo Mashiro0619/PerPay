@@ -4,7 +4,7 @@ import {
   type ListQueryLookup,
 } from "@/components/list-query-toolbar";
 import { ListActionsMenu } from "@/components/list-actions-menu";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useCompactList } from "@/hooks/use-compact-list";
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
@@ -63,7 +63,7 @@ const searchOptions = [
   { value: "internal", label: "内部订单编号" },
 ];
 export default function Orders() {
-  const isMobile = useIsMobile();
+  const compact = useCompactList();
   const lookup = useOrderLookup();
   const [search, setSearch] = useSearchParams();
   const paymentValue = search.get("payment");
@@ -99,7 +99,7 @@ export default function Orders() {
   }
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      {!isMobile && (
+      {!compact && (
         <>
           <div className="flex flex-wrap items-center justify-between gap-4">
             <OrderSearch lookup={lookup} />

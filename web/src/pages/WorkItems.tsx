@@ -2,7 +2,7 @@ import { useListQuery, WORK_ITEM_SORT_FIELDS } from "@/lib/list-query";
 import { ListQueryToolbar } from "@/components/list-query-toolbar";
 import { ListActionsMenu } from "@/components/list-actions-menu";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useCompactList } from "@/hooks/use-compact-list";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { RefreshCw, EyeOff } from "lucide-react";
@@ -250,7 +250,7 @@ function WorkItemPage({
   onVisibility: (value: Visibility) => void;
   onIgnore: (trigger?: HTMLElement | null) => void;
 }) {
-  const isMobile = useIsMobile();
+  const compact = useCompactList();
   const mounted = useMounted();
   const pagination = useCursor();
   const sortFields =
@@ -467,7 +467,7 @@ function WorkItemPage({
   );
   return (
     <div className="flex flex-col gap-4">
-      {!isMobile && (
+      {!compact && (
         <div className="flex flex-wrap items-center justify-between gap-3">
           {visibilityControl}
           <div className="flex items-center gap-2">

@@ -50,7 +50,7 @@ export function DataTable({
       hideable: false,
       className:
         "min-w-0 whitespace-normal py-3 @lg/orders:w-full @lg/orders:max-w-64",
-      cell: (order) => (
+      cell: (order, context) => (
         <div className="flex flex-col gap-1">
           <Link
             to={"/orders/" + order.order_id}
@@ -66,15 +66,21 @@ export function DataTable({
           >
             {order.merchant_order_no}
           </span>
-          <time
-            className="text-xs text-muted-foreground @2xl/orders:hidden"
-            dateTime={order.created_at}
-          >
-            {dateTime(order.created_at)}
-          </time>
-          <div className="@lg/orders:hidden">
-            <OrderStatus order={order} />
-          </div>
+          {context.showInSummary("created_at") && (
+            <time
+              className="text-xs text-muted-foreground"
+              dateTime={order.created_at}
+            >
+              {dateTime(order.created_at)}
+            </time>
+          )}
+          {context.showInSummary("status") && <OrderStatus order={order} />}
+          {!context.isColumnVisible("payable_amount_cents") &&
+            context.showInSummary("received_amount_cents") && (
+              <span className="text-xs text-muted-foreground">
+                实收 {money(order.received_amount_cents)}
+              </span>
+            )}
         </div>
       ),
     },
@@ -83,12 +89,14 @@ export function DataTable({
       sortBy: "payable_amount_cents",
       label: "应付金额",
       align: "right",
-      cell: (order) => (
+      cell: (order, context) => (
         <div className="flex min-w-0 flex-col gap-1 overflow-x-auto">
           <span>{money(order.payable_amount_cents)}</span>
-          <span className="text-xs text-muted-foreground @3xl/orders:hidden">
-            实收 {money(order.received_amount_cents)}
-          </span>
+          {context.showInSummary("received_amount_cents") && (
+            <span className="text-xs text-muted-foreground">
+              实收 {money(order.received_amount_cents)}
+            </span>
+          )}
         </div>
       ),
     },
@@ -97,20 +105,20 @@ export function DataTable({
       sortBy: "received_amount_cents",
       label: "实收金额",
       align: "right",
-      className: "hidden @3xl/orders:table-cell",
+      responsive: { minWidthRem: 48, basis: "container" },
       cell: (order) => money(order.received_amount_cents),
     },
     {
       id: "status",
       label: "状态",
-      className: "hidden @lg/orders:table-cell",
+      responsive: { minWidthRem: 32, basis: "container" },
       cell: (order) => <OrderStatus order={order} />,
     },
     {
       id: "created_at",
       sortBy: "created_at",
       label: "创建时间",
-      className: "hidden @2xl/orders:table-cell",
+      responsive: { minWidthRem: 42, basis: "container" },
       cell: (order) => (
         <time dateTime={order.created_at}>{dateTime(order.created_at)}</time>
       ),
@@ -124,7 +132,15 @@ export function DataTable({
         columns={columns}
         rowId={(order) => order.order_id}
         control={control}
-        tableClassName="table-fixed @lg/orders:table-auto"
+        tableClassName={(context) =>
+          context.visibleColumnCount >= 5
+            ? "min-w-xl table-auto"
+            : context.visibleColumnCount === 4
+              ? "min-w-[30rem] table-auto"
+              : context.visibleColumnCount === 3
+                ? "min-w-sm table-auto"
+                : "table-fixed @lg/orders:table-auto"
+        }
         columnsMenu={!!control}
       />
     </div>

@@ -73,15 +73,30 @@ async function choose(
   value: string,
 ) {
   await user.click(screen.getByLabelText(name, { exact: true }));
-  await user.click(
-    await screen.findByRole("option", { name: value }),
-  );
+  await user.click(await screen.findByRole("option", { name: value }));
 }
 
 describe("mobile list query hierarchy", () => {
   beforeEach(() => {
     mobileMedia();
   });
+  it.each([768, 844, 1023])(
+    "keeps narrow tablet and landscape tools compact at %ipx",
+    (width) => {
+      const media = mobileMedia(width);
+      mount();
+      expect(
+        screen.getByRole("button", { name: "筛选与排序" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("排序字段", { exact: true }),
+      ).not.toBeInTheDocument();
+      media.resize(1024);
+      expect(
+        screen.getByLabelText("排序字段", { exact: true }),
+      ).toBeInTheDocument();
+    },
+  );
   it("keeps only one search form and hides sort/filter controls until requested", () => {
     mount();
     expect(screen.getAllByRole("search")).toHaveLength(1);
@@ -243,8 +258,6 @@ describe("mobile list query hierarchy", () => {
     mount({ disabled: true });
     expect(screen.getByRole("searchbox")).toBeDisabled();
     expect(screen.getByRole("button", { name: "筛选与排序" })).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: "搜索" }),
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "搜索" })).toBeDisabled();
   });
 });

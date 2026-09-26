@@ -39,7 +39,7 @@ export function WorkItemsTable({
       label: "事项",
       hideable: false,
       className: "w-full max-w-md whitespace-normal py-3",
-      cell: (item) => (
+      cell: (item, context) => (
         <div className="flex flex-col gap-1">
           <Link
             data-row-link
@@ -65,15 +65,19 @@ export function WorkItemsTable({
                 : ""}
             </span>
           )}
-          <time
-            className="text-xs text-muted-foreground sm:hidden"
-            dateTime={item.actionable_at}
-          >
-            提醒时间 {dateTime(item.actionable_at)}
-          </time>
+          {context.showInSummary("actionable_at") && (
+            <time
+              className="text-xs text-muted-foreground"
+              dateTime={item.actionable_at}
+            >
+              提醒时间 {dateTime(item.actionable_at)}
+            </time>
+          )}
           {item.ignored_at && (
             <span className="text-xs text-muted-foreground">
-              {item.ignored_by ?? "管理员"}已忽略 · {dateTime(item.ignored_at)}
+              {item.ignored_by ?? "管理员"}已忽略
+              {(!actions || context.showInSummary("ignored_at")) &&
+                " · " + dateTime(item.ignored_at)}
             </span>
           )}
         </div>
@@ -83,7 +87,7 @@ export function WorkItemsTable({
       id: "actionable_at",
       sortBy: "actionable_at",
       label: "提醒时间",
-      className: "hidden sm:table-cell",
+      responsive: { minWidthRem: 40 },
       cell: (item) => (
         <time dateTime={item.actionable_at}>
           {dateTime(item.actionable_at)}
@@ -94,7 +98,7 @@ export function WorkItemsTable({
       id: "created_at",
       sortBy: "created_at",
       label: "创建时间",
-      className: "hidden lg:table-cell",
+      responsive: { minWidthRem: 64 },
       cell: (item) => dateTime(item.created_at),
     },
     ...(actions
@@ -103,7 +107,7 @@ export function WorkItemsTable({
             id: "ignored_at",
             sortBy: "ignored_at",
             label: "忽略时间",
-            className: "hidden lg:table-cell",
+            responsive: { minWidthRem: 64 },
             cell: (item: AdminWorkItem) => dateTime(item.ignored_at),
           },
         ]

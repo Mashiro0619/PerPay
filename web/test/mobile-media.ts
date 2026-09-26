@@ -30,6 +30,7 @@ export function mobileMedia(width = 390) {
       act(() => {
         vi.stubGlobal("innerWidth", next);
         for (const listener of listeners) listener();
+        window.dispatchEvent(new Event("resize"));
       });
     },
   };

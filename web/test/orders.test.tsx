@@ -11,6 +11,7 @@ import { dateTime, money } from "../src/lib/format";
 import Orders from "../src/pages/Orders";
 import { TestPaymentProvider } from "../src/components/test-payment-provider";
 import { apiError, json, order, orderId } from "./fixtures";
+import { mobileMedia } from "./mobile-media";
 
 function CurrentLocation() {
   const location = useLocation();
@@ -214,6 +215,7 @@ describe("order browsing", () => {
 
 describe("responsive order semantics", () => {
   it("keeps payment, refund and checkout states in the mobile order summary", () => {
+    mobileMedia();
     render(
       <MemoryRouter>
         <DataTable
@@ -232,15 +234,21 @@ describe("responsive order semantics", () => {
     expect(mobileSummary.getByText("已确认")).toBeInTheDocument();
     expect(mobileSummary.getByText("已标记退款")).toBeInTheDocument();
     expect(mobileSummary.getByText("收银台开放中")).toBeInTheDocument();
-    expect(cells[3]).toHaveClass("hidden", "@lg/orders:table-cell");
+    expect(cells).toHaveLength(2);
+    expect(
+      screen.queryByRole("columnheader", { name: "状态" }),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("table")).toHaveClass(
       "table-fixed",
       "@lg/orders:table-auto",
     );
-    expect(within(cells[3]!).getByText("已确认")).toBeInTheDocument();
-    expect(within(cells[3]!).getByText("已标记退款")).toBeInTheDocument();
+    expect(mobileSummary.getByText(dateTime(order.created_at))).toHaveAttribute(
+      "datetime",
+      order.created_at,
+    );
   });
   it("retains table semantics, full identities and business timestamps", () => {
+    const media = mobileMedia(1280);
     const productName = "很长的商品名称与多语言订单说明 / " + "A".repeat(100);
     const merchantNumber = "MERCHANT-" + "9".repeat(100);
     render(
@@ -274,7 +282,7 @@ describe("responsive order semantics", () => {
       within(table).getByText(money(order.payable_amount_cents)),
     ).toBeInTheDocument();
     const cells = within(rows[1]!).getAllByRole("cell");
-    expect(within(cells[0]!).getByText("未付款")).toBeInTheDocument();
+    expect(within(cells[0]!).queryByText("未付款")).not.toBeInTheDocument();
     expect(within(cells[3]!).getByText("未付款")).toBeInTheDocument();
     for (const time of within(table).getAllByText(dateTime(order.created_at)))
       expect(time).toHaveAttribute("datetime", order.created_at);
@@ -287,8 +295,22 @@ describe("responsive order semantics", () => {
     expect(
       within(table).queryByRole("columnheader", { name: "操作" }),
     ).not.toBeInTheDocument();
-    expect(within(cells[0]!).getByText("收银台开放中")).toBeInTheDocument();
+    expect(
+      within(cells[0]!).queryByText("收银台开放中"),
+    ).not.toBeInTheDocument();
     expect(within(cells[3]!).getByText("收银台开放中")).toBeInTheDocument();
+    media.resize(390);
+    const mobileCells = within(screen.getAllByRole("row")[1]!).getAllByRole(
+      "cell",
+    );
+    expect(mobileCells).toHaveLength(2);
+    expect(within(mobileCells[0]!).getByText("未付款")).toBeInTheDocument();
+    expect(
+      within(mobileCells[0]!).getByText("收银台开放中"),
+    ).toBeInTheDocument();
+    expect(
+      within(mobileCells[0]!).getByText(dateTime(order.created_at)),
+    ).toHaveAttribute("datetime", order.created_at);
   });
 
   it("announces pagination progress and disables navigation while loading", async () => {
