@@ -181,7 +181,7 @@ function OnboardingFlow({
         <TabsList
           ref={tabList}
           aria-label="配置步骤"
-          className="min-w-max justify-start pointer-coarse:group-data-horizontal/tabs:h-auto"
+          className="min-w-max justify-start"
         >
           {onboardingSteps.map((item, position) => (
             <TabsTrigger

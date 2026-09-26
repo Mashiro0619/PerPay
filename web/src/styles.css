@@ -159,14 +159,29 @@
   [data-slot="select-trigger"],
   [data-slot="native-select"],
   [data-slot="input"],
+  input[data-slot="input-group-control"],
   [data-slot="toggle-group-item"],
   [data-slot="tabs-trigger"],
   [data-slot="sidebar-menu-button"],
   [data-slot="dropdown-menu-item"],
+  [data-slot="dropdown-menu-checkbox-item"],
   [data-slot="dropdown-menu-radio-item"],
   [data-slot="select-item"] {
     min-width: 44px;
     min-height: 44px;
+  }
+  /* Keep the 44px tabs inside the list's 3px padding on both sides. */
+  [data-slot="tabs-list"] {
+    min-height: 50px;
+  }
+  /* Composed controls own their height; enlarging only the button overflows. */
+  [data-slot="input-group"] {
+    height: auto;
+    min-height: 44px;
+  }
+  [data-slot="input-group-addon"][data-align="inline-start"],
+  [data-slot="input-group-addon"][data-align="inline-end"] {
+    padding-block: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {
