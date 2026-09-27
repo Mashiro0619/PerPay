@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { describe, it } from "node:test";
 import { createApp } from "../src/http/app.ts";
 import { LedgerStore } from "../src/ledger/store.ts";
+import { nextPlatformPem, platformPem } from "./application-key-fixture.ts";
 import {
   RuntimeSettingsService,
   SettingsError,
@@ -40,13 +41,14 @@ async function fixture() {
     collectionCodePayload: "https://qr.alipay.com/key-http",
     publicUrl: origin,
   });
-  const probe = { calls: 0, fail: false };
+  const probe = { calls: 0, fail: false, publicKeys: [] as string[] };
   const ledger = new LedgerStore(services.database);
   const settings = new RuntimeSettingsService({
     store: services.settingsStore,
     providerHistory: () => ledger.providerIdentityHistory(),
-    verifyProviderApplicationKey: async () => {
+    verifyProviderApplicationKey: async (provider) => {
       probe.calls++;
+      probe.publicKeys.push(provider.publicKeyPem);
       if (probe.fail)
         throw new SettingsError(
           "provider_application_key_verification_failed",
@@ -111,7 +113,8 @@ describe("administrator key rotation HTTP contract", () => {
         const payload =
           action === "regenerate"
             ? f.request()
-            : { revision: before.revision, change_id: randomUUID() };
+            : { revision: before.revision, change_id: randomUUID(),
+                ...(action === "activate" ? { platform_public_key: nextPlatformPem } : {}) };
         assert.equal(
           (
             await f.post(action, payload, {
@@ -146,6 +149,30 @@ describe("administrator key rotation HTTP contract", () => {
       }
       assert.deepEqual(f.settings.view(), before);
       assert.equal(f.probe.calls, 0);
+    });
+  });
+
+  it("rejects missing or blank Alipay public keys without probing or replacing saved keys", async () => {
+    await withFixture(async (f) => {
+      const request = f.request();
+      assert.equal((await f.post("regenerate", request)).status, 201);
+      const before = f.settings.snapshot();
+      const pending = f.settings.view().pending_application_key;
+      for (const value of [undefined, null, "", "   ", "\n\t ", 123]) {
+        const response = await f.post("activate", {
+          revision: before.revision,
+          change_id: request.change_id,
+          ...(value === undefined ? {} : { platform_public_key: value }),
+        });
+        assert.equal(response.status, 422);
+        const envelope = await response.json() as { error: { code: string; message: string } };
+        assert.equal(envelope.error.code, "validation_failed");
+        assert.equal(envelope.error.message, "请求字段校验失败");
+        assert.deepEqual(f.settings.snapshot(), before);
+        assert.deepEqual(f.settings.view().pending_application_key, pending);
+        assert.equal(f.probe.calls, 0);
+      }
+      assert.equal(f.database.integrityCheck().ok, true);
     });
   });
 
@@ -209,6 +236,7 @@ describe("administrator key rotation HTTP contract", () => {
       const activate = {
         revision: data.settings.revision,
         change_id: request.change_id,
+        platform_public_key: nextPlatformPem,
       };
       const wrongKey = await f.post("activate", {
         ...activate,
@@ -247,7 +275,10 @@ describe("administrator key rotation HTTP contract", () => {
       );
       assert.deepEqual(orderRow(), originalOrder);
       assert.equal((await f.post("activate", activate)).status, 200);
+      assert.equal((await f.post("activate", { ...activate, platform_public_key: platformPem })).status, 409);
       assert.equal(f.probe.calls, 2);
+      assert.deepEqual(f.probe.publicKeys, [nextPlatformPem.trim(), nextPlatformPem.trim()]);
+      assert.equal(f.settings.snapshot().provider!.publicKeyPem, nextPlatformPem.trim());
       assert.equal(f.database.integrityCheck().ok, true);
     });
   });
@@ -270,6 +301,7 @@ describe("administrator key rotation HTTP contract", () => {
           await f.post("activate", {
             revision: f.settings.view().revision,
             change_id: first.change_id,
+            platform_public_key: nextPlatformPem,
           })
         ).status,
         409,

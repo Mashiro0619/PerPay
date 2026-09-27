@@ -50,9 +50,7 @@ describe("first collection onboarding", () => {
           block: "nearest",
           inline: "nearest",
         });
-        expect(
-          screen.getByRole("heading", { name: title }),
-        ).toHaveFocus();
+        expect(screen.getByRole("heading", { name: title })).toHaveFocus();
         expect(view.writes()).toHaveLength(0);
       } finally {
         reveal.mockRestore();
@@ -123,7 +121,8 @@ describe("first collection onboarding", () => {
     ).not.toBeInTheDocument();
     await userEvent.setup().click(help);
     expect(screen.getByText(/支付宝搜索“经营码”申请/)).toBeVisible();
-    expect(screen.getByText(/支付宝应用需有账务明细查询权限/)).toBeVisible();
+    expect(screen.getByText(/无需单独申请账务明细查询权限/)).toBeVisible();
+    expect(screen.queryByText(/申请资格以支付宝为准/)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "图文教程" })).toHaveAttribute(
       "href",
       "https://github.com/Mashiro0619/PerPay/blob/main/docs/alipay-setup.md",
@@ -226,7 +225,9 @@ describe("first collection onboarding", () => {
     await screen.findByLabelText("应用 ID（App ID）");
     edit("应用 ID（App ID）", "my-app");
     edit("支付宝公钥", "synthetic-platform-public-key");
-    expect(screen.queryByRole("button", { name: "高级设置" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "高级设置" }),
+    ).not.toBeInTheDocument();
     expect(screen.getByLabelText("常规采集间隔（秒）")).toBeVisible();
     await userEvent
       .setup()
@@ -403,7 +404,9 @@ describe("first collection onboarding", () => {
       .click(await screen.findByRole("link", { name: "继续" }));
     await pathIs(view, "check");
     expect(
-      await screen.findByText("业务通知未启用，业务系统后端需主动向 PerPay 查询订单状态。"),
+      await screen.findByText(
+        "业务通知未启用，业务系统后端需主动向 PerPay 查询订单状态。",
+      ),
     ).toBeVisible();
     expect(view.writes()).toHaveLength(0);
   });

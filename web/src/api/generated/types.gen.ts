@@ -473,7 +473,7 @@ export type ApplicationKeyChangeActionRequest = {
 export type ActivateProviderApplicationKeyRequest = {
     revision: number;
     change_id: string;
-    platform_public_key?: string;
+    platform_public_key: string;
 };
 export type SettingsRevisionRequest = {
     revision: number;

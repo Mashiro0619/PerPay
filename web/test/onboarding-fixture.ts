@@ -266,6 +266,9 @@ export function mountOnboarding(
         fingerprint: saved.pending_application_key?.fingerprint ?? saved.application_key_fingerprint } });
     }
     if (endpoint.endsWith("/application-key/actions/activate")) {
+      const input = await request.clone().json() as { platform_public_key?: unknown };
+      if (typeof input.platform_public_key !== "string" || !input.platform_public_key.trim())
+        return json({ error: { code: "validation_failed", message: "请求字段校验失败" } }, 422);
       const pending = saved.pending_application_key!;
       saved = { ...saved, revision: saved.revision + 1, payment_revision: saved.payment_revision + 1,
         application_public_key: pending.public_key, application_key_fingerprint: pending.fingerprint,

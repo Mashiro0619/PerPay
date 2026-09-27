@@ -516,7 +516,7 @@ export class RuntimeSettingsService {
         if (parsed.revision + 1 !== change.finishedRevision ||
           current.activeProviderAccountKey !== change.providerAccountKey ||
           current.provider?.applicationKeyFingerprint !== change.newFingerprint) throw keyChangeConflict();
-        if (parsed.platform_public_key && candidateProvider(current.provider, current.provider.privateKeyPem,
+        if (candidateProvider(current.provider, current.provider.privateKeyPem,
           parsed.platform_public_key).platformKeyFingerprint !== current.provider.platformKeyFingerprint) throw keyChangeConflict();
         // A lost response may follow a committed change whose runtime application failed.
         await this.#applyCommitted(current);
@@ -690,10 +690,10 @@ function assertPendingKeyMatches(current: RuntimeSettingsSnapshot, change: Provi
   }
 }
 
-function candidateProvider(current: ProviderSettings, privateKey: string, publicKey?: string): ProviderSettings {
+function candidateProvider(current: ProviderSettings, privateKey: string, publicKey: string): ProviderSettings {
   return parseProviderKeys({
     environment: current.environment, appId: current.appId, privateKey,
-    publicKey: publicKey ?? current.publicKeyPem,
+    publicKey,
     timeoutMilliseconds: current.timeoutMilliseconds,
     scanIntervalMilliseconds: current.scanIntervalMilliseconds,
     activeScanIntervalMilliseconds: current.activeScanIntervalMilliseconds,

@@ -174,21 +174,23 @@ describe("application public key generation and replacement", () => {
     expect(view.writes()).toHaveLength(1);
   });
 
-  it("requires upload confirmation and submits the optional Alipay public key for activation", async () => {
+  it("requires the newly retrieved Alipay public key without a redundant upload checkbox", async () => {
     const view = mountOnboarding({ pendingKey: true, path: applicationPath });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "验证并启用" }));
     const dialog = await screen.findByRole("dialog", {
-      name: "验证并启用新公钥",
+      name: "验证并启用新应用公钥",
     });
     const submit = within(dialog).getByRole("button", { name: "验证并启用" });
-    expect(submit).toBeDisabled();
+    expect(submit).toBeEnabled();
+    expect(within(dialog).getByLabelText("支付宝公钥")).toBeRequired();
+    expect(within(dialog).getByLabelText("支付宝公钥")).toHaveValue("");
+    expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
     expect(within(dialog).getByText(/只读账单查询/)).toBeVisible();
     await user.type(
-      within(dialog).getByLabelText("支付宝公钥（如有更新）"),
+      within(dialog).getByLabelText("支付宝公钥"),
       " updated-alipay-public-key ",
     );
-    await user.click(within(dialog).getByRole("checkbox"));
     await user.click(submit);
     expect(await screen.findByText("应用公钥已验证并启用。")).toBeVisible();
     expect(await body(view)).toEqual({
@@ -215,6 +217,52 @@ describe("application public key generation and replacement", () => {
     );
   });
 
+  it.each([applicationPath, "/settings/provider"])(
+    "rejects empty and whitespace-only activation keys with an accessible inline error at %s",
+    async (path) => {
+      const view = mountOnboarding({ pendingKey: true, path });
+      const user = userEvent.setup();
+      await user.click(
+        await screen.findByRole("button", { name: "验证并启用" }),
+      );
+      const dialog = await screen.findByRole("dialog", {
+        name: "验证并启用新应用公钥",
+      });
+      const input = within(dialog).getByLabelText("支付宝公钥");
+      const submit = within(dialog).getByRole("button", { name: "验证并启用" });
+      expect(input).toBeRequired();
+      expect(input).toHaveValue("");
+      expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
+      for (const value of ["", " \n\t "]) {
+        fireEvent.change(input, { target: { value } });
+        await user.click(submit);
+        expect(
+          await within(dialog).findByText(
+            "请先上传新应用公钥，再填写上传后获取的支付宝公钥。",
+          ),
+        ).toBeVisible();
+        expect(input).toHaveFocus();
+        expect(input).toHaveAttribute("aria-invalid", "true");
+        expect(input).toHaveAttribute(
+          "aria-describedby",
+          "activation-platform-hint activation-platform-error",
+        );
+        expect(view.writes()).toHaveLength(0);
+      }
+      fireEvent.change(input, {
+        target: { value: " latest-platform-public-key " },
+      });
+      expect(input).toHaveAttribute("aria-invalid", "false");
+      await user.click(submit);
+      await screen.findByText("应用公钥已验证并启用。");
+      expect(view.writes()).toHaveLength(1);
+      expect(await body(view)).toHaveProperty(
+        "platform_public_key",
+        "latest-platform-public-key",
+      );
+    },
+  );
+
   it("keeps pending state on a known verification failure and allows correcting the public key", async () => {
     let attempts = 0;
     const view = mountOnboarding({
@@ -232,20 +280,24 @@ describe("application public key generation and replacement", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "验证并启用" }));
     const dialog = await screen.findByRole("dialog");
-    await user.click(within(dialog).getByRole("checkbox"));
+    const input = within(dialog).getByLabelText("支付宝公钥");
+    await user.type(input, "incorrect-platform-key");
     await user.click(
       within(dialog).getByRole("button", { name: "验证并启用" }),
     );
     expect(await within(dialog).findByText(/支付宝验证未通过/)).toBeVisible();
-    const input = within(dialog).getByLabelText("支付宝公钥（如有更新）");
     expect(input).toBeEnabled();
+    await user.clear(input);
     await user.type(input, "corrected-platform-key");
     await user.click(
       within(dialog).getByRole("button", { name: "验证并启用" }),
     );
     expect(await screen.findByText("应用公钥已验证并启用。")).toBeVisible();
     expect(view.writes()).toHaveLength(2);
-    expect(await body(view, 0)).not.toHaveProperty("platform_public_key");
+    expect(await body(view, 0)).toHaveProperty(
+      "platform_public_key",
+      "incorrect-platform-key",
+    );
     expect(await body(view, 1)).toHaveProperty(
       "platform_public_key",
       "corrected-platform-key",
@@ -273,12 +325,12 @@ describe("application public key generation and replacement", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "验证并启用" }));
     const dialog = await screen.findByRole("dialog");
-    await user.click(within(dialog).getByRole("checkbox"));
+    const input = within(dialog).getByLabelText("支付宝公钥");
+    await user.type(input, "synthetic-application-public-key");
     await user.click(
       within(dialog).getByRole("button", { name: "验证并启用" }),
     );
     await within(dialog).findByText("请使用支付宝公钥");
-    const input = within(dialog).getByLabelText("支付宝公钥（如有更新）");
     await waitFor(() => expect(input).toHaveFocus());
     expect(input).toHaveAttribute("aria-invalid", "true");
     expect(input).toBeEnabled();
@@ -326,9 +378,8 @@ describe("application public key generation and replacement", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "验证并启用" }));
     const dialog = await screen.findByRole("dialog");
-    const input = within(dialog).getByLabelText("支付宝公钥（如有更新）");
+    const input = within(dialog).getByLabelText("支付宝公钥");
     await user.type(input, "fixed-platform-key");
-    await user.click(within(dialog).getByRole("checkbox"));
     await user.click(
       within(dialog).getByRole("button", { name: "验证并启用" }),
     );

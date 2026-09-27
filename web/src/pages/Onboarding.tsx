@@ -258,7 +258,7 @@ function OnboardingFlow({
                   </p>
                   <p>
                     {pendingApplicationKey
-                      ? "支付宝公钥：如支付宝提供了新的公钥，请在“验证并启用”中填写；它不是应用公钥。"
+                      ? "支付宝公钥：上传新应用公钥后，从支付宝重新复制，再填入“验证并启用”；它不是应用公钥。"
                       : "支付宝公钥：从支付宝平台取回，下一步填入 PerPay；它不是应用公钥。"}
                   </p>
                   <Collapsible>
@@ -271,7 +271,7 @@ function OnboardingFlow({
                     <CollapsibleContent>
                       <ul className="flex list-inside list-disc flex-col gap-2 pt-3">
                         <li>
-                          支付宝应用需有账务明细查询权限，申请资格以支付宝为准。
+                          使用收款账户创建网页／移动应用，无需单独申请账务明细查询权限。
                         </li>
                         <li>支付宝搜索“经营码”申请，使用同一账户收款。</li>
                       </ul>
@@ -350,7 +350,7 @@ function OnboardingFlow({
                         ）。 PerPay 当前仍使用原密钥。
                       </p>
                       <p>
-                        上传后返回“应用公钥”验证并启用；支付宝公钥如有更新，请在启用弹窗中填写。
+                        上传后重新复制支付宝页面显示的支付宝公钥，返回“应用公钥”填入“验证并启用”弹窗。
                         本页保存不会启用新密钥。
                       </p>
                     </>

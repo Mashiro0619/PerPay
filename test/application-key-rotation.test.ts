@@ -3,6 +3,7 @@ import { createPublicKey, randomUUID, sign, verify } from "node:crypto";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "node:test";
+import { ZodError } from "zod";
 import { SettingsError, RuntimeSettingsStore, RuntimeSettingsService } from "../src/settings/index.ts";
 import {
   changeRequest,
@@ -154,6 +155,29 @@ describe("application key regeneration and staged rotation", () => {
     });
   });
 
+  it("requires an explicit non-blank Alipay public key even for direct service callers", async () => {
+    await withKeyFixture(true, async (f) => {
+      const generated = await f.settings.regenerateProviderApplicationKey(changeRequest(f.settings), keyAudit());
+      const before = f.settings.snapshot();
+      for (const value of [undefined, "", " \n\t "]) {
+        const input = {
+          revision: generated.settings.revision,
+          change_id: generated.settings.pending_application_key!.change_id,
+          ...(value === undefined ? {} : { platform_public_key: value }),
+        };
+        await assert.rejects(
+          f.settings.activateProviderApplicationKey(
+            input as Parameters<RuntimeSettingsService["activateProviderApplicationKey"]>[0], keyAudit(),
+          ),
+          (error: unknown) => error instanceof ZodError && error.issues.some(issue => issue.path[0] === "platform_public_key"),
+        );
+        assert.deepEqual(f.settings.snapshot(), before);
+        assert.deepEqual(f.settings.view(), generated.settings);
+        assert.deepEqual(f.events, []);
+      }
+    });
+  });
+
   it("verifies before pausing and atomically activates the matching pair and latest Alipay public key", async () => {
     await withKeyFixture(true, async (f) => {
       const history = f.ledger.providerIdentityHistory();
@@ -227,6 +251,7 @@ describe("application key regeneration and staged rotation", () => {
       );
       const before = f.settings.view();
       const request = {
+        platform_public_key: nextPlatformPem,
         revision: before.revision,
         change_id: generated.settings.pending_application_key!.change_id,
       };
@@ -296,6 +321,7 @@ describe("application key regeneration and staged rotation", () => {
         errorCode("provider_application_key_change_pending"),
       );
       const activate = {
+        platform_public_key: nextPlatformPem,
         revision: first.settings.revision,
         change_id: request.change_id,
       };
@@ -327,7 +353,7 @@ describe("application key regeneration and staged rotation", () => {
       f.events.length = 0;
       await assert.rejects(
         f.settings.activateProviderApplicationKey(
-          { revision: generated.settings.revision, change_id: changeId },
+          { platform_public_key: nextPlatformPem, revision: generated.settings.revision, change_id: changeId },
           keyAudit(),
         ),
         errorCode("settings_revision_conflict"),
@@ -337,7 +363,7 @@ describe("application key regeneration and staged rotation", () => {
         assert.equal(provider.timeoutMilliseconds, 5000);
       };
       const saved = await f.settings.activateProviderApplicationKey(
-        { revision: updated.revision, change_id: changeId },
+        { platform_public_key: nextPlatformPem, revision: updated.revision, change_id: changeId },
         keyAudit(),
       );
       assert.equal(saved.provider!.timeout_milliseconds, 5000);
@@ -372,7 +398,7 @@ describe("application key regeneration and staged rotation", () => {
       );
       await assert.rejects(
         f.settings.activateProviderApplicationKey(
-          { ...request, revision: discarded.revision },
+          { platform_public_key: nextPlatformPem, ...request, revision: discarded.revision },
           keyAudit(),
         ),
         errorCode("provider_application_key_change_conflict"),
@@ -421,6 +447,7 @@ describe("application key regeneration and staged rotation", () => {
         keyAudit(),
       );
       const request = {
+        platform_public_key: nextPlatformPem,
         revision: generated.settings.revision,
         change_id: generated.settings.pending_application_key!.change_id,
       };
@@ -471,6 +498,7 @@ describe("application key regeneration and staged rotation", () => {
       await assert.rejects(
         f.settings.activateProviderApplicationKey(
           {
+            platform_public_key: nextPlatformPem,
             revision: generated.settings.revision,
             change_id: generated.settings.pending_application_key!.change_id,
           },
@@ -501,6 +529,7 @@ describe("application key regeneration and staged rotation", () => {
         keyAudit(),
       );
       const request = {
+        platform_public_key: nextPlatformPem,
         revision: generated.settings.revision,
         change_id: generated.settings.pending_application_key!.change_id,
       };
@@ -542,6 +571,7 @@ describe("application key regeneration and staged rotation", () => {
       assert.equal(f.database.integrityCheck().ok, true);
       const activated = await f.settings.activateProviderApplicationKey(
         {
+          platform_public_key: nextPlatformPem,
           revision: generated.settings.revision,
           change_id: generated.settings.pending_application_key!.change_id,
         },
@@ -602,6 +632,7 @@ describe("application key regeneration and staged rotation", () => {
       `));
       try {
         await assert.rejects(f.settings.activateProviderApplicationKey({
+          platform_public_key: nextPlatformPem,
           revision: before.revision, change_id: generated.settings.pending_application_key!.change_id,
         }, keyAudit()), /synthetic final write failure/);
         assert.deepEqual(f.settings.view(), before);

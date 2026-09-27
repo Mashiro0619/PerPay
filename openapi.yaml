@@ -788,8 +788,10 @@ paths:
       summary: Verify and activate the pending application key
       description: >-
         Performs one bounded read-only account-log query signed with the pending private key and verifies
-        the Alipay response before changing settings. Optional platform_public_key is the current Alipay
-        public key, not the application public key. Failure preserves both active and pending keys.
+        the Alipay response before changing settings. Required platform_public_key must be copied from
+        the same Alipay application after uploading the pending application public key. It is not
+        the application public key; the server never falls back to the saved verification key.
+        Failure preserves both active and pending keys.
         Success atomically promotes the pending private key and the verified Alipay public key,
         increments payment revision and restarts dependent workers, preserving the provider account
         identity and existing ledger/order associations. The probe never ingests ledger data or marks
@@ -3722,7 +3724,7 @@ components:
     ActivateProviderApplicationKeyRequest:
       type: object
       additionalProperties: false
-      required: [revision, change_id]
+      required: [revision, change_id, platform_public_key]
       properties:
         revision: { type: integer, minimum: 0 }
         change_id: { type: string, format: uuid }
@@ -3730,7 +3732,7 @@ components:
           type: string
           minLength: 1
           maxLength: 16384
-          description: Latest Alipay public key (Base64 or PEM); omit to keep the current verification key.
+          description: Required non-blank Alipay public key (Base64 or PEM), copied after uploading the pending application public key.
     SettingsRevisionRequest:
       type: object
       additionalProperties: false

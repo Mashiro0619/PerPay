@@ -32,8 +32,8 @@
 
 1. `POST /api/admin/v1/settings/provider/application-key/actions/regenerate`：提交当前 `revision`、当前 `base_fingerprint` 和新的 UUID `change_id`。首次接入前替换原密钥对；已经接入时只生成加密保存的待启用密钥。重复请求必须保留同一请求体，不会生成另一把密钥。
 2. 从配置响应的 `pending_application_key.public_key` 取得待启用应用公钥，并上传到同一个支付宝应用。`application_public_key` 始终表示 PerPay 当前使用的公钥。
-3. `POST /api/admin/v1/settings/provider/application-key/actions/activate`：提交最新 `revision` 和待启用 `change_id`，可附上支付宝最新的 `platform_public_key`。服务端使用待启用私钥做一次有超时上限的只读账单查询并验签，成功后才原子切换密钥；失败不更换当前密钥。支付配置版本会在成功启用时递增，支付宝账户身份和历史业务关联不变。
-4. 不再更换时，可调用 `POST /api/admin/v1/settings/provider/application-key/actions/discard`，提交最新 `revision` 与 `change_id`。这不会撤回支付宝侧的上传；若已上传新公钥，应先在支付宝恢复当前公钥。
+3. `POST /api/admin/v1/settings/provider/application-key/actions/activate`：提交最新 `revision`、待启用 `change_id`，以及上传新应用公钥后从同一支付宝应用重新获取的 `platform_public_key`（必填，不允许省略或留空，也不会沿用已保存的旧公钥）。服务端使用待启用私钥做一次有超时上限的只读账单查询并验签，成功后才原子切换密钥；失败不更换当前密钥。支付配置版本会在成功启用时递增，支付宝账户身份和历史业务关联不变。
+4. 不再更换时，可调用 `POST /api/admin/v1/settings/provider/application-key/actions/discard`，提交最新 `revision` 与 `change_id`。这不会撤回支付宝侧的上传；若已上传新公钥，应先在支付宝恢复当前应用公钥，并在 PerPay 的支付宝设置中同步恢复后获取的支付宝公钥。
 
 待启用密钥不会因刷新或重启丢失；生成、启用和放弃都有审计记录，私钥不出现在这些响应中。存在待启用变更时不能切换支付宝应用或再生成另一把公钥。此次新增数据库迁移 28 只增加密钥变更表，不改写原密钥、配置或业务数据。升级前仍应按部署说明保留数据库备份和主密钥。
 

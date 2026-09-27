@@ -128,7 +128,7 @@ export function ApplicationKey({
               当前仍使用原密钥。请将这把新公钥上传到支付宝应用{" "}
               <span className="break-all">{pending.app_id}</span>（
               {pending.environment === "PRODUCTION" ? "生产环境" : "沙箱环境"}
-              ），再验证并启用。
+              ），然后复制上传后显示的支付宝公钥，填回 PerPay 验证并启用。
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <Button
@@ -271,6 +271,7 @@ function ApplicationKeyChangeDialog({
     fingerprint: settings.application_key_fingerprint!,
   }));
   const [platformKey, setPlatformKey] = useState("");
+  const [platformError, setPlatformError] = useState<string>();
   const [confirmed, setConfirmed] = useState(false);
   const platformField = useRef<HTMLTextAreaElement>(null);
   const operation = useFixedOperation<
@@ -322,9 +323,10 @@ function ApplicationKeyChangeDialog({
     },
   });
   const fieldError =
-    operation.error instanceof ApiError
+    platformError ??
+    (operation.error instanceof ApiError
       ? operation.error.fields.platform_public_key
-      : undefined;
+      : undefined);
   useEffect(() => {
     if (fieldError && !operation.isPending) platformField.current?.focus();
   }, [fieldError, operation.isPending]);
@@ -334,7 +336,7 @@ function ApplicationKeyChangeDialog({
     mode === "regenerate"
       ? "重新生成应用公钥？"
       : mode === "activate"
-        ? "验证并启用新公钥"
+        ? "验证并启用新应用公钥"
         : "放弃新公钥？";
   const description =
     mode === "regenerate"
@@ -342,15 +344,20 @@ function ApplicationKeyChangeDialog({
         ? "将生成一对新的应用公钥和私钥，并暂存为待启用状态。当前收款继续使用原密钥；上传到支付宝并验证通过后才会切换。"
         : "将生成一对新的应用公钥和私钥，替换尚未接入的原密钥对。此前复制或上传的应用公钥需要重新上传，不能只更换公钥。"
       : mode === "activate"
-        ? "确认已向同一支付宝应用上传新公钥。PerPay 会用新私钥发起一次只读账单查询并验证返回签名，通过后才会切换；不会发起支付或修改支付宝配置。"
-        : "仅删除 PerPay 暂存的新密钥，不会撤回支付宝侧的上传。若已上传新公钥，请先在支付宝恢复当前使用的应用公钥，避免旧配置失效后影响查账。";
+        ? "上传新应用公钥后，请复制支付宝页面显示的支付宝公钥并填入下方。PerPay 会用新私钥进行一次只读账单查询并验签，通过后才启用，不会发起支付。"
+        : "仅删除 PerPay 暂存的新密钥，不会撤回支付宝侧的上传。若已上传，请先在支付宝恢复当前应用公钥，并在 PerPay 的支付宝设置中同步恢复后获取的支付宝公钥，再放弃，以免影响查账。";
   function submit() {
     if (
       operation.isBusy() ||
       operation.conflict ||
-      (mode !== "regenerate" && !confirmed)
+      (mode === "discard" && !confirmed)
     )
       return;
+    if (mode === "activate" && !platformKey.trim()) {
+      setPlatformError("请先上传新应用公钥，再填写上传后获取的支付宝公钥。");
+      platformField.current?.focus();
+      return;
+    }
     if (mode === "regenerate")
       operation.submit({
         mode,
@@ -366,9 +373,7 @@ function ApplicationKeyChangeDialog({
         body: {
           revision: initial.revision,
           change_id: initial.changeId,
-          ...(platformKey.trim()
-            ? { platform_public_key: platformKey.trim() }
-            : {}),
+          platform_public_key: platformKey.trim(),
         },
       });
     else
@@ -395,6 +400,7 @@ function ApplicationKeyChangeDialog({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <form
+          noValidate
           className="flex min-w-0 flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault();
@@ -419,7 +425,7 @@ function ApplicationKeyChangeDialog({
                   data-disabled={locked}
                 >
                   <FieldLabel htmlFor="activation-platform-key">
-                    支付宝公钥（如有更新）
+                    支付宝公钥
                   </FieldLabel>
                   <Textarea
                     id="activation-platform-key"
@@ -428,13 +434,15 @@ function ApplicationKeyChangeDialog({
                     value={platformKey}
                     onChange={(event) => {
                       setPlatformKey(event.target.value);
+                      setPlatformError(undefined);
                       operation.reset();
                     }}
                     disabled={locked}
+                    required
                     maxLength={16384}
                     autoComplete="off"
                     spellCheck={false}
-                    placeholder="从支付宝下载或复制；未变化可留空"
+                    placeholder="粘贴本次上传后获取的支付宝公钥"
                     aria-invalid={Boolean(fieldError)}
                     aria-describedby={
                       fieldError
@@ -443,7 +451,8 @@ function ApplicationKeyChangeDialog({
                     }
                   />
                   <FieldDescription id="activation-platform-hint">
-                    这是支付宝提供的公钥，不是刚生成的应用公钥。留空使用已保存的支付宝公钥。
+                    必填。请从同一支付宝应用重新复制，不是 PerPay
+                    生成的应用公钥；不会自动沿用旧值。
                   </FieldDescription>
                   {fieldError && (
                     <FieldError id="activation-platform-error">
@@ -452,22 +461,22 @@ function ApplicationKeyChangeDialog({
                   )}
                 </Field>
               )}
-              <Field orientation="horizontal" data-disabled={locked}>
-                <Checkbox
-                  id="application-key-confirmed"
-                  checked={confirmed}
-                  onCheckedChange={setConfirmed}
-                  disabled={locked}
-                />
-                <FieldLabel
-                  htmlFor="application-key-confirmed"
-                  className="min-h-11"
-                >
-                  {mode === "activate"
-                    ? "我已将新应用公钥上传到对应的支付宝应用"
-                    : "我尚未上传新公钥，或已在支付宝恢复当前公钥"}
-                </FieldLabel>
-              </Field>
+              {mode === "discard" && (
+                <Field orientation="horizontal" data-disabled={locked}>
+                  <Checkbox
+                    id="application-key-confirmed"
+                    checked={confirmed}
+                    onCheckedChange={setConfirmed}
+                    disabled={locked}
+                  />
+                  <FieldLabel
+                    htmlFor="application-key-confirmed"
+                    className="min-h-11"
+                  >
+                    我尚未上传新公钥，或已恢复原配置并同步支付宝公钥
+                  </FieldLabel>
+                </Field>
+              )}
             </FieldGroup>
           )}
           <ErrorNotice error={operation.error} />
@@ -496,7 +505,7 @@ function ApplicationKeyChangeDialog({
               disabled={
                 operation.isPending ||
                 operation.conflict ||
-                (mode !== "regenerate" && !confirmed)
+                (mode === "discard" && !confirmed)
               }
             >
               {operation.isPending && (

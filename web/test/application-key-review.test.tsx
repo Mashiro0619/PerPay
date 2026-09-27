@@ -33,11 +33,10 @@ function unloadBlocked() {
 async function openActivation(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByRole("button", { name: "验证并启用" }));
   const dialog = await screen.findByRole("dialog", {
-    name: "验证并启用新公钥",
+    name: "验证并启用新应用公钥",
   });
-  const input = within(dialog).getByLabelText("支付宝公钥（如有更新）");
+  const input = within(dialog).getByLabelText("支付宝公钥");
   await user.type(input, "original-platform-key");
-  await user.click(within(dialog).getByRole("checkbox"));
   await user.click(within(dialog).getByRole("button", { name: "验证并启用" }));
   return { dialog, input };
 }
@@ -64,6 +63,10 @@ describe("pending key continuity across onboarding steps", () => {
       within(help).getByRole("heading", { name: "上传待启用公钥" }),
     ).toBeVisible();
     expect(within(help).getByText(/本页保存不会启用新密钥/)).toBeVisible();
+    expect(
+      within(help).getByText(/上传后重新复制支付宝页面显示的支付宝公钥/),
+    ).toBeVisible();
+    expect(within(help).queryByText(/如有更新|可留空/)).not.toBeInTheDocument();
     expect(
       within(help).queryByRole("button", { name: "查看应用公钥" }),
     ).not.toBeInTheDocument();
@@ -137,13 +140,18 @@ describe("pending key continuity across onboarding steps", () => {
     ["discard", "放弃新公钥", "确认放弃", currentKey],
   ] as const)(
     "uses the current key after %s ends the pending state",
-    async (_action, trigger, submit, key) => {
+    async (action, trigger, submit, key) => {
       const user = userEvent.setup();
       const clipboard = vi.spyOn(navigator.clipboard, "writeText");
       const view = mountOnboarding({ pendingKey: true, path: applicationPath });
       await user.click(await screen.findByRole("button", { name: trigger }));
       const dialog = await screen.findByRole("dialog");
-      await user.click(within(dialog).getByRole("checkbox"));
+      if (action === "activate")
+        await user.type(
+          within(dialog).getByLabelText("支付宝公钥"),
+          "latest-platform-key",
+        );
+      else await user.click(within(dialog).getByRole("checkbox"));
       await user.click(within(dialog).getByRole("button", { name: submit }));
       await waitFor(() =>
         expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
@@ -191,18 +199,11 @@ describe("authoritative verification failure after an unknown response", () => {
       name: "重试同一操作",
     });
     expect(input).toBeDisabled();
-    expect(within(dialog).getByRole("checkbox")).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
+    expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
     await waitFor(() => expect(unloadBlocked()).toBe(true));
     await user.click(retry);
     expect(await within(dialog).findByText(/支付宝验证未通过/)).toBeVisible();
     expect(input).toBeEnabled();
-    expect(within(dialog).getByRole("checkbox")).not.toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
     expect(
       within(dialog).queryByText(/上次操作结果尚未确认/),
     ).not.toBeInTheDocument();
@@ -313,7 +314,12 @@ describe.each([
       const user = userEvent.setup();
       await user.click(await screen.findByRole("button", { name: trigger }));
       const dialog = await screen.findByRole("dialog");
-      if (state === "pending")
+      if (trigger === "验证并启用")
+        await user.type(
+          within(dialog).getByLabelText("支付宝公钥"),
+          "latest-platform-key",
+        );
+      else if (state === "pending")
         await user.click(within(dialog).getByRole("checkbox"));
       await user.click(within(dialog).getByRole("button", { name: submit }));
       const feedback = await screen.findByText(message);

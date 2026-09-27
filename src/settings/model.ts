@@ -89,7 +89,8 @@ export const applicationKeyChangeActionSchema = z.object({
   change_id: z.uuid(),
 }).strict();
 export const activateProviderApplicationKeySchema = applicationKeyChangeActionSchema.extend({
-  platform_public_key: z.string().min(1).max(16 * 1024).optional(),
+  platform_public_key: z.string({ error: "请填写上传新应用公钥后获取的支付宝公钥。" })
+    .trim().min(1, "请填写上传新应用公钥后获取的支付宝公钥。").max(16 * 1024),
 });
 export type RegenerateProviderApplicationKeyInput = z.infer<typeof regenerateProviderApplicationKeySchema>;
 export type ApplicationKeyChangeActionInput = z.infer<typeof applicationKeyChangeActionSchema>;
