@@ -42,7 +42,7 @@ async function openActivation(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("pending key continuity across onboarding steps", () => {
-  it("copies the new pending key after Next and refresh, and provides a return-to-activation link", async () => {
+  it("copies the pending key after Next and refresh, and activates in the provider step", async () => {
     const user = userEvent.setup();
     const clipboard = vi.spyOn(navigator.clipboard, "writeText");
     const view = mountOnboarding({ stage: 4, path: applicationPath });
@@ -54,18 +54,21 @@ describe("pending key continuity across onboarding steps", () => {
         name: "生成新公钥",
       }),
     );
-    await screen.findByRole("button", { name: "验证并启用" });
+    await screen.findByText(pendingKey);
+    expect(
+      screen.queryByRole("button", { name: "验证并启用" }),
+    ).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "下一步" }));
     await screen.findByLabelText("应用 ID（App ID）");
     expect(view.router.state.location.pathname).toBe(providerPath);
     const help = screen.getByRole("complementary", { name: "本步说明" });
     expect(
-      within(help).getByRole("heading", { name: "上传待启用公钥" }),
+      within(help).getByRole("heading", { name: "填回支付宝公钥" }),
     ).toBeVisible();
-    expect(within(help).getByText(/本页保存不会启用新密钥/)).toBeVisible();
+    expect(within(help).getByText(/点击“验证并启用后继续”/)).toBeVisible();
     expect(
-      within(help).getByText(/上传后重新复制支付宝页面显示的支付宝公钥/),
-    ).toBeVisible();
+      screen.queryByText(/本页保存不会启用新密钥/),
+    ).not.toBeInTheDocument();
     expect(within(help).queryByText(/如有更新|可留空/)).not.toBeInTheDocument();
     expect(
       within(help).queryByRole("button", { name: "查看应用公钥" }),
@@ -90,14 +93,19 @@ describe("pending key continuity across onboarding steps", () => {
       screen.getByRole("button", { name: "复制待启用应用公钥" }),
     );
     await waitFor(() => expect(clipboard).toHaveBeenLastCalledWith(pendingKey));
-    const returnLink = screen.getByRole("link", { name: "返回验证并启用" });
-    expect(returnLink).toHaveAttribute("href", applicationPath);
-    await user.click(returnLink);
     expect(
-      await screen.findByRole("button", { name: "验证并启用" }),
-    ).toBeVisible();
-    expect(view.router.state.location.pathname).toBe(applicationPath);
-    expect(view.writes()).toHaveLength(1);
+      screen.queryByRole("link", { name: "返回验证并启用" }),
+    ).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText("支付宝公钥"), "latest-platform-key");
+    await user.click(screen.getByRole("button", { name: "验证并启用后继续" }));
+    await screen.findByLabelText("支付宝经营码内容");
+    expect(view.router.state.location.pathname).toBe(
+      onboardingPath("collection"),
+    );
+    expect(view.writes()).toHaveLength(2);
+    expect(new URL(view.writes()[1]!.url).pathname).toMatch(
+      /actions\/activate$/,
+    );
   });
 
   it.each([1, 4])(
@@ -117,21 +125,21 @@ describe("pending key continuity across onboarding steps", () => {
         screen.queryByRole("link", { name: "返回验证并启用" }),
       ).not.toBeInTheDocument();
       expect(
-        screen.queryByRole("heading", { name: "上传待启用公钥" }),
+        screen.queryByRole("heading", { name: "填回支付宝公钥" }),
       ).not.toBeInTheDocument();
       expect(view.writes()).toHaveLength(0);
     },
   );
 
-  it("keeps a provider draft when returning to activation is cancelled", async () => {
+  it("keeps the activation public-key draft when returning to the first step is cancelled", async () => {
     const user = userEvent.setup();
     const view = mountOnboarding({ pendingKey: true, path: providerPath });
-    const input = await screen.findByLabelText("应用 ID（App ID）");
-    fireEvent.change(input, { target: { value: "unsaved-application-id" } });
-    await user.click(screen.getByRole("link", { name: "返回验证并启用" }));
+    const input = await screen.findByLabelText("支付宝公钥");
+    fireEvent.change(input, { target: { value: "unsaved-platform-key" } });
+    await user.click(screen.getByRole("link", { name: "上一步" }));
     await user.click(await screen.findByRole("button", { name: "继续编辑" }));
     expect(view.router.state.location.pathname).toBe(providerPath);
-    expect(input).toHaveValue("unsaved-application-id");
+    expect(input).toHaveValue("unsaved-platform-key");
     expect(view.writes()).toHaveLength(0);
   });
 
@@ -143,20 +151,36 @@ describe("pending key continuity across onboarding steps", () => {
     async (action, trigger, submit, key) => {
       const user = userEvent.setup();
       const clipboard = vi.spyOn(navigator.clipboard, "writeText");
-      const view = mountOnboarding({ pendingKey: true, path: applicationPath });
-      await user.click(await screen.findByRole("button", { name: trigger }));
-      const dialog = await screen.findByRole("dialog");
+      const view = mountOnboarding({
+        pendingKey: true,
+        path: action === "activate" ? providerPath : applicationPath,
+      });
+      if (action !== "activate")
+        await user.click(await screen.findByRole("button", { name: trigger }));
+      const dialog = await screen.findByRole(
+        action === "activate" ? "form" : "dialog",
+        {
+          name: action === "activate" ? "验证并启用新应用公钥" : "放弃新公钥？",
+        },
+      );
       if (action === "activate")
         await user.type(
           within(dialog).getByLabelText("支付宝公钥"),
           "latest-platform-key",
         );
       else await user.click(within(dialog).getByRole("checkbox"));
-      await user.click(within(dialog).getByRole("button", { name: submit }));
+      await user.click(
+        within(dialog).getByRole("button", {
+          name: action === "activate" ? "验证并启用后继续" : submit,
+        }),
+      );
       await waitFor(() =>
         expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
       );
-      await user.click(screen.getByRole("button", { name: "下一步" }));
+      if (action === "activate") {
+        await screen.findByLabelText("支付宝经营码内容");
+        await user.click(screen.getByRole("tab", { name: /支付宝接入/ }));
+      } else await user.click(screen.getByRole("button", { name: "下一步" }));
       await user.click(
         await screen.findByRole("button", { name: "查看应用公钥" }),
       );
@@ -178,7 +202,7 @@ describe("authoritative verification failure after an unknown response", () => {
     let attempts = 0;
     const view = mountOnboarding({
       pendingKey: true,
-      path: applicationPath,
+      path: "/settings/provider",
       handle: (request) => {
         if (!request.url.endsWith("/actions/activate")) return undefined;
         attempts++;
@@ -249,7 +273,7 @@ describe("authoritative verification failure after an unknown response", () => {
       let attempts = 0;
       const view = mountOnboarding({
         pendingKey: true,
-        path: applicationPath,
+        path: "/settings/provider",
         handle: (request) => {
           if (!request.url.endsWith("/actions/activate")) return undefined;
           attempts++;
@@ -306,14 +330,16 @@ describe.each([
   ] as const)(
     "uses a wrapping status callout for %s/%s",
     async (state, trigger, submit, message) => {
+      const inline = path === applicationPath && trigger === "验证并启用";
       const view = mountOnboarding({
         stage: state === "initial" ? 1 : 4,
         pendingKey: state === "pending",
-        path,
+        path: inline ? providerPath : path,
       });
       const user = userEvent.setup();
-      await user.click(await screen.findByRole("button", { name: trigger }));
-      const dialog = await screen.findByRole("dialog");
+      if (!inline)
+        await user.click(await screen.findByRole("button", { name: trigger }));
+      const dialog = await screen.findByRole(inline ? "form" : "dialog");
       if (trigger === "验证并启用")
         await user.type(
           within(dialog).getByLabelText("支付宝公钥"),
@@ -321,7 +347,11 @@ describe.each([
         );
       else if (state === "pending")
         await user.click(within(dialog).getByRole("checkbox"));
-      await user.click(within(dialog).getByRole("button", { name: submit }));
+      await user.click(
+        within(dialog).getByRole("button", {
+          name: inline ? "验证并启用后继续" : submit,
+        }),
+      );
       const feedback = await screen.findByText(message);
       const status = feedback.closest('[role="status"]');
       expect(status).toHaveAttribute("data-slot", "alert");

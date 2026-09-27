@@ -59,9 +59,15 @@ describe("onboarding workspace and credential handoff", () => {
                   : "下一步",
               });
       expect(next.closest("[data-onboarding-next]")).not.toBeNull();
+      expect(
+        screen.queryByRole("link", { name: "稍后配置" }),
+      ).not.toBeInTheDocument();
       expect(footer).toContainElement(
-        screen.getByRole("link", { name: "稍后配置" }),
+        screen.getByRole("link", { name: "切换到常规设置" }),
       );
+      expect(
+        within(workspace).getByRole("tab", { name: /可选\s*通知与备份/ }),
+      ).toBeVisible();
       if (["application", "provider", "collection", "api"].includes(step.id)) {
         expect(
           workspace.querySelector("[data-onboarding-main]"),

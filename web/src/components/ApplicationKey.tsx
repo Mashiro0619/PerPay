@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ChevronDown, KeyRound, RefreshCw } from "lucide-react";
 import { ApiError, api, result, type RuntimeSettings } from "@/api/client";
@@ -7,8 +7,10 @@ import type {
   ApplicationKeyChangeActionRequest,
   RegenerateProviderApplicationKeyRequest,
 } from "@/api/generated";
-import { useDraftGuard } from "@/drafts";
+import { useDirtyDraft, useDraftGuard, useOperationNavigation } from "@/drafts";
+import { OperationNavigationDialog } from "@/components/operation-navigation-dialog";
 import {
+  alipayApplicationUrl,
   applicationKeyState,
   canRegenerateApplicationKey,
 } from "@/lib/application-key";
@@ -46,6 +48,17 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 
 type ChangeMode = "regenerate" | "activate" | "discard";
@@ -54,6 +67,19 @@ type ChangeCommand =
   | { mode: "activate"; body: ActivateProviderApplicationKeyRequest }
   | { mode: "discard"; body: ApplicationKeyChangeActionRequest };
 type Saved = (settings: RuntimeSettings, message?: string) => void;
+type ChangePresentation =
+  | {
+      kind: "dialog";
+      onClose: () => void;
+      finalFocus: () => HTMLElement | null;
+    }
+  | {
+      kind: "guided";
+      renderActions: (actions: ReactNode) => ReactNode;
+      onReload: () => void;
+      onLockChange: (locked: boolean) => void;
+      onContinue: () => void;
+    };
 
 export function ApplicationKey({
   settings,
@@ -128,20 +154,26 @@ export function ApplicationKey({
               当前仍使用原密钥。请将这把新公钥上传到支付宝应用{" "}
               <span className="break-all">{pending.app_id}</span>（
               {pending.environment === "PRODUCTION" ? "生产环境" : "沙箱环境"}
-              ），然后复制上传后显示的支付宝公钥，填回 PerPay 验证并启用。
+              ）。
+              {guided
+                ? "上传后点击下一步，填写支付宝公钥并验证启用。"
+                : "然后复制上传后显示的支付宝公钥，填回 PerPay 验证并启用。"}
             </p>
             <div className="flex flex-wrap items-center gap-2">
-              <Button
-                data-application-key-action
-                onClick={(event) => open("activate", event.currentTarget)}
-              >
-                验证并启用
-              </Button>
+              {!guided && (
+                <Button
+                  data-application-key-action
+                  onClick={(event) => open("activate", event.currentTarget)}
+                >
+                  验证并启用
+                </Button>
+              )}
               <a
+                data-application-key-action={guided ? "" : undefined}
                 className={buttonVariants({ variant: "outline" })}
-                href="https://open.alipay.com/develop/manage"
+                href={alipayApplicationUrl(pending.app_id)}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
               >
                 打开支付宝应用管理
               </a>
@@ -232,43 +264,92 @@ export function ApplicationKey({
         <SuccessMessage message={success} multiline />
       </CardContent>
       {dialog && (
-        <ApplicationKeyChangeDialog
+        <ApplicationKeyChange
           mode={dialog}
           settings={settings}
           onSaved={saved}
-          onClose={() => setDialog(null)}
-          finalFocus={() =>
-            dialogOrigin.current?.isConnected
-              ? dialogOrigin.current
-              : document.querySelector<HTMLElement>(
-                  "[data-application-key-action]",
-                )
-          }
+          presentation={{
+            kind: "dialog",
+            onClose: () => setDialog(null),
+            finalFocus: () =>
+              dialogOrigin.current?.isConnected
+                ? dialogOrigin.current
+                : document.querySelector<HTMLElement>(
+                    "[data-application-key-action]",
+                  ),
+          }}
         />
       )}
     </Card>
   );
 }
 
-function ApplicationKeyChangeDialog({
+export function ApplicationKeyActivation({
+  settings,
+  onSaved,
+  renderActions,
+  onReload,
+  onLockChange,
+  onContinue,
+}: {
+  settings: RuntimeSettings;
+  onSaved: Saved;
+  renderActions: (actions: ReactNode) => ReactNode;
+  onReload: () => void;
+  onLockChange: (locked: boolean) => void;
+  onContinue: () => void;
+}) {
+  return (
+    <ApplicationKeyChange
+      mode="activate"
+      settings={settings}
+      onSaved={onSaved}
+      presentation={{
+        kind: "guided",
+        renderActions,
+        onReload,
+        onLockChange,
+        onContinue,
+      }}
+    />
+  );
+}
+
+function ApplicationKeyChange({
   mode,
   settings,
   onSaved,
-  onClose,
-  finalFocus,
+  presentation,
 }: {
   mode: ChangeMode;
   settings: RuntimeSettings;
   onSaved: Saved;
-  onClose: () => void;
-  finalFocus: () => HTMLElement | null;
+  presentation: ChangePresentation;
 }) {
+  const guided = presentation.kind === "guided";
+  const formId = useId();
+  const submitRef = useRef<HTMLButtonElement>(null);
+  const refreshRef = useRef<HTMLButtonElement>(null);
+  const headingRef = useRef<HTMLDivElement>(null);
+  const operationFocus = () =>
+    submitRef.current && !submitRef.current.disabled
+      ? submitRef.current
+      : refreshRef.current && !refreshRef.current.disabled
+        ? refreshRef.current
+        : headingRef.current;
+  const completed = useRef(false);
+  const [confirmRefresh, setConfirmRefresh] = useState(false);
   // Keep the operation identity and revision fixed while a request may be unresolved.
   const [initial] = useState(() => ({
     revision: settings.revision,
     changeId:
       settings.pending_application_key?.change_id ?? crypto.randomUUID(),
     fingerprint: settings.application_key_fingerprint!,
+    appId:
+      settings.pending_application_key?.app_id ?? settings.provider?.app_id,
+    environment:
+      settings.pending_application_key?.environment ??
+      settings.provider?.environment,
   }));
   const [platformKey, setPlatformKey] = useState("");
   const [platformError, setPlatformError] = useState<string>();
@@ -313,15 +394,38 @@ function ApplicationKeyChangeDialog({
       error.status === 422 &&
       error.code === "provider_application_key_verification_failed",
     onSuccess: (value) => {
-      onClose();
+      completed.current = true;
+      clearDraft();
+      setPlatformKey("");
+      if (presentation.kind === "dialog") presentation.onClose();
       onSaved(value.settings, value.message);
-      requestAnimationFrame(() =>
-        document
-          .querySelector<HTMLElement>("[data-application-key-action]")
-          ?.focus(),
-      );
+      if (presentation.kind === "guided" && !navigation.blocked)
+        presentation.onContinue();
+      if (presentation.kind === "dialog")
+        requestAnimationFrame(() =>
+          document
+            .querySelector<HTMLElement>("[data-application-key-action]")
+            ?.focus(),
+        );
     },
   });
+  const clearDraft = useDirtyDraft(
+    guided && platformKey !== "" && !completed.current,
+  );
+  const operationLocked = operation.isPending || Boolean(operation.recovery);
+  const onLockChange =
+    presentation.kind === "guided" ? presentation.onLockChange : undefined;
+  useEffect(() => {
+    onLockChange?.(operationLocked);
+  }, [onLockChange, operationLocked]);
+  useEffect(() => () => onLockChange?.(false), [onLockChange]);
+  const navigation = useOperationNavigation(
+    guided && operationLocked,
+    () =>
+      guided &&
+      !completed.current &&
+      (operation.isBusy() || Boolean(operation.recovery)),
+  );
   const fieldError =
     platformError ??
     (operation.error instanceof ApiError
@@ -382,16 +486,239 @@ function ApplicationKeyChangeDialog({
         body: { revision: initial.revision, change_id: initial.changeId },
       });
   }
+  const fields = mode !== "regenerate" && (
+    <FieldGroup>
+      {mode === "activate" && (
+        <Field data-invalid={Boolean(fieldError)} data-disabled={locked}>
+          <FieldLabel htmlFor="activation-platform-key">支付宝公钥</FieldLabel>
+          <Textarea
+            id="activation-platform-key"
+            name="platform_public_key"
+            ref={platformField}
+            rows={4}
+            value={platformKey}
+            onChange={(event) => {
+              setPlatformKey(event.target.value);
+              setPlatformError(undefined);
+              operation.reset();
+            }}
+            disabled={locked}
+            required
+            maxLength={16384}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="粘贴本次上传后获取的支付宝公钥"
+            aria-invalid={Boolean(fieldError)}
+            aria-describedby={
+              fieldError
+                ? "activation-platform-hint activation-platform-error"
+                : "activation-platform-hint"
+            }
+          />
+          <FieldDescription id="activation-platform-hint">
+            必填。请从同一支付宝应用重新复制，不会自动沿用旧值。
+          </FieldDescription>
+          {fieldError && (
+            <FieldError id="activation-platform-error">{fieldError}</FieldError>
+          )}
+        </Field>
+      )}
+      {mode === "discard" && (
+        <Field orientation="horizontal" data-disabled={locked}>
+          <Checkbox
+            id="application-key-confirmed"
+            checked={confirmed}
+            onCheckedChange={setConfirmed}
+            disabled={locked}
+          />
+          <FieldLabel htmlFor="application-key-confirmed" className="min-h-11">
+            我尚未上传新公钥，或已恢复原配置并同步支付宝公钥
+          </FieldLabel>
+        </Field>
+      )}
+    </FieldGroup>
+  );
+  const feedback = (
+    <>
+      <ErrorNotice error={operation.error} />
+      {operation.recovery && (
+        <p className="text-sm text-muted-foreground">
+          {guided
+            ? "上次启用结果尚未确认。重试会保留同一操作和原公钥；也可刷新配置核对启用状态。"
+            : "上次操作结果尚未确认。重试会使用同一个操作，不会再生成另一把密钥；也可关闭后刷新状态。"}
+        </p>
+      )}
+      {operation.conflict && (
+        <p className="text-sm text-muted-foreground">
+          {guided
+            ? "配置已变化，请刷新配置，核对当前公钥和待启用状态。"
+            : "配置已变化，请关闭弹窗后刷新，核对当前公钥和待启用状态。"}
+        </p>
+      )}
+    </>
+  );
+  const submitButton = (
+    <Button
+      ref={submitRef}
+      type="submit"
+      form={formId}
+      variant={mode === "discard" ? "destructive" : "default"}
+      disabled={
+        operation.isPending ||
+        operation.conflict ||
+        (mode === "discard" && !confirmed)
+      }
+    >
+      {operation.isPending && (
+        <Spinner aria-hidden="true" data-icon="inline-start" />
+      )}
+      {operation.recovery
+        ? "重试同一操作"
+        : mode === "regenerate"
+          ? "生成新公钥"
+          : mode === "activate"
+            ? guided
+              ? "验证并启用后继续"
+              : "验证并启用"
+            : "确认放弃"}
+    </Button>
+  );
+  if (presentation.kind === "guided")
+    return (
+      <>
+        <form
+          id={formId}
+          aria-label="验证并启用新应用公钥"
+          noValidate
+          className="flex min-w-0 flex-col gap-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            submit();
+          }}
+        >
+          <Card data-application-key-activation>
+            <CardHeader>
+              <CardTitle
+                ref={headingRef}
+                role="heading"
+                aria-level={3}
+                tabIndex={-1}
+                className="outline-none"
+              >
+                验证并启用新应用公钥
+              </CardTitle>
+              <CardDescription>{description}</CardDescription>
+            </CardHeader>
+            <CardContent className="flex min-w-0 flex-col gap-4">
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="activation-app-id">
+                    应用 ID（App ID）
+                  </FieldLabel>
+                  <Input
+                    id="activation-app-id"
+                    value={initial.appId ?? ""}
+                    readOnly
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="activation-environment">
+                    支付宝环境
+                  </FieldLabel>
+                  <Input
+                    id="activation-environment"
+                    value={
+                      initial.environment === "PRODUCTION"
+                        ? "生产环境"
+                        : "沙箱环境"
+                    }
+                    readOnly
+                  />
+                </Field>
+                {fields}
+              </FieldGroup>
+              <p className="text-sm text-muted-foreground">
+                本次只更新上述应用的密钥，保留当前账本采集参数。
+              </p>
+              {feedback}
+            </CardContent>
+          </Card>
+          {presentation.renderActions(
+            <div className="flex flex-wrap items-center gap-2">
+              {(operation.conflict || operation.recovery) && (
+                <Button
+                  ref={refreshRef}
+                  type="button"
+                  variant="outline"
+                  disabled={operation.isPending}
+                  onClick={() => {
+                    if (operation.isBusy()) return;
+                    if (operation.recovery) setConfirmRefresh(true);
+                    else presentation.onReload();
+                  }}
+                >
+                  刷新配置
+                </Button>
+              )}
+              {submitButton}
+            </div>,
+          )}
+        </form>
+        <OperationNavigationDialog
+          navigation={navigation}
+          operationId={initial.changeId}
+          pending={operation.isPending}
+          finalFocus={operationFocus}
+          onLeave={() => {
+            completed.current = true;
+            clearDraft();
+            operation.stopWaiting();
+          }}
+          description={
+            operation.isPending
+              ? "正在等待启用结果。离开只会停止本页等待，不会撤销已完成的启用。稍后请返回“支付宝接入”刷新核对，不要直接再次换钥。"
+              : "本次启用可能已生效。离开会关闭原请求的重试入口；稍后请返回“支付宝接入”刷新核对。"
+          }
+        />
+        <AlertDialog open={confirmRefresh} onOpenChange={setConfirmRefresh}>
+          <AlertDialogContent
+            finalFocus={operationFocus}
+            className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto"
+          >
+            <AlertDialogHeader>
+              <AlertDialogTitle>刷新并核对启用结果？</AlertDialogTitle>
+              <AlertDialogDescription>
+                上次启用可能已完成。刷新会重新读取配置并清除本页填写的支付宝公钥，不会再次发起启用。若尚未启用，需要重新填写公钥。
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>
+                {operation.conflict ? "暂不刷新" : "保留并重试"}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  clearDraft();
+                  setConfirmRefresh(false);
+                  presentation.onReload();
+                }}
+              >
+                刷新配置
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </>
+    );
   return (
     <Dialog
       open
       onOpenChange={(open, event) => {
         if (!open && operation.isPending) event.cancel();
-        else if (!open) onClose();
+        else if (!open) presentation.onClose();
       }}
     >
       <DialogContent
-        finalFocus={finalFocus}
+        finalFocus={presentation.finalFocus}
         showCloseButton={!operation.isPending}
         className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto sm:max-w-lg"
       >
@@ -400,6 +727,7 @@ function ApplicationKeyChangeDialog({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <form
+          id={formId}
           noValidate
           className="flex min-w-0 flex-col gap-4"
           onSubmit={(event) => {
@@ -407,118 +735,24 @@ function ApplicationKeyChangeDialog({
             submit();
           }}
         >
-          {settings.provider && (
+          {initial.appId && (
             <p className="text-sm text-muted-foreground">
-              支付宝应用：
-              <span className="break-all">{settings.provider.app_id}</span>（
-              {settings.provider.environment === "PRODUCTION"
-                ? "生产环境"
-                : "沙箱环境"}
-              ）
+              支付宝应用：<span className="break-all">{initial.appId}</span>（
+              {initial.environment === "PRODUCTION" ? "生产环境" : "沙箱环境"}）
             </p>
           )}
-          {mode !== "regenerate" && (
-            <FieldGroup>
-              {mode === "activate" && (
-                <Field
-                  data-invalid={Boolean(fieldError)}
-                  data-disabled={locked}
-                >
-                  <FieldLabel htmlFor="activation-platform-key">
-                    支付宝公钥
-                  </FieldLabel>
-                  <Textarea
-                    id="activation-platform-key"
-                    ref={platformField}
-                    rows={4}
-                    value={platformKey}
-                    onChange={(event) => {
-                      setPlatformKey(event.target.value);
-                      setPlatformError(undefined);
-                      operation.reset();
-                    }}
-                    disabled={locked}
-                    required
-                    maxLength={16384}
-                    autoComplete="off"
-                    spellCheck={false}
-                    placeholder="粘贴本次上传后获取的支付宝公钥"
-                    aria-invalid={Boolean(fieldError)}
-                    aria-describedby={
-                      fieldError
-                        ? "activation-platform-hint activation-platform-error"
-                        : "activation-platform-hint"
-                    }
-                  />
-                  <FieldDescription id="activation-platform-hint">
-                    必填。请从同一支付宝应用重新复制，不是 PerPay
-                    生成的应用公钥；不会自动沿用旧值。
-                  </FieldDescription>
-                  {fieldError && (
-                    <FieldError id="activation-platform-error">
-                      {fieldError}
-                    </FieldError>
-                  )}
-                </Field>
-              )}
-              {mode === "discard" && (
-                <Field orientation="horizontal" data-disabled={locked}>
-                  <Checkbox
-                    id="application-key-confirmed"
-                    checked={confirmed}
-                    onCheckedChange={setConfirmed}
-                    disabled={locked}
-                  />
-                  <FieldLabel
-                    htmlFor="application-key-confirmed"
-                    className="min-h-11"
-                  >
-                    我尚未上传新公钥，或已恢复原配置并同步支付宝公钥
-                  </FieldLabel>
-                </Field>
-              )}
-            </FieldGroup>
-          )}
-          <ErrorNotice error={operation.error} />
-          {operation.recovery && (
-            <p className="text-sm text-muted-foreground">
-              上次操作结果尚未确认。重试会使用同一个操作，不会再生成另一把密钥；也可关闭后刷新状态。
-            </p>
-          )}
-          {operation.conflict && (
-            <p className="text-sm text-muted-foreground">
-              配置已变化，请关闭弹窗后刷新，核对当前公钥和待启用状态。
-            </p>
-          )}
+          {fields}
+          {feedback}
           <DialogFooter>
             <Button
               type="button"
               variant="outline"
               disabled={operation.isPending}
-              onClick={onClose}
+              onClick={presentation.onClose}
             >
               取消
             </Button>
-            <Button
-              type="submit"
-              variant={mode === "discard" ? "destructive" : "default"}
-              disabled={
-                operation.isPending ||
-                operation.conflict ||
-                (mode === "discard" && !confirmed)
-              }
-            >
-              {operation.isPending && (
-                <Spinner aria-hidden="true" data-icon="inline-start" />
-              )}
-              {operation.recovery
-                ? "重试同一操作"
-                : mode === "regenerate"
-                  ? "生成新公钥"
-                  : mode === "activate"
-                    ? "验证并启用"
-                    : "确认放弃"}
-            </Button>
+            {submitButton}
           </DialogFooter>
         </form>
       </DialogContent>

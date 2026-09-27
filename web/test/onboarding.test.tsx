@@ -121,7 +121,11 @@ describe("first collection onboarding", () => {
     ).not.toBeInTheDocument();
     await userEvent.setup().click(help);
     expect(screen.getByText(/支付宝搜索“经营码”申请/)).toBeVisible();
-    expect(screen.getByText(/无需单独申请账务明细查询权限/)).toBeVisible();
+    expect(screen.getByText("使用收款账户创建“网页应用”。")).toBeVisible();
+    expect(screen.getByText("账号默认拥有账务明细查询权限。")).toBeVisible();
+    expect(
+      screen.queryByText(/网页／移动应用|无需单独申请账务明细查询权限/),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText(/申请资格以支付宝为准/)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "图文教程" })).toHaveAttribute(
       "href",
@@ -129,6 +133,25 @@ describe("first collection onboarding", () => {
     );
     expect(view.writes()).toHaveLength(0);
   });
+  it.each([false, true])(
+    "keeps public-key help concise with pending key %s",
+    async (pendingKey) => {
+      const view = mountOnboarding({
+        stage: 4,
+        pendingKey,
+        path: onboardingPath("application"),
+      });
+      expect(
+        await screen.findByText(
+          pendingKey
+            ? "支付宝公钥：上传新应用公钥后，从支付宝重新复制，下一步填入 PerPay。"
+            : "支付宝公钥：上传应用公钥后，从支付宝复制，下一步填入 PerPay。",
+        ),
+      ).toBeVisible();
+      expect(screen.queryByText(/它不是应用公钥/)).not.toBeInTheDocument();
+      expect(view.writes()).toHaveLength(0);
+    },
+  );
   it("shows provider credentials and collection parameters together", async () => {
     const view = mountOnboarding({ stage: 1 });
     expect(await screen.findByLabelText("应用 ID（App ID）")).toBeVisible();
@@ -405,7 +428,7 @@ describe("first collection onboarding", () => {
     await pathIs(view, "check");
     expect(
       await screen.findByText(
-        "业务通知未启用，业务系统后端需主动向 PerPay 查询订单状态。",
+        "业务通知未启用（可选），不影响收款；业务系统后端需主动向 PerPay 查询订单状态。",
       ),
     ).toBeVisible();
     expect(view.writes()).toHaveLength(0);

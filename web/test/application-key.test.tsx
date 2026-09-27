@@ -141,7 +141,12 @@ describe("application public key generation and replacement", () => {
         name: "生成新公钥",
       }),
     );
-    const primary = await screen.findByRole("button", { name: "验证并启用" });
+    const primary = await screen.findByRole("link", {
+      name: "打开支付宝应用管理",
+    });
+    expect(
+      screen.queryByRole("button", { name: "验证并启用" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByText("synthetic-pending-application-public-key"),
     ).toBeVisible();
@@ -175,7 +180,10 @@ describe("application public key generation and replacement", () => {
   });
 
   it("requires the newly retrieved Alipay public key without a redundant upload checkbox", async () => {
-    const view = mountOnboarding({ pendingKey: true, path: applicationPath });
+    const view = mountOnboarding({
+      pendingKey: true,
+      path: "/settings/provider",
+    });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "验证并启用" }));
     const dialog = await screen.findByRole("dialog", {
@@ -204,9 +212,12 @@ describe("application public key generation and replacement", () => {
     expect(
       screen.queryByRole("button", { name: "验证并启用" }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByText("synthetic-pending-application-public-key"),
-    ).toBeVisible();
+    expect(queryClient.getQueryData(["settings"])).toMatchObject({
+      data: {
+        application_public_key: "synthetic-pending-application-public-key",
+        pending_application_key: null,
+      },
+    });
     const cached = JSON.stringify(queryClient.getQueryData(["settings"]));
     expect(cached).not.toContain("updated-alipay-public-key");
     expect(JSON.stringify(localStorage)).not.toContain(
@@ -217,19 +228,23 @@ describe("application public key generation and replacement", () => {
     );
   });
 
-  it.each([applicationPath, "/settings/provider"])(
+  it.each([onboardingPath("provider"), "/settings/provider"])(
     "rejects empty and whitespace-only activation keys with an accessible inline error at %s",
     async (path) => {
       const view = mountOnboarding({ pendingKey: true, path });
       const user = userEvent.setup();
-      await user.click(
-        await screen.findByRole("button", { name: "验证并启用" }),
-      );
-      const dialog = await screen.findByRole("dialog", {
+      const guided = path === onboardingPath("provider");
+      if (!guided)
+        await user.click(
+          await screen.findByRole("button", { name: "验证并启用" }),
+        );
+      const dialog = await screen.findByRole(guided ? "form" : "dialog", {
         name: "验证并启用新应用公钥",
       });
       const input = within(dialog).getByLabelText("支付宝公钥");
-      const submit = within(dialog).getByRole("button", { name: "验证并启用" });
+      const submit = within(dialog).getByRole("button", {
+        name: guided ? "验证并启用后继续" : "验证并启用",
+      });
       expect(input).toBeRequired();
       expect(input).toHaveValue("");
       expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
@@ -267,7 +282,7 @@ describe("application public key generation and replacement", () => {
     let attempts = 0;
     const view = mountOnboarding({
       pendingKey: true,
-      path: applicationPath,
+      path: "/settings/provider",
       handle: (request) =>
         request.url.endsWith("/actions/activate") && ++attempts === 1
           ? apiError(
@@ -307,7 +322,7 @@ describe("application public key generation and replacement", () => {
   it("focuses invalid Alipay public-key input without locking corrections", async () => {
     const view = mountOnboarding({
       pendingKey: true,
-      path: applicationPath,
+      path: "/settings/provider",
       handle: (request) =>
         request.url.endsWith("/actions/activate")
           ? json(
@@ -369,7 +384,7 @@ describe("application public key generation and replacement", () => {
     let attempts = 0;
     const view = mountOnboarding({
       pendingKey: true,
-      path: applicationPath,
+      path: "/settings/provider",
       handle: (request) =>
         request.url.endsWith("/actions/activate") && ++attempts === 1
           ? Promise.reject(new Error("synthetic lost response"))

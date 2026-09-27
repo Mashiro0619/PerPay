@@ -17,16 +17,22 @@ import {
   type RuntimeSettings,
 } from "@/api/client";
 import { ApplicationKey, SettingsEditor } from "@/components/SettingsForms";
+import { ApplicationKeyActivation } from "@/components/ApplicationKey";
+import { SuccessMessage, useFeedback } from "@/components/Feedback";
 import { useDraftGuard } from "@/drafts";
 import {
   nextRequiredStep,
   onboardingPath,
   onboardingSteps,
   onboardingStepDescription,
+  onboardingRuntimeWarnings,
   resolveOnboardingStep,
   type OnboardingStep,
 } from "@/lib/onboarding";
-import { applicationKeyState } from "@/lib/application-key";
+import {
+  alipayApplicationUrl,
+  applicationKeyState,
+} from "@/lib/application-key";
 import { useVisibleCheck } from "@/lib/use-visible-check";
 import { Link, useNavigate } from "@/navigation";
 import { CopyValue } from "@/components/copy-value";
@@ -61,6 +67,7 @@ import { RotateKeyDialog, SecretDialog } from "./SecuritySettings";
 export default function Onboarding() {
   const [editorVersion, setEditorVersion] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [activationLocked, setActivationLocked] = useState(false);
   const { requestDiscard } = useDraftGuard();
   const settings = useQuery({
     queryKey: ["settings"],
@@ -110,7 +117,7 @@ export default function Onboarding() {
           </a>
           <Button
             variant="outline"
-            disabled={settings.isFetching}
+            disabled={settings.isFetching || activationLocked}
             onClick={reload}
           >
             {settings.isFetching ? (
@@ -136,6 +143,7 @@ export default function Onboarding() {
               settings={data}
               instanceId={instance.data?.data.instance_id ?? null}
               onReload={reload}
+              onActivationLockChange={setActivationLocked}
             />
           </div>
         )}
@@ -147,14 +155,17 @@ function OnboardingFlow({
   settings,
   instanceId,
   onReload,
+  onActivationLockChange,
 }: {
   settings: RuntimeSettings;
   instanceId: string | null;
   onReload: () => void;
+  onActivationLockChange: (locked: boolean) => void;
 }) {
   const { step: requested } = useParams();
   const step = resolveOnboardingStep(settings, requested);
   const pendingApplicationKey = settings.pending_application_key;
+  const [success, setSuccess] = useFeedback();
   const index = onboardingSteps.findIndex((item) => item.id === step);
   const firstMissing = onboardingSteps.findIndex(
     (item) => item.id === nextRequiredStep(settings),
@@ -169,7 +180,12 @@ function OnboardingFlow({
     heading.current?.focus({ preventScroll: true });
   }, [requested, step]);
   const deferredState = { deferOnboardingFor: instanceId };
-  function saved(data: RuntimeSettings, next?: OnboardingStep) {
+  function saved(
+    data: RuntimeSettings,
+    next?: OnboardingStep,
+    message?: string,
+  ) {
+    if (message) setSuccess(message);
     queryClient.setQueryData(["settings"], { data });
     void refreshOperationalData();
     if (next) void navigate(onboardingPath(next));
@@ -177,12 +193,16 @@ function OnboardingFlow({
   if (requested !== step) return <Navigate to={onboardingPath(step)} replace />;
   const completed = [
     settings.completion.application_key,
-    settings.completion.provider,
+    settings.completion.provider && !pendingApplicationKey,
     settings.completion.collection,
     settings.completion.api,
   ];
   const renderActions = (actions: ReactNode) => (
-    <OnboardingFooter index={index} instanceId={instanceId}>
+    <OnboardingFooter
+      index={index}
+      instanceId={instanceId}
+      complete={settings.completion.complete}
+    >
       {actions}
     </OnboardingFooter>
   );
@@ -216,13 +236,17 @@ function OnboardingFlow({
                 })
               }
             >
-              <span className="inline-flex size-5 shrink-0 items-center justify-center">
-                {completed[position] ? (
-                  <Check aria-label="已配置" />
-                ) : (
-                  position + 1
-                )}
-              </span>
+              {item.id === "optional" ? (
+                <Badge variant="outline">可选</Badge>
+              ) : (
+                <span className="inline-flex size-5 shrink-0 items-center justify-center">
+                  {completed[position] ? (
+                    <Check aria-label="已配置" />
+                  ) : (
+                    position + 1
+                  )}
+                </span>
+              )}
               {item.title}
             </TabsTrigger>
           ))}
@@ -247,6 +271,7 @@ function OnboardingFlow({
               第 {index + 1} 步，共 {onboardingSteps.length} 步
             </span>
           </header>
+          <SuccessMessage message={success} multiline />
           {step === "application" && (
             <OnboardingStepLayout
               help={
@@ -258,8 +283,8 @@ function OnboardingFlow({
                   </p>
                   <p>
                     {pendingApplicationKey
-                      ? "支付宝公钥：上传新应用公钥后，从支付宝重新复制，再填入“验证并启用”；它不是应用公钥。"
-                      : "支付宝公钥：从支付宝平台取回，下一步填入 PerPay；它不是应用公钥。"}
+                      ? "支付宝公钥：上传新应用公钥后，从支付宝重新复制，下一步填入 PerPay。"
+                      : "支付宝公钥：上传应用公钥后，从支付宝复制，下一步填入 PerPay。"}
                   </p>
                   <Collapsible>
                     <CollapsibleTrigger
@@ -270,9 +295,8 @@ function OnboardingFlow({
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                       <ul className="flex list-inside list-disc flex-col gap-2 pt-3">
-                        <li>
-                          使用收款账户创建网页／移动应用，无需单独申请账务明细查询权限。
-                        </li>
+                        <li>使用收款账户创建“网页应用”。</li>
+                        <li>账号默认拥有账务明细查询权限。</li>
                         <li>支付宝搜索“经营码”申请，使用同一账户收款。</li>
                       </ul>
                     </CollapsibleContent>
@@ -318,7 +342,7 @@ function OnboardingFlow({
                 <OnboardingHelp
                   title={
                     pendingApplicationKey
-                      ? "上传待启用公钥"
+                      ? "填回支付宝公钥"
                       : "在支付宝完成的操作"
                   }
                 >
@@ -326,9 +350,12 @@ function OnboardingFlow({
                     在{" "}
                     <a
                       className="underline underline-offset-4"
-                      href="https://open.alipay.com/develop/manage"
+                      href={alipayApplicationUrl(
+                        pendingApplicationKey?.app_id ??
+                          settings.provider?.app_id,
+                      )}
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener noreferrer"
                     >
                       支付宝应用管理
                     </a>{" "}
@@ -350,8 +377,8 @@ function OnboardingFlow({
                         ）。 PerPay 当前仍使用原密钥。
                       </p>
                       <p>
-                        上传后重新复制支付宝页面显示的支付宝公钥，返回“应用公钥”填入“验证并启用”弹窗。
-                        本页保存不会启用新密钥。
+                        上传完成后，将支付宝页面显示的支付宝公钥填入本页表单。
+                        点击“验证并启用后继续”，通过验证后即可进入下一步。
                       </p>
                     </>
                   ) : (
@@ -387,29 +414,32 @@ function OnboardingFlow({
                       </CollapsibleContent>
                     </Collapsible>
                   )}
-                  {pendingApplicationKey && (
-                    <Link
-                      className={buttonVariants({
-                        variant: "outline",
-                        size: "sm",
-                      })}
-                      to={onboardingPath("application")}
-                    >
-                      返回验证并启用
-                    </Link>
-                  )}
                 </OnboardingHelp>
               }
             >
-              <SettingsEditor
-                key="provider"
-                section="provider"
-                settings={settings}
-                guided
-                submitLabel="保存并继续"
-                renderGuidedActions={renderActions}
-                onSaved={(data) => saved(data, "collection")}
-              />
+              {pendingApplicationKey ? (
+                <ApplicationKeyActivation
+                  key={pendingApplicationKey.change_id}
+                  settings={settings}
+                  renderActions={renderActions}
+                  onReload={onReload}
+                  onLockChange={onActivationLockChange}
+                  onSaved={(data, message) => saved(data, undefined, message)}
+                  onContinue={() => {
+                    void navigate(onboardingPath("collection"));
+                  }}
+                />
+              ) : (
+                <SettingsEditor
+                  key="provider"
+                  section="provider"
+                  settings={settings}
+                  guided
+                  submitLabel="保存并继续"
+                  renderGuidedActions={renderActions}
+                  onSaved={(data) => saved(data, "collection")}
+                />
+              )}
             </OnboardingStepLayout>
           )}
           {step === "collection" && (
@@ -551,10 +581,12 @@ function OnboardingHelp({
 function OnboardingFooter({
   index,
   instanceId,
+  complete,
   children,
 }: {
   index: number;
   instanceId: string | null;
+  complete: boolean;
   children: ReactNode;
 }) {
   const deferredState = { deferOnboardingFor: instanceId };
@@ -582,13 +614,15 @@ function OnboardingFooter({
       </div>
       {instanceId && (
         <div className="flex flex-wrap items-center gap-2">
-          <Link
-            to="/"
-            state={deferredState}
-            className={buttonVariants({ variant: "ghost", size: "sm" })}
-          >
-            稍后配置
-          </Link>
+          {!complete && (
+            <Link
+              to="/"
+              state={deferredState}
+              className={buttonVariants({ variant: "ghost", size: "sm" })}
+            >
+              稍后配置
+            </Link>
+          )}
           <Link
             to="/settings"
             state={deferredState}
@@ -853,7 +887,7 @@ export function ReadinessCheck({
             检查支付宝接入
           </Link>
         ) : null,
-      error: fresh && matches ? status?.ledger.last_error_code : null,
+      error: fresh && matches && !ready ? status?.ledger.last_error_code : null,
     },
     {
       title: "自动确认",
@@ -862,9 +896,34 @@ export function ReadinessCheck({
         "等待自动确认就绪",
       ),
       action: null,
-      error: fresh && matches ? status?.reconciliation.last_error_code : null,
+      error:
+        fresh && matches && !ready
+          ? status?.reconciliation.last_error_code
+          : null,
     },
   ];
+  const runtimeWarnings =
+    ready && status ? onboardingRuntimeWarnings(status) : [];
+  const workItems = ready ? status?.work_items : null;
+  const businessReminders = workItems
+    ? [
+        {
+          label: "账务异常",
+          count: workItems.financial_exceptions,
+          type: "FINANCIAL_EXCEPTION",
+        },
+        {
+          label: "账本冲突",
+          count: workItems.ledger_conflicts,
+          type: "LEDGER_CONFLICT",
+        },
+        {
+          label: "通知失败",
+          count: workItems.notification_failures,
+          type: "NOTIFICATION_FAILURE",
+        },
+      ].filter((item) => item.count > 0)
+    : [];
   const actions = (
     <div className="flex flex-wrap items-center gap-2">
       {ready && (
@@ -887,7 +946,7 @@ export function ReadinessCheck({
         )}
         刷新
       </Button>
-      {(!ready || status?.status === "degraded") && (
+      {!ready && (
         <Link className={buttonVariants({ variant: "ghost" })} to="/system">
           运行状态
         </Link>
@@ -915,25 +974,21 @@ export function ReadinessCheck({
         </Alert>
       )}
       {ready && (
-        <Alert>
+        <Alert role="status" data-onboarding-ready>
           <CircleCheck />
-          <AlertTitle>
-            {status?.status === "degraded"
-              ? "可以收款，仍有事项待处理。"
-              : "收款已就绪。"}
-          </AlertTitle>
+          <AlertTitle>收款配置已完成，可以收款。</AlertTitle>
         </Alert>
       )}
-      <ItemGroup className="grid gap-3 @3xl/onboarding:grid-cols-2">
+      <ItemGroup className="grid min-w-0 grid-cols-1 gap-3 @3xl/onboarding:grid-cols-2">
         {checks.map((check) => (
-          <Item key={check.title} variant="outline">
-            <ItemContent>
+          <Item key={check.title} variant="outline" className="min-w-0">
+            <ItemContent className="min-w-0">
               <ItemTitle>{check.title}</ItemTitle>
               {check.status !== "已通过" && (
                 <ItemDescription role="status">{check.status}</ItemDescription>
               )}
               {check.error && (
-                <p className="text-sm text-destructive">
+                <p className="break-words text-sm text-destructive">
                   最近错误：{check.error}
                 </p>
               )}
@@ -950,9 +1005,51 @@ export function ReadinessCheck({
           </Item>
         ))}
       </ItemGroup>
+      {businessReminders.length > 0 && workItems && (
+        <Alert role="status" data-onboarding-business-reminders>
+          <CircleAlert />
+          <AlertTitle>有 {workItems.total} 项业务待处理</AlertTitle>
+          <AlertDescription>
+            这些是业务记录提醒，不代表收款配置未完成。仅统计未忽略的待处理事项。
+          </AlertDescription>
+          <div className="col-start-2 flex min-w-0 flex-wrap gap-2 pt-2">
+            {businessReminders.map((item) => (
+              <Link
+                key={item.type}
+                className={buttonVariants({ variant: "outline", size: "sm" })}
+                to={"/work-items?type=" + item.type}
+              >
+                {item.label} {item.count} 项
+              </Link>
+            ))}
+          </div>
+        </Alert>
+      )}
+      {runtimeWarnings.length > 0 && (
+        <Alert role="status" data-onboarding-runtime-warnings>
+          <CircleAlert />
+          <AlertTitle>运行提醒（不是配置缺项）</AlertTitle>
+          <AlertDescription className="min-w-0">
+            <ul className="flex list-inside list-disc flex-col gap-1 break-words">
+              {runtimeWarnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          </AlertDescription>
+          <div className="col-start-2 flex pt-2">
+            <Link
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+              to="/system"
+            >
+              查看运行状态
+            </Link>
+          </div>
+        </Alert>
+      )}
       {!settings.notifications.enabled && (
         <p className="text-sm text-muted-foreground">
-          业务通知未启用，业务系统后端需主动向 PerPay 查询订单状态。
+          业务通知未启用（可选），不影响收款；业务系统后端需主动向 PerPay
+          查询订单状态。
         </p>
       )}
       {renderActions ? renderActions(actions) : actions}
