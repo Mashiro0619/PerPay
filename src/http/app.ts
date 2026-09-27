@@ -698,6 +698,12 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     },
   );
 
+  // Resolve the existing capability only on explicit admin navigation, never in list/detail JSON.
+  app.get("/api/admin/v1/orders/:orderId/checkout", adminSession, (context) => {
+    const token = dependencies.orders.adminCheckoutToken(requireOrderId(context.req.param("orderId")));
+    return context.redirect(`/checkout/${encodeURIComponent(token)}`, 302);
+  });
+
   app.get("/api/admin/v1/orders/:orderId", adminSession, (context) => {
     const order = dependencies.orders.adminGet(requireOrderId(context.req.param("orderId")));
     return context.json({ data: { ...serializeAdminOrderDetail(order, dependencies.database, dependencies.reconciliation), refund_mark: adminRefundMarks(dependencies.database, [order.orderId]).get(order.orderId)!, refund_mark_history: adminRefundMarkHistory(dependencies.database, order.orderId) } });

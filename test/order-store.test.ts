@@ -146,6 +146,8 @@ describe("OrderStore", () => {
             ["merchant-key-3", 2],
           ],
         );
+        assert.equal(store.adminCheckoutToken(first.aggregate.order.orderId), first.aggregate.checkoutToken);
+        assert.equal(store.adminCheckoutToken(rotated.aggregate.order.orderId), rotated.aggregate.checkoutToken);
         assert.equal(
           store.orderById(API_CLIENT_ID, first.aggregate.order.orderId)?.checkoutToken,
           first.aggregate.checkoutToken,

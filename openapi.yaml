@@ -1075,6 +1075,41 @@ paths:
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
         '404': { $ref: '#/components/responses/AdminOrderNotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
+  /api/admin/v1/orders/{orderId}/checkout:
+    get:
+      tags: [Admin Orders]
+      operationId: openAdministratorOrderCheckout
+      summary: Open an order's existing public checkout in the browser
+      description: |
+        Requires an active administrator session. Redirects to the same-origin public checkout
+        using the order's existing capability; no new order, token, or payment session is created.
+        Intended for a browser link, not a JSON fetch. List and detail JSON remain capability-free.
+        This lookup does not reopen closed or expired orders, extend validity, or change payment
+        state. The public checkout still enforces payment-entry readiness and the original terminal
+        observation window, and can return 404 after that window has elapsed.
+        The redirect response is not cacheable and does not send a referrer.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '302':
+          description: Same-origin navigation to the order's existing public checkout
+          headers:
+            Location:
+              required: true
+              description: Relative path to the existing capability-based checkout
+              schema:
+                type: string
+                pattern: '^/checkout/pct1_[A-Za-z0-9_-]{43}$'
+            Cache-Control:
+              schema: { type: string, enum: [no-store] }
+            Referrer-Policy:
+              schema: { type: string, enum: [no-referrer] }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '404': { $ref: '#/components/responses/AdminOrderNotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
   /api/admin/v1/orders/{orderId}/notifications/deliveries:
     get:
       tags: [Admin Orders, Notifications]

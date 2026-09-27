@@ -1747,6 +1747,23 @@ export type GetAdministratorOrderResponses = {
     200: AdminOrderDetailEnvelope;
 };
 export type GetAdministratorOrderResponse = GetAdministratorOrderResponses[keyof GetAdministratorOrderResponses];
+export type OpenAdministratorOrderCheckoutData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path: {
+        orderId: ResourceId;
+    };
+    query?: never;
+    url: '/api/admin/v1/orders/{orderId}/checkout';
+};
+export type OpenAdministratorOrderCheckoutErrors = {
+    401: ErrorEnvelope;
+    404: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type OpenAdministratorOrderCheckoutError = OpenAdministratorOrderCheckoutErrors[keyof OpenAdministratorOrderCheckoutErrors];
 export type ListAdministratorOrderWebhookDeliveriesData = {
     body?: never;
     headers?: {

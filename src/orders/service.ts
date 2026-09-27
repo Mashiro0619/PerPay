@@ -216,6 +216,12 @@ export class OrderService {
     };
   }
 
+  adminCheckoutToken(orderId: string): string {
+    const token = this.#store.adminCheckoutToken(orderId);
+    if (!token) throw orderNotFound();
+    return token;
+  }
+
   adminGet(orderId: string): AdminOrderDetailProjection {
     const order = this.#runStoreOperation(() => this.#store.adminOrderById(orderId));
     if (!order) throw orderNotFound();

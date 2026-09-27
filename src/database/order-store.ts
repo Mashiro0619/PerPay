@@ -714,6 +714,13 @@ export class OrderStore {
     });
   }
 
+  adminCheckoutToken(orderId: string): string | undefined {
+    return this.#database.read((connection) => {
+      const aggregate = readAggregateByAdminId(connection, orderId);
+      return aggregate ? withCheckoutToken(connection, aggregate).checkoutToken : undefined;
+    });
+  }
+
   adminOrderById(orderId: string): StoredAdminOrderDetail | undefined {
     return this.#database.write((connection) => {
       const now = this.#logicalNow(connection);

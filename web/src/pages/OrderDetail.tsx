@@ -4,6 +4,7 @@ import {
   Check,
   ChevronDown,
   Clock3,
+  ExternalLink,
   Plus,
   RefreshCw,
 } from "lucide-react";
@@ -162,7 +163,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
                 </Item>
               </ItemGroup>
             </CardContent>
-            <CardFooter>
+            <CardFooter className="flex-wrap justify-between gap-2">
               <CardDescription>
                 收银台
                 {order.checkout.status === "OPEN"
@@ -171,6 +172,20 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
                     ? "已过期"
                     : "已关闭"}
               </CardDescription>
+              <a
+                className={buttonVariants({ variant: "outline", size: "sm" })}
+                href={
+                  "/api/admin/v1/orders/" +
+                  encodeURIComponent(order.order_id) +
+                  "/checkout"
+                }
+                target="_blank"
+                rel="noopener noreferrer"
+                title="在新标签页打开收银台"
+              >
+                打开收银台
+                <ExternalLink data-icon="inline-end" />
+              </a>
             </CardFooter>
           </Card>
           <Card>
