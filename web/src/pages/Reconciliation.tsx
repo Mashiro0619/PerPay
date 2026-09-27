@@ -14,12 +14,12 @@ import { useCompactList } from "@/hooks/use-compact-list";
 import { BusinessTable } from "@/components/business-table";
 import { useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw, Search, Link2, EyeOff } from "lucide-react";
+import { RefreshCw, Link2, EyeOff } from "lucide-react";
 import { useSearchParams } from "react-router";
 import { Link, useNavigate } from "@/navigation";
 import { api, result } from "@/api/client";
 import { useCursor } from "@/lib/cursor";
-import { dateTime, money, resourceIdPattern, shortId } from "@/lib/format";
+import { dateTime, money, resourceIdPattern } from "@/lib/format";
 import { label } from "@/lib/labels";
 import { StatusBadge } from "@/components/business-status";
 import { QueryView } from "@/components/request-state";
@@ -27,12 +27,6 @@ import { CursorPagination } from "@/components/cursor-pagination";
 import { SuccessMessage, useFeedback } from "@/components/Feedback";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  InputGroup,
-  InputGroupInput,
-  InputGroupAddon,
-} from "@/components/ui/input-group";
-import { FieldGroup } from "@/components/ui/field";
 import {
   Select,
   SelectContent,
@@ -68,8 +62,6 @@ export default function Reconciliation() {
   const [search, setSearch] = useSearchParams();
   const [operation, setOperation] = useState(false);
   const [completed, setCompleted] = useFeedback();
-  const [ledgerId, setLedgerId] = useState("");
-  const navigate = useNavigate();
   const section: Section =
     search.get("tab") === "conflicts"
       ? "conflicts"
@@ -89,49 +81,10 @@ export default function Reconciliation() {
   }));
   return (
     <>
-      {!compact && (
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <form
-            className="min-w-0 flex-1"
-            role="search"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (resourceIdPattern.test(ledgerId.trim()))
-                navigate("/reconciliation/ledger/" + ledgerId.trim());
-            }}
-          >
-            <FieldGroup className="flex-row flex-wrap items-center gap-2">
-              <InputGroup className="min-w-40 flex-1 md:max-w-sm">
-                <InputGroupAddon>
-                  <Search />
-                </InputGroupAddon>
-                <InputGroupInput
-                  aria-label="账本流水编号"
-                  name="ledger-lookup"
-                  required
-                  pattern={resourceIdPattern.source}
-                  value={ledgerId}
-                  onChange={(event) => setLedgerId(event.target.value)}
-                  placeholder="输入完整流水编号"
-                />
-              </InputGroup>
-              <Button
-                variant="outline"
-                type="submit"
-                disabled={!ledgerId.trim()}
-              >
-                查询流水
-              </Button>
-            </FieldGroup>
-          </form>
-          <Button onClick={(event) => showOperation(event.currentTarget)}>
-            人工关联收款
-          </Button>
-        </div>
-      )}
       <Tabs
         value={section}
-        className="gap-4"
+        className="mx-auto w-full min-w-0 max-w-[1600px] gap-3"
+        data-business-list="reconciliation"
         onValueChange={(value) =>
           setSearch(
             (current) => {
@@ -146,13 +99,22 @@ export default function Reconciliation() {
           )
         }
       >
-        <TabsList aria-label="对账记录类型">
-          {sections.map((item) => (
-            <TabsTrigger key={item.value} value={item.value}>
-              {item.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+        <div className="flex min-w-0 items-center justify-between gap-4">
+          <div className="-m-1 min-w-0 scroll-p-1 overflow-x-auto p-1">
+            <TabsList aria-label="对账记录类型">
+              {sections.map((item) => (
+                <TabsTrigger key={item.value} value={item.value}>
+                  {item.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
+          {!compact && (
+            <Button onClick={(event) => showOperation(event.currentTarget)}>
+              人工关联收款
+            </Button>
+          )}
+        </div>
         <TabsContent value={section}>
           <ReconciliationList
             key={section}
@@ -239,7 +201,6 @@ function ReconciliationList({
   filters: ReactNode;
   message: string;
 }) {
-  const compact = useCompactList();
   const navigate = useNavigate();
   const pagination = useCursor();
   const [search] = useSearchParams();
@@ -353,11 +314,13 @@ function ReconciliationList({
   });
 
   return (
-    <div className="flex flex-col gap-4">
-      {!compact && (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          {filters}
-          <div className="ml-auto flex items-center gap-2">
+    <div className="flex flex-col gap-3">
+      <ListQueryToolbar
+        control={listQuery}
+        label="对账关键词搜索"
+        desktopFilters={filters}
+        desktopActions={
+          <>
             {section !== "matches" && (
               <Link
                 className={buttonVariants({ variant: "ghost", size: "sm" })}
@@ -387,12 +350,8 @@ function ReconciliationList({
                 <RefreshCw />
               )}
             </Button>
-          </div>
-        </div>
-      )}
-      <ListQueryToolbar
-        control={listQuery}
-        label="对账关键词搜索"
+          </>
+        }
         filters={mobileFilters}
         lookup={{
           modes: [
@@ -467,7 +426,7 @@ function ReconciliationList({
                       id: "identity",
                       label: "记录",
                       hideable: false,
-                      className: "w-full max-w-md whitespace-normal py-3",
+                      className: "min-w-0 max-w-md whitespace-normal py-2",
                       cell: (item, context) => (
                         <div className="flex flex-col gap-1">
                           <Link
@@ -477,8 +436,8 @@ function ReconciliationList({
                           >
                             {item.title}
                           </Link>
-                          <span className="text-xs text-muted-foreground">
-                            {shortId(item.id)}
+                          <span className="break-all text-xs text-muted-foreground">
+                            {item.id}
                           </span>
                           {context.showInSummary("created_at") && (
                             <time
@@ -496,6 +455,26 @@ function ReconciliationList({
                             )}
                         </div>
                       ),
+                    },
+                    {
+                      id: "order",
+                      label: "关联订单",
+                      className: "max-w-sm whitespace-normal",
+                      responsive: {
+                        minWidthRem: 48,
+                        basis: "container" as const,
+                      },
+                      cell: (item) =>
+                        item.orderId ? (
+                          <Link
+                            className="break-all underline underline-offset-4"
+                            to={"/orders/" + item.orderId}
+                          >
+                            {item.orderId}
+                          </Link>
+                        ) : (
+                          "—"
+                        ),
                     },
                     {
                       id: "status",
@@ -516,22 +495,6 @@ function ReconciliationList({
                         </div>
                       ),
                     },
-                    {
-                      id: "order",
-                      label: "关联订单",
-                      responsive: { minWidthRem: 48 },
-                      cell: (item) =>
-                        item.orderId ? (
-                          <Link
-                            className="underline underline-offset-4"
-                            to={"/orders/" + item.orderId}
-                          >
-                            {shortId(item.orderId)}
-                          </Link>
-                        ) : (
-                          "—"
-                        ),
-                    },
                     ...(section === "matches"
                       ? [
                           {
@@ -539,7 +502,10 @@ function ReconciliationList({
                             sortBy: "amount_cents",
                             label: "流水金额",
                             align: "right" as const,
-                            responsive: { minWidthRem: 40 },
+                            responsive: {
+                              minWidthRem: 40,
+                              basis: "container" as const,
+                            },
                             cell: (item: (typeof page.items)[number]) =>
                               money(item.amountCents),
                           },
@@ -552,7 +518,10 @@ function ReconciliationList({
                             sortBy: "external_event_id",
                             label: "外部流水号",
                             className: "max-w-56 whitespace-normal break-all",
-                            responsive: { minWidthRem: 48 },
+                            responsive: {
+                              minWidthRem: 48,
+                              basis: "container" as const,
+                            },
                             cell: (item: (typeof page.items)[number]) =>
                               item.externalEventId ?? "—",
                           },
@@ -562,7 +531,10 @@ function ReconciliationList({
                       id: "created_at",
                       sortBy: "created_at",
                       label: section === "matches" ? "关联时间" : "发现时间",
-                      responsive: { minWidthRem: 40 },
+                      responsive: {
+                        minWidthRem: 40,
+                        basis: "container" as const,
+                      },
                       cell: (item) => dateTime(item.createdAt),
                     },
                   ]}

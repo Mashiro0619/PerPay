@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { cn } from "cn";
 import { ArrowDown, ArrowUp, ChevronDown, Search, X } from "lucide-react";
 import { normalizeKeyword, type ListQueryControl } from "@/lib/list-query";
 import { useCompactList } from "@/hooks/use-compact-list";
@@ -61,6 +62,8 @@ export function ListQueryToolbar({
   lookup,
   mobileLeading,
   mobileActions,
+  desktopFilters,
+  desktopActions,
 }: {
   control: ListQueryControl;
   sorts: readonly { value: string; label: string }[];
@@ -71,6 +74,8 @@ export function ListQueryToolbar({
   lookup?: ListQueryLookup | undefined;
   mobileLeading?: ReactNode;
   mobileActions?: ReactNode;
+  desktopFilters?: ReactNode;
+  desktopActions?: ReactNode;
 }) {
   const compact = useCompactList();
   const [draft, setDraft] = useState(control.query.q);
@@ -81,10 +86,8 @@ export function ListQueryToolbar({
     setDraft(control.query.q);
     setError("");
   }, [control.query.q]);
-  const selectedMode = compact
-    ? lookup?.modes.find((item) => item.value === mode)
-    : undefined;
-  const busy = disabled || !!(compact && lookup?.pending);
+  const selectedMode = lookup?.modes.find((item) => item.value === mode);
+  const busy = disabled || !!lookup?.pending;
   const activeFilters = filters.filter(
     (filter) => filter.value !== (filter.defaultValue ?? ""),
   );
@@ -100,110 +103,145 @@ export function ListQueryToolbar({
   ];
   return (
     <div className="flex min-w-0 flex-col gap-2" data-list-query-toolbar>
-      <form
-        role="search"
-        aria-label={selectedMode ? lookup!.inputLabel + "精确查询" : label}
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (busy) return;
-          if (selectedMode && lookup) {
-            if (lookupDraft.trim())
-              lookup.onSubmit(selectedMode.value, lookupDraft.trim());
-            return;
-          }
-          try {
-            const q = normalizeKeyword(draft);
-            setError("");
-            setDraft(q);
-            control.setKeyword(q);
-          } catch {
-            setError("关键词最多100个Unicode字符。");
-          }
-        }}
+      <div
+        className="flex min-w-0 flex-wrap items-start gap-x-4 gap-y-3"
+        data-list-toolbar-row
       >
-        <FieldGroup className="flex-row flex-wrap items-start gap-2">
-          <Field className="min-w-40 flex-1 md:max-w-sm" data-invalid={!!error}>
-            <InputGroup>
-              <InputGroupInput
-                type="search"
-                aria-label={selectedMode ? lookup!.inputLabel : label}
-                name={selectedMode ? lookup!.inputName : "q"}
-                placeholder={
-                  selectedMode?.placeholder ??
-                  (compact ? "输入关键词" : "输入关键词，按 Enter 搜索")
-                }
-                value={selectedMode ? lookupDraft : draft}
-                required={!!selectedMode}
-                maxLength={selectedMode ? lookup?.maxLength : undefined}
-                pattern={selectedMode?.pattern}
-                autoComplete={selectedMode ? "off" : undefined}
-                disabled={busy}
-                aria-invalid={!!error}
-                onChange={(event) => {
-                  if (selectedMode) {
-                    setLookupDraft(event.target.value);
-                    lookup?.onReset?.();
-                  } else setDraft(event.target.value);
-                  setError("");
-                }}
-              />
-              <InputGroupAddon>
-                {compact && lookup ? (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <InputGroupButton size="icon-xs" disabled={busy} />
-                      }
-                      aria-label={
-                        "查询方式：" + (selectedMode?.label ?? "关键词")
-                      }
-                      title={"查询方式：" + (selectedMode?.label ?? "关键词")}
-                    >
-                      <Search />
-                      <ChevronDown />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      <DropdownMenuGroup>
-                        <DropdownMenuRadioGroup
-                          value={mode}
-                          onValueChange={(value) => {
-                            setMode(value);
-                            setError("");
-                            lookup.onReset?.();
-                          }}
-                        >
-                          <DropdownMenuRadioItem value="">
-                            关键词
-                          </DropdownMenuRadioItem>
-                          {lookup.modes.map((item) => (
-                            <DropdownMenuRadioItem
-                              key={item.value}
-                              value={item.value}
-                            >
-                              {item.label}
+        <form
+          className={cn(
+            "min-w-0",
+            compact
+              ? "w-full"
+              : "min-w-[min(100%,20rem)] max-w-lg flex-[1_1_20rem]",
+          )}
+          role="search"
+          aria-label={selectedMode ? lookup!.inputLabel + "精确查询" : label}
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (busy) return;
+            if (selectedMode && lookup) {
+              if (lookupDraft.trim())
+                lookup.onSubmit(selectedMode.value, lookupDraft.trim());
+              return;
+            }
+            try {
+              const q = normalizeKeyword(draft);
+              setError("");
+              setDraft(q);
+              control.setKeyword(q);
+            } catch {
+              setError("关键词最多100个Unicode字符。");
+            }
+          }}
+        >
+          <FieldGroup className="flex-row items-start gap-2">
+            <Field
+              className="min-w-0 flex-1"
+              data-invalid={!!error}
+              data-disabled={busy}
+            >
+              <InputGroup>
+                <InputGroupInput
+                  type="search"
+                  aria-label={selectedMode ? lookup!.inputLabel : label}
+                  name={selectedMode ? lookup!.inputName : "q"}
+                  placeholder={
+                    selectedMode?.placeholder ??
+                    (compact ? "输入关键词" : "输入关键词，按 Enter 搜索")
+                  }
+                  value={selectedMode ? lookupDraft : draft}
+                  required={!!selectedMode}
+                  maxLength={selectedMode ? lookup?.maxLength : undefined}
+                  pattern={selectedMode?.pattern}
+                  autoComplete={selectedMode ? "off" : undefined}
+                  disabled={busy}
+                  aria-invalid={!!error}
+                  onChange={(event) => {
+                    if (selectedMode) {
+                      setLookupDraft(event.target.value);
+                      lookup?.onReset?.();
+                    } else setDraft(event.target.value);
+                    setError("");
+                  }}
+                />
+                <InputGroupAddon>
+                  {lookup ? (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={
+                          <InputGroupButton
+                            size={compact ? "icon-xs" : "xs"}
+                            disabled={busy}
+                          />
+                        }
+                        aria-label={
+                          "查询方式：" + (selectedMode?.label ?? "关键词")
+                        }
+                        title={"查询方式：" + (selectedMode?.label ?? "关键词")}
+                      >
+                        {compact ? (
+                          <Search />
+                        ) : (
+                          (selectedMode?.label ?? "关键词")
+                        )}
+                        <ChevronDown data-icon="inline-end" />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start">
+                        <DropdownMenuGroup>
+                          <DropdownMenuRadioGroup
+                            value={mode}
+                            onValueChange={(value) => {
+                              setMode(value);
+                              setError("");
+                              lookup.onReset?.();
+                            }}
+                          >
+                            <DropdownMenuRadioItem value="">
+                              关键词
                             </DropdownMenuRadioItem>
-                          ))}
-                        </DropdownMenuRadioGroup>
-                      </DropdownMenuGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                ) : (
-                  <Search />
-                )}
-              </InputGroupAddon>
-            </InputGroup>
-            {error && <FieldError>{error}</FieldError>}
-          </Field>
-          <Button
-            type="submit"
-            variant="outline"
-            disabled={busy || (!!selectedMode && !lookupDraft.trim())}
-          >
-            {compact && lookup?.pending && <Spinner data-icon="inline-start" />}
-            {selectedMode ? "查找" : "搜索"}
-          </Button>
-          {!compact && (
-            <>
+                            {lookup.modes.map((item) => (
+                              <DropdownMenuRadioItem
+                                key={item.value}
+                                value={item.value}
+                              >
+                                {item.label}
+                              </DropdownMenuRadioItem>
+                            ))}
+                          </DropdownMenuRadioGroup>
+                        </DropdownMenuGroup>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : (
+                    <Search />
+                  )}
+                </InputGroupAddon>
+              </InputGroup>
+              {error && <FieldError>{error}</FieldError>}
+            </Field>
+            <Button
+              type="submit"
+              variant="outline"
+              disabled={busy || (!!selectedMode && !lookupDraft.trim())}
+            >
+              {lookup?.pending && <Spinner data-icon="inline-start" />}
+              {selectedMode ? "查找" : "搜索"}
+            </Button>
+          </FieldGroup>
+        </form>
+        {!compact && (
+          <>
+            {desktopFilters && (
+              <div
+                className="flex shrink-0 items-center gap-2"
+                data-list-desktop-filters
+              >
+                {desktopFilters}
+              </div>
+            )}
+            <div
+              className="flex shrink-0 items-center gap-2"
+              data-list-desktop-sort
+            >
               <Select
                 items={sorts}
                 value={control.query.sortBy}
@@ -258,13 +296,21 @@ export function ListQueryToolbar({
                   清除搜索
                 </Button>
               )}
-            </>
-          )}
-        </FieldGroup>
-      </form>
+            </div>
+            {desktopActions && (
+              <div
+                className="ml-auto flex shrink-0 items-center gap-2"
+                data-list-desktop-actions
+              >
+                {desktopActions}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      {selectedMode && <ErrorNotice error={lookup?.error} />}
       {compact && (
         <>
-          {selectedMode && <ErrorNotice error={lookup?.error} />}
           <div
             className="flex min-w-0 items-center gap-2"
             data-list-mobile-actions

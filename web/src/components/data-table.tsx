@@ -1,3 +1,4 @@
+import { cn } from "cn";
 import type { AdminOrderSummary } from "@/api/client";
 import { Link } from "@/navigation";
 import { dateTime, money } from "@/lib/format";
@@ -48,8 +49,12 @@ export function DataTable({
       id: "identity",
       label: "订单 / 商品",
       hideable: false,
-      className:
-        "min-w-0 whitespace-normal py-3 @lg/orders:w-full @lg/orders:max-w-64",
+      className: cn(
+        "min-w-0 whitespace-normal",
+        control
+          ? "max-w-md py-2"
+          : "py-3 @lg/orders:w-full @lg/orders:max-w-64",
+      ),
       cell: (order, context) => (
         <div className="flex flex-col gap-1">
           <Link
@@ -61,7 +66,10 @@ export function DataTable({
             {order.product_name}
           </Link>
           <span
-            className="truncate text-xs text-muted-foreground"
+            className={cn(
+              "text-xs text-muted-foreground",
+              control ? "break-all" : "truncate",
+            )}
             title={order.merchant_order_no}
           >
             {order.merchant_order_no}

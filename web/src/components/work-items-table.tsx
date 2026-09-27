@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { cn } from "cn";
 import type { AdminWorkItem } from "@/api/client";
 import { Link } from "@/navigation";
 import { dateTime } from "@/lib/format";
@@ -38,9 +39,16 @@ export function WorkItemsTable({
       id: "identity",
       label: "事项",
       hideable: false,
-      className: "w-full max-w-md whitespace-normal py-3",
+      className: control
+        ? "min-w-0 max-w-md whitespace-normal py-2"
+        : "w-full max-w-md whitespace-normal py-3",
       cell: (item, context) => (
-        <div className="flex flex-col gap-1">
+        <div
+          className={cn(
+            "flex flex-col gap-1",
+            control && "min-h-7 justify-center",
+          )}
+        >
           <Link
             data-row-link
             data-reminder-id={item.type + ":" + item.resource_id}
@@ -87,7 +95,10 @@ export function WorkItemsTable({
       id: "actionable_at",
       sortBy: "actionable_at",
       label: "提醒时间",
-      responsive: { minWidthRem: 40 },
+      responsive: {
+        minWidthRem: 40,
+        basis: control ? ("container" as const) : ("viewport" as const),
+      },
       cell: (item) => (
         <time dateTime={item.actionable_at}>
           {dateTime(item.actionable_at)}
@@ -98,7 +109,10 @@ export function WorkItemsTable({
       id: "created_at",
       sortBy: "created_at",
       label: "创建时间",
-      responsive: { minWidthRem: 64 },
+      responsive: {
+        minWidthRem: 64,
+        basis: control ? ("container" as const) : ("viewport" as const),
+      },
       cell: (item) => dateTime(item.created_at),
     },
     ...(actions
@@ -107,7 +121,10 @@ export function WorkItemsTable({
             id: "ignored_at",
             sortBy: "ignored_at",
             label: "忽略时间",
-            responsive: { minWidthRem: 64 },
+            responsive: {
+              minWidthRem: 64,
+              basis: control ? ("container" as const) : ("viewport" as const),
+            },
             cell: (item: AdminWorkItem) => dateTime(item.ignored_at),
           },
         ]

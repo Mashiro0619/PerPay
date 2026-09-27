@@ -252,9 +252,6 @@ function BusinessTableView<T extends RowData>({
       className="flex min-w-0 flex-col gap-2"
       data-business-table={id}
     >
-      {columnsMenu && !compact && (
-        <div className="flex justify-end">{columnMenu}</div>
-      )}
       <div className="min-w-0 overflow-hidden rounded-lg border">
         <Table
           className={
@@ -295,7 +292,7 @@ function BusinessTableView<T extends RowData>({
                       key={header.id}
                       className={cn(
                         spec.headerClassName,
-                        compact && columnsMenu && index === 0 && "py-0",
+                        columnsMenu && index === 0 && "py-0",
                         spec.align === "right" && "text-right",
                       )}
                       aria-sort={
@@ -306,12 +303,10 @@ function BusinessTableView<T extends RowData>({
                           : undefined
                       }
                       aria-label={
-                        compact && columnsMenu && index === 0
-                          ? spec.label
-                          : undefined
+                        columnsMenu && index === 0 ? spec.label : undefined
                       }
                     >
-                      {compact && columnsMenu && index === 0 ? (
+                      {columnsMenu && index === 0 ? (
                         <div className="flex items-center gap-2">
                           {label}
                           {columnMenu}

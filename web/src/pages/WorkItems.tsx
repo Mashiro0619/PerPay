@@ -2,7 +2,6 @@ import { useListQuery, WORK_ITEM_SORT_FIELDS } from "@/lib/list-query";
 import { ListQueryToolbar } from "@/components/list-query-toolbar";
 import { ListActionsMenu } from "@/components/list-actions-menu";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { useCompactList } from "@/hooks/use-compact-list";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { RefreshCw, EyeOff } from "lucide-react";
@@ -137,7 +136,8 @@ export default function WorkItems() {
         onValueChange={(value) =>
           select(value as AdminWorkItemTypeFilter, visibility)
         }
-        className="gap-4"
+        className="mx-auto w-full min-w-0 max-w-[1600px] gap-3"
+        data-business-list="work-items"
       >
         {/* Keep tab indicators and focus rings inside the horizontal scroller. */}
         <div className="-m-1 min-w-0 scroll-p-1 overflow-x-auto p-1">
@@ -250,7 +250,6 @@ function WorkItemPage({
   onVisibility: (value: Visibility) => void;
   onIgnore: (trigger?: HTMLElement | null) => void;
 }) {
-  const compact = useCompactList();
   const mounted = useMounted();
   const pagination = useCursor();
   const sortFields =
@@ -466,11 +465,13 @@ function WorkItemPage({
     </ToggleGroup>
   );
   return (
-    <div className="flex flex-col gap-4">
-      {!compact && (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          {visibilityControl}
-          <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-3">
+      <ListQueryToolbar
+        control={listQuery}
+        label="提醒关键词搜索"
+        desktopFilters={visibilityControl}
+        desktopActions={
+          <>
             {visibility === "ACTIVE" && (
               <Button
                 variant="outline"
@@ -491,12 +492,8 @@ function WorkItemPage({
             >
               {work.isFetching ? <Spinner aria-hidden="true" /> : <RefreshCw />}
             </Button>
-          </div>
-        </div>
-      )}
-      <ListQueryToolbar
-        control={listQuery}
-        label="提醒关键词搜索"
+          </>
+        }
         mobileLeading={visibilityControl}
         mobileActions={
           <ListActionsMenu label="更多提醒操作" disabled={busy}>

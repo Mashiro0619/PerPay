@@ -175,6 +175,10 @@ describe("order browsing", () => {
     vi.stubGlobal("fetch", fetchMock);
     const user = userEvent.setup();
     renderOrders();
+    await user.click(screen.getByRole("button", { name: "查询方式：关键词" }));
+    await user.click(
+      await screen.findByRole("menuitemradio", { name: "商户订单号" }),
+    );
     const search = screen.getByRole("searchbox", { name: "订单号" });
     await user.type(search, "missing-order");
     await user.click(screen.getByRole("button", { name: "查找" }));

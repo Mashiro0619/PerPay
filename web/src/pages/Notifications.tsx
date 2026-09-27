@@ -2,7 +2,6 @@ import { useListQuery, DELIVERY_SORT_FIELDS } from "@/lib/list-query";
 import { ListQueryToolbar } from "@/components/list-query-toolbar";
 import { ListActionsMenu } from "@/components/list-actions-menu";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { useCompactList } from "@/hooks/use-compact-list";
 import { BusinessTable } from "@/components/business-table";
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -16,7 +15,7 @@ import {
   type WebhookDeliveryStatus,
 } from "@/api/client";
 import { useCursor } from "@/lib/cursor";
-import { dateTime, shortId } from "@/lib/format";
+import { dateTime } from "@/lib/format";
 import { notificationErrorName } from "@/lib/detail-summary";
 import { label } from "@/lib/labels";
 import { DeliveryCard } from "@/components/detail/NotificationEvidence";
@@ -91,7 +90,6 @@ function DeliveryPage({
   status: WebhookDeliveryStatus | undefined;
   filters: ReactNode;
 }) {
-  const compact = useCompactList();
   const pagination = useCursor();
   const listQuery = useListQuery(DELIVERY_SORT_FIELDS, "created_at", "asc");
   const deliveries = useQuery({
@@ -110,11 +108,16 @@ function DeliveryPage({
       ),
   });
   return (
-    <div className="flex min-w-0 flex-col gap-4">
-      {!compact && (
-        <div className="flex flex-wrap items-center gap-2">
-          {filters}
-          <div className="ml-auto flex items-center gap-2">
+    <div
+      className="mx-auto flex w-full min-w-0 max-w-[1600px] flex-col gap-3"
+      data-business-list="notifications"
+    >
+      <ListQueryToolbar
+        control={listQuery}
+        label="通知关键词搜索"
+        desktopFilters={filters}
+        desktopActions={
+          <>
             <Link
               to="/settings/notifications"
               className={buttonVariants({ variant: "outline" })}
@@ -136,12 +139,8 @@ function DeliveryPage({
                 <RefreshCw />
               )}
             </Button>
-          </div>
-        </div>
-      )}
-      <ListQueryToolbar
-        control={listQuery}
-        label="通知关键词搜索"
+          </>
+        }
         filters={[
           {
             key: "status",
@@ -194,7 +193,7 @@ function DeliveryPage({
                       id: "identity",
                       label: "通知事件",
                       hideable: false,
-                      className: "w-full max-w-md whitespace-normal py-3",
+                      className: "min-w-0 max-w-md whitespace-normal py-2",
                       cell: (delivery, context) => (
                         <div className="flex flex-col gap-1">
                           <Link
@@ -204,8 +203,8 @@ function DeliveryPage({
                           >
                             {label(delivery.event.event_type)}
                           </Link>
-                          <span className="text-xs text-muted-foreground">
-                            {shortId(delivery.delivery_id)}
+                          <span className="break-all text-xs text-muted-foreground">
+                            {delivery.delivery_id}
                           </span>
                           {context.showInSummary("created_at") && (
                             <time
@@ -221,6 +220,20 @@ function DeliveryPage({
                             </span>
                           )}
                         </div>
+                      ),
+                    },
+                    {
+                      id: "order",
+                      label: "关联订单",
+                      className: "max-w-sm whitespace-normal",
+                      responsive: { minWidthRem: 64, basis: "container" },
+                      cell: (delivery) => (
+                        <Link
+                          className="break-all underline underline-offset-4"
+                          to={"/orders/" + delivery.event.order_id}
+                        >
+                          {delivery.event.order_id}
+                        </Link>
                       ),
                     },
                     {
@@ -249,34 +262,21 @@ function DeliveryPage({
                       sortBy: "attempt_count",
                       label: "尝试次数",
                       align: "right",
-                      responsive: { minWidthRem: 40 },
+                      responsive: { minWidthRem: 40, basis: "container" },
                       cell: (delivery) => delivery.attempt_count,
-                    },
-                    {
-                      id: "order",
-                      label: "关联订单",
-                      responsive: { minWidthRem: 64 },
-                      cell: (delivery) => (
-                        <Link
-                          className="underline underline-offset-4"
-                          to={"/orders/" + delivery.event.order_id}
-                        >
-                          {shortId(delivery.event.order_id)}
-                        </Link>
-                      ),
                     },
                     {
                       id: "created_at",
                       sortBy: "created_at",
                       label: "创建时间",
-                      responsive: { minWidthRem: 48 },
+                      responsive: { minWidthRem: 48, basis: "container" },
                       cell: (delivery) => dateTime(delivery.created_at),
                     },
                     {
                       id: "next_attempt_at",
                       sortBy: "next_attempt_at",
                       label: "下次尝试",
-                      responsive: { minWidthRem: 48 },
+                      responsive: { minWidthRem: 48, basis: "container" },
                       cell: (delivery) => dateTime(delivery.next_attempt_at),
                     },
                   ]}

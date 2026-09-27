@@ -4,10 +4,8 @@ import {
   type ListQueryLookup,
 } from "@/components/list-query-toolbar";
 import { ListActionsMenu } from "@/components/list-actions-menu";
-import { useCompactList } from "@/hooks/use-compact-list";
-import { useState, type FormEvent } from "react";
+import type { ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Search } from "lucide-react";
 import { useSearchParams } from "react-router";
 import { useNavigate } from "@/navigation";
 import {
@@ -23,7 +21,7 @@ import {
 } from "@/components/test-payment-provider";
 import { DataTable } from "@/components/data-table";
 import { CursorPagination } from "@/components/cursor-pagination";
-import { ErrorNotice, QueryView } from "@/components/request-state";
+import { QueryView } from "@/components/request-state";
 import { Button } from "@/components/ui/button";
 import {
   Empty,
@@ -31,12 +29,6 @@ import {
   EmptyTitle,
   EmptyContent,
 } from "@/components/ui/empty";
-import { FieldGroup } from "@/components/ui/field";
-import {
-  InputGroup,
-  InputGroupInput,
-  InputGroupAddon,
-} from "@/components/ui/input-group";
 import {
   Select,
   SelectContent,
@@ -45,7 +37,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Spinner } from "@/components/ui/spinner";
 const paymentOptions = [
   { value: "", label: "全部付款状态" },
   { value: "UNPAID", label: "未付款" },
@@ -63,7 +54,6 @@ const searchOptions = [
   { value: "internal", label: "内部订单编号" },
 ];
 export default function Orders() {
-  const compact = useCompactList();
   const lookup = useOrderLookup();
   const [search, setSearch] = useSearchParams();
   const paymentValue = search.get("payment");
@@ -98,14 +88,13 @@ export default function Orders() {
     setSearch(next, { replace: true });
   }
   return (
-    <div className="flex min-w-0 flex-col gap-4">
-      {!compact && (
-        <>
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <OrderSearch lookup={lookup} />
-            <TestPaymentButton />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
+    <div
+      className="mx-auto flex w-full min-w-0 max-w-[1600px] flex-col gap-3"
+      data-business-list="orders"
+    >
+      <OrderPage
+        desktopFilters={
+          <>
             <Select
               items={paymentOptions}
               value={payment ?? ""}
@@ -147,10 +136,8 @@ export default function Orders() {
                 清除筛选
               </Button>
             )}
-          </div>
-        </>
-      )}
-      <OrderPage
+          </>
+        }
         lookup={{
           modes: searchOptions.map((option) => ({
             ...option,
@@ -188,89 +175,15 @@ function useOrderLookup() {
     onSuccess: ({ data }) => navigate("/orders/" + data.order_id),
   });
 }
-function OrderSearch({
-  lookup,
-}: {
-  lookup: ReturnType<typeof useOrderLookup>;
-}) {
-  const [value, setValue] = useState("");
-  const [kind, setKind] = useState("merchant");
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (value.trim() && !lookup.isPending)
-      lookup.mutate({ kind, value: value.trim() });
-  }
-  return (
-    <div className="flex min-w-0 flex-1 flex-col gap-2">
-      <form role="search" onSubmit={submit}>
-        <FieldGroup className="flex-row flex-wrap items-center gap-2">
-          <Select
-            items={searchOptions}
-            value={kind}
-            disabled={lookup.isPending}
-            onValueChange={(next) => {
-              if (next) {
-                setKind(next);
-                lookup.reset();
-              }
-            }}
-          >
-            <SelectTrigger aria-label="订单查询方式">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {searchOptions.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          <InputGroup className="min-w-40 flex-1 md:max-w-sm">
-            <InputGroupAddon>
-              <Search />
-            </InputGroupAddon>
-            <InputGroupInput
-              aria-label="订单号"
-              name="order-query"
-              type="search"
-              required
-              maxLength={128}
-              autoComplete="off"
-              placeholder="输入完整订单号"
-              value={value}
-              disabled={lookup.isPending}
-              onChange={(event) => {
-                setValue(event.target.value);
-                lookup.reset();
-              }}
-            />
-          </InputGroup>
-          <Button
-            type="submit"
-            variant="outline"
-            disabled={!value.trim() || lookup.isPending}
-          >
-            {lookup.isPending && (
-              <Spinner aria-hidden="true" data-icon="inline-start" />
-            )}
-            查找
-          </Button>
-        </FieldGroup>
-      </form>
-      <ErrorNotice error={lookup.error} />
-    </div>
-  );
-}
 function OrderPage({
   lookup,
+  desktopFilters,
   payment,
   checkout,
   onClearFilters,
 }: {
   lookup: ListQueryLookup;
+  desktopFilters: ReactNode;
   payment: PaymentStatus | undefined;
   checkout: CheckoutStatus | undefined;
   onClearFilters: () => void;
@@ -298,6 +211,8 @@ function OrderPage({
       <ListQueryToolbar
         control={listQuery}
         label="订单关键词搜索"
+        desktopFilters={desktopFilters}
+        desktopActions={<TestPaymentButton />}
         lookup={lookup}
         filters={[
           {
