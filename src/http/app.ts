@@ -91,6 +91,9 @@ import {
   displaySettingsInputSchema,
   collectionSettingsInputSchema,
   providerSettingsInputSchema,
+  regenerateProviderApplicationKeySchema,
+  activateProviderApplicationKeySchema,
+  applicationKeyChangeActionSchema,
   RUNTIME_SECRET_NAMES,
   RuntimeSettingsService,
   SettingsError,
@@ -813,6 +816,45 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         )
       );
       return context.json({ data }, data.created ? 201 : 200);
+    },
+  );
+
+  app.post(
+    "/api/admin/v1/settings/provider/application-key/actions/regenerate",
+    adminSession,
+    financialWrite,
+    async (context) => {
+      const body = await readJson(context, regenerateProviderApplicationKeySchema, MAX_JSON_BODY_BYTES);
+      const data = await settingsOperation(() => requireSettingsService(dependencies).regenerateProviderApplicationKey(
+        body, settingsAuditContext(context, dependencies),
+      ));
+      return context.json({ data }, data.created ? 201 : 200);
+    },
+  );
+
+  app.post(
+    "/api/admin/v1/settings/provider/application-key/actions/activate",
+    adminSession,
+    financialWrite,
+    async (context) => {
+      const body = await readJson(context, activateProviderApplicationKeySchema, MAX_JSON_BODY_BYTES);
+      const data = await settingsOperation(() => requireSettingsService(dependencies).activateProviderApplicationKey(
+        body, settingsAuditContext(context, dependencies), context.req.raw.signal,
+      ));
+      return context.json({ data });
+    },
+  );
+
+  app.post(
+    "/api/admin/v1/settings/provider/application-key/actions/discard",
+    adminSession,
+    financialWrite,
+    async (context) => {
+      const body = await readJson(context, applicationKeyChangeActionSchema, MAX_JSON_BODY_BYTES);
+      const data = await settingsOperation(() => requireSettingsService(dependencies).discardProviderApplicationKey(
+        body, settingsAuditContext(context, dependencies),
+      ));
+      return context.json({ data });
     },
   );
 
@@ -2252,10 +2294,13 @@ function settingsStatus(code: SettingsError["code"]): 404 | 409 | 422 | 503 {
     case "secret_not_found":
       return 404;
     case "provider_application_key_missing":
+    case "provider_application_key_verification_failed":
       return 422;
     case "settings_revision_conflict":
     case "provider_switch_blocked":
     case "provider_application_key_rotation_not_supported":
+    case "provider_application_key_change_pending":
+    case "provider_application_key_change_conflict":
       return 409;
     case "settings_not_configured":
       return 503;

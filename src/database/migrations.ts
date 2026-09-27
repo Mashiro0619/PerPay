@@ -4848,4 +4848,56 @@ export const migrations: readonly Migration[] = [
       END;
     `,
   },
+  {
+    version: 28,
+    name: "provider_application_key_changes",
+    sql: `
+      CREATE TABLE provider_application_key_changes (
+        change_id TEXT PRIMARY KEY CHECK (length(change_id) = 36),
+        requested_revision INTEGER NOT NULL CHECK (requested_revision >= 0),
+        base_fingerprint TEXT NOT NULL CHECK (
+          length(base_fingerprint) = 64 AND base_fingerprint NOT GLOB '*[^0-9a-f]*'
+        ),
+        new_fingerprint TEXT NOT NULL CHECK (
+          length(new_fingerprint) = 64 AND new_fingerprint NOT GLOB '*[^0-9a-f]*'
+          AND new_fingerprint != base_fingerprint
+        ),
+        provider_account_key TEXT REFERENCES provider_account_bindings(provider_account_key),
+        app_id TEXT,
+        environment TEXT CHECK (environment IN ('PRODUCTION', 'SANDBOX')),
+        state TEXT NOT NULL CHECK (state IN ('PENDING', 'ACTIVATED', 'DISCARDED')),
+        cipher_version INTEGER CHECK (cipher_version = 1),
+        nonce BLOB CHECK (nonce IS NULL OR (typeof(nonce) = 'blob' AND length(nonce) = 12)),
+        ciphertext BLOB CHECK (ciphertext IS NULL OR (typeof(ciphertext) = 'blob' AND length(ciphertext) BETWEEN 1 AND 32768)),
+        authentication_tag BLOB CHECK (authentication_tag IS NULL OR (typeof(authentication_tag) = 'blob' AND length(authentication_tag) = 16)),
+        created_at INTEGER NOT NULL CHECK (created_at >= 0),
+        finished_revision INTEGER CHECK (finished_revision > requested_revision),
+        finished_at INTEGER CHECK (finished_at >= created_at),
+        CHECK (
+          (provider_account_key IS NULL AND app_id IS NULL AND environment IS NULL) OR
+          (provider_account_key IS NOT NULL AND app_id IS NOT NULL AND environment IS NOT NULL)
+        ),
+        CHECK (
+          (state = 'PENDING' AND provider_account_key IS NOT NULL AND
+            cipher_version IS NOT NULL AND nonce IS NOT NULL AND ciphertext IS NOT NULL AND
+            authentication_tag IS NOT NULL AND finished_revision IS NULL AND finished_at IS NULL) OR
+          (state != 'PENDING' AND cipher_version IS NULL AND nonce IS NULL AND ciphertext IS NULL AND
+            authentication_tag IS NULL AND finished_revision IS NOT NULL AND finished_at IS NOT NULL)
+        )
+      ) STRICT;
+      CREATE UNIQUE INDEX provider_application_key_single_pending
+        ON provider_application_key_changes((1)) WHERE state = 'PENDING';
+      CREATE TRIGGER provider_application_key_changes_transition_guard
+      BEFORE UPDATE ON provider_application_key_changes
+      WHEN OLD.state != 'PENDING' OR NEW.state NOT IN ('ACTIVATED', 'DISCARDED') OR
+        NEW.change_id != OLD.change_id OR NEW.requested_revision != OLD.requested_revision OR
+        NEW.base_fingerprint != OLD.base_fingerprint OR NEW.new_fingerprint != OLD.new_fingerprint OR
+        NEW.provider_account_key IS NOT OLD.provider_account_key OR NEW.app_id IS NOT OLD.app_id OR
+        NEW.environment IS NOT OLD.environment OR NEW.created_at != OLD.created_at
+      BEGIN SELECT RAISE(ABORT, 'application key change transition is invalid'); END;
+      CREATE TRIGGER provider_application_key_changes_no_delete
+      BEFORE DELETE ON provider_application_key_changes
+      BEGIN SELECT RAISE(ABORT, 'application key change history cannot be deleted'); END;
+    `,
+  },
 ] as const;

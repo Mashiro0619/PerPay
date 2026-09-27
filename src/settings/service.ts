@@ -2,9 +2,13 @@ import { randomBytes, randomUUID } from "node:crypto";
 
 import type { ProviderIdentityActivation } from "../ledger/model.ts";
 import { SettingsFieldError } from "./validation.ts";
+import { verifyProviderApplicationKey, type ProviderKeyVerifier } from "./provider-key-verification.ts";
 
 import {
   advancedSettingsInputSchema,
+  regenerateProviderApplicationKeySchema,
+  applicationKeyChangeActionSchema,
+  activateProviderApplicationKeySchema,
   backupSettingsInputSchema,
   collectionSettingsInputSchema,
   displaySettingsInputSchema,
@@ -16,6 +20,11 @@ import {
   providerSettingsInputSchema,
   webhookSettingsInputSchema,
   type AdvancedSettingsInput,
+  type RegenerateProviderApplicationKeyInput,
+  type ApplicationKeyChangeActionInput,
+  type ActivateProviderApplicationKeyInput,
+  type ProviderApplicationKeyChange,
+  type ProviderSettings,
   type BackupSettingsInput,
   type DashboardChartType,
   type DisplaySettingsInput,
@@ -68,6 +77,14 @@ export interface RuntimeSettingsView {
   } | null;
   readonly application_public_key: string | null;
   readonly application_key_fingerprint: string | null;
+  readonly pending_application_key: {
+    readonly change_id: string;
+    readonly public_key: string;
+    readonly fingerprint: string;
+    readonly app_id: string;
+    readonly environment: "PRODUCTION" | "SANDBOX";
+    readonly created_at: string;
+  } | null;
   readonly provider_generations: readonly {
     readonly provider_account_key: string;
     readonly app_id: string;
@@ -120,6 +137,7 @@ export class RuntimeSettingsService {
   readonly #onCollectionApplied: CollectionApplied;
   readonly #onPaymentMutationStarted: PaymentMutationStarted;
   readonly #providerHistory: ProviderHistory;
+  readonly #verifyProviderApplicationKey: ProviderKeyVerifier;
   #mutation: Promise<void> = Promise.resolve();
 
   constructor(options: {
@@ -129,6 +147,7 @@ export class RuntimeSettingsService {
     readonly onCollectionApplied?: CollectionApplied | undefined;
     readonly onPaymentMutationStarted?: PaymentMutationStarted | undefined;
     readonly providerHistory?: ProviderHistory | undefined;
+    readonly verifyProviderApplicationKey?: ProviderKeyVerifier | undefined;
   }) {
     this.#store = options.store;
     this.#guardProviderSwitch = options.guardProviderSwitch ?? (() => undefined);
@@ -136,6 +155,7 @@ export class RuntimeSettingsService {
     this.#onCollectionApplied = options.onCollectionApplied ?? (() => undefined);
     this.#onPaymentMutationStarted = options.onPaymentMutationStarted ?? (() => undefined);
     this.#providerHistory = options.providerHistory ?? (() => []);
+    this.#verifyProviderApplicationKey = options.verifyProviderApplicationKey ?? verifyProviderApplicationKey;
   }
 
   initialize(): RuntimeSettingsSnapshot {
@@ -163,6 +183,7 @@ export class RuntimeSettingsService {
     const snapshot = this.#store.snapshot();
     const status = this.#store.status();
     const applicationKey = this.#store.providerApplicationKey();
+    const pending = this.#store.pendingApplicationKey();
     return {
       revision: snapshot.revision,
       payment_revision: snapshot.paymentRevision,
@@ -203,6 +224,14 @@ export class RuntimeSettingsService {
         : null,
       application_public_key: applicationKey?.uploadPublicKey ?? null,
       application_key_fingerprint: applicationKey?.fingerprint ?? null,
+      pending_application_key: pending?.key ? {
+        change_id: pending.changeId,
+        public_key: pending.key.uploadPublicKey,
+        fingerprint: pending.newFingerprint,
+        app_id: pending.appId!,
+        environment: pending.environment!,
+        created_at: new Date(pending.createdAt).toISOString(),
+      } : null,
       provider_generations: Object.freeze(this.#providerHistory().map((generation) => ({
         provider_account_key: generation.providerAccountKey,
         app_id: generation.externalAccountId,
@@ -282,6 +311,9 @@ export class RuntimeSettingsService {
         const currentAppId = current.provider?.appId ?? historicalActive?.externalAccountId ?? null;
         const currentEndpoint = current.provider?.endpoint ?? historicalActive?.endpoint ?? null;
         const identityChanged = currentAppId !== parsed.app_id || currentEndpoint !== endpoint;
+        if (identityChanged && this.#store.pendingApplicationKey()) {
+          throw new SettingsError("provider_application_key_change_pending", "activate or discard the pending application key before switching applications");
+        }
         const stagedApplicationKey = current.provider === null && currentProviderAccountKey === null
           ? this.#store.providerApplicationKey()
           : null;
@@ -434,6 +466,110 @@ export class RuntimeSettingsService {
     });
   }
 
+  regenerateProviderApplicationKey(
+    input: RegenerateProviderApplicationKeyInput,
+    audit: SettingsAuditContext,
+  ) {
+    return this.#exclusive(async () => {
+      const parsed = regenerateProviderApplicationKeySchema.parse(input);
+      const current = this.#store.snapshot();
+      const currentKey = this.#store.providerApplicationKey();
+      const replay = this.#store.applicationKeyChange(parsed.change_id);
+      if (replay) {
+        if (replay.requestedRevision !== parsed.revision || replay.baseFingerprint !== parsed.base_fingerprint ||
+          replay.state === "DISCARDED" ||
+          (replay.state === "ACTIVATED" && currentKey?.fingerprint !== replay.newFingerprint) ||
+          (replay.state === "PENDING" && currentKey?.fingerprint !== replay.baseFingerprint)) {
+          throw keyChangeConflict();
+        }
+        const key = replay.key ?? currentKey!;
+        return { created: false, settings: this.view(), public_key: key.uploadPublicKey, fingerprint: key.fingerprint };
+      }
+      if (current.revision !== parsed.revision) throw revisionConflict(parsed.revision, current.revision);
+      if (!currentKey || currentKey.fingerprint !== parsed.base_fingerprint) throw keyChangeConflict();
+      if (this.#store.pendingApplicationKey()) {
+        throw new SettingsError("provider_application_key_change_pending", "an application key is already awaiting activation");
+      }
+      if (!current.provider && (current.activeProviderAccountKey !== null || this.#providerHistory().length > 0)) {
+        throw new SettingsError("settings_not_configured", "restore the existing provider configuration before regenerating its application key");
+      }
+      const key = await generateProviderApplicationKey();
+      this.#store.createApplicationKeyChange({
+        expectedRevision: parsed.revision, changeId: parsed.change_id,
+        baseFingerprint: parsed.base_fingerprint, key, audit,
+      });
+      return { created: true, settings: this.view(), public_key: key.uploadPublicKey, fingerprint: key.fingerprint };
+    });
+  }
+
+  activateProviderApplicationKey(
+    input: ActivateProviderApplicationKeyInput,
+    audit: SettingsAuditContext,
+    signal?: AbortSignal,
+  ): Promise<RuntimeSettingsView> {
+    return this.#exclusive(async () => {
+      const parsed = activateProviderApplicationKeySchema.parse(input);
+      const current = this.#store.snapshot();
+      const change = this.#store.applicationKeyChange(parsed.change_id);
+      if (!change || !change.providerAccountKey) throw keyChangeConflict();
+      if (change.state === "ACTIVATED") {
+        if (parsed.revision + 1 !== change.finishedRevision ||
+          current.activeProviderAccountKey !== change.providerAccountKey ||
+          current.provider?.applicationKeyFingerprint !== change.newFingerprint) throw keyChangeConflict();
+        if (parsed.platform_public_key && candidateProvider(current.provider, current.provider.privateKeyPem,
+          parsed.platform_public_key).platformKeyFingerprint !== current.provider.platformKeyFingerprint) throw keyChangeConflict();
+        // A lost response may follow a committed change whose runtime application failed.
+        await this.#applyCommitted(current);
+        return this.view();
+      }
+      if (current.revision !== parsed.revision) throw revisionConflict(parsed.revision, current.revision);
+      assertPendingKeyMatches(current, change);
+      const provider = candidateProvider(current.provider!, change.key!.privateKeyPem, parsed.platform_public_key);
+      try {
+        signal?.throwIfAborted();
+        await this.#verifyProviderApplicationKey(provider, { signal, requestId: audit.requestId });
+        signal?.throwIfAborted();
+      } catch (error) {
+        if (error instanceof SettingsError && error.code === "provider_application_key_verification_failed") throw error;
+        throw new SettingsError("provider_application_key_verification_failed", "未能完成支付宝验证，当前密钥未更换，请重试。");
+      }
+      let committed = false;
+      let transitionStarted = false;
+      try {
+        transitionStarted = true;
+        await this.#onPaymentMutationStarted();
+        if (signal?.aborted) throw new SettingsError("provider_application_key_verification_failed", "启用请求已取消，当前密钥未更换。");
+        const snapshot = this.#store.finishApplicationKeyChange({
+          expectedRevision: parsed.revision, changeId: parsed.change_id, provider, audit,
+        });
+        committed = true;
+        await this.#applyCommitted(snapshot);
+        return this.view();
+      } catch (error) {
+        if (!committed && transitionStarted) await this.#restoreCurrentRuntime(error);
+        throw error;
+      }
+    });
+  }
+
+  discardProviderApplicationKey(
+    input: ApplicationKeyChangeActionInput,
+    audit: SettingsAuditContext,
+  ): Promise<RuntimeSettingsView> {
+    return this.#exclusive(async () => {
+      const parsed = applicationKeyChangeActionSchema.parse(input);
+      const current = this.#store.snapshot();
+      const change = this.#store.applicationKeyChange(parsed.change_id);
+      if (change?.state === "DISCARDED" && change.finishedRevision === parsed.revision + 1) return this.view();
+      if (current.revision !== parsed.revision) throw revisionConflict(parsed.revision, current.revision);
+      assertPendingKeyMatches(current, change);
+      this.#store.finishApplicationKeyChange({
+        expectedRevision: parsed.revision, changeId: parsed.change_id, audit,
+      });
+      return this.view();
+    });
+  }
+
   rotateApiSecret(expectedRevision: number, audit: SettingsAuditContext): Promise<{
     readonly settings: RuntimeSettingsView;
     readonly client_id: "default";
@@ -540,6 +676,30 @@ export class RuntimeSettingsService {
       release();
     }
   }
+}
+
+function keyChangeConflict(): SettingsError {
+  return new SettingsError("provider_application_key_change_conflict", "the application key change no longer matches; reload the current configuration");
+}
+
+function assertPendingKeyMatches(current: RuntimeSettingsSnapshot, change: ProviderApplicationKeyChange | null): void {
+  if (!change || change.state !== "PENDING" || !change.key || !current.provider ||
+    current.activeProviderAccountKey !== change.providerAccountKey || current.provider.appId !== change.appId ||
+    current.provider.environment !== change.environment || current.provider.applicationKeyFingerprint !== change.baseFingerprint) {
+    throw keyChangeConflict();
+  }
+}
+
+function candidateProvider(current: ProviderSettings, privateKey: string, publicKey?: string): ProviderSettings {
+  return parseProviderKeys({
+    environment: current.environment, appId: current.appId, privateKey,
+    publicKey: publicKey ?? current.publicKeyPem,
+    timeoutMilliseconds: current.timeoutMilliseconds,
+    scanIntervalMilliseconds: current.scanIntervalMilliseconds,
+    activeScanIntervalMilliseconds: current.activeScanIntervalMilliseconds,
+    safetyLagMilliseconds: current.safetyLagMilliseconds,
+    maximumSuccessAgeMilliseconds: current.maximumSuccessAgeMilliseconds,
+  });
 }
 
 function revisionConflict(expected: number, current: number): SettingsError {

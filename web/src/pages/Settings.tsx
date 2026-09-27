@@ -176,7 +176,10 @@ export default function Settings() {
                       onSaved={saved}
                     />
                   )}
-                  <SuccessMessage message={success} />
+                  <SuccessMessage
+                    message={success}
+                    multiline={section === "provider"}
+                  />
                 </div>
               </TabsContent>
             </Tabs>

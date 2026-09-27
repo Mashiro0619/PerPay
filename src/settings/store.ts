@@ -23,6 +23,7 @@ import {
   type ApiCredentialSnapshot,
   type ProviderEnvironment,
   type ProviderApplicationKeyMaterial,
+  type ProviderApplicationKeyChange,
   type ProviderSettings,
   type RuntimeSecretName,
   type RuntimeSettingsSnapshot,
@@ -72,6 +73,23 @@ interface SecretRow {
   readonly updated_at: bigint | number;
 }
 
+interface ApplicationKeyChangeRow {
+  readonly change_id: string;
+  readonly requested_revision: bigint | number;
+  readonly base_fingerprint: string;
+  readonly new_fingerprint: string;
+  readonly provider_account_key: string | null;
+  readonly app_id: string | null;
+  readonly environment: ProviderEnvironment | null;
+  readonly state: ProviderApplicationKeyChange["state"];
+  readonly cipher_version: bigint | number | null;
+  readonly nonce: Uint8Array | null;
+  readonly ciphertext: Uint8Array | null;
+  readonly authentication_tag: Uint8Array | null;
+  readonly created_at: bigint | number;
+  readonly finished_revision: bigint | number | null;
+}
+
 interface GuardRow {
   readonly cipher_version: bigint | number;
   readonly nonce: Uint8Array;
@@ -92,7 +110,10 @@ export class SettingsError extends Error {
     | "secret_not_found"
     | "provider_application_key_missing"
     | "provider_switch_blocked"
-    | "provider_application_key_rotation_not_supported";
+    | "provider_application_key_rotation_not_supported"
+    | "provider_application_key_change_pending"
+    | "provider_application_key_change_conflict"
+    | "provider_application_key_verification_failed";
 
   constructor(code: SettingsError["code"], message: string) {
     super(message);
@@ -118,7 +139,8 @@ export class RuntimeSettingsStore {
         return;
       }
       const encryptedSecret = connection.prepare(
-        "SELECT 1 AS present FROM runtime_secrets LIMIT 1",
+        `SELECT 1 AS present FROM runtime_secrets
+         UNION ALL SELECT 1 FROM provider_application_key_changes WHERE state = 'PENDING' LIMIT 1`,
       ).get() as { present: number } | undefined;
       if (encryptedSecret) {
         throw new Error(
@@ -220,6 +242,125 @@ export class RuntimeSettingsStore {
     });
   }
 
+  applicationKeyChange(changeId: string): ProviderApplicationKeyChange | null {
+    return this.#database.read((connection) => readApplicationKeyChange(connection, this.#cipher, changeId));
+  }
+
+  pendingApplicationKey(): ProviderApplicationKeyChange | null {
+    return this.#database.read((connection) => readApplicationKeyChange(connection, this.#cipher));
+  }
+
+  createApplicationKeyChange(input: {
+    readonly expectedRevision: number;
+    readonly changeId: string;
+    readonly baseFingerprint: string;
+    readonly key: ProviderApplicationKeyMaterial;
+    readonly audit: SettingsAuditContext;
+  }): RuntimeSettingsSnapshot {
+    const key = parseProviderApplicationPrivateKey(input.key.privateKeyPem);
+    return this.#database.write((connection) => {
+      assertRevision(connection, input.expectedRevision);
+      const current = this.#snapshot(connection);
+      const original = readSecret(connection, "provider_private_key");
+      if (!original || original.secret_fingerprint !== input.baseFingerprint) {
+        throw new SettingsError("provider_application_key_change_conflict", "the application key changed before regeneration");
+      }
+      if (readApplicationKeyChange(connection, this.#cipher)) {
+        throw new SettingsError("provider_application_key_change_pending", "an application key is already awaiting activation");
+      }
+      if (connection.prepare("SELECT 1 FROM provider_application_key_changes WHERE change_id = ?").get(input.changeId)) {
+        throw new SettingsError("provider_application_key_change_conflict", "this application key change has already been used");
+      }
+      const active = current.provider !== null && current.activeProviderAccountKey !== null;
+      if (!active && (current.activeProviderAccountKey !== null ||
+        connection.prepare("SELECT 1 FROM provider_account_bindings LIMIT 1").get())) {
+        throw new SettingsError("settings_not_configured", "restore the existing provider configuration before regenerating its application key");
+      }
+      const now = Math.max(Date.now(), current.updatedAt);
+      const encrypted = active
+        ? this.#cipher.encrypt(`provider_application_key_change:${input.changeId}`, 1, key.privateKeyPem)
+        : null;
+      connection.prepare(`
+        INSERT INTO provider_application_key_changes(
+          change_id, requested_revision, base_fingerprint, new_fingerprint,
+          provider_account_key, app_id, environment, state,
+          cipher_version, nonce, ciphertext, authentication_tag, created_at, finished_revision, finished_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        input.changeId, input.expectedRevision, input.baseFingerprint, key.fingerprint,
+        current.activeProviderAccountKey, current.provider?.appId ?? null, current.provider?.environment ?? null,
+        active ? "PENDING" : "ACTIVATED", encrypted?.cipherVersion ?? null, encrypted?.nonce ?? null,
+        encrypted?.ciphertext ?? null, encrypted?.authenticationTag ?? null, now,
+        active ? null : input.expectedRevision + 1, active ? null : now,
+      );
+      if (!active) writeSecret(connection, this.#cipher, "provider_private_key", key.privateKeyPem, key.fingerprint, now);
+      assertUpdated(connection.prepare(`
+        UPDATE runtime_configuration SET revision = revision + 1, updated_at = ?
+        WHERE singleton_key = 1 AND revision = ?
+      `).run(now, input.expectedRevision).changes);
+      appendSettingsAudit(connection, input.audit, now,
+        active ? "settings.provider_application_key_prepared" : "settings.provider_application_key_regenerated", {
+          change_id: input.changeId,
+          revision: input.expectedRevision + 1,
+          payment_revision_changed: false,
+          previous_fingerprint: input.baseFingerprint,
+          application_key_fingerprint: key.fingerprint,
+        });
+      return this.#snapshot(connection);
+    });
+  }
+
+  finishApplicationKeyChange(input: {
+    readonly expectedRevision: number;
+    readonly changeId: string;
+    readonly provider?: ProviderSettings;
+    readonly audit: SettingsAuditContext;
+  }): RuntimeSettingsSnapshot {
+    return this.#database.write((connection) => {
+      assertRevision(connection, input.expectedRevision);
+      const current = this.#snapshot(connection);
+      const change = readApplicationKeyChange(connection, this.#cipher, input.changeId);
+      if (!change || change.state !== "PENDING" || !change.key) {
+        throw new SettingsError("provider_application_key_change_conflict", "this pending application key is no longer available");
+      }
+      if (!current.provider || current.activeProviderAccountKey !== change.providerAccountKey ||
+        current.provider.appId !== change.appId || current.provider.environment !== change.environment ||
+        current.provider.applicationKeyFingerprint !== change.baseFingerprint) {
+        throw new SettingsError("provider_application_key_change_conflict", "the provider no longer matches the pending application key");
+      }
+      const provider = input.provider;
+      if (provider && (provider.appId !== change.appId || provider.environment !== change.environment ||
+        provider.applicationKeyFingerprint !== change.newFingerprint)) {
+        throw new SettingsError("provider_application_key_change_conflict", "the verified provider does not match the pending application key");
+      }
+      const now = Math.max(Date.now(), current.updatedAt, change.createdAt);
+      if (provider) {
+        writeSecret(connection, this.#cipher, "provider_private_key", change.key.privateKeyPem, change.newFingerprint, now);
+        writeSecret(connection, this.#cipher, "provider_public_key", provider.publicKeyPem, provider.platformKeyFingerprint, now);
+      }
+      const state = provider ? "ACTIVATED" : "DISCARDED";
+      assertUpdated(connection.prepare(`
+        UPDATE provider_application_key_changes SET state = ?, cipher_version = NULL, nonce = NULL,
+          ciphertext = NULL, authentication_tag = NULL, finished_revision = ?, finished_at = ?
+        WHERE change_id = ? AND state = 'PENDING'
+      `).run(state, input.expectedRevision + 1, now, input.changeId).changes);
+      assertUpdated(connection.prepare(`
+        UPDATE runtime_configuration SET revision = revision + 1,
+          payment_revision = payment_revision + ?, updated_at = ?
+        WHERE singleton_key = 1 AND revision = ?
+      `).run(provider ? 1 : 0, now, input.expectedRevision).changes);
+      appendSettingsAudit(connection, input.audit, now,
+        provider ? "settings.provider_application_key_activated" : "settings.provider_application_key_discarded", {
+          change_id: input.changeId,
+          revision: input.expectedRevision + 1,
+          payment_revision_changed: Boolean(provider),
+          application_key_fingerprint: change.newFingerprint,
+          ...(provider ? { platform_key_fingerprint: provider.platformKeyFingerprint } : {}),
+        });
+      return this.#snapshot(connection);
+    });
+  }
+
   saveCollection(
     input: CollectionSettingsInput,
     audit: SettingsAuditContext,
@@ -278,6 +419,11 @@ export class RuntimeSettingsStore {
     const now = input.now ?? Date.now();
     return this.#database.write((connection) => {
       assertRevision(connection, input.expectedRevision);
+      const pending = readApplicationKeyChange(connection, this.#cipher);
+      if (pending && (
+        pending.providerAccountKey !== input.accountKey || pending.appId !== input.appId ||
+        pending.environment !== input.environment || pending.baseFingerprint !== input.privateKeyFingerprint
+      )) throw new SettingsError("provider_application_key_change_pending", "activate or discard the pending application key before switching the provider");
       bindProviderIdentityInTransaction(connection, {
         ...input.providerIdentity,
         providerAccountKey: input.accountKey,
@@ -749,6 +895,39 @@ function readConfiguration(connection: DatabaseSync): ConfigurationRow {
   ).get() as ConfigurationRow | undefined;
   if (!row) throw new Error("runtime configuration singleton is missing");
   return row;
+}
+
+function readApplicationKeyChange(
+  connection: DatabaseSync,
+  cipher: RuntimeSecretCipher,
+  changeId?: string,
+): ProviderApplicationKeyChange | null {
+  const query = "SELECT * FROM provider_application_key_changes WHERE " +
+    (changeId === undefined ? "state = 'PENDING'" : "change_id = ?");
+  const row = (changeId === undefined ? connection.prepare(query).get() : connection.prepare(query).get(changeId)) as ApplicationKeyChangeRow | undefined;
+  if (!row) return null;
+  const key = row.state === "PENDING" ? parseProviderApplicationPrivateKey(cipher.decrypt(
+    `provider_application_key_change:${row.change_id}`, 1, {
+      cipherVersion: safeInteger(row.cipher_version!, "pending key cipher version") as 1,
+      nonce: Buffer.from(row.nonce!),
+      ciphertext: Buffer.from(row.ciphertext!),
+      authenticationTag: Buffer.from(row.authentication_tag!),
+    },
+  ).toString("utf8")) : null;
+  if (key && key.fingerprint !== row.new_fingerprint) throw new Error("pending application key fingerprint does not match");
+  return {
+    changeId: row.change_id,
+    requestedRevision: safeInteger(row.requested_revision, "application key change revision"),
+    baseFingerprint: row.base_fingerprint,
+    newFingerprint: row.new_fingerprint,
+    providerAccountKey: row.provider_account_key,
+    appId: row.app_id,
+    environment: row.environment,
+    state: row.state,
+    key,
+    createdAt: safeInteger(row.created_at, "application key creation time"),
+    finishedRevision: row.finished_revision === null ? null : safeInteger(row.finished_revision, "application key activation revision"),
+  };
 }
 
 function assertRevision(connection: DatabaseSync, expected: number): void {

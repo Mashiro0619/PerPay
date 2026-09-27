@@ -25,11 +25,14 @@ describe("minimal onboarding", () => {
     [1, "provider", "支付宝接入"],
     [2, "collection", "经营码"],
   ] as const)(
-    "uses one content heading and no routine warning cards for %s",
+    "uses one step heading and separate contextual help without routine warnings for %s",
     async (stage, step, title) => {
       const view = mountOnboarding({ stage, path: onboardingPath(step) });
       await screen.findByRole("heading", { name: title });
-      expect(screen.getAllByRole("heading")).toHaveLength(2);
+      expect(screen.getAllByRole("heading", { level: 2 })).toHaveLength(1);
+      expect(
+        screen.getByRole("complementary", { name: "本步说明" }),
+      ).toContainElement(screen.getByRole("heading", { level: 3 }));
       expect(view.container.querySelector(".page-heading p")).toBeNull();
       expect(
         view.container.querySelector(".onboarding-content .notice"),
@@ -52,7 +55,9 @@ describe("minimal onboarding", () => {
     const environment = await screen.findByLabelText("支付宝环境");
     expect(environment).toBeVisible();
     expect(environment).toHaveValue("SANDBOX");
-    expect(screen.queryByRole("button", { name: /高级设置/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /高级设置/ }),
+    ).not.toBeInTheDocument();
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "保存并继续" }));
@@ -100,7 +105,9 @@ describe("minimal onboarding", () => {
       expect(screen.getByLabelText("请求超时（毫秒）")).toHaveFocus(),
     );
     expect(screen.getByLabelText("请求超时（毫秒）")).toBeVisible();
-    expect(screen.queryByRole("button", { name: "高级设置" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "高级设置" }),
+    ).not.toBeInTheDocument();
     expect(screen.getByLabelText("应用 ID（App ID）")).toHaveValue("app-id");
     expect(view.router.state.location.pathname).toBe(
       onboardingPath("provider"),
@@ -120,7 +127,9 @@ describe("minimal onboarding", () => {
     expect(screen.getByLabelText("最大尝试次数")).not.toBeVisible();
     expect(screen.getByLabelText("备份间隔（秒）")).toBeVisible();
     expect(screen.getByLabelText("保留备份数量")).toBeVisible();
-    expect(screen.queryByRole("button", { name: "调整备份策略" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "调整备份策略" }),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("每天备份，保留 7 份。")).toBeVisible();
     expect(screen.getAllByRole("link", { name: "继续" })).toHaveLength(1);
     expect(

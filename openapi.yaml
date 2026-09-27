@@ -692,7 +692,7 @@ paths:
         contains the single-line SPKI Base64 application public key that must be uploaded to the
         provider console. Repeating this action before activation returns the same key without
         replacing it. This action is unavailable after a provider generation exists; active-key
-        rotation requires a future two-phase pending-key workflow. The provider platform public
+        rotation uses the separate regenerate and activate actions. The provider platform public
         key must still be copied from the provider console. The supplied revision must be current
         when a key needs to be created. A retry with an older revision is accepted after the key
         exists and returns that same key; a future revision is rejected. All responses use
@@ -725,6 +725,136 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ProviderApplicationKeyGenerationEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '409': { $ref: '#/components/responses/SettingsConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/SettingsValidationFailed' }
+        '503': { $ref: '#/components/responses/SettingsUnavailable' }
+  /api/admin/v1/settings/provider/application-key/actions/regenerate:
+    post:
+      tags: [Admin Settings]
+      operationId: regenerateProviderApplicationKey
+      summary: Regenerate an initial application key or prepare a pending replacement
+      description: >-
+        Before any provider has been configured, replaces the staged application key pair immediately.
+        For an active provider, stores a new encrypted key pair as pending without changing the active
+        key, payment revision, or provider account identity. Upload the pending public key to Alipay
+        and use the activate action. The change_id and base_fingerprint identify the explicit operation;
+        retries with the same original request reuse its result. Another pending change must first be
+        activated or discarded. Private keys are never returned. All responses use Cache-Control: no-store.
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegenerateProviderApplicationKeyRequest' }
+      responses:
+        '200':
+          description: Application key operation result, including an idempotent retry
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderApplicationKeyGenerationEnvelope' }
+        '201':
+          description: New initial or pending application key generated
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderApplicationKeyGenerationEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '409': { $ref: '#/components/responses/SettingsConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/SettingsValidationFailed' }
+        '503': { $ref: '#/components/responses/SettingsUnavailable' }
+  /api/admin/v1/settings/provider/application-key/actions/activate:
+    post:
+      tags: [Admin Settings]
+      operationId: activateProviderApplicationKey
+      summary: Verify and activate the pending application key
+      description: >-
+        Performs one bounded read-only account-log query signed with the pending private key and verifies
+        the Alipay response before changing settings. Optional platform_public_key is the current Alipay
+        public key, not the application public key. Failure preserves both active and pending keys.
+        Success atomically promotes the pending private key and the verified Alipay public key,
+        increments payment revision and restarts dependent workers, preserving the provider account
+        identity and existing ledger/order associations. The probe never ingests ledger data or marks
+        collection ready. A retry of the successful action returns the current state without rotating
+        again. All responses use Cache-Control: no-store.
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ActivateProviderApplicationKeyRequest' }
+      responses:
+        '200':
+          description: Application key operation result, including an idempotent retry
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RuntimeSettingsEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '409': { $ref: '#/components/responses/SettingsConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/SettingsValidationFailed' }
+        '503': { $ref: '#/components/responses/SettingsUnavailable' }
+  /api/admin/v1/settings/provider/application-key/actions/discard:
+    post:
+      tags: [Admin Settings]
+      operationId: discardProviderApplicationKey
+      summary: Discard a pending application key without changing the active key
+      description: >-
+        Discards only the pending encrypted key in PerPay; it does not undo an upload in the Alipay console.
+        If the new public key was uploaded, restore the current application public key in Alipay first.
+        Active credentials and payment revision do not change. Repeating the same discarded action
+        is idempotent. The metadata-only audit/history is retained. All responses use Cache-Control: no-store.
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApplicationKeyChangeActionRequest' }
+      responses:
+        '200':
+          description: Application key operation result, including an idempotent retry
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RuntimeSettingsEnvelope' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
         '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
@@ -3201,6 +3331,7 @@ components:
         - provider
         - application_public_key
         - application_key_fingerprint
+        - pending_application_key
         - provider_generations
         - notifications
         - advanced
@@ -3233,6 +3364,11 @@ components:
         application_key_fingerprint:
           anyOf:
             - $ref: '#/components/schemas/Sha256Fingerprint'
+            - type: 'null'
+        pending_application_key:
+          description: A durable replacement not yet used to sign requests; null when none exists.
+          anyOf:
+            - $ref: '#/components/schemas/PendingApplicationKey'
             - type: 'null'
         provider_generations:
           type: array
@@ -3555,6 +3691,46 @@ components:
         revision: { type: integer, minimum: 0 }
         interval_seconds: { type: integer, minimum: 3600, maximum: 604800 }
         keep_count: { type: integer, minimum: 1, maximum: 365 }
+    PendingApplicationKey:
+      type: object
+      additionalProperties: false
+      required: [change_id, public_key, fingerprint, app_id, environment, created_at]
+      properties:
+        change_id: { type: string, format: uuid }
+        public_key:
+          type: string
+          pattern: '^[A-Za-z0-9+/]+={0,2}$'
+        fingerprint: { $ref: '#/components/schemas/Sha256Fingerprint' }
+        app_id: { type: string }
+        environment: { type: string, enum: [PRODUCTION, SANDBOX] }
+        created_at: { type: string, format: date-time }
+    RegenerateProviderApplicationKeyRequest:
+      type: object
+      additionalProperties: false
+      required: [revision, change_id, base_fingerprint]
+      properties:
+        revision: { type: integer, minimum: 0 }
+        change_id: { type: string, format: uuid, description: Fresh operation identifier; preserve on retry. }
+        base_fingerprint: { $ref: '#/components/schemas/Sha256Fingerprint' }
+    ApplicationKeyChangeActionRequest:
+      type: object
+      additionalProperties: false
+      required: [revision, change_id]
+      properties:
+        revision: { type: integer, minimum: 0 }
+        change_id: { type: string, format: uuid }
+    ActivateProviderApplicationKeyRequest:
+      type: object
+      additionalProperties: false
+      required: [revision, change_id]
+      properties:
+        revision: { type: integer, minimum: 0 }
+        change_id: { type: string, format: uuid }
+        platform_public_key:
+          type: string
+          minLength: 1
+          maxLength: 16384
+          description: Latest Alipay public key (Base64 or PEM); omit to keep the current verification key.
     SettingsRevisionRequest:
       type: object
       additionalProperties: false
@@ -5248,6 +5424,9 @@ components:
         - password_work_busy
         - provider_application_key_missing
         - provider_application_key_rotation_not_supported
+        - provider_application_key_change_pending
+        - provider_application_key_change_conflict
+        - provider_application_key_verification_failed
         - provider_switch_blocked
         - public_checkout_rate_limited
         - reconciliation_not_ready
@@ -5377,7 +5556,8 @@ components:
         The supplied settings revision is stale, a provider identity switch is unsafe while
         open payment work exists, or active application-key replacement was attempted without a
         two-phase pending-key workflow (`settings_revision_conflict`, `provider_switch_blocked`,
-        or `provider_application_key_rotation_not_supported`).
+        `provider_application_key_rotation_not_supported`, `provider_application_key_change_pending`,
+        or `provider_application_key_change_conflict`).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
@@ -5391,8 +5571,9 @@ components:
     SettingsValidationFailed:
       description: >-
         Request fields, provider keys, timing relationships, or notification origin violate the
-        runtime settings contract (`validation_failed`, `settings_validation_failed`, or
-        `provider_application_key_missing`).
+        runtime settings contract, or the pending application key failed the read-only Alipay
+        verification (`validation_failed`, `settings_validation_failed`,
+        `provider_application_key_missing`, or `provider_application_key_verification_failed`).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }

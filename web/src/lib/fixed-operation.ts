@@ -23,10 +23,15 @@ export function useFixedOperation<Input, Output = unknown>({
   execute,
   onSuccess,
   warnBeforeUnload = true,
+  isSafeRejection,
+  confirmsNotApplied,
 }: {
   execute: Command<Input, Output>["execute"];
   onSuccess: (value: Output) => void;
   warnBeforeUnload?: boolean;
+  isSafeRejection?: (error: unknown) => boolean;
+  /** Only for responses that prove this operation, including previous attempts, never committed. */
+  confirmsNotApplied?: (error: unknown, input: Input) => boolean;
 }) {
   const [recovery, setRecovery] = useState<Command<Input, Output> | null>(null);
   const unresolved = useRef<Command<Input, Output> | null>(null);
@@ -81,8 +86,16 @@ export function useFixedOperation<Input, Output = unknown>({
     },
     onError: (error, command) => {
       if (!alive.current) return;
-      // A later rejection never proves what happened to an earlier lost response.
-      if (unresolved.current || (!isConflict(error) && !isRejected(error))) {
+      if (confirmsNotApplied?.(error, command.input)) {
+        unresolved.current = null;
+        setRecovery(null);
+        return;
+      }
+      // Ordinary validation/authentication errors do not resolve an earlier lost response.
+      if (
+        unresolved.current ||
+        (!isConflict(error) && !isRejected(error) && !isSafeRejection?.(error))
+      ) {
         unresolved.current = command;
         setRecovery(command);
       }
@@ -139,7 +152,10 @@ export function useFixedOperation<Input, Output = unknown>({
   };
 }
 
-export function operationReasonError(value: string, { required = true } = {}): string | null {
+export function operationReasonError(
+  value: string,
+  { required = true } = {},
+): string | null {
   const reason = value.trim();
   if (!reason) return required ? "请填写操作理由。" : null;
   if (/\p{Cc}/u.test(reason))

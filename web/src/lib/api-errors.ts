@@ -15,9 +15,15 @@ const messages: Record<string, string> = {
   settings_unavailable: "无法读取实例配置，请查看运行状态后重试。",
   settings_not_configured: "请先完成实例配置，再执行此操作。",
   provider_application_key_missing:
-    "尚未生成应用密钥，请先在支付宝接入中生成密钥。",
+    "尚未配置应用密钥对，请先在支付宝接入中生成密钥对，或导入已有应用私钥。",
   provider_application_key_rotation_not_supported:
-    "已有应用密钥不能在此重新生成，请使用配置页更新接入信息。",
+    "不能直接覆盖当前应用私钥。请使用“重新生成应用公钥”，上传到支付宝后再验证启用。",
+  provider_application_key_change_pending:
+    "已有待启用的新公钥，请先验证启用或放弃，再生成另一把公钥或切换支付宝应用。",
+  provider_application_key_change_conflict:
+    "此密钥变更已结束或与当前配置不符，请刷新后核对公钥和待启用状态。",
+  provider_application_key_verification_failed:
+    "支付宝验证未通过，当前密钥未更换。请确认新应用公钥已上传，并核对支付宝公钥后重试。",
   provider_switch_blocked: "仍有未完成的收款业务，暂时不能切换支付宝应用。",
   secret_not_found: "此密钥尚未配置，请先完成对应设置。",
   system_not_configured: "实例配置尚未完成，请前往实例设置。",

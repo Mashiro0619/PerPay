@@ -114,7 +114,7 @@ describe("optional manual settlement reasons", () => {
       fixture.database.close();
       const previous = new DatabaseSync(databasePath);
       try {
-        previous.exec("DROP TRIGGER financial_operations_reason_required; DELETE FROM schema_migrations WHERE version = 27;");
+        previous.exec("DROP TABLE provider_application_key_changes; DELETE FROM schema_migrations WHERE version = 28; DROP TRIGGER financial_operations_reason_required; DELETE FROM schema_migrations WHERE version = 27;");
       } finally { previous.close(); }
       const upgraded = await AppDatabase.open(databasePath);
       const backupPath = join(fixture.directory, "manual-optional-backup.sqlite3");
@@ -141,7 +141,7 @@ describe("optional manual settlement reasons", () => {
       // A missing reason must not be accepted as old v26 evidence by backup verification.
       const damaged = new DatabaseSync(backupPath);
       try {
-        damaged.exec("DROP TRIGGER financial_operations_reason_required; DELETE FROM schema_migrations WHERE version = 27;");
+        damaged.exec("DROP TABLE provider_application_key_changes; DELETE FROM schema_migrations WHERE version = 28; DROP TRIGGER financial_operations_reason_required; DELETE FROM schema_migrations WHERE version = 27;");
         assert.equal(inspectDatabaseIntegrity(damaged).ok, false);
       } finally { damaged.close(); }
     });

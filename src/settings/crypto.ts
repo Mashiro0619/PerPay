@@ -9,6 +9,8 @@ import {
 
 import type { RuntimeSecretName } from "./model.ts";
 
+type CipherSecretName = RuntimeSecretName | "master_key_guard" | `provider_application_key_change:${string}`;
+
 const CIPHER_VERSION = 1;
 const NONCE_BYTES = 12;
 const TAG_BYTES = 16;
@@ -35,7 +37,7 @@ export class RuntimeSecretCipher {
     ));
   }
 
-  encrypt(name: RuntimeSecretName | "master_key_guard", version: number, plaintext: string | Buffer): EncryptedSecret {
+  encrypt(name: CipherSecretName, version: number, plaintext: string | Buffer): EncryptedSecret {
     if (!Number.isSafeInteger(version) || version < 1) throw new RangeError("secret version is invalid");
     const nonce = randomBytes(NONCE_BYTES);
     const cipher = createCipheriv("aes-256-gcm", this.#key, nonce, { authTagLength: TAG_BYTES });
@@ -52,7 +54,7 @@ export class RuntimeSecretCipher {
     };
   }
 
-  decrypt(name: RuntimeSecretName | "master_key_guard", version: number, encrypted: EncryptedSecret): Buffer {
+  decrypt(name: CipherSecretName, version: number, encrypted: EncryptedSecret): Buffer {
     if (encrypted.cipherVersion !== CIPHER_VERSION) {
       throw new Error(`unsupported runtime secret cipher version ${encrypted.cipherVersion}`);
     }

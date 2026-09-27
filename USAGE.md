@@ -8,12 +8,14 @@
 
 首次配置见 [图文教程](docs/alipay-setup.md)，创建订单与回调通知接入可试用 [调用端 Demo](examples/node-client/README.md)。
 
-推荐先访问 `/admin`：完成管理员初始化并登录，跟随六步首次配置向导完成支付宝接入、经营码、网站 API 密钥、可选的业务通知与备份，并检查收款就绪。向导会区分上传至支付宝的应用公钥与从平台取回的支付宝公钥；请先确认应用具备账务明细查询接口权限。已有实例仍可使用“实例设置”的分类表单，也可从该页重新打开向导。
+推荐先访问 `/admin`：完成管理员初始化并登录，跟随六步首次配置向导完成支付宝接入、经营码、业务系统接入（PerPay API 凭证）、可选的业务通知与备份，并检查收款就绪。向导会区分上传至支付宝的应用公钥与从平台取回的支付宝公钥；请先确认应用具备账务明细查询接口权限。已有实例仍可使用“实例设置”的分类表单，也可从该页重新打开向导。
+
+**PerPay API 密钥由 PerPay 生成并保管**。接入方需要将客户端 ID（当前为 `default`）和此密钥配置到业务系统后端的 PerPay 接入配置中，用于签名调用 PerPay；PerPay 使用同一密钥验证请求。它不是业务系统自身的 API 密钥，也不是支付宝应用密钥对，不需要从业务系统复制一把密钥填回此向导。已有密钥可直接复用，不要为重新进入向导而轮换。
 
 启用业务通知时填写业务网站的 HTTPS Origin；跳过通知则由业务后端主动查询订单状态。备份策略保存并不代表已经验证可恢复，需同时保管主密钥卷。控制台的“测试收款”会创建真实小额订单，不是模拟支付，也不是完成配置的必选项。也可直接调用以下管理 API：
 
 1. 通过 `POST /api/admin/v1/setup` 设置管理员密码，再通过 `POST /api/admin/v1/session/login` 创建管理员会话。
-2. 使用 `POST /api/admin/v1/settings/provider/application-key/actions/generate` 生成支付宝应用密钥，再配置支付宝接入与经营码；`POST /api/admin/v1/settings/api-key/actions/rotate` 生成或轮换的是业务端 `default` 客户端 API 密钥，两者不能混用。
+2. 使用 `POST /api/admin/v1/settings/provider/application-key/actions/generate` 首次生成支付宝应用密钥对（公钥和私钥），再配置支付宝接入与经营码；此首次生成接口保持幂等，不直接替换已有密钥对。需要更换时，使用下述应用公钥变更流程。`POST /api/admin/v1/settings/api-key/actions/rotate` 生成或轮换的是业务端 `default` 客户端 API 密钥，两者不能混用。
 3. 使用 `PUT /api/admin/v1/settings/notifications` 启用通知并填写网站的 HTTPS Origin，例如 `https://shop.example.com`。这里只填写来源，不填写路径。
 4. 使用密钥 reveal 管理接口查看通知密钥，并只保存到网站后端的环境变量或密钥管理器。
 5. 创建订单时，将 `notify_url` 填成已允许来源下的完整地址，例如 `https://shop.example.com/webhooks/perpay`。
@@ -23,6 +25,17 @@
 在 **实例设置 → 界面显示** 中，可开关收银台商品名称，并选择首页的面积图、柱状图或折线图。保存到当前实例，重启后仍保留；图表样式不改变金额与次数的统计口径。
 
 商品名称开关只控制收银台显示，不修改订单 API 和通知内容，也不作为数据保密开关。
+
+### 应用公钥变更
+
+首次生成接口 `POST /api/admin/v1/settings/provider/application-key/actions/generate` 仍然幂等。明确更换时使用以下管理员接口（均要求管理员会话、同源与 CSRF 校验）：
+
+1. `POST /api/admin/v1/settings/provider/application-key/actions/regenerate`：提交当前 `revision`、当前 `base_fingerprint` 和新的 UUID `change_id`。首次接入前替换原密钥对；已经接入时只生成加密保存的待启用密钥。重复请求必须保留同一请求体，不会生成另一把密钥。
+2. 从配置响应的 `pending_application_key.public_key` 取得待启用应用公钥，并上传到同一个支付宝应用。`application_public_key` 始终表示 PerPay 当前使用的公钥。
+3. `POST /api/admin/v1/settings/provider/application-key/actions/activate`：提交最新 `revision` 和待启用 `change_id`，可附上支付宝最新的 `platform_public_key`。服务端使用待启用私钥做一次有超时上限的只读账单查询并验签，成功后才原子切换密钥；失败不更换当前密钥。支付配置版本会在成功启用时递增，支付宝账户身份和历史业务关联不变。
+4. 不再更换时，可调用 `POST /api/admin/v1/settings/provider/application-key/actions/discard`，提交最新 `revision` 与 `change_id`。这不会撤回支付宝侧的上传；若已上传新公钥，应先在支付宝恢复当前公钥。
+
+待启用密钥不会因刷新或重启丢失；生成、启用和放弃都有审计记录，私钥不出现在这些响应中。存在待启用变更时不能切换支付宝应用或再生成另一把公钥。此次新增数据库迁移 28 只增加密钥变更表，不改写原密钥、配置或业务数据。升级前仍应按部署说明保留数据库备份和主密钥。
 
 ## 账本采集节奏
 

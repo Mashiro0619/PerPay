@@ -110,7 +110,7 @@ describe("first collection onboarding", () => {
     const view = mountOnboarding({ path: "/" });
     await pathIs(view, "application");
     expect(
-      await screen.findByRole("heading", { name: "应用密钥" }),
+      await screen.findByRole("heading", { name: "应用公钥" }),
     ).toBeVisible();
     expect(view.writes()).toHaveLength(0);
   });
@@ -207,7 +207,7 @@ describe("first collection onboarding", () => {
     const view = mountOnboarding();
     const user = userEvent.setup();
     await user.click(
-      await screen.findByRole("button", { name: "生成应用密钥" }),
+      await screen.findByRole("button", { name: "生成应用公钥" }),
     );
     expect(
       await screen.findByText("synthetic-application-public-key"),
@@ -215,7 +215,7 @@ describe("first collection onboarding", () => {
     await pathIs(view, "application");
     expect(view.writes()).toHaveLength(1);
     expect(
-      screen.queryByRole("button", { name: "生成应用密钥" }),
+      screen.queryByRole("button", { name: "生成应用公钥" }),
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "下一步" }));
     await pathIs(view, "provider");
@@ -403,7 +403,7 @@ describe("first collection onboarding", () => {
       .click(await screen.findByRole("link", { name: "继续" }));
     await pathIs(view, "check");
     expect(
-      await screen.findByText("业务通知未启用，网站需主动查单。"),
+      await screen.findByText("业务通知未启用，业务系统后端需主动向 PerPay 查询订单状态。"),
     ).toBeVisible();
     expect(view.writes()).toHaveLength(0);
   });

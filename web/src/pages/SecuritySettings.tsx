@@ -78,7 +78,11 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 const secrets: Array<[RuntimeSecretName, string, string]> = [
-  ["api_secret", "网站 API 密钥", "业务服务端请求签名"],
+  [
+    "api_secret",
+    "PerPay API 密钥",
+    "PerPay 生成，业务服务端用于签名调用 PerPay",
+  ],
   ["webhook_secret", "通知签名密钥", "业务网站验证付款通知"],
   ["provider_private_key", "应用私钥", "PerPay 请求支付宝"],
   ["provider_public_key", "支付宝公钥", "验证支付宝返回的数据"],
@@ -407,6 +411,11 @@ export function SecretDialog({
           <DialogDescription>60 秒后或切换标签页时自动清除。</DialogDescription>
         </DialogHeader>
         <div className="-mx-4 flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-1">
+          {name === "api_secret" && (
+            <p className="text-sm text-muted-foreground">
+              将此密钥复制到业务系统后端的 PerPay 接入配置，不要放进浏览器代码。
+            </p>
+          )}
           {pending && <Loading label="正在读取密钥…" />}
           {value !== null && (
             <CopyValue value={value} label={"复制" + title} secret />
@@ -495,7 +504,7 @@ export function RotateKeyDialog({
               ? "60 秒后或切换标签页时自动清除。"
               : replacing
                 ? "旧密钥立即失效。轮换后需更新业务服务端，否则无法创建订单。"
-                : "密钥仅用于业务网站后端。"}
+                : "由 PerPay 生成并保管。生成后复制到业务系统后端的 PerPay 接入配置，无需填写业务系统自己的密钥。"}
           </DialogDescription>
         </DialogHeader>
         {secret ? (

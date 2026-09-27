@@ -1082,14 +1082,30 @@ function countRuntimeSettingsDomainViolations(connection: DatabaseSync): number 
   const hasGuard = tableExists(connection, "runtime_master_key_guard");
   if (!hasSecrets && !hasGuard) return 0;
   if (!hasSecrets || !hasGuard) return 1;
-  return readViolationCount(
+  const hasKeyChanges = tableExists(connection, "provider_application_key_changes");
+  const pendingKeyGuard = hasKeyChanges
+    ? " OR EXISTS (SELECT 1 FROM provider_application_key_changes WHERE state = 'PENDING')"
+    : "";
+  const guardViolations = readViolationCount(
     connection,
     `SELECT CASE
-       WHEN EXISTS (SELECT 1 FROM runtime_secrets) AND
+       WHEN (EXISTS (SELECT 1 FROM runtime_secrets)${pendingKeyGuard}) AND
             (SELECT COUNT(*) FROM runtime_master_key_guard WHERE singleton_key = 1) != 1
        THEN 1 ELSE 0 END AS violations`,
     "runtime master key guard",
   );
+  if (!hasKeyChanges) return guardViolations;
+  return guardViolations + readViolationCount(connection, `
+    SELECT COUNT(*) AS violations FROM provider_application_key_changes AS pending
+    WHERE pending.state = 'PENDING' AND NOT EXISTS (
+      SELECT 1 FROM runtime_configuration AS config JOIN runtime_secrets AS secret
+        ON secret.secret_name = 'provider_private_key'
+      WHERE config.provider_account_key = pending.provider_account_key
+        AND config.provider_app_id = pending.app_id AND config.provider_environment = pending.environment
+        AND secret.secret_fingerprint = pending.base_fingerprint
+        AND config.revision > pending.requested_revision
+    )
+  `, "pending application key binding");
 }
 
 function countIdentityDomainViolations(connection: DatabaseSync): number {

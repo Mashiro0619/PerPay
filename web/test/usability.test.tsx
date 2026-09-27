@@ -330,7 +330,7 @@ describe("short feedback and safe settings", () => {
     const view = mountOnboarding({ stage: 4, path: "/settings/security" });
     const user = userEvent.setup();
     const viewKey = await screen.findByRole("button", {
-      name: "查看网站 API 密钥",
+      name: "查看PerPay API 密钥",
     });
     await user.hover(viewKey);
     act(() => {

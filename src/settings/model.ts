@@ -65,6 +65,36 @@ export interface ProviderApplicationKeyMaterial {
   readonly fingerprint: string;
 }
 
+export interface ProviderApplicationKeyChange {
+  readonly changeId: string;
+  readonly requestedRevision: number;
+  readonly baseFingerprint: string;
+  readonly newFingerprint: string;
+  readonly providerAccountKey: string | null;
+  readonly appId: string | null;
+  readonly environment: ProviderEnvironment | null;
+  readonly state: "PENDING" | "ACTIVATED" | "DISCARDED";
+  readonly key: ProviderApplicationKeyMaterial | null;
+  readonly createdAt: number;
+  readonly finishedRevision: number | null;
+}
+
+export const regenerateProviderApplicationKeySchema = z.object({
+  revision: z.number().int().nonnegative(),
+  change_id: z.uuid(),
+  base_fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
+}).strict();
+export const applicationKeyChangeActionSchema = z.object({
+  revision: z.number().int().nonnegative(),
+  change_id: z.uuid(),
+}).strict();
+export const activateProviderApplicationKeySchema = applicationKeyChangeActionSchema.extend({
+  platform_public_key: z.string().min(1).max(16 * 1024).optional(),
+});
+export type RegenerateProviderApplicationKeyInput = z.infer<typeof regenerateProviderApplicationKeySchema>;
+export type ApplicationKeyChangeActionInput = z.infer<typeof applicationKeyChangeActionSchema>;
+export type ActivateProviderApplicationKeyInput = z.infer<typeof activateProviderApplicationKeySchema>;
+
 export interface WebhookSettings {
   readonly enabled: boolean;
   readonly allowedOrigin: string | null;

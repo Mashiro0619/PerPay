@@ -12,7 +12,6 @@ import {
   ChartColumn,
   ChartLine,
   ChevronDown,
-  KeyRound,
   Save,
 } from "lucide-react";
 import { collectionCodeError } from "../../../src/shared/collection-code";
@@ -26,10 +25,12 @@ import {
 } from "@/api/client";
 import { Link } from "@/navigation";
 import { cn } from "@/lib/utils";
-import { useDraftGuard, useFormDraft } from "@/drafts";
+import { applicationKeyState } from "@/lib/application-key";
+import { useFormDraft } from "@/drafts";
 import { SuccessMessage, useFeedback } from "@/components/Feedback";
 import { CollectionCodeField } from "@/components/CollectionCodeField";
-import { CopyValue } from "@/components/copy-value";
+import { ApplicationKey } from "@/components/ApplicationKey";
+export { ApplicationKey } from "@/components/ApplicationKey";
 import { ErrorNotice } from "@/components/request-state";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -146,6 +147,7 @@ export function SettingsEditor({
   guided = false,
   submitLabel = "保存",
   secondaryAction,
+  renderGuidedActions,
 }: {
   section: ConfigurationSection;
   settings: RuntimeSettings;
@@ -153,6 +155,7 @@ export function SettingsEditor({
   guided?: boolean;
   submitLabel?: string;
   secondaryAction?: ReactNode;
+  renderGuidedActions?: (actions: ReactNode) => ReactNode;
 }) {
   // Keep defaults stable for this mounted draft when a sibling form saves.
   // Explicit refreshes remount the editor; saves still use the latest revision.
@@ -315,7 +318,11 @@ export function SettingsEditor({
                 }
               />
               <FieldDescription id="setting-private-key-hint">
-                留空使用已生成的私钥。替换前，请同步支付宝平台中的应用公钥。
+                {settings.provider || settings.provider_generations.length > 0
+                  ? "留空保留当前应用私钥。此导入入口不能替换当前应用的私钥；更换请使用下方“重新生成应用公钥”，上传后再验证启用。"
+                  : applicationKeyState(settings) === "missing"
+                    ? "首次接入可导入已有应用私钥，并将对应的应用公钥配置到支付宝；不导入则先生成应用公钥。"
+                    : "已有应用私钥，留空即可复用。这里只接受与当前应用公钥匹配的私钥；需要更换时请使用下方“重新生成应用公钥”。"}
               </FieldDescription>
               {fieldErrors.private_key && (
                 <FieldError id="setting-private-key-error">
@@ -335,22 +342,14 @@ export function SettingsEditor({
         <NativeSelect
           id="setting-environment"
           name="environment"
-          defaultValue={
-            initialSettings.provider?.environment ?? "PRODUCTION"
-          }
+          defaultValue={initialSettings.provider?.environment ?? "PRODUCTION"}
           aria-invalid={!!fieldErrors.environment}
           aria-describedby={
-            fieldErrors.environment
-              ? "setting-environment-error"
-              : undefined
+            fieldErrors.environment ? "setting-environment-error" : undefined
           }
         >
-          <NativeSelectOption value="PRODUCTION">
-            生产环境
-          </NativeSelectOption>
-          <NativeSelectOption value="SANDBOX">
-            沙箱环境
-          </NativeSelectOption>
+          <NativeSelectOption value="PRODUCTION">生产环境</NativeSelectOption>
+          <NativeSelectOption value="SANDBOX">沙箱环境</NativeSelectOption>
         </NativeSelect>
         {fieldErrors.environment && (
           <FieldError id="setting-environment-error">
@@ -444,9 +443,7 @@ export function SettingsEditor({
           name="amount_offset_maximum_cents"
           error={fieldErrors.amount_offset_maximum_cents}
           label="最大金额尾差（分）"
-          value={
-            initialSettings.collection?.amount_offset_maximum_cents ?? 99
-          }
+          value={initialSettings.collection?.amount_offset_maximum_cents ?? 99}
           min={1}
           max={99}
         />
@@ -754,6 +751,9 @@ export function SettingsEditor({
 
   const editor = (
     <form
+      className={cn(
+        guided && renderGuidedActions && "flex min-w-0 flex-col gap-5",
+      )}
       ref={draft.form}
       onSubmit={submit}
       onInvalidCapture={(event) => {
@@ -782,9 +782,24 @@ export function SettingsEditor({
       <FieldSet disabled={save.isPending}>
         <FieldGroup>
           {guided ? (
-            panels.map((panel) => (
-              <Fragment key={panel.title}>{panel.fields}</Fragment>
-            ))
+            renderGuidedActions ? (
+              <Card>
+                <CardContent>
+                  <FieldGroup>
+                    {panels.map((panel) => (
+                      <FieldSet key={panel.title} className="min-w-0">
+                        <FieldLegend>{panel.title}</FieldLegend>
+                        {panel.fields}
+                      </FieldSet>
+                    ))}
+                  </FieldGroup>
+                </CardContent>
+              </Card>
+            ) : (
+              panels.map((panel) => (
+                <Fragment key={panel.title}>{panel.fields}</Fragment>
+              ))
+            )
           ) : (
             <Card>
               <CardHeader>
@@ -816,11 +831,13 @@ export function SettingsEditor({
               <CardFooter>{actions}</CardFooter>
             </Card>
           )}
-          {guided && actions}
+          {guided && !renderGuidedActions && actions}
         </FieldGroup>
       </FieldSet>
+      {guided && renderGuidedActions?.(actions)}
     </form>
   );
+  if (guided && renderGuidedActions) return editor;
   if (!guided)
     return (
       <div className="flex min-w-0 flex-col gap-4">
@@ -852,79 +869,6 @@ export function SettingsEditor({
   );
 }
 
-export function ApplicationKey({
-  settings,
-  onSaved,
-  guided = false,
-}: {
-  settings: RuntimeSettings;
-  onSaved: (settings: RuntimeSettings, message?: string) => void;
-  guided?: boolean;
-}) {
-  const { requestDiscard } = useDraftGuard();
-  const generate = useMutation({
-    mutationFn: () =>
-      result(
-        api.generateProviderApplicationKey({
-          body: { revision: settings.revision },
-        }),
-      ),
-    onSuccess: ({ data }) => onSaved(data.settings, "应用密钥已生成"),
-  });
-  return (
-    <Card>
-      <CardHeader>
-        {guided ? (
-          <CardDescription>应用公钥</CardDescription>
-        ) : (
-          <CardTitle role="heading" aria-level={2}>
-            应用密钥
-          </CardTitle>
-        )}
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {settings.application_public_key ? (
-          guided ? (
-            <CopyValue
-              value={settings.application_public_key}
-              label="复制应用公钥"
-            />
-          ) : (
-            <Collapsible>
-              <CollapsibleTrigger
-                render={<Button variant="outline" size="sm" />}
-              >
-                查看应用公钥
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <div className="pt-4">
-                  <CopyValue
-                    value={settings.application_public_key}
-                    label="复制应用公钥"
-                  />
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
-          )
-        ) : (
-          <Button
-            className="w-fit"
-            disabled={generate.isPending}
-            onClick={() => requestDiscard(() => generate.mutate())}
-          >
-            {generate.isPending ? (
-              <Spinner aria-hidden="true" data-icon="inline-start" />
-            ) : (
-              <KeyRound data-icon="inline-start" />
-            )}
-            生成应用密钥
-          </Button>
-        )}
-        <ErrorNotice error={generate.error} />
-      </CardContent>
-    </Card>
-  );
-}
 async function saveSettings(
   section: ConfigurationSection,
   form: FormData,

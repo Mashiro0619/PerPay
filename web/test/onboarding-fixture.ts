@@ -24,6 +24,7 @@ export function configuredThrough(stage: number): RuntimeSettings {
     value.secrets[name] = { ...value.secrets[name] };
   value.application_public_key =
     stage >= 1 ? "synthetic-application-public-key" : null;
+  value.application_key_fingerprint = stage >= 1 ? "a".repeat(64) : null;
   value.collection = stage >= 3 ? value.collection : null;
   value.provider =
     stage >= 2
@@ -43,6 +44,20 @@ export function configuredThrough(stage: number): RuntimeSettings {
   value.secrets.provider_public_key.configured = stage >= 2;
   return completion(value);
 }
+export function pendingApplicationKey(value = configuredThrough(4)): RuntimeSettings {
+  return {
+    ...value,
+    pending_application_key: {
+      change_id: "00000000-0000-4000-8000-000000000001",
+      public_key: "synthetic-pending-application-public-key",
+      fingerprint: "b".repeat(64),
+      app_id: value.provider!.app_id,
+      environment: value.provider!.environment,
+      created_at: "2026-09-27T00:00:00Z",
+    },
+  };
+}
+
 function completion(value: RuntimeSettings): RuntimeSettings {
   value.completion = {
     application_key: value.application_public_key !== null,
@@ -136,6 +151,7 @@ export function mountOnboarding(
     stage?: number;
     path?: string;
     signedIn?: boolean;
+    pendingKey?: boolean;
     status?: (settings: RuntimeSettings) => SystemStatus;
     handle?: (request: Request) => Response | Promise<Response> | undefined;
   } = {},
@@ -156,7 +172,7 @@ export function mountOnboarding(
       removeEventListener: vi.fn(),
     })),
   );
-  let saved = configuredThrough(options.stage ?? 0);
+  let saved = options.pendingKey ? pendingApplicationKey() : configuredThrough(options.stage ?? 0);
   let signedIn = options.signedIn ?? true;
   const fetchMock = vi.fn(async (request: Request) => {
     const override = options.handle?.(request);
@@ -227,6 +243,7 @@ export function mountOnboarding(
         ...saved,
         revision: saved.revision + 1,
         application_public_key: "synthetic-application-public-key",
+        application_key_fingerprint: "a".repeat(64),
       });
       return json({
         data: {
@@ -236,6 +253,28 @@ export function mountOnboarding(
           fingerprint: "synthetic",
         },
       });
+    }
+    if (endpoint.endsWith("/application-key/actions/regenerate")) {
+      const input = await request.clone().json() as { change_id: string };
+      saved = saved.provider
+        ? { ...pendingApplicationKey(saved), revision: saved.revision + 1,
+            pending_application_key: { ...pendingApplicationKey(saved).pending_application_key!, change_id: input.change_id } }
+        : { ...saved, revision: saved.revision + 1,
+            application_public_key: "synthetic-regenerated-application-public-key", application_key_fingerprint: "b".repeat(64) };
+      return json({ data: { created: true, settings: saved,
+        public_key: saved.pending_application_key?.public_key ?? saved.application_public_key,
+        fingerprint: saved.pending_application_key?.fingerprint ?? saved.application_key_fingerprint } });
+    }
+    if (endpoint.endsWith("/application-key/actions/activate")) {
+      const pending = saved.pending_application_key!;
+      saved = { ...saved, revision: saved.revision + 1, payment_revision: saved.payment_revision + 1,
+        application_public_key: pending.public_key, application_key_fingerprint: pending.fingerprint,
+        pending_application_key: null };
+      return json({ data: saved });
+    }
+    if (endpoint.endsWith("/application-key/actions/discard")) {
+      saved = { ...saved, revision: saved.revision + 1, pending_application_key: null };
+      return json({ data: saved });
     }
     if (endpoint.endsWith("/api-key/actions/rotate")) {
       saved = completion({
