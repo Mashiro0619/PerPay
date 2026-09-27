@@ -215,7 +215,13 @@ describe("order detail work surface", () => {
     expect(
       screen.queryByRole("heading", { name: "实收金额不符" }),
     ).not.toBeInTheDocument();
-    await userEvent.setup().click(screen.getByText("异常历史（1）"));
+    const user = userEvent.setup();
+    const historyTrigger = screen.getByRole("button", { name: "异常历史（1）" });
+    expect(historyTrigger).not.toHaveClass("hover:underline");
+    expect(historyTrigger).toHaveClass("focus-visible:ring-3");
+    expect(historyTrigger).toHaveAttribute("aria-expanded", "false");
+    await user.click(historyTrigger);
+    expect(historyTrigger).toHaveAttribute("aria-expanded", "true");
     expect(
       await screen.findByRole("heading", { name: "实收金额不符" }),
     ).toBeVisible();
@@ -225,6 +231,11 @@ describe("order detail work surface", () => {
       screen.queryByRole("heading", { name: "账务异常 · 1" }),
     ).not.toBeInTheDocument();
     expect(requests).toHaveLength(2);
+    historyTrigger.focus();
+    await user.keyboard("{Enter}");
+    expect(historyTrigger).toHaveAttribute("aria-expanded", "false");
+    await user.keyboard(" ");
+    expect(historyTrigger).toHaveAttribute("aria-expanded", "true");
   });
 
   it("shows live exceptions before collection evidence and separates financial state from reminder state", async () => {

@@ -302,7 +302,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
           {history.length > 0 && (
             <Accordion>
               <AccordionItem value="history">
-                <AccordionTrigger>
+                <AccordionTrigger underlineOnHover={false}>
                   异常历史（{history.length}）
                 </AccordionTrigger>
                 <AccordionContent>

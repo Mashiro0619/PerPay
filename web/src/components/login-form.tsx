@@ -310,7 +310,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
         </Card>
         {initialized === true && (
           <Collapsible>
-            <CollapsibleTrigger render={<Button variant="link" size="sm" />}>
+            <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
               忘记密码？
             </CollapsibleTrigger>
             <CollapsibleContent>
