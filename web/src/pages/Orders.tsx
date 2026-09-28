@@ -4,7 +4,7 @@ import {
   type ListQueryLookup,
 } from "@/components/list-query-toolbar";
 import { ListActionsMenu } from "@/components/list-actions-menu";
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
 import { useNavigate } from "@/navigation";
@@ -163,17 +163,69 @@ export default function Orders() {
 }
 function useOrderLookup() {
   const navigate = useNavigate();
-  return useMutation({
-    mutationFn: ({ kind, value }: { kind: string; value: string }) =>
-      kind === "merchant"
+  const active = useRef<AbortController | null>(null);
+  function cancel() {
+    active.current?.abort();
+    active.current = null;
+  }
+  useLayoutEffect(() => cancel, []);
+  const lookup = useMutation({
+    networkMode: "always",
+    retry: false,
+    mutationFn: ({
+      kind,
+      value,
+      operation,
+    }: {
+      kind: string;
+      value: string;
+      operation: AbortController;
+      originUrl: string;
+    }) => {
+      const { signal } = operation;
+      signal.throwIfAborted();
+      return kind === "merchant"
         ? result(
             api.getAdministratorOrderByMerchantNumber({
               path: { merchantOrderNo: value },
+              signal,
             }),
           )
-        : result(api.getAdministratorOrder({ path: { orderId: value } })),
-    onSuccess: ({ data }) => navigate("/orders/" + data.order_id),
+        : result(
+            api.getAdministratorOrder({ path: { orderId: value }, signal }),
+          );
+    },
+    onSuccess: ({ data }, { operation, originUrl }) => {
+      // View transitions can keep this route mounted after browser history commits.
+      if (
+        active.current === operation &&
+        !operation.signal.aborted &&
+        window.location.href === originUrl
+      )
+        navigate("/orders/" + data.order_id);
+    },
+    onSettled: (_data, _error, { operation }) => {
+      if (active.current === operation) active.current = null;
+    },
   });
+  return {
+    ...lookup,
+    mutate({ kind, value }: { kind: string; value: string }) {
+      cancel();
+      const operation = new AbortController();
+      active.current = operation;
+      lookup.mutate({
+        kind,
+        value,
+        operation,
+        originUrl: window.location.href,
+      });
+    },
+    reset() {
+      cancel();
+      lookup.reset();
+    },
+  };
 }
 function OrderPage({
   lookup,

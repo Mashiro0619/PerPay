@@ -6,7 +6,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { onlineManager, useMutation } from "@tanstack/react-query";
 import { Eye, KeyRound, MoreHorizontal, ShieldCheck } from "lucide-react";
 import {
   api,
@@ -15,6 +15,7 @@ import {
   type RuntimeSettings,
 } from "@/api/client";
 import { useSession } from "@/auth";
+import { waitForOperation } from "@/lib/operation-timeout";
 import {
   MIN_ADMIN_PASSWORD_CHARACTERS,
   dateTime,
@@ -557,10 +558,12 @@ export function RotateKeyDialog({
     setPending(true);
     setError(null);
     try {
-      const response = await result(
-        webhook
-          ? api.rotateWebhookSigningSecret({ body: { revision } })
-          : api.rotateApiClientSecret({ body: { revision } }),
+      const response = await waitForOperation(new AbortController(), (signal) =>
+        result(
+          webhook
+            ? api.rotateWebhookSigningSecret({ body: { revision }, signal })
+            : api.rotateApiClientSecret({ body: { revision }, signal }),
+        ),
       );
       if (canDisplay()) setSecret(response.data.secret);
       onSaved(
@@ -669,10 +672,18 @@ function PasswordForm() {
   const session = useSession();
   const submitting = useRef(false);
   const change = useMutation({
-    mutationFn: () =>
-      result(
-        api.changeAdministratorPassword({ body: { new_password: password } }),
-      ),
+    // A password change must never be queued for a later reconnection.
+    networkMode: "always",
+    retry: false,
+    mutationFn: (newPassword: string) => {
+      if (!onlineManager.isOnline() || !navigator.onLine)
+        throw new Error("网络已断开，密码未提交。恢复连接后请重新提交。");
+      return result(
+        api.changeAdministratorPassword({
+          body: { new_password: newPassword },
+        }),
+      );
+    },
     onSuccess: () => {
       setPassword("");
       setConfirmation("");
@@ -702,7 +713,7 @@ function PasswordForm() {
     submitting.current = true;
     setInvalidField(null);
     setValidation(null);
-    change.mutate();
+    change.mutate(password);
   }
   function edited() {
     setValidation(null);

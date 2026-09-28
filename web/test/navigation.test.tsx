@@ -2,7 +2,7 @@
 import "../src/pages/Dashboard";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { onlineManager, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
@@ -91,6 +91,8 @@ function mount(
       return json({ data: [], page: { next_cursor: null } });
     if (path === "/api/admin/v1/work-items")
       return json({ data: [], page: { next_cursor: null } });
+    if (path === "/api/admin/v1/password")
+      return new Response(null, { status: 204 });
     if (path === "/api/admin/v1/session/logout")
       return options.logoutFailure
         ? apiError("internal_error", "logout failed", 503)
@@ -138,6 +140,104 @@ function unloadIsBlocked() {
 }
 
 describe("navigation and draft protection", () => {
+  it.each(["manager", "navigator"])(
+    "does not queue an offline password change after discarding the draft (%s)",
+    async (source) => {
+      const view = mount({ path: "/settings/security" });
+      const user = userEvent.setup();
+      await user.type(
+        await screen.findByLabelText("新密码"),
+        "offline-test-password",
+      );
+      await user.type(
+        screen.getByLabelText("再次输入新密码"),
+        "offline-test-password",
+      );
+      const writes = () =>
+        view.fetchMock.mock.calls.filter(
+          ([request]) =>
+            new URL(request.url).pathname === "/api/admin/v1/password",
+        );
+      const online = vi.spyOn(navigator, "onLine", "get");
+      try {
+        if (source === "manager") act(() => onlineManager.setOnline(false));
+        else online.mockReturnValue(false);
+        await user.click(
+          screen.getByRole("button", { name: "修改并重新登录" }),
+        );
+        expect(
+          await screen.findByText(
+            "网络已断开，密码未提交。恢复连接后请重新提交。",
+          ),
+        ).toBeVisible();
+        expect(writes()).toHaveLength(0);
+        expect(
+          queryClient
+            .getMutationCache()
+            .getAll()
+            .some((mutation) => mutation.state.isPaused),
+        ).toBe(false);
+        await user.click(screen.getByRole("link", { name: "订单" }));
+        await user.click(
+          await screen.findByRole("button", { name: "放弃修改并继续" }),
+        );
+        await waitFor(() =>
+          expect(view.router.state.location.pathname).toBe("/orders"),
+        );
+        online.mockReturnValue(true);
+        await act(async () => {
+          onlineManager.setOnline(true);
+          await queryClient.resumePausedMutations();
+        });
+        expect(writes()).toHaveLength(0);
+        expect(
+          screen.queryByDisplayValue("offline-test-password"),
+        ).not.toBeInTheDocument();
+      } finally {
+        online.mockRestore();
+        act(() => onlineManager.setOnline(true));
+      }
+    },
+  );
+
+  it("requires an explicit resubmit after an offline password failure", async () => {
+    const view = mount({ path: "/settings/security" });
+    const user = userEvent.setup();
+    await user.type(
+      await screen.findByLabelText("新密码"),
+      "resubmit-test-password",
+    );
+    await user.type(
+      screen.getByLabelText("再次输入新密码"),
+      "resubmit-test-password",
+    );
+    const writes = () =>
+      view.fetchMock.mock.calls.filter(
+        ([request]) =>
+          new URL(request.url).pathname === "/api/admin/v1/password",
+      );
+    try {
+      act(() => onlineManager.setOnline(false));
+      await user.click(screen.getByRole("button", { name: "修改并重新登录" }));
+      await screen.findByText("网络已断开，密码未提交。恢复连接后请重新提交。");
+      await act(async () => {
+        onlineManager.setOnline(true);
+        await queryClient.resumePausedMutations();
+      });
+      expect(writes()).toHaveLength(0);
+      await user.click(screen.getByRole("button", { name: "修改并重新登录" }));
+      expect(
+        await screen.findByRole("heading", { name: "登录管理后台" }),
+      ).toBeVisible();
+      expect(writes()).toHaveLength(1);
+      expect(await writes()[0]![0].clone().json()).toEqual({
+        new_password: "resubmit-test-password",
+      });
+    } finally {
+      act(() => onlineManager.setOnline(true));
+    }
+  });
+
   it("keeps the same default tabs on narrow screens and activates explicitly", async () => {
     const view = mount({
       path: "/settings/display",
@@ -179,7 +279,10 @@ describe("navigation and draft protection", () => {
     await user.click(screen.getByRole("button", { name: "继续编辑" }));
     expect(view.router.state.location.pathname).toBe("/settings/collection");
     expect(field).toHaveValue(450);
-    expect(screen.getByRole("tab", { name: "经营码与订单" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "经营码与订单" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     await waitFor(() => expect(selector).toHaveFocus());
     expect(unloadIsBlocked()).toBe(true);
     expect(

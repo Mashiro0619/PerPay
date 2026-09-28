@@ -1,7 +1,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router";
+import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
 import { queryClient } from "../src/api/client";
@@ -28,7 +28,10 @@ function renderOrders(initialPath = "/orders") {
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialPath]}>
         <TestPaymentProvider>
+          <Link to="/system">离开订单列表</Link>
+          <Link to="/orders">返回订单列表</Link>
           <Routes>
+            <Route path="/system" element={<h1>测试运行状态</h1>} />
             <Route path="/orders" element={<Orders />} />
             <Route path="/orders/:orderId" element={<h1>测试订单详情</h1>} />
           </Routes>
@@ -40,6 +43,153 @@ function renderOrders(initialPath = "/orders") {
 }
 
 describe("order browsing", () => {
+  it("ignores a result after browser history commits while the old route is still mounted", async () => {
+    let finish!: (response: Response) => void;
+    let lookupRequest: Request | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((request: Request) => {
+        if (new URL(request.url).pathname.endsWith("/orders"))
+          return Promise.resolve(
+            json({ data: [order], page: { next_cursor: null } }),
+          );
+        lookupRequest = request;
+        return new Promise<Response>((resolve) => {
+          finish = resolve;
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderOrders();
+    await user.click(screen.getByRole("button", { name: "查询方式：关键词" }));
+    await user.click(
+      await screen.findByRole("menuitemradio", { name: "商户订单号" }),
+    );
+    await user.type(
+      screen.getByRole("searchbox", { name: "订单号" }),
+      order.merchant_order_no,
+    );
+    await user.click(screen.getByRole("button", { name: "查找" }));
+    await waitFor(() => expect(lookupRequest).toBeDefined());
+    const originalUrl = window.location.href;
+    try {
+      // A view transition updates browser history before React unmounts Orders.
+      window.history.replaceState(null, "", "/admin/system");
+      expect(lookupRequest!.signal.aborted).toBe(false);
+      await act(async () => {
+        finish(json({ data: order }));
+      });
+      expect(
+        screen.getByRole("searchbox", { name: "订单号" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("heading", { name: "测试订单详情" }),
+      ).not.toBeInTheDocument();
+    } finally {
+      window.history.replaceState(null, "", originalUrl);
+    }
+  });
+
+  it.each(["商户订单号", "内部订单编号"])(
+    "aborts a %s lookup when leaving and ignores a late response",
+    async (mode) => {
+      let finish!: (response: Response) => void;
+      let lookupRequest: Request | undefined;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((request: Request) => {
+          if (new URL(request.url).pathname.endsWith("/orders"))
+            return Promise.resolve(
+              json({ data: [order], page: { next_cursor: null } }),
+            );
+          lookupRequest = request;
+          // Deliberately ignore abort: the UI must also reject a late success.
+          return new Promise<Response>((resolve) => {
+            finish = resolve;
+          });
+        }),
+      );
+      const user = userEvent.setup();
+      renderOrders();
+      await user.click(
+        screen.getByRole("button", { name: "查询方式：关键词" }),
+      );
+      await user.click(
+        await screen.findByRole("menuitemradio", { name: mode }),
+      );
+      await user.type(
+        screen.getByRole("searchbox", { name: "订单号" }),
+        mode === "商户订单号" ? order.merchant_order_no : orderId,
+      );
+      await user.click(screen.getByRole("button", { name: "查找" }));
+      await waitFor(() => expect(lookupRequest).toBeDefined());
+      await user.click(screen.getByRole("link", { name: "离开订单列表" }));
+      await screen.findByRole("heading", { name: "测试运行状态" });
+      expect(lookupRequest!.signal.aborted).toBe(true);
+      await act(async () => {
+        finish(json({ data: order }));
+      });
+      expect(screen.getByLabelText("当前地址")).toHaveTextContent("/system");
+      expect(
+        screen.queryByRole("heading", { name: "测试订单详情" }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
+  it("does not let an old lookup take over a new lookup after returning to the list", async () => {
+    const requests: Array<{
+      request: Request;
+      finish: (response: Response) => void;
+    }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((request: Request) => {
+        if (new URL(request.url).pathname.endsWith("/orders"))
+          return Promise.resolve(
+            json({ data: [order], page: { next_cursor: null } }),
+          );
+        return new Promise<Response>((finish) => {
+          requests.push({ request, finish });
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderOrders();
+    async function lookup(value: string) {
+      await user.click(
+        screen.getByRole("button", { name: "查询方式：关键词" }),
+      );
+      await user.click(
+        await screen.findByRole("menuitemradio", { name: "商户订单号" }),
+      );
+      await user.type(screen.getByRole("searchbox", { name: "订单号" }), value);
+      await user.click(screen.getByRole("button", { name: "查找" }));
+    }
+    await lookup("old-merchant-order");
+    await waitFor(() => expect(requests).toHaveLength(1));
+    await user.click(screen.getByRole("link", { name: "离开订单列表" }));
+    await screen.findByRole("heading", { name: "测试运行状态" });
+    await user.click(screen.getByRole("link", { name: "返回订单列表" }));
+    await lookup("new-merchant-order");
+    await waitFor(() => expect(requests).toHaveLength(2));
+    await act(async () => {
+      requests[0]!.finish(json({ data: order }));
+    });
+    expect(screen.getByLabelText("当前地址").textContent).toBe("/orders");
+    expect(requests[0]!.request.signal.aborted).toBe(true);
+    expect(requests[1]!.request.signal.aborted).toBe(false);
+    const newId = "22222222-2222-4222-8222-222222222222";
+    await act(async () => {
+      requests[1]!.finish(json({ data: { ...order, order_id: newId } }));
+    });
+    expect(
+      await screen.findByRole("heading", { name: "测试订单详情" }),
+    ).toBeVisible();
+    expect(screen.getByLabelText("当前地址")).toHaveTextContent(
+      "/orders/" + newId,
+    );
+  });
+
   it("clears active filters without dropping unrelated URL parameters", async () => {
     const fetchMock = vi.fn(async (request: Request) => {
       const filtered = new URL(request.url).searchParams.has("payment_status");

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
+import { waitForOperation } from "./operation-timeout";
 
 type Command<Input, Output> = {
   input: Input;
@@ -51,36 +52,11 @@ export function useFixedOperation<Input, Output = unknown>({
     mutationFn: async (command: Command<Input, Output>) => {
       const operation = new AbortController();
       controller.current = operation;
-      let detach = () => {};
-      const aborted = new Promise<never>((_resolve, reject) => {
-        const abort = () => reject(operation.signal.reason);
-        operation.signal.addEventListener("abort", abort, { once: true });
-        detach = () => operation.signal.removeEventListener("abort", abort);
-      });
-      const timer = window.setTimeout(
-        () =>
-          operation.abort(new DOMException("等待操作结果超时", "TimeoutError")),
-        20_000,
-      );
       try {
-        const value = await Promise.race([
-          Promise.resolve().then(() =>
-            command.execute(command.input, operation.signal),
-          ),
-          aborted,
-        ]);
-        operation.signal.throwIfAborted();
-        return value;
-      } catch (error) {
-        if (
-          operation.signal.reason instanceof DOMException &&
-          operation.signal.reason.name === "TimeoutError"
-        )
-          throw new Error("等待操作结果超时。停止等待不代表服务端已取消操作。");
-        throw error;
+        return await waitForOperation(operation, (signal) =>
+          command.execute(command.input, signal),
+        );
       } finally {
-        window.clearTimeout(timer);
-        detach();
         if (controller.current === operation) controller.current = null;
       }
     },
