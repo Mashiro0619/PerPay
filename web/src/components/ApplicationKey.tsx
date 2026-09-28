@@ -94,9 +94,11 @@ export function ApplicationKey({
   const keyState = applicationKeyState(settings);
   const pending = settings.pending_application_key;
   const [dialog, setDialog] = useState<ChangeMode | null>(null);
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const dialogOrigin = useRef<HTMLElement | null>(null);
   const [success, setSuccess] = useFeedback();
   function saved(value: RuntimeSettings, message?: string) {
+    setMaintenanceOpen(false);
     setSuccess(message ?? "");
     onSaved(value, message);
   }
@@ -214,22 +216,36 @@ export function ApplicationKey({
               </Collapsible>
             )}
             {canRegenerateApplicationKey(settings) ? (
-              <>
-                <Button
-                  className="w-fit"
-                  variant="outline"
+              <Collapsible
+                open={maintenanceOpen}
+                onOpenChange={setMaintenanceOpen}
+              >
+                <CollapsibleTrigger
                   data-application-key-action
-                  onClick={(event) => open("regenerate", event.currentTarget)}
+                  render={<Button variant="ghost" size="sm" />}
                 >
-                  <RefreshCw data-icon="inline-start" />
-                  重新生成应用公钥
-                </Button>
-                <p className="text-sm text-muted-foreground">
-                  {settings.provider
-                    ? "重新生成会同时生成配套私钥，验证启用前不会更换当前密钥。"
-                    : "重新生成会同时更换配套私钥；此前复制或上传的应用公钥需要更新。"}
-                </p>
-              </>
+                  <ChevronDown data-icon="inline-start" />
+                  密钥维护
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="flex min-w-0 flex-col items-start gap-3 pt-3">
+                    <p className="text-sm text-muted-foreground">
+                      {settings.provider
+                        ? "重新生成会同时生成配套私钥，验证启用前不会更换当前密钥。"
+                        : "重新生成会同时更换配套私钥；此前复制或上传的应用公钥需要更新。"}
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={(event) =>
+                        open("regenerate", event.currentTarget)
+                      }
+                    >
+                      <RefreshCw data-icon="inline-start" />
+                      重新生成应用公钥
+                    </Button>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
             ) : (
               <p className="text-sm text-muted-foreground">
                 请先在常规设置中恢复支付宝接入配置，再更换此应用的公钥。

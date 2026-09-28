@@ -589,6 +589,22 @@ export class RuntimeSettingsStore {
     });
   }
 
+  rotateWebhookSecret(secret: string, expectedRevision: number, audit: SettingsAuditContext, now = Date.now()): RuntimeSettingsSnapshot {
+    if (!isCanonicalSecret(secret)) throw new RangeError("notification secret must contain exactly 32 random bytes");
+    return this.#database.write((connection) => {
+      assertRevision(connection, expectedRevision);
+      if (!readSecret(connection, "webhook_secret")) throw new SettingsError("secret_not_found", "notification signing key has not been configured");
+      writeSecret(connection, this.#cipher, "webhook_secret", secret, fingerprintSecret(secret, "webhook-signing-key"), now);
+      const updated = connection.prepare(
+        `UPDATE runtime_configuration SET revision = revision + 1, updated_at = ?
+          WHERE singleton_key = 1 AND revision = ?`,
+      ).run(now, expectedRevision);
+      assertUpdated(updated.changes);
+      appendSettingsAudit(connection, audit, now, "settings.webhook_secret_rotated", { revision: expectedRevision + 1 });
+      return this.#snapshot(connection);
+    });
+  }
+
   saveWebhook(
     input: WebhookSettingsInput & { readonly secret: string | null },
     audit: SettingsAuditContext,

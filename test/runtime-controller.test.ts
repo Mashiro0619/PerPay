@@ -6,6 +6,7 @@ import { RuntimeController } from "../src/runtime/controller.ts";
 import { parseProviderKeys, type RuntimeSettingsSnapshot } from "../src/settings/model.ts";
 import { LedgerIngestScheduler } from "../src/ledger/scheduler.ts";
 import { ReconciliationScheduler } from "../src/reconciliation/scheduler.ts";
+import { WebhookScheduler } from "../src/notifications/scheduler.ts";
 
 const unconfiguredSettings: RuntimeSettingsSnapshot = Object.freeze({
   revision: 0,
@@ -159,4 +160,45 @@ describe("runtime settings controller", () => {
     assert.equal(runtime.status().transitioning, false);
     await runtime.stop();
   });
+});
+
+
+it("drains the old notification scheduler before installing the rotated signing key", async (t) => {
+  const events: string[] = [];
+  const workers: WebhookScheduler[] = [];
+  let finishOld!: () => void;
+  const draining = new Promise<void>(resolve => { finishOld = resolve; });
+  t.mock.method(WebhookScheduler.prototype, "start", async function(this: WebhookScheduler) {
+    workers.push(this);
+    events.push("start:" + workers.length);
+  });
+  t.mock.method(WebhookScheduler.prototype, "stop", async function(this: WebhookScheduler) {
+    events.push("stop:" + (workers.indexOf(this) + 1));
+    if (this === workers[0]) await draining;
+  });
+  const runtime = new RuntimeController({
+    database: {} as never,
+    orders: { initialize() {} } as never,
+    ledger: {} as never,
+    reconciliation: {} as never,
+    webhooks: {
+      syncSigningKey({ secretFingerprint }: { secretFingerprint: string }) {
+        events.push("key:" + secretFingerprint);
+        return { secretFingerprint };
+      },
+    } as never,
+  });
+  const old = { ...unconfiguredSettings, webhook: { ...unconfiguredSettings.webhook, enabled: true, allowedOrigin: "https://business.example", secret: "a".repeat(43), signingKeyFingerprint: "1".repeat(64) } };
+  try {
+    await runtime.start(old);
+    const changed = runtime.apply({ ...old, revision: 1, webhook: { ...old.webhook, secret: "b".repeat(43), signingKeyFingerprint: "2".repeat(64) } });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(events, ["key:" + "1".repeat(64), "start:1", "stop:1"]);
+    finishOld();
+    await changed;
+    assert.deepEqual(events, ["key:" + "1".repeat(64), "start:1", "stop:1", "key:" + "2".repeat(64), "start:2"]);
+  } finally {
+    finishOld();
+    await runtime.stop();
+  }
 });

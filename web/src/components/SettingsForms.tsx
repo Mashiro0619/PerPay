@@ -267,7 +267,8 @@ export function SettingsEditor({
           id="setting-platform-key"
           name="platform_public_key"
           rows={4}
-          required={!settings.secrets.provider_public_key.configured}
+          required
+          defaultValue={initialSettings.provider?.platform_public_key ?? ""}
           maxLength={16384}
           autoComplete="off"
           spellCheck={false}
@@ -280,9 +281,7 @@ export function SettingsEditor({
           }
         />
         <FieldDescription id="setting-platform-key-hint">
-          {settings.secrets.provider_public_key.configured
-            ? "已配置，留空不变。"
-            : "从支付宝平台复制，不是应用公钥。"}
+          从支付宝应用的接口加签设置复制，支持 Base64 或 PEM 格式。
         </FieldDescription>
         {fieldErrors.platform_public_key && (
           <FieldError id="setting-platform-key-error">
@@ -903,6 +902,9 @@ async function saveSettings(
     ).data;
   }
   if (section === "provider") {
+    const platformPublicKey = text("platform_public_key");
+    if (!platformPublicKey)
+      throw new SettingsInputError("platform_public_key", "请填写支付宝公钥。");
     const normalInterval = integer("scan_interval_seconds");
     const activeInterval = integer("active_scan_interval_seconds");
     const maximumSuccessAge = integer("maximum_success_age_seconds");
@@ -932,9 +934,7 @@ async function saveSettings(
             ...(text("private_key")
               ? { private_key: text("private_key") }
               : {}),
-            ...(text("platform_public_key")
-              ? { platform_public_key: text("platform_public_key") }
-              : {}),
+            platform_public_key: platformPublicKey,
           },
         }),
       )

@@ -26,6 +26,13 @@ const applicationPath = onboardingPath("application");
 const body = async (view: ReturnType<typeof mountOnboarding>, index = 0) =>
   view.writes()[index]!.clone().json();
 
+async function regenerationButton(user: ReturnType<typeof userEvent.setup>) {
+  const maintenance = await screen.findByRole("button", { name: "密钥维护" });
+  if (maintenance.getAttribute("aria-expanded") !== "true")
+    await user.click(maintenance);
+  return screen.findByRole("button", { name: "重新生成应用公钥" });
+}
+
 describe("application public key generation and replacement", () => {
   it("explains the key pair and only generates on an explicit first-use click", async () => {
     const view = mountOnboarding();
@@ -45,9 +52,13 @@ describe("application public key generation and replacement", () => {
     expect(await screen.findByText(configuredDescription)).toBeVisible();
     expect(screen.getByText("synthetic-application-public-key")).toBeVisible();
     expect(screen.getByRole("button", { name: "下一步" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "密钥维护" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
     expect(
-      screen.getByRole("button", { name: "重新生成应用公钥" }),
-    ).toBeVisible();
+      screen.queryByRole("button", { name: "重新生成应用公钥" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: /导入/ }),
     ).not.toBeInTheDocument();
@@ -76,8 +87,11 @@ describe("application public key generation and replacement", () => {
       await screen.findByLabelText("应用 ID（App ID）");
       await user.click(screen.getByRole("tab", { name: /应用公钥/ }));
       expect(
-        await screen.findByRole("button", { name: "重新生成应用公钥" }),
-      ).toBeVisible();
+        await screen.findByRole("button", { name: "密钥维护" }),
+      ).toHaveAttribute("aria-expanded", "false");
+      expect(
+        screen.queryByRole("button", { name: "重新生成应用公钥" }),
+      ).not.toBeInTheDocument();
       expect(view.writes()).toHaveLength(0);
     },
   );
@@ -85,9 +99,7 @@ describe("application public key generation and replacement", () => {
   it("allows cancelling regeneration and restores trigger focus", async () => {
     const view = mountOnboarding({ stage: 4, path: applicationPath });
     const user = userEvent.setup();
-    const trigger = await screen.findByRole("button", {
-      name: "重新生成应用公钥",
-    });
+    const trigger = await regenerationButton(user);
     await user.click(trigger);
     const dialog = await screen.findByRole("dialog", {
       name: "重新生成应用公钥？",
@@ -102,9 +114,7 @@ describe("application public key generation and replacement", () => {
   it("warns about replacing an initial pair and generates only once after confirmation", async () => {
     const view = mountOnboarding({ stage: 1, path: applicationPath });
     const user = userEvent.setup();
-    await user.click(
-      await screen.findByRole("button", { name: "重新生成应用公钥" }),
-    );
+    await user.click(await regenerationButton(user));
     const dialog = await screen.findByRole("dialog", {
       name: "重新生成应用公钥？",
     });
@@ -133,9 +143,7 @@ describe("application public key generation and replacement", () => {
     const user = userEvent.setup();
     const clipboard = vi.spyOn(navigator.clipboard, "writeText");
     const view = mountOnboarding({ stage: 4, path: applicationPath });
-    await user.click(
-      await screen.findByRole("button", { name: "重新生成应用公钥" }),
-    );
+    await user.click(await regenerationButton(user));
     await user.click(
       within(await screen.findByRole("dialog")).getByRole("button", {
         name: "生成新公钥",
@@ -219,7 +227,7 @@ describe("application public key generation and replacement", () => {
       },
     });
     const cached = JSON.stringify(queryClient.getQueryData(["settings"]));
-    expect(cached).not.toContain("updated-alipay-public-key");
+    expect(cached).toContain("updated-alipay-public-key");
     expect(JSON.stringify(localStorage)).not.toContain(
       "updated-alipay-public-key",
     );
@@ -363,9 +371,7 @@ describe("application public key generation and replacement", () => {
           : undefined,
     });
     const user = userEvent.setup();
-    await user.click(
-      await screen.findByRole("button", { name: "重新生成应用公钥" }),
-    );
+    await user.click(await regenerationButton(user));
     const dialog = await screen.findByRole("dialog");
     await user.click(
       within(dialog).getByRole("button", { name: "生成新公钥" }),
@@ -419,9 +425,7 @@ describe("application public key generation and replacement", () => {
         request.url.endsWith("/actions/regenerate") ? pending : undefined,
     });
     const user = userEvent.setup();
-    await user.click(
-      await screen.findByRole("button", { name: "重新生成应用公钥" }),
-    );
+    await user.click(await regenerationButton(user));
     const dialog = await screen.findByRole("dialog");
     const submit = within(dialog).getByRole("button", { name: "生成新公钥" });
     await user.click(submit);
@@ -449,9 +453,7 @@ describe("application public key generation and replacement", () => {
           : undefined,
     });
     const user = userEvent.setup();
-    await user.click(
-      await screen.findByRole("button", { name: "重新生成应用公钥" }),
-    );
+    await user.click(await regenerationButton(user));
     const dialog = await screen.findByRole("dialog");
     await user.click(
       within(dialog).getByRole("button", { name: "生成新公钥" }),
@@ -490,7 +492,7 @@ describe("application public key generation and replacement", () => {
     const input = await screen.findByLabelText("应用 ID（App ID）");
     fireEvent.change(input, { target: { value: "unsaved-provider" } });
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "重新生成应用公钥" }));
+    await user.click(await regenerationButton(user));
     await user.click(await screen.findByRole("button", { name: "继续编辑" }));
     expect(input).toHaveValue("unsaved-provider");
     expect(

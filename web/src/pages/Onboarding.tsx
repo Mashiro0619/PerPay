@@ -63,7 +63,11 @@ import {
   ItemActions,
   ItemGroup,
 } from "@/components/ui/item";
-import { RotateKeyDialog, SecretDialog } from "./SecuritySettings";
+import {
+  NotificationKeyActions,
+  RotateKeyDialog,
+  SecretDialog,
+} from "./SecuritySettings";
 export default function Onboarding() {
   const [editorVersion, setEditorVersion] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -272,6 +276,24 @@ function OnboardingFlow({
             </span>
           </header>
           <SuccessMessage message={success} multiline />
+          {pendingApplicationKey && index > 1 && (
+            <Alert role="status" data-onboarding-pending-key-warning>
+              <CircleAlert />
+              <AlertTitle>新应用公钥尚未启用</AlertTitle>
+              <AlertDescription className="min-w-0">
+                PerPay
+                当前仍使用原密钥，其他配置可以继续修改。若已在支付宝上传新公钥，请尽快完成验证启用，避免影响账本采集。
+              </AlertDescription>
+              <div className="col-start-2 flex flex-wrap gap-2 pt-2">
+                <Link
+                  className={buttonVariants({ variant: "outline", size: "sm" })}
+                  to={onboardingPath("provider")}
+                >
+                  前往验证启用
+                </Link>
+              </div>
+            </Alert>
+          )}
           {step === "application" && (
             <OnboardingStepLayout
               help={
@@ -421,7 +443,19 @@ function OnboardingFlow({
                 <ApplicationKeyActivation
                   key={pendingApplicationKey.change_id}
                   settings={settings}
-                  renderActions={renderActions}
+                  renderActions={(actions) =>
+                    renderActions(
+                      <>
+                        <Link
+                          className={buttonVariants({ variant: "ghost" })}
+                          to={onboardingPath("collection")}
+                        >
+                          暂不启用，继续配置
+                        </Link>
+                        {actions}
+                      </>,
+                    )
+                  }
                   onReload={onReload}
                   onLockChange={onActivationLockChange}
                   onSaved={(data, message) => saved(data, undefined, message)}
@@ -716,7 +750,6 @@ function OptionalSettings({
   onSaved: (settings: RuntimeSettings) => void;
   renderActions: (actions: ReactNode) => ReactNode;
 }) {
-  const [reveal, setReveal] = useState(false);
   return (
     <>
       <div
@@ -738,11 +771,7 @@ function OptionalSettings({
             submitLabel="保存通知"
             onSaved={onSaved}
             secondaryAction={
-              settings.notifications.enabled && (
-                <Button variant="outline" onClick={() => setReveal(true)}>
-                  查看签名密钥
-                </Button>
-              )
+              <NotificationKeyActions settings={settings} onSaved={onSaved} />
             }
           />
         </section>
@@ -767,13 +796,6 @@ function OptionalSettings({
         <Link className={buttonVariants()} to={onboardingPath("check")}>
           继续
         </Link>,
-      )}
-      {reveal && (
-        <SecretDialog
-          name="webhook_secret"
-          title="通知签名密钥"
-          onClose={() => setReveal(false)}
-        />
       )}
     </>
   );

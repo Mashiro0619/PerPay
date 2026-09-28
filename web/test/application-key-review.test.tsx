@@ -46,6 +46,7 @@ describe("pending key continuity across onboarding steps", () => {
     const user = userEvent.setup();
     const clipboard = vi.spyOn(navigator.clipboard, "writeText");
     const view = mountOnboarding({ stage: 4, path: applicationPath });
+    await user.click(await screen.findByRole("button", { name: "密钥维护" }));
     await user.click(
       await screen.findByRole("button", { name: "重新生成应用公钥" }),
     );
@@ -337,6 +338,10 @@ describe.each([
         path: inline ? providerPath : path,
       });
       const user = userEvent.setup();
+      if (trigger === "重新生成应用公钥")
+        await user.click(
+          await screen.findByRole("button", { name: "密钥维护" }),
+        );
       if (!inline)
         await user.click(await screen.findByRole("button", { name: trigger }));
       const dialog = await screen.findByRole(inline ? "form" : "dialog");

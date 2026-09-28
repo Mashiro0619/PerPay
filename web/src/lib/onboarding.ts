@@ -57,7 +57,6 @@ export function onboardingStepDescription(
 }
 
 export function nextRequiredStep(settings: RuntimeSettings): OnboardingStep {
-  if (settings.pending_application_key) return "provider";
   const steps = {
     GENERATE_APPLICATION_KEY: "application",
     CONFIGURE_PROVIDER: "provider",
@@ -76,7 +75,9 @@ export function resolveOnboardingStep(
   const next = nextRequiredStep(settings);
   const index = onboardingSteps.findIndex(({ id }) => id === requested);
   const firstMissing = onboardingSteps.findIndex(({ id }) => id === next);
-  return index < 0 || index > firstMissing ? next : onboardingSteps[index]!.id;
+  // A pending replacement is a suggested destination, not a missing configuration.
+  if (index < 0) return settings.pending_application_key ? "provider" : next;
+  return index > firstMissing ? next : onboardingSteps[index]!.id;
 }
 
 const prefix = "perpay:onboarding:deferred:";

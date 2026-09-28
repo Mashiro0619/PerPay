@@ -530,8 +530,9 @@ paths:
       operationId: getRuntimeSettings
       summary: Read runtime configuration and masked secret metadata
       description: >-
-        Returns only non-secret values, completion state, and masked secret metadata. Secret
-        plaintext is never included. All responses use `Cache-Control: no-store`.
+        Returns non-secret values, including the saved Alipay platform public key, completion
+        state, and masked secret metadata. Application private keys and other secret plaintext
+        are never included. All responses use `Cache-Control: no-store`.
       security:
         - AdminSessionCookie: []
       parameters:
@@ -648,8 +649,9 @@ paths:
         encrypted key is then used automatically. The platform public key is still required.
         For the same active application, omitted keys retain their current values. Switching
         environment or application ID requires both keys and is rejected while unsafe open
-        payment work exists. Plaintext keys are encrypted at rest and are not returned by this
-        save operation; they can be read only through the separate audited secret-reveal action.
+        payment work exists. Keys remain encrypted at rest. The saved Alipay platform public key
+        is returned in provider.platform_public_key for editing. Application private keys and
+        other secrets are not returned; revealing secrets requires the separate audited action.
         All responses use `Cache-Control: no-store`.
       x-perpay-requires-same-origin: true
       security:
@@ -982,6 +984,49 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
         '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '409': { $ref: '#/components/responses/SettingsConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/SettingsValidationFailed' }
+        '503': { $ref: '#/components/responses/SettingsUnavailable' }
+  /api/admin/v1/settings/notification-key/actions/rotate:
+    post:
+      tags: [Admin Settings]
+      operationId: rotateWebhookSigningSecret
+      summary: Rotate the existing notification signing secret
+      description: >-
+        Replaces an existing notification signing secret without enabling notifications or changing
+        delivery settings. Newly sent and retried deliveries use the new secret after runtime
+        replacement; requests already in flight can still carry the old signature. Update the receiver
+        verification configuration promptly. Completed deliveries are not replayed. The supplied
+        revision must be current; do not retry an uncertain result with a newer revision. Read
+        current settings and reveal webhook_secret to recover. Plaintext is returned only here
+        and through the audited reveal action. Never cache or log it. All responses use no-store.
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SettingsRevisionRequest' }
+      responses:
+        '201':
+          description: Notification signing secret rotated and returned once
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookSecretRotationEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '404': { $ref: '#/components/responses/SecretNotFound' }
         '409': { $ref: '#/components/responses/SettingsConflict' }
         '413': { $ref: '#/components/responses/TooLarge' }
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
@@ -3435,6 +3480,7 @@ components:
       required:
         - environment
         - app_id
+        - platform_public_key
         - provider_account_key
         - timeout_milliseconds
         - scan_interval_seconds
@@ -3444,6 +3490,9 @@ components:
       properties:
         environment: { type: string, enum: [PRODUCTION, SANDBOX] }
         app_id: { type: string, pattern: '^[A-Za-z0-9._-]{1,64}$' }
+        platform_public_key:
+          type: string
+          description: Saved Alipay platform public key in PEM form, returned to authenticated administrators for editing. Never an application private key.
         provider_account_key:
           type: string
           description: Internal immutable account-generation identifier; not a provider credential.
@@ -3739,6 +3788,21 @@ components:
       required: [revision]
       properties:
         revision: { type: integer, minimum: 0 }
+    WebhookSecretRotationEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [settings, secret]
+          properties:
+            settings: { $ref: '#/components/schemas/RuntimeSettings' }
+            secret:
+              type: string
+              pattern: '^[A-Za-z0-9_-]{43}$'
+              description: New notification signing secret. Do not cache or log.
     ApiSecretRotationEnvelope:
       type: object
       additionalProperties: false

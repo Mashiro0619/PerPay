@@ -428,3 +428,48 @@ describe("actionable collection configuration errors", () => {
     }
   });
 });
+
+
+describe("saved Alipay public key visibility", () => {
+  it("returns the full public key only to administrators, preserves it on reads and keeps private secrets hidden", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-public-key-visibility-"));
+    const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
+      directory, apiSecret, collectionCodePayload: "https://qr.alipay.com/public-key-visibility", publicUrl: origin,
+    });
+    const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
+    try {
+      const before = settings.view();
+      const snapshot = settings.snapshot();
+      const anonymous = await app.request("/api/admin/v1/settings");
+      assert.equal(anonymous.status, 401);
+      assert.equal((await anonymous.text()).includes(snapshot.provider!.publicKeyPem), false);
+      const headers = await loginHeaders(app);
+      for (let index = 0; index < 2; index++) {
+        const response = await app.request("/api/admin/v1/settings", { headers });
+        assert.equal(response.status, 200);
+        assert.equal(response.headers.get("cache-control"), "no-store");
+        const { data } = await response.json() as { data: ReturnType<RuntimeSettingsService["view"]> };
+        assert.equal(data.provider!.platform_public_key, snapshot.provider!.publicKeyPem);
+        assert.match(data.provider!.platform_public_key, /^-----BEGIN PUBLIC KEY-----/);
+        assert.deepEqual(data, before);
+        const serialized = JSON.stringify(data);
+        for (const secret of [snapshot.provider!.privateKeyPem, snapshot.apiSecret, snapshot.webhook.secret]) {
+          if (secret) assert.equal(serialized.includes(JSON.stringify(secret).slice(1, -1)), false);
+        }
+        assert.equal(serialized.includes("PRIVATE KEY"), false);
+      }
+      const { provider_account_key: _account, ...provider } = before.provider!;
+      const response = await app.request("/api/admin/v1/settings/provider", {
+        method: "PUT", headers, body: JSON.stringify({ revision: before.revision, ...provider }),
+      });
+      assert.equal(response.status, 200);
+      const { data } = await response.json() as { data: ReturnType<RuntimeSettingsService["view"]> };
+      assert.equal(data.provider!.platform_public_key, snapshot.provider!.publicKeyPem);
+      assert.equal(settings.snapshot().provider!.privateKeyPem, snapshot.provider!.privateKeyPem);
+    } finally {
+      database.close();
+      assert.ok(directory.startsWith(join(tmpdir(), "perpay-public-key-visibility-")));
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});

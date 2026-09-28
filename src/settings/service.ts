@@ -68,6 +68,7 @@ export interface RuntimeSettingsView {
   readonly provider: {
     readonly environment: "PRODUCTION" | "SANDBOX";
     readonly app_id: string;
+    readonly platform_public_key: string;
     readonly provider_account_key: string;
     readonly timeout_milliseconds: number;
     readonly scan_interval_seconds: number;
@@ -214,6 +215,7 @@ export class RuntimeSettingsService {
         ? {
             environment: snapshot.provider.environment,
             app_id: snapshot.provider.appId,
+            platform_public_key: snapshot.provider.publicKeyPem,
             provider_account_key: snapshot.activeProviderAccountKey,
             timeout_milliseconds: snapshot.provider.timeoutMilliseconds,
             scan_interval_seconds: snapshot.provider.scanIntervalMilliseconds / 1_000,
@@ -580,6 +582,18 @@ export class RuntimeSettingsService {
       const snapshot = this.#store.saveApiSecret(secret, expectedRevision, audit);
       await this.#applyCommitted(snapshot);
       return { settings: this.view(), client_id: "default", secret };
+    });
+  }
+
+  rotateWebhookSecret(expectedRevision: number, audit: SettingsAuditContext): Promise<{
+    readonly settings: RuntimeSettingsView;
+    readonly secret: string;
+  }> {
+    return this.#exclusive(async () => {
+      const secret = randomBytes(32).toString("base64url");
+      const snapshot = this.#store.rotateWebhookSecret(secret, expectedRevision, audit);
+      await this.#applyCommitted(snapshot);
+      return { settings: this.view(), secret };
     });
   }
 

@@ -265,6 +265,10 @@ describe("administrator key rotation HTTP contract", () => {
       assert.equal(activated.headers.get("cache-control"), "no-store");
       assert.equal(f.settings.view().application_public_key, data.public_key);
       assert.equal(f.settings.view().pending_application_key, null);
+      const activatedView = (await activated.json() as { data: ReturnType<RuntimeSettingsService["view"]> }).data;
+      assert.equal(activatedView.provider!.platform_public_key, nextPlatformPem.trim());
+      assert.equal(data.settings.provider!.platform_public_key, before.provider!.platform_public_key);
+      assert.notEqual(activatedView.provider!.platform_public_key, before.provider!.platform_public_key);
       assert.equal(
         f.settings.view().payment_revision,
         before.payment_revision + 1,

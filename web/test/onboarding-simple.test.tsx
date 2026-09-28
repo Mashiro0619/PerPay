@@ -259,6 +259,7 @@ describe("minimal onboarding", () => {
   it("reads a secret once only after the explicit view action", async () => {
     const settings = configuredThrough(4);
     settings.notifications.enabled = true;
+    settings.secrets.webhook_secret.configured = true;
     const view = mountOnboarding({
       stage: 4,
       path: onboardingPath("optional"),
@@ -273,7 +274,7 @@ describe("minimal onboarding", () => {
     await user.click(viewKey);
     const dialog = await screen.findByRole("dialog", { name: "通知签名密钥" });
     expect(dialog).toHaveAccessibleDescription(
-      "60 秒后或切换标签页时自动清除。",
+      "60 秒后或离开当前浏览器标签页时，弹窗会关闭并清除页面中的密钥明文；服务端密钥不受影响，可再次查看。",
     );
     expect(dialog.querySelector(".notice--warning")).toBeNull();
     expect(

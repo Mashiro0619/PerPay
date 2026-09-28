@@ -13,6 +13,7 @@ import {
   nextRequiredStep,
   onboardingPath,
   resolveOnboardingStep,
+  onboardingSteps,
 } from "../src/lib/onboarding";
 import { apiError, json } from "./fixtures";
 import {
@@ -108,7 +109,10 @@ describe("sequential application-key onboarding", () => {
     expect(view.writes()).toHaveLength(1);
     expect(queryClient.getQueryData(["settings"])).toMatchObject({
       data: {
-        provider: configuredThrough(4).provider,
+        provider: {
+          ...configuredThrough(4).provider,
+          platform_public_key: "latest-alipay-key",
+        },
         pending_application_key: null,
       },
     });
@@ -117,21 +121,33 @@ describe("sequential application-key onboarding", () => {
   });
 
   it.each([undefined, "check", "collection", "optional", "api"])(
-    "resumes pending activation at provider rather than skipping it via %s",
+    "suggests activation by default without restricting the explicitly requested step %s",
     async (step) => {
       const settings = pendingApplicationKey();
-      expect(nextRequiredStep(settings)).toBe("provider");
-      expect(resolveOnboardingStep(settings, step)).toBe("provider");
+      const expected = step ?? "provider";
+      expect(nextRequiredStep(settings)).toBe("check");
+      expect(resolveOnboardingStep(settings, step)).toBe(expected);
       const view = mountOnboarding({
         pendingKey: true,
         path: step ? "/settings/onboarding/" + step : "/settings/onboarding",
       });
-      await activationForm();
-      expect(view.router.state.location.pathname).toBe(providerPath);
-      expect(screen.getByRole("tab", { name: /经营码/ })).toHaveAttribute(
+      await screen.findByRole("heading", {
+        name: onboardingSteps.find((item) => item.id === expected)!.title,
+        level: 2,
+      });
+      expect(view.router.state.location.pathname).toBe(
+        "/settings/onboarding/" + expected,
+      );
+      expect(screen.getByRole("tab", { name: /经营码/ })).not.toHaveAttribute(
         "aria-disabled",
         "true",
       );
+      if (step) {
+        expect(screen.getByText("新应用公钥尚未启用")).toBeVisible();
+        expect(
+          screen.getByRole("link", { name: "前往验证启用" }),
+        ).toHaveAttribute("href", providerPath);
+      }
       expect(
         within(
           screen.getByRole("tab", { name: /支付宝接入/ }),

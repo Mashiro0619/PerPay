@@ -361,6 +361,7 @@ export type CollectionSettings = {
 export type ProviderSettings = {
     environment: 'PRODUCTION' | 'SANDBOX';
     app_id: string;
+    platform_public_key: string;
     provider_account_key: string;
     timeout_milliseconds: number;
     scan_interval_seconds: number;
@@ -477,6 +478,12 @@ export type ActivateProviderApplicationKeyRequest = {
 };
 export type SettingsRevisionRequest = {
     revision: number;
+};
+export type WebhookSecretRotationEnvelope = {
+    data: {
+        settings: RuntimeSettings;
+        secret: string;
+    };
 };
 export type ApiSecretRotationEnvelope = {
     data: {
@@ -1698,6 +1705,32 @@ export type RotateApiClientSecretResponses = {
     201: ApiSecretRotationEnvelope;
 };
 export type RotateApiClientSecretResponse = RotateApiClientSecretResponses[keyof RotateApiClientSecretResponses];
+export type RotateWebhookSigningSecretData = {
+    body: SettingsRevisionRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/admin/v1/settings/notification-key/actions/rotate';
+};
+export type RotateWebhookSigningSecretErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type RotateWebhookSigningSecretError = RotateWebhookSigningSecretErrors[keyof RotateWebhookSigningSecretErrors];
+export type RotateWebhookSigningSecretResponses = {
+    201: WebhookSecretRotationEnvelope;
+};
+export type RotateWebhookSigningSecretResponse = RotateWebhookSigningSecretResponses[keyof RotateWebhookSigningSecretResponses];
 export type UpdateDisplaySettingsData = {
     body: DisplaySettingsRequest;
     headers?: {

@@ -77,6 +77,9 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+export const SECRET_DISPLAY_NOTICE =
+  "60 秒后或离开当前浏览器标签页时，弹窗会关闭并清除页面中的密钥明文；服务端密钥不受影响，可再次查看。";
+
 const secrets: Array<[RuntimeSecretName, string, string]> = [
   [
     "api_secret",
@@ -159,19 +162,27 @@ export function SecuritySettings({
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap items-center justify-end gap-1">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={!metadata.configured}
-                            onClick={(event) => {
-                              dialogOrigin.current = event.currentTarget;
-                              setReveal(name);
-                            }}
-                            aria-label={"查看" + title}
-                          >
-                            <Eye data-icon="inline-start" />
-                            查看
-                          </Button>
+                          {name === "webhook_secret" && metadata.configured ? (
+                            <NotificationKeyActions
+                              presentation="table"
+                              settings={settings}
+                              onSaved={onSaved}
+                            />
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={!metadata.configured}
+                              onClick={(event) => {
+                                dialogOrigin.current = event.currentTarget;
+                                setReveal(name);
+                              }}
+                              aria-label={"查看" + title}
+                            >
+                              <Eye data-icon="inline-start" />
+                              查看
+                            </Button>
+                          )}
                           {name === "api_secret" &&
                             (settings.completion.api ? (
                               <DropdownMenu>
@@ -408,7 +419,7 @@ export function SecretDialog({
       >
         <DialogHeader className="shrink-0 pr-8">
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>60 秒后或切换标签页时自动清除。</DialogDescription>
+          <DialogDescription>{SECRET_DISPLAY_NOTICE}</DialogDescription>
         </DialogHeader>
         <div className="-mx-4 flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-1">
           {name === "api_secret" && (
@@ -438,7 +449,86 @@ export function SecretDialog({
     </Dialog>
   );
 }
+export function NotificationKeyActions({
+  settings,
+  onSaved,
+  presentation = "form",
+}: {
+  presentation?: "form" | "table";
+  settings: RuntimeSettings;
+  onSaved: (settings: RuntimeSettings, message?: string) => void;
+}) {
+  const [dialog, setDialog] = useState<"reveal" | "rotate" | null>(null);
+  const origin = useRef<HTMLButtonElement | null>(null);
+  const menu = useRef<HTMLButtonElement | null>(null);
+  if (!settings.secrets.webhook_secret.configured) return null;
+  const table = presentation === "table";
+  return (
+    <>
+      <Button
+        type="button"
+        variant={table ? "ghost" : "outline"}
+        size={table ? "sm" : "default"}
+        aria-label={table ? "查看通知签名密钥" : undefined}
+        onClick={(event) => {
+          origin.current = event.currentTarget;
+          setDialog("reveal");
+        }}
+      >
+        {table && <Eye data-icon="inline-start" />}
+        {table ? "查看" : "查看签名密钥"}
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              ref={menu}
+              type="button"
+              size={table ? "icon-sm" : "icon"}
+              variant="ghost"
+              aria-label="通知密钥操作"
+            />
+          }
+        >
+          <MoreHorizontal />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuGroup>
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => {
+                origin.current = menu.current;
+                setDialog("rotate");
+              }}
+            >
+              轮换通知签名密钥
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {dialog === "reveal" && (
+        <SecretDialog
+          name="webhook_secret"
+          title="通知签名密钥"
+          finalFocus={() => origin.current}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog === "rotate" && (
+        <RotateKeyDialog
+          kind="webhook"
+          settings={settings}
+          onSaved={onSaved}
+          finalFocus={() => origin.current}
+          onClose={() => setDialog(null)}
+        />
+      )}
+    </>
+  );
+}
+
 export function RotateKeyDialog({
+  kind = "api",
   settings,
   onSaved,
   onClose,
@@ -448,10 +538,13 @@ export function RotateKeyDialog({
   settings: RuntimeSettings;
   onSaved: (settings: RuntimeSettings, message?: string) => void;
   onClose: () => void;
+  kind?: "api" | "webhook";
   onStored?: () => void;
   finalFocus?: (() => HTMLElement | null) | undefined;
 }) {
-  const [replacing] = useState(settings.completion.api);
+  const webhook = kind === "webhook";
+  const label = webhook ? "通知签名密钥" : "API 密钥";
+  const [replacing] = useState(webhook || settings.completion.api);
   const [revision] = useState(settings.revision);
   const [secret, setSecret] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -465,10 +558,17 @@ export function RotateKeyDialog({
     setError(null);
     try {
       const response = await result(
-        api.rotateApiClientSecret({ body: { revision } }),
+        webhook
+          ? api.rotateWebhookSigningSecret({ body: { revision } })
+          : api.rotateApiClientSecret({ body: { revision } }),
       );
       if (canDisplay()) setSecret(response.data.secret);
-      onSaved(response.data.settings, "API 密钥已更新，请同步业务服务端。");
+      onSaved(
+        response.data.settings,
+        webhook
+          ? "通知签名密钥已轮换，请同步业务系统的通知验签配置。"
+          : "API 密钥已更新，请同步业务服务端。",
+      );
     } catch (failure) {
       if (canDisplay()) setError(failure);
     } finally {
@@ -494,23 +594,25 @@ export function RotateKeyDialog({
         <DialogHeader className="shrink-0 pr-8">
           <DialogTitle>
             {secret
-              ? "新的 API 密钥"
+              ? "新的" + label
               : replacing
-                ? "轮换 API 密钥？"
+                ? "轮换" + label + "？"
                 : "生成 API 密钥"}
           </DialogTitle>
           <DialogDescription>
             {secret
-              ? "60 秒后或切换标签页时自动清除。"
-              : replacing
-                ? "旧密钥立即失效。轮换后需更新业务服务端，否则无法创建订单。"
-                : "由 PerPay 生成并保管。生成后复制到业务系统后端的 PerPay 接入配置，无需填写业务系统自己的密钥。"}
+              ? SECRET_DISPLAY_NOTICE
+              : webhook
+                ? "轮换后，新发送和重试的通知将使用新密钥签名，请同步更新业务系统的通知验签配置。已发出的请求可能仍使用旧密钥，接收端可短暂兼容新旧密钥。不会自动重发已完成的通知，也不会更改通知开关。"
+                : replacing
+                  ? "旧密钥立即失效。轮换后需更新业务服务端，否则无法创建订单。"
+                  : "由 PerPay 生成并保管。生成后复制到业务系统后端的 PerPay 接入配置，无需填写业务系统自己的密钥。"}
           </DialogDescription>
         </DialogHeader>
         {secret ? (
           <>
             <div className="-mx-4 flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-1">
-              <CopyValue value={secret} label="复制新的 API 密钥" secret />
+              <CopyValue value={secret} label={"复制新的" + label} secret />
             </div>
             <DialogFooter className="shrink-0">
               <Button

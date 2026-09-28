@@ -939,6 +939,19 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   );
 
   app.post(
+    "/api/admin/v1/settings/notification-key/actions/rotate",
+    adminSession,
+    financialWrite,
+    async (context) => {
+      const body = await readJson(context, settingsRevisionSchema, MAX_JSON_BODY_BYTES);
+      const data = await settingsOperation(() =>
+        requireSettingsService(dependencies).rotateWebhookSecret(body.revision, settingsAuditContext(context, dependencies)),
+      );
+      return context.json({ data }, 201);
+    },
+  );
+
+  app.post(
     "/api/admin/v1/settings/secrets/:name/actions/reveal",
     adminSession,
     financialWrite,

@@ -373,6 +373,11 @@ describe("WebhookStore", () => {
       });
       assert.equal(rotated.keyVersion, active.keyVersion + 1);
       assert.equal(rotated.activatedAt, active.activatedAt);
+      const afterRotation = store.claimNext({ now: DELIVERY_TIME + 2_000, leaseMilliseconds: 1_000, maximumAttempts: 12 });
+      assert.ok(afterRotation);
+      assert.equal(afterRotation.key.keyId, rotated.keyId);
+      assert.equal(afterRotation.attempt.keyVersion, rotated.keyVersion);
+      assert.equal(store.delivery(claimed.delivery.deliveryId)?.attempts[0]?.keyVersion, active.keyVersion);
       assert.throws(
         () => store.syncSigningKey({
           secretFingerprint: webhookSigningKeyFingerprint(signingSecret),

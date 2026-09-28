@@ -32,6 +32,7 @@ export function configuredThrough(stage: number): RuntimeSettings {
           provider_account_key: "synthetic-provider",
           environment: "PRODUCTION",
           app_id: "test-app-id",
+          platform_public_key: "synthetic-saved-alipay-public-key",
           timeout_milliseconds: 8000,
           scan_interval_seconds: 10,
           active_scan_interval_seconds: 10,
@@ -152,6 +153,7 @@ export function mountOnboarding(
     path?: string;
     signedIn?: boolean;
     pendingKey?: boolean;
+    notificationKey?: boolean;
     status?: (settings: RuntimeSettings) => SystemStatus;
     handle?: (request: Request) => Response | Promise<Response> | undefined;
   } = {},
@@ -173,6 +175,10 @@ export function mountOnboarding(
     })),
   );
   let saved = options.pendingKey ? pendingApplicationKey() : configuredThrough(options.stage ?? 0);
+  if (options.notificationKey) {
+    saved.notifications = { ...saved.notifications, enabled: true, allowed_origin: "https://business.example" };
+    saved.secrets.webhook_secret = { ...saved.secrets.webhook_secret, configured: true, version: 1 };
+  }
   let signedIn = options.signedIn ?? true;
   const fetchMock = vi.fn(async (request: Request) => {
     const override = options.handle?.(request);
@@ -272,12 +278,19 @@ export function mountOnboarding(
       const pending = saved.pending_application_key!;
       saved = { ...saved, revision: saved.revision + 1, payment_revision: saved.payment_revision + 1,
         application_public_key: pending.public_key, application_key_fingerprint: pending.fingerprint,
+        provider: { ...saved.provider!, platform_public_key: input.platform_public_key },
         pending_application_key: null };
       return json({ data: saved });
     }
     if (endpoint.endsWith("/application-key/actions/discard")) {
       saved = { ...saved, revision: saved.revision + 1, pending_application_key: null };
       return json({ data: saved });
+    }
+    if (endpoint.endsWith("/notification-key/actions/rotate")) {
+      const { revision } = await request.clone().json();
+      if (revision !== saved.revision) return apiError("settings_revision_conflict", "stale revision");
+      saved = { ...saved, revision: revision + 1, secrets: { ...saved.secrets, webhook_secret: { ...saved.secrets.webhook_secret, version: (saved.secrets.webhook_secret.version ?? 0) + 1 } } };
+      return json({ data: { settings: saved, secret: "synthetic-rotated-notification-secret" } });
     }
     if (endpoint.endsWith("/api-key/actions/rotate")) {
       saved = completion({

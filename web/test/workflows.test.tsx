@@ -399,7 +399,9 @@ describe("operation dialog layout", () => {
       );
       expect(body).toHaveClass("min-h-0", "w-auto", "overflow-y-auto", "pb-1");
       expect(body).toContainElement(evidence);
-      const reason = screen.getByLabelText(kind === "financial" ? "操作理由（可选）" : "操作理由");
+      const reason = screen.getByLabelText(
+        kind === "financial" ? "操作理由（可选）" : "操作理由",
+      );
       expect(body).toContainElement(reason);
       expect(header).toHaveClass("shrink-0");
       expect(footer).toHaveClass("shrink-0");
@@ -605,7 +607,10 @@ describe("state-changing workflows", () => {
       />,
     );
     const user = userEvent.setup();
-    await user.type(await screen.findByLabelText("操作理由（可选）"), "保持原请求重试");
+    await user.type(
+      await screen.findByLabelText("操作理由（可选）"),
+      "保持原请求重试",
+    );
     await user.click(screen.getByRole("button", { name: "确认关联收款" }));
     await screen.findByText("操作结果待确认");
     expect(
@@ -725,8 +730,14 @@ describe("state-changing workflows", () => {
     );
     const user = userEvent.setup();
     renderPage(<SecuritySettings settings={configured} onSaved={vi.fn()} />);
-    await user.click(screen.getByRole("button", { name: "查看PerPay API 密钥" }));
-    expect(screen.getByText("60 秒后或切换标签页时自动清除。")).toBeVisible();
+    await user.click(
+      screen.getByRole("button", { name: "查看PerPay API 密钥" }),
+    );
+    expect(
+      screen.getByText(
+        "60 秒后或离开当前浏览器标签页时，弹窗会关闭并清除页面中的密钥明文；服务端密钥不受影响，可再次查看。",
+      ),
+    ).toBeVisible();
     expect(await screen.findByText("ephemeral-test-secret")).toBeVisible();
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);

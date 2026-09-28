@@ -26,7 +26,7 @@ import { SuccessMessage, useFeedback } from "@/components/Feedback";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { SecuritySettings } from "./SecuritySettings";
+import { NotificationKeyActions, SecuritySettings } from "./SecuritySettings";
 
 const sectionIcons = {
   provider: Wallet,
@@ -170,10 +170,26 @@ export default function Settings() {
                     />
                   ) : (
                     <SettingsEditor
-                      key={section + ":" + data.revision + ":" + editorVersion}
+                      key={
+                        section +
+                        ":" +
+                        (section === "notifications"
+                          ? "draft"
+                          : data.revision) +
+                        ":" +
+                        editorVersion
+                      }
                       section={section}
                       settings={data}
                       onSaved={saved}
+                      secondaryAction={
+                        section === "notifications" ? (
+                          <NotificationKeyActions
+                            settings={data}
+                            onSaved={saved}
+                          />
+                        ) : undefined
+                      }
                     />
                   )}
                   <SuccessMessage
