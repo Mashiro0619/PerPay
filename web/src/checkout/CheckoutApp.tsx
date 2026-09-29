@@ -1,4 +1,3 @@
-import { buttonVariants } from "@/components/ui/button";
 import { cn } from "cn";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
@@ -9,7 +8,7 @@ import {
   RefreshCw,
   WalletCards,
 } from "lucide-react";
-import { Button } from "../components/ui/button";
+import { Button, buttonVariants } from "../components/ui/button";
 import {
   Card,
   CardHeader,
@@ -58,7 +57,9 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
   useEffect(() => controller.start(), [controller]);
   const order = state.order,
     copy = checkoutCopy[state.visual];
+  const awaitingStartup = state.visual === "UNPAID" && !state.initialized;
   const canPay =
+    state.initialized &&
     state.visual === "UNPAID" &&
     !state.suspended &&
     !!order?.payment_instructions &&
@@ -117,6 +118,9 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
     (initial.showProductName === false
       ? "md:max-w-3xl md:px-6"
       : "md:max-w-4xl md:px-6");
+  const reloadPath = initial.apiUrl.startsWith("/api/public/v1/checkouts/")
+    ? "/checkout/" + initial.apiUrl.slice("/api/public/v1/checkouts/".length)
+    : "";
   const paymentHeading = (
     <CardTitle className="w-full">
       <h1
@@ -126,7 +130,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
         data-status-heading
       >
         <AlipayLogo />
-        {state.suspended ? "请暂勿付款" : copy.heading}
+        {awaitingStartup || state.suspended ? "请暂勿付款" : copy.heading}
       </h1>
     </CardTitle>
   );
@@ -147,21 +151,31 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
           返回商家
         </a>
       )}
-      {retryAllowed && (
-        <Button
-          variant="outline"
-          className="w-full"
-          disabled={blocked}
-          onClick={() => void controller.refresh(true)}
-        >
-          {state.busy ? (
-            <Spinner aria-hidden="true" data-icon="inline-start" />
-          ) : (
+      {retryAllowed &&
+        (state.initialized ? (
+          <Button
+            variant="outline"
+            className="w-full"
+            disabled={blocked}
+            onClick={() => void controller.refresh(true)}
+          >
+            {state.busy ? (
+              <Spinner aria-hidden="true" data-icon="inline-start" />
+            ) : (
+              <RefreshCw data-icon="inline-start" />
+            )}
+            {order ? "查询付款状态" : "重新获取订单"}
+          </Button>
+        ) : (
+          <a
+            href={reloadPath}
+            className={buttonVariants({ variant: "outline", className: "w-full" })}
+            data-checkout-reload
+          >
             <RefreshCw data-icon="inline-start" />
-          )}
-          {order ? "查询付款状态" : "重新获取订单"}
-        </Button>
-      )}
+            刷新页面
+          </a>
+        ))}
       {state.feedback && (
         <p
           className="text-center text-sm text-muted-foreground md:text-left"
@@ -241,7 +255,11 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                         : "secondary"
                   }
                 >
-                  {state.suspended ? "等待状态确认" : copy.badge}
+                  {awaitingStartup
+                    ? "等待页面就绪"
+                    : state.suspended
+                      ? "等待状态确认"
+                      : copy.badge}
                   {canPay && order && (
                     <>
                       <span aria-hidden="true">·</span>
@@ -260,11 +278,13 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                 </Badge>
               </CardAction>
               {!canPay && paymentHeading}
-              {(state.suspended || copy.detail) && (
+              {(awaitingStartup || state.suspended || copy.detail) && (
                 <CardDescription className="text-center">
-                  {state.suspended
-                    ? "付款期限已到，请重新检查订单状态。"
-                    : copy.detail}
+                  {awaitingStartup
+                    ? "付款组件尚未就绪，暂不显示二维码。若一直停留在此，请启用 JavaScript 或刷新页面。"
+                    : state.suspended
+                      ? "付款期限已到，请重新检查订单状态。"
+                      : copy.detail}
                 </CardDescription>
               )}
             </CardHeader>
@@ -448,13 +468,12 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
             actions
           )}
         </Card>
-        <noscript>
-          <p className="text-sm text-muted-foreground">
-            付款后请刷新页面确认。
-          </p>
-        </noscript>
         <p className="sr-only" role="status" aria-live="polite">
-          {state.suspended ? "付款期限已到，请暂勿付款。" : copy.heading}
+          {awaitingStartup
+            ? "付款组件尚未就绪，请暂勿付款。"
+            : state.suspended
+              ? "付款期限已到，请暂勿付款。"
+              : copy.heading}
         </p>
       </main>
     </div>

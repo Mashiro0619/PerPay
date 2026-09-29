@@ -35,7 +35,7 @@ const checkout = Object.freeze({
 }) satisfies PublicCheckoutProjection;
 
 describe("public checkout SSR", () => {
-  it("renders exact money and a usable QR without JavaScript, using only same-origin external assets", () => {
+  it("renders exact money but keeps payment disabled until the client guards start", () => {
     const html = renderCheckoutPage({
       checkoutToken: "pct1_test-token",
       checkout,
@@ -54,17 +54,13 @@ describe("public checkout SSR", () => {
       "/api/public/v1/checkouts/pct1_test-token/qr.svg",
     );
     assert.match(html, /data-payable-amount[^>]*>¥10\.01<\/strong>/);
-    assert.match(
-      html,
-      /<img[^>]*src="\/api\/public\/v1\/checkouts\/pct1_test-token\/qr\.svg"[^>]*data-qr-image/,
-    );
+    assert.doesNotMatch(html, /data-qr-image|data-countdown|放大二维码|保存二维码/);
+    assert.match(checkoutText(html), /请暂勿付款/);
+    assert.match(checkoutText(html), /付款组件尚未就绪/);
+    assert.match(html, /<a[^>]+href="\/checkout\/pct1_test-token"[^>]+data-checkout-reload/);
     assert.match(checkoutText(html), /应付金额/);
     assert.doesNotMatch(checkoutText(html), /请勿修改|扫码付款/);
-    assert.match(
-      html,
-      /data-slot="badge"[^>]*>等待付款[\s\S]*?<time[^>]*role="timer"[^>]*aria-live="off"[^>]*data-countdown/,
-    );
-    assert.equal((html.match(/data-countdown/g) ?? []).length, 1);
+    assert.match(checkoutText(html), /等待页面就绪/);
     assert.match(html, /data-brand="alipay"/);
     assert.match(html, /data-has-order="true"/);
     assert.match(html, /data-checkout-page/);
@@ -72,7 +68,7 @@ describe("public checkout SSR", () => {
     assert.match(html, /<section[^>]*aria-label="订单信息"[^>]*data-checkout-summary/);
     assert.match(html, /data-checkout-actions/);
     assert.doesNotMatch(html, /<footer|金额需完全一致，付款后自动确认/);
-    assert.match(checkoutText(html), /放大二维码.*保存二维码.*查询付款状态/);
+    assert.match(checkoutText(html), /刷新页面/);
     assert.ok(
       html.includes('href="' + CHECKOUT_PAGE_ASSETS.checkoutStylesheet + '"'),
     );
@@ -89,13 +85,6 @@ describe("public checkout SSR", () => {
       false,
     );
     assert.equal((html.match(/data-payable-amount/g) ?? []).length, 1);
-    assert.ok(
-      html.indexOf('data-brand="alipay"') < html.indexOf("data-qr-image"),
-    );
-    assert.ok(
-      html.indexOf("data-qr-image") < html.indexOf("data-payable-amount"),
-    );
-    assert.match(html, /<noscript>/);
     assert.match(html, /name="color-scheme" content="light dark"/);
   });
   it("renders a compact summary without exposing or reserving the hidden product name", () => {
@@ -111,11 +100,9 @@ describe("public checkout SSR", () => {
     assert.equal(initial.checkout?.product_name, "");
     assert.doesNotMatch(html, /data-product-name|测试订单/);
     assert.match(html, /md:max-w-3xl/);
-    assert.match(html, /<p[^>]*data-checkout-desktop-guide/);
-    assert.match(checkoutText(html), /商户订单号.*查询付款状态/);
-    assert.ok(
-      html.indexOf('data-brand="alipay"') < html.indexOf("data-qr-image"),
-    );
+    assert.doesNotMatch(html, /data-checkout-desktop-guide/);
+    assert.match(checkoutText(html), /商户订单号.*刷新页面/);
+    assert.doesNotMatch(html, /data-qr-image/);
   });
   it("escapes both the shared SSR view and the JSON bootstrap", () => {
     const hostile = {
@@ -282,7 +269,7 @@ describe("public checkout SSR", () => {
         assert.equal(initial.apiUrl, "");
         assert.equal(initial.qrUrl, "");
         assert.doesNotMatch(checkoutText(html), /重新获取订单|查询付款状态/);
-      } else assert.match(checkoutText(html), /重新获取订单/);
+      } else assert.match(checkoutText(html), /刷新页面/);
     });
   it("disables an existing order during a service outage", () => {
     const html = renderCheckoutPage({
@@ -301,7 +288,7 @@ describe("public checkout SSR", () => {
       "UNAVAILABLE",
     );
     assert.doesNotMatch(html, /data-qr-image/);
-    assert.match(checkoutText(html), /查询付款状态/);
+    assert.match(checkoutText(html), /刷新页面/);
   });
   it("rejects external QR assets and preserves token path encoding", () => {
     assert.throws(

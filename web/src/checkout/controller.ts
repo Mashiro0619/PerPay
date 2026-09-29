@@ -7,6 +7,7 @@ import {
   type CheckoutViewState,
 } from "../../../src/shared/checkout-view";
 export interface CheckoutSnapshot {
+  initialized: boolean;
   order: CheckoutViewOrder | null;
   visual: CheckoutViewState;
   now: number;
@@ -37,6 +38,7 @@ export function retryDelay(
 export function createCheckoutController(initial: CheckoutInitial) {
   const listeners = new Set<() => void>();
   let state: CheckoutSnapshot = {
+    initialized: false,
     order: initial.checkout,
     visual: initialCheckoutState(initial),
     now: initial.serverTime,
@@ -133,6 +135,7 @@ export function createCheckoutController(initial: CheckoutInitial) {
     if (interval() !== null) void refresh();
   }
   function hide() {
+    emit({ initialized: false });
     alive = false;
     abort();
     clearInterval(tickTimer);
@@ -145,6 +148,7 @@ export function createCheckoutController(initial: CheckoutInitial) {
       anchor = mono();
       wallAnchor = Date.now();
       visibility();
+      emit({ initialized: true });
     }
   }
   function detach() {
@@ -329,7 +333,10 @@ export function createCheckoutController(initial: CheckoutInitial) {
             ? 1500
             : interval(),
       );
+      // Publish readiness only after the clock and lifecycle guards are running.
+      emit({ initialized: true });
       return () => {
+        emit({ initialized: false });
         alive = false;
         abort();
         clearInterval(tickTimer);

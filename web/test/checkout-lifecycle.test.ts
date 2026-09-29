@@ -1,3 +1,4 @@
+import { renderToString } from "react-dom/server";
 import { createElement } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -90,6 +91,34 @@ afterEach(() => {
   cleanups.splice(0).forEach((dispose) => dispose());
 });
 describe("checkout payment layout", () => {
+  it("renders no payment controls or frozen timer without running client effects", () => {
+    const html = renderToString(createElement(CheckoutApp, { initial: initial() }));
+    expect(html).not.toMatch(/data-qr-image|data-countdown|放大二维码|保存二维码/);
+    expect(html).toContain("请暂勿付款");
+    expect(html).toContain("付款组件尚未就绪");
+    expect(html).toContain('href="/checkout/pct1_test"');
+    expect(html).toContain("data-checkout-reload");
+    expect(html).toContain("刷新页面");
+  });
+
+  it("never publishes an unguarded payable snapshot during a delayed startup", () => {
+    const value = initial();
+    value.checkout!.checkout.expires_at = new Date(value.serverTime + 1000).toISOString();
+    vi.spyOn(performance, "now").mockReturnValue(5000);
+    vi.spyOn(performance, "getEntriesByType").mockReturnValue([{ responseStart: 0 }] as unknown as PerformanceNavigationTiming[]);
+    const controller = createCheckoutController(value);
+    const states: Array<{ initialized: boolean; suspended: boolean }> = [];
+    const unsubscribe = controller.subscribe(() => states.push(controller.getSnapshot()));
+    expect(controller.getServerSnapshot().initialized).toBe(false);
+    const stop = controller.start();
+    expect(controller.getSnapshot().initialized).toBe(true);
+    expect(controller.getSnapshot().suspended).toBe(true);
+    expect(states.some(state => state.initialized && !state.suspended)).toBe(false);
+    stop();
+    expect(controller.getSnapshot().initialized).toBe(false);
+    unsubscribe();
+  });
+
   it("places the brand above the QR and the inline amount below, with a single status countdown", () => {
     const { container } = render(
       createElement(CheckoutApp, { initial: initial() }),
@@ -448,11 +477,17 @@ describe("checkout controller", () => {
     pendingFetch();
     const view = controller();
     window.dispatchEvent(new Event("pagehide"));
+    expect(view.getSnapshot().initialized).toBe(false);
+    const states: Array<{ initialized: boolean; suspended: boolean }> = [];
+    const unsubscribe = view.subscribe(() => states.push(view.getSnapshot()));
     await vi.advanceTimersByTimeAsync(61000);
     window.dispatchEvent(
       new PageTransitionEvent("pageshow", { persisted: true }),
     );
     expect(view.getSnapshot().suspended).toBe(true);
+    expect(view.getSnapshot().initialized).toBe(true);
+    expect(states.some((state) => state.initialized && !state.suspended)).toBe(false);
+    unsubscribe();
   });
   it("retains a retry-after deadline across offline/online transitions", async () => {
     const fetch = vi.fn(
