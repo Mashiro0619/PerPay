@@ -37,24 +37,14 @@ describe("first collection onboarding", () => {
   ])(
     "reveals the active step and preserves heading focus after entering $path",
     async ({ path, step, title }) => {
-      const reveal = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
-      try {
-        const view = mountOnboarding({ stage: 4, path });
-        await pathIs(view, step);
-        const selected = await screen.findByRole("tab", {
-          name: new RegExp(title),
-        });
-        expect(selected).toHaveAttribute("aria-selected", "true");
-        await waitFor(() => expect(reveal.mock.contexts).toContain(selected));
-        expect(reveal).toHaveBeenCalledWith({
-          block: "nearest",
-          inline: "nearest",
-        });
-        expect(screen.getByRole("heading", { name: title })).toHaveFocus();
-        expect(view.writes()).toHaveLength(0);
-      } finally {
-        reveal.mockRestore();
-      }
+      const view = mountOnboarding({ stage: 4, path });
+      await pathIs(view, step);
+      const selected = await screen.findByRole("link", {
+        name: new RegExp(title),
+      });
+      expect(selected).toHaveAttribute("aria-current", "step");
+      expect(screen.getByRole("heading", { name: title })).toHaveFocus();
+      expect(view.writes()).toHaveLength(0);
     },
   );
   it("keeps administrator initialization separate, then begins configuration after login", async () => {

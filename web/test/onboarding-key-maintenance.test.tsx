@@ -92,9 +92,9 @@ describe("non-blocking pending application keys", () => {
     await screen.findByText("synthetic-pending-application-public-key");
     for (const name of ["经营码", "业务系统接入", "通知与备份", "收款检查"])
       expect(
-        screen.getByRole("tab", { name: new RegExp(name) }),
+        screen.getByRole("link", { name: new RegExp(name) }),
       ).not.toHaveAttribute("aria-disabled", "true");
-    await user.click(screen.getByRole("tab", { name: /经营码/ }));
+    await user.click(screen.getByRole("link", { name: /经营码/ }));
     await screen.findByLabelText("支付宝经营码内容");
     const warning = screen
       .getByText("新应用公钥尚未启用")
@@ -128,7 +128,7 @@ describe("non-blocking pending application keys", () => {
     expect(view.saved.collection!.order_ttl_seconds).toBe(1800);
     expect(view.saved.pending_application_key).toEqual(pending);
     expect(view.saved.application_public_key).toBe(currentKey);
-    await user.click(screen.getByRole("tab", { name: /通知与备份/ }));
+    await user.click(screen.getByRole("link", { name: /通知与备份/ }));
     fireEvent.change(await screen.findByLabelText("备份间隔（秒）"), {
       target: { value: "172800" },
     });

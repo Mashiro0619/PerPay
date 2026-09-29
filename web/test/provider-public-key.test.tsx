@@ -64,7 +64,7 @@ describe("saved Alipay public key editing", () => {
     });
     await user.click(screen.getByRole("button", { name: "保存并继续" }));
     await screen.findByRole("heading", { name: "经营码", level: 2 });
-    await user.click(screen.getByRole("tab", { name: /支付宝接入/ }));
+    await user.click(screen.getByRole("link", { name: /支付宝接入/ }));
     expect(await screen.findByLabelText("支付宝公钥")).toHaveValue(
       "replacement-platform-key",
     );

@@ -48,7 +48,7 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { OnboardingSteps } from "@/components/onboarding-steps";
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -176,11 +176,7 @@ function OnboardingFlow({
   );
   const navigate = useNavigate();
   const heading = useRef<HTMLHeadingElement>(null);
-  const tabList = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    tabList.current
-      ?.querySelector<HTMLElement>('[aria-selected="true"]')
-      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
     heading.current?.focus({ preventScroll: true });
   }, [requested, step]);
   const deferredState = { deferOnboardingFor: instanceId };
@@ -211,56 +207,21 @@ function OnboardingFlow({
     </OnboardingFooter>
   );
   return (
-    <Tabs
-      value={step}
-      onValueChange={(value) => {
-        void navigate(onboardingPath(value as OnboardingStep));
-      }}
-      className="min-w-0 gap-5"
-    >
-      <div
-        className="-m-1 min-w-0 scroll-p-1 overflow-x-auto p-1"
-        data-onboarding-step-scroll
+    <div className="flex min-w-0 flex-col gap-5">
+      <OnboardingSteps
+        current={step}
+        completed={completed}
+        firstMissing={firstMissing}
+      />
+      <section
+        aria-labelledby="onboarding-step-heading"
+        className="min-w-0 text-sm"
       >
-        <TabsList
-          ref={tabList}
-          aria-label="配置步骤"
-          className="min-h-12 min-w-full w-max justify-start @4xl/onboarding:grid @4xl/onboarding:w-full @4xl/onboarding:grid-cols-6"
-        >
-          {onboardingSteps.map((item, position) => (
-            <TabsTrigger
-              key={item.id}
-              value={item.id}
-              disabled={position > firstMissing}
-              className="min-h-10 shrink-0 gap-2 px-3 @4xl/onboarding:min-w-0"
-              onFocus={(event) =>
-                event.currentTarget.scrollIntoView({
-                  block: "nearest",
-                  inline: "nearest",
-                })
-              }
-            >
-              {item.id === "optional" ? (
-                <Badge variant="outline">可选</Badge>
-              ) : (
-                <span className="inline-flex size-5 shrink-0 items-center justify-center">
-                  {completed[position] ? (
-                    <Check aria-label="已配置" />
-                  ) : (
-                    position + 1
-                  )}
-                </span>
-              )}
-              {item.title}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </div>
-      <TabsContent value={step} className="min-w-0">
         <div className="flex min-w-0 flex-col gap-5">
           <header className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex min-w-0 flex-col gap-1.5">
               <h2
+                id="onboarding-step-heading"
                 tabIndex={-1}
                 ref={heading}
                 className="text-xl font-semibold outline-none"
@@ -271,9 +232,6 @@ function OnboardingFlow({
                 {onboardingStepDescription(step, settings)}
               </p>
             </div>
-            <span className="shrink-0 text-sm text-muted-foreground">
-              第 {index + 1} 步，共 {onboardingSteps.length} 步
-            </span>
           </header>
           <SuccessMessage message={success} multiline />
           {pendingApplicationKey && index > 1 && (
@@ -565,8 +523,8 @@ function OnboardingFlow({
             />
           )}
         </div>
-      </TabsContent>
-    </Tabs>
+      </section>
+    </div>
   );
 }
 function OnboardingStepLayout({

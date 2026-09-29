@@ -138,7 +138,7 @@ describe("sequential application-key onboarding", () => {
       expect(view.router.state.location.pathname).toBe(
         "/settings/onboarding/" + expected,
       );
-      expect(screen.getByRole("tab", { name: /经营码/ })).not.toHaveAttribute(
+      expect(screen.getByRole("link", { name: /经营码/ })).not.toHaveAttribute(
         "aria-disabled",
         "true",
       );
@@ -150,7 +150,7 @@ describe("sequential application-key onboarding", () => {
       }
       expect(
         within(
-          screen.getByRole("tab", { name: /支付宝接入/ }),
+          screen.getByRole("link", { name: /支付宝接入/ }),
         ).queryByLabelText("已配置"),
       ).not.toBeInTheDocument();
       expect(view.writes()).toHaveLength(0);

@@ -125,7 +125,7 @@ export default function Settings() {
               className="min-w-0 gap-6"
             >
               <div
-                className="min-w-0 overflow-x-auto p-1"
+                className="no-scrollbar min-w-0 overflow-x-auto p-1"
                 data-settings-tabs-scroll
               >
                 <TabsList

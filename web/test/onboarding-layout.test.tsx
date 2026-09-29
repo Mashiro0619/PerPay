@@ -25,6 +25,7 @@ describe("onboarding workspace and credential handoff", () => {
       )! as HTMLElement;
       expect(workspace).toHaveClass("mx-auto", "w-full", "max-w-6xl");
       expect(workspace).toContainElement(heading);
+      expect(within(workspace).queryByText(/第 \d 步，共 \d 步/)).not.toBeInTheDocument();
       expect(
         within(workspace).getByText(
           step.id === "application"
@@ -32,10 +33,16 @@ describe("onboarding workspace and credential handoff", () => {
             : step.description,
         ),
       ).toBeVisible();
-      expect(within(workspace).getAllByRole("tab")).toHaveLength(6);
       expect(
-        within(workspace).getByRole("tab", { name: new RegExp(step.title) }),
-      ).toHaveAttribute("aria-selected", "true");
+        within(
+          within(workspace).getByRole("navigation", { name: "配置步骤" }),
+        ).getAllByRole("link"),
+      ).toHaveLength(6);
+      expect(
+        within(
+          within(workspace).getByRole("navigation", { name: "配置步骤" }),
+        ).getByRole("link", { name: new RegExp(step.title) }),
+      ).toHaveAttribute("aria-current", "step");
       const footer = workspace.querySelector(
         "[data-onboarding-actions]",
       )! as HTMLElement;
@@ -66,7 +73,7 @@ describe("onboarding workspace and credential handoff", () => {
         screen.getByRole("link", { name: "切换到常规设置" }),
       );
       expect(
-        within(workspace).getByRole("tab", { name: /可选\s*通知与备份/ }),
+        within(workspace).getByRole("link", { name: /通知与备份.*可选/ }),
       ).toBeVisible();
       if (["application", "provider", "collection", "api"].includes(step.id)) {
         expect(
@@ -152,7 +159,7 @@ describe("onboarding workspace and credential handoff", () => {
     ).toBeVisible();
     expect(screen.getByRole("button", { name: "下一步" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "生成 API 密钥" })).toBeEnabled();
-    expect(screen.getByRole("tab", { name: /收款检查/ })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /收款检查/ })).toHaveAttribute(
       "aria-disabled",
       "true",
     );

@@ -246,6 +246,9 @@ describe("navigation and draft protection", () => {
     });
     const list = await screen.findByRole("tablist", { name: "设置分类" });
     expect(list).toHaveAttribute("data-variant", "default");
+    expect(list.closest("[data-settings-tabs-scroll]")).toHaveClass(
+      "no-scrollbar", "overflow-x-auto",
+    );
     const selector = screen.getByRole("tab", { name: "界面显示" });
     expect(selector).toHaveAttribute("aria-selected", "true");
     expect(
@@ -462,7 +465,7 @@ describe("navigation and draft protection", () => {
   it("sends an unconfigured instance to its next required setup step", async () => {
     const { router } = mount({ path: "/" });
     expect(
-      await screen.findByRole("tablist", { name: "配置步骤" }),
+      await screen.findByRole("navigation", { name: "配置步骤" }),
     ).toBeVisible();
     expect(router.state.location.pathname).toMatch(/^\/settings\/onboarding\//);
   });

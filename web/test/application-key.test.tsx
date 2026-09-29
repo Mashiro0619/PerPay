@@ -85,7 +85,7 @@ describe("application public key generation and replacement", () => {
       );
       await user.click(screen.getByRole("button", { name: "下一步" }));
       await screen.findByLabelText("应用 ID（App ID）");
-      await user.click(screen.getByRole("tab", { name: /应用公钥/ }));
+      await user.click(screen.getByRole("link", { name: /应用公钥/ }));
       expect(
         await screen.findByRole("button", { name: "密钥维护" }),
       ).toHaveAttribute("aria-expanded", "false");
