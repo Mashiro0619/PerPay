@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse } from "yaml";
 import { inspectComposeContract } from "./compose-contract.mjs";
 import { isReleaseVersion } from "../src/shared/release-version.ts";
 
@@ -22,6 +23,18 @@ export function inspectVersionFiles(root, requestedTag) {
       `package-lock.json root package version=${packageLock.packages?.[""]?.version ?? "<missing>"} ` +
         `does not match package.json=${packageVersion}`,
     );
+  }
+
+  try {
+    const specification = parse(readFileSync(resolve(root, "openapi.yaml"), "utf8"));
+    const apiVersion = specification?.info?.version;
+    if (apiVersion !== packageVersion) {
+      errors.push(
+        `openapi.yaml info.version=${apiVersion ?? "<missing>"} does not match package.json=${packageVersion}`,
+      );
+    }
+  } catch (error) {
+    errors.push(`openapi.yaml is invalid: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   const versionSource = readFileSync(resolve(root, "src/version.ts"), "utf8");

@@ -2,12 +2,20 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { migrations } from "../src/database/migrations.ts";
-import { DATABASE_COMPATIBILITY } from "../src/version.ts";
+import { APP_VERSION, DATABASE_COMPATIBILITY } from "../src/version.ts";
 
 const maintenance = readFileSync(new URL("../docs/maintenance.md", import.meta.url), "utf8");
 const usage = readFileSync(new URL("../USAGE.md", import.meta.url), "utf8");
 
 describe("maintenance documentation version contract", () => {
+  it("keeps the current release notes and maintenance version aligned with the build", () => {
+    const notes = readFileSync(new URL(`../docs/releases/v${APP_VERSION}.md`, import.meta.url), "utf8");
+    assert.ok(notes.includes(`# PerPay ${APP_VERSION}`));
+    assert.ok(notes.includes(`最新数据库 schema 为 **${DATABASE_COMPATIBILITY.maximum}**`));
+    assert.ok(notes.includes(`运行兼容范围为 **${DATABASE_COMPATIBILITY.minimum}—${DATABASE_COMPATIBILITY.maximum}**`));
+    assert.ok(maintenance.includes("本版（`" + APP_VERSION + "`）"));
+  });
+
   it("documents the current migration catalog and runtime compatibility rather than an old release", () => {
     const latest = Math.max(...migrations.map((migration) => migration.version));
     const documented = /最新数据库 schema 为 (\d+)，运行兼容范围为 (\d+)—(\d+)/.exec(maintenance);

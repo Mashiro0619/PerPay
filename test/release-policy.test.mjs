@@ -18,6 +18,7 @@ function withVersionFiles(version, run) {
   try {
     mkdirSync(join(root, "src"));
     writeFileSync(join(root, "package.json"), JSON.stringify({ version }));
+    writeFileSync(join(root, "openapi.yaml"), JSON.stringify({ info: { version } }));
     writeFileSync(join(root, "package-lock.json"), JSON.stringify({ version, packages: { "": { version } } }));
     writeFileSync(join(root, "src/version.ts"), 'export const APP_VERSION = ' + JSON.stringify(version) + ';\nexport const DATABASE_COMPATIBILITY = Object.freeze({ minimum: 24, maximum: 26 });\n');
     writeFileSync(join(root, "Dockerfile"), dockerfile.replace(/^ARG APP_VERSION=.+$/m, () => "ARG APP_VERSION=" + version));
@@ -63,13 +64,25 @@ for (const version of ["0.3.0-rc.01", "0.3.0-rc.", "0.3.0+build", "0.3.0-rc.1+bu
 }
 
 test("prerelease support does not relax cross-file version consistency", () => {
-  for (const file of ["package-lock.json", "src/version.ts", "Dockerfile"]) {
+  for (const file of ["package-lock.json", "src/version.ts", "Dockerfile", "openapi.yaml"]) {
     withVersionFiles("0.3.0-rc.1", root => {
       const target = join(root, file);
       writeFileSync(target, readFileSync(target, "utf8").replaceAll("0.3.0-rc.1", "0.3.0-rc.2"));
       assert.ok(inspectVersionFiles(root, "v0.3.0-rc.1").errors.some(error => error.includes("does not match")));
     });
   }
+});
+
+test("version checks fail closed for missing, malformed, or incomplete OpenAPI metadata", () => {
+  withVersionFiles("0.3.0", root => {
+    const specification = join(root, "openapi.yaml");
+    rmSync(specification);
+    assert.ok(inspectVersionFiles(root).errors.some(error => error.includes("openapi.yaml is invalid")));
+    for (const content of ["info: [", '{"info": {}}', '{"info": {"version": 3}}']) {
+      writeFileSync(specification, content);
+      assert.ok(inspectVersionFiles(root).errors.some(error => error.includes("openapi.yaml")));
+    }
+  });
 });
 
 test("registry requests accept prerelease tags without relaxing repository and reference safety", async () => {
