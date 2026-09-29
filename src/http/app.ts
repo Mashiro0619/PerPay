@@ -748,6 +748,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     async (context) => {
       requirePaymentDatabaseReady(dependencies);
       const body = await readJson(context, testPaymentRequestSchema, MAX_JSON_BODY_BYTES);
+      requireCurrentSession(context, dependencies.identity);
       const result = dependencies.orders.create({
         idempotency_key: `admin-test-payment:${body.test_payment_id}`,
         merchant_order_no: `test-${body.test_payment_id}`,

@@ -251,7 +251,9 @@ export class RuntimeController {
     if (counts.runningScans > 0 || ledger.inFlight || reconciliation.inFlight) {
       throw providerSwitchBlocked("当前采集或自动确认任务尚未结束");
     }
-    if (counts.ledgerEntries === 0) return;
+    // No recorded income does not prove that the last order has no late-visible payment.
+    // Only an unused account can skip the final collection/confirmation checks.
+    if (counts.ledgerEntries === 0 && counts.latestEndedOrderAt === null) return;
     const now = safeNow(this.#clock());
     const maximumAge = current.provider?.maximumSuccessAgeMilliseconds;
     if (

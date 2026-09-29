@@ -17,6 +17,63 @@ const COLLECTION_CODE = "https://qr.alipay.com/fkx-test-payment-http";
 const TEST_PAYMENT_ID = "12345678-1234-4123-8123-123456789abc";
 
 describe("administrator test payment HTTP contract", () => {
+  for (const invalidation of ["logout", "revoke-all", "expire"] as const) {
+    it(`rejects a delayed request body after session ${invalidation}`, async () => {
+      const directory = mkdtempSync(join(tmpdir(), "perpay-test-payment-session-"));
+      let now = Date.now();
+      const services = await createConfiguredHttpServices({
+        directory, apiSecret: null, collectionCodePayload: COLLECTION_CODE,
+        publicUrl: ORIGIN, identityClock: () => now,
+      });
+      try {
+        const triggered: string[] = [];
+        const app = createApp({ ...services, startedAt: new Date(0),
+          clock: () => now, ...readyPaymentRuntime(now),
+          onOrderAvailable: (id) => triggered.push(id),
+        });
+        const login = await administratorLogin(app);
+        const reading = Promise.withResolvers<void>();
+        const release = Promise.withResolvers<void>();
+        const stream = new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            reading.resolve();
+            await release.promise;
+            controller.enqueue(Buffer.from(JSON.stringify({
+              test_payment_id: TEST_PAYMENT_ID, amount_cents: 100,
+            })));
+            controller.close();
+          },
+        }, { highWaterMark: 0 });
+        const request = new Request(ORIGIN + "/api/admin/v1/test-payments", {
+          method: "POST", headers: login.headers, body: stream, duplex: "half",
+        } as RequestInit);
+        const pending = app.request(request);
+        try {
+          await reading.promise;
+          if (invalidation === "expire") now += 31 * 86_400_000;
+          else {
+            const path = invalidation === "logout"
+              ? "/api/admin/v1/session/logout" : "/api/admin/v1/sessions/revoke-all";
+            const revoked = await app.request(path, {
+              method: "POST", headers: login.headers, body: "{}",
+            });
+            assert.ok(revoked.ok);
+          }
+          assert.equal((await app.request("/api/admin/v1/session", { headers: login.headers })).status, 401);
+        } finally { release.resolve(); }
+        const response = await pending;
+        assert.equal(response.status, 401);
+        assert.equal(await errorCode(response), "session_invalid");
+        assert.equal(orderCount(services.database), 0);
+        assert.deepEqual(triggered, []);
+      } finally {
+        services.database.close();
+        assert.ok(directory.startsWith(join(tmpdir(), "perpay-test-payment-session-")));
+        rmSync(directory, { recursive: true, force: true });
+      }
+    });
+  }
+
   it("creates an administrator test payment before a business API credential is generated", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-test-payment-no-api-"));
     const services = await createConfiguredHttpServices({
