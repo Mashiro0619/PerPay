@@ -20,8 +20,6 @@ import { apiError, json } from "./fixtures";
 import { configuredThrough, mountOnboarding } from "./onboarding-fixture";
 
 beforeEach(() => clearOnboardingDeferrals());
-const configuredDescription =
-  "应用公钥已就绪。复制到支付宝的接口加签设置，已配置则直接下一步。";
 const applicationPath = onboardingPath("application");
 const body = async (view: ReturnType<typeof mountOnboarding>, index = 0) =>
   view.writes()[index]!.clone().json();
@@ -49,7 +47,7 @@ describe("application public key generation and replacement", () => {
     expect(screen.getByRole("button", { name: "下一步" })).toBeDisabled();
     expect(view.writes()).toHaveLength(0);
     await user.click(screen.getByRole("button", { name: "生成应用公钥" }));
-    expect(await screen.findByText(configuredDescription)).toBeVisible();
+    expect(await screen.findByRole("button", { name: "复制应用公钥" })).toBeVisible();
     expect(screen.getByText("synthetic-application-public-key")).toBeVisible();
     expect(screen.getByRole("button", { name: "下一步" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "密钥维护" })).toHaveAttribute(
@@ -72,7 +70,7 @@ describe("application public key generation and replacement", () => {
       const user = userEvent.setup();
       const clipboard = vi.spyOn(navigator.clipboard, "writeText");
       const view = mountOnboarding({ stage, path: applicationPath });
-      await screen.findByText(configuredDescription);
+      await screen.findByRole("button", { name: "复制应用公钥" });
       await user.click(screen.getByRole("button", { name: "复制应用公钥" }));
       await waitFor(() =>
         expect(clipboard).toHaveBeenCalledWith(
@@ -101,10 +99,12 @@ describe("application public key generation and replacement", () => {
     const user = userEvent.setup();
     const trigger = await regenerationButton(user);
     await user.click(trigger);
-    const dialog = await screen.findByRole("dialog", {
-      name: "重新生成应用公钥？",
+    const dialog = await screen.findByRole("alertdialog", { name: "重新生成应用公钥？",
     });
     expect(within(dialog).getByText(/当前收款继续使用原密钥/)).toBeVisible();
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "取消" })).toHaveFocus());
+    expect(within(dialog).queryByRole("button", { name: "关闭" })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "生成新公钥" })).toHaveClass("text-destructive");
     expect(view.writes()).toHaveLength(0);
     await user.click(within(dialog).getByRole("button", { name: "取消" }));
     await waitFor(() => expect(trigger).toHaveFocus());
@@ -115,8 +115,7 @@ describe("application public key generation and replacement", () => {
     const view = mountOnboarding({ stage: 1, path: applicationPath });
     const user = userEvent.setup();
     await user.click(await regenerationButton(user));
-    const dialog = await screen.findByRole("dialog", {
-      name: "重新生成应用公钥？",
+    const dialog = await screen.findByRole("alertdialog", { name: "重新生成应用公钥？",
     });
     expect(within(dialog).getByText(/替换尚未接入的原密钥对/)).toBeVisible();
     await user.click(
@@ -145,8 +144,7 @@ describe("application public key generation and replacement", () => {
     const view = mountOnboarding({ stage: 4, path: applicationPath });
     await user.click(await regenerationButton(user));
     await user.click(
-      within(await screen.findByRole("dialog")).getByRole("button", {
-        name: "生成新公钥",
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "生成新公钥",
       }),
     );
     const primary = await screen.findByRole("link", {
@@ -372,7 +370,7 @@ describe("application public key generation and replacement", () => {
     });
     const user = userEvent.setup();
     await user.click(await regenerationButton(user));
-    const dialog = await screen.findByRole("dialog");
+    const dialog = await screen.findByRole("alertdialog");
     await user.click(
       within(dialog).getByRole("button", { name: "生成新公钥" }),
     );
@@ -426,7 +424,7 @@ describe("application public key generation and replacement", () => {
     });
     const user = userEvent.setup();
     await user.click(await regenerationButton(user));
-    const dialog = await screen.findByRole("dialog");
+    const dialog = await screen.findByRole("alertdialog");
     const submit = within(dialog).getByRole("button", { name: "生成新公钥" });
     await user.click(submit);
     fireEvent.click(submit);
@@ -454,7 +452,7 @@ describe("application public key generation and replacement", () => {
     });
     const user = userEvent.setup();
     await user.click(await regenerationButton(user));
-    const dialog = await screen.findByRole("dialog");
+    const dialog = await screen.findByRole("alertdialog");
     await user.click(
       within(dialog).getByRole("button", { name: "生成新公钥" }),
     );
@@ -496,7 +494,7 @@ describe("application public key generation and replacement", () => {
     await user.click(await screen.findByRole("button", { name: "继续编辑" }));
     expect(input).toHaveValue("unsaved-provider");
     expect(
-      screen.queryByRole("dialog", { name: "重新生成应用公钥？" }),
+      screen.queryByRole("alertdialog", { name: "重新生成应用公钥？" }),
     ).not.toBeInTheDocument();
     expect(view.writes()).toHaveLength(0);
   });

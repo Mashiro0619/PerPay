@@ -56,7 +56,6 @@ import {
   Card,
   CardHeader,
   CardTitle,
-  CardDescription,
   CardContent,
   CardFooter,
 } from "@/components/ui/card";
@@ -805,9 +804,6 @@ export function SettingsEditor({
                 <CardTitle role="heading" aria-level={2}>
                   {sections.find(([value]) => value === section)?.[1] ?? "设置"}
                 </CardTitle>
-                <CardDescription>
-                  本页修改统一保存，其他分类不受影响。
-                </CardDescription>
               </CardHeader>
               <CardContent>
                 <FieldGroup

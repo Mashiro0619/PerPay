@@ -76,6 +76,10 @@ describe("runtime settings", () => {
       await settings.saveProvider(providerInput(1, "2026000000000001"), audit("provider"));
       assert.equal(settings.view().provider?.safety_lag_seconds, 10);
       assert.equal(settings.view().provider?.active_scan_interval_seconds, 10);
+      assert.equal(settings.view().completion.complete, true);
+      assert.equal(settings.view().completion.api, false);
+      assert.equal(settings.view().completion.next_step, null);
+      assert.equal(settings.apiCredential(), null);
       const rotated = await settings.rotateApiSecret(2, audit("api"));
       assert.equal(rotated.client_id, "default");
       assert.match(rotated.secret, /^[A-Za-z0-9_-]{43}$/);

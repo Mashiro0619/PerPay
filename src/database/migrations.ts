@@ -4900,4 +4900,50 @@ export const migrations: readonly Migration[] = [
       BEGIN SELECT RAISE(ABORT, 'application key change history cannot be deleted'); END;
     `,
   },
+  {
+    version: 29,
+    name: "separate_api_client_identity_from_credentials",
+    sql: `
+      PRAGMA defer_foreign_keys = ON;
+      CREATE TABLE api_client_config_v28 AS SELECT * FROM api_client_config;
+      DROP TABLE api_client_config;
+      CREATE TABLE api_client_config (
+        singleton_key INTEGER PRIMARY KEY CHECK (singleton_key = 1),
+        client_id TEXT NOT NULL UNIQUE CHECK (
+          length(client_id) BETWEEN 3 AND 64 AND
+          client_id GLOB '[A-Za-z0-9]*' AND
+          client_id NOT GLOB '*[^A-Za-z0-9._-]*'
+        ),
+        secret_fingerprint TEXT CHECK (
+          length(secret_fingerprint) = 64 AND
+          secret_fingerprint = lower(secret_fingerprint) AND
+          secret_fingerprint NOT GLOB '*[^0-9a-f]*'
+        ),
+        key_version INTEGER CHECK (key_version >= 1),
+        enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        CHECK (created_at >= 0 AND created_at <= updated_at),
+        CHECK (
+          (secret_fingerprint IS NULL AND key_version IS NULL AND enabled = 0) OR
+          (secret_fingerprint IS NOT NULL AND key_version IS NOT NULL)
+        )
+      ) STRICT;
+      INSERT INTO api_client_config SELECT * FROM api_client_config_v28;
+      DROP TABLE api_client_config_v28;
+
+      CREATE TRIGGER api_client_config_key_transition
+      BEFORE UPDATE OF client_id, secret_fingerprint, key_version ON api_client_config
+      WHEN NEW.client_id != OLD.client_id OR NOT EXISTS (
+        SELECT 1 FROM api_client_keys AS key
+        WHERE key.client_id = NEW.client_id
+          AND key.key_version = NEW.key_version
+          AND key.secret_fingerprint = NEW.secret_fingerprint
+          AND key.retired_at IS NULL
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'API client config must reference the active key');
+      END;
+    `,
+  },
 ] as const;

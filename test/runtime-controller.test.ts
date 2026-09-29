@@ -47,7 +47,7 @@ describe("runtime settings controller", () => {
     const snapshot: RuntimeSettingsSnapshot = {
       ...unconfiguredSettings, revision: 1, paymentRevision: 1, provider,
       collection: { codePayload: "https://qr.alipay.com/runtime-cadence", orderTtlSeconds: 300, amountOffsetMaximumCents: 99, amountReuseCooldownSeconds: 600 },
-      apiSecret: "a".repeat(43), activeProviderAccountKey: "primary",
+      apiSecret: null, activeProviderAccountKey: "primary",
     };
     const started: LedgerIngestScheduler[] = [];
     const events: string[] = [];
@@ -72,6 +72,7 @@ describe("runtime settings controller", () => {
     });
     try {
       await runtime.start(snapshot);
+      assert.equal(runtime.status().configured, true);
       const triggered = runtime.triggerOrder("11111111-1111-4111-8111-111111111111");
       assert.deepEqual(events, ["refresh:0", "reconcile"]);
       finishReconciliation();

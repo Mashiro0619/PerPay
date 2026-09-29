@@ -24,7 +24,6 @@ import {
   nextRequiredStep,
   onboardingPath,
   onboardingSteps,
-  onboardingStepDescription,
   onboardingRuntimeWarnings,
   resolveOnboardingStep,
   type OnboardingStep,
@@ -45,7 +44,6 @@ import {
   Card,
   CardHeader,
   CardTitle,
-  CardDescription,
   CardContent,
 } from "@/components/ui/card";
 import { OnboardingSteps } from "@/components/onboarding-steps";
@@ -65,8 +63,6 @@ import {
 } from "@/components/ui/item";
 import {
   NotificationKeyActions,
-  RotateKeyDialog,
-  SecretDialog,
 } from "./SecuritySettings";
 export default function Onboarding() {
   const [editorVersion, setEditorVersion] = useState(0);
@@ -190,12 +186,12 @@ function OnboardingFlow({
     void refreshOperationalData();
     if (next) void navigate(onboardingPath(next));
   }
+  if (requested === "api") return <Navigate to="/settings/security" replace />;
   if (requested !== step) return <Navigate to={onboardingPath(step)} replace />;
   const completed = [
     settings.completion.application_key,
     settings.completion.provider && !pendingApplicationKey,
     settings.completion.collection,
-    settings.completion.api,
   ];
   const renderActions = (actions: ReactNode) => (
     <OnboardingFooter
@@ -228,9 +224,6 @@ function OnboardingFlow({
               >
                 {onboardingSteps[index]!.title}
               </h2>
-              <p className="text-sm text-muted-foreground">
-                {onboardingStepDescription(step, settings)}
-              </p>
             </div>
           </header>
           <SuccessMessage message={success} multiline />
@@ -457,53 +450,7 @@ function OnboardingFlow({
                 guided
                 submitLabel="保存并继续"
                 renderGuidedActions={renderActions}
-                onSaved={(data) => saved(data, "api")}
-              />
-            </OnboardingStepLayout>
-          )}
-          {step === "api" && (
-            <OnboardingStepLayout
-              help={
-                <OnboardingHelp title="接入配置填在哪里？">
-                  <div className="flex flex-col gap-1">
-                    <p className="font-medium text-foreground">
-                      PerPay（当前页面）
-                    </p>
-                    <p>生成并保管 API 密钥，用于验证接入方的请求签名。</p>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <p className="font-medium text-foreground">
-                      业务系统后端（接入方）
-                    </p>
-                    <p>
-                      填写 PerPay 地址、客户端 ID 和此处生成的 API 密钥，再调用
-                      PerPay 创建或查询订单。
-                    </p>
-                  </div>
-                  <p>
-                    这不是业务系统自身的密钥，也不是支付宝应用密钥对。只保存在服务端，不要放进网页代码或公开仓库。
-                  </p>
-                  <a
-                    className={buttonVariants({
-                      variant: "outline",
-                      size: "sm",
-                    })}
-                    href="https://github.com/Mashiro0619/PerPay/blob/main/USAGE.md"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    业务系统接入文档
-                  </a>
-                </OnboardingHelp>
-              }
-            >
-              <ApiKeyStep
-                settings={settings}
-                onSaved={(data) => saved(data)}
-                renderActions={renderActions}
-                onContinue={() => {
-                  void navigate(onboardingPath("optional"));
-                }}
+                onSaved={(data) => saved(data, "optional")}
               />
             </OnboardingStepLayout>
           )}
@@ -627,78 +574,6 @@ function OnboardingFooter({
     </footer>
   );
 }
-function ApiKeyStep({
-  settings,
-  onSaved,
-  onContinue,
-  renderActions,
-}: {
-  settings: RuntimeSettings;
-  onSaved: (settings: RuntimeSettings) => void;
-  onContinue: () => void;
-  renderActions: (actions: ReactNode) => ReactNode;
-}) {
-  const [generate, setGenerate] = useState(false);
-  const [reveal, setReveal] = useState(false);
-  return (
-    <>
-      <Card>
-        <CardHeader>
-          <CardTitle role="heading" aria-level={2}>
-            PerPay API 接入凭证
-          </CardTitle>
-          <CardDescription>
-            由 PerPay 签发给业务系统的调用凭证。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex flex-col gap-1">
-              <p className="text-sm text-muted-foreground">API 客户端 ID</p>
-              <CopyValue value="default" label="复制 API 客户端 ID" />
-            </div>
-            <Badge variant="secondary">
-              {settings.completion.api ? "已配置" : "待生成"}
-            </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            将客户端 ID
-            和这里生成的密钥配置到业务系统后端；这里不填写业务系统自己的密钥。
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            {settings.completion.api ? (
-              <Button variant="outline" onClick={() => setReveal(true)}>
-                查看密钥
-              </Button>
-            ) : (
-              <Button onClick={() => setGenerate(true)}>生成 API 密钥</Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-      {renderActions(
-        <Button disabled={!settings.completion.api} onClick={onContinue}>
-          下一步
-        </Button>,
-      )}
-      {generate && (
-        <RotateKeyDialog
-          settings={settings}
-          onSaved={onSaved}
-          onClose={() => setGenerate(false)}
-          onStored={onContinue}
-        />
-      )}
-      {reveal && (
-        <SecretDialog
-          name="api_secret"
-          title="PerPay API 密钥"
-          onClose={() => setReveal(false)}
-        />
-      )}
-    </>
-  );
-}
 function OptionalSettings({
   settings,
   onSaved,
@@ -816,7 +691,6 @@ export function ReadinessCheck({
     [settings.completion.application_key, "应用公钥"],
     [settings.completion.provider, "支付宝接入"],
     [settings.completion.collection, "经营码"],
-    [settings.completion.api, "PerPay API 密钥"],
   ]
     .filter(([complete]) => !complete)
     .map(([, name]) => name)
@@ -912,6 +786,12 @@ export function ReadinessCheck({
             进入控制台
           </Link>
           <TestPaymentButton>小额真实测试</TestPaymentButton>
+          <Link
+            className={buttonVariants({ variant: "outline" })}
+            to="/settings/security"
+          >
+            获取接入凭证
+          </Link>
         </>
       )}
       <Button

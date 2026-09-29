@@ -597,8 +597,7 @@ export class RuntimeController {
 function isPaymentConfigured(snapshot: RuntimeSettingsSnapshot): boolean {
   return snapshot.collection !== null && collectionCodeError(snapshot.collection.codePayload) === null &&
     snapshot.provider !== null &&
-    snapshot.activeProviderAccountKey !== null &&
-    snapshot.apiSecret !== null;
+    snapshot.activeProviderAccountKey !== null;
 }
 
 function isWebhookConfigured(snapshot: RuntimeSettingsSnapshot): snapshot is RuntimeSettingsSnapshot & {

@@ -65,9 +65,7 @@ function completion(value: RuntimeSettings): RuntimeSettings {
     provider: value.provider !== null,
     collection: value.collection !== null,
     api: value.secrets.api_secret.configured,
-    complete: Boolean(
-      value.provider && value.collection && value.secrets.api_secret.configured,
-    ),
+    complete: Boolean(value.provider && value.collection),
     notifications:
       !value.notifications.enabled || value.secrets.webhook_secret.configured,
     next_step: !value.application_public_key
@@ -76,9 +74,7 @@ function completion(value: RuntimeSettings): RuntimeSettings {
         ? "CONFIGURE_PROVIDER"
         : !value.collection
           ? "CONFIGURE_COLLECTION"
-          : !value.secrets.api_secret.configured
-            ? "GENERATE_API_KEY"
-            : null,
+          : null,
   };
   return value;
 }

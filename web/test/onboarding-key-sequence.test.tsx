@@ -120,7 +120,7 @@ describe("sequential application-key onboarding", () => {
     expect(unloadBlocked()).toBe(false);
   });
 
-  it.each([undefined, "check", "collection", "optional", "api"])(
+  it.each([undefined, "check", "collection", "optional"])(
     "suggests activation by default without restricting the explicitly requested step %s",
     async (step) => {
       const settings = pendingApplicationKey();

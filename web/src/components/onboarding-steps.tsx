@@ -39,7 +39,7 @@ export function OnboardingSteps({
 
   return (
     <nav aria-label="配置步骤" onKeyDown={moveFocus} data-onboarding-steps>
-      <ol role="list" className="grid grid-cols-6">
+      <ol role="list" className="grid grid-cols-5">
         {onboardingSteps.map((item, position) => {
           const active = item.id === current;
           const done = completed[position] === true;
@@ -91,10 +91,14 @@ export function OnboardingSteps({
           );
           const className = cn(
             buttonVariants({ variant: "ghost" }),
-            "h-auto min-h-11 w-full min-w-0 flex-col justify-start gap-2 px-0.5 py-2 @sm/onboarding:px-2",
+            "h-auto min-h-11 w-fit min-w-11 max-w-full flex-col justify-start gap-2 px-0.5 py-2 @sm/onboarding:px-2",
           );
           return (
-            <li key={item.id} className="relative min-w-0" data-step={item.id}>
+            <li
+              key={item.id}
+              className="relative flex min-w-0 items-start justify-center"
+              data-step={item.id}
+            >
               {position < onboardingSteps.length - 1 && (
                 <Separator
                   aria-hidden="true"

@@ -320,7 +320,7 @@ describe("minimal onboarding", () => {
 
   it("does not automatically repeat first-time key generation after an uncertain response", async () => {
     const view = mountOnboarding({
-      stage: 3,
+      stage: 3, path: "/settings/security",
       handle: (request) =>
         request.url.endsWith("/api-key/actions/rotate")
           ? Promise.reject(new TypeError("network interrupted"))
@@ -336,7 +336,7 @@ describe("minimal onboarding", () => {
     await screen.findByRole("alert");
     await act(async () => {});
     expect(view.writes()).toHaveLength(1);
-    expect(view.router.state.location.pathname).toBe(onboardingPath("api"));
+    expect(view.router.state.location.pathname).toBe("/settings/security");
     expect(
       screen.getByText(/结果未确认，请关闭后刷新配置并查看当前密钥/),
     ).toBeVisible();

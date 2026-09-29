@@ -64,8 +64,7 @@ describe("infrequent application-key maintenance", () => {
     await user.click(toggle);
     await user.click(screen.getByRole("button", { name: "重新生成应用公钥" }));
     await user.click(
-      within(await screen.findByRole("dialog")).getByRole("button", {
-        name: "生成新公钥",
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "生成新公钥",
       }),
     );
     await screen.findByText("synthetic-regenerated-application-public-key");
@@ -85,12 +84,11 @@ describe("non-blocking pending application keys", () => {
     await user.click(await screen.findByRole("button", { name: "密钥维护" }));
     await user.click(screen.getByRole("button", { name: "重新生成应用公钥" }));
     await user.click(
-      within(await screen.findByRole("dialog")).getByRole("button", {
-        name: "生成新公钥",
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "生成新公钥",
       }),
     );
     await screen.findByText("synthetic-pending-application-public-key");
-    for (const name of ["经营码", "业务系统接入", "通知与备份", "收款检查"])
+    for (const name of ["经营码", "通知与备份", "收款检查"])
       expect(
         screen.getByRole("link", { name: new RegExp(name) }),
       ).not.toHaveAttribute("aria-disabled", "true");
@@ -124,7 +122,7 @@ describe("non-blocking pending application keys", () => {
     expect(screen.getByText("新应用公钥尚未启用")).toBeVisible();
     fireEvent.change(orderTtl, { target: { value: "1800" } });
     await user.click(screen.getByRole("button", { name: "保存并继续" }));
-    await screen.findByRole("heading", { name: "业务系统接入", level: 2 });
+    await screen.findByRole("heading", { name: "通知与备份", level: 2 });
     expect(view.saved.collection!.order_ttl_seconds).toBe(1800);
     expect(view.saved.pending_application_key).toEqual(pending);
     expect(view.saved.application_public_key).toBe(currentKey);

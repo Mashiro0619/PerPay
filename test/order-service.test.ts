@@ -44,6 +44,15 @@ const disabledWebhook: WebhookSettings = Object.freeze({
 });
 
 describe("order service", () => {
+  it("allows administrator-side order service without a business API credential", async () => {
+    await withDatabase("no-api-credential", async (database) => {
+      const settings = runtimeSettings({ apiSecret: null, apiSecretFingerprint: null });
+      const orders = new OrderService(database, () => settings);
+      orders.initialize();
+      assert.doesNotThrow(() => orders.create(orderRequest("admin-without-api", 2000)));
+      assert.equal(database.integrityCheck().ok, true);
+    }, false);
+  });
   it("keeps the versioned collection profile fingerprints stable", () => {
     assert.equal(COLLECTION_PROFILE_FINGERPRINT_VERSION, 2);
     assert.deepEqual(fingerprintCollectionCodeProfile("https://qr.example.test/profile-a"), {
@@ -455,13 +464,16 @@ function bindProvider(ledger: LedgerStore, providerAccountKey: string, appId: st
 async function withDatabase(
   name: string,
   operation: (database: AppDatabase) => void | Promise<void>,
+  initializeApiClient = true,
 ): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), `perpay-order-service-${name}-`));
   const database = await AppDatabase.open(join(directory, "perpay.sqlite"));
   try {
-    new IdentityStore(database).transaction((transaction) => {
-      transaction.syncApiClient("default", "3".repeat(64), Date.now());
-    });
+    if (initializeApiClient) {
+      new IdentityStore(database).transaction((transaction) => {
+        transaction.syncApiClient("default", "3".repeat(64), Date.now());
+      });
+    }
     await operation(database);
   } finally {
     database.close();

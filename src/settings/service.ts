@@ -200,7 +200,6 @@ export class RuntimeSettingsService {
           applicationKeyConfigured: applicationKey !== null,
           providerConfigured: status.providerConfigured,
           collectionConfigured: status.collectionConfigured,
-          apiConfigured: status.apiConfigured,
         }),
       },
       collection: snapshot.collection
@@ -727,12 +726,10 @@ function configurationNextStep(input: {
   readonly applicationKeyConfigured: boolean;
   readonly providerConfigured: boolean;
   readonly collectionConfigured: boolean;
-  readonly apiConfigured: boolean;
 }): RuntimeSettingsView["completion"]["next_step"] {
   if (!input.applicationKeyConfigured) return "GENERATE_APPLICATION_KEY";
   if (!input.providerConfigured) return "CONFIGURE_PROVIDER";
   if (!input.collectionConfigured) return "CONFIGURE_COLLECTION";
-  if (!input.apiConfigured) return "GENERATE_API_KEY";
   return null;
 }
 

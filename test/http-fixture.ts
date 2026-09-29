@@ -21,7 +21,7 @@ export const HTTP_TEST_ADMIN_PASSWORD = "a-secure-local-password";
 
 export async function createConfiguredHttpServices(options: {
   readonly directory: string;
-  readonly apiSecret: string;
+  readonly apiSecret: string | null;
   readonly collectionCodePayload: string;
   readonly publicUrl?: string | undefined;
   readonly environment?: NodeJS.ProcessEnv | undefined;
@@ -59,7 +59,7 @@ export async function createConfiguredHttpServices(options: {
     safety_lag_seconds: 10,
     maximum_success_age_seconds: 60,
   }, audit("provider"));
-  settingsStore.saveApiSecret(options.apiSecret, 2, audit("api"));
+  if (options.apiSecret !== null) settingsStore.saveApiSecret(options.apiSecret, 2, audit("api"));
 
   const orders = new OrderService(database, () => settings.snapshot());
   orders.initialize();

@@ -1,7 +1,6 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
-import { queryClient } from "../src/api/client";
 import {
   clearOnboardingDeferrals,
   onboardingPath,
@@ -27,17 +26,17 @@ describe("onboarding workspace and credential handoff", () => {
       expect(workspace).toContainElement(heading);
       expect(within(workspace).queryByText(/第 \d 步，共 \d 步/)).not.toBeInTheDocument();
       expect(
-        within(workspace).getByText(
+        within(workspace).queryByText(
           step.id === "application"
             ? "应用公钥已就绪。复制到支付宝的接口加签设置，已配置则直接下一步。"
             : step.description,
         ),
-      ).toBeVisible();
+      ).not.toBeInTheDocument();
       expect(
         within(
           within(workspace).getByRole("navigation", { name: "配置步骤" }),
         ).getAllByRole("link"),
-      ).toHaveLength(6);
+      ).toHaveLength(5);
       expect(
         within(
           within(workspace).getByRole("navigation", { name: "配置步骤" }),
@@ -75,7 +74,7 @@ describe("onboarding workspace and credential handoff", () => {
       expect(
         within(workspace).getByRole("link", { name: /通知与备份.*可选/ }),
       ).toBeVisible();
-      if (["application", "provider", "collection", "api"].includes(step.id)) {
+      if (["application", "provider", "collection"].includes(step.id)) {
         expect(
           workspace.querySelector("[data-onboarding-main]"),
         ).toBeInTheDocument();
@@ -107,65 +106,27 @@ describe("onboarding workspace and credential handoff", () => {
     },
   );
 
-  it("explains who issues and consumes credentials, without reading a secret on entry", async () => {
+  it("redirects old API setup links to credential management without reading secrets", async () => {
     const view = mountOnboarding({ stage: 4, path: onboardingPath("api") });
-    expect(
-      await screen.findByRole("heading", { name: "PerPay API 接入凭证" }),
-    ).toBeVisible();
-    expect(screen.getByText("PerPay（当前页面）")).toBeVisible();
-    expect(screen.getByText("业务系统后端（接入方）")).toBeVisible();
-    expect(screen.getByText(/这里不填写业务系统自己的密钥/)).toBeVisible();
-    expect(
-      screen.getByRole("button", { name: "复制 API 客户端 ID" }),
-    ).toBeVisible();
-    expect(
-      screen.getByRole("link", { name: "业务系统接入文档" }),
-    ).toHaveAttribute(
-      "href",
-      "https://github.com/Mashiro0619/PerPay/blob/main/USAGE.md",
-    );
-    expect(screen.queryByText("网站 API 密钥")).not.toBeInTheDocument();
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "查看PerPay API 密钥" })).toBeVisible();
+    expect(view.router.state.location.pathname).toBe("/settings/security");
+    expect(screen.getByRole("button", { name: "复制 API 客户端 ID" })).toBeVisible();
     expect(screen.queryByText(syntheticSecret)).not.toBeInTheDocument();
     expect(view.writes()).toHaveLength(0);
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "查看密钥" }));
-    const dialog = await screen.findByRole("dialog", {
-      name: "PerPay API 密钥",
-    });
-    expect(await within(dialog).findByText(syntheticSecret)).toBeVisible();
-    expect(
-      within(dialog).getByText(/复制到业务系统后端的 PerPay 接入配置/),
-    ).toBeVisible();
-    expect(view.writes()).toHaveLength(1);
-    expect(new URL(view.writes()[0]!.url).pathname).toBe(
-      "/api/admin/v1/settings/secrets/api_secret/actions/reveal",
-    );
-    expect(
-      JSON.stringify(queryClient.getQueryData(["settings"])),
-    ).not.toContain(syntheticSecret);
-    expect(JSON.stringify(localStorage)).not.toContain(syntheticSecret);
-    expect(JSON.stringify(sessionStorage)).not.toContain(syntheticSecret);
-    await user.click(within(dialog).getByRole("button", { name: "关闭" }));
-    await waitFor(() =>
-      expect(screen.queryByText(syntheticSecret)).not.toBeInTheDocument(),
-    );
   });
 
-  it("keeps the generation prerequisite rather than treating client setup as an unneeded step", async () => {
+  it("finishes instance configuration without generating an API credential", async () => {
     const view = mountOnboarding({ stage: 3 });
-    expect(
-      await screen.findByRole("heading", { name: "业务系统接入", level: 2 }),
-    ).toBeVisible();
-    expect(screen.getByRole("button", { name: "下一步" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "生成 API 密钥" })).toBeEnabled();
-    expect(screen.getByRole("link", { name: /收款检查/ })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
-    expect(
-      screen.queryByRole("button", { name: "查看密钥" }),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "进入控制台" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "获取接入凭证" })).toHaveAttribute("href", "/settings/security");
+    expect(screen.queryByRole("button", { name: "生成 API 密钥" })).not.toBeInTheDocument();
+    expect(view.saved.completion.complete).toBe(true);
+    expect(view.saved.completion.api).toBe(false);
+    expect(view.writes()).toHaveLength(0);
+    await userEvent.setup().click(screen.getByRole("link", { name: "获取接入凭证" }));
+    expect(await screen.findByRole("button", { name: "生成 API 密钥" })).toBeVisible();
+    expect(view.router.state.location.pathname).toBe("/settings/security");
+    expect(screen.queryByText(syntheticSecret)).not.toBeInTheDocument();
     expect(view.writes()).toHaveLength(0);
   });
 

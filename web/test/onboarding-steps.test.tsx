@@ -7,7 +7,7 @@ import { onboardingPath, onboardingSteps } from "../src/lib/onboarding";
 import { mountOnboarding } from "./onboarding-fixture";
 
 describe("ordered onboarding navigation", () => {
-  it("keeps all six numbers, connectors, completion and the current step distinct", () => {
+  it("keeps all five numbers, connectors, completion and the current step distinct", () => {
     render(
       <MemoryRouter>
         <OnboardingSteps
@@ -20,10 +20,14 @@ describe("ordered onboarding navigation", () => {
     const nav = screen.getByRole("navigation", { name: "配置步骤" });
     const list = within(nav).getByRole("list");
     const items = within(list).getAllByRole("listitem");
-    expect(items).toHaveLength(6);
+    expect(items).toHaveLength(5);
     expect(list.tagName).toBe("OL");
-    expect(nav.querySelectorAll("[data-step-connector]")).toHaveLength(5);
+    expect(nav.querySelectorAll("[data-step-connector]")).toHaveLength(4);
     items.forEach((item, index) => {
+      expect(item).toHaveClass("justify-center", "items-start");
+      const link = within(item).getByRole("link");
+      expect(link).toHaveClass("w-fit", "max-w-full", "min-w-11", "min-h-11");
+      expect(link).not.toHaveClass("w-full");
       expect(item.querySelector("[data-step-number]")).toHaveTextContent(
         String(index + 1),
       );
@@ -39,10 +43,10 @@ describe("ordered onboarding navigation", () => {
     ).toHaveAttribute("aria-current", "step");
     expect(nav.querySelectorAll('[aria-current="step"]')).toHaveLength(1);
     expect(
-      within(nav).getByRole("link", { name: /第 5 步.*通知与备份.*可选/ }),
+      within(nav).getByRole("link", { name: /第 4 步.*通知与备份.*可选/ }),
     ).toBeVisible();
     expect(
-      within(nav).getByRole("link", { name: /第 6 步.*收款检查.*待检查/ }),
+      within(nav).getByRole("link", { name: /第 5 步.*收款检查.*待检查/ }),
     ).not.toHaveAttribute("aria-disabled");
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
     expect(nav).not.toHaveTextContent(/已配置|待配置|待检查|当前步骤/);
@@ -93,7 +97,7 @@ describe("ordered onboarding navigation", () => {
     });
     const nav = screen.getByRole("navigation", { name: "配置步骤" });
     const current = within(nav).getByRole("link", { name: /经营码/ });
-    const next = within(nav).getByRole("link", { name: /业务系统接入/ });
+    const next = within(nav).getByRole("link", { name: /通知与备份/ });
     const user = userEvent.setup();
     act(() => current.focus());
     await user.keyboard("{ArrowRight}");
@@ -114,9 +118,9 @@ describe("ordered onboarding navigation", () => {
       await screen.findByRole("button", { name: "放弃修改并继续" }),
     );
     expect(
-      await screen.findByRole("heading", { name: "业务系统接入", level: 2 }),
+      await screen.findByRole("heading", { name: "通知与备份", level: 2 }),
     ).toHaveFocus();
-    expect(view.router.state.location.pathname).toBe(onboardingPath("api"));
+    expect(view.router.state.location.pathname).toBe(onboardingPath("optional"));
     expect(view.writes()).toHaveLength(0);
   });
 });

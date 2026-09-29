@@ -152,7 +152,7 @@ export class IdentityReadTransaction {
       .prepare(
         `SELECT client_id, enabled, key_version, secret_fingerprint
            FROM api_client_config
-          WHERE singleton_key = 1 AND client_id = ?`,
+          WHERE singleton_key = 1 AND client_id = ? AND key_version IS NOT NULL`,
       )
       .get(clientId) as
       | {
@@ -451,25 +451,44 @@ export class IdentityTransaction extends IdentityReadTransaction {
       .run(now - AUTH_WINDOW_MS, now);
   }
 
+  // Orders need an owner even before the administrator issues an API credential.
+  // This record is disabled and has neither a secret nor a key-history entry.
+  ensureApiClientIdentity(clientId: string, now: number): void {
+    this.connection.prepare(
+      `INSERT INTO api_client_config(
+         singleton_key, client_id, secret_fingerprint, key_version,
+         enabled, created_at, updated_at
+       ) VALUES (1, ?, NULL, NULL, 0, ?, ?)
+       ON CONFLICT(singleton_key) DO NOTHING`,
+    ).run(clientId, now, now);
+    const row = this.connection.prepare(
+      "SELECT client_id FROM api_client_config WHERE singleton_key = 1",
+    ).get() as { client_id: string };
+    if (row.client_id !== clientId) {
+      throw new Error("configured API client ID does not match the initialized client");
+    }
+  }
+
   syncApiClient(clientId: string, fingerprint: string, now: number): ApiClientKey {
     const row = this.connection
       .prepare(
-        `SELECT client_id, enabled, key_version, secret_fingerprint
+        `SELECT client_id, enabled, key_version, secret_fingerprint, created_at
            FROM api_client_config
           WHERE singleton_key = 1`,
       )
       .get() as
       | {
           client_id: string;
+          created_at: number | bigint;
           enabled: number | bigint;
-          key_version: number | bigint;
-          secret_fingerprint: string;
+          key_version: number | bigint | null;
+          secret_fingerprint: string | null;
         }
       | undefined;
     if (row && row.client_id !== clientId) {
       throw new Error("configured API client ID does not match the initialized client");
     }
-    const existing = row
+    const existing = row && row.key_version !== null && row.secret_fingerprint !== null
       ? {
           clientId: row.client_id,
           keyVersion: Number(row.key_version),
@@ -478,21 +497,20 @@ export class IdentityTransaction extends IdentityReadTransaction {
         }
       : undefined;
     if (!existing) {
-      this.connection
-        .prepare(
-          `INSERT INTO api_client_config(
-             singleton_key, client_id, secret_fingerprint, key_version,
-             enabled, created_at, updated_at
-           ) VALUES (1, ?, ?, 1, 1, ?, ?)`,
-        )
-        .run(clientId, fingerprint, now, now);
+      const activatedAt = Math.max(now, Number(row?.created_at ?? now));
+      this.ensureApiClientIdentity(clientId, activatedAt);
       this.connection
         .prepare(
           `INSERT INTO api_client_keys(
              client_id, key_version, secret_fingerprint, activated_at, retired_at
            ) VALUES (?, 1, ?, ?, NULL)`,
         )
-        .run(clientId, fingerprint, now);
+        .run(clientId, fingerprint, activatedAt);
+      this.connection.prepare(
+        `UPDATE api_client_config
+            SET secret_fingerprint = ?, key_version = 1, enabled = 1, updated_at = ?
+          WHERE singleton_key = 1`,
+      ).run(fingerprint, activatedAt);
       return { clientId, keyVersion: 1, secretFingerprint: fingerprint, enabled: true };
     }
 

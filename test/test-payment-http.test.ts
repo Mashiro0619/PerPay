@@ -17,6 +17,51 @@ const COLLECTION_CODE = "https://qr.alipay.com/fkx-test-payment-http";
 const TEST_PAYMENT_ID = "12345678-1234-4123-8123-123456789abc";
 
 describe("administrator test payment HTTP contract", () => {
+  it("creates an administrator test payment before a business API credential is generated", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-test-payment-no-api-"));
+    const services = await createConfiguredHttpServices({
+      directory,
+      apiSecret: null,
+      collectionCodePayload: COLLECTION_CODE,
+      publicUrl: ORIGIN,
+    });
+    try {
+      const now = 1_700_000_000_000;
+      const app = createApp({
+        ...services,
+        startedAt: new Date(0),
+        clock: () => now,
+        ...readyPaymentRuntime(now),
+      });
+      const login = await administratorLogin(app);
+      const response = await app.request("/api/admin/v1/test-payments", {
+        method: "POST",
+        headers: login.headers,
+        body: JSON.stringify({ test_payment_id: TEST_PAYMENT_ID, amount_cents: 100 }),
+      });
+      assert.equal(response.status, 201);
+      assert.equal(orderCount(services.database), 1);
+      assert.equal(services.settings.view().completion.complete, true);
+      assert.equal(services.settings.apiCredential(), null);
+      assert.equal(services.database.integrityCheck().ok, true);
+      services.database.read((connection) => {
+        assert.equal(connection.prepare("SELECT 1 FROM api_client_keys").get(), undefined);
+      });
+      await services.settings.rotateApiSecret(services.settings.view().revision, { actorId: "admin" });
+      assert.equal(services.settings.apiCredential()?.keyVersion, 1);
+      assert.equal(orderCount(services.database), 1);
+      const unsignedBusinessRequest = await app.request("/api/v1/orders", {
+        method: "POST", headers: { "content-type": "application/json" }, body: "{}",
+      });
+      assert.equal(unsignedBusinessRequest.status, 401);
+      assert.equal(services.database.integrityCheck().ok, true);
+    } finally {
+      services.database.close();
+      assert.ok(directory.startsWith(join(tmpdir(), "perpay-test-payment-no-api-")));
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("uses the real order path with readiness, session, and idempotency protection", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-test-payment-http-"));
     const services = await createConfiguredHttpServices({

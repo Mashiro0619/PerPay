@@ -224,7 +224,7 @@ export class RuntimeSettingsStore {
       revision: snapshot.revision,
       paymentRevision: snapshot.paymentRevision,
       updatedAt: snapshot.updatedAt,
-      complete: collectionConfigured && providerConfigured && apiConfigured,
+      complete: collectionConfigured && providerConfigured,
       collectionConfigured,
       providerConfigured,
       apiConfigured,

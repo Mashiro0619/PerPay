@@ -350,7 +350,6 @@ export class OrderService {
     if (
       settings.collection === null ||
       settings.provider === null ||
-      settings.apiSecret === null ||
       settings.activeProviderAccountKey === null
     ) {
       throw new OrderError(

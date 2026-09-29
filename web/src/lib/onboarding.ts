@@ -19,11 +19,6 @@ export const onboardingSteps = [
     description: "使用接入账户的经营码，并确认订单有效期与金额规则。",
   },
   {
-    id: "api",
-    title: "业务系统接入",
-    description: "在 PerPay 生成接入凭证，再复制到业务系统后端的 PerPay 配置。",
-  },
-  {
     id: "optional",
     title: "通知与备份",
     description: "按需开启付款通知和自动备份，不启用也可以继续。",
@@ -35,7 +30,7 @@ export const onboardingSteps = [
   },
 ] as const;
 export type OnboardingStep = (typeof onboardingSteps)[number]["id"];
-export const onboardingPath = (step?: OnboardingStep) =>
+export const onboardingPath = (step?: OnboardingStep | "api") =>
   "/settings/onboarding" + (step ? "/" + step : "");
 
 export function onboardingStepDescription(
@@ -61,7 +56,7 @@ export function nextRequiredStep(settings: RuntimeSettings): OnboardingStep {
     GENERATE_APPLICATION_KEY: "application",
     CONFIGURE_PROVIDER: "provider",
     CONFIGURE_COLLECTION: "collection",
-    GENERATE_API_KEY: "api",
+    GENERATE_API_KEY: "check",
   } as const;
   return settings.completion.next_step
     ? steps[settings.completion.next_step]

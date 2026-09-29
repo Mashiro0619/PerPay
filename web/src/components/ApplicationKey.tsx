@@ -343,6 +343,7 @@ function ApplicationKeyChange({
   presentation: ChangePresentation;
 }) {
   const guided = presentation.kind === "guided";
+  const cancelRegeneration = useRef<HTMLButtonElement>(null);
   const formId = useId();
   const submitRef = useRef<HTMLButtonElement>(null);
   const refreshRef = useRef<HTMLButtonElement>(null);
@@ -578,7 +579,7 @@ function ApplicationKeyChange({
       ref={submitRef}
       type="submit"
       form={formId}
-      variant={mode === "discard" ? "destructive" : "default"}
+      variant={mode === "activate" ? "default" : "destructive"}
       disabled={
         operation.isPending ||
         operation.conflict ||
@@ -724,6 +725,50 @@ function ApplicationKeyChange({
           </AlertDialogContent>
         </AlertDialog>
       </>
+    );
+  if (mode === "regenerate")
+    return (
+      <AlertDialog
+        open
+        onOpenChange={(open, event) => {
+          if (!open && operation.isPending) event.cancel();
+          else if (!open) presentation.onClose();
+        }}
+      >
+        <AlertDialogContent
+          initialFocus={cancelRegeneration}
+          finalFocus={presentation.finalFocus}
+          className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto sm:max-w-lg"
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>{title}</AlertDialogTitle>
+            <AlertDialogDescription>{description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <form
+            id={formId}
+            noValidate
+            className="flex min-w-0 flex-col gap-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              submit();
+            }}
+          >
+            {initial.appId && (
+              <p className="text-sm text-muted-foreground">
+                支付宝应用：<span className="break-all">{initial.appId}</span>（
+                {initial.environment === "PRODUCTION" ? "生产环境" : "沙箱环境"}）
+              </p>
+            )}
+            {feedback}
+            <AlertDialogFooter>
+              <AlertDialogCancel ref={cancelRegeneration} disabled={operation.isPending}>
+                取消
+              </AlertDialogCancel>
+              {submitButton}
+            </AlertDialogFooter>
+          </form>
+        </AlertDialogContent>
+      </AlertDialog>
     );
   return (
     <Dialog

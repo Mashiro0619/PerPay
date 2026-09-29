@@ -1,6 +1,9 @@
+import { apiClientCredentialsDowngradeSql } from "./api-client-schema-fixture.ts";
+
 /** Test-only reconstruction of schema 23, never a production downgrade. */
 export function displaySettingsDowngradeSql(): string {
   return `
+    ${apiClientCredentialsDowngradeSql()}
     DROP TABLE IF EXISTS provider_application_key_changes;
     DELETE FROM schema_migrations WHERE version = 28;
     DROP TRIGGER IF EXISTS financial_operations_reason_required;

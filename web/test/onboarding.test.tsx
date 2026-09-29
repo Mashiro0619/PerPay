@@ -80,7 +80,7 @@ describe("first collection onboarding", () => {
   it.each([0, 1, 2, 3, 4])(
     "resolves real server progress for stage %i instead of trusting URL progress",
     (stage) => {
-      const next = ["application", "provider", "collection", "api", "check"][
+      const next = ["application", "provider", "collection", "check", "check"][
         stage
       ];
       expect(resolveOnboardingStep(configuredThrough(stage), "check")).toBe(
@@ -293,39 +293,37 @@ describe("first collection onboarding", () => {
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "保存并继续" }));
-    await pathIs(view, "api");
+    await pathIs(view, "optional");
     expect(view.saved.collection?.code_payload).toBe(
       "https://qr.alipay.com/onboarding",
     );
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
   it("keeps generated API plaintext until explicit storage confirmation, without persisting it", async () => {
-    const view = mountOnboarding({ stage: 3 });
+    const view = mountOnboarding({ stage: 3, path: "/settings/security" });
     const user = userEvent.setup();
     await user.click(
       await screen.findByRole("button", { name: "生成 API 密钥" }),
     );
     await user.click(screen.getByRole("button", { name: "生成密钥" }));
     expect(await screen.findByText(syntheticSecret)).toBeVisible();
-    await pathIs(view, "api");
+    expect(view.router.state.location.pathname).toBe("/settings/security");
     expect(JSON.stringify(sessionStorage)).not.toContain(syntheticSecret);
     await user.click(screen.getByRole("button", { name: "完成" }));
-    await pathIs(view, "optional");
+    expect(view.router.state.location.pathname).toBe("/settings/security");
     expect(screen.queryByText(syntheticSecret)).not.toBeInTheDocument();
     expect(view.writes()).toHaveLength(1);
   });
   it("reuses an existing API key and does not rotate it on revisit", async () => {
     const view = mountOnboarding({ stage: 4, path: onboardingPath("api") });
     expect(
-      await screen.findByRole("button", { name: "查看密钥" }),
+      await screen.findByRole("button", { name: "查看PerPay API 密钥" }),
     ).toBeVisible();
     expect(
       screen.queryByRole("button", { name: "生成 API 密钥" }),
     ).not.toBeInTheDocument();
-    await userEvent
-      .setup()
-      .click(screen.getByRole("button", { name: "下一步" }));
-    await pathIs(view, "optional");
+
+    expect(view.router.state.location.pathname).toBe("/settings/security");
     expect(view.writes()).toHaveLength(0);
   });
   it("closes a pending API key dialog when hidden and never navigates on a late secret", async () => {
@@ -333,6 +331,7 @@ describe("first collection onboarding", () => {
     let finish: (response: Response) => void = () => {};
     const view = mountOnboarding({
       stage: 3,
+      path: "/settings/security",
       handle: (request) =>
         request.url.endsWith("/api-key/actions/rotate")
           ? new Promise<Response>((resolve) => {
@@ -360,11 +359,11 @@ describe("first collection onboarding", () => {
     });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByText(syntheticSecret)).not.toBeInTheDocument();
-    await pathIs(view, "api");
+    expect(view.router.state.location.pathname).toBe("/settings/security");
   });
   it("clears revealed API plaintext after sixty seconds without advancing", async () => {
     const view = mountOnboarding({ stage: 4, path: onboardingPath("api") });
-    const viewKey = await screen.findByRole("button", { name: "查看密钥" });
+    const viewKey = await screen.findByRole("button", { name: "查看PerPay API 密钥" });
     vi.useFakeTimers();
     fireEvent.click(viewKey);
     await act(async () => {
@@ -376,7 +375,7 @@ describe("first collection onboarding", () => {
     });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByText(syntheticSecret)).not.toBeInTheDocument();
-    expect(view.router.state.location.pathname).toBe(onboardingPath("api"));
+    expect(view.router.state.location.pathname).toBe("/settings/security");
   });
   it("preserves the other optional form while saving each with the latest revision", async () => {
     const view = mountOnboarding({

@@ -1962,7 +1962,6 @@ function currentRuntimeStatus(dependencies: AppDependencies): PaymentRuntimeStat
     configured: snapshot !== undefined &&
       snapshot.collection !== null && collectionCodeError(snapshot.collection.codePayload) === null &&
       snapshot.provider !== null &&
-      snapshot.apiSecret !== null &&
       snapshot.activeProviderAccountKey !== null,
     transitioning: false,
     paymentRevision: snapshot?.paymentRevision ?? 0,

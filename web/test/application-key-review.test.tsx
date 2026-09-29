@@ -51,8 +51,7 @@ describe("pending key continuity across onboarding steps", () => {
       await screen.findByRole("button", { name: "重新生成应用公钥" }),
     );
     await user.click(
-      within(await screen.findByRole("dialog")).getByRole("button", {
-        name: "生成新公钥",
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "生成新公钥",
       }),
     );
     await screen.findByText(pendingKey);
@@ -344,7 +343,7 @@ describe.each([
         );
       if (!inline)
         await user.click(await screen.findByRole("button", { name: trigger }));
-      const dialog = await screen.findByRole(inline ? "form" : "dialog");
+      const dialog = await screen.findByRole(inline ? "form" : trigger === "重新生成应用公钥" ? "alertdialog" : "dialog");
       if (trigger === "验证并启用")
         await user.type(
           within(dialog).getByLabelText("支付宝公钥"),

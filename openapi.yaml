@@ -3437,7 +3437,7 @@ components:
       properties:
         complete:
           type: boolean
-          description: True when provider, collection, and API credentials are configured.
+          description: True when provider and collection are configured. API credentials are managed separately and are not required for instance setup.
         application_key:
           type: boolean
           description: Whether the encrypted application private key and uploadable public key exist.
@@ -3454,7 +3454,7 @@ components:
             - GENERATE_API_KEY
             - null
           description: >-
-            First incomplete required configuration step in the supported setup order. Null means
+            First incomplete required instance configuration step. GENERATE_API_KEY is retained for compatibility but is no longer emitted. Null means
             configuration is complete; payment readiness must still be checked through `/readyz`
             or the administrator system-status endpoint.
     CollectionSettings:

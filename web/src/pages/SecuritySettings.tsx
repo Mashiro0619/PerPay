@@ -118,7 +118,11 @@ export function SecuritySettings({
             <CardTitle role="heading" aria-level={2}>
               密钥
             </CardTitle>
-            <CardDescription>API 客户端 ID：default</CardDescription>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-muted-foreground">API 客户端 ID</span>
+              <CopyValue value="default" label="复制 API 客户端 ID" />
+              <a href="https://github.com/Mashiro0619/PerPay/blob/main/USAGE.md" target="_blank" rel="noopener noreferrer" className="text-sm underline underline-offset-4">接入文档</a>
+            </div>
           </CardHeader>
           <CardContent>
             <Table>

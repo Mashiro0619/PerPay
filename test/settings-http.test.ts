@@ -20,6 +20,31 @@ const origin = "http://localhost:6190";
 const apiSecret = Buffer.alloc(32, 0x72).toString("base64url");
 
 describe("advanced settings HTTP contract", () => {
+  it("separates instance readiness from API authentication when no credential exists", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-no-api-credential-"));
+    const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
+      directory, apiSecret: null, collectionCodePayload: "https://qr.alipay.com/no-api", publicUrl: origin,
+    });
+    try {
+      const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
+      assert.equal(settings.view().completion.complete, true);
+      assert.equal(settings.view().completion.api, false);
+      assert.equal(settings.view().completion.next_step, null);
+      const headers = await loginHeaders(app);
+      const response = await app.request("/api/admin/v1/system/status", { headers });
+      assert.equal(response.status, 200);
+      assert.equal((await response.json() as { data: { configured: boolean } }).data.configured, true);
+      const business = await app.request("/api/v1/orders", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      assert.equal(business.status, 503);
+      assert.equal((await business.json() as { error: { code: string } }).error.code, "system_not_configured");
+      assert.equal((await app.request("/api/admin/v1/settings")).status, 401);
+      assert.equal(settings.apiCredential(), null);
+    } finally {
+      database.close();
+      assert.ok(directory.startsWith(join(tmpdir(), "perpay-no-api-credential-")));
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
   it("requires a current revision and persists checkout lifecycle settings", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-http-advanced-settings-"));
     const { config, database, identity, settings, orders } = await createConfiguredHttpServices({

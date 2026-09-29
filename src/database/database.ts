@@ -1122,6 +1122,11 @@ function countIdentityDomainViolations(connection: DatabaseSync): number {
             AND active.secret_fingerprint = config.secret_fingerprint
             AND active.retired_at IS NULL
           WHERE active.key_version IS NULL
+            AND NOT (
+              config.key_version IS NULL AND config.secret_fingerprint IS NULL
+              AND config.enabled = 0
+              AND NOT EXISTS (SELECT 1 FROM api_client_keys WHERE client_id = config.client_id)
+            )
 
          UNION ALL
 

@@ -1,3 +1,4 @@
+import { apiClientCredentialsDowngradeSql } from "./api-client-schema-fixture.ts";
 import assert from "node:assert/strict";
 import { createPublicKey, randomUUID, sign, verify } from "node:crypto";
 import { join } from "node:path";
@@ -603,7 +604,7 @@ describe("application key regeneration and staged rotation", () => {
       const previous = new DatabaseSync(f.databasePath);
       try {
         previous.exec(
-          "DROP TABLE provider_application_key_changes; DELETE FROM schema_migrations WHERE version = 28;",
+          `${apiClientCredentialsDowngradeSql()} DROP TABLE provider_application_key_changes; DELETE FROM schema_migrations WHERE version = 28;`,
         );
       } finally {
         previous.close();

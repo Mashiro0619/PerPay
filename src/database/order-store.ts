@@ -39,6 +39,7 @@ import {
   type WebhookTargetFormat,
 } from "../notifications/model.ts";
 import type { AppDatabase } from "./database.ts";
+import { IdentityTransaction } from "./identity-store.ts";
 
 const MAX_PAYABLE_AMOUNT_CENTS = MAX_REQUESTED_AMOUNT_CENTS + 1;
 const EXPIRY_SWEEP_LIMIT = 256;
@@ -461,6 +462,7 @@ export class OrderStore {
       const checkoutToken = deriveCheckoutToken(key.material, checkoutId);
       const tokenDigest = digestCheckoutToken(checkoutToken);
 
+      new IdentityTransaction(connection).ensureApiClientIdentity(input.apiClientId, now);
       const orderInsert = connection
         .prepare(
           `INSERT INTO payment_orders(
