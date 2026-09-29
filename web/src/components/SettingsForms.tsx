@@ -637,10 +637,11 @@ export function SettingsEditor({
         <NumberField
           name="checkout_key_rotation_days"
           error={fieldErrors.checkout_key_rotation_days}
-          label="收银台密钥轮换（天）"
+          label="收银台链接密钥轮换周期（天）"
           value={initialSettings.advanced.checkout_key_rotation_days}
           min={1}
           max={3650}
+          hint="自动更新用于生成收银台链接的内部密钥，不影响已有订单链接；通常无需修改。"
         />
         <NumberField
           name="checkout_terminal_observation_seconds"
@@ -814,7 +815,11 @@ export function SettingsEditor({
                 >
                   {panels.map((panel) => (
                     <FieldSet key={panel.title} className="min-w-0">
-                      <FieldLegend>{panel.title}</FieldLegend>
+                      <FieldLegend
+                        className={section === "advanced" ? "sr-only" : undefined}
+                      >
+                        {panel.title}
+                      </FieldLegend>
                       {panel.description && (
                         <FieldDescription>{panel.description}</FieldDescription>
                       )}

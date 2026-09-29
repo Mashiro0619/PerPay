@@ -38,6 +38,10 @@ const sections = [
     ],
   },
   {
+    section: "advanced",
+    fields: ["收银台链接密钥轮换周期（天）", "终态观察期（秒）"],
+  },
+  {
     section: "backup",
     fields: ["备份间隔（秒）", "保留备份数量"],
   },
