@@ -30,6 +30,11 @@ describe("minimal onboarding", () => {
       const view = mountOnboarding({ stage, path: onboardingPath(step) });
       await screen.findByRole("heading", { name: title });
       expect(screen.getAllByRole("heading", { level: 2 })).toHaveLength(1);
+      if (step === "provider") {
+        expect(view.container.querySelector("form")).not.toHaveTextContent("支付宝接入");
+        expect(screen.getByRole("group", { name: "应用凭据" })).toBeVisible();
+        expect(screen.getByRole("group", { name: "账单采集" })).toBeVisible();
+      }
       expect(
         screen.getByRole("complementary", { name: "本步说明" }),
       ).toContainElement(screen.getByRole("heading", { level: 3 }));
@@ -131,6 +136,12 @@ describe("minimal onboarding", () => {
       screen.queryByRole("button", { name: "调整备份策略" }),
     ).not.toBeInTheDocument();
     expect(screen.getByText("每天备份，保留 7 份。")).toBeVisible();
+    expect(screen.getAllByText("业务通知（可选）", { exact: true })).toHaveLength(1);
+    expect(screen.getAllByText("自动备份（可选）", { exact: true })).toHaveLength(1);
+    const notifications = screen.getByRole("region", { name: "业务通知（可选）" });
+    const backup = screen.getByRole("region", { name: "自动备份（可选）" });
+    expect(within(notifications).queryByText("业务通知", { exact: true })).not.toBeInTheDocument();
+    expect(within(backup).queryByText("自动备份", { exact: true })).not.toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "继续" })).toHaveLength(1);
     expect(
       screen.queryByRole("button", { name: "查看签名密钥" }),

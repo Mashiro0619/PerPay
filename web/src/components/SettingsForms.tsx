@@ -626,7 +626,7 @@ export function SettingsEditor({
           </ToggleGroupItem>
         </ToggleGroup>
         <FieldDescription id="dashboard-chart-type-hint">
-          全体管理员共用，统计口径不变。
+          此实例共用，统计口径不变。
         </FieldDescription>
       </Field>
     </FieldGroup>
@@ -646,11 +646,11 @@ export function SettingsEditor({
         <NumberField
           name="checkout_terminal_observation_seconds"
           error={fieldErrors.checkout_terminal_observation_seconds}
-          label="终态观察期（秒）"
+          label="收银台结束后查询期（秒）"
           value={initialSettings.advanced.checkout_terminal_observation_seconds}
           min={60}
           max={604800}
-          hint="收银台结束后继续观察迟到付款的时间窗口。"
+          hint="收银台结束后，公开链接继续提供状态查询的时长；不延长付款期限，也不控制后台迟到账单处理。仅影响新订单。"
         />
       </FieldGroup>
     </FieldGroup>
@@ -664,7 +664,7 @@ export function SettingsEditor({
     section === "provider"
       ? [
           {
-            title: "支付宝接入",
+            title: "应用凭据",
             description: "应用身份与请求凭据",
             fields: providerIdentity,
           },
@@ -816,7 +816,7 @@ export function SettingsEditor({
                   {panels.map((panel) => (
                     <FieldSet key={panel.title} className="min-w-0">
                       <FieldLegend
-                        className={section === "advanced" ? "sr-only" : undefined}
+                        className={panels.length === 1 ? "sr-only" : undefined}
                       >
                         {panel.title}
                       </FieldLegend>

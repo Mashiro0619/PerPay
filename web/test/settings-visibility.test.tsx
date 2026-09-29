@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
@@ -39,7 +39,7 @@ const sections = [
   },
   {
     section: "advanced",
-    fields: ["收银台链接密钥轮换周期（天）", "终态观察期（秒）"],
+    fields: ["收银台链接密钥轮换周期（天）", "收银台结束后查询期（秒）"],
   },
   {
     section: "backup",
@@ -80,6 +80,17 @@ describe.each([false, true])("directly visible settings (guided: %s)", (guided) 
     expect(screen.queryByRole("button", { name: /高级设置|调整备份策略/ })).not.toBeInTheDocument();
     expect(container.querySelector("[data-settings-advanced], [data-settings-backup]")).toBeNull();
     expect(container.querySelectorAll("form")).toHaveLength(1);
+    if (!guided && ["notifications", "backup", "advanced"].includes(section)) {
+      const title = section === "notifications" ? "业务通知" : section === "backup" ? "自动备份" : "高级设置";
+      expect(screen.getByRole("heading", { name: title })).toBeVisible();
+      const group = screen.getByRole("group", { name: title });
+      expect(within(group).getByText(title)).toHaveClass("sr-only");
+    }
+    if (!guided && section === "provider") {
+      expect(screen.getAllByText("支付宝接入", { exact: true })).toHaveLength(1);
+      expect(screen.getByRole("group", { name: "应用凭据" })).toBeVisible();
+      expect(screen.getByRole("group", { name: "账单采集" })).toBeVisible();
+    }
     if (guided) expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
     else expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
     expect(fetchMock).not.toHaveBeenCalled();

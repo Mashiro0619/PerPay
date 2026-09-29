@@ -33,7 +33,12 @@ describe("advanced checkout settings clarity", () => {
     expect(rotation).toHaveAccessibleDescription(
       "自动更新用于生成收银台链接的内部密钥，不影响已有订单链接；通常无需修改。",
     );
-    expect(screen.getByLabelText("终态观察期（秒）")).toHaveValue(86400);
+    const queryWindow = screen.getByLabelText("收银台结束后查询期（秒）");
+    expect(queryWindow).toHaveValue(86400);
+    expect(queryWindow).toHaveAccessibleDescription(
+      "收银台结束后，公开链接继续提供状态查询的时长；不延长付款期限，也不控制后台迟到账单处理。仅影响新订单。",
+    );
+    expect(screen.queryByText(/继续观察迟到付款/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
