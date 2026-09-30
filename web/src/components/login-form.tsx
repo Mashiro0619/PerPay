@@ -1,3 +1,4 @@
+import { useSystemName } from "@/branding";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigate, Link } from "react-router";
 import { Eye, EyeOff, WalletCards, CheckCircle2 } from "lucide-react";
@@ -36,6 +37,7 @@ import {
   CollapsibleContent,
 } from "@/components/ui/collapsible";
 export function LoginForm({ onLogin }: { onLogin: () => void }) {
+  const systemName = useSystemName();
   const location = useLocation();
   const navigate = useNavigate();
   const [initialized, setInitialized] = useState<boolean | null>(() => {
@@ -49,7 +51,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
     initialized === null
       ? "无法确认实例状态"
       : setup
-        ? "初始化 PerPay"
+        ? `初始化 ${systemName}`
         : "登录管理后台";
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -65,13 +67,13 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
   const [alreadyInitialized, setAlreadyInitialized] = useState(false);
 
   useEffect(() => {
-    document.title = `${title} · PerPay`;
+    document.title = `${title} · ${systemName}`;
     setError(null);
     setInvalidField(null);
     setPassword("");
     setConfirmation("");
     setRemember(false);
-  }, [title]);
+  }, [title, systemName]);
 
   useEffect(() => {
     if (initialized === true && location.pathname === "/setup")
@@ -152,8 +154,8 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
           to="/"
           className="flex items-center justify-center gap-2 font-medium"
         >
-          <WalletCards />
-          PerPay
+          <WalletCards className="shrink-0" />
+          <span className="min-w-0 break-all">{systemName}</span>
         </Link>
         <Card>
           <CardHeader>

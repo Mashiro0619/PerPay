@@ -1,3 +1,4 @@
+import { setSystemName } from "@/branding";
 import {
   Fragment,
   useEffect,
@@ -214,6 +215,7 @@ export function SettingsEditor({
     mutationFn: (form: FormData) => saveSettings(section, form, settings),
     onSuccess: (data, form) => {
       if (!mounted.current) return;
+      if (section === "display" && data.display?.system_name) setSystemName(data.display.system_name);
       draft.markSaved(form);
       setSavedMessage("已保存");
       onSaved(data);
@@ -610,6 +612,21 @@ export function SettingsEditor({
       )}
     </FieldGroup>
   );
+  const systemIdentity = (
+    <FieldGroup>
+      <Field data-invalid={!!fieldErrors.system_name}>
+        <FieldLabel htmlFor="setting-system-name">支付系统名称</FieldLabel>
+        <Input id="setting-system-name" name="system_name" required maxLength={40}
+          defaultValue={initialSettings.display?.system_name ?? "PerPay"}
+          aria-invalid={!!fieldErrors.system_name}
+          aria-describedby={fieldErrors.system_name ? "system-name-hint system-name-error" : "system-name-hint"} />
+        <FieldDescription id="system-name-hint">
+          1–40 个字符，显示在后台、登录页和收银台。默认名称为 PerPay；不改变 API 接口和业务数据。
+        </FieldDescription>
+        {fieldErrors.system_name && <FieldError id="system-name-error">{fieldErrors.system_name}</FieldError>}
+      </Field>
+    </FieldGroup>
+  );
   const checkoutDisplay = (
     <FieldGroup>
       <Field orientation="horizontal">
@@ -725,6 +742,7 @@ export function SettingsEditor({
           ]
         : section === "display"
           ? [
+              { title: "系统名称", fields: systemIdentity },
               {
                 title: "收银台",
                 description: "付款人看到的商品信息",
@@ -1014,6 +1032,7 @@ async function saveSettings(
         api.updateDisplaySettings({
           body: {
             revision,
+            system_name: text("system_name"),
             checkout_show_product_name: form.has("checkout_show_product_name"),
             dashboard_chart_type: chartType,
           },

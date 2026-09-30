@@ -410,7 +410,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     if (path.startsWith("/admin/assets/") || /\.[^/]+$/.test(path)) {
       throw new HttpApiError(404, "asset_not_found", "静态资源不存在");
     }
-    return context.html(adminFrontend.render(dependencies.identity.isInitialized()));
+    return context.html(adminFrontend.render(dependencies.identity.isInitialized(), publicSystemName(dependencies)));
   };
   app.get("/admin", serveAdmin);
   app.get("/admin/*", serveAdmin);
@@ -419,6 +419,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const token = context.req.param("token");
     if (!isCanonicalCheckoutToken(token)) {
       return context.html(renderCheckoutPage({
+      systemName: publicSystemName(dependencies),
         checkoutToken: token,
         checkout: null,
         qrImageUrl: null,
@@ -434,6 +435,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     if (!publicCheckoutBudget.take(sourceAddress)) {
       context.header("retry-after", "1");
       return context.html(renderCheckoutPage({
+        systemName: publicSystemName(dependencies),
         checkoutToken: token,
         checkout: null,
         qrImageUrl: null,
@@ -487,6 +489,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       }
     }
     return context.html(renderCheckoutPage({
+        systemName: publicSystemName(dependencies),
       checkoutToken: token,
       checkout,
       showProductName: checkoutProductNameVisible(dependencies),
@@ -1219,7 +1222,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       await readJson(context, linkedFinancialDecisionRequestSchema, MAX_JSON_BODY_BYTES);
       requireCurrentSession(context, dependencies.identity);
       throw new AdminOperationError(410, "refund_recording_retired",
-        "退款流水登记接口已退役；请在订单详情中使用管理员退款标记。PerPay 不执行或验证退款。");
+        `退款流水登记接口已退役；请在订单详情中使用管理员退款标记。${publicSystemName(dependencies)} 不执行或验证退款。`);
     },
   );
 
@@ -1508,6 +1511,14 @@ function requireFinancialWrite(
     requireJsonContentType(context);
     await next();
   };
+}
+
+function publicSystemName(dependencies: AppDependencies): string {
+  try {
+    return dependencies.settings?.display().systemName ?? "PerPay";
+  } catch {
+    return "PerPay";
+  }
 }
 
 function checkoutProductNameVisible(dependencies: AppDependencies): boolean {

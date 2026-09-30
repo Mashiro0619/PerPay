@@ -20,6 +20,7 @@ export interface CheckoutPageInitialError {
 }
 
 export interface CheckoutPageInput {
+  readonly systemName?: string;
   readonly checkoutToken: string;
   readonly checkout: PublicCheckoutProjection | null;
   readonly qrImageUrl: string | null;
@@ -65,6 +66,7 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
   const missing = input.checkout === null && input.initialError?.status === 404;
   const order = input.checkout;
   const initial: CheckoutInitial = {
+    systemName: input.systemName ?? "PerPay",
     serverTime: Date.now(),
     showProductName: input.showProductName !== false,
     apiUrl: missing ? "" : checkoutApiPath(input.checkoutToken),
@@ -106,7 +108,7 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
   };
   const title =
     (order?.merchantOrderNo ??
-      checkoutCopy[initialCheckoutState(initial)].heading) + " | PerPay 收银台";
+      checkoutCopy[initialCheckoutState(initial)].heading) + " | " + initial.systemName + " 收银台";
   return (
     '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#ffffff"><meta name="robots" content="noindex, nofollow, noarchive"><title>' +
     escapeHtml(title) +

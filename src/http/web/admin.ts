@@ -1,10 +1,11 @@
+import { DEFAULT_SYSTEM_NAME, SYSTEM_NAME_MARKER, escapeSystemName } from "../../shared/branding.ts";
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 
 import type { WebAsset } from "./assets.ts";
 
 export interface AdminFrontend {
-  readonly render: (initialized: boolean) => string;
+  readonly render: (initialized: boolean, systemName?: string) => string;
   readonly assets: ReadonlyMap<string, WebAsset>;
 }
 
@@ -34,7 +35,9 @@ export function loadAdminFrontend(root = new URL("../../../web-dist/admin/", imp
     }));
   }
   return {
-    render: (initialized) => template.replace("__PERPAY_INITIALIZED__", String(initialized)),
+    render: (initialized, systemName = DEFAULT_SYSTEM_NAME) => template
+      .replace("__PERPAY_INITIALIZED__", String(initialized))
+      .replaceAll(SYSTEM_NAME_MARKER, () => escapeSystemName(systemName)),
     assets,
   };
 }

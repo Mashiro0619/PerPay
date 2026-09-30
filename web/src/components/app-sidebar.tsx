@@ -1,3 +1,4 @@
+import { useSystemName } from "@/branding";
 import { useOptionalSystemStatus } from "@/features/system-status";
 import type { ComponentProps } from "react";
 import {
@@ -43,6 +44,7 @@ export function AppSidebar({
   logoutPending: boolean;
   onLogout: () => void;
 }) {
+  const systemName = useSystemName();
   const sharedStatus = useOptionalSystemStatus();
   const statusNotice = sharedStatus?.checking
     ? sharedStatus.unavailable
@@ -59,7 +61,7 @@ export function AppSidebar({
               render={<Link to="/" />}
             >
               <WalletCards className="size-5!" />
-              <span className="text-base font-semibold">PerPay</span>
+              <span className="min-w-0 truncate text-base font-semibold" title={systemName}>{systemName}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

@@ -389,7 +389,9 @@ export type AdvancedSettings = {
     checkout_terminal_observation_seconds: number;
 };
 export type DashboardChartType = 'AREA' | 'BAR' | 'LINE';
+export type SystemName = string;
 export type DisplaySettings = {
+    system_name?: SystemName;
     checkout_show_product_name: boolean;
     dashboard_chart_type: DashboardChartType;
 };
@@ -445,6 +447,7 @@ export type AdvancedSettingsRequest = {
     checkout_terminal_observation_seconds: number;
 };
 export type DisplaySettingsRequest = {
+    system_name?: SystemName;
     revision: number;
     checkout_show_product_name: boolean;
     dashboard_chart_type: DashboardChartType;

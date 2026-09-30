@@ -62,6 +62,7 @@ describe("instance display settings", () => {
       "/api/admin/v1/settings/display",
     );
     expect(await requests[0]!.json()).toEqual({
+      system_name: "PerPay",
       revision: settings.revision,
       checkout_show_product_name: false,
       dashboard_chart_type: "BAR",

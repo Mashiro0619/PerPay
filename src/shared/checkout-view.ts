@@ -30,6 +30,7 @@ export interface CheckoutViewOrder {
   refund: { status: "NONE" | "PARTIAL" | "FULL" };
 }
 export interface CheckoutInitial {
+  systemName?: string;
   showProductName?: boolean;
   checkout: CheckoutViewOrder | null;
   initialError: {

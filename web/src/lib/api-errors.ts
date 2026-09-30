@@ -1,3 +1,4 @@
+import { getSystemName } from "../branding";
 const messages: Record<string, string> = {
   invalid_credentials: "管理员密码不正确，请检查后重试。",
   identity_already_initialized: "实例已经初始化，请前往登录。",
@@ -80,7 +81,7 @@ export function apiErrorMessage(
 ): string {
   if (typeof message === "string" && /[\u3400-\u9fff]/u.test(message))
     return message;
-  if (code && messages[code]) return messages[code];
+  if (code && messages[code]) return messages[code].replaceAll("PerPay", () => getSystemName());
   if (!status) return "无法连接服务，请检查网络后重试。";
   if (status === 401) return "登录已过期，请重新登录。";
   if (status === 403) return "安全校验未通过，请重新登录并核对访问地址。";

@@ -1,3 +1,4 @@
+import { useSystemName } from "@/branding";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ChevronDown, KeyRound, RefreshCw } from "lucide-react";
@@ -90,6 +91,7 @@ export function ApplicationKey({
   onSaved: Saved;
   guided?: boolean;
 }) {
+  const systemName = useSystemName();
   const { requestDiscard } = useDraftGuard();
   const keyState = applicationKeyState(settings);
   const pending = settings.pending_application_key;
@@ -159,7 +161,7 @@ export function ApplicationKey({
               ）。
               {guided
                 ? "上传后点击下一步，填写支付宝公钥并验证启用。"
-                : "然后复制上传后显示的支付宝公钥，填回 PerPay 验证并启用。"}
+                : `然后复制上传后显示的支付宝公钥，填回 ${systemName} 验证并启用。`}
             </p>
             <div className="flex flex-wrap items-center gap-2">
               {!guided && (
@@ -267,7 +269,7 @@ export function ApplicationKey({
               生成应用公钥
             </Button>
             <p className="text-sm text-muted-foreground">
-              同时生成配套的应用私钥，由 PerPay
+              同时生成配套的应用私钥，由 {systemName}{" "}
               加密保存；只需将公钥上传到支付宝。
             </p>
           </>
@@ -342,6 +344,7 @@ function ApplicationKeyChange({
   onSaved: Saved;
   presentation: ChangePresentation;
 }) {
+  const systemName = useSystemName();
   const guided = presentation.kind === "guided";
   const cancelRegeneration = useRef<HTMLButtonElement>(null);
   const formId = useId();
@@ -465,8 +468,8 @@ function ApplicationKeyChange({
         ? "将生成一对新的应用公钥和私钥，并暂存为待启用状态。当前收款继续使用原密钥；上传到支付宝并验证通过后才会切换。"
         : "将生成一对新的应用公钥和私钥，替换尚未接入的原密钥对。此前复制或上传的应用公钥需要重新上传，不能只更换公钥。"
       : mode === "activate"
-        ? "上传新应用公钥后，请复制支付宝页面显示的支付宝公钥并填入下方。PerPay 会用新私钥进行一次只读账单查询并验签，通过后才启用，不会发起支付。"
-        : "仅删除 PerPay 暂存的新密钥，不会撤回支付宝侧的上传。若已上传，请先在支付宝恢复当前应用公钥，并在 PerPay 的支付宝设置中同步恢复后获取的支付宝公钥，再放弃，以免影响查账。";
+        ? `上传新应用公钥后，请复制支付宝页面显示的支付宝公钥并填入下方。${systemName} 会用新私钥进行一次只读账单查询并验签，通过后才启用，不会发起支付。`
+        : `仅删除 ${systemName} 暂存的新密钥，不会撤回支付宝侧的上传。若已上传，请先在支付宝恢复当前应用公钥，并在 ${systemName} 的支付宝设置中同步恢复后获取的支付宝公钥，再放弃，以免影响查账。`;
   function submit() {
     if (
       operation.isBusy() ||

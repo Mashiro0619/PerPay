@@ -42,6 +42,7 @@ import { createCheckoutController } from "./controller";
 import { useQrDownload } from "./use-qr-download";
 import { AlipayLogo } from "./AlipayLogo";
 export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
+  const systemName = initial.systemName ?? "PerPay";
   const [controller] = useState(() => createCheckoutController(initial));
   const state = useSyncExternalStore(
     controller.subscribe,
@@ -70,7 +71,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
     (qrRetry
       ? (initial.qrUrl.includes("?") ? "&" : "?") + "retry=" + qrRetry
       : "");
-  const download = useQrDownload(qrImage, canPay && !qrFailed);
+  const download = useQrDownload(qrImage, canPay && !qrFailed, systemName);
   useEffect(() => {
     if (!canPay) {
       setExpanded(false);
@@ -81,8 +82,8 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
   }, [canPay, expanded]);
   useEffect(() => {
     document.title =
-      (order?.merchant_order_no ?? copy.heading) + " | PerPay 收银台";
-  }, [order?.merchant_order_no, copy.heading]);
+      (order?.merchant_order_no ?? copy.heading) + " | " + systemName + " 收银台";
+  }, [order?.merchant_order_no, copy.heading, systemName]);
   const cents =
     order?.payment_instructions?.payable_amount_cents ??
     order?.payment.received_amount_cents ??
@@ -198,9 +199,9 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
           desktopWidth,
         )}
       >
-        <span className="flex items-center gap-2 font-semibold">
-          <WalletCards className="size-5" />
-          PerPay
+        <span className="flex min-w-0 items-center gap-2 font-semibold">
+          <WalletCards className="size-5 shrink-0" />
+          <span className="truncate" title={systemName}>{systemName}</span>
         </span>
         <ThemeControl />
       </header>

@@ -1,3 +1,4 @@
+import { useSystemName } from "@/branding";
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, RefreshCw } from "lucide-react";
@@ -60,14 +61,15 @@ function EvidenceHeading({
   title: string;
   section?: string;
 }) {
+  const systemName = useSystemName();
   const back = useDetailBack(
     "/reconciliation" + (section ? "?tab=" + section : ""),
     "账本与对账",
   );
   const fetching = useDetailFetching();
   useEffect(() => {
-    document.title = title + " · PerPay";
-  }, [title]);
+    document.title = title + ` · ${systemName}`;
+  }, [title, systemName]);
   return (
     <div className="flex items-center justify-between gap-4">
       <Link

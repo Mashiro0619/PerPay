@@ -27,6 +27,7 @@ it("persists validated display settings with CSRF, revisions and audit without c
     const auth = await login(app);
     const headers = financialHeaders(auth);
     const input = {
+      system_name: "星河收款",
       revision: original.revision,
       checkout_show_product_name: false,
       dashboard_chart_type: "BAR",
@@ -38,6 +39,7 @@ it("persists validated display settings with CSRF, revisions and audit without c
         body: JSON.stringify(body),
       });
     assert.deepEqual(original.display, {
+      system_name: "PerPay",
       checkout_show_product_name: true,
       dashboard_chart_type: "AREA",
     });
@@ -72,6 +74,7 @@ it("persists validated display settings with CSRF, revisions and audit without c
     assert.equal(saved.revision, original.revision + 1);
     assert.equal(saved.payment_revision, original.payment_revision);
     assert.deepEqual(saved.display, {
+      system_name: "星河收款",
       checkout_show_product_name: false,
       dashboard_chart_type: "BAR",
     });
@@ -198,6 +201,7 @@ it("upgrades schema 23 with presentation defaults while preserving revisions, co
       assert.equal(after.payment_revision, before.payment_revision);
       assert.deepEqual(after.provider, before.provider);
       assert.deepEqual(after.display, {
+        system_name: "PerPay",
         checkout_show_product_name: true,
         dashboard_chart_type: "AREA",
       });
@@ -327,5 +331,55 @@ it("keeps a rate-limited error page recoverable when the display settings read a
       limiter.mock.restore();
       display.mock.restore();
     }
+  });
+});
+
+it("validates and persists a public system name while legacy display requests preserve it", async () => {
+  await withHttpFixture(async ({ app, services }) => {
+    const auth = await login(app);
+    const input = { revision: services.settings.view().revision,
+      checkout_show_product_name: true, dashboard_chart_type: "AREA" };
+    const save = (body: unknown) => app.request("/api/admin/v1/settings/display", {
+      method: "PUT", headers: financialHeaders(auth), body: JSON.stringify(body),
+    });
+    for (const system_name of ["", "   ", "x".repeat(41), "bad\u0000name", "bad\nname", "bad\u202ename", 123]) {
+      assert.equal((await save({ ...input, system_name })).status, 422);
+    }
+    assert.equal(services.settings.view().revision, input.revision);
+    assert.equal((await save({ ...input, system_name: "  星河收款  " })).status, 200);
+    assert.equal(services.settings.view().display.system_name, "星河收款");
+    assert.equal(services.settings.display().systemName, "星河收款");
+    assert.equal((await save({ ...input, revision: input.revision + 1 })).status, 200);
+    assert.equal(services.settings.view().display.system_name, "星河收款");
+    assert.equal((await save({ ...input, revision: input.revision + 2, system_name: "PerPay" })).status, 200);
+    assert.equal(services.settings.view().display.system_name, "PerPay");
+  });
+});
+
+it("escapes public names and reads anonymous branding without decrypting secrets", async () => {
+  await withHttpFixture(async ({ app, services, createOrder }) => {
+    const order = createOrder("brand-checkout", 1000);
+    const name = '"/><script>x</script>& $&';
+    await services.settings.saveDisplay({ revision: services.settings.view().revision,
+      system_name: name, checkout_show_product_name: true, dashboard_chart_type: "AREA" }, { actorId: "admin" });
+    const decrypt = mock.method(RuntimeSecretCipher.prototype, "decrypt", () => { throw new Error("secrets must not be read"); });
+    try {
+      for (const path of ["/admin/", "/admin/login", "/admin/setup"]) {
+        const response = await app.request(path);
+        assert.equal(response.status, 200);
+        assert.equal(response.headers.get("cache-control"), "no-store");
+        const html = await response.text();
+        assert.ok(html.includes('name="perpay-system-name" content="&quot;/&gt;&lt;script&gt;x&lt;/script&gt;&amp; $&amp;"'));
+        assert.ok(!html.includes("<script>x</script>") && !html.includes("__PERPAY_SYSTEM_NAME__"));
+      }
+      assert.equal(decrypt.mock.callCount(), 0);
+      decrypt.mock.restore();
+      for (const token of [order.checkoutToken, "invalid"]) {
+        const response = await app.request("/checkout/" + token);
+        const html = await response.text();
+        assert.equal(readCheckoutInitial(html).systemName, name);
+        assert.ok(!html.includes("<script>x</script>") && !html.includes("PerPay 收银台"));
+      }
+    } finally { decrypt.mock.restore(); }
   });
 });

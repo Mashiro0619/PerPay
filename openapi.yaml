@@ -3567,11 +3567,17 @@ components:
     DashboardChartType:
       type: string
       enum: [AREA, BAR, LINE]
+    SystemName:
+      type: string
+      minLength: 1
+      maxLength: 40
+      description: Public display name, trimmed; defaults to PerPay. Control and bidi override characters are not allowed.
     DisplaySettings:
       type: object
       additionalProperties: false
       required: [checkout_show_product_name, dashboard_chart_type]
       properties:
+        system_name: { $ref: '#/components/schemas/SystemName' }
         checkout_show_product_name:
           type: boolean
           default: true
@@ -3731,6 +3737,7 @@ components:
       additionalProperties: false
       required: [revision, checkout_show_product_name, dashboard_chart_type]
       properties:
+        system_name: { $ref: '#/components/schemas/SystemName' }
         revision: { type: integer, minimum: 0 }
         checkout_show_product_name: { type: boolean }
         dashboard_chart_type: { $ref: '#/components/schemas/DashboardChartType' }

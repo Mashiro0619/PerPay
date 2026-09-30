@@ -1,3 +1,4 @@
+import { useSystemName } from "@/branding";
 import { SystemStatusBoundary } from "@/features/system-status";
 import {
   Component,
@@ -55,6 +56,7 @@ function AppShell() {
   );
 }
 function Workspace() {
+  const systemName = useSystemName();
   const { setOpenMobile, toggleSidebar } = useSidebar();
   const session = useSession();
   const location = useLocation();
@@ -102,11 +104,11 @@ function Workspace() {
     ? "测试收款"
     : location.pathname.startsWith("/settings/onboarding")
       ? "配置向导"
-      : (current?.title ?? "PerPay");
+      : (current?.title ?? systemName);
   const overview = location.pathname === "/";
   useEffect(() => {
-    document.title = title + " · PerPay";
-  }, [title]);
+    document.title = title + ` · ${systemName}`;
+  }, [title, systemName]);
   return (
     <NavigationContext value={toggleSidebar}>
       <a

@@ -54,6 +54,7 @@ beforeEach(() => {
       dispatchEvent: vi.fn(),
     })),
   );
+  document.querySelector('meta[name="perpay-system-name"]')?.remove();
   queryClient.clear();
   queryClient.setDefaultOptions({
     queries: { retry: false, staleTime: Infinity },
@@ -66,6 +67,7 @@ afterEach(() => {
   cleanup();
   queryClient.clear();
   document.querySelector('meta[name="perpay-initialized"]')?.remove();
+  document.querySelector('meta[name="perpay-system-name"]')?.remove();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });

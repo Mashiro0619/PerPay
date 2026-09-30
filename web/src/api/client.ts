@@ -1,3 +1,4 @@
+import { setSystemName } from "../branding";
 import { MutationCache, QueryClient } from "@tanstack/react-query";
 
 import { client } from "./generated/client.gen";
@@ -130,3 +131,10 @@ export const queryClient = new QueryClient({
 export async function refreshOperationalData(): Promise<void> {
   await queryClient.invalidateQueries({ predicate: (query) => !["session", "settings", "official-update"].includes(String(query.queryKey[0])) });
 }
+
+// Retain public branding across logout while reacting to saved/refreshed settings.
+queryClient.getQueryCache().subscribe((event) => {
+  if (event.type !== "updated" || event.query.queryKey[0] !== "settings" || event.query.state.status !== "success") return;
+  const data = event.query.state.data as { data?: { display?: { system_name?: string } } } | undefined;
+  if (data?.data?.display?.system_name) setSystemName(data.data.display.system_name);
+});

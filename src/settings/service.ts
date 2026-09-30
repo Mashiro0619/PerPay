@@ -110,6 +110,7 @@ export interface RuntimeSettingsView {
     readonly keep_count: number;
   };
   readonly display: {
+    readonly system_name: string;
     readonly checkout_show_product_name: boolean;
     readonly dashboard_chart_type: DashboardChartType;
   };
@@ -260,6 +261,7 @@ export class RuntimeSettingsService {
         keep_count: snapshot.backup?.keepCount ?? 7,
       },
       display: {
+        system_name: snapshot.display?.systemName ?? "PerPay",
         checkout_show_product_name: snapshot.display?.checkoutShowProductName ?? true,
         dashboard_chart_type: snapshot.display?.dashboardChartType ?? "AREA",
       },

@@ -1,3 +1,4 @@
+import { useSystemName } from "@/branding";
 import { TestPaymentButton } from "@/components/test-payment-provider";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -162,6 +163,7 @@ function OnboardingFlow({
   onReload: () => void;
   onActivationLockChange: (locked: boolean) => void;
 }) {
+  const systemName = useSystemName();
   const { step: requested } = useParams();
   const step = resolveOnboardingStep(settings, requested);
   const pendingApplicationKey = settings.pending_application_key;
@@ -232,7 +234,7 @@ function OnboardingFlow({
               <CircleAlert />
               <AlertTitle>新应用公钥尚未启用</AlertTitle>
               <AlertDescription className="min-w-0">
-                PerPay
+                {systemName}{" "}
                 当前仍使用原密钥，其他配置可以继续修改。若已在支付宝上传新公钥，请尽快完成验证启用，避免影响账本采集。
               </AlertDescription>
               <div className="col-start-2 flex flex-wrap gap-2 pt-2">
@@ -252,12 +254,12 @@ function OnboardingFlow({
                   <p>应用公钥和应用私钥是一对，合称“应用密钥对”。</p>
                   <p>应用公钥：复制到支付宝的接口加签设置。</p>
                   <p>
-                    应用私钥：由 PerPay 加密保存，用于向支付宝发送签名请求。
+                    应用私钥：由 {systemName} 加密保存，用于向支付宝发送签名请求。
                   </p>
                   <p>
                     {pendingApplicationKey
-                      ? "支付宝公钥：上传新应用公钥后，从支付宝重新复制，下一步填入 PerPay。"
-                      : "支付宝公钥：上传应用公钥后，从支付宝复制，下一步填入 PerPay。"}
+                      ? `支付宝公钥：上传新应用公钥后，从支付宝重新复制，下一步填入 ${systemName}。`
+                      : `支付宝公钥：上传应用公钥后，从支付宝复制，下一步填入 ${systemName}。`}
                   </p>
                   <Collapsible>
                     <CollapsibleTrigger
@@ -347,7 +349,7 @@ function OnboardingFlow({
                         {pendingApplicationKey.environment === "PRODUCTION"
                           ? "生产环境"
                           : "沙箱环境"}
-                        ）。 PerPay 当前仍使用原密钥。
+                        ）。 {systemName} 当前仍使用原密钥。
                       </p>
                       <p>
                         上传完成后，将支付宝页面显示的支付宝公钥填入本页表单。
@@ -644,6 +646,7 @@ export function ReadinessCheck({
   onReload: () => void;
   renderActions?: (actions: ReactNode) => ReactNode;
 }) {
+  const systemName = useSystemName();
   const view = useVisibleCheck();
   const query = useQuery({
     queryKey: [
@@ -908,7 +911,7 @@ export function ReadinessCheck({
       )}
       {!settings.notifications.enabled && (
         <p className="text-sm text-muted-foreground">
-          业务通知未启用（可选），不影响收款；业务系统后端需主动向 PerPay
+          业务通知未启用（可选），不影响收款；业务系统后端需主动向 {systemName}{" "}
           查询订单状态。
         </p>
       )}

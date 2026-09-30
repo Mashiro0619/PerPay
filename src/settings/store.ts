@@ -57,6 +57,7 @@ interface ConfigurationRow {
   readonly checkout_terminal_observation_seconds: bigint | number;
   readonly backup_interval_seconds: bigint | number;
   readonly backup_keep_count: bigint | number;
+  readonly system_name: string;
   readonly checkout_show_product_name: bigint | number;
   readonly dashboard_chart_type: DashboardChartType;
   readonly updated_at: bigint | number;
@@ -168,10 +169,11 @@ export class RuntimeSettingsStore {
   display(): DisplaySettings {
     return this.#database.read((connection) => {
       const row = connection.prepare(
-        "SELECT checkout_show_product_name, dashboard_chart_type FROM runtime_configuration WHERE singleton_key = 1",
-      ).get() as Pick<ConfigurationRow, "checkout_show_product_name" | "dashboard_chart_type"> | undefined;
+        "SELECT system_name, checkout_show_product_name, dashboard_chart_type FROM runtime_configuration WHERE singleton_key = 1",
+      ).get() as Pick<ConfigurationRow, "system_name" | "checkout_show_product_name" | "dashboard_chart_type"> | undefined;
       if (!row) throw new Error("runtime configuration singleton is missing");
       return {
+        systemName: row.system_name,
         checkoutShowProductName: Number(row.checkout_show_product_name) === 1,
         dashboardChartType: row.dashboard_chart_type,
       };
@@ -727,11 +729,13 @@ export class RuntimeSettingsStore {
       const updated = connection.prepare(
         `UPDATE runtime_configuration
             SET revision = revision + 1,
+                system_name = COALESCE(?, system_name),
                 checkout_show_product_name = ?,
                 dashboard_chart_type = ?,
                 updated_at = ?
           WHERE singleton_key = 1 AND revision = ?`,
       ).run(
+        input.system_name ?? null,
         input.checkout_show_product_name ? 1 : 0,
         input.dashboard_chart_type,
         now,
@@ -742,6 +746,7 @@ export class RuntimeSettingsStore {
         revision: input.revision + 1,
         checkout_show_product_name: input.checkout_show_product_name,
         dashboard_chart_type: input.dashboard_chart_type,
+        system_name: input.system_name ?? readConfiguration(connection).system_name,
         payment_revision_changed: false,
       });
       return this.#snapshot(connection);
@@ -876,6 +881,7 @@ export class RuntimeSettingsStore {
         keepCount: safeInteger(row.backup_keep_count, "backup keep count"),
       },
       display: {
+        systemName: row.system_name,
         checkoutShowProductName: Number(row.checkout_show_product_name) === 1,
         dashboardChartType: row.dashboard_chart_type,
       },
@@ -904,6 +910,7 @@ function readConfiguration(connection: DatabaseSync): ConfigurationRow {
             checkout_terminal_observation_seconds,
             backup_interval_seconds,
             backup_keep_count,
+            system_name,
             checkout_show_product_name,
             dashboard_chart_type,
             updated_at

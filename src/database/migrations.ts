@@ -4946,4 +4946,13 @@ export const migrations: readonly Migration[] = [
       END;
     `,
   },
+  {
+    version: 30,
+    name: "custom_system_name",
+    sql: `
+      ALTER TABLE runtime_configuration
+        ADD COLUMN system_name TEXT NOT NULL DEFAULT 'PerPay'
+        CHECK (length(trim(system_name)) BETWEEN 1 AND 40);
+    `,
+  },
 ] as const;

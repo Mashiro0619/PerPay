@@ -1,3 +1,4 @@
+import { useSystemName } from "@/branding";
 import {
   useCallback,
   useEffect,
@@ -81,16 +82,6 @@ import {
 export const SECRET_DISPLAY_NOTICE =
   "60 秒后或离开当前浏览器标签页时，弹窗会关闭并清除页面中的密钥明文；服务端密钥不受影响，可再次查看。";
 
-const secrets: Array<[RuntimeSecretName, string, string]> = [
-  [
-    "api_secret",
-    "PerPay API 密钥",
-    "PerPay 生成，业务服务端用于签名调用 PerPay",
-  ],
-  ["webhook_secret", "通知签名密钥", "业务网站验证付款通知"],
-  ["provider_private_key", "应用私钥", "PerPay 请求支付宝"],
-  ["provider_public_key", "支付宝公钥", "验证支付宝返回的数据"],
-];
 export function SecuritySettings({
   settings,
   onSaved,
@@ -98,6 +89,17 @@ export function SecuritySettings({
   settings: RuntimeSettings;
   onSaved: (settings: RuntimeSettings, message?: string) => void;
 }) {
+  const systemName = useSystemName();
+  const secrets: Array<[RuntimeSecretName, string, string]> = [
+    [
+      "api_secret",
+      `${systemName} API 密钥`,
+      `${systemName} 生成，业务服务端用于签名调用 ${systemName}`,
+    ],
+    ["webhook_secret", "通知签名密钥", "业务网站验证付款通知"],
+    ["provider_private_key", "应用私钥", `${systemName} 请求支付宝`],
+    ["provider_public_key", "支付宝公钥", "验证支付宝返回的数据"],
+  ];
   const { requestDiscard } = useDraftGuard();
   const [reveal, setReveal] = useState<RuntimeSecretName | null>(null);
   const [rotate, setRotate] = useState(false);
@@ -375,6 +377,7 @@ export function SecretDialog({
   onClose: () => void;
   finalFocus?: (() => HTMLElement | null) | undefined;
 }) {
+  const systemName = useSystemName();
   const [value, setValue] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [pending, setPending] = useState(true);
@@ -429,7 +432,7 @@ export function SecretDialog({
         <div className="-mx-4 flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-1">
           {name === "api_secret" && (
             <p className="text-sm text-muted-foreground">
-              将此密钥复制到业务系统后端的 PerPay 接入配置，不要放进浏览器代码。
+              将此密钥复制到业务系统后端的 {systemName} 接入配置，不要放进浏览器代码。
             </p>
           )}
           {pending && <Loading label="正在读取密钥…" />}
@@ -547,6 +550,7 @@ export function RotateKeyDialog({
   onStored?: () => void;
   finalFocus?: (() => HTMLElement | null) | undefined;
 }) {
+  const systemName = useSystemName();
   const webhook = kind === "webhook";
   const label = webhook ? "通知签名密钥" : "API 密钥";
   const [replacing] = useState(webhook || settings.completion.api);
@@ -613,7 +617,7 @@ export function RotateKeyDialog({
                 ? "轮换后，新发送和重试的通知将使用新密钥签名，请同步更新业务系统的通知验签配置。已发出的请求可能仍使用旧密钥，接收端可短暂兼容新旧密钥。不会自动重发已完成的通知，也不会更改通知开关。"
                 : replacing
                   ? "旧密钥立即失效。轮换后需更新业务服务端，否则无法创建订单。"
-                  : "由 PerPay 生成并保管。生成后复制到业务系统后端的 PerPay 接入配置，无需填写业务系统自己的密钥。"}
+                  : `由 ${systemName} 生成并保管。生成后复制到业务系统后端的 ${systemName} 接入配置，无需填写业务系统自己的密钥。`}
           </DialogDescription>
         </DialogHeader>
         {secret ? (

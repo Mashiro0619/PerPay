@@ -8,6 +8,7 @@ import {
 export function useQrDownload(
   image: RefObject<HTMLImageElement | null>,
   available: boolean,
+  systemName = "PerPay",
 ) {
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState("");
@@ -94,7 +95,7 @@ export function useQrDownload(
           url.current = URL.createObjectURL(blob);
           const link = document.createElement("a");
           link.href = url.current;
-          link.download = "perpay-collection-code.png";
+          link.download = systemName.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_") + "-collection-code.png";
           document.body.append(link);
           link.click();
           link.remove();

@@ -1,3 +1,4 @@
+import { useSystemName } from "@/branding";
 import { useId, useRef, useState, type FormEvent } from "react";
 import { ChevronDown } from "lucide-react";
 import {
@@ -50,7 +51,6 @@ import {
   ItemDescription,
   ItemGroup,
 } from "@/components/ui/item";
-const disclaimer = "仅记录外部已完成的退款。PerPay 不执行转账，也未验证退款。";
 export function RefundMarkPanel({
   order,
   includeOrderTools = false,
@@ -188,6 +188,7 @@ export function RefundMarkDialog({
   onSuccess: () => void;
   finalFocus?: (() => HTMLElement | null) | undefined;
 }) {
+  const systemName = useSystemName();
   const [context] = useState(() => ({ order, orderId, version, marked }));
   const [note, setNote] = useState("");
   const noteField = useRef<HTMLTextAreaElement>(null);
@@ -280,7 +281,7 @@ export function RefundMarkDialog({
             {context.marked ? "标记已退款" : "撤销退款标记"}
           </DialogTitle>
           <DialogDescription>
-            {disclaimer}
+            {`仅记录外部已完成的退款。${systemName} 不执行转账，也未验证退款。`}
             {context.marked
               ? "不改变订单资金状态，也不会通知业务网站。"
               : "只撤销标记，不改变实际退款或订单资金。"}
