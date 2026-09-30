@@ -17,7 +17,7 @@ export function loadAdminFrontend(root = new URL("../../../web-dist/admin/", imp
     throw error;
   }
   const assets = new Map<string, WebAsset>();
-  const files = ["favicon.svg", "theme.js", ...readdirSync(new URL("assets/", root)).map((file) => `assets/${file}`)];
+  const files = ["theme.js", ...readdirSync(new URL("assets/", root)).map((file) => `assets/${file}`)];
   for (const file of files) {
     const extension = file.split(".").at(-1);
     const contentType = extension === "js" ? "text/javascript; charset=utf-8"
