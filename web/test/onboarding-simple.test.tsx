@@ -59,7 +59,8 @@ describe("minimal onboarding", () => {
     });
     const environment = await screen.findByLabelText("支付宝环境");
     expect(environment).toBeVisible();
-    expect(environment).toHaveValue("SANDBOX");
+    expect(environment).toHaveRole("combobox");
+    expect(environment).toHaveTextContent("沙箱环境");
     expect(
       screen.queryByRole("button", { name: /高级设置/ }),
     ).not.toBeInTheDocument();

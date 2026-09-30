@@ -1,5 +1,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { json } from "./fixtures";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
@@ -95,5 +97,73 @@ describe.each([false, true])("directly visible settings (guided: %s)", (guided) 
     else expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(onSaved).not.toHaveBeenCalled();
+  });
+});
+
+describe("provider environment select", () => {
+  function mount() {
+    const settings = configuredThrough(4);
+    const onSaved = vi.fn();
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SettingsEditor section="provider" settings={settings} onSaved={onSaved} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    return { ...view, settings, onSaved };
+  }
+
+  it("uses the styled menu, tracks reverted drafts, and submits the selected environment", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { container, settings, onSaved } = mount();
+    fetchMock.mockResolvedValue(json({ data: settings }));
+    const user = userEvent.setup();
+    const trigger = screen.getByRole("combobox", { name: "支付宝环境" });
+    const save = screen.getByRole("button", { name: "保存" });
+    const form = container.querySelector("form")!;
+    expect(trigger.tagName).toBe("BUTTON");
+    expect(trigger).toHaveTextContent("生产环境");
+    expect(save).toBeDisabled();
+    await user.click(trigger);
+    expect(await screen.findByRole("listbox")).toBeVisible();
+    await user.click(await screen.findByRole("option", { name: "沙箱环境" }));
+    expect(trigger).toHaveTextContent("沙箱环境");
+    expect(new FormData(form).get("environment")).toBe("SANDBOX");
+    expect(save).toBeEnabled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    await user.click(trigger);
+    await user.click(await screen.findByRole("option", { name: "生产环境" }));
+    expect(save).toBeDisabled();
+    await user.click(trigger);
+    await user.click(await screen.findByRole("option", { name: "沙箱环境" }));
+    await user.click(save);
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls[0]!;
+    const request = new Request(url, init);
+    expect(await request.json()).toMatchObject({ environment: "SANDBOX" });
+    expect(save).toBeDisabled();
+  });
+
+  it("focuses environment validation errors and clears them on selection", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({
+      error: { code: "settings_validation_failed", message: "参数校验失败",
+        fields: { environment: "当前环境不可用" } },
+    }, 422)));
+    mount();
+    const user = userEvent.setup();
+    const trigger = screen.getByRole("combobox", { name: "支付宝环境" });
+    await user.click(trigger);
+    await user.click(await screen.findByRole("option", { name: "沙箱环境" }));
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    expect(await screen.findByText("当前环境不可用")).toBeVisible();
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(trigger).toHaveAttribute("aria-invalid", "true");
+    expect(trigger).toHaveAccessibleDescription("当前环境不可用");
+    await user.click(trigger);
+    await user.click(await screen.findByRole("option", { name: "生产环境" }));
+    expect(screen.queryByText("当前环境不可用")).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-invalid", "false");
   });
 });

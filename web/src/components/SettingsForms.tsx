@@ -39,9 +39,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Field,
   FieldLabel,
@@ -167,6 +171,13 @@ export function SettingsEditor({
     });
   }
   const draft = useFormDraft();
+  const [environment, setEnvironment] = useState(
+    initialSettings.provider?.environment ?? "PRODUCTION",
+  );
+  useEffect(() => {
+    // Select updates its form input after committing the selected value.
+    if (section === "provider") draft.onChange();
+  }, [environment, section]);
   const [decoding, setDecoding] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [notificationEnabled, setNotificationEnabled] = useState(
@@ -337,18 +348,43 @@ export function SettingsEditor({
     <FieldGroup className="grid sm:grid-cols-2">
       <Field data-invalid={!!fieldErrors.environment}>
         <FieldLabel htmlFor="setting-environment">支付宝环境</FieldLabel>
-        <NativeSelect
-          id="setting-environment"
+        <Select
           name="environment"
-          defaultValue={initialSettings.provider?.environment ?? "PRODUCTION"}
-          aria-invalid={!!fieldErrors.environment}
-          aria-describedby={
-            fieldErrors.environment ? "setting-environment-error" : undefined
-          }
+          value={environment}
+          disabled={save.isPending}
+          items={[
+            { value: "PRODUCTION", label: "生产环境" },
+            { value: "SANDBOX", label: "沙箱环境" },
+          ]}
+          onValueChange={(value) => {
+            if (value !== "PRODUCTION" && value !== "SANDBOX") return;
+            setEnvironment(value);
+            setSavedMessage("");
+            save.reset();
+            setFieldErrors((current) => {
+              const next = { ...current };
+              delete next.environment;
+              return next;
+            });
+          }}
         >
-          <NativeSelectOption value="PRODUCTION">生产环境</NativeSelectOption>
-          <NativeSelectOption value="SANDBOX">沙箱环境</NativeSelectOption>
-        </NativeSelect>
+          <SelectTrigger
+            id="setting-environment"
+            className="w-full"
+            aria-invalid={!!fieldErrors.environment}
+            aria-describedby={
+              fieldErrors.environment ? "setting-environment-error" : undefined
+            }
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              <SelectItem value="PRODUCTION">生产环境</SelectItem>
+              <SelectItem value="SANDBOX">沙箱环境</SelectItem>
+            </SelectGroup>
+          </SelectContent>
+        </Select>
         {fieldErrors.environment && (
           <FieldError id="setting-environment-error">
             {fieldErrors.environment}
