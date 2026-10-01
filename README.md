@@ -1,8 +1,54 @@
 <!-- SPDX-License-Identifier: MIT -->
 
-# PerPay
+<p align="center">
+  <img src="web/src/assets/favicon.svg" alt="PerPay 钱包图标" width="72" height="72">
+</p>
+<h1 align="center">PerPay</h1>
+<p align="center"><strong>自托管的支付宝经营码收款服务</strong></p>
 
-自托管的支付宝经营码收款服务，包含收银台、自动查账确认和管理后台。无需另装数据库或单独部署前端。
+<p align="center">
+  <a href="https://github.com/Mashiro0619/PerPay/releases/latest"><img src="https://img.shields.io/github/v/release/Mashiro0619/PerPay?label=Release" alt="最新正式版本"></a>
+  <a href="https://github.com/Mashiro0619/PerPay/pkgs/container/perpay"><img src="https://img.shields.io/badge/GHCR-amd64%20%7C%20arm64-2496ED?logo=docker&logoColor=white" alt="Docker 镜像：amd64 和 arm64"></a>
+  <a href="https://nodejs.org/en/about/previous-releases"><img src="https://img.shields.io/badge/Node.js-24.15%2B%20%2824.x%29-5FA04E?logo=nodedotjs&logoColor=white" alt="Node.js 24.15+，24.x"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Mashiro0619/PerPay" alt="MIT License"></a>
+  <a href="https://github.com/Mashiro0619/PerPay/stargazers"><img src="https://img.shields.io/github/stars/Mashiro0619/PerPay?style=flat" alt="GitHub Stars"></a>
+</p>
+
+<p align="center">
+  <a href="#界面预览">界面预览</a> ·
+  <a href="#部署">快速部署</a> ·
+  <a href="docs/alipay-setup.md">支付宝配置</a> ·
+  <a href="USAGE.md">接入文档</a>
+</p>
+
+## 功能
+
+| 功能 | 说明 |
+| --- | --- |
+| 经营码收银台 | 展示应付金额与二维码，查询付款状态 |
+| 自动查账与对账 | 查询到账流水、匹配订单，支持异常处理与人工核对 |
+| 订单管理 | 搜索、筛选订单，查看收款状态与关联账务 |
+| 业务通知 | 签名回调、失败重试与投递记录 |
+| 收款概览 | 近 7 / 30 / 90 天收款趋势与每日统计 |
+| 自托管运维 | Docker 部署、自动备份与版本检查 |
+| 界面显示 | 自定义系统名称、首页图表样式，支持明暗主题 |
+
+技术栈：**Node.js 24 · TypeScript · Hono · SQLite · React · Vite · shadcn/ui**。
+
+## 界面预览
+
+| 收款概览 | 订单详情 |
+| --- | --- |
+| ![收款概览](docs/screenshots/dashboard-light.png) | ![订单详情](docs/screenshots/order-detail.png) |
+
+<details>
+<summary>展开查看桌面收银台</summary>
+
+![收银台](docs/screenshots/checkout.png)
+
+</details>
+
+[本地只读预览](web/README.md#只读预览) · [全部截图](docs/screenshots/README.md)
 
 ## 部署前准备
 
@@ -82,10 +128,20 @@ docker compose up -d
 
 忘记管理员密码？见 [停服重设密码](docs/maintenance.md#忘记管理员密码)，无需删除数据。
 
-## 其他文档
+## 文档导航
 
-- [业务网站接入](USAGE.md) · [调用端 Demo](examples/node-client/README.md)
-- [开发说明](web/README.md) · [API 文档](openapi.yaml)
+| 文档 | 内容 |
+| --- | --- |
+| [支付宝配置](docs/alipay-setup.md) | 应用、密钥、经营码与首次收款检查 |
+| [业务网站接入](USAGE.md) | 请求签名、订单接口、业务通知与金额匹配规则 |
+| [调用端 Demo](examples/node-client/README.md) | 业务网站接入示例 |
+| [维护说明](docs/maintenance.md) | 备份恢复、版本升级、回滚与密码重设 |
+| [前端开发](web/README.md) · [OpenAPI](openapi.yaml) | 构建、测试与接口定义 |
 
-友链
+## 许可证
+
+PerPay 使用 [MIT License](LICENSE)。第三方代码与素材说明见 [NOTICE](NOTICE)。
+
+## 友链
+
 [Linux Do](https://linux.do/)

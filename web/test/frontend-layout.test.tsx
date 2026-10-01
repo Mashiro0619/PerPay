@@ -80,7 +80,7 @@ describe("official block composition", () => {
 
   it.each([
     ["collection", "支付宝经营码", "订单规则"],
-    ["display", "收银台", "收款概览"],
+    ["display", "界面显示", "首页图表样式"],
   ] as const)(
     "groups %s fields in one official card with fieldsets and a form-wide save footer",
     (section, first, second) => {
@@ -103,6 +103,13 @@ describe("official block composition", () => {
         .closest("[data-slot=card]");
       expect(firstCard).not.toBeNull();
       expect(secondCard).toBe(firstCard);
+      if (section === "display") {
+        const fields = screen.getByRole("group", { name: "界面显示" });
+        expect(fields).toContainElement(screen.getByRole("textbox", { name: "支付系统名称" }));
+        expect(fields).toContainElement(screen.getByRole("switch", { name: "收银台显示商品名称" }));
+        expect(fields).toContainElement(screen.getByRole("group", { name: "首页图表样式" }));
+        expect(fields.querySelector("[data-slot=field-legend]")).toHaveClass("sr-only");
+      }
       expect(container.querySelectorAll("[data-slot=card]")).toHaveLength(1);
       expect(container.querySelectorAll("form")).toHaveLength(1);
       const save = screen.getByRole("button", { name: "保存" });

@@ -26,7 +26,8 @@
     "typecheck": "npm run typecheck:server && npm run typecheck:admin",
     "typecheck:admin": "tsc --project web/tsconfig.json",
     "typecheck:server": "tsc --noEmit",
-    "build:checkout": "vite build --config web/vite.checkout.config.ts && vite build --config web/vite.checkout.config.ts --mode server"
+    "build:checkout": "vite build --config web/vite.checkout.config.ts && vite build --config web/vite.checkout.config.ts --mode server",
+    "demo:preview": "node --experimental-strip-types scripts/preview-demo.ts"
   },
   "dependencies": {
     "@base-ui/react": "1.8.0",

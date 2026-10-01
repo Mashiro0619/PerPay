@@ -14,7 +14,7 @@ export async function runAdminSmoke({ baseUrl, password, initialize = false, iso
   assert.ok(typeof password === "string" && password.length >= 24, "provide a random temporary administrator password");
   const send = (path, options = {}) => request(new URL(path, origin).href, { redirect: "error", signal: AbortSignal.timeout(15000), ...options });
   const jsonHeaders = { "content-type": "application/json", origin: origin.origin };
-  const checkedAssets = new Set(["/admin/theme.js", "/admin/favicon.svg", ...assets]);
+  const checkedAssets = new Set(["/admin/theme.js", ...assets]);
   let entryHtml = "";
   for (const path of ["/admin", "/admin/orders", "/admin/settings/security", "/admin/reconciliation", "/admin/notifications"]) {
     const response = await send(path);
@@ -28,6 +28,7 @@ export async function runAdminSmoke({ baseUrl, password, initialize = false, iso
     const html = await response.text();
     assert.doesNotMatch(html, /__PERPAY_INITIALIZED__|<script(?![^>]*\bsrc=)/);
     assert.match(html, /src="\/admin\/theme\.js"/);
+    assert.match(html, /<link\b[^>]*rel="icon"[^>]*href="\/admin\/assets\/favicon-[A-Za-z0-9_-]+\.svg"/, "entry must reference its fingerprinted favicon");
     for (const match of html.matchAll(/(?:src|href)="(\/admin\/[^"?#]+\.(?:js|css|svg))"/g)) checkedAssets.add(match[1]);
     if (path === "/admin") entryHtml = html;
   }

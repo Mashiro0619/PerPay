@@ -2,7 +2,12 @@
 .github/
 .idea/
 .vscode/
+.agents/
+.playwright-cli/
+.playwright-mcp/
+/%SystemDrive%/
 node_modules/
+**/node_modules/
 dist/
 web-dist/
 coverage/
@@ -12,6 +17,10 @@ backups/
 *.sqlite3
 *.sqlite-shm
 *.sqlite-wal
+*.sqlite-journal
+*.sqlite3-shm
+*.sqlite3-wal
+*.sqlite3-journal
 .env
 .env.*
 /docker-compose.yml

@@ -157,7 +157,6 @@
   [class~="group/button"],
   [data-slot="button"],
   [data-slot="select-trigger"],
-  [data-slot="native-select"],
   [data-slot="input"],
   input[data-slot="input-group-control"],
   [data-slot="toggle-group-item"],
