@@ -23,6 +23,34 @@ function mount(onSaved = vi.fn()) {
 }
 
 describe("instance display settings", () => {
+  it("keeps only field labels and controls without redundant headings or descriptions", () => {
+    mount();
+    const name = screen.getByRole("textbox", { name: "支付系统名称" });
+    expect(name).toHaveAttribute("required");
+    expect(name).toHaveAttribute("maxlength", "40");
+    expect(name).not.toHaveAttribute("aria-describedby");
+    expect(screen.getByRole("switch", { name: "收银台显示商品名称" })).toBeVisible();
+    expect(screen.getByRole("group", { name: "首页图表样式" })).toBeVisible();
+    const form = name.closest("form")!;
+    expect(form).toHaveClass("max-w-2xl");
+    const displayFields = name.closest('[data-slot="field-group"]')!;
+    const rows = [...displayFields.children];
+    expect(rows).toHaveLength(3);
+    for (const row of rows) {
+      expect(row).toHaveAttribute("data-orientation", "responsive");
+      expect(row).toHaveClass("@md/field-group:grid-cols-[10rem_minmax(0,1fr)]");
+    }
+    expect(rows[0]).toContainElement(name);
+    expect(rows[1]).toContainElement(screen.getByRole("group", { name: "首页图表样式" }));
+    expect(rows[2]).toContainElement(screen.getByRole("switch", { name: "收银台显示商品名称" }));
+    expect(form.querySelector('[data-slot="field-description"]')).toBeNull();
+    expect(form.querySelector('[data-slot="card-header"]')).toHaveClass("sr-only");
+    expect(form.querySelector('[data-slot="field-legend"]')).toHaveClass("sr-only");
+    expect(screen.queryByText("系统名称", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByText("收银台", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByText("收款概览", { exact: true })).not.toBeInTheDocument();
+  });
+
   it("persists both settings with the latest revision, without saving on selection", async () => {
     const requests: Request[] = [];
     const saved = {

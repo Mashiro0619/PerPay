@@ -612,75 +612,73 @@ export function SettingsEditor({
       )}
     </FieldGroup>
   );
-  const systemIdentity = (
-    <FieldGroup>
-      <Field data-invalid={!!fieldErrors.system_name}>
+  const displayRowClassName =
+    "gap-3 @md/field-group:grid @md/field-group:min-h-8 @md/field-group:grid-cols-[10rem_minmax(0,1fr)] @md/field-group:*:self-center";
+  const displayFields = (
+    <FieldGroup className="gap-6">
+      <Field
+        orientation="responsive"
+        className={displayRowClassName}
+        data-invalid={!!fieldErrors.system_name}
+      >
         <FieldLabel htmlFor="setting-system-name">支付系统名称</FieldLabel>
-        <Input id="setting-system-name" name="system_name" required maxLength={40}
-          defaultValue={initialSettings.display?.system_name ?? "PerPay"}
-          aria-invalid={!!fieldErrors.system_name}
-          aria-describedby={fieldErrors.system_name ? "system-name-hint system-name-error" : "system-name-hint"} />
-        <FieldDescription id="system-name-hint">
-          1–40 个字符，显示在后台、登录页和收银台。默认名称为 PerPay；不改变 API 接口和业务数据。
-        </FieldDescription>
-        {fieldErrors.system_name && <FieldError id="system-name-error">{fieldErrors.system_name}</FieldError>}
-      </Field>
-    </FieldGroup>
-  );
-  const checkoutDisplay = (
-    <FieldGroup>
-      <Field orientation="horizontal">
-        <FieldContent>
-          <FieldLabel htmlFor="checkout-show-product-name">
-            收银台显示商品名称
-          </FieldLabel>
-          <FieldDescription id="checkout-product-hint">
-            只影响收银台页面，不修改订单或通知内容。
-          </FieldDescription>
+        <FieldContent className="min-w-0">
+          <Input
+            id="setting-system-name"
+            name="system_name"
+            required
+            maxLength={40}
+            defaultValue={initialSettings.display?.system_name ?? "PerPay"}
+            aria-invalid={!!fieldErrors.system_name}
+            aria-describedby={fieldErrors.system_name ? "system-name-error" : undefined}
+          />
+          {fieldErrors.system_name && (
+            <FieldError id="system-name-error">{fieldErrors.system_name}</FieldError>
+          )}
         </FieldContent>
-        <Switch
-          id="checkout-show-product-name"
-          name="checkout_show_product_name"
-          checked={showProductName}
-          onCheckedChange={setShowProductName}
-          aria-describedby="checkout-product-hint"
-        />
       </Field>
-    </FieldGroup>
-  );
-  const chartDisplay = (
-    <FieldGroup>
-      <Field>
+      <Field orientation="responsive" className={displayRowClassName}>
         <FieldLabel id="dashboard-chart-type-label">首页图表样式</FieldLabel>
-        <input type="hidden" name="dashboard_chart_type" value={chartType} />
-        <ToggleGroup
-          spacing={0}
-          variant="outline"
-          value={[chartType]}
-          onValueChange={(values) => {
-            const value = values[0];
-            if (value === "AREA" || value === "BAR" || value === "LINE")
-              setChartType(value);
-          }}
-          aria-labelledby="dashboard-chart-type-label"
-          aria-describedby="dashboard-chart-type-hint"
-        >
-          <ToggleGroupItem value="AREA">
-            <ChartArea />
-            面积图
-          </ToggleGroupItem>
-          <ToggleGroupItem value="BAR">
-            <ChartColumn />
-            柱状图
-          </ToggleGroupItem>
-          <ToggleGroupItem value="LINE">
-            <ChartLine />
-            折线图
-          </ToggleGroupItem>
-        </ToggleGroup>
-        <FieldDescription id="dashboard-chart-type-hint">
-          此实例共用，统计口径不变。
-        </FieldDescription>
+        <FieldContent className="min-w-0 items-start">
+          <input type="hidden" name="dashboard_chart_type" value={chartType} />
+          <ToggleGroup
+            spacing={0}
+            variant="outline"
+            value={[chartType]}
+            onValueChange={(values) => {
+              const value = values[0];
+              if (value === "AREA" || value === "BAR" || value === "LINE")
+                setChartType(value);
+            }}
+            aria-labelledby="dashboard-chart-type-label"
+          >
+            <ToggleGroupItem value="AREA">
+              <ChartArea />
+              面积图
+            </ToggleGroupItem>
+            <ToggleGroupItem value="BAR">
+              <ChartColumn />
+              柱状图
+            </ToggleGroupItem>
+            <ToggleGroupItem value="LINE">
+              <ChartLine />
+              折线图
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </FieldContent>
+      </Field>
+      <Field orientation="responsive" className={displayRowClassName}>
+        <FieldLabel htmlFor="checkout-show-product-name">
+          收银台显示商品名称
+        </FieldLabel>
+        <FieldContent className="min-w-0 items-start">
+          <Switch
+            id="checkout-show-product-name"
+            name="checkout_show_product_name"
+            checked={showProductName}
+            onCheckedChange={setShowProductName}
+          />
+        </FieldContent>
       </Field>
     </FieldGroup>
   );
@@ -742,16 +740,9 @@ export function SettingsEditor({
           ]
         : section === "display"
           ? [
-              { title: "系统名称", fields: systemIdentity },
               {
-                title: "收银台",
-                description: "付款人看到的商品信息",
-                fields: checkoutDisplay,
-              },
-              {
-                title: "收款概览",
-                description: "管理台首页的图表显示",
-                fields: chartDisplay,
+                title: "界面显示",
+                fields: displayFields,
               },
             ]
           : [
@@ -805,6 +796,7 @@ export function SettingsEditor({
   const editor = (
     <form
       className={cn(
+        section === "display" && "w-full max-w-2xl",
         guided && renderGuidedActions && "flex min-w-0 flex-col gap-5",
       )}
       ref={draft.form}
@@ -855,7 +847,7 @@ export function SettingsEditor({
             )
           ) : (
             <Card>
-              <CardHeader>
+              <CardHeader className={section === "display" ? "sr-only" : undefined}>
                 <CardTitle role="heading" aria-level={2}>
                   {sections.find(([value]) => value === section)?.[1] ?? "设置"}
                 </CardTitle>
