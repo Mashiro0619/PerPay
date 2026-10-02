@@ -211,7 +211,7 @@ function ReconciliationList({
       : section === "conflicts"
         ? CONFLICT_SORT_FIELDS
         : EXCEPTION_SORT_FIELDS;
-  const listQuery = useListQuery<string>(fields, fields[0], "asc");
+  const listQuery = useListQuery<string>(fields, "created_at", "desc");
   const sortNames: Record<string, string> = {
     event_sequence: "关联事件顺序",
     created_at: section === "matches" ? "关联时间" : "发现时间",
@@ -301,7 +301,7 @@ function ReconciliationList({
         page: page.page,
         items: page.data.map((item) => ({
           id: item.payment_match_id,
-          title: item.evidence_type === "MANUAL" ? "人工关联" : "金额推断关联",
+          title: item.order ? item.order.product_name + " · " + item.order.merchant_order_no : item.evidence_type === "MANUAL" ? "人工关联" : "金额推断关联",
           externalEventId: item.ledger_entry.external_event_id,
           amountCents: item.ledger_entry.amount_cents,
           orderId: item.order_id,
@@ -437,7 +437,7 @@ function ReconciliationList({
                             {item.title}
                           </Link>
                           <span className="break-all text-xs text-muted-foreground">
-                            {item.id}
+                            {item.externalEventId ?? "查看记录详情"}
                           </span>
                           {context.showInSummary("created_at") && (
                             <time
@@ -470,7 +470,7 @@ function ReconciliationList({
                             className="break-all underline underline-offset-4"
                             to={"/orders/" + item.orderId}
                           >
-                            {item.orderId}
+                            查看订单
                           </Link>
                         ) : (
                           "—"

@@ -1,3 +1,5 @@
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { money } from "@/lib/format";
 import { useListQuery, DELIVERY_SORT_FIELDS } from "@/lib/list-query";
 import { ListQueryToolbar } from "@/components/list-query-toolbar";
 import { ListActionsMenu } from "@/components/list-actions-menu";
@@ -55,32 +57,48 @@ export default function Notifications() {
     setSearch(next, { replace: true });
   }
   return (
-    <DeliveryPage
-      status={status || undefined}
-      filters={
-        <>
-          <Select items={statuses} value={status} onValueChange={changeStatus}>
-            <SelectTrigger aria-label="通知状态筛选">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {statuses.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          {status && (
-            <Button variant="ghost" onClick={() => changeStatus(null)}>
-              清除筛选
-            </Button>
-          )}
-        </>
-      }
-    />
+    <div className="flex min-w-0 flex-col gap-3">
+      <ToggleGroup
+        variant="outline"
+        value={[status]}
+        onValueChange={(values) => changeStatus(values[0] ?? "")}
+        aria-label="通知快捷筛选"
+      >
+        <ToggleGroupItem value="">全部</ToggleGroupItem>
+        <ToggleGroupItem value="RETRY_WAIT">等待重试</ToggleGroupItem>
+        <ToggleGroupItem value="DEAD_LETTER">已停止重试</ToggleGroupItem>
+      </ToggleGroup>
+      <DeliveryPage
+        status={status || undefined}
+        filters={
+          <>
+            <Select
+              items={statuses}
+              value={status}
+              onValueChange={changeStatus}
+            >
+              <SelectTrigger aria-label="通知状态筛选">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {statuses.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            {status && (
+              <Button variant="ghost" onClick={() => changeStatus(null)}>
+                清除筛选
+              </Button>
+            )}
+          </>
+        }
+      />
+    </div>
   );
 }
 function DeliveryPage({
@@ -91,7 +109,11 @@ function DeliveryPage({
   filters: ReactNode;
 }) {
   const pagination = useCursor();
-  const listQuery = useListQuery(DELIVERY_SORT_FIELDS, "created_at", "asc");
+  const listQuery = useListQuery(
+    DELIVERY_SORT_FIELDS,
+    "created_at",
+    "desc",
+  );
   const deliveries = useQuery({
     queryKey: ["notifications", status, pagination.cursor, listQuery.scope],
     queryFn: ({ signal }) =>
@@ -201,10 +223,17 @@ function DeliveryPage({
                             className="font-medium hover:underline"
                             to={"/notifications/" + delivery.delivery_id}
                           >
-                            {label(delivery.event.event_type)}
+                            {delivery.order_summary?.product_name ??
+                              label(delivery.event.event_type)}
                           </Link>
                           <span className="break-all text-xs text-muted-foreground">
-                            {delivery.delivery_id}
+                            {delivery.order_summary?.merchant_order_no ??
+                              label(delivery.event.event_type)}
+                            {delivery.order_summary &&
+                              " · " +
+                                money(
+                                  delivery.order_summary.payable_amount_cents,
+                                )}
                           </span>
                           {context.showInSummary("created_at") && (
                             <time
@@ -232,7 +261,8 @@ function DeliveryPage({
                           className="break-all underline underline-offset-4"
                           to={"/orders/" + delivery.event.order_id}
                         >
-                          {delivery.event.order_id}
+                          {delivery.order_summary?.merchant_order_no ??
+                            "查看订单"}
                         </Link>
                       ),
                     },

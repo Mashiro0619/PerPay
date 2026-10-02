@@ -863,7 +863,7 @@ export class ReconciliationStore {
       const expression = columns[query.sortBy];
       const position = cursor?.position ?? (cursor ? {value: cursor.eventSequence, keys: ["\uffff"]} : null);
       const seek = listKeyset(expression, ["payment_match.payment_match_id"], query.sortOrder, position);
-      const search = listSearch(["payment_match.payment_match_id", "payment_match.order_id", "orders.merchant_order_no", "payment_match.ledger_entry_id", "entry.external_event_id"], query.q);
+      const search = listSearch(["payment_match.payment_match_id", "payment_match.order_id", "orders.merchant_order_no", "orders.product_name", "payment_match.ledger_entry_id", "entry.external_event_id"], query.q);
       const rows = connection
         .prepare(
           `SELECT payment_match.payment_match_id, payment_match.ledger_entry_id,

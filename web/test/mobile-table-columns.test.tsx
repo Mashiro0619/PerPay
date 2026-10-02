@@ -103,7 +103,7 @@ describe("mobile column controls", () => {
     );
     await user.keyboard("{Escape}");
     media.resize(1280);
-    expect(screen.getAllByRole("columnheader")).toHaveLength(5);
+    expect(screen.getAllByRole("columnheader")).toHaveLength(6);
     await menu(user);
     await user.click(screen.getByRole("menuitemcheckbox", { name: "状态" }));
     await user.keyboard("{Escape}");

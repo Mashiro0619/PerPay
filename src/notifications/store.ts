@@ -867,7 +867,7 @@ export class WebhookStore {
         : "delivery." + query.sortBy;
       const position = input.cursor?.position ?? (input.cursor ? {value: input.cursor.createdAt, keys: [input.cursor.deliveryId]} : null);
       const seek = listKeyset(expression, ["delivery.delivery_id"], query.sortOrder, position, query.sortBy === "next_attempt_at");
-      const search = listSearch(["delivery.delivery_id", "delivery.outbox_event_id", "outbox.aggregate_id", "orders.merchant_order_no", "target.target_url", "delivery.last_error_code"], query.q);
+      const search = listSearch(["delivery.delivery_id", "delivery.outbox_event_id", "outbox.aggregate_id", "orders.merchant_order_no", "orders.product_name", "target.target_url", "delivery.last_error_code"], query.q);
       const where = [seek.where, search.where].filter(Boolean);
       const parameters: Array<string | number> = [...seek.parameters, ...search.parameters];
       if (input.status) {

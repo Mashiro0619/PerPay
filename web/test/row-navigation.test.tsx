@@ -165,7 +165,7 @@ const listCases = [
     element: <Orders />,
     target: `/orders/${orderId}`,
     record: order,
-    columns: 5,
+    columns: 6,
   },
   {
     name: "notifications",

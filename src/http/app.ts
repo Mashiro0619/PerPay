@@ -1,3 +1,4 @@
+import { adminOrderIdentities } from "./admin-order-summary.ts";
 import { readManualCandidateQuery } from "./manual-candidates.ts";
 import type { ManualRecommendation } from "../reconciliation/manual-candidates.ts";
 import { MATCH_SORT_FIELDS, CONFLICT_SORT_FIELDS, EXCEPTION_SORT_FIELDS, WORK_ITEM_SORT_FIELDS, type MatchSort, type ConflictSort, type ExceptionSort, type WorkItemSort } from "../shared/list-query.ts";
@@ -667,8 +668,9 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const query = readAdminOrderPageQuery(context);
     const page = dependencies.orders.adminPage(query.filters, query.cursor, query.limit, query.query);
     const marks = adminRefundMarks(dependencies.database, page.orders.map((order) => order.orderId));
+    const identities = adminOrderIdentities(dependencies.database, page.orders.map(order => order.orderId));
     return context.json({
-      data: page.orders.map((order) => ({ ...serializeAdminOrderSummary(order), refund_mark: marks.get(order.orderId)! })),
+      data: page.orders.map((order) => ({ ...serializeAdminOrderSummary(order), payment_confirmed_at: identities.get(order.orderId)?.payment_confirmed_at ?? null, refund_mark: marks.get(order.orderId)! })),
       page: {
         next_cursor: encodeAdminOrderCursor(page.nextCursor, query.filters, query.query),
       },
@@ -1237,8 +1239,9 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       cursor: query.cursor,
       limit: query.limit,
     });
+    const identities = adminOrderIdentities(dependencies.database, page.deliveries.map(item => item.orderId));
     return context.json({
-      data: page.deliveries.map(serializeWebhookDeliverySummary),
+      data: page.deliveries.map(item => ({ ...serializeWebhookDeliverySummary(item), order_summary: identities.get(item.orderId) ?? null })),
       page: {
         next_cursor: encodeWebhookDeliveryCursor(page.nextCursor, query.status, query.query),
       },

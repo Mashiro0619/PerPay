@@ -132,6 +132,11 @@ export function DataTable({
       ),
     },
   ];
+  if (control) columns.push({
+    id: "payment_confirmed_at", label: "付款确认时间",
+    responsive: { minWidthRem: 64, basis: "container" },
+    cell: order => dateTime(order.payment_confirmed_at ?? null),
+  });
   return (
     <div className="@container/orders min-w-0">
       <BusinessTable

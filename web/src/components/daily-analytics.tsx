@@ -1,15 +1,7 @@
-import { useId, useState } from "react";
+import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { SystemAnalytics } from "@/api/client";
 import { count, money } from "@/lib/format";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import {
@@ -35,16 +27,14 @@ type DailyAnalyticsProps = {
 };
 
 export function DailyAnalytics(props: DailyAnalyticsProps) {
-  // Changing the period starts at the newest day, even when returning to an earlier period.
-  return <DailyAnalyticsCard key={props.range} {...props} />;
+  // A changed period resets pagination; switching views keeps this panel mounted.
+  return <DailyAnalyticsTable key={props.range} {...props} />;
 }
-
-function DailyAnalyticsCard({
+function DailyAnalyticsTable({
   analytics,
   range,
   pending,
 }: DailyAnalyticsProps) {
-  const titleId = useId();
   const [requestedPage, setPage] = useState(1);
   // This is at most 90 aggregated days, not a client-side search of business records.
   const days =
@@ -52,20 +42,15 @@ function DailyAnalyticsCard({
   const pageCount = Math.max(1, Math.ceil(days.length / PAGE_SIZE));
   const page = Math.min(requestedPage, pageCount);
   const rows = days.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
   return (
-    <Card
-      className="min-w-0"
+    <div
+      className="flex w-full min-w-0 flex-col gap-3"
       role="region"
-      aria-labelledby={titleId}
+      aria-label="每日数据"
       aria-busy={pending}
     >
-      <CardHeader>
-        <CardTitle id={titleId} role="heading" aria-level={2}>
-          每日数据
-        </CardTitle>
-        <CardDescription>日期倒序 · 每页 10 天</CardDescription>
-      </CardHeader>
-      <CardContent className="min-w-0 px-0">
+      <div className="min-w-0 overflow-hidden rounded-lg border">
         <Table aria-label="每日收款数据">
           <TableHeader>
             <TableRow>
@@ -118,58 +103,56 @@ function DailyAnalyticsCard({
             )}
           </TableBody>
         </Table>
-      </CardContent>
-      <CardFooter className="mt-auto">
-        <Pagination
-          className="flex-wrap justify-between gap-2"
-          aria-label="每日数据分页"
+      </div>
+      <Pagination
+        className="flex-wrap justify-between gap-2"
+        aria-label="每日数据分页"
+      >
+        <p
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="text-xs text-muted-foreground"
         >
-          <p
-            role="status"
-            aria-live="polite"
-            aria-atomic="true"
-            className="text-xs text-muted-foreground"
-          >
-            {pending
-              ? "正在读取每日数据…"
-              : !analytics
-                ? "等待统计数据"
-                : days.length
-                  ? "第 " +
-                    page +
-                    " / " +
-                    pageCount +
-                    " 页 · 共 " +
-                    days.length +
-                    " 天"
-                  : "共 0 天"}
-          </p>
-          <PaginationContent>
-            <PaginationItem>
-              <Button
-                size="icon-sm"
-                variant="outline"
-                aria-label="每日数据上一页"
-                disabled={pending || page <= 1}
-                onClick={() => setPage(page - 1)}
-              >
-                <ChevronLeft />
-              </Button>
-            </PaginationItem>
-            <PaginationItem>
-              <Button
-                size="icon-sm"
-                variant="outline"
-                aria-label="每日数据下一页"
-                disabled={pending || page >= pageCount}
-                onClick={() => setPage(page + 1)}
-              >
-                <ChevronRight />
-              </Button>
-            </PaginationItem>
-          </PaginationContent>
-        </Pagination>
-      </CardFooter>
-    </Card>
+          {pending
+            ? "正在读取每日数据…"
+            : !analytics
+              ? "等待统计数据"
+              : days.length
+                ? "第 " +
+                  page +
+                  " / " +
+                  pageCount +
+                  " 页 · 共 " +
+                  days.length +
+                  " 天"
+                : "共 0 天"}
+        </p>
+        <PaginationContent>
+          <PaginationItem>
+            <Button
+              size="icon-sm"
+              variant="outline"
+              aria-label="每日数据上一页"
+              disabled={pending || page <= 1}
+              onClick={() => setPage(page - 1)}
+            >
+              <ChevronLeft />
+            </Button>
+          </PaginationItem>
+          <PaginationItem>
+            <Button
+              size="icon-sm"
+              variant="outline"
+              aria-label="每日数据下一页"
+              disabled={pending || page >= pageCount}
+              onClick={() => setPage(page + 1)}
+            >
+              <ChevronRight />
+            </Button>
+          </PaginationItem>
+        </PaginationContent>
+      </Pagination>
+    </div>
   );
 }

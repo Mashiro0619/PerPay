@@ -247,7 +247,8 @@ describe("navigation and draft protection", () => {
     const list = await screen.findByRole("tablist", { name: "设置分类" });
     expect(list).toHaveAttribute("data-variant", "default");
     expect(list.closest("[data-settings-tabs-scroll]")).toHaveClass(
-      "no-scrollbar", "overflow-x-auto",
+      "no-scrollbar",
+      "overflow-x-auto",
     );
     const selector = screen.getByRole("tab", { name: "界面显示" });
     expect(selector).toHaveAttribute("aria-selected", "true");
@@ -390,7 +391,7 @@ describe("navigation and draft protection", () => {
       .click(screen.getByRole("button", { name: "近 7 天" }));
     expect(await screen.findByText("正在读取近 7 天…")).toBeVisible();
     expect(container.querySelector("[data-slot=chart]")).toBeNull();
-    expect(screen.getByRole("heading", { name: "每日数据" })).toBeVisible();
+    await userEvent.click(screen.getByRole("tab", { name: "每日数据" }));
     const daily = screen.getByRole("region", { name: "每日数据" });
     expect(daily).toHaveAttribute("aria-busy", "true");
     expect(within(daily).queryAllByRole("cell")).toHaveLength(0);
@@ -406,12 +407,12 @@ describe("navigation and draft protection", () => {
         }),
       );
     });
-    expect(await screen.findByText("¥4,321.00")).toBeVisible();
-    await waitFor(() =>
-      expect(container.querySelector("[data-slot=chart]")).not.toBeNull(),
-    );
+    expect(
+      await screen.findByRole("tab", { name: "每日数据" }),
+    ).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByText("正在读取近 7 天…")).not.toBeInTheDocument();
     expect(daily).not.toHaveAttribute("aria-busy", "true");
+
     expect(within(daily).getAllByRole("row")).toHaveLength(8);
   });
   it("does not replace the selected period with a late response after rapid switching", async () => {
@@ -594,5 +595,38 @@ describe("navigation and draft protection", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
     expect(trigger).toHaveFocus();
+  });
+});
+
+describe("overview layout and demo indicator", () => {
+  it("places trends immediately after metrics, before recent activity and daily detail", async () => {
+    mount({ path: "/", configured: true });
+    const trend = await screen.findByRole("heading", { name: "收款趋势" });
+    const metrics = screen.getByText("今日确认金额", { exact: true });
+    const work = screen.getByRole("heading", { name: "待处理" });
+    const recent = screen.getByRole("heading", {
+      name: "最近订单",
+    });
+    const daily = screen.getByRole("tab", { name: "每日数据" });
+    const precedes = (a: Element, b: Element) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(trend.closest("[data-overview-layout]")).toHaveClass(
+      "max-w-7xl",
+      "mx-auto",
+    );
+    expect(daily).toHaveAttribute("aria-selected", "false");
+    expect(
+      screen.queryByRole("table", { name: "每日收款数据" }),
+    ).not.toBeInTheDocument();
+    expect(precedes(metrics, trend)).toBe(true);
+    expect(precedes(trend, work)).toBe(true);
+    expect(precedes(trend, recent)).toBe(true);
+    expect(precedes(daily, work)).toBe(true);
+    expect(daily.closest("[data-slot=card]")).toBe(
+      trend.closest("[data-slot=card]"),
+    );
+    expect(
+      screen.queryByRole("button", { name: "只读演示说明" }),
+    ).not.toBeInTheDocument();
   });
 });

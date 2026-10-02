@@ -206,14 +206,13 @@ describe("desktop business list composition", () => {
       id: deliveryId,
     },
   ])(
-    "shows complete identifiers and puts the related order beside the record on $path",
+    "keeps technical identifiers out of primary content and retains related order navigation on $path",
     async ({ path, element, data, id }) => {
       pageResponse(data);
       mount(path, element);
-      expect(await screen.findByText(id, { exact: true })).toHaveClass(
-        "break-all",
-      );
-      const related = screen.getByRole("link", { name: orderId });
+      await screen.findByRole("table");
+      expect(screen.queryByText(id, { exact: true })).not.toBeInTheDocument();
+      const related = screen.getByRole("link", { name: "查看订单" });
       expect(related).toHaveAttribute("href", "/orders/" + orderId);
       expect(screen.getAllByRole("columnheader")[1]).toHaveTextContent(
         "关联订单",

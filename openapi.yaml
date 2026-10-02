@@ -3891,6 +3891,18 @@ components:
       required: [data]
       properties:
         data: { $ref: '#/components/schemas/AdminOrderDetail' }
+    OrderIdentitySummary:
+      type: object
+      additionalProperties: false
+      required: [order_id, merchant_order_no, product_name, requested_amount_cents, payable_amount_cents, received_amount_cents, payment_confirmed_at]
+      properties:
+        order_id: { $ref: '#/components/schemas/ResourceId' }
+        merchant_order_no: { type: string }
+        product_name: { type: string }
+        requested_amount_cents: { type: integer }
+        payable_amount_cents: { type: integer }
+        received_amount_cents: { type: [integer, 'null'] }
+        payment_confirmed_at: { type: [string, 'null'], format: date-time }
     AdminOrderSummary:
       type: object
       additionalProperties: false
@@ -3912,6 +3924,7 @@ components:
         - updated_at
         - version
       properties:
+        payment_confirmed_at: { type: [string, 'null'], format: date-time }
         order_id: { $ref: '#/components/schemas/ResourceId' }
         api_client_id:
           type: string
@@ -5237,6 +5250,10 @@ components:
         - type: object
           required: [event, target]
           properties:
+            order_summary:
+              anyOf:
+                - { $ref: '#/components/schemas/OrderIdentitySummary' }
+                - { type: 'null' }
             event:
               type: object
               additionalProperties: false

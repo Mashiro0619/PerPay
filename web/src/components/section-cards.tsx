@@ -1,51 +1,59 @@
-import { CircleCheck, Clock3 } from "lucide-react";
 import type { SystemAnalytics } from "@/api/client";
-import { count } from "@/lib/format";
+import { count, money } from "@/lib/format";
+import { Link } from "@/navigation";
 import {
   Card,
   CardDescription,
   CardHeader,
   CardTitle,
-  CardAction,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-
 export function SectionCards({
   analytics,
   pending = false,
+  workItems,
 }: {
   analytics: SystemAnalytics | undefined;
   pending?: boolean;
+  workItems?: number | null;
 }) {
-  const values = analytics
-    ? [count(analytics.confirmations.count), count(analytics.pending.orders)]
-    : [];
-  const icons = [CircleCheck, Clock3];
+  // API daily dates are Beijing dates; the last complete series entry is today's bucket.
+  const today = analytics?.daily.at(-1);
+  const cards = [
+    {
+      title: "今日确认金额",
+      value: today ? money(today.confirmed_amount_cents) : "—",
+    },
+    { title: "今日确认笔数", value: today ? count(today.confirmations) : "—" },
+    {
+      title: "当前待付款",
+      value: analytics ? count(analytics.pending.orders) : "—",
+      href: "/orders?payment=UNPAID&checkout=OPEN",
+    },
+    {
+      title: "需处理事项",
+      value: workItems == null ? "—" : count(workItems),
+      href: "/work-items",
+    },
+  ];
   return (
-    <div className="grid grid-cols-1 gap-3 px-4 lg:px-6 @sm/main:grid-cols-2">
-      {["确认次数", "当前待付款"].map((title, index) => {
-        const Icon = icons[index]!;
-        return (
-          <Card key={title} className="@container/card" aria-busy={pending}>
-            <CardHeader>
-              <CardDescription>{title}</CardDescription>
-              <CardAction>
-                <Icon
-                  className="size-4 text-muted-foreground"
-                  aria-hidden="true"
-                />
-              </CardAction>
-              <CardTitle className="overflow-x-auto text-xl font-semibold whitespace-nowrap tabular-nums @[200px]/card:text-2xl">
-                {pending ? (
-                  <Skeleton className="h-9 w-3/4" />
-                ) : (
-                  (values[index] ?? "—")
-                )}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-        );
-      })}
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {cards.map((card) => (
+        <Card key={card.title} aria-busy={pending}>
+          <CardHeader>
+            <CardDescription>{card.title}</CardDescription>
+            <CardTitle className="overflow-x-auto text-xl font-semibold whitespace-nowrap tabular-nums">
+              {pending ? (
+                <Skeleton className="h-7 w-3/4" />
+              ) : card.href ? (
+                <Link to={card.href}>{card.value}</Link>
+              ) : (
+                card.value
+              )}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+      ))}
     </div>
   );
 }

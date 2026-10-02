@@ -520,7 +520,17 @@ export type AdminOrderPageEnvelope = {
 export type AdminOrderDetailEnvelope = {
     data: AdminOrderDetail;
 };
+export type OrderIdentitySummary = {
+    order_id: ResourceId;
+    merchant_order_no: string;
+    product_name: string;
+    requested_amount_cents: number;
+    payable_amount_cents: number;
+    received_amount_cents: number | null;
+    payment_confirmed_at: string | null;
+};
 export type AdminOrderSummary = {
+    payment_confirmed_at?: string | null;
     order_id: ResourceId;
     api_client_id: string;
     merchant_order_no: MerchantOrderNumber;
@@ -1026,6 +1036,7 @@ export type WebhookDeliveryFields = {
 };
 export type WebhookDelivery = WebhookDeliveryFields;
 export type WebhookDeliverySummary = WebhookDeliveryFields & {
+    order_summary?: OrderIdentitySummary | null;
     event: {
         event_type: string;
         order_id: ResourceId;

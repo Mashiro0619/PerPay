@@ -1,3 +1,4 @@
+import { MemoryRouter } from "react-router";
 import {
   fireEvent,
   render,
@@ -10,7 +11,14 @@ import { describe, expect, it, vi } from "vitest";
 import type { SystemAnalytics } from "../src/api/client";
 import { ChartAreaInteractive } from "../src/components/chart-area-interactive";
 import { DailyAnalytics } from "../src/components/daily-analytics";
-import { SectionCards } from "../src/components/section-cards";
+import { SectionCards as SummaryCards } from "../src/components/section-cards";
+function SectionCards(props: Parameters<typeof SummaryCards>[0]) {
+  return (
+    <MemoryRouter>
+      <SummaryCards {...props} />
+    </MemoryRouter>
+  );
+}
 function analytics(days: 7 | 30 | 90 = 7): SystemAnalytics {
   return {
     range_days: days,
@@ -39,18 +47,32 @@ function analytics(days: 7 | 30 | 90 = 7): SystemAnalytics {
 }
 
 describe("official shadcn interactive chart", () => {
-  it("keeps complete metric values in wrapping text rather than inner scroll containers", () => {
+  it("shows only the selected period total with compact metric switches", async () => {
     const data = analytics();
     data.confirmations.amount_cents = 4270937;
     data.orders.created = 1105;
-    const { container } = render(<ChartAreaInteractive analytics={data} range={7} onRangeChange={vi.fn()} pending={false} />);
+    const { container } = render(
+      <ChartAreaInteractive
+        analytics={data}
+        range={7}
+        onRangeChange={vi.fn()}
+        pending={false}
+      />,
+    );
     const values = container.querySelectorAll("[data-metric-value]");
-    expect(values).toHaveLength(2);
+    expect(values).toHaveLength(1);
     expect(values[0]).toHaveTextContent("¥42,709.37");
-    expect(values[1]).toHaveTextContent("1,105");
+    expect(screen.getByText("区间累计")).toBeVisible();
+    expect(container.querySelector("[data-slot=card-footer]")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "新建订单" }));
+    expect(values[0]).toHaveTextContent("1,105");
     for (const value of values) {
       expect(value).not.toHaveClass("overflow-x-auto", "leading-none");
-      expect(value).toHaveClass("whitespace-normal", "wrap-anywhere", "leading-tight");
+      expect(value).toHaveClass(
+        "whitespace-normal",
+        "wrap-anywhere",
+        "leading-tight",
+      );
     }
     expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
   });
@@ -75,12 +97,16 @@ describe("official shadcn interactive chart", () => {
         chartType,
       );
       expect(container.querySelectorAll(selector)).toHaveLength(1);
+      // jsdom's ResizeObserver fixture supplies a synthetic height, so guard
+      // the definite parent height as well; real-browser checks verify the SVG.
+      expect(container.querySelector("[data-slot=chart]")).toHaveClass("h-[250px]", "flex-none");
+      expect(container.querySelector("[data-slot=chart]")).not.toHaveClass("flex-1");
       expect(
         container.querySelector('svg[role="application"]'),
       ).toHaveAttribute("tabindex", "0");
       expect(container.querySelector("[data-slot=chart] style")).toBeNull();
       const metrics = screen.getByRole("group", { name: "趋势指标" });
-      expect(metrics.closest("[data-slot=card-header]")).not.toBeNull();
+      expect(metrics.closest('[role="tabpanel"]')).not.toBeNull();
       expect(
         within(metrics).getByRole("button", { name: "确认金额" }),
       ).toHaveAccessibleDescription("¥100.01");
@@ -115,32 +141,54 @@ describe("official shadcn interactive chart", () => {
       ] as const) {
         await user.click(screen.getByRole("button", { name: label }));
         const color = "var(--" + token + ")";
-        const chart = container.querySelector<SVGElement>('svg[role="application"]')!;
+        const chart = container.querySelector<SVGElement>(
+          'svg[role="application"]',
+        )!;
         fireEvent.focus(chart);
         fireEvent.keyDown(chart, { key: "ArrowRight" });
         await waitFor(() =>
-          expect(container.querySelector(".recharts-tooltip-wrapper")).toHaveTextContent(value),
+          expect(
+            container.querySelector(".recharts-tooltip-wrapper"),
+          ).toHaveTextContent(value),
         );
-        const tooltip = container.querySelector<HTMLElement>(".recharts-tooltip-wrapper")!;
+        const tooltip = container.querySelector<HTMLElement>(
+          ".recharts-tooltip-wrapper",
+        )!;
         expect(within(tooltip).getByText(label, { exact: true })).toBeVisible();
         expect(tooltip.querySelector(".bg-" + token)).not.toBeNull();
         if (chartType === "BAR") {
           await waitFor(() =>
-            expect(container.querySelector(".recharts-active-bar .recharts-rectangle")).toHaveAttribute("fill", color),
+            expect(
+              container.querySelector(
+                ".recharts-active-bar .recharts-rectangle",
+              ),
+            ).toHaveAttribute("fill", color),
           );
-          const active = container.querySelector(".recharts-active-bar .recharts-rectangle");
-          const inactive = container.querySelector(".recharts-inactive-bar .recharts-rectangle");
+          const active = container.querySelector(
+            ".recharts-active-bar .recharts-rectangle",
+          );
+          const inactive = container.querySelector(
+            ".recharts-inactive-bar .recharts-rectangle",
+          );
           expect(active).toHaveAttribute("fill", color);
           expect(active).toHaveAttribute("fill-opacity", "1");
           expect(inactive).toHaveAttribute("fill", color);
           expect(inactive).toHaveAttribute("fill-opacity", "0.85");
         } else {
-          const curve = container.querySelector(chartType === "AREA" ? ".recharts-area-curve" : ".recharts-line-curve");
+          const curve = container.querySelector(
+            chartType === "AREA"
+              ? ".recharts-area-curve"
+              : ".recharts-line-curve",
+          );
           expect(curve).toHaveAttribute("stroke", color);
           expect(curve).toHaveAttribute("stroke-width", "2");
-          expect(container.querySelector(".recharts-active-dot circle")).toHaveAttribute("fill", color);
+          expect(
+            container.querySelector(".recharts-active-dot circle"),
+          ).toHaveAttribute("fill", color);
           if (chartType === "AREA") {
-            expect(container.querySelector(".recharts-area-area")).toHaveAttribute("fill-opacity", "1");
+            expect(
+              container.querySelector(".recharts-area-area"),
+            ).toHaveAttribute("fill-opacity", "1");
             const stops = container.querySelectorAll("linearGradient stop");
             expect(stops).toHaveLength(2);
             expect(stops[0]).toHaveAttribute("stop-color", color);
@@ -469,7 +517,7 @@ describe("official shadcn interactive chart", () => {
   });
 });
 
-describe("always-visible daily analytics", () => {
+describe("daily analytics table", () => {
   it.each([7, 30, 90] as const)(
     "shows %i days newest-first, ten per page, without hiding evidence",
     async (range) => {
@@ -477,10 +525,7 @@ describe("always-visible daily analytics", () => {
       const dates = data.daily.map((day) => day.date);
       render(<DailyAnalytics analytics={data} range={range} pending={false} />);
       const table = screen.getByRole("table", { name: "每日收款数据" });
-      expect(screen.getByRole("heading", { name: "每日数据" })).toBeVisible();
-      expect(
-        screen.queryByRole("button", { name: "每日数据" }),
-      ).not.toBeInTheDocument();
+      expect(screen.getByRole("region", { name: "每日数据" })).toBeVisible();
       expect(within(table).getAllByRole("row")).toHaveLength(
         Math.min(10, range) + 1,
       );
@@ -565,19 +610,96 @@ describe("always-visible daily analytics", () => {
     const { container, rerender } = render(
       <SectionCards analytics={undefined} pending />,
     );
-    expect(container.querySelectorAll("[data-slot=skeleton]")).toHaveLength(2);
+    expect(container.querySelectorAll("[data-slot=skeleton]")).toHaveLength(4);
     rerender(<SectionCards analytics={undefined} pending={false} />);
     expect(container.querySelectorAll("[data-slot=skeleton]")).toHaveLength(0);
-    expect(screen.getAllByText("—")).toHaveLength(2);
+    expect(screen.getAllByText("—")).toHaveLength(4);
     expect(screen.queryByText("0")).not.toBeInTheDocument();
   });
 
   it("leaves only confirmation count and current unpaid orders in the summary cards", () => {
     const { container } = render(<SectionCards analytics={analytics()} />);
-    expect(container.querySelectorAll("[data-slot=card]")).toHaveLength(2);
-    expect(screen.getByText("确认次数")).toBeVisible();
+    expect(container.querySelectorAll("[data-slot=card]")).toHaveLength(4);
+    expect(screen.getByText("今日确认笔数")).toBeVisible();
+    expect(screen.getByText("今日确认金额")).toBeVisible();
+    expect(screen.getByText("需处理事项")).toBeVisible();
     expect(screen.getByText("当前待付款")).toBeVisible();
     expect(screen.queryByText("付款确认金额")).not.toBeInTheDocument();
     expect(screen.queryByText("新建订单")).not.toBeInTheDocument();
+  });
+});
+
+describe("shared trend and daily views", () => {
+  it("keeps daily data in the trend card, retains pagination across views and resets it on period changes", async () => {
+    const user = userEvent.setup();
+    const change = vi.fn();
+    const { container, rerender } = render(
+      <ChartAreaInteractive
+        analytics={analytics(30)}
+        range={30}
+        pending={false}
+        onRangeChange={change}
+      />,
+    );
+    const trend = screen.getByRole("heading", { name: "收款趋势" });
+    const chartTab = screen.getByRole("tab", { name: "图表" });
+    const dailyTab = screen.getByRole("tab", { name: "每日数据" });
+    expect(
+      screen.queryByRole("table", { name: "每日收款数据" }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "新建订单" }));
+    await user.click(dailyTab);
+    const table = screen.getByRole("table", { name: "每日收款数据" });
+    expect(table.closest('[data-slot="card"]')).toBe(
+      trend.closest('[data-slot="card"]'),
+    );
+    expect(container.querySelectorAll('[data-slot="card"]')).toHaveLength(1);
+    expect(
+      screen.queryByRole("group", { name: "趋势指标" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByText("2026-06-01 — 2026-06-30")).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "每日数据下一页" }));
+    expect(screen.getByRole("status")).toHaveTextContent("第 2 / 3 页");
+    await user.click(chartTab);
+    expect(
+      screen.queryByRole("table", { name: "每日收款数据" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "新建订单" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await user.click(dailyTab);
+    expect(screen.getByRole("status")).toHaveTextContent("第 2 / 3 页");
+    await user.click(screen.getByRole("button", { name: "近 7 天" }));
+    expect(change).toHaveBeenCalledExactlyOnceWith("7");
+    rerender(
+      <ChartAreaInteractive
+        analytics={undefined}
+        range={7}
+        pending
+        onRangeChange={change}
+      />,
+    );
+    expect(dailyTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("region", { name: "每日数据" })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+    expect(
+      screen.getByRole("button", { name: "每日数据下一页" }),
+    ).toBeDisabled();
+    rerender(
+      <ChartAreaInteractive
+        analytics={analytics(7)}
+        range={7}
+        pending={false}
+        onRangeChange={change}
+      />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("第 1 / 1 页");
+    dailyTab.focus();
+    await user.keyboard("{ArrowLeft}{Enter}");
+    expect(chartTab).toHaveFocus();
+    expect(chartTab).toHaveAttribute("aria-selected", "true");
   });
 });
