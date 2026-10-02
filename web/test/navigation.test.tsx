@@ -542,7 +542,7 @@ describe("navigation and draft protection", () => {
     await screen.findByText(/已保存/);
     await waitFor(() => expect(unloadIsBlocked()).toBe(false));
     await user.click(screen.getByRole("tab", { name: "自动备份" }));
-    expect(await screen.findByLabelText("备份间隔（秒）")).toBeVisible();
+    expect(await screen.findByLabelText("备份间隔")).toBeVisible();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
@@ -628,5 +628,96 @@ describe("overview layout and demo indicator", () => {
     expect(
       screen.queryByRole("button", { name: "只读演示说明" }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("page actions in the shared header", () => {
+  it.each([false, true])(
+    "places settings actions before appearance without duplicates (mobile: %s)",
+    async (mobile) => {
+      const { container, router } = mount({ mobile, configured: true });
+      await screen.findByLabelText("收银台有效期（秒）");
+      const header = container.querySelector("header")!;
+      const wizard = within(header).getByRole("link", { name: "配置向导" });
+      const refresh = within(header).getByRole("button", { name: "刷新" });
+      const theme = within(header).getByRole("button", { name: /外观/ });
+      expect(
+        wizard.compareDocumentPosition(theme) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        refresh.compareDocumentPosition(theme) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(screen.getAllByRole("button", { name: "刷新" })).toHaveLength(1);
+      expect(screen.getAllByRole("link", { name: "配置向导" })).toHaveLength(1);
+      await act(async () => {
+        await router.navigate("/system");
+      });
+      expect(
+        await within(header).findByRole("button", { name: "刷新" }),
+      ).toBeVisible();
+      expect(
+        within(header).queryByRole("link", { name: "配置向导" }),
+      ).not.toBeInTheDocument();
+      expect(
+        container.querySelector('#main-content button[title="刷新"]'),
+      ).toBeNull();
+      await act(async () => {
+        await router.navigate("/orders");
+      });
+      expect(
+        within(header).queryByRole("button", { name: "刷新" }),
+      ).not.toBeInTheDocument();
+      expect(
+        header.querySelector("[data-page-header-actions]"),
+      ).toBeEmptyDOMElement();
+    },
+  );
+
+  it("keeps dirty settings when header refresh or wizard navigation is cancelled", async () => {
+    const { fetchMock, router } = mount();
+    const { user, field } = await edit();
+    const reads = () =>
+      fetchMock.mock.calls.filter(
+        ([request]) =>
+          new URL(request.url).pathname === "/api/admin/v1/settings",
+      ).length;
+    const before = reads();
+    const refresh = screen.getByRole("button", { name: "刷新" });
+    expect(refresh.closest("header")).not.toBeNull();
+    await user.click(refresh);
+    expect(await screen.findByRole("alertdialog")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "继续编辑" }));
+    expect(field).toHaveValue(450);
+    expect(reads()).toBe(before);
+    await waitFor(() => expect(refresh).toHaveFocus());
+    await user.click(screen.getByRole("link", { name: "配置向导" }));
+    await user.click(await screen.findByRole("button", { name: "继续编辑" }));
+    expect(router.state.location.pathname).toBe("/settings/collection");
+    expect(field).toHaveValue(450);
+    expect(unloadIsBlocked()).toBe(true);
+  });
+
+  it("disables the header refresh while the page's request is in flight", async () => {
+    const { fetchMock } = mount({ path: "/system", configured: true });
+    const refresh = await screen.findByRole("button", { name: "刷新" });
+    expect(refresh.closest("header")).not.toBeNull();
+    await waitFor(() => expect(refresh).toBeEnabled());
+    const original = fetchMock.getMockImplementation()!;
+    let finish!: (value: Response) => void;
+    fetchMock.mockImplementation((request) =>
+      new URL(request.url).pathname === "/api/admin/v1/system/status"
+        ? new Promise((resolve) => {
+            finish = resolve;
+          })
+        : original(request),
+    );
+    await userEvent.click(refresh);
+    await waitFor(() => expect(refresh).toBeDisabled());
+    await act(async () => {
+      finish(json({ data: systemStatus() }));
+    });
+    await waitFor(() => expect(refresh).toBeEnabled());
   });
 });

@@ -70,3 +70,7 @@ export function safeCheckoutUrl(value: string): string | null {
     return null;
   }
 }
+
+export function backupIntervalLabel(seconds: number): string {
+  return seconds % 86400 === 0 ? "每 " + seconds / 86400 + " 天" : seconds % 3600 === 0 ? "每 " + seconds / 3600 + " 小时" : "每 " + seconds + " 秒";
+}

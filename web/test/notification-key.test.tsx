@@ -92,8 +92,8 @@ describe("notification signing key rotation", () => {
     async (path) => {
       const view = mountOnboarding({ stage: 4, notificationKey: true, path });
       const user = userEvent.setup();
-      const input = await screen.findByLabelText("通知超时（毫秒）");
-      fireEvent.change(input, { target: { value: "9000" } });
+      const input = await screen.findByLabelText("通知超时（秒）");
+      fireEvent.change(input, { target: { value: "9" } });
       const before = structuredClone(view.saved);
       const dialog = await openRotation(user);
       await user.click(
@@ -116,7 +116,7 @@ describe("notification signing key rotation", () => {
       expect(JSON.stringify(localStorage)).not.toContain(newSecret);
       expect(JSON.stringify(sessionStorage)).not.toContain(newSecret);
       await user.click(within(result).getByRole("button", { name: "完成" }));
-      expect(screen.getByLabelText("通知超时（毫秒）")).toHaveValue(9000);
+      expect(screen.getByLabelText("通知超时（秒）")).toHaveValue(9);
       await user.click(
         screen.getByRole("button", {
           name: path.includes("onboarding") ? "保存通知" : "保存",

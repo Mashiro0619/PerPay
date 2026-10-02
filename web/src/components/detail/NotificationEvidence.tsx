@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -13,6 +14,7 @@ import {
   attemptResult,
   latestAttempt,
   notificationErrorName,
+  notificationRecoveryHint,
 } from "@/lib/detail-summary";
 import { dateTime } from "@/lib/format";
 import { label } from "@/lib/labels";
@@ -65,8 +67,18 @@ export function DeliveryCard({
       <CardHeader>
         <CardTitle role="heading" aria-level={2}>
           {sectionTitle ?? label(detail.event.event_type)}
-          {!detail.is_latest && " · 历史投递"}
         </CardTitle>
+        <CardDescription>
+          {!detail.is_latest
+            ? "历史投递"
+            : delivery.status === "DEAD_LETTER"
+              ? "已停止，需要处理"
+              : delivery.status === "RETRY_WAIT"
+                ? "等待自动重试"
+                : delivery.status === "ACKNOWLEDGED"
+                  ? "通知已送达"
+                  : "等待投递结果"}
+        </CardDescription>
         <CardDescription>
           {attemptsAvailable
             ? delivery.attempt_count === 0
@@ -80,6 +92,35 @@ export function DeliveryCard({
         </CardAction>
       </CardHeader>
       <CardContent className="flex min-w-0 flex-col gap-4">
+        {detail.is_latest &&
+          ["DEAD_LETTER", "RETRY_WAIT"].includes(delivery.status) && (
+            <p className="text-sm text-muted-foreground">
+              {notificationRecoveryHint(
+                delivery.last_error_code ?? last?.error_code ?? null,
+              )}{" "}
+              <a
+                className="underline underline-offset-4"
+                href="https://github.com/Mashiro0619/PerPay/blob/main/USAGE.md#5-回调通知"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                通知接入说明
+              </a>
+            </p>
+          )}
+        {detail.is_latest && delivery.status === "DEAD_LETTER" && (
+          <Button
+            variant="outline"
+            className="w-fit"
+            disabled={sent}
+            onClick={(event) => {
+              finalFocus.current = event.currentTarget;
+              setSnapshot(detail);
+            }}
+          >
+            重新投递
+          </Button>
+        )}
         <DetailFields
           wide={["通知地址", "重发理由"]}
           items={[
@@ -133,7 +174,7 @@ export function DeliveryCard({
           ]}
           to={embedded ? "/notifications/" + delivery.delivery_id : undefined}
           actions={
-            terminal && detail.is_latest
+            delivery.status === "ACKNOWLEDGED" && detail.is_latest
               ? [
                   {
                     label: "重新投递",

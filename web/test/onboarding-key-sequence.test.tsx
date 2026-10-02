@@ -79,7 +79,7 @@ describe("sequential application-key onboarding", () => {
     expect(within(form).getByLabelText("支付宝环境")).toHaveAttribute(
       "readonly",
     );
-    expect(screen.queryByLabelText("请求超时（毫秒）")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("请求超时（秒）")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "保存并继续" }),
     ).not.toBeInTheDocument();
@@ -164,7 +164,7 @@ describe("sequential application-key onboarding", () => {
       "readonly",
     );
     expect(screen.getByLabelText("支付宝公钥")).toBeRequired();
-    expect(screen.getByLabelText("请求超时（毫秒）")).toBeVisible();
+    expect(screen.getByLabelText("请求超时（秒）")).toBeVisible();
     expect(screen.getByRole("button", { name: "保存并继续" })).toBeVisible();
     expect(
       screen.queryByRole("button", { name: actionLabel }),

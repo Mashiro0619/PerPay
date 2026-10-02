@@ -88,6 +88,48 @@ docker compose up -d
 
 **不要为了回滚程序而直接覆盖已经产生新流水的数据库。** 旧备份不包含备份之后的订单、入账和操作记录。应先保留当前完整数据及主密钥；若升级后出现问题，先限制新下单，再使用兼容当前结构的修正版处理。
 
+## 启用与验证备份
+
+保存后台备份策略只更新间隔和保留数量，不会启动服务器进程。请以运行状态中的最近成功和可用备份为准；主密钥需另行保存。
+
+Docker Compose 部署，在部署目录执行：
+
+```sh
+docker compose up -d backup
+docker compose logs --tail=100 backup
+docker compose --profile maintenance run --rm maintenance health
+```
+
+需要单次验证时，先停止定时备份进程，避免争用；应用可继续运行：
+
+```sh
+docker compose stop backup
+docker compose --profile maintenance run --rm maintenance run-once
+docker compose --profile maintenance run --rm maintenance list-backups
+docker compose up -d backup
+```
+
+源码部署：使用与应用相同的构建、数据目录和备份目录，以相同用户运行。定时备份不读取主密钥；恢复时才需要原主密钥。
+
+```sh
+# 换成该实例的实际目录，不能指向另一实例。
+export PERPAY_DATA_DIR=/srv/perpay/data
+export PERPAY_BACKUP_DIR=/srv/perpay/backups
+node dist/backup/runner.js schedule
+```
+
+前台运行时日志直接输出到终端。正式部署交给 systemd 等服务管理器；若自建服务名为 `perpay-backup`，用 `journalctl -u perpay-backup -n 100 --no-pager` 查看日志。单次验证前停止这份定时服务，执行以下命令，再恢复定时服务：
+
+```sh
+node dist/backup/runner.js run-once
+node dist/backup/runner.js list-backups
+node dist/backup/runner.js health
+```
+
+不要同时运行两份定时备份，也不要把不同实例指向同一目录。
+
+成功备份不等于已完成恢复演练；恢复仍按下节在停服、保留当前数据后执行。
+
 ## 恢复数据库
 
 恢复会覆盖当前数据库。先保留当前数据副本，并确认原 `perpay-secrets` 卷仍在。

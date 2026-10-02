@@ -1,3 +1,4 @@
+import { PageHeaderActions } from "@/components/page-header-actions";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -8,6 +9,7 @@ import {
   QrCode,
   RefreshCw,
   SlidersHorizontal,
+  Settings2,
   Wallet,
 } from "lucide-react";
 import { useParams } from "react-router";
@@ -80,33 +82,32 @@ export default function Settings() {
   }
   return (
     <div className="@container/settings flex w-full min-w-0 flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-2xl font-semibold tracking-tight">实例设置</h2>
-          <p className="text-sm text-muted-foreground">
-            管理收款接入、订单和界面显示。
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link
-            className={buttonVariants({ variant: "outline" })}
-            to="/settings/onboarding"
-          >
-            配置向导
-          </Link>
-          <Button
-            variant="outline"
-            disabled={settings.isFetching}
-            onClick={refresh}
-          >
-            {settings.isFetching ? (
-              <Spinner aria-hidden="true" data-icon="inline-start" />
-            ) : (
-              <RefreshCw data-icon="inline-start" />
-            )}
-            刷新
-          </Button>
-        </div>
+      <PageHeaderActions>
+        <Link
+          className={buttonVariants({ variant: "ghost", size: "sm" })}
+          to="/settings/onboarding"
+          aria-label="配置向导"
+          title="配置向导"
+        >
+          <Settings2 data-icon="inline-start" />
+          <span className="hidden sm:inline">配置向导</span>
+        </Link>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="刷新"
+          title="刷新"
+          disabled={settings.isFetching}
+          onClick={refresh}
+        >
+          {settings.isFetching ? <Spinner aria-hidden="true" /> : <RefreshCw />}
+        </Button>
+      </PageHeaderActions>
+      <div className="flex flex-col gap-1">
+        <h2 className="text-2xl font-semibold tracking-tight">实例设置</h2>
+        <p className="text-sm text-muted-foreground">
+          管理收款接入、订单和界面显示。
+        </p>
       </div>
       <QueryView query={settings}>
         {({ data }) => {

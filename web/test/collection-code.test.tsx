@@ -369,7 +369,7 @@ describe("collection QR image upload", () => {
     await user.click(
       await screen.findByRole("button", { name: "放弃修改并继续" }),
     );
-    expect(await screen.findByLabelText("备份间隔（秒）")).toBeVisible();
+    expect(await screen.findByLabelText("备份间隔")).toBeVisible();
   });
 
   it("retains the decoded draft after a revision conflict", async () => {

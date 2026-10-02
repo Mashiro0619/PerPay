@@ -147,7 +147,7 @@ describe("first collection onboarding", () => {
     expect(await screen.findByLabelText("应用 ID（App ID）")).toBeVisible();
     expect(screen.getByLabelText("支付宝公钥")).toBeVisible();
     expect(screen.getByLabelText("支付宝环境")).toBeVisible();
-    expect(screen.getByLabelText("请求超时（毫秒）")).toBeVisible();
+    expect(screen.getByLabelText("请求超时（秒）")).toBeVisible();
     expect(
       screen.getByRole("link", { name: "支付宝应用管理" }),
     ).toHaveAttribute("href", "https://open.alipay.com/develop/manage");
@@ -382,14 +382,14 @@ describe("first collection onboarding", () => {
       stage: 4,
       path: onboardingPath("optional"),
     });
-    await screen.findByLabelText("备份间隔（秒）");
-    edit("备份间隔（秒）", "172800");
+    await screen.findByLabelText("备份间隔");
+    edit("备份间隔", "2");
     fireEvent.click(screen.getByRole("switch", { name: "启用业务通知" }));
     edit("通知网站（HTTPS 域名）", "https://shop.example.com");
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "保存通知" }));
     await screen.findByRole("button", { name: "查看签名密钥" });
-    expect(screen.getByLabelText("备份间隔（秒）")).toHaveValue(172800);
+    expect(screen.getByLabelText("备份间隔")).toHaveValue(2);
     expect(screen.getAllByText("未保存")).toHaveLength(1);
     await user.click(screen.getByRole("button", { name: "保存备份" }));
     await waitFor(() =>
@@ -427,8 +427,8 @@ describe("first collection onboarding", () => {
       stage: 4,
       path: onboardingPath("optional"),
     });
-    await screen.findByLabelText("备份间隔（秒）");
-    edit("备份间隔（秒）", "172800");
+    await screen.findByLabelText("备份间隔");
+    edit("备份间隔", "2");
     const user = userEvent.setup();
     await user.click(screen.getByRole("link", { name: "继续" }));
     await user.click(

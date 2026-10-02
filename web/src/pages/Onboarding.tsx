@@ -1,8 +1,10 @@
+import { PageHeaderActions } from "@/components/page-header-actions";
 import { useSystemName } from "@/branding";
 import { TestPaymentButton } from "@/components/test-payment-provider";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useIsFetching, useQuery } from "@tanstack/react-query";
 import {
+  BookOpen,
   Check,
   ChevronDown,
   RefreshCw,
@@ -41,12 +43,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-} from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { OnboardingSteps } from "@/components/onboarding-steps";
 import {
   Collapsible,
@@ -62,13 +59,13 @@ import {
   ItemActions,
   ItemGroup,
 } from "@/components/ui/item";
-import {
-  NotificationKeyActions,
-} from "./SecuritySettings";
+import { NotificationKeyActions } from "./SecuritySettings";
 export default function Onboarding() {
   const [editorVersion, setEditorVersion] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [activationLocked, setActivationLocked] = useState(false);
+  const readinessFetching =
+    useIsFetching({ queryKey: ["onboarding", "readiness"] }) > 0;
   const { requestDiscard } = useDraftGuard();
   const settings = useQuery({
     queryKey: ["settings"],
@@ -88,8 +85,8 @@ export default function Onboarding() {
   function reload() {
     requestDiscard(() => {
       setRefreshing(true);
-      void settings.refetch().then(
-        (response) => {
+      void Promise.all([settings.refetch(), instance.refetch()]).then(
+        ([response]) => {
           if (!response.isError) setEditorVersion((value) => value + 1);
           setRefreshing(false);
         },
@@ -103,33 +100,45 @@ export default function Onboarding() {
       className="@container/onboarding mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-5"
       data-onboarding-workspace
     >
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
-          按步骤完成收款配置，已有配置可直接复用。
-        </p>
-        <div className="flex shrink-0 items-center gap-2">
-          <a
-            className={buttonVariants({ variant: "ghost", size: "sm" })}
-            href="https://github.com/Mashiro0619/PerPay/blob/main/docs/alipay-setup.md"
-            target="_blank"
-            rel="noreferrer"
-          >
-            图文教程
-          </a>
-          <Button
-            variant="outline"
-            disabled={settings.isFetching || activationLocked}
-            onClick={reload}
-          >
-            {settings.isFetching ? (
-              <Spinner aria-hidden="true" data-icon="inline-start" />
-            ) : (
-              <RefreshCw data-icon="inline-start" />
-            )}
-            刷新
-          </Button>
-        </div>
-      </header>
+      <PageHeaderActions>
+        <a
+          className={buttonVariants({ variant: "ghost", size: "sm" })}
+          href="https://github.com/Mashiro0619/PerPay/blob/main/docs/alipay-setup.md"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="图文教程"
+          title="图文教程"
+        >
+          <BookOpen data-icon="inline-start" />
+          <span className="hidden sm:inline">图文教程</span>
+        </a>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="刷新"
+          title="刷新"
+          disabled={
+            refreshing ||
+            settings.isFetching ||
+            instance.isFetching ||
+            readinessFetching ||
+            activationLocked
+          }
+          onClick={reload}
+        >
+          {refreshing ||
+          settings.isFetching ||
+          instance.isFetching ||
+          readinessFetching ? (
+            <Spinner aria-hidden="true" />
+          ) : (
+            <RefreshCw />
+          )}
+        </Button>
+      </PageHeaderActions>
+      <p className="text-sm text-muted-foreground">
+        按步骤完成收款配置，已有配置可直接复用。
+      </p>
       <ErrorNotice
         error={instance.error}
         retry={() => {
@@ -254,7 +263,8 @@ function OnboardingFlow({
                   <p>应用公钥和应用私钥是一对，合称“应用密钥对”。</p>
                   <p>应用公钥：复制到支付宝的接口加签设置。</p>
                   <p>
-                    应用私钥：由 {systemName} 加密保存，用于向支付宝发送签名请求。
+                    应用私钥：由 {systemName}{" "}
+                    加密保存，用于向支付宝发送签名请求。
                   </p>
                   <p>
                     {pendingApplicationKey
@@ -469,6 +479,7 @@ function OnboardingFlow({
               instanceId={instanceId}
               onReload={onReload}
               renderActions={renderActions}
+              showRefresh={false}
             />
           )}
         </div>
@@ -553,7 +564,7 @@ function OnboardingFooter({
           {children}
         </div>
       </div>
-      {instanceId && (
+      {instanceId && index < onboardingSteps.length - 1 && (
         <div className="flex flex-wrap items-center gap-2">
           {!complete && (
             <Link
@@ -640,11 +651,14 @@ export function ReadinessCheck({
   instanceId,
   onReload,
   renderActions,
+  showRefresh = true,
 }: {
   settings: RuntimeSettings;
   instanceId: string | null;
   onReload: () => void;
   renderActions?: (actions: ReactNode) => ReactNode;
+  /** The full wizard refreshes settings and remounts this check from its header. */
+  showRefresh?: boolean;
 }) {
   const systemName = useSystemName();
   const view = useVisibleCheck();
@@ -682,13 +696,13 @@ export function ReadinessCheck({
     status?.payment_revision === settings.payment_revision;
   const ready = Boolean(
     fresh &&
-      matches &&
-      settings.completion.complete &&
-      status?.configured &&
-      status.database.ok &&
-      status.ledger.collection_ready &&
-      status.reconciliation.confirmation_ready &&
-      status.status !== "not_ready",
+    matches &&
+    settings.completion.complete &&
+    status?.configured &&
+    status.database.ok &&
+    status.ledger.collection_ready &&
+    status.reconciliation.confirmation_ready &&
+    status.status !== "not_ready",
   );
   const missingConfiguration = [
     [settings.completion.application_key, "应用公钥"],
@@ -761,26 +775,6 @@ export function ReadinessCheck({
   ];
   const runtimeWarnings =
     ready && status ? onboardingRuntimeWarnings(status) : [];
-  const workItems = ready ? status?.work_items : null;
-  const businessReminders = workItems
-    ? [
-        {
-          label: "账务异常",
-          count: workItems.financial_exceptions,
-          type: "FINANCIAL_EXCEPTION",
-        },
-        {
-          label: "账本冲突",
-          count: workItems.ledger_conflicts,
-          type: "LEDGER_CONFLICT",
-        },
-        {
-          label: "通知失败",
-          count: workItems.notification_failures,
-          type: "NOTIFICATION_FAILURE",
-        },
-      ].filter((item) => item.count > 0)
-    : [];
   const actions = (
     <div className="flex flex-wrap items-center gap-2">
       {ready && (
@@ -797,18 +791,20 @@ export function ReadinessCheck({
           </Link>
         </>
       )}
-      <Button
-        variant="outline"
-        disabled={!view.active || query.isFetching}
-        onClick={() => {
-          void query.refetch();
-        }}
-      >
-        {query.isFetching && (
-          <Spinner aria-hidden="true" data-icon="inline-start" />
-        )}
-        刷新
-      </Button>
+      {showRefresh && (
+        <Button
+          variant="outline"
+          disabled={!view.active || query.isFetching}
+          onClick={() => {
+            void query.refetch();
+          }}
+        >
+          {query.isFetching && (
+            <Spinner aria-hidden="true" data-icon="inline-start" />
+          )}
+          刷新
+        </Button>
+      )}
       {!ready && (
         <Link className={buttonVariants({ variant: "ghost" })} to="/system">
           运行状态
@@ -839,7 +835,10 @@ export function ReadinessCheck({
       {ready && (
         <Alert role="status" data-onboarding-ready>
           <CircleCheck />
-          <AlertTitle>收款配置已完成，可以收款。</AlertTitle>
+          <AlertTitle>收款服务就绪</AlertTitle>
+          <AlertDescription>
+            业务网站仍需配置接入凭证并完成通知或查单联调。
+          </AlertDescription>
         </Alert>
       )}
       <ItemGroup className="grid min-w-0 grid-cols-1 gap-3 @3xl/onboarding:grid-cols-2">
@@ -868,26 +867,6 @@ export function ReadinessCheck({
           </Item>
         ))}
       </ItemGroup>
-      {businessReminders.length > 0 && workItems && (
-        <Alert role="status" data-onboarding-business-reminders>
-          <CircleAlert />
-          <AlertTitle>有 {workItems.total} 项业务待处理</AlertTitle>
-          <AlertDescription>
-            这些是业务记录提醒，不代表收款配置未完成。仅统计未忽略的待处理事项。
-          </AlertDescription>
-          <div className="col-start-2 flex min-w-0 flex-wrap gap-2 pt-2">
-            {businessReminders.map((item) => (
-              <Link
-                key={item.type}
-                className={buttonVariants({ variant: "outline", size: "sm" })}
-                to={"/work-items?type=" + item.type}
-              >
-                {item.label} {item.count} 项
-              </Link>
-            ))}
-          </div>
-        </Alert>
-      )}
       {runtimeWarnings.length > 0 && (
         <Alert role="status" data-onboarding-runtime-warnings>
           <CircleAlert />

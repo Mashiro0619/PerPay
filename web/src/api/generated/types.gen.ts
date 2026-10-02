@@ -49,6 +49,7 @@ export type SystemStatus = {
     ledger: LedgerHealth;
     reconciliation: ReconciliationHealth;
     webhook: WebhookHealth;
+    backup_policy?: BackupSettings;
     backup: BackupHealth;
     work_items: AdminWorkItemSummary;
 };

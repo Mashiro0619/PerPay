@@ -62,6 +62,7 @@ const initialTimings = { revision: 0, payment_revision: 0, normal: 60_000, activ
 describe("provider timing defaults", () => {
   it("seeds new databases from shared defaults without configuring a provider or advancing revisions", async () => {
     assert.deepEqual(PROVIDER_TIMING_DEFAULTS, {
+      timeoutMilliseconds: 8000, safetyLagSeconds: 10,
       scanIntervalSeconds: 60, activeScanIntervalSeconds: 8, maximumSuccessAgeSeconds: 120,
     });
     await withDatabasePath(async (databasePath) => {

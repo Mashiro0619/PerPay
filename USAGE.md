@@ -374,3 +374,5 @@ export async function receivePerPayWebhook(request) {
 - 只有服务端查询或验签通知显示 `CONFIRMED` 时，才执行发货、充值或余额增加。
 
 完整字段、错误码和接口契约见 [`openapi.yaml`](openapi.yaml)。
+
+配置表单的请求／通知超时以秒显示，备份间隔可用秒、小时或天；API 仍使用原有毫秒／秒字段，转换不舍入。采集组“采用推荐值”只改草稿，保存后才生效，加载不覆盖旧配置。备份策略保存不表示任务已启动或恢复已验证，参见[启用与验证备份](docs/maintenance.md#启用与验证备份)。

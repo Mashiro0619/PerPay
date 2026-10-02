@@ -2652,6 +2652,8 @@ components:
           $ref: '#/components/schemas/ReconciliationHealth'
         webhook:
           $ref: '#/components/schemas/WebhookHealth'
+        backup_policy:
+          $ref: '#/components/schemas/BackupSettings'
         backup:
           $ref: '#/components/schemas/BackupHealth'
         work_items:

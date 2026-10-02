@@ -2082,6 +2082,7 @@ async function systemStatus(dependencies: AppDependencies) {
     },
     webhook: serializeWebhookHealth(webhook),
     work_items: operations.workItems,
+    ...(dependencies.settings ? { backup_policy: dependencies.settings.view().backup } : {}),
     backup,
   };
 }

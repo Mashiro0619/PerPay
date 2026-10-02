@@ -1,3 +1,4 @@
+import { PageHeaderActionsSlot } from "@/components/page-header-actions";
 import { RefreshCw } from "lucide-react";
 import { useIsFetching } from "@tanstack/react-query";
 import { refreshOperationalData } from "@/api/client";
@@ -44,6 +45,7 @@ export function SiteHeader({
               </TestPaymentButton>
             </>
           )}
+          <PageHeaderActionsSlot />
           <ThemeControl />
         </div>
       </div>

@@ -358,7 +358,7 @@ describe("order detail work surface", () => {
     mount();
     const user = userEvent.setup();
     await screen.findByRole("button", { name: "通知记录操作" });
-    await user.click(await recordAction("重新投递", "通知记录操作"));
+    await user.click(await screen.findByRole("button", { name: "重新投递" }));
     await confirmReason(user, "业务已修复", "确认重新投递");
     await screen.findByText("操作结果待确认");
     await user.click(screen.getByRole("button", { name: "响应详情" }));

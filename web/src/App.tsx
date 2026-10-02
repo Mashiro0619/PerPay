@@ -1,3 +1,4 @@
+import { PageHeaderActionsProvider } from "@/components/page-header-actions";
 import { useSystemName } from "@/branding";
 import { SystemStatusBoundary } from "@/features/system-status";
 import {
@@ -51,7 +52,9 @@ function AppShell() {
         } as CSSProperties
       }
     >
-      <Workspace />
+      <PageHeaderActionsProvider>
+        <Workspace />
+      </PageHeaderActionsProvider>
     </SidebarProvider>
   );
 }
@@ -167,7 +170,9 @@ export const appRoutes = createRoutesFromElements(
       <AuthBoundary>
         <DraftProvider>
           <TestPaymentProvider>
-            <SystemStatusBoundary><AppShell /></SystemStatusBoundary>
+            <SystemStatusBoundary>
+              <AppShell />
+            </SystemStatusBoundary>
           </TestPaymentProvider>
         </DraftProvider>
       </AuthBoundary>

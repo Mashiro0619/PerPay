@@ -14,7 +14,7 @@ const sections = [
     section: "provider",
     fields: [
       "支付宝环境",
-      "请求超时（毫秒）",
+      "请求超时（秒）",
       "常规采集间隔（秒）",
       "活跃采集间隔（秒）",
       "安全延迟（秒）",
@@ -33,7 +33,7 @@ const sections = [
     section: "notifications",
     fields: [
       "通知网站（HTTPS 域名）",
-      "通知超时（毫秒）",
+      "通知超时（秒）",
       "最大尝试次数",
       "首次重试间隔（秒）",
       "最大重试间隔（秒）",
@@ -45,7 +45,7 @@ const sections = [
   },
   {
     section: "backup",
-    fields: ["备份间隔（秒）", "保留备份数量"],
+    fields: ["备份间隔", "保留备份数量"],
   },
 ] as const;
 
@@ -165,5 +165,30 @@ describe("provider environment select", () => {
     await user.click(await screen.findByRole("option", { name: "生产环境" }));
     expect(screen.queryByText("当前环境不可用")).not.toBeInTheDocument();
     expect(trigger).toHaveAttribute("aria-invalid", "false");
+  });
+});
+
+
+describe("exact duration drafts", () => {
+  it("round-trips existing millisecond values and recommends without saving", async () => {
+    const settings = configuredThrough(4);
+    settings.provider!.timeout_milliseconds = 8123;
+    settings.provider!.scan_interval_seconds = 61;
+    settings.provider!.maximum_success_age_seconds = 122;
+    const fetchMock = vi.fn().mockResolvedValue(json({ data: settings }));
+    vi.stubGlobal("fetch", fetchMock);
+    const onSaved = vi.fn();
+    render(<QueryClientProvider client={queryClient}><MemoryRouter><SettingsEditor section="provider" settings={settings} onSaved={onSaved} guided /></MemoryRouter></QueryClientProvider>);
+    const user = userEvent.setup();
+    expect(screen.getByLabelText("请求超时（秒）")).toHaveValue(8.123);
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(await new Request(...fetchMock.mock.calls[0] as [RequestInfo, RequestInit]).json()).toMatchObject({timeout_milliseconds:8123,scan_interval_seconds:61});
+    fetchMock.mockClear();
+    await user.click(screen.getByRole("button", { name: "采用推荐值" }));
+    expect(screen.getByLabelText("请求超时（秒）")).toHaveValue(8);
+    expect(screen.getByLabelText("常规采集间隔（秒）")).toHaveValue(60);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
   });
 });

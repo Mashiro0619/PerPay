@@ -127,8 +127,8 @@ describe("non-blocking pending application keys", () => {
     expect(view.saved.pending_application_key).toEqual(pending);
     expect(view.saved.application_public_key).toBe(currentKey);
     await user.click(screen.getByRole("link", { name: /通知与备份/ }));
-    fireEvent.change(await screen.findByLabelText("备份间隔（秒）"), {
-      target: { value: "172800" },
+    fireEvent.change(await screen.findByLabelText("备份间隔"), {
+      target: { value: "2" },
     });
     await user.click(screen.getByRole("button", { name: "保存备份" }));
     await waitFor(() =>

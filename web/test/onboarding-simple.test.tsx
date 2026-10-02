@@ -108,9 +108,9 @@ describe("minimal onboarding", () => {
     await user.click(screen.getByRole("button", { name: "保存并继续" }));
     expect(await screen.findByText("请求超时设置不符合要求")).toBeVisible();
     await waitFor(() =>
-      expect(screen.getByLabelText("请求超时（毫秒）")).toHaveFocus(),
+      expect(screen.getByLabelText("请求超时（秒）")).toHaveFocus(),
     );
-    expect(screen.getByLabelText("请求超时（毫秒）")).toBeVisible();
+    expect(screen.getByLabelText("请求超时（秒）")).toBeVisible();
     expect(
       screen.queryByRole("button", { name: "高级设置" }),
     ).not.toBeInTheDocument();
@@ -131,7 +131,7 @@ describe("minimal onboarding", () => {
     expect(screen.getByLabelText("通知网站（HTTPS 域名）")).not.toBeVisible();
     expect(screen.getByLabelText("通知网站（HTTPS 域名）")).toBeDisabled();
     expect(screen.getByLabelText("最大尝试次数")).not.toBeVisible();
-    expect(screen.getByLabelText("备份间隔（秒）")).toBeVisible();
+    expect(screen.getByLabelText("备份间隔")).toBeVisible();
     expect(screen.getByLabelText("保留备份数量")).toBeVisible();
     expect(
       screen.queryByRole("button", { name: "调整备份策略" }),
@@ -223,9 +223,9 @@ describe("minimal onboarding", () => {
     );
     const origin = screen.getByLabelText("通知网站（HTTPS 域名）");
     await user.type(origin, "https://draft.example.com");
-    expect(screen.getByLabelText("备份间隔（秒）")).toBeVisible();
-    fireEvent.change(screen.getByLabelText("备份间隔（秒）"), {
-      target: { value: "172800" },
+    expect(screen.getByLabelText("备份间隔")).toBeVisible();
+    fireEvent.change(screen.getByLabelText("备份间隔"), {
+      target: { value: "2" },
     });
     await user.click(screen.getByRole("button", { name: "保存备份" }));
     expect(await screen.findByText("每 2 天备份，保留 7 份。")).toBeVisible();
@@ -238,7 +238,7 @@ describe("minimal onboarding", () => {
       "/api/admin/v1/settings/backup",
     );
     const backupRequest = await view.writes()[0]!.clone().json();
-    expect(screen.getByLabelText("备份间隔（秒）")).toHaveValue(172800);
+    expect(screen.getByLabelText("备份间隔")).toHaveValue(2);
 
     await user.click(screen.getByRole("button", { name: "保存通知" }));
     expect(
@@ -252,7 +252,7 @@ describe("minimal onboarding", () => {
     });
     expect(screen.getByLabelText("通知网站（HTTPS 域名）")).toBe(origin);
     expect(origin).toHaveValue("https://draft.example.com");
-    expect(screen.getByLabelText("备份间隔（秒）")).toHaveValue(172800);
+    expect(screen.getByLabelText("备份间隔")).toHaveValue(2);
     await waitFor(() =>
       expect(screen.queryByText("未保存")).not.toBeInTheDocument(),
     );
@@ -261,7 +261,7 @@ describe("minimal onboarding", () => {
 
   it("focuses a directly visible parameter for native validation", async () => {
     mountOnboarding({ stage: 1 });
-    const timeout = await screen.findByLabelText("请求超时（毫秒）");
+    const timeout = await screen.findByLabelText("请求超时（秒）");
     expect(timeout).toBeVisible();
     fireEvent.invalid(timeout);
     await waitFor(() => expect(timeout).toHaveFocus());

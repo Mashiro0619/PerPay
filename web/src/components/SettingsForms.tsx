@@ -1,3 +1,5 @@
+import { integerUnits } from "../../../src/shared/time-units";
+import { BackupStatus } from "@/components/backup-status";
 import { setSystemName } from "@/branding";
 import {
   Fragment,
@@ -100,6 +102,7 @@ function NumberField({
   max,
   hint,
   error,
+  scale = 1,
 }: {
   name: string;
   label: string;
@@ -108,6 +111,7 @@ function NumberField({
   max: number;
   hint?: string;
   error?: string;
+  scale?: number;
 }) {
   const id = "setting-" + name;
   return (
@@ -117,12 +121,12 @@ function NumberField({
         id={id}
         name={name}
         type="number"
-        inputMode="numeric"
-        min={min}
-        max={max}
-        step={1}
+        inputMode={scale === 1 ? "numeric" : "decimal"}
+        min={min / scale}
+        max={max / scale}
+        step={1 / scale}
         required
-        defaultValue={value}
+        defaultValue={value / scale}
         aria-invalid={!!error}
         aria-describedby={
           [hint && id + "-hint", error && id + "-error"]
@@ -132,6 +136,90 @@ function NumberField({
       />
       {hint && <FieldDescription id={id + "-hint"}>{hint}</FieldDescription>}
       {error && <FieldError id={id + "-error"}>{error}</FieldError>}
+    </Field>
+  );
+}
+function BackupIntervalField({
+  value,
+  error,
+  onChange,
+}: {
+  value: number;
+  error?: string;
+  onChange: () => void;
+}) {
+  const initialUnit =
+    value % 86400 === 0 ? 86400 : value % 3600 === 0 ? 3600 : 1;
+  const [unit, setUnit] = useState(initialUnit);
+  const [amount, setAmount] = useState(String(value / initialUnit));
+  const canonical = integerUnits(amount, unit);
+  useEffect(() => {
+    onChange();
+  }, [unit, amount]);
+  return (
+    <Field data-invalid={!!error}>
+      <FieldLabel htmlFor="setting-interval_seconds">备份间隔</FieldLabel>
+      <div className="flex items-center gap-2">
+        <Input
+          id="setting-interval_seconds"
+          name="interval_seconds"
+          type="number"
+          min={3600 / unit}
+          max={604800 / unit}
+          step="any"
+          required
+          value={amount}
+          onChange={(event) => setAmount(event.target.value)}
+          aria-invalid={!!error}
+          aria-describedby={
+            error ? "setting-interval_seconds-error" : undefined
+          }
+        />
+        <Select
+          name="_backup_interval_unit"
+          value={String(unit)}
+          items={[
+            { value: "1", label: "秒" },
+            { value: "3600", label: "小时" },
+            { value: "86400", label: "天" },
+          ]}
+          onValueChange={(value) => {
+            const next = Number(value);
+            if (
+              canonical !== null &&
+              [1, 3600, 86400].includes(next) &&
+              canonical % next === 0
+            ) {
+              setUnit(next);
+              setAmount(String(canonical / next));
+            }
+          }}
+        >
+          <SelectTrigger aria-label="备份间隔单位">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {[
+                [1, "秒"],
+                [3600, "小时"],
+                [86400, "天"],
+              ].map(([n, label]) => (
+                <SelectItem
+                  key={n}
+                  value={String(n)}
+                  disabled={canonical === null || canonical % Number(n) !== 0}
+                >
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </div>
+      {error && (
+        <FieldError id="setting-interval_seconds-error">{error}</FieldError>
+      )}
     </Field>
   );
 }
@@ -215,10 +303,12 @@ export function SettingsEditor({
     mutationFn: (form: FormData) => saveSettings(section, form, settings),
     onSuccess: (data, form) => {
       if (!mounted.current) return;
-      if (section === "display" && data.display?.system_name) setSystemName(data.display.system_name);
+      if (section === "display" && data.display?.system_name)
+        setSystemName(data.display.system_name);
       draft.markSaved(form);
-      setSavedMessage("已保存");
-      onSaved(data);
+      const message = section === "backup" ? "备份策略已保存" : "已保存";
+      setSavedMessage(message);
+      onSaved(data, ...(section === "backup" ? [message] : []));
     },
     onError: (error) => {
       if (
@@ -346,8 +436,35 @@ export function SettingsEditor({
       )}
     </FieldGroup>
   );
+  function recommendedProvider() {
+    const values = {
+      timeout_milliseconds: PROVIDER_TIMING_DEFAULTS.timeoutMilliseconds / 1000,
+      scan_interval_seconds: PROVIDER_TIMING_DEFAULTS.scanIntervalSeconds,
+      active_scan_interval_seconds:
+        PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds,
+      safety_lag_seconds: PROVIDER_TIMING_DEFAULTS.safetyLagSeconds,
+      maximum_success_age_seconds:
+        PROVIDER_TIMING_DEFAULTS.maximumSuccessAgeSeconds,
+    };
+    for (const [name, value] of Object.entries(values)) {
+      const input = draft.form.current?.elements.namedItem(name);
+      if (input instanceof HTMLInputElement) input.value = String(value);
+    }
+    draft.onChange();
+    setFieldErrors({});
+    setSavedMessage("");
+    save.reset();
+  }
   const providerCollection = (
     <FieldGroup className="grid sm:grid-cols-2">
+      <Button
+        type="button"
+        variant="outline"
+        className="w-fit sm:col-span-2"
+        onClick={recommendedProvider}
+      >
+        采用推荐值
+      </Button>
       <Field data-invalid={!!fieldErrors.environment}>
         <FieldLabel htmlFor="setting-environment">支付宝环境</FieldLabel>
         <Select
@@ -396,8 +513,12 @@ export function SettingsEditor({
       <NumberField
         name="timeout_milliseconds"
         error={fieldErrors.timeout_milliseconds}
-        label="请求超时（毫秒）"
-        value={initialSettings.provider?.timeout_milliseconds ?? 8000}
+        label="请求超时（秒）"
+        scale={1000}
+        value={
+          initialSettings.provider?.timeout_milliseconds ??
+          PROVIDER_TIMING_DEFAULTS.timeoutMilliseconds
+        }
         min={1000}
         max={120000}
       />
@@ -430,7 +551,10 @@ export function SettingsEditor({
         name="safety_lag_seconds"
         error={fieldErrors.safety_lag_seconds}
         label="安全延迟（秒）"
-        value={initialSettings.provider?.safety_lag_seconds ?? 10}
+        value={
+          initialSettings.provider?.safety_lag_seconds ??
+          PROVIDER_TIMING_DEFAULTS.safetyLagSeconds
+        }
         min={5}
         max={300}
         hint="避开支付宝尚未稳定返回的最新账单。"
@@ -544,7 +668,8 @@ export function SettingsEditor({
             <NumberField
               name="timeout_milliseconds"
               error={fieldErrors.timeout_milliseconds}
-              label="通知超时（毫秒）"
+              label="通知超时（秒）"
+              scale={1000}
               value={initialSettings.notifications.timeout_milliseconds}
               min={1000}
               max={30000}
@@ -580,14 +705,12 @@ export function SettingsEditor({
   );
   const backupFields = (
     <FieldGroup>
+      <BackupStatus />
       <FieldGroup className="grid sm:grid-cols-2">
-        <NumberField
-          name="interval_seconds"
-          error={fieldErrors.interval_seconds}
-          label="备份间隔（秒）"
+        <BackupIntervalField
           value={initialSettings.backup.interval_seconds}
-          min={3600}
-          max={604800}
+          error={fieldErrors.interval_seconds}
+          onChange={draft.onChange}
         />
         <NumberField
           name="keep_count"
@@ -630,7 +753,9 @@ export function SettingsEditor({
             maxLength={40}
             defaultValue={initialSettings.display?.system_name ?? "PerPay"}
             aria-invalid={!!fieldErrors.system_name}
-            aria-describedby={fieldErrors.system_name ? "system-name-error" : undefined}
+            aria-describedby={
+              fieldErrors.system_name ? "system-name-error" : undefined
+            }
           />
           {fieldErrors.system_name && (
             <FieldError id="system-name-error">
@@ -876,7 +1001,9 @@ export function SettingsEditor({
             )
           ) : (
             <Card>
-              <CardHeader className={section === "display" ? "sr-only" : undefined}>
+              <CardHeader
+                className={section === "display" ? "sr-only" : undefined}
+              >
                 <CardTitle role="heading" aria-level={2}>
                   {sections.find(([value]) => value === section)?.[1] ?? "设置"}
                 </CardTitle>
@@ -952,9 +1079,16 @@ async function saveSettings(
   const revision = settings.revision;
   const text = (key: string) => String(form.get(key) ?? "").trim();
   const integer = (key: string) => {
-    const value = Number(text(key));
-    if (!Number.isSafeInteger(value))
-      throw new Error("数值设置必须是有效整数。");
+    const value = integerUnits(
+      text(key),
+      key === "timeout_milliseconds"
+        ? 1000
+        : key === "interval_seconds"
+          ? Number(text("_backup_interval_unit") || 1)
+          : 1,
+    );
+    if (value === null)
+      throw new SettingsInputError(key, "请输入能精确换算的有效时间或整数。");
     return value;
   };
   if (section === "collection") {

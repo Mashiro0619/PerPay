@@ -96,13 +96,13 @@ describe("onboarding payment readiness", () => {
       screen.queryByRole("link", { name: "进入控制台" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByText("收款配置已完成，可以收款。"),
+      screen.queryByText("收款服务就绪"),
     ).not.toBeInTheDocument();
   });
   it("separates completed setup from an unexplained degraded runtime status", async () => {
     const status = { ...completeStatus(), status: "degraded" as const };
     const { fetchMock } = mount(() => json({ data: status }));
-    expect(await screen.findByText("收款配置已完成，可以收款。")).toBeVisible();
+    expect(await screen.findByText("收款服务就绪")).toBeVisible();
     expect(screen.getByText("运行提醒（不是配置缺项）")).toBeVisible();
     expect(
       screen.getByText(/系统返回了运行告警，但未提供可定位的原因/),
@@ -128,7 +128,7 @@ describe("onboarding payment readiness", () => {
     status.backup.enabled = false;
     status.backup.ok = false;
     mount(() => json({ data: status }), settings);
-    const title = await screen.findByText("收款配置已完成，可以收款。");
+    const title = await screen.findByText("收款服务就绪");
     expect(title.closest('[role="status"]')).not.toBeNull();
     expect(screen.getAllByText("已通过")).toHaveLength(4);
     expect(
@@ -147,7 +147,7 @@ describe("onboarding payment readiness", () => {
     status.reconciliation.exceptions!.open = 3;
     status.webhook.dead_letters = 2;
     mount(() => json({ data: status }));
-    await screen.findByText("收款配置已完成，可以收款。");
+    await screen.findByText("收款服务就绪");
     expect(screen.queryByText(/项业务待处理/)).not.toBeInTheDocument();
     expect(
       screen.queryByText("运行提醒（不是配置缺项）"),
@@ -157,7 +157,7 @@ describe("onboarding payment readiness", () => {
     ).not.toBeInTheDocument();
   });
   it.each(["ready", "degraded"] as const)(
-    "shows actionable business counts independently of %s",
+    "keeps actionable business records out of the setup check when status is %s",
     async (overall) => {
       const status = completeStatus();
       status.status = overall;
@@ -168,20 +168,13 @@ describe("onboarding payment readiness", () => {
         notification_failures: 3,
       };
       mount(() => json({ data: status }));
-      await screen.findByText("收款配置已完成，可以收款。");
-      expect(screen.getByText("有 6 项业务待处理")).toBeVisible();
-      expect(
-        screen.getByText(/这些是业务记录提醒，不代表收款配置未完成/),
-      ).toBeVisible();
-      for (const [label, type] of [
-        ["账务异常 2 项", "FINANCIAL_EXCEPTION"],
-        ["账本冲突 1 项", "LEDGER_CONFLICT"],
-        ["通知失败 3 项", "NOTIFICATION_FAILURE"],
-      ])
-        expect(screen.getByRole("link", { name: label })).toHaveAttribute(
-          "href",
-          "/work-items?type=" + type,
-        );
+      await screen.findByText("收款服务就绪");
+      expect(screen.queryByText(/项业务待处理|业务记录提醒/)).not.toBeInTheDocument();
+      for (const name of [/账务异常/, /账本冲突/, /通知失败/])
+        expect(screen.queryByRole("link", { name })).not.toBeInTheDocument();
+      expect(screen.getAllByText("已通过")).toHaveLength(4);
+      expect(screen.getByRole("link", { name: "进入控制台" })).toBeVisible();
+      expect(screen.getByRole("link", { name: "获取接入凭证" })).toBeVisible();
       expect(
         screen.queryByText("运行提醒（不是配置缺项）"),
       ).not.toBeInTheDocument();
@@ -200,7 +193,7 @@ describe("onboarding payment readiness", () => {
       status[key].last_error_code = "transport_timeout";
       status[key].consecutive_failures = 1;
       mount(() => json({ data: status }));
-      await screen.findByText("收款配置已完成，可以收款。");
+      await screen.findByText("收款服务就绪");
       expect(
         screen.getByText(label + "最近运行异常：transport_timeout。"),
       ).toBeVisible();
@@ -221,7 +214,7 @@ describe("onboarding payment readiness", () => {
       status.status = "degraded";
       status.ledger.state = state;
       mount(() => json({ data: status }));
-      await screen.findByText("收款配置已完成，可以收款。");
+      await screen.findByText("收款服务就绪");
       expect(screen.getByText(message)).toBeVisible();
     },
   );
@@ -230,7 +223,7 @@ describe("onboarding payment readiness", () => {
     status.status = "degraded";
     status.backup.ok = false;
     mount(() => json({ data: status }));
-    await screen.findByText("收款配置已完成，可以收款。");
+    await screen.findByText("收款服务就绪");
     expect(
       screen.getByText("自动备份尚未就绪，请检查备份任务及最近结果。"),
     ).toBeVisible();
@@ -251,7 +244,7 @@ describe("onboarding payment readiness", () => {
       status.backup.enabled = false;
       status.backup[key] = true;
       mount(() => json({ data: status }));
-      await screen.findByText("收款配置已完成，可以收款。");
+      await screen.findByText("收款服务就绪");
       expect(screen.getByText(message)).toBeVisible();
     },
   );
@@ -260,7 +253,7 @@ describe("onboarding payment readiness", () => {
     status.status = "degraded";
     status.work_items = null;
     mount(() => json({ data: status }));
-    await screen.findByText("收款配置已完成，可以收款。");
+    await screen.findByText("收款服务就绪");
     expect(
       screen.getByText("待处理事项统计暂不可用，暂时无法确认业务待办数量。"),
     ).toBeVisible();
@@ -270,7 +263,7 @@ describe("onboarding payment readiness", () => {
     const status = systemStatus();
     status.status = "degraded";
     mount(() => json({ data: status }));
-    await screen.findByText("收款配置已完成，可以收款。");
+    await screen.findByText("收款服务就绪");
     expect(
       screen.getByText("部分业务状态统计暂不可用，请在运行状态页核对。"),
     ).toBeVisible();
@@ -291,7 +284,7 @@ describe("onboarding payment readiness", () => {
       mount(() => json({ data: status }));
       await screen.findByText("配置已变化");
       expect(
-        screen.queryByText("收款配置已完成，可以收款。"),
+        screen.queryByText("收款服务就绪"),
       ).not.toBeInTheDocument();
       expect(
         screen.queryByText("运行提醒（不是配置缺项）"),
@@ -316,7 +309,7 @@ describe("onboarding payment readiness", () => {
         : json({ data: status }),
     );
     await screen.findByText("运行提醒（不是配置缺项）");
-    expect(screen.getByText("有 1 项业务待处理")).toBeVisible();
+    expect(screen.queryByText(/项业务待处理/)).not.toBeInTheDocument();
     fail = true;
     await userEvent.setup().click(screen.getByRole("button", { name: "刷新" }));
     await screen.findByRole("alert");
@@ -334,7 +327,7 @@ describe("onboarding payment readiness", () => {
       notification_failures: 0,
     };
     await userEvent.setup().click(screen.getByRole("button", { name: "刷新" }));
-    await screen.findByText("收款配置已完成，可以收款。");
+    await screen.findByText("收款服务就绪");
     expect(
       screen.queryByText("运行提醒（不是配置缺项）"),
     ).not.toBeInTheDocument();

@@ -1,3 +1,4 @@
+import { PageHeaderActions } from "@/components/page-header-actions";
 import type { ReactNode } from "react";
 import {
   SystemStatusBoundary,
@@ -6,7 +7,7 @@ import {
 import { presentSystemStatus } from "@/lib/system-status";
 import { CheckCircle2, CircleAlert, RefreshCw } from "lucide-react";
 import { Link } from "@/navigation";
-import { dateTime } from "@/lib/format";
+import { dateTime, backupIntervalLabel } from "@/lib/format";
 import { notificationErrorName } from "@/lib/detail-summary";
 import { ErrorNotice, Loading, QueryView } from "@/components/request-state";
 import { Alert, AlertTitle } from "@/components/ui/alert";
@@ -43,9 +44,12 @@ function SystemContent() {
   const { status, checking, unavailable } = useSystemStatus();
   return (
     <>
-      <div className="flex justify-end">
+      <PageHeaderActions>
         <Button
-          variant="outline"
+          variant="ghost"
+          size="icon"
+          aria-label="刷新"
+          title="刷新"
           disabled={status.isFetching}
           onClick={() => {
             void status.refetch();
@@ -56,9 +60,8 @@ function SystemContent() {
           ) : (
             <RefreshCw data-icon="inline-start" />
           )}
-          刷新
         </Button>
-      </div>
+      </PageHeaderActions>
       {checking &&
         (unavailable ? (
           <div className="flex flex-col gap-4">
@@ -88,7 +91,8 @@ function SystemContent() {
             } = presentSystemStatus(data);
             const conflicts = data.work_items?.ledger_conflicts ?? 0;
             const exceptions = data.work_items?.financial_exceptions ?? 0;
-            const notificationFailures = data.work_items?.notification_failures ?? 0;
+            const notificationFailures =
+              data.work_items?.notification_failures ?? 0;
             const explanation = !data.configured
               ? "收款配置未完成。"
               : !data.database.ok
@@ -168,7 +172,8 @@ function SystemContent() {
                           "最近成功 " + dateTime(data.ledger.last_success_at)
                         }
                         metrics={
-                          "冲突提醒 " + (data.work_items?.ledger_conflicts ?? "—")
+                          "冲突提醒 " +
+                          (data.work_items?.ledger_conflicts ?? "—")
                         }
                         action={
                           <>
@@ -267,7 +272,10 @@ function SystemContent() {
                           <>
                             {notificationFailures > 0 && (
                               <Link
-                                className={buttonVariants({ variant: "outline", size: "sm" })}
+                                className={buttonVariants({
+                                  variant: "outline",
+                                  size: "sm",
+                                })}
                                 to="/work-items?type=NOTIFICATION_FAILURE"
                               >
                                 查看未忽略提醒
@@ -275,7 +283,10 @@ function SystemContent() {
                             )}
                             {!webhookHealthy && (
                               <Link
-                                className={buttonVariants({ variant: "outline", size: "sm" })}
+                                className={buttonVariants({
+                                  variant: "outline",
+                                  size: "sm",
+                                })}
                                 to="/notifications"
                               >
                                 查看投递
@@ -306,7 +317,17 @@ function SystemContent() {
                         enabled={data.backup.enabled}
                         healthy={backupHealthy}
                         summary={
-                          "最近成功 " + dateTime(data.backup.last_success_at)
+                          (data.backup_policy
+                            ? "策略：" +
+                              backupIntervalLabel(
+                                data.backup_policy.interval_seconds,
+                              ) +
+                              "，保留 " +
+                              data.backup_policy.keep_count +
+                              " 份 · "
+                            : "") +
+                          "最近成功 " +
+                          dateTime(data.backup.last_success_at)
                         }
                         metrics={
                           data.backup.backup_in_progress
@@ -327,6 +348,21 @@ function SystemContent() {
                           </Link>
                         }
                       >
+                        {(!data.backup.enabled ||
+                          !data.backup.backup_available ||
+                          data.backup.configuration_mismatch) && (
+                          <p>
+                            <a
+                              className="underline underline-offset-4"
+                              href="https://github.com/Mashiro0619/PerPay/blob/main/docs/maintenance.md#启用与验证备份"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              启用与验证备份
+                            </a>
+                            ；保存策略不等于已有可用备份。
+                          </p>
+                        )}
                         {data.backup.recovery_required && (
                           <p>
                             实例需要恢复。请按维护文档处理，不要覆盖运行中的数据库。
