@@ -24,7 +24,8 @@ export async function withBackendInitialization(
     )?.[1];
     // Unknown is not first-run: the auth screen will offer a retry instead.
     const encodedName = backendHtml.match(/<meta\b[^>]*\bname=["']perpay-system-name["'][^>]*\bcontent="([^"<>]*)"/)?.[1];
-    const branded = encodedName ? html.replaceAll(SYSTEM_NAME_MARKER, () => encodedName) : fallback;
+    const marked = /<html\b[^>]*data-perpay-demo="readonly"/.test(backendHtml) ? html.replace("<html", '<html data-perpay-demo="readonly"') : html;
+    const branded = encodedName ? marked.replaceAll(SYSTEM_NAME_MARKER, () => encodedName) : marked.replaceAll(SYSTEM_NAME_MARKER, DEFAULT_SYSTEM_NAME);
     return initialized ? branded.replace(marker, initialized) : branded;
   } catch {
     return fallback;

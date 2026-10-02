@@ -21,6 +21,8 @@ export interface CheckoutPageInitialError {
 }
 
 export interface CheckoutPageInput {
+  readonly serverTime?: number;
+  readonly demoMode?: boolean;
   readonly systemName?: string;
   readonly helpUrl?: string | null;
   readonly checkoutToken: string;
@@ -70,7 +72,8 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
   const initial: CheckoutInitial = {
     systemName: input.systemName ?? "PerPay",
     helpUrl: checkoutHelpUrl(input.helpUrl),
-    serverTime: Date.now(),
+    serverTime: input.serverTime ?? Date.now(),
+    demoMode: input.demoMode ?? false,
     showProductName: input.showProductName !== false,
     apiUrl: missing ? "" : checkoutApiPath(input.checkoutToken),
     qrUrl: missing

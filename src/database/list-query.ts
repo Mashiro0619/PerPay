@@ -1,3 +1,4 @@
+import { createdDateRange } from "../shared/created-dates.ts";
 import type { ListPosition, SortOrder } from "../shared/list-query.ts";
 import { ListQueryError } from "../shared/list-query.ts";
 
@@ -70,4 +71,9 @@ export function listSearch(columns: readonly string[], q: string) {
         parameters: columns.map(() => q),
       }
     : { where: "", parameters: [] as string[] };
+}
+
+export function listCreatedDates(column: string, from?: string, to?: string) {
+  const dates = createdDateRange(from, to);
+  return dates ? {where: column + " >= ? AND " + column + " < ?", parameters: [dates.start, dates.end]} : {where:"",parameters:[]};
 }

@@ -1,5 +1,5 @@
 import { normalizeListQuery, DELIVERY_SORT_FIELDS, type DeliverySort, type ListQuery, type ListPosition } from "../shared/list-query.ts";
-import { listKeyset, listSearch } from "../database/list-query.ts";
+import { listKeyset, listSearch, listCreatedDates } from "../database/list-query.ts";
 import { randomUUID } from "node:crypto";
 import { isIP } from "node:net";
 import type { DatabaseSync } from "node:sqlite";
@@ -868,8 +868,9 @@ export class WebhookStore {
       const position = input.cursor?.position ?? (input.cursor ? {value: input.cursor.createdAt, keys: [input.cursor.deliveryId]} : null);
       const seek = listKeyset(expression, ["delivery.delivery_id"], query.sortOrder, position, query.sortBy === "next_attempt_at");
       const search = listSearch(["delivery.delivery_id", "delivery.outbox_event_id", "outbox.aggregate_id", "orders.merchant_order_no", "orders.product_name", "target.target_url", "delivery.last_error_code"], query.q);
-      const where = [seek.where, search.where].filter(Boolean);
-      const parameters: Array<string | number> = [...seek.parameters, ...search.parameters];
+      const dates = listCreatedDates("delivery.created_at", query.createdFrom, query.createdTo);
+      const where = [seek.where, search.where, dates.where].filter(Boolean);
+      const parameters: Array<string | number> = [...seek.parameters, ...search.parameters, ...dates.parameters];
       if (input.status) {
         where.push("delivery.status = ?");
         parameters.push(input.status);

@@ -1129,6 +1129,8 @@ export type ErrorEnvelope = {
         };
     };
 };
+export type CreatedFrom = string;
+export type CreatedTo = string;
 export type RequestId = string;
 export type OrderId = ResourceId;
 export type AdminOrigin = string;
@@ -1827,6 +1829,35 @@ export type RevealRuntimeSecretResponses = {
     200: SecretRevealEnvelope;
 };
 export type RevealRuntimeSecretResponse = RevealRuntimeSecretResponses[keyof RevealRuntimeSecretResponses];
+export type ExportAdministratorOrdersData = {
+    body: {
+        created_from: string;
+        created_to: string;
+        q?: string;
+        sort_by?: 'created_at' | 'payable_amount_cents' | 'received_amount_cents';
+        sort_order?: 'asc' | 'desc';
+        payment_status?: PaymentStatus;
+        checkout_status?: CheckoutStatus;
+    };
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/admin/v1/orders/export';
+};
+export type ExportAdministratorOrdersErrors = {
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type ExportAdministratorOrdersError = ExportAdministratorOrdersErrors[keyof ExportAdministratorOrdersErrors];
+export type ExportAdministratorOrdersResponses = {
+    200: string;
+};
+export type ExportAdministratorOrdersResponse = ExportAdministratorOrdersResponses[keyof ExportAdministratorOrdersResponses];
 export type ListAdministratorOrdersData = {
     body?: never;
     headers?: {
@@ -1834,6 +1865,8 @@ export type ListAdministratorOrdersData = {
     };
     path?: never;
     query?: {
+        created_from?: string;
+        created_to?: string;
         checkout_status?: CheckoutStatus;
         payment_status?: PaymentStatus;
         q?: string;
@@ -2309,6 +2342,8 @@ export type ListWebhookDeliveriesData = {
     };
     path?: never;
     query?: {
+        created_from?: string;
+        created_to?: string;
         status?: WebhookDeliveryStatus;
         q?: string;
         sort_by?: 'created_at' | 'attempt_count' | 'next_attempt_at';

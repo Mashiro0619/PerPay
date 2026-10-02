@@ -240,6 +240,13 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
         id="checkout-main"
         data-checkout-root
       >
+        {initial.demoMode && (
+          <Alert role="note">
+            <AlertDescription>
+              只读演示 · 合成订单，二维码不可付款
+            </AlertDescription>
+          </Alert>
+        )}
         {state.message && (
           <Alert role="status">
             <AlertCircle />

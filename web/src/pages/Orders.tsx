@@ -1,3 +1,5 @@
+import { CreatedDateFilter } from "@/components/created-date-filter";
+import { OrderExport } from "@/components/order-export";
 import { useListQuery, ORDER_SORT_FIELDS } from "@/lib/list-query";
 import {
   ListQueryToolbar,
@@ -84,6 +86,8 @@ export default function Orders() {
       "q",
       "sort_by",
       "sort_order",
+      "created_from",
+      "created_to",
     ].forEach((key) => next.delete(key));
     setSearch(next, { replace: true });
   }
@@ -241,7 +245,7 @@ function OrderPage({
   onClearFilters: () => void;
 }) {
   const pagination = useCursor();
-  const listQuery = useListQuery(ORDER_SORT_FIELDS, "created_at", "desc");
+  const listQuery = useListQuery(ORDER_SORT_FIELDS, "created_at", "desc", true);
   const orders = useQuery({
     queryKey: ["orders", payment, checkout, pagination.cursor, listQuery.scope],
     queryFn: ({ signal }) =>
@@ -291,6 +295,7 @@ function OrderPage({
           { value: "received_amount_cents", label: "实收金额" },
         ]}
       />
+      <CreatedDateFilter control={listQuery}><OrderExport query={listQuery.apiQuery} payment={payment} checkout={checkout} /></CreatedDateFilter>
       <QueryView query={orders}>
         {(page) => (
           <>
@@ -299,7 +304,7 @@ function OrderPage({
               (pagination.page > 1 ||
                 payment ||
                 checkout ||
-                listQuery.query.q) ? (
+                listQuery.query.q || listQuery.query.createdFrom) ? (
                 <Empty>
                   <EmptyHeader>
                     <EmptyTitle role="heading" aria-level={2}>

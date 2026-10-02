@@ -21,6 +21,7 @@ describe("isolated documentation preview", () => {
     try {
       demo = await createPreviewDemo({ now: midnight - day + 14 * 3_600_000 });
       const { app, stats } = demo;
+      assert.equal(demo.password, "123456");
       assert.equal(stats.orders.created, 478);
       assert.equal(stats.orders.confirmed, 411);
       assert.ok(stats.orders.closed > 0);
@@ -57,6 +58,18 @@ describe("isolated documentation preview", () => {
       const loginBody = await login.json() as { data: { csrf_token: string } };
       const cookie = login.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
       assert.equal((await app.request("/api/admin/v1/orders", { headers: { cookie } })).status, 200);
+      const adminHtml=await (await app.request("/admin")).text();
+      assert.match(adminHtml,/data-perpay-demo="readonly"/);
+      const analytics=await app.request("/api/admin/v1/system/analytics?range=30",{headers:{cookie}});
+      assert.equal((await analytics.json() as {data:{orders:{created:number}}}).data.orders.created, stats.orders.created);
+      assert.match(analytics.headers.get("x-perpay-demo")!,/health=simulated/);
+      const firstHtml=await (await app.request("/checkout/"+demo.checkout)).text();
+      const firstTime=Number(firstHtml.match(/&quot;serverTime&quot;:(\d+)/)?.[1]);
+      assert.ok(firstTime>=demo.capturedAt && firstTime<demo.capturedAt+60000);
+      await new Promise(resolve=>setTimeout(resolve,25));
+      const nextHtml=await (await app.request("/checkout/"+demo.checkout)).text();
+      const nextTime=Number(nextHtml.match(/&quot;serverTime&quot;:(\d+)/)?.[1]);
+      assert.ok(nextTime>firstTime,"demo clock must keep advancing after seeding");
       const headers = { cookie, Origin: demo.origin, "Content-Type": "application/json", "x-csrf-token": loginBody.data.csrf_token };
       const before = demo.database.read(connection => connection.prepare("SELECT * FROM payment_orders").all());
       // Valid session + CSRF must not bypass the demo's read-only wrapper.
@@ -89,6 +102,12 @@ describe("isolated documentation preview", () => {
   it("also seeds safely just after Beijing midnight without running the order clock backwards", async () => {
     const demo = await createPreviewDemo({ now: midnight - day + 60_000 });
     try {
+      assert.equal(demo.password, "123456");
+      const login = await demo.app.request(demo.origin + "/api/admin/v1/session/login", {
+        method: "POST", headers: { "Content-Type": "application/json", Origin: demo.origin },
+        body: JSON.stringify({ password: "123456" }),
+      });
+      assert.equal(login.status, 200);
       assert.equal(demo.stats.orders.created, 478);
       assert.equal(demo.stats.pending.orders, 4);
       assert.equal(demo.database.integrityCheck().ok, true);

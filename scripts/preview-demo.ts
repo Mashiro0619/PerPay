@@ -69,9 +69,12 @@ export async function createPreviewDemo(options: { port?: number; now?: number }
     });
     const db = await AppDatabase.open(config.databasePath);
     database = db;
-    const identity = new IdentityService(db);
+    let liveStarted: number | null = null;
+    const liveNow = () => capturedAt + (liveStarted === null ? 0 : Math.floor(performance.now() - liveStarted));
+    const identity = new IdentityService(db, liveNow);
     await identity.initialize();
-    const password = "preview-" + randomBytes(12).toString("hex");
+    // Fixed only for this loopback-only, disposable read-only demo; never used by main.ts.
+    const password = "123456";
     await identity.setupAdmin(password);
     const settingsStore = new RuntimeSettingsStore(db, config.masterKey);
     const settings = new RuntimeSettingsService({ store: settingsStore });
@@ -107,7 +110,7 @@ export async function createPreviewDemo(options: { port?: number; now?: number }
       connection.prepare("UPDATE order_clock SET last_now_ms = ? WHERE singleton_key = 1").run(now);
       connection.exec(trigger as string);
     });
-    const orders = new OrderService(db, () => settings.snapshot(), () => now);
+    const orders = new OrderService(db, () => settings.snapshot(), () => liveStarted === null ? now : liveNow());
     orders.initialize();
     const ledger = new LedgerStore(db);
     const reconciliation = new ReconciliationStore(db);
@@ -210,21 +213,24 @@ export async function createPreviewDemo(options: { port?: number; now?: number }
     assert.equal(stats.pending.orders, 4);
     assert.ok(db.integrityCheck().ok, "Demo data must satisfy production integrity checks");
 
+    liveStarted = performance.now();
     // Health is explicitly simulated; no scheduler, provider client or webhook transport runs.
-    const healthy = () => ({ enabled: true, state: "healthy" as const, inFlight: false, lastAttemptAt: now - 3000, lastSuccessAt: now - 2000, lastErrorCode: null, consecutiveFailures: 0, paymentRevision: settings.snapshot().paymentRevision });
+    const healthy = () => ({ enabled: true, state: "healthy" as const, inFlight: false, lastAttemptAt: liveNow() - 3000, lastSuccessAt: liveNow() - 2000, lastErrorCode: null, consecutiveFailures: 0, paymentRevision: settings.snapshot().paymentRevision });
     const app = createApp({
       config, database: db, identity, settings, orders, ledger, reconciliation, webhookStore: webhooks,
-      startedAt: new Date(capturedAt - 8 * DAY), clock: () => now,
+      startedAt: new Date(capturedAt - 8 * DAY), clock: liveNow, demoMode: true,
       ledgerHealth: healthy,
-      reconciliationHealth: () => ({ ...healthy(), pendingOrders: 4, continuationPending: false }),
+      reconciliationHealth: () => ({ ...healthy(), pendingOrders: systemAnalytics(db, 7, liveNow()).pending.orders, continuationPending: false }),
       webhookHealth: () => ({ ...healthy(), pendingDeliveries: stats.pending.notifications, deadLetters: 1 }),
       // Never claim a real update check has succeeded and never contact GitHub.
       updateChecker: { check: async () => { throw new UpdateCheckUnavailable(3600); } },
     });
     const preview = new Hono();
     preview.use("*", async (context, next) => {
+      context.header("X-PerPay-Demo", "read-only; health=simulated");
       const sessionAction = context.req.method === "POST" && ["/api/admin/v1/session/login", "/api/admin/v1/session/logout"].includes(context.req.path);
-      if (!["GET", "HEAD"].includes(context.req.method) && !sessionAction) {
+      const exportRead = context.req.method === "POST" && context.req.path === "/api/admin/v1/orders/export";
+      if (!["GET", "HEAD"].includes(context.req.method) && !sessionAction && !exportRead) {
         return context.json({ error: { code: "demo_read_only", message: "这是只读演示，不执行付款、设置或财务操作。" } }, 403);
       }
       await next();

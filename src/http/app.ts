@@ -1,3 +1,4 @@
+import { exportOrders, orderExportSchema } from "./order-export.ts";
 import { adminOrderIdentities } from "./admin-order-summary.ts";
 import { readManualCandidateQuery } from "./manual-candidates.ts";
 import type { ManualRecommendation } from "../reconciliation/manual-candidates.ts";
@@ -215,6 +216,7 @@ export interface AppDependencies {
   readonly orders: OrderService;
   readonly startedAt: Date;
   readonly clock?: (() => number) | undefined;
+  readonly demoMode?: boolean;
   readonly updateChecker?: Pick<OfficialUpdateChecker, "check"> | undefined;
   readonly backupHealth?: (() => BackupHealth | PromiseLike<BackupHealth>) | undefined;
   readonly ledger?: LedgerStore | undefined;
@@ -335,7 +337,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     return context.json({
       status: database.ok ? "healthy" : "unhealthy",
       version: APP_VERSION,
-      uptime_seconds: Math.floor((Date.now() - dependencies.startedAt.getTime()) / 1000),
+      uptime_seconds: Math.floor(((dependencies.clock?.() ?? Date.now()) - dependencies.startedAt.getTime()) / 1000),
       database,
     }, database.ok ? 200 : 503);
   });
@@ -411,7 +413,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     if (path.startsWith("/admin/assets/") || /\.[^/]+$/.test(path)) {
       throw new HttpApiError(404, "asset_not_found", "静态资源不存在");
     }
-    return context.html(adminFrontend.render(dependencies.identity.isInitialized(), publicSystemName(dependencies)));
+    return context.html(adminFrontend.render(dependencies.identity.isInitialized(), publicSystemName(dependencies)).replace("<html", dependencies.demoMode ? '<html data-perpay-demo="readonly"' : "<html"));
   };
   app.get("/admin", serveAdmin);
   app.get("/admin/*", serveAdmin);
@@ -420,6 +422,8 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const token = context.req.param("token");
     if (!isCanonicalCheckoutToken(token)) {
       return context.html(renderCheckoutPage({
+        serverTime: dependencies.clock?.() ?? Date.now(),
+        demoMode: dependencies.demoMode ?? false,
       systemName: publicSystemName(dependencies),
         helpUrl: publicCheckoutHelp(dependencies),
         checkoutToken: token,
@@ -437,6 +441,8 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     if (!publicCheckoutBudget.take(sourceAddress)) {
       context.header("retry-after", "1");
       return context.html(renderCheckoutPage({
+        serverTime: dependencies.clock?.() ?? Date.now(),
+        demoMode: dependencies.demoMode ?? false,
         systemName: publicSystemName(dependencies),
         helpUrl: publicCheckoutHelp(dependencies),
         checkoutToken: token,
@@ -492,6 +498,8 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       }
     }
     return context.html(renderCheckoutPage({
+        serverTime: dependencies.clock?.() ?? Date.now(),
+        demoMode: dependencies.demoMode ?? false,
         systemName: publicSystemName(dependencies),
         helpUrl: publicCheckoutHelp(dependencies),
       checkoutToken: token,
@@ -610,7 +618,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     if (values.size > (rawRange === null ? 0 : 1) || (rawRange !== null && !/^(?:7|30|90)$/.test(rawRange))) {
       throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
     }
-    return context.json({ data: systemAnalytics(dependencies.database, rawRange === null ? 30 : Number(rawRange)) });
+    return context.json({ data: systemAnalytics(dependencies.database, rawRange === null ? 30 : Number(rawRange), dependencies.clock?.() ?? Date.now()) });
   });
 
   app.get("/api/admin/v1/work-items", adminSession, (context) => {
@@ -662,6 +670,16 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     );
     clearAuthenticationCookies(context, dependencies.config.secureCookies);
     return context.body(null, 204);
+  });
+
+  app.post("/api/admin/v1/orders/export", adminSession, async (context) => {
+    requireJsonContentType(context);
+    requireSameOrigin(context, dependencies.config.publicOrigin);
+    requireCsrf(context, dependencies.identity, dependencies.config.secureCookies);
+    const input = await readJson(context, orderExportSchema, MAX_JSON_BODY_BYTES);
+    requireCurrentSession(context, dependencies.identity);
+    const csv = exportOrders(dependencies.database, input, dependencies.clock?.() ?? Date.now());
+    return context.body(csv, 200, { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": 'attachment; filename="perpay-orders.csv"', "Cache-Control": "no-store" });
   });
 
   app.get("/api/admin/v1/orders", adminSession, (context) => {
@@ -2506,7 +2524,7 @@ function readAdminOrderPageQuery(context: Context<AppEnvironment>): {
       key !== "limit" &&
       key !== "checkout_status" &&
       key !== "payment_status" &&
-      key !== "cursor" && key !== "q" && key !== "sort_by" && key !== "sort_order"
+      key !== "cursor" && key !== "q" && key !== "sort_by" && key !== "sort_order" && key !== "created_from" && key !== "created_to"
     ) {
       throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
     }
@@ -2889,7 +2907,7 @@ function readWebhookDeliveryPageQuery(context: Context<AppEnvironment>): {
   const values = new URL(context.req.url).searchParams;
   const query = readListQuery(values, DELIVERY_SORT_FIELDS, "created_at", "asc");
   for (const key of values.keys()) {
-    if (key !== "limit" && key !== "status" && key !== "cursor" && key !== "q" && key !== "sort_by" && key !== "sort_order") {
+    if (key !== "limit" && key !== "status" && key !== "cursor" && key !== "q" && key !== "sort_by" && key !== "sort_order" && key !== "created_from" && key !== "created_to") {
       throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
     }
   }

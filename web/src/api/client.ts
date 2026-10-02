@@ -1,3 +1,4 @@
+import { isReadOnlyDemo } from "../demo-mode";
 import { setSystemName } from "../branding";
 import { MutationCache, QueryClient } from "@tanstack/react-query";
 
@@ -74,6 +75,10 @@ client.interceptors.request.use((request) => {
     throw new Error("管理请求不能发送到其他站点。");
   }
   if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
+    const path = new URL(request.url).pathname;
+    if (isReadOnlyDemo() && !["/api/admin/v1/session/login", "/api/admin/v1/session/logout", "/api/admin/v1/orders/export"].includes(path)) {
+      throw new ApiError(undefined, {error:{code:"demo_read_only",message:"只读演示：保存、密钥及财务操作不可用。"}});
+    }
     const token = readCsrfToken();
     if (token) request.headers.set("X-CSRF-Token", token);
   }
@@ -96,6 +101,7 @@ export async function result<Data>(request: Promise<{
   const response = await request;
   requireCurrentGeneration(generation);
   if ((response.error instanceof Error || response.error instanceof DOMException) && response.error.name === "AbortError") throw response.error;
+  if (response.error instanceof ApiError) throw response.error;
   if (!response.response?.ok) {
     throw new ApiError(response.response, response.error);
   }
@@ -138,3 +144,17 @@ queryClient.getQueryCache().subscribe((event) => {
   const data = event.query.state.data as { data?: { display?: { system_name?: string } } } | undefined;
   if (data?.data?.display?.system_name) setSystemName(data.data.display.system_name);
 });
+
+/** CSV uses the same SDK/interceptors and checks session generation after body decoding. */
+export async function csvResult(request: Promise<{data?: string; error?: unknown; response?: Response}>): Promise<Blob> {
+  const generation = sessionGeneration;
+  const response = await request;
+  requireCurrentGeneration(generation);
+  if (response.error instanceof Error && response.error.name === "AbortError") throw response.error;
+  if (!response.response?.ok) throw new ApiError(response.response, response.error);
+  if (response.error !== undefined || typeof response.data !== "string" || !response.response.headers.get("content-type")?.startsWith("text/csv")) {
+    throw new ApiError(response.response, {error:{code:"invalid_response", message:"未收到完整的 CSV 文件，请重试导出。"}});
+  }
+  // Fetch's UTF-8 decoder removes a BOM; restore it for spreadsheet applications.
+  return new Blob(["\uFEFF", response.data.replace(/^\uFEFF/, "")], {type:"text/csv;charset=utf-8"});
+}

@@ -1147,6 +1147,55 @@ paths:
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
         '422': { $ref: '#/components/responses/SettingsValidationFailed' }
         '503': { $ref: '#/components/responses/SettingsUnavailable' }
+  /api/admin/v1/orders/export:
+    post:
+      tags: [Admin Orders]
+      operationId: exportAdministratorOrders
+      summary: Export all matching orders as a protected UTF-8 CSV
+      description: |
+        Requires administrator session, same origin and CSRF; session is checked again after reading the body.
+        A single SELECT provides a consistent snapshot without expiry sweeps or financial writes.
+        Required creation dates include both Beijing days, at most 366 days. At most 10,000 matching orders;
+        excess results fail with validation_failed, never a truncated file. Filters and sorting match the order list.
+        CSV uses a UTF-8 BOM, CRLF, quoted cells and spreadsheet formula protection. Fixed fields are merchant
+        number, internal ID, product, original/payable/received amounts (two decimals, null received is blank),
+        currency, current payment and checkout status, creation time, latest PAYMENT_CONFIRMED time (Beijing).
+        Disputed orders retain historical confirmation times; these are not provider transaction timestamps.
+        No notes, notification payloads, keys or checkout capability links are included.
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [created_from, created_to]
+              properties:
+                created_from: { type: string, format: date }
+                created_to: { type: string, format: date }
+                q: { type: string, maxLength: 100 }
+                sort_by: { type: string, enum: [created_at, payable_amount_cents, received_amount_cents], default: created_at }
+                sort_order: { type: string, enum: [asc, desc], default: desc }
+                payment_status: { $ref: '#/components/schemas/PaymentStatus' }
+                checkout_status: { $ref: '#/components/schemas/CheckoutStatus' }
+      responses:
+        '200':
+          description: Complete order CSV attachment
+          content:
+            text/csv:
+              schema: { type: string }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/Unavailable' }
   /api/admin/v1/orders:
     get:
       tags: [Admin Orders]
@@ -1161,6 +1210,8 @@ paths:
       security:
         - AdminSessionCookie: []
       parameters:
+        - $ref: '#/components/parameters/CreatedFrom'
+        - $ref: '#/components/parameters/CreatedTo'
         - $ref: '#/components/parameters/RequestId'
         - name: checkout_status
           in: query
@@ -1890,6 +1941,8 @@ paths:
       security:
         - AdminSessionCookie: []
       parameters:
+        - $ref: '#/components/parameters/CreatedFrom'
+        - $ref: '#/components/parameters/CreatedTo'
         - $ref: '#/components/parameters/RequestId'
         - name: status
           in: query
@@ -2394,6 +2447,18 @@ components:
         type: string
         const: no-store
   parameters:
+    CreatedFrom:
+      name: created_from
+      in: query
+      required: false
+      description: Inclusive creation date in Asia/Shanghai, YYYY-MM-DD; must be paired with created_to. Included in cursor binding.
+      schema: { type: string, format: date }
+    CreatedTo:
+      name: created_to
+      in: query
+      required: false
+      description: Inclusive creation date in Asia/Shanghai; must be paired with created_from. No dates preserves the existing query behavior.
+      schema: { type: string, format: date }
     RequestId:
       name: X-Request-Id
       in: header

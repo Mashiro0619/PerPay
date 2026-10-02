@@ -1,4 +1,5 @@
 import { PageHeaderActionsSlot } from "@/components/page-header-actions";
+import { DemoNotice } from "@/components/demo-notice";
 import { RefreshCw } from "lucide-react";
 import { useIsFetching } from "@tanstack/react-query";
 import { refreshOperationalData } from "@/api/client";
@@ -26,6 +27,7 @@ export function SiteHeader({
           className="mx-2 h-4 data-vertical:self-auto"
         />
         <h1 className="truncate text-base font-medium">{title}</h1>
+        <DemoNotice />
         <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
           {overview && (
             <>

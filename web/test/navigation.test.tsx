@@ -629,6 +629,29 @@ describe("overview layout and demo indicator", () => {
       screen.queryByRole("button", { name: "只读演示说明" }),
     ).not.toBeInTheDocument();
   });
+
+  it("keeps demo identification in the existing header with an on-demand accessible explanation", async () => {
+    document.documentElement.dataset.perpayDemo = "readonly";
+    try {
+      mount({ path: "/", configured: true });
+      const trigger = await screen.findByRole("button", {
+        name: "只读演示说明",
+      });
+      expect(trigger.closest("header")).not.toBeNull();
+      expect(screen.queryByText(/全部为合成数据/)).not.toBeInTheDocument();
+      const user = userEvent.setup();
+      trigger.focus();
+      await user.keyboard("{Enter}");
+      expect(await screen.findByText(/健康状态为模拟/)).toBeVisible();
+      await user.keyboard("{Escape}");
+      await waitFor(() =>
+        expect(screen.queryByText(/全部为合成数据/)).not.toBeInTheDocument(),
+      );
+      expect(trigger).toHaveFocus();
+    } finally {
+      delete document.documentElement.dataset.perpayDemo;
+    }
+  });
 });
 
 describe("page actions in the shared header", () => {

@@ -1,6 +1,9 @@
+import { createdDateRange, CreatedDateError } from "./created-dates.ts";
 export type SortOrder = "asc" | "desc";
 export interface ListQuery<Sort extends string = string> {
   readonly q: string;
+  readonly createdFrom?: string;
+  readonly createdTo?: string;
   readonly sortBy: Sort;
   readonly sortOrder: SortOrder;
 }
@@ -46,7 +49,12 @@ export function normalizeListQuery<S extends string>(
     (sortOrder !== "asc" && sortOrder !== "desc")
   )
     throw new ListQueryError("排序字段或方向无效");
+  try { createdDateRange(input?.createdFrom, input?.createdTo); } catch (error) {
+    if (error instanceof CreatedDateError) throw new ListQueryError(error.message);
+    throw error;
+  }
   return {
+    ...(input?.createdFrom !== undefined ? { createdFrom: input.createdFrom, createdTo: input.createdTo! } : {}),
     q: normalizeKeyword(input?.q ?? ""),
     sortBy: sortBy as S,
     sortOrder,
@@ -58,11 +66,13 @@ export function readListQuery<S extends string>(
   defaultSort: S,
   defaultOrder: SortOrder,
 ): ListQuery<S> {
-  for (const key of ["q", "sort_by", "sort_order"])
+  for (const key of ["q", "sort_by", "sort_order", "created_from", "created_to"])
     if (values.getAll(key).length > 1)
       throw new ListQueryError("查询参数不能重复");
   return normalizeListQuery(
     {
+      ...(values.has("created_from") ? { createdFrom: values.get("created_from")! } : {}),
+      ...(values.has("created_to") ? { createdTo: values.get("created_to")! } : {}),
       q: values.get("q") ?? "",
       sortBy: values.get("sort_by") ?? defaultSort,
       sortOrder: (values.get("sort_order") ?? defaultOrder) as SortOrder,
@@ -77,7 +87,7 @@ export function isDefaultQuery(
   field: string,
   order: SortOrder,
 ): boolean {
-  return query.q === "" && query.sortBy === field && query.sortOrder === order;
+  return query.createdFrom === undefined && query.createdTo === undefined && query.q === "" && query.sortBy === field && query.sortOrder === order;
 }
 
 export const MATCH_SORT_FIELDS = [

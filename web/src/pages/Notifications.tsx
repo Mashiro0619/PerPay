@@ -1,3 +1,4 @@
+import { CreatedDateFilter } from "@/components/created-date-filter";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { money } from "@/lib/format";
 import { useListQuery, DELIVERY_SORT_FIELDS } from "@/lib/list-query";
@@ -113,6 +114,7 @@ function DeliveryPage({
     DELIVERY_SORT_FIELDS,
     "created_at",
     "desc",
+    true,
   );
   const deliveries = useQuery({
     queryKey: ["notifications", status, pagination.cursor, listQuery.scope],
@@ -200,6 +202,7 @@ function DeliveryPage({
           { value: "next_attempt_at", label: "下次重试时间" },
         ]}
       />
+      <CreatedDateFilter control={listQuery} />
       <QueryView query={deliveries}>
         {(page) => (
           <>

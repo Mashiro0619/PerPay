@@ -1,5 +1,5 @@
 import { normalizeListQuery, isDefaultQuery, ORDER_SORT_FIELDS, type ListQuery, type OrderSort } from "../shared/list-query.ts";
-import { listKeyset, listSearch } from "./list-query.ts";
+import { listKeyset, listSearch, listCreatedDates } from "./list-query.ts";
 import { randomBytes, randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import type { DatabaseSync } from "node:sqlite";
@@ -624,8 +624,9 @@ export class OrderStore {
       if (!isDefaultQuery(query, "created_at", "desc")) {
         const search = listSearch(["orders.order_id", "orders.merchant_order_no", "orders.product_name"], query.q);
         const seek = listKeyset("orders." + query.sortBy, ["orders.order_id"], query.sortOrder, cursor?.position, query.sortBy === "received_amount_cents");
-        const where = [search.where, seek.where].filter(Boolean);
-        const parameters: Array<string | number> = [...search.parameters, ...seek.parameters];
+        const dates = listCreatedDates("orders.created_at", query.createdFrom, query.createdTo);
+        const where = [search.where, seek.where, dates.where].filter(Boolean);
+        const parameters: Array<string | number> = [...search.parameters, ...seek.parameters, ...dates.parameters];
         if (filters.paymentStatus !== null) { where.push("orders.payment_status = ?"); parameters.push(filters.paymentStatus); }
         if (filters.checkoutStatus === "EXPIRED") {
           where.push("(orders.checkout_status = 'EXPIRED' OR (orders.checkout_status = 'OPEN' AND orders.expires_at <= ?))"); parameters.push(now);

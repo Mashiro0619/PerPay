@@ -14,6 +14,7 @@ export function useListQuery<S extends string>(
   fields: readonly S[],
   defaultSort: S,
   defaultOrder: SortOrder,
+  dates = false,
 ) {
   const [search, setSearch] = useSearchParams();
   const sortBy = fields.includes(search.get("sort_by") as S)
@@ -27,6 +28,8 @@ export function useListQuery<S extends string>(
     q: (search.get("q") ?? "").trim(),
     sortBy,
     sortOrder,
+    ...(dates && search.has("created_from") ? { createdFrom: search.get("created_from")! } : {}),
+    ...(dates && search.has("created_to") ? { createdTo: search.get("created_to")! } : {}),
   };
   function update(values: Record<string, string | null>) {
     setSearch(
@@ -47,6 +50,8 @@ export function useListQuery<S extends string>(
     query,
     apiQuery: {
       ...(query.q ? { q: query.q } : {}),
+      ...(query.createdFrom !== undefined ? { created_from: query.createdFrom } : {}),
+      ...(query.createdTo !== undefined ? { created_to: query.createdTo } : {}),
       sort_by: query.sortBy,
       sort_order: query.sortOrder,
     },
@@ -55,7 +60,7 @@ export function useListQuery<S extends string>(
     setKeyword: (q: string) => update({ q }),
     setSort: (sortBy: string, sortOrder: SortOrder) =>
       update({ sort_by: sortBy, sort_order: sortOrder }),
-    clear: () => update({ q: null, sort_by: null, sort_order: null }),
+    clear: () => update({ q: null, sort_by: null, sort_order: null, ...(dates ? { created_from: null, created_to: null } : {}) }),
   };
 }
 export type ListQueryControl = Pick<

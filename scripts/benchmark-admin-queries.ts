@@ -1,3 +1,5 @@
+import { exportOrders } from "../src/http/order-export.ts";
+import { beijingDate } from "../src/shared/created-dates.ts";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import type { SQLInputValue } from "node:sqlite";
@@ -152,7 +154,11 @@ await withHttpFixture(async (f) => {
     nextMs: number | null;
     returned: number;
   }> = [];
+  const date = beijingDate(f.baseTime);
+  const dateQuery = "created_from=" + date + "&created_to=" + date;
   for (const [resource, query] of [
+    ["orders", dateQuery],
+    ["webhooks/deliveries", dateQuery + "&sort_order=desc"],
     ["orders", "q=bench-000&sort_by=created_at&sort_order=desc"],
     ["orders", "q=bench-&sort_by=payable_amount_cents&sort_order=asc"],
     ["orders", "sort_by=received_amount_cents&sort_order=desc"],
@@ -197,6 +203,13 @@ await withHttpFixture(async (f) => {
       nextMs: nextMs === null ? null : Number(nextMs.toFixed(3)),
       returned: body.data.length,
     });
+  }
+  if (count <= 10000) {
+    const start = performance.now();
+    const csv = exportOrders(f.database, {created_from:date,created_to:date}, f.baseTime);
+    const returned = csv.split("\r\n").length - 2;
+    assert.equal(returned, count);
+    rows.push({resource:"orders/export",query:dateQuery,firstMs:Number((performance.now()-start).toFixed(3)),nextMs:null,returned});
   }
   const indexes = f.database.read((db) =>
     db
