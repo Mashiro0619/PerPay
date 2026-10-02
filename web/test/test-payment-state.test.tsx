@@ -82,7 +82,7 @@ describe("current test-payment state", () => {
     await user.click(trigger!);
     await screen.findByText("正在更新订单状态");
     expect(
-      screen.queryByText("未付款", { exact: true }),
+      screen.queryByText("待付款", { exact: true }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: "打开收银台" }),
@@ -94,7 +94,7 @@ describe("current test-payment state", () => {
     expect(
       screen.getByRole("dialog").querySelector("[data-slot=dialog-footer]"),
     ).toHaveClass("shrink-0", "flex-row");
-    expect(screen.getByText("已确认", { exact: true })).toBeVisible();
+    expect(screen.getByText("收款已确认", { exact: true })).toBeVisible();
     expect(screen.getByText("实收金额")).toBeVisible();
     expect(
       screen.queryByRole("link", { name: "打开收银台" }),

@@ -1,3 +1,4 @@
+import { checkoutHelpUrl } from "../shared/checkout-help.ts";
 import {
   createHash,
   createPrivateKey,
@@ -116,6 +117,7 @@ export type DashboardChartType = "AREA" | "BAR" | "LINE";
 
 export interface DisplaySettings {
   readonly systemName?: string;
+  readonly checkoutHelpUrl?: string | null;
   readonly checkoutShowProductName: boolean;
   readonly dashboardChartType: DashboardChartType;
 }
@@ -245,6 +247,7 @@ export const advancedSettingsInputSchema = z.object({
 }).strict();
 
 export const displaySettingsInputSchema = z.object({
+  checkout_help_url: z.string().refine(value => checkoutHelpUrl(value) !== null, "请填写有效的 HTTPS 公网帮助链接（最多 2048 字节）").nullable().optional(),
   system_name: z.string().trim().min(1).max(40).regex(/^[^\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]+$/u, "名称不能包含控制字符").optional(),
   revision: z.number().int().nonnegative(),
   checkout_show_product_name: z.boolean(),

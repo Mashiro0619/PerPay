@@ -633,7 +633,36 @@ export function SettingsEditor({
             aria-describedby={fieldErrors.system_name ? "system-name-error" : undefined}
           />
           {fieldErrors.system_name && (
-            <FieldError id="system-name-error">{fieldErrors.system_name}</FieldError>
+            <FieldError id="system-name-error">
+              {fieldErrors.system_name}
+            </FieldError>
+          )}
+        </FieldContent>
+      </Field>
+      <Field
+        orientation="responsive"
+        className={displayRowClassName}
+        data-invalid={!!fieldErrors.checkout_help_url}
+      >
+        <FieldLabel htmlFor="setting-checkout-help-url">
+          商家帮助链接
+        </FieldLabel>
+        <FieldContent className="min-w-0">
+          <Input
+            id="setting-checkout-help-url"
+            name="checkout_help_url"
+            type="url"
+            placeholder="https://shop.example.com/help"
+            defaultValue={initialSettings.display?.checkout_help_url ?? ""}
+            aria-invalid={!!fieldErrors.checkout_help_url}
+            aria-describedby={
+              fieldErrors.checkout_help_url ? "checkout-help-error" : undefined
+            }
+          />
+          {fieldErrors.checkout_help_url && (
+            <FieldError id="checkout-help-error">
+              {fieldErrors.checkout_help_url}
+            </FieldError>
           )}
         </FieldContent>
       </Field>
@@ -1025,6 +1054,7 @@ async function saveSettings(
           body: {
             revision,
             system_name: text("system_name"),
+            checkout_help_url: text("checkout_help_url") || null,
             checkout_show_product_name: form.has("checkout_show_product_name"),
             dashboard_chart_type: chartType,
           },

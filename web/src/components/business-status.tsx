@@ -2,9 +2,9 @@ import { Badge } from "@/components/ui/badge";
 import { CircleCheck, CircleDashed, CircleAlert, Clock3 } from "lucide-react";
 
 const states = {
-  CONFIRMED: ["已确认", "outline", CircleCheck],
-  UNPAID: ["未付款", "secondary", CircleDashed],
-  DISPUTED: ["有争议", "destructive", CircleAlert],
+  CONFIRMED: ["收款已确认", "outline", CircleCheck],
+  UNPAID: ["待付款", "secondary", CircleDashed],
+  DISPUTED: ["需核对", "destructive", CircleAlert],
   OPEN: ["开放中", "outline"],
   CLOSED: ["已关闭", "secondary"],
   EXPIRED: ["已过期", "secondary"],

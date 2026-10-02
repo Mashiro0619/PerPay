@@ -420,6 +420,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     if (!isCanonicalCheckoutToken(token)) {
       return context.html(renderCheckoutPage({
       systemName: publicSystemName(dependencies),
+        helpUrl: publicCheckoutHelp(dependencies),
         checkoutToken: token,
         checkout: null,
         qrImageUrl: null,
@@ -436,6 +437,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       context.header("retry-after", "1");
       return context.html(renderCheckoutPage({
         systemName: publicSystemName(dependencies),
+        helpUrl: publicCheckoutHelp(dependencies),
         checkoutToken: token,
         checkout: null,
         qrImageUrl: null,
@@ -490,6 +492,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     }
     return context.html(renderCheckoutPage({
         systemName: publicSystemName(dependencies),
+        helpUrl: publicCheckoutHelp(dependencies),
       checkoutToken: token,
       checkout,
       showProductName: checkoutProductNameVisible(dependencies),
@@ -1511,6 +1514,11 @@ function requireFinancialWrite(
     requireJsonContentType(context);
     await next();
   };
+}
+
+function publicCheckoutHelp(dependencies: AppDependencies): string | null {
+  try { return dependencies.settings?.display().checkoutHelpUrl ?? null; }
+  catch { return null; }
 }
 
 function publicSystemName(dependencies: AppDependencies): string {

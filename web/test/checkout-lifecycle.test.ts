@@ -148,7 +148,7 @@ describe("checkout payment layout", () => {
       initial().checkout!.checkout.expires_at,
     );
     expect(timer.closest('[data-slot="badge"]')).toHaveTextContent(
-      "等待付款",
+      "待付款",
     );
     expect(timer.closest('[data-slot="card-action"]')).not.toBeNull();
     expect(container.querySelectorAll("[data-countdown]")).toHaveLength(1);
@@ -218,7 +218,7 @@ describe("checkout payment layout", () => {
       expect(container.querySelector("[data-qr-image]")).toBeNull();
       expect(
         container.querySelector('[data-slot="badge"]'),
-      ).not.toHaveTextContent("等待付款");
+      ).not.toHaveTextContent("待付款");
     },
   );
 });
@@ -826,4 +826,14 @@ describe("checkout shadcn view and PNG lifecycle", () => {
       "¥10.02",
     );
   });
+});
+
+ it("shows merchant help and a non-success return path without inventing confirmation", () => {
+  const base = initial();
+  const view = initial({ helpUrl: "https://help.example.com/contact", checkout: { ...base.checkout!, checkout: { ...base.checkout!.checkout, status: "EXPIRED" }, payment_instructions: null } });
+  const html = renderToString(createElement(CheckoutApp, { initial: view }));
+  expect(html).toContain("返回商家处理");
+  expect(html).toContain("联系商家");
+  expect(html).toContain("已付款请勿重复支付");
+  expect(html).not.toContain("data-qr-image");
 });

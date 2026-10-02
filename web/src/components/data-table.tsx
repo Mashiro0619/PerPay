@@ -22,7 +22,7 @@ function OrderStatus({ order }: { order: AdminOrderSummary }) {
         {order.refund_mark.marked && <StatusBadge value="ADMIN_REFUND_MARK" />}
       </div>
       <span className="text-xs text-muted-foreground">
-        {checkoutNames[order.checkout.status]}
+        {order.payment.status === "CONFIRMED" ? "可查看收银台" : checkoutNames[order.checkout.status]}
       </span>
     </div>
   );

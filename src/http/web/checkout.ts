@@ -1,3 +1,4 @@
+import { checkoutHelpUrl } from "../../shared/checkout-help.ts";
 import type { PublicCheckoutProjection } from "../../orders/model.ts";
 import { checkoutFrontend } from "./checkout-frontend.ts";
 import {
@@ -21,6 +22,7 @@ export interface CheckoutPageInitialError {
 
 export interface CheckoutPageInput {
   readonly systemName?: string;
+  readonly helpUrl?: string | null;
   readonly checkoutToken: string;
   readonly checkout: PublicCheckoutProjection | null;
   readonly qrImageUrl: string | null;
@@ -67,6 +69,7 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
   const order = input.checkout;
   const initial: CheckoutInitial = {
     systemName: input.systemName ?? "PerPay",
+    helpUrl: checkoutHelpUrl(input.helpUrl),
     serverTime: Date.now(),
     showProductName: input.showProductName !== false,
     apiUrl: missing ? "" : checkoutApiPath(input.checkoutToken),

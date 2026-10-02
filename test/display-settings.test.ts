@@ -39,6 +39,7 @@ it("persists validated display settings with CSRF, revisions and audit without c
         body: JSON.stringify(body),
       });
     assert.deepEqual(original.display, {
+      checkout_help_url: null,
       system_name: "PerPay",
       checkout_show_product_name: true,
       dashboard_chart_type: "AREA",
@@ -74,6 +75,7 @@ it("persists validated display settings with CSRF, revisions and audit without c
     assert.equal(saved.revision, original.revision + 1);
     assert.equal(saved.payment_revision, original.payment_revision);
     assert.deepEqual(saved.display, {
+      checkout_help_url: null,
       system_name: "星河收款",
       checkout_show_product_name: false,
       dashboard_chart_type: "BAR",
@@ -96,6 +98,7 @@ it("persists validated display settings with CSRF, revisions and audit without c
     assert.equal(audit.length, 1);
     assert.deepEqual(JSON.parse(audit[0]!.details_json), {
       ...input,
+      checkout_help_url: null,
       revision: saved.revision,
       payment_revision_changed: false,
     });
@@ -201,6 +204,7 @@ it("upgrades schema 23 with presentation defaults while preserving revisions, co
       assert.equal(after.payment_revision, before.payment_revision);
       assert.deepEqual(after.provider, before.provider);
       assert.deepEqual(after.display, {
+        checkout_help_url: null,
         system_name: "PerPay",
         checkout_show_product_name: true,
         dashboard_chart_type: "AREA",

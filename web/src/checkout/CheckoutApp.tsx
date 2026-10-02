@@ -1,3 +1,4 @@
+import { checkoutHelpUrl } from "../../../src/shared/checkout-help";
 import { cn } from "cn";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
@@ -82,7 +83,10 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
   }, [canPay, expanded]);
   useEffect(() => {
     document.title =
-      (order?.merchant_order_no ?? copy.heading) + " | " + systemName + " 收银台";
+      (order?.merchant_order_no ?? copy.heading) +
+      " | " +
+      systemName +
+      " 收银台";
   }, [order?.merchant_order_no, copy.heading, systemName]);
   const cents =
     order?.payment_instructions?.payable_amount_cents ??
@@ -107,8 +111,16 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
     String(Math.floor(remaining / 60) % 60).padStart(2, "0") +
     ":" +
     String(remaining % 60).padStart(2, "0");
-  const returnUrl =
-    state.visual === "CONFIRMED" ? merchantReturnUrl(order?.return_url) : null;
+  const returnUrl = [
+    "CONFIRMED",
+    "CLOSED",
+    "EXPIRED",
+    "DISPUTED",
+    "UNAVAILABLE",
+  ].includes(state.visual)
+    ? merchantReturnUrl(order?.return_url)
+    : null;
+  const helpUrl = checkoutHelpUrl(initial.helpUrl);
   const retryAllowed =
     state.visual !== "NOT_FOUND" &&
     (!order ||
@@ -135,7 +147,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
       </h1>
     </CardTitle>
   );
-  const actions = (retryAllowed || returnUrl) && (
+  const actions = (retryAllowed || returnUrl || helpUrl) && (
     <CardFooter
       className={cn(
         "flex flex-col items-stretch gap-3",
@@ -144,12 +156,22 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
       data-checkout-actions
     >
       {returnUrl && (
-        <a
-          href={returnUrl}
-          className={buttonVariants({ className: "w-full" })}
-        >
+        <a href={returnUrl} className={buttonVariants({ className: "w-full" })}>
           <CheckCircle2 data-icon="inline-start" />
-          返回商家
+          {state.visual === "CONFIRMED" ? "返回商家" : "返回商家处理"}
+        </a>
+      )}
+      {helpUrl && (
+        <a
+          href={helpUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={buttonVariants({
+            variant: "outline",
+            className: "w-full",
+          })}
+        >
+          联系商家
         </a>
       )}
       {retryAllowed &&
@@ -170,7 +192,10 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
         ) : (
           <a
             href={reloadPath}
-            className={buttonVariants({ variant: "outline", className: "w-full" })}
+            className={buttonVariants({
+              variant: "outline",
+              className: "w-full",
+            })}
             data-checkout-reload
           >
             <RefreshCw data-icon="inline-start" />
@@ -201,7 +226,9 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
       >
         <span className="flex min-w-0 items-center gap-2 font-semibold">
           <WalletCards className="size-5 shrink-0" />
-          <span className="truncate" title={systemName}>{systemName}</span>
+          <span className="truncate" title={systemName}>
+            {systemName}
+          </span>
         </span>
         <ThemeControl />
       </header>
@@ -331,6 +358,15 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                 </div>
                 {canPay && (
                   <>
+                    <p
+                      className="text-center text-sm text-muted-foreground"
+                      data-exact-amount-guide
+                    >
+                      请支付准确金额，勿修改尾数。
+                      {order && cents !== order.requested_amount_cents && (
+                        <span>含订单识别尾差。</span>
+                      )}
+                    </p>
                     {qrFailed ? (
                       <Alert variant="destructive">
                         <AlertCircle />
@@ -391,6 +427,12 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                         </Button>
                       </div>
                     )}
+                    <p className="text-center text-sm text-muted-foreground md:hidden">
+                      保存二维码 → 支付宝扫一扫 → 相册识别
+                    </p>
+                    <p className="text-center text-sm text-muted-foreground">
+                      已付款请勿重复支付。
+                    </p>
                     {download.message && (
                       <p
                         className="text-sm text-muted-foreground"
@@ -458,7 +500,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                       className="hidden text-sm leading-relaxed text-muted-foreground md:block"
                       data-checkout-desktop-guide
                     >
-                      用支付宝扫描二维码，付款后可在此核对结果。请勿重复支付。
+                      用支付宝扫描二维码，付款后可在此核对结果。
                     </p>
                   )}
                 </CardContent>

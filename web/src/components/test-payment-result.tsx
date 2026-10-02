@@ -139,7 +139,7 @@ export function TestPaymentResult({
     : disputed || current.isError
       ? AlertCircle
       : Clock3;
-  const badges = verified && (
+  const badges = verified && !confirmed && (
     <div className="flex flex-wrap items-center gap-2">
       <StatusBadge value={order.payment.status} />
       {!confirmed && order.checkout.status !== "OPEN" && (

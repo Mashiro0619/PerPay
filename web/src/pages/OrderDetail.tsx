@@ -165,8 +165,8 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
             </CardContent>
             <CardFooter className="flex-wrap justify-between gap-2">
               <CardDescription>
-                收银台
-                {order.checkout.status === "OPEN"
+                {order.payment.status === "CONFIRMED" ? "可查看收银台" : "收银台"}
+                {order.payment.status === "CONFIRMED" ? "" : order.checkout.status === "OPEN"
                   ? "开放中"
                   : order.checkout.status === "EXPIRED"
                     ? "已过期"

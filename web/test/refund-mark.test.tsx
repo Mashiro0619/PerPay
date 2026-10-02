@@ -399,7 +399,7 @@ describe("administrator-only refund marks", () => {
       );
       const cells = within(screen.getAllByRole("row")[1]!).getAllByRole("cell");
       const statusCell = width < 768 ? cells[0]! : cells[3]!;
-      expect(within(statusCell).getByText("已确认")).toBeVisible();
+      expect(within(statusCell).getByText("收款已确认")).toBeVisible();
       expect(within(statusCell).getByText("已标记退款")).toBeVisible();
       expect(
         within(

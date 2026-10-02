@@ -385,9 +385,9 @@ describe("responsive order semantics", () => {
     );
     const cells = within(screen.getAllByRole("row")[1]!).getAllByRole("cell");
     const mobileSummary = within(cells[0]!);
-    expect(mobileSummary.getByText("已确认")).toBeInTheDocument();
+    expect(mobileSummary.getByText("收款已确认")).toBeInTheDocument();
     expect(mobileSummary.getByText("已标记退款")).toBeInTheDocument();
-    expect(mobileSummary.getByText("收银台开放中")).toBeInTheDocument();
+    expect(mobileSummary.getByText("可查看收银台")).toBeInTheDocument();
     expect(cells).toHaveLength(2);
     expect(
       screen.queryByRole("columnheader", { name: "状态" }),
@@ -436,8 +436,8 @@ describe("responsive order semantics", () => {
       within(table).getByText(money(order.payable_amount_cents)),
     ).toBeInTheDocument();
     const cells = within(rows[1]!).getAllByRole("cell");
-    expect(within(cells[0]!).queryByText("未付款")).not.toBeInTheDocument();
-    expect(within(cells[3]!).getByText("未付款")).toBeInTheDocument();
+    expect(within(cells[0]!).queryByText("待付款")).not.toBeInTheDocument();
+    expect(within(cells[3]!).getByText("待付款")).toBeInTheDocument();
     for (const time of within(table).getAllByText(dateTime(order.created_at)))
       expect(time).toHaveAttribute("datetime", order.created_at);
     expect(
@@ -458,7 +458,7 @@ describe("responsive order semantics", () => {
       "cell",
     );
     expect(mobileCells).toHaveLength(2);
-    expect(within(mobileCells[0]!).getByText("未付款")).toBeInTheDocument();
+    expect(within(mobileCells[0]!).getByText("待付款")).toBeInTheDocument();
     expect(
       within(mobileCells[0]!).getByText("收银台开放中"),
     ).toBeInTheDocument();

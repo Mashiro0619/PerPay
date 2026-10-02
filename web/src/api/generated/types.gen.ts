@@ -392,6 +392,7 @@ export type DashboardChartType = 'AREA' | 'BAR' | 'LINE';
 export type SystemName = string;
 export type DisplaySettings = {
     system_name?: SystemName;
+    checkout_help_url?: string | null;
     checkout_show_product_name: boolean;
     dashboard_chart_type: DashboardChartType;
 };
@@ -448,6 +449,7 @@ export type AdvancedSettingsRequest = {
 };
 export type DisplaySettingsRequest = {
     system_name?: SystemName;
+    checkout_help_url?: string | null;
     revision: number;
     checkout_show_product_name: boolean;
     dashboard_chart_type: DashboardChartType;

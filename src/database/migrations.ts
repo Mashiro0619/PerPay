@@ -4955,4 +4955,9 @@ export const migrations: readonly Migration[] = [
         CHECK (length(trim(system_name)) BETWEEN 1 AND 40);
     `,
   },
+  {
+    version: 31,
+    name: "checkout_merchant_help_url",
+    sql: `ALTER TABLE runtime_configuration ADD COLUMN checkout_help_url TEXT;`,
+  },
 ] as const;

@@ -111,6 +111,7 @@ export interface RuntimeSettingsView {
   };
   readonly display: {
     readonly system_name: string;
+    readonly checkout_help_url: string | null;
     readonly checkout_show_product_name: boolean;
     readonly dashboard_chart_type: DashboardChartType;
   };
@@ -262,6 +263,7 @@ export class RuntimeSettingsService {
       },
       display: {
         system_name: snapshot.display?.systemName ?? "PerPay",
+        checkout_help_url: snapshot.display?.checkoutHelpUrl ?? null,
         checkout_show_product_name: snapshot.display?.checkoutShowProductName ?? true,
         dashboard_chart_type: snapshot.display?.dashboardChartType ?? "AREA",
       },

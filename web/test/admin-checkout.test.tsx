@@ -26,9 +26,9 @@ describe("administrator checkout entry", () => {
     ["OPEN", "UNPAID", "收银台开放中"],
     ["CLOSED", "UNPAID", "收银台已关闭"],
     ["EXPIRED", "UNPAID", "收银台已过期"],
-    ["OPEN", "CONFIRMED", "收银台开放中"],
+    ["OPEN", "CONFIRMED", "可查看收银台"],
     ["OPEN", "DISPUTED", "收银台开放中"],
-    ["CLOSED", "CONFIRMED", "收银台已关闭"],
+    ["CLOSED", "CONFIRMED", "可查看收银台"],
     ["CLOSED", "DISPUTED", "收银台已关闭"],
   ])(
     "links to the authenticated existing checkout for %s / %s without changing state",

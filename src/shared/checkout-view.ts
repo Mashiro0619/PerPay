@@ -31,6 +31,7 @@ export interface CheckoutViewOrder {
 }
 export interface CheckoutInitial {
   systemName?: string;
+  helpUrl?: string | null;
   showProductName?: boolean;
   checkout: CheckoutViewOrder | null;
   initialError: {
@@ -49,18 +50,18 @@ export const checkoutCopy: Record<
   { badge: string; heading: string; detail: string }
 > = {
   UNPAID: {
-    badge: "等待付款",
+    badge: "待付款",
     heading: "支付宝付款",
     detail: "",
   },
   CONFIRMED: {
-    badge: "付款已确认",
-    heading: "付款已确认",
+    badge: "收款已确认",
+    heading: "收款已确认",
     detail: "已收到付款，请勿重复支付。",
   },
   DISPUTED: {
-    badge: "付款有争议",
-    heading: "付款需要核实",
+    badge: "需核对",
+    heading: "需核对",
     detail: "请联系商家核实，勿再次付款。",
   },
   CLOSED: {
@@ -71,7 +72,7 @@ export const checkoutCopy: Record<
   EXPIRED: {
     badge: "订单已过期",
     heading: "订单已过期",
-    detail: "付款时间已结束，请返回商家重新下单。",
+    detail: "付款时间已结束。已付款请勿重复支付，请返回商家核查。",
   },
   NOT_FOUND: {
     badge: "订单不可用",

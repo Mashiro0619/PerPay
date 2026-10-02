@@ -3578,6 +3578,10 @@ components:
       required: [checkout_show_product_name, dashboard_chart_type]
       properties:
         system_name: { $ref: '#/components/schemas/SystemName' }
+        checkout_help_url:
+          type: [string, 'null']
+          description: Optional public HTTPS help link (at most 2048 UTF-8 bytes); omit to preserve, null to clear.
+          maxLength: 2048
         checkout_show_product_name:
           type: boolean
           default: true
@@ -3738,6 +3742,10 @@ components:
       required: [revision, checkout_show_product_name, dashboard_chart_type]
       properties:
         system_name: { $ref: '#/components/schemas/SystemName' }
+        checkout_help_url:
+          type: [string, 'null']
+          description: Optional public HTTPS help link (at most 2048 UTF-8 bytes); omit to preserve, null to clear.
+          maxLength: 2048
         revision: { type: integer, minimum: 0 }
         checkout_show_product_name: { type: boolean }
         dashboard_chart_type: { $ref: '#/components/schemas/DashboardChartType' }

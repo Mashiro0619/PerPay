@@ -35,14 +35,14 @@ describe("instance display settings", () => {
     expect(form).toHaveClass("max-w-2xl");
     const displayFields = name.closest('[data-slot="field-group"]')!;
     const rows = [...displayFields.children];
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(4);
     for (const row of rows) {
       expect(row).toHaveAttribute("data-orientation", "responsive");
       expect(row).toHaveClass("@md/field-group:grid-cols-[10rem_minmax(0,1fr)]");
     }
     expect(rows[0]).toContainElement(name);
-    expect(rows[1]).toContainElement(screen.getByRole("group", { name: "首页图表样式" }));
-    expect(rows[2]).toContainElement(screen.getByRole("switch", { name: "收银台显示商品名称" }));
+    expect(rows[2]).toContainElement(screen.getByRole("group", { name: "首页图表样式" }));
+    expect(rows[3]).toContainElement(screen.getByRole("switch", { name: "收银台显示商品名称" }));
     expect(form.querySelector('[data-slot="field-description"]')).toBeNull();
     expect(form.querySelector('[data-slot="card-header"]')).toHaveClass("sr-only");
     expect(form.querySelector('[data-slot="field-legend"]')).toHaveClass("sr-only");
@@ -91,6 +91,7 @@ describe("instance display settings", () => {
     );
     expect(await requests[0]!.json()).toEqual({
       system_name: "PerPay",
+      checkout_help_url: null,
       revision: settings.revision,
       checkout_show_product_name: false,
       dashboard_chart_type: "BAR",
