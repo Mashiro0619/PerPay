@@ -777,7 +777,7 @@ export function SettingsEditor({
             id="setting-checkout-help-url"
             name="checkout_help_url"
             type="url"
-            placeholder="https://shop.example.com/help"
+            placeholder="可选，留空不显示"
             defaultValue={initialSettings.display?.checkout_help_url ?? ""}
             aria-invalid={!!fieldErrors.checkout_help_url}
             aria-describedby={

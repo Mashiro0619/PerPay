@@ -147,7 +147,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
       </h1>
     </CardTitle>
   );
-  const actions = (retryAllowed || returnUrl || helpUrl) && (
+  const actions = (retryAllowed || returnUrl) && (
     <CardFooter
       className={cn(
         "flex flex-col items-stretch gap-3",
@@ -159,19 +159,6 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
         <a href={returnUrl} className={buttonVariants({ className: "w-full" })}>
           <CheckCircle2 data-icon="inline-start" />
           {state.visual === "CONFIRMED" ? "返回商家" : "返回商家处理"}
-        </a>
-      )}
-      {helpUrl && (
-        <a
-          href={helpUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={buttonVariants({
-            variant: "outline",
-            className: "w-full",
-          })}
-        >
-          联系商家
         </a>
       )}
       {retryAllowed &&
@@ -365,15 +352,6 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                 </div>
                 {canPay && (
                   <>
-                    <p
-                      className="text-center text-sm text-muted-foreground"
-                      data-exact-amount-guide
-                    >
-                      请支付准确金额，勿修改尾数。
-                      {order && cents !== order.requested_amount_cents && (
-                        <span>含订单识别尾差。</span>
-                      )}
-                    </p>
                     {qrFailed ? (
                       <Alert variant="destructive">
                         <AlertCircle />
@@ -434,12 +412,6 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                         </Button>
                       </div>
                     )}
-                    <p className="text-center text-sm text-muted-foreground md:hidden">
-                      保存二维码 → 支付宝扫一扫 → 相册识别
-                    </p>
-                    <p className="text-center text-sm text-muted-foreground">
-                      已付款请勿重复支付。
-                    </p>
                     {download.message && (
                       <p
                         className="text-sm text-muted-foreground"
@@ -518,6 +490,18 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
             actions
           )}
         </Card>
+        {helpUrl && (
+          <p className="text-right text-sm text-muted-foreground" data-checkout-help>
+            <a
+              href={helpUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-sm hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+            >
+              商家帮助
+            </a>
+          </p>
+        )}
         <p className="sr-only" role="status" aria-live="polite">
           {awaitingStartup
             ? "付款组件尚未就绪，请暂勿付款。"

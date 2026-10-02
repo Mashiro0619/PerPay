@@ -4117,6 +4117,8 @@ components:
       pattern: '^[Hh][Tt][Tt][Pp][Ss]://'
       x-perpay-max-utf8-bytes: 4096
       description: |
+        Server-to-server notification endpoint, independent of return_url. PerPay POSTs
+        signed event JSON here and requires an ACK; this is not a browser redirect target.
         Absolute HTTPS URL under the one DNS origin enabled by deployment configuration.
         User information, fragments, control characters, trailing-dot hosts, and encoded
         control bytes are rejected. Paths and existing query parameters are preserved.
@@ -4128,8 +4130,10 @@ components:
       pattern: '^[Hh][Tt][Tt][Pp][Ss]://'
       x-perpay-max-utf8-bytes: 4096
       description: |
-        Optional browser return target under the HTTPS merchant origin configured in the
-        notification settings. Credentials, fragments, control characters, and encoded
+        Optional browser return target, independent of notify_url. Opened only by a
+        payer navigation action; PerPay does not POST notifications here and navigation
+        does not prove payment. The URL must be under the HTTPS merchant origin configured
+        in notification settings. Credentials, fragments, control characters, and encoded
         control bytes are rejected.
     CreateOrderRequest:
       type: object
@@ -4213,7 +4217,7 @@ components:
         product_name: { type: string, minLength: 1, maxLength: 200 }
         note: { type: [string, 'null'], maxLength: 500 }
         return_url:
-          description: Null until payment is confirmed or when the order did not configure a browser return target.
+          description: Configured browser return target, or null when absent. Navigation is not proof of payment; checkout may offer this target for confirmed and non-success outcomes without adding success parameters.
           oneOf:
             - $ref: '#/components/schemas/ReturnUrl'
             - type: 'null'
@@ -4314,7 +4318,7 @@ components:
             currency: { const: CNY }
             product_name: { type: string, minLength: 1, maxLength: 200 }
             return_url:
-              description: Null until payment is confirmed or when the order did not configure a browser return target.
+              description: Configured browser return target, or null when absent. Navigation is not proof of payment; checkout may offer this target for confirmed and non-success outcomes without adding success parameters.
               oneOf:
                 - $ref: '#/components/schemas/ReturnUrl'
                 - type: 'null'

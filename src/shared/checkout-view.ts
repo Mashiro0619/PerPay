@@ -58,7 +58,7 @@ export const checkoutCopy: Record<
   CONFIRMED: {
     badge: "收款已确认",
     heading: "收款已确认",
-    detail: "已收到付款，请勿重复支付。",
+    detail: "",
   },
   DISPUTED: {
     badge: "需核对",
@@ -68,7 +68,7 @@ export const checkoutCopy: Record<
   CLOSED: {
     badge: "订单已关闭",
     heading: "订单已关闭",
-    detail: "此订单不再收款，请勿付款。",
+    detail: "",
   },
   EXPIRED: {
     badge: "订单已过期",

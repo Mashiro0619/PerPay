@@ -28,7 +28,9 @@
 
 商品名称开关只控制收银台显示，不修改订单 API 和通知内容，也不作为数据保密开关。
 
-可选的商家帮助链接显示为收银台“联系商家”，仅接受 HTTPS 公网域名链接，不由服务器访问。留空并保存可清除；返回商家不代表付款成功，业务系统仍应查单或验签通知。
+商家帮助链接为可选项，配置后在收银台底部显示小字“商家帮助”，未配置则不显示入口，仅接受 HTTPS 公网域名链接，不由服务器访问。留空并保存可清除；返回商家不代表付款成功，业务系统仍应查单或验签通知。
+
+订单配置合法 `return_url` 后，收款确认显示“返回商家”；关闭、过期、争议及保留订单信息的暂不可用页面显示“返回商家处理”。正常待付款不显示返回按钮，无订单数据时不猜测返回地址。返回操作不追加成功参数，也不会自动跳转。
 
 ### 收银台结束后查询期
 
@@ -162,12 +164,22 @@ const order = await perpayRequest("POST", "/api/v1/orders", {
   product_name: "商品名称",
   note: "可选的商户备注",
   notify_url: "https://shop.example.com/webhooks/perpay",
-  return_url: "https://shop.example.com/orders/paid",
+  return_url: "https://shop.example.com/orders/result",
 });
 
 // 返回给浏览器，或由网站服务端直接 303 跳转。
 return Response.redirect(order.checkout.checkout_url, 303);
 ```
+
+三个链接用途独立，不能互相代替：
+
+| 字段 | 用途 |
+| --- | --- |
+| `notify_url` | 订单可选的服务端通知接收地址。PerPay 向它 POST 签名 JSON，接收端验签、幂等处理并返回 ACK。 |
+| `return_url` | 订单可选的浏览器返回页面。用户点击后打开，PerPay 不向它投递通知；返回不代表付款成功，业务网站仍须服务端查单或验签通知。 |
+| `checkout_help_url` | 显示设置中的可选商家帮助页面，不参与收款确认或通知投递。 |
+
+目前 `notify_url` 与 `return_url` 共用后台允许的 HTTPS origin 校验，但独立保存、独立使用，不会相互回退；它们可使用该 origin 下不同的路径。帮助链接不要求与这两个地址同域。
 
 订单响应中的 `data.payment.status` 有以下值：
 
@@ -187,7 +199,7 @@ return Response.redirect(order.checkout.checkout_url, 303);
 GET /api/v1/orders/{order_id}
 ```
 
-网站服务端应在用户返回收银台后主动查询一次，并以 PerPay 服务端的最终状态为准。浏览器跳转结果不能直接视为支付成功。
+网站服务端应在用户从收银台返回业务网站后主动查询一次，并以 PerPay 服务端的最终状态为准。浏览器跳转结果不能直接视为支付成功。
 
 ## 5. 回调通知
 

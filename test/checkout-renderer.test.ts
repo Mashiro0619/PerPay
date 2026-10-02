@@ -167,7 +167,7 @@ describe("public checkout SSR", () => {
     assert.match(checkoutText(html), /款项已部分退款/);
     assert.doesNotMatch(html, /data-qr-image/);
   });
-  it("only provides a safe merchant return action after confirmation", () => {
+  it("hides return during active payment and renders a safe confirmed return target", () => {
     const unpaid = renderCheckoutPage({
       checkoutToken: "pct1_return",
       checkout: { ...checkout, returnUrl: "https://shop.example.com/done" },

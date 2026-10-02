@@ -255,9 +255,8 @@ export class OrderService {
       requestedAmountCents: aggregate.order.requestedAmountCents,
       currency: aggregate.order.currency,
       productName: aggregate.order.productName,
-      returnUrl: aggregate.order.paymentStatus === "CONFIRMED"
-        ? aggregate.order.returnUrl
-        : null,
+      // Navigation is not proof of payment; non-success states also need a way back.
+      returnUrl: aggregate.order.returnUrl,
       paymentInstructions:
         aggregate.order.checkoutStatus === "OPEN" && aggregate.order.paymentStatus === "UNPAID"
           ? {

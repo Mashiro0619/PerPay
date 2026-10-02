@@ -91,6 +91,17 @@ afterEach(() => {
   cleanups.splice(0).forEach((dispose) => dispose());
 });
 describe("checkout payment layout", () => {
+  it("keeps QR actions without the removed album guide or repeated payment warning", () => {
+    render(createElement(CheckoutApp, { initial: initial() }));
+    expect(screen.getByRole("button", { name: "放大二维码" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "保存二维码" })).toBeVisible();
+    expect(screen.queryByText(/请支付准确金额，勿修改尾数|含订单识别尾差/)).not.toBeInTheDocument();
+    expect(screen.queryByText("保存二维码 → 支付宝扫一扫 → 相册识别")).not.toBeInTheDocument();
+    expect(screen.queryByText("已付款请勿重复支付。")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /返回商家/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "商家帮助" })).not.toBeInTheDocument();
+  });
+
   it("renders no payment controls or frozen timer without running client effects", () => {
     const html = renderToString(createElement(CheckoutApp, { initial: initial() }));
     expect(html).not.toMatch(/data-qr-image|data-countdown|放大二维码|保存二维码/);
@@ -828,12 +839,91 @@ describe("checkout shadcn view and PNG lifecycle", () => {
   });
 });
 
- it("shows merchant help and a non-success return path without inventing confirmation", () => {
-  const base = initial();
-  const view = initial({ helpUrl: "https://help.example.com/contact", checkout: { ...base.checkout!, checkout: { ...base.checkout!.checkout, status: "EXPIRED" }, payment_instructions: null } });
-  const html = renderToString(createElement(CheckoutApp, { initial: view }));
-  expect(html).toContain("返回商家处理");
-  expect(html).toContain("联系商家");
-  expect(html).toContain("已付款请勿重复支付");
-  expect(html).not.toContain("data-qr-image");
+describe("checkout merchant actions", () => {
+  it("shows help as a separate small text link, not a payment action", () => {
+    const { container } = render(createElement(CheckoutApp, { initial: initial({
+      helpUrl: "https://help.example.com/guide",
+    }) }));
+    const help = screen.getByRole("link", { name: "商家帮助" });
+    expect(help).toHaveAttribute("href", "https://help.example.com/guide");
+    expect(help).toHaveAttribute("target", "_blank");
+    expect(help).toHaveAttribute("rel", "noopener noreferrer");
+    expect(help.closest("[data-checkout-help]")).toHaveClass("text-sm", "text-right");
+    expect(help).not.toHaveClass("underline", "underline-offset-4");
+    expect(help).toHaveClass("focus-visible:outline-2");
+    expect(help.closest("[data-checkout-actions]")).toBeNull();
+    expect(help.closest("[data-checkout-layout]")).toBeNull();
+    expect(help).not.toHaveAttribute("data-slot", "button");
+    expect(help).not.toHaveClass("w-full");
+    expect(container.querySelector("[data-checkout-help]")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "联系商家" })).not.toBeInTheDocument();
+  });
+
+  it.each([undefined, null, "", "http://help.example.com", "javascript:alert(1)"])(
+    "leaves no help placeholder or empty actions when help is absent or invalid: %s",
+    (helpUrl) => {
+      const order = initial().checkout!;
+      order.return_url = null;
+      order.checkout.status = "CLOSED";
+      order.payment_instructions = null;
+      const { container } = render(createElement(CheckoutApp, { initial: initial({
+        checkout: order,
+        ...(helpUrl === undefined ? {} : { helpUrl }),
+      }) }));
+      expect(screen.queryByRole("link", { name: "商家帮助" })).not.toBeInTheDocument();
+      expect(container.querySelector("[data-checkout-help]")).toBeNull();
+      expect(container.querySelector("[data-checkout-actions]")).toBeNull();
+    },
+  );
+
+  it.each(["CONFIRMED", "CLOSED", "EXPIRED", "DISPUTED", "UNAVAILABLE"] as const)(
+    "shows the exact merchant return URL for %s without adding success parameters",
+    (state) => {
+      const order = initial().checkout!;
+      order.payment_instructions = null;
+      if (state === "CONFIRMED" || state === "DISPUTED") {
+        order.payment = { status: state, basis: "INFERRED", received_amount_cents: 1001 };
+      } else if (state === "CLOSED" || state === "EXPIRED") {
+        order.checkout.status = state;
+      }
+      const view = initial({
+        checkout: order,
+        helpUrl: "https://help.example.com/contact",
+        ...(state === "UNAVAILABLE" ? {
+          initialError: { status: 503, code: "unavailable", message: "unavailable", retryAfterSeconds: 5 },
+        } : {}),
+      });
+      const { container } = render(createElement(CheckoutApp, { initial: view }));
+      expect(screen.getByRole("link", {
+        name: state === "CONFIRMED" ? "返回商家" : "返回商家处理",
+      })).toHaveAttribute("href", order.return_url);
+      expect(screen.getByRole("link", { name: "商家帮助" })).toHaveAttribute(
+        "href", "https://help.example.com/contact",
+      );
+      expect(container.querySelector("[data-qr-image]")).toBeNull();
+      expect(screen.queryByText("已收到付款，请勿重复支付。")).not.toBeInTheDocument();
+      expect(screen.queryByText("此订单不再收款，请勿付款。")).not.toBeInTheDocument();
+      if (state === "EXPIRED") expect(screen.getByText(/已付款请勿重复支付/)).toBeVisible();
+    },
+  );
+
+  it.each([null, "javascript:alert(1)"])("omits a missing or unsafe merchant return URL: %s", (returnUrl) => {
+    const order = initial().checkout!;
+    order.return_url = returnUrl;
+    order.checkout.status = "CLOSED";
+    order.payment_instructions = null;
+    render(createElement(CheckoutApp, { initial: initial({ checkout: order }) }));
+    expect(screen.queryByRole("link", { name: /返回商家/ })).not.toBeInTheDocument();
+  });
+
+  it("shows configured help, but never invents a return URL for a missing order", () => {
+    render(createElement(CheckoutApp, { initial: initial({
+      checkout: null,
+      qrAvailable: false,
+      initialError: { status: 404, code: "not_found", message: "not found", retryAfterSeconds: null },
+      helpUrl: "https://help.example.com/contact",
+    }) }));
+    expect(screen.getByRole("link", { name: "商家帮助" })).toBeVisible();
+    expect(screen.queryByRole("link", { name: /返回商家/ })).not.toBeInTheDocument();
+  });
 });
