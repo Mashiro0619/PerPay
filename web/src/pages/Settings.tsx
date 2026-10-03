@@ -1,3 +1,4 @@
+import { RefreshButton } from "@/components/refresh-button";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -7,7 +8,6 @@ import {
   Mail,
   Monitor,
   QrCode,
-  RefreshCw,
   SlidersHorizontal,
   Settings2,
   Wallet,
@@ -25,8 +25,7 @@ import {
 import { useDraftGuard } from "@/drafts";
 import { QueryView } from "@/components/request-state";
 import { SuccessMessage, useFeedback } from "@/components/Feedback";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
+import { buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { NotificationKeyActions, SecuritySettings } from "./SecuritySettings";
 
@@ -92,16 +91,7 @@ export default function Settings() {
           <Settings2 data-icon="inline-start" />
           <span className="hidden sm:inline">配置向导</span>
         </Link>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="刷新"
-          title="刷新"
-          disabled={settings.isFetching}
-          onClick={refresh}
-        >
-          {settings.isFetching ? <Spinner aria-hidden="true" /> : <RefreshCw />}
-        </Button>
+        <RefreshButton disabled={settings.isFetching} onClick={refresh} busy={settings.isFetching} />
       </PageHeaderActions>
       <div className="flex flex-col gap-1">
         <h2 className="text-2xl font-semibold tracking-tight">实例设置</h2>

@@ -1,3 +1,5 @@
+import { PageHeaderActions } from "@/components/page-header-actions";
+import { RefreshButton } from "@/components/refresh-button";
 import { CreatedDateFilter } from "@/components/created-date-filter";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { money } from "@/lib/format";
@@ -27,7 +29,6 @@ import { StatusBadge } from "@/components/business-status";
 import { QueryView, ErrorNotice } from "@/components/request-state";
 import { CursorPagination } from "@/components/cursor-pagination";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
 import {
   Select,
   SelectContent,
@@ -148,21 +149,9 @@ function DeliveryPage({
             >
               通知设置
             </Link>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="刷新"
-              disabled={deliveries.isFetching}
-              onClick={() => {
+            <RefreshButton disabled={deliveries.isFetching} onClick={() => {
                 void deliveries.refetch();
-              }}
-            >
-              {deliveries.isFetching ? (
-                <Spinner aria-hidden="true" />
-              ) : (
-                <RefreshCw />
-              )}
-            </Button>
+              }} busy={deliveries.isFetching} />
           </>
         }
         filters={[
@@ -366,16 +355,9 @@ function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
           <ArrowLeft data-icon="inline-start" />
           {back.label}
         </Link>
-        <Button
-          variant="outline"
-          disabled={delivery.isFetching || attempts.isFetching}
-          onClick={() => {
+        <PageHeaderActions><RefreshButton disabled={delivery.isFetching || attempts.isFetching} onClick={() => {
             void refreshOperationalData();
-          }}
-        >
-          <RefreshCw data-icon="inline-start" />
-          刷新
-        </Button>
+          }} busy={delivery.isFetching || attempts.isFetching} /></PageHeaderActions>
       </div>
       <QueryView query={delivery}>
         {({ data }) => (

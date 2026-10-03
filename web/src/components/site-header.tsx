@@ -1,14 +1,12 @@
+import { RefreshButton } from "@/components/refresh-button";
 import { ContentWidthControl } from "@/components/content-width";
 import { PageHeaderActionsSlot } from "@/components/page-header-actions";
 import { DemoNotice } from "@/components/demo-notice";
-import { RefreshCw } from "lucide-react";
 import { useIsFetching } from "@tanstack/react-query";
 import { refreshOperationalData } from "@/api/client";
 import { ThemeControl } from "@/theme";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { Spinner } from "@/components/ui/spinner";
 import { TestPaymentButton } from "@/components/test-payment-provider";
 
 export function SiteHeader({
@@ -32,17 +30,9 @@ export function SiteHeader({
         <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
           {overview && (
             <>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="刷新"
-                disabled={fetching}
-                onClick={() => {
+              <RefreshButton disabled={fetching} onClick={() => {
                   void refreshOperationalData();
-                }}
-              >
-                {fetching ? <Spinner aria-hidden="true" /> : <RefreshCw />}
-              </Button>
+                }} busy={fetching} />
               <TestPaymentButton size="sm" title="测试收款">
                 <span className="sr-only sm:not-sr-only">测试收款</span>
               </TestPaymentButton>

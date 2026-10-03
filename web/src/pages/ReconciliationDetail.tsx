@@ -1,7 +1,9 @@
+import { PageHeaderActions } from "@/components/page-header-actions";
+import { RefreshButton } from "@/components/refresh-button";
 import { useSystemName } from "@/branding";
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useParams } from "react-router";
 import { Link, useDetailBack } from "@/navigation";
 import { api, refreshOperationalData, result } from "@/api/client";
@@ -21,8 +23,7 @@ import {
 } from "@/components/detail/DetailPrimitives";
 import { RecordTools } from "@/components/detail/RecordTools";
 import { AssociateIncomeAction } from "@/components/detail/FinancialActions";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardHeader,
@@ -80,20 +81,9 @@ function EvidenceHeading({
         <ArrowLeft data-icon="inline-start" />
         {back.label}
       </Link>
-      <Button
-        variant="outline"
-        disabled={fetching > 0}
-        onClick={() => {
+      <PageHeaderActions><RefreshButton disabled={fetching > 0} onClick={() => {
           void refreshOperationalData();
-        }}
-      >
-        {fetching > 0 ? (
-          <Spinner aria-hidden="true" data-icon="inline-start" />
-        ) : (
-          <RefreshCw data-icon="inline-start" />
-        )}
-        刷新
-      </Button>
+        }} busy={fetching > 0} /></PageHeaderActions>
     </div>
   );
 }

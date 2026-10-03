@@ -1,3 +1,4 @@
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useRef, useState } from "react";
 import { MoreHorizontal, Code, ExternalLink } from "lucide-react";
 import { Link } from "@/navigation";
@@ -37,7 +38,7 @@ export function RecordTools({
     <>
       <div className="flex justify-end">
         <DropdownMenu>
-          <DropdownMenuTrigger
+          <Tooltip><TooltipTrigger render={<DropdownMenuTrigger
             render={
               <Button
                 ref={trigger}
@@ -49,7 +50,7 @@ export function RecordTools({
           >
             <MoreHorizontal data-icon="inline-start" />
             更多操作
-          </DropdownMenuTrigger>
+          </DropdownMenuTrigger>} /><TooltipContent>{label}</TooltipContent></Tooltip>
           <DropdownMenuContent align="end">
             {actions.length > 0 && (
               <>

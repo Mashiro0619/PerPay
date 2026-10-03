@@ -1,3 +1,4 @@
+import { RefreshButton } from "@/components/refresh-button";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import type { ReactNode } from "react";
 import {
@@ -5,7 +6,7 @@ import {
   useSystemStatus,
 } from "@/features/system-status";
 import { presentSystemStatus } from "@/lib/system-status";
-import { CheckCircle2, CircleAlert, RefreshCw } from "lucide-react";
+import { CheckCircle2, CircleAlert } from "lucide-react";
 import { Link } from "@/navigation";
 import { dateTime, backupIntervalLabel } from "@/lib/format";
 import { notificationErrorName } from "@/lib/detail-summary";
@@ -13,8 +14,7 @@ import { ErrorNotice, Loading, QueryView } from "@/components/request-state";
 import { Alert, AlertTitle } from "@/components/ui/alert";
 import { RecordTools } from "@/components/detail/RecordTools";
 import { OfficialUpdatePanel } from "@/updates";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
+import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -45,22 +45,9 @@ function SystemContent() {
   return (
     <>
       <PageHeaderActions>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="刷新"
-          title="刷新"
-          disabled={status.isFetching}
-          onClick={() => {
+        <RefreshButton disabled={status.isFetching} onClick={() => {
             void status.refetch();
-          }}
-        >
-          {status.isFetching ? (
-            <Spinner aria-hidden="true" data-icon="inline-start" />
-          ) : (
-            <RefreshCw data-icon="inline-start" />
-          )}
-        </Button>
+          }} busy={status.isFetching} />
       </PageHeaderActions>
       {checking &&
         (unavailable ? (

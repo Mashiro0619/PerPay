@@ -1,3 +1,5 @@
+import { PageHeaderActions } from "@/components/page-header-actions";
+import { RefreshButton } from "@/components/refresh-button";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -6,7 +8,6 @@ import {
   Clock3,
   ExternalLink,
   Plus,
-  RefreshCw,
 } from "lucide-react";
 import { useParams } from "react-router";
 import {
@@ -32,7 +33,6 @@ import { AssociateIncomeAction } from "@/components/detail/FinancialActions";
 import { ExceptionCard, MatchCard } from "@/components/detail/PaymentEvidence";
 import { OrderNotifications } from "@/components/detail/NotificationEvidence";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
 import {
   Card,
   CardHeader,
@@ -81,20 +81,9 @@ export function OrderDetail() {
           <ArrowLeft data-icon="inline-start" />
           {back.label}
         </Link>
-        <Button
-          variant="outline"
-          disabled={fetching > 0}
-          onClick={() => {
+        <PageHeaderActions><RefreshButton disabled={fetching > 0} onClick={() => {
             void refreshOperationalData();
-          }}
-        >
-          {fetching > 0 ? (
-            <Spinner aria-hidden="true" data-icon="inline-start" />
-          ) : (
-            <RefreshCw data-icon="inline-start" />
-          )}
-          刷新
-        </Button>
+          }} busy={fetching > 0} /></PageHeaderActions>
       </div>
       <QueryView query={order}>
         {({ data }) => <OrderDesk key={data.order_id} order={data} />}

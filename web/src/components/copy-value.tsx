@@ -1,3 +1,4 @@
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useEffect, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -6,10 +7,12 @@ export function CopyValue({
   value,
   label,
   secret = false,
+  tooltip = false,
 }: {
   value: string;
   label?: string;
   secret?: boolean;
+  tooltip?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -32,18 +35,21 @@ export function CopyValue({
       })
       .catch(() => setFailed(true));
   };
-  const action = (
+  const button = (
     <Button
       variant="ghost"
       size="icon-sm"
       type="button"
       aria-label={label ?? "复制内容"}
-      title={label ?? "复制内容"}
+      title={tooltip ? undefined : label ?? "复制内容"}
       onClick={copy}
     >
       {copied ? <Check /> : <Copy />}
     </Button>
   );
+  const action = tooltip ? (
+    <Tooltip><TooltipTrigger render={button} /><TooltipContent>{label ?? "复制内容"}</TooltipContent></Tooltip>
+  ) : button;
   return (
     <div className="relative flex min-w-0 flex-wrap items-center gap-1">
       {block ? (

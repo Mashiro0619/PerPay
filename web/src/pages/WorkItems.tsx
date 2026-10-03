@@ -1,3 +1,4 @@
+import { RefreshButton } from "@/components/refresh-button";
 import { DialogBody } from "@/components/admin-dialog";
 import { useListQuery, WORK_ITEM_SORT_FIELDS } from "@/lib/list-query";
 import { ListQueryToolbar } from "@/components/list-query-toolbar";
@@ -485,17 +486,9 @@ function WorkItemPage({
                 忽略当前筛选结果
               </Button>
             )}
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="刷新"
-              disabled={busy || work.isFetching}
-              onClick={() => {
+            <RefreshButton disabled={busy || work.isFetching} onClick={() => {
                 void work.refetch();
-              }}
-            >
-              {work.isFetching ? <Spinner aria-hidden="true" /> : <RefreshCw />}
-            </Button>
+              }} busy={busy || work.isFetching} />
           </>
         }
         mobileLeading={visibilityControl}

@@ -125,7 +125,7 @@ export function TechnicalDetailsDialog({
                 )
                 .map(([name, value]) => [
                   name,
-                  <CopyValue value={value} label={"复制" + name} />,
+                  <CopyValue tooltip value={value} label={"复制" + name} />,
                 ])}
             />
           )}

@@ -123,7 +123,7 @@ export function SecuritySettings({
             </CardTitle>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm text-muted-foreground">API 客户端 ID</span>
-              <CopyValue value="default" label="复制 API 客户端 ID" />
+              <CopyValue tooltip value="default" label="复制 API 客户端 ID" />
               <a href="https://github.com/Mashiro0619/PerPay/blob/main/USAGE.md" target="_blank" rel="noopener noreferrer" className="text-sm underline underline-offset-4">接入文档</a>
             </div>
           </CardHeader>
@@ -438,7 +438,7 @@ export function SecretDialog({
           )}
           {pending && <Loading label="正在读取密钥…" />}
           {value !== null && (
-            <CopyValue value={value} label={"复制" + title} secret />
+            <CopyValue tooltip value={value} label={"复制" + title} secret />
           )}
           <ErrorNotice
             error={error}
@@ -621,7 +621,7 @@ export function RotateKeyDialog({
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent finalFocus={finalFocus}>
         <DialogHeader><DialogTitle>{"新的" + label}</DialogTitle><DialogDescription>{SECRET_DISPLAY_NOTICE}</DialogDescription></DialogHeader>
-        <DialogBody><CopyValue value={secret} label={"复制新的" + label} secret /></DialogBody>
+        <DialogBody><CopyValue tooltip value={secret} label={"复制新的" + label} secret /></DialogBody>
         <DialogFooter><Button onClick={() => { onClose(); onStored?.(); }}>完成</Button></DialogFooter>
       </DialogContent>
     </Dialog>

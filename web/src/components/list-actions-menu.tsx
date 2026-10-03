@@ -1,3 +1,4 @@
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useRef, type ReactNode, type RefObject } from "react";
 import { MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,7 @@ export function ListActionsMenu({
   const trigger = useRef<HTMLButtonElement | null>(null);
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
+      <Tooltip><TooltipTrigger render={<DropdownMenuTrigger
         render={
           <Button
             ref={trigger}
@@ -32,7 +33,7 @@ export function ListActionsMenu({
         aria-label={label}
       >
         <MoreHorizontal />
-      </DropdownMenuTrigger>
+      </DropdownMenuTrigger>} /><TooltipContent>{label}</TooltipContent></Tooltip>
       <DropdownMenuContent align="end" className="min-w-48">
         <DropdownMenuGroup>{children(trigger)}</DropdownMenuGroup>
       </DropdownMenuContent>

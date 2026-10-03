@@ -1,3 +1,4 @@
+import { RefreshButton } from "@/components/refresh-button";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { useSystemName } from "@/branding";
 import { TestPaymentButton } from "@/components/test-payment-provider";
@@ -7,7 +8,6 @@ import {
   BookOpen,
   Check,
   ChevronDown,
-  RefreshCw,
   CircleCheck,
   CircleAlert,
 } from "lucide-react";
@@ -40,7 +40,6 @@ import { Link, useNavigate } from "@/navigation";
 import { CopyValue } from "@/components/copy-value";
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -112,29 +111,16 @@ export default function Onboarding() {
           <BookOpen data-icon="inline-start" />
           <span className="hidden sm:inline">图文教程</span>
         </a>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="刷新"
-          title="刷新"
-          disabled={
+        <RefreshButton disabled={
             refreshing ||
             settings.isFetching ||
             instance.isFetching ||
             readinessFetching ||
             activationLocked
-          }
-          onClick={reload}
-        >
-          {refreshing ||
-          settings.isFetching ||
-          instance.isFetching ||
-          readinessFetching ? (
-            <Spinner aria-hidden="true" />
-          ) : (
-            <RefreshCw />
-          )}
-        </Button>
+          } onClick={reload} busy={refreshing ||
+            settings.isFetching ||
+            instance.isFetching ||
+            readinessFetching} />
       </PageHeaderActions>
       <p className="text-sm text-muted-foreground">
         按步骤完成收款配置，已有配置可直接复用。
@@ -792,18 +778,9 @@ export function ReadinessCheck({
         </>
       )}
       {showRefresh && (
-        <Button
-          variant="outline"
-          disabled={!view.active || query.isFetching}
-          onClick={() => {
+        <RefreshButton disabled={!view.active || query.isFetching} onClick={() => {
             void query.refetch();
-          }}
-        >
-          {query.isFetching && (
-            <Spinner aria-hidden="true" data-icon="inline-start" />
-          )}
-          刷新
-        </Button>
+          }} busy={!view.active || query.isFetching} />
       )}
       {!ready && (
         <Link className={buttonVariants({ variant: "ghost" })} to="/system">

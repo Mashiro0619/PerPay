@@ -127,7 +127,7 @@ export function ApplicationKey({
   }
   const current = settings.application_public_key;
   const currentKey = current ? (
-    <CopyValue value={current} label="复制应用公钥" />
+    <CopyValue tooltip value={current} label="复制应用公钥" />
   ) : null;
   return (
     <Card data-application-key-card>
@@ -154,7 +154,7 @@ export function ApplicationKey({
       <CardContent className="flex min-w-0 flex-col gap-4">
         {pending ? (
           <>
-            <CopyValue value={pending.public_key} label="复制待启用应用公钥" />
+            <CopyValue tooltip value={pending.public_key} label="复制待启用应用公钥" />
             <p className="text-sm text-muted-foreground">
               当前仍使用原密钥。请将这把新公钥上传到支付宝应用{" "}
               <span className="break-all">{pending.app_id}</span>（

@@ -68,7 +68,7 @@ export function OperationNavigationDialog({
           {operationId && (
             <Field>
               <FieldTitle>操作编号</FieldTitle>
-              <CopyValue value={operationId} label="复制操作编号" />
+              <CopyValue tooltip value={operationId} label="复制操作编号" />
             </Field>
           )}
         </div>
