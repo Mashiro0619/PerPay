@@ -7,7 +7,7 @@ PerPay is an independent project and is not affiliated with or endorsed by
 Alipay or its operators. Alipay is a trademark of its respective owner.
 
 This product includes UI component source derived from shadcn/ui
-and an unmodified copy of shadcn@4.21.0/dist/tailwind.css at
+and an unmodified copy of shadcn@4.21.1/dist/tailwind.css at
 web/src/vendor/shadcn-tailwind.css (https://ui.shadcn.com/), provided
 under the following license:
 

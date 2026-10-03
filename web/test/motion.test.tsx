@@ -47,7 +47,7 @@ describe("official component visibility and motion", () => {
     );
     expect(app).toContain("SidebarInset");
   });
-  it("uses the unmodified shadcn 4.21.0 stylesheet without a CLI CSS import", () => {
+  it("uses the unmodified shadcn 4.21.1 stylesheet without a CLI CSS import", () => {
     const css = readFileSync(resolve(process.cwd(), "web/src/styles.css"), "utf8");
     const upstream = readFileSync(
       resolve(process.cwd(), "web/src/vendor/shadcn-tailwind.css"),
@@ -55,7 +55,7 @@ describe("official component visibility and motion", () => {
     expect(css).toContain('@import "./vendor/shadcn-tailwind.css";');
     expect(css).not.toContain('@import "shadcn/tailwind.css";');
     expect(createHash("sha256").update(upstream).digest("hex")).toBe(
-      "bc7d83425702955b4cb67cb14ede9d603f9d912376d57a2d81d661094d2a782a",
+      "4c371f7a1ff5d219ae2f7ff28bd256b4346fd546fe46fbae22092e57db2f0fae",
     );
   });
   it("honors reduced motion and coarse-pointer targets without a legacy CSS overlay", () => {
