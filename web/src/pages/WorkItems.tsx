@@ -136,7 +136,7 @@ export default function WorkItems() {
         onValueChange={(value) =>
           select(value as AdminWorkItemTypeFilter, visibility)
         }
-        className="mx-auto w-full min-w-0 max-w-[1600px] gap-3"
+        className="w-full min-w-0 gap-3"
         data-business-list="work-items"
       >
         {/* Keep tab indicators and focus rings inside the horizontal scroller. */}

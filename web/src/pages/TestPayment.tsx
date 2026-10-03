@@ -52,7 +52,7 @@ type TestPaymentDialogProps = {
 export default function TestPayment() {
   const { generation } = useCurrentTestPayment();
   return (
-    <div className="flex w-full max-w-xl flex-col gap-4">
+    <div className="flex w-full min-w-0 flex-col gap-4">
       <Link
         to="/"
         className={buttonVariants({
@@ -275,7 +275,9 @@ function TestPaymentForm({ dialog }: { dialog?: TestPaymentDialogProps }) {
               创建测试订单
             </CardTitle>
           </CardHeader>
-          <CardContent>{content}</CardContent>
+          <CardContent>
+            <div className="w-full min-w-0 max-w-xl" data-test-payment-fields>{content}</div>
+          </CardContent>
           <CardFooter>{primaryAction}</CardFooter>
         </>
       )}

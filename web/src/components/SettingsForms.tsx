@@ -950,7 +950,7 @@ export function SettingsEditor({
   const editor = (
     <form
       className={cn(
-        section === "display" && "w-full max-w-2xl",
+        "w-full min-w-0",
         guided && renderGuidedActions && "flex min-w-0 flex-col gap-5",
       )}
       ref={draft.form}
@@ -1012,6 +1012,7 @@ export function SettingsEditor({
                 <FieldGroup
                   className={cn(
                     "grid items-start gap-6",
+                    section === "display" && "w-full max-w-2xl",
                     panels.length > 1 && "@3xl/settings:grid-cols-2",
                   )}
                 >

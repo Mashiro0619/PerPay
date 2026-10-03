@@ -1,3 +1,4 @@
+import { ContentWidthControl } from "@/components/content-width";
 import { PageHeaderActionsSlot } from "@/components/page-header-actions";
 import { DemoNotice } from "@/components/demo-notice";
 import { RefreshCw } from "lucide-react";
@@ -48,6 +49,7 @@ export function SiteHeader({
             </>
           )}
           <PageHeaderActionsSlot />
+          <ContentWidthControl />
           <ThemeControl />
         </div>
       </div>

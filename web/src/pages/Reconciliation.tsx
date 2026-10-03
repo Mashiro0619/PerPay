@@ -83,7 +83,7 @@ export default function Reconciliation() {
     <>
       <Tabs
         value={section}
-        className="mx-auto w-full min-w-0 max-w-[1600px] gap-3"
+        className="w-full min-w-0 gap-3"
         data-business-list="reconciliation"
         onValueChange={(value) =>
           setSearch(

@@ -25,7 +25,7 @@ beforeEach(() => clearOnboardingDeferrals());
 
 describe("onboarding workspace and credential handoff", () => {
   it.each(onboardingSteps)(
-    "keeps $id inside the centered workspace with one consistent navigation footer",
+    "keeps $id inside the shared-width workspace with one consistent navigation footer",
     async (step) => {
       const view = mountOnboarding({ stage: 4, path: onboardingPath(step.id) });
       const heading = await screen.findByRole("heading", {
@@ -35,7 +35,8 @@ describe("onboarding workspace and credential handoff", () => {
       const workspace = view.container.querySelector(
         "[data-onboarding-workspace]",
       )! as HTMLElement;
-      expect(workspace).toHaveClass("mx-auto", "w-full", "max-w-6xl");
+      expect(workspace).toHaveClass("w-full", "min-w-0");
+      expect(workspace).not.toHaveClass("mx-auto", "max-w-6xl");
       expect(workspace).toContainElement(heading);
       expect(
         within(workspace).queryByText(/第 \d 步，共 \d 步/),

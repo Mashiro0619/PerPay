@@ -93,7 +93,7 @@ export default function Orders() {
   }
   return (
     <div
-      className="mx-auto flex w-full min-w-0 max-w-[1600px] flex-col gap-3"
+      className="flex w-full min-w-0 flex-col gap-3"
       data-business-list="orders"
     >
       <OrderPage

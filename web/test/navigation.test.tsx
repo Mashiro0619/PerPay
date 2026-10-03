@@ -4,7 +4,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { onlineManager, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 import { appRoutes } from "../src/App";
 import { queryClient, type SystemAnalytics } from "../src/api/client";
@@ -610,10 +610,8 @@ describe("overview layout and demo indicator", () => {
     const daily = screen.getByRole("tab", { name: "每日数据" });
     const precedes = (a: Element, b: Element) =>
       Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(trend.closest("[data-overview-layout]")).toHaveClass(
-      "max-w-7xl",
-      "mx-auto",
-    );
+    expect(trend.closest("[data-content-width]")).toHaveClass("max-w-7xl", "mx-auto");
+    expect(trend.closest("[data-overview-layout]")).not.toHaveClass("max-w-7xl", "mx-auto");
     expect(daily).toHaveAttribute("aria-selected", "false");
     expect(
       screen.queryByRole("table", { name: "每日收款数据" }),
@@ -741,6 +739,96 @@ describe("page actions in the shared header", () => {
     await act(async () => {
       finish(json({ data: systemStatus() }));
     });
+    await waitFor(() => expect(refresh).toBeEnabled());
+  });
+});
+
+
+describe("shared content width navigation", () => {
+  beforeEach(() => localStorage.removeItem("perpay:content-width"));
+  afterEach(() => localStorage.removeItem("perpay:content-width"));
+
+  it("keeps settings drafts, sidebar, focus, route and requests unchanged while switching", async () => {
+    const { router, fetchMock, container } = mount({ configured: true });
+    const { user, field } = await edit();
+    const before = fetchMock.mock.calls.length;
+    const location = router.state.location;
+    const sidebar = container.querySelector("[data-slot=sidebar]");
+    const sidebarState = sidebar?.getAttribute("data-state");
+    const control = screen.getByRole("button", { name: "切换为全屏布局" });
+    const appearance = screen.getByRole("button", { name: /外观/ });
+    expect(control.closest("header")).toBe(appearance.closest("header"));
+    expect(control.compareDocumentPosition(appearance) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await user.click(control);
+    expect(container.querySelector("[data-content-width]")).toHaveAttribute("data-content-width", "full");
+    expect(screen.getByLabelText("收银台有效期（秒）")).toBe(field);
+    expect(field).toHaveValue(450);
+    expect(unloadIsBlocked()).toBe(true);
+    expect(router.state.location).toBe(location);
+    expect(sidebar?.getAttribute("data-state")).toBe(sidebarState);
+    expect(fetchMock).toHaveBeenCalledTimes(before);
+    expect(control).toHaveFocus();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("retains the layout between routes and does not reset order filters", async () => {
+    const path = "/orders?q=long&sort_by=created_at&sort_order=asc&created_from=2026-10-01&created_to=2026-10-02";
+    const { router, container, fetchMock } = mount({ configured: true, path });
+    await screen.findByRole("heading", { name: "订单" });
+    await waitFor(() => expect(fetchMock.mock.calls.some(([request]) => new URL(request.url).pathname === "/api/admin/v1/orders")).toBe(true));
+    const before = fetchMock.mock.calls.length;
+    const location = router.state.location;
+    await userEvent.click(screen.getByRole("button", { name: "切换为全屏布局" }));
+    expect(router.state.location).toBe(location);
+    expect(fetchMock).toHaveBeenCalledTimes(before);
+    await act(async () => { await router.navigate("/system"); });
+    expect(await screen.findByRole("button", { name: "切换为收缩布局" })).toBeVisible();
+    expect(container.querySelector("[data-content-width]")).toHaveAttribute("data-content-width", "full");
+  });
+
+  it("does not reset daily-table tab, pagination or analytics observers", async () => {
+    const { fetchMock, container } = mount({ path: "/", configured: true });
+    const tab = await screen.findByRole("tab", { name: "每日数据" });
+    await userEvent.click(tab);
+    const table = await screen.findByRole("table", { name: "每日收款数据" });
+    await userEvent.click(screen.getByRole("button", { name: "每日数据下一页" }));
+    const firstDate = table.querySelector("time")?.dateTime;
+    const before = fetchMock.mock.calls.length;
+    await userEvent.click(screen.getByRole("button", { name: "切换为全屏布局" }));
+    expect(tab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("table", { name: "每日收款数据" })).toBe(table);
+    expect(table.querySelector("time")?.dateTime).toBe(firstDate);
+    expect(screen.getByText("第 2 / 3 页 · 共 30 天")).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(before);
+    expect(container.querySelector("[data-overview-layout]")).not.toHaveClass("max-w-7xl", "px-4");
+  });
+});
+
+
+describe("layout changes during active requests", () => {
+  beforeEach(() => localStorage.removeItem("perpay:content-width"));
+  afterEach(() => localStorage.removeItem("perpay:content-width"));
+  it("keeps a pending page refresh and its original signal without sending a second request", async () => {
+    const { fetchMock } = mount({ path: "/system", configured: true });
+    const refresh = await screen.findByRole("button", { name: "刷新" });
+    await waitFor(() => expect(refresh).toBeEnabled());
+    const original = fetchMock.getMockImplementation()!;
+    let finish!: (response: Response) => void;
+    let pendingRequest!: Request;
+    fetchMock.mockImplementation((request) =>
+      new URL(request.url).pathname === "/api/admin/v1/system/status"
+        ? new Promise(resolve => { finish = resolve; pendingRequest = request; })
+        : original(request),
+    );
+    await userEvent.click(refresh);
+    await waitFor(() => expect(refresh).toBeDisabled());
+    const count = fetchMock.mock.calls.length;
+    await userEvent.click(screen.getByRole("button", { name: "切换为全屏布局" }));
+    expect(screen.getByRole("button", { name: "刷新" })).toBe(refresh);
+    expect(refresh).toBeDisabled();
+    expect(pendingRequest.signal.aborted).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(count);
+    await act(async () => { finish(json({ data: systemStatus() })); });
     await waitFor(() => expect(refresh).toBeEnabled());
   });
 });

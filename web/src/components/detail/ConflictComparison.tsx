@@ -50,7 +50,7 @@ export function ConflictComparison({
   const rows = conflictComparison(detail);
   return (
     <section
-      className="@container/comparison flex w-full min-w-0 max-w-5xl flex-col gap-3"
+      className="@container/comparison flex w-full min-w-0 flex-col gap-3"
       aria-labelledby={titleId}
       data-conflict-comparison
     >

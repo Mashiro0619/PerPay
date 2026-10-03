@@ -143,10 +143,8 @@ describe("desktop business list composition", () => {
       expect(screen.getByRole("button", { name: "显示列" }).closest("th")).toBe(
         within(table).getAllByRole("columnheader")[0],
       );
-      expect(view.container.querySelector("[data-business-list]")).toHaveClass(
-        "max-w-[1600px]",
-        "mx-auto",
-      );
+      expect(view.container.querySelector("[data-business-list]")).toHaveClass("w-full", "min-w-0");
+      expect(view.container.querySelector("[data-business-list]")).not.toHaveClass("max-w-[1600px]", "mx-auto");
       expect(table.querySelector("tbody td")).toHaveClass("py-2");
       expect(table.querySelector("tbody td")).not.toHaveClass("w-full");
     },

@@ -1,3 +1,4 @@
+import { AdminContent, ContentWidthProvider } from "@/components/content-width";
 import { PageHeaderActionsProvider } from "@/components/page-header-actions";
 import { useSystemName } from "@/branding";
 import { SystemStatusBoundary } from "@/features/system-status";
@@ -22,7 +23,6 @@ import { DraftProvider, useDraftGuard } from "@/drafts";
 import { Link, NavigationContext, useNavigate } from "@/navigation";
 import { OfficialUpdateNotice } from "@/updates";
 import { deferOnboarding, deferredInstance } from "@/lib/onboarding";
-import { cn } from "@/lib/utils";
 import { AppSidebar, navigation } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
 import { TestPaymentProvider } from "@/components/test-payment-provider";
@@ -52,9 +52,11 @@ function AppShell() {
         } as CSSProperties
       }
     >
-      <PageHeaderActionsProvider>
-        <Workspace />
-      </PageHeaderActionsProvider>
+      <ContentWidthProvider>
+        <PageHeaderActionsProvider>
+          <Workspace />
+        </PageHeaderActionsProvider>
+      </ContentWidthProvider>
     </SidebarProvider>
   );
 }
@@ -129,35 +131,16 @@ function Workspace() {
       />
       <SidebarInset className="min-w-0">
         <SiteHeader title={title} overview={overview} />
-        <div
-          id="main-content"
-          tabIndex={-1}
-          className="@container/main flex min-w-0 flex-1 flex-col gap-2 outline-none"
-        >
-          <div
-            className={cn(
-              "flex min-w-0 flex-col gap-4 py-4 md:gap-6 md:py-6",
-              !overview && "px-4 lg:px-6",
-            )}
-          >
-            {(logout.error || session.error) && (
-              <div
-                className={cn(
-                  "flex flex-col gap-4",
-                  overview && "px-4 lg:px-6",
-                )}
-              >
-                <ErrorNotice error={logout.error} />
-                <ErrorNotice error={session.error} retry={session.retry} />
-              </div>
-            )}
-            <OfficialUpdateNotice
-              hidden={location.pathname === "/system"}
-              className={overview ? "mx-4 w-auto lg:mx-6" : undefined}
-            />
-            <Outlet />
-          </div>
-        </div>
+        <AdminContent>
+          {(logout.error || session.error) && (
+            <div className="flex flex-col gap-4">
+              <ErrorNotice error={logout.error} />
+              <ErrorNotice error={session.error} retry={session.retry} />
+            </div>
+          )}
+          <OfficialUpdateNotice hidden={location.pathname === "/system"} />
+          <Outlet />
+        </AdminContent>
       </SidebarInset>
     </NavigationContext>
   );

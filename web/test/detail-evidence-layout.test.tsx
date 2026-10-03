@@ -282,9 +282,8 @@ describe("always-visible detail evidence", () => {
       expect(memo.querySelector("dd")?.textContent).toBe(
         detail.incoming_event!.trans_memo,
       );
-      expect(container.querySelector("[data-conflict-comparison]")).toHaveClass(
-        "max-w-5xl",
-      );
+      expect(container.querySelector("[data-conflict-comparison]")).toHaveClass("w-full", "min-w-0");
+      expect(container.querySelector("[data-conflict-comparison]")).not.toHaveClass("max-w-5xl");
       expect(screen.queryAllByText("无可对照流水")).toHaveLength(
         existing ? 0 : 1,
       );

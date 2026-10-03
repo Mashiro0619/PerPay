@@ -32,7 +32,9 @@ describe("instance display settings", () => {
     expect(screen.getByRole("switch", { name: "收银台显示商品名称" })).toBeVisible();
     expect(screen.getByRole("group", { name: "首页图表样式" })).toBeVisible();
     const form = name.closest("form")!;
-    expect(form).toHaveClass("max-w-2xl");
+    expect(form).toHaveClass("w-full");
+    expect(form).not.toHaveClass("max-w-2xl");
+    expect(form.querySelector("[data-slot=card-content] > [data-slot=field-group]")).toHaveClass("max-w-2xl");
     const displayFields = name.closest('[data-slot="field-group"]')!;
     const rows = [...displayFields.children];
     expect(rows).toHaveLength(4);

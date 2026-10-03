@@ -99,7 +99,7 @@ function DashboardContent() {
   const needsStatus = checking || blocked || settings.error;
   return (
     <div
-      className="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-4 px-4 lg:px-6"
+      className="flex w-full min-w-0 flex-col gap-4"
       data-overview-layout
     >
       {needsStatus && (
