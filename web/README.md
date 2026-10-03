@@ -19,26 +19,6 @@
 | `web/src/styles.css`、`web/public/theme.js` | 主题、CSP / 触控适配及首屏外观 |
 | `web/test/`、`test/` | 前端与服务端回归测试 |
 
-## 只读预览
-
-需要 Node.js 24.15+（24.x）。在仓库根目录执行：
-
-```sh
-npm ci --ignore-scripts
-npm run build
-npm run demo:preview
-```
-
-打开 [http://127.0.0.1:6192/admin/](http://127.0.0.1:6192/admin/)，使用固定密码 `123456` 登录（仅限本地只读演示，不影响正式部署）。可加 `-- --port 6193` 更换端口。
-
-- 使用系统临时目录中的合成订单；不读取工作区的 `data/`、`backups/` 或生产配置。
-- 只允许登录、退出及读取（含订单 CSV 导出）。常驻“只读演示”标识在操作前说明限制；保存、密钥和财务写操作由前后端拒绝，不用于验证写操作。
-- 不启动支付宝采集、通知发送或更新检查；健康状态明确为模拟，演示二维码不可付款。数据生成完毕后时钟正常前进，订单到期、收银台和按北京时间的统计使用同一时间源。
-- Ctrl+C 正常退出会清理临时数据。重启后登录会话和演示订单重新生成，登录密码保持 `123456` 不变。
-- 修改页面后重新构建并重启预览；Hono 在启动时缓存前端资源，单纯刷新浏览器不会加载刚构建的文件。
-
-截图及其生成说明见[截图目录](../docs/screenshots/README.md)。
-
 ## 开发与构建
 
 开发时先构建一次前端，再另行启动**隔离开发后端**。可通过 `PERPAY_DATA_DIR`、`PERPAY_BACKUP_DIR`、`PERPAY_MASTER_KEY` 和 `PERPAY_PUBLIC_URL` 指定独立实例，再运行 `npm run dev`。不要连接生产收款实例；输入真实支付宝或通知配置会触发真实后台任务。
@@ -48,7 +28,7 @@ npm run build
 npm run dev:admin
 ```
 
-后台开发入口：[http://127.0.0.1:6191/admin/](http://127.0.0.1:6191/admin/)，默认代理到 `http://localhost:6190`。更换后端使用 `PERPAY_DEV_API_URL`，并核对 `PERPAY_PUBLIC_URL` / Origin 配置。只查看界面也可代理到上述只读预览，但仍不能保存。
+后台开发入口：[http://127.0.0.1:6191/admin/](http://127.0.0.1:6191/admin/)，默认代理到 `http://localhost:6190`。更换后端使用 `PERPAY_DEV_API_URL`，并核对 `PERPAY_PUBLIC_URL` / Origin 配置。
 
 - 路由使用 Vite 的 `BASE_URL`（含尾斜杠）；旧 `/admin` 入口会规范化为 `/admin/`，保留查询、锚点及历史状态。
 - Vite 每次从后端 `/admin/` HTML 读取初始化标记及公开名称。后端不可用或标记未知时提供重试，不将未知状态当作首次部署；生产 HTML 由 Hono 直接注入。
@@ -62,7 +42,7 @@ npm run dev:admin
 | `npm run test:admin` / `npm run test:node` | 单独运行前端 / 服务端测试；服务端测试前需构建前端 |
 | `npm test` | 先构建前端，再运行全部测试 |
 | `npm run check` | 版本、接口、类型、测试与服务端构建检查 |
-| `npm run demo:package` | 打包[业务调用端 Demo](../examples/node-client/README.md)，不是只读预览 |
+| `npm run demo:package` | 打包[业务调用端 Demo](../examples/node-client/README.md) |
 
 公开资源在 `web-dist/admin/` 和 `web-dist/checkout/`；`web-dist/checkout-ssr/renderer.cjs` 是私有产物，打包了 SSR 所需的前端依赖。只按清单提供公开资源，不能暴露 SSR、源码、source map 或清单文件。服务端编译结果在 `dist/`；不要在构建目录存放唯一副本的文档、发布材料或业务数据。
 

@@ -4,7 +4,7 @@
   <img src="web/src/assets/favicon.svg" alt="PerPay 钱包图标" width="72" height="72">
 </p>
 <h1 align="center">PerPay</h1>
-<p align="center"><strong>自托管的支付宝经营码收款服务</strong></p>
+<p align="center"><strong>免手机挂机监听、免商户签约，面向个人开发者的自托管支付系统</strong></p>
 
 <p align="center">
   <a href="https://github.com/Mashiro0619/PerPay/releases/latest"><img src="https://img.shields.io/github/v/release/Mashiro0619/PerPay?label=Release" alt="最新正式版本"></a>
@@ -20,8 +20,6 @@
   <a href="docs/alipay-setup.md">支付宝配置</a> ·
   <a href="USAGE.md">接入文档</a>
 </p>
-
-**适用边界：** 静态经营码没有逐单交易凭证，PerPay 按金额与时间推断订单归属，并非支付宝官方逐单支付网关。适合能够人工核对的小规模收款；错付金额、迟到付款或重复付款需要商户核查。确认收款与业务通知送达是两件事。
 
 ## 功能
 
@@ -42,15 +40,6 @@
 | 收款概览 | 订单详情 |
 | --- | --- |
 | ![收款概览](docs/screenshots/dashboard-light.png) | ![订单详情](docs/screenshots/order-detail.png) |
-
-<details>
-<summary>展开查看桌面收银台</summary>
-
-![收银台](docs/screenshots/checkout.png)
-
-</details>
-
-[本地只读预览](web/README.md#只读预览) · [全部截图](docs/screenshots/README.md)
 
 ## 部署前准备
 
