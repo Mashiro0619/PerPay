@@ -67,6 +67,7 @@ export default function WorkItems() {
     operation_id: string;
   } | null>(null);
   const finalFocus = useRef<HTMLElement | null>(null);
+  const cancelIgnore = useRef<HTMLButtonElement | null>(null);
   const [message, setMessage] = useFeedback();
   const ignore = useMutation({
     mutationFn: (input: NonNullable<typeof batch>) =>
@@ -194,8 +195,9 @@ export default function WorkItems() {
         }}
       >
         <AlertDialogContent
+          initialFocus={cancelIgnore}
           finalFocus={() => finalFocus.current}
-          className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto"
+          className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto sm:max-w-lg"
         >
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -215,10 +217,11 @@ export default function WorkItems() {
           </AlertDialogHeader>
           <ErrorNotice error={ignore.error} />
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={ignore.isPending}>
+            <AlertDialogCancel ref={cancelIgnore} disabled={ignore.isPending}>
               取消
             </AlertDialogCancel>
             <AlertDialogAction
+              variant="destructive"
               disabled={ignore.isPending}
               onClick={() => {
                 if (batch && !ignore.isPending) ignore.mutate(batch);
