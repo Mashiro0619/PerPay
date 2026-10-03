@@ -137,7 +137,7 @@ describe("reminder dismissal", () => {
       expect(dialog).toHaveClass(
         "max-h-[calc(100dvh-2rem)]",
         "w-[calc(100%-2rem)]",
-        "overflow-y-auto",
+        "overflow-hidden",
       );
       expect(dialog.querySelector('[data-slot="alert-dialog-media"]')).toBeNull();
       expect(dialog).toHaveClass("sm:max-w-lg");

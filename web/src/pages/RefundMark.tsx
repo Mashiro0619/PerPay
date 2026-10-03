@@ -38,7 +38,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from "@/components/ui/dialog";
+} from "@/components/admin-dialog";
 import {
   Collapsible,
   CollapsibleTrigger,

@@ -134,7 +134,7 @@ it("bounds the session confirmation without changing its cancel behavior", async
   expect(dialog).toHaveClass(
     "max-h-[calc(100dvh-2rem)]",
     "w-[calc(100%-2rem)]",
-    "overflow-y-auto",
+    "overflow-hidden",
   );
   await user.click(within(dialog).getByRole("button", { name: "取消" }));
   expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();

@@ -23,9 +23,10 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from "@/components/ui/dialog";
+} from "@/components/admin-dialog";
 export function ReasonDialog({
   title,
+  intent = "default",
   description,
   action,
   children,
@@ -35,6 +36,7 @@ export function ReasonDialog({
   finalFocus,
 }: {
   title: string;
+  intent?: "default" | "destructive";
   description: string;
   action: string;
   children?: ReactNode;
@@ -50,6 +52,7 @@ export function ReasonDialog({
   // The evidence being confirmed must not silently change under an open dialog.
   const [snapshot] = useState(() => ({
     title,
+    intent,
     description,
     action,
     children,
@@ -182,6 +185,7 @@ export function ReasonDialog({
             {!mutation.conflict && (
               <Button
                 type="submit"
+                variant={snapshot.intent}
                 disabled={
                   mutation.isPending || (!mutation.recovery && !reason.trim())
                 }

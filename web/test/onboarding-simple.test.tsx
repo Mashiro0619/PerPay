@@ -342,7 +342,7 @@ describe("minimal onboarding", () => {
     await user.click(
       await screen.findByRole("button", { name: "生成 API 密钥" }),
     );
-    const dialog = screen.getByRole("dialog", { name: "生成 API 密钥" });
+    const dialog = screen.getByRole("alertdialog", { name: "生成 API 密钥" });
     expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "生成密钥" }));
     await screen.findByRole("alert");

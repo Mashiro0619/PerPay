@@ -1,3 +1,4 @@
+import { DialogBody } from "@/components/admin-dialog";
 import { useSystemName } from "@/branding";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
@@ -40,7 +41,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/admin-dialog";
 import {
   Field,
   FieldDescription,
@@ -59,7 +60,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+} from "@/components/admin-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 
 type ChangeMode = "regenerate" | "activate" | "discard";
@@ -707,10 +708,10 @@ function ApplicationKeyChange({
           >
             <AlertDialogHeader>
               <AlertDialogTitle>刷新并核对启用结果？</AlertDialogTitle>
-              <AlertDialogDescription>
+          </AlertDialogHeader>
+          <DialogBody><AlertDialogDescription>
                 上次启用可能已完成。刷新会重新读取配置并清除本页填写的支付宝公钥，不会再次发起启用。若尚未启用，需要重新填写公钥。
-              </AlertDialogDescription>
-            </AlertDialogHeader>
+              </AlertDialogDescription></DialogBody>
             <AlertDialogFooter>
               <AlertDialogCancel>
                 {operation.conflict ? "暂不刷新" : "保留并重试"}
@@ -745,24 +746,26 @@ function ApplicationKeyChange({
         >
           <AlertDialogHeader>
             <AlertDialogTitle>{title}</AlertDialogTitle>
-            <AlertDialogDescription>{description}</AlertDialogDescription>
           </AlertDialogHeader>
+          <DialogBody><AlertDialogDescription>{description}</AlertDialogDescription></DialogBody>
           <form
             id={formId}
             noValidate
-            className="flex min-w-0 flex-col gap-4"
+            className="contents"
             onSubmit={(event) => {
               event.preventDefault();
               submit();
             }}
           >
-            {initial.appId && (
+            <DialogBody>
+          {initial.appId && (
               <p className="text-sm text-muted-foreground">
                 支付宝应用：<span className="break-all">{initial.appId}</span>（
                 {initial.environment === "PRODUCTION" ? "生产环境" : "沙箱环境"}）
               </p>
             )}
             {feedback}
+            </DialogBody>
             <AlertDialogFooter>
               <AlertDialogCancel ref={cancelRegeneration} disabled={operation.isPending}>
                 取消
@@ -793,12 +796,13 @@ function ApplicationKeyChange({
         <form
           id={formId}
           noValidate
-          className="flex min-w-0 flex-col gap-4"
+          className="contents"
           onSubmit={(event) => {
             event.preventDefault();
             submit();
           }}
         >
+          <DialogBody>
           {initial.appId && (
             <p className="text-sm text-muted-foreground">
               支付宝应用：<span className="break-all">{initial.appId}</span>（
@@ -807,6 +811,7 @@ function ApplicationKeyChange({
           )}
           {fields}
           {feedback}
+          </DialogBody>
           <DialogFooter>
             <Button
               type="button"

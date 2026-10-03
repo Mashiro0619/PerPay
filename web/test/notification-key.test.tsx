@@ -17,7 +17,7 @@ async function openRotation(user: ReturnType<typeof userEvent.setup>) {
   await user.click(
     await screen.findByRole("menuitem", { name: "轮换通知签名密钥" }),
   );
-  return screen.findByRole("dialog", { name: "轮换通知签名密钥？" });
+  return screen.findByRole("alertdialog", { name: "轮换通知签名密钥？" });
 }
 afterEach(() => vi.useRealTimers());
 describe("notification signing key rotation", () => {

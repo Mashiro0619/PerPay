@@ -22,7 +22,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogClose,
-} from "@/components/ui/dialog";
+} from "@/components/admin-dialog";
 import {
   Item,
   ItemContent,
@@ -103,6 +103,7 @@ export function TechnicalDetailsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        kind="technical"
         className="flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-3xl"
         initialFocus={title}
         finalFocus={finalFocus}

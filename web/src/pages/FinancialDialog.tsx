@@ -36,7 +36,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from "@/components/ui/dialog";
+} from "@/components/admin-dialog";
 export function FinancialDialog({
   initialOrderId = "",
   initialLedgerId = "",

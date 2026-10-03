@@ -1,3 +1,4 @@
+import { DialogBody } from "@/components/admin-dialog";
 import { useId, useRef, useState, type ReactNode } from "react";
 import {
   beijingDate,
@@ -28,7 +29,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from "@/components/ui/dialog";
+} from "@/components/admin-dialog";
 const presets = [
   { value: "all", label: "全部" },
   { value: "today", label: "今天" },
@@ -129,7 +130,7 @@ export function CreatedDateFilter({
             </DialogDescription>
           </DialogHeader>
           <form
-            className="flex flex-col gap-4"
+            className="contents"
             onSubmit={(event) => {
               event.preventDefault();
               try {
@@ -141,6 +142,7 @@ export function CreatedDateFilter({
               }
             }}
           >
+            <DialogBody>
             <FieldGroup>
               <Field data-invalid={!!error}>
                 <FieldLabel htmlFor={id + "-from"}>开始日期</FieldLabel>
@@ -174,6 +176,7 @@ export function CreatedDateFilter({
               </Field>
               {error && <FieldError id={id + "-error"}>{error}</FieldError>}
             </FieldGroup>
+            </DialogBody>
             <DialogFooter>
               <Button
                 type="button"

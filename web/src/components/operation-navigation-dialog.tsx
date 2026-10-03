@@ -11,7 +11,7 @@ import {
   AlertDialogFooter,
   AlertDialogCancel,
   AlertDialogAction,
-} from "@/components/ui/alert-dialog";
+} from "@/components/admin-dialog";
 
 export function OperationNavigationDialog({
   navigation,
@@ -72,7 +72,7 @@ export function OperationNavigationDialog({
             </Field>
           )}
         </div>
-        <AlertDialogFooter className="shrink-0 flex-row flex-wrap justify-end">
+        <AlertDialogFooter safeActionFirst className="shrink-0 flex-row flex-wrap justify-end">
           <AlertDialogCancel ref={stayButton} variant="default">
             留在此页
           </AlertDialogCancel>

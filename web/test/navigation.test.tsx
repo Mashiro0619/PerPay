@@ -278,7 +278,7 @@ describe("navigation and draft protection", () => {
     expect(confirmation).toHaveClass(
       "max-h-[calc(100dvh-2rem)]",
       "w-[calc(100%-2rem)]",
-      "overflow-y-auto",
+      "overflow-hidden",
     );
     await user.click(screen.getByRole("button", { name: "继续编辑" }));
     expect(view.router.state.location.pathname).toBe("/settings/collection");

@@ -1,3 +1,4 @@
+import { DialogBody } from "@/components/admin-dialog";
 import { useListQuery, WORK_ITEM_SORT_FIELDS } from "@/lib/list-query";
 import { ListQueryToolbar } from "@/components/list-query-toolbar";
 import { ListActionsMenu } from "@/components/list-actions-menu";
@@ -45,7 +46,7 @@ import {
   AlertDialogFooter,
   AlertDialogCancel,
   AlertDialogAction,
-} from "@/components/ui/alert-dialog";
+} from "@/components/admin-dialog";
 const filters = [
   ["ALL", "全部事项"],
   ["FINANCIAL_EXCEPTION", "账务异常"],
@@ -203,7 +204,8 @@ export default function WorkItems() {
             <AlertDialogTitle>
               忽略当前筛选结果 · {batch?.name}
             </AlertDialogTitle>
-            <AlertDialogDescription>
+          </AlertDialogHeader>
+          <DialogBody><AlertDialogDescription>
               {batch?.q ? (
                 <>
                   关键词“{batch.q}
@@ -213,8 +215,7 @@ export default function WorkItems() {
                 <>此分类的全部匹配项（跨分页）。</>
               )}
               仅关闭提醒，不删除记录、不解决冲突，也不停止通知重试。重试不会追加忽略新增事项。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
+            </AlertDialogDescription></DialogBody>
           <ErrorNotice error={ignore.error} />
           <AlertDialogFooter>
             <AlertDialogCancel ref={cancelIgnore} disabled={ignore.isPending}>

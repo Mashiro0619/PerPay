@@ -1,3 +1,4 @@
+import { DialogBody } from "@/components/admin-dialog";
 import { useSystemName } from "@/branding";
 import {
   useCallback,
@@ -61,7 +62,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from "@/components/ui/dialog";
+} from "@/components/admin-dialog";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -71,7 +72,7 @@ import {
   AlertDialogFooter,
   AlertDialogCancel,
   AlertDialogAction,
-} from "@/components/ui/alert-dialog";
+} from "@/components/admin-dialog";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -309,10 +310,10 @@ export function SecuritySettings({
         >
           <AlertDialogHeader>
             <AlertDialogTitle>注销全部会话？</AlertDialogTitle>
-            <AlertDialogDescription>
-              包括当前设备，所有管理员都需要重新登录。
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <DialogBody><AlertDialogDescription>
+              包括当前设备，所有管理员都需要重新登录。
+            </AlertDialogDescription></DialogBody>
           <ErrorNotice error={revokeAll.error} />
           <AlertDialogFooter>
             <AlertDialogCancel disabled={revokeAll.isPending}>
@@ -587,88 +588,46 @@ export function RotateKeyDialog({
     }
   }
 
+  const cancelRotation = useRef<HTMLButtonElement>(null);
+  if (!secret) return (
+    <AlertDialog open onOpenChange={(open, event) => {
+      if (!open && pending) event.cancel();
+      else if (!open) onClose();
+    }}>
+      <AlertDialogContent initialFocus={cancelRotation} finalFocus={finalFocus}>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{replacing ? "轮换" + label + "？" : "生成 API 密钥"}</AlertDialogTitle>
+        </AlertDialogHeader>
+        <DialogBody>
+          <AlertDialogDescription>
+            {webhook
+              ? "轮换后，新发送和重试的通知将使用新密钥签名，请同步更新业务系统的通知验签配置。已发出的请求可能仍使用旧密钥，接收端可短暂兼容新旧密钥。不会自动重发已完成的通知，也不会更改通知开关。"
+              : replacing ? "旧密钥立即失效。轮换后需更新业务服务端，否则无法创建订单。"
+              : `由 ${systemName} 生成并保管。生成后复制到业务系统后端的 ${systemName} 接入配置，无需填写业务系统自己的密钥。`}
+          </AlertDialogDescription>
+          {error !== null && <><ErrorNotice error={error} /><p className="text-sm text-muted-foreground">结果未确认，请关闭后刷新配置并查看当前密钥。本次不再重试。</p></>}
+        </DialogBody>
+        <AlertDialogFooter>
+          <AlertDialogCancel ref={cancelRotation} disabled={pending}>{error ? "关闭" : "取消"}</AlertDialogCancel>
+          <AlertDialogAction variant={replacing ? "destructive" : "default"} disabled={pending || attempted.current} onClick={() => { void rotate(); }}>
+            {pending && <Spinner aria-hidden="true" data-icon="inline-start" />}
+            {replacing ? "确认轮换" : "生成密钥"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
   return (
-    <Dialog
-      open
-      onOpenChange={(open, event) => {
-        if (!open) {
-          if (pending) event.cancel();
-          else onClose();
-        }
-      }}
-    >
-      <DialogContent
-        finalFocus={finalFocus}
-        showCloseButton={!pending}
-        className="flex max-h-[calc(100dvh-2rem)] flex-col"
-      >
-        <DialogHeader className="shrink-0 pr-8">
-          <DialogTitle>
-            {secret
-              ? "新的" + label
-              : replacing
-                ? "轮换" + label + "？"
-                : "生成 API 密钥"}
-          </DialogTitle>
-          <DialogDescription>
-            {secret
-              ? SECRET_DISPLAY_NOTICE
-              : webhook
-                ? "轮换后，新发送和重试的通知将使用新密钥签名，请同步更新业务系统的通知验签配置。已发出的请求可能仍使用旧密钥，接收端可短暂兼容新旧密钥。不会自动重发已完成的通知，也不会更改通知开关。"
-                : replacing
-                  ? "旧密钥立即失效。轮换后需更新业务服务端，否则无法创建订单。"
-                  : `由 ${systemName} 生成并保管。生成后复制到业务系统后端的 ${systemName} 接入配置，无需填写业务系统自己的密钥。`}
-          </DialogDescription>
-        </DialogHeader>
-        {secret ? (
-          <>
-            <div className="-mx-4 flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-1">
-              <CopyValue value={secret} label={"复制新的" + label} secret />
-            </div>
-            <DialogFooter className="shrink-0">
-              <Button
-                onClick={() => {
-                  onClose();
-                  onStored?.();
-                }}
-              >
-                完成
-              </Button>
-            </DialogFooter>
-          </>
-        ) : (
-          <>
-            {error !== null && (
-              <div className="-mx-4 flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-1">
-                <ErrorNotice error={error} />
-                <p className="text-sm text-muted-foreground">
-                  结果未确认，请关闭后刷新配置并查看当前密钥。本次不再重试。
-                </p>
-              </div>
-            )}
-            <DialogFooter className="shrink-0">
-              <Button variant="outline" disabled={pending} onClick={onClose}>
-                {error ? "关闭" : "取消"}
-              </Button>
-              <Button
-                variant={replacing ? "destructive" : "default"}
-                disabled={pending || attempted.current}
-                onClick={() => {
-                  void rotate();
-                }}
-              >
-                {pending && (
-                  <Spinner aria-hidden="true" data-icon="inline-start" />
-                )}
-                {replacing ? "确认轮换" : "生成密钥"}
-              </Button>
-            </DialogFooter>
-          </>
-        )}
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent finalFocus={finalFocus}>
+        <DialogHeader><DialogTitle>{"新的" + label}</DialogTitle><DialogDescription>{SECRET_DISPLAY_NOTICE}</DialogDescription></DialogHeader>
+        <DialogBody><CopyValue value={secret} label={"复制新的" + label} secret /></DialogBody>
+        <DialogFooter><Button onClick={() => { onClose(); onStored?.(); }}>完成</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
+
 function PasswordForm() {
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");

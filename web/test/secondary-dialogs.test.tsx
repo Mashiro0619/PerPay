@@ -64,7 +64,8 @@ describe("context-preserving secondary dialogs", () => {
       );
       expect(dialog.querySelector("[data-slot=dialog-footer]")).toHaveClass(
         "shrink-0",
-        "flex-row",
+        "flex-col-reverse",
+        "sm:flex-row",
       );
       expect(view.router.state.location.pathname).toBe(path);
       expect(view.writes()).toHaveLength(0);

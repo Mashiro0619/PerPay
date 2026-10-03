@@ -41,7 +41,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from "@/components/ui/dialog";
+} from "@/components/admin-dialog";
 
 type TestPaymentDialogProps = {
   open: boolean;

@@ -104,6 +104,7 @@ export function ReverseMatchAction({
         <ReasonDialog
           finalFocus={() => finalFocus.current}
           title="撤销收款关联？"
+          intent="destructive"
           description="订单将进入争议状态。仅撤销账务关联，不会转出资金。"
           action="确认撤销关联"
           onClose={() => setSnapshot(null)}

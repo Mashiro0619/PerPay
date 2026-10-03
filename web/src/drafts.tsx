@@ -1,3 +1,4 @@
+import { DialogBody } from "@/components/admin-dialog";
 import {
   createContext,
   useCallback,
@@ -19,7 +20,7 @@ import {
   AlertDialogFooter,
   AlertDialogCancel,
   AlertDialogAction,
-} from "@/components/ui/alert-dialog";
+} from "@/components/admin-dialog";
 const DraftContext = createContext({
   setDirty: (_id: string, _dirty: boolean) => undefined as void,
   requestDiscard: (action: () => void) => action(),
@@ -130,10 +131,10 @@ export function DraftProvider({ children }: { children: ReactNode }) {
         <AlertDialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto">
           <AlertDialogHeader>
             <AlertDialogTitle>放弃未保存的修改？</AlertDialogTitle>
-            <AlertDialogDescription>
-              此页面的修改不会保存。
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <DialogBody><AlertDialogDescription>
+              此页面的修改不会保存。
+            </AlertDialogDescription></DialogBody>
           <AlertDialogFooter>
             <AlertDialogCancel>继续编辑</AlertDialogCancel>
             <AlertDialogAction
