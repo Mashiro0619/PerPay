@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { render, screen } from "@testing-library/react";
@@ -45,6 +46,17 @@ describe("official component visibility and motion", () => {
       /RouteTransition|SelectionIndicator|is-entering|is-leaving/,
     );
     expect(app).toContain("SidebarInset");
+  });
+  it("uses the unmodified shadcn 4.21.0 stylesheet without a CLI CSS import", () => {
+    const css = readFileSync(resolve(process.cwd(), "web/src/styles.css"), "utf8");
+    const upstream = readFileSync(
+      resolve(process.cwd(), "web/src/vendor/shadcn-tailwind.css"),
+    );
+    expect(css).toContain('@import "./vendor/shadcn-tailwind.css";');
+    expect(css).not.toContain('@import "shadcn/tailwind.css";');
+    expect(createHash("sha256").update(upstream).digest("hex")).toBe(
+      "bc7d83425702955b4cb67cb14ede9d603f9d912376d57a2d81d661094d2a782a",
+    );
   });
   it("honors reduced motion and coarse-pointer targets without a legacy CSS overlay", () => {
     const css = readFileSync(

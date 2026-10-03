@@ -48,6 +48,10 @@ npm run dev:admin
 
 ## 组件与布局
 
+构建仅使用仓库中的组件源码和样式，不依赖 `shadcn` CLI。`web/src/vendor/shadcn-tailwind.css` 是 npm 包 `shadcn@4.21.0` 中 `dist/tailwind.css` 的原样副本（上游原文件 SHA-256：`bc7d83425702955b4cb67cb14ede9d603f9d912376d57a2d81d661094d2a782a`），许可见 [NOTICE](../NOTICE)。这避免仅为引入 CSS 而安装整套 CLI 及其依赖；CI 仍审计全部锁定依赖，不豁免开发依赖。
+
+CLI 仅在组件维护时按需调用，不参与常规安装、测试或构建。目前 CLI 的间接依赖仍受 [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) 影响；按需调用并不修复 CLI 本身，调用前应核对上游修复状态，只对可信项目与组件源使用。更新组件后，检查 CLI 是否重新添加了 `shadcn` 依赖或恢复了包内 CSS 导入；需要更新样式时，从明确版本的官方 npm 包同步原文件，并更新上述版本、哈希、NOTICE 和 `web/test/motion.test.tsx` 中的来源校验，再执行构建、测试和全量依赖审计。
+
 通过官方 CLI 添加或更新组件；先查看 diff，不整批覆盖现有适配：
 
 ```sh

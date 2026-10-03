@@ -18,3 +18,6 @@ Dockerfile text eol=lf
 *.ico binary
 *.woff binary
 *.woff2 binary
+
+# Preserve the upstream stylesheet bytes used by the provenance check.
+web/src/vendor/shadcn-tailwind.css text eol=lf
