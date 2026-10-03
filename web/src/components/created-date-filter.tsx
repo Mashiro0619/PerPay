@@ -1,5 +1,6 @@
 import { useId, useRef, useState, type ReactNode } from "react";
 import {
+  beijingDate,
   createdDatePreset,
   createdDateRange,
 } from "../../../src/shared/created-dates";
@@ -60,8 +61,9 @@ export function CreatedDateFilter({
       selected = value;
   }
   function custom() {
-    setFrom(query.createdFrom ?? "");
-    setTo(query.createdTo ?? "");
+    const today = beijingDate();
+    setFrom(query.createdFrom ?? today);
+    setTo(query.createdTo ?? today);
     setError("");
     setOpen(true);
   }

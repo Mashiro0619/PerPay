@@ -306,3 +306,43 @@ describe("creation date filters", () => {
     if(path==="/notifications") expect(screen.queryByRole("button",{name:"导出 CSV"})).not.toBeInTheDocument();
   });
 });
+
+
+describe("custom date defaults", () => {
+  it.each([{ path: "/orders", element: <Orders /> }, { path: "/notifications", element: <Notifications /> }])(
+    "defaults to today's Beijing date on opening without applying filters at $path",
+    async ({ path, element }) => {
+      const clock = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-12-31T16:05:00Z"));
+      try {
+        vi.stubGlobal("fetch", vi.fn(async () => json({ data: [], page: { next_cursor: null } })));
+        mount(path + "?cursor=old&page=3", element);
+        const user = userEvent.setup();
+        async function open() {
+          await user.click(screen.getByRole("combobox", { name: "创建日期范围" }));
+          await user.click(await screen.findByRole("option", { name: "自定义日期" }));
+          return screen.findByRole("dialog", { name: "自定义创建日期" });
+        }
+        let dialog = await open();
+        expect(within(dialog).getByLabelText("开始日期")).toHaveValue("2027-01-01");
+        expect(within(dialog).getByLabelText("结束日期")).toHaveValue("2027-01-01");
+        expect(screen.getByLabelText("查询地址")).not.toHaveTextContent("created_from=");
+        await user.click(within(dialog).getByRole("button", { name: "取消" }));
+        expect(screen.getByLabelText("查询地址")).toHaveTextContent("cursor=old");
+        clock.mockReturnValue(Date.parse("2027-01-01T16:05:00Z"));
+        dialog = await open();
+        expect(within(dialog).getByLabelText("开始日期")).toHaveValue("2027-01-02");
+        await user.click(within(dialog).getByRole("button", { name: "应用日期" }));
+        expect(screen.getByLabelText("查询地址")).toHaveTextContent("created_from=2027-01-02");
+        expect(screen.getByLabelText("查询地址")).not.toHaveTextContent("cursor=");
+      } finally { clock.mockRestore(); }
+    },
+  );
+  it("preserves an existing range from a previous year", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => json({ data: [], page: { next_cursor: null } })));
+    mount("/orders?created_from=2024-12-15&created_to=2025-01-03", <Orders />);
+    await userEvent.click(screen.getByRole("button", { name: "修改日期" }));
+    const dialog = await screen.findByRole("dialog", { name: "自定义创建日期" });
+    expect(within(dialog).getByLabelText("开始日期")).toHaveValue("2024-12-15");
+    expect(within(dialog).getByLabelText("结束日期")).toHaveValue("2025-01-03");
+  });
+});
