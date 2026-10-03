@@ -217,13 +217,11 @@ export function ManualCandidatePicker({
                       <ItemDescription className="whitespace-normal wrap-anywhere">
                         {choice.identifiers}
                       </ItemDescription>
-                      {choice.recommendation && (
+                      {choice.recommendation?.amount_match && (
                         <ItemDescription>
-                          {choice.recommendation.amount_match
-                            ? choice.recommendation.time_window_overlap
-                              ? "同金额 · 匹配时间窗口重叠，仍需核对"
-                              : "同金额 · 时间不在匹配窗口内，请核对"
-                            : "金额不同，请核对实际收款"}
+                          {choice.recommendation.time_window_overlap
+                            ? "同金额 · 匹配时间窗口重叠，仍需核对"
+                            : "同金额 · 时间不在匹配窗口内，请核对"}
                         </ItemDescription>
                       )}
                     </ItemContent>

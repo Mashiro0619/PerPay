@@ -71,6 +71,19 @@ const chooseLedger = () =>
   screen.findByRole("button", { name: /^选择收入流水：/ });
 const chooseOrder = () => screen.findByRole("button", { name: /^选择订单：/ });
 describe("manual settlement selection instead of ID entry", () => {
+  it("omits the differing-amount hint while keeping the candidate selectable", async () => {
+    const view = mount({ initialOrderId: orderId, lockContext: true }, (request) => {
+      if (!new URL(request.url).pathname.endsWith("/manual/ledger-entries")) return;
+      return json({ data: [{ ...ledgerChoice, recommendation: { ...recommendation, amount_match: false } }], page: { next_cursor: null } });
+    });
+    const choice = await chooseLedger();
+    expect(choice).toBeEnabled();
+    expect(screen.queryByText("金额不同，请核对实际收款")).not.toBeInTheDocument();
+    expect(choice.closest('[data-slot="item"]')?.querySelectorAll('[data-slot="item-description"]')).toHaveLength(2);
+    await userEvent.click(choice);
+    expect(await screen.findByRole("button", { name: "确认关联收款" })).toBeEnabled();
+    expect(view.requests.every(request => request.method === "GET")).toBe(true);
+  });
   it.each(["order", "ledger", "none", "both"])(
     "supports the %s entry without requiring internal IDs",
     async (kind) => {
