@@ -12,7 +12,7 @@ import {
   type BusinessColumn,
 } from "@/components/business-table";
 import { Badge } from "@/components/ui/badge";
-import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 export function WorkItemsTable({
   items,
   actions,

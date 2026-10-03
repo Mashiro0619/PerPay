@@ -36,7 +36,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 import { FinancialDialog } from "./FinancialDialog";
 type Section = "matches" | "conflicts" | "exceptions";
 const sections = [
@@ -540,7 +540,7 @@ function ReconciliationList({
                   ]}
                 />
               ) : (
-                <Empty>
+                <Empty kind="filtered">
                   <EmptyHeader>
                     <EmptyTitle role="heading" aria-level={2}>
                       暂无符合条件的记录

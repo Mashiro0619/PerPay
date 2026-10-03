@@ -7,7 +7,7 @@ import {
 } from "../../api/client";
 import { FinancialDialog } from "../../pages/FinancialDialog";
 import { ReasonDialog } from "../ReasonDialog";
-import { SuccessMessage } from "../Feedback";
+import { SuccessMessage, useFeedback } from "../Feedback";
 import { Button } from "@/components/ui/button";
 import { money } from "../../lib/format";
 import { DetailFields } from "./DetailPrimitives";
@@ -25,6 +25,7 @@ export function AssociateIncomeAction({
 }) {
   const [open, setOpen] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [message, setMessage] = useFeedback();
   const finalFocus = useRef<HTMLElement | null>(null);
   return (
     <>
@@ -37,7 +38,7 @@ export function AssociateIncomeAction({
       >
         人工关联收款
       </Button>
-      <SuccessMessage message={saved ? "关联已保存" : ""} />
+      <SuccessMessage message={message} />
       {open && (
         <FinancialDialog
           initialOrderId={orderId}
@@ -52,6 +53,7 @@ export function AssociateIncomeAction({
             finalFocus.current = document.getElementById("main-content");
             setOpen(false);
             setSaved(true);
+            setMessage("关联已保存");
           }}
         />
       )}
@@ -68,9 +70,10 @@ export function ReverseMatchAction({
   const [snapshot, setSnapshot] = useState<PaymentMatchDetail | null>(null);
   const finalFocus = useRef<HTMLElement | null>(null);
   const [saved, setSaved] = useState(false);
+  const [message, setMessage] = useFeedback();
   return (
     <>
-      <SuccessMessage message={saved ? "关联已撤销" : ""} />
+      <SuccessMessage message={message} />
       <RecordTools
         label="收款记录操作"
         data={match}
@@ -123,6 +126,7 @@ export function ReverseMatchAction({
               finalFocus.current = document.getElementById("main-content");
             setSnapshot(null);
             setSaved(true);
+            setMessage("关联已撤销");
             void refreshOperationalData();
           }}
         >

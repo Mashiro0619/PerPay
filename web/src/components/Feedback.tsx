@@ -1,16 +1,21 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 export function useFeedback() {
-  const [message, setMessage] = useState("");
+  const [feedback, setFeedback] = useState({ message: "", sequence: 0 });
+  const setMessage = useCallback((message: string) => {
+    setFeedback(previous => ({ message, sequence: previous.sequence + 1 }));
+  }, []);
   useEffect(() => {
-    if (!message) return;
-    const timer = window.setTimeout(() => setMessage(""), 4000);
+    if (!feedback.message) return;
+    const timer = window.setTimeout(() => setFeedback(previous =>
+      previous.sequence === feedback.sequence ? { ...previous, message: "" } : previous), 4000);
     return () => window.clearTimeout(timer);
-  }, [message]);
-  return [message, setMessage] as const;
+  }, [feedback]);
+  return [feedback.message, setMessage] as const;
 }
+
 export function SuccessMessage({
   message,
   multiline = false,
@@ -18,25 +23,18 @@ export function SuccessMessage({
   message: string;
   multiline?: boolean;
 }) {
-  const [visible, setVisible] = useState(message);
-  useEffect(() => {
-    setVisible(message);
-    if (!message) return;
-    const timer = window.setTimeout(() => setVisible(""), 4000);
-    return () => window.clearTimeout(timer);
-  }, [message]);
-  if (!visible) return null;
+  if (!message) return null;
   if (multiline)
     return (
       <Alert role="status" className="min-w-0">
         <Check aria-hidden="true" />
-        <AlertDescription className="min-w-0">{visible}</AlertDescription>
+        <AlertDescription className="min-w-0">{message}</AlertDescription>
       </Alert>
     );
   return (
     <Badge variant="outline" role="status">
       <Check data-icon="inline-start" aria-hidden="true" />
-      {visible}
+      {message}
     </Badge>
   );
 }

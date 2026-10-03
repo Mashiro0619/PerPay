@@ -32,7 +32,7 @@ import {
   CardContent,
   CardFooter,
 } from "@/components/ui/card";
-import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 export default function EvidenceDetail() {
   const { kind = "", resourceId = "" } = useParams();
   if (kind === "conflicts")

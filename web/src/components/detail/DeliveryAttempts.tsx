@@ -1,3 +1,4 @@
+import { InlineEmpty } from "@/components/admin-empty";
 import { useId, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { WebhookAttempt } from "@/api/client";
@@ -5,7 +6,6 @@ import { dateTime } from "@/lib/format";
 import { attemptResult } from "@/lib/detail-summary";
 import { label } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
-import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import {
   Pagination,
   PaginationContent,
@@ -89,11 +89,7 @@ export function DeliveryAttempts({
                 ) : (
                   <TableRow>
                     <TableCell colSpan={3}>
-                      <Empty>
-                        <EmptyHeader>
-                          <EmptyTitle>暂无尝试明细</EmptyTitle>
-                        </EmptyHeader>
-                      </Empty>
+                      <InlineEmpty>暂无尝试明细</InlineEmpty>
                     </TableCell>
                   </TableRow>
                 )}

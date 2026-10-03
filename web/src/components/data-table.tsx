@@ -8,7 +8,7 @@ import {
   BusinessTable,
   type BusinessColumn,
 } from "@/components/business-table";
-import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 const checkoutNames = {
   OPEN: "收银台开放中",
   CLOSED: "收银台已关闭",

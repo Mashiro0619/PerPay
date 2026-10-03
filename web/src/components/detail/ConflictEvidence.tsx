@@ -10,7 +10,7 @@ import { ConflictComparison } from "./ConflictComparison";
 import { label } from "@/lib/labels";
 import { ReasonDialog } from "@/components/ReasonDialog";
 import { StatusBadge } from "@/components/business-status";
-import { SuccessMessage } from "@/components/Feedback";
+import { SuccessMessage, useFeedback } from "@/components/Feedback";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -39,6 +39,7 @@ const explanations: Record<string, string> = {
 export function ConflictCard({ detail }: { detail: LedgerConflictDetail }) {
   const [confirm, setConfirm] = useState(false);
   const [completed, setCompleted] = useState(false);
+  const [message, setMessage] = useFeedback();
   const conflict = detail.conflict;
   const existing = detail.existing_ledger_entry;
   const operation = detail.resolution_operation;
@@ -123,7 +124,7 @@ export function ConflictCard({ detail }: { detail: LedgerConflictDetail }) {
             ]}
           />
         )}
-        <SuccessMessage message={completed ? "处理已保存" : ""} />
+        <SuccessMessage message={message} />
         <RecordTools
           label="冲突记录操作"
           data={detail}
@@ -170,6 +171,7 @@ export function ConflictCard({ detail }: { detail: LedgerConflictDetail }) {
           onSuccess={() => {
             setConfirm(false);
             setCompleted(true);
+            setMessage("处理已保存");
             void refreshOperationalData();
           }}
         >

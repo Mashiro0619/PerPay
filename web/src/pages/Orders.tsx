@@ -30,7 +30,7 @@ import {
   EmptyHeader,
   EmptyTitle,
   EmptyContent,
-} from "@/components/ui/empty";
+} from "@/components/admin-empty";
 import {
   Select,
   SelectContent,
@@ -305,7 +305,7 @@ function OrderPage({
                 payment ||
                 checkout ||
                 listQuery.query.q || listQuery.query.createdFrom) ? (
-                <Empty>
+                <Empty kind="filtered">
                   <EmptyHeader>
                     <EmptyTitle role="heading" aria-level={2}>
                       {pagination.page > 1

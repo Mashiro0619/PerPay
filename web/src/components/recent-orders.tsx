@@ -11,7 +11,7 @@ import {
   ItemDescription,
   ItemSeparator,
 } from "@/components/ui/item";
-import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 
 /** Overview only: the order list and detail retain timestamps, lifecycle and technical columns. */
 export function RecentOrders({

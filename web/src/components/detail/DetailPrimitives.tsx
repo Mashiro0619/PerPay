@@ -60,9 +60,10 @@ export function DetailFields({
 }) {
   if (!items.length) return null;
   return (
+    <div className="@container/detail-fields min-w-0">
     <dl
       className={cn(
-        "grid min-w-0 gap-4 sm:grid-cols-2",
+        "grid min-w-0 gap-4 @sm/detail-fields:grid-cols-2",
         compact && "gap-x-4 gap-y-2",
         className,
       )}
@@ -74,16 +75,17 @@ export function DetailFields({
             compact
               ? "grid min-w-0 grid-cols-[6rem_minmax(0,1fr)] items-baseline gap-x-2 gap-y-1"
               : "flex min-w-0 flex-col gap-1",
-            wide.includes(name) && "sm:col-span-2",
+            wide.includes(name) && "@sm/detail-fields:col-span-2",
           )}
         >
           <dt className="text-sm text-muted-foreground">{name}</dt>
-          <dd className="min-w-0 text-sm whitespace-pre-wrap break-words">
-            {value ?? "—"}
+          <dd className="min-w-0 text-sm whitespace-pre-wrap wrap-anywhere">
+            {value === "" || value == null ? "—" : value}
           </dd>
         </div>
       ))}
     </dl>
+    </div>
   );
 }
 export function TechnicalDetailsDialog({

@@ -25,7 +25,7 @@ import {
   EmptyHeader,
   EmptyTitle,
   EmptyDescription,
-} from "@/components/ui/empty";
+} from "@/components/admin-empty";
 import { CursorPagination } from "@/components/cursor-pagination";
 import { ErrorNotice, Loading } from "@/components/request-state";
 interface Choice {
@@ -241,7 +241,7 @@ export function ManualCandidatePicker({
                 ))}
               </ItemGroup>
             ) : (
-              <Empty>
+              <Empty kind="filtered">
                 <EmptyHeader>
                   <EmptyTitle>
                     {view === "recommended"

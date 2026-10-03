@@ -37,7 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 const statuses = [
   { value: "", label: "全部状态" },
   { value: "PENDING", label: "等待投递" },
@@ -304,7 +304,7 @@ function DeliveryPage({
                   ]}
                 />
               ) : (
-                <Empty>
+                <Empty kind="filtered">
                   <EmptyHeader>
                     <EmptyTitle role="heading" aria-level={2}>
                       暂无符合条件的通知

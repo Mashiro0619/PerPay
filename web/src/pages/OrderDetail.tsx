@@ -1,3 +1,4 @@
+import { InlineEmpty } from "@/components/admin-empty";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { RefreshButton } from "@/components/refresh-button";
 import { useQuery } from "@tanstack/react-query";
@@ -186,7 +187,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
             <CardContent>
               <DetailFields
                 compact
-                className="sm:grid-cols-1"
+                className="@sm/detail-fields:grid-cols-1"
                 items={[
                   [
                     "商户订单号",
@@ -343,7 +344,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
               </CardHeader>
               <CardContent>
                 <DetailFields
-                  className="sm:grid-cols-1"
+                  className="@sm/detail-fields:grid-cols-1"
                   items={[
                     ...(order.note ? [["订单备注", order.note] as const] : []),
                     ...(order.refund.status !== "NONE"
@@ -428,7 +429,7 @@ function OrderTimeline({
       {ordered.length ? (
         entries(ordered.slice(0, 6))
       ) : (
-        <p className="text-sm text-muted-foreground">暂无订单事件</p>
+        <InlineEmpty>暂无订单事件</InlineEmpty>
       )}
       {ordered.length > 6 && (
         <Collapsible>

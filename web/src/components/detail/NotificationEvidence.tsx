@@ -23,7 +23,7 @@ import { CopyValue } from "@/components/copy-value";
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { CursorPagination } from "@/components/cursor-pagination";
 import { ReasonDialog } from "@/components/ReasonDialog";
-import { SuccessMessage } from "@/components/Feedback";
+import { SuccessMessage, useFeedback } from "@/components/Feedback";
 import {
   Card,
   CardHeader,
@@ -57,6 +57,7 @@ export function DeliveryCard({
 }) {
   const [snapshot, setSnapshot] = useState<DeliveryContext | null>(null);
   const [sent, setSent] = useState(false);
+  const [message, setMessage] = useFeedback();
   const finalFocus = useRef<HTMLButtonElement | null>(null);
   const delivery = detail.delivery;
   const last = latestAttempt(detail.attempts);
@@ -159,7 +160,7 @@ export function DeliveryCard({
               : []),
           ]}
         />
-        <SuccessMessage message={sent ? "已创建新投递，等待发送" : ""} />
+        <SuccessMessage message={message} />
         <DeliveryAttempts
           key={delivery.delivery_id}
           attempts={detail.attempts}
@@ -208,6 +209,7 @@ export function DeliveryCard({
           onSuccess={() => {
             setSnapshot(null);
             setSent(true);
+            setMessage("已创建新投递，等待发送");
             void refreshOperationalData();
           }}
         >
