@@ -1,3 +1,4 @@
+import { adminAccessInputSchema, readAdminAccess, createAdminAccessPolicy } from "../settings/admin-access.ts";
 import { exportOrders, orderExportSchema } from "./order-export.ts";
 import { adminOrderIdentities } from "./admin-order-summary.ts";
 import { readManualCandidateQuery } from "./manual-candidates.ts";
@@ -328,6 +329,26 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     );
     if (dependencies.config.secureCookies) {
       context.header("strict-transport-security", "max-age=31536000; includeSubDomains");
+    }
+    await next();
+  });
+
+  app.use("*", async (context, next) => {
+    const path = context.req.path;
+    const isAdmin = path === "/admin" || path.startsWith("/admin/") ||
+      path === "/api/admin" || path.startsWith("/api/admin/");
+    if (isAdmin) {
+      const access = dependencies.settings
+        ? dependencies.settings.adminAccess()
+        : dependencies.database.read(readAdminAccess);
+      if (access.enabled && !createAdminAccessPolicy(access.cidrs).isTrusted(
+        remoteAddress(context, dependencies.config.trustedProxy),
+      )) {
+        if (path.startsWith("/api/")) {
+          throw new HttpApiError(403, "admin_ip_not_allowed", "当前 IP 不允许访问管理员面板");
+        }
+        return context.text("403 — 当前 IP 不允许访问管理员面板。请联系管理员或使用服务器离线恢复命令。", 403);
+      }
     }
     await next();
   });
@@ -761,6 +782,27 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const orderId = requireOrderId(context.req.param("orderId"));
     const body = await readJson(context, refundMarkRequestSchema, MAX_JSON_BODY_BYTES);
     return context.json({ data: setAdminRefundMark(dependencies.database, orderId, body, settingsAuditContext(context, dependencies)) });
+  });
+
+  app.get("/api/admin/v1/settings/admin-access", adminSession, context => {
+    const settings = requireSettingsService(dependencies).view();
+    const source = remoteAddress(context, dependencies.config.trustedProxy);
+    return context.json({ data: {
+      revision: settings.revision,
+      ...settings.admin_access,
+      current_ip: source === "unknown" ? null : source,
+    } });
+  });
+  app.put("/api/admin/v1/settings/admin-access", adminSession, financialWrite, async context => {
+    const body = await readJson(context, adminAccessInputSchema, MAX_JSON_BODY_BYTES);
+    const data = await settingsOperation(() =>
+      requireSettingsService(dependencies).saveAdminAccess(
+        body,
+        remoteAddress(context, dependencies.config.trustedProxy),
+        settingsAuditContext(context, dependencies),
+      )
+    );
+    return context.json({ data });
   });
 
   app.get("/api/admin/v1/settings", adminSession, (context) => {
@@ -1833,6 +1875,9 @@ function parseJsonBytes<T>(bytes: Uint8Array, schema: z.ZodType<T>): T {
       for (const [field, hint] of Object.entries(timingHints)) {
         if (parsed.error.issues.some((issue) => issue.path[0] === field)) throw new SettingsFieldError(field, hint);
       }
+    }
+    if ((schema as z.ZodType) === adminAccessInputSchema) {
+      throw new SettingsFieldError("cidrs", parsed.error.issues[0]?.message ?? "白名单格式错误");
     }
     throw new HttpApiError(422, "validation_failed", "请求字段校验失败");
   }

@@ -1,3 +1,4 @@
+import { adminAccessInputSchema, createAdminAccessPolicy, type AdminAccessInput, type AdminAccess } from "./admin-access.ts";
 import { randomBytes, randomUUID } from "node:crypto";
 
 import type { ProviderIdentityActivation } from "../ledger/model.ts";
@@ -42,6 +43,7 @@ import {
 } from "./store.ts";
 
 export interface RuntimeSettingsView {
+  readonly admin_access: AdminAccess;
   readonly revision: number;
   readonly payment_revision: number;
   readonly updated_at: string;
@@ -188,6 +190,7 @@ export class RuntimeSettingsService {
     const applicationKey = this.#store.providerApplicationKey();
     const pending = this.#store.pendingApplicationKey();
     return {
+      admin_access: snapshot.adminAccess,
       revision: snapshot.revision,
       payment_revision: snapshot.paymentRevision,
       updated_at: new Date(snapshot.updatedAt).toISOString(),
@@ -631,6 +634,21 @@ export class RuntimeSettingsService {
     return this.#exclusive(async () => {
       const parsed = backupSettingsInputSchema.parse(input);
       this.#store.saveBackup(parsed, audit);
+      return this.view();
+    });
+  }
+
+  adminAccess(): AdminAccess {
+    return this.#store.adminAccess();
+  }
+
+  saveAdminAccess(input: AdminAccessInput, source: string, audit: SettingsAuditContext): Promise<RuntimeSettingsView> {
+    return this.#exclusive(async () => {
+      const parsed = adminAccessInputSchema.parse(input);
+      if (parsed.enabled && !createAdminAccessPolicy(parsed.cidrs).isTrusted(source)) {
+        throw new SettingsFieldError("cidrs", "白名单必须允许当前客户端 IP，无法识别来源时不能启用。");
+      }
+      this.#store.saveAdminAccess(parsed, audit);
       return this.view();
     });
   }

@@ -9,6 +9,7 @@ import { ReconciliationScheduler } from "../src/reconciliation/scheduler.ts";
 import { WebhookScheduler } from "../src/notifications/scheduler.ts";
 
 const unconfiguredSettings: RuntimeSettingsSnapshot = Object.freeze({
+  adminAccess: { enabled: false, cidrs: [] },
   revision: 0,
   paymentRevision: 0,
   updatedAt: 0,

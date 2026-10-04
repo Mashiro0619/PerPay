@@ -327,7 +327,26 @@ export type AdminRevokeAllEnvelope = {
 export type RuntimeSettingsEnvelope = {
     data: RuntimeSettings;
 };
+export type AdminAccess = {
+    enabled: boolean;
+    cidrs: Array<string>;
+};
+export type AdminAccessRequest = {
+    revision: number;
+    enabled: boolean;
+    cidrs: Array<string>;
+};
+export type AdminAccessView = {
+    revision: number;
+    enabled: boolean;
+    cidrs: Array<string>;
+    current_ip: string | null;
+};
+export type AdminAccessEnvelope = {
+    data: AdminAccessView;
+};
 export type RuntimeSettings = {
+    admin_access: AdminAccess;
     revision: number;
     payment_revision: number;
     updated_at: string;
@@ -1118,7 +1137,7 @@ export type WebhookRedeliveryEnvelope = {
     };
 };
 export type Sha256Fingerprint = string;
-export type ErrorCode = 'admin_operation_conflict' | 'refund_mark_version_conflict' | 'refund_mark_not_allowed' | 'refund_recording_retired' | 'work_item_not_found' | 'work_item_ended' | 'amount_slots_exhausted' | 'api_authentication_failed' | 'api_client_invalid' | 'api_nonce_replayed' | 'asset_not_found' | 'auth_rate_limited' | 'candidate_not_found' | 'candidate_set_changed' | 'checkout_code_generation_failed' | 'checkout_code_not_found' | 'checkout_not_found' | 'csrf_invalid' | 'duplicate_json_key' | 'event_not_found' | 'financial_clock_unavailable' | 'financial_exception_not_found' | 'forwarded_header_invalid' | 'idempotency_conflict' | 'identity_already_initialized' | 'identity_not_initialized' | 'internal_error' | 'invalid_content_length' | 'invalid_credentials' | 'invalid_json' | 'ledger_conflict_action_not_allowed' | 'ledger_conflict_not_found' | 'ledger_conflict_operation_conflict' | 'ledger_conflict_state_conflict' | 'ledger_entry_not_found' | 'ledger_unavailable' | 'match_not_found' | 'match_state_conflict' | 'merchant_order_no_conflict' | 'operation_conflict' | 'order_clock_unavailable' | 'order_not_found' | 'origin_not_allowed' | 'password_unchanged' | 'password_work_busy' | 'provider_application_key_missing' | 'provider_application_key_rotation_not_supported' | 'provider_application_key_change_pending' | 'provider_application_key_change_conflict' | 'provider_application_key_verification_failed' | 'provider_switch_blocked' | 'public_checkout_rate_limited' | 'reconciliation_not_ready' | 'reconciliation_unavailable' | 'request_body_too_large' | 'request_body_unreadable' | 'return_url_invalid' | 'return_url_not_allowed' | 'route_not_found' | 'secret_not_found' | 'session_invalid' | 'settings_not_configured' | 'settings_revision_conflict' | 'settings_unavailable' | 'settings_validation_failed' | 'system_not_configured' | 'system_not_ready' | 'unsupported_media_type' | 'update_check_unavailable' | 'validation_failed' | 'webhook_delivery_not_found' | 'webhook_delivery_state_conflict' | 'webhook_disabled' | 'webhook_event_not_found' | 'webhook_operation_conflict' | 'webhook_signing_key_rollback' | 'webhook_signing_key_unavailable' | 'webhook_target_inactive' | 'webhook_target_invalid' | 'webhook_target_not_allowed' | 'webhook_unavailable';
+export type ErrorCode = 'admin_ip_not_allowed' | 'admin_operation_conflict' | 'refund_mark_version_conflict' | 'refund_mark_not_allowed' | 'refund_recording_retired' | 'work_item_not_found' | 'work_item_ended' | 'amount_slots_exhausted' | 'api_authentication_failed' | 'api_client_invalid' | 'api_nonce_replayed' | 'asset_not_found' | 'auth_rate_limited' | 'candidate_not_found' | 'candidate_set_changed' | 'checkout_code_generation_failed' | 'checkout_code_not_found' | 'checkout_not_found' | 'csrf_invalid' | 'duplicate_json_key' | 'event_not_found' | 'financial_clock_unavailable' | 'financial_exception_not_found' | 'forwarded_header_invalid' | 'idempotency_conflict' | 'identity_already_initialized' | 'identity_not_initialized' | 'internal_error' | 'invalid_content_length' | 'invalid_credentials' | 'invalid_json' | 'ledger_conflict_action_not_allowed' | 'ledger_conflict_not_found' | 'ledger_conflict_operation_conflict' | 'ledger_conflict_state_conflict' | 'ledger_entry_not_found' | 'ledger_unavailable' | 'match_not_found' | 'match_state_conflict' | 'merchant_order_no_conflict' | 'operation_conflict' | 'order_clock_unavailable' | 'order_not_found' | 'origin_not_allowed' | 'password_unchanged' | 'password_work_busy' | 'provider_application_key_missing' | 'provider_application_key_rotation_not_supported' | 'provider_application_key_change_pending' | 'provider_application_key_change_conflict' | 'provider_application_key_verification_failed' | 'provider_switch_blocked' | 'public_checkout_rate_limited' | 'reconciliation_not_ready' | 'reconciliation_unavailable' | 'request_body_too_large' | 'request_body_unreadable' | 'return_url_invalid' | 'return_url_not_allowed' | 'route_not_found' | 'secret_not_found' | 'session_invalid' | 'settings_not_configured' | 'settings_revision_conflict' | 'settings_unavailable' | 'settings_validation_failed' | 'system_not_configured' | 'system_not_ready' | 'unsupported_media_type' | 'update_check_unavailable' | 'validation_failed' | 'webhook_delivery_not_found' | 'webhook_delivery_state_conflict' | 'webhook_disabled' | 'webhook_event_not_found' | 'webhook_operation_conflict' | 'webhook_signing_key_rollback' | 'webhook_signing_key_unavailable' | 'webhook_target_inactive' | 'webhook_target_invalid' | 'webhook_target_not_allowed' | 'webhook_unavailable';
 export type ErrorEnvelope = {
     error: {
         code: ErrorCode;
@@ -1750,6 +1769,46 @@ export type RotateWebhookSigningSecretResponses = {
     201: WebhookSecretRotationEnvelope;
 };
 export type RotateWebhookSigningSecretResponse = RotateWebhookSigningSecretResponses[keyof RotateWebhookSigningSecretResponses];
+export type GetAdminAccessSettingsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/admin/v1/settings/admin-access';
+};
+export type GetAdminAccessSettingsErrors = {
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+};
+export type GetAdminAccessSettingsError = GetAdminAccessSettingsErrors[keyof GetAdminAccessSettingsErrors];
+export type GetAdminAccessSettingsResponses = {
+    200: AdminAccessEnvelope;
+};
+export type GetAdminAccessSettingsResponse = GetAdminAccessSettingsResponses[keyof GetAdminAccessSettingsResponses];
+export type UpdateAdminAccessSettingsData = {
+    body: AdminAccessRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/admin/v1/settings/admin-access';
+};
+export type UpdateAdminAccessSettingsErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type UpdateAdminAccessSettingsError = UpdateAdminAccessSettingsErrors[keyof UpdateAdminAccessSettingsErrors];
+export type UpdateAdminAccessSettingsResponses = {
+    200: RuntimeSettingsEnvelope;
+};
+export type UpdateAdminAccessSettingsResponse = UpdateAdminAccessSettingsResponses[keyof UpdateAdminAccessSettingsResponses];
 export type UpdateDisplaySettingsData = {
     body: DisplaySettingsRequest;
     headers?: {

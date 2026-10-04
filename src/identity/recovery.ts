@@ -75,7 +75,7 @@ export async function recoverAdministratorPassword(input: {
   }
 }
 
-function assertRecoverable(database: DatabaseSync): void {
+export function assertRecoverable(database: DatabaseSync): void {
   const hasLease = database.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'app_lease'").get();
   if (!hasLease) throw new AdminRecoveryError("数据库不是可恢复的 PerPay 实例，未作修改。");
   const lease = database.prepare("SELECT expires_at FROM app_lease WHERE lease_key = 1").get() as { expires_at: bigint } | undefined;
@@ -85,12 +85,12 @@ function assertRecoverable(database: DatabaseSync): void {
   if (!admin || admin.username !== ADMIN_USERNAME) throw new AdminRecoveryError("管理员尚未初始化，请从首次初始化页面设置密码。");
 }
 
-function inspectFile(file: string): BigIntStats {
+export function inspectFile(file: string): BigIntStats {
   const stat = lstatSync(file, { bigint: true });
   if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1n || stat.size === 0n) throw new Error("not an ordinary database file");
   return stat;
 }
-function assertSameFile(file: string, expected: BigIntStats): void {
+export function assertSameFile(file: string, expected: BigIntStats): void {
   const current = inspectFile(file);
   if (current.dev !== expected.dev || current.ino !== expected.ino) throw new AdminRecoveryError("数据库文件在恢复期间发生变化，已停止操作。");
 }

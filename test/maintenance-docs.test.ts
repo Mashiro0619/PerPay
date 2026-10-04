@@ -11,12 +11,14 @@ describe("maintenance documentation version contract", () => {
   it("keeps the current release notes and maintenance version aligned with the build", () => {
     const notes = readFileSync(new URL(`../docs/releases/v${APP_VERSION}.md`, import.meta.url), "utf8");
     assert.ok(notes.includes(`# PerPay ${APP_VERSION}`));
-    assert.ok(notes.includes(`最新数据库 schema 为 **${DATABASE_COMPATIBILITY.maximum}**`));
-    assert.ok(notes.includes(`运行兼容范围为 **${DATABASE_COMPATIBILITY.minimum}—${DATABASE_COMPATIBILITY.maximum}**`));
-    assert.ok(maintenance.includes("本版（`" + APP_VERSION + "`）"));
-    assert.ok(notes.includes(`迁移 24—${DATABASE_COMPATIBILITY.maximum}`));
-    assert.ok(notes.includes(`迁移 27—${DATABASE_COMPATIBILITY.maximum}`));
-    assert.ok(notes.includes(`不能将 schema ${DATABASE_COMPATIBILITY.maximum} 数据库`));
+    const current = readFileSync(new URL("../docs/releases/unreleased.md", import.meta.url), "utf8");
+    assert.ok(current.includes(APP_VERSION));
+    assert.ok(current.includes(`最新数据库 schema 为 **${DATABASE_COMPATIBILITY.maximum}**`));
+    assert.ok(current.includes(`运行兼容范围为 **${DATABASE_COMPATIBILITY.minimum}—${DATABASE_COMPATIBILITY.maximum}**`));
+    assert.ok(maintenance.includes("基于 `" + APP_VERSION + "`"));
+    assert.ok(current.includes(`迁移 24—${DATABASE_COMPATIBILITY.maximum}`));
+    assert.ok(current.includes(`迁移 27—${DATABASE_COMPATIBILITY.maximum}`));
+    assert.ok(current.includes(`不能将 schema ${DATABASE_COMPATIBILITY.maximum} 数据库`));
   });
 
   it("documents the current migration catalog and runtime compatibility rather than an old release", () => {

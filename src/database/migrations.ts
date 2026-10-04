@@ -4960,4 +4960,11 @@ export const migrations: readonly Migration[] = [
     name: "checkout_merchant_help_url",
     sql: `ALTER TABLE runtime_configuration ADD COLUMN checkout_help_url TEXT;`,
   },
+  {
+    version: 32,
+    name: "admin_ip_allowlist",
+    sql: `ALTER TABLE runtime_configuration
+      ADD COLUMN admin_access TEXT NOT NULL DEFAULT '{"enabled":false,"cidrs":[]}'
+      CHECK (json_valid(admin_access));`,
+  },
 ] as const;

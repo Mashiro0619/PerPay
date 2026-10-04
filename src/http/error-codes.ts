@@ -1,5 +1,6 @@
 /** Every code that can be returned in the public HTTP error envelope. */
 export const HTTP_ERROR_CODES = Object.freeze([
+  "admin_ip_not_allowed",
   "admin_operation_conflict",
   "refund_mark_version_conflict",
   "refund_mark_not_allowed",

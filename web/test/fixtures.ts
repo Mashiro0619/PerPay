@@ -5,6 +5,7 @@ export const ledgerId = "22222222-2222-4222-8222-222222222222";
 const emptySecret = { configured: false, version: null, fingerprint: null, masked: null, updatedAt: null };
 
 export const settings: RuntimeSettings = {
+  admin_access: { enabled: false, cidrs: [] },
   revision: 3, payment_revision: 1, updated_at: "2026-09-06T00:00:00.000Z",
   completion: { complete: false, application_key: false, collection: true, provider: false, api: false, notifications: false, next_step: "GENERATE_APPLICATION_KEY" },
   collection: { code_payload: "https://qr.alipay.com/test-fixture", order_ttl_seconds: 300, amount_offset_maximum_cents: 99, amount_reuse_cooldown_seconds: 600 },

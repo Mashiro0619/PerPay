@@ -400,6 +400,7 @@ function runtimeSettings(
   const privateKeyPem = providerKeys.privateKey.export({ format: "pem", type: "pkcs8" }).toString();
   const publicKeyPem = providerKeys.publicKey.export({ format: "pem", type: "spki" }).toString();
   return {
+    adminAccess: { enabled: false, cidrs: [] },
     revision: 1,
     paymentRevision: 1,
     updatedAt: 2_000_000_000_000,

@@ -1,3 +1,4 @@
+import { readAdminAccess } from "../settings/admin-access.ts";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
   closeSync,
@@ -1042,6 +1043,12 @@ export function inspectDatabaseIntegrity(connection: DatabaseSync): DatabaseInte
     const quick = connection.prepare("PRAGMA quick_check").get() as { quick_check: string } | undefined;
     const quickCheck = quick?.quick_check ?? "missing_result";
     const foreignKeys = connection.prepare("PRAGMA foreign_key_check").all();
+    // Pre-migration backups must remain verifiable on their original schema.
+    // On schema 32+, missing or malformed access settings are integrity failures.
+    if (tableExists(connection, "schema_migrations") &&
+        connection.prepare("SELECT 1 FROM schema_migrations WHERE version >= 32 LIMIT 1").get()) {
+      readAdminAccess(connection);
+    }
     const domainViolations =
       countDomainViolations(connection) + countCryptographicDomainViolations(connection);
     const schema = validateSchema(connection) ? "ok" : "invalid";

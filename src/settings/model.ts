@@ -1,3 +1,4 @@
+import type { AdminAccess } from "./admin-access.ts";
 import { checkoutHelpUrl } from "../shared/checkout-help.ts";
 import {
   createHash,
@@ -128,6 +129,7 @@ export interface BackupSettings {
 }
 
 export interface RuntimeSettingsSnapshot {
+  readonly adminAccess: AdminAccess;
   readonly revision: number;
   readonly paymentRevision: number;
   readonly updatedAt: number;

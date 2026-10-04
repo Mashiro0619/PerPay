@@ -1,3 +1,4 @@
+import { readAdminAccess, type AdminAccessInput, type AdminAccess } from "./admin-access.ts";
 import type { DatabaseSync } from "node:sqlite";
 
 import type { AppDatabase } from "../database/database.ts";
@@ -179,6 +180,29 @@ export class RuntimeSettingsStore {
         checkoutShowProductName: Number(row.checkout_show_product_name) === 1,
         dashboardChartType: row.dashboard_chart_type,
       };
+    });
+  }
+
+  adminAccess(): AdminAccess {
+    return this.#database.read(readAdminAccess);
+  }
+
+  saveAdminAccess(input: AdminAccessInput, audit: SettingsAuditContext): void {
+    this.#database.write(connection => {
+      assertRevision(connection, input.revision);
+      const now = Date.now();
+      const updated = connection.prepare(
+        `UPDATE runtime_configuration
+            SET admin_access = ?, revision = revision + 1, updated_at = ?
+          WHERE singleton_key = 1 AND revision = ?`,
+      ).run(JSON.stringify({ enabled: input.enabled, cidrs: input.cidrs }), now, input.revision);
+      assertUpdated(updated.changes);
+      appendSettingsAudit(connection, audit, now, "settings.admin_access_updated", {
+        revision: input.revision + 1,
+        enabled: input.enabled,
+        cidrs: input.cidrs,
+        payment_revision_changed: false,
+      });
     });
   }
 
@@ -839,6 +863,7 @@ export class RuntimeSettingsStore {
     const webhookSecret = webhookSecretRow ? decryptSecret(this.#cipher, webhookSecretRow) : null;
     const webhookEnabled = Number(row.webhook_enabled) === 1;
     return {
+      adminAccess: readAdminAccess(connection),
       revision: safeInteger(row.revision, "runtime configuration revision"),
       paymentRevision: safeInteger(row.payment_revision, "payment configuration revision"),
       updatedAt: safeInteger(row.updated_at, "runtime configuration updated time"),

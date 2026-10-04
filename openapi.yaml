@@ -1032,6 +1032,75 @@ paths:
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
         '422': { $ref: '#/components/responses/SettingsValidationFailed' }
         '503': { $ref: '#/components/responses/SettingsUnavailable' }
+  /api/admin/v1/settings/admin-access:
+    get:
+      tags:
+        - Admin Settings
+      operationId: getAdminAccessSettings
+      summary: Read allowlist and resolved client IP
+      security:
+        - AdminSessionCookie: []
+      responses:
+        "200":
+          description: Current allowlist
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAccessEnvelope"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+    put:
+      tags:
+        - Admin Settings
+      operationId: updateAdminAccessSettings
+      summary: Save optional administrator IP allowlist
+      description: Applies immediately to administrator routes. Enabled rules must
+        allow the current client. Does not change payment revision.
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAccessRequest"
+      responses:
+        "200":
+          description: Display settings saved and runtime settings returned
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuntimeSettingsEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
   /api/admin/v1/settings/display:
     put:
       tags: [Admin Settings]
@@ -3433,10 +3502,64 @@ components:
       required: [data]
       properties:
         data: { $ref: '#/components/schemas/RuntimeSettings' }
+    AdminAccess:
+      type: object
+      additionalProperties: false
+      required:
+        - enabled
+        - cidrs
+      properties:
+        enabled: &a1
+          type: boolean
+        cidrs: &a2
+          type: array
+          maxItems: 100
+          items:
+            type: string
+            minLength: 1
+          description: IPv4/IPv6 or CIDR, max 8192 UTF-8 bytes including separators. No
+            /0. Enabled rules must cover the caller.
+    AdminAccessRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - revision
+        - enabled
+        - cidrs
+      properties:
+        revision: &a3
+          type: integer
+          minimum: 0
+        enabled: *a1
+        cidrs: *a2
+    AdminAccessView:
+      type: object
+      additionalProperties: false
+      required:
+        - revision
+        - enabled
+        - cidrs
+        - current_ip
+      properties:
+        revision: *a3
+        enabled: *a1
+        cidrs: *a2
+        current_ip:
+          type:
+            - string
+            - "null"
+    AdminAccessEnvelope:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/AdminAccessView"
     RuntimeSettings:
       type: object
       additionalProperties: false
       required:
+        - admin_access
         - revision
         - payment_revision
         - updated_at
@@ -3453,6 +3576,7 @@ components:
         - display
         - secrets
       properties:
+        admin_access: { $ref: '#/components/schemas/AdminAccess' }
         revision: { type: integer, minimum: 0 }
         payment_revision:
           type: integer
@@ -5546,6 +5670,7 @@ components:
     ErrorCode:
       type: string
       enum:
+        - admin_ip_not_allowed
         - admin_operation_conflict
         - refund_mark_version_conflict
         - refund_mark_not_allowed
@@ -5688,7 +5813,8 @@ components:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     FinancialWriteForbidden:
       description: >-
-        Same-origin or CSRF validation failed (`origin_not_allowed` or `csrf_invalid`).
+        Same-origin or CSRF validation failed (`origin_not_allowed` or `csrf_invalid`),
+        or the administrator IP allowlist denied the client (`admin_ip_not_allowed`).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
