@@ -626,7 +626,7 @@ export function SettingsEditor({
           }
           min={60}
           max={3600}
-          hint="结束后暂不复用应付金额，不延长订单有效期。"
+          hint="结束后暂不复用应付金额，不延长订单有效期。冷却结束后可再次分配，系统优先使用最小可用尾差。"
         />
       </FieldGroup>
     </FieldGroup>

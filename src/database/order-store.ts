@@ -899,7 +899,6 @@ function allocateAmountSlot(
   now: number,
 ): AmountAllocationResult {
   let earliestAvailableAt: number | undefined;
-  let reusable: { payableAmountCents: number; generation: number; endedAt: number } | undefined;
   for (let offset = 1; offset <= maximumOffsetCents; offset += 1) {
     const payableAmountCents = requestedAmountCents + offset;
     if (payableAmountCents > MAX_PAYABLE_AMOUNT_CENTS) break;
@@ -941,7 +940,7 @@ function allocateAmountSlot(
       expires_at: bigint | number;
       amount_reuse_cooldown_seconds: bigint | number;
     } | undefined;
-    // Offsets are visited in ascending order, so the first unused amount is optimal.
+    // Ascending offsets select the smallest available amount, whether new or reused.
     if (!latest) return { kind: "allocated", payableAmountCents, generation: 1 };
     if (latest.released_at === null) {
       throw new Error("active amount slot is detached from its open order");
@@ -965,13 +964,7 @@ function allocateAmountSlot(
     if (!Number.isSafeInteger(generation)) {
       throw new Error("amount slot generation is outside the safe integer range");
     }
-    // Keep reusing the least recently ended amount, rather than immediately cycling the smallest tail.
-    if (!reusable || endedAt < reusable.endedAt) {
-      reusable = { payableAmountCents, generation, endedAt };
-    }
-  }
-  if (reusable) {
-    return { kind: "allocated", payableAmountCents: reusable.payableAmountCents, generation: reusable.generation };
+    return { kind: "allocated", payableAmountCents, generation };
   }
   if (earliestAvailableAt === undefined || earliestAvailableAt <= now) {
     throw new Error("exhausted amount slots have no future release time");

@@ -582,7 +582,7 @@ describe("OrderStore", () => {
     });
   });
 
-  it("prefers unused amounts, then the oldest ended reusable amount instead of the smallest tail", async () => {
+  it("prefers the smallest cooled amount over unused or earlier-ended amounts", async () => {
     await withStore(async ({ store, setNow }) => {
       syncProfile(store, "https://qr.example.test/reuse-order");
       const first = createdAggregate(store.createOrder(createInput(requestFor("reuse-a", "reuse-a", 1_000), 2)));
@@ -593,8 +593,8 @@ describe("OrderStore", () => {
       setNow(TEST_START_MS + 3_000);
       store.closeOrder(API_CLIENT_ID, first.order.orderId);
       setNow(TEST_START_MS + 604_000);
-      const unused = createdAggregate(store.createOrder(createInput(requestFor("reuse-c", "reuse-c", 1_000), 3)));
-      assert.equal(unused.order.payableAmountCents, 1_003);
+      const reused = createdAggregate(store.createOrder(createInput(requestFor("reuse-c", "reuse-c", 1_000), 5)));
+      assert.equal(reused.order.payableAmountCents, 1_001);
       const oldest = createdAggregate(store.createOrder(createInput(requestFor("reuse-d", "reuse-d", 1_000), 2)));
       assert.equal(oldest.order.payableAmountCents, second.order.payableAmountCents);
     });
