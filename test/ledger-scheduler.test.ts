@@ -273,3 +273,68 @@ describe("minimum scan interval", () => {
     scheduler.start();const request=scheduler.trigger("checkout");await timers.advance(59000);assert.equal(calls,0);await timers.advance(1000);await request;assert.equal(calls,1);await scheduler.stop();
   });
 });
+
+
+describe("cancelled scan schedule persistence", () => {
+  for (const protection of ["none", "persisted", "provider-hint"] as const) {
+    it("rebuilds after an in-flight cancellation while retaining " + protection + " protection", async () => {
+      const timers = new ManualTimers();
+      let saved: import("../src/ledger/scan-gate.ts").LedgerScanGate | null = null;
+      let finish!: (value: LedgerScanResult) => void;
+      let calls = 0;
+      const service = {
+        run: () => { calls++; return new Promise<LedgerScanResult>(resolve => { finish = resolve; }); },
+        stop: () => finish(result({ status: "FAILED", errorCode: "scan_aborted", retryable: false,
+          normalCompleted: false, retryAfterSeconds: protection === "provider-hint" ? 60 : null })),
+        async waitForIdle() {},
+      } as unknown as LedgerIngestService;
+      const options = {
+        service, intervalMilliseconds: 8000, minimumIntervalMilliseconds: 5000,
+        clock: () => timers.now, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
+        gate: { read: () => saved, write: (value: import("../src/ledger/scan-gate.ts").LedgerScanGate) => { saved = value; } },
+      };
+      const scheduler = new LedgerIngestScheduler(options);
+      scheduler.start();
+      await timers.advance(4000);
+      // A previously recorded real deadline must not be shortened by cancellation.
+      if (protection === "persisted") saved = { completedAt: START, protectedUntil: START + 120000, continuation: false };
+      await scheduler.stop();
+      assert.equal(timers.size, 0);
+      assert.equal(scheduler.health().consecutiveFailures, 0);
+      const deadline = protection === "persisted" ? START + 120000 : protection === "provider-hint" ? START + 64000 : START + 9000;
+      assert.deepEqual(saved, { completedAt: START + 4000, protectedUntil: protection === "none" ? 0 : deadline, continuation: false });
+      const resumed = new LedgerIngestScheduler({ ...options, service: {
+        run: async () => { calls++; return result(); }, stop() {}, async waitForIdle() {},
+      } as unknown as LedgerIngestService });
+      try {
+        resumed.start();
+        const manual = resumed.trigger("checkout");
+        assert.equal(calls, 1);
+        assert.equal(timers.nextAt, deadline);
+        await timers.advance(deadline - timers.now - 1);
+        assert.equal(calls, 1);
+        await timers.advance(1);
+        await manual;
+        assert.equal(calls, 2);
+        assert.equal(timers.nextAt, deadline + 8000);
+      } finally { await resumed.stop(); }
+    });
+  }
+
+  it("still preserves a genuine non-retryable failure when stop races the response", async () => {
+    const timers = new ManualTimers();
+    let saved: import("../src/ledger/scan-gate.ts").LedgerScanGate | null = null;
+    let finish!: (value: LedgerScanResult) => void;
+    const scheduler = new LedgerIngestScheduler({
+      service: {run: () => new Promise<LedgerScanResult>(resolve => {finish = resolve;}),
+        stop: () => finish(result({status:"FAILED",errorCode:"remote_authorization_failed",retryable:false})),
+        async waitForIdle() {}} as unknown as LedgerIngestService,
+      intervalMilliseconds:8000, minimumIntervalMilliseconds:5000, clock:()=>timers.now,
+      setTimeout:timers.setTimeout, clearTimeout:timers.clearTimeout,
+      gate:{read:()=>saved,write:value=>{saved=value;}},
+    });
+    scheduler.start();await scheduler.stop();
+    assert.deepEqual(saved,{completedAt:START,protectedUntil:START+900000,continuation:false});
+    assert.equal(timers.size,0);
+  });
+});

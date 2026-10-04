@@ -141,7 +141,7 @@ export class LedgerIngestScheduler {
     this.#state = "running";
     const operation = this.#service.run(reason)
       .then((result) => {
-        if (result.status === "SKIPPED") {
+        if (result.status === "SKIPPED" || result.errorCode === "scan_aborted") {
           this.#state = previousState;
         } else if (result.status === "COMPLETED") {
           this.#state = "healthy";
@@ -276,6 +276,23 @@ export class LedgerIngestScheduler {
   #scheduleNext(result: LedgerScanResult | null): void {
     this.#lastCompletedAt = safeNow(this.#clock());
     const interval = this.#readIntervalMilliseconds();
+    if (result?.errorCode === "scan_aborted") {
+      // Shutdown/configuration cancellation is not an upstream authorization failure.
+      // A request may already have been sent, so retain a fresh minimum-interval anchor
+      // and any real persisted/provider cooldown, without inventing a 15-minute retry.
+      const previous = this.#gate?.read();
+      const retryAfter = result.retryAfterSeconds;
+      const providerDeadline = retryAfter !== null && Number.isFinite(retryAfter) && retryAfter > 0
+        ? this.#lastCompletedAt + Math.min(LedgerIngestScheduler.#maximumRetryDelayMilliseconds, retryAfter * 1000)
+        : 0;
+      const protectedUntil = Math.max(previous?.protectedUntil ?? 0, providerDeadline);
+      this.#gate?.write({ completedAt: this.#lastCompletedAt, protectedUntil, continuation: false });
+      if (!this.#started || this.#stopped || this.#timer !== null) return;
+      const normalDeadline = this.#lastCompletedAt + interval;
+      this.#scheduleAt(Math.max(normalDeadline, protectedUntil), interval,
+        protectedUntil > normalDeadline ? "retry" : "normal");
+      return;
+    }
     let delay = interval;
     let kind: LedgerScheduleKind = "normal";
     if (result?.status === "PARTIAL") {
