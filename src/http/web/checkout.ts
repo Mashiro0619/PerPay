@@ -175,3 +175,12 @@ function escapeHtml(value: string): string {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 }
+
+/** Reject untrusted traffic without rendering React, reading settings, or echoing input. */
+export function renderCheckoutRejection(status: 404 | 429): string {
+  const message = status === 404 ? "收银台不存在" : "请求过于频繁，请稍后重试";
+  return '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+    '<title>' + message + '</title></head><body><main><h1>' + status +
+    '</h1><p>' + message + '</p></main></body></html>';
+}

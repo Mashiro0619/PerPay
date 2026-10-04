@@ -219,9 +219,9 @@ it("upgrades schema 23 with presentation defaults while preserving revisions, co
 
 for (const failure of [429, 503] as const) {
   it(
-    "keeps product visibility disabled in the recoverable " +
+    "preserves product privacy on the " +
       failure +
-      " checkout bootstrap",
+      " checkout error",
     async () => {
       await withHttpFixture(async ({ app, services, createOrder }) => {
         const order = createOrder("display-recovery-" + failure, 4900);
@@ -252,10 +252,17 @@ for (const failure of [429, 503] as const) {
             "/checkout/" + order.checkoutToken,
           );
           assert.equal(response.status, failure);
-          const initial = readCheckoutInitial(await response.text());
-          assert.equal(initial.checkout, null);
-          assert.equal(initial.initialError?.status, failure);
-          assert.equal(initial.showProductName, false);
+          const html = await response.text();
+          if (failure === 429) {
+            assert.match(html, /请求过于频繁/);
+            assert.doesNotMatch(html, /<script|data-checkout|data-qr-image/);
+            assert.equal(html.includes(order.checkoutToken), false);
+          } else {
+            const initial = readCheckoutInitial(html);
+            assert.equal(initial.checkout, null);
+            assert.equal(initial.initialError?.status, failure);
+            assert.equal(initial.showProductName, false);
+          }
         } finally {
           failureMock.mock.restore();
         }
@@ -273,7 +280,7 @@ for (const failure of [429, 503] as const) {
   );
 }
 
-it("reads display preferences without decrypting credentials, including rate-limited checkout requests", async () => {
+it("reads display preferences without decryption and rejects limited requests without a bootstrap", async () => {
   await withHttpFixture(async ({ app, services, createOrder }) => {
     const order = createOrder("display-no-decryption", 1000);
     const expected = services.settings.display();
@@ -293,8 +300,9 @@ it("reads display preferences without decrypting credentials, including rate-lim
       assert.deepEqual(services.settings.display(), expected);
       const response = await app.request("/checkout/" + order.checkoutToken);
       assert.equal(response.status, 429);
-      const initial = readCheckoutInitial(await response.text());
-      assert.equal(initial.showProductName, expected.checkoutShowProductName);
+      const html = await response.text();
+      assert.match(html, /请求过于频繁/);
+      assert.doesNotMatch(html, /<script|data-checkout/);
       assert.equal(decryption.mock.callCount(), 0);
     } finally {
       limiter.mock.restore();
@@ -303,7 +311,7 @@ it("reads display preferences without decrypting credentials, including rate-lim
   });
 });
 
-it("keeps a rate-limited error page recoverable when the display settings read also fails", async () => {
+it("renders a lightweight limited page without attempting a failing display settings read", async () => {
   await withHttpFixture(async ({ app, services, createOrder }) => {
     const order = createOrder("display-read-failure", 1000);
     const display = mock.method(services.settings, "display", () => {
@@ -319,14 +327,10 @@ it("keeps a rate-limited error page recoverable when the display settings read a
       assert.equal(response.status, 429);
       assert.equal(response.headers.get("retry-after"), "1");
       const html = await response.text();
-      const initial = readCheckoutInitial(html);
-      assert.equal(initial.showProductName, false);
-      assert.equal(initial.qrAvailable, false);
-      assert.equal(initial.initialError?.status, 429);
-      assert.equal(
-        initial.apiUrl,
-        "/api/public/v1/checkouts/" + order.checkoutToken,
-      );
+      assert.match(html, /请求过于频繁/);
+      assert.doesNotMatch(html, /<script|data-checkout/);
+      assert.equal(html.includes(order.checkoutToken), false);
+      assert.equal(display.mock.callCount(), 0);
       assert.doesNotMatch(
         html,
         /configuration temporarily unavailable|data-qr-image/,
@@ -378,7 +382,7 @@ it("escapes public names and reads anonymous branding without decrypting secrets
       }
       assert.equal(decrypt.mock.callCount(), 0);
       decrypt.mock.restore();
-      for (const token of [order.checkoutToken, "invalid"]) {
+      for (const token of [order.checkoutToken, `pct1_${"A".repeat(43)}`]) {
         const response = await app.request("/checkout/" + token);
         const html = await response.text();
         assert.equal(readCheckoutInitial(html).systemName, name);

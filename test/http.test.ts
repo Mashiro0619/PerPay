@@ -1726,7 +1726,8 @@ describe("order HTTP contract", () => {
       assert.equal(oversizedCheckoutPage.status, 404);
       assert.match(oversizedCheckoutPage.headers.get("content-type") ?? "", /^text\/html/);
       const oversizedCheckoutHtml = await oversizedCheckoutPage.text();
-      assert.equal(readCheckoutInitial(oversizedCheckoutHtml).initialError?.status, 404);
+      assert.match(oversizedCheckoutHtml, /收银台不存在/);
+      assert.doesNotMatch(oversizedCheckoutHtml, /<script|data-checkout/);
       assert.equal(oversizedCheckoutHtml.includes(oversizedCheckoutToken), false);
 
       let rateLimited: Response | undefined;

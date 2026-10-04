@@ -113,6 +113,7 @@ import { parseStrictJson, StrictJsonError } from "./strict-json.ts";
 import {
   type CheckoutPageInitialError,
   renderCheckoutPage,
+  renderCheckoutRejection,
 } from "./web/checkout.ts";
 import { CollectionCodeRenderError, CollectionCodeSvgCache } from "./web/collection-code.ts";
 import { WEB_ASSET_PATHS, webAsset } from "./web/assets.ts";
@@ -444,43 +445,14 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   app.get("/admin/*", serveAdmin);
 
   app.get("/checkout/:token", (context) => {
-    const token = context.req.param("token");
-    if (!isCanonicalCheckoutToken(token)) {
-      return context.html(renderCheckoutPage({
-        serverTime: dependencies.clock?.() ?? Date.now(),
-        demoMode: dependencies.demoMode ?? false,
-      systemName: publicSystemName(dependencies),
-        helpUrl: publicCheckoutHelp(dependencies),
-        checkoutToken: token,
-        checkout: null,
-        qrImageUrl: null,
-        initialError: {
-          status: 404,
-          code: "checkout_not_found",
-          message: "收银台不存在",
-          retryAfterSeconds: null,
-        },
-      }), 404);
-    }
     const sourceAddress = remoteAddress(context, dependencies.config.trustedProxy);
     if (!publicCheckoutBudget.take(sourceAddress)) {
       context.header("retry-after", "1");
-      return context.html(renderCheckoutPage({
-        serverTime: dependencies.clock?.() ?? Date.now(),
-        demoMode: dependencies.demoMode ?? false,
-        systemName: publicSystemName(dependencies),
-        helpUrl: publicCheckoutHelp(dependencies),
-        checkoutToken: token,
-        checkout: null,
-        qrImageUrl: null,
-        showProductName: checkoutProductNameVisible(dependencies),
-        initialError: {
-          status: 429,
-          code: "public_checkout_rate_limited",
-          message: "公开收银台请求过于频繁",
-          retryAfterSeconds: 1,
-        },
-      }), 429);
+      return context.html(renderCheckoutRejection(429), 429);
+    }
+    const token = context.req.param("token");
+    if (!isCanonicalCheckoutToken(token)) {
+      return context.html(renderCheckoutRejection(404), 404);
     }
 
     let checkout: PublicCheckoutProjection | null = null;

@@ -29,7 +29,7 @@ it("validates navigation targets without fetching them", () => {
   );
 });
 it("persists help links, preserves omissions and clears null without changing payment revision", async () => {
-  await withHttpFixture(async ({ app, services }) => {
+  await withHttpFixture(async ({ app, services, createOrder }) => {
     const auth = await login(app);
     const before = services.settings.view();
     const save = (extra: object) =>
@@ -53,7 +53,7 @@ it("persists help links, preserves omissions and clears null without changing pa
       services.settings.display().checkoutHelpUrl,
       "https://shop.example.com/help",
     );
-    const html = await (await app.request("/checkout/invalid")).text();
+    const html = await (await app.request("/checkout/" + createOrder("help-link-checkout", 100).checkoutToken)).text();
     assert.equal(
       readCheckoutInitial(html).helpUrl,
       "https://shop.example.com/help",
