@@ -1,10 +1,8 @@
-import { BlockList, isIP, SocketAddress } from "node:net";
+import { createIpPolicy, normalizeIpAddress } from "./ip-policy.ts";
 
 const MAX_TRUSTED_PROXY_CONFIG_BYTES = 4 * 1024;
 const MAX_FORWARDED_FOR_BYTES = 4 * 1024;
 const MAX_FORWARDED_HOPS = 32;
-const canonicalPrefixPattern = /^(?:0|[1-9][0-9]*)$/;
-const ipv4MappedPattern = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i;
 
 export interface TrustedProxyPolicy {
   readonly cidrs: readonly string[];
@@ -63,45 +61,14 @@ export function resolveForwardedClientAddress(
 }
 
 function createPolicy(entries: readonly string[]): TrustedProxyPolicy {
-  const blockList = new BlockList();
-  for (const entry of entries) {
-    const separator = entry.lastIndexOf("/");
-    const addressText = separator === -1 ? entry : entry.slice(0, separator);
-    const prefixText = separator === -1 ? undefined : entry.slice(separator + 1);
-    const address = normalizeIpAddress(addressText);
-    if (address === undefined || (separator !== -1 && entry.indexOf("/") !== separator)) {
-      throw new Error(`PERPAY_TRUSTED_PROXY_CIDRS contains an invalid address: ${entry}`);
-    }
-    const family = isIP(address);
-    const maximumPrefix = family === 4 ? 32 : 128;
-    const prefix = prefixText === undefined
-      ? maximumPrefix
-      : canonicalPrefixPattern.test(prefixText)
-        ? Number(prefixText)
-        : Number.NaN;
-    if (!Number.isSafeInteger(prefix) || prefix < 1 || prefix > maximumPrefix) {
-      throw new Error(`PERPAY_TRUSTED_PROXY_CIDRS contains an invalid prefix: ${entry}`);
-    }
-    blockList.addSubnet(address, prefix, family === 4 ? "ipv4" : "ipv6");
+  try {
+    return createIpPolicy(entries);
+  } catch (error) {
+    throw new Error(
+      (error as Error).message.replace(
+        "IP policy",
+        "PERPAY_TRUSTED_PROXY_CIDRS",
+      ),
+    );
   }
-
-  const cidrs = Object.freeze([...entries]);
-  return Object.freeze({
-    cidrs,
-    isTrusted(address: string): boolean {
-      const normalized = normalizeIpAddress(address);
-      if (normalized === undefined) return false;
-      return blockList.check(normalized, isIP(normalized) === 4 ? "ipv4" : "ipv6");
-    },
-  });
-}
-
-function normalizeIpAddress(value: string | undefined): string | undefined {
-  if (value === undefined || value.length === 0) return undefined;
-  const mapped = ipv4MappedPattern.exec(value);
-  if (mapped && isIP(mapped[1]!) === 4) return mapped[1]!;
-  const family = isIP(value);
-  if (family === 4) return SocketAddress.parse(`${value}:0`)?.address;
-  if (family === 6) return SocketAddress.parse(`[${value}]:0`)?.address;
-  return undefined;
 }
