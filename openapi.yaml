@@ -3243,7 +3243,7 @@ components:
         next_retry_at:
           type: [string, 'null']
           format: date-time
-          description: Actual next attempt scheduled by the running worker. Null while running, stopped, transitioning, or unknown; never inferred from a cooldown.
+          description: Actual next provider scan scheduled by the running worker. Null while running, stopped, transitioning, recovering schedule storage, or unknown; never inferred from a storage-retry timer or cooldown.
         latest_failure:
           oneOf:
             - $ref: '#/components/schemas/LedgerFailureDiagnostic'

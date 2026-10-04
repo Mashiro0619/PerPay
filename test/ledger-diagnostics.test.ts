@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname, resolve, basename } from "node:path";
 import { describe, it } from "node:test";
 import { AppDatabase } from "../src/database/database.ts";
 import { LedgerStore } from "../src/ledger/store.ts";
+import { LedgerIngestScheduler } from "../src/ledger/scheduler.ts";
+import { AlipayProviderError } from "../src/infrastructure/alipay/errors.ts";
 import { LedgerIngestService } from "../src/ledger/service.ts";
 import { readLedgerFailureDiagnostic, type LedgerDiagnostics } from "../src/ledger/diagnostics.ts";
 import type { AccountLogDetail, AccountLogPage, AccountLogPageRequest } from "../src/infrastructure/alipay/types.ts";
@@ -129,4 +131,74 @@ describe("persisted ingestion diagnostics", () => {
       assert.deepEqual(await diagnostics(), { available: false, consecutive_failures: null, latest_failure: null, in_flight: false, next_retry_at: null });
     } finally { services.database.close(); rmSync(directory, { recursive: true, force: true }); }
   });
+
+  it("hides storage retry timers and reports the original provider deadline only after recovery", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-diagnostic-storage-http-"));
+    const services = await createConfiguredHttpServices({ directory, apiSecret: null, collectionCodePayload: "https://qr.alipay.com/diagnostic-storage" });
+    let scheduler: LedgerIngestScheduler | undefined;
+    let writeFails = true;
+    let finishScan!: () => void;
+    const pendingScan = new Promise<void>(resolve => { finishScan = resolve; });
+    try {
+      const ledger = new LedgerStore(services.database);
+      const account = services.settings.snapshot().activeProviderAccountKey!;
+      let now = Date.now(); const start = now; let providerCalls = 0;
+      const timers = new Map<NodeJS.Timeout, { at: number; callback: () => void }>();
+      const service = new LedgerIngestService({ store: ledger, providerAccountKey: account, pageSize: 2, clock: () => now,
+        provider: { queryPage: async request => {
+          providerCalls++;
+          if (providerCalls === 1) throw new AlipayProviderError({ kind: "rate_limited", code: "remote_rate_limited", message: "controlled rate limit", retryAfterSeconds: 120 });
+          await pendingScan;
+          return page(request);
+        } },
+      });
+      scheduler = new LedgerIngestScheduler({ service, intervalMilliseconds: 10_000, minimumIntervalMilliseconds: 5_000, clock: () => now,
+        gate: { read: () => null, write: () => { if (writeFails) throw new Error("controlled storage failure"); } },
+        setTimeout: (callback, delay) => { const timer = { unref() {} } as NodeJS.Timeout; timers.set(timer, { at: now + delay, callback }); return timer; },
+        clearTimeout: timer => { timers.delete(timer); },
+      });
+      const tick = async (milliseconds: number) => {
+        now += milliseconds;
+        for (const [timer, task] of [...timers]) if (task.at <= now) { timers.delete(timer); task.callback(); }
+        await new Promise<void>(resolve => setImmediate(resolve));
+      };
+      scheduler.start(); await assert.rejects(scheduler.trigger("join-startup"), /controlled storage failure/);
+      const app = createApp({ ...services, ledger, startedAt: new Date(),
+        ledgerHealth: () => ({ enabled: true, ...scheduler!.health() }),
+        ledgerNextRunAt: () => scheduler!.nextScanAt(),
+      });
+      const auth = await services.identity.login(HTTP_TEST_ADMIN_PASSWORD);
+      const diagnostics = async () => {
+        const response = await app.request("/api/admin/v1/system/status", { headers: { cookie: "perpay_session=" + auth.sessionToken } });
+        assert.equal(response.status, 200);
+        return (await response.json() as { data: { ledger: { diagnostics: LedgerDiagnostics } } }).data.ledger.diagnostics;
+      };
+      assert.equal(scheduler.nextRunAt(), start + 5_000);
+      assert.equal(ledger.getIngestScheduleState(account)?.cooldownUntil, start + 120_000);
+      assert.equal((await diagnostics()).latest_failure?.error_code, "remote_rate_limited");
+      assert.equal((await diagnostics()).next_retry_at, null);
+      // Repeated storage retries remain hidden, without adding a provider request.
+      await tick(5_000); assert.equal((await diagnostics()).next_retry_at, null);
+      assert.equal(providerCalls, 1);
+      writeFails = false; await tick(5_000);
+      assert.equal(providerCalls, 1);
+      assert.equal((await diagnostics()).next_retry_at, new Date(start + 120_000).toISOString());
+      const manual = scheduler.trigger("checkout");
+      await tick(109_999); assert.equal(providerCalls, 1);
+      await tick(1); assert.equal(providerCalls, 2);
+      assert.equal((await diagnostics()).in_flight, true);
+      assert.equal((await diagnostics()).next_retry_at, null);
+      finishScan(); await manual;
+      assert.equal((await diagnostics()).consecutive_failures, 0);
+      assert.equal(scheduler.nextScanAt(), start + 130_000);
+      await scheduler.stop(); assert.equal((await diagnostics()).next_retry_at, null);
+    } finally {
+      writeFails = false; finishScan(); await scheduler?.stop();
+      services.database.close();
+      assert.equal(dirname(resolve(directory)), resolve(tmpdir()));
+      assert.ok(basename(directory).startsWith("perpay-diagnostic-storage-http-"));
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
 });

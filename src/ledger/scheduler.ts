@@ -241,6 +241,14 @@ export class LedgerIngestScheduler {
 
   nextRunAt(): number | null { return this.#nextRunAt; }
 
+  /** Diagnostic scan deadline; a storage recovery timer is not a provider attempt. */
+  nextScanAt(): number | null {
+    if (!this.#started || this.#stopped || this.#current ||
+      this.#scheduleKind === "storage" || this.#unpersistedSchedule !== null) return null;
+    return this.#nextRunAt;
+  }
+
+
   health(): LedgerSchedulerHealth {
     return Object.freeze({
       state: this.#state,

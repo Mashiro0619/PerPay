@@ -171,7 +171,7 @@ export class RuntimeController {
   ledgerNextRunAt(): number | null {
     if (!this.#ledgerScheduler || this.#transitioning) return null;
     const health = this.#ledgerScheduler.health();
-    return health.inFlight || health.state === "stopped" ? null : this.#ledgerScheduler.nextRunAt();
+    return health.inFlight || health.state === "stopped" ? null : this.#ledgerScheduler.nextScanAt();
   }
 
   reconciliationHealth(): RevisionedReconciliationHealth {

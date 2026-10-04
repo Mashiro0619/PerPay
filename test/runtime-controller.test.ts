@@ -73,7 +73,7 @@ describe("runtime settings controller", () => {
     });
     try {
       assert.equal(runtime.ledgerNextRunAt(), null);
-      t.mock.method(LedgerIngestScheduler.prototype, "nextRunAt", () => 123_456);
+      t.mock.method(LedgerIngestScheduler.prototype, "nextScanAt", () => 123_456);
       await runtime.start(snapshot);
       assert.equal(runtime.ledgerNextRunAt(), 123_456);
       assert.equal(runtime.status().configured, true);

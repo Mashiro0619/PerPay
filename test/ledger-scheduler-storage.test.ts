@@ -74,6 +74,8 @@ describe("ledger scheduler storage recovery", () => {
       assert.doesNotThrow(() => scheduler.start());
       await flush();
       assert.equal(clock.nextAt, START + 5000);
+      assert.equal(scheduler.nextRunAt(), START + 5000);
+      assert.equal(scheduler.nextScanAt(), null);
       const reads = state.reads;
       for (let index = 0; index < 10; index++) await assert.rejects(scheduler.trigger("checkout"));
       assert.equal(state.reads, reads);
@@ -82,6 +84,7 @@ describe("ledger scheduler storage recovery", () => {
       state.readFails = false;
       await clock.advance(5000);
       assert.equal(clock.nextAt, START + 60000);
+      assert.equal(scheduler.nextScanAt(), START + 60000);
       assert.deepEqual(state.calls, []);
       await clock.advance(55000);
       assert.deepEqual(state.calls, [START + 60000]);
@@ -164,14 +167,21 @@ describe("ledger scheduler storage recovery", () => {
     const { scheduler, clock, state } = fixture([completed({status:"FAILED",errorCode:"rate_limited",retryable:true,retryAfterSeconds:60,normalCompleted:false})]);
     state.writeFails = true;
     try {
+      assert.equal(scheduler.nextScanAt(), null);
       scheduler.start(); await flush();
+      assert.equal(scheduler.nextRunAt(), START + 5000);
+      assert.equal(scheduler.nextScanAt(), null);
+      await clock.advance(5000);
+      assert.equal(scheduler.nextRunAt(), START + 10000);
+      assert.equal(scheduler.nextScanAt(), null);
       state.writeFails = false;
       await clock.advance(5000);
+      assert.equal(scheduler.nextScanAt(), START + 60000);
       assert.equal(state.saved?.protectedUntil, START + 60000);
       assert.equal(scheduler.health().lastErrorCode, "rate_limited");
       const manual = scheduler.trigger("checkout");
       assert.equal(clock.nextAt, START + 60000);
-      await clock.advance(54999);
+      await clock.advance(49999);
       assert.deepEqual(state.calls, [START]);
       await clock.advance(1); await manual;
       assert.deepEqual(state.calls, [START, START + 60000]);
@@ -195,6 +205,7 @@ describe("ledger scheduler storage recovery", () => {
     state.writeFails = true;
     scheduler.start(); await flush();
     await assert.rejects(scheduler.stop(), /gate write unavailable/);
+    assert.equal(scheduler.nextScanAt(), null);
     assert.equal(clock.timers.size, 0);
     await clock.advance(20000);
     assert.deepEqual(state.calls, [START]);
