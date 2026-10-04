@@ -3676,6 +3676,7 @@ components:
         - timeout_milliseconds
         - scan_interval_seconds
         - active_scan_interval_seconds
+        - minimum_scan_interval_seconds
         - safety_lag_seconds
         - maximum_success_age_seconds
       properties:
@@ -3693,6 +3694,11 @@ components:
           minimum: 5
           maximum: 3600
           description: Normal wait after a completed scan when no payable orders or tail observation remain. New setup defaults to 30 seconds.
+        minimum_scan_interval_seconds:
+          type: integer
+          minimum: 5
+          maximum: 3600
+          description: Minimum delay after a scan completes, including manual requests. Must not exceed the active interval. Omitted updates preserve the existing value.
         active_scan_interval_seconds:
           type: integer
           minimum: 5
@@ -3868,6 +3874,11 @@ components:
           minimum: 5
           maximum: 3600
           description: Normal wait after a completed scan when no payable orders or tail observation remain. New setup defaults to 30 seconds.
+        minimum_scan_interval_seconds:
+          type: integer
+          minimum: 5
+          maximum: 3600
+          description: Minimum delay after a scan completes, including manual requests. Must not exceed the active interval. Omitted updates preserve the existing value.
         active_scan_interval_seconds:
           type: integer
           minimum: 5

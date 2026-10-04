@@ -1869,6 +1869,7 @@ function parseJsonBytes<T>(bytes: Uint8Array, schema: z.ZodType<T>): T {
       const timingHints = {
         scan_interval_seconds: "常规采集间隔须为 5～3600 秒的整数。",
         active_scan_interval_seconds: "活跃采集间隔须为 5～3600 秒的整数，且不能大于常规采集间隔。",
+        minimum_scan_interval_seconds: "最小采集间隔须为 5～3600 秒且不能大于活跃采集间隔。",
         safety_lag_seconds: "安全延迟须为 5～300 秒的整数，且不能超过采集有效时限。",
         maximum_success_age_seconds: "采集有效时限须为 10～86400 秒的整数，且至少为常规采集间隔的两倍。",
       };

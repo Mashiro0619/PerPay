@@ -75,6 +75,7 @@ export interface RuntimeSettingsView {
     readonly timeout_milliseconds: number;
     readonly scan_interval_seconds: number;
     readonly active_scan_interval_seconds: number;
+    readonly minimum_scan_interval_seconds: number;
     readonly safety_lag_seconds: number;
     readonly maximum_success_age_seconds: number;
   } | null;
@@ -224,6 +225,7 @@ export class RuntimeSettingsService {
             timeout_milliseconds: snapshot.provider.timeoutMilliseconds,
             scan_interval_seconds: snapshot.provider.scanIntervalMilliseconds / 1_000,
             active_scan_interval_seconds: snapshot.provider.activeScanIntervalMilliseconds / 1_000,
+            minimum_scan_interval_seconds: (snapshot.provider.minimumScanIntervalMilliseconds ?? snapshot.provider.activeScanIntervalMilliseconds) / 1_000,
             safety_lag_seconds: snapshot.provider.safetyLagMilliseconds / 1_000,
             maximum_success_age_seconds: snapshot.provider.maximumSuccessAgeMilliseconds / 1_000,
           }
@@ -364,6 +366,8 @@ export class RuntimeSettingsService {
         if (!privateKeyPem || !publicKeyPem) {
           throw new SettingsFieldError(!privateKeyPem ? "private_key" : "platform_public_key", !privateKeyPem ? "请先生成或导入应用私钥。" : "切换应用后需要重新填写支付宝公钥。", "both provider keys are required for a new collection application");
         }
+        const minimumInterval = parsed.minimum_scan_interval_seconds ?? (current.provider ? (current.provider.minimumScanIntervalMilliseconds ?? current.provider.activeScanIntervalMilliseconds) / 1000 : (parsed.active_scan_interval_seconds ?? parsed.scan_interval_seconds));
+        if (minimumInterval > (parsed.active_scan_interval_seconds ?? parsed.scan_interval_seconds)) throw new SettingsFieldError("minimum_scan_interval_seconds", "最小采集间隔不能大于活跃采集间隔，请明确调整最小间隔。");
         const provider = parseProviderKeys({
           environment: parsed.environment,
           appId: parsed.app_id,
@@ -372,6 +376,7 @@ export class RuntimeSettingsService {
           timeoutMilliseconds: parsed.timeout_milliseconds,
           scanIntervalMilliseconds: parsed.scan_interval_seconds * 1_000,
           activeScanIntervalMilliseconds: (parsed.active_scan_interval_seconds ?? parsed.scan_interval_seconds) * 1_000,
+          minimumScanIntervalMilliseconds: minimumInterval * 1000,
           safetyLagMilliseconds: parsed.safety_lag_seconds * 1_000,
           maximumSuccessAgeMilliseconds: parsed.maximum_success_age_seconds * 1_000,
         });
@@ -400,6 +405,7 @@ export class RuntimeSettingsService {
           timeoutMilliseconds: provider.timeoutMilliseconds,
           scanIntervalMilliseconds: provider.scanIntervalMilliseconds,
           activeScanIntervalMilliseconds: provider.activeScanIntervalMilliseconds,
+          minimumScanIntervalMilliseconds: provider.minimumScanIntervalMilliseconds ?? provider.activeScanIntervalMilliseconds,
           safetyLagMilliseconds: provider.safetyLagMilliseconds,
           maximumSuccessAgeMilliseconds: provider.maximumSuccessAgeMilliseconds,
           providerIdentity: {
@@ -732,6 +738,7 @@ function candidateProvider(current: ProviderSettings, privateKey: string, public
     timeoutMilliseconds: current.timeoutMilliseconds,
     scanIntervalMilliseconds: current.scanIntervalMilliseconds,
     activeScanIntervalMilliseconds: current.activeScanIntervalMilliseconds,
+    minimumScanIntervalMilliseconds: current.minimumScanIntervalMilliseconds ?? current.activeScanIntervalMilliseconds,
     safetyLagMilliseconds: current.safetyLagMilliseconds,
     maximumSuccessAgeMilliseconds: current.maximumSuccessAgeMilliseconds,
   });

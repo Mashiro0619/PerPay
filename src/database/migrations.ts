@@ -4967,4 +4967,30 @@ export const migrations: readonly Migration[] = [
       ADD COLUMN admin_access TEXT NOT NULL DEFAULT '{"enabled":false,"cidrs":[]}'
       CHECK (json_valid(admin_access));`,
   },
+  {
+    version: 33,
+    name: "minimum_ledger_scan_interval",
+    sql: `
+      ALTER TABLE runtime_configuration ADD COLUMN provider_minimum_scan_interval_milliseconds INTEGER NOT NULL DEFAULT 5000
+        CHECK (provider_minimum_scan_interval_milliseconds BETWEEN 5000 AND 3600000 AND provider_minimum_scan_interval_milliseconds <= provider_active_scan_interval_milliseconds);
+      DROP TRIGGER runtime_configuration_revision_guard;
+      UPDATE runtime_configuration SET provider_minimum_scan_interval_milliseconds = provider_active_scan_interval_milliseconds;
+      CREATE TRIGGER runtime_configuration_revision_guard
+      BEFORE UPDATE ON runtime_configuration
+      WHEN
+        NEW.singleton_key != OLD.singleton_key OR
+        NEW.revision != OLD.revision + 1 OR
+        NEW.payment_revision NOT IN (OLD.payment_revision, OLD.payment_revision + 1) OR
+        NEW.updated_at < OLD.updated_at
+      BEGIN
+        SELECT RAISE(ABORT, 'runtime configuration revision is invalid');
+      END;
+      CREATE TABLE ledger_scan_gate (
+        provider_account_key TEXT PRIMARY KEY REFERENCES provider_account_bindings(provider_account_key),
+        completed_at INTEGER NOT NULL CHECK (completed_at >= 0),
+        protected_until INTEGER NOT NULL CHECK (protected_until >= 0),
+        continuation INTEGER NOT NULL CHECK (continuation IN (0, 1))
+      ) STRICT;
+    `,
+  },
 ] as const;

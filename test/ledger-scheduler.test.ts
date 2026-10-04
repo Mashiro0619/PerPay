@@ -246,3 +246,30 @@ function result(overrides: Partial<LedgerScanResult> = {}): LedgerScanResult {
 async function flush(): Promise<void> {
   await new Promise<void>((resolve) => setImmediate(resolve));
 }
+
+
+describe("minimum scan interval", () => {
+  it("coalesces early requests, replaces the automatic timer and persists the deadline", async () => {
+    const timers = new ManualTimers();
+    let calls = 0;
+    let saved: import("../src/ledger/scan-gate.ts").LedgerScanGate | null = null;
+    const service = {run:async()=>{calls++;return result();},stop(){},async waitForIdle(){}} as unknown as LedgerIngestService;
+    const options = {service,intervalMilliseconds:8000,minimumIntervalMilliseconds:5000,clock:()=>timers.now,setTimeout:timers.setTimeout,clearTimeout:timers.clearTimeout,gate:{read:()=>saved,write:(state:import("../src/ledger/scan-gate.ts").LedgerScanGate)=>{saved=state;}}};
+    const scheduler=new LedgerIngestScheduler(options);
+    scheduler.start();await flush();
+    await timers.advance(4000);
+    const a=scheduler.trigger("checkout"), b=scheduler.trigger("checkout");
+    assert.equal(a,b);assert.equal(calls,1);assert.equal(timers.nextAt,START+5000);
+    await timers.advance(1000);await a;assert.equal(calls,2);assert.equal(timers.nextAt,START+13000);
+    await scheduler.stop();
+    const next=new LedgerIngestScheduler(options);next.start();await flush();
+    assert.equal(calls,2);assert.equal(timers.nextAt,START+10000);
+    await timers.advance(5000);assert.equal(calls,3);
+    await next.stop();
+  });
+  it("does not let manual requests bypass persisted failure backoff", async()=>{
+    const timers=new ManualTimers();let calls=0;
+    const scheduler=new LedgerIngestScheduler({service:{run:async()=>{calls++;return result();},stop(){},async waitForIdle(){}} as unknown as LedgerIngestService,intervalMilliseconds:8000,minimumIntervalMilliseconds:5000,clock:()=>timers.now,setTimeout:timers.setTimeout,clearTimeout:timers.clearTimeout,gate:{read:()=>({completedAt:START,protectedUntil:START+60000,continuation:false}),write(){}}});
+    scheduler.start();const request=scheduler.trigger("checkout");await timers.advance(59000);assert.equal(calls,0);await timers.advance(1000);await request;assert.equal(calls,1);await scheduler.stop();
+  });
+});

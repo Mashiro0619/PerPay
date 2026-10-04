@@ -30,6 +30,7 @@ describe("adaptive ledger scan settings", () => {
     const active = screen.getByLabelText("活跃采集间隔（秒）");
     expect(normal).toHaveValue(60);
     expect(active).toHaveValue(8);
+    expect(screen.getByLabelText("采集最小间隔（秒）")).toHaveValue(8);
     expect(screen.getByLabelText("采集有效时限（秒）")).toHaveValue(120);
     expect(active).toHaveAttribute("min", "5");
     expect(active).toHaveAttribute("max", "3600");
@@ -66,6 +67,7 @@ describe("adaptive ledger scan settings", () => {
       revision: settings.revision,
       scan_interval_seconds: 60,
       active_scan_interval_seconds: 8,
+      minimum_scan_interval_seconds: 8,
       maximum_success_age_seconds: 120,
     });
   });
@@ -86,6 +88,7 @@ describe("adaptive ledger scan settings", () => {
         ...settings.provider!,
         scan_interval_seconds: 30,
         active_scan_interval_seconds: 5,
+      minimum_scan_interval_seconds: 5,
       },
     };
     const fetchMock = vi.fn(async (_request: Request) => json({ data: saved }));
@@ -98,6 +101,7 @@ describe("adaptive ledger scan settings", () => {
     fireEvent.change(screen.getByLabelText("活跃采集间隔（秒）"), {
       target: { value: "5" },
     });
+    fireEvent.change(screen.getByLabelText("采集最小间隔（秒）"), {target:{value:"5"}});
     await userEvent.setup().click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -110,6 +114,7 @@ describe("adaptive ledger scan settings", () => {
       revision: settings.revision,
       scan_interval_seconds: 30,
       active_scan_interval_seconds: 5,
+      minimum_scan_interval_seconds: 5,
       safety_lag_seconds: 10,
       maximum_success_age_seconds: 60,
     });
@@ -149,6 +154,7 @@ describe("adaptive ledger scan settings", () => {
     fireEvent.change(screen.getByLabelText("活跃采集间隔（秒）"), {
       target: { value: "5" },
     });
+    fireEvent.change(screen.getByLabelText("采集最小间隔（秒）"), {target:{value:"5"}});
     await userEvent.setup().click(screen.getByRole("button", { name: "保存" }));
     const freshness = screen.getByLabelText("采集有效时限（秒）");
     await waitFor(() => expect(freshness).toHaveFocus());

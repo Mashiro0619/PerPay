@@ -442,6 +442,7 @@ export function SettingsEditor({
       scan_interval_seconds: PROVIDER_TIMING_DEFAULTS.scanIntervalSeconds,
       active_scan_interval_seconds:
         PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds,
+      minimum_scan_interval_seconds: PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds,
       safety_lag_seconds: PROVIDER_TIMING_DEFAULTS.safetyLagSeconds,
       maximum_success_age_seconds:
         PROVIDER_TIMING_DEFAULTS.maximumSuccessAgeSeconds,
@@ -546,6 +547,15 @@ export function SettingsEditor({
         min={5}
         max={3600}
         hint="待支付及收尾时使用，不得大于常规间隔。"
+      />
+      <NumberField
+        name="minimum_scan_interval_seconds"
+        error={fieldErrors.minimum_scan_interval_seconds}
+        label="采集最小间隔（秒）"
+        value={initialSettings.provider?.minimum_scan_interval_seconds ?? initialSettings.provider?.active_scan_interval_seconds ?? PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds}
+        min={5}
+        max={3600}
+        hint="一轮采集完成后至少等待多久才能开始下一轮；手动核实也不能突破，不能大于活跃间隔。分页续采及限流退避由后端管理。"
       />
       <NumberField
         name="safety_lag_seconds"
@@ -1118,6 +1128,8 @@ async function saveSettings(
       throw new SettingsInputError("platform_public_key", "请填写支付宝公钥。");
     const normalInterval = integer("scan_interval_seconds");
     const activeInterval = integer("active_scan_interval_seconds");
+    const minimumInterval = integer("minimum_scan_interval_seconds");
+    if (minimumInterval > activeInterval) throw new SettingsInputError("minimum_scan_interval_seconds", "最小采集间隔不能大于活跃采集间隔。");
     const maximumSuccessAge = integer("maximum_success_age_seconds");
     if (activeInterval > normalInterval)
       throw new SettingsInputError(
@@ -1140,6 +1152,7 @@ async function saveSettings(
             timeout_milliseconds: integer("timeout_milliseconds"),
             scan_interval_seconds: normalInterval,
             active_scan_interval_seconds: activeInterval,
+            minimum_scan_interval_seconds: minimumInterval,
             safety_lag_seconds: integer("safety_lag_seconds"),
             maximum_success_age_seconds: maximumSuccessAge,
             ...(text("private_key")

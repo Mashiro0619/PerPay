@@ -1,3 +1,4 @@
+import type { LedgerScanGate } from "./scan-gate.ts";
 import { LedgerIngestService, type LedgerScanResult } from "./service.ts";
 
 export type LedgerSchedulerState =
@@ -17,9 +18,11 @@ export interface LedgerSchedulerHealth {
   readonly consecutiveFailures: number;
 }
 
-type LedgerScheduleKind = "normal" | "continuation" | "retry";
+type LedgerScheduleKind = "normal" | "continuation" | "retry" | "manual";
 
 export interface LedgerIngestSchedulerOptions {
+  readonly minimumIntervalMilliseconds?: number;
+  readonly gate?: { read(): LedgerScanGate | null; write(state: LedgerScanGate): void };
   readonly service: LedgerIngestService;
   readonly intervalMilliseconds: number;
   /** Re-evaluated after scans and when order activity changes. */
@@ -35,6 +38,9 @@ export interface LedgerIngestSchedulerOptions {
 
 /** One timer and one in-flight promise own all automatic and manual scans. */
 export class LedgerIngestScheduler {
+  readonly #minimumIntervalMilliseconds: number;
+  readonly #gate: LedgerIngestSchedulerOptions["gate"];
+  #pending: {promise:Promise<LedgerScanResult>;resolve:(value:LedgerScanResult)=>void;reject:(error:unknown)=>void} | null = null;
   readonly #service: LedgerIngestService;
   readonly #getIntervalMilliseconds: (() => number) | undefined;
   readonly #clock: () => number;
@@ -72,6 +78,9 @@ export class LedgerIngestScheduler {
     ) {
       throw new RangeError("ledger scan interval is invalid");
     }
+    this.#minimumIntervalMilliseconds = options.minimumIntervalMilliseconds ?? 0;
+    if (!Number.isSafeInteger(this.#minimumIntervalMilliseconds) || this.#minimumIntervalMilliseconds < 0 || this.#minimumIntervalMilliseconds > options.intervalMilliseconds) throw new RangeError("minimum scan interval is invalid");
+    this.#gate = options.gate;
     this.#service = options.service;
     this.#resolvedIntervalMilliseconds = options.intervalMilliseconds;
     this.#getIntervalMilliseconds = options.getIntervalMilliseconds;
@@ -109,6 +118,21 @@ export class LedgerIngestScheduler {
       return Promise.reject(new Error("ledger scheduler is not running"));
     }
     if (this.#current) return this.#current;
+    const now = safeNow(this.#clock());
+    const gate = this.#gate?.read();
+    const completedAt = gate?.completedAt ?? this.#lastCompletedAt;
+    const protectedUntil = Math.max(gate?.protectedUntil ?? 0, this.#scheduleKind === "retry" ? this.#nextRunAt ?? 0 : 0);
+    const continuing = gate?.continuation ?? this.#scheduleKind === "continuation";
+    const earliest = Math.max(protectedUntil, continuing ? 0 : completedAt === null ? 0 : completedAt + this.#minimumIntervalMilliseconds);
+    if (this.#minimumIntervalMilliseconds > 0 && (earliest > now || (reason !== "scheduled" && this.#scheduleKind === "continuation" && this.#timer !== null))) {
+      if (!this.#pending) {
+        let resolve!: (value: LedgerScanResult) => void, reject!: (error:unknown) => void;
+        const promise = new Promise<LedgerScanResult>((yes,no) => { resolve=yes; reject=no; });
+        this.#pending = {promise,resolve,reject};
+      }
+      if (this.#scheduleKind !== "continuation" || this.#timer === null) this.#scheduleAt(earliest, this.#readIntervalMilliseconds(), protectedUntil > now ? "retry" : "manual");
+      return this.#pending.promise;
+    }
     // A manual trigger is an explicit operator action. Cancel a pending
     // automatic timer so it cannot race the requested scan.
     if (reason !== "scheduled") this.#clearTimer();
@@ -142,6 +166,8 @@ export class LedgerIngestScheduler {
           this.#notifyUnexpected(error);
         }
         this.#scheduleNext(result);
+        this.#pending?.resolve(result);
+        this.#pending = null;
         return result;
       })
       .catch((error: unknown) => {
@@ -150,6 +176,8 @@ export class LedgerIngestScheduler {
         this.#consecutiveFailures += 1;
         this.#notifyUnexpected(error);
         this.#scheduleNext(null);
+        this.#pending?.reject(error);
+        this.#pending = null;
         throw error;
       })
       .finally(() => {
@@ -162,6 +190,8 @@ export class LedgerIngestScheduler {
   async stop(): Promise<void> {
     if (this.#stopped) return;
     this.#stopped = true;
+    this.#pending?.reject(new Error("ledger scheduler stopped"));
+    this.#pending = null;
     this.#clearTimer();
     this.#service.stop();
     try {
@@ -172,6 +202,8 @@ export class LedgerIngestScheduler {
     }
     this.#state = "stopped";
   }
+
+  nextRunAt(): number | null { return this.#nextRunAt; }
 
   health(): LedgerSchedulerHealth {
     return Object.freeze({
@@ -242,7 +274,6 @@ export class LedgerIngestScheduler {
   }
 
   #scheduleNext(result: LedgerScanResult | null): void {
-    if (!this.#started || this.#stopped || this.#timer !== null) return;
     this.#lastCompletedAt = safeNow(this.#clock());
     const interval = this.#readIntervalMilliseconds();
     let delay = interval;
@@ -286,6 +317,8 @@ export class LedgerIngestScheduler {
         );
       }
     }
+    this.#gate?.write({completedAt:this.#lastCompletedAt,protectedUntil:kind === "retry" ? this.#lastCompletedAt + delay : 0,continuation:kind === "continuation"});
+    if (!this.#started || this.#stopped || this.#timer !== null) return;
     this.#scheduleAt(this.#lastCompletedAt + delay, interval, kind);
   }
 }

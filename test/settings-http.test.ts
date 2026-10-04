@@ -195,15 +195,17 @@ describe("adaptive scan settings HTTP contract", () => {
         assert.ok(body.error.fields.active_scan_interval_seconds);
       }
       assert.deepEqual(settings.view(), original);
-      const saved = await update({ ...provider, revision: original.revision, scan_interval_seconds: 30, active_scan_interval_seconds: 5 });
+      const saved = await update({ ...provider, revision: original.revision, scan_interval_seconds: 30, active_scan_interval_seconds: 5, minimum_scan_interval_seconds: 5 });
       assert.equal(saved.status, 200);
       const body = await saved.json() as { data: { revision: number; provider: { scan_interval_seconds: number; active_scan_interval_seconds: number } } };
       assert.equal(body.data.provider.scan_interval_seconds, 30);
       assert.equal(body.data.provider.active_scan_interval_seconds, 5);
-      const { active_scan_interval_seconds: _active, ...legacy } = provider;
+      assert.equal(settings.view().provider?.minimum_scan_interval_seconds, 5);
+      const { active_scan_interval_seconds: _active, minimum_scan_interval_seconds: _minimum, ...legacy } = provider;
       const restored = await update({ ...legacy, revision: body.data.revision, scan_interval_seconds: 10 });
       assert.equal(restored.status, 200);
       assert.equal(settings.view().provider?.active_scan_interval_seconds, 10);
+      assert.equal(settings.view().provider?.minimum_scan_interval_seconds, 5);
     } finally {
       database.close();
       assert.ok(directory.startsWith(join(tmpdir(), "perpay-http-adaptive-settings-")));

@@ -9,6 +9,9 @@ export function apiClientCredentialsDowngradeSql(): string {
   const trigger = history.slice(history.indexOf("CREATE TRIGGER api_client_config_key_transition"));
   return `
     SAVEPOINT api_client_credentials_downgrade;
+    DROP TABLE ledger_scan_gate;
+    ALTER TABLE runtime_configuration DROP COLUMN provider_minimum_scan_interval_milliseconds;
+    DELETE FROM schema_migrations WHERE version = 33;
     ALTER TABLE runtime_configuration DROP COLUMN admin_access;
     DELETE FROM schema_migrations WHERE version = 32;
     ALTER TABLE runtime_configuration DROP COLUMN checkout_help_url;

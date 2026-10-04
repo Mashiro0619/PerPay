@@ -36,6 +36,7 @@ export function configuredThrough(stage: number): RuntimeSettings {
           timeout_milliseconds: 8000,
           scan_interval_seconds: 10,
           active_scan_interval_seconds: 10,
+          minimum_scan_interval_seconds: 10,
           safety_lag_seconds: 10,
           maximum_success_age_seconds: 60,
         }

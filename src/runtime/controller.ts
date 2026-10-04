@@ -1,3 +1,4 @@
+import { ledgerScanGate } from "../ledger/scan-gate.ts";
 import type { AppDatabase } from "../database/database.ts";
 import {
   AlipayLedgerProvider,
@@ -479,6 +480,8 @@ export class RuntimeController {
     });
     return new LedgerIngestScheduler({
       service,
+      minimumIntervalMilliseconds: providerSettings.minimumScanIntervalMilliseconds ?? providerSettings.activeScanIntervalMilliseconds,
+      gate: ledgerScanGate(this.#database, providerAccountKey),
       intervalMilliseconds: providerSettings.scanIntervalMilliseconds,
       getIntervalMilliseconds,
       clock: this.#clock,

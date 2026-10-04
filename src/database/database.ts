@@ -980,10 +980,12 @@ function initializeFreshRuntimeConfiguration(connection: DatabaseSync): void {
         `UPDATE runtime_configuration
             SET provider_scan_interval_milliseconds = ?,
                 provider_active_scan_interval_milliseconds = ?,
+                provider_minimum_scan_interval_milliseconds = ?,
                 provider_maximum_success_age_milliseconds = ?
           WHERE singleton_key = 1`,
       ).run(
         PROVIDER_TIMING_DEFAULTS.scanIntervalSeconds * 1_000,
+        PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds * 1_000,
         PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds * 1_000,
         PROVIDER_TIMING_DEFAULTS.maximumSuccessAgeSeconds * 1_000,
       );

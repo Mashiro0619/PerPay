@@ -23,6 +23,7 @@ describe("adaptive ledger interval migration", () => {
         try {
           legacy.prepare(`UPDATE runtime_configuration
             SET revision = revision + 1, payment_revision = payment_revision + 1,
+                provider_minimum_scan_interval_milliseconds = 5000,
                 provider_scan_interval_milliseconds = ?, provider_active_scan_interval_milliseconds = ?,
                 provider_maximum_success_age_milliseconds = ?`)
             .run(interval, interval, interval * 2);
@@ -40,9 +41,9 @@ describe("adaptive ledger interval migration", () => {
         const database = await AppDatabase.open(databasePath);
         try {
           const values = database.read((connection) => connection.prepare(`SELECT revision, payment_revision,
-            provider_scan_interval_milliseconds AS normal, provider_active_scan_interval_milliseconds AS active
+            provider_scan_interval_milliseconds AS normal, provider_active_scan_interval_milliseconds AS active, provider_minimum_scan_interval_milliseconds AS minimum
             FROM runtime_configuration`).get()) as Record<string, bigint>;
-          assert.deepEqual({ ...values }, { revision: 1n, payment_revision: 1n, normal: BigInt(interval), active: BigInt(interval) });
+          assert.deepEqual({ ...values }, { revision: 1n, payment_revision: 1n, normal: BigInt(interval), active: BigInt(interval), minimum: BigInt(interval) });
           assert.equal(database.integrityCheck().ok, true);
           assert.throws(() => database.write((connection) => connection.exec(
             "UPDATE runtime_configuration SET provider_active_scan_interval_milliseconds = 5000",
@@ -71,7 +72,7 @@ describe("adaptive ledger interval migration", () => {
         SET revision = revision + 1, provider_scan_interval_milliseconds = 5000`)), /constraint/i);
       database.write((connection) => connection.exec(`UPDATE runtime_configuration
         SET revision = revision + 1, provider_scan_interval_milliseconds = 5000,
-            provider_active_scan_interval_milliseconds = 5000`));
+            provider_active_scan_interval_milliseconds = 5000, provider_minimum_scan_interval_milliseconds = 5000`));
       assert.equal(database.integrityCheck().ok, true);
     } finally {
       database.close();

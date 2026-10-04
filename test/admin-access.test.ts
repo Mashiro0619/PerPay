@@ -312,7 +312,7 @@ describe("administrator IP allowlist", () => {
       const old = new DatabaseSync(services.config.databasePath);
       try {
         old.exec(
-          "ALTER TABLE runtime_configuration DROP COLUMN admin_access; DELETE FROM schema_migrations WHERE version = 32;",
+          "DROP TABLE ledger_scan_gate; ALTER TABLE runtime_configuration DROP COLUMN provider_minimum_scan_interval_milliseconds; DELETE FROM schema_migrations WHERE version = 33; ALTER TABLE runtime_configuration DROP COLUMN admin_access; DELETE FROM schema_migrations WHERE version = 32;",
         );
       } finally {
         old.close();
