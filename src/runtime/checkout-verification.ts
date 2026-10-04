@@ -49,8 +49,21 @@ export class CheckoutVerifier {
     for (const [id, entry] of this.#entries)
       if (entry.finishedAt !== null && this.clock() - entry.finishedAt > 300000)
         this.#entries.delete(id);
-    if (!existing && this.#entries.size >= 256)
-      throw new Error("checkout verification capacity exceeded");
+    if (!existing && this.#entries.size >= 256) {
+      // The cache limit must not reject new work while it only retains old results.
+      // Never evict an unfinished scan/reconciliation: its per-order coalescing matters.
+      let oldestOrderId: string | undefined;
+      let oldestFinishedAt = Number.POSITIVE_INFINITY;
+      for (const [id, entry] of this.#entries) {
+        if (entry.finishedAt !== null && entry.finishedAt < oldestFinishedAt) {
+          oldestOrderId = id;
+          oldestFinishedAt = entry.finishedAt;
+        }
+      }
+      if (oldestOrderId === undefined)
+        throw new Error("checkout verification capacity exceeded");
+      this.#entries.delete(oldestOrderId);
+    }
     const entry: Entry = {
       value: {
         id: randomUUID(),
