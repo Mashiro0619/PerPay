@@ -392,6 +392,8 @@ export class RuntimeController {
   async #stopPaymentSchedulers(): Promise<void> {
     const ledger = this.#ledgerScheduler;
     const reconciliation = this.#reconciliationScheduler;
+    const ledgerRevision = this.#ledgerRevision;
+    const reconciliationRevision = this.#reconciliationRevision;
     this.#ledgerScheduler = null;
     this.#reconciliationScheduler = null;
     this.#ledgerRevision = null;
@@ -400,6 +402,16 @@ export class RuntimeController {
       ledger?.stop() ?? Promise.resolve(),
       reconciliation?.stop() ?? Promise.resolve(),
     ]);
+    // Keep failed workers reachable: a stopped ledger may still hold an
+    // unpersisted cooldown that must be flushed before replacement is allowed.
+    if (results[0]?.status === "rejected") {
+      this.#ledgerScheduler = ledger;
+      this.#ledgerRevision = ledgerRevision;
+    }
+    if (results[1]?.status === "rejected") {
+      this.#reconciliationScheduler = reconciliation;
+      this.#reconciliationRevision = reconciliationRevision;
+    }
     const failures = results
       .filter((result): result is PromiseRejectedResult => result.status === "rejected")
       .map((result) => result.reason);

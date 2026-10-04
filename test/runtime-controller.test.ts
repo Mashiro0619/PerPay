@@ -204,3 +204,48 @@ it("drains the old notification scheduler before installing the rotated signing 
     await runtime.stop();
   }
 });
+
+
+it("does not replace a ledger worker that still cannot flush its stopped schedule", async (t) => {
+  const application = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const platform = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const provider = parseProviderKeys({
+    environment: "PRODUCTION", appId: "schedule-recovery-test",
+    privateKey: application.privateKey.export({ format: "pem", type: "pkcs8" }).toString(),
+    publicKey: platform.publicKey.export({ format: "pem", type: "spki" }).toString(),
+    timeoutMilliseconds: 8000, scanIntervalMilliseconds: 30000,
+    activeScanIntervalMilliseconds: 8000, minimumScanIntervalMilliseconds: 5000,
+    safetyLagMilliseconds: 10000, maximumSuccessAgeMilliseconds: 120000,
+  });
+  const snapshot: RuntimeSettingsSnapshot = {
+    ...unconfiguredSettings, revision: 1, paymentRevision: 1, provider,
+    collection: { codePayload: "https://qr.alipay.com/schedule-recovery", orderTtlSeconds: 300,
+      amountOffsetMaximumCents: 99, amountReuseCooldownSeconds: 600 },
+    activeProviderAccountKey: "primary",
+  };
+  const workers: LedgerIngestScheduler[] = [];
+  let blocked = true, oldStopAttempts = 0;
+  t.mock.method(LedgerIngestScheduler.prototype, "start", function (this: LedgerIngestScheduler) { workers.push(this); });
+  t.mock.method(LedgerIngestScheduler.prototype, "stop", async function (this: LedgerIngestScheduler) {
+    if (this === workers[0]) { oldStopAttempts++; if (blocked) throw new Error("unpersisted schedule"); }
+  });
+  t.mock.method(ReconciliationScheduler.prototype, "start", async () => {});
+  const runtime = new RuntimeController({
+    database: {} as never, orders: { initialize() {} } as never,
+    ledger: { activeProviderIdentity: () => ({ providerAccountKey: "primary", activatedAt: 1 }) } as never,
+    reconciliation: {} as never, webhooks: {} as never,
+  });
+  try {
+    await runtime.start(snapshot);
+    const updated = { ...snapshot, revision: 2, paymentRevision: 2 };
+    await assert.rejects(runtime.apply(updated), /runtime replacement failed/);
+    assert.equal(workers.length, 1);
+    assert.equal(oldStopAttempts, 2, "rollback must retry the same worker, not silently discard it");
+    assert.equal(runtime.status().transitioning, true);
+    blocked = false;
+    await runtime.apply(updated);
+    assert.equal(workers.length, 2);
+    assert.equal(oldStopAttempts, 3);
+    assert.equal(runtime.status().transitioning, false);
+  } finally { blocked = false; await runtime.stop(); }
+});

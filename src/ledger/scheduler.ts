@@ -18,7 +18,13 @@ export interface LedgerSchedulerHealth {
   readonly consecutiveFailures: number;
 }
 
-type LedgerScheduleKind = "normal" | "continuation" | "retry" | "manual";
+type LedgerScheduleKind = "normal" | "continuation" | "retry" | "manual" | "storage";
+interface PendingSchedule {
+  gate: LedgerScanGate;
+  nextRunAt: number;
+  interval: number;
+  kind: LedgerScheduleKind;
+}
 
 export interface LedgerIngestSchedulerOptions {
   readonly minimumIntervalMilliseconds?: number;
@@ -40,6 +46,9 @@ export interface LedgerIngestSchedulerOptions {
 export class LedgerIngestScheduler {
   readonly #minimumIntervalMilliseconds: number;
   readonly #gate: LedgerIngestSchedulerOptions["gate"];
+  #lastGate: LedgerScanGate | null = null;
+  #unpersistedSchedule: PendingSchedule | null = null;
+  #beforeStorageFailure: { state: LedgerSchedulerState; errorCode: string | null } | null = null;
   #pending: {promise:Promise<LedgerScanResult>;resolve:(value:LedgerScanResult)=>void;reject:(error:unknown)=>void} | null = null;
   readonly #service: LedgerIngestService;
   readonly #getIntervalMilliseconds: (() => number) | undefined;
@@ -118,20 +127,34 @@ export class LedgerIngestScheduler {
       return Promise.reject(new Error("ledger scheduler is not running"));
     }
     if (this.#current) return this.#current;
+    try {
+      return this.#trigger(reason);
+    } catch (error) {
+      this.#storageFailed(error);
+      return Promise.reject(error);
+    }
+  }
+
+  #trigger(reason: string): Promise<LedgerScanResult> {
     const now = safeNow(this.#clock());
-    const gate = this.#gate?.read();
+    if (this.#scheduleKind === "storage" && this.#nextRunAt !== null && this.#nextRunAt > now) {
+      return Promise.reject(new Error("ledger schedule storage is awaiting retry"));
+    }
+    if (this.#unpersistedSchedule !== null) {
+      const restored = this.#persistSchedule();
+      this.#armSchedule(restored);
+      return this.#waitForNextScan();
+    }
+    const gate = this.#gate?.read() ?? this.#lastGate;
+    this.#lastGate = gate;
+    this.#storageRecovered();
     const completedAt = gate?.completedAt ?? this.#lastCompletedAt;
     const protectedUntil = Math.max(gate?.protectedUntil ?? 0, this.#scheduleKind === "retry" ? this.#nextRunAt ?? 0 : 0);
     const continuing = gate?.continuation ?? this.#scheduleKind === "continuation";
     const earliest = Math.max(protectedUntil, continuing ? 0 : completedAt === null ? 0 : completedAt + this.#minimumIntervalMilliseconds);
     if (this.#minimumIntervalMilliseconds > 0 && (earliest > now || (reason !== "scheduled" && this.#scheduleKind === "continuation" && this.#timer !== null))) {
-      if (!this.#pending) {
-        let resolve!: (value: LedgerScanResult) => void, reject!: (error:unknown) => void;
-        const promise = new Promise<LedgerScanResult>((yes,no) => { resolve=yes; reject=no; });
-        this.#pending = {promise,resolve,reject};
-      }
       if (this.#scheduleKind !== "continuation" || this.#timer === null) this.#scheduleAt(earliest, this.#readIntervalMilliseconds(), protectedUntil > now ? "retry" : "manual");
-      return this.#pending.promise;
+      return this.#waitForNextScan();
     }
     // A manual trigger is an explicit operator action. Cancel a pending
     // automatic timer so it cannot race the requested scan.
@@ -165,19 +188,27 @@ export class LedgerIngestScheduler {
         } catch (error) {
           this.#notifyUnexpected(error);
         }
-        this.#scheduleNext(result);
+        try {
+          this.#scheduleNext(result);
+        } catch (error) {
+          this.#storageFailed(error);
+          throw error;
+        }
         this.#pending?.resolve(result);
         this.#pending = null;
         return result;
-      })
-      .catch((error: unknown) => {
+      }, (error: unknown) => {
         this.#state = "degraded";
         this.#lastErrorCode = "scan_failed";
         this.#consecutiveFailures += 1;
         this.#notifyUnexpected(error);
-        this.#scheduleNext(null);
-        this.#pending?.reject(error);
-        this.#pending = null;
+        try {
+          this.#scheduleNext(null);
+        } catch (storageError) {
+          this.#storageFailed(storageError);
+          throw storageError;
+        }
+        this.#rejectPending(error);
         throw error;
       })
       .finally(() => {
@@ -188,7 +219,10 @@ export class LedgerIngestScheduler {
   }
 
   async stop(): Promise<void> {
-    if (this.#stopped) return;
+    if (this.#stopped) {
+      if (this.#unpersistedSchedule !== null && this.#current === null) this.#persistSchedule();
+      return;
+    }
     this.#stopped = true;
     this.#pending?.reject(new Error("ledger scheduler stopped"));
     this.#pending = null;
@@ -201,6 +235,8 @@ export class LedgerIngestScheduler {
       // Health and the configured error observer already retain the failure.
     }
     this.#state = "stopped";
+    // A graceful stop must not silently discard an uncommitted provider deadline.
+    if (this.#unpersistedSchedule !== null) this.#persistSchedule();
   }
 
   nextRunAt(): number | null { return this.#nextRunAt; }
@@ -214,6 +250,79 @@ export class LedgerIngestScheduler {
       lastErrorCode: this.#lastErrorCode,
       consecutiveFailures: this.#consecutiveFailures,
     });
+  }
+
+  #waitForNextScan(): Promise<LedgerScanResult> {
+    if (!this.#pending) {
+      let resolve!: (value: LedgerScanResult) => void, reject!: (error: unknown) => void;
+      const promise = new Promise<LedgerScanResult>((yes, no) => { resolve = yes; reject = no; });
+      this.#pending = { promise, resolve, reject };
+    }
+    return this.#pending.promise;
+  }
+
+  #rejectPending(error: unknown): void {
+    const pending = this.#pending;
+    this.#pending = null;
+    pending?.reject(error);
+  }
+
+  #storageFailed(error: unknown): void {
+    this.#beforeStorageFailure ??= { state: this.#state, errorCode: this.#lastErrorCode };
+    this.#state = "degraded";
+    this.#lastErrorCode = "scan_schedule_unavailable";
+    this.#rejectPending(error);
+    this.#notifyUnexpected(error);
+    if (!this.#started || this.#stopped) return;
+    // Retry storage, not the provider. Explicit requests cannot hammer the store
+    // or postpone an already scheduled recovery attempt.
+    try {
+      const now = safeNow(this.#clock());
+      if (this.#scheduleKind === "storage" && this.#nextRunAt !== null && this.#nextRunAt > now) return;
+      this.#scheduleAt(now + 5000, this.#resolvedIntervalMilliseconds, "storage");
+    } catch (schedulingError) {
+      // Even an invalid clock/timer must never escape the public Promise API.
+      this.#notifyUnexpected(schedulingError);
+    }
+  }
+
+  #storageRecovered(): void {
+    if (!this.#beforeStorageFailure) return;
+    if (!this.#stopped) this.#state = this.#beforeStorageFailure.state;
+    this.#lastErrorCode = this.#beforeStorageFailure.errorCode;
+    this.#beforeStorageFailure = null;
+  }
+
+  #recordSchedule(schedule: PendingSchedule): void {
+    // Capture completion time and the original deadline before any fallible I/O.
+    this.#unpersistedSchedule = schedule;
+    const persisted = this.#persistSchedule();
+    this.#armSchedule(persisted);
+  }
+
+  #persistSchedule(): PendingSchedule {
+    const pending = this.#unpersistedSchedule!;
+    const saved = this.#gate ? this.#gate.read() ?? this.#lastGate : null;
+    const completedAt = Math.max(pending.gate.completedAt, saved?.completedAt ?? 0);
+    const protectedUntil = Math.max(pending.gate.protectedUntil, saved?.protectedUntil ?? 0);
+    pending.gate = {
+      completedAt, protectedUntil,
+      continuation: completedAt === pending.gate.completedAt && pending.gate.continuation,
+    };
+    pending.nextRunAt = Math.max(pending.nextRunAt, protectedUntil,
+      pending.gate.continuation ? 0 : completedAt + this.#minimumIntervalMilliseconds);
+    // Leave pending intact on failure; recovery never turns this into a synthetic
+    // provider failure or resets the deadline from the time storage recovers.
+    this.#gate?.write(pending.gate);
+    this.#lastGate = pending.gate;
+    this.#unpersistedSchedule = null;
+    this.#storageRecovered();
+    return pending;
+  }
+
+  #armSchedule(schedule: PendingSchedule): void {
+    if (!this.#started || this.#stopped) return;
+    this.#scheduleAt(schedule.nextRunAt, schedule.interval, schedule.kind);
   }
 
   #notifyUnexpected(error: unknown): void {
@@ -280,17 +389,18 @@ export class LedgerIngestScheduler {
       // Shutdown/configuration cancellation is not an upstream authorization failure.
       // A request may already have been sent, so retain a fresh minimum-interval anchor
       // and any real persisted/provider cooldown, without inventing a 15-minute retry.
-      const previous = this.#gate?.read();
+      const previous = this.#lastGate;
       const retryAfter = result.retryAfterSeconds;
       const providerDeadline = retryAfter !== null && Number.isFinite(retryAfter) && retryAfter > 0
         ? this.#lastCompletedAt + Math.min(LedgerIngestScheduler.#maximumRetryDelayMilliseconds, retryAfter * 1000)
         : 0;
       const protectedUntil = Math.max(previous?.protectedUntil ?? 0, providerDeadline);
-      this.#gate?.write({ completedAt: this.#lastCompletedAt, protectedUntil, continuation: false });
-      if (!this.#started || this.#stopped || this.#timer !== null) return;
       const normalDeadline = this.#lastCompletedAt + interval;
-      this.#scheduleAt(Math.max(normalDeadline, protectedUntil), interval,
-        protectedUntil > normalDeadline ? "retry" : "normal");
+      this.#recordSchedule({
+        gate: { completedAt: this.#lastCompletedAt, protectedUntil, continuation: false },
+        nextRunAt: Math.max(normalDeadline, protectedUntil), interval,
+        kind: protectedUntil > normalDeadline ? "retry" : "normal",
+      });
       return;
     }
     let delay = interval;
@@ -334,9 +444,10 @@ export class LedgerIngestScheduler {
         );
       }
     }
-    this.#gate?.write({completedAt:this.#lastCompletedAt,protectedUntil:kind === "retry" ? this.#lastCompletedAt + delay : 0,continuation:kind === "continuation"});
-    if (!this.#started || this.#stopped || this.#timer !== null) return;
-    this.#scheduleAt(this.#lastCompletedAt + delay, interval, kind);
+    this.#recordSchedule({
+      gate: { completedAt: this.#lastCompletedAt, protectedUntil: kind === "retry" ? this.#lastCompletedAt + delay : 0, continuation: kind === "continuation" },
+      nextRunAt: this.#lastCompletedAt + delay, interval, kind,
+    });
   }
 }
 
