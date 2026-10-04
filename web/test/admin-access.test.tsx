@@ -18,6 +18,20 @@ function mount() {
   return onSaved;
 }
 describe("admin access settings", () => {
+  it("links to recovery documentation instead of displaying deployment commands", () => {
+    queryClient.setQueryData(["admin-access-source"], {
+      data: { revision: settings.revision, ...settings.admin_access, current_ip: "192.0.2.1" },
+    });
+    mount();
+    const help = screen.getByRole("link", { name: "查看恢复方法" });
+    expect(help).toHaveAttribute("href", "https://github.com/Mashiro0619/PerPay/blob/main/docs/maintenance.md#管理员-ip-白名单与离线恢复");
+    expect(help).toHaveAttribute("target", "_blank");
+    expect(help).toHaveAttribute("rel", "noopener noreferrer");
+    expect(screen.getByText(/IP 变化可能导致无法登录，可通过服务器恢复访问/)).toBeVisible();
+    expect(screen.queryByText(/PERPAY_TRUSTED_PROXY_CIDRS/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/disable-admin-allowlist/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/先停止 app/)).not.toBeInTheDocument();
+  });
   it("adds current IP and confirms before saving", async () => {
     const requests: Request[] = [];
     const saved = {

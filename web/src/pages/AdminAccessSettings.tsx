@@ -156,14 +156,15 @@ export function AdminAccessSettings({
             </Button>
           </Field>
           <FieldDescription>
-            反向代理部署请正确设置 PERPAY_TRUSTED_PROXY_CIDRS。动态公网 IP
-            变化可能导致无法访问。恢复时先停止 app 和
-            backup，再使用匹配数据库版本的维护镜像执行离线关闭命令。
+            IP 变化可能导致无法登录，可通过服务器恢复访问。{" "}
+            <a
+              href="https://github.com/Mashiro0619/PerPay/blob/main/docs/maintenance.md#管理员-ip-白名单与离线恢复"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              查看恢复方法
+            </a>
           </FieldDescription>
-          <code className="break-all text-xs">
-            node dist/identity/disable-admin-allowlist.js
-            --confirm-disable-admin-allowlist
-          </code>
           <ErrorNotice
             error={source.error}
             retry={() => void source.refetch()}
