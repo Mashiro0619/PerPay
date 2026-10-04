@@ -74,6 +74,8 @@ const app = createApp({
   webhookStore: webhooks,
   webhookHealth: () => runtime.webhookHealth(),
   onWebhookAvailable: () => runtime.triggerWebhook("http"),
+  checkoutVerification: (orderId) => runtime.checkoutVerification(orderId),
+  requestCheckoutVerification: (orderId) => runtime.requestCheckoutVerification(orderId),
   onOrderAvailable: (orderId) => {
     void runtime.triggerOrder(orderId).catch((error: unknown) => {
       logError("reconciliation_order_trigger_failed", error);

@@ -95,16 +95,28 @@ describe("checkout payment layout", () => {
     render(createElement(CheckoutApp, { initial: initial() }));
     expect(screen.getByRole("button", { name: "放大二维码" })).toBeVisible();
     expect(screen.getByRole("button", { name: "保存二维码" })).toBeVisible();
-    expect(screen.queryByText(/请支付准确金额，勿修改尾数|含订单识别尾差/)).not.toBeInTheDocument();
-    expect(screen.queryByText("保存二维码 → 支付宝扫一扫 → 相册识别")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/请支付准确金额，勿修改尾数|含订单识别尾差/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("保存二维码 → 支付宝扫一扫 → 相册识别"),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("已付款请勿重复支付。")).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /返回商家/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "商家帮助" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /返回商家/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "商家帮助" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders no payment controls or frozen timer without running client effects", () => {
-    const html = renderToString(createElement(CheckoutApp, { initial: initial() }));
-    expect(html).not.toMatch(/data-qr-image|data-countdown|放大二维码|保存二维码/);
+    const html = renderToString(
+      createElement(CheckoutApp, { initial: initial() }),
+    );
+    expect(html).not.toMatch(
+      /data-qr-image|data-countdown|放大二维码|保存二维码/,
+    );
     expect(html).toContain("请暂勿付款");
     expect(html).toContain("付款组件尚未就绪");
     expect(html).toContain('href="/checkout/pct1_test"');
@@ -114,17 +126,25 @@ describe("checkout payment layout", () => {
 
   it("never publishes an unguarded payable snapshot during a delayed startup", () => {
     const value = initial();
-    value.checkout!.checkout.expires_at = new Date(value.serverTime + 1000).toISOString();
+    value.checkout!.checkout.expires_at = new Date(
+      value.serverTime + 1000,
+    ).toISOString();
     vi.spyOn(performance, "now").mockReturnValue(5000);
-    vi.spyOn(performance, "getEntriesByType").mockReturnValue([{ responseStart: 0 }] as unknown as PerformanceNavigationTiming[]);
+    vi.spyOn(performance, "getEntriesByType").mockReturnValue([
+      { responseStart: 0 },
+    ] as unknown as PerformanceNavigationTiming[]);
     const controller = createCheckoutController(value);
     const states: Array<{ initialized: boolean; suspended: boolean }> = [];
-    const unsubscribe = controller.subscribe(() => states.push(controller.getSnapshot()));
+    const unsubscribe = controller.subscribe(() =>
+      states.push(controller.getSnapshot()),
+    );
     expect(controller.getServerSnapshot().initialized).toBe(false);
     const stop = controller.start();
     expect(controller.getSnapshot().initialized).toBe(true);
     expect(controller.getSnapshot().suspended).toBe(true);
-    expect(states.some(state => state.initialized && !state.suspended)).toBe(false);
+    expect(states.some((state) => state.initialized && !state.suspended)).toBe(
+      false,
+    );
     stop();
     expect(controller.getSnapshot().initialized).toBe(false);
     unsubscribe();
@@ -135,7 +155,9 @@ describe("checkout payment layout", () => {
       createElement(CheckoutApp, { initial: initial() }),
     );
     const brand = container.querySelector("[data-brand=alipay]")!;
-    const amount = container.querySelector<HTMLElement>("[data-payable-amount]")!;
+    const amount = container.querySelector<HTMLElement>(
+      "[data-payable-amount]",
+    )!;
     const qr = container.querySelector("[data-qr-image]")!;
     expect(
       brand.compareDocumentPosition(qr) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -148,7 +170,9 @@ describe("checkout payment layout", () => {
     );
     const amountRow = container.querySelector("[data-checkout-amount]");
     expect(amountRow).toContainElement(amount);
-    expect(amountRow).toContainElement(container.querySelector("[data-amount-label]"));
+    expect(amountRow).toContainElement(
+      container.querySelector("[data-amount-label]"),
+    );
     expect(amountRow).toHaveClass("flex", "items-baseline", "justify-center");
     expect(amountRow).not.toHaveClass("flex-col", "flex-wrap");
     expect(screen.queryByText(/请勿修改|扫码付款/)).not.toBeInTheDocument();
@@ -158,9 +182,7 @@ describe("checkout payment layout", () => {
       "dateTime",
       initial().checkout!.checkout.expires_at,
     );
-    expect(timer.closest('[data-slot="badge"]')).toHaveTextContent(
-      "待付款",
-    );
+    expect(timer.closest('[data-slot="badge"]')).toHaveTextContent("待付款");
     expect(timer.closest('[data-slot="card-action"]')).not.toBeNull();
     expect(container.querySelectorAll("[data-countdown]")).toHaveLength(1);
     expect(timer).toHaveAttribute("aria-live", "off");
@@ -181,7 +203,9 @@ describe("checkout payment layout", () => {
   });
   it("keeps the hour segment for payment windows longer than one hour", () => {
     const value = initial();
-    value.checkout!.checkout.expires_at = new Date(epoch + 3661000).toISOString();
+    value.checkout!.checkout.expires_at = new Date(
+      epoch + 3661000,
+    ).toISOString();
     render(createElement(CheckoutApp, { initial: value }));
     expect(screen.getByRole("timer")).toHaveTextContent("剩余 01:01:01");
   });
@@ -241,8 +265,12 @@ describe("checkout desktop composition", () => {
     );
     const payment = container.querySelector("[data-checkout-payment]")!;
     const summary = screen.getByRole("region", { name: "订单信息" });
-    expect(payment).toContainElement(container.querySelector("[data-qr-image]"));
-    expect(payment).toContainElement(container.querySelector("[data-payable-amount]"));
+    expect(payment).toContainElement(
+      container.querySelector("[data-qr-image]"),
+    );
+    expect(payment).toContainElement(
+      container.querySelector("[data-payable-amount]"),
+    );
     expect(summary).toContainElement(screen.getByText("测试商品"));
     expect(summary).toContainElement(
       screen.getByRole("button", { name: "复制商户订单号" }),
@@ -254,9 +282,9 @@ describe("checkout desktop composition", () => {
     expect(container.querySelectorAll("[data-qr-image]")).toHaveLength(1);
     expect(container.querySelectorAll("[data-payable-amount]")).toHaveLength(1);
     expect(container.querySelectorAll("[data-countdown]")).toHaveLength(1);
-    expect(summary.querySelector("[data-checkout-desktop-guide]")).toHaveTextContent(
-      "支付宝扫描二维码",
-    );
+    expect(
+      summary.querySelector("[data-checkout-desktop-guide]"),
+    ).toHaveTextContent("支付宝扫描二维码");
   });
   it("keeps the same QR and in-flight read while resizing instead of mounting another checkout", async () => {
     const { fetch: read, finish } = pendingFetch();
@@ -271,9 +299,11 @@ describe("checkout desktop composition", () => {
     expect(screen.getByRole("button", { name: "查询付款状态" })).toBe(query);
     expect(read).toHaveBeenCalledTimes(1);
     expect(read.mock.calls[0]?.[1]?.signal?.aborted).toBe(false);
-    await act(async () => { finish(response()); });
+    await act(async () => {
+      finish(response());
+    });
     expect(container.querySelector("[data-checkout-actions]")).toContainElement(
-      screen.getByText("已检查，暂未确认付款。"),
+      screen.getByText("核实进度暂不可用，页面会继续自动更新。"),
     );
   });
   it("puts the confirmed return action in the summary and removes desktop payment guidance", async () => {
@@ -284,14 +314,18 @@ describe("checkout desktop composition", () => {
     const paid = initial().checkout!;
     paid.payment_instructions = null;
     paid.payment = {
-      status: "CONFIRMED", basis: "INFERRED", received_amount_cents: 1001,
+      status: "CONFIRMED",
+      basis: "INFERRED",
+      received_amount_cents: 1001,
     };
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "查询付款状态" }));
       finish(response(paid));
     });
     const summary = screen.getByRole("region", { name: "订单信息" });
-    expect(summary).toContainElement(screen.getByRole("link", { name: "返回商家" }));
+    expect(summary).toContainElement(
+      screen.getByRole("link", { name: "返回商家" }),
+    );
     expect(container.querySelector("[data-checkout-desktop-guide]")).toBeNull();
     expect(container.querySelector("[data-qr-image]")).toBeNull();
     expect(container.querySelector("[data-countdown]")).toBeNull();
@@ -299,21 +333,30 @@ describe("checkout desktop composition", () => {
   it.each([404, 429, 503] as const)(
     "uses a compact error view without an empty summary for a %i response",
     (status) => {
-      const { container } = render(createElement(CheckoutApp, {
-        initial: initial({
-          checkout: null,
-          qrAvailable: false,
-          initialError: {
-            status, code: "unavailable", message: "unavailable",
-            retryAfterSeconds: status === 404 ? null : 5,
-          },
+      const { container } = render(
+        createElement(CheckoutApp, {
+          initial: initial({
+            checkout: null,
+            qrAvailable: false,
+            initialError: {
+              status,
+              code: "unavailable",
+              message: "unavailable",
+              retryAfterSeconds: status === 404 ? null : 5,
+            },
+          }),
         }),
-      }));
-      expect(screen.queryByRole("region", { name: "订单信息" })).not.toBeInTheDocument();
-      expect(container.querySelector("[data-checkout-layout]")).toHaveAttribute(
-        "data-has-order", "false",
       );
-      expect(container.querySelector("[data-checkout-desktop-guide]")).toBeNull();
+      expect(
+        screen.queryByRole("region", { name: "订单信息" }),
+      ).not.toBeInTheDocument();
+      expect(container.querySelector("[data-checkout-layout]")).toHaveAttribute(
+        "data-has-order",
+        "false",
+      );
+      expect(
+        container.querySelector("[data-checkout-desktop-guide]"),
+      ).toBeNull();
       expect(container.querySelector("[data-qr-image]")).toBeNull();
       expect(container.querySelector("[data-payable-amount]")).toBeNull();
     },
@@ -340,13 +383,17 @@ describe("checkout compact QR and page shell", () => {
     );
     const page = container.querySelector("[data-checkout-page]");
     expect(page).toHaveClass(
-      "grid", "h-svh", "min-h-min", "grid-rows-[1fr_auto_1fr]",
+      "grid",
+      "h-svh",
+      "min-h-min",
+      "grid-rows-[1fr_auto_1fr]",
     );
     expect(screen.getByRole("banner")).toHaveClass("self-start");
     expect(screen.getByRole("main")).not.toHaveClass("flex-1");
-    expect(
-      container.querySelector("[data-checkout-layout]"),
-    ).not.toHaveClass("fixed", "absolute");
+    expect(container.querySelector("[data-checkout-layout]")).not.toHaveClass(
+      "fixed",
+      "absolute",
+    );
   });
 });
 
@@ -367,7 +414,9 @@ describe("checkout compact order summary", () => {
       expect(actions).toContainElement(
         screen.getByRole("button", { name: "查询付款状态" }),
       );
-      expect(summary.querySelectorAll("dt")).toHaveLength(showProductName ? 2 : 1);
+      expect(summary.querySelectorAll("dt")).toHaveLength(
+        showProductName ? 2 : 1,
+      );
       expect(container.querySelectorAll("[data-product-name]")).toHaveLength(
         showProductName ? 1 : 0,
       );
@@ -460,7 +509,9 @@ describe("checkout controller", () => {
     expect(pending.fetch).toHaveBeenCalledOnce();
     pending.finish(response());
     await first;
-    expect(view.getSnapshot().feedback).toBe("已检查，暂未确认付款。");
+    expect(view.getSnapshot().feedback).toBe(
+      "核实进度暂不可用，页面会继续自动更新。",
+    );
   });
   it.each(["offline", "hidden", "pagehide"])(
     "aborts an active request and rejects its late result on %s",
@@ -497,7 +548,9 @@ describe("checkout controller", () => {
     );
     expect(view.getSnapshot().suspended).toBe(true);
     expect(view.getSnapshot().initialized).toBe(true);
-    expect(states.some((state) => state.initialized && !state.suspended)).toBe(false);
+    expect(states.some((state) => state.initialized && !state.suspended)).toBe(
+      false,
+    );
     unsubscribe();
   });
   it("retains a retry-after deadline across offline/online transitions", async () => {
@@ -841,14 +894,21 @@ describe("checkout shadcn view and PNG lifecycle", () => {
 
 describe("checkout merchant actions", () => {
   it("shows help as a separate small text link, not a payment action", () => {
-    const { container } = render(createElement(CheckoutApp, { initial: initial({
-      helpUrl: "https://help.example.com/guide",
-    }) }));
+    const { container } = render(
+      createElement(CheckoutApp, {
+        initial: initial({
+          helpUrl: "https://help.example.com/guide",
+        }),
+      }),
+    );
     const help = screen.getByRole("link", { name: "商家帮助" });
     expect(help).toHaveAttribute("href", "https://help.example.com/guide");
     expect(help).toHaveAttribute("target", "_blank");
     expect(help).toHaveAttribute("rel", "noopener noreferrer");
-    expect(help.closest("[data-checkout-help]")).toHaveClass("text-sm", "text-right");
+    expect(help.closest("[data-checkout-help]")).toHaveClass(
+      "text-sm",
+      "text-right",
+    );
     expect(help).not.toHaveClass("underline", "underline-offset-4");
     expect(help).toHaveClass("focus-visible:outline-2");
     expect(help.closest("[data-checkout-actions]")).toBeNull();
@@ -856,74 +916,211 @@ describe("checkout merchant actions", () => {
     expect(help).not.toHaveAttribute("data-slot", "button");
     expect(help).not.toHaveClass("w-full");
     expect(container.querySelector("[data-checkout-help]")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "联系商家" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "联系商家" }),
+    ).not.toBeInTheDocument();
   });
 
-  it.each([undefined, null, "", "http://help.example.com", "javascript:alert(1)"])(
+  it.each([
+    undefined,
+    null,
+    "",
+    "http://help.example.com",
+    "javascript:alert(1)",
+  ])(
     "leaves no help placeholder or empty actions when help is absent or invalid: %s",
     (helpUrl) => {
       const order = initial().checkout!;
       order.return_url = null;
       order.checkout.status = "CLOSED";
       order.payment_instructions = null;
-      const { container } = render(createElement(CheckoutApp, { initial: initial({
-        checkout: order,
-        ...(helpUrl === undefined ? {} : { helpUrl }),
-      }) }));
-      expect(screen.queryByRole("link", { name: "商家帮助" })).not.toBeInTheDocument();
+      const { container } = render(
+        createElement(CheckoutApp, {
+          initial: initial({
+            checkout: order,
+            ...(helpUrl === undefined ? {} : { helpUrl }),
+          }),
+        }),
+      );
+      expect(
+        screen.queryByRole("link", { name: "商家帮助" }),
+      ).not.toBeInTheDocument();
       expect(container.querySelector("[data-checkout-help]")).toBeNull();
       expect(container.querySelector("[data-checkout-actions]")).toBeNull();
     },
   );
 
-  it.each(["CONFIRMED", "CLOSED", "EXPIRED", "DISPUTED", "UNAVAILABLE"] as const)(
+  it.each([
+    "CONFIRMED",
+    "CLOSED",
+    "EXPIRED",
+    "DISPUTED",
+    "UNAVAILABLE",
+  ] as const)(
     "shows the exact merchant return URL for %s without adding success parameters",
     (state) => {
       const order = initial().checkout!;
       order.payment_instructions = null;
       if (state === "CONFIRMED" || state === "DISPUTED") {
-        order.payment = { status: state, basis: "INFERRED", received_amount_cents: 1001 };
+        order.payment = {
+          status: state,
+          basis: "INFERRED",
+          received_amount_cents: 1001,
+        };
       } else if (state === "CLOSED" || state === "EXPIRED") {
         order.checkout.status = state;
       }
       const view = initial({
         checkout: order,
         helpUrl: "https://help.example.com/contact",
-        ...(state === "UNAVAILABLE" ? {
-          initialError: { status: 503, code: "unavailable", message: "unavailable", retryAfterSeconds: 5 },
-        } : {}),
+        ...(state === "UNAVAILABLE"
+          ? {
+              initialError: {
+                status: 503,
+                code: "unavailable",
+                message: "unavailable",
+                retryAfterSeconds: 5,
+              },
+            }
+          : {}),
       });
-      const { container } = render(createElement(CheckoutApp, { initial: view }));
-      expect(screen.getByRole("link", {
-        name: state === "CONFIRMED" ? "返回商家" : "返回商家处理",
-      })).toHaveAttribute("href", order.return_url);
+      const { container } = render(
+        createElement(CheckoutApp, { initial: view }),
+      );
+      expect(
+        screen.getByRole("link", {
+          name: state === "CONFIRMED" ? "返回商家" : "返回商家处理",
+        }),
+      ).toHaveAttribute("href", order.return_url);
       expect(screen.getByRole("link", { name: "商家帮助" })).toHaveAttribute(
-        "href", "https://help.example.com/contact",
+        "href",
+        "https://help.example.com/contact",
       );
       expect(container.querySelector("[data-qr-image]")).toBeNull();
-      expect(screen.queryByText("已收到付款，请勿重复支付。")).not.toBeInTheDocument();
-      expect(screen.queryByText("此订单不再收款，请勿付款。")).not.toBeInTheDocument();
-      if (state === "EXPIRED") expect(screen.getByText(/已付款请勿重复支付/)).toBeVisible();
+      expect(
+        screen.queryByText("已收到付款，请勿重复支付。"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText("此订单不再收款，请勿付款。"),
+      ).not.toBeInTheDocument();
+      if (state === "EXPIRED")
+        expect(screen.getByText(/已付款请勿重复支付/)).toBeVisible();
     },
   );
 
-  it.each([null, "javascript:alert(1)"])("omits a missing or unsafe merchant return URL: %s", (returnUrl) => {
-    const order = initial().checkout!;
-    order.return_url = returnUrl;
-    order.checkout.status = "CLOSED";
-    order.payment_instructions = null;
-    render(createElement(CheckoutApp, { initial: initial({ checkout: order }) }));
-    expect(screen.queryByRole("link", { name: /返回商家/ })).not.toBeInTheDocument();
-  });
+  it.each([null, "javascript:alert(1)"])(
+    "omits a missing or unsafe merchant return URL: %s",
+    (returnUrl) => {
+      const order = initial().checkout!;
+      order.return_url = returnUrl;
+      order.checkout.status = "CLOSED";
+      order.payment_instructions = null;
+      render(
+        createElement(CheckoutApp, { initial: initial({ checkout: order }) }),
+      );
+      expect(
+        screen.queryByRole("link", { name: /返回商家/ }),
+      ).not.toBeInTheDocument();
+    },
+  );
 
   it("shows configured help, but never invents a return URL for a missing order", () => {
-    render(createElement(CheckoutApp, { initial: initial({
-      checkout: null,
-      qrAvailable: false,
-      initialError: { status: 404, code: "not_found", message: "not found", retryAfterSeconds: null },
-      helpUrl: "https://help.example.com/contact",
-    }) }));
+    render(
+      createElement(CheckoutApp, {
+        initial: initial({
+          checkout: null,
+          qrAvailable: false,
+          initialError: {
+            status: 404,
+            code: "not_found",
+            message: "not found",
+            retryAfterSeconds: null,
+          },
+          helpUrl: "https://help.example.com/contact",
+        }),
+      }),
+    );
     expect(screen.getByRole("link", { name: "商家帮助" })).toBeVisible();
-    expect(screen.queryByRole("link", { name: /返回商家/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /返回商家/ }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("manual verification versus background refresh", () => {
+  it("keeps automatic GET quiet and sends POST only after an explicit click", async () => {
+    const pending = pendingFetch();
+    const view = controller();
+    const background = view.refresh();
+    expect(view.getSnapshot().busy).toBe(false);
+    expect(pending.fetch.mock.calls[0]?.[1]?.method).toBe("GET");
+    pending.finish(response());
+    await background;
+    const check = view.refresh(true);
+    expect(view.getSnapshot().busy).toBe(true);
+    expect(pending.fetch.mock.calls[1]?.[0].pathname).toMatch(/\/check$/);
+    expect(pending.fetch.mock.calls[1]?.[1]?.method).toBe("POST");
+    pending.finish(
+      response({
+        ...initial().checkout!,
+        verification: {
+          id: "test-check",
+          state: "WAITING",
+          requested_at: new Date(epoch).toISOString(),
+          retry_after_seconds: 5,
+        },
+      }),
+    );
+    await check;
+    expect(view.getSnapshot().busy).toBe(true);
+    expect(view.getSnapshot().feedback).toContain("等待核实");
+    const progress = view.refresh();
+    pending.finish(
+      response({
+        ...initial().checkout!,
+        verification: {
+          id: "test-check",
+          state: "RECONCILING",
+          requested_at: new Date(epoch).toISOString(),
+          retry_after_seconds: 0,
+        },
+      }),
+    );
+    await progress;
+    expect(view.getSnapshot().feedback).toContain("核对付款");
+    const complete = view.refresh();
+    pending.finish(
+      response({
+        ...initial().checkout!,
+        verification: {
+          id: "test-check",
+          state: "COMPLETED",
+          requested_at: new Date(epoch).toISOString(),
+          retry_after_seconds: 0,
+        },
+      }),
+    );
+    await complete;
+    expect(view.getSnapshot().busy).toBe(false);
+    expect(view.getSnapshot().feedback).toContain("当前可用流水");
+  });
+  it("ends the manual spinner after 30 seconds without resubmitting the operation", async () => {
+    const value = {
+      ...initial().checkout!,
+      verification: {
+        id: "check",
+        state: "WAITING" as const,
+        requested_at: new Date(epoch).toISOString(),
+        retry_after_seconds: 60,
+      },
+    };
+    const fetch = vi.fn(async () => response(value));
+    vi.stubGlobal("fetch", fetch);
+    const view = controller();
+    await view.refresh(true);
+    expect(view.getSnapshot().busy).toBe(true);
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(view.getSnapshot().busy).toBe(false);
+    expect(view.getSnapshot().feedback).toContain("核实仍可能继续");
   });
 });

@@ -244,6 +244,13 @@ export class OrderService {
     return this.#projectOrder(aggregate);
   }
 
+  publicCheckoutOrderId(token: string): string {
+    if (!isCanonicalCheckoutToken(token)) throw checkoutNotFound();
+    const aggregate = this.#runStoreOperation(() => this.#store.publicCheckoutByTokenDigest(digestCheckoutToken(token)));
+    if (!aggregate) throw checkoutNotFound();
+    return aggregate.order.orderId;
+  }
+
   publicCheckout(token: string): PublicCheckoutProjection {
     if (!isCanonicalCheckoutToken(token)) throw checkoutNotFound();
     const aggregate = this.#runStoreOperation(() =>

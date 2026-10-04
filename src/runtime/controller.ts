@@ -1,3 +1,4 @@
+import { CheckoutVerifier } from "./checkout-verification.ts";
 import { ledgerScanGate } from "../ledger/scan-gate.ts";
 import type { AppDatabase } from "../database/database.ts";
 import {
@@ -90,6 +91,7 @@ export class RuntimeController {
   readonly #reconciliation: ReconciliationStore;
   readonly #webhooks: WebhookStore;
   readonly #clock: () => number;
+  readonly #checkoutVerifier: CheckoutVerifier;
   #ledgerScheduler: LedgerIngestScheduler | null = null;
   #reconciliationScheduler: ReconciliationScheduler | null = null;
   #webhookScheduler: WebhookScheduler | null = null;
@@ -110,6 +112,7 @@ export class RuntimeController {
     this.#reconciliation = options.reconciliation;
     this.#webhooks = options.webhooks;
     this.#clock = options.clock ?? (() => Date.now());
+    this.#checkoutVerifier = new CheckoutVerifier(this.#clock);
   }
 
   start(snapshot: RuntimeSettingsSnapshot): Promise<void> {
@@ -188,6 +191,17 @@ export class RuntimeController {
       pendingDeliveries: counts.pending,
       deadLetters: counts.dead,
     });
+  }
+
+  checkoutVerification(orderId: string) { return this.#checkoutVerifier.get(orderId); }
+
+  requestCheckoutVerification(orderId: string) {
+    const scheduler = this.#ledgerScheduler, reconciliation = this.#reconciliationScheduler;
+    if (!scheduler || !reconciliation || this.#stopped || this.#transitioning) throw new Error("payment runtime unavailable");
+    const order = this.#orders.adminGet(orderId);
+    if (order.checkout.status !== "OPEN" || order.payment.status !== "UNPAID") return this.#checkoutVerifier.get(orderId);
+    return this.#checkoutVerifier.request(orderId, scheduler, async () => { await reconciliation.verifyOrder(orderId); this.#orders.adminGet(orderId); },
+      () => !this.#stopped && !this.#transitioning && this.#ledgerScheduler === scheduler && this.#reconciliationScheduler === reconciliation);
   }
 
   async triggerOrder(orderId: string): Promise<void> {

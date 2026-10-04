@@ -2323,6 +2323,52 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '413': { $ref: '#/components/responses/TooLarge' }
         '503': { $ref: '#/components/responses/WebhookUnavailable' }
+  /api/public/v1/checkouts/{token}/check:
+    post:
+      tags: [Checkout]
+      operationId: requestPublicCheckoutVerification
+      summary: Request a bounded shared ledger scan and order reconciliation
+      description: Requires same origin and a valid checkout token. Pending requests coalesce by order and collection account, never bypass provider backoff. Only OPEN unpaid orders request a scan. Verification progress is ephemeral, not proof of payment; terminal orders only return their current state. Read-only demos reject this operation.
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+        - name: Origin
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        '200':
+          description: Current order and any completed verification
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicCheckoutEnvelope' }
+        '202':
+          description: Verification queued or running; continue polling the ordinary checkout GET
+          headers:
+            Retry-After: { schema: { type: integer, minimum: 1 } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicCheckoutEnvelope' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
+        '404': { $ref: '#/components/responses/CheckoutNotFound' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429':
+          description: Public checkout source or global rate limit; respect Retry-After
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '503': { $ref: '#/components/responses/SettingsUnavailable' }
   /api/public/v1/checkouts/{token}:
     get:
       tags: [Checkout]
@@ -4429,6 +4475,15 @@ components:
         status:
           type: string
           enum: [NONE, PARTIAL, FULL]
+    CheckoutVerification:
+      type: object
+      additionalProperties: false
+      required: [id, state, requested_at, retry_after_seconds]
+      properties:
+        id: { type: string, format: uuid }
+        state: { type: string, enum: [WAITING, SCANNING, RECONCILING, COMPLETED, FAILED] }
+        requested_at: { type: string, format: date-time }
+        retry_after_seconds: { type: integer, minimum: 0 }
     PublicCheckoutEnvelope:
       type: object
       additionalProperties: false
@@ -4448,6 +4503,7 @@ components:
             - payment
             - refund
           properties:
+            verification: { $ref: '#/components/schemas/CheckoutVerification' }
             merchant_order_no: { $ref: '#/components/schemas/MerchantOrderNumber' }
             requested_amount_cents: { type: integer }
             currency: { const: CNY }

@@ -669,8 +669,15 @@ export type PaymentState = {
 export type RefundState = {
     status: 'NONE' | 'PARTIAL' | 'FULL';
 };
+export type CheckoutVerification = {
+    id: string;
+    state: 'WAITING' | 'SCANNING' | 'RECONCILING' | 'COMPLETED' | 'FAILED';
+    requested_at: string;
+    retry_after_seconds: number;
+};
 export type PublicCheckoutEnvelope = {
     data: {
+        verification?: CheckoutVerification;
         merchant_order_no: MerchantOrderNumber;
         requested_amount_cents: number;
         currency: 'CNY';

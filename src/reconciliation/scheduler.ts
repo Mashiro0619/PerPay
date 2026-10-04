@@ -178,6 +178,15 @@ export class ReconciliationScheduler {
     return this.#ensureRun("order_created");
   }
 
+  /** Wait for this order, including when it was queued after an existing sweep began. */
+  async verifyOrder(orderId: string): Promise<void> {
+    let result = await this.triggerOrder(orderId);
+    while (!this.#stopped && this.#pendingOrders.has(orderId)) result = await this.#ensureRun("checkout_check");
+    if (this.#stopped || result.failures > 0 || this.#scheduledOrderRetries.has(orderId)) {
+      throw new Error("order reconciliation did not complete");
+    }
+  }
+
   health(): ReconciliationSchedulerHealth {
     return Object.freeze({
       state: this.#state,

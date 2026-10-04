@@ -1,3 +1,4 @@
+import type { CheckoutVerification } from "./checkout-verification.ts";
 export type CheckoutViewState =
   | "UNPAID"
   | "CONFIRMED"
@@ -8,6 +9,7 @@ export type CheckoutViewState =
   | "RATE_LIMITED"
   | "UNAVAILABLE";
 export interface CheckoutViewOrder {
+  verification?: CheckoutVerification;
   merchant_order_no: string;
   requested_amount_cents: number;
   currency: "CNY";
@@ -164,6 +166,9 @@ export function parseCheckoutPayload(payload: unknown): CheckoutViewOrder {
   )
     throw new TypeError("checkout response is invalid");
   return {
+    ...(value.verification === undefined
+      ? {}
+      : { verification: parseVerification(value.verification) }),
     merchant_order_no: value.merchant_order_no,
     product_name: value.product_name,
     currency: "CNY",
@@ -188,5 +193,27 @@ export function parseCheckoutPayload(payload: unknown): CheckoutViewOrder {
       received_amount_cents: payment.received_amount_cents as number | null,
     },
     refund: { status: refund.status as CheckoutViewOrder["refund"]["status"] },
+  };
+}
+
+function parseVerification(value: unknown): CheckoutVerification {
+  const item = record(value);
+  if (
+    typeof item.id !== "string" ||
+    !item.id ||
+    !["WAITING", "SCANNING", "RECONCILING", "COMPLETED", "FAILED"].includes(
+      String(item.state),
+    ) ||
+    typeof item.requested_at !== "string" ||
+    !Number.isFinite(Date.parse(item.requested_at)) ||
+    !Number.isSafeInteger(item.retry_after_seconds) ||
+    Number(item.retry_after_seconds) < 0
+  )
+    throw new TypeError("checkout verification response is invalid");
+  return {
+    id: item.id,
+    state: item.state as CheckoutVerification["state"],
+    requested_at: item.requested_at,
+    retry_after_seconds: Number(item.retry_after_seconds),
   };
 }

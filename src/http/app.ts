@@ -1,3 +1,4 @@
+import type { CheckoutVerification } from "../shared/checkout-verification.ts";
 import { adminAccessInputSchema, readAdminAccess, createAdminAccessPolicy } from "../settings/admin-access.ts";
 import { exportOrders, orderExportSchema } from "./order-export.ts";
 import { adminOrderIdentities } from "./admin-order-summary.ts";
@@ -235,6 +236,8 @@ export interface AppDependencies {
   readonly webhookStore?: WebhookStore | undefined;
   readonly webhookHealth?: (() => WebhookSchedulerHealth) | undefined;
   readonly onWebhookAvailable?: (() => void | Promise<void>) | undefined;
+  readonly checkoutVerification?: ((orderId: string) => CheckoutVerification | undefined) | undefined;
+  readonly requestCheckoutVerification?: ((orderId: string) => CheckoutVerification | undefined) | undefined;
   readonly onOrderAvailable?: ((orderId: string) => void) | undefined;
 }
 
@@ -303,6 +306,7 @@ const disabledBackupHealth = Object.freeze({
 export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   const app = new Hono<AppEnvironment>();
   const publicCheckoutBudget = new PublicCheckoutRateLimiter();
+  const manualCheckoutBudget = new PublicCheckoutRateLimiter({sourceBurst:5,sourceRequestsPerSecond:1,globalBurst:30,globalRequestsPerSecond:10});
   const collectionCodeCache = new CollectionCodeSvgCache();
   const adminFrontend = loadAdminFrontend();
   const updateChecker = dependencies.updateChecker ?? new OfficialUpdateChecker();
@@ -1453,6 +1457,29 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     return context.json({ data: serializeWebhookEvent(event) });
   });
 
+  app.post("/api/public/v1/checkouts/:token/check", async (context) => {
+    requireSameOrigin(context, dependencies.config.publicOrigin);
+    if (dependencies.demoMode) throw new HttpApiError(403, "origin_not_allowed", "只读演示不能发起支付宝采集");
+    if (!manualCheckoutBudget.take(remoteAddress(context, dependencies.config.trustedProxy))) {
+      throw new HttpApiError(429, "public_checkout_rate_limited", "手动核实过于频繁，请稍后重试", 5);
+    }
+    await readJson(context, emptyObjectSchema, 1024);
+    const token = context.req.param("token");
+    let checkout = dependencies.orders.publicCheckout(token);
+    const orderId = dependencies.orders.publicCheckoutOrderId(token);
+    let verification = dependencies.checkoutVerification?.(orderId);
+    if (checkout.checkout.status === "OPEN" && checkout.payment.status === "UNPAID") {
+      requirePaymentEntryReady(dependencies);
+      if (!dependencies.requestCheckoutVerification) throw new HttpApiError(503, "system_not_ready", "暂时无法发起付款核实");
+      try { verification = dependencies.requestCheckoutVerification(orderId); }
+      catch { throw new HttpApiError(503, "system_not_ready", "付款核实暂时不可用，请稍后重试"); }
+      checkout = dependencies.orders.publicCheckout(token);
+    }
+    const pending = checkout.checkout.status === "OPEN" && checkout.payment.status === "UNPAID" && verification && !["COMPLETED", "FAILED"].includes(verification.state);
+    if (pending && verification) context.header("retry-after", String(Math.max(1, verification.retry_after_seconds)));
+    return context.json({data:{...serializePublicCheckout(checkout),...(verification ? {verification} : {})}},pending ? 202 : 200);
+  });
+
   app.get("/api/public/v1/checkouts/:token", (context) => {
     const sourceAddress = remoteAddress(context, dependencies.config.trustedProxy);
     if (!publicCheckoutBudget.take(sourceAddress)) {
@@ -1465,7 +1492,8 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     }
     const checkout = dependencies.orders.publicCheckout(context.req.param("token"));
     if (checkout.paymentInstructions !== null) requirePaymentEntryReady(dependencies);
-    return context.json({ data: serializePublicCheckout(checkout) });
+    const verification = dependencies.checkoutVerification?.(dependencies.orders.publicCheckoutOrderId(context.req.param("token")));
+    return context.json({ data: { ...serializePublicCheckout(checkout), ...(verification ? {verification} : {}) } });
   });
 
   app.get("/api/v1/system/status", signedApi(0), async (context) => {

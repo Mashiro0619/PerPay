@@ -56,6 +56,8 @@ export function createCheckoutController(initial: CheckoutInitial) {
     generation = 0,
     failures = 0,
     active: AbortController | undefined;
+  let manualDeadline = 0;
+  let manualTracking = false;
   let timer: ReturnType<typeof setTimeout> | undefined,
     tickTimer: ReturnType<typeof setInterval> | undefined;
   let anchor = 0,
@@ -93,6 +95,13 @@ export function createCheckoutController(initial: CheckoutInitial) {
       );
   };
   function updateClock() {
+    if (state.busy && manualDeadline > 0 && mono() >= manualDeadline) {
+      manualDeadline = 0;
+      emit({
+        busy: false,
+        feedback: "核实仍可能继续，页面会自动更新；请勿重复付款。",
+      });
+    }
     const now =
       serverTime + Math.max(0, mono() - anchor, Date.now() - wallAnchor);
     const suspended =
@@ -104,6 +113,7 @@ export function createCheckoutController(initial: CheckoutInitial) {
     generation++;
     active?.abort();
     active = undefined;
+    manualDeadline = 0;
     emit({ busy: false });
     stopTimer();
   }
@@ -161,6 +171,8 @@ export function createCheckoutController(initial: CheckoutInitial) {
     window.removeEventListener("pageshow", show);
   }
   async function refresh(manual = false) {
+    // An explicit click may replace a background read, but never duplicate a submitted check.
+    if (manual && active && !state.busy) abort();
     if (
       !alive ||
       active ||
@@ -174,7 +186,15 @@ export function createCheckoutController(initial: CheckoutInitial) {
       schedule(state.retryAt - Date.now());
       return;
     }
-    const target = new URL(initial.apiUrl, location.origin);
+    const checking =
+      manual &&
+      !initial.demoMode &&
+      state.order?.checkout.status === "OPEN" &&
+      state.order.payment.status === "UNPAID";
+    const target = new URL(
+      initial.apiUrl + (checking ? "/check" : ""),
+      location.origin,
+    );
     if (target.origin !== location.origin) return;
     stopTimer();
     const controller = new AbortController();
@@ -184,15 +204,23 @@ export function createCheckoutController(initial: CheckoutInitial) {
     let timedOut = false;
     const current = () =>
       alive && generation === request && !controller.signal.aborted;
-    emit({ busy: true, feedback: "" });
+    if (manual) {
+      manualTracking = checking;
+      manualDeadline = mono() + 30000;
+      emit({ busy: true, feedback: checking ? "正在提交付款核实请求…" : "" });
+    }
     const timeout = setTimeout(() => {
       timedOut = true;
       controller.abort();
     }, 10000);
     try {
       const response = await fetch(target, {
-        method: "GET",
-        headers: { accept: "application/json" },
+        method: checking ? "POST" : "GET",
+        headers: {
+          accept: "application/json",
+          ...(checking ? { "content-type": "application/json" } : {}),
+        },
+        ...(checking ? { body: "{}" } : {}),
         cache: "no-store",
         credentials: "same-origin",
         redirect: "error",
@@ -200,6 +228,14 @@ export function createCheckoutController(initial: CheckoutInitial) {
       });
       if (!current()) return;
       if (!response.ok) {
+        if (state.busy || manualTracking) {
+          manualTracking = false;
+          manualDeadline = 0;
+          emit({
+            busy: false,
+            feedback: "本次核实未完成，页面会继续自动更新。",
+          });
+        }
         if (response.status === 404) {
           emit({
             visual: "NOT_FOUND",
@@ -263,11 +299,41 @@ export function createCheckoutController(initial: CheckoutInitial) {
         message: "",
         retryAt: 0,
         qrAvailable: !!initial.qrUrl,
-        feedback:
-          manual && checkoutState(order) === "UNPAID"
-            ? "已检查，暂未确认付款。"
-            : "",
+        feedback: checkoutState(order) === "UNPAID" ? state.feedback : "",
       });
+      if (state.busy || manualTracking) {
+        const progress = order.verification;
+        if (checkoutState(order) !== "UNPAID") {
+          manualTracking = false;
+          manualDeadline = 0;
+          emit({ busy: false, feedback: "" });
+        } else if (
+          progress &&
+          ["WAITING", "SCANNING", "RECONCILING"].includes(progress.state)
+        ) {
+          if (state.busy)
+            emit({
+              feedback:
+                progress.state === "WAITING"
+                  ? `等待核实，预计至少 ${progress.retry_after_seconds} 秒后开始。`
+                  : progress.state === "SCANNING"
+                    ? "正在采集付款流水…"
+                    : "正在核对付款结果…",
+            });
+        } else {
+          manualTracking = false;
+          manualDeadline = 0;
+          emit({
+            busy: false,
+            feedback:
+              progress?.state === "COMPLETED"
+                ? "当前可用流水中暂未确认付款，页面会继续自动更新。"
+                : progress?.state === "FAILED"
+                  ? "本次核实未完成或采集暂有延迟，页面会继续自动更新。"
+                  : "核实进度暂不可用，页面会继续自动更新。",
+          });
+        }
+      }
       updateClock();
       schedule(interval());
     } catch {
@@ -278,6 +344,14 @@ export function createCheckoutController(initial: CheckoutInitial) {
       )
         return;
       failures++;
+      if (state.busy || manualTracking) {
+        manualTracking = false;
+        manualDeadline = 0;
+        emit({
+          busy: false,
+          feedback: "核实结果暂时无法获取，页面会继续自动更新。",
+        });
+      }
       emit({
         message: timedOut
           ? "订单状态刷新超时，页面会自动重试。"
@@ -288,7 +362,10 @@ export function createCheckoutController(initial: CheckoutInitial) {
       clearTimeout(timeout);
       if (active === controller) {
         active = undefined;
-        emit({ busy: false });
+        if (manual && !checking && !state.order?.verification) {
+          manualDeadline = 0;
+          emit({ busy: false });
+        }
       }
     }
   }
