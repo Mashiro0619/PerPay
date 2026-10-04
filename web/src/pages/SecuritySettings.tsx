@@ -1,3 +1,4 @@
+import { AdminAccessSettings } from "./AdminAccessSettings";
 import { DialogBody } from "@/components/admin-dialog";
 import { useSystemName } from "@/branding";
 import {
@@ -116,6 +117,7 @@ export function SecuritySettings({
   return (
     <>
       <div className="grid min-w-0 items-start gap-4 @5xl/settings:grid-cols-2">
+        <AdminAccessSettings settings={settings} onSaved={onSaved} />
         <Card>
           <CardHeader>
             <CardTitle role="heading" aria-level={2}>

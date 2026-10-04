@@ -21,6 +21,9 @@ describe("secret visibility lifecycle", () => {
   it.each(["api", "webhook"])(
     "bounds a hung %s key rotation, permits closing and ignores late plaintext",
     async (kind) => {
+  // This suite tests other security controls; keep the read-only IP lookup cached.
+  queryClient.setQueryData(["admin-access-source"], {data:{revision:settings.revision,...settings.admin_access,current_ip:"192.0.2.1"}});
+
       let finish!: (response: Response) => void;
       let request: Request | undefined;
       const fetchMock = vi.fn((input: Request) => {

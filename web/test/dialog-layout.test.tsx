@@ -117,6 +117,9 @@ describe("bounded secret content", () => {
 });
 
 it("bounds the session confirmation without changing its cancel behavior", async () => {
+  // This suite tests other security controls; keep the read-only IP lookup cached.
+  queryClient.setQueryData(["admin-access-source"], {data:{revision:settings.revision,...settings.admin_access,current_ip:"192.0.2.1"}});
+
   const fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
   render(

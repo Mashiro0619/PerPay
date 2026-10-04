@@ -31,6 +31,9 @@ import {
 } from "./fixtures";
 
 function renderPage(children: ReactNode, path = "/") {
+  // This suite tests other security controls; keep the read-only IP lookup cached.
+  queryClient.setQueryData(["admin-access-source"], {data:{revision:settings.revision,...settings.admin_access,current_ip:"192.0.2.1"}});
+
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[path]}>{children}</MemoryRouter>
