@@ -1,3 +1,4 @@
+import { HealthProbeCache } from "../infrastructure/health-probe-cache.ts";
 import type { CheckoutVerification } from "../shared/checkout-verification.ts";
 import { adminAccessInputSchema, readAdminAccess, createAdminAccessPolicy } from "../settings/admin-access.ts";
 import { exportOrders, orderExportSchema } from "./order-export.ts";
@@ -309,6 +310,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   const publicCheckoutBudget = new PublicCheckoutRateLimiter();
   const manualCheckoutBudget = new PublicCheckoutRateLimiter({sourceBurst:5,sourceRequestsPerSecond:1,globalBurst:30,globalRequestsPerSecond:10});
   const collectionCodeCache = new CollectionCodeSvgCache();
+  const probeOperations = new HealthProbeCache<OperationalSummaries>();
   const adminFrontend = loadAdminFrontend();
   const updateChecker = dependencies.updateChecker ?? new OfficialUpdateChecker();
 
@@ -359,7 +361,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   });
 
   app.get("/healthz", (context) => {
-    const database = dependencies.database.health();
+    const database = dependencies.database.probeHealth();
     return context.json({
       status: database.ok ? "healthy" : "unhealthy",
       version: APP_VERSION,
@@ -369,14 +371,20 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   });
 
   app.get("/readyz", (context) => {
-    const database = dependencies.database.health();
+    const database = dependencies.database.probeHealth();
     const runtime = currentRuntimeStatus(dependencies);
     const ledger = currentLedgerHealth(dependencies);
     const reconciliation = currentReconciliationHealth(dependencies);
     const webhook = dependencies.webhookHealth?.() ?? disabledWebhookHealth;
     const collection = collectionFreshness(dependencies, ledger);
     const confirmation = confirmationFreshness(dependencies, reconciliation);
-    const operations = operationalSummaries(dependencies, database.ok);
+    if (!database.ok) probeOperations.clear();
+    const operations = database.ok
+      ? probeOperations.read(JSON.stringify([
+          runtime.activeProviderAccountKey, runtime.paymentRevision, runtime.transitioning,
+          dependencies.settings?.status().revision ?? null,
+        ]), () => operationalSummaries(dependencies, true))
+      : operationalSummaries(dependencies, false);
     const configured = dependencies.identity.isInitialized() && runtime.configured;
     const ready = database.ok && configured && !runtime.transitioning &&
       collection.ready && confirmation.ready;

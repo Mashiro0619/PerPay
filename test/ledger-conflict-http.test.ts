@@ -1,3 +1,4 @@
+import { performance } from "node:perf_hooks";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -29,7 +30,7 @@ interface SessionAuth {
 }
 
 describe("ledger conflict HTTP operations", () => {
-  it("protects conflict evidence, requires an authenticated write, preserves idempotency, and degrades status", async () => {
+  it("protects conflict evidence, requires an authenticated write, preserves idempotency, and degrades status", async (t) => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-ledger-conflict-http-"));
     const services = await createConfiguredHttpServices({
       directory,
@@ -39,6 +40,8 @@ describe("ledger conflict HTTP operations", () => {
       identityClock: () => BASE_TIME,
     });
     const { config, database, identity, orders, settings } = services;
+    let probeNow = Math.ceil(performance.now());
+    t.mock.method(performance, "now", () => probeNow);
     try {
       const ledger = new LedgerStore(database);
       const providerAccountKey = settings.snapshot().activeProviderAccountKey;
@@ -221,6 +224,8 @@ describe("ledger conflict HTTP operations", () => {
       });
       assert.equal(restoreEnded.status, 409); assert.equal(await errorCode(restoreEnded), "work_item_ended");
       assert.equal(database.integrityCheck().ok, true);
+      // Public aggregate snapshots may lag a resolved conflict by at most one second.
+      probeNow += 1_000;
       const readyAfter = await app.request("/readyz");
       assert.equal(readyAfter.status, 200);
       assert.deepEqual(await readyAfter.json(), { status: "ready", code: null });

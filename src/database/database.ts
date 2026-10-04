@@ -1,3 +1,4 @@
+import { HealthProbeCache } from "../infrastructure/health-probe-cache.ts";
 import { readAdminAccess } from "../settings/admin-access.ts";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
@@ -126,6 +127,7 @@ export class AppDatabase {
   readonly #leaseHeartbeat: NodeJS.Timeout;
   readonly #wallClockAnchorMs: number;
   readonly #monotonicAnchorMs: number;
+  readonly #probeSchema = new HealthProbeCache<boolean>();
   #closed = false;
   #leaseLost = false;
 
@@ -217,6 +219,15 @@ export class AppDatabase {
   }
 
   health(): DatabaseHealth {
+    return this.#health(false);
+  }
+
+  /** Public probes may reuse schema validation for at most one second. */
+  probeHealth(): DatabaseHealth {
+    return this.#health(true);
+  }
+
+  #health(probe: boolean): DatabaseHealth {
     if (this.#closed || this.#leaseLost) {
       return { ok: false, result: this.#leaseLost ? "database_lease_lost" : "database_closed" };
     }
@@ -245,7 +256,11 @@ export class AppDatabase {
       if (hasDatabaseMaintenanceLock(this.#databasePath)) {
         return { ok: false, result: "database_maintenance_in_progress" };
       }
-      if (!validateSchema(this.#connection)) {
+      const schemaValid = probe
+        ? this.#probeSchema.read("schema", () => validateSchema(this.#connection))
+        : validateSchema(this.#connection);
+      if (!probe) this.#probeSchema.replace("schema", schemaValid);
+      if (!schemaValid) {
         return { ok: false, result: "database_schema_invalid" };
       }
       if (tableExists(this.#connection, "order_clock")) {
