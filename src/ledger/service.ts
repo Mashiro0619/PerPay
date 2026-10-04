@@ -1,3 +1,4 @@
+import type { PageValidationReason } from "../infrastructure/alipay/errors.ts";
 import { createHash } from "node:crypto";
 
 import {
@@ -395,6 +396,7 @@ export class LedgerIngestService {
               };
         const errorDetails = {
           reason,
+          validation_reason: providerError?.validationReason ?? null,
           pages,
           details,
           ingest_segment_id: activeSegment?.ingestSegmentId ?? null,
@@ -627,7 +629,7 @@ function validateSegmentPage(
   pageSize: number,
 ): void {
   if (!page || typeof page !== "object" || !Array.isArray(page.details)) {
-    throw segmentPageError(page, "provider returned an invalid segment page");
+    throw segmentPageError(page, "provider returned an invalid segment page", "invalid_page_shape");
   }
   if (
     page.pageNo !== 1 ||
@@ -636,12 +638,12 @@ function validateSegmentPage(
     page.totalSize < 0 ||
     typeof page.hasMore !== "boolean"
   ) {
-    throw segmentPageError(page, "provider returned invalid segment page metadata");
+    throw segmentPageError(page, "provider returned invalid segment page metadata", "invalid_page_metadata");
   }
   const expectedDetailCount = Math.min(pageSize, page.totalSize);
   const expectedHasMore = page.totalSize > pageSize;
   if (page.details.length !== expectedDetailCount || page.hasMore !== expectedHasMore) {
-    throw segmentPageError(page, "provider returned an inconsistent single-page segment");
+    throw segmentPageError(page, "provider returned an inconsistent single-page segment", "inconsistent_page");
   }
   const raw = page.rawResponse as unknown as Record<string, unknown> | null;
   if (
@@ -658,7 +660,7 @@ function validateSegmentPage(
     typeof raw.traceId !== "string" ||
     raw.traceId !== page.traceId
   ) {
-    throw segmentPageError(page, "provider returned a segment without verified evidence");
+    throw segmentPageError(page, "provider returned a segment without verified evidence", "unverified_page");
   }
 
   const eventIds = new Set<string>();
@@ -667,7 +669,7 @@ function validateSegmentPage(
   for (const detail of page.details) {
     if (detail.accountLogId !== null) {
       if (eventIds.has(detail.accountLogId)) {
-        throw segmentPageError(page, "provider repeated an account-log identifier within a segment");
+        throw segmentPageError(page, "provider repeated an account-log identifier within a segment", "duplicate_event_id");
       }
       eventIds.add(detail.accountLogId);
     }
@@ -679,12 +681,12 @@ function validateSegmentPage(
       continue;
     }
     if (occurredAt < segmentStart || occurredAt > segmentEnd) {
-      throw segmentPageError(page, "provider returned an event outside the requested segment");
+      throw segmentPageError(page, "provider returned an event outside the requested segment", "event_outside_window");
     }
   }
 }
 
-function segmentPageError(page: AccountLogPage | null | undefined, message: string): AlipayProviderError {
+function segmentPageError(page: AccountLogPage | null | undefined, message: string, validationReason: PageValidationReason): AlipayProviderError {
   const raw = page && typeof page === "object"
     ? page.rawResponse as unknown as Record<string, unknown> | null
     : null;
@@ -706,6 +708,7 @@ function segmentPageError(page: AccountLogPage | null | undefined, message: stri
   return new AlipayProviderError({
     kind: "transient",
     code: "pagination_invalid",
+    validationReason,
     message,
     signatureVerified,
     ...(status === undefined ? {} : { status }),

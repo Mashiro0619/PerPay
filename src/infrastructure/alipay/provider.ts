@@ -444,6 +444,7 @@ function invalidShape(message: string, verified: ReturnType<typeof verifyV3Respo
   return new AlipayProviderError({
     kind: "invalid_response",
     code: "response_invalid_shape",
+    validationReason: "invalid_page_shape",
     message,
     status: verified.status,
     traceId: verified.traceId,
@@ -460,6 +461,7 @@ function paginationResponseError(
   return new AlipayProviderError({
     kind: "transient",
     code: "pagination_invalid",
+    validationReason: "inconsistent_page",
     message,
     status: verified.status,
     traceId: verified.traceId,

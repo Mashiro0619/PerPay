@@ -1,3 +1,4 @@
+import { LedgerIngestionDiagnostics } from "@/components/ledger-ingestion-diagnostics";
 import { RefreshButton } from "@/components/refresh-button";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import type { ReactNode } from "react";
@@ -193,7 +194,9 @@ function SystemContent() {
                         {!data.ledger.collection_ready && (
                           <p>采集尚未就绪或已中断，新订单收款入口暂不可用。</p>
                         )}
-                        {data.ledger.last_error_code && (
+                        <LedgerIngestionDiagnostics diagnostics={data.ledger.diagnostics} />
+                        {data.ledger.last_error_code &&
+                          data.ledger.diagnostics?.latest_failure?.error_code !== data.ledger.last_error_code && (
                           <p>
                             最近错误：{data.ledger.last_error_code} · 连续失败{" "}
                             {data.ledger.consecutive_failures} 次

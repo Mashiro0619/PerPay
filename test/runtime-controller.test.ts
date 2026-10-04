@@ -72,7 +72,10 @@ describe("runtime settings controller", () => {
       reconciliation: {} as never, webhooks: {} as never,
     });
     try {
+      assert.equal(runtime.ledgerNextRunAt(), null);
+      t.mock.method(LedgerIngestScheduler.prototype, "nextRunAt", () => 123_456);
       await runtime.start(snapshot);
+      assert.equal(runtime.ledgerNextRunAt(), 123_456);
       assert.equal(runtime.status().configured, true);
       const triggered = runtime.triggerOrder("11111111-1111-4111-8111-111111111111");
       assert.deepEqual(events, ["refresh:0", "reconcile"]);
@@ -90,6 +93,7 @@ describe("runtime settings controller", () => {
     } finally {
       finishReconciliation();
       await runtime.stop();
+      assert.equal(runtime.ledgerNextRunAt(), null);
     }
   });
 

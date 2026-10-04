@@ -35,10 +35,21 @@ export type AlipayErrorCode =
   | "response_invalid_shape"
   | "pagination_invalid";
 
+export const PAGE_VALIDATION_REASONS = {
+  invalid_page_shape: "账单页结构不符合约定",
+  invalid_page_metadata: "账单页码、分页大小或数量信息不符合约定",
+  inconsistent_page: "账单明细数量与分页信息不一致",
+  unverified_page: "账单页缺少有效的验签证据",
+  duplicate_event_id: "同一账单页出现重复流水编号",
+  event_outside_window: "账单流水时间超出本次查询窗口",
+} as const;
+export type PageValidationReason = keyof typeof PAGE_VALIDATION_REASONS;
+
 export interface AlipayProviderErrorOptions {
   readonly kind: AlipayErrorKind;
   readonly code: AlipayErrorCode;
   readonly message: string;
+  readonly validationReason?: PageValidationReason;
   readonly status?: number | undefined;
   readonly retryAfterSeconds?: number | undefined;
   readonly traceId?: string | undefined;
@@ -65,10 +76,12 @@ export class AlipayProviderError extends Error {
   declare readonly responseHeaders: V3Headers | null;
   readonly signatureVerified: boolean | null;
   readonly retryable: boolean;
+  readonly validationReason: PageValidationReason | null;
 
   constructor(options: AlipayProviderErrorOptions) {
     super(options.message, options.cause === undefined ? undefined : { cause: options.cause });
     this.name = "AlipayProviderError";
+    this.validationReason = options.validationReason ?? null;
     this.kind = options.kind;
     this.code = options.code;
     this.status = options.status ?? null;

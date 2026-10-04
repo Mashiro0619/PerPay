@@ -3190,6 +3190,8 @@ components:
         - maximum_success_age_milliseconds
         - conflicts
       properties:
+        diagnostics:
+          $ref: '#/components/schemas/LedgerDiagnostics'
         enabled:
           type: boolean
           description: False means provider ingestion is disabled and no outbound request is made.
@@ -3226,6 +3228,39 @@ components:
           description: Null while payment collection has not been configured.
         conflicts:
           $ref: '#/components/schemas/LedgerConflictSummary'
+    LedgerDiagnostics:
+      type: object
+      additionalProperties: false
+      description: Administrator-only ingestion diagnostics. Omitted from merchant and public responses. No raw provider evidence is included.
+      required: [available, consecutive_failures, in_flight, next_retry_at, latest_failure]
+      properties:
+        available: { type: boolean }
+        consecutive_failures:
+          type: [integer, 'null']
+          minimum: 0
+          description: Persisted account-wide consecutive failures, not a count of identical pages. Null when diagnostics are unavailable.
+        in_flight: { type: boolean }
+        next_retry_at:
+          type: [string, 'null']
+          format: date-time
+          description: Actual next attempt scheduled by the running worker. Null while running, stopped, transitioning, or unknown; never inferred from a cooldown.
+        latest_failure:
+          oneOf:
+            - $ref: '#/components/schemas/LedgerFailureDiagnostic'
+            - type: 'null'
+    LedgerFailureDiagnostic:
+      type: object
+      additionalProperties: false
+      required: [ingest_run_id, ingest_segment_id, scan_kind, window_start, window_end, error_code, reason, occurred_at]
+      properties:
+        ingest_run_id: { type: string, format: uuid }
+        ingest_segment_id: { type: [string, 'null'], format: uuid }
+        scan_kind: { type: string, enum: [NORMAL, COMPENSATION_10M, COMPENSATION_1H, COMPENSATION_1D] }
+        window_start: { type: string, format: date-time }
+        window_end: { type: string, format: date-time }
+        error_code: { type: string, maxLength: 128 }
+        reason: { type: string, maxLength: 256, description: Locally controlled description, never arbitrary upstream response text. }
+        occurred_at: { type: string, format: date-time }
     ReconciliationHealth:
       type: object
       additionalProperties: false

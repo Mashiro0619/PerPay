@@ -168,6 +168,12 @@ export class RuntimeController {
     });
   }
 
+  ledgerNextRunAt(): number | null {
+    if (!this.#ledgerScheduler || this.#transitioning) return null;
+    const health = this.#ledgerScheduler.health();
+    return health.inFlight || health.state === "stopped" ? null : this.#ledgerScheduler.nextRunAt();
+  }
+
   reconciliationHealth(): RevisionedReconciliationHealth {
     if (!this.#reconciliationScheduler) return disabledReconciliationHealth;
     return Object.freeze({

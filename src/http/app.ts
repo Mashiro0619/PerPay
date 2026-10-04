@@ -1,3 +1,4 @@
+import { readLedgerFailureDiagnostic, type LedgerDiagnostics } from "../ledger/diagnostics.ts";
 import { HealthProbeCache } from "../infrastructure/health-probe-cache.ts";
 import type { CheckoutVerification } from "../shared/checkout-verification.ts";
 import { adminAccessInputSchema, readAdminAccess, createAdminAccessPolicy } from "../settings/admin-access.ts";
@@ -224,6 +225,7 @@ export interface AppDependencies {
   readonly updateChecker?: Pick<OfficialUpdateChecker, "check"> | undefined;
   readonly backupHealth?: (() => BackupHealth | PromiseLike<BackupHealth>) | undefined;
   readonly ledger?: LedgerStore | undefined;
+  readonly ledgerNextRunAt?: (() => number | null) | undefined;
   readonly ledgerHealth?: (() => LedgerSchedulerHealth & {
     readonly enabled: boolean;
     readonly paymentRevision?: number | null;
@@ -601,7 +603,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   });
 
   app.get("/api/admin/v1/system/status", adminSession, async (context) =>
-    context.json({ data: await systemStatus(dependencies) }),
+    context.json({ data: await systemStatus(dependencies, true) }),
   );
 
   app.get("/api/admin/v1/system/update", adminSession, async (context) => {
@@ -2112,7 +2114,7 @@ function operationalSummaries(
   return { conflicts, exceptions, workItems, unavailable };
 }
 
-async function systemStatus(dependencies: AppDependencies) {
+async function systemStatus(dependencies: AppDependencies, administrator = false) {
   const database = dependencies.database.health();
   const runtime = currentRuntimeStatus(dependencies);
   const ledger = currentLedgerHealth(dependencies);
@@ -2121,6 +2123,8 @@ async function systemStatus(dependencies: AppDependencies) {
   const collection = collectionFreshness(dependencies, ledger);
   const confirmation = confirmationFreshness(dependencies, reconciliation);
   const operations = operationalSummaries(dependencies, database.ok);
+  // Capture diagnostics with the same synchronous runtime snapshot before awaiting backup I/O.
+  const diagnostics = administrator ? ledgerDiagnostics(dependencies, runtime, ledger) : undefined;
   const backup = await currentBackupHealth(dependencies);
   const configured = dependencies.identity.isInitialized() && runtime.configured;
   const ready = database.ok && configured && !runtime.transitioning &&
@@ -2146,6 +2150,7 @@ async function systemStatus(dependencies: AppDependencies) {
     database,
     ledger: {
       ...serializeLedgerHealth(ledger, collection),
+      ...(diagnostics ? { diagnostics } : {}),
       conflicts: serializeLedgerConflictSummary(operations.conflicts),
     },
     reconciliation: {
@@ -2157,6 +2162,32 @@ async function systemStatus(dependencies: AppDependencies) {
     ...(dependencies.settings ? { backup_policy: dependencies.settings.view().backup } : {}),
     backup,
   };
+}
+
+function ledgerDiagnostics(
+  dependencies: AppDependencies,
+  runtime: PaymentRuntimeStatus,
+  health: RevisionedLedgerHealth,
+): LedgerDiagnostics {
+  const unavailable: LedgerDiagnostics = {
+    available: false, consecutive_failures: null, latest_failure: null,
+    in_flight: health.inFlight, next_retry_at: null,
+  };
+  try {
+    if (!runtime.activeProviderAccountKey) {
+      return { ...unavailable, available: true, consecutive_failures: 0 };
+    }
+    const persisted = readLedgerFailureDiagnostic(dependencies.database, runtime.activeProviderAccountKey);
+    const scheduled = health.enabled && !health.inFlight && health.state !== "stopped" &&
+      !runtime.transitioning && health.paymentRevision === runtime.paymentRevision
+      ? dependencies.ledgerNextRunAt?.() ?? null : null;
+    return {
+      available: true, consecutive_failures: persisted.consecutiveFailures,
+      latest_failure: persisted.latestFailure, in_flight: health.inFlight,
+      next_retry_at: scheduled !== null && Number.isSafeInteger(scheduled) && scheduled > 0
+        ? new Date(scheduled).toISOString() : null,
+    };
+  } catch { return unavailable; }
 }
 
 function isBackgroundHealthDegraded(health: {

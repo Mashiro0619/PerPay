@@ -432,7 +432,7 @@ describe("Alipay ledger provider", () => {
     ]);
     await assert.rejects(
       makeProvider(empty).queryPage({ startTime, endTime, pageNo: 1, pageSize: 1 }),
-      (error: unknown) => error instanceof AlipayProviderError && error.code === "pagination_invalid" && error.retryable,
+      (error: unknown) => error instanceof AlipayProviderError && error.code === "pagination_invalid" && error.retryable && error.validationReason === "inconsistent_page",
     );
   });
 
@@ -493,6 +493,7 @@ describe("Alipay ledger provider", () => {
       (error: unknown) =>
         error instanceof AlipayProviderError &&
         error.code === "response_invalid_shape" &&
+        error.validationReason === "invalid_page_shape" &&
         error.signatureVerified === true,
     );
   });

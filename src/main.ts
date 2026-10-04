@@ -70,6 +70,7 @@ const app = createApp({
   startedAt,
   backupHealth,
   ledgerHealth: () => runtime.ledgerHealth(),
+  ledgerNextRunAt: () => runtime.ledgerNextRunAt(),
   reconciliationHealth: () => runtime.reconciliationHealth(),
   webhookStore: webhooks,
   webhookHealth: () => runtime.webhookHealth(),

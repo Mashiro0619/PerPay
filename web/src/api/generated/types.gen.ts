@@ -215,6 +215,7 @@ export type FinancialExceptionSummary = {
     total: number;
 } | null;
 export type LedgerHealth = {
+    diagnostics?: LedgerDiagnostics;
     enabled: boolean;
     state: 'idle' | 'running' | 'healthy' | 'catching_up' | 'degraded' | 'stopped';
     in_flight: boolean;
@@ -226,6 +227,23 @@ export type LedgerHealth = {
     last_success_age_milliseconds: number | null;
     maximum_success_age_milliseconds: number | null;
     conflicts: LedgerConflictSummary;
+};
+export type LedgerDiagnostics = {
+    available: boolean;
+    consecutive_failures: number | null;
+    in_flight: boolean;
+    next_retry_at: string | null;
+    latest_failure: LedgerFailureDiagnostic | null;
+};
+export type LedgerFailureDiagnostic = {
+    ingest_run_id: string;
+    ingest_segment_id: string | null;
+    scan_kind: 'NORMAL' | 'COMPENSATION_10M' | 'COMPENSATION_1H' | 'COMPENSATION_1D';
+    window_start: string;
+    window_end: string;
+    error_code: string;
+    reason: string;
+    occurred_at: string;
 };
 export type ReconciliationHealth = {
     enabled: boolean;

@@ -20,7 +20,9 @@ export function presentSystemStatus(data: SystemStatus) {
     data.ledger.collection_ready &&
     data.reconciliation.confirmation_ready;
   const ledgerHealthy =
-    data.ledger.collection_ready && workerHealthy(data.ledger);
+    data.ledger.collection_ready && workerHealthy(data.ledger) &&
+    data.ledger.diagnostics?.available !== false &&
+    (data.ledger.diagnostics?.consecutive_failures ?? 0) === 0;
   const reconciliationHealthy =
     data.reconciliation.confirmation_ready &&
     workerHealthy(data.reconciliation);
