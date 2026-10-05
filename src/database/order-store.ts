@@ -1,3 +1,4 @@
+import { assertSiteCanCreate, readSite, SiteError } from "../sites/store.ts";
 import { normalizeListQuery, isDefaultQuery, ORDER_SORT_FIELDS, type ListQuery, type OrderSort } from "../shared/list-query.ts";
 import { listKeyset, listSearch, listCreatedDates } from "./list-query.ts";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -112,6 +113,7 @@ export interface SyncCollectionProfileResult {
 
 export interface CreateStoredOrderInput {
   readonly apiClientId: string;
+  readonly siteRevision?: number;
   readonly request: CreateOrderRequest;
   readonly idempotencyKeyDigest: string;
   readonly requestFingerprint: string;
@@ -404,6 +406,11 @@ export class OrderStore {
         return { kind: "existing", aggregate: withCheckoutToken(connection, migratedReplay) };
       }
 
+      if (input.siteRevision !== undefined) {
+        const site = readSite(connection, input.apiClientId);
+        if (!site || site.revision !== input.siteRevision) throw new SiteError("site_revision_conflict", "网站配置已变更，请重试下单。");
+        assertSiteCanCreate(connection, input.apiClientId, now);
+      }
       beforeCreate?.();
 
       if (input.webhookTargetRejection) {

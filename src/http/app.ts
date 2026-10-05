@@ -507,11 +507,11 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     return context.html(renderCheckoutPage({
         serverTime: dependencies.clock?.() ?? Date.now(),
         demoMode: dependencies.demoMode ?? false,
-        systemName: publicSystemName(dependencies),
-        helpUrl: publicCheckoutHelp(dependencies),
+        systemName: checkout?.display?.name ?? publicSystemName(dependencies),
+        helpUrl: checkout?.display ? checkout.display.helpUrl : publicCheckoutHelp(dependencies),
       checkoutToken: token,
       checkout,
-      showProductName: checkoutProductNameVisible(dependencies),
+      showProductName: checkout?.display?.showProductName ?? checkoutProductNameVisible(dependencies),
       qrImageUrl: checkout?.paymentInstructions === null || checkout === null
         ? null
         : `/api/public/v1/checkouts/${encodeURIComponent(token)}/qr.svg`,

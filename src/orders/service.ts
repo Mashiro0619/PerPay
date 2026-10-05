@@ -1,3 +1,5 @@
+import { SiteError, type SiteStore } from "../sites/store.ts";
+import { siteClientIdSchema, type SiteSnapshot } from "../sites/model.ts";
 import type { ListQuery, OrderSort } from "../shared/list-query.ts";
 import type { AppDatabase } from "../database/database.ts";
 import {
@@ -93,14 +95,42 @@ interface ReturnUrlDecision {
 export class OrderService {
   readonly #store: OrderStore;
   readonly #settings: () => RuntimeSettingsSnapshot;
+  readonly #database: AppDatabase;
+  readonly #physicalClock: (() => number) | undefined;
+  readonly #sites: SiteStore | undefined;
+  readonly #clientId: string | undefined;
 
   constructor(
     database: AppDatabase,
     settings: () => RuntimeSettingsSnapshot,
     physicalClock?: () => number,
+    sites?: SiteStore,
+    clientId?: string,
   ) {
     this.#store = new OrderStore(database, physicalClock);
     this.#settings = settings;
+    this.#database = database;
+    this.#physicalClock = physicalClock;
+    this.#sites = sites;
+    this.#clientId = clientId;
+  }
+
+  forSite(clientId: string): OrderService {
+    siteClientIdSchema.parse(clientId);
+    if (!this.#sites) throw new Error("website order service is not configured");
+    return new OrderService(this.#database, this.#settings, this.#physicalClock, this.#sites, clientId);
+  }
+
+  #owner(): string {
+    return this.#site()?.clientId ?? API_CLIENT_ID;
+  }
+
+  #site(): SiteSnapshot | null {
+    if (!this.#sites) return null;
+    if (!this.#clientId) throw new SiteError("site_not_found", "请明确选择业务网站。");
+    const site = this.#sites.get(this.#clientId);
+    if (!site) throw new SiteError("site_not_found", "业务网站不存在。");
+    return site;
   }
 
   initialize(): SyncCollectionProfileResult | null {
@@ -132,19 +162,29 @@ export class OrderService {
     beforeCreate?: (() => void) | undefined,
   ): CreateOrderResult {
     const settings = this.#configuredSettings();
+    const site = this.#site();
+    const clientId = site?.clientId ?? API_CLIENT_ID;
+    const policy = site?.configuration.policy.orders;
+    const webhook = site ? {
+      ...settings.webhook,
+      enabled: site.configuration.notifications_enabled,
+      allowedOrigin: site.configuration.notification_origin,
+      secret: this.#sites!.notificationSecret(clientId),
+    } : settings.webhook;
     this.syncCollectionProfile(settings.collection, settings.providerAccountKey);
-    const webhookTarget = this.#prepareWebhookTarget(request, settings.webhook);
-    const returnUrl = this.#prepareReturnUrl(request, settings.webhook);
+    const webhookTarget = this.#prepareWebhookTarget(request, webhook);
+    const returnUrl = this.#prepareReturnUrl(request, site ? site.configuration.return_origin : settings.webhook.allowedOrigin);
     const result = this.#runStoreOperation(() =>
       this.#store.createOrder(
         {
-          apiClientId: API_CLIENT_ID,
+          apiClientId: clientId,
+          ...(site ? { siteRevision: site.revision } : {}),
           request,
-          idempotencyKeyDigest: digestIdempotencyKey(API_CLIENT_ID, request.idempotency_key),
+          idempotencyKeyDigest: digestIdempotencyKey(clientId, request.idempotency_key),
           requestFingerprint: fingerprintCreateOrderRequest(request),
-          ttlMilliseconds: settings.collection.orderTtlSeconds * 1000,
-          amountOffsetMaximumCents: settings.collection.amountOffsetMaximumCents,
-          amountReuseCooldownSeconds: settings.collection.amountReuseCooldownSeconds,
+          ttlMilliseconds: (policy?.order_ttl_seconds ?? settings.collection.orderTtlSeconds) * 1000,
+          amountOffsetMaximumCents: policy?.amount_offset_maximum_cents ?? settings.collection.amountOffsetMaximumCents,
+          amountReuseCooldownSeconds: policy?.amount_reuse_cooldown_seconds ?? settings.collection.amountReuseCooldownSeconds,
           checkoutKeyRotationMilliseconds: settings.advanced.checkoutKeyRotationDays *
             24 * 60 * 60 * 1_000,
           checkoutTerminalObservationMilliseconds: settings.advanced
@@ -187,7 +227,7 @@ export class OrderService {
 
   get(orderId: string): OrderProjection {
     const aggregate = this.#runStoreOperation(() =>
-      this.#store.orderById(API_CLIENT_ID, orderId)
+      this.#store.orderById(this.#owner(), orderId)
     );
     if (!aggregate) throw orderNotFound();
     return this.#projectOrder(aggregate);
@@ -195,7 +235,7 @@ export class OrderService {
 
   getByMerchantOrderNumber(merchantOrderNo: string): OrderProjection {
     const aggregate = this.#runStoreOperation(() =>
-      this.#store.orderByMerchantOrderNumber(API_CLIENT_ID, merchantOrderNo),
+      this.#store.orderByMerchantOrderNumber(this.#owner(), merchantOrderNo),
     );
     if (!aggregate) throw orderNotFound();
     return this.#projectOrder(aggregate);
@@ -230,7 +270,7 @@ export class OrderService {
 
   adminGetByMerchantOrderNumber(merchantOrderNo: string): AdminOrderDetailProjection {
     const order = this.#runStoreOperation(() =>
-      this.#store.adminOrderByMerchantOrderNumber(API_CLIENT_ID, merchantOrderNo),
+      this.#store.adminOrderByMerchantOrderNumber(this.#owner(), merchantOrderNo),
     );
     if (!order) throw orderNotFound();
     return this.#projectAdminOrderDetail(order);
@@ -238,7 +278,7 @@ export class OrderService {
 
   close(orderId: string): OrderProjection {
     const aggregate = this.#runStoreOperation(() =>
-      this.#store.closeOrder(API_CLIENT_ID, orderId)
+      this.#store.closeOrder(this.#owner(), orderId)
     );
     if (!aggregate) throw orderNotFound();
     return this.#projectOrder(aggregate);
@@ -257,7 +297,10 @@ export class OrderService {
       this.#store.publicCheckoutByTokenDigest(digestCheckoutToken(token)),
     );
     if (!aggregate) throw checkoutNotFound();
+    const site = this.#sites?.get(aggregate.order.apiClientId);
+    if (this.#sites && !site) throw new Error("checkout website configuration is missing");
     return {
+      ...(site ? { display: { name: site.configuration.policy.display.checkout_name, helpUrl: site.configuration.policy.display.checkout_help_url, showProductName: site.configuration.policy.display.checkout_show_product_name } } : {}),
       merchantOrderNo: aggregate.order.merchantOrderNo,
       requestedAmountCents: aggregate.order.requestedAmountCents,
       currency: aggregate.order.currency,
@@ -403,11 +446,11 @@ export class OrderService {
 
   #prepareReturnUrl(
     request: CreateOrderRequest,
-    webhook: RuntimeSettingsSnapshot["webhook"],
+    allowedOrigin: string | null,
   ): ReturnUrlDecision {
     if (request.return_url === undefined) return { url: null };
     try {
-      return { url: prepareReturnUrl(request.return_url, webhook.allowedOrigin) };
+      return { url: prepareReturnUrl(request.return_url, allowedOrigin) };
     } catch (error) {
       if (!(error instanceof ReturnUrlError)) throw error;
       return {
