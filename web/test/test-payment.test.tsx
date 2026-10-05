@@ -1,3 +1,4 @@
+import { selectTestWebsite } from "./site-picker-helper";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -38,6 +39,7 @@ describe("minimal test payment page", () => {
     const view = mount();
     const user = userEvent.setup();
     const amount = await screen.findByLabelText("测试金额（元）");
+    await selectTestWebsite();
     expect(amount).toHaveValue("0.01");
     expect(amount).toHaveAccessibleDescription("真实付款，以收银台金额为准。");
     expect(
@@ -60,6 +62,7 @@ describe("minimal test payment page", () => {
     ).toBeVisible();
     expect(view.writes()).toHaveLength(1);
     expect(await view.writes()[0]!.clone().json()).toEqual({
+      api_client_id: "site_test",
       amount_cents: 1,
       test_payment_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
     });
@@ -87,6 +90,7 @@ describe("minimal test payment page", () => {
     async (value) => {
       const view = mount();
       const amount = await screen.findByLabelText("测试金额（元）");
+    await selectTestWebsite();
       fireEvent.change(amount, { target: { value } });
       await userEvent
         .setup()
@@ -110,6 +114,7 @@ describe("minimal test payment page", () => {
         : undefined,
     );
     const amount = await screen.findByLabelText("测试金额（元）");
+    await selectTestWebsite();
     const submit = screen.getByRole("button", { name: "创建测试订单" });
     expect(submit).toBeDisabled();
     expect(screen.getByRole("link", { name: "完成配置" })).toHaveAttribute(
@@ -128,6 +133,7 @@ describe("minimal test payment page", () => {
         : undefined,
     );
     const amount = await screen.findByLabelText("测试金额（元）");
+    await selectTestWebsite();
     fireEvent.change(amount, { target: { value: "1.23" } });
     fail = true;
     await act(async () => {
@@ -150,6 +156,7 @@ describe("minimal test payment page", () => {
         : undefined,
     );
     const user = userEvent.setup();
+    await selectTestWebsite();
     fireEvent.change(await screen.findByLabelText("测试金额（元）"), {
       target: { value: "1.23" },
     });
@@ -186,6 +193,7 @@ describe("minimal test payment page", () => {
         : undefined,
     );
     const amount = await screen.findByLabelText("测试金额（元）");
+    await selectTestWebsite();
     await userEvent
       .setup()
       .dblClick(screen.getByRole("button", { name: "创建测试订单" }));
@@ -209,6 +217,7 @@ describe("minimal test payment page", () => {
         : undefined,
     );
     await screen.findByLabelText("测试金额（元）");
+    await selectTestWebsite();
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "创建测试订单" }));
@@ -225,4 +234,17 @@ describe("minimal test payment page", () => {
       screen.queryByRole("heading", { name: "测试订单已创建" }),
     ).not.toBeInTheDocument();
   });
+});
+
+it("never silently chooses a website, even when only one website exists", async () => {
+  const view = mount();
+  const user = userEvent.setup();
+  await screen.findByLabelText("测试金额（元）");
+  await user.click(screen.getByRole("button", { name: "创建测试订单" }));
+  expect(screen.getByText("请选择业务网站。")).toBeVisible();
+  expect(view.writes()).toHaveLength(0);
+  await selectTestWebsite();
+  await user.click(screen.getByRole("button", { name: "创建测试订单" }));
+  await screen.findByRole("heading", { name: "测试订单已创建" });
+  expect(await view.writes()[0]!.clone().json()).toMatchObject({ api_client_id: "site_test" });
 });

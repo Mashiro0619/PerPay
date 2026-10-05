@@ -29,13 +29,14 @@ const reconciliation = new ReconciliationStore(database);
 const webhooks = new WebhookStore(database);
 const settingsStore = new RuntimeSettingsStore(database, config.masterKey);
 let settings!: RuntimeSettingsService;
-const orders = new OrderService(database, () => settings.snapshot());
+const orders = new OrderService(database, () => settings.snapshot(), undefined, settingsStore.siteStore() ?? undefined);
 const runtime = new RuntimeController({
   database,
   orders,
   ledger,
   reconciliation,
   webhooks,
+  sites: settingsStore.siteStore(),
 });
 settings = new RuntimeSettingsService({
   store: settingsStore,
@@ -63,6 +64,7 @@ const app = createApp({
   database,
   identity,
   settings,
+  sites: settingsStore.siteStore() ?? undefined,
   runtimeStatus: () => runtime.status(),
   orders,
   ledger,

@@ -1,3 +1,4 @@
+import { SitePicker } from "@/components/site-picker";
 import { useId, useRef, type FormEvent } from "react";
 import { ArrowLeft, AlertCircle } from "lucide-react";
 import { Link } from "@/navigation";
@@ -92,6 +93,7 @@ function TestPaymentForm({ dialog }: { dialog?: TestPaymentDialogProps }) {
   const form = (
     <form id={formId} onSubmit={submit}>
       <FieldGroup>
+        <SitePicker value={request.clientId} onChange={request.editSite} disabled={create.isPending || !!recovery || !!create.data} />
         {recovery && (
           <Alert>
             <AlertCircle />

@@ -79,7 +79,7 @@ describe("official block composition", () => {
   );
 
   it.each([
-    ["collection", "支付宝经营码", "订单规则"],
+    ["collection", "经营收款码", "经营收款码"],
     ["display", "界面显示", "首页图表样式"],
   ] as const)(
     "groups %s fields in one official card with fieldsets and a form-wide save footer",
@@ -103,6 +103,7 @@ describe("official block composition", () => {
         .closest("[data-slot=card]");
       expect(firstCard).not.toBeNull();
       expect(secondCard).toBe(firstCard);
+      if (section === "collection") expect(screen.queryByLabelText("收银台有效期（秒）")).not.toBeInTheDocument();
       if (section === "display") {
         const fields = screen.getByRole("group", { name: "界面显示" });
         expect(fields).toContainElement(screen.getByRole("textbox", { name: "支付系统名称" }));

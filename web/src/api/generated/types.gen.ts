@@ -86,7 +86,7 @@ export type SystemAnalytics = {
     pending: {
         orders: number;
         exceptions: number;
-        conflicts: number;
+        conflicts: number | null;
         notifications: number;
     };
     daily: Array<{
@@ -380,6 +380,7 @@ export type RuntimeSettings = {
     backup: BackupSettings;
     display: DisplaySettings;
     secrets: RuntimeSecretMetadataMap;
+    collection_policy?: CollectionPolicyRequest;
 };
 export type SettingsCompletion = {
     complete: boolean;
@@ -456,9 +457,6 @@ export type RuntimeSecretMetadata = {
 export type CollectionSettingsRequest = {
     revision: number;
     code_payload: string;
-    order_ttl_seconds: number;
-    amount_offset_maximum_cents: number;
-    amount_reuse_cooldown_seconds?: number;
 };
 export type ProviderSettingsRequest = {
     revision: number;
@@ -466,12 +464,6 @@ export type ProviderSettingsRequest = {
     app_id: string;
     private_key?: string;
     platform_public_key?: string;
-    timeout_milliseconds: number;
-    scan_interval_seconds: number;
-    minimum_scan_interval_seconds?: number;
-    active_scan_interval_seconds?: number;
-    safety_lag_seconds: number;
-    maximum_success_age_seconds: number;
 };
 export type NotificationSettingsRequest = {
     revision: number;
@@ -561,6 +553,8 @@ export type AdminOrderDetailEnvelope = {
     data: AdminOrderDetail;
 };
 export type OrderIdentitySummary = {
+    site_name?: string | null;
+    api_client_id?: string;
     order_id: ResourceId;
     merchant_order_no: string;
     product_name: string;
@@ -570,6 +564,7 @@ export type OrderIdentitySummary = {
     payment_confirmed_at: string | null;
 };
 export type AdminOrderSummary = {
+    site_name?: string | null;
     payment_confirmed_at?: string | null;
     order_id: ResourceId;
     api_client_id: string;
@@ -589,6 +584,7 @@ export type AdminOrderSummary = {
     version: number;
 };
 export type AdminOrderDetail = {
+    site_name?: string | null;
     order_id: ResourceId;
     api_client_id: string;
     merchant_order_no: MerchantOrderNumber;
@@ -637,6 +633,7 @@ export type CreateOrderRequest = {
     return_url?: ReturnUrl;
 };
 export type AdminTestPaymentRequest = {
+    api_client_id: string;
     test_payment_id: string;
     amount_cents: number;
 };
@@ -695,6 +692,11 @@ export type CheckoutVerification = {
 };
 export type PublicCheckoutEnvelope = {
     data: {
+        display?: {
+            name: string;
+            help_url: string | null;
+            show_product_name: boolean;
+        };
         verification?: CheckoutVerification;
         merchant_order_no: MerchantOrderNumber;
         requested_amount_cents: number;
@@ -1164,7 +1166,7 @@ export type WebhookRedeliveryEnvelope = {
     };
 };
 export type Sha256Fingerprint = string;
-export type ErrorCode = 'admin_ip_not_allowed' | 'admin_operation_conflict' | 'refund_mark_version_conflict' | 'refund_mark_not_allowed' | 'refund_recording_retired' | 'work_item_not_found' | 'work_item_ended' | 'amount_slots_exhausted' | 'api_authentication_failed' | 'api_client_invalid' | 'api_nonce_replayed' | 'asset_not_found' | 'auth_rate_limited' | 'candidate_not_found' | 'candidate_set_changed' | 'checkout_code_generation_failed' | 'checkout_code_not_found' | 'checkout_not_found' | 'csrf_invalid' | 'duplicate_json_key' | 'event_not_found' | 'financial_clock_unavailable' | 'financial_exception_not_found' | 'forwarded_header_invalid' | 'idempotency_conflict' | 'identity_already_initialized' | 'identity_not_initialized' | 'internal_error' | 'invalid_content_length' | 'invalid_credentials' | 'invalid_json' | 'ledger_conflict_action_not_allowed' | 'ledger_conflict_not_found' | 'ledger_conflict_operation_conflict' | 'ledger_conflict_state_conflict' | 'ledger_entry_not_found' | 'ledger_unavailable' | 'match_not_found' | 'match_state_conflict' | 'merchant_order_no_conflict' | 'operation_conflict' | 'order_clock_unavailable' | 'order_not_found' | 'origin_not_allowed' | 'password_unchanged' | 'password_work_busy' | 'provider_application_key_missing' | 'provider_application_key_rotation_not_supported' | 'provider_application_key_change_pending' | 'provider_application_key_change_conflict' | 'provider_application_key_verification_failed' | 'provider_switch_blocked' | 'public_checkout_rate_limited' | 'reconciliation_not_ready' | 'reconciliation_unavailable' | 'request_body_too_large' | 'request_body_unreadable' | 'return_url_invalid' | 'return_url_not_allowed' | 'route_not_found' | 'secret_not_found' | 'session_invalid' | 'settings_not_configured' | 'settings_revision_conflict' | 'settings_unavailable' | 'settings_validation_failed' | 'system_not_configured' | 'system_not_ready' | 'unsupported_media_type' | 'update_check_unavailable' | 'validation_failed' | 'webhook_delivery_not_found' | 'webhook_delivery_state_conflict' | 'webhook_disabled' | 'webhook_event_not_found' | 'webhook_operation_conflict' | 'webhook_signing_key_rollback' | 'webhook_signing_key_unavailable' | 'webhook_target_inactive' | 'webhook_target_invalid' | 'webhook_target_not_allowed' | 'webhook_unavailable';
+export type ErrorCode = 'admin_ip_not_allowed' | 'admin_operation_conflict' | 'refund_mark_version_conflict' | 'refund_mark_not_allowed' | 'refund_recording_retired' | 'work_item_not_found' | 'work_item_ended' | 'amount_slots_exhausted' | 'api_authentication_failed' | 'api_client_invalid' | 'api_nonce_replayed' | 'asset_not_found' | 'auth_rate_limited' | 'candidate_not_found' | 'candidate_set_changed' | 'checkout_code_generation_failed' | 'checkout_code_not_found' | 'checkout_not_found' | 'csrf_invalid' | 'duplicate_json_key' | 'event_not_found' | 'financial_clock_unavailable' | 'financial_exception_not_found' | 'forwarded_header_invalid' | 'idempotency_conflict' | 'identity_already_initialized' | 'identity_not_initialized' | 'internal_error' | 'invalid_content_length' | 'invalid_credentials' | 'invalid_json' | 'ledger_conflict_action_not_allowed' | 'ledger_conflict_not_found' | 'ledger_conflict_operation_conflict' | 'ledger_conflict_state_conflict' | 'ledger_entry_not_found' | 'ledger_unavailable' | 'match_not_found' | 'match_state_conflict' | 'merchant_order_no_conflict' | 'operation_conflict' | 'order_clock_unavailable' | 'order_not_found' | 'origin_not_allowed' | 'password_unchanged' | 'password_work_busy' | 'provider_application_key_missing' | 'provider_application_key_rotation_not_supported' | 'provider_application_key_change_pending' | 'provider_application_key_change_conflict' | 'provider_application_key_verification_failed' | 'provider_switch_blocked' | 'public_checkout_rate_limited' | 'reconciliation_not_ready' | 'reconciliation_unavailable' | 'request_body_too_large' | 'request_body_unreadable' | 'return_url_invalid' | 'return_url_not_allowed' | 'route_not_found' | 'secret_not_found' | 'session_invalid' | 'settings_not_configured' | 'settings_revision_conflict' | 'settings_unavailable' | 'settings_validation_failed' | 'system_not_configured' | 'system_not_ready' | 'unsupported_media_type' | 'update_check_unavailable' | 'validation_failed' | 'webhook_delivery_not_found' | 'webhook_delivery_state_conflict' | 'webhook_disabled' | 'webhook_event_not_found' | 'webhook_operation_conflict' | 'webhook_signing_key_rollback' | 'webhook_signing_key_unavailable' | 'webhook_target_inactive' | 'webhook_target_invalid' | 'webhook_target_not_allowed' | 'webhook_unavailable' | 'site_not_found' | 'site_revision_conflict' | 'site_operation_conflict' | 'site_has_history' | 'site_paused' | 'site_order_limit_exceeded' | 'site_secret_missing' | 'demo_read_only' | 'site_settings_moved';
 export type ErrorEnvelope = {
     error: {
         code: ErrorCode;
@@ -1173,6 +1175,103 @@ export type ErrorEnvelope = {
         fields?: {
             [key: string]: string;
         };
+    };
+};
+export type SitePolicy = {
+    orders: {
+        order_ttl_seconds: number;
+        amount_offset_maximum_cents: number;
+        amount_reuse_cooldown_seconds: number;
+        pending_order_limit: number | null;
+    };
+    display: {
+        checkout_name: string;
+        checkout_help_url: string | null;
+        checkout_show_product_name: boolean;
+    };
+    notification_delivery: {
+        timeout_milliseconds: number;
+        maximum_attempts: number;
+        retry_base_seconds: number;
+        retry_maximum_seconds: number;
+    };
+};
+export type SiteConfiguration = {
+    name: string;
+    accepting_orders: boolean;
+    notifications_enabled: boolean;
+    notification_origin: string | null;
+    return_origin: string | null;
+    policy: SitePolicy;
+};
+export type CreateSiteRequest = {
+    operation_id: string;
+    configuration: SiteConfiguration;
+};
+export type UpdateSiteRequest = {
+    revision: number;
+    configuration: SiteConfiguration;
+};
+export type UpdateSiteDefaultsRequest = {
+    revision: number;
+    policy: SitePolicy;
+};
+export type CollectionPolicyRequest = {
+    revision: number;
+    timeout_milliseconds: number;
+    scan_interval_seconds: number;
+    active_scan_interval_seconds: number;
+    minimum_scan_interval_seconds: number;
+    safety_lag_seconds: number;
+    maximum_success_age_seconds: number;
+};
+export type Site = {
+    client_id: string;
+    revision: number;
+    configuration: SiteConfiguration;
+    created_at: string;
+    updated_at: string;
+    deleted_at: string | null;
+};
+export type SiteEnvelope = {
+    data: Site;
+};
+export type SiteListEnvelope = {
+    data: Array<Site>;
+    page: {
+        next_cursor: string | null;
+    };
+};
+export type SiteDefaultsEnvelope = {
+    data: {
+        revision: number;
+        policy: SitePolicy;
+    };
+};
+export type SiteSecretEnvelope = {
+    data: {
+        secret: string;
+    };
+};
+export type SiteSecretRotationEnvelope = {
+    data: {
+        site: Site;
+        secret: string;
+    };
+};
+export type CollectionPolicyEnvelope = {
+    data: CollectionPolicyRequest;
+};
+export type EmptyObjectRequest = {
+    [key: string]: never;
+};
+export type SiteSystemStatusEnvelope = {
+    data: {
+        status: 'ready' | 'not_ready';
+        code: ErrorCode | null;
+        client_id: string;
+        accepting_orders: boolean;
+        notifications_enabled: boolean;
     };
 };
 export type CreatedFrom = string;
@@ -1307,6 +1406,7 @@ export type GetAdministratorSystemAnalyticsData = {
     };
     path?: never;
     query?: {
+        api_client_id?: string;
         range?: 7 | 30 | 90;
     };
     url: '/api/admin/v1/system/analytics';
@@ -1917,6 +2017,7 @@ export type RevealRuntimeSecretResponses = {
 export type RevealRuntimeSecretResponse = RevealRuntimeSecretResponses[keyof RevealRuntimeSecretResponses];
 export type ExportAdministratorOrdersData = {
     body: {
+        api_client_id?: string;
         created_from: string;
         created_to: string;
         q?: string;
@@ -1951,6 +2052,7 @@ export type ListAdministratorOrdersData = {
     };
     path?: never;
     query?: {
+        api_client_id?: string;
         created_from?: string;
         created_to?: string;
         checkout_status?: CheckoutStatus;
@@ -1981,7 +2083,9 @@ export type GetAdministratorOrderByMerchantNumberData = {
     path: {
         merchantOrderNo: MerchantOrderNumber;
     };
-    query?: never;
+    query: {
+        api_client_id: string;
+    };
     url: '/api/admin/v1/orders/by-merchant-no/{merchantOrderNo}';
 };
 export type GetAdministratorOrderByMerchantNumberErrors = {
@@ -2428,6 +2532,7 @@ export type ListWebhookDeliveriesData = {
     };
     path?: never;
     query?: {
+        api_client_id?: string;
         created_from?: string;
         created_to?: string;
         status?: WebhookDeliveryStatus;
@@ -2520,6 +2625,358 @@ export type RedeliverWebhookDeliveryResponses = {
     201: WebhookRedeliveryEnvelope;
 };
 export type RedeliverWebhookDeliveryResponse = RedeliverWebhookDeliveryResponses[keyof RedeliverWebhookDeliveryResponses];
+export type ListSitesData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path?: never;
+    query?: {
+        after?: string;
+        limit?: number;
+        q?: string;
+    };
+    url: '/api/admin/v1/sites';
+};
+export type ListSitesErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type ListSitesError = ListSitesErrors[keyof ListSitesErrors];
+export type ListSitesResponses = {
+    200: SiteListEnvelope;
+};
+export type ListSitesResponse = ListSitesResponses[keyof ListSitesResponses];
+export type CreateSiteData = {
+    body: CreateSiteRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/admin/v1/sites';
+};
+export type CreateSiteErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type CreateSiteError = CreateSiteErrors[keyof CreateSiteErrors];
+export type CreateSiteResponses = {
+    201: SiteEnvelope;
+};
+export type CreateSiteResponse = CreateSiteResponses[keyof CreateSiteResponses];
+export type DeleteSiteData = {
+    body: SettingsRevisionRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}';
+};
+export type DeleteSiteErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type DeleteSiteError = DeleteSiteErrors[keyof DeleteSiteErrors];
+export type DeleteSiteResponses = {
+    204: void;
+};
+export type DeleteSiteResponse = DeleteSiteResponses[keyof DeleteSiteResponses];
+export type GetSiteData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}';
+};
+export type GetSiteErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type GetSiteError = GetSiteErrors[keyof GetSiteErrors];
+export type GetSiteResponses = {
+    200: SiteEnvelope;
+};
+export type GetSiteResponse = GetSiteResponses[keyof GetSiteResponses];
+export type UpdateSiteData = {
+    body: UpdateSiteRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}';
+};
+export type UpdateSiteErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type UpdateSiteError = UpdateSiteErrors[keyof UpdateSiteErrors];
+export type UpdateSiteResponses = {
+    200: SiteEnvelope;
+};
+export type UpdateSiteResponse = UpdateSiteResponses[keyof UpdateSiteResponses];
+export type GetSiteDefaultsData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/admin/v1/settings/site-defaults';
+};
+export type GetSiteDefaultsErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type GetSiteDefaultsError = GetSiteDefaultsErrors[keyof GetSiteDefaultsErrors];
+export type GetSiteDefaultsResponses = {
+    200: SiteDefaultsEnvelope;
+};
+export type GetSiteDefaultsResponse = GetSiteDefaultsResponses[keyof GetSiteDefaultsResponses];
+export type UpdateSiteDefaultsData = {
+    body: UpdateSiteDefaultsRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/admin/v1/settings/site-defaults';
+};
+export type UpdateSiteDefaultsErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type UpdateSiteDefaultsError = UpdateSiteDefaultsErrors[keyof UpdateSiteDefaultsErrors];
+export type UpdateSiteDefaultsResponses = {
+    200: SiteDefaultsEnvelope;
+};
+export type UpdateSiteDefaultsResponse = UpdateSiteDefaultsResponses[keyof UpdateSiteDefaultsResponses];
+export type RotateSiteApiSecretData = {
+    body: SettingsRevisionRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/secrets/api_secret/actions/rotate';
+};
+export type RotateSiteApiSecretErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type RotateSiteApiSecretError = RotateSiteApiSecretErrors[keyof RotateSiteApiSecretErrors];
+export type RotateSiteApiSecretResponses = {
+    200: SiteSecretRotationEnvelope;
+};
+export type RotateSiteApiSecretResponse = RotateSiteApiSecretResponses[keyof RotateSiteApiSecretResponses];
+export type ViewSiteApiSecretData = {
+    body: EmptyObjectRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/secrets/api_secret/actions/view';
+};
+export type ViewSiteApiSecretErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type ViewSiteApiSecretError = ViewSiteApiSecretErrors[keyof ViewSiteApiSecretErrors];
+export type ViewSiteApiSecretResponses = {
+    200: SiteSecretEnvelope;
+};
+export type ViewSiteApiSecretResponse = ViewSiteApiSecretResponses[keyof ViewSiteApiSecretResponses];
+export type RotateSiteWebhookSecretData = {
+    body: SettingsRevisionRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/secrets/webhook_secret/actions/rotate';
+};
+export type RotateSiteWebhookSecretErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type RotateSiteWebhookSecretError = RotateSiteWebhookSecretErrors[keyof RotateSiteWebhookSecretErrors];
+export type RotateSiteWebhookSecretResponses = {
+    200: SiteSecretRotationEnvelope;
+};
+export type RotateSiteWebhookSecretResponse = RotateSiteWebhookSecretResponses[keyof RotateSiteWebhookSecretResponses];
+export type ViewSiteWebhookSecretData = {
+    body: EmptyObjectRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/secrets/webhook_secret/actions/view';
+};
+export type ViewSiteWebhookSecretErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type ViewSiteWebhookSecretError = ViewSiteWebhookSecretErrors[keyof ViewSiteWebhookSecretErrors];
+export type ViewSiteWebhookSecretResponses = {
+    200: SiteSecretEnvelope;
+};
+export type ViewSiteWebhookSecretResponse = ViewSiteWebhookSecretResponses[keyof ViewSiteWebhookSecretResponses];
+export type GetCollectionPolicyData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/admin/v1/settings/collection-policy';
+};
+export type GetCollectionPolicyErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type GetCollectionPolicyError = GetCollectionPolicyErrors[keyof GetCollectionPolicyErrors];
+export type GetCollectionPolicyResponses = {
+    200: CollectionPolicyEnvelope;
+};
+export type GetCollectionPolicyResponse = GetCollectionPolicyResponses[keyof GetCollectionPolicyResponses];
+export type UpdateCollectionPolicyData = {
+    body: CollectionPolicyRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/admin/v1/settings/collection-policy';
+};
+export type UpdateCollectionPolicyErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type UpdateCollectionPolicyError = UpdateCollectionPolicyErrors[keyof UpdateCollectionPolicyErrors];
+export type UpdateCollectionPolicyResponses = {
+    200: RuntimeSettingsEnvelope;
+};
+export type UpdateCollectionPolicyResponse = UpdateCollectionPolicyResponses[keyof UpdateCollectionPolicyResponses];
 export type ReceivePaymentOrderWebhookWebhookPayload = WebhookPayload;
 export type ReceivePaymentOrderWebhookWebhookRequest = {
     body: ReceivePaymentOrderWebhookWebhookPayload;

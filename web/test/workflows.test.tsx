@@ -325,9 +325,9 @@ describe("concise settings copy", () => {
       <Routes>
         <Route path="/settings/:section" element={<Settings />} />
       </Routes>,
-      "/settings/collection",
+      "/settings/collection-policy",
     );
-    const field = await screen.findByLabelText("收银台有效期（秒）");
+    const field = await screen.findByLabelText("采集有效时限（秒）");
     const user = userEvent.setup();
     expect(screen.queryByText("未保存")).not.toBeInTheDocument();
     await user.clear(field);
@@ -441,9 +441,9 @@ describe("state-changing workflows", () => {
       <Routes>
         <Route path="/settings/:section" element={<Settings />} />
       </Routes>,
-      "/settings/collection",
+      "/settings/collection-policy",
     );
-    const ttl = await screen.findByLabelText("收银台有效期（秒）");
+    const ttl = await screen.findByLabelText("采集有效时限（秒）");
     await user.clear(ttl);
     await user.type(ttl, "450");
     await user.click(screen.getByRole("button", { name: "保存" }));
@@ -455,7 +455,7 @@ describe("state-changing workflows", () => {
     expect(writes).toHaveLength(1);
     expect(await writes[0]!.json()).toMatchObject({
       revision: 3,
-      order_ttl_seconds: 450,
+      maximum_success_age_seconds: 450,
     });
     expect(queryClient.getQueryData(["settings"])).toEqual({ data: settings });
   });

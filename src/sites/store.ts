@@ -25,8 +25,9 @@ interface SecretRow {
 export type SiteErrorCode = "site_not_found" | "site_revision_conflict" | "site_operation_conflict" | "site_has_history" | "site_paused" | "site_order_limit_exceeded" | "site_secret_missing";
 export class SiteError extends Error {
   readonly code: SiteErrorCode;
-  constructor(code: SiteErrorCode, message: string) {
-    super(message); this.name = "SiteError"; this.code = code;
+  readonly retryAfterSeconds: number | undefined;
+  constructor(code: SiteErrorCode, message: string, retryAfterSeconds?: number) {
+    super(message); this.name = "SiteError"; this.code = code; this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -43,12 +44,18 @@ export class SiteStore {
     return this.#database.read(connection => readSite(connection, clientId));
   }
 
-  list(afterClientId: string | null = null, limit = 100): readonly SiteSnapshot[] {
+  list(afterClientId: string | null = null, limit = 100, search = ""): readonly SiteSnapshot[] {
+    if (typeof search !== "string" || search.length > 128) throw new RangeError("website search is invalid");
     if (afterClientId !== null) siteClientIdSchema.parse(afterClientId);
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new RangeError("website page limit is invalid");
     return this.#database.read(connection => (connection.prepare(
-      "SELECT * FROM sites WHERE deleted_at IS NULL AND (? IS NULL OR client_id > ?) ORDER BY client_id LIMIT ?",
-    ).all(afterClientId, afterClientId, limit) as unknown as SiteRow[]).map(mapSite));
+      "SELECT * FROM sites WHERE deleted_at IS NULL AND (? IS NULL OR client_id > ?) AND (? = '' OR instr(lower(client_id), lower(?)) > 0 OR instr(lower(json_extract(configuration, '$.name')), lower(?)) > 0) ORDER BY client_id LIMIT ?",
+    ).all(afterClientId, afterClientId, search, search, search, limit) as unknown as SiteRow[]).map(mapSite));
+  }
+
+  checkOrderAdmission(clientId: string, now = Date.now()): void {
+    siteClientIdSchema.parse(clientId);
+    this.#database.read(connection => { assertSiteCanCreate(connection, clientId, now); });
   }
 
   defaults(): { revision: number; policy: SitePolicy } {
@@ -219,8 +226,8 @@ export function assertSiteCanCreate(connection: DatabaseSync, clientId: string, 
   if (!site.configuration.accepting_orders) throw new SiteError("site_paused", "该网站已暂停接收新订单。");
   const limit = site.configuration.policy.orders.pending_order_limit;
   if (limit !== null) {
-    const row = connection.prepare("SELECT count(*) AS total FROM payment_orders WHERE api_client_id = ? AND checkout_status = 'OPEN' AND payment_status = 'UNPAID' AND expires_at > ?").get(clientId, now) as { total: number | bigint };
-    if (Number(row.total) >= limit) throw new SiteError("site_order_limit_exceeded", "该网站待付款订单已达到上限。");
+    const row = connection.prepare("SELECT count(*) AS total, min(expires_at) AS earliest_expiry FROM payment_orders WHERE api_client_id = ? AND checkout_status = 'OPEN' AND payment_status = 'UNPAID' AND expires_at > ?").get(clientId, now) as { total: number | bigint; earliest_expiry: number | bigint | null };
+    if (Number(row.total) >= limit) throw new SiteError("site_order_limit_exceeded", "该网站待付款订单已达到上限。", row.earliest_expiry === null ? undefined : Math.max(1, Math.ceil((Number(row.earliest_expiry) - now) / 1000)));
   }
   return site.configuration;
 }

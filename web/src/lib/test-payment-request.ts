@@ -20,6 +20,9 @@ const rejectedBeforeCreation: Readonly<Record<string, number>> = {
   reconciliation_not_ready: 503,
   system_not_configured: 503,
   amount_slots_exhausted: 503,
+  site_paused: 503,
+  site_order_limit_exceeded: 503,
+  site_not_found: 404,
 };
 function definitelyRejected(error: unknown) {
   return (
@@ -29,6 +32,7 @@ function definitelyRejected(error: unknown) {
 }
 
 export function useTestPaymentRequest(active: boolean) {
+  const [clientId, setClientId] = useState("");
   const [amount, setAmount] = useState("0.01");
   const [validation, setValidation] = useState<Error | null>(null);
   const [generation, setGeneration] = useState(0);
@@ -138,8 +142,9 @@ export function useTestPaymentRequest(active: boolean) {
     let body = unresolved.current;
     if (!body) {
       try {
+        if (!clientId) throw new Error("请选择业务网站。");
         const cents = parseAmount(amount);
-        body = { amount_cents: cents, test_payment_id: key.current(cents) };
+        body = { api_client_id: clientId, amount_cents: cents, test_payment_id: key.current({ clientId, cents }) };
       } catch (error) {
         setValidation(error as Error);
         return "invalid";
@@ -156,6 +161,12 @@ export function useTestPaymentRequest(active: boolean) {
     setValidation(null);
     create.reset();
   }
+  function editSite(value: string) {
+    if (sending.current || pending || unresolved.current || create.data) return;
+    setClientId(value);
+    setValidation(null);
+    create.reset();
+  }
   function startNew() {
     if (sending.current || pending || unresolved.current || !create.data)
       return;
@@ -166,6 +177,8 @@ export function useTestPaymentRequest(active: boolean) {
     setGeneration((value) => value + 1);
   }
   return {
+    clientId,
+    editSite,
     amount,
     validation,
     generation,

@@ -196,6 +196,8 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
                       label="复制商户订单号"
                     />,
                   ],
+                  ["业务网站", <Link to={"/sites/" + encodeURIComponent(order.api_client_id)}>{order.site_name ?? order.api_client_id}</Link>],
+                  ["客户端 ID", <CopyValue value={order.api_client_id} label="复制客户端 ID" />],
                   ["创建时间", dateTime(order.created_at)],
                   ...(confirmed
                     ? [

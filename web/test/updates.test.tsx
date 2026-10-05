@@ -30,7 +30,7 @@ const isUpdate = (request: Request) =>
   new URL(request.url).pathname === "/api/admin/v1/system/update";
 const mount = (
   handle: (request: Request) => Response | Promise<Response> | undefined,
-  path = "/settings/collection",
+  path = "/settings/collection-policy",
   signedIn = true,
 ) => mountOnboarding({ stage: 4, path, signedIn, handle });
 
@@ -44,7 +44,7 @@ describe("automatic official update checks", () => {
           : request.url.endsWith("/session/login") && rejectLogin
             ? apiError("invalid_credentials", "密码错误", 401)
             : undefined,
-      "/settings/collection",
+      "/settings/collection-policy",
       false,
     );
     const user = userEvent.setup();
@@ -72,7 +72,7 @@ describe("automatic official update checks", () => {
     expect(
       view.fetchMock.mock.calls.filter(([request]) => isUpdate(request)),
     ).toHaveLength(1);
-    expect(await screen.findByLabelText("收银台有效期（秒）")).toBeVisible();
+    expect(await screen.findByLabelText("采集有效时限（秒）")).toBeVisible();
     expect(
       view.writes().every((request) => request.url.endsWith("/session/login")),
     ).toBe(true);
@@ -139,7 +139,7 @@ describe("automatic official update checks", () => {
         : undefined,
     );
     const user = userEvent.setup();
-    const ttl = await screen.findByLabelText("收银台有效期（秒）");
+    const ttl = await screen.findByLabelText("采集有效时限（秒）");
     await user.clear(ttl);
     await user.type(ttl, "450");
     expect(ttl).toHaveValue(450);
@@ -147,7 +147,7 @@ describe("automatic official update checks", () => {
       finish(json({ data: update }));
     });
     await screen.findByRole("status", { name: "官方版本更新" });
-    expect(screen.getByLabelText("收银台有效期（秒）")).toBe(ttl);
+    expect(screen.getByLabelText("采集有效时限（秒）")).toBe(ttl);
     expect(ttl).toHaveValue(450);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
@@ -162,7 +162,7 @@ describe("automatic official update checks", () => {
             : apiError("update_check_unavailable", "更新检查失败", 503)
           : undefined,
       );
-      const ttl = await screen.findByLabelText("收银台有效期（秒）");
+      const ttl = await screen.findByLabelText("采集有效时限（秒）");
       await waitFor(() =>
         expect(queryClient.getQueryState(officialUpdateKey)?.status).toBe(
           "error",
@@ -203,7 +203,7 @@ describe("automatic official update checks", () => {
           })
         : undefined,
     );
-    await screen.findByLabelText("收银台有效期（秒）");
+    await screen.findByLabelText("采集有效时限（秒）");
     await waitFor(() => expect(oldRequest).toBeDefined());
     fireEvent(window, new Event("perpay:session-expired"));
     await screen.findByRole("heading", { name: "登录管理后台" });
@@ -318,7 +318,7 @@ describe("automatic official update checks", () => {
     } }) : undefined);
     const notice = await screen.findByRole("status", { name: "官方版本更新" });
     expect(notice).toHaveTextContent("有新版本 v0.3.0-rc.1（预发布）");
-    expect(screen.getByLabelText("收银台有效期（秒）")).toBeVisible();
+    expect(screen.getByLabelText("采集有效时限（秒）")).toBeVisible();
   });
 
   it.each([

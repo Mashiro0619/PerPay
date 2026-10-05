@@ -4,13 +4,14 @@ import { api, result } from "@/api/client";
 import { useSystemStatus } from "@/features/system-status";
 export function useOverview() {
   const [search, setSearch] = useSearchParams();
+  const clientId = search.get("api_client_id");
   const selected = Number(search.get("range"));
   const range = selected === 7 || selected === 90 ? selected : 30;
   const { status, unavailable, checking } = useSystemStatus();
   const analytics = useQuery({
-    queryKey: ["analytics", range],
+    queryKey: ["analytics", range, clientId],
     queryFn: ({ signal }) =>
-      result(api.getAdministratorSystemAnalytics({ query: { range }, signal })),
+      result(api.getAdministratorSystemAnalytics({ query: { range, ...(clientId ? { api_client_id: clientId } : {}) }, signal })),
     placeholderData: keepPreviousData,
     refetchInterval: 60_000,
   });
@@ -20,9 +21,9 @@ export function useOverview() {
     refetchOnWindowFocus: false,
   });
   const orders = useQuery({
-    queryKey: ["orders", "recent"],
+    queryKey: ["orders", "recent", clientId],
     queryFn: ({ signal }) =>
-      result(api.listAdministratorOrders({ query: { limit: 5 }, signal })),
+      result(api.listAdministratorOrders({ query: { limit: 5, ...(clientId ? { api_client_id: clientId } : {}) }, signal })),
   });
   const work = useQuery({
     queryKey: ["work-items", "recent"],
@@ -30,6 +31,12 @@ export function useOverview() {
       result(api.listAdministratorWorkItems({ query: { limit: 4 }, signal })),
   });
   return {
+    clientId,
+    changeSite: (value: string) => {
+      const next = new URLSearchParams(search);
+      if (value) next.set("api_client_id", value); else next.delete("api_client_id");
+      setSearch(next, { replace: true });
+    },
     range,
     analytics,
     settings,
@@ -39,8 +46,11 @@ export function useOverview() {
     unavailable,
     checking,
     changeRange: (value: string) => {
-      if (["7", "30", "90"].includes(value))
-        setSearch({ range: value }, { replace: true });
+      if (["7", "30", "90"].includes(value)) {
+        const next = new URLSearchParams(search);
+        next.set("range", value);
+        setSearch(next, { replace: true });
+      }
     },
   };
 }

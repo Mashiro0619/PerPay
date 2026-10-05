@@ -1,3 +1,4 @@
+import { checkoutHelpUrl } from "./checkout-help.ts";
 import type { CheckoutVerification } from "./checkout-verification.ts";
 export type CheckoutViewState =
   | "UNPAID"
@@ -10,6 +11,7 @@ export type CheckoutViewState =
   | "UNAVAILABLE";
 export interface CheckoutViewOrder {
   verification?: CheckoutVerification;
+  display?: { name: string; help_url: string | null; show_product_name: boolean };
   merchant_order_no: string;
   requested_amount_cents: number;
   currency: "CNY";
@@ -169,6 +171,7 @@ export function parseCheckoutPayload(payload: unknown): CheckoutViewOrder {
     ...(value.verification === undefined
       ? {}
       : { verification: parseVerification(value.verification) }),
+    ...(value.display === undefined ? {} : { display: parseDisplay(value.display) }),
     merchant_order_no: value.merchant_order_no,
     product_name: value.product_name,
     currency: "CNY",
@@ -216,4 +219,12 @@ function parseVerification(value: unknown): CheckoutVerification {
     requested_at: item.requested_at,
     retry_after_seconds: Number(item.retry_after_seconds),
   };
+}
+
+function parseDisplay(value: unknown): NonNullable<CheckoutViewOrder["display"]> {
+  const item = record(value);
+  if (typeof item.name !== "string" || !item.name || item.name.length > 128 || typeof item.show_product_name !== "boolean" || (item.help_url !== null && typeof item.help_url !== "string")) {
+    throw new TypeError("checkout display response is invalid");
+  }
+  return { name: item.name, help_url: checkoutHelpUrl(item.help_url), show_product_name: item.show_product_name };
 }

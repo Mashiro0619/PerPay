@@ -9,12 +9,13 @@ import { SettingsEditor } from "../src/components/SettingsForms";
 import { json } from "./fixtures";
 import { configuredThrough } from "./onboarding-fixture";
 
-function renderEditor(settings: RuntimeSettings, onSaved = vi.fn()) {
+function renderEditor(settings: RuntimeSettings, onSaved = vi.fn(), guided = false) {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
         <SettingsEditor
-          section="provider"
+          section="collection-policy"
+          guided={guided}
           settings={settings}
           onSaved={onSaved}
         />
@@ -49,13 +50,9 @@ describe("adaptive ledger scan settings", () => {
     const fetchMock = vi.fn(async (_request: Request) => json({ data: saved }));
     vi.stubGlobal("fetch", fetchMock);
     const onSaved = vi.fn();
-    renderEditor(settings, onSaved);
-    fireEvent.change(screen.getByLabelText("应用 ID（App ID）"), {
-      target: { value: "new-provider-app" },
-    });
-    fireEvent.change(screen.getByLabelText("支付宝公钥"), {
-      target: { value: "synthetic-platform-public-key" },
-    });
+    renderEditor(settings, onSaved, true);
+    expect(screen.queryByLabelText("应用 ID（App ID）")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("支付宝公钥")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "高级设置" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("常规采集间隔（秒）")).toBeVisible();
     expect(screen.getByLabelText("活跃采集间隔（秒）")).toBeVisible();
@@ -84,8 +81,8 @@ describe("adaptive ledger scan settings", () => {
     const saved = {
       ...settings,
       revision: settings.revision + 1,
-      provider: {
-        ...settings.provider!,
+      collection_policy: {
+        ...settings.collection_policy!,
         scan_interval_seconds: 30,
         active_scan_interval_seconds: 5,
       minimum_scan_interval_seconds: 5,
@@ -108,7 +105,7 @@ describe("adaptive ledger scan settings", () => {
     const request = fetchMock.mock.calls[0]![0];
     expect(request.method).toBe("PUT");
     expect(new URL(request.url).pathname).toBe(
-      "/api/admin/v1/settings/provider",
+      "/api/admin/v1/settings/collection-policy",
     );
     expect(await request.json()).toMatchObject({
       revision: settings.revision,

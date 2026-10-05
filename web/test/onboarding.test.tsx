@@ -142,12 +142,12 @@ describe("first collection onboarding", () => {
       expect(view.writes()).toHaveLength(0);
     },
   );
-  it("shows provider credentials and collection parameters together", async () => {
+  it("shows application credentials without collection policy fields", async () => {
     const view = mountOnboarding({ stage: 1 });
     expect(await screen.findByLabelText("应用 ID（App ID）")).toBeVisible();
     expect(screen.getByLabelText("支付宝公钥")).toBeVisible();
     expect(screen.getByLabelText("支付宝环境")).toBeVisible();
-    expect(screen.getByLabelText("请求超时（秒）")).toBeVisible();
+    expect(screen.queryByLabelText("请求超时（秒）")).not.toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "支付宝应用管理" }),
     ).toHaveAttribute("href", "https://open.alipay.com/develop/manage");
@@ -232,7 +232,7 @@ describe("first collection onboarding", () => {
     await user.click(screen.getByRole("button", { name: "下一步" }));
     await pathIs(view, "provider");
   });
-  it("saves provider defaults before advancing without a discard prompt", async () => {
+  it("saves application settings without collection policy before advancing", async () => {
     const consoleError = vi.spyOn(console, "error");
     const view = mountOnboarding({ stage: 1 });
     await screen.findByLabelText("应用 ID（App ID）");
@@ -241,7 +241,7 @@ describe("first collection onboarding", () => {
     expect(
       screen.queryByRole("button", { name: "高级设置" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByLabelText("常规采集间隔（秒）")).toBeVisible();
+    expect(screen.queryByLabelText("常规采集间隔（秒）")).not.toBeInTheDocument();
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "保存并继续" }));
@@ -250,11 +250,6 @@ describe("first collection onboarding", () => {
     expect(await view.writes()[0]!.clone().json()).toMatchObject({
       revision: 3,
       app_id: "my-app",
-      timeout_milliseconds: 8000,
-      scan_interval_seconds: 60,
-      active_scan_interval_seconds: 8,
-      safety_lag_seconds: 10,
-      maximum_success_age_seconds: 120,
     });
     const unload = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(unload);

@@ -74,6 +74,7 @@ export function DataTable({
           >
             {order.merchant_order_no}
           </span>
+          <Link to={"/sites/" + encodeURIComponent(order.api_client_id)} className="text-xs text-muted-foreground break-all hover:underline">{order.site_name ? order.site_name + " · " : ""}{order.api_client_id}</Link>
           {context.showInSummary("created_at") && (
             <time
               className="text-xs text-muted-foreground"

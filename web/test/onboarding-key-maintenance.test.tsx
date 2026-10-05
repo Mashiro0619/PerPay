@@ -118,12 +118,12 @@ describe("non-blocking pending application keys", () => {
     await user.click(
       await screen.findByRole("link", { name: "暂不启用，继续配置" }),
     );
-    const orderTtl = await screen.findByLabelText("收银台有效期（秒）");
+    const orderTtl = await screen.findByLabelText("支付宝经营码内容");
     expect(screen.getByText("新应用公钥尚未启用")).toBeVisible();
-    fireEvent.change(orderTtl, { target: { value: "1800" } });
+    fireEvent.change(orderTtl, { target: { value: "https://qr.alipay.com/updated-during-key-change" } });
     await user.click(screen.getByRole("button", { name: "保存并继续" }));
     await screen.findByRole("heading", { name: "通知与备份", level: 2 });
-    expect(view.saved.collection!.order_ttl_seconds).toBe(1800);
+    expect(view.saved.collection!.code_payload).toBe("https://qr.alipay.com/updated-during-key-change");
     expect(view.saved.pending_application_key).toEqual(pending);
     expect(view.saved.application_public_key).toBe(currentKey);
     await user.click(screen.getByRole("link", { name: /通知与备份/ }));
@@ -154,7 +154,7 @@ describe("non-blocking pending application keys", () => {
       platform_public_key: "latest-platform-key",
     });
     expect(view.saved.pending_application_key).toBeNull();
-    expect(view.saved.collection!.order_ttl_seconds).toBe(1800);
+    expect(view.saved.collection!.code_payload).toBe("https://qr.alipay.com/updated-during-key-change");
     expect(view.saved.backup.interval_seconds).toBe(172800);
     expect(screen.queryByText("新应用公钥尚未启用")).not.toBeInTheDocument();
   });
@@ -162,12 +162,12 @@ describe("non-blocking pending application keys", () => {
   it("preserves a later-step draft when cancelling the warning's navigation link", async () => {
     const view = mountOnboarding({ pendingKey: true, path: collectionPath });
     const user = userEvent.setup();
-    const input = await screen.findByLabelText("收银台有效期（秒）");
-    fireEvent.change(input, { target: { value: "1800" } });
+    const input = await screen.findByLabelText("支付宝经营码内容");
+    fireEvent.change(input, { target: { value: "https://qr.alipay.com/updated-during-key-change" } });
     await user.click(screen.getByRole("link", { name: "前往验证启用" }));
     await user.click(await screen.findByRole("button", { name: "继续编辑" }));
     expect(view.router.state.location.pathname).toBe(collectionPath);
-    expect(input).toHaveValue(1800);
+    expect(input).toHaveValue("https://qr.alipay.com/updated-during-key-change");
     expect(view.writes()).toHaveLength(0);
   });
 

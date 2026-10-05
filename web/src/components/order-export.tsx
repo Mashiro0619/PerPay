@@ -16,15 +16,17 @@ export function OrderExport({
   query,
   payment,
   checkout,
+  clientId = null,
 }: {
   query: ReturnType<typeof useListQuery<OrderSort>>["apiQuery"];
   payment: PaymentStatus | undefined;
   checkout: CheckoutStatus | undefined;
+  clientId?: string | null;
 }) {
   const active = useRef<AbortController | null>(null);
   const [pending, setPending] = useState(false),
     [error, setError] = useState<Error | null>(null);
-  const scope = JSON.stringify([query, payment, checkout]);
+  const scope = JSON.stringify([query, payment, checkout, clientId]);
   useEffect(() => {
     setError(null);
     setPending(false);
@@ -56,6 +58,7 @@ export function OrderExport({
           headers: { Origin: window.location.origin },
           body: {
             ...query,
+            ...(clientId ? { api_client_id: clientId } : {}),
             created_from: query.created_from!,
             created_to: query.created_to!,
             ...(payment ? { payment_status: payment } : {}),

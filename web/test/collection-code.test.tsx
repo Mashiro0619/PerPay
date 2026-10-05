@@ -139,14 +139,8 @@ describe("collection QR image upload", () => {
       const { container, fetchMock } = mount();
       const field = await screen.findByLabelText("支付宝经营码内容");
       const user = userEvent.setup();
-      const ttl = screen.getByLabelText("收银台有效期（秒）");
-      await user.clear(ttl);
-      await user.type(ttl, "450");
-      const cooldown = screen.getByLabelText("金额复用冷却（秒）");
-      expect(cooldown).toBeVisible();
-      expect(cooldown).toHaveValue(600);
-      await user.clear(cooldown);
-      await user.type(cooldown, "1200");
+      expect(screen.queryByLabelText("收银台有效期（秒）")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("金额复用冷却（秒）")).not.toBeInTheDocument();
       if (source === "picker")
         await user.upload(
           screen.getByLabelText("选择经营码二维码图片"),
@@ -158,22 +152,20 @@ describe("collection QR image upload", () => {
         );
       expect(await screen.findByText("已识别")).toBeVisible();
       expect(field).toHaveValue(recognizedLink);
-      expect(ttl).toHaveValue(450);
       expect(screen.getByText("未保存")).toBeVisible();
       expect(writes(fetchMock)).toHaveLength(0);
       expect(container.querySelector("style")).toBeNull();
-      const unload = new Event("beforeunload", { cancelable: true });
-      window.dispatchEvent(unload);
-      expect(unload.defaultPrevented).toBe(true);
+      await waitFor(() => {
+        const unload = new Event("beforeunload", { cancelable: true });
+        window.dispatchEvent(unload);
+        expect(unload.defaultPrevented).toBe(true);
+      });
       await user.click(screen.getByRole("button", { name: "保存" }));
       expect(await screen.findByText(/已保存/)).toBeVisible();
       expect(writes(fetchMock)).toHaveLength(1);
       expect(await writes(fetchMock)[0]!.json()).toEqual({
         revision: 3,
         code_payload: recognizedLink,
-        order_ttl_seconds: 450,
-        amount_offset_maximum_cents: 99,
-        amount_reuse_cooldown_seconds: 1200,
       });
       expect(screen.getByLabelText("支付宝经营码内容")).toHaveValue(
         recognizedLink,
@@ -497,8 +489,8 @@ describe("collection QR image upload", () => {
       expect(screen.queryByText("未保存")).not.toBeInTheDocument();
       expect(decodeQrImage).toHaveBeenCalledOnce();
       expect(writes(fetchMock)).toHaveLength(0);
-      fireEvent.change(screen.getByLabelText("收银台有效期（秒）"), {
-        target: { value: "450" },
+      fireEvent.change(screen.getByLabelText("支付宝经营码内容"), {
+        target: { value: "https://qr.alipay.com/manual-replacement" },
       });
       expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
     },
@@ -528,8 +520,8 @@ describe("collection QR image upload", () => {
       );
       expect(field).toHaveValue(settings.collection!.code_payload);
       expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
-      fireEvent.change(screen.getByLabelText("收银台有效期（秒）"), {
-        target: { value: "450" },
+      fireEvent.change(screen.getByLabelText("支付宝经营码内容"), {
+        target: { value: "https://qr.alipay.com/manual-replacement" },
       });
       expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
     },
@@ -597,8 +589,8 @@ describe("collection QR image upload", () => {
       dataTransfer: { types: ["Files"], files: [] },
     });
     expect(zone).toHaveClass("bg-accent");
-    fireEvent.change(screen.getByLabelText("收银台有效期（秒）"), {
-      target: { value: "450" },
+    fireEvent.change(screen.getByLabelText("支付宝经营码内容"), {
+      target: { value: "https://qr.alipay.com/manual-replacement" },
     });
     await userEvent.setup().click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(writes(fetchMock)).toHaveLength(1));
@@ -615,7 +607,7 @@ describe("collection QR image upload", () => {
     expect(picker).toBeDisabled();
     fireEvent.change(picker, { target: { files: [imageFile()] } });
     expect(decodeQrImage).not.toHaveBeenCalled();
-    expect(field).toHaveValue(settings.collection!.code_payload);
+    expect(field).toHaveValue("https://qr.alipay.com/manual-replacement");
     await act(async () => {
       finish(json({ data: { ...settings, revision: 4 } }));
     });

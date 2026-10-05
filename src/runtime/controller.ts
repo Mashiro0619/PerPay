@@ -1,3 +1,5 @@
+import { SiteWebhookProcessor } from "../notifications/site-processor.ts";
+import type { SiteStore } from "../sites/store.ts";
 import { CheckoutVerifier } from "./checkout-verification.ts";
 import { ledgerScanGate } from "../ledger/scan-gate.ts";
 import type { AppDatabase } from "../database/database.ts";
@@ -56,6 +58,7 @@ interface RuntimeControllerOptions {
   readonly ledger: LedgerStore;
   readonly reconciliation: ReconciliationStore;
   readonly webhooks: WebhookStore;
+  readonly sites?: SiteStore | null;
   readonly clock?: (() => number) | undefined;
 }
 
@@ -90,6 +93,7 @@ export class RuntimeController {
   readonly #ledger: LedgerStore;
   readonly #reconciliation: ReconciliationStore;
   readonly #webhooks: WebhookStore;
+  readonly #sites: SiteStore | null;
   readonly #clock: () => number;
   readonly #checkoutVerifier: CheckoutVerifier;
   #ledgerScheduler: LedgerIngestScheduler | null = null;
@@ -111,6 +115,7 @@ export class RuntimeController {
     this.#ledger = options.ledger;
     this.#reconciliation = options.reconciliation;
     this.#webhooks = options.webhooks;
+    this.#sites = options.sites ?? null;
     this.#clock = options.clock ?? (() => Date.now());
     this.#checkoutVerifier = new CheckoutVerifier(this.#clock);
   }
@@ -310,10 +315,11 @@ export class RuntimeController {
         (this.#ledgerScheduler === null || this.#reconciliationScheduler === null)) ||
       (!isPaymentConfigured(snapshot) &&
         (this.#ledgerScheduler !== null || this.#reconciliationScheduler !== null));
+    const webhookConfigured = this.#sites !== null || isWebhookConfigured(snapshot);
     const webhookNeedsReplacement = previous === null ||
-      !sameWebhookConfiguration(previous, snapshot) ||
-      (isWebhookConfigured(snapshot) && this.#webhookScheduler === null) ||
-      (!isWebhookConfigured(snapshot) && this.#webhookScheduler !== null);
+      (this.#sites === null && !sameWebhookConfiguration(previous, snapshot)) ||
+      (webhookConfigured && this.#webhookScheduler === null) ||
+      (!webhookConfigured && this.#webhookScheduler !== null);
     if (paymentNeedsReplacement) this.#transitioning = true;
 
     try {
@@ -455,7 +461,7 @@ export class RuntimeController {
   }
 
   async #installWebhookScheduler(snapshot: RuntimeSettingsSnapshot): Promise<void> {
-    if (!this.#started || this.#stopped || !isWebhookConfigured(snapshot)) return;
+    if (!this.#started || this.#stopped || (this.#sites === null && !isWebhookConfigured(snapshot))) return;
     const webhook = this.#createWebhookScheduler(snapshot);
     this.#webhookScheduler = webhook;
     try {
@@ -584,6 +590,10 @@ export class RuntimeController {
   }
 
   #createWebhookScheduler(snapshot: RuntimeSettingsSnapshot): WebhookScheduler {
+    let service: WebhookDeliveryService | SiteWebhookProcessor;
+    if (this.#sites) {
+      service = new SiteWebhookProcessor({ sites: this.#sites, webhooks: this.#webhooks, clock: this.#clock });
+    } else {
     if (!isWebhookConfigured(snapshot)) {
       throw new Error("webhook runtime was started without complete settings");
     }
@@ -595,7 +605,7 @@ export class RuntimeController {
     if (key.secretFingerprint !== config.signingKeyFingerprint) {
       throw new Error("webhook signing key synchronization failed");
     }
-    const service = new WebhookDeliveryService({
+    service = new WebhookDeliveryService({
       store: this.#webhooks,
       config: {
         secret: config.secret,
@@ -607,6 +617,7 @@ export class RuntimeController {
       transport: new NodeWebhookTransport(config.allowedOrigin),
       clock: this.#clock,
     });
+    }
     return new WebhookScheduler({
       service,
       store: this.#webhooks,

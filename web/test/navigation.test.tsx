@@ -100,13 +100,13 @@ function mount(
     if (request.method === "PUT") {
       if (options.conflict)
         return apiError("settings_revision_conflict", "stale revision");
-      const body = (await request.json()) as { order_ttl_seconds: number };
+      const body = (await request.json()) as { maximum_success_age_seconds: number };
       saved = {
         ...saved,
         revision: saved.revision + 1,
-        collection: {
-          ...saved.collection!,
-          order_ttl_seconds: body.order_ttl_seconds,
+        collection_policy: {
+          ...saved.collection_policy!,
+          maximum_success_age_seconds: body.maximum_success_age_seconds,
         },
       };
       return json({ data: saved });
@@ -115,7 +115,7 @@ function mount(
   });
   vi.stubGlobal("fetch", fetchMock);
   const router = createMemoryRouter(appRoutes, {
-    initialEntries: ["/orders", options.path ?? "/settings/collection"],
+    initialEntries: ["/orders", options.path ?? "/settings/collection-policy"],
   });
   const view = render(
     <QueryClientProvider client={queryClient}>
@@ -127,7 +127,7 @@ function mount(
 
 async function edit() {
   const user = userEvent.setup();
-  const field = await screen.findByLabelText("收银台有效期（秒）");
+  const field = await screen.findByLabelText("采集有效时限（秒）");
   await user.clear(field);
   await user.type(field, "450");
   return { user, field };
@@ -256,10 +256,10 @@ describe("navigation and draft protection", () => {
       screen.queryByRole("combobox", { name: "设置分类" }),
     ).not.toBeInTheDocument();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "经营码与订单" }));
-    await screen.findByLabelText("收银台有效期（秒）");
-    expect(view.router.state.location.pathname).toBe("/settings/collection");
-    expect(screen.getByRole("tab", { name: "经营码与订单" })).toHaveAttribute(
+    await user.click(screen.getByRole("tab", { name: "采集设置" }));
+    await screen.findByLabelText("采集有效时限（秒）");
+    expect(view.router.state.location.pathname).toBe("/settings/collection-policy");
+    expect(screen.getByRole("tab", { name: "采集设置" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
@@ -281,9 +281,9 @@ describe("navigation and draft protection", () => {
       "overflow-hidden",
     );
     await user.click(screen.getByRole("button", { name: "继续编辑" }));
-    expect(view.router.state.location.pathname).toBe("/settings/collection");
+    expect(view.router.state.location.pathname).toBe("/settings/collection-policy");
     expect(field).toHaveValue(450);
-    expect(screen.getByRole("tab", { name: "经营码与订单" })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: "采集设置" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
@@ -296,7 +296,7 @@ describe("navigation and draft protection", () => {
   it("moves tab focus with arrows without discarding drafts until Enter activates", async () => {
     const view = mount({ mobile: true });
     const { user, field } = await edit();
-    const selected = screen.getByRole("tab", { name: "经营码与订单" });
+    const selected = screen.getByRole("tab", { name: "采集设置" });
     selected.focus();
     await user.keyboard("{ArrowRight}");
     const notifications = screen.getByRole("tab", { name: "业务通知" });
@@ -307,7 +307,7 @@ describe("navigation and draft protection", () => {
     await user.keyboard("{Enter}");
     expect(await screen.findByRole("alertdialog")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "继续编辑" }));
-    expect(view.router.state.location.pathname).toBe("/settings/collection");
+    expect(view.router.state.location.pathname).toBe("/settings/collection-policy");
     expect(selected).toHaveAttribute("aria-selected", "true");
     expect(field).toHaveValue(450);
   });
@@ -328,7 +328,7 @@ describe("navigation and draft protection", () => {
   });
   it("uses the official account menu without duplicate branding or palette controls", async () => {
     const { container, fetchMock } = mount();
-    await screen.findByLabelText("收银台有效期（秒）");
+    await screen.findByLabelText("采集有效时限（秒）");
     const user = userEvent.setup();
     expect(screen.getByRole("link", { name: "PerPay" })).toBeVisible();
     expect(
@@ -376,6 +376,7 @@ describe("navigation and draft protection", () => {
     const previous = queryClient.getQueryData<{ data: SystemAnalytics }>([
       "analytics",
       30,
+      null,
     ])!;
     const originalFetch = fetchMock.getMockImplementation()!;
     let finishRange: (response: Response) => void = () => {};
@@ -421,6 +422,7 @@ describe("navigation and draft protection", () => {
     const previous = queryClient.getQueryData<{ data: SystemAnalytics }>([
       "analytics",
       30,
+      null,
     ])!;
     const originalFetch = fetchMock.getMockImplementation()!;
     const pending = new Map<string, (response: Response) => void>();
@@ -478,7 +480,7 @@ describe("navigation and draft protection", () => {
     expect(
       await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" }),
     ).toBeVisible();
-    expect(router.state.location.pathname).toBe("/settings/collection");
+    expect(router.state.location.pathname).toBe("/settings/collection-policy");
     await user.click(screen.getByRole("button", { name: "继续编辑" }));
     expect(field).toHaveValue(450);
     await user.click(screen.getByRole("link", { name: "订单" }));
@@ -500,7 +502,7 @@ describe("navigation and draft protection", () => {
     ).toBeVisible();
     await user.click(screen.getByRole("button", { name: "继续编辑" }));
     expect(field).toHaveValue(450);
-    expect(router.state.location.pathname).toBe("/settings/collection");
+    expect(router.state.location.pathname).toBe("/settings/collection-policy");
   });
 
   it("waits for discard confirmation before logout and clears protected data on success", async () => {
@@ -555,7 +557,7 @@ describe("navigation and draft protection", () => {
     await user.click(screen.getByRole("button", { name: "刷新" }));
     await user.click(screen.getByRole("button", { name: "放弃修改并继续" }));
     await waitFor(() =>
-      expect(screen.getByLabelText("收银台有效期（秒）")).toHaveValue(300),
+      expect(screen.getByLabelText("采集有效时限（秒）")).toHaveValue(300),
     );
     expect(unloadIsBlocked()).toBe(false);
   });
@@ -583,7 +585,7 @@ describe("navigation and draft protection", () => {
 
   it("uses the official mobile sidebar and restores its trigger on Escape", async () => {
     mount({ mobile: true });
-    await screen.findByLabelText("收银台有效期（秒）");
+    await screen.findByLabelText("采集有效时限（秒）");
     const user = userEvent.setup();
     const trigger = screen.getByRole("button", { name: "切换导航" });
     await user.click(trigger);
@@ -657,7 +659,7 @@ describe("page actions in the shared header", () => {
     "places settings actions before appearance without duplicates (mobile: %s)",
     async (mobile) => {
       const { container, router } = mount({ mobile, configured: true });
-      await screen.findByLabelText("收银台有效期（秒）");
+      await screen.findByLabelText("采集有效时限（秒）");
       const header = container.querySelector("header")!;
       const wizard = within(header).getByRole("link", { name: "配置向导" });
       const refresh = within(header).getByRole("button", { name: "刷新" });
@@ -715,7 +717,7 @@ describe("page actions in the shared header", () => {
     await waitFor(() => expect(refresh).toHaveFocus());
     await user.click(screen.getByRole("link", { name: "配置向导" }));
     await user.click(await screen.findByRole("button", { name: "继续编辑" }));
-    expect(router.state.location.pathname).toBe("/settings/collection");
+    expect(router.state.location.pathname).toBe("/settings/collection-policy");
     expect(field).toHaveValue(450);
     expect(unloadIsBlocked()).toBe(true);
   });
@@ -761,7 +763,7 @@ describe("shared content width navigation", () => {
     expect(control.compareDocumentPosition(appearance) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await user.click(control);
     expect(container.querySelector("[data-content-width]")).toHaveAttribute("data-content-width", "full");
-    expect(screen.getByLabelText("收银台有效期（秒）")).toBe(field);
+    expect(screen.getByLabelText("采集有效时限（秒）")).toBe(field);
     expect(field).toHaveValue(450);
     expect(unloadIsBlocked()).toBe(true);
     expect(router.state.location).toBe(location);

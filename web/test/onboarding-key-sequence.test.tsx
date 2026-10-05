@@ -164,7 +164,7 @@ describe("sequential application-key onboarding", () => {
       "readonly",
     );
     expect(screen.getByLabelText("支付宝公钥")).toBeRequired();
-    expect(screen.getByLabelText("请求超时（秒）")).toBeVisible();
+    expect(screen.queryByLabelText("请求超时（秒）")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存并继续" })).toBeVisible();
     expect(
       screen.queryByRole("button", { name: actionLabel }),

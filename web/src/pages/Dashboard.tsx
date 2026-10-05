@@ -1,3 +1,4 @@
+import { SitePicker } from "@/components/site-picker";
 import { SystemStatusBoundary } from "@/features/system-status";
 import {
   AlertCircle,
@@ -54,6 +55,8 @@ export default function Dashboard() {
 }
 function DashboardContent() {
   const {
+    clientId,
+    changeSite,
     range,
     analytics,
     settings,
@@ -102,6 +105,8 @@ function DashboardContent() {
       className="flex w-full min-w-0 flex-col gap-4"
       data-overview-layout
     >
+      <SitePicker value={clientId ?? ""} onChange={changeSite} />
+      {clientId && <Button variant="ghost" onClick={() => changeSite("")}>查看全部网站</Button>}
       {needsStatus && (
         <div className="flex flex-col gap-4">
           <ErrorNotice
@@ -184,7 +189,7 @@ function DashboardContent() {
         <Card size="sm">
           <CardHeader>
             <CardTitle role="heading" aria-level={2}>
-              待处理
+              {clientId ? "全局待处理（不按网站筛选）" : "待处理"}
             </CardTitle>
             <CardAction>
               <Link
@@ -242,7 +247,7 @@ function DashboardContent() {
             </CardTitle>
             <CardAction>
               <Link
-                to="/orders"
+                to={clientId ? "/orders?api_client_id=" + encodeURIComponent(clientId) : "/orders"}
                 className={buttonVariants({ variant: "ghost", size: "sm" })}
               >
                 全部订单

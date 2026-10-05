@@ -1,3 +1,4 @@
+import { SitePicker } from "@/components/site-picker";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { RefreshButton } from "@/components/refresh-button";
 import { CreatedDateFilter } from "@/components/created-date-filter";
@@ -50,6 +51,12 @@ export default function Notifications() {
   const [search, setSearch] = useSearchParams();
   const status =
     statuses.find((item) => item.value === search.get("status"))?.value ?? "";
+  function changeSite(value: string) {
+    const next = new URLSearchParams(search);
+    if (value) next.set("api_client_id", value); else next.delete("api_client_id");
+    next.delete("cursor"); next.delete("page");
+    setSearch(next, { replace: true });
+  }
   function changeStatus(value: string | null) {
     const next = new URLSearchParams(search);
     if (value) next.set("status", value);
@@ -60,6 +67,8 @@ export default function Notifications() {
   }
   return (
     <div className="flex min-w-0 flex-col gap-3">
+      <SitePicker value={search.get("api_client_id") ?? ""} onChange={changeSite} />
+      {search.get("api_client_id") && <Button variant="ghost" onClick={() => changeSite("")}>查看全部网站</Button>}
       <ToggleGroup
         variant="outline"
         value={[status]}
@@ -110,6 +119,8 @@ function DeliveryPage({
   status: WebhookDeliveryStatus | undefined;
   filters: ReactNode;
 }) {
+  const [search] = useSearchParams();
+  const clientId = search.get("api_client_id");
   const pagination = useCursor();
   const listQuery = useListQuery(
     DELIVERY_SORT_FIELDS,
@@ -118,7 +129,7 @@ function DeliveryPage({
     true,
   );
   const deliveries = useQuery({
-    queryKey: ["notifications", status, pagination.cursor, listQuery.scope],
+    queryKey: ["notifications", status, pagination.cursor, listQuery.scope, clientId],
     queryFn: ({ signal }) =>
       result(
         api.listWebhookDeliveries({
@@ -126,6 +137,7 @@ function DeliveryPage({
           query: {
             limit: 20,
             ...listQuery.apiQuery,
+            ...(clientId ? { api_client_id: clientId } : {}),
             ...(status ? { status } : {}),
             ...(pagination.cursor ? { cursor: pagination.cursor } : {}),
           },

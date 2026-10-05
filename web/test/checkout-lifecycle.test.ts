@@ -1124,3 +1124,20 @@ describe("manual verification versus background refresh", () => {
     expect(view.getSnapshot().feedback).toContain("核实仍可能继续");
   });
 });
+
+it("refreshes website branding and clears a removed help link without changing payment instructions", async () => {
+  const first = initial({ systemName: "原网站", helpUrl: "https://shop.example.com/help", showProductName: true });
+  const updated = { ...first.checkout!, display: { name: "新网站", help_url: null, show_product_name: false } };
+  vi.stubGlobal("fetch", vi.fn(async () => response(updated)));
+  render(createElement(CheckoutApp, { initial: first }));
+  await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
+  expect(document.title).toContain("新网站");
+  expect(screen.queryByText("测试商品")).not.toBeInTheDocument();
+  expect(document.querySelector('a[href="https://shop.example.com/help"]')).toBeNull();
+  expect(screen.getAllByText("¥10.01").length).toBeGreaterThan(0);
+});
+it("rejects malformed dynamic display data and never accepts unsafe help navigation", () => {
+  const order = initial().checkout!;
+  expect(() => parseCheckoutPayload({ data: { ...order, display: { name: "站点", help_url: null, show_product_name: "false" } } })).toThrow();
+  expect(parseCheckoutPayload({ data: { ...order, display: { name: "站点", help_url: "javascript:alert(1)", show_product_name: true } } }).display?.help_url).toBeNull();
+});

@@ -1,6 +1,8 @@
 import type { AppDatabase } from "../database/database.ts";
 export interface OrderIdentitySummary {
   order_id: string;
+  api_client_id: string;
+  site_name: string | null;
   merchant_order_no: string;
   product_name: string;
   requested_amount_cents: number;
@@ -16,10 +18,11 @@ export function adminOrderIdentities(
   const ids = [...new Set(orderIds)];
   if (!ids.length) return new Map();
   return database.read((db) => {
+    const modern = db.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'sites'").get() !== undefined;
     const placeholders = ids.map(() => "?").join(",");
     const rows = db
       .prepare(
-        `SELECT o.order_id, o.merchant_order_no, o.product_name,
+        `SELECT o.order_id, o.api_client_id, ${modern ? "(SELECT json_extract(configuration, '$.name') FROM sites WHERE client_id = o.api_client_id)" : "NULL"} AS site_name, o.merchant_order_no, o.product_name,
       o.requested_amount_cents, o.payable_amount_cents, o.received_amount_cents,
       (SELECT MAX(e.occurred_at) FROM order_events e WHERE e.order_id=o.order_id AND e.event_type='PAYMENT_CONFIRMED') AS confirmed
       FROM payment_orders o WHERE o.order_id IN (${placeholders})`,

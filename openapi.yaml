@@ -245,6 +245,11 @@ paths:
       security:
         - AdminSessionCookie: []
       parameters:
+        - name: api_client_id
+          in: query
+          required: false
+          description: Restrict results to this website; pagination is bound to the filter.
+          schema: { type: string, minLength: 1, maxLength: 64 }
         - $ref: '#/components/parameters/RequestId'
         - name: range
           in: query
@@ -602,47 +607,57 @@ paths:
         '503': { $ref: '#/components/responses/Unavailable' }
   /api/admin/v1/settings/collection:
     put:
-      tags: [Admin Settings]
+      tags:
+        - Admin Settings
       operationId: updateCollectionSettings
-      summary: Save the collection code and unique-amount policy
-      description: >-
-        The supplied revision must equal the current settings revision. This payment-affecting
-        mutation pauses payment readiness while the runtime is replaced. All responses use
-        `Cache-Control: no-store`.
+      summary: Save the collection QR code only
+      description: "The supplied revision must equal the current settings revision. This payment-affecting mutation pauses payment readiness while the runtime is replaced. All responses use `Cache-Control: no-store`."
       x-perpay-requires-same-origin: true
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
           AdminCsrfHeader: []
       parameters:
-        - $ref: '#/components/parameters/RequestId'
-        - $ref: '#/components/parameters/AdminOrigin'
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/CollectionSettingsRequest' }
+            schema:
+              $ref: "#/components/schemas/CollectionSettingsRequest"
       responses:
-        '200':
+        "200":
           description: Collection settings saved and runtime settings returned
           headers:
-            Cache-Control: { $ref: '#/components/headers/NoStore' }
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/RuntimeSettingsEnvelope' }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/AdminUnauthorized' }
-        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
-        '409': { $ref: '#/components/responses/SettingsConflict' }
-        '413': { $ref: '#/components/responses/TooLarge' }
-        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
-        '422': { $ref: '#/components/responses/SettingsValidationFailed' }
-        '503': { $ref: '#/components/responses/SettingsUnavailable' }
+              schema:
+                $ref: "#/components/schemas/RuntimeSettingsEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
   /api/admin/v1/settings/provider:
     put:
-      tags: [Admin Settings]
+      tags:
+        - Admin Settings
       operationId: updateProviderSettings
-      summary: Save provider application credentials and collection timing
+      summary: Save Alipay Open Platform application settings only
       description: |
         The supplied revision must equal the current settings revision. During initial setup the
         application private key may be omitted after the dedicated generation action; the staged
@@ -659,29 +674,40 @@ paths:
           AdminCsrfCookie: []
           AdminCsrfHeader: []
       parameters:
-        - $ref: '#/components/parameters/RequestId'
-        - $ref: '#/components/parameters/AdminOrigin'
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/ProviderSettingsRequest' }
+            schema:
+              $ref: "#/components/schemas/ProviderSettingsRequest"
       responses:
-        '200':
+        "200":
           description: Provider settings saved and runtime settings returned
           headers:
-            Cache-Control: { $ref: '#/components/headers/NoStore' }
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/RuntimeSettingsEnvelope' }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/AdminUnauthorized' }
-        '403': { $ref: '#/components/responses/FinancialWriteForbidden' }
-        '409': { $ref: '#/components/responses/SettingsConflict' }
-        '413': { $ref: '#/components/responses/TooLarge' }
-        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
-        '422': { $ref: '#/components/responses/SettingsValidationFailed' }
-        '503': { $ref: '#/components/responses/SettingsUnavailable' }
+              schema:
+                $ref: "#/components/schemas/RuntimeSettingsEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
   /api/admin/v1/settings/provider/application-key/actions/generate:
     post:
       tags: [Admin Settings]
@@ -1248,6 +1274,7 @@ paths:
               additionalProperties: false
               required: [created_from, created_to]
               properties:
+                api_client_id: { type: string, minLength: 1, maxLength: 64 }
                 created_from: { type: string, format: date }
                 created_to: { type: string, format: date }
                 q: { type: string, maxLength: 100 }
@@ -1279,6 +1306,11 @@ paths:
       security:
         - AdminSessionCookie: []
       parameters:
+        - name: api_client_id
+          in: query
+          required: false
+          description: Restrict results to this website; pagination is bound to the filter.
+          schema: { type: string, minLength: 1, maxLength: 64 }
         - $ref: '#/components/parameters/CreatedFrom'
         - $ref: '#/components/parameters/CreatedTo'
         - $ref: '#/components/parameters/RequestId'
@@ -1338,6 +1370,11 @@ paths:
       security:
         - AdminSessionCookie: []
       parameters:
+        - name: api_client_id
+          in: query
+          required: true
+          description: Website owning this merchant order number; no default website fallback.
+          schema: { type: string, minLength: 1, maxLength: 64 }
         - $ref: '#/components/parameters/RequestId'
         - name: merchantOrderNo
           in: path
@@ -2010,6 +2047,11 @@ paths:
       security:
         - AdminSessionCookie: []
       parameters:
+        - name: api_client_id
+          in: query
+          required: false
+          description: Website ownership filter, included in the pagination cursor scope.
+          schema: { type: string, minLength: 1, maxLength: 64 }
         - $ref: '#/components/parameters/CreatedFrom'
         - $ref: '#/components/parameters/CreatedTo'
         - $ref: '#/components/parameters/RequestId'
@@ -2437,7 +2479,8 @@ paths:
         '503': { $ref: '#/components/responses/Unavailable' }
   /api/v1/system/status:
     get:
-      tags: [System]
+      tags:
+        - System
       operationId: getSystemStatus
       summary: Read authenticated instance status
       security:
@@ -2447,17 +2490,635 @@ paths:
           ApiSignatureVersion: []
           ApiSignature: []
       parameters:
-        - $ref: '#/components/parameters/RequestId'
+        - $ref: "#/components/parameters/RequestId"
       responses:
-        '200':
+        "200":
           description: System status, including persisted backup health
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SystemStatusEnvelope'
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '413': { $ref: '#/components/responses/TooLarge' }
+                $ref: "#/components/schemas/SiteSystemStatusEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+
+  /api/admin/v1/sites:
+    get:
+      tags:
+        - Admin Settings
+      operationId: listSites
+      summary: List business websites
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: after
+          in: query
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 100
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 128
+      responses:
+        "200":
+          description: List business websites
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteListEnvelope"
+        "400": &a1
+          $ref: "#/components/responses/BadRequest"
+        "401": &a2
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403": &a3
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404": &a4
+          description: Website not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409": &a5
+          $ref: "#/components/responses/SettingsConflict"
+        "413": &a6
+          $ref: "#/components/responses/TooLarge"
+        "415": &a7
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422": &a8
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503": &a9
+          $ref: "#/components/responses/SettingsUnavailable"
+    post:
+      tags:
+        - Admin Settings
+      operationId: createSite
+      summary: Create a business website
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+      responses:
+        "201":
+          description: Create a business website
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteEnvelope"
+        "400": *a1
+        "401": *a2
+        "403": *a3
+        "404": *a4
+        "409": *a5
+        "413": *a6
+        "415": *a7
+        "422": *a8
+        "503": *a9
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSiteRequest"
+  /api/admin/v1/sites/{clientId}:
+    get:
+      tags:
+        - Admin Settings
+      operationId: getSite
+      summary: Read a business website
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: clientId
+          in: path
+          required: true
+          schema: &a10
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+      responses:
+        "200":
+          description: Read a business website
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteEnvelope"
+        "400": &a11
+          $ref: "#/components/responses/BadRequest"
+        "401": &a12
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403": &a13
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404": &a14
+          description: Website not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409": &a15
+          $ref: "#/components/responses/SettingsConflict"
+        "413": &a16
+          $ref: "#/components/responses/TooLarge"
+        "415": &a17
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422": &a18
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503": &a19
+          $ref: "#/components/responses/SettingsUnavailable"
+    put:
+      tags:
+        - Admin Settings
+      operationId: updateSite
+      summary: Update a business website
+      security: &a20
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: clientId
+          in: path
+          required: true
+          schema: *a10
+      responses:
+        "200":
+          description: Update a business website
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteEnvelope"
+        "400": *a11
+        "401": *a12
+        "403": *a13
+        "404": *a14
+        "409": *a15
+        "413": *a16
+        "415": *a17
+        "422": *a18
+        "503": *a19
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSiteRequest"
+    delete:
+      tags:
+        - Admin Settings
+      operationId: deleteSite
+      summary: Delete an empty business website
+      security: *a20
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: clientId
+          in: path
+          required: true
+          schema: *a10
+      responses:
+        "204":
+          description: Delete an empty business website
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+        "400": *a11
+        "401": *a12
+        "403": *a13
+        "404": *a14
+        "409": *a15
+        "413": *a16
+        "415": *a17
+        "422": *a18
+        "503": *a19
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsRevisionRequest"
+  /api/admin/v1/settings/site-defaults:
+    get:
+      tags:
+        - Admin Settings
+      operationId: getSiteDefaults
+      summary: Read website creation defaults
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Read website creation defaults
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteDefaultsEnvelope"
+        "400": &a21
+          $ref: "#/components/responses/BadRequest"
+        "401": &a22
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403": &a23
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404": &a24
+          description: Website not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409": &a25
+          $ref: "#/components/responses/SettingsConflict"
+        "413": &a26
+          $ref: "#/components/responses/TooLarge"
+        "415": &a27
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422": &a28
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503": &a29
+          $ref: "#/components/responses/SettingsUnavailable"
+    put:
+      tags:
+        - Admin Settings
+      operationId: updateSiteDefaults
+      summary: Update website creation defaults
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+      responses:
+        "200":
+          description: Update website creation defaults
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteDefaultsEnvelope"
+        "400": *a21
+        "401": *a22
+        "403": *a23
+        "404": *a24
+        "409": *a25
+        "413": *a26
+        "415": *a27
+        "422": *a28
+        "503": *a29
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSiteDefaultsRequest"
+  /api/admin/v1/sites/{clientId}/secrets/api_secret/actions/rotate:
+    post:
+      tags:
+        - Admin Settings
+      operationId: rotateSiteApiSecret
+      summary: Generate or rotate a website key
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+      responses:
+        "200":
+          description: Generate or rotate a website key
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteSecretRotationEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: Website not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsRevisionRequest"
+  /api/admin/v1/sites/{clientId}/secrets/api_secret/actions/view:
+    post:
+      tags:
+        - Admin Settings
+      operationId: viewSiteApiSecret
+      summary: Reveal a website key
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+      responses:
+        "200":
+          description: Reveal a website key
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteSecretEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: Website not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmptyObjectRequest"
+  /api/admin/v1/sites/{clientId}/secrets/webhook_secret/actions/rotate:
+    post:
+      tags:
+        - Admin Settings
+      operationId: rotateSiteWebhookSecret
+      summary: Generate or rotate a website key
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+      responses:
+        "200":
+          description: Generate or rotate a website key
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteSecretRotationEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: Website not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsRevisionRequest"
+  /api/admin/v1/sites/{clientId}/secrets/webhook_secret/actions/view:
+    post:
+      tags:
+        - Admin Settings
+      operationId: viewSiteWebhookSecret
+      summary: Reveal a website key
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+      responses:
+        "200":
+          description: Reveal a website key
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteSecretEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: Website not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmptyObjectRequest"
+  /api/admin/v1/settings/collection-policy:
+    get:
+      tags:
+        - Admin Settings
+      operationId: getCollectionPolicy
+      summary: Read PerPay collection policy
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Read PerPay collection policy
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionPolicyEnvelope"
+        "400": &a30
+          $ref: "#/components/responses/BadRequest"
+        "401": &a31
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403": &a32
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404": &a33
+          description: Website not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409": &a34
+          $ref: "#/components/responses/SettingsConflict"
+        "413": &a35
+          $ref: "#/components/responses/TooLarge"
+        "415": &a36
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422": &a37
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503": &a38
+          $ref: "#/components/responses/SettingsUnavailable"
+    put:
+      tags:
+        - Admin Settings
+      operationId: updateCollectionPolicy
+      summary: Update PerPay collection policy
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+      responses:
+        "200":
+          description: Update PerPay collection policy
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuntimeSettingsEnvelope"
+        "400": *a30
+        "401": *a31
+        "403": *a32
+        "404": *a33
+        "409": *a34
+        "413": *a35
+        "415": *a36
+        "422": *a37
+        "503": *a38
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CollectionPolicyRequest"
 webhooks:
   paymentOrderStateChanged:
     post:
@@ -2902,7 +3563,7 @@ components:
           properties:
             orders: { type: integer, minimum: 0 }
             exceptions: { type: integer, minimum: 0 }
-            conflicts: { type: integer, minimum: 0 }
+            conflicts: { type: [integer, 'null'], minimum: 0, description: Null for website-scoped analytics because shared ledger conflicts have no website attribution. }
             notifications: { type: integer, minimum: 0 }
         daily:
           type: array
@@ -3657,51 +4318,59 @@ components:
         - display
         - secrets
       properties:
-        admin_access: { $ref: '#/components/schemas/AdminAccess' }
-        revision: { type: integer, minimum: 0 }
+        admin_access:
+          $ref: "#/components/schemas/AdminAccess"
+        revision:
+          type: integer
+          minimum: 0
         payment_revision:
           type: integer
           minimum: 0
           description: Changes only when collection or provider settings affect payment processing.
-        updated_at: { type: string, format: date-time }
+        updated_at:
+          type: string
+          format: date-time
         completion:
-          $ref: '#/components/schemas/SettingsCompletion'
+          $ref: "#/components/schemas/SettingsCompletion"
         collection:
           anyOf:
-            - $ref: '#/components/schemas/CollectionSettings'
-            - type: 'null'
+            - $ref: "#/components/schemas/CollectionSettings"
+            - type: "null"
         provider:
           anyOf:
-            - $ref: '#/components/schemas/ProviderSettings'
-            - type: 'null'
+            - $ref: "#/components/schemas/ProviderSettings"
+            - type: "null"
         application_public_key:
-          type: [string, 'null']
-          pattern: '^[A-Za-z0-9+/]+={0,2}$'
-          description: >-
-            Single-line Base64-encoded SPKI application public key for upload to the provider
-            console. It is derived from the encrypted application private key and is not secret.
+          type:
+            - string
+            - "null"
+          pattern: ^[A-Za-z0-9+/]+={0,2}$
+          description: Single-line Base64-encoded SPKI application public key for upload to the provider console. It is derived from the encrypted application private key and is not secret.
         application_key_fingerprint:
           anyOf:
-            - $ref: '#/components/schemas/Sha256Fingerprint'
-            - type: 'null'
+            - $ref: "#/components/schemas/Sha256Fingerprint"
+            - type: "null"
         pending_application_key:
           description: A durable replacement not yet used to sign requests; null when none exists.
           anyOf:
-            - $ref: '#/components/schemas/PendingApplicationKey'
-            - type: 'null'
+            - $ref: "#/components/schemas/PendingApplicationKey"
+            - type: "null"
         provider_generations:
           type: array
-          items: { $ref: '#/components/schemas/ProviderGeneration' }
+          items:
+            $ref: "#/components/schemas/ProviderGeneration"
         notifications:
-          $ref: '#/components/schemas/NotificationSettings'
+          $ref: "#/components/schemas/NotificationSettings"
         advanced:
-          $ref: '#/components/schemas/AdvancedSettings'
+          $ref: "#/components/schemas/AdvancedSettings"
         backup:
-          $ref: '#/components/schemas/BackupSettings'
+          $ref: "#/components/schemas/BackupSettings"
         display:
-          $ref: '#/components/schemas/DisplaySettings'
+          $ref: "#/components/schemas/DisplaySettings"
         secrets:
-          $ref: '#/components/schemas/RuntimeSecretMetadataMap'
+          $ref: "#/components/schemas/RuntimeSecretMetadataMap"
+        collection_policy:
+          $ref: "#/components/schemas/CollectionPolicyRequest"
     SettingsCompletion:
       type: object
       additionalProperties: false
@@ -3905,81 +4574,45 @@ components:
           description: Unix epoch milliseconds; null when the secret is not configured.
     CollectionSettingsRequest:
       type: object
-      additionalProperties: false
-      required: [revision, code_payload, order_ttl_seconds, amount_offset_maximum_cents]
       properties:
-        revision: { type: integer, minimum: 0 }
+        revision:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
         code_payload:
           type: string
-          minLength: 8
-          x-perpay-max-utf8-bytes: 2331
-        order_ttl_seconds: { type: integer, minimum: 60, maximum: 1800 }
-        amount_offset_maximum_cents: { type: integer, minimum: 1, maximum: 99 }
-        amount_reuse_cooldown_seconds:
-          type: integer
-          minimum: 60
-          maximum: 3600
-          description: Applies to newly created orders only. Omission preserves the current value; new installations default to 600 seconds. This is not a late-payment grace period.
-    ProviderSettingsRequest:
-      type: object
-      additionalProperties: false
       required:
         - revision
-        - environment
-        - app_id
-        - timeout_milliseconds
-        - scan_interval_seconds
-        - safety_lag_seconds
-        - maximum_success_age_seconds
+        - code_payload
+      additionalProperties: false
+    ProviderSettingsRequest:
+      type: object
       properties:
-        revision: { type: integer, minimum: 0 }
-        environment: { type: string, enum: [PRODUCTION, SANDBOX] }
-        app_id: { type: string, pattern: '^[A-Za-z0-9._-]{1,64}$' }
+        revision:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        environment:
+          type: string
+          enum:
+            - PRODUCTION
+            - SANDBOX
+        app_id:
+          type: string
+          pattern: ^[A-Za-z0-9._-]{1,64}$
         private_key:
           type: string
           minLength: 1
           maxLength: 16384
-          description: >-
-            Omit during the normal initial flow after generating the application key. If supplied
-            while an initial generated key is staged, it must be the same key. Otherwise required
-            when changing environment or application ID; omitted to retain the current key for
-            the same active application.
         platform_public_key:
           type: string
           minLength: 1
           maxLength: 16384
-          description: Required when changing environment or application ID; omitted to retain the current key.
-        timeout_milliseconds: { type: integer, minimum: 1000, maximum: 120000 }
-        scan_interval_seconds:
-          type: integer
-          minimum: 5
-          maximum: 3600
-          description: Normal wait after a completed scan when no payable orders or tail observation remain. New setup defaults to 30 seconds.
-        minimum_scan_interval_seconds:
-          type: integer
-          minimum: 5
-          maximum: 3600
-          description: Minimum delay after a scan completes, including manual requests. Must not exceed the active interval. Omitted updates preserve the existing value.
-        active_scan_interval_seconds:
-          type: integer
-          minimum: 5
-          maximum: 3600
-          description: >-
-            Wait after a completed scan while an unexpired OPEN/UNPAID order exists for the active account,
-            or a closed/expired UNPAID order remains within max(60 seconds, safety_lag_seconds plus this interval)
-            of its end time. Must not exceed scan_interval_seconds. Omitted in legacy update requests to use
-            scan_interval_seconds for both intervals. New setup defaults to 8 seconds (60 seconds when idle). Existing configurations
-            retain their previous interval for both modes. Provider cooldowns and catch-up scheduling still apply.
-        safety_lag_seconds:
-          type: integer
-          minimum: 5
-          maximum: 300
-          description: Skip the newest provider transactions for this many seconds while they stabilize.
-        maximum_success_age_seconds:
-          type: integer
-          minimum: 10
-          maximum: 86400
-          description: Must be at least twice `scan_interval_seconds`.
+      required:
+        - revision
+        - environment
+        - app_id
+      additionalProperties: false
     NotificationSettingsRequest:
       type: object
       additionalProperties: false
@@ -4179,6 +4812,8 @@ components:
       additionalProperties: false
       required: [order_id, merchant_order_no, product_name, requested_amount_cents, payable_amount_cents, received_amount_cents, payment_confirmed_at]
       properties:
+        site_name: { type: [string, 'null'], description: Current website display name; null only for historical pre-website schema fixtures. }
+        api_client_id: { type: string }
         order_id: { $ref: '#/components/schemas/ResourceId' }
         merchant_order_no: { type: string }
         product_name: { type: string }
@@ -4207,6 +4842,7 @@ components:
         - updated_at
         - version
       properties:
+        site_name: { type: [string, 'null'], description: Current website display name; null only for historical pre-website schema fixtures. }
         payment_confirmed_at: { type: [string, 'null'], format: date-time }
         order_id: { $ref: '#/components/schemas/ResourceId' }
         api_client_id:
@@ -4257,6 +4893,7 @@ components:
         - updated_at
         - version
       properties:
+        site_name: { type: [string, 'null'], description: Current name of the owning website. }
         order_id: { $ref: '#/components/schemas/ResourceId' }
         api_client_id:
           type: string
@@ -4382,8 +5019,11 @@ components:
     AdminTestPaymentRequest:
       type: object
       additionalProperties: false
-      required: [test_payment_id, amount_cents]
+      required: [test_payment_id, amount_cents, api_client_id]
       properties:
+        api_client_id:
+          type: string
+          description: Explicit website ownership. Administrator test payments do not require an API key.
         test_payment_id:
           type: string
           format: uuid
@@ -4538,6 +5178,15 @@ components:
             - payment
             - refund
           properties:
+            display:
+              type: object
+              additionalProperties: false
+              required: [name, help_url, show_product_name]
+              description: Current display settings of the order's website; never used as payment evidence.
+              properties:
+                name: { type: string, minLength: 1, maxLength: 128 }
+                help_url: { type: [string, 'null'] }
+                show_product_name: { type: boolean }
             verification: { $ref: '#/components/schemas/CheckoutVerification' }
             merchant_order_no: { $ref: '#/components/schemas/MerchantOrderNumber' }
             requested_amount_cents: { type: integer }
@@ -5854,6 +6503,15 @@ components:
         - webhook_target_invalid
         - webhook_target_not_allowed
         - webhook_unavailable
+        - site_not_found
+        - site_revision_conflict
+        - site_operation_conflict
+        - site_has_history
+        - site_paused
+        - site_order_limit_exceeded
+        - site_secret_missing
+        - demo_read_only
+        - site_settings_moved
     ErrorEnvelope:
       type: object
       additionalProperties: false
@@ -5871,6 +6529,347 @@ components:
               type: object
               description: Safe validation hints keyed by the submitted field name; never includes submitted secrets.
               additionalProperties: { type: string }
+
+    SitePolicy:
+      type: object
+      properties:
+        orders:
+          type: object
+          properties:
+            order_ttl_seconds:
+              type: integer
+              minimum: 60
+              maximum: 1800
+            amount_offset_maximum_cents:
+              type: integer
+              minimum: 1
+              maximum: 99
+            amount_reuse_cooldown_seconds:
+              type: integer
+              minimum: 60
+              maximum: 3600
+            pending_order_limit:
+              anyOf:
+                - type: integer
+                  exclusiveMinimum: 0
+                  maximum: 9007199254740991
+                - type: "null"
+          required:
+            - order_ttl_seconds
+            - amount_offset_maximum_cents
+            - amount_reuse_cooldown_seconds
+            - pending_order_limit
+          additionalProperties: false
+        display:
+          type: object
+          properties:
+            checkout_name:
+              type: string
+              minLength: 1
+              maxLength: 40
+              pattern: ^[^\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]+$
+            checkout_help_url:
+              anyOf:
+                - type: string
+                - type: "null"
+            checkout_show_product_name:
+              type: boolean
+          required:
+            - checkout_name
+            - checkout_help_url
+            - checkout_show_product_name
+          additionalProperties: false
+        notification_delivery:
+          type: object
+          properties:
+            timeout_milliseconds:
+              type: integer
+              minimum: 1000
+              maximum: 30000
+            maximum_attempts:
+              type: integer
+              minimum: 1
+              maximum: 100
+            retry_base_seconds:
+              type: integer
+              minimum: 1
+              maximum: 3600
+            retry_maximum_seconds:
+              type: integer
+              minimum: 1
+              maximum: 86400
+          required:
+            - timeout_milliseconds
+            - maximum_attempts
+            - retry_base_seconds
+            - retry_maximum_seconds
+          additionalProperties: false
+      required:
+        - orders
+        - display
+        - notification_delivery
+      additionalProperties: false
+    SiteConfiguration:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 40
+          pattern: ^[^\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]+$
+        accepting_orders:
+          type: boolean
+        notifications_enabled:
+          type: boolean
+        notification_origin:
+          anyOf:
+            - type: string
+            - type: "null"
+        return_origin:
+          anyOf:
+            - type: string
+            - type: "null"
+        policy:
+          $ref: "#/components/schemas/SitePolicy"
+      required:
+        - name
+        - accepting_orders
+        - notifications_enabled
+        - notification_origin
+        - return_origin
+        - policy
+      additionalProperties: false
+    CreateSiteRequest:
+      type: object
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        configuration:
+          $ref: "#/components/schemas/SiteConfiguration"
+      required:
+        - operation_id
+        - configuration
+      additionalProperties: false
+    UpdateSiteRequest:
+      type: object
+      properties:
+        revision:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        configuration:
+          $ref: "#/components/schemas/SiteConfiguration"
+      required:
+        - revision
+        - configuration
+      additionalProperties: false
+    UpdateSiteDefaultsRequest:
+      type: object
+      properties:
+        revision:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        policy:
+          $ref: "#/components/schemas/SitePolicy"
+      required:
+        - revision
+        - policy
+      additionalProperties: false
+    CollectionPolicyRequest:
+      type: object
+      properties:
+        revision:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        timeout_milliseconds:
+          type: integer
+          minimum: 1000
+          maximum: 120000
+        scan_interval_seconds:
+          type: integer
+          minimum: 5
+          maximum: 3600
+        active_scan_interval_seconds:
+          type: integer
+          minimum: 5
+          maximum: 3600
+        minimum_scan_interval_seconds:
+          type: integer
+          minimum: 5
+          maximum: 3600
+        safety_lag_seconds:
+          type: integer
+          minimum: 5
+          maximum: 300
+        maximum_success_age_seconds:
+          type: integer
+          minimum: 10
+          maximum: 86400
+      required:
+        - revision
+        - timeout_milliseconds
+        - scan_interval_seconds
+        - active_scan_interval_seconds
+        - minimum_scan_interval_seconds
+        - safety_lag_seconds
+        - maximum_success_age_seconds
+      additionalProperties: false
+    Site:
+      type: object
+      additionalProperties: false
+      properties:
+        client_id:
+          type: string
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+        revision:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        configuration:
+          $ref: "#/components/schemas/SiteConfiguration"
+        created_at: &a1
+          type: string
+          format: date-time
+        updated_at: *a1
+        deleted_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+      required:
+        - client_id
+        - revision
+        - configuration
+        - created_at
+        - updated_at
+        - deleted_at
+    SiteEnvelope:
+      type: object
+      additionalProperties: false
+      properties:
+        data:
+          $ref: "#/components/schemas/Site"
+      required:
+        - data
+    SiteListEnvelope:
+      type: object
+      additionalProperties: false
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Site"
+        page:
+          type: object
+          additionalProperties: false
+          properties:
+            next_cursor:
+              type:
+                - string
+                - "null"
+          required:
+            - next_cursor
+      required:
+        - data
+        - page
+    SiteDefaultsEnvelope:
+      type: object
+      additionalProperties: false
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          properties:
+            revision:
+              type: integer
+              minimum: 0
+              maximum: 9007199254740991
+            policy:
+              $ref: "#/components/schemas/SitePolicy"
+          required:
+            - revision
+            - policy
+      required:
+        - data
+    SiteSecretEnvelope:
+      type: object
+      additionalProperties: false
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          properties:
+            secret:
+              type: string
+          required:
+            - secret
+      required:
+        - data
+    SiteSecretRotationEnvelope:
+      type: object
+      additionalProperties: false
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          properties:
+            site:
+              $ref: "#/components/schemas/Site"
+            secret:
+              type: string
+          required:
+            - site
+            - secret
+      required:
+        - data
+    CollectionPolicyEnvelope:
+      type: object
+      additionalProperties: false
+      properties:
+        data:
+          $ref: "#/components/schemas/CollectionPolicyRequest"
+      required:
+        - data
+    EmptyObjectRequest:
+      type: object
+      additionalProperties: false
+      properties: {}
+      required: []
+    SiteSystemStatusEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required:
+            - status
+            - code
+            - client_id
+            - accepting_orders
+            - notifications_enabled
+          properties:
+            status:
+              type: string
+              enum:
+                - ready
+                - not_ready
+            code:
+              anyOf:
+                - $ref: "#/components/schemas/ErrorCode"
+                - type: "null"
+            client_id:
+              type: string
+            accepting_orders:
+              type: boolean
+            notifications_enabled:
+              type: boolean
   responses:
     AdminOperationConflict:
       description: Operation UUID reuse, stale mark version, ineligible order, or an ended reminder.

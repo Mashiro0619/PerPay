@@ -1,3 +1,4 @@
+import { selectTestWebsite } from "./site-picker-helper";
 import { focusManager } from "@tanstack/react-query";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -56,6 +57,7 @@ async function create(
     ? null
     : await screen.findByRole("button", { name: "测试收款" });
   if (trigger) await user.click(trigger);
+  await selectTestWebsite();
   const create = await screen.findByRole("button", { name: "创建测试订单" });
   await waitFor(() => expect(create).toBeEnabled());
   await user.click(create);

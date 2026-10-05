@@ -80,6 +80,7 @@ class SettingsInputError extends Error {
 }
 export type ConfigurationSection =
   | "provider"
+  | "collection-policy"
   | "collection"
   | "notifications"
   | "backup"
@@ -87,7 +88,8 @@ export type ConfigurationSection =
   | "display";
 export const sections = [
   ["provider", "支付宝接入"],
-  ["collection", "经营码与订单"],
+  ["collection", "经营收款码"],
+  ["collection-policy", "采集设置"],
   ["notifications", "业务通知"],
   ["security", "密钥与安全"],
   ["backup", "自动备份"],
@@ -456,16 +458,7 @@ export function SettingsEditor({
     setSavedMessage("");
     save.reset();
   }
-  const providerCollection = (
-    <FieldGroup className="grid sm:grid-cols-2">
-      <Button
-        type="button"
-        variant="outline"
-        className="w-fit sm:col-span-2"
-        onClick={recommendedProvider}
-      >
-        采用推荐值
-      </Button>
+  const providerEnvironment = (
       <Field data-invalid={!!fieldErrors.environment}>
         <FieldLabel htmlFor="setting-environment">支付宝环境</FieldLabel>
         <Select
@@ -511,13 +504,25 @@ export function SettingsEditor({
           </FieldError>
         )}
       </Field>
+  );
+  const providerCollection = (
+    <FieldGroup className="grid sm:grid-cols-2">
+      <Button
+        type="button"
+        variant="outline"
+        className="w-fit sm:col-span-2"
+        onClick={recommendedProvider}
+      >
+        采用推荐值
+      </Button>
+
       <NumberField
         name="timeout_milliseconds"
         error={fieldErrors.timeout_milliseconds}
         label="请求超时（秒）"
         scale={1000}
         value={
-          initialSettings.provider?.timeout_milliseconds ??
+          initialSettings.collection_policy?.timeout_milliseconds ?? initialSettings.provider?.timeout_milliseconds ??
           PROVIDER_TIMING_DEFAULTS.timeoutMilliseconds
         }
         min={1000}
@@ -528,7 +533,7 @@ export function SettingsEditor({
         error={fieldErrors.scan_interval_seconds}
         label="常规采集间隔（秒）"
         value={
-          initialSettings.provider?.scan_interval_seconds ??
+          initialSettings.collection_policy?.scan_interval_seconds ?? initialSettings.provider?.scan_interval_seconds ??
           PROVIDER_TIMING_DEFAULTS.scanIntervalSeconds
         }
         min={5}
@@ -540,8 +545,8 @@ export function SettingsEditor({
         error={fieldErrors.active_scan_interval_seconds}
         label="活跃采集间隔（秒）"
         value={
-          initialSettings.provider?.active_scan_interval_seconds ??
-          initialSettings.provider?.scan_interval_seconds ??
+          initialSettings.collection_policy?.active_scan_interval_seconds ?? initialSettings.provider?.active_scan_interval_seconds ??
+          initialSettings.collection_policy?.scan_interval_seconds ?? initialSettings.provider?.scan_interval_seconds ??
           PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds
         }
         min={5}
@@ -552,7 +557,7 @@ export function SettingsEditor({
         name="minimum_scan_interval_seconds"
         error={fieldErrors.minimum_scan_interval_seconds}
         label="采集最小间隔（秒）"
-        value={initialSettings.provider?.minimum_scan_interval_seconds ?? initialSettings.provider?.active_scan_interval_seconds ?? PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds}
+        value={initialSettings.collection_policy?.minimum_scan_interval_seconds ?? initialSettings.provider?.minimum_scan_interval_seconds ?? initialSettings.collection_policy?.active_scan_interval_seconds ?? initialSettings.provider?.active_scan_interval_seconds ?? PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds}
         min={5}
         max={3600}
         hint="一轮采集完成后至少等待多久才能开始下一轮；手动核实也不能突破，不能大于活跃间隔。分页续采及限流退避由后端管理。"
@@ -562,7 +567,7 @@ export function SettingsEditor({
         error={fieldErrors.safety_lag_seconds}
         label="安全延迟（秒）"
         value={
-          initialSettings.provider?.safety_lag_seconds ??
+          initialSettings.collection_policy?.safety_lag_seconds ?? initialSettings.provider?.safety_lag_seconds ??
           PROVIDER_TIMING_DEFAULTS.safetyLagSeconds
         }
         min={5}
@@ -574,7 +579,7 @@ export function SettingsEditor({
         error={fieldErrors.maximum_success_age_seconds}
         label="采集有效时限（秒）"
         value={
-          initialSettings.provider?.maximum_success_age_seconds ??
+          initialSettings.collection_policy?.maximum_success_age_seconds ?? initialSettings.provider?.maximum_success_age_seconds ??
           PROVIDER_TIMING_DEFAULTS.maximumSuccessAgeSeconds
         }
         min={10}
@@ -596,39 +601,6 @@ export function SettingsEditor({
         onPendingChange={setDecoding}
         disabled={save.isPending}
       />
-    </FieldGroup>
-  );
-  const collectionRules = (
-    <FieldGroup>
-      <NumberField
-        name="order_ttl_seconds"
-        error={fieldErrors.order_ttl_seconds}
-        label="收银台有效期（秒）"
-        value={initialSettings.collection?.order_ttl_seconds ?? 300}
-        min={60}
-        max={1800}
-      />
-      <FieldGroup className="grid sm:grid-cols-2">
-        <NumberField
-          name="amount_offset_maximum_cents"
-          error={fieldErrors.amount_offset_maximum_cents}
-          label="最大金额尾差（分）"
-          value={initialSettings.collection?.amount_offset_maximum_cents ?? 99}
-          min={1}
-          max={99}
-        />
-        <NumberField
-          name="amount_reuse_cooldown_seconds"
-          error={fieldErrors.amount_reuse_cooldown_seconds}
-          label="金额复用冷却（秒）"
-          value={
-            initialSettings.collection?.amount_reuse_cooldown_seconds ?? 600
-          }
-          min={60}
-          max={3600}
-          hint="结束后暂不复用应付金额，不延长订单有效期。冷却结束后可再次分配，系统优先使用最小可用尾差。"
-        />
-      </FieldGroup>
     </FieldGroup>
   );
   const notificationFields = (
@@ -871,60 +843,12 @@ export function SettingsEditor({
     </FieldGroup>
   );
 
-  const panels: Array<{
-    title: string;
-    description?: string;
-    fields: ReactNode;
-  }> =
-    section === "provider"
-      ? [
-          {
-            title: "应用凭据",
-            description: "应用身份与请求凭据",
-            fields: providerIdentity,
-          },
-          {
-            title: "账单采集",
-            description: "采集频率、超时与有效时限",
-            fields: providerCollection,
-          },
-        ]
-      : section === "collection"
-        ? [
-            {
-              title: "支付宝经营码",
-              description: "上传二维码，或粘贴经营码内容",
-              fields: collectionIdentity,
-            },
-            {
-              title: "订单规则",
-              description: "收银台有效期与金额分配",
-              fields: collectionRules,
-            },
-          ]
-        : section === "display"
-          ? [
-              {
-                title: "界面显示",
-                fields: displayFields,
-              },
-            ]
-          : [
-              {
-                title:
-                  sections.find(([value]) => value === section)?.[1] ?? "设置",
-                description:
-                  section === "backup"
-                    ? "恢复需要数据库备份和主密钥。"
-                    : undefined,
-                fields:
-                  section === "notifications"
-                    ? notificationFields
-                    : section === "backup"
-                      ? backupFields
-                      : advancedFields,
-              },
-            ];
+  const panels: Array<{ title: string; description?: string; fields: ReactNode }> =
+    section === "provider" ? [{ title: "开放平台应用", description: "应用身份、密钥与支付宝环境；采集策略在采集设置中单独调整。", fields: <FieldGroup>{providerIdentity}{providerEnvironment}</FieldGroup> }]
+    : section === "collection" ? [{ title: "经营收款码", description: "只管理二维码；订单规则在各业务网站中设置。", fields: collectionIdentity }]
+    : section === "collection-policy" ? [{ title: "PerPay 采集设置", description: "控制 PerPay 的查询频率与安全窗口，不属于支付宝官方应用配置。", fields: providerCollection }]
+    : section === "display" ? [{ title: "界面显示", fields: displayFields }]
+    : [{ title: sections.find(([value]) => value === section)?.[1] ?? "设置", ...(section === "backup" ? { description: "恢复需要数据库备份和主密钥。" } : {}), fields: section === "notifications" ? notificationFields : section === "backup" ? backupFields : advancedFields }];
 
   const actions = (
     <FieldGroup>
@@ -1112,11 +1036,6 @@ async function saveSettings(
           body: {
             revision,
             code_payload: code,
-            order_ttl_seconds: integer("order_ttl_seconds"),
-            amount_offset_maximum_cents: integer("amount_offset_maximum_cents"),
-            amount_reuse_cooldown_seconds: integer(
-              "amount_reuse_cooldown_seconds",
-            ),
           },
         }),
       )
@@ -1124,45 +1043,23 @@ async function saveSettings(
   }
   if (section === "provider") {
     const platformPublicKey = text("platform_public_key");
-    if (!platformPublicKey)
-      throw new SettingsInputError("platform_public_key", "请填写支付宝公钥。");
-    const normalInterval = integer("scan_interval_seconds");
-    const activeInterval = integer("active_scan_interval_seconds");
-    const minimumInterval = integer("minimum_scan_interval_seconds");
-    if (minimumInterval > activeInterval) throw new SettingsInputError("minimum_scan_interval_seconds", "最小采集间隔不能大于活跃采集间隔。");
-    const maximumSuccessAge = integer("maximum_success_age_seconds");
-    if (activeInterval > normalInterval)
-      throw new SettingsInputError(
-        "active_scan_interval_seconds",
-        "活跃采集间隔不能大于常规采集间隔。",
-      );
-    if (maximumSuccessAge < normalInterval * 2)
-      throw new SettingsInputError(
-        "maximum_success_age_seconds",
-        "采集有效时限须至少为常规采集间隔的两倍。",
-      );
-    return (
-      await result(
-        api.updateProviderSettings({
-          body: {
-            revision,
-            environment:
-              text("environment") === "SANDBOX" ? "SANDBOX" : "PRODUCTION",
-            app_id: text("app_id"),
-            timeout_milliseconds: integer("timeout_milliseconds"),
-            scan_interval_seconds: normalInterval,
-            active_scan_interval_seconds: activeInterval,
-            minimum_scan_interval_seconds: minimumInterval,
-            safety_lag_seconds: integer("safety_lag_seconds"),
-            maximum_success_age_seconds: maximumSuccessAge,
-            ...(text("private_key")
-              ? { private_key: text("private_key") }
-              : {}),
-            platform_public_key: platformPublicKey,
-          },
-        }),
-      )
-    ).data;
+    if (!platformPublicKey) throw new SettingsInputError("platform_public_key", "请填写支付宝公钥。");
+    return (await result(api.updateProviderSettings({ body: {
+      revision, environment: text("environment") === "SANDBOX" ? "SANDBOX" : "PRODUCTION",
+      app_id: text("app_id"), platform_public_key: platformPublicKey,
+      ...(text("private_key") ? { private_key: text("private_key") } : {}),
+    } }))).data;
+  }
+  if (section === "collection-policy") {
+    const normal = integer("scan_interval_seconds"), active = integer("active_scan_interval_seconds"), minimum = integer("minimum_scan_interval_seconds"), maximumAge = integer("maximum_success_age_seconds");
+    if (minimum > active) throw new SettingsInputError("minimum_scan_interval_seconds", "最小采集间隔不能大于活跃采集间隔。");
+    if (active > normal) throw new SettingsInputError("active_scan_interval_seconds", "活跃采集间隔不能大于常规采集间隔。");
+    if (maximumAge < normal * 2) throw new SettingsInputError("maximum_success_age_seconds", "采集有效时限须至少为常规采集间隔的两倍。");
+    return (await result(api.updateCollectionPolicy({ body: {
+      revision, timeout_milliseconds: integer("timeout_milliseconds"), scan_interval_seconds: normal,
+      active_scan_interval_seconds: active, minimum_scan_interval_seconds: minimum,
+      safety_lag_seconds: integer("safety_lag_seconds"), maximum_success_age_seconds: maximumAge,
+    } }))).data;
   }
   if (section === "notifications") {
     const enabled = form.has("enabled");

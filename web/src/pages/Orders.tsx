@@ -1,3 +1,4 @@
+import { SitePicker } from "@/components/site-picker";
 import { CreatedDateFilter } from "@/components/created-date-filter";
 import { OrderExport } from "@/components/order-export";
 import { useListQuery, ORDER_SORT_FIELDS } from "@/lib/list-query";
@@ -79,6 +80,7 @@ export default function Orders() {
   function clearFilters() {
     const next = new URLSearchParams(search);
     [
+      "api_client_id",
       "payment",
       "checkout",
       "cursor",
@@ -96,6 +98,8 @@ export default function Orders() {
       className="flex w-full min-w-0 flex-col gap-3"
       data-business-list="orders"
     >
+      <SitePicker value={search.get("api_client_id") ?? ""} onChange={value => filter("api_client_id", value)} />
+      {search.get("api_client_id") && <Button variant="ghost" onClick={() => filter("api_client_id", null)}>查看全部网站</Button>}
       <OrderPage
         desktopFilters={
           <>
@@ -166,6 +170,7 @@ export default function Orders() {
   );
 }
 function useOrderLookup() {
+  const [search] = useSearchParams();
   const navigate = useNavigate();
   const active = useRef<AbortController | null>(null);
   function cancel() {
@@ -192,6 +197,7 @@ function useOrderLookup() {
         ? result(
             api.getAdministratorOrderByMerchantNumber({
               path: { merchantOrderNo: value },
+              query: { api_client_id: search.get("api_client_id") ?? "" },
               signal,
             }),
           )
@@ -244,10 +250,12 @@ function OrderPage({
   checkout: CheckoutStatus | undefined;
   onClearFilters: () => void;
 }) {
+  const [siteSearch] = useSearchParams();
+  const clientId = siteSearch.get("api_client_id");
   const pagination = useCursor();
   const listQuery = useListQuery(ORDER_SORT_FIELDS, "created_at", "desc", true);
   const orders = useQuery({
-    queryKey: ["orders", payment, checkout, pagination.cursor, listQuery.scope],
+    queryKey: ["orders", payment, checkout, pagination.cursor, listQuery.scope, clientId],
     queryFn: ({ signal }) =>
       result(
         api.listAdministratorOrders({
@@ -255,6 +263,7 @@ function OrderPage({
           query: {
             limit: 20,
             ...listQuery.apiQuery,
+            ...(clientId ? { api_client_id: clientId } : {}),
             ...(payment ? { payment_status: payment } : {}),
             ...(checkout ? { checkout_status: checkout } : {}),
             ...(pagination.cursor ? { cursor: pagination.cursor } : {}),
@@ -295,7 +304,7 @@ function OrderPage({
           { value: "received_amount_cents", label: "实收金额" },
         ]}
       />
-      <CreatedDateFilter control={listQuery}><OrderExport query={listQuery.apiQuery} payment={payment} checkout={checkout} /></CreatedDateFilter>
+      <CreatedDateFilter control={listQuery}><OrderExport clientId={clientId} query={listQuery.apiQuery} payment={payment} checkout={checkout} /></CreatedDateFilter>
       <QueryView query={orders}>
         {(page) => (
           <>

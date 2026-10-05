@@ -25,8 +25,8 @@ function ready() {
 }
 describe("shared runtime presentation", () => {
   it("treats incomplete successful status responses as unavailable without crashing protected forms", async () => {
-    mountOnboarding({stage:4,path:"/settings/collection",handle:r=>r.url.endsWith("/system/status") ? json({data:{status:"ready",configured:true,database:{ok:true}}}) : undefined});
-    expect(await screen.findByLabelText("收银台有效期（秒）")).toBeVisible();
+    mountOnboarding({stage:4,path:"/settings/collection-policy",handle:r=>r.url.endsWith("/system/status") ? json({data:{status:"ready",configured:true,database:{ok:true}}}) : undefined});
+    expect(await screen.findByLabelText("采集有效时限（秒）")).toBeVisible();
     expect(await screen.findByText("状态未知")).toBeVisible();
     expect(screen.queryByText("页面未能正常加载")).not.toBeInTheDocument();
   });

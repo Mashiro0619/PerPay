@@ -41,6 +41,7 @@ export function configuredThrough(stage: number): RuntimeSettings {
           maximum_success_age_seconds: 60,
         }
       : null;
+  value.collection_policy = { revision: value.revision, timeout_milliseconds: 8000, scan_interval_seconds: stage >= 2 ? 10 : 60, active_scan_interval_seconds: stage >= 2 ? 10 : 8, minimum_scan_interval_seconds: stage >= 2 ? 10 : 8, safety_lag_seconds: 10, maximum_success_age_seconds: stage >= 2 ? 60 : 120 };
   value.secrets.api_secret.configured = stage >= 4;
   value.secrets.provider_private_key.configured = stage >= 1;
   value.secrets.provider_public_key.configured = stage >= 2;
@@ -182,6 +183,7 @@ export function mountOnboarding(
     if (override !== undefined) return override;
     const url = new URL(request.url);
     const endpoint = url.pathname;
+    if (endpoint === "/api/admin/v1/sites") return json({ data: [{ client_id: "site_test", revision: 0, configuration: { name: "测试网站", accepting_orders: true, notifications_enabled: false } }], page: { next_cursor: null } });
     if (endpoint.endsWith("/session/login")) {
       signedIn = true;
       return json({ data: { username: "admin" } });

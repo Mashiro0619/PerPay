@@ -1,3 +1,7 @@
+import { collectionCodeInputSchema, providerApplicationInputSchema } from "../settings/model.ts";
+import { SiteError, type SiteStore } from "../sites/store.ts";
+import { createSiteInputSchema, updateSiteInputSchema, updateSiteDefaultsInputSchema, siteClientIdSchema, type SiteSnapshot } from "../sites/model.ts";
+import { collectionPolicyInputSchema } from "../settings/collection-policy.ts";
 import { readLedgerFailureDiagnostic, type LedgerDiagnostics } from "../ledger/diagnostics.ts";
 import { HealthProbeCache } from "../infrastructure/health-probe-cache.ts";
 import type { CheckoutVerification } from "../shared/checkout-verification.ts";
@@ -194,6 +198,7 @@ const emptyObjectSchema = z.object({}).strict();
 const runtimeSecretNames = new Set<string>(RUNTIME_SECRET_NAMES);
 
 const testPaymentRequestSchema = z.object({
+  api_client_id: siteClientIdSchema.optional(),
   test_payment_id: z.string().regex(ORDER_ID_PATTERN),
   amount_cents: z.number().int().min(1).max(TEST_PAYMENT_MAX_AMOUNT_CENTS),
 }).strict();
@@ -213,6 +218,7 @@ const ledgerConflictResolutionSchema = z.object({
 }).strict();
 
 export interface AppDependencies {
+  readonly sites?: SiteStore | undefined;
   readonly config: AppConfig;
   readonly database: AppDatabase;
   readonly identity: IdentityService;
@@ -622,10 +628,11 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   app.get("/api/admin/v1/system/analytics", adminSession, (context) => {
     const values = new URL(context.req.url).searchParams;
     const rawRange = values.get("range");
-    if (values.size > (rawRange === null ? 0 : 1) || (rawRange !== null && !/^(?:7|30|90)$/.test(rawRange))) {
+    const clientId = values.get("api_client_id");
+    if (values.size > (rawRange === null ? 0 : 1) + (clientId === null ? 0 : 1) || [...values.keys()].some(key => key !== "range" && key !== "api_client_id") || (clientId !== null && !siteClientIdSchema.safeParse(clientId).success) || (rawRange !== null && !/^(?:7|30|90)$/.test(rawRange))) {
       throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
     }
-    return context.json({ data: systemAnalytics(dependencies.database, rawRange === null ? 30 : Number(rawRange), dependencies.clock?.() ?? Date.now()) });
+    return context.json({ data: systemAnalytics(dependencies.database, rawRange === null ? 30 : Number(rawRange), dependencies.clock?.() ?? Date.now(), clientId) });
   });
 
   app.get("/api/admin/v1/work-items", adminSession, (context) => {
@@ -695,7 +702,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const marks = adminRefundMarks(dependencies.database, page.orders.map((order) => order.orderId));
     const identities = adminOrderIdentities(dependencies.database, page.orders.map(order => order.orderId));
     return context.json({
-      data: page.orders.map((order) => ({ ...serializeAdminOrderSummary(order), payment_confirmed_at: identities.get(order.orderId)?.payment_confirmed_at ?? null, refund_mark: marks.get(order.orderId)! })),
+      data: page.orders.map((order) => ({ ...serializeAdminOrderSummary(order), site_name: identities.get(order.orderId)?.site_name ?? null, payment_confirmed_at: identities.get(order.orderId)?.payment_confirmed_at ?? null, refund_mark: marks.get(order.orderId)! })),
       page: {
         next_cursor: encodeAdminOrderCursor(page.nextCursor, query.filters, query.query),
       },
@@ -708,7 +715,11 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     (context) => {
       const parsed = merchantOrderNumberSchema.safeParse(context.req.param("merchantOrderNo"));
       if (!parsed.success) throw orderNotFoundHttpError();
-      const order = dependencies.orders.adminGetByMerchantOrderNumber(parsed.data);
+      const values = new URL(context.req.url).searchParams;
+      const clientIds = values.getAll("api_client_id");
+      if (dependencies.sites && (clientIds.length !== 1 || !siteClientIdSchema.safeParse(clientIds[0]).success)) throw new HttpApiError(422, "validation_failed", "请指定商户订单号所属的业务网站");
+      const service = dependencies.sites ? dependencies.orders.forSite(clientIds[0]!) : dependencies.orders;
+      const order = service.adminGetByMerchantOrderNumber(parsed.data);
       return context.json({ data: { ...serializeAdminOrderDetail(order, dependencies.database, dependencies.reconciliation), refund_mark: adminRefundMarks(dependencies.database, [order.orderId]).get(order.orderId)!, refund_mark_history: adminRefundMarkHistory(dependencies.database, order.orderId) } });
     },
   );
@@ -750,6 +761,77 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     dependencies.config.publicOrigin,
     dependencies.config.secureCookies,
   );
+
+  if (dependencies.sites) {
+    const sites = dependencies.sites;
+    const siteId = (context: Context<AppEnvironment>) => {
+      const parsed = siteClientIdSchema.safeParse(context.req.param("clientId"));
+      if (!parsed.success) throw new HttpApiError(404, "site_not_found", "业务网站不存在。");
+      return parsed.data;
+    };
+    const siteWrite = (context: Context<AppEnvironment>) => {
+      if (dependencies.demoMode) throw new HttpApiError(403, "demo_read_only", "只读演示不允许修改网站配置。");
+      requireCurrentSession(context, dependencies.identity);
+      return settingsAuditContext(context, dependencies);
+    };
+    app.get("/api/admin/v1/sites", adminSession, context => {
+      const after = context.req.query("after") ?? null;
+      const rawLimit = context.req.query("limit") ?? "100";
+      if (!/^[1-9][0-9]{0,2}$/.test(rawLimit) || Number(rawLimit) > 100 || (after !== null && !siteClientIdSchema.safeParse(after).success)) throw new HttpApiError(422, "validation_failed", "网站分页参数无效。");
+      const search = context.req.query("q") ?? "";
+      if (search.length > 128) throw new HttpApiError(422, "validation_failed", "网站搜索条件过长。");
+      const rows = sites.list(after, Number(rawLimit), search);
+      return context.json({ data: rows.map(serializeSite), page: { next_cursor: rows.length === Number(rawLimit) ? rows.at(-1)!.clientId : null } });
+    });
+    app.post("/api/admin/v1/sites", adminSession, financialWrite, async context => {
+      const body = await readJson(context, createSiteInputSchema, MAX_JSON_BODY_BYTES);
+      const result = sites.create(body, siteWrite(context));
+      context.header("location", "/api/admin/v1/sites/" + encodeURIComponent(result.clientId));
+      return context.json({ data: serializeSite(result) }, 201);
+    });
+    app.get("/api/admin/v1/sites/:clientId", adminSession, context => {
+      const site = sites.get(siteId(context));
+      if (!site) throw new HttpApiError(404, "site_not_found", "业务网站不存在。");
+      return context.json({ data: serializeSite(site) });
+    });
+    app.put("/api/admin/v1/sites/:clientId", adminSession, financialWrite, async context => {
+      const clientId = siteId(context);
+      const body = await readJson(context, updateSiteInputSchema, MAX_JSON_BODY_BYTES);
+      return context.json({ data: serializeSite(sites.update(clientId, body, siteWrite(context))) });
+    });
+    app.delete("/api/admin/v1/sites/:clientId", adminSession, financialWrite, async context => {
+      const clientId = siteId(context);
+      const body = await readJson(context, z.object({ revision: z.number().int().nonnegative() }).strict(), 1024);
+      sites.delete(clientId, body.revision, siteWrite(context));
+      return context.body(null, 204);
+    });
+    app.get("/api/admin/v1/settings/site-defaults", adminSession, context => context.json({ data: sites.defaults() }));
+    app.put("/api/admin/v1/settings/site-defaults", adminSession, financialWrite, async context => {
+      const body = await readJson(context, updateSiteDefaultsInputSchema, MAX_JSON_BODY_BYTES);
+      return context.json({ data: sites.saveDefaults(body, siteWrite(context)) });
+    });
+    for (const purpose of ["api_secret", "webhook_secret"] as const) {
+      app.post(`/api/admin/v1/sites/:clientId/secrets/${purpose}/actions/rotate`, adminSession, financialWrite, async context => {
+        const clientId = siteId(context);
+        const body = await readJson(context, z.object({ revision: z.number().int().nonnegative() }).strict(), 1024);
+        const result = sites.rotateSecret(clientId, purpose, body.revision, siteWrite(context));
+        return context.json({ data: { site: serializeSite(result.site), secret: result.secret } });
+      });
+      app.post(`/api/admin/v1/sites/:clientId/secrets/${purpose}/actions/view`, adminSession, financialWrite, async context => {
+        const clientId = siteId(context);
+        await readJson(context, z.object({}).strict(), 1024);
+        return context.json({ data: { secret: sites.revealSecret(clientId, purpose, siteWrite(context)) } });
+      });
+    }
+  }
+  app.get("/api/admin/v1/settings/collection-policy", adminSession, context => context.json({ data: requireSettingsService(dependencies).collectionPolicy() }));
+  app.put("/api/admin/v1/settings/collection-policy", adminSession, financialWrite, async context => {
+    const body = await readJson(context, collectionPolicyInputSchema, MAX_JSON_BODY_BYTES);
+    if (dependencies.demoMode) throw new HttpApiError(403, "demo_read_only", "只读演示不允许修改采集设置。");
+    requireCurrentSession(context, dependencies.identity);
+    const data = await settingsOperation(() => requireSettingsService(dependencies).saveCollectionPolicy(body, settingsAuditContext(context, dependencies)));
+    return context.json({ data });
+  });
 
   app.post("/api/admin/v1/work-items/actions/ignore-all", adminSession, financialWrite, async (context) => {
     const body = await readJson(context, ignoreAllWorkItemsSchema, MAX_JSON_BODY_BYTES);
@@ -803,7 +885,9 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       requirePaymentDatabaseReady(dependencies);
       const body = await readJson(context, testPaymentRequestSchema, MAX_JSON_BODY_BYTES);
       requireCurrentSession(context, dependencies.identity);
-      const result = dependencies.orders.create({
+      if (dependencies.sites && !body.api_client_id) throw new HttpApiError(422, "validation_failed", "请选择测试收款所属的业务网站");
+      const testOrders = dependencies.sites ? dependencies.orders.forSite(body.api_client_id!) : dependencies.orders;
+      const result = testOrders.create({
         idempotency_key: `admin-test-payment:${body.test_payment_id}`,
         merchant_order_no: `test-${body.test_payment_id}`,
         amount_cents: body.amount_cents,
@@ -831,13 +915,13 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     adminSession,
     financialWrite,
     async (context) => {
-      const body = await readJson(context, collectionSettingsInputSchema, MAX_JSON_BODY_BYTES);
-      const data = await settingsOperation(() =>
-        requireSettingsService(dependencies).saveCollection(
-          body,
-          settingsAuditContext(context, dependencies),
-        )
-      );
+      const bytes = await readBodyLimited(context, MAX_JSON_BODY_BYTES);
+      const input = parseJsonBytes(bytes, z.unknown());
+      const legacy = !dependencies.sites && input !== null && typeof input === "object" && "order_ttl_seconds" in input;
+      requireCurrentSession(context, dependencies.identity);
+      const data = await settingsOperation(() => legacy
+        ? requireSettingsService(dependencies).saveCollection(parseJsonBytes(bytes, collectionSettingsInputSchema), settingsAuditContext(context, dependencies))
+        : requireSettingsService(dependencies).saveCollectionCode(parseJsonBytes(bytes, collectionCodeInputSchema), settingsAuditContext(context, dependencies)));
       return context.json({ data });
     },
   );
@@ -847,13 +931,13 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     adminSession,
     financialWrite,
     async (context) => {
-      const body = await readJson(context, providerSettingsInputSchema, MAX_JSON_BODY_BYTES);
-      const data = await settingsOperation(() =>
-        requireSettingsService(dependencies).saveProvider(
-          body,
-          settingsAuditContext(context, dependencies),
-        )
-      );
+      const bytes = await readBodyLimited(context, MAX_JSON_BODY_BYTES);
+      const input = parseJsonBytes(bytes, z.unknown());
+      const legacy = !dependencies.sites && input !== null && typeof input === "object" && "scan_interval_seconds" in input;
+      requireCurrentSession(context, dependencies.identity);
+      const data = await settingsOperation(() => legacy
+        ? requireSettingsService(dependencies).saveProvider(parseJsonBytes(bytes, providerSettingsInputSchema), settingsAuditContext(context, dependencies))
+        : requireSettingsService(dependencies).saveProviderApplication(parseJsonBytes(bytes, providerApplicationInputSchema), settingsAuditContext(context, dependencies)));
       return context.json({ data });
     },
   );
@@ -918,6 +1002,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     adminSession,
     financialWrite,
     async (context) => {
+      if (dependencies.sites) throw new HttpApiError(410, "site_settings_moved", "此设置已迁移至业务网站，请在对应网站下操作。");
       const body = await readJson(context, webhookSettingsInputSchema, MAX_JSON_BODY_BYTES);
       const data = await settingsOperation(() =>
         requireSettingsService(dependencies).saveWebhook(
@@ -982,6 +1067,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     adminSession,
     financialWrite,
     async (context) => {
+      if (dependencies.sites) throw new HttpApiError(410, "site_settings_moved", "此设置已迁移至业务网站，请在对应网站下操作。");
       const body = await readJson(context, settingsRevisionSchema, MAX_JSON_BODY_BYTES);
       const data = await settingsOperation(() =>
         requireSettingsService(dependencies).rotateApiSecret(
@@ -998,6 +1084,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     adminSession,
     financialWrite,
     async (context) => {
+      if (dependencies.sites) throw new HttpApiError(410, "site_settings_moved", "此设置已迁移至业务网站，请在对应网站下操作。");
       const body = await readJson(context, settingsRevisionSchema, MAX_JSON_BODY_BYTES);
       const data = await settingsOperation(() =>
         requireSettingsService(dependencies).rotateWebhookSecret(body.revision, settingsAuditContext(context, dependencies)),
@@ -1013,6 +1100,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     async (context) => {
       await readJson(context, emptyObjectSchema, MAX_JSON_BODY_BYTES);
       const name = context.req.param("name");
+      if (dependencies.sites && (name === "api_secret" || name === "webhook_secret")) throw new HttpApiError(410, "site_settings_moved", "业务密钥已迁移至对应业务网站。");
       if (!runtimeSecretNames.has(name)) {
         throw new HttpApiError(404, "secret_not_found", "密钥不存在");
       }
@@ -1280,6 +1368,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   app.get("/api/admin/v1/webhooks/deliveries", adminSession, (context) => {
     const query = readWebhookDeliveryPageQuery(context);
     const page = requireWebhookStore(dependencies).listDeliveries({
+      ...(query.clientId ? { apiClientId: query.clientId } : {}),
       status: query.status ?? undefined,
       query: query.query,
       cursor: query.cursor,
@@ -1289,7 +1378,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     return context.json({
       data: page.deliveries.map(item => ({ ...serializeWebhookDeliverySummary(item), order_summary: identities.get(item.orderId) ?? null })),
       page: {
-        next_cursor: encodeWebhookDeliveryCursor(page.nextCursor, query.status, query.query),
+        next_cursor: encodeWebhookDeliveryCursor(page.nextCursor, query.status, query.query, query.clientId),
       },
     });
   });
@@ -1381,7 +1470,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     requirePaymentDatabaseReady(dependencies);
     requireJsonContentType(context);
     const request = parseJsonBytes(context.get("apiRawBody"), createOrderRequestSchema);
-    const result = dependencies.orders.create(
+    const result = scopedOrders(dependencies, context).create(
       request,
       () => requirePaymentBackgroundReady(dependencies),
     );
@@ -1406,7 +1495,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     (context) => {
       const parsed = merchantOrderNumberSchema.safeParse(context.req.param("merchantOrderNo"));
       if (!parsed.success) throw orderNotFoundHttpError();
-      const order = dependencies.orders.getByMerchantOrderNumber(
+      const order = scopedOrders(dependencies, context).getByMerchantOrderNumber(
         parsed.data,
       );
       return context.json({ data: serializeOrder(order, dependencies.config.publicOrigin) });
@@ -1415,13 +1504,13 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
 
   app.get("/api/v1/orders/:orderId", signedApi(0), (context) => {
     const orderId = requireOrderId(context.req.param("orderId"));
-    const order = dependencies.orders.get(orderId);
+    const order = scopedOrders(dependencies, context).get(orderId);
     return context.json({ data: serializeOrder(order, dependencies.config.publicOrigin) });
   });
 
   app.post("/api/v1/orders/:orderId/actions/close", signedApi(0), (context) => {
     const orderId = requireOrderId(context.req.param("orderId"));
-    const order = dependencies.orders.close(orderId);
+    const order = scopedOrders(dependencies, context).close(orderId);
     return context.json({ data: serializeOrder(order, dependencies.config.publicOrigin) });
   });
 
@@ -1479,6 +1568,20 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   });
 
   app.get("/api/v1/system/status", signedApi(0), async (context) => {
+    if (dependencies.sites) {
+      const clientId = context.get("apiClientId");
+      const site = dependencies.sites.get(clientId);
+      if (!site) throw new HttpApiError(401, "api_authentication_failed", "API 认证失败");
+      let code: string | null = null;
+      try {
+        dependencies.sites.checkOrderAdmission(clientId, dependencies.clock?.() ?? Date.now());
+        requirePaymentEntryReady(dependencies);
+      } catch (error) {
+        if (error instanceof SiteError || error instanceof HttpApiError) code = error.code;
+        else throw error;
+      }
+      return context.json({ data: { status: code === null ? "ready" : "not_ready", code, client_id: clientId, accepting_orders: site.configuration.accepting_orders, notifications_enabled: site.configuration.notifications_enabled } });
+    }
     return context.json({ data: await systemStatus(dependencies) });
   });
 
@@ -1487,6 +1590,11 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   );
 
   app.onError((error, context) => {
+    if (error instanceof SiteError) {
+      if (error.retryAfterSeconds !== undefined) context.header("retry-after", String(error.retryAfterSeconds));
+      const status = error.code === "site_not_found" ? 404 : error.code === "site_paused" || error.code === "site_order_limit_exceeded" ? 503 : 409;
+      return errorResponse(context, status, error.code, error.message);
+    }
     if (error instanceof AdminOperationError) return errorResponse(context, error.status, error.code, error.message);
     if (error instanceof ForwardedAddressError) {
       return errorResponse(
@@ -1708,11 +1816,13 @@ function requireApiClient(
   failureAuditLimiter: ApiFailureAuditLimiter,
 ): MiddlewareHandler<AppEnvironment> {
   return async (context, next) => {
-    const credential = dependencies.settings?.apiCredential() ?? null;
+    const scopedAuthentication = dependencies.sites ? readApiAuthentication(context) : null;
+    const credential = dependencies.sites ? dependencies.sites.credential(scopedAuthentication!.clientId) : dependencies.settings?.apiCredential() ?? null;
     if (credential === null) {
+      if (dependencies.sites) throw new HttpApiError(401, "api_authentication_failed", "API 认证失败");
       throw new HttpApiError(503, "system_not_configured", "收款系统尚未完成配置");
     }
-    const authentication = readApiAuthentication(context);
+    const authentication = scopedAuthentication ?? readApiAuthentication(context);
     const client = authentication.clientId === credential.clientId ? credential : undefined;
     if (!client) throw new HttpApiError(401, "api_authentication_failed", "API 认证失败");
     const body = await readBodyLimited(context, maximumBodyBytes);
@@ -1871,11 +1981,11 @@ function parseJsonBytes<T>(bytes: Uint8Array, schema: z.ZodType<T>): T {
   }
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
-    if ((schema as z.ZodType) === collectionSettingsInputSchema) {
+    if ((schema as z.ZodType) === collectionSettingsInputSchema || (schema as z.ZodType) === collectionCodeInputSchema) {
       const issue = parsed.error.issues.find((item) => item.path[0] === "code_payload");
       if (issue) throw new SettingsFieldError("code_payload", "请上传支付宝经营码，或粘贴 qr.alipay.com 开头的完整收款链接（最多 2331 字节）。");
     }
-    if ((schema as z.ZodType) === providerSettingsInputSchema) {
+    if ((schema as z.ZodType) === providerSettingsInputSchema || (schema as z.ZodType) === collectionPolicyInputSchema) {
       const timingHints = {
         scan_interval_seconds: "常规采集间隔须为 5～3600 秒的整数。",
         active_scan_interval_seconds: "活跃采集间隔须为 5～3600 秒的整数，且不能大于常规采集间隔。",
@@ -1889,6 +1999,10 @@ function parseJsonBytes<T>(bytes: Uint8Array, schema: z.ZodType<T>): T {
     }
     if ((schema as z.ZodType) === adminAccessInputSchema) {
       throw new SettingsFieldError("cidrs", parsed.error.issues[0]?.message ?? "白名单格式错误");
+    }
+    if ([createSiteInputSchema, updateSiteInputSchema, updateSiteDefaultsInputSchema].some(candidate => (candidate as z.ZodType) === schema)) {
+      const issue = parsed.error.issues[0];
+      if (issue?.path.length) throw new SettingsFieldError(issue.path.join("."), issue.message);
     }
     throw new HttpApiError(422, "validation_failed", "请求字段校验失败");
   }
@@ -2606,7 +2720,7 @@ function readAdminOrderPageQuery(context: Context<AppEnvironment>): {
   const query = readListQuery(values, ORDER_SORT_FIELDS, "created_at", "desc");
   for (const key of values.keys()) {
     if (
-      key !== "limit" &&
+      key !== "api_client_id" && key !== "limit" &&
       key !== "checkout_status" &&
       key !== "payment_status" &&
       key !== "cursor" && key !== "q" && key !== "sort_by" && key !== "sort_order" && key !== "created_from" && key !== "created_to"
@@ -2642,7 +2756,10 @@ function readAdminOrderPageQuery(context: Context<AppEnvironment>): {
   ) {
     throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
   }
+  const clientIds = values.getAll("api_client_id");
+  if (clientIds.length > 1 || (clientIds.length === 1 && !siteClientIdSchema.safeParse(clientIds[0]).success)) throw new HttpApiError(422, "validation_failed", "网站筛选无效。");
   const filters: AdminOrderFilters = {
+    ...(clientIds[0] ? { apiClientId: clientIds[0] } : {}),
     checkoutStatus: checkoutStatus === null ? null : checkoutStatus.data,
     paymentStatus: paymentStatus === null ? null : paymentStatus.data,
   };
@@ -2674,7 +2791,7 @@ function decodeAdminOrderCursor(
     if (!ORDER_ID_PATTERN.test(position.keys[0]!) || (position.value === null && query.sortBy !== "received_amount_cents")) throw new ListQueryError("分页游标无效");
     return {createdAt: query.sortBy === "created_at" ? position.value as number : 0, orderId: position.keys[0]!, position};
   }
-  if (!isDefaultQuery(query, "created_at", "desc")) throw new ListQueryError("旧游标仅能用于默认查询");
+  if (expectedFilters.apiClientId || !isDefaultQuery(query, "created_at", "desc")) throw new ListQueryError("旧游标仅能用于未按网站筛选的默认查询");
   if (!/^[A-Za-z0-9_-]{1,256}$/.test(value)) {
     throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
   }
@@ -2984,6 +3101,7 @@ function requireProviderAccountKey(value: string): string {
 }
 
 function readWebhookDeliveryPageQuery(context: Context<AppEnvironment>): {
+  readonly clientId: string | null;
   readonly limit: number;
   readonly query: ListQuery<DeliverySort>;
   readonly status: WebhookDeliveryStatus | null;
@@ -2992,10 +3110,13 @@ function readWebhookDeliveryPageQuery(context: Context<AppEnvironment>): {
   const values = new URL(context.req.url).searchParams;
   const query = readListQuery(values, DELIVERY_SORT_FIELDS, "created_at", "asc");
   for (const key of values.keys()) {
-    if (key !== "limit" && key !== "status" && key !== "cursor" && key !== "q" && key !== "sort_by" && key !== "sort_order" && key !== "created_from" && key !== "created_to") {
+    if (key !== "api_client_id" && key !== "limit" && key !== "status" && key !== "cursor" && key !== "q" && key !== "sort_by" && key !== "sort_order" && key !== "created_from" && key !== "created_to") {
       throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
     }
   }
+  const clientIds = values.getAll("api_client_id");
+  if (clientIds.length > 1 || (clientIds[0] !== undefined && !siteClientIdSchema.safeParse(clientIds[0]).success)) throw new HttpApiError(422, "validation_failed", "网站筛选无效");
+  const clientId = clientIds[0] ?? null;
   const limits = values.getAll("limit");
   if (
     limits.length > 1 ||
@@ -3025,11 +3146,12 @@ function readWebhookDeliveryPageQuery(context: Context<AppEnvironment>): {
   }
   return {
     limit,
+    clientId,
     query,
     status: status ?? null,
     cursor: cursors.length === 0
       ? null
-      : decodeWebhookDeliveryCursor(cursors[0] ?? "", status ?? null, query),
+      : decodeWebhookDeliveryCursor(cursors[0] ?? "", status ?? null, query, clientId),
   };
 }
 
@@ -3101,21 +3223,22 @@ function decodeOrderWebhookDeliveryCursor(
   return { createdAt, deliveryId: match[3]! };
 }
 
-function encodeWebhookDeliveryCursor(cursor: WebhookDeliveryCursor | null, status: WebhookDeliveryStatus | null, query: ListQuery<DeliverySort>): string | null {
-  return encodeListCursor("deliveries", [query, status], cursor ? cursor.position ?? {value: cursor.createdAt, keys: [cursor.deliveryId]} : null);
+function encodeWebhookDeliveryCursor(cursor: WebhookDeliveryCursor | null, status: WebhookDeliveryStatus | null, query: ListQuery<DeliverySort>, clientId: string | null): string | null {
+  return encodeListCursor("deliveries", [query, status, clientId], cursor ? cursor.position ?? {value: cursor.createdAt, keys: [cursor.deliveryId]} : null);
 }
 
 function decodeWebhookDeliveryCursor(
   value: string,
   expectedStatus: WebhookDeliveryStatus | null,
   query: ListQuery<DeliverySort>,
+  clientId: string | null,
 ): WebhookDeliveryCursor {
-  const position = decodeListCursor(value, "deliveries", [query, expectedStatus], "number");
+  const position = decodeListCursor(value, "deliveries", [query, expectedStatus, clientId], "number");
   if (position) {
     if (!ORDER_ID_PATTERN.test(position.keys[0]!) || (position.value === null && query.sortBy !== "next_attempt_at")) throw new ListQueryError("分页游标无效");
     return {createdAt: query.sortBy === "created_at" ? position.value as number : 0, deliveryId: position.keys[0]!, position};
   }
-  if (!isDefaultQuery(query, "created_at", "asc")) throw new ListQueryError("旧游标仅能用于默认查询");
+  if (clientId !== null || !isDefaultQuery(query, "created_at", "asc")) throw new ListQueryError("旧游标仅能用于默认查询");
   if (!/^[A-Za-z0-9_-]{1,256}$/.test(value)) {
     throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
   }
@@ -3232,6 +3355,7 @@ function serializeAdminOrderDetail(order: AdminOrderDetailProjection, database: 
     : { matches: [], exceptions: [] };
   return {
     ...serializeAdminOrderSummary(order),
+    site_name: adminOrderIdentities(database, [order.orderId]).get(order.orderId)?.site_name ?? null,
     note: order.note,
     notification: { notify_url: order.notification.notifyUrl },
     events: order.events.map((event) => ({
@@ -3382,6 +3506,7 @@ function serializeWebhookAttempt(attempt: WebhookAttempt) {
 
 function serializePublicCheckout(checkout: PublicCheckoutProjection) {
   return {
+    ...(checkout.display ? { display: { name: checkout.display.name, help_url: checkout.display.helpUrl, show_product_name: checkout.display.showProductName } } : {}),
     merchant_order_no: checkout.merchantOrderNo,
     requested_amount_cents: checkout.requestedAmountCents,
     currency: checkout.currency,
@@ -3771,12 +3896,12 @@ function errorResponse(
 }
 
 class HttpApiError extends Error {
-  readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 429 | 503;
+  readonly status: 400 | 401 | 403 | 404 | 409 | 410 | 413 | 415 | 422 | 429 | 503;
   readonly code: HttpErrorCode;
   readonly retryAfterSeconds: number | undefined;
 
   constructor(
-    status: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 429 | 503,
+    status: 400 | 401 | 403 | 404 | 409 | 410 | 413 | 415 | 422 | 429 | 503,
     code: HttpErrorCode,
     message: string,
     retryAfterSeconds?: number,
@@ -3791,4 +3916,12 @@ class HttpApiError extends Error {
 
 function serializeManualRecommendation(value: ManualRecommendation | null) {
   return value ? {amount_match: value.amountMatch, time_window_overlap: value.timeWindowOverlap, time_distance_milliseconds: value.timeDistanceMilliseconds} : null;
+}
+
+function scopedOrders(dependencies: AppDependencies, context: Context<AppEnvironment>): OrderService {
+  return dependencies.sites ? dependencies.orders.forSite(context.get("apiClientId")) : dependencies.orders;
+}
+function serializeSite(site: SiteSnapshot) {
+  return { client_id: site.clientId, revision: site.revision, configuration: site.configuration,
+    created_at: new Date(site.createdAt).toISOString(), updated_at: new Date(site.updatedAt).toISOString(), deleted_at: site.deletedAt === null ? null : new Date(site.deletedAt).toISOString() };
 }

@@ -1,3 +1,4 @@
+import { selectTestWebsite } from "./site-picker-helper";
 import { onlineManager } from "@tanstack/react-query";
 import {
   act,
@@ -59,6 +60,7 @@ async function open(
     : await screen.findByRole("button", { name: "测试收款" });
   if (trigger) await user.click(trigger);
   const amount = await screen.findByLabelText("测试金额（元）");
+    await selectTestWebsite();
   fireEvent.change(amount, { target: { value: "1.23" } });
   await user.click(screen.getByRole("button", { name: "创建测试订单" }));
   return { trigger, amount };
@@ -81,10 +83,12 @@ describe("uncertain test-payment creation recovery", () => {
     const { trigger, amount } = await open(user);
     await screen.findByText("创建结果待确认");
     expect(amount).toHaveAttribute("readonly");
+    expect(screen.getByRole("combobox", { name: "业务网站" })).toBeDisabled();
     expect(amount).toHaveAccessibleDescription(
       expect.stringContaining("原金额已锁定"),
     );
     const body = await view.requests()[0]!.clone().json();
+    expect(body.api_client_id).toBe("site_test");
     expect(screen.getByText("test-" + body.test_payment_id)).toBeVisible();
     expect(
       within(screen.getByRole("dialog")).getByText("商户订单号").tagName,
@@ -280,6 +284,7 @@ describe("uncertain test-payment creation recovery", () => {
     const trigger = await screen.findByRole("button", { name: "测试收款" });
     await user.click(trigger);
     await screen.findByLabelText("测试金额（元）");
+    await selectTestWebsite();
     vi.useFakeTimers();
     fireEvent.click(screen.getByRole("button", { name: "创建测试订单" }));
     await act(async () => {
@@ -317,6 +322,7 @@ describe("uncertain test-payment creation recovery", () => {
     await user.click(screen.getByRole("button", { name: "登录" }));
     await user.click(await screen.findByRole("button", { name: "测试收款" }));
     const amount = await screen.findByLabelText("测试金额（元）");
+    await selectTestWebsite();
     expect(amount).toHaveValue("0.01");
     expect(amount).not.toHaveAttribute("readonly");
     expect(view.requests()).toHaveLength(1);
@@ -343,6 +349,7 @@ describe("uncertain test-payment creation recovery", () => {
   it("supports the standalone route with a trailing slash without disabling its readiness query", async () => {
     const view = mount(() => json({ data: created }, 201), "/test-payment/");
     await screen.findByLabelText("测试金额（元）");
+    await selectTestWebsite();
     expect(
       screen.getByRole("heading", { level: 1, name: "测试收款" }),
     ).toBeVisible();

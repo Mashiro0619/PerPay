@@ -32,8 +32,8 @@ describe("minimal onboarding", () => {
       expect(screen.getAllByRole("heading", { level: 2 })).toHaveLength(1);
       if (step === "provider") {
         expect(view.container.querySelector("form")).not.toHaveTextContent("支付宝接入");
-        expect(screen.getByRole("group", { name: "应用凭据" })).toBeVisible();
-        expect(screen.getByRole("group", { name: "账单采集" })).toBeVisible();
+        expect(screen.getByRole("group", { name: "开放平台应用" })).toBeVisible();
+        expect(screen.queryByLabelText("常规采集间隔（秒）")).not.toBeInTheDocument();
       }
       expect(
         screen.getByRole("complementary", { name: "本步说明" }),
@@ -74,11 +74,6 @@ describe("minimal onboarding", () => {
     );
     expect(await view.writes()[0]!.clone().json()).toMatchObject({
       environment: "SANDBOX",
-      timeout_milliseconds: 8000,
-      scan_interval_seconds: 10,
-      active_scan_interval_seconds: 10,
-      safety_lag_seconds: 10,
-      maximum_success_age_seconds: 60,
     });
   });
 
@@ -92,7 +87,7 @@ describe("minimal onboarding", () => {
                 error: {
                   code: "settings_validation_failed",
                   message: "参数校验失败",
-                  fields: { timeout_milliseconds: "请求超时设置不符合要求" },
+                  fields: { app_id: "应用 ID 不符合要求" },
                 },
               },
               422,
@@ -106,11 +101,11 @@ describe("minimal onboarding", () => {
     );
     await user.type(screen.getByLabelText("支付宝公钥"), "synthetic-key");
     await user.click(screen.getByRole("button", { name: "保存并继续" }));
-    expect(await screen.findByText("请求超时设置不符合要求")).toBeVisible();
+    expect(await screen.findByText("应用 ID 不符合要求")).toBeVisible();
     await waitFor(() =>
-      expect(screen.getByLabelText("请求超时（秒）")).toHaveFocus(),
+      expect(screen.getByLabelText("应用 ID（App ID）")).toHaveFocus(),
     );
-    expect(screen.getByLabelText("请求超时（秒）")).toBeVisible();
+    expect(screen.getByLabelText("应用 ID（App ID）")).toBeVisible();
     expect(
       screen.queryByRole("button", { name: "高级设置" }),
     ).not.toBeInTheDocument();
@@ -261,7 +256,7 @@ describe("minimal onboarding", () => {
 
   it("focuses a directly visible parameter for native validation", async () => {
     mountOnboarding({ stage: 1 });
-    const timeout = await screen.findByLabelText("请求超时（秒）");
+    const timeout = await screen.findByLabelText("应用 ID（App ID）");
     expect(timeout).toBeVisible();
     fireEvent.invalid(timeout);
     await waitFor(() => expect(timeout).toHaveFocus());

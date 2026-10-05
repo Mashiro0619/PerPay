@@ -1,3 +1,4 @@
+import { selectTestWebsite } from "./site-picker-helper";
 import {
   act,
   fireEvent,
@@ -43,6 +44,7 @@ async function open(user: ReturnType<typeof userEvent.setup>) {
   await user.click(trigger);
   const dialog = await screen.findByRole("dialog", { name: "测试收款" });
   await within(dialog).findByLabelText("测试金额（元）");
+    await selectTestWebsite();
   return { dialog, trigger };
 }
 

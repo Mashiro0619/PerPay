@@ -273,13 +273,13 @@ describe("short feedback and safe settings", () => {
   });
   it("preserves a settings draft across brightness changes without issuing a write", async () => {
     const control = theme();
-    const view = mountOnboarding({ stage: 4, path: "/settings/collection" });
-    const field = await screen.findByLabelText("收银台有效期（秒）");
+    const view = mountOnboarding({ stage: 4, path: "/settings/collection-policy" });
+    const field = await screen.findByLabelText("采集有效时限（秒）");
     fireEvent.change(field, { target: { value: "450" } });
     act(() => {
       control.setPreference("dark");
     });
-    expect(screen.getByLabelText("收银台有效期（秒）")).toBe(field);
+    expect(screen.getByLabelText("采集有效时限（秒）")).toBe(field);
     expect(field).toHaveValue(450);
     expect(screen.getByText("未保存")).toBeVisible();
     expect(view.writes()).toHaveLength(0);
@@ -289,7 +289,7 @@ describe("short feedback and safe settings", () => {
     let finish: (response: Response) => void = () => {};
     const view = mountOnboarding({
       stage: 4,
-      path: "/settings/collection",
+      path: "/settings/collection-policy",
       handle: (request) =>
         loading && request.url.endsWith("/settings")
           ? new Promise<Response>((resolve) => {
@@ -297,12 +297,12 @@ describe("short feedback and safe settings", () => {
             })
           : undefined,
     });
-    await screen.findByLabelText("收银台有效期（秒）");
+    await screen.findByLabelText("采集有效时限（秒）");
     loading = true;
     await userEvent.setup().click(screen.getByRole("button", { name: "刷新" }));
     expect(
       screen
-        .getByLabelText("收银台有效期（秒）")
+        .getByLabelText("采集有效时限（秒）")
         .closest("[data-settings-content]"),
     ).toHaveAttribute("inert");
     await act(async () => {
@@ -316,14 +316,14 @@ describe("short feedback and safe settings", () => {
     await waitFor(() =>
       expect(
         screen
-          .getByLabelText("收银台有效期（秒）")
+          .getByLabelText("采集有效时限（秒）")
           .closest("[data-settings-content]"),
       ).not.toHaveAttribute("inert"),
     );
-    const field = screen.getByLabelText("收银台有效期（秒）");
+    const field = screen.getByLabelText("采集有效时限（秒）");
     fireEvent.change(field, { target: { value: "450" } });
     expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
-    fireEvent.change(field, { target: { value: "300" } });
+    fireEvent.change(field, { target: { value: String(configuredThrough(4).collection_policy!.maximum_success_age_seconds) } });
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
     expect(view.writes()).toHaveLength(0);
   });

@@ -82,6 +82,15 @@ export const HTTP_ERROR_CODES = Object.freeze([
   "webhook_target_invalid",
   "webhook_target_not_allowed",
   "webhook_unavailable",
+  "site_not_found",
+  "site_revision_conflict",
+  "site_operation_conflict",
+  "site_has_history",
+  "site_paused",
+  "site_order_limit_exceeded",
+  "site_secret_missing",
+  "demo_read_only",
+  "site_settings_moved",
 ] as const);
 
 export type HttpErrorCode = (typeof HTTP_ERROR_CODES)[number];

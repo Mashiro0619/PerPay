@@ -1,7 +1,7 @@
 
 import { client } from './client.gen.js';
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client/index.js';
-import type { ActivateProviderApplicationKeyData, ActivateProviderApplicationKeyErrors, ActivateProviderApplicationKeyResponses, ChangeAdministratorPasswordData, ChangeAdministratorPasswordErrors, ChangeAdministratorPasswordResponses, CheckOfficialUpdateData, CheckOfficialUpdateErrors, CheckOfficialUpdateResponses, CreateAdministratorTestPaymentData, CreateAdministratorTestPaymentErrors, CreateAdministratorTestPaymentResponses, CreateManualSettlementData, CreateManualSettlementErrors, CreateManualSettlementResponses, DiscardProviderApplicationKeyData, DiscardProviderApplicationKeyErrors, DiscardProviderApplicationKeyResponses, ExportAdministratorOrdersData, ExportAdministratorOrdersErrors, ExportAdministratorOrdersResponses, GenerateProviderApplicationKeyData, GenerateProviderApplicationKeyErrors, GenerateProviderApplicationKeyResponses, GetAdminAccessSettingsData, GetAdminAccessSettingsErrors, GetAdminAccessSettingsResponses, GetAdministratorOrderByMerchantNumberData, GetAdministratorOrderByMerchantNumberErrors, GetAdministratorOrderByMerchantNumberResponses, GetAdministratorOrderData, GetAdministratorOrderErrors, GetAdministratorOrderResponses, GetAdministratorSessionData, GetAdministratorSessionErrors, GetAdministratorSessionResponses, GetAdministratorSystemAnalyticsData, GetAdministratorSystemAnalyticsErrors, GetAdministratorSystemAnalyticsResponses, GetAdministratorSystemStatusData, GetAdministratorSystemStatusErrors, GetAdministratorSystemStatusResponses, GetFinancialExceptionData, GetFinancialExceptionErrors, GetFinancialExceptionResponses, GetLedgerConflictData, GetLedgerConflictErrors, GetLedgerConflictResponses, GetPaymentMatchData, GetPaymentMatchErrors, GetPaymentMatchResponses, GetReconciliationCandidateData, GetReconciliationCandidateErrors, GetReconciliationCandidateResponses, GetReconciliationLedgerEntryData, GetReconciliationLedgerEntryErrors, GetReconciliationLedgerEntryResponses, GetRuntimeSettingsData, GetRuntimeSettingsErrors, GetRuntimeSettingsResponses, GetWebhookDeliveryData, GetWebhookDeliveryErrors, GetWebhookDeliveryResponses, IgnoreAllAdministratorWorkItemsData, IgnoreAllAdministratorWorkItemsErrors, IgnoreAllAdministratorWorkItemsResponses, ListAdministratorOrdersData, ListAdministratorOrdersErrors, ListAdministratorOrdersResponses, ListAdministratorOrderWebhookDeliveriesData, ListAdministratorOrderWebhookDeliveriesErrors, ListAdministratorOrderWebhookDeliveriesResponses, ListAdministratorWorkItemsData, ListAdministratorWorkItemsErrors, ListAdministratorWorkItemsResponses, ListLedgerConflictsData, ListLedgerConflictsErrors, ListLedgerConflictsResponses, ListLedgerEntryCandidatesData, ListLedgerEntryCandidatesErrors, ListLedgerEntryCandidatesResponses, ListManualSettlementLedgerEntriesData, ListManualSettlementLedgerEntriesErrors, ListManualSettlementLedgerEntriesResponses, ListManualSettlementOrdersData, ListManualSettlementOrdersErrors, ListManualSettlementOrdersResponses, ListOpenFinancialExceptionsData, ListOpenFinancialExceptionsErrors, ListOpenFinancialExceptionsResponses, ListPaymentMatchesData, ListPaymentMatchesErrors, ListPaymentMatchesResponses, ListWebhookDeliveriesData, ListWebhookDeliveriesErrors, ListWebhookDeliveriesResponses, ListWebhookDeliveryAttemptsData, ListWebhookDeliveryAttemptsErrors, ListWebhookDeliveryAttemptsResponses, LoginAdministratorData, LoginAdministratorErrors, LoginAdministratorResponses, LogoutAdministratorSessionData, LogoutAdministratorSessionErrors, LogoutAdministratorSessionResponses, OpenAdministratorOrderCheckoutData, OpenAdministratorOrderCheckoutErrors, RecordCollectedRefundDebitData, RecordCollectedRefundDebitErrors, RedeliverWebhookDeliveryData, RedeliverWebhookDeliveryErrors, RedeliverWebhookDeliveryResponses, RegenerateProviderApplicationKeyData, RegenerateProviderApplicationKeyErrors, RegenerateProviderApplicationKeyResponses, ResolveLedgerConflictData, ResolveLedgerConflictErrors, ResolveLedgerConflictResponses, RestoreAdministratorWorkItemData, RestoreAdministratorWorkItemErrors, RestoreAdministratorWorkItemResponses, RevealRuntimeSecretData, RevealRuntimeSecretErrors, RevealRuntimeSecretResponses, ReversePaymentSettlementData, ReversePaymentSettlementErrors, ReversePaymentSettlementResponses, RevokeAllAdministratorSessionsData, RevokeAllAdministratorSessionsErrors, RevokeAllAdministratorSessionsResponses, RotateApiClientSecretData, RotateApiClientSecretErrors, RotateApiClientSecretResponses, RotateWebhookSigningSecretData, RotateWebhookSigningSecretErrors, RotateWebhookSigningSecretResponses, SetAdministratorRefundMarkData, SetAdministratorRefundMarkErrors, SetAdministratorRefundMarkResponses, SetupAdministratorData, SetupAdministratorErrors, SetupAdministratorResponses, UpdateAdminAccessSettingsData, UpdateAdminAccessSettingsErrors, UpdateAdminAccessSettingsResponses, UpdateAdvancedSettingsData, UpdateAdvancedSettingsErrors, UpdateAdvancedSettingsResponses, UpdateBackupSettingsData, UpdateBackupSettingsErrors, UpdateBackupSettingsResponses, UpdateCollectionSettingsData, UpdateCollectionSettingsErrors, UpdateCollectionSettingsResponses, UpdateDisplaySettingsData, UpdateDisplaySettingsErrors, UpdateDisplaySettingsResponses, UpdateNotificationSettingsData, UpdateNotificationSettingsErrors, UpdateNotificationSettingsResponses, UpdateProviderSettingsData, UpdateProviderSettingsErrors, UpdateProviderSettingsResponses } from './types.gen.js';
+import type { ActivateProviderApplicationKeyData, ActivateProviderApplicationKeyErrors, ActivateProviderApplicationKeyResponses, ChangeAdministratorPasswordData, ChangeAdministratorPasswordErrors, ChangeAdministratorPasswordResponses, CheckOfficialUpdateData, CheckOfficialUpdateErrors, CheckOfficialUpdateResponses, CreateAdministratorTestPaymentData, CreateAdministratorTestPaymentErrors, CreateAdministratorTestPaymentResponses, CreateManualSettlementData, CreateManualSettlementErrors, CreateManualSettlementResponses, CreateSiteData, CreateSiteErrors, CreateSiteResponses, DeleteSiteData, DeleteSiteErrors, DeleteSiteResponses, DiscardProviderApplicationKeyData, DiscardProviderApplicationKeyErrors, DiscardProviderApplicationKeyResponses, ExportAdministratorOrdersData, ExportAdministratorOrdersErrors, ExportAdministratorOrdersResponses, GenerateProviderApplicationKeyData, GenerateProviderApplicationKeyErrors, GenerateProviderApplicationKeyResponses, GetAdminAccessSettingsData, GetAdminAccessSettingsErrors, GetAdminAccessSettingsResponses, GetAdministratorOrderByMerchantNumberData, GetAdministratorOrderByMerchantNumberErrors, GetAdministratorOrderByMerchantNumberResponses, GetAdministratorOrderData, GetAdministratorOrderErrors, GetAdministratorOrderResponses, GetAdministratorSessionData, GetAdministratorSessionErrors, GetAdministratorSessionResponses, GetAdministratorSystemAnalyticsData, GetAdministratorSystemAnalyticsErrors, GetAdministratorSystemAnalyticsResponses, GetAdministratorSystemStatusData, GetAdministratorSystemStatusErrors, GetAdministratorSystemStatusResponses, GetCollectionPolicyData, GetCollectionPolicyErrors, GetCollectionPolicyResponses, GetFinancialExceptionData, GetFinancialExceptionErrors, GetFinancialExceptionResponses, GetLedgerConflictData, GetLedgerConflictErrors, GetLedgerConflictResponses, GetPaymentMatchData, GetPaymentMatchErrors, GetPaymentMatchResponses, GetReconciliationCandidateData, GetReconciliationCandidateErrors, GetReconciliationCandidateResponses, GetReconciliationLedgerEntryData, GetReconciliationLedgerEntryErrors, GetReconciliationLedgerEntryResponses, GetRuntimeSettingsData, GetRuntimeSettingsErrors, GetRuntimeSettingsResponses, GetSiteData, GetSiteDefaultsData, GetSiteDefaultsErrors, GetSiteDefaultsResponses, GetSiteErrors, GetSiteResponses, GetWebhookDeliveryData, GetWebhookDeliveryErrors, GetWebhookDeliveryResponses, IgnoreAllAdministratorWorkItemsData, IgnoreAllAdministratorWorkItemsErrors, IgnoreAllAdministratorWorkItemsResponses, ListAdministratorOrdersData, ListAdministratorOrdersErrors, ListAdministratorOrdersResponses, ListAdministratorOrderWebhookDeliveriesData, ListAdministratorOrderWebhookDeliveriesErrors, ListAdministratorOrderWebhookDeliveriesResponses, ListAdministratorWorkItemsData, ListAdministratorWorkItemsErrors, ListAdministratorWorkItemsResponses, ListLedgerConflictsData, ListLedgerConflictsErrors, ListLedgerConflictsResponses, ListLedgerEntryCandidatesData, ListLedgerEntryCandidatesErrors, ListLedgerEntryCandidatesResponses, ListManualSettlementLedgerEntriesData, ListManualSettlementLedgerEntriesErrors, ListManualSettlementLedgerEntriesResponses, ListManualSettlementOrdersData, ListManualSettlementOrdersErrors, ListManualSettlementOrdersResponses, ListOpenFinancialExceptionsData, ListOpenFinancialExceptionsErrors, ListOpenFinancialExceptionsResponses, ListPaymentMatchesData, ListPaymentMatchesErrors, ListPaymentMatchesResponses, ListSitesData, ListSitesErrors, ListSitesResponses, ListWebhookDeliveriesData, ListWebhookDeliveriesErrors, ListWebhookDeliveriesResponses, ListWebhookDeliveryAttemptsData, ListWebhookDeliveryAttemptsErrors, ListWebhookDeliveryAttemptsResponses, LoginAdministratorData, LoginAdministratorErrors, LoginAdministratorResponses, LogoutAdministratorSessionData, LogoutAdministratorSessionErrors, LogoutAdministratorSessionResponses, OpenAdministratorOrderCheckoutData, OpenAdministratorOrderCheckoutErrors, RecordCollectedRefundDebitData, RecordCollectedRefundDebitErrors, RedeliverWebhookDeliveryData, RedeliverWebhookDeliveryErrors, RedeliverWebhookDeliveryResponses, RegenerateProviderApplicationKeyData, RegenerateProviderApplicationKeyErrors, RegenerateProviderApplicationKeyResponses, ResolveLedgerConflictData, ResolveLedgerConflictErrors, ResolveLedgerConflictResponses, RestoreAdministratorWorkItemData, RestoreAdministratorWorkItemErrors, RestoreAdministratorWorkItemResponses, RevealRuntimeSecretData, RevealRuntimeSecretErrors, RevealRuntimeSecretResponses, ReversePaymentSettlementData, ReversePaymentSettlementErrors, ReversePaymentSettlementResponses, RevokeAllAdministratorSessionsData, RevokeAllAdministratorSessionsErrors, RevokeAllAdministratorSessionsResponses, RotateApiClientSecretData, RotateApiClientSecretErrors, RotateApiClientSecretResponses, RotateSiteApiSecretData, RotateSiteApiSecretErrors, RotateSiteApiSecretResponses, RotateSiteWebhookSecretData, RotateSiteWebhookSecretErrors, RotateSiteWebhookSecretResponses, RotateWebhookSigningSecretData, RotateWebhookSigningSecretErrors, RotateWebhookSigningSecretResponses, SetAdministratorRefundMarkData, SetAdministratorRefundMarkErrors, SetAdministratorRefundMarkResponses, SetupAdministratorData, SetupAdministratorErrors, SetupAdministratorResponses, UpdateAdminAccessSettingsData, UpdateAdminAccessSettingsErrors, UpdateAdminAccessSettingsResponses, UpdateAdvancedSettingsData, UpdateAdvancedSettingsErrors, UpdateAdvancedSettingsResponses, UpdateBackupSettingsData, UpdateBackupSettingsErrors, UpdateBackupSettingsResponses, UpdateCollectionPolicyData, UpdateCollectionPolicyErrors, UpdateCollectionPolicyResponses, UpdateCollectionSettingsData, UpdateCollectionSettingsErrors, UpdateCollectionSettingsResponses, UpdateDisplaySettingsData, UpdateDisplaySettingsErrors, UpdateDisplaySettingsResponses, UpdateNotificationSettingsData, UpdateNotificationSettingsErrors, UpdateNotificationSettingsResponses, UpdateProviderSettingsData, UpdateProviderSettingsErrors, UpdateProviderSettingsResponses, UpdateSiteData, UpdateSiteDefaultsData, UpdateSiteDefaultsErrors, UpdateSiteDefaultsResponses, UpdateSiteErrors, UpdateSiteResponses, ViewSiteApiSecretData, ViewSiteApiSecretErrors, ViewSiteApiSecretResponses, ViewSiteWebhookSecretData, ViewSiteWebhookSecretErrors, ViewSiteWebhookSecretResponses } from './types.gen.js';
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     client?: Client;
     meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta;
@@ -817,6 +817,231 @@ export const redeliverWebhookDelivery = <ThrowOnError extends boolean = false>(o
         { name: 'X-CSRF-Token', type: 'apiKey' }
     ],
     url: '/api/admin/v1/webhooks/deliveries/{deliveryId}/actions/redeliver',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+export const listSites = <ThrowOnError extends boolean = false>(options?: Options<ListSitesData, ThrowOnError>): RequestResult<ListSitesResponses, ListSitesErrors, ThrowOnError> => (options?.client ?? client).get<ListSitesResponses, ListSitesErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: '__Host-perpay_session',
+            type: 'apiKey'
+        }],
+    url: '/api/admin/v1/sites',
+    ...options
+});
+export const createSite = <ThrowOnError extends boolean = false>(options: Options<CreateSiteData, ThrowOnError>): RequestResult<CreateSiteResponses, CreateSiteErrors, ThrowOnError> => (options.client ?? client).post<CreateSiteResponses, CreateSiteErrors, ThrowOnError>({
+    security: [
+        {
+            in: 'cookie',
+            name: '__Host-perpay_session',
+            type: 'apiKey'
+        },
+        {
+            in: 'cookie',
+            name: '__Host-perpay_csrf',
+            type: 'apiKey'
+        },
+        { name: 'X-CSRF-Token', type: 'apiKey' }
+    ],
+    url: '/api/admin/v1/sites',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+export const deleteSite = <ThrowOnError extends boolean = false>(options: Options<DeleteSiteData, ThrowOnError>): RequestResult<DeleteSiteResponses, DeleteSiteErrors, ThrowOnError> => (options.client ?? client).delete<DeleteSiteResponses, DeleteSiteErrors, ThrowOnError>({
+    security: [
+        {
+            in: 'cookie',
+            name: '__Host-perpay_session',
+            type: 'apiKey'
+        },
+        {
+            in: 'cookie',
+            name: '__Host-perpay_csrf',
+            type: 'apiKey'
+        },
+        { name: 'X-CSRF-Token', type: 'apiKey' }
+    ],
+    url: '/api/admin/v1/sites/{clientId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+export const getSite = <ThrowOnError extends boolean = false>(options: Options<GetSiteData, ThrowOnError>): RequestResult<GetSiteResponses, GetSiteErrors, ThrowOnError> => (options.client ?? client).get<GetSiteResponses, GetSiteErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: '__Host-perpay_session',
+            type: 'apiKey'
+        }],
+    url: '/api/admin/v1/sites/{clientId}',
+    ...options
+});
+export const updateSite = <ThrowOnError extends boolean = false>(options: Options<UpdateSiteData, ThrowOnError>): RequestResult<UpdateSiteResponses, UpdateSiteErrors, ThrowOnError> => (options.client ?? client).put<UpdateSiteResponses, UpdateSiteErrors, ThrowOnError>({
+    security: [
+        {
+            in: 'cookie',
+            name: '__Host-perpay_session',
+            type: 'apiKey'
+        },
+        {
+            in: 'cookie',
+            name: '__Host-perpay_csrf',
+            type: 'apiKey'
+        },
+        { name: 'X-CSRF-Token', type: 'apiKey' }
+    ],
+    url: '/api/admin/v1/sites/{clientId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+export const getSiteDefaults = <ThrowOnError extends boolean = false>(options?: Options<GetSiteDefaultsData, ThrowOnError>): RequestResult<GetSiteDefaultsResponses, GetSiteDefaultsErrors, ThrowOnError> => (options?.client ?? client).get<GetSiteDefaultsResponses, GetSiteDefaultsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: '__Host-perpay_session',
+            type: 'apiKey'
+        }],
+    url: '/api/admin/v1/settings/site-defaults',
+    ...options
+});
+export const updateSiteDefaults = <ThrowOnError extends boolean = false>(options: Options<UpdateSiteDefaultsData, ThrowOnError>): RequestResult<UpdateSiteDefaultsResponses, UpdateSiteDefaultsErrors, ThrowOnError> => (options.client ?? client).put<UpdateSiteDefaultsResponses, UpdateSiteDefaultsErrors, ThrowOnError>({
+    security: [
+        {
+            in: 'cookie',
+            name: '__Host-perpay_session',
+            type: 'apiKey'
+        },
+        {
+            in: 'cookie',
+            name: '__Host-perpay_csrf',
+            type: 'apiKey'
+        },
+        { name: 'X-CSRF-Token', type: 'apiKey' }
+    ],
+    url: '/api/admin/v1/settings/site-defaults',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+export const rotateSiteApiSecret = <ThrowOnError extends boolean = false>(options: Options<RotateSiteApiSecretData, ThrowOnError>): RequestResult<RotateSiteApiSecretResponses, RotateSiteApiSecretErrors, ThrowOnError> => (options.client ?? client).post<RotateSiteApiSecretResponses, RotateSiteApiSecretErrors, ThrowOnError>({
+    security: [
+        {
+            in: 'cookie',
+            name: '__Host-perpay_session',
+            type: 'apiKey'
+        },
+        {
+            in: 'cookie',
+            name: '__Host-perpay_csrf',
+            type: 'apiKey'
+        },
+        { name: 'X-CSRF-Token', type: 'apiKey' }
+    ],
+    url: '/api/admin/v1/sites/{clientId}/secrets/api_secret/actions/rotate',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+export const viewSiteApiSecret = <ThrowOnError extends boolean = false>(options: Options<ViewSiteApiSecretData, ThrowOnError>): RequestResult<ViewSiteApiSecretResponses, ViewSiteApiSecretErrors, ThrowOnError> => (options.client ?? client).post<ViewSiteApiSecretResponses, ViewSiteApiSecretErrors, ThrowOnError>({
+    security: [
+        {
+            in: 'cookie',
+            name: '__Host-perpay_session',
+            type: 'apiKey'
+        },
+        {
+            in: 'cookie',
+            name: '__Host-perpay_csrf',
+            type: 'apiKey'
+        },
+        { name: 'X-CSRF-Token', type: 'apiKey' }
+    ],
+    url: '/api/admin/v1/sites/{clientId}/secrets/api_secret/actions/view',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+export const rotateSiteWebhookSecret = <ThrowOnError extends boolean = false>(options: Options<RotateSiteWebhookSecretData, ThrowOnError>): RequestResult<RotateSiteWebhookSecretResponses, RotateSiteWebhookSecretErrors, ThrowOnError> => (options.client ?? client).post<RotateSiteWebhookSecretResponses, RotateSiteWebhookSecretErrors, ThrowOnError>({
+    security: [
+        {
+            in: 'cookie',
+            name: '__Host-perpay_session',
+            type: 'apiKey'
+        },
+        {
+            in: 'cookie',
+            name: '__Host-perpay_csrf',
+            type: 'apiKey'
+        },
+        { name: 'X-CSRF-Token', type: 'apiKey' }
+    ],
+    url: '/api/admin/v1/sites/{clientId}/secrets/webhook_secret/actions/rotate',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+export const viewSiteWebhookSecret = <ThrowOnError extends boolean = false>(options: Options<ViewSiteWebhookSecretData, ThrowOnError>): RequestResult<ViewSiteWebhookSecretResponses, ViewSiteWebhookSecretErrors, ThrowOnError> => (options.client ?? client).post<ViewSiteWebhookSecretResponses, ViewSiteWebhookSecretErrors, ThrowOnError>({
+    security: [
+        {
+            in: 'cookie',
+            name: '__Host-perpay_session',
+            type: 'apiKey'
+        },
+        {
+            in: 'cookie',
+            name: '__Host-perpay_csrf',
+            type: 'apiKey'
+        },
+        { name: 'X-CSRF-Token', type: 'apiKey' }
+    ],
+    url: '/api/admin/v1/sites/{clientId}/secrets/webhook_secret/actions/view',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+export const getCollectionPolicy = <ThrowOnError extends boolean = false>(options?: Options<GetCollectionPolicyData, ThrowOnError>): RequestResult<GetCollectionPolicyResponses, GetCollectionPolicyErrors, ThrowOnError> => (options?.client ?? client).get<GetCollectionPolicyResponses, GetCollectionPolicyErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: '__Host-perpay_session',
+            type: 'apiKey'
+        }],
+    url: '/api/admin/v1/settings/collection-policy',
+    ...options
+});
+export const updateCollectionPolicy = <ThrowOnError extends boolean = false>(options: Options<UpdateCollectionPolicyData, ThrowOnError>): RequestResult<UpdateCollectionPolicyResponses, UpdateCollectionPolicyErrors, ThrowOnError> => (options.client ?? client).put<UpdateCollectionPolicyResponses, UpdateCollectionPolicyErrors, ThrowOnError>({
+    security: [
+        {
+            in: 'cookie',
+            name: '__Host-perpay_session',
+            type: 'apiKey'
+        },
+        {
+            in: 'cookie',
+            name: '__Host-perpay_csrf',
+            type: 'apiKey'
+        },
+        { name: 'X-CSRF-Token', type: 'apiKey' }
+    ],
+    url: '/api/admin/v1/settings/collection-policy',
     ...options,
     headers: {
         'Content-Type': 'application/json',

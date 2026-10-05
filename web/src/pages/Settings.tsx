@@ -31,6 +31,7 @@ import { NotificationKeyActions, SecuritySettings } from "./SecuritySettings";
 
 const sectionIcons = {
   provider: Wallet,
+  "collection-policy": SlidersHorizontal,
   collection: QrCode,
   notifications: Mail,
   security: KeyRound,
@@ -96,7 +97,7 @@ export default function Settings() {
       <div className="flex flex-col gap-1">
         <h2 className="text-2xl font-semibold tracking-tight">实例设置</h2>
         <p className="text-sm text-muted-foreground">
-          管理收款接入、订单和界面显示。
+          分别管理开放平台应用、经营收款码、PerPay 采集策略和实例显示。
         </p>
       </div>
       <QueryView query={settings}>

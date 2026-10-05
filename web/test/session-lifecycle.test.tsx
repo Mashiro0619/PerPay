@@ -41,7 +41,7 @@ function mount() {
   );
   queryClient.setQueryData(sessionKey, session);
   const router = createMemoryRouter(appRoutes, {
-    initialEntries: ["/settings/collection"],
+    initialEntries: ["/settings/collection-policy"],
   });
   return render(
     <QueryClientProvider client={queryClient}>
@@ -70,7 +70,7 @@ describe("administrator session lifecycle", () => {
       );
       mount();
       const user = userEvent.setup();
-      const ttl = await screen.findByLabelText("收银台有效期（秒）");
+      const ttl = await screen.findByLabelText("采集有效时限（秒）");
       await user.clear(ttl);
       await user.type(ttl, "450");
       unavailable = true;
@@ -78,7 +78,7 @@ describe("administrator session lifecycle", () => {
         await queryClient.refetchQueries({ queryKey: sessionKey, exact: true });
       });
       await screen.findByRole("alert");
-      expect(screen.getByLabelText("收银台有效期（秒）")).toBe(ttl);
+      expect(screen.getByLabelText("采集有效时限（秒）")).toBe(ttl);
       expect(ttl).toHaveValue(450);
       expect(screen.getByText("未保存")).toBeVisible();
       await user.click(screen.getByRole("tab", { name: "自动备份" }));
@@ -91,7 +91,7 @@ describe("administrator session lifecycle", () => {
       await waitFor(() =>
         expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
       );
-      expect(screen.getByLabelText("收银台有效期（秒）")).toBe(ttl);
+      expect(screen.getByLabelText("采集有效时限（秒）")).toBe(ttl);
       expect(ttl).toHaveValue(450);
     },
   );
@@ -108,7 +108,7 @@ describe("administrator session lifecycle", () => {
         ),
       );
       mount();
-      const ttl = await screen.findByLabelText("收银台有效期（秒）");
+      const ttl = await screen.findByLabelText("采集有效时限（秒）");
       fireEvent.change(ttl, { target: { value: "450" } });
       await act(async () => {
         await queryClient.refetchQueries({ queryKey: sessionKey, exact: true });
@@ -135,7 +135,7 @@ describe("administrator session lifecycle", () => {
     vi.stubGlobal("fetch", fetchMock);
     mount();
     const user = userEvent.setup();
-    const ttl = await screen.findByLabelText("收银台有效期（秒）");
+    const ttl = await screen.findByLabelText("采集有效时限（秒）");
     await user.clear(ttl);
     await user.type(ttl, "450");
     await user.click(screen.getByRole("button", { name: "保存" }));
@@ -152,7 +152,7 @@ describe("administrator session lifecycle", () => {
     const saved = {
       ...settings,
       revision: 4,
-      collection: { ...settings.collection!, order_ttl_seconds: 450 },
+      collection_policy: { ...settings.collection_policy!, maximum_success_age_seconds: 450 },
     };
     await act(async () => {
       finish(json({ data: saved }));

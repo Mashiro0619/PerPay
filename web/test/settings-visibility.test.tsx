@@ -12,23 +12,10 @@ import { configuredThrough } from "./onboarding-fixture";
 const sections = [
   {
     section: "provider",
-    fields: [
-      "支付宝环境",
-      "请求超时（秒）",
-      "常规采集间隔（秒）",
-      "活跃采集间隔（秒）",
-      "安全延迟（秒）",
-      "采集有效时限（秒）",
-    ],
+    fields: ["应用 ID（App ID）", "支付宝公钥", "支付宝环境"],
   },
-  {
-    section: "collection",
-    fields: [
-      "收银台有效期（秒）",
-      "最大金额尾差（分）",
-      "金额复用冷却（秒）",
-    ],
-  },
+  { section: "collection-policy", fields: ["请求超时（秒）", "常规采集间隔（秒）", "活跃采集间隔（秒）", "采集最小间隔（秒）", "安全延迟（秒）", "采集有效时限（秒）"] },
+  { section: "collection", fields: ["支付宝经营码内容"] },
   {
     section: "notifications",
     fields: [
@@ -90,8 +77,8 @@ describe.each([false, true])("directly visible settings (guided: %s)", (guided) 
     }
     if (!guided && section === "provider") {
       expect(screen.getAllByText("支付宝接入", { exact: true })).toHaveLength(1);
-      expect(screen.getByRole("group", { name: "应用凭据" })).toBeVisible();
-      expect(screen.getByRole("group", { name: "账单采集" })).toBeVisible();
+      expect(screen.getByRole("group", { name: "开放平台应用" })).toBeVisible();
+      expect(screen.queryByLabelText("常规采集间隔（秒）")).not.toBeInTheDocument();
     }
     if (guided) expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
     else expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
@@ -172,13 +159,13 @@ describe("provider environment select", () => {
 describe("exact duration drafts", () => {
   it("round-trips existing millisecond values and recommends without saving", async () => {
     const settings = configuredThrough(4);
-    settings.provider!.timeout_milliseconds = 8123;
-    settings.provider!.scan_interval_seconds = 61;
-    settings.provider!.maximum_success_age_seconds = 122;
+    settings.collection_policy!.timeout_milliseconds = 8123;
+    settings.collection_policy!.scan_interval_seconds = 61;
+    settings.collection_policy!.maximum_success_age_seconds = 122;
     const fetchMock = vi.fn().mockResolvedValue(json({ data: settings }));
     vi.stubGlobal("fetch", fetchMock);
     const onSaved = vi.fn();
-    render(<QueryClientProvider client={queryClient}><MemoryRouter><SettingsEditor section="provider" settings={settings} onSaved={onSaved} guided /></MemoryRouter></QueryClientProvider>);
+    render(<QueryClientProvider client={queryClient}><MemoryRouter><SettingsEditor section="collection-policy" settings={settings} onSaved={onSaved} guided /></MemoryRouter></QueryClientProvider>);
     const user = userEvent.setup();
     expect(screen.getByLabelText("请求超时（秒）")).toHaveValue(8.123);
     await user.click(screen.getByRole("button", { name: "保存" }));

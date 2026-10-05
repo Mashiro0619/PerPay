@@ -209,6 +209,10 @@ export const appRoutes = createRoutesFromElements(
         Component: (await import("./pages/Notifications")).NotificationDetail,
       })}
     />
+    <Route path="sites" lazy={async () => ({ Component: (await import("./pages/Sites")).default })} />
+    <Route path="sites/new" lazy={async () => ({ Component: (await import("./pages/Sites")).SiteEditorPage })} />
+    <Route path="sites/defaults" lazy={async () => ({ Component: (await import("./pages/Sites")).SiteDefaultsPage })} />
+    <Route path="sites/:clientId" lazy={async () => ({ Component: (await import("./pages/Sites")).SiteEditorPage })} />
     <Route
       path="settings/onboarding/:step?"
       lazy={async () => ({

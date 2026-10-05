@@ -43,7 +43,6 @@ import { createCheckoutController } from "./controller";
 import { useQrDownload } from "./use-qr-download";
 import { AlipayLogo } from "./AlipayLogo";
 export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
-  const systemName = initial.systemName ?? "PerPay";
   const [controller] = useState(() => createCheckoutController(initial));
   const state = useSyncExternalStore(
     controller.subscribe,
@@ -59,6 +58,8 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
   useEffect(() => controller.start(), [controller]);
   const order = state.order,
     copy = checkoutCopy[state.visual];
+  const systemName = order?.display?.name ?? initial.systemName ?? "PerPay";
+  const showProductName = order?.display?.show_product_name ?? initial.showProductName;
   const awaitingStartup = state.visual === "UNPAID" && !state.initialized;
   const canPay =
     state.initialized &&
@@ -120,7 +121,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
   ].includes(state.visual)
     ? merchantReturnUrl(order?.return_url)
     : null;
-  const helpUrl = checkoutHelpUrl(initial.helpUrl);
+  const helpUrl = checkoutHelpUrl(order?.display ? order.display.help_url : initial.helpUrl);
   const retryAllowed =
     state.visual !== "NOT_FOUND" &&
     (!order ||
@@ -128,7 +129,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
   const blocked = state.busy || state.unavailable || state.retryAt > Date.now();
   const desktopWidth =
     order &&
-    (initial.showProductName === false
+    (showProductName === false
       ? "md:max-w-3xl md:px-6"
       : "md:max-w-4xl md:px-6");
   const reloadPath = initial.apiUrl.startsWith("/api/public/v1/checkouts/")
@@ -443,7 +444,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                 </CardHeader>
                 <CardContent className="flex min-w-0 flex-col gap-4 md:px-0">
                   <dl className="flex min-w-0 flex-col gap-3 text-sm md:gap-5">
-                    {initial.showProductName !== false && (
+                    {showProductName !== false && (
                       <div className="flex flex-col gap-1">
                         <dt className="text-muted-foreground">商品</dt>
                         <dd className="wrap-anywhere" data-product-name>

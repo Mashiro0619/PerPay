@@ -3,6 +3,7 @@ import { useOptionalSystemStatus } from "@/features/system-status";
 import type { ComponentProps } from "react";
 import {
   Activity,
+  Globe,
   Bell,
   ClipboardList,
   LayoutDashboard,
@@ -29,6 +30,7 @@ export const navigation = [
   { url: "/work-items", title: "待处理", icon: ListChecks },
   { url: "/reconciliation", title: "账本与对账", icon: WalletCards },
   { url: "/notifications", title: "业务通知", icon: Bell },
+  { url: "/sites", title: "业务网站", icon: Globe },
   { url: "/settings", title: "实例设置", icon: Settings2 },
   { url: "/system", title: "运行状态", icon: Activity },
 ];
@@ -68,10 +70,10 @@ export function AppSidebar({
       </SidebarHeader>
       <SidebarContent>
         <nav aria-label="主导航">
-          <NavMain items={navigation.slice(0, 5)} pathname={pathname} />
+          <NavMain items={navigation.slice(0, 6)} pathname={pathname} />
         </nav>
         <NavSecondary
-          items={navigation.slice(5)}
+          items={navigation.slice(6)}
           pathname={pathname}
           notice={statusNotice ?? null}
           className="mt-auto"
