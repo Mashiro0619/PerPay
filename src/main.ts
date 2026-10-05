@@ -22,7 +22,7 @@ const backupHealth = createAsyncBackupHealthProvider({
   dataDirectory: config.dataDir,
   intervalMilliseconds: config.backupIntervalMilliseconds,
 });
-const database = await AppDatabase.open(config.databasePath);
+const database = await AppDatabase.open(config.databasePath, { masterKey: config.masterKey });
 const identity = new IdentityService(database, config);
 const ledger = new LedgerStore(database);
 const reconciliation = new ReconciliationStore(database);

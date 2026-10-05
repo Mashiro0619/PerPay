@@ -7,7 +7,8 @@ export interface Migration {
   readonly postApply?:
     | "upgrade_ledger_semantic_fingerprints_v2"
     | "backfill_evidence_fingerprints_v1"
-    | "normalize_fixed_accounts_v1";
+    | "normalize_fixed_accounts_v1"
+    | "migrate_websites_v1";
 }
 
 /** Stable catalog checksum used to detect edited migration definitions at startup. */

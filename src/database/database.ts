@@ -19,6 +19,8 @@ import { DatabaseSync, backup as sqliteBackup } from "node:sqlite";
 import { migrations, migrationChecksum, type Migration } from "./migrations.ts";
 import { inspectAuditChain } from "./audit-chain.ts";
 import { countAdminOperationViolations } from "./admin-operation-integrity.ts";
+import { migrateSiteData } from "../sites/migrations/data.ts";
+import { countSiteDomainViolations } from "../sites/integrity.ts";
 import {
   conflictFingerprint,
   ledgerConflictOperationEvidence,
@@ -142,7 +144,7 @@ export class AppDatabase {
   }
 
   /** Opens the database, taking its lease and applying verified migrations. */
-  static async open(databasePath: string): Promise<AppDatabase> {
+  static async open(databasePath: string, options: { readonly masterKey?: Uint8Array } = {}): Promise<AppDatabase> {
     hardenProcessFileCreation();
     const resolvedPath = resolve(databasePath);
     ensurePrivateDirectory(dirname(resolvedPath));
@@ -179,6 +181,7 @@ export class AppDatabase {
         resolvedPath,
         existed,
         () => renewLease(connection, leaseToken),
+        options.masterKey,
       );
       startupLeaseHeartbeat.assertHealthy();
       if (!validateSchema(connection)) {
@@ -526,6 +529,7 @@ async function migrate(
   databasePath: string,
   existed: boolean,
   renewStartupLease: () => void,
+  masterKey?: Uint8Array,
 ): Promise<void> {
   const hasTable = tableExists(connection, "schema_migrations");
   const before = hasTable ? readAppliedMigrations(connection, false) : [];
@@ -579,6 +583,8 @@ async function migrate(
         backfillEvidenceFingerprints(connection);
       } else if (migration.postApply === "normalize_fixed_accounts_v1") {
         normalizeFixedAccounts(connection);
+      } else if (migration.postApply === "migrate_websites_v1") {
+        migrateSiteData(connection, masterKey);
       }
       insert.run(migration.version, migration.name, migrationChecksum(migration));
       // A long migration owns SQLite's write lock, so renew in that same
@@ -1098,7 +1104,7 @@ function countDomainViolations(connection: DatabaseSync): number {
     countLedgerDomainViolations(connection) +
     countReconciliationDomainViolations(connection) +
     countWebhookDomainViolations(connection) +
-    countAdminOperationViolations(connection);
+    countAdminOperationViolations(connection) + countSiteDomainViolations(connection);
 }
 
 function countRuntimeSettingsDomainViolations(connection: DatabaseSync): number {
@@ -1107,13 +1113,14 @@ function countRuntimeSettingsDomainViolations(connection: DatabaseSync): number 
   if (!hasSecrets && !hasGuard) return 0;
   if (!hasSecrets || !hasGuard) return 1;
   const hasKeyChanges = tableExists(connection, "provider_application_key_changes");
+  const siteSecretGuard = tableExists(connection, "site_secrets") ? " OR EXISTS (SELECT 1 FROM site_secrets)" : "";
   const pendingKeyGuard = hasKeyChanges
     ? " OR EXISTS (SELECT 1 FROM provider_application_key_changes WHERE state = 'PENDING')"
     : "";
   const guardViolations = readViolationCount(
     connection,
     `SELECT CASE
-       WHEN (EXISTS (SELECT 1 FROM runtime_secrets)${pendingKeyGuard}) AND
+       WHEN (EXISTS (SELECT 1 FROM runtime_secrets)${pendingKeyGuard}${siteSecretGuard}) AND
             (SELECT COUNT(*) FROM runtime_master_key_guard WHERE singleton_key = 1) != 1
        THEN 1 ELSE 0 END AS violations`,
     "runtime master key guard",
@@ -2484,7 +2491,7 @@ function countWebhookDomainViolations(connection: DatabaseSync): number {
         AND target.target_id IS NULL`,
     "webhook target commitment",
   );
-  const signingKeyViolations = readViolationCount(
+  const signingKeyViolations = columnExists(connection, "webhook_signing_keys", "client_id") ? 0 : readViolationCount(
     connection,
     `SELECT COUNT(*) AS violations
        FROM (

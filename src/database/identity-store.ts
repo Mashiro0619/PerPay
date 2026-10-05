@@ -152,7 +152,7 @@ export class IdentityReadTransaction {
       .prepare(
         `SELECT client_id, enabled, key_version, secret_fingerprint
            FROM api_client_config
-          WHERE singleton_key = 1 AND client_id = ? AND key_version IS NOT NULL`,
+          WHERE client_id = ? AND key_version IS NOT NULL`,
       )
       .get(clientId) as
       | {
@@ -454,16 +454,17 @@ export class IdentityTransaction extends IdentityReadTransaction {
   // Orders need an owner even before the administrator issues an API credential.
   // This record is disabled and has neither a secret nor a key-history entry.
   ensureApiClientIdentity(clientId: string, now: number): void {
+    if (this.connection.prepare("SELECT 1 FROM api_client_config WHERE client_id = ?").get(clientId)) return;
     this.connection.prepare(
       `INSERT INTO api_client_config(
-         singleton_key, client_id, secret_fingerprint, key_version,
+         client_id, secret_fingerprint, key_version,
          enabled, created_at, updated_at
-       ) VALUES (1, ?, NULL, NULL, 0, ?, ?)
-       ON CONFLICT(singleton_key) DO NOTHING`,
+        ) VALUES (?, NULL, NULL, 0, ?, ?)
+       ON CONFLICT(client_id) DO NOTHING`,
     ).run(clientId, now, now);
     const row = this.connection.prepare(
-      "SELECT client_id FROM api_client_config WHERE singleton_key = 1",
-    ).get() as { client_id: string };
+      "SELECT client_id FROM api_client_config WHERE client_id = ?",
+    ).get(clientId) as { client_id: string };
     if (row.client_id !== clientId) {
       throw new Error("configured API client ID does not match the initialized client");
     }
@@ -474,9 +475,9 @@ export class IdentityTransaction extends IdentityReadTransaction {
       .prepare(
         `SELECT client_id, enabled, key_version, secret_fingerprint, created_at
            FROM api_client_config
-          WHERE singleton_key = 1`,
+          WHERE client_id = ?`,
       )
-      .get() as
+      .get(clientId) as
       | {
           client_id: string;
           created_at: number | bigint;
@@ -509,8 +510,8 @@ export class IdentityTransaction extends IdentityReadTransaction {
       this.connection.prepare(
         `UPDATE api_client_config
             SET secret_fingerprint = ?, key_version = 1, enabled = 1, updated_at = ?
-          WHERE singleton_key = 1`,
-      ).run(fingerprint, activatedAt);
+          WHERE client_id = ?`,
+      ).run(fingerprint, activatedAt, clientId);
       return { clientId, keyVersion: 1, secretFingerprint: fingerprint, enabled: true };
     }
 
@@ -525,8 +526,8 @@ export class IdentityTransaction extends IdentityReadTransaction {
         .get(clientId, existing.keyVersion, fingerprint);
       if (!active) throw new Error("active API client key history is inconsistent");
       this.connection
-        .prepare("UPDATE api_client_config SET enabled = 1, updated_at = ? WHERE singleton_key = 1")
-        .run(now);
+        .prepare("UPDATE api_client_config SET enabled = 1, updated_at = ? WHERE client_id = ?")
+        .run(now, clientId);
       return { ...existing, enabled: true };
     }
 
@@ -570,9 +571,9 @@ export class IdentityTransaction extends IdentityReadTransaction {
       .prepare(
         `UPDATE api_client_config
             SET secret_fingerprint = ?, key_version = ?, enabled = 1, updated_at = ?
-          WHERE singleton_key = 1`,
+          WHERE client_id = ?`,
       )
-      .run(fingerprint, keyVersion, activatedAt);
+      .run(fingerprint, keyVersion, activatedAt, clientId);
     return { clientId, keyVersion, secretFingerprint: fingerprint, enabled: true };
   }
 
