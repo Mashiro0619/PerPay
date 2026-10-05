@@ -31,6 +31,12 @@ CREATE TABLE api_client_config (
       ) STRICT;
 INSERT INTO api_client_config(client_id, secret_fingerprint, key_version, enabled, created_at, updated_at)
 SELECT client_id, secret_fingerprint, key_version, enabled, created_at, updated_at FROM perpay_v34_clients;
+-- An initialized old instance may never have issued an API key. Preserve its website
+-- without manufacturing credentials. A fresh migration chain has none of this state.
+INSERT INTO api_client_config(client_id, secret_fingerprint, key_version, enabled, created_at, updated_at)
+SELECT 'default', NULL, NULL, 0, created_at, updated_at FROM perpay_v34_configuration
+WHERE NOT EXISTS (SELECT 1 FROM api_client_config WHERE client_id = 'default')
+  AND (revision > 0 OR EXISTS (SELECT 1 FROM admin_identity) OR EXISTS (SELECT 1 FROM perpay_v34_secrets));
 CREATE TRIGGER api_client_config_key_transition
       BEFORE UPDATE OF client_id, secret_fingerprint, key_version ON api_client_config
       WHEN NEW.client_id != OLD.client_id OR NOT EXISTS (

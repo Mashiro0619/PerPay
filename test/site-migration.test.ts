@@ -99,3 +99,21 @@ describe("multi-site schema migration", () => {
     } finally { empty.close(); old.close(); }
   });
 });
+
+it("preserves a configured old website even when no API or notification key was ever issued", () => {
+  const f = createSiteFixture();
+  try {
+    f.connection.prepare("UPDATE runtime_configuration SET revision = revision + 1, order_ttl_seconds = 450, system_name = '原来的收银台', updated_at = max(updated_at, ?) WHERE singleton_key = 1").run(Date.now());
+    assert.equal(f.connection.prepare("SELECT count(*) AS total FROM api_client_config").get()?.total, 0n);
+    const revisions = f.connection.prepare("SELECT revision, payment_revision FROM runtime_configuration").get();
+    f.migrate();
+    const site = f.store().get("default");
+    assert.ok(site);
+    assert.equal(site.configuration.policy.orders.order_ttl_seconds, 450);
+    assert.equal(site.configuration.policy.display.checkout_name, "原来的收银台");
+    assert.equal(f.store().credential("default"), null);
+    assert.equal(f.store().notificationSecret("default"), null);
+    assert.deepEqual(f.connection.prepare("SELECT revision, payment_revision FROM runtime_configuration").get(), revisions);
+    assert.equal(countSiteDomainViolations(f.connection), 0);
+  } finally { f.close(); }
+});
