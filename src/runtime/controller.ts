@@ -29,7 +29,8 @@ import {
   type ReconciliationSchedulerHealth,
   type ReconciliationStore,
 } from "../reconciliation/index.ts";
-import type { RuntimeSettingsSnapshot } from "../settings/model.ts";
+import type { InstanceRuntimeSettingsSnapshot, RuntimeSettingsSnapshot } from "../settings/model.ts";
+type PaymentRuntimeSnapshot = RuntimeSettingsSnapshot | InstanceRuntimeSettingsSnapshot;
 import { SettingsError } from "../settings/store.ts";
 import { collectionCodeError } from "../shared/collection-code.ts";
 
@@ -99,7 +100,7 @@ export class RuntimeController {
   #ledgerScheduler: LedgerIngestScheduler | null = null;
   #reconciliationScheduler: ReconciliationScheduler | null = null;
   #webhookScheduler: WebhookScheduler | null = null;
-  #snapshot: RuntimeSettingsSnapshot | null = null;
+  #snapshot: PaymentRuntimeSnapshot | null = null;
   #ledgerRevision: number | null = null;
   #reconciliationRevision: number | null = null;
   #pausedLedgerHealth: RevisionedLedgerHealth | null = null;
@@ -120,14 +121,14 @@ export class RuntimeController {
     this.#checkoutVerifier = new CheckoutVerifier(this.#clock);
   }
 
-  start(snapshot: RuntimeSettingsSnapshot): Promise<void> {
+  start(snapshot: PaymentRuntimeSnapshot): Promise<void> {
     if (this.#started) return Promise.reject(new Error("runtime controller is already started"));
     if (this.#stopped) return Promise.reject(new Error("runtime controller is stopped"));
     this.#started = true;
     return this.apply(snapshot);
   }
 
-  apply(snapshot: RuntimeSettingsSnapshot): Promise<void> {
+  apply(snapshot: PaymentRuntimeSnapshot): Promise<void> {
     if (this.#stopped) return Promise.reject(new Error("runtime controller is stopped"));
     const operation = this.#mutation.catch(() => undefined).then(() => this.#applySnapshot(snapshot));
     this.#mutation = operation;
@@ -229,7 +230,7 @@ export class RuntimeController {
   }
 
   assertProviderSwitchAllowed(
-    current: RuntimeSettingsSnapshot,
+    current: PaymentRuntimeSnapshot,
     accountKey = current.activeProviderAccountKey,
   ): void {
     if (!accountKey) return;
@@ -304,7 +305,7 @@ export class RuntimeController {
     }
   }
 
-  async #applySnapshot(snapshot: RuntimeSettingsSnapshot): Promise<void> {
+  async #applySnapshot(snapshot: PaymentRuntimeSnapshot): Promise<void> {
     const previous = this.#snapshot;
     const paymentChanged = previous === null ||
       previous.paymentRevision !== snapshot.paymentRevision ||
@@ -438,7 +439,7 @@ export class RuntimeController {
   }
 
   async #installPaymentSchedulers(
-    snapshot: RuntimeSettingsSnapshot,
+    snapshot: PaymentRuntimeSnapshot,
     initializeOrders: boolean,
   ): Promise<void> {
     if (initializeOrders) this.#orders.initialize();
@@ -460,7 +461,7 @@ export class RuntimeController {
     }
   }
 
-  async #installWebhookScheduler(snapshot: RuntimeSettingsSnapshot): Promise<void> {
+  async #installWebhookScheduler(snapshot: PaymentRuntimeSnapshot): Promise<void> {
     if (!this.#started || this.#stopped || (this.#sites === null && !isWebhookConfigured(snapshot))) return;
     const webhook = this.#createWebhookScheduler(snapshot);
     this.#webhookScheduler = webhook;
@@ -475,7 +476,7 @@ export class RuntimeController {
     }
   }
 
-  #createLedgerScheduler(snapshot: RuntimeSettingsSnapshot): LedgerIngestScheduler {
+  #createLedgerScheduler(snapshot: PaymentRuntimeSnapshot): LedgerIngestScheduler {
     const providerSettings = snapshot.provider;
     const providerAccountKey = snapshot.activeProviderAccountKey;
     if (!providerSettings || !providerAccountKey) {
@@ -589,7 +590,7 @@ export class RuntimeController {
     });
   }
 
-  #createWebhookScheduler(snapshot: RuntimeSettingsSnapshot): WebhookScheduler {
+  #createWebhookScheduler(snapshot: PaymentRuntimeSnapshot): WebhookScheduler {
     let service: WebhookDeliveryService | SiteWebhookProcessor;
     if (this.#sites) {
       service = new SiteWebhookProcessor({ sites: this.#sites, webhooks: this.#webhooks, clock: this.#clock });
@@ -642,13 +643,13 @@ export class RuntimeController {
   }
 }
 
-function isPaymentConfigured(snapshot: RuntimeSettingsSnapshot): boolean {
+function isPaymentConfigured(snapshot: PaymentRuntimeSnapshot): boolean {
   return snapshot.collection !== null && collectionCodeError(snapshot.collection.codePayload) === null &&
     snapshot.provider !== null &&
     snapshot.activeProviderAccountKey !== null;
 }
 
-function isWebhookConfigured(snapshot: RuntimeSettingsSnapshot): snapshot is RuntimeSettingsSnapshot & {
+function isWebhookConfigured(snapshot: PaymentRuntimeSnapshot): snapshot is RuntimeSettingsSnapshot & {
   readonly webhook: RuntimeSettingsSnapshot["webhook"] & {
     readonly enabled: true;
     readonly allowedOrigin: string;
@@ -656,16 +657,17 @@ function isWebhookConfigured(snapshot: RuntimeSettingsSnapshot): snapshot is Run
     readonly signingKeyFingerprint: string;
   };
 } {
-  return snapshot.webhook.enabled &&
+  return "webhook" in snapshot && snapshot.webhook.enabled &&
     snapshot.webhook.allowedOrigin !== null &&
     snapshot.webhook.secret !== null &&
     snapshot.webhook.signingKeyFingerprint !== null;
 }
 
 function sameWebhookConfiguration(
-  left: RuntimeSettingsSnapshot,
-  right: RuntimeSettingsSnapshot,
+  left: PaymentRuntimeSnapshot,
+  right: PaymentRuntimeSnapshot,
 ): boolean {
+  if (!("webhook" in left) || !("webhook" in right)) return !("webhook" in left) && !("webhook" in right);
   return left.webhook.enabled === right.webhook.enabled &&
     left.webhook.allowedOrigin === right.webhook.allowedOrigin &&
     left.webhook.signingKeyFingerprint === right.webhook.signingKeyFingerprint &&

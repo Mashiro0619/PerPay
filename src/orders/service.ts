@@ -23,6 +23,7 @@ import {
   API_CLIENT_ID,
   type CollectionSettings,
   type RuntimeSettingsSnapshot,
+  type InstanceRuntimeSettingsSnapshot,
 } from "../settings/model.ts";
 import {
   digestIdempotencyKey,
@@ -94,7 +95,7 @@ interface ReturnUrlDecision {
 
 export class OrderService {
   readonly #store: OrderStore;
-  readonly #settings: () => RuntimeSettingsSnapshot;
+  readonly #settings: () => RuntimeSettingsSnapshot | InstanceRuntimeSettingsSnapshot;
   readonly #database: AppDatabase;
   readonly #physicalClock: (() => number) | undefined;
   readonly #sites: SiteStore | undefined;
@@ -102,7 +103,7 @@ export class OrderService {
 
   constructor(
     database: AppDatabase,
-    settings: () => RuntimeSettingsSnapshot,
+    settings: () => RuntimeSettingsSnapshot | InstanceRuntimeSettingsSnapshot,
     physicalClock?: () => number,
     sites?: SiteStore,
     clientId?: string,
@@ -140,7 +141,7 @@ export class OrderService {
   }
 
   syncCollectionProfile(
-    collection: CollectionSettings,
+    collection: Pick<CollectionSettings, "codePayload">,
     providerAccountKey: string,
   ): SyncCollectionProfileResult {
     const { payloadFingerprint, profileFingerprint } = fingerprintCollectionCodeProfile(
@@ -161,19 +162,13 @@ export class OrderService {
     request: CreateOrderRequest,
     beforeCreate?: (() => void) | undefined,
   ): CreateOrderResult {
-    const settings = this.#configuredSettings();
     const site = this.#site();
+    const settings = this.#configuredSettings(site);
     const clientId = site?.clientId ?? API_CLIENT_ID;
-    const policy = site?.configuration.policy.orders;
-    const webhook = site ? {
-      ...settings.webhook,
-      enabled: site.configuration.notifications_enabled,
-      allowedOrigin: site.configuration.notification_origin,
-      secret: this.#sites!.notificationSecret(clientId),
-    } : settings.webhook;
+    const webhook = settings.webhook;
     this.syncCollectionProfile(settings.collection, settings.providerAccountKey);
     const webhookTarget = this.#prepareWebhookTarget(request, webhook);
-    const returnUrl = this.#prepareReturnUrl(request, site ? site.configuration.return_origin : settings.webhook.allowedOrigin);
+    const returnUrl = this.#prepareReturnUrl(request, site ? site.configuration.return_origin : webhook.allowedOrigin);
     const result = this.#runStoreOperation(() =>
       this.#store.createOrder(
         {
@@ -182,9 +177,9 @@ export class OrderService {
           request,
           idempotencyKeyDigest: digestIdempotencyKey(clientId, request.idempotency_key),
           requestFingerprint: fingerprintCreateOrderRequest(request),
-          ttlMilliseconds: (policy?.order_ttl_seconds ?? settings.collection.orderTtlSeconds) * 1000,
-          amountOffsetMaximumCents: policy?.amount_offset_maximum_cents ?? settings.collection.amountOffsetMaximumCents,
-          amountReuseCooldownSeconds: policy?.amount_reuse_cooldown_seconds ?? settings.collection.amountReuseCooldownSeconds,
+          ttlMilliseconds: settings.collection.orderTtlSeconds * 1000,
+          amountOffsetMaximumCents: settings.collection.amountOffsetMaximumCents,
+          amountReuseCooldownSeconds: settings.collection.amountReuseCooldownSeconds,
           checkoutKeyRotationMilliseconds: settings.advanced.checkoutKeyRotationDays *
             24 * 60 * 60 * 1_000,
           checkoutTerminalObservationMilliseconds: settings.advanced
@@ -389,7 +384,7 @@ export class OrderService {
     }
   }
 
-  #configuredSettings(): {
+  #configuredSettings(site: SiteSnapshot | null): {
     readonly collection: CollectionSettings;
     readonly providerAccountKey: string;
     readonly webhook: RuntimeSettingsSnapshot["webhook"];
@@ -406,10 +401,26 @@ export class OrderService {
         "收款系统尚未完成配置",
       );
     }
+    const policy = site?.configuration.policy;
+    let collection: CollectionSettings;
+    if (policy) {
+      collection = { codePayload: settings.collection.codePayload, orderTtlSeconds: policy.orders.order_ttl_seconds, amountOffsetMaximumCents: policy.orders.amount_offset_maximum_cents, amountReuseCooldownSeconds: policy.orders.amount_reuse_cooldown_seconds };
+    } else if ("webhook" in settings) {
+      collection = settings.collection;
+    } else {
+      throw new Error("website order policy is required");
+    }
+    const webhook = site && policy ? {
+      enabled: site.configuration.notifications_enabled, allowedOrigin: site.configuration.notification_origin,
+      secret: this.#sites!.notificationSecret(site.clientId), signingKeyFingerprint: null,
+      timeoutMilliseconds: policy.notification_delivery.timeout_milliseconds, maximumAttempts: policy.notification_delivery.maximum_attempts,
+      retryBaseMilliseconds: policy.notification_delivery.retry_base_seconds * 1000, retryMaximumMilliseconds: policy.notification_delivery.retry_maximum_seconds * 1000,
+    } : "webhook" in settings ? settings.webhook : null;
+    if (!webhook) throw new Error("website notification policy is required");
     return {
-      collection: settings.collection,
+      collection,
       providerAccountKey: settings.activeProviderAccountKey,
-      webhook: settings.webhook,
+      webhook,
       advanced: settings.advanced,
     };
   }

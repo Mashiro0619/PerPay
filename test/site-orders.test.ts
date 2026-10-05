@@ -91,3 +91,21 @@ describe("website orders on the shared payment engine", () => {
     } finally { f.close(); }
   });
 });
+
+it("creates with explicit website policy after the migrated default website is deleted", async () => {
+  const f = await fixture();
+  try {
+    const old = f.sites.get("default")!;
+    f.sites.delete("default", old.revision, audit, f.now());
+    const site = f.createSite("独立网站");
+    const policy = structuredClone(site.configuration);
+    policy.policy.orders.order_ttl_seconds = 450;
+    f.sites.update(site.clientId, { revision: site.revision, configuration: policy }, audit, f.now());
+    const defaults = f.sites.defaults();
+    f.sites.saveDefaults({ revision: defaults.revision, policy: { ...defaults.policy, orders: { ...defaults.policy.orders, order_ttl_seconds: 600 } } }, audit, f.now());
+    const created = f.orders.forSite(site.clientId).create(request("no-default")).order;
+    assert.equal(f.orders.adminGet(created.orderId).apiClientId, site.clientId);
+    assert.equal(created.checkout.expiresAt - created.createdAt, 450000);
+    assert.throws(() => f.orders.forSite("default").create(request("deleted")), { code: "site_not_found" });
+  } finally { f.close(); }
+});

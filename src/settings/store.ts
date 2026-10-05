@@ -1,3 +1,4 @@
+import type { InstanceRuntimeSettingsSnapshot } from "./model.ts";
 import { SiteStore, readSite } from "../sites/store.ts";
 import { sitePolicySchema } from "../sites/model.ts";
 import { collectionPolicyInputSchema, type CollectionPolicyInput } from "./collection-policy.ts";
@@ -876,13 +877,32 @@ export class RuntimeSettingsStore {
     });
   }
 
-  #snapshot(connection: DatabaseSync): RuntimeSettingsSnapshot {
-    const row = readConfiguration(connection);
-    const apiRow = readSecret(connection, "api_secret");
+  /** Reads only instance settings and provider keys; never consults sites or creation templates. */
+  instanceSnapshot(): InstanceRuntimeSettingsSnapshot {
+    return this.#database.read(connection => {
+      const row = connection.prepare("SELECT * FROM runtime_configuration WHERE singleton_key = 1").get() as unknown as ConfigurationRow | undefined;
+      if (!row) throw new Error("runtime configuration singleton is missing");
+      return {
+        adminAccess: readAdminAccess(connection),
+        revision: safeInteger(row.revision, "runtime configuration revision"),
+        paymentRevision: safeInteger(row.payment_revision, "payment configuration revision"),
+        updatedAt: safeInteger(row.updated_at, "runtime configuration updated time"),
+        collection: row.collection_code_payload === null ? null : { codePayload: row.collection_code_payload },
+        provider: this.#provider(connection, row),
+        advanced: {
+          checkoutKeyRotationDays: safeInteger(row.checkout_key_rotation_days, "checkout key rotation days"),
+          checkoutTerminalObservationSeconds: safeInteger(row.checkout_terminal_observation_seconds, "checkout terminal observation seconds"),
+        },
+        backup: { intervalSeconds: safeInteger(row.backup_interval_seconds, "backup interval"), keepCount: safeInteger(row.backup_keep_count, "backup keep count") },
+        display: { systemName: row.system_name, dashboardChartType: row.dashboard_chart_type },
+        activeProviderAccountKey: row.provider_account_key,
+      };
+    });
+  }
+
+  #provider(connection: DatabaseSync, row: ConfigurationRow): ProviderSettings | null {
     const privateKeyRow = readSecret(connection, "provider_private_key");
     const publicKeyRow = readSecret(connection, "provider_public_key");
-    const webhookSecretRow = readSecret(connection, "webhook_secret");
-
     let provider: ProviderSettings | null = null;
     if (
       row.provider_environment !== null &&
@@ -916,6 +936,16 @@ export class RuntimeSettingsStore {
         ),
       });
     }
+
+    return provider;
+  }
+
+  #snapshot(connection: DatabaseSync): RuntimeSettingsSnapshot {
+    const row = readConfiguration(connection);
+    const apiRow = readSecret(connection, "api_secret");
+    const webhookSecretRow = readSecret(connection, "webhook_secret");
+
+    const provider = this.#provider(connection, row);
 
     const webhookSecret = webhookSecretRow ? decryptSecret(this.#cipher, webhookSecretRow) : null;
     const webhookEnabled = Number(row.webhook_enabled) === 1;

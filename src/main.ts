@@ -29,7 +29,7 @@ const reconciliation = new ReconciliationStore(database);
 const webhooks = new WebhookStore(database);
 const settingsStore = new RuntimeSettingsStore(database, config.masterKey);
 let settings!: RuntimeSettingsService;
-const orders = new OrderService(database, () => settings.snapshot(), undefined, settingsStore.siteStore() ?? undefined);
+const orders = new OrderService(database, () => settingsStore.siteStore() ? settings.instanceSnapshot() : settings.snapshot(), undefined, settingsStore.siteStore() ?? undefined);
 const runtime = new RuntimeController({
   database,
   orders,
@@ -47,13 +47,13 @@ settings = new RuntimeSettingsService({
   onCollectionApplied: (collection, providerAccountKey) => {
     orders.syncCollectionProfile(collection, providerAccountKey);
   },
-  onApplied: (snapshot) => runtime.apply(snapshot),
+  onApplied: (snapshot) => runtime.apply(settingsStore.siteStore() ? settingsStore.instanceSnapshot() : snapshot),
 });
 
 try {
   await identity.initialize();
   const snapshot = settings.initialize();
-  await runtime.start(snapshot);
+  await runtime.start(settingsStore.siteStore() ? settingsStore.instanceSnapshot() : snapshot);
 } catch (error) {
   database.close();
   throw error;

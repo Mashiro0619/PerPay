@@ -96,3 +96,22 @@ it("saves split instance settings on schema 34 without rewriting any website pol
     assert.equal(f.settings.collectionPolicy().scan_interval_seconds, 30);
   } finally { f.close(); }
 });
+
+it("keeps the engine snapshot independent of website settings, templates and the migrated default identity", async () => {
+  const f = await createSitePaymentFixture();
+  try {
+    const before = f.settings.instanceSnapshot();
+    assert.deepEqual(Object.keys(before.collection!), ["codePayload"]);
+    assert.deepEqual(Object.keys(before.display).sort(), ["dashboardChartType", "systemName"]);
+    for (const name of ["webhook", "apiSecret", "apiSecretFingerprint"]) assert.equal(name in before, false);
+    const serialized = JSON.stringify(before);
+    const defaults = f.sites.defaults();
+    f.sites.saveDefaults({ revision: defaults.revision, policy: { ...defaults.policy, orders: { ...defaults.policy.orders, order_ttl_seconds: 600 } } }, audit);
+    const migrated = f.sites.get("default")!;
+    f.sites.delete("default", migrated.revision, audit);
+    const site = f.createSite("只属于网站的名称");
+    f.sites.rotateSecret(site.clientId, "api_secret", site.revision, audit);
+    assert.equal(JSON.stringify(f.settings.instanceSnapshot()), serialized);
+    assert.equal(JSON.stringify(f.settings.instanceSnapshot()).includes("只属于网站的名称"), false);
+  } finally { f.close(); }
+});

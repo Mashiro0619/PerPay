@@ -3,7 +3,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { describe, it } from "node:test";
 
 import { RuntimeController } from "../src/runtime/controller.ts";
-import { parseProviderKeys, type RuntimeSettingsSnapshot } from "../src/settings/model.ts";
+import { parseProviderKeys, type InstanceRuntimeSettingsSnapshot, type RuntimeSettingsSnapshot } from "../src/settings/model.ts";
 import { LedgerIngestScheduler } from "../src/ledger/scheduler.ts";
 import { ReconciliationScheduler } from "../src/reconciliation/scheduler.ts";
 import { WebhookScheduler } from "../src/notifications/scheduler.ts";
@@ -45,10 +45,13 @@ describe("runtime settings controller", () => {
       timeoutMilliseconds: 8_000, scanIntervalMilliseconds: 30_000, activeScanIntervalMilliseconds: 5_000,
       safetyLagMilliseconds: 10_000, maximumSuccessAgeMilliseconds: 120_000,
     });
-    const snapshot: RuntimeSettingsSnapshot = {
-      ...unconfiguredSettings, revision: 1, paymentRevision: 1, provider,
-      collection: { codePayload: "https://qr.alipay.com/runtime-cadence", orderTtlSeconds: 300, amountOffsetMaximumCents: 99, amountReuseCooldownSeconds: 600 },
-      apiSecret: null, activeProviderAccountKey: "primary",
+    const snapshot: InstanceRuntimeSettingsSnapshot = {
+      adminAccess: unconfiguredSettings.adminAccess, revision: 1, paymentRevision: 1, updatedAt: 0, provider,
+      collection: { codePayload: "https://qr.alipay.com/runtime-cadence" },
+      advanced: unconfiguredSettings.advanced,
+      backup: { intervalSeconds: 86400, keepCount: 7 },
+      display: { systemName: "PerPay", dashboardChartType: "AREA" },
+      activeProviderAccountKey: "primary",
     };
     const started: LedgerIngestScheduler[] = [];
     const events: string[] = [];
@@ -66,7 +69,9 @@ describe("runtime settings controller", () => {
       events.push("reconcile");
       return reconciliation;
     });
+    t.mock.method(WebhookScheduler.prototype, "start", async () => {});
     const runtime = new RuntimeController({
+      sites: {} as never,
       database: {} as never, orders: { initialize() {} } as never,
       ledger: { activeProviderIdentity: () => ({ providerAccountKey: "primary", activatedAt: 1 }) } as never,
       reconciliation: {} as never, webhooks: {} as never,

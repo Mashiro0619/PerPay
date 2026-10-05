@@ -130,6 +130,20 @@ export interface BackupSettings {
   readonly keepCount: number;
 }
 
+/** Shared payment-engine settings, without any website policy or business credential. */
+export interface InstanceRuntimeSettingsSnapshot {
+  readonly adminAccess: AdminAccess;
+  readonly revision: number;
+  readonly paymentRevision: number;
+  readonly updatedAt: number;
+  readonly collection: Pick<CollectionSettings, "codePayload"> | null;
+  readonly provider: ProviderSettings | null;
+  readonly advanced: AdvancedSettings;
+  readonly backup: BackupSettings;
+  readonly display: Pick<DisplaySettings, "systemName" | "dashboardChartType">;
+  readonly activeProviderAccountKey: string | null;
+}
+
 export interface RuntimeSettingsSnapshot {
   readonly adminAccess: AdminAccess;
   readonly revision: number;

@@ -176,6 +176,8 @@ export class RuntimeSettingsService {
     return this.#store.display();
   }
 
+  instanceSnapshot() { return this.#store.instanceSnapshot(); }
+
   snapshot(): RuntimeSettingsSnapshot {
     return this.#store.snapshot();
   }
