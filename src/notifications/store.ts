@@ -621,14 +621,21 @@ export class WebhookStore {
         }
         return { delivery: mapDelivery(existing), replayed: true };
       }
-      if (input.activeAllowedOrigin === null) {
+      const target = connection
+        .prepare("SELECT allowed_origin, api_client_id FROM webhook_targets WHERE target_id = ?")
+        .get(original.target_id) as { allowed_origin: string; api_client_id: string } | undefined;
+      if (!target) throw new Error("webhook delivery target cannot be read");
+      // Modern replay reads the owner's current policy inside this transaction.
+      // A caller's stale/global origin must never authorize another site's target.
+      const siteMode = connection.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'sites'").get() !== undefined;
+      const site = siteMode ? readSite(connection, target.api_client_id) : null;
+      const allowedOrigin = siteMode
+        ? (site?.configuration.notifications_enabled ? site.configuration.notification_origin : null)
+        : input.activeAllowedOrigin;
+      if (allowedOrigin === null) {
         throw new WebhookStoreError("webhook_disabled", "通知功能未启用");
       }
-      const target = connection
-        .prepare("SELECT allowed_origin FROM webhook_targets WHERE target_id = ?")
-        .get(original.target_id) as { allowed_origin: string } | undefined;
-      if (!target) throw new Error("webhook delivery target cannot be read");
-      if (target.allowed_origin !== input.activeAllowedOrigin) {
+      if (target.allowed_origin !== allowedOrigin) {
         throw new WebhookStoreError(
           "webhook_target_inactive",
           "通知目标不再属于当前允许的 origin",

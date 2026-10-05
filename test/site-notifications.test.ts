@@ -138,4 +138,27 @@ describe("website notification processing", () => {
     } finally { f.close(); }
   });
 
+  it("replays under the target website's current policy, not a supplied global origin", async () => {
+    const f = await createSitePaymentFixture();
+    try {
+      const a = configure(f, "A"), b = configure(f, "B");
+      createEvent(f, a.clientId, "https://a.example.com/notify");
+      const webhooks = new WebhookStore(f.database);
+      webhooks.materialize(10, f.now(), a.clientId);
+      const claimed = webhooks.claimNext({ clientId: a.clientId, siteRevision: a.revision, now: f.now(), leaseMilliseconds: 30000, maximumAttempts: 1 });
+      assert.ok(claimed);
+      webhooks.completeAttempt({ deliveryId: claimed.delivery.deliveryId, attemptId: claimed.attempt.attemptId, leaseToken: claimed.attempt.leaseToken, outcome: "PERMANENT_FAILURE", now: f.now(), maximumAttempts: 1, retryBaseMilliseconds: 1000, retryMaximumMilliseconds: 1000, errorCode: "transport_network" });
+      const request = { redeliveryId: randomUUID(), deliveryId: claimed.delivery.deliveryId, actorId: "admin", reason: "重新投递", activeAllowedOrigin: b.configuration.notification_origin, now: f.now() };
+      const disabled = f.sites.update(a.clientId, { revision: a.revision, configuration: { ...a.configuration, notifications_enabled: false } }, audit, f.now());
+      assert.throws(() => webhooks.replay(request), { code: "webhook_disabled" });
+      const moved = f.sites.update(a.clientId, { revision: disabled.revision, configuration: { ...disabled.configuration, notifications_enabled: true, notification_origin: "https://new.example.com" } }, audit, f.now());
+      assert.throws(() => webhooks.replay({ ...request, activeAllowedOrigin: "https://a.example.com" }), { code: "webhook_target_inactive" });
+      const restored = f.sites.update(a.clientId, { revision: moved.revision, configuration: a.configuration }, audit, f.now());
+      const result = webhooks.replay({ ...request, activeAllowedOrigin: null });
+      assert.equal(result.replayed, false);
+      f.sites.update(a.clientId, { revision: restored.revision, configuration: { ...a.configuration, notifications_enabled: false } }, audit, f.now());
+      assert.equal(webhooks.replay(request).replayed, true);
+    } finally { f.close(); }
+  });
+
 });
