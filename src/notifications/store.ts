@@ -1,3 +1,5 @@
+import { readSite } from "../sites/store.ts";
+import { siteClientIdSchema } from "../sites/model.ts";
 import { normalizeListQuery, DELIVERY_SORT_FIELDS, type DeliverySort, type ListQuery, type ListPosition } from "../shared/list-query.ts";
 import { listKeyset, listSearch, listCreatedDates } from "../database/list-query.ts";
 import { randomUUID } from "node:crypto";
@@ -229,7 +231,8 @@ export class WebhookStore {
     });
   }
 
-  materialize(limit: number, now: number): number {
+  materialize(limit: number, now: number, clientId?: string): number {
+    if (clientId !== undefined) siteClientIdSchema.parse(clientId);
     assertPositiveInteger(limit, "webhook materialize limit");
     assertTime(now, "webhook materialize time");
     return this.#database.write((connection) => {
@@ -244,7 +247,7 @@ export class WebhookStore {
                   target.url_fingerprint, target.created_at AS target_created_at
              FROM outbox_events AS outbox
              JOIN webhook_targets AS target ON target.order_id = outbox.aggregate_id
-            WHERE NOT EXISTS (
+            WHERE (? IS NULL OR target.api_client_id = ?) AND NOT EXISTS (
                     SELECT 1 FROM webhook_deliveries AS delivery
                      WHERE delivery.outbox_event_id = outbox.outbox_event_id
                        AND delivery.target_id = target.target_id
@@ -253,7 +256,7 @@ export class WebhookStore {
             ORDER BY outbox.created_at, outbox.outbox_event_id
             LIMIT ?`,
         )
-        .all(limit) as unknown as MaterializationRow[];
+        .all(clientId ?? null, clientId ?? null, limit) as unknown as MaterializationRow[];
       let inserted = 0;
       for (const row of rows) {
         const deliveryTime = Math.max(
@@ -300,11 +303,15 @@ export class WebhookStore {
   }
 
   claimNext(input: {
+    readonly clientId?: string;
+    readonly siteRevision?: number;
+    readonly secretFingerprint?: string;
     readonly now: number;
     readonly leaseMilliseconds: number;
     readonly maximumAttempts: number;
   }): ClaimedWebhookAttempt | null {
     assertTime(input.now, "webhook claim time");
+    if (input.clientId !== undefined) siteClientIdSchema.parse(input.clientId);
     if (
       !Number.isSafeInteger(input.leaseMilliseconds) ||
       input.leaseMilliseconds < 1 ||
@@ -315,9 +322,13 @@ export class WebhookStore {
     assertPositiveInteger(input.maximumAttempts, "webhook maximum attempts");
     return this.#database.write((connection) => {
       recoverExpiredLeases(connection, input.now);
-      deadLetterExhaustedDeliveries(connection, input.maximumAttempts, input.now);
-      const key = readActiveSigningKey(connection);
-      if (!key) return null;
+      if (input.clientId !== undefined) {
+        const site = readSite(connection, input.clientId);
+        if (!site || !site.configuration.notifications_enabled || site.revision !== input.siteRevision) return null;
+      }
+      const key = readActiveSigningKey(connection, input.clientId);
+      if (!key || (input.secretFingerprint !== undefined && key.secretFingerprint !== input.secretFingerprint)) return null;
+      deadLetterExhaustedDeliveries(connection, input.maximumAttempts, input.now, input.clientId);
       const row = connection
         .prepare(
           `SELECT delivery.delivery_id, delivery.outbox_event_id, delivery.target_id,
@@ -337,13 +348,13 @@ export class WebhookStore {
              FROM webhook_deliveries AS delivery
              JOIN outbox_events AS outbox ON outbox.outbox_event_id = delivery.outbox_event_id
              JOIN webhook_targets AS target ON target.target_id = delivery.target_id
-            WHERE delivery.status IN ('PENDING', 'RETRY_WAIT')
+            WHERE (? IS NULL OR target.api_client_id = ?) AND delivery.status IN ('PENDING', 'RETRY_WAIT')
               AND delivery.next_attempt_at <= ?
               AND delivery.attempt_count < ?
             ORDER BY delivery.next_attempt_at, delivery.created_at, delivery.delivery_id
             LIMIT 1`,
         )
-        .get(input.now, input.maximumAttempts) as ClaimRow | undefined;
+        .get(input.clientId ?? null, input.clientId ?? null, input.now, input.maximumAttempts) as ClaimRow | undefined;
       if (!row) return null;
       const attemptNumber = toSafeInteger(row.attempt_count, "webhook attempt count") + 1;
       const leaseToken = randomUUID();
@@ -1053,13 +1064,14 @@ function readAttemptsByDelivery(
   return grouped;
 }
 
-function readActiveSigningKey(connection: DatabaseSync): WebhookSigningKey | null {
+function readActiveSigningKey(connection: DatabaseSync, clientId?: string): WebhookSigningKey | null {
+  if (clientId === undefined && connection.prepare("SELECT 1 FROM pragma_table_info('webhook_signing_keys') WHERE name = 'client_id'").get()) throw new Error("website scope is required for notification keys");
   const row = connection
     .prepare(
       `SELECT key_version, key_id, secret_fingerprint, activated_at, retired_at
-         FROM webhook_signing_keys WHERE retired_at IS NULL`,
+         FROM webhook_signing_keys WHERE retired_at IS NULL${clientId === undefined ? "" : " AND client_id = ?"}`,
     )
-    .get() as SigningKeyRow | undefined;
+    .get(...(clientId === undefined ? [] : [clientId])) as SigningKeyRow | undefined;
   return row ? mapSigningKey(row) : null;
 }
 
@@ -1107,6 +1119,7 @@ function deadLetterExhaustedDeliveries(
   connection: DatabaseSync,
   maximumAttempts: number,
   now: number,
+  clientId?: string,
 ): number {
   const result = connection
     .prepare(
@@ -1115,9 +1128,10 @@ function deadLetterExhaustedDeliveries(
               last_error_code = 'maximum_attempts_reached', updated_at = max(updated_at, ?)
         WHERE status IN ('PENDING', 'RETRY_WAIT')
           AND attempt_count >= ?
-          AND attempt_count >= 1`,
+          AND attempt_count >= 1
+           AND (? IS NULL OR target_id IN (SELECT target_id FROM webhook_targets WHERE api_client_id = ?))`,
     )
-    .run(now, now, maximumAttempts);
+    .run(now, now, maximumAttempts, clientId ?? null, clientId ?? null);
   return toSafeInteger(result.changes, "exhausted webhook delivery count");
 }
 
