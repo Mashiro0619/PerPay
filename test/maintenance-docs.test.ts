@@ -13,12 +13,15 @@ describe("maintenance documentation version contract", () => {
     assert.ok(notes.includes(`# PerPay ${APP_VERSION}`));
     const current = readFileSync(new URL("../docs/releases/unreleased.md", import.meta.url), "utf8");
     assert.ok(current.includes(APP_VERSION));
-    assert.ok(current.includes(`最新数据库 schema 为 **${DATABASE_COMPATIBILITY.maximum}**`));
-    assert.ok(current.includes(`运行兼容范围为 **${DATABASE_COMPATIBILITY.minimum}—${DATABASE_COMPATIBILITY.maximum}**`));
-    assert.ok(maintenance.includes("基于 `" + APP_VERSION + "`"));
-    assert.ok(current.includes(`迁移 24—${DATABASE_COMPATIBILITY.maximum}`));
-    assert.ok(current.includes(`迁移 27—${DATABASE_COMPATIBILITY.maximum}`));
-    assert.ok(current.includes(`不能将 schema ${DATABASE_COMPATIBILITY.maximum} 数据库`));
+    assert.ok(current.includes(`(v${APP_VERSION}.md)`));
+    assert.ok(notes.includes(`最新数据库 schema 为 **${DATABASE_COMPATIBILITY.maximum}**`));
+    assert.ok(notes.includes(`运行兼容范围为 **${DATABASE_COMPATIBILITY.minimum}—${DATABASE_COMPATIBILITY.maximum}**`));
+    assert.ok(maintenance.includes("当前源码版本为 `" + APP_VERSION + "`"));
+    assert.ok(notes.includes(`迁移 24—${DATABASE_COMPATIBILITY.maximum}`));
+    assert.ok(notes.includes(`迁移 27—${DATABASE_COMPATIBILITY.maximum}`));
+    assert.ok(notes.includes(`不能将 schema ${DATABASE_COMPATIBILITY.maximum} 数据库`));
+    assert.ok(notes.includes(`ghcr.io/mashiro0619/perpay:${APP_VERSION}`));
+    assert.ok(notes.includes("docker compose stop app backup"));
   });
 
   it("documents the current migration catalog and runtime compatibility rather than an old release", () => {
