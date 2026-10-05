@@ -1,3 +1,4 @@
+import { systemAnalytics } from "../src/http/system-analytics.ts";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { describe, it } from "node:test";
@@ -68,6 +69,20 @@ describe("website notification processing", () => {
       assert.equal(new Set(requests.slice(0, 2)).size, 2);
       assert.equal(requests.filter(id => id === a.clientId).length, 2);
       assert.equal(requests.filter(id => id === b.clientId).length, 1);
+      const aStats = systemAnalytics(f.database, 7, f.now(), a.clientId);
+      const bStats = systemAnalytics(f.database, 7, f.now(), b.clientId);
+      assert.equal(aStats.confirmations.count, 2);
+      assert.equal(bStats.confirmations.count, 1);
+      assert.equal(aStats.notifications.pending, 2);
+      assert.equal(bStats.notifications.pending, 1);
+      const aDeliveries = webhooks.listDeliveries({ apiClientId: a.clientId, limit: 10 });
+      const bDeliveries = webhooks.listDeliveries({ apiClientId: b.clientId, limit: 10 });
+      assert.equal(aDeliveries.deliveries.length, 2);
+      assert.equal(bDeliveries.deliveries.length, 1);
+      const aIds = new Set(aDeliveries.deliveries.map(item => item.delivery.deliveryId));
+      assert.ok(bDeliveries.deliveries.every(item => !aIds.has(item.delivery.deliveryId)));
+      assert.equal(aStats.daily.reduce((sum, day) => sum + day.confirmations, 0), 2);
+      assert.equal(bStats.daily.reduce((sum, day) => sum + day.confirmations, 0), 1);
       assert.equal((await processor.processOne()).processed, false);
       assert.equal(f.database.read(countSiteDomainViolations), 0);
       assert.throws(() => webhooks.claimNext({ now: f.now(), leaseMilliseconds: 30000, maximumAttempts: 3 }), /website scope/);

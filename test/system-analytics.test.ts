@@ -63,7 +63,7 @@ describe("system analytics", () => {
 
   it("excludes only retired debit warnings from pending exception counts", () => {
     withFixture((database, connection) => {
-      connection.exec("INSERT INTO financial_exceptions VALUES ('OPEN', 'UNMATCHED_DEBIT'), ('OPEN', 'UNLINKED_REFUND'), ('OPEN', 'UNMATCHED_CREDIT'), ('RESOLVED', 'UNMATCHED_CREDIT')");
+      connection.exec("INSERT INTO financial_exceptions(status,exception_type) VALUES ('OPEN', 'UNMATCHED_DEBIT'), ('OPEN', 'UNLINKED_REFUND'), ('OPEN', 'UNMATCHED_CREDIT'), ('RESOLVED', 'UNMATCHED_CREDIT')");
       connection.exec("INSERT INTO ledger_conflicts VALUES ('OPEN')");
       assert.equal(systemAnalytics(database, 7).pending.exceptions, 1);
       assert.equal(systemAnalytics(database, 7).pending.conflicts, 1);
@@ -86,11 +86,11 @@ describe("system analytics", () => {
         ];
         for (const [index, record] of records.entries()) {
           const orderId = `order-${index}`;
-          connection.prepare(`INSERT INTO payment_orders VALUES (?, ?, 'CONFIRMED', 'CLOSED', ?)`)
+          connection.prepare(`INSERT INTO payment_orders(order_id,created_at,payment_status,checkout_status,received_amount_cents) VALUES (?, ?, 'CONFIRMED', 'CLOSED', ?)`)
             .run(orderId, record.timestamp, record.amount);
           connection.prepare(`INSERT INTO order_events VALUES (?, 'PAYMENT_CONFIRMED', ?)`)
             .run(orderId, record.timestamp);
-          connection.prepare("INSERT INTO webhook_deliveries VALUES (?, ?)")
+          connection.prepare("INSERT INTO webhook_deliveries(created_at,status) VALUES (?, ?)")
             .run(record.timestamp, record.status);
         }
 
@@ -130,13 +130,15 @@ function withFixture(operation: (database: AppDatabase, connection: DatabaseSync
   try {
     connection.exec(`
       CREATE TABLE payment_orders (
+        api_client_id TEXT NOT NULL DEFAULT 'default',
         order_id TEXT PRIMARY KEY, created_at INTEGER NOT NULL,
         payment_status TEXT NOT NULL, checkout_status TEXT NOT NULL,
         received_amount_cents INTEGER
       );
       CREATE TABLE order_events (order_id TEXT NOT NULL, event_type TEXT NOT NULL, occurred_at INTEGER NOT NULL);
-      CREATE TABLE webhook_deliveries (created_at INTEGER NOT NULL, status TEXT NOT NULL);
-      CREATE TABLE financial_exceptions (status TEXT NOT NULL, exception_type TEXT NOT NULL);
+      CREATE TABLE webhook_targets(target_id TEXT PRIMARY KEY, api_client_id TEXT);
+      CREATE TABLE webhook_deliveries (target_id TEXT, created_at INTEGER NOT NULL, status TEXT NOT NULL);
+      CREATE TABLE financial_exceptions (order_id TEXT, status TEXT NOT NULL, exception_type TEXT NOT NULL);
       CREATE TABLE ledger_conflicts (status TEXT NOT NULL);
     `);
     operation(database, connection);

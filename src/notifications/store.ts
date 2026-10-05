@@ -863,11 +863,13 @@ export class WebhookStore {
   }
 
   listDeliveries(input: {
+    readonly apiClientId?: string;
     readonly status?: WebhookDeliveryStatus | undefined;
     readonly cursor?: WebhookDeliveryCursor | null | undefined;
     readonly limit: number;
     readonly query?: ListQuery<DeliverySort>;
   }): WebhookDeliveryPage {
+    if (input.apiClientId !== undefined) siteClientIdSchema.parse(input.apiClientId);
     assertPositiveInteger(input.limit, "webhook delivery page limit");
     if (input.limit > 200) throw new RangeError("webhook delivery page limit is too large");
     if (
@@ -889,6 +891,10 @@ export class WebhookStore {
       const dates = listCreatedDates("delivery.created_at", query.createdFrom, query.createdTo);
       const where = [seek.where, search.where, dates.where].filter(Boolean);
       const parameters: Array<string | number> = [...seek.parameters, ...search.parameters, ...dates.parameters];
+      if (input.apiClientId) {
+        where.push("target.api_client_id = ?");
+        parameters.push(input.apiClientId);
+      }
       if (input.status) {
         where.push("delivery.status = ?");
         parameters.push(input.status);

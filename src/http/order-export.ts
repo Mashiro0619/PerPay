@@ -1,3 +1,4 @@
+import { siteClientIdSchema } from "../sites/model.ts";
 import { z } from "zod";
 import type { AppDatabase } from "../database/database.ts";
 import {
@@ -15,6 +16,7 @@ import {
 export const orderExportSchema = z
   .object({
     q: z.string().optional(),
+    api_client_id: siteClientIdSchema.optional(),
     sort_by: z.enum(ORDER_SORT_FIELDS).optional(),
     sort_order: z.enum(["asc", "desc"]).optional(),
     payment_status: z.enum(["UNPAID", "CONFIRMED", "DISPUTED"]).optional(),
@@ -92,6 +94,9 @@ export function exportOrders(
     ...search.parameters,
     ...dates.parameters,
   ];
+  if (input.api_client_id) {
+    where.push("orders.api_client_id = ?"); parameters.push(input.api_client_id);
+  }
   if (input.payment_status) {
     where.push("orders.payment_status = ?");
     parameters.push(input.payment_status);
@@ -102,17 +107,19 @@ export function exportOrders(
     where.push(checkout + " = ?");
     parameters.push(now, input.checkout_status);
   }
-  const rows = database.read((db) =>
-    db
+  let includeWebsite = false;
+  const rows = database.read((db) => {
+    includeWebsite = db.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'sites'").get() !== undefined;
+    return db
       .prepare(
-        `SELECT orders.merchant_order_no, orders.order_id, orders.product_name,
+        `SELECT orders.api_client_id, ${includeWebsite ? "(SELECT json_extract(configuration, '$.name') FROM sites WHERE client_id = orders.api_client_id)" : "NULL"} AS site_name, orders.merchant_order_no, orders.order_id, orders.product_name,
       orders.requested_amount_cents, orders.payable_amount_cents, orders.received_amount_cents,
       orders.currency, orders.payment_status, ${checkout} AS checkout_status, orders.created_at,
       (SELECT MAX(e.occurred_at) FROM order_events e WHERE e.order_id = orders.order_id AND e.event_type = 'PAYMENT_CONFIRMED') AS confirmed_at
     FROM payment_orders AS orders WHERE ${where.join(" AND ")} ORDER BY ${sort.orderBy} LIMIT ?`,
       )
-      .all(now, ...parameters, MAX_EXPORT_ORDERS + 1),
-  );
+      .all(now, ...parameters, MAX_EXPORT_ORDERS + 1);
+  });
   if (rows.length > MAX_EXPORT_ORDERS)
     throw new ListQueryError("导出结果超过 10,000 条，请缩小筛选范围");
   const header = [
@@ -127,6 +134,7 @@ export function exportOrders(
     "收银台状态",
     "创建时间",
     "付款确认时间",
+    ...(includeWebsite ? ["业务网站 ID", "业务网站名称"] : []),
   ];
   const payment: Record<string, string> = {
     UNPAID: "待付款",
@@ -154,6 +162,7 @@ export function exportOrders(
         lifecycle[String(row.checkout_status)]!,
         timestamp(row.created_at),
         timestamp(row.confirmed_at),
+        ...(includeWebsite ? [String(row.api_client_id), String(row.site_name ?? "")] : []),
       ]),
     ]
       .map((row) => row.map(csvCell).join(","))

@@ -1,3 +1,4 @@
+import { siteClientIdSchema } from "../sites/model.ts";
 import type { DatabaseSync } from "node:sqlite";
 
 import type { AppDatabase } from "../database/database.ts";
@@ -32,7 +33,7 @@ export interface SystemAnalytics {
   readonly pending: {
     readonly orders: number;
     readonly exceptions: number;
-    readonly conflicts: number;
+    readonly conflicts: number | null;
     readonly notifications: number;
   };
   readonly daily: readonly {
@@ -84,11 +85,13 @@ export function systemAnalytics(
   database: AppDatabase,
   requestedRange: number,
   now = Date.now(),
+  clientId: string | null = null,
 ): SystemAnalytics {
+  if (clientId !== null) siteClientIdSchema.parse(clientId);
   const days = rangeDays(requestedRange);
   const end = chinaDayStart(now) + DAY_MILLISECONDS;
   const start = end - days * DAY_MILLISECONDS;
-  return database.read((connection) => readAnalytics(connection, days, start, end));
+  return database.read((connection) => readAnalytics(connection, days, start, end, clientId));
 }
 
 function readAnalytics(
@@ -96,6 +99,7 @@ function readAnalytics(
   days: AnalyticsRange,
   start: number,
   end: number,
+  clientId: string | null,
 ): SystemAnalytics {
   const orders = connection.prepare(`
     SELECT
@@ -107,7 +111,8 @@ function readAnalytics(
       SUM(CASE WHEN checkout_status = 'EXPIRED' THEN 1 ELSE 0 END) AS expired
     FROM payment_orders
     WHERE created_at >= ? AND created_at < ?
-  `).get(start, end) as Record<string, number | bigint | null>;
+      AND (? IS NULL OR api_client_id = ?)
+  `).get(start, end, clientId, clientId) as Record<string, number | bigint | null>;
 
   const confirmations = connection.prepare(`
     SELECT COUNT(*) AS count,
@@ -116,7 +121,8 @@ function readAnalytics(
       JOIN payment_orders AS orders ON orders.order_id = events.order_id
      WHERE events.event_type = 'PAYMENT_CONFIRMED'
        AND events.occurred_at >= ? AND events.occurred_at < ?
-  `).get(start, end) as unknown as AmountRow;
+       AND (? IS NULL OR orders.api_client_id = ?)
+  `).get(start, end, clientId, clientId) as unknown as AmountRow;
 
   const notifications = connection.prepare(`
     SELECT
@@ -125,18 +131,21 @@ function readAnalytics(
       SUM(CASE WHEN status IN ('PENDING', 'LEASED', 'RETRY_WAIT') THEN 1 ELSE 0 END) AS pending
       FROM webhook_deliveries
      WHERE created_at >= ? AND created_at < ?
-  `).get(start, end) as Record<string, number | bigint | null>;
+       AND (? IS NULL OR target_id IN (SELECT target_id FROM webhook_targets WHERE api_client_id = ?))
+  `).get(start, end, clientId, clientId) as Record<string, number | bigint | null>;
 
   const pending = connection.prepare(`
     SELECT
       (SELECT COUNT(*) FROM payment_orders
-        WHERE checkout_status = 'OPEN' AND payment_status = 'UNPAID') AS orders,
+        WHERE checkout_status = 'OPEN' AND payment_status = 'UNPAID' AND (? IS NULL OR api_client_id = ?)) AS orders,
       (SELECT COUNT(*) FROM financial_exceptions
-         WHERE status = 'OPEN' AND exception_type NOT IN ('UNMATCHED_DEBIT', 'UNLINKED_REFUND')) AS exceptions,
-      (SELECT COUNT(*) FROM ledger_conflicts WHERE status = 'OPEN') AS conflicts,
+         WHERE status = 'OPEN' AND exception_type NOT IN ('UNMATCHED_DEBIT', 'UNLINKED_REFUND')
+           AND (? IS NULL OR order_id IN (SELECT order_id FROM payment_orders WHERE api_client_id = ?))) AS exceptions,
+      CASE WHEN ? IS NULL THEN (SELECT COUNT(*) FROM ledger_conflicts WHERE status = 'OPEN') ELSE NULL END AS conflicts,
       (SELECT COUNT(*) FROM webhook_deliveries
-        WHERE status IN ('PENDING', 'LEASED', 'RETRY_WAIT')) AS notifications
-  `).get() as Record<string, number | bigint | null>;
+        WHERE status IN ('PENDING', 'LEASED', 'RETRY_WAIT')
+           AND (? IS NULL OR target_id IN (SELECT target_id FROM webhook_targets WHERE api_client_id = ?))) AS notifications
+  `).get(clientId, clientId, clientId, clientId, clientId, clientId, clientId) as Record<string, number | bigint | null>;
 
   const dailyRows = connection.prepare(`
     WITH order_daily AS (
@@ -144,6 +153,7 @@ function readAnalytics(
              COUNT(*) AS orders_created
         FROM payment_orders
        WHERE created_at >= ? AND created_at < ?
+         AND (? IS NULL OR api_client_id = ?)
        GROUP BY date
     ), confirmation_daily AS (
       SELECT strftime('%Y-%m-%d', events.occurred_at / 1000, 'unixepoch', '+08:00') AS date,
@@ -153,6 +163,7 @@ function readAnalytics(
         JOIN payment_orders AS orders ON orders.order_id = events.order_id
        WHERE events.event_type = 'PAYMENT_CONFIRMED'
          AND events.occurred_at >= ? AND events.occurred_at < ?
+         AND (? IS NULL OR orders.api_client_id = ?)
        GROUP BY date
     ), notification_daily AS (
       SELECT strftime('%Y-%m-%d', created_at / 1000, 'unixepoch', '+08:00') AS date,
@@ -160,6 +171,7 @@ function readAnalytics(
              SUM(CASE WHEN status = 'DEAD_LETTER' THEN 1 ELSE 0 END) AS notifications_failed
         FROM webhook_deliveries
        WHERE created_at >= ? AND created_at < ?
+         AND (? IS NULL OR target_id IN (SELECT target_id FROM webhook_targets WHERE api_client_id = ?))
        GROUP BY date
     )
     SELECT COALESCE(order_daily.date, confirmation_daily.date, notification_daily.date) AS date,
@@ -173,7 +185,7 @@ function readAnalytics(
       FULL OUTER JOIN notification_daily
         ON notification_daily.date = COALESCE(order_daily.date, confirmation_daily.date)
      ORDER BY date
-  `).all(start, end, start, end, start, end) as unknown as DailyRow[];
+  `).all(start, end, clientId, clientId, start, end, clientId, clientId, start, end, clientId, clientId) as unknown as DailyRow[];
 
   const byDate = new Map(dailyRows.map((row) => [row.date, row]));
   const daily = Array.from({ length: days }, (_, index) => {
@@ -214,7 +226,7 @@ function readAnalytics(
     pending: {
       orders: integer(pending.orders),
       exceptions: integer(pending.exceptions),
-      conflicts: integer(pending.conflicts),
+      conflicts: clientId === null ? integer(pending.conflicts) : null,
       notifications: integer(pending.notifications),
     },
     daily,

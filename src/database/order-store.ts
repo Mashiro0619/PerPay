@@ -1,3 +1,4 @@
+import { siteClientIdSchema } from "../sites/model.ts";
 import { assertSiteCanCreate, readSite, SiteError } from "../sites/store.ts";
 import { normalizeListQuery, isDefaultQuery, ORDER_SORT_FIELDS, type ListQuery, type OrderSort } from "../shared/list-query.ts";
 import { listKeyset, listSearch, listCreatedDates } from "./list-query.ts";
@@ -624,16 +625,18 @@ export class OrderStore {
     requestedQuery?: ListQuery<OrderSort>,
   ): StoredAdminOrderPage {
     validateAdminOrderPageInput(filters, cursor, limit);
+    if (filters.apiClientId !== undefined) siteClientIdSchema.parse(filters.apiClientId);
     const query = normalizeListQuery(requestedQuery, ORDER_SORT_FIELDS, "created_at", "desc");
     return this.#database.write((connection) => {
       const now = this.#logicalNow(connection);
       expireDueOrders(connection, now, EXPIRY_SWEEP_LIMIT);
-      if (!isDefaultQuery(query, "created_at", "desc")) {
+      if (filters.apiClientId !== undefined || !isDefaultQuery(query, "created_at", "desc")) {
         const search = listSearch(["orders.order_id", "orders.merchant_order_no", "orders.product_name"], query.q);
         const seek = listKeyset("orders." + query.sortBy, ["orders.order_id"], query.sortOrder, cursor?.position, query.sortBy === "received_amount_cents");
         const dates = listCreatedDates("orders.created_at", query.createdFrom, query.createdTo);
         const where = [search.where, seek.where, dates.where].filter(Boolean);
         const parameters: Array<string | number> = [...search.parameters, ...seek.parameters, ...dates.parameters];
+        if (filters.apiClientId !== undefined) { where.push("orders.api_client_id = ?"); parameters.push(filters.apiClientId); }
         if (filters.paymentStatus !== null) { where.push("orders.payment_status = ?"); parameters.push(filters.paymentStatus); }
         if (filters.checkoutStatus === "EXPIRED") {
           where.push("(orders.checkout_status = 'EXPIRED' OR (orders.checkout_status = 'OPEN' AND orders.expires_at <= ?))"); parameters.push(now);

@@ -253,11 +253,11 @@ describe("creation dates and order CSV", () => {
     const db = new DatabaseSync(":memory:");
     try {
       db.exec(
-        "CREATE TABLE payment_orders (order_id TEXT PRIMARY KEY,merchant_order_no TEXT,product_name TEXT,requested_amount_cents INTEGER,payable_amount_cents INTEGER,received_amount_cents INTEGER,currency TEXT,payment_status TEXT,checkout_status TEXT,created_at INTEGER,expires_at INTEGER); CREATE TABLE order_events(order_id TEXT,event_type TEXT,occurred_at INTEGER)",
+        "CREATE TABLE payment_orders(api_client_id TEXT NOT NULL DEFAULT 'default', order_id TEXT PRIMARY KEY,merchant_order_no TEXT,product_name TEXT,requested_amount_cents INTEGER,payable_amount_cents INTEGER,received_amount_cents INTEGER,currency TEXT,payment_status TEXT,checkout_status TEXT,created_at INTEGER,expires_at INTEGER); CREATE TABLE order_events(order_id TEXT,event_type TEXT,occurred_at INTEGER)",
       );
       const day = Date.parse("2026-09-30T16:00:00Z");
       const insert = db.prepare(
-        "INSERT INTO payment_orders VALUES(?,?,?,1999,2001,?,'CNY',?,'OPEN',?,?)",
+        "INSERT INTO payment_orders(order_id,merchant_order_no,product_name,requested_amount_cents,payable_amount_cents,received_amount_cents,currency,payment_status,checkout_status,created_at,expires_at) VALUES(?,?,?,1999,2001,?,'CNY',?,'OPEN',?,?)",
       );
       insert.run(
         "a",

@@ -17,11 +17,11 @@ it("exports one snapshot while another connection commits state changes", async 
   let worker: Worker | undefined;
   try {
     db.exec(
-      "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; CREATE TABLE payment_orders(order_id TEXT PRIMARY KEY, merchant_order_no TEXT, product_name TEXT, requested_amount_cents INTEGER, payable_amount_cents INTEGER, received_amount_cents INTEGER, currency TEXT, payment_status TEXT, checkout_status TEXT, created_at INTEGER, expires_at INTEGER); CREATE TABLE order_events(order_id TEXT,event_type TEXT,occurred_at INTEGER);",
+      "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; CREATE TABLE payment_orders(api_client_id TEXT NOT NULL DEFAULT 'default', order_id TEXT PRIMARY KEY, merchant_order_no TEXT, product_name TEXT, requested_amount_cents INTEGER, payable_amount_cents INTEGER, received_amount_cents INTEGER, currency TEXT, payment_status TEXT, checkout_status TEXT, created_at INTEGER, expires_at INTEGER); CREATE TABLE order_events(order_id TEXT,event_type TEXT,occurred_at INTEGER);",
     );
     const now = Date.parse("2026-10-01T00:00:00Z");
     const insert = db.prepare(
-      "INSERT INTO payment_orders VALUES(?,?,?,100,100,100,'CNY','CONFIRMED','OPEN',?,?)",
+      "INSERT INTO payment_orders(order_id,merchant_order_no,product_name,requested_amount_cents,payable_amount_cents,received_amount_cents,currency,payment_status,checkout_status,created_at,expires_at) VALUES(?,?,?,100,100,100,'CNY','CONFIRMED','OPEN',?,?)",
     );
     db.exec("BEGIN");
     for (let i = 0; i < 1000; i++)

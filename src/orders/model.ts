@@ -262,6 +262,7 @@ export interface AdminOrderCursor {
 }
 
 export interface AdminOrderFilters {
+  readonly apiClientId?: string;
   readonly checkoutStatus: CheckoutStatus | null;
   readonly paymentStatus: PaymentStatus | null;
 }
