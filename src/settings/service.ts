@@ -1,3 +1,5 @@
+import { collectionPolicyInputSchema, type CollectionPolicyInput } from "./collection-policy.ts";
+import { collectionCodeInputSchema, providerApplicationInputSchema, type CollectionCodeInput, type ProviderApplicationInput } from "./model.ts";
 import { adminAccessInputSchema, createAdminAccessPolicy, type AdminAccessInput, type AdminAccess } from "./admin-access.ts";
 import { randomBytes, randomUUID } from "node:crypto";
 
@@ -43,6 +45,7 @@ import {
 } from "./store.ts";
 
 export interface RuntimeSettingsView {
+  readonly collection_policy: CollectionPolicyInput;
   readonly admin_access: AdminAccess;
   readonly revision: number;
   readonly payment_revision: number;
@@ -191,6 +194,7 @@ export class RuntimeSettingsService {
     const applicationKey = this.#store.providerApplicationKey();
     const pending = this.#store.pendingApplicationKey();
     return {
+      collection_policy: this.#store.collectionPolicy(),
       admin_access: snapshot.adminAccess,
       revision: snapshot.revision,
       payment_revision: snapshot.paymentRevision,
@@ -279,6 +283,57 @@ export class RuntimeSettingsService {
         webhook_secret: this.#store.secretMetadata("webhook_secret"),
       },
     };
+  }
+
+  siteStore() { return this.#store.siteStore(); }
+
+  collectionPolicy(): CollectionPolicyInput {
+    return this.#store.collectionPolicy();
+  }
+
+  saveProviderApplication(input: ProviderApplicationInput, audit: SettingsAuditContext): Promise<RuntimeSettingsView> {
+    const parsed = providerApplicationInputSchema.parse(input);
+    return this.saveProvider({ ...this.#store.collectionPolicy(), ...parsed }, audit);
+  }
+
+  saveCollectionCode(input: CollectionCodeInput, audit: SettingsAuditContext): Promise<RuntimeSettingsView> {
+    return this.#exclusive(async () => {
+      const parsed = collectionCodeInputSchema.parse(input);
+      const current = this.#store.snapshot();
+      if (current.revision !== parsed.revision) throw revisionConflict(parsed.revision, current.revision);
+      let committed = false;
+      try {
+        await this.#onPaymentMutationStarted();
+        const snapshot = this.#store.saveCollectionCode(parsed, audit);
+        committed = true;
+        await this.#applyCommitted(snapshot, async () => {
+          if (snapshot.collection && snapshot.activeProviderAccountKey !== null) await this.#onCollectionApplied(snapshot.collection, snapshot.activeProviderAccountKey);
+        });
+        return this.view();
+      } catch (error) {
+        if (!committed) await this.#restoreCurrentRuntime(error);
+        throw error;
+      }
+    });
+  }
+
+  saveCollectionPolicy(input: CollectionPolicyInput, audit: SettingsAuditContext): Promise<RuntimeSettingsView> {
+    return this.#exclusive(async () => {
+      const parsed = collectionPolicyInputSchema.parse(input);
+      const current = this.#store.snapshot();
+      if (current.revision !== parsed.revision) throw revisionConflict(parsed.revision, current.revision);
+      let committed = false;
+      try {
+        await this.#onPaymentMutationStarted();
+        const snapshot = this.#store.saveCollectionPolicy(parsed, audit);
+        committed = true;
+        await this.#applyCommitted(snapshot);
+        return this.view();
+      } catch (error) {
+        if (!committed) await this.#restoreCurrentRuntime(error);
+        throw error;
+      }
+    });
   }
 
   saveCollection(input: CollectionSettingsInput, audit: SettingsAuditContext): Promise<RuntimeSettingsView> {

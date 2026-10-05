@@ -16,7 +16,7 @@ export async function createSitePaymentFixture() {
   services.database.write(connection => { connection.exec(MULTI_SITE_SCHEMA_SQL); migrateSiteData(connection, services.config.masterKey); });
   const sites = new SiteStore(services.database, services.config.masterKey);
   let now = Date.now();
-  const orders = new OrderService(services.database, () => snapshot, () => now, sites);
+  const orders = new OrderService(services.database, () => services.settings.snapshot(), () => now, sites);
   const createSite = (name: string) => sites.create({ operation_id: randomUUID(), configuration: { name, accepting_orders: true, notifications_enabled: false, notification_origin: null, return_origin: null, policy: sites.defaults().policy } }, { actorId: "admin" });
   return {
     ...services, sites, orders, createSite, snapshot, now: () => now, setNow: (value: number) => { now = value; },

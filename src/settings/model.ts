@@ -1,3 +1,4 @@
+import { collectionPolicyFields, validateCollectionPolicy } from "./collection-policy.ts";
 import type { AdminAccess } from "./admin-access.ts";
 import { checkoutHelpUrl } from "../shared/checkout-help.ts";
 import {
@@ -183,44 +184,25 @@ export const collectionSettingsInputSchema = z.object({
     .min(MIN_AMOUNT_REUSE_COOLDOWN_SECONDS).max(MAX_AMOUNT_REUSE_COOLDOWN_SECONDS).optional(),
 }).strict();
 
-export const providerSettingsInputSchema = z.object({
+export const providerApplicationInputSchema = z.object({
   revision: z.number().int().nonnegative(),
   environment: z.enum(["PRODUCTION", "SANDBOX"]),
   app_id: z.string().trim().regex(/^[A-Za-z0-9._-]{1,64}$/),
   private_key: z.string().min(1).max(16 * 1024).optional(),
   platform_public_key: z.string().min(1).max(16 * 1024).optional(),
-  timeout_milliseconds: z.number().int().min(1_000).max(120_000),
-  scan_interval_seconds: z.number().int().min(5).max(3_600),
-  active_scan_interval_seconds: z.number().int().min(5).max(3_600).optional(),
-  minimum_scan_interval_seconds: z.number().int().min(5).max(3_600).optional(),
-  safety_lag_seconds: z.number().int().min(5).max(300),
-  maximum_success_age_seconds: z.number().int().min(10).max(86_400),
-}).strict().superRefine((input, context) => {
-  if ((input.active_scan_interval_seconds ?? input.scan_interval_seconds) > input.scan_interval_seconds) {
-    context.addIssue({
-      code: "custom",
-      path: ["active_scan_interval_seconds"],
-      message: "must not exceed the normal scan interval",
-    });
-  }
-  if (input.minimum_scan_interval_seconds !== undefined && input.minimum_scan_interval_seconds > (input.active_scan_interval_seconds ?? input.scan_interval_seconds)) {
-    context.addIssue({code:"custom",path:["minimum_scan_interval_seconds"],message:"最小采集间隔不能大于活跃采集间隔。"});
-  }
-  if (input.maximum_success_age_seconds < input.scan_interval_seconds * 2) {
-    context.addIssue({
-      code: "custom",
-      path: ["maximum_success_age_seconds"],
-      message: "must be at least twice the scan interval",
-    });
-  }
-  if (input.safety_lag_seconds > input.maximum_success_age_seconds) {
-    context.addIssue({
-      code: "custom",
-      path: ["safety_lag_seconds"],
-      message: "must not exceed the maximum success age",
-    });
-  }
-});
+}).strict();
+export type ProviderApplicationInput = z.infer<typeof providerApplicationInputSchema>;
+export const collectionCodeInputSchema = z.object({
+  revision: z.number().int().nonnegative(),
+  code_payload: collectionSettingsInputSchema.shape.code_payload,
+}).strict();
+export type CollectionCodeInput = z.infer<typeof collectionCodeInputSchema>;
+
+export const providerSettingsInputSchema = providerApplicationInputSchema.extend({
+  ...collectionPolicyFields,
+  active_scan_interval_seconds: collectionPolicyFields.active_scan_interval_seconds.optional(),
+  minimum_scan_interval_seconds: collectionPolicyFields.minimum_scan_interval_seconds.optional(),
+}).strict().superRefine(validateCollectionPolicy);
 
 export const webhookSettingsInputSchema = z.object({
   revision: z.number().int().nonnegative(),

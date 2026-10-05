@@ -1,3 +1,7 @@
+import { SiteStore, readSite } from "../sites/store.ts";
+import { sitePolicySchema } from "../sites/model.ts";
+import { collectionPolicyInputSchema, type CollectionPolicyInput } from "./collection-policy.ts";
+import { collectionCodeInputSchema, type CollectionCodeInput } from "./model.ts";
 import { readAdminAccess, type AdminAccessInput, type AdminAccess } from "./admin-access.ts";
 import type { DatabaseSync } from "node:sqlite";
 
@@ -67,6 +71,8 @@ interface ConfigurationRow {
 }
 
 interface SecretRow {
+  readonly client_id?: string;
+  readonly site_secret?: boolean;
   readonly secret_name: RuntimeSecretName;
   readonly secret_version: bigint | number;
   readonly cipher_version: bigint | number;
@@ -129,10 +135,16 @@ export class SettingsError extends Error {
 export class RuntimeSettingsStore {
   readonly #database: AppDatabase;
   readonly #cipher: RuntimeSecretCipher;
+  readonly #sites: SiteStore;
 
   constructor(database: AppDatabase, masterKey: Uint8Array) {
     this.#database = database;
     this.#cipher = new RuntimeSecretCipher(masterKey, database.instanceId());
+    this.#sites = new SiteStore(database, masterKey);
+  }
+
+  siteStore(): SiteStore | null {
+    return this.#database.read(hasSiteSchema) ? this.#sites : null;
   }
 
   initialize(): void {
@@ -144,7 +156,8 @@ export class RuntimeSettingsStore {
       }
       const encryptedSecret = connection.prepare(
         `SELECT 1 AS present FROM runtime_secrets
-         UNION ALL SELECT 1 FROM provider_application_key_changes WHERE state = 'PENDING' LIMIT 1`,
+         UNION ALL SELECT 1 FROM provider_application_key_changes WHERE state = 'PENDING'
+         ${hasSiteSchema(connection) ? "UNION ALL SELECT 1 FROM site_secrets" : ""} LIMIT 1`,
       ).get() as { present: number } | undefined;
       if (encryptedSecret) {
         throw new Error(
@@ -171,9 +184,7 @@ export class RuntimeSettingsStore {
   /** Reads public presentation flags without loading or decrypting runtime secrets. */
   display(): DisplaySettings {
     return this.#database.read((connection) => {
-      const row = connection.prepare(
-        "SELECT system_name, checkout_help_url, checkout_show_product_name, dashboard_chart_type FROM runtime_configuration WHERE singleton_key = 1",
-      ).get() as Pick<ConfigurationRow, "system_name" | "checkout_help_url" | "checkout_show_product_name" | "dashboard_chart_type"> | undefined;
+      const row = readConfiguration(connection);
       if (!row) throw new Error("runtime configuration singleton is missing");
       return {
         systemName: row.system_name,
@@ -217,6 +228,10 @@ export class RuntimeSettingsStore {
    * must use this pair and pass the generation back when consuming a nonce.
    */
   apiCredential(): ApiCredentialSnapshot | null {
+    if (this.siteStore()) {
+      const credential = this.#sites.credential(API_CLIENT_ID);
+      return credential ? { ...credential, clientId: API_CLIENT_ID } : null;
+    }
     return this.#database.read((connection) => {
       const row = connection.prepare(
         `SELECT secret.secret_name, secret.secret_version, secret.cipher_version,
@@ -688,6 +703,43 @@ export class RuntimeSettingsStore {
     });
   }
 
+  collectionPolicy(): CollectionPolicyInput {
+    return this.#database.read(connection => {
+      const row = connection.prepare("SELECT revision, provider_timeout_milliseconds, provider_scan_interval_milliseconds, provider_active_scan_interval_milliseconds, provider_minimum_scan_interval_milliseconds, provider_safety_lag_milliseconds, provider_maximum_success_age_milliseconds FROM runtime_configuration WHERE singleton_key = 1").get() as Record<string, number | bigint> | undefined;
+      if (!row) throw new Error("runtime configuration singleton is missing");
+      return collectionPolicyInputSchema.parse({
+        revision: Number(row.revision), timeout_milliseconds: Number(row.provider_timeout_milliseconds),
+        scan_interval_seconds: Number(row.provider_scan_interval_milliseconds) / 1000,
+        active_scan_interval_seconds: Number(row.provider_active_scan_interval_milliseconds) / 1000,
+        minimum_scan_interval_seconds: Number(row.provider_minimum_scan_interval_milliseconds) / 1000,
+        safety_lag_seconds: Number(row.provider_safety_lag_milliseconds) / 1000,
+        maximum_success_age_seconds: Number(row.provider_maximum_success_age_milliseconds) / 1000,
+      });
+    });
+  }
+
+  saveCollectionPolicy(input: CollectionPolicyInput, audit: SettingsAuditContext, now = Date.now()): RuntimeSettingsSnapshot {
+    const parsed = collectionPolicyInputSchema.parse(input);
+    return this.#database.write(connection => {
+      assertRevision(connection, parsed.revision);
+      assertUpdated(connection.prepare(
+        "UPDATE runtime_configuration SET revision = revision + 1, payment_revision = payment_revision + 1, provider_timeout_milliseconds = ?, provider_scan_interval_milliseconds = ?, provider_active_scan_interval_milliseconds = ?, provider_minimum_scan_interval_milliseconds = ?, provider_safety_lag_milliseconds = ?, provider_maximum_success_age_milliseconds = ?, updated_at = ? WHERE singleton_key = 1 AND revision = ?",
+      ).run(parsed.timeout_milliseconds, parsed.scan_interval_seconds * 1000, parsed.active_scan_interval_seconds * 1000, parsed.minimum_scan_interval_seconds * 1000, parsed.safety_lag_seconds * 1000, parsed.maximum_success_age_seconds * 1000, now, parsed.revision).changes);
+      appendSettingsAudit(connection, audit, now, "settings.collection_policy_updated", { revision: parsed.revision + 1, payment_revision_changed: true });
+      return this.#snapshot(connection);
+    });
+  }
+
+  saveCollectionCode(input: CollectionCodeInput, audit: SettingsAuditContext, now = Date.now()): RuntimeSettingsSnapshot {
+    const parsed = collectionCodeInputSchema.parse(input);
+    return this.#database.write(connection => {
+      assertRevision(connection, parsed.revision);
+      assertUpdated(connection.prepare("UPDATE runtime_configuration SET collection_code_payload = ?, revision = revision + 1, payment_revision = payment_revision + 1, updated_at = ? WHERE singleton_key = 1 AND revision = ?").run(parsed.code_payload, now, parsed.revision).changes);
+      appendSettingsAudit(connection, audit, now, "settings.collection_code_updated", { revision: parsed.revision + 1, payment_revision_changed: true });
+      return this.#snapshot(connection);
+    });
+  }
+
   saveAdvanced(
     input: AdvancedSettingsInput,
     audit: SettingsAuditContext,
@@ -929,7 +981,32 @@ export class RuntimeSettingsStore {
 
 export { API_CLIENT_ID };
 
+function hasSiteSchema(connection: DatabaseSync): boolean {
+  return connection.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'sites'").get() !== undefined;
+}
+
 function readConfiguration(connection: DatabaseSync): ConfigurationRow {
+  if (hasSiteSchema(connection)) {
+    const base = connection.prepare("SELECT * FROM runtime_configuration WHERE singleton_key = 1").get() as unknown as ConfigurationRow | undefined;
+    if (!base) throw new Error("runtime configuration singleton is missing");
+    const legacy = readSite(connection, API_CLIENT_ID);
+    const defaults = connection.prepare("SELECT policy FROM site_defaults WHERE singleton_key = 1").get() as { policy: string } | undefined;
+    if (!defaults) throw new Error("website defaults are missing");
+    const policy = legacy?.configuration.policy ?? sitePolicySchema.parse(JSON.parse(defaults.policy));
+    return { ...base,
+      order_ttl_seconds: policy.orders.order_ttl_seconds,
+      amount_offset_maximum_cents: policy.orders.amount_offset_maximum_cents,
+      amount_reuse_cooldown_seconds: policy.orders.amount_reuse_cooldown_seconds,
+      webhook_enabled: legacy?.configuration.notifications_enabled ? 1 : 0,
+      webhook_allowed_origin: legacy?.configuration.notification_origin ?? null,
+      webhook_timeout_milliseconds: policy.notification_delivery.timeout_milliseconds,
+      webhook_maximum_attempts: policy.notification_delivery.maximum_attempts,
+      webhook_retry_base_milliseconds: policy.notification_delivery.retry_base_seconds * 1000,
+      webhook_retry_maximum_milliseconds: policy.notification_delivery.retry_maximum_seconds * 1000,
+      checkout_help_url: policy.display.checkout_help_url,
+      checkout_show_product_name: policy.display.checkout_show_product_name ? 1 : 0,
+    };
+  }
   const row = connection.prepare(
     `SELECT revision, payment_revision, collection_code_payload,
             order_ttl_seconds, amount_offset_maximum_cents, amount_reuse_cooldown_seconds,
@@ -1010,6 +1087,10 @@ function assertUpdated(changes: bigint | number): void {
 }
 
 function readSecret(connection: DatabaseSync, name: RuntimeSecretName): SecretRow | null {
+  if ((name === "api_secret" || name === "webhook_secret") && hasSiteSchema(connection)) {
+    const row = connection.prepare("SELECT * FROM site_secrets WHERE client_id = ? AND secret_name = ?").get(API_CLIENT_ID, name) as unknown as SecretRow | undefined;
+    return row ? { ...row, site_secret: true } : null;
+  }
   const row = connection.prepare(
     `SELECT secret_name, secret_version, cipher_version, nonce,
             ciphertext, authentication_tag, secret_fingerprint, updated_at
@@ -1068,7 +1149,8 @@ function writeSecret(
 }
 
 function decryptSecret(cipher: RuntimeSecretCipher, row: SecretRow): string {
-  return cipher.decrypt(row.secret_name, safeInteger(row.secret_version, "secret version"), {
+  const name = row.site_secret && row.client_id && (row.secret_name === "api_secret" || row.secret_name === "webhook_secret") ? `site:${row.client_id}:${row.secret_name}` as const : row.secret_name;
+  return cipher.decrypt(name, safeInteger(row.secret_version, "secret version"), {
     cipherVersion: safeInteger(row.cipher_version, "secret cipher version") as 1,
     nonce: Buffer.from(row.nonce),
     ciphertext: Buffer.from(row.ciphertext),
