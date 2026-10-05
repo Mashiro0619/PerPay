@@ -9,7 +9,9 @@ import {
 
 import type { RuntimeSecretName } from "./model.ts";
 
-type CipherSecretName = RuntimeSecretName | "master_key_guard" | `provider_application_key_change:${string}`;
+export type SiteSecretPurpose = "api_secret" | "webhook_secret";
+export type SiteCipherSecretName = `site:${string}:${SiteSecretPurpose}`;
+type CipherSecretName = RuntimeSecretName | "master_key_guard" | `provider_application_key_change:${string}` | SiteCipherSecretName;
 
 const CIPHER_VERSION = 1;
 const NONCE_BYTES = 12;
