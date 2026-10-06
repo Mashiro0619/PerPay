@@ -46,31 +46,12 @@ function mount(path = "/sites/site_test/settings/basic", failSave = false, field
 afterEach(() => onlineManager.setOnline(true));
 
 describe("business website management", () => {
-  it("reads the latest template for a later creation without rewriting an existing website", async () => {
-    const view = mount("/sites/new");
-    expect(await screen.findByLabelText("订单有效期（秒）")).toHaveValue(300);
-    await act(async () => { await view.router.navigate("/sites/defaults"); });
-    fireEvent.change(await screen.findByLabelText("订单有效期（秒）"), { target: { value: "600" } });
-    await userEvent.click(screen.getByRole("button", { name: "保存默认模板" }));
-    await waitFor(() => expect(view.writes).toHaveLength(1));
-    await act(async () => { await view.router.navigate("/sites/new"); });
-    await waitFor(() => expect(screen.getByLabelText("订单有效期（秒）")).toHaveValue(600));
-    await act(async () => { await view.router.navigate("/sites/site_test/settings/orders"); });
-    expect(await screen.findByLabelText("订单有效期（秒）")).toHaveValue(300);
-    expect(view.writes).toHaveLength(1);
-  });
-  it("prefills a new site from a detached complete template without identities or credentials", async () => {
-    const view = mount("/sites/new");
-    expect(await screen.findByLabelText("订单有效期（秒）")).toHaveValue(300);
-    expect(screen.queryByLabelText("客户端 ID")).not.toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "开启通知" })).toHaveAttribute("aria-disabled", "true");
-    const user = userEvent.setup(); await user.type(screen.getByLabelText("网站名称"), "新网站");
-    await user.click(screen.getByRole("button", { name: "保存网站" }));
-    expect(view.writes).toHaveLength(0);
-    await user.click(await screen.findByRole("button", { name: "确认" }));
-    await waitFor(() => expect(view.writes).toHaveLength(1));
-    expect(view.writes[0]!.body).toMatchObject({ operation_id: expect.any(String), configuration: { name: "新网站", policy, notification_origin: null, return_origin: null } });
-    expect(view.writes[0]!.body).not.toHaveProperty("client_id");
+  it("creates from the latest detached template using only a name, without credentials", async () => {
+    const view=mount('/sites/defaults'),user=userEvent.setup();
+    fireEvent.change(await screen.findByLabelText('订单有效期（秒）'),{target:{value:'600'}});await user.click(screen.getByRole('button',{name:'保存默认模板'}));await waitFor(()=>expect(view.writes).toHaveLength(1));
+    await act(async()=>{await view.router.navigate('/sites/new');});await user.type(await screen.findByLabelText('网站名称'),'新网站');expect(screen.queryByLabelText('订单有效期（秒）')).not.toBeInTheDocument();expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button',{name:'创建网站'}));await waitFor(()=>expect(view.writes).toHaveLength(2));expect(view.writes[1]!.body).toMatchObject({operation_id:expect.any(String),configuration:{name:'新网站',accepting_orders:true,notifications_enabled:false,notification_origin:null,return_origin:null,policy:{...policy,orders:{...policy.orders,order_ttl_seconds:600}}}});
+    expect(view.writes.every(w=>!w.path.includes('secrets'))).toBe(true);
   });
   it("keeps pause independent of notifications and saves the website revision", async () => {
     const view = mount(); const user = userEvent.setup();
@@ -85,7 +66,6 @@ describe("business website management", () => {
     const view = mount("/sites/site_test/settings/basic", true); const user = userEvent.setup();
     const name = await screen.findByLabelText("网站名称"); await user.clear(name); await user.type(name, "失败后保留");
     await user.click(screen.getByRole("button", { name: "保存网站" }));
-    await user.click(await screen.findByRole("button", { name: "确认" }));
     await screen.findByRole("alert");
     expect(name).toHaveValue("失败后保留"); expect(view.writes).toHaveLength(1);
     expect(queryClient.getMutationCache().getAll().some(m => m.state.isPaused)).toBe(false);
@@ -99,7 +79,7 @@ describe("business website management", () => {
     expect(await screen.findByDisplayValue("synthetic-site-key")).toBeVisible();
     expect(name).toHaveValue("https://draft.example.com");
     expect(view.writes[0]!.path).toBe("/api/admin/v1/sites/site_test/secrets/api_secret/actions/rotate");
-    await user.click(screen.getByRole("button", { name: "保存网站" })); await user.click(await screen.findByRole("button", { name: "确认" }));
+    await user.click(screen.getByRole("button", { name: "保存网站" })); if(view.router.state.location.pathname.endsWith("integration")) await user.click(await screen.findByRole("button", { name: "确认" }));
     await waitFor(() => expect(view.writes).toHaveLength(2)); expect(view.writes[1]!.body.revision).toBe(1);
   });
   it("edits only the creation template without modifying any existing website", async () => {
@@ -111,13 +91,8 @@ describe("business website management", () => {
     expect(view.writes[0]!.path).toBe("/api/admin/v1/settings/site-defaults");
     expect(view.writes[0]!.body).toMatchObject({ revision: 0, policy: { orders: { order_ttl_seconds: 600 } } });
   });
-  it("searches through the server and exposes explicit site management links", async () => {
-    const view = mount("/sites"); const user = userEvent.setup();
-    expect(await screen.findByRole("link", { name: "网站 A" })).toHaveAttribute("href", "/sites/site_test");
-    await user.type(screen.getByLabelText("搜索网站"), "site_test");
-    await waitFor(() => expect(view.fetchMock.mock.calls.some(([request]) => new URL(request.url).searchParams.get("q") === "site_test")).toBe(true));
-    expect(view.writes).toHaveLength(0);
-  });
+  it("uses a compact site list without search or routine client ids",async()=>{mount('/sites');expect(await screen.findByRole('link',{name:'网站 A'})).toHaveAttribute('href','/sites/site_test');expect(screen.queryByRole('textbox')).not.toBeInTheDocument();expect(screen.queryByText('site_test',{exact:true})).not.toBeInTheDocument();expect(screen.getByRole('link',{name:'进入后台'})).toBeVisible();});
+
 });
 
 describe("website field feedback", () => {
@@ -132,10 +107,10 @@ describe("website field feedback", () => {
     };
     const fields = Object.fromEntries(cases[section]!.map(([label, field]) => [field, label + "错误"]));
     const view = mount(path, false, fields), user = userEvent.setup();
-    for (const [label, , value] of cases[section]!) fireEvent.change(await screen.findByLabelText(label), { target: { value } });
-    const submit = async () => { await user.click(screen.getByRole("button", { name: section === "defaults" ? "保存默认模板" : "保存网站" })); if (section !== "defaults") await user.click(await screen.findByRole("button", { name: "确认" })); };
+    for (const [label, , value] of cases[section]!) { if(section === "defaults") await user.click(await screen.findByRole("tab",{name:label === "收银台名称" ? "收银台展示" : "订单设置"})); fireEvent.change(await screen.findByLabelText(label), { target: { value } }); }
+    const submit = async () => { await user.click(screen.getByRole("button", { name: section === "defaults" ? "保存默认模板" : "保存网站" })); if (section === "integration") await user.click(await screen.findByRole("button", { name: "确认" })); };
     await submit();
-    for (const [label] of cases[section]!) { await screen.findByText(label + "错误"); expect(screen.getByLabelText(label)).toHaveAttribute("aria-invalid", "true"); }
+    for (const [label] of cases[section]!) { if(section === "defaults") await user.click(screen.getByRole("tab",{name:label === "收银台名称" ? "收银台展示" : "订单设置"})); await screen.findByText(label + "错误"); expect(screen.getByLabelText(label)).toHaveAttribute("aria-invalid", "true"); }
     expect(view.writes).toHaveLength(1);
     await submit(); await waitFor(() => expect(view.writes).toHaveLength(2));
   });
@@ -143,12 +118,12 @@ describe("website field feedback", () => {
   it("reopens a saved website with its current configuration and revision", async () => {
     const view = mount(); const user = userEvent.setup();
     const name = await screen.findByLabelText("网站名称"); fireEvent.change(name, { target: { value: "保存后的名字" } });
-    await user.click(screen.getByRole("button", { name: "保存网站" })); await user.click(await screen.findByRole("button", { name: "确认" }));
+    await user.click(screen.getByRole("button", { name: "保存网站" })); if(view.router.state.location.pathname.endsWith("integration")) await user.click(await screen.findByRole("button", { name: "确认" }));
     await screen.findByText("网站配置已保存");
     await act(async () => { await view.router.navigate("/sites"); });
     await act(async () => { await view.router.navigate("/sites/site_test/settings/basic"); });
     expect(await screen.findByLabelText("网站名称")).toHaveValue("保存后的名字");
-    await user.click(screen.getByRole("button", { name: "保存网站" })); await user.click(await screen.findByRole("button", { name: "确认" }));
+    await user.click(screen.getByRole("button", { name: "保存网站" })); if(view.router.state.location.pathname.endsWith("integration")) await user.click(await screen.findByRole("button", { name: "确认" }));
     await waitFor(() => expect(view.writes).toHaveLength(2)); expect(view.writes[1]!.body.revision).toBe(1);
   });
   it("keeps key rotation revisions on reentry without caching the revealed secret", async () => {
@@ -160,7 +135,7 @@ describe("website field feedback", () => {
     await act(async () => { await view.router.navigate("/sites"); });
     await act(async () => { await view.router.navigate("/sites/site_test/settings/basic"); });
     expect(screen.queryByDisplayValue("synthetic-site-key")).not.toBeInTheDocument();
-    await user.click(await screen.findByRole("button", { name: "保存网站" })); await user.click(await screen.findByRole("button", { name: "确认" }));
+    await user.click(await screen.findByRole("button", { name: "保存网站" }));
     await waitFor(() => expect(view.writes).toHaveLength(2)); expect(view.writes[1]!.body.revision).toBe(1);
   });
   it("evicts the deleted website editor instead of keeping a usable-looking cached form", async () => {

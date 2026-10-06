@@ -1,0 +1,157 @@
+import { useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  api,
+  ApiError,
+  queryClient,
+  result,
+  type SiteConfiguration,
+} from "@/api/client";
+import { useDirtyDraft, useOperationNavigation } from "@/drafts";
+import { useNavigate, Link } from "@/navigation";
+import { useFixedOperation } from "@/lib/fixed-operation";
+import { createOperationKey } from "@/lib/idempotency";
+import { SiteTextField } from "@/components/SitePolicyFields";
+import { ErrorNotice, QueryView } from "@/components/request-state";
+import { OperationRecoveryNotice } from "@/components/operation-recovery-notice";
+import { OperationNavigationDialog } from "@/components/operation-navigation-dialog";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { FieldGroup, FieldSet } from "@/components/ui/field";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+export default function CreateSite() {
+  const defaults = useQuery({
+    queryKey: ["site-create-defaults"],
+    queryFn: ({ signal }) => result(api.getSiteDefaults({ signal })),
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+  return (
+    <QueryView query={defaults}>
+      {(response) => <CreateSiteForm policy={response.data.policy} />}
+    </QueryView>
+  );
+}
+function CreateSiteForm({ policy }: { policy: SiteConfiguration["policy"] }) {
+  const [template] = useState(() => structuredClone(policy)),
+    [name, setName] = useState("");
+  const clear = useDirtyDraft(!!name),
+    navigate = useNavigate(),
+    key = useRef(createOperationKey()),
+    form = useRef<HTMLFormElement>(null);
+  const create = useFixedOperation({
+    execute: (
+      input: { operation_id: string; configuration: SiteConfiguration },
+      signal,
+    ) => result(api.createSite({ body: input, signal })),
+    onSuccess: (response) => {
+      clear();
+      queryClient.setQueryData(
+        ["workspace-site", response.data.client_id],
+        response,
+      );
+      void queryClient.invalidateQueries({ queryKey: ["sites"] });
+      void queryClient.invalidateQueries({ queryKey: ["site-overview"] });
+      void queryClient.invalidateQueries({ queryKey: ["settings"] });
+      void navigate("/sites/" + response.data.client_id);
+    },
+    isSafeRejection: (error) =>
+      error instanceof ApiError && error.status === 422,
+  });
+  const navigation = useOperationNavigation(
+    create.isPending || !!create.recovery,
+    () => create.isBusy() || !!create.recovery,
+  );
+  function submit() {
+    const configuration: SiteConfiguration = {
+      name,
+      accepting_orders: true,
+      notifications_enabled: false,
+      notification_origin: null,
+      return_origin: null,
+      policy: template,
+    };
+    create.submit({ operation_id: key.current(configuration), configuration });
+  }
+  return (
+    <div className="admin-settings-layout">
+      <form
+        ref={form}
+        className="max-w-md"
+        onSubmit={(event) => {
+          event.preventDefault();
+          submit();
+        }}
+      >
+        <Card>
+          <CardHeader>
+            <CardTitle>创建网站</CardTitle>
+            <CardDescription>
+              其余设置使用默认模板，可在创建后调整。
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <FieldGroup>
+              <ErrorNotice error={create.error} />
+              <FieldSet disabled={create.isPending || !!create.recovery}>
+                <SiteTextField
+                  label="网站名称"
+                  value={name}
+                  required
+                  maxLength={40}
+                  error={
+                    create.error instanceof ApiError
+                      ? create.error.fields["configuration.name"]
+                      : undefined
+                  }
+                  onChange={(value) => {
+                    setName(value);
+                    create.reset();
+                  }}
+                />
+              </FieldSet>
+              {create.recovery && (
+                <OperationRecoveryNotice
+                  heading="创建结果待确认"
+                  operationId={create.recovery.operation_id}
+                  error={create.error}
+                  conflict={create.conflict}
+                />
+              )}
+            </FieldGroup>
+          </CardContent>
+          <CardFooter className="gap-2">
+            <Button
+              type="submit"
+              disabled={create.isPending || create.conflict}
+            >
+              {create.isPending
+                ? "正在创建…"
+                : create.recovery
+                  ? "重试原请求"
+                  : "创建网站"}
+            </Button>
+            <Link to="/sites" className={buttonVariants({ variant: "ghost" })}>
+              取消
+            </Link>
+          </CardFooter>
+        </Card>
+      </form>
+      <OperationNavigationDialog
+        navigation={navigation}
+        operationId={create.submitted?.operation_id}
+        pending={create.isPending}
+        finalFocus={() => form.current}
+        onLeave={() => create.stopWaiting()}
+      />
+    </div>
+  );
+}

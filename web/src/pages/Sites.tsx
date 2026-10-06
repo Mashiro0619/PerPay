@@ -1,3 +1,14 @@
+import CreateSite from "./CreateSite";
+import { siteChoiceLabel } from "@/lib/site-choice-label";
+import { CopyValue } from "@/components/copy-value";
+import { Badge } from "@/components/ui/badge";
+import {
+  Item,
+  ItemGroup,
+  ItemContent,
+  ItemTitle,
+  ItemActions,
+} from "@/components/ui/item";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
@@ -46,89 +57,76 @@ import {
 } from "@/components/admin-dialog";
 
 export default function Sites() {
-  const [search, setSearch] = useState("");
   const query = useInfiniteQuery({
-    queryKey: ["sites", search],
+    queryKey: ["sites", "list"],
     initialPageParam: null as string | null,
     queryFn: ({ pageParam, signal }) =>
       result(
         api.listSites({
-          query: {
-            q: search,
-            limit: 50,
-            ...(pageParam ? { after: pageParam } : {}),
-          },
+          query: { limit: 30, ...(pageParam ? { after: pageParam } : {}) },
           signal,
         }),
       ),
     getNextPageParam: (page) => page.page.next_cursor ?? undefined,
   });
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-2xl font-semibold">业务网站</h2>
-        <div className="flex gap-2">
-          <Link
-            to="/sites/defaults"
-            className={buttonVariants({ variant: "outline" })}
-          >
-            网站默认模板
-          </Link>
-          <Link to="/sites/new" className={buttonVariants()}>
-            创建网站
-          </Link>
-        </div>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap justify-end gap-2">
+        <Link
+          to="/sites/defaults"
+          className={buttonVariants({ variant: "outline" })}
+        >
+          默认模板
+        </Link>
+        <Link to="/sites/new" className={buttonVariants()}>
+          创建网站
+        </Link>
       </div>
-      <p className="text-sm text-muted-foreground">
-        各网站独立接入与管理订单，共用实例的经营收款码、采集和对账。
-      </p>
-      <Input
-        aria-label="搜索网站"
-        placeholder="搜索网站名称或客户端 ID"
-        maxLength={128}
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
       <QueryView query={query}>
         {(data) => (
           <>
-            {data.pages
-              .flatMap((page) => page.data)
-              .map((site) => (
-                <Card key={site.client_id}>
-                  <CardHeader>
-                    <CardTitle>
-                      <Link to={"/sites/" + site.client_id}>
-                        {site.configuration.name}
+            <ItemGroup>
+              {data.pages
+                .flatMap((p) => p.data)
+                .map((site) => (
+                  <Item key={site.client_id} variant="outline">
+                    <ItemContent>
+                      <ItemTitle>
+                        <Link to={"/sites/" + site.client_id}>
+                          {siteChoiceLabel(
+                            site,
+                            data.pages.flatMap((p) => p.data),
+                          )}
+                        </Link>
+                      </ItemTitle>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant="secondary">
+                          {site.configuration.accepting_orders
+                            ? "接单中"
+                            : "暂停接单"}
+                        </Badge>
+                        <Badge variant="outline">
+                          {site.configuration.notifications_enabled
+                            ? "通知开启"
+                            : "通知关闭"}
+                        </Badge>
+                      </div>
+                    </ItemContent>
+                    <ItemActions>
+                      <Link
+                        to={"/sites/" + site.client_id}
+                        className={buttonVariants({
+                          variant: "outline",
+                          size: "sm",
+                        })}
+                      >
+                        进入后台
                       </Link>
-                    </CardTitle>
-                    <CardDescription className="break-all">
-                      {site.client_id}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex flex-wrap items-center gap-4">
-                    <Link
-                      to={"/sites/" + site.client_id}
-                      className={buttonVariants({ variant: "outline" })}
-                    >
-                      进入后台
-                    </Link>
-                    <span>
-                      {site.configuration.accepting_orders
-                        ? "接单中"
-                        : "已暂停接单"}
-                    </span>
-                    <span>
-                      {site.configuration.notifications_enabled
-                        ? "通知已开启"
-                        : "通知已关闭"}
-                    </span>
-                  </CardContent>
-                </Card>
-              ))}
-            {!data.pages.some((page) => page.data.length > 0) && (
-              <p>暂无匹配的业务网站。</p>
-            )}
+                    </ItemActions>
+                  </Item>
+                ))}
+            </ItemGroup>
+            {!data.pages.some((p) => p.data.length) && <p>暂无网站</p>}
             {query.hasNextPage && (
               <Button
                 variant="outline"
@@ -144,8 +142,11 @@ export default function Sites() {
     </div>
   );
 }
-
 export function SiteEditorPage() {
+  const { clientId } = useParams();
+  return clientId ? <ExistingSiteEditor /> : <CreateSite />;
+}
+function ExistingSiteEditor() {
   const { clientId, section = "basic" } = useParams();
   const query = useQuery({
     queryKey: ["site-editor", clientId ?? "new", section],
@@ -165,18 +166,7 @@ export function SiteEditorPage() {
           configuration: response.data.configuration,
         };
       }
-      const defaults = await result(api.getSiteDefaults({ signal }));
-      return {
-        site: null,
-        configuration: {
-          name: "",
-          accepting_orders: true,
-          notifications_enabled: false,
-          notification_origin: null,
-          return_origin: null,
-          policy: structuredClone(defaults.data.policy),
-        },
-      };
+      throw new Error("缺少网站身份");
     },
   });
   if (
@@ -218,7 +208,6 @@ function SiteEditor({
   const [draft, setDraft] = useState(() => structuredClone(configuration));
   const [baseline, setBaseline] = useState(() => JSON.stringify(configuration));
   const clearDraft = useDirtyDraft(JSON.stringify(draft) !== baseline);
-  const [operationId] = useState(() => crypto.randomUUID());
   const [confirmation, setConfirmation] = useState<
     "save" | "api" | "webhook" | "delete" | null
   >(null);
@@ -261,11 +250,7 @@ function SiteEditor({
               body: { revision: saved.revision, configuration: draft },
             }),
           )
-        : result(
-            api.createSite({
-              body: { operation_id: operationId, configuration: draft },
-            }),
-          ),
+        : Promise.reject(new Error("缺少网站身份")),
     onSuccess: (response) => {
       cacheSite(response.data);
       setSaved(response.data);
@@ -349,11 +334,26 @@ function SiteEditor({
     setFeedback("");
     save.reset();
   };
+  const impact = [
+    saved?.configuration.accepting_orders && !draft.accepting_orders
+      ? "暂停新订单，旧订单继续处理。"
+      : "",
+    saved?.configuration.notifications_enabled && !draft.notifications_enabled
+      ? "停止领取新的通知投递，在途请求可能继续完成。"
+      : "",
+    saved &&
+    (saved.configuration.notification_origin !== draft.notification_origin ||
+      saved.configuration.return_origin !== draft.return_origin)
+      ? "来源变更将限制后续请求；旧通知目标可能不再允许投递。"
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
   return (
-    <div className="admin-settings-layout flex flex-col gap-6">
+    <div className="admin-settings-layout flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-2xl font-semibold">
-          {saved ? saved.configuration.name + " · 网站设置" : "创建业务网站"}
+          {sections.find((item) => item.value === section)?.label ?? "网站设置"}
         </h2>
         <Link to="/sites" className={buttonVariants({ variant: "outline" })}>
           返回网站列表
@@ -382,17 +382,19 @@ function SiteEditor({
         <Card>
           <CardHeader>
             <CardTitle>接入信息</CardTitle>
-            <CardDescription>
-              客户端 ID 不可修改。PerPay API 密钥不是支付宝开放平台密钥。
-            </CardDescription>
           </CardHeader>
           <CardContent>
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="site-client-id">客户端 ID</FieldLabel><Input id="site-client-id" readOnly value={saved.client_id} />
+                <FieldLabel>客户端 ID</FieldLabel>
+                <CopyValue value={saved.client_id} label="复制客户端 ID" />
               </Field>
               <Field>
-                <FieldLabel htmlFor="site-base-url">PerPay 地址</FieldLabel><Input id="site-base-url" readOnly value={window.location.origin} />
+                <FieldLabel>PerPay 地址</FieldLabel>
+                <CopyValue
+                  value={window.location.origin}
+                  label="复制 PerPay 地址"
+                />
               </Field>
             </FieldGroup>
           </CardContent>
@@ -425,17 +427,12 @@ function SiteEditor({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          setConfirmation("save");
+          if (impact) setConfirmation("save");
+          else save.mutate();
         }}
       >
         <FieldSet disabled={busy}>
           <Card>
-            <CardHeader>
-              <CardTitle>网站配置</CardTitle>
-              <CardDescription>
-                保存后独立生效，不跟随网站默认模板变化。
-              </CardDescription>
-            </CardHeader>
             <CardContent>
               <FieldGroup>
                 {visible("basic") && (
@@ -466,9 +463,6 @@ function SiteEditor({
                         }
                       />
                     </Field>
-                    <FieldDescription>
-                      关闭只暂停新订单，不影响已有订单的付款、查询、核实及通知。
-                    </FieldDescription>
                   </>
                 )}
                 {visible("integration") && (
@@ -489,7 +483,7 @@ function SiteEditor({
                       />
                     </Field>
                     <FieldDescription>
-                      先创建网站并生成通知签名密钥，再开启通知。
+                      开启前需生成通知密钥并填写通知来源。
                     </FieldDescription>
                     <SiteTextField
                       label="通知来源"
@@ -644,7 +638,7 @@ function SiteEditor({
               {confirmation === "delete"
                 ? "此操作不能撤销，客户端 ID 不会再次使用。有历史订单的网站只能暂停接单。"
                 : confirmation === "save"
-                  ? "网站参数将用于后续新订单和通知；历史金额、有效期和经营码关联不会修改。"
+                  ? impact
                   : "如果已有密钥，本次会使其退役。请同步更新对应业务网站，失败时不要盲目再次轮换，应先查看当前密钥。"}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -687,6 +681,8 @@ function DefaultsEditor({
 }: {
   initial: { revision: number; policy: SitePolicy };
 }) {
+  const [section, setSection] = useState("orders");
+  const formRef = useRef<HTMLFormElement>(null);
   const [saved, setSaved] = useState(initial);
   const [draft, setDraft] = useState(() => structuredClone(initial.policy));
   const clearDraft = useDirtyDraft(
@@ -710,13 +706,46 @@ function DefaultsEditor({
       queryClient.setQueryData(["site-defaults"], response);
     },
   });
+  useEffect(() => {
+    if (!(save.error instanceof ApiError)) return;
+    const field = Object.keys(save.error.fields)[0];
+    if (!field) return;
+    setSection(
+      field.includes("display.")
+        ? "display"
+        : field.includes("notification_delivery.")
+          ? "integration"
+          : "orders",
+    );
+  }, [save.error]);
+  useEffect(() => {
+    if (save.error)
+      formRef.current
+        ?.querySelector<HTMLElement>('[aria-invalid="true"]')
+        ?.focus();
+  }, [section, save.error]);
   return (
     <div className="admin-settings-layout flex flex-col gap-6">
       <h2 className="text-2xl font-semibold">网站默认模板</h2>
-      <p>只用于以后创建网站时预填表单，不会覆盖已有网站。</p>
+      <p className="text-sm text-muted-foreground">
+        仅用于新网站，已有网站不变。
+      </p>
+      <Tabs
+        value={section}
+        onValueChange={(value) => {
+          if (value) setSection(value);
+        }}
+      >
+        <TabsList aria-label="模板分组">
+          <TabsTrigger value="orders">订单设置</TabsTrigger>
+          <TabsTrigger value="display">收银台展示</TabsTrigger>
+          <TabsTrigger value="integration">通知策略</TabsTrigger>
+        </TabsList>
+      </Tabs>
       <ErrorNotice error={save.error} />
       <SuccessMessage message={feedback} />
       <form
+        ref={formRef}
         onSubmit={(event) => {
           event.preventDefault();
           save.mutate();
@@ -724,6 +753,7 @@ function DefaultsEditor({
       >
         <FieldSet disabled={save.isPending}>
           <SitePolicyFields
+            section={section}
             value={draft}
             errors={save.error instanceof ApiError ? save.error.fields : {}}
             onChange={setDraft}

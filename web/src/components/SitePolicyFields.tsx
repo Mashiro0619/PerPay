@@ -1,3 +1,10 @@
+import { useEffect, useRef, useState } from "react";
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from "@/components/ui/collapsible";
+import { Button } from "@/components/ui/button";
 import { useId } from "react";
 import type { SitePolicy } from "@/api/client";
 import {
@@ -24,6 +31,20 @@ export function SitePolicyFields({
   errors?: Readonly<Record<string, string>>;
 }) {
   const limitId = useId();
+  const [advanced, setAdvanced] = useState(false);
+  const content = useRef<HTMLDivElement>(null);
+  const failedAdvanced = Object.keys(errors).some((key) =>
+    key.includes("notification_delivery."),
+  );
+  useEffect(() => {
+    if (failedAdvanced) setAdvanced(true);
+  }, [errors, failedAdvanced]);
+  useEffect(() => {
+    if (advanced && failedAdvanced)
+      content.current
+        ?.querySelector<HTMLElement>('[aria-invalid="true"]')
+        ?.focus();
+  }, [advanced, failedAdvanced, errors]);
   const error = (path: string) =>
     errors["configuration.policy." + path] ?? errors["policy." + path];
   const change = (edit: (next: SitePolicy) => void) => {
@@ -36,9 +57,7 @@ export function SitePolicyFields({
       {(!section || section === "orders") && (
         <FieldSet className="settings-fields">
           <FieldLegend>订单设置</FieldLegend>
-          <FieldDescription>
-            以下是 PerPay 的网站订单规则。金额占用仍由整个实例统一管理。
-          </FieldDescription>
+          <FieldDescription>金额在所有网站之间统一分配。</FieldDescription>
           <NumberField
             label="订单有效期（秒）"
             error={error("orders.order_ttl_seconds")}
@@ -99,9 +118,7 @@ export function SitePolicyFields({
                 })
               }
             />
-            <FieldDescription>
-              留空表示不限。这不是预留金额槽位，也不保证收款容量。
-            </FieldDescription>
+            <FieldDescription>留空不限。</FieldDescription>
             {error("orders.pending_order_limit") && (
               <FieldError id={limitId + "-error"}>
                 {error("orders.pending_order_limit")}
@@ -151,57 +168,74 @@ export function SitePolicyFields({
         </FieldSet>
       )}
       {(!section || section === "integration") && (
-        <FieldSet className="settings-fields">
-          <FieldLegend>通知投递策略</FieldLegend>
-          <NumberField
-            label="通知超时（毫秒）"
-            error={error("notification_delivery.timeout_milliseconds")}
-            value={value.notification_delivery.timeout_milliseconds}
-            min={1000}
-            max={30000}
-            onChange={(n) =>
-              change((p) => {
-                p.notification_delivery.timeout_milliseconds = n;
-              })
-            }
-          />
-          <NumberField
-            label="最大投递次数"
-            error={error("notification_delivery.maximum_attempts")}
-            value={value.notification_delivery.maximum_attempts}
-            min={1}
-            max={100}
-            onChange={(n) =>
-              change((p) => {
-                p.notification_delivery.maximum_attempts = n;
-              })
-            }
-          />
-          <NumberField
-            label="基础重试间隔（秒）"
-            error={error("notification_delivery.retry_base_seconds")}
-            value={value.notification_delivery.retry_base_seconds}
-            min={1}
-            max={3600}
-            onChange={(n) =>
-              change((p) => {
-                p.notification_delivery.retry_base_seconds = n;
-              })
-            }
-          />
-          <NumberField
-            label="最大重试间隔（秒）"
-            error={error("notification_delivery.retry_maximum_seconds")}
-            value={value.notification_delivery.retry_maximum_seconds}
-            min={1}
-            max={86400}
-            onChange={(n) =>
-              change((p) => {
-                p.notification_delivery.retry_maximum_seconds = n;
-              })
-            }
-          />
-        </FieldSet>
+        <Collapsible
+          open={advanced}
+          onOpenChange={setAdvanced}
+          onInvalidCapture={(event) => {
+            const target = event.target as HTMLElement;
+            setAdvanced(true);
+            requestAnimationFrame(() => target.focus());
+          }}
+        >
+          <CollapsibleTrigger
+            render={<Button type="button" variant="outline" />}
+          >
+            高级设置
+          </CollapsibleTrigger>
+          <CollapsibleContent ref={content} keepMounted>
+            <FieldSet className="settings-fields pt-4">
+              <FieldLegend className="sr-only">通知投递策略</FieldLegend>
+              <NumberField
+                label="通知超时（毫秒）"
+                error={error("notification_delivery.timeout_milliseconds")}
+                value={value.notification_delivery.timeout_milliseconds}
+                min={1000}
+                max={30000}
+                onChange={(n) =>
+                  change((p) => {
+                    p.notification_delivery.timeout_milliseconds = n;
+                  })
+                }
+              />
+              <NumberField
+                label="最大投递次数"
+                error={error("notification_delivery.maximum_attempts")}
+                value={value.notification_delivery.maximum_attempts}
+                min={1}
+                max={100}
+                onChange={(n) =>
+                  change((p) => {
+                    p.notification_delivery.maximum_attempts = n;
+                  })
+                }
+              />
+              <NumberField
+                label="基础重试间隔（秒）"
+                error={error("notification_delivery.retry_base_seconds")}
+                value={value.notification_delivery.retry_base_seconds}
+                min={1}
+                max={3600}
+                onChange={(n) =>
+                  change((p) => {
+                    p.notification_delivery.retry_base_seconds = n;
+                  })
+                }
+              />
+              <NumberField
+                label="最大重试间隔（秒）"
+                error={error("notification_delivery.retry_maximum_seconds")}
+                value={value.notification_delivery.retry_maximum_seconds}
+                min={1}
+                max={86400}
+                onChange={(n) =>
+                  change((p) => {
+                    p.notification_delivery.retry_maximum_seconds = n;
+                  })
+                }
+              />
+            </FieldSet>
+          </CollapsibleContent>
+        </Collapsible>
       )}
     </FieldGroup>
   );

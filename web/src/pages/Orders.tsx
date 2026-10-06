@@ -1,4 +1,3 @@
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { useState } from "react";
 import { SitePicker } from "@/components/site-picker";
 import { useWorkspace } from "@/workspace";
@@ -100,7 +99,6 @@ export default function Orders() {
       className="flex w-full min-w-0 flex-col gap-3"
       data-business-list="orders"
     >
-      {!clientId && <Collapsible><CollapsibleTrigger render={<Button variant="outline" />}>按商户订单号查询：选择本次查询的网站</CollapsibleTrigger><CollapsibleContent><SitePicker value={lookupSite} onChange={setLookupSite} /></CollapsibleContent></Collapsible>}
       <OrderPage
         desktopFilters={
           <>
@@ -148,6 +146,7 @@ export default function Orders() {
           </>
         }
         lookup={{
+          context: mode => !clientId && mode === "merchant" ? <SitePicker value={lookupSite} onChange={setLookupSite} /> : null,
           modes: searchOptions.map((option) => ({
             ...option,
             placeholder:

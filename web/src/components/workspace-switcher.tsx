@@ -1,3 +1,4 @@
+import { siteChoiceLabel } from "@/lib/site-choice-label";
 import { useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { ChevronsUpDown, Globe } from "lucide-react";
@@ -5,8 +6,6 @@ import { api, result } from "@/api/client";
 import { useWorkspace } from "@/workspace";
 import { Link } from "@/navigation";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Field, FieldLabel } from "@/components/ui/field";
 import {
   Popover,
   PopoverTrigger,
@@ -17,17 +16,15 @@ import {
 import { QueryView } from "@/components/request-state";
 export function WorkspaceSwitcher() {
   const { clientId, site } = useWorkspace();
-  const [open, setOpen] = useState(false),
-    [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
   const sites = useInfiniteQuery({
-    queryKey: ["sites", "switcher", search],
+    queryKey: ["sites", "switcher"],
     enabled: open,
     initialPageParam: null as string | null,
     queryFn: ({ pageParam, signal }) =>
       result(
         api.listSites({
           query: {
-            q: search,
             limit: 30,
             ...(pageParam ? { after: pageParam } : {}),
           },
@@ -67,16 +64,6 @@ export function WorkspaceSwitcher() {
         >
           全部网站 · 一级汇总
         </Link>
-        <Field>
-          <FieldLabel htmlFor="workspace-search">搜索网站</FieldLabel>
-          <Input
-            id="workspace-search"
-            value={search}
-            maxLength={128}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="名称或客户端 ID"
-          />
-        </Field>
         <div className="flex max-h-72 flex-col gap-1 overflow-y-auto">
           <QueryView query={sites}>
             {(data) => (
@@ -98,19 +85,21 @@ export function WorkspaceSwitcher() {
                     >
                       <span className="flex min-w-0 flex-col items-start gap-1">
                         <span className="truncate">
-                          {value.configuration.name}
+                          {siteChoiceLabel(
+                            value,
+                            data.pages.flatMap((page) => page.data),
+                          )}
                         </span>
-                        <span className="max-w-full truncate text-xs text-muted-foreground">
-                          {value.client_id}
-                          {value.configuration.accepting_orders
-                            ? ""
-                            : " · 暂停接单"}
-                        </span>
+                        {!value.configuration.accepting_orders && (
+                          <span className="text-xs text-muted-foreground">
+                            暂停接单
+                          </span>
+                        )}
                       </span>
                     </Link>
                   ))}
                 {!data.pages.some((p) => p.data.length) && (
-                  <p className="p-2 text-muted-foreground">没有匹配的网站</p>
+                  <p className="p-2 text-muted-foreground">暂无网站</p>
                 )}
                 {sites.hasNextPage && (
                   <Button

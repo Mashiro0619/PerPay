@@ -1,40 +1,114 @@
 import { useId, useState } from "react";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { api, result } from "@/api/client";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
+import { siteChoiceLabel } from "@/lib/site-choice-label";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ErrorNotice } from "@/components/request-state";
-
-/** No implicit first/default website: the operator must choose the owner. */
-export function SitePicker({ value, onChange, disabled = false }: {
-  value: string; onChange: (clientId: string) => void; disabled?: boolean;
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ErrorNotice, Loading } from "@/components/request-state";
+export function SitePicker({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: string;
+  onChange: (clientId: string) => void;
+  disabled?: boolean;
 }) {
-  const id = useId();
-  const [opened, setOpened] = useState(false);
-  const [search, setSearch] = useState("");
+  const id = useId(),
+    [opened, setOpened] = useState(false);
   const query = useInfiniteQuery({
-    queryKey: ["sites", "picker", search], initialPageParam: null as string | null,
-    queryFn: ({ pageParam, signal }) => result(api.listSites({ query: { q: search, limit: 50, ...(pageParam ? { after: pageParam } : {}) }, signal })),
-    getNextPageParam: page => page.page.next_cursor ?? undefined,
+    queryKey: ["sites", "picker"],
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) =>
+      result(
+        api.listSites({
+          query: { limit: 50, ...(pageParam ? { after: pageParam } : {}) },
+          signal,
+        }),
+      ),
+    getNextPageParam: (p) => p.page.next_cursor ?? undefined,
     enabled: opened && !disabled,
   });
-  const sites = query.data?.pages.flatMap(page => page.data) ?? [];
-  const selected = sites.find(site => site.client_id === value);
-  return <Field data-disabled={disabled}>
-    <FieldLabel htmlFor={id}>业务网站</FieldLabel>
-    <Input aria-label="搜索业务网站" placeholder="搜索名称或客户端 ID" value={search} maxLength={128} disabled={disabled} onChange={event => { setOpened(true); setSearch(event.target.value); }} />
-    <Select onOpenChange={open => { if (open) setOpened(true); }} value={value || null} disabled={disabled} onValueChange={next => { if (next) onChange(next); }}>
-      <SelectTrigger id={id} className="w-full"><SelectValue placeholder="请选择业务网站">{value ? selected ? selected.configuration.name + " · " + value : value : undefined}</SelectValue></SelectTrigger>
-      <SelectContent><SelectGroup>
-        {sites.map(site => <SelectItem key={site.client_id} value={site.client_id}>{site.configuration.name} · {site.client_id}{site.configuration.accepting_orders ? "" : "（暂停接单）"}</SelectItem>)}
-      </SelectGroup></SelectContent>
-    </Select>
-    {query.error && <ErrorNotice error={query.error} />}
-    {query.isLoading && <FieldDescription>正在读取网站…</FieldDescription>}
-    {query.isSuccess && !sites.length && <FieldDescription>没有匹配的网站，请先创建网站或更换搜索条件。</FieldDescription>}
-    {query.hasNextPage && <Button type="button" variant="outline" disabled={disabled || query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>加载更多网站</Button>}
-    <FieldDescription>选择网站后按该网站查看或操作；不会改变其他网站的配置。</FieldDescription>
-  </Field>;
+  const sites = query.data?.pages.flatMap((p) => p.data) ?? [],
+    selected = sites.find((s) => s.client_id === value);
+  const current = useQuery({
+    queryKey: ["site-choice", value],
+    queryFn: ({ signal }) =>
+      result(api.getSite({ path: { clientId: value }, signal })),
+    enabled: !!value && !selected,
+    refetchOnWindowFocus: false,
+  });
+  const named = selected ?? current.data?.data;
+  return (
+    <Field className="w-full max-w-md" data-disabled={disabled}>
+      <FieldLabel htmlFor={id}>业务网站</FieldLabel>
+      <Select
+        onOpenChange={(open) => {
+          if (open) setOpened(true);
+        }}
+        value={value || null}
+        disabled={disabled}
+        onValueChange={(next) => {
+          if (next) onChange(next);
+        }}
+      >
+        <SelectTrigger id={id} className="w-full">
+          <SelectValue placeholder="请选择网站">
+            {value
+              ? named
+                ? siteChoiceLabel(named, sites)
+                : current.isError
+                  ? "网站读取失败"
+                  : "正在读取…"
+              : undefined}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            {sites.map((site) => (
+              <SelectItem key={site.client_id} value={site.client_id}>
+                {siteChoiceLabel(site, sites)}
+                {site.configuration.accepting_orders ? "" : "（暂停接单）"}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+          {query.isLoading && <Loading label="正在读取网站…" />}
+          {query.error && (
+            <ErrorNotice
+              error={query.error}
+              retry={() => void query.refetch()}
+            />
+          )}
+          {query.isSuccess && !sites.length && (
+            <p className="p-2 text-sm text-muted-foreground">暂无网站</p>
+          )}
+          {query.hasNextPage && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full"
+              disabled={query.isFetchingNextPage}
+              onClick={() => void query.fetchNextPage()}
+            >
+              加载更多网站
+            </Button>
+          )}
+        </SelectContent>
+      </Select>
+      {current.isError && !selected && (
+        <ErrorNotice
+          error={current.error}
+          retry={() => void current.refetch()}
+        />
+      )}
+    </Field>
+  );
 }

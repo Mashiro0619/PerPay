@@ -77,7 +77,7 @@ describe("website secret display lifetime", () => {
     await user.click(screen.getByRole("button", { name: "查看通知密钥" }));
     await waitFor(() => expect(view.requests).toHaveLength(2));
     await act(async () => { await view.router.navigate("/sites/site_b/settings/integration"); });
-    await screen.findByRole("heading", { name: "B · 网站设置" });
+    await screen.findByRole("heading", { name: "接入与通知" });
     await act(async () => { view.release(); });
     expect(screen.queryByDisplayValue("explicit-secret")).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue("late-secret")).not.toBeInTheDocument();

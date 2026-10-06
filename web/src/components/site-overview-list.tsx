@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { siteChoiceLabel } from "@/lib/site-choice-label";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { api, result } from "@/api/client";
 import { Link } from "@/navigation";
@@ -12,7 +12,6 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -23,16 +22,14 @@ import {
   TableCell,
 } from "@/components/ui/table";
 export function SiteOverviewList({ range }: { range: 7 | 30 | 90 }) {
-  const [q, setQ] = useState("");
   const query = useInfiniteQuery({
-    queryKey: ["site-overview", range, q],
+    queryKey: ["site-overview", range],
     initialPageParam: null as string | null,
     queryFn: ({ pageParam, signal }) =>
       result(
         api.listSiteOverview({
           query: {
             range,
-            q,
             limit: 10,
             ...(pageParam ? { cursor: pageParam } : {}),
           },
@@ -46,17 +43,10 @@ export function SiteOverviewList({ range }: { range: 7 | 30 | 90 }) {
       <CardHeader>
         <CardTitle>各网站概览</CardTitle>
         <CardDescription>
-          确认笔数和实收金额按上方统计区间；待付款和待办为当前状态。一级统计始终包含全部网站，不随此列表搜索或分页变化。
+          确认与实收按所选区间；待付款与待办为当前状态。
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <Input
-          aria-label="搜索网站汇总"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          maxLength={128}
-          placeholder="搜索网站名称或客户端 ID"
-        />
         <QueryView query={query}>
           {(data) => (
             <>
@@ -78,10 +68,7 @@ export function SiteOverviewList({ range }: { range: 7 | 30 | 90 }) {
                       <TableRow key={site.client_id}>
                         <TableCell>
                           <div className="flex flex-col items-start gap-1">
-                            <span>{site.name}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {site.client_id}
-                            </span>
+                            <span>{siteChoiceLabel({client_id:site.client_id,configuration:{name:site.name}},data.pages.flatMap(page=>page.data).map(row=>({client_id:row.client_id,configuration:{name:row.name}})))}</span>
                             {!site.accepting_orders && (
                               <Badge variant="secondary">暂停接单</Badge>
                             )}
@@ -109,7 +96,7 @@ export function SiteOverviewList({ range }: { range: 7 | 30 | 90 }) {
                 </TableBody>
               </Table>
               {!data.pages.some((p) => p.data.length) && (
-                <p>没有匹配的网站。</p>
+                <p>暂无网站。</p>
               )}
               {query.hasNextPage && (
                 <Button

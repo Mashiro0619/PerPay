@@ -37,6 +37,7 @@ import {
 export type { ListFilter } from "@/components/list-filter-sheet";
 
 export type ListQueryLookup = {
+  context?: (mode: string) => ReactNode;
   modes: readonly {
     value: string;
     label: string;
@@ -107,6 +108,7 @@ export function ListQueryToolbar({
         className="flex min-w-0 flex-wrap items-start gap-x-4 gap-y-3"
         data-list-toolbar-row
       >
+        {selectedMode && lookup?.context?.(selectedMode.value)}
         <form
           className={cn(
             "min-w-0",
