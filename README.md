@@ -28,7 +28,7 @@
 | 经营码收银台 | 展示应付金额与二维码，查询付款状态 |
 | 自动查账与对账 | 查询到账流水、匹配订单，支持异常处理与人工核对 |
 | 订单管理 | 按创建日期搜索、筛选订单，查看付款确认时间并导出 CSV |
-| 多业务网站 | 独立密钥、订单权限、来源与策略，共用经营码和采集对账；[接入指南](docs/multi-site.md) |
+| 多业务网站 | 同一管理员的一级汇总与二级网站后台，独立密钥和订单权限，共用经营码和采集对账；[接入指南](docs/multi-site.md) |
 | 业务通知 | 签名回调、失败重试与投递记录 |
 | 收款概览 | 今日确认金额／笔数、待处理事项及近 7 / 30 / 90 天趋势 |
 | 自托管运维 | Docker 部署、自动备份与版本检查 |
@@ -38,9 +38,11 @@
 
 ## 界面预览
 
-| 收款概览 | 订单详情 |
+| 一级：全部网站 | 二级：网站后台 |
 | --- | --- |
-| ![收款概览](docs/screenshots/dashboard-light.png) | ![订单详情](docs/screenshots/order-detail.png) |
+| ![全部网站汇总](docs/screenshots/dashboard-light.png) | ![网站后台](docs/screenshots/workspace-site.png) |
+
+截图均为本地只读合成数据。[两级后台操作与预览验收](docs/development/admin-workspaces.md)。
 
 ## 部署前准备
 

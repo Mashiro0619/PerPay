@@ -81,6 +81,23 @@ describe("isolated documentation preview", () => {
         assert.equal((await response.json() as { error: { code: string } }).error.code, "demo_read_only");
       }
       assert.deepEqual(demo.database.read(connection => connection.prepare("SELECT * FROM payment_orders").all()), before);
+      const sites = (await (await app.request("/api/admin/v1/sites", { headers })).json() as { data: { client_id: string }[] }).data;
+      assert.equal(sites.length, 2);
+      const clientId = sites[0]!.client_id;
+      const base = "/api/admin/v1/sites/" + clientId;
+      const overview = await (await app.request("/api/admin/v1/sites/overview?range=30", { headers })).json() as { data: { confirmed_count: number; confirmed_amount_cents: number }[] };
+      assert.equal(overview.data.reduce((sum, site) => sum + site.confirmed_count, 0), stats.confirmations.count);
+      assert.equal(overview.data.reduce((sum, site) => sum + site.confirmed_amount_cents, 0), stats.confirmations.amount_cents);
+      const own = await (await app.request(base + "/orders", { headers })).json() as { data: { api_client_id: string; order_id: string }[] };
+      assert.ok(own.data.length > 0);
+      assert.ok(own.data.every(order => order.api_client_id === clientId));
+      assert.equal((await app.request("/api/admin/v1/sites/" + sites[1]!.client_id + "/orders/" + own.data[0]!.order_id, { headers })).status, 404);
+      const date = new Date(demo.capturedAt + 8 * 3600000).toISOString().slice(0, 10);
+      const csv = await app.request(base + "/orders/export", { method: "POST", headers, body: JSON.stringify({ created_from: date, created_to: date }) });
+      assert.equal(csv.status, 200);
+      assert.match(csv.headers.get("content-type")!, /text\/csv/);
+      assert.equal((await app.request(base + "/test-payments", { method: "POST", headers, body: "{}" })).status, 403);
+      assert.equal((await app.request("/admin/sites/" + clientId + "/orders", { headers })).status, 200);
       // An unavailable update is honest: no fabricated successful online version check.
       assert.equal((await app.request("/api/admin/v1/system/update", { headers: { cookie } })).status, 503);
       const qr = await app.request("/api/public/v1/checkouts/" + demo.checkout + "/qr.svg");
