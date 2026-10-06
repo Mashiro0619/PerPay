@@ -187,8 +187,9 @@ export interface AdminWorkItemSummary {
   readonly notification_failures: number;
 }
 
-/** Same global ACTIVE view as the list, without search, pagination or account-generation filters. */
-export function adminWorkItemSummary(database: AppDatabase): AdminWorkItemSummary {
+/** Same ACTIVE view as the list, optionally scoped by website, without search or pagination. */
+export function adminWorkItemSummary(database: AppDatabase, clientId: string | null = null): AdminWorkItemSummary {
+  if (clientId !== null) siteClientIdSchema.parse(clientId);
   return database.read((connection) => {
     const row = connection.prepare(WORK_ITEMS_CTE + `
       SELECT COUNT(*) AS total,
@@ -196,7 +197,8 @@ export function adminWorkItemSummary(database: AppDatabase): AdminWorkItemSummar
         COALESCE(SUM(kind = 'LEDGER_CONFLICT'), 0) AS ledger_conflicts,
         COALESCE(SUM(kind = 'NOTIFICATION_FAILURE'), 0) AS notification_failures
       FROM work_items WHERE ${ACTIVE_WORK_ITEMS}
-    `).get() as Record<keyof AdminWorkItemSummary, number | bigint>;
+        ${clientId === null ? "" : "AND order_id IN (SELECT order_id FROM payment_orders WHERE api_client_id = ?)"}
+    `).get(...(clientId === null ? [] : [clientId])) as Record<keyof AdminWorkItemSummary, number | bigint>;
     return Object.freeze({
       total: safeInteger(row.total),
       financial_exceptions: safeInteger(row.financial_exceptions),

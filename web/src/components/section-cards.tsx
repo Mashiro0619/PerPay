@@ -12,10 +12,12 @@ export function SectionCards({
   analytics,
   pending = false,
   workItems,
+  clientId = null,
 }: {
   analytics: SystemAnalytics | undefined;
   pending?: boolean;
   workItems?: number | null;
+  clientId?: string | null;
 }) {
   // API daily dates are Beijing dates; the last complete series entry is today's bucket.
   const today = analytics?.daily.at(-1);
@@ -28,12 +30,12 @@ export function SectionCards({
     {
       title: "当前待付款",
       value: analytics ? count(analytics.pending.orders) : "—",
-      href: "/orders?payment=UNPAID&checkout=OPEN",
+      href: "/orders?payment=UNPAID&checkout=OPEN" + (clientId ? "&api_client_id=" + encodeURIComponent(clientId) : ""),
     },
     {
       title: "需处理事项",
       value: workItems == null ? "—" : count(workItems),
-      href: "/work-items",
+      href: "/work-items" + (clientId ? "?api_client_id=" + encodeURIComponent(clientId) : ""),
     },
   ];
   return (

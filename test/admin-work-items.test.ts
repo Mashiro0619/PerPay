@@ -38,6 +38,31 @@ const IDS = {
 } as const;
 
 describe("administrator work item projection", () => {
+  it("counts the full website ACTIVE view without mixing unallocated items or truncating to a page", () => {
+    withFixture(({ database, connection, readCount }) => {
+      connection.exec("ALTER TABLE payment_orders ADD COLUMN api_client_id TEXT NOT NULL DEFAULT 'site_a'");
+      connection.prepare("UPDATE payment_orders SET api_client_id = 'site_b' WHERE order_id = ?").run(IDS.orderFallback);
+      connection.exec("INSERT INTO payment_orders(order_id, collection_profile_id, api_client_id) VALUES ('order-exception-lower', 'profile-linked', 'site_a')");
+      assert.deepEqual(adminWorkItemSummary(database, "site_a"), { total: 3, financial_exceptions: 1, ledger_conflicts: 0, notification_failures: 2 });
+      assert.equal(readCount(), 1);
+      assert.deepEqual(adminWorkItemSummary(database, "site_b"), { total: 1, financial_exceptions: 0, ledger_conflicts: 0, notification_failures: 1 });
+      assert.equal(adminWorkItemSummary(database).total, 6);
+      for (let index = 0; index < 205; index++) {
+        connection.prepare("INSERT INTO financial_exceptions VALUES (?, 'older-generation', 'UNMATCHED_CREDIT', NULL, 'order-exception-lower', NULL, 'OPEN', 1500)").run(randomUUID());
+      }
+      assert.equal(adminWorkItemSummary(database, "site_a").total, 208);
+      assert.equal(adminWorkItemPage(database, { type: "ALL", apiClientId: "site_a", cursor: null, limit: 4 }).items.length, 4);
+      ignoreAllAdminWorkItems(database, { operation_id: randomUUID(), type: "ALL", api_client_id: "site_a" }, { actorId: "admin", now: 2000 });
+      assert.equal(adminWorkItemSummary(database, "site_a").total, 0);
+      assert.equal(adminWorkItemSummary(database, "site_b").total, 1);
+      assert.equal(adminWorkItemSummary(database).total, 3);
+      restoreAdminWorkItem(database, { operation_id: randomUUID(), type: "NOTIFICATION_FAILURE", resource_id: IDS.retryNewest }, { actorId: "admin", now: 3000 });
+      assert.equal(adminWorkItemSummary(database, "site_a").notification_failures, 1);
+      connection.prepare("UPDATE webhook_deliveries SET status = 'ACKNOWLEDGED' WHERE delivery_id = ?").run(IDS.retryNewest);
+      assert.equal(adminWorkItemSummary(database, "site_a").total, 0);
+      assert.throws(() => adminWorkItemSummary(database, "bad/site"));
+    });
+  });
   it("scopes reminders and bulk ignore by explicit order ownership, leaving unallocated conflicts global", () => {
     withFixture(({ database, connection }) => {
       connection.exec("ALTER TABLE payment_orders ADD COLUMN api_client_id TEXT NOT NULL DEFAULT 'site_a'");
@@ -353,12 +378,17 @@ describe("administrator work item projection", () => {
       const anonymous = await app.request("/api/admin/v1/work-items");
       assert.equal(anonymous.status, 401);
       assert.equal(await errorCode(anonymous), "session_invalid");
+      assert.equal((await app.request("/api/admin/v1/work-items/summary?api_client_id=site_a")).status, 401);
 
       const cookie = await login(app);
       const statusResponse = await app.request("/api/admin/v1/system/status", { headers: { cookie } });
       assert.equal(statusResponse.status, 200);
       const status = await statusResponse.json() as { data: { work_items: unknown } };
       assert.deepEqual(status.data.work_items, { total: 6, financial_exceptions: 2, ledger_conflicts: 1, notification_failures: 3 });
+      const summary = await app.request("/api/admin/v1/work-items/summary", { headers: { cookie } });
+      assert.equal(summary.status, 200);
+      assert.equal(summary.headers.get("cache-control"), "no-store");
+      assert.deepEqual((await summary.json() as { data: unknown }).data, { total: 6 });
       const first = await app.request("/api/admin/v1/work-items?limit=1", {
         headers: { cookie },
       });
@@ -378,6 +408,12 @@ describe("administrator work item projection", () => {
       );
       assert.ok(firstBody.page.next_cursor);
       projectionConnection.exec("ALTER TABLE payment_orders ADD COLUMN api_client_id TEXT NOT NULL DEFAULT 'site_a'");
+      const siteSummary = await app.request("/api/admin/v1/work-items/summary?api_client_id=site_a", { headers: { cookie } });
+      assert.equal(siteSummary.status, 200);
+      assert.deepEqual((await siteSummary.json() as { data: unknown }).data, { total: 3 });
+      for (const query of ["api_client_id=", "api_client_id=bad/site", "api_client_id=site_a&api_client_id=site_b", "limit=1", "q=ignored"]) {
+        assert.equal((await app.request("/api/admin/v1/work-items/summary?" + query, { headers: { cookie } })).status, 422, query);
+      }
       const scopedResponse = await app.request("/api/admin/v1/work-items?api_client_id=site_a&limit=1", { headers: { cookie } });
       assert.equal(scopedResponse.status, 200);
       const scoped = await scopedResponse.json() as { page: { next_cursor: string } };
@@ -449,6 +485,9 @@ describe("administrator work item projection", () => {
       }
       // A failed reminder query must never be reported as an empty queue.
       projectionConnection.exec("DROP TABLE admin_work_item_states");
+      const failedSummary = await app.request("/api/admin/v1/work-items/summary?api_client_id=site_a", { headers: { cookie } });
+      assert.equal(failedSummary.status, 500);
+      assert.equal(await errorCode(failedSummary), "internal_error");
       const failedStatus = await app.request("/api/admin/v1/system/status", { headers: { cookie } });
       assert.equal(failedStatus.status, 200);
       assert.equal((await failedStatus.json() as { data: { work_items: unknown } }).data.work_items, null);

@@ -265,6 +265,42 @@ paths:
                 $ref: '#/components/schemas/SystemAnalyticsEnvelope'
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
+  /api/admin/v1/work-items/summary:
+    get:
+      tags: [System]
+      operationId: getAdministratorWorkItemSummary
+      summary: Count current actionable reminders, optionally scoped by website
+      description: >-
+        Counts the complete ACTIVE work-item view before pagination, without date or keyword
+        filtering. Website scope includes only explicitly owned order reminders; shared conflicts
+        and unallocated exceptions remain global. Read failures return an error, never a zero count.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - name: api_client_id
+          in: query
+          required: false
+          description: Omit for global totals; otherwise use the same website scope as the work-item list.
+          schema: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$' }
+      responses:
+        '200':
+          description: Current actionable reminder totals
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: false
+                    required: [total]
+                    properties:
+                      total: { type: integer, minimum: 0 }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
   /api/admin/v1/work-items:
     get:
       tags: [System]

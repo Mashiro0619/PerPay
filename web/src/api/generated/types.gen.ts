@@ -1425,6 +1425,30 @@ export type GetAdministratorSystemAnalyticsResponses = {
     200: SystemAnalyticsEnvelope;
 };
 export type GetAdministratorSystemAnalyticsResponse = GetAdministratorSystemAnalyticsResponses[keyof GetAdministratorSystemAnalyticsResponses];
+export type GetAdministratorWorkItemSummaryData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path?: never;
+    query?: {
+        api_client_id?: string;
+    };
+    url: '/api/admin/v1/work-items/summary';
+};
+export type GetAdministratorWorkItemSummaryErrors = {
+    401: ErrorEnvelope;
+    422: ErrorEnvelope;
+};
+export type GetAdministratorWorkItemSummaryError = GetAdministratorWorkItemSummaryErrors[keyof GetAdministratorWorkItemSummaryErrors];
+export type GetAdministratorWorkItemSummaryResponses = {
+    200: {
+        data: {
+            total: number;
+        };
+    };
+};
+export type GetAdministratorWorkItemSummaryResponse = GetAdministratorWorkItemSummaryResponses[keyof GetAdministratorWorkItemSummaryResponses];
 export type ListAdministratorWorkItemsData = {
     body?: never;
     headers?: {

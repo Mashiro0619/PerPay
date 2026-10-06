@@ -637,6 +637,17 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     return context.json({ data: systemAnalytics(dependencies.database, rawRange === null ? 30 : Number(rawRange), dependencies.clock?.() ?? Date.now(), clientId) });
   });
 
+  app.get("/api/admin/v1/work-items/summary", adminSession, (context) => {
+    const values = new URL(context.req.url).searchParams;
+    const clientId = values.get("api_client_id");
+    if ([...values.keys()].some(key => key !== "api_client_id") || values.getAll("api_client_id").length > 1 ||
+      (clientId !== null && !siteClientIdSchema.safeParse(clientId).success)) {
+      throw new HttpApiError(422, "validation_failed", "网站筛选无效");
+    }
+    // Return only the visible total, not a misleading per-site zero for unallocated conflicts.
+    return context.json({ data: { total: adminWorkItemSummary(dependencies.database, clientId).total } });
+  });
+
   app.get("/api/admin/v1/work-items", adminSession, (context) => {
     const query = readAdminWorkItemPageQuery(context);
     const page = adminWorkItemPage(dependencies.database, query);

@@ -63,6 +63,7 @@ function DashboardContent() {
     status,
     orders,
     work,
+    workSummary,
     unavailable,
     checking,
     changeRange,
@@ -165,9 +166,15 @@ function DashboardContent() {
       )}
       <SectionCards
         analytics={data}
-        workItems={!checking && !unavailable ? state?.work_items?.total : null}
+        clientId={clientId}
+        workItems={!checking && !unavailable
+          ? clientId
+            ? !workSummary.isError && !workSummary.isPlaceholderData ? workSummary.data?.data?.total : null
+            : state?.work_items?.total
+          : null}
         pending={analytics.isPending || analytics.isPlaceholderData}
       />
+      {clientId && <ErrorNotice error={workSummary.error} retry={() => { void workSummary.refetch(); }} />}
       <div className="flex min-w-0 flex-col gap-4">
         <ErrorNotice
           error={analytics.error}

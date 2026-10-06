@@ -30,6 +30,12 @@ export function useOverview() {
     queryFn: ({ signal }) =>
       result(api.listAdministratorWorkItems({ query: { limit: 4, ...(clientId ? { api_client_id: clientId } : {}) }, signal })),
   });
+  const workSummary = useQuery({
+    queryKey: ["work-items", "summary", clientId],
+    queryFn: ({ signal }) => result(api.getAdministratorWorkItemSummary({ query: { api_client_id: clientId! }, signal })),
+    enabled: !!clientId,
+    refetchInterval: 60_000,
+  });
   return {
     clientId,
     changeSite: (value: string) => {
@@ -43,6 +49,7 @@ export function useOverview() {
     status,
     orders,
     work,
+    workSummary,
     unavailable,
     checking,
     changeRange: (value: string) => {
