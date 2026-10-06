@@ -923,7 +923,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         }));
       }
       const data = serializeOrder(result.order, dependencies.config.publicOrigin);
-      context.header("location", `/api/admin/v1/orders/${encodeURIComponent(result.order.orderId)}`);
+      context.header("location", administratorEndpoint(context, `/orders/${encodeURIComponent(result.order.orderId)}`));
       return context.json({ data }, result.created ? 201 : 200);
     },
   );
@@ -1480,7 +1480,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       notifyWebhookAvailable(dependencies, context);
       context.header(
         "location",
-        `/api/admin/v1/webhooks/deliveries/${encodeURIComponent(result.delivery.deliveryId)}`,
+        administratorEndpoint(context, `/webhooks/deliveries/${encodeURIComponent(result.delivery.deliveryId)}`),
       );
       return context.json(
         {
@@ -4003,4 +4003,9 @@ function adminQuery(context: Context<AppEnvironment>): URLSearchParams {
   const clientId = context.get("adminSiteId");
   if (clientId) values.set("api_client_id", clientId);
   return values;
+}
+
+function administratorEndpoint(context: Context<AppEnvironment>, suffix: string): string {
+  const clientId = context.get("adminSiteId");
+  return "/api/admin/v1" + (clientId ? "/sites/" + encodeURIComponent(clientId) : "") + suffix;
 }

@@ -180,6 +180,19 @@ it('isolates notification attempts, redelivery and reminder restoration includin
         }
         assert.equal((await f.req('/sites/' + b.clientId + '/webhooks/deliveries/' + id + '/actions/redeliver', 'POST', { redelivery_id: randomUUID(), reason: 'retry' })).status, 404);
         assert.equal((await f.req('/sites/' + b.clientId + '/work-items/NOTIFICATION_FAILURE/' + id + '/actions/restore', 'POST', { operation_id: randomUUID() })).status, 404);
+        const claim = f.webhookStore.claimNext({ clientId: a.clientId, siteRevision: f.sites.get(a.clientId)!.revision, now: Date.now(), leaseMilliseconds: 30000, maximumAttempts: 1 });
+        assert.ok(claim);
+        f.webhookStore.completeAttempt({ deliveryId: id, attemptId: claim.attempt.attemptId, leaseToken: claim.attempt.leaseToken, outcome: "PERMANENT_FAILURE", now: Date.now(), maximumAttempts: 1, retryBaseMilliseconds: 1000, retryMaximumMilliseconds: 1000, errorCode: "transport_network" });
+        const command = { redelivery_id: randomUUID(), reason: "核实后重投" };
+        const endpoint = "/webhooks/deliveries/" + id + "/actions/redeliver";
+        const replay = await f.req("/sites/" + a.clientId + endpoint, "POST", command);
+        assert.equal(replay.status, 201, await replay.clone().text());
+        assert.ok(replay.headers.get("location")!.startsWith("/api/admin/v1/sites/" + a.clientId + "/webhooks/deliveries/"));
+        assert.equal((await f.req("/sites/" + b.clientId + endpoint, "POST", command)).status, 404);
+        assert.equal((await f.req("/sites/" + a.clientId + endpoint, "POST", command)).status, 200);
+        const globalReplay = await f.req(endpoint, "POST", command);
+        assert.equal(globalReplay.status, 200);
+        assert.ok(globalReplay.headers.get("location")!.startsWith("/api/admin/v1/webhooks/deliveries/"));
         const data = await (await f.req('/sites/' + b.clientId + '/webhooks/deliveries')).json() as {
             data: unknown[];
         };
