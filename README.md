@@ -42,7 +42,7 @@
 | --- | --- |
 | ![全部网站汇总](docs/screenshots/dashboard-light.png) | ![网站后台](docs/screenshots/workspace-site.png) |
 
-截图均为本地只读合成数据。[两级后台操作与预览验收](docs/development/admin-workspaces.md)。
+网站创建只需名称，其他设置按需配置；不重复展示网站搜索和整页客户端 ID。截图均为本地只读合成数据。[两级后台操作与预览验收](docs/development/admin-workspaces.md)。
 
 ## 部署前准备
 
