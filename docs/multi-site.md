@@ -55,9 +55,9 @@ PerPay 1.0.0 支持多个自有网站共用一套经营收款码、支付宝开�
 | `GET/PUT /api/admin/v1/settings/site-defaults` | 模板与独立模板 `revision` |
 | `PUT /api/admin/v1/settings/{provider,collection,collection-policy}` | 独立保存应用、经营码或采集策略；携带实例 `revision` |
 
-完整请求与响应字段以 [OpenAPI](../openapi.yaml) 为准。管理员写操作沿用会话、同源、CSRF、请求体及只读演示限制。冲突后读取当前配置再确认，不自动排队重放写操作。
+完整请求与响应字段以 [OpenAPI](../openapi.yaml) 为准。管理员写操作沿用会话、同源、CSRF、请求体及只读演示限制。网站与模板表单将服务端字段错误显示在对应输入框旁，保存失败保留草稿。冲突后读取当前配置再确认，不自动排队重放写操作。
 
-订单、通知、可归属待办及首页统计可按 `api_client_id` 筛选；管理端按商户订单号查询必须指定网站。未匹配流水、全局或无法归属的冲突只留在全局视图。分站确认金额不是独立余额或结算账户。
+订单、通知、可归属待办及首页统计可按 `api_client_id` 筛选；通知列表、独立详情和订单内通知记录均显示所属网站名称及客户端 ID，名称随网站更名更新，不改写投递证据。管理端按商户订单号查询必须指定网站。未匹配流水、全局或无法归属的冲突只留在全局视图。分站确认金额不是独立余额或结算账户。
 
 业务 `/api/v1/system/status` 只返回本站 `status`、`code`、`client_id`、`accepting_orders` 和 `notifications_enabled`。`/healthz`、`/readyz` 仍反映实例和收款引擎，单站暂停或达到自身上限不会让整个实例不可用。
 

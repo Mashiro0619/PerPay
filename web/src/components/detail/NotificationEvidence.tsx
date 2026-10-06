@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { SiteIdentity } from "@/components/site-identity";
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -123,8 +124,9 @@ export function DeliveryCard({
           </Button>
         )}
         <DetailFields
-          wide={["通知地址", "重发理由"]}
+          wide={["所属网站", "通知地址", "重发理由"]}
           items={[
+            ["所属网站", <SiteIdentity clientId={detail.target.api_client_id} name={detail.target.site_name} />],
             [
               "通知地址",
               <CopyValue

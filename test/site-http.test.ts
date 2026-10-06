@@ -199,3 +199,26 @@ it("keeps website analytics scoped and leaves shared conflicts unallocated", asy
     assert.equal((await f.app.request("/api/admin/v1/system/analytics?api_client_id=" + a.clientId + "&api_client_id=" + b.clientId, { headers: f.headers })).status, 422);
   } finally { f.close(); }
 });
+
+it("returns precise website and template field errors without writing invalid drafts", async () => {
+  const f = await fixture();
+  try {
+    const site = f.createSite("表单校验");
+    for (const [field, value] of [["name", ""], ["notification_origin", "http://unsafe.example"], ["return_origin", "http://unsafe.example"], ["policy.orders.pending_order_limit", 0], ["policy.display.checkout_name", ""], ["policy.display.checkout_help_url", "javascript:alert(1)"]] as const) {
+      const configuration = structuredClone(site.configuration);
+      const keys = field.split("."); let target: any = configuration;
+      for (const key of keys.slice(0, -1)) target = target[key];
+      target[keys.at(-1)!] = value;
+      const response = await f.app.request("/api/admin/v1/sites/" + site.clientId, { method: "PUT", headers: f.headers, body: JSON.stringify({ revision: site.revision, configuration }) });
+      assert.equal(response.status, 422);
+      const body = await response.json() as { error: { fields: Record<string, string> } };
+      assert.ok(body.error.fields["configuration." + field]);
+      assert.deepEqual(f.sites.get(site.clientId), site);
+    }
+    const defaults = f.sites.defaults();
+    const response = await f.app.request("/api/admin/v1/settings/site-defaults", { method: "PUT", headers: f.headers, body: JSON.stringify({ ...defaults, policy: { ...defaults.policy, display: { ...defaults.policy.display, checkout_help_url: "javascript:bad" } } }) });
+    assert.equal(response.status, 422);
+    assert.ok((await response.json() as { error: { fields: Record<string, string> } }).error.fields["policy.display.checkout_help_url"]);
+    assert.deepEqual(f.sites.defaults(), defaults);
+  } finally { f.close(); }
+});

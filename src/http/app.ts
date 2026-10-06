@@ -738,8 +738,9 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         cursor: query.cursor,
         limit: query.limit,
       });
+      const siteName = adminOrderIdentities(dependencies.database, [orderId]).get(orderId)?.site_name ?? null;
       return context.json({
-        data: page.deliveries.map(serializeWebhookDeliveryDetailWithAttempts),
+        data: page.deliveries.map(detail => serializeWebhookDeliveryDetailWithAttempts(detail, siteName)),
         page: {
           next_cursor: encodeOrderWebhookDeliveryCursor(page.nextCursor, orderId),
         },
@@ -1421,7 +1422,8 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       if (!detail) {
         throw new HttpApiError(404, "webhook_delivery_not_found", "通知投递不存在");
       }
-      return context.json({ data: serializeWebhookDeliveryDetail(detail) });
+      const siteName = adminOrderIdentities(dependencies.database, [detail.event.orderId]).get(detail.event.orderId)?.site_name ?? null;
+      return context.json({ data: serializeWebhookDeliveryDetail(detail, siteName) });
     },
   );
 
@@ -3444,7 +3446,7 @@ function serializeWebhookDeliverySummary(summary: WebhookDeliverySummary) {
   };
 }
 
-function serializeWebhookDeliveryDetail(detail: WebhookDeliveryDetail) {
+function serializeWebhookDeliveryDetail(detail: WebhookDeliveryDetail, siteName: string | null) {
   return {
     is_latest: detail.isLatest,
     delivery: serializeWebhookDelivery(detail.delivery),
@@ -3453,6 +3455,7 @@ function serializeWebhookDeliveryDetail(detail: WebhookDeliveryDetail) {
       target_id: detail.target.targetId,
       order_id: detail.target.orderId,
       api_client_id: detail.target.apiClientId,
+      site_name: siteName,
       format: detail.target.format,
       target_url: detail.target.targetUrl,
       allowed_origin: detail.target.allowedOrigin,
@@ -3462,9 +3465,9 @@ function serializeWebhookDeliveryDetail(detail: WebhookDeliveryDetail) {
   };
 }
 
-function serializeWebhookDeliveryDetailWithAttempts(detail: WebhookDeliveryDetail) {
+function serializeWebhookDeliveryDetailWithAttempts(detail: WebhookDeliveryDetail, siteName: string | null) {
   return {
-    ...serializeWebhookDeliveryDetail(detail),
+    ...serializeWebhookDeliveryDetail(detail, siteName),
     attempts: detail.attempts.map(serializeWebhookAttempt),
   };
 }

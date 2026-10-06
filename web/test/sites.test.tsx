@@ -14,7 +14,8 @@ const policy: SitePolicy = {
   notification_delivery: { timeout_milliseconds: 5000, maximum_attempts: 12, retry_base_seconds: 5, retry_maximum_seconds: 3600 },
 };
 const initial: Site = { client_id: "site_test", revision: 0, configuration: { name: "网站 A", accepting_orders: true, notifications_enabled: false, notification_origin: null, return_origin: null, policy }, created_at: "2026-10-06T00:00:00.000Z", updated_at: "2026-10-06T00:00:00.000Z", deleted_at: null };
-function mount(path = "/sites/site_test", failSave = false) {
+function mount(path = "/sites/site_test", failSave = false, fieldErrors?: Record<string, string>) {
+  let rejectFields = !!fieldErrors;
   let saved = structuredClone(initial), defaults = structuredClone(policy);
   const writes: Array<{ path: string; method: string; body: Record<string, unknown> }> = [];
   const fetchMock = vi.fn(async (request: Request) => {
@@ -23,6 +24,7 @@ function mount(path = "/sites/site_test", failSave = false) {
       const body = await request.clone().json() as Record<string, unknown>;
       writes.push({ path, method: request.method, body });
       if (failSave) throw new TypeError("network failure");
+      if (rejectFields) { rejectFields = false; return json({ error: { code: "validation_failed", message: "请修正字段", fields: fieldErrors } }, 422); }
       if (path.endsWith("/actions/rotate")) { saved = { ...saved, revision: saved.revision + 1 }; return json({ data: { site: saved, secret: "synthetic-site-key" } }); }
       if (path.endsWith("/actions/view")) return json({ data: { secret: "synthetic-site-key" } });
       if (path.endsWith("/site-defaults")) { defaults = body.policy as SitePolicy; return json({ data: { revision: 1, policy: defaults } }); }
@@ -115,5 +117,33 @@ describe("business website management", () => {
     await user.type(screen.getByLabelText("搜索网站"), "site_test");
     await waitFor(() => expect(view.fetchMock.mock.calls.some(([request]) => new URL(request.url).searchParams.get("q") === "site_test")).toBe(true));
     expect(view.writes).toHaveLength(0);
+  });
+});
+
+describe("website field feedback", () => {
+  it.each(["/sites/site_test", "/sites/defaults"])("associates every policy error with its input and preserves drafts at %s", async path => {
+    const scope = path.endsWith("defaults") ? "policy." : "configuration.policy.";
+    const fields: Record<string, string> = {
+      [scope + "orders.pending_order_limit"]: "上限错误", [scope + "orders.order_ttl_seconds"]: "有效期错误",
+      [scope + "display.checkout_name"]: "名称错误", [scope + "display.checkout_help_url"]: "帮助链接错误",
+    };
+    if (!path.endsWith("defaults")) Object.assign(fields, { "configuration.name": "网站名称错误", "configuration.notification_origin": "通知来源错误", "configuration.return_origin": "返回来源错误" });
+    const view = mount(path, false, fields); const user = userEvent.setup();
+    fireEvent.change(await screen.findByLabelText("收银台名称"), { target: { value: "保留的名称" } });
+    const submit = async () => {
+      await user.click(screen.getByRole("button", { name: path.endsWith("defaults") ? "保存默认模板" : "保存网站" }));
+      if (!path.endsWith("defaults")) await user.click(await screen.findByRole("button", { name: "确认" }));
+    };
+    await submit(); await screen.findByText("上限错误");
+    for (const [label, message] of [["待付款订单上限", "上限错误"], ["订单有效期（秒）", "有效期错误"], ["收银台名称", "名称错误"], ["帮助链接", "帮助链接错误"], ...(!path.endsWith("defaults") ? [["网站名称", "网站名称错误"], ["通知来源", "通知来源错误"], ["返回来源", "返回来源错误"]] : [])]) {
+      const input = screen.getByLabelText(label!);
+      expect(input).toHaveAttribute("aria-invalid", "true"); expect(input).toHaveAccessibleDescription(message);
+      expect(input.closest('[data-slot="field"]')).toHaveAttribute("data-invalid", "true");
+    }
+    expect(screen.getByLabelText("收银台名称")).toHaveValue("保留的名称");
+    expect(view.writes).toHaveLength(1);
+    await queryClient.resumePausedMutations(); expect(view.writes).toHaveLength(1);
+    await submit(); await waitFor(() => expect(screen.queryByText("上限错误")).not.toBeInTheDocument());
+    expect(view.writes).toHaveLength(2); expect(screen.getByLabelText("帮助链接")).toHaveAttribute("aria-invalid", "false");
   });
 });

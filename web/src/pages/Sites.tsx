@@ -6,7 +6,7 @@ import { Link, useNavigate } from "@/navigation";
 import { useDirtyDraft } from "@/drafts";
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import { SuccessMessage, useFeedback } from "@/components/Feedback";
-import { SitePolicyFields } from "@/components/SitePolicyFields";
+import { SitePolicyFields, SiteTextField } from "@/components/SitePolicyFields";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -75,6 +75,7 @@ function SiteEditor({ initial, configuration }: { initial: Site | null; configur
       setSaved(response.data.site); setRevealed({ label: kind === "api" ? "API 密钥" : "通知签名密钥", value: response.data.secret }); setFeedback("密钥已生成或轮换，请更新业务网站配置。");
     },
   });
+  const errors = save.error instanceof ApiError ? save.error.fields : {};
   const busy = save.isPending || action.isPending;
   const change = (edit: (next: SiteConfiguration) => void) => { const next = structuredClone(draft); edit(next); setDraft(next); setFeedback(""); save.reset(); };
   return <div className="flex flex-col gap-6">
@@ -83,13 +84,13 @@ function SiteEditor({ initial, configuration }: { initial: Site | null; configur
     <ErrorNotice error={save.error || action.error || copyError} /><SuccessMessage message={feedback} />
     {saved && <Card><CardHeader><CardTitle>接入信息</CardTitle><CardDescription>客户端 ID 不可修改。PerPay API 密钥不是支付宝开放平台密钥。</CardDescription></CardHeader><CardContent><FieldGroup><Field><FieldLabel>客户端 ID<Input readOnly value={saved.client_id} /></FieldLabel></Field><Field><FieldLabel>PerPay 地址<Input readOnly value={window.location.origin} /></FieldLabel></Field></FieldGroup></CardContent><CardFooter><Button variant="outline" onClick={() => void navigator.clipboard.writeText(JSON.stringify({ client_id: saved.client_id, perpay_url: window.location.origin }, null, 2)).then(() => setFeedback("接入信息已复制"), () => setCopyError(new Error("复制失败，请手动复制。")))}>复制接入信息</Button></CardFooter></Card>}
     <form onSubmit={event => { event.preventDefault(); setConfirmation("save"); }}><FieldSet disabled={busy}><Card><CardHeader><CardTitle>网站配置</CardTitle><CardDescription>保存后独立生效，不跟随网站默认模板变化。</CardDescription></CardHeader><CardContent><FieldGroup>
-      <Field><FieldLabel>网站名称<Input aria-label="网站名称" required maxLength={40} value={draft.name} onChange={e => change(p => { p.name = e.target.value; })} /></FieldLabel></Field>
+      <SiteTextField label="网站名称" required maxLength={40} value={draft.name} error={errors["configuration.name"]} onChange={text => change(p => { p.name = text; })} />
       <Field orientation="horizontal"><FieldLabel htmlFor="site-accepting">允许新订单</FieldLabel><Switch id="site-accepting" checked={draft.accepting_orders} onCheckedChange={value => change(p => { p.accepting_orders = value; })} /></Field><FieldDescription>关闭只暂停新订单，不影响已有订单的付款、查询、核实及通知。</FieldDescription>
       <Field orientation="horizontal"><FieldLabel htmlFor="site-notifications">开启通知</FieldLabel><Switch id="site-notifications" disabled={!saved} checked={draft.notifications_enabled} onCheckedChange={value => change(p => { p.notifications_enabled = value; })} /></Field><FieldDescription>先创建网站并生成通知签名密钥，再开启通知。</FieldDescription>
-      <Field><FieldLabel>通知来源<Input aria-label="通知来源" type="url" placeholder="https://notify.example.com" value={draft.notification_origin ?? ""} onChange={e => change(p => { p.notification_origin = e.target.value || null; })} /></FieldLabel></Field>
-      <Field><FieldLabel>返回来源<Input aria-label="返回来源" type="url" placeholder="https://shop.example.com" value={draft.return_origin ?? ""} onChange={e => change(p => { p.return_origin = e.target.value || null; })} /></FieldLabel></Field>
+      <SiteTextField label="通知来源" type="url" placeholder="https://notify.example.com" value={draft.notification_origin ?? ""} error={errors["configuration.notification_origin"]} onChange={text => change(p => { p.notification_origin = text || null; })} />
+      <SiteTextField label="返回来源" type="url" placeholder="https://shop.example.com" value={draft.return_origin ?? ""} error={errors["configuration.return_origin"]} onChange={text => change(p => { p.return_origin = text || null; })} />
       <FieldDescription>来源只填写 HTTPS 域名，不填写回调路径。修改通知来源不会重写旧订单的目标，旧目标可能不再允许投递。</FieldDescription>
-      <SitePolicyFields value={draft.policy} errors={save.error instanceof ApiError ? save.error.fields : {}} onChange={policy => change(p => { p.policy = policy; })} />
+      <SitePolicyFields value={draft.policy} errors={errors} onChange={policy => change(p => { p.policy = policy; })} />
     </FieldGroup></CardContent><CardFooter><Button type="submit" disabled={busy}>{save.isPending ? "正在保存…" : "保存网站"}</Button></CardFooter></Card></FieldSet></form>
     {saved && <Card><CardHeader><CardTitle>网站密钥与删除</CardTitle><CardDescription>轮换后旧密钥失效；删除仅允许没有历史订单的网站。</CardDescription></CardHeader><CardContent className="flex flex-wrap gap-2"><Button variant="outline" disabled={busy} onClick={() => action.mutate("view-api")}>查看 API 密钥</Button><Button variant="outline" disabled={busy} onClick={() => setConfirmation("api")}>生成／轮换 API 密钥</Button><Button variant="outline" disabled={busy} onClick={() => action.mutate("view-webhook")}>查看通知密钥</Button><Button variant="outline" disabled={busy} onClick={() => setConfirmation("webhook")}>生成／轮换通知密钥</Button><Button variant="destructive" disabled={busy} onClick={() => setConfirmation("delete")}>删除空网站</Button></CardContent></Card>}
     {revealed && <Card><CardHeader><CardTitle>{revealed.label}</CardTitle><CardDescription>仅在当前页面显示，请勿发送给其他网站。</CardDescription></CardHeader><CardContent><Input aria-label={revealed.label} readOnly value={revealed.value} autoComplete="off" /></CardContent><CardFooter><Button variant="outline" onClick={() => { setRevealed(null); action.reset(); }}>隐藏密钥</Button></CardFooter></Card>}

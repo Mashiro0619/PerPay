@@ -1109,6 +1109,7 @@ export type WebhookTarget = {
     target_id: ResourceId;
     order_id: ResourceId;
     api_client_id: string;
+    site_name?: string | null;
     format: 'NATIVE_JSON_V1';
     target_url: NotifyUrl;
     allowed_origin: string;

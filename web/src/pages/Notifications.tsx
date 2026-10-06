@@ -1,4 +1,5 @@
 import { SitePicker } from "@/components/site-picker";
+import { SiteIdentity } from "@/components/site-identity";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { RefreshButton } from "@/components/refresh-button";
 import { CreatedDateFilter } from "@/components/created-date-filter";
@@ -239,6 +240,7 @@ function DeliveryPage({
                                   delivery.order_summary.payable_amount_cents,
                                 )}
                           </span>
+                          <SiteIdentity clientId={delivery.order_summary?.api_client_id} name={delivery.order_summary?.site_name} />
                           {context.showInSummary("created_at") && (
                             <time
                               className="text-xs text-muted-foreground"
