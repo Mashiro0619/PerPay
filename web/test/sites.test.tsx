@@ -84,6 +84,7 @@ describe("business website management", () => {
   });
   it("edits only the creation template without modifying any existing website", async () => {
     const view = mount("/sites/defaults"); const user = userEvent.setup();
+    expect(await screen.findByRole("button", { name: "保存默认模板" })).toHaveClass("w-fit");
     const ttl = await screen.findByLabelText("订单有效期（秒）"); fireEvent.change(ttl, { target: { value: "600" } });
     expect(screen.queryByLabelText("通知来源")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "保存默认模板" }));

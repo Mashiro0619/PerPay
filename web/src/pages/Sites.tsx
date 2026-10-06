@@ -397,7 +397,7 @@ function SiteEditor({
               </Field>
             </FieldGroup>
           </CardContent>
-          
+
         </Card>
       )}
       <form
@@ -486,8 +486,7 @@ function SiteEditor({
                       }
                     />
                     <FieldDescription>
-                      来源只填写 HTTPS
-                      域名，不填写回调路径。修改通知来源不会重写旧订单的目标，旧目标可能不再允许投递。
+                      填写 HTTPS 来源，不包含路径。
                     </FieldDescription>
                   </>
                 )}
@@ -734,7 +733,7 @@ function DefaultsEditor({
             errors={save.error instanceof ApiError ? save.error.fields : {}}
             onChange={setDraft}
           />
-          <Button type="submit" disabled={save.isPending}>
+          <Button type="submit" className="w-fit" disabled={save.isPending}>
             保存默认模板
           </Button>
         </FieldSet>
