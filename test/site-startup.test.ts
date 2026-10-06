@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
@@ -10,8 +10,14 @@ import { RuntimeSettingsStore } from "../src/settings/store.ts";
 import { SiteStore } from "../src/sites/store.ts";
 import { createOrderRequestSchema } from "../src/orders/model.ts";
 import { OrderService } from "../src/orders/service.ts";
+import { LedgerStore } from "../src/ledger/store.ts";
+import { ReconciliationStore } from "../src/reconciliation/store.ts";
+import { WebhookStore } from "../src/notifications/store.ts";
+import { SiteWebhookProcessor } from "../src/notifications/site-processor.ts";
+import { webhookSignature } from "../src/notifications/model.ts";
 import { createConfiguredLegacyHttpServices } from "./http-fixture.ts";
 import { withLegacyPaymentFixture } from "./legacy-payment-fixture.ts";
+import { recordLedgerEntry } from "./reconciliation-http-fixture.ts";
 
 const audit = { actorId: "admin" };
 function temporary() { return mkdtempSync(join(tmpdir(), "perpay-sites-startup-")); }
@@ -138,5 +144,97 @@ it("preserves historical notification attempts and signature references before r
         assert.equal(database.integrityCheck().ok, true);
       } finally { database.close(); }
     }
+  });
+});
+
+it("upgrades an old instance, delivers and rotates both websites, then repeats delivery across two consecutive restarts", async () => {
+  await withLegacyPaymentFixture(async f => {
+    f.enableNotifications();
+    const originalApi = f.services.settings.snapshot().apiSecret;
+    const originalWebhook = f.services.settings.snapshot().webhook.secret;
+    f.database.close();
+    let database = await AppDatabase.open(f.services.config.databasePath, { masterKey: f.services.config.masterKey });
+    try {
+      let { sites, settings } = stores(database, f.services.config.masterKey);
+      assert.equal(sites.credential("default")?.secret, originalApi);
+      assert.equal(sites.notificationSecret("default"), originalWebhook);
+      const second = sites.create({ operation_id: randomUUID(), configuration: {
+        name: "第二网站", accepting_orders: true, notifications_enabled: false,
+        notification_origin: "https://second.example.com", return_origin: null, policy: sites.defaults().policy,
+      } }, audit);
+      const api = sites.rotateSecret(second.clientId, "api_secret", second.revision, audit);
+      const webhook = sites.rotateSecret(second.clientId, "webhook_secret", api.site.revision, audit);
+      sites.update(second.clientId, { revision: webhook.site.revision,
+        configuration: { ...webhook.site.configuration, notifications_enabled: true } }, audit);
+      const clients = ["default", second.clientId];
+      const evidence = () => database.read(connection => Object.fromEntries([
+        "sites", "site_secrets", "api_client_keys", "webhook_signing_keys", "payment_orders",
+        "webhook_targets", "outbox_events", "webhook_deliveries", "webhook_attempts",
+      ].map(table => [table, connection.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])));
+      const timestamp = (ms: number) => new Date(ms + 8 * 3600_000).toISOString().slice(0, 19).replace("T", " ");
+      for (let restart = 0; restart <= 2; restart++) {
+        const orders = new OrderService(database, () => settings.instanceSnapshot(), undefined, sites);
+        const ledger = new LedgerStore(database), reconciliation = new ReconciliationStore(database);
+        const secrets = new Map(clients.map(clientId => [clientId, sites.notificationSecret(clientId)!]));
+        for (const clientId of clients) {
+          const site = sites.get(clientId)!;
+          const order = orders.forSite(clientId).create(createOrderRequestSchema.parse({
+            idempotency_key: "restart-" + restart, merchant_order_no: "restart-" + restart,
+            product_name: "重启后投递", amount_cents: 1000 + restart * 1000,
+            notify_url: site.configuration.notification_origin + "/notify",
+          })).order;
+          const entry = recordLedgerEntry(ledger, {
+            start: timestamp(order.createdAt - 60_000), end: timestamp(order.createdAt + 60_000),
+          }, randomUUID(), order.payableAmountCents, order.createdAt + 1000, order.createdAt - 60_000,
+          "CREDIT", settings.instanceSnapshot().activeProviderAccountKey!);
+          assert.equal(reconciliation.reconcileEntry(entry.ledgerEntryId).kind, "auto_settled");
+        }
+        const sent: string[] = [];
+        const processor = new SiteWebhookProcessor({ sites, webhooks: new WebhookStore(database), transport: (clientId, origin) => ({
+          async post(input) {
+            sent.push(clientId);
+            assert.equal(new URL(input.targetUrl).origin, origin);
+            const keyId = input.headers["x-perpay-webhook-key-id"]!;
+            const key = database.read(connection => connection.prepare("SELECT client_id, site_key_version FROM webhook_signing_keys WHERE key_id = ?").get(keyId));
+            assert.equal(key?.client_id, clientId);
+            assert.equal(Number(key?.site_key_version), restart + 1);
+            assert.equal(input.headers["x-perpay-webhook-signature"], webhookSignature({
+              secret: secrets.get(clientId)!, keyId, timestamp: Number(input.headers["x-perpay-webhook-timestamp"]),
+              deliveryId: input.headers["x-perpay-webhook-delivery-id"]!, eventId: input.headers["x-perpay-webhook-event-id"]!,
+              attemptNumber: Number(input.headers["x-perpay-webhook-attempt"]), body: input.body,
+            }));
+            const body = Buffer.from(JSON.stringify({ schema: "perpay:webhook-ack:v1", ack: true,
+              event_id: input.headers["x-perpay-webhook-event-id"], delivery_id: input.headers["x-perpay-webhook-delivery-id"] }));
+            return { status: 200, contentType: "application/json", contentEncoding: "identity", body,
+              responseFingerprint: createHash("sha256").update(body).digest("hex"),
+              resolvedAddressesFingerprint: "a".repeat(64), connectedAddress: "8.8.8.8" };
+          },
+        }) });
+        for (let attempt = 0; attempt < clients.length; attempt++) {
+          assert.equal((await processor.processOne()).outcome, "ACKNOWLEDGED");
+        }
+        assert.deepEqual(new Set(sent), new Set(clients));
+        assert.equal((await processor.processOne()).processed, false);
+        assert.equal(database.integrityCheck().ok, true);
+        if (restart === 2) break;
+        const credentials = clients.map(clientId => {
+          const api = sites.rotateSecret(clientId, "api_secret", sites.get(clientId)!.revision, audit);
+          const webhook = sites.rotateSecret(clientId, "webhook_secret", api.site.revision, audit);
+          assert.notEqual(webhook.secret, secrets.get(clientId));
+          return { clientId, api: api.secret, webhook: webhook.secret };
+        });
+        assert.equal(database.integrityCheck().ok, true);
+        const before = evidence();
+        database.close();
+        database = await AppDatabase.open(f.services.config.databasePath, { masterKey: f.services.config.masterKey });
+        ({ sites, settings } = stores(database, f.services.config.masterKey));
+        assert.deepEqual(evidence(), before, "reopening must not alter business keys or delivery evidence");
+        for (const expected of credentials) {
+          assert.equal(sites.credential(expected.clientId)?.secret, expected.api);
+          assert.equal(sites.notificationSecret(expected.clientId), expected.webhook);
+        }
+        assert.equal(database.integrityCheck().ok, true);
+      }
+    } finally { database.close(); }
   });
 });
