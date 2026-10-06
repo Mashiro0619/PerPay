@@ -34,7 +34,7 @@ export default function Sites() {
 
 export function SiteEditorPage() {
   const { clientId } = useParams();
-  const query = useQuery({ queryKey: ["site-editor", clientId ?? "new"], staleTime: Infinity, refetchOnWindowFocus: false, refetchOnReconnect: false,
+  const query = useQuery({ queryKey: ["site-editor", clientId ?? "new"], staleTime: Infinity, gcTime: clientId ? 5 * 60_000 : 0, refetchOnWindowFocus: false, refetchOnReconnect: false,
     queryFn: async ({ signal }): Promise<{ site: Site | null; configuration: SiteConfiguration }> => {
       if (clientId) { const response = await result(api.getSite({ path: { clientId }, signal })); return { site: response.data, configuration: response.data.configuration }; }
       const defaults = await result(api.getSiteDefaults({ signal }));

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider, onlineManager } from "@tanstack/react-query";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
@@ -44,6 +44,19 @@ function mount(path = "/sites/site_test", failSave = false) {
 afterEach(() => onlineManager.setOnline(true));
 
 describe("business website management", () => {
+  it("reads the latest template for a later creation without rewriting an existing website", async () => {
+    const view = mount("/sites/new");
+    expect(await screen.findByLabelText("订单有效期（秒）")).toHaveValue(300);
+    await act(async () => { await view.router.navigate("/sites/defaults"); });
+    fireEvent.change(await screen.findByLabelText("订单有效期（秒）"), { target: { value: "600" } });
+    await userEvent.click(screen.getByRole("button", { name: "保存默认模板" }));
+    await waitFor(() => expect(view.writes).toHaveLength(1));
+    await act(async () => { await view.router.navigate("/sites/new"); });
+    await waitFor(() => expect(screen.getByLabelText("订单有效期（秒）")).toHaveValue(600));
+    await act(async () => { await view.router.navigate("/sites/site_test"); });
+    expect(await screen.findByLabelText("订单有效期（秒）")).toHaveValue(300);
+    expect(view.writes).toHaveLength(1);
+  });
   it("prefills a new site from a detached complete template without identities or credentials", async () => {
     const view = mount("/sites/new");
     expect(await screen.findByLabelText("订单有效期（秒）")).toHaveValue(300);
