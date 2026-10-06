@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { it } from "node:test";
 import { login, withHttpFixture } from "./reconciliation-http-fixture.ts";
 import { configureTestSiteNotifications } from "./site-notification-fixture.ts";
 import { createOrderRequestSchema } from "../src/orders/model.ts";
+import { signApiRequest } from "../src/security/api-signature.ts";
 
 it("identifies each notification's website in admin lists, details and embedded order history without rewriting evidence", async () => {
   await withHttpFixture(async f => {
@@ -27,6 +28,10 @@ it("identifies each notification's website in admin lists, details and embedded 
     assert.equal(response.status, 200);
     const { data } = await response.json() as { data: { delivery_id: string; event: { order_id: string }; order_summary: { api_client_id: string; site_name: string } }[] };
     assert.equal(new Set(data.map(item => item.order_summary.api_client_id)).size, 2);
+    const clients = ["default", second.clientId].map(clientId => {
+      if (!sites.credential(clientId)) sites.rotateSecret(clientId, "api_secret", sites.get(clientId)!.revision, { actorId: "admin" });
+      return sites.credential(clientId)!;
+    });
     for (const item of data) {
       const expected = sites.get(item.order_summary.api_client_id)!;
       assert.equal(item.order_summary.site_name, expected.configuration.name);
@@ -36,6 +41,16 @@ it("identifies each notification's website in admin lists, details and embedded 
         const detail = Array.isArray(payload.data) ? payload.data[0] : payload.data;
         assert.equal(detail.target.api_client_id, expected.clientId);
         assert.equal(detail.target.site_name, expected.configuration.name);
+      }
+      const eventId = f.webhooks.delivery(item.delivery_id)!.event.eventId;
+      for (const client of clients) {
+        const target = "/api/v1/events/" + eventId;
+        const signed = signApiRequest({ clientId: client.clientId, secret: Buffer.from(client.secret, "base64url"), method: "GET", target,
+          body: Buffer.alloc(0), timestamp: String(Math.floor(Date.now() / 1000)), nonce: randomBytes(32).toString("base64url") });
+        const response = await f.app.request(target, { headers: { "x-perpay-client-id": signed.clientId, "x-perpay-signature-version": signed.version,
+          "x-perpay-timestamp": signed.timestamp, "x-perpay-nonce": signed.nonce, "x-perpay-signature": signed.signature } });
+        assert.equal(response.status, client.clientId === expected.clientId ? 200 : 404);
+        assert.equal((await response.text()).includes("site_name"), false, "admin website projection must not enter business events");
       }
     }
     const previous = sites.get(second.clientId)!;
