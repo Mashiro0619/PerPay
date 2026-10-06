@@ -102,12 +102,14 @@ export type AdminOperationRequest = {
     operation_id: ResourceId;
 };
 export type IgnoreAllWorkItemsRequest = {
+    api_client_id?: string;
     operation_id: ResourceId;
     type: AdminWorkItemTypeFilter;
     q?: string;
 };
 export type IgnoreAllWorkItemsEnvelope = {
     data: {
+        api_client_id?: string;
         operation_id: ResourceId;
         type: AdminWorkItemTypeFilter;
         ignored_count: number;
@@ -1429,6 +1431,7 @@ export type ListAdministratorWorkItemsData = {
     };
     path?: never;
     query?: {
+        api_client_id?: string;
         type?: AdminWorkItemTypeFilter;
         visibility?: 'ACTIVE' | 'IGNORED';
         q?: string;

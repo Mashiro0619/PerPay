@@ -26,9 +26,9 @@ export function useOverview() {
       result(api.listAdministratorOrders({ query: { limit: 5, ...(clientId ? { api_client_id: clientId } : {}) }, signal })),
   });
   const work = useQuery({
-    queryKey: ["work-items", "recent"],
+    queryKey: ["work-items", "recent", clientId],
     queryFn: ({ signal }) =>
-      result(api.listAdministratorWorkItems({ query: { limit: 4 }, signal })),
+      result(api.listAdministratorWorkItems({ query: { limit: 4, ...(clientId ? { api_client_id: clientId } : {}) }, signal })),
   });
   return {
     clientId,

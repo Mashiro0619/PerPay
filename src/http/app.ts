@@ -641,7 +641,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     return context.json({
       data: page.items.map(serializeAdminWorkItem),
       page: {
-        next_cursor: encodeAdminWorkItemCursor(page.nextCursor, query.type, query.visibility, query.query),
+        next_cursor: encodeAdminWorkItemCursor(page.nextCursor, query.type, query.visibility, query.query, query.apiClientId),
       },
     });
   });
@@ -2665,15 +2665,18 @@ function requireResourceId(value: string, code: HttpErrorCode, message: string):
 }
 
 function readAdminWorkItemPageQuery(context: Context<AppEnvironment>): {
+  readonly apiClientId?: string;
   readonly query: ListQuery<WorkItemSort>;
   readonly type: AdminWorkItemType; readonly visibility: AdminWorkItemVisibility; readonly limit: number; readonly cursor: AdminWorkItemCursor | null;
 } {
   const values = new URL(context.req.url).searchParams;
   for (const key of values.keys()) {
-    if (!["type", "visibility", "limit", "cursor", "q", "sort_by", "sort_order"].includes(key) || values.getAll(key).length > 1) {
+    if (!["api_client_id", "type", "visibility", "limit", "cursor", "q", "sort_by", "sort_order"].includes(key) || values.getAll(key).length > 1) {
       throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
     }
   }
+  const apiClientId = values.get("api_client_id");
+  if (apiClientId !== null && !siteClientIdSchema.safeParse(apiClientId).success) throw new HttpApiError(422, "validation_failed", "网站筛选无效");
   const type = values.get("type") ?? "ALL";
   const visibility = values.get("visibility") ?? "ACTIVE";
   const limitText = values.get("limit") ?? "100";
@@ -2683,22 +2686,22 @@ function readAdminWorkItemPageQuery(context: Context<AppEnvironment>): {
   }
   const query = readListQuery(values, WORK_ITEM_SORT_FIELDS, visibility === "IGNORED" ? "ignored_at" : "actionable_at", "desc");
   if (query.sortBy === "ignored_at" && visibility !== "IGNORED") throw new ListQueryError("忽略时间仅能用于已忽略视图");
-  return { query, type: type as AdminWorkItemType, visibility: visibility as AdminWorkItemVisibility, limit: Number(limitText),
-    cursor: values.has("cursor") ? decodeAdminWorkItemCursor(values.get("cursor")!, type as AdminWorkItemType, visibility as AdminWorkItemVisibility, query) : null };
+  return { ...(apiClientId ? { apiClientId } : {}), query, type: type as AdminWorkItemType, visibility: visibility as AdminWorkItemVisibility, limit: Number(limitText),
+    cursor: values.has("cursor") ? decodeAdminWorkItemCursor(values.get("cursor")!, type as AdminWorkItemType, visibility as AdminWorkItemVisibility, query, apiClientId ?? undefined) : null };
 }
 
-function encodeAdminWorkItemCursor(cursor: AdminWorkItemCursor | null, type: AdminWorkItemType, visibility: AdminWorkItemVisibility, query: ListQuery<WorkItemSort>): string | null {
-  return encodeListCursor("work-items", [query, type, visibility], cursor ? cursor.position ?? {value: cursor.actionableAt, keys: [cursor.kind, cursor.itemId]} : null);
+function encodeAdminWorkItemCursor(cursor: AdminWorkItemCursor | null, type: AdminWorkItemType, visibility: AdminWorkItemVisibility, query: ListQuery<WorkItemSort>, apiClientId?: string): string | null {
+  return encodeListCursor("work-items", [query, type, visibility, apiClientId ?? null], cursor ? cursor.position ?? {value: cursor.actionableAt, keys: [cursor.kind, cursor.itemId]} : null);
 }
 
-function decodeAdminWorkItemCursor(value: string, expectedType: AdminWorkItemType, visibility: AdminWorkItemVisibility, query: ListQuery<WorkItemSort>): AdminWorkItemCursor {
-  const position = decodeListCursor(value, "work-items", [query, expectedType, visibility], "number", 2);
+function decodeAdminWorkItemCursor(value: string, expectedType: AdminWorkItemType, visibility: AdminWorkItemVisibility, query: ListQuery<WorkItemSort>, apiClientId?: string): AdminWorkItemCursor {
+  const position = decodeListCursor(value, "work-items", [query, expectedType, visibility, apiClientId ?? null], "number", 2);
   if (position) {
     const kind = position.keys[0] as AdminWorkItemKind;
     if (position.value === null || !["FINANCIAL_EXCEPTION", "LEDGER_CONFLICT", "NOTIFICATION_FAILURE"].includes(kind) || (expectedType !== "ALL" && expectedType !== kind) || !ORDER_ID_PATTERN.test(position.keys[1]!)) throw new ListQueryError("分页游标无效");
     return {actionableAt: position.value as number, kind, itemId: position.keys[1]!, position};
   }
-  if (!isDefaultQuery(query, visibility === "IGNORED" ? "ignored_at" : "actionable_at", "desc")) throw new ListQueryError("旧游标仅能用于默认查询");
+  if (apiClientId || !isDefaultQuery(query, visibility === "IGNORED" ? "ignored_at" : "actionable_at", "desc")) throw new ListQueryError("旧游标仅能用于默认查询");
   const invalid = () => new HttpApiError(422, "validation_failed", "查询参数校验失败");
   if (!/^[A-Za-z0-9_-]{1,256}$/.test(value)) throw invalid();
   const decoded = Buffer.from(value, "base64url");

@@ -189,11 +189,11 @@ function DashboardContent() {
         <Card size="sm">
           <CardHeader>
             <CardTitle role="heading" aria-level={2}>
-              {clientId ? "全局待处理（不按网站筛选）" : "待处理"}
+              {clientId ? "网站待处理" : "待处理"}
             </CardTitle>
             <CardAction>
               <Link
-                to="/work-items"
+                to={clientId ? "/work-items?api_client_id=" + encodeURIComponent(clientId) : "/work-items"}
                 className={buttonVariants({ variant: "ghost", size: "sm" })}
               >
                 查看全部

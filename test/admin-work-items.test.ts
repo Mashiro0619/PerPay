@@ -38,6 +38,26 @@ const IDS = {
 } as const;
 
 describe("administrator work item projection", () => {
+  it("scopes reminders and bulk ignore by explicit order ownership, leaving unallocated conflicts global", () => {
+    withFixture(({ database, connection }) => {
+      connection.exec("ALTER TABLE payment_orders ADD COLUMN api_client_id TEXT NOT NULL DEFAULT 'site_a'");
+      connection.prepare("UPDATE payment_orders SET api_client_id = 'site_b' WHERE order_id = ?").run(IDS.orderFallback);
+      connection.prepare("INSERT INTO payment_orders(order_id, collection_profile_id, api_client_id) VALUES ('order-exception-lower', 'profile-linked', 'site_a')").run();
+      const page = (apiClientId?: string, visibility: "ACTIVE" | "IGNORED" = "ACTIVE") => adminWorkItemPage(database, { type: "ALL", cursor: null, limit: 20, visibility, ...(apiClientId ? { apiClientId } : {}) });
+      const a = page("site_a"), b = page("site_b");
+      assert.equal(a.items.length, 3); assert.equal(b.items.length, 1);
+      assert.ok(a.items.every(item => item.kind !== "LEDGER_CONFLICT"));
+      assert.ok(!a.items.some(item => item.itemId === IDS.exceptionHigher));
+      const command = { operation_id: randomUUID(), type: "ALL" as const, api_client_id: "site_a" };
+      assert.equal(ignoreAllAdminWorkItems(database, command, { actorId: "admin", now: 4000 }).ignored_count, 3);
+      assert.equal(page("site_a").items.length, 0);
+      assert.equal(page("site_a", "IGNORED").items.length, 3);
+      assert.equal(page("site_b").items.length, 1);
+      assert.equal(page().items.length, 3);
+      assert.equal(ignoreAllAdminWorkItems(database, command, { actorId: "admin", now: 5000 }).ignored_count, 3);
+      assert.throws(() => ignoreAllAdminWorkItems(database, { ...command, api_client_id: "site_b" }, { actorId: "admin", now: 5000 }), AdminOperationError);
+    });
+  });
   it("runs against the current empty application schema", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-admin-work-items-"));
     const database = await AppDatabase.open(join(directory, "perpay.sqlite3"));
@@ -357,6 +377,13 @@ describe("administrator work item projection", () => {
         `/api/admin/v1/webhooks/deliveries/${IDS.retryNewest}`,
       );
       assert.ok(firstBody.page.next_cursor);
+      projectionConnection.exec("ALTER TABLE payment_orders ADD COLUMN api_client_id TEXT NOT NULL DEFAULT 'site_a'");
+      const scopedResponse = await app.request("/api/admin/v1/work-items?api_client_id=site_a&limit=1", { headers: { cookie } });
+      assert.equal(scopedResponse.status, 200);
+      const scoped = await scopedResponse.json() as { page: { next_cursor: string } };
+      assert.ok(scoped.page.next_cursor);
+      assert.equal((await app.request("/api/admin/v1/work-items?api_client_id=site_b&cursor=" + encodeURIComponent(scoped.page.next_cursor), { headers: { cookie } })).status, 422);
+      assert.equal((await app.request("/api/admin/v1/work-items?api_client_id=site_a&api_client_id=site_b", { headers: { cookie } })).status, 422);
 
       const seen = [String(firstBody.data[0]?.resource_id)];
       let cursor: string | null = firstBody.page.next_cursor;

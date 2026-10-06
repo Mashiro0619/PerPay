@@ -101,6 +101,23 @@ describe("reminder type tab layout", () => {
 });
 
 describe("reminder dismissal", () => {
+  it("captures the website in bulk ignore and keeps it in list refreshes", async () => {
+    const requests: Request[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+      requests.push(request.clone());
+      return request.method === "POST" ? json({ data: { ...(await request.json()), ignored_count: 1 } }) : page();
+    }));
+    renderPage("?api_client_id=site_a");
+    const user = userEvent.setup();
+    const button = await screen.findByRole("button", { name: "忽略当前筛选结果" });
+    await waitFor(() => expect(button).toBeEnabled());
+    await user.click(button);
+    expect(await screen.findByText(/仅限业务网站 site_a/)).toBeVisible();
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /确认忽略/ }));
+    await waitFor(() => expect(requests.some(request => request.method === "POST")).toBe(true));
+    expect(await requests.find(request => request.method === "POST")!.json()).toMatchObject({ api_client_id: "site_a", type: "ALL" });
+    expect(requests.filter(request => request.method === "GET").every(request => new URL(request.url).searchParams.get("api_client_id") === "site_a")).toBe(true);
+  });
   it.each(scopes)(
     "dismisses all pages only within %s and refreshes home and every scope",
     async (type, name) => {

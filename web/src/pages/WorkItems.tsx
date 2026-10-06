@@ -1,3 +1,5 @@
+import { SitePicker } from "@/components/site-picker";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { RefreshButton } from "@/components/refresh-button";
 import { DialogBody } from "@/components/admin-dialog";
 import { useListQuery, WORK_ITEM_SORT_FIELDS } from "@/lib/list-query";
@@ -67,6 +69,7 @@ export default function WorkItems() {
     name: string;
     q: string;
     operation_id: string;
+    clientId: string | null;
   } | null>(null);
   const finalFocus = useRef<HTMLElement | null>(null);
   const cancelIgnore = useRef<HTMLButtonElement | null>(null);
@@ -78,6 +81,7 @@ export default function WorkItems() {
           body: {
             operation_id: input.operation_id,
             type: input.type,
+            ...(input.clientId ? { api_client_id: input.clientId } : {}),
             ...(input.q ? { q: input.q } : {}),
           },
         }),
@@ -162,6 +166,9 @@ export default function WorkItems() {
             ))}
           </TabsList>
         </div>
+      <SitePicker value={search.get("api_client_id") ?? ""} disabled={ignore.isPending} onChange={value => { const next = new URLSearchParams(search); if (value) next.set("api_client_id", value); else next.delete("api_client_id"); next.delete("cursor"); next.delete("page"); setSearch(next, { replace: true }); setMessage(""); }} />
+      {search.has("api_client_id") && <Button variant="ghost" disabled={ignore.isPending} onClick={() => { const next = new URLSearchParams(search); next.delete("api_client_id"); next.delete("cursor"); next.delete("page"); setSearch(next, { replace: true }); }}>查看全部网站</Button>}
+        {search.has("api_client_id") && <Alert><AlertTitle>仅显示网站已归属的提醒</AlertTitle><AlertDescription>账本冲突与无法明确归属订单的异常保留在全局视图，请选择“查看全部网站”处理。</AlertDescription></Alert>}
         <TabsContent value={type}>
           <WorkItemPage
             key={type + ":" + visibility}
@@ -179,6 +186,7 @@ export default function WorkItems() {
               ignore.reset();
               setBatch({
                 type,
+                clientId: search.get("api_client_id"),
                 q: (search.get("q") ?? "").trim(),
                 name: filters.find(([value]) => value === type)![1],
                 operation_id: crypto.randomUUID(),
@@ -207,6 +215,7 @@ export default function WorkItems() {
             </AlertDialogTitle>
           </AlertDialogHeader>
           <DialogBody><AlertDialogDescription>
+              {batch?.clientId && <>仅限业务网站 {batch.clientId}，不涉及其他网站及未归属提醒。</>}
               {batch?.q ? (
                 <>
                   关键词“{batch.q}
@@ -256,6 +265,8 @@ function WorkItemPage({
   onIgnore: (trigger?: HTMLElement | null) => void;
 }) {
   const mounted = useMounted();
+  const [siteSearch] = useSearchParams();
+  const clientId = siteSearch.get("api_client_id");
   const pagination = useCursor();
   const sortFields =
     visibility === "IGNORED"
@@ -306,6 +317,7 @@ function WorkItemPage({
       visibility,
       pagination.cursor,
       listQuery.scope,
+      clientId,
     ],
     queryFn: ({ signal }) =>
       result(
@@ -316,6 +328,7 @@ function WorkItemPage({
             visibility,
             limit: 20,
             ...listQuery.apiQuery,
+            ...(clientId ? { api_client_id: clientId } : {}),
             ...(pagination.cursor ? { cursor: pagination.cursor } : {}),
           },
         }),

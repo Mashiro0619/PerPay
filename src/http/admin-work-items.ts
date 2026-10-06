@@ -1,3 +1,4 @@
+import { siteClientIdSchema } from "../sites/model.ts";
 import {
   ListQueryError,
   normalizeKeyword,
@@ -34,6 +35,7 @@ export type AdminWorkItemVisibility =
 export const ignoreAllWorkItemsSchema = z
   .object({
     operation_id: adminOperationIdSchema,
+    api_client_id: siteClientIdSchema.optional(),
     type: z.enum(ADMIN_WORK_ITEM_TYPES),
     q: z.string().transform(normalizeKeyword).optional(),
   })
@@ -92,6 +94,7 @@ export type AdminWorkItem =
   | AdminLedgerConflictWorkItem
   | AdminNotificationFailureWorkItem;
 export interface AdminWorkItemPageInput {
+  readonly apiClientId?: string;
   readonly query?: ListQuery<WorkItemSort>;
   readonly type: AdminWorkItemType;
   readonly visibility?: AdminWorkItemVisibility;
@@ -254,6 +257,7 @@ export function adminWorkItemPage(
   input: AdminWorkItemPageInput,
 ): AdminWorkItemPage {
   validateInput(input);
+  if (input.apiClientId !== undefined) siteClientIdSchema.parse(input.apiClientId);
   const visibility = input.visibility ?? "ACTIVE";
   const defaultSort = visibility === "IGNORED" ? "ignored_at" : "actionable_at";
   const query = normalizeListQuery(
@@ -293,6 +297,7 @@ export function adminWorkItemPage(
       WHERE (? = 'ALL' OR kind = ?) AND ${condition}
         ${seek.where ? "AND " + seek.where : ""}
         ${search.where ? "AND " + search.where : ""}
+        ${input.apiClientId ? "AND order_id IN (SELECT order_id FROM payment_orders WHERE api_client_id = ?)" : ""}
       ORDER BY ${seek.orderBy} LIMIT ?`,
       )
       .all(
@@ -300,6 +305,7 @@ export function adminWorkItemPage(
         input.type,
         ...seek.parameters,
         ...search.parameters,
+        ...(input.apiClientId ? [input.apiClientId] : []),
         input.limit + 1,
       ) as unknown as WorkItemRow[];
     const selected = rows.slice(0, input.limit);
@@ -348,6 +354,7 @@ export function adminIgnoredWorkItemIds(
 }
 
 export interface IgnoreAllResult {
+  readonly api_client_id?: string;
   readonly operation_id: string;
   readonly type: AdminWorkItemType;
   readonly ignored_count: number;
@@ -362,6 +369,7 @@ export function ignoreAllAdminWorkItems(
   const q = parsed.q ?? "";
   const fingerprint = adminFingerprint({
     type: parsed.type,
+    ...(parsed.api_client_id ? { api_client_id: parsed.api_client_id } : {}),
     ...(q ? { q } : {}),
   });
   return database.write((connection) => {
@@ -379,9 +387,10 @@ export function ignoreAllAdminWorkItems(
         WORK_ITEMS_CTE +
           "SELECT kind, item_id FROM work_items WHERE ignored = 0 AND actionable = 1 AND (? = 'ALL' OR kind = ?) " +
           (search.where ? "AND " + search.where : "") +
+          (parsed.api_client_id ? " AND order_id IN (SELECT order_id FROM payment_orders WHERE api_client_id = ?)" : "") +
           " ORDER BY kind, item_id",
       )
-      .all(parsed.type, parsed.type, ...search.parameters) as Array<{
+      .all(parsed.type, parsed.type, ...search.parameters, ...(parsed.api_client_id ? [parsed.api_client_id] : [])) as Array<{
       kind: AdminWorkItemKind;
       item_id: string;
     }>;
@@ -390,6 +399,7 @@ export function ignoreAllAdminWorkItems(
       operation_id: parsed.operation_id,
       type: parsed.type,
       ignored_count: members.length,
+      ...(parsed.api_client_id ? { api_client_id: parsed.api_client_id } : {}),
       ...(q ? { q } : {}),
     };
     recordAdminOperation(connection, {
