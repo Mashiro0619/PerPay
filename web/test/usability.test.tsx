@@ -214,8 +214,8 @@ describe("short feedback and safe settings", () => {
     const heading = await screen.findByRole("heading", { name: "可以收款" });
     expect(heading.parentElement?.querySelector("p")).toBeNull();
     expect(
-      screen.getByText("提醒数仅包含未忽略且仍需处理的事项。"),
-    ).toBeVisible();
+      screen.queryByText("提醒数仅包含未忽略且仍需处理的事项。"),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("收款链路运行正常。")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/详见下方|可查看结果后|仍保留校验约束/),
@@ -406,9 +406,7 @@ describe("short feedback and safe settings", () => {
     expect(await screen.findByText("冲突提醒 2")).toBeVisible();
     expect(screen.getByText("待核对订单 0 · 异常提醒 1")).toBeVisible();
     expect(screen.getByText("待投递 2 · 失败提醒 1")).toBeVisible();
-    expect(
-      screen.getByText("提醒数仅包含未忽略且仍需处理的事项。"),
-    ).toBeVisible();
+    expect(screen.queryByText("提醒数仅包含未忽略且仍需处理的事项。")).not.toBeInTheDocument();
     for (const [title, type] of [
       ["账本采集", "LEDGER_CONFLICT"],
       ["自动确认", "FINANCIAL_EXCEPTION"],

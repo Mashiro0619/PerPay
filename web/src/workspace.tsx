@@ -9,7 +9,6 @@ import {
   type WorkspaceScope,
 } from "@/lib/workspace-scope";
 import { ErrorNotice, QueryView } from "@/components/request-state";
-import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 const WorkspaceContext = createContext<
   WorkspaceScope & { site?: UseQueryResult<{ data: Site }> }
 >({ clientId: null, base: "" });
@@ -58,22 +57,5 @@ export function WorkspaceOutlet() {
         <Outlet />
       </div>
     </div>
-  );
-}
-export function SiteStatusNotice() {
-  const { site } = useWorkspace(),
-    data = site?.data?.data;
-  if (!data || site?.isError) return null;
-  return (
-    <Alert>
-      <AlertTitle>{data.configuration.name}</AlertTitle>
-      <AlertDescription>
-        {data.configuration.accepting_orders
-          ? "接单中"
-          : "已暂停新订单，旧订单仍可处理"}{" "}
-        ·{" "}
-        {data.configuration.notifications_enabled ? "通知已开启" : "通知已关闭"}
-      </AlertDescription>
-    </Alert>
   );
 }

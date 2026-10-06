@@ -1,4 +1,3 @@
-import { SiteStatusNotice } from "@/workspace";
 import { SiteOverviewList } from "@/components/site-overview-list";
 import { SystemStatusBoundary } from "@/features/system-status";
 import {
@@ -106,7 +105,6 @@ function DashboardContent() {
       className="flex w-full min-w-0 flex-col gap-4"
       data-overview-layout
     >
-      {clientId && <SiteStatusNotice />}
       {needsStatus && (
         <div className="flex flex-col gap-4">
           <ErrorNotice

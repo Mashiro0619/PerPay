@@ -211,7 +211,6 @@ function SiteEditor({
   const [confirmation, setConfirmation] = useState<
     "save" | "api" | "webhook" | "delete" | null
   >(null);
-  const [copyError, setCopyError] = useState<Error | null>(null);
   const [revealed, setRevealed] = useState<{
     label: string;
     value: string;
@@ -376,7 +375,7 @@ function SiteEditor({
           </TabsList>
         </Tabs>
       )}
-      <ErrorNotice error={save.error || action.error || copyError} />
+      <ErrorNotice error={save.error || action.error} />
       <SuccessMessage message={feedback} />
       {saved && visible("integration") && (
         <Card>
@@ -398,30 +397,7 @@ function SiteEditor({
               </Field>
             </FieldGroup>
           </CardContent>
-          <CardFooter>
-            <Button
-              variant="outline"
-              onClick={() =>
-                void navigator.clipboard
-                  .writeText(
-                    JSON.stringify(
-                      {
-                        client_id: saved.client_id,
-                        perpay_url: window.location.origin,
-                      },
-                      null,
-                      2,
-                    ),
-                  )
-                  .then(
-                    () => setFeedback("接入信息已复制"),
-                    () => setCopyError(new Error("复制失败，请手动复制。")),
-                  )
-              }
-            >
-              复制接入信息
-            </Button>
-          </CardFooter>
+          
         </Card>
       )}
       <form
@@ -540,7 +516,7 @@ function SiteEditor({
           <CardHeader>
             <CardTitle>网站密钥</CardTitle>
             <CardDescription>
-              轮换后旧密钥失效；只修改当前网站的 PerPay 密钥。
+              轮换后旧密钥立即失效。
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">

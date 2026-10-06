@@ -1,3 +1,5 @@
+import { useWorkspace } from "@/workspace";
+import { SiteIdentity } from "@/components/site-identity";
 import { cn } from "cn";
 import type { AdminOrderSummary } from "@/api/client";
 import { Link } from "@/navigation";
@@ -21,9 +23,7 @@ function OrderStatus({ order }: { order: AdminOrderSummary }) {
         <StatusBadge value={order.payment.status} />
         {order.refund_mark.marked && <StatusBadge value="ADMIN_REFUND_MARK" />}
       </div>
-      <span className="text-xs text-muted-foreground">
-        {order.payment.status === "CONFIRMED" ? "可查看收银台" : checkoutNames[order.checkout.status]}
-      </span>
+      {order.payment.status !== "CONFIRMED" && <span className="text-xs text-muted-foreground">{checkoutNames[order.checkout.status]}</span>}
     </div>
   );
 }
@@ -34,6 +34,7 @@ export function DataTable({
   data: AdminOrderSummary[];
   control?: ListQueryControl;
 }) {
+  const { clientId } = useWorkspace();
   if (!data.length)
     return (
       <Empty>
@@ -74,7 +75,7 @@ export function DataTable({
           >
             {order.merchant_order_no}
           </span>
-          <Link to={"/sites/" + encodeURIComponent(order.api_client_id)} className="text-xs text-muted-foreground break-all hover:underline">{order.site_name ? order.site_name + " · " : ""}{order.api_client_id}</Link>
+          {!clientId && <SiteIdentity clientId={order.api_client_id} name={order.site_name} />}
           {context.showInSummary("created_at") && (
             <time
               className="text-xs text-muted-foreground"

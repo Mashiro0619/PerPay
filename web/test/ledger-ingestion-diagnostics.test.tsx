@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { LedgerIngestionDiagnostics } from "../src/components/ledger-ingestion-diagnostics";
 import type { LedgerDiagnostics } from "../src/api/generated/types.gen";
@@ -16,16 +16,18 @@ describe("ingestion failure presentation", () => {
   it("shows the persisted account count, controlled reason, window and real schedule without action buttons", () => {
     render(<LedgerIngestionDiagnostics diagnostics={diagnostic()} />);
     expect(screen.getByText("采集持续失败")).toBeVisible();
+    fireEvent.click(screen.getByRole("button",{name:"失败详情"}));
     expect(screen.getByText(/账户级连续失败 3 次/)).toBeVisible();
     expect(screen.getByText(/账单流水时间超出/)).toBeVisible();
     expect(screen.getByText(/^失败窗口：/)).toBeVisible();
     expect(screen.getByText(/计划下次尝试：.*12:00:08/)).toBeVisible();
     expect(screen.getByRole("link", { name: "安全恢复指引" })).toHaveAttribute("rel", "noopener noreferrer");
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", {name:/重试|恢复/})).not.toBeInTheDocument();
   });
   it("distinguishes compensation failures from the normal lane", () => {
     const data = diagnostic(); data.latest_failure!.scan_kind = "COMPENSATION_1H";
     render(<LedgerIngestionDiagnostics diagnostics={data} />);
+    fireEvent.click(screen.getByRole("button",{name:"失败详情"}));
     expect(screen.getByText(/历史补采，不代表正常采集也已停止/)).toBeVisible();
     expect(screen.queryByText(/最近失败属于正常采集/)).not.toBeInTheDocument();
   });

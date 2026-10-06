@@ -1,5 +1,5 @@
 import { useQuery } from '@/lib/workspace-query';
-import { useWorkspaceApi } from "@/workspace";
+import { useWorkspace, useWorkspaceApi } from "@/workspace";
 import { Button } from "@/components/ui/button";
 import { SiteIdentity } from "@/components/site-identity";
 import { useRef, useState } from "react";
@@ -52,6 +52,7 @@ export function DeliveryCard({
   sectionTitle?: string;
 }) {
   const api = useWorkspaceApi();
+  const { clientId } = useWorkspace();
   const [snapshot, setSnapshot] = useState<DeliveryContext | null>(null);
   const [sent, setSent] = useState(false);
   const [message, setMessage] = useFeedback();
@@ -122,7 +123,7 @@ export function DeliveryCard({
         <DetailFields
           wide={["所属网站", "通知地址", "重发理由"]}
           items={[
-            ["所属网站", <SiteIdentity clientId={detail.target.api_client_id} name={detail.target.site_name} />],
+            ...(!clientId ? [["所属网站", <SiteIdentity clientId={detail.target.api_client_id} name={detail.target.site_name} />] as const] : []),
             [
               "通知地址",
               <CopyValue
@@ -168,6 +169,7 @@ export function DeliveryCard({
           label="通知记录操作"
           data={detail}
           identifiers={[
+            ["客户端 ID", detail.target.api_client_id],
             ["投递编号", delivery.delivery_id],
             ["事件编号", detail.event.event_id],
           ]}

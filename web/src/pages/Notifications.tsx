@@ -229,7 +229,7 @@ function DeliveryPage({
                                   delivery.order_summary.payable_amount_cents,
                                 )}
                           </span>
-                          <SiteIdentity clientId={delivery.order_summary?.api_client_id} name={delivery.order_summary?.site_name} />
+                          {!clientId && <SiteIdentity clientId={delivery.order_summary?.api_client_id} name={delivery.order_summary?.site_name} />}
                           {context.showInSummary("created_at") && (
                             <time
                               className="text-xs text-muted-foreground"

@@ -131,7 +131,7 @@ export function RefundMarkPanel({
       <RecordTools
         label="订单操作"
         data={order}
-        identifiers={[["内部订单编号", order.order_id]]}
+        identifiers={[["内部订单编号", order.order_id], ["客户端 ID", order.api_client_id]]}
         actions={
           mark.marked || eligible
             ? [

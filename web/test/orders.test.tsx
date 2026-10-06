@@ -387,7 +387,7 @@ describe("responsive order semantics", () => {
     const mobileSummary = within(cells[0]!);
     expect(mobileSummary.getByText("收款已确认")).toBeInTheDocument();
     expect(mobileSummary.getByText("已标记退款")).toBeInTheDocument();
-    expect(mobileSummary.getByText("可查看收银台")).toBeInTheDocument();
+    expect(mobileSummary.queryByText("可查看收银台")).not.toBeInTheDocument();
     expect(cells).toHaveLength(2);
     expect(
       screen.queryByRole("columnheader", { name: "状态" }),

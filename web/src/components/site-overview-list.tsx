@@ -1,3 +1,5 @@
+import { Info } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { siteChoiceLabel } from "@/lib/site-choice-label";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { api, result } from "@/api/client";
@@ -8,7 +10,6 @@ import {
   Card,
   CardHeader,
   CardTitle,
-  CardDescription,
   CardContent,
 } from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -40,11 +41,8 @@ export function SiteOverviewList({ range }: { range: 7 | 30 | 90 }) {
   });
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>各网站概览</CardTitle>
-        <CardDescription>
-          确认与实收按所选区间；待付款与待办为当前状态。
-        </CardDescription>
+      <CardHeader className="flex flex-row items-center gap-1">
+        <CardTitle>各网站概览</CardTitle><Popover><PopoverTrigger render={<Button variant="ghost" size="icon-sm" aria-label="网站指标说明"/>}><Info/></PopoverTrigger><PopoverContent><p>确认与实收按所选区间；待付款与待办为当前数量。一级总数包含全部网站，不受此列表分页影响。</p></PopoverContent></Popover>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <QueryView query={query}>

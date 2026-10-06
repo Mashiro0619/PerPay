@@ -56,8 +56,7 @@ export function SitePolicyFields({
     <FieldGroup>
       {(!section || section === "orders") && (
         <FieldSet className="settings-fields">
-          <FieldLegend>订单设置</FieldLegend>
-          <FieldDescription>金额在所有网站之间统一分配。</FieldDescription>
+          <FieldLegend className={section ? "sr-only" : undefined}>订单设置</FieldLegend>
           <NumberField
             label="订单有效期（秒）"
             error={error("orders.order_ttl_seconds")}
@@ -129,7 +128,7 @@ export function SitePolicyFields({
       )}
       {(!section || section === "display") && (
         <FieldSet>
-          <FieldLegend>收银台展示</FieldLegend>
+          <FieldLegend className={section ? "sr-only" : undefined}>收银台展示</FieldLegend>
           <SiteTextField
             label="收银台名称"
             required

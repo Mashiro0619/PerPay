@@ -1,3 +1,9 @@
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from "@/components/ui/collapsible";
+import { Button } from "@/components/ui/button";
 import { LedgerIngestionDiagnostics } from "@/components/ledger-ingestion-diagnostics";
 import { RefreshButton } from "@/components/refresh-button";
 import { PageHeaderActions } from "@/components/page-header-actions";
@@ -46,9 +52,13 @@ function SystemContent() {
   return (
     <>
       <PageHeaderActions>
-        <RefreshButton disabled={status.isFetching} onClick={() => {
+        <RefreshButton
+          disabled={status.isFetching}
+          onClick={() => {
             void status.refetch();
-          }} busy={status.isFetching} />
+          }}
+          busy={status.isFetching}
+        />
       </PageHeaderActions>
       {checking &&
         (unavailable ? (
@@ -144,16 +154,17 @@ function SystemContent() {
                     <CardTitle role="heading" aria-level={2}>
                       运行环节
                     </CardTitle>
-                    <CardDescription>
-                      {data.work_items === null
-                        ? "提醒统计暂不可用，请刷新重试。"
-                        : "提醒数仅包含未忽略且仍需处理的事项。"}
-                    </CardDescription>
+                    {data.work_items === null && (
+                      <CardDescription>
+                        提醒统计暂不可用，请刷新重试。
+                      </CardDescription>
+                    )}
                   </CardHeader>
                   <CardContent>
                     <ItemGroup>
                       <ComponentStatus
                         title="账本采集"
+                        showMetrics={data.work_items == null || conflicts > 0}
                         enabled={data.ledger.enabled}
                         healthy={ledgerHealthy}
                         summary={
@@ -194,17 +205,25 @@ function SystemContent() {
                         {!data.ledger.collection_ready && (
                           <p>采集尚未就绪或已中断，新订单收款入口暂不可用。</p>
                         )}
-                        <LedgerIngestionDiagnostics diagnostics={data.ledger.diagnostics} />
+                        <LedgerIngestionDiagnostics
+                          diagnostics={data.ledger.diagnostics}
+                        />
                         {data.ledger.last_error_code &&
-                          data.ledger.diagnostics?.latest_failure?.error_code !== data.ledger.last_error_code && (
-                          <p>
-                            最近错误：{data.ledger.last_error_code} · 连续失败{" "}
-                            {data.ledger.consecutive_failures} 次
-                          </p>
-                        )}
+                          data.ledger.diagnostics?.latest_failure
+                            ?.error_code !== data.ledger.last_error_code && (
+                            <p>
+                              最近错误：{data.ledger.last_error_code} · 连续失败{" "}
+                              {data.ledger.consecutive_failures} 次
+                            </p>
+                          )}
                       </ComponentStatus>
                       <ComponentStatus
                         title="自动确认"
+                        showMetrics={
+                          data.work_items == null ||
+                          exceptions > 0 ||
+                          data.reconciliation.pending_orders > 0
+                        }
                         enabled={data.reconciliation.enabled}
                         healthy={reconciliationHealthy}
                         summary={
@@ -244,6 +263,11 @@ function SystemContent() {
                       </ComponentStatus>
                       <ComponentStatus
                         title="业务通知"
+                        showMetrics={
+                          data.work_items == null ||
+                          notificationFailures > 0 ||
+                          data.webhook.pending_deliveries > 0
+                        }
                         enabled={data.webhook.enabled}
                         healthy={webhookHealthy}
                         summary={
@@ -380,7 +404,7 @@ function SystemContent() {
                   data={data}
                   identifiers={[
                     ["实例编号", data.instance_id],
-                    ["支付宝账户", data.provider_account_key],
+                    ["采集来源标识", data.provider_account_key],
                     ["备份文件", data.backup.backup_name],
                     ["备份 SHA-256", data.backup.backup_sha256],
                   ]}
@@ -399,6 +423,7 @@ function ComponentStatus({
   enabled,
   healthy,
   summary,
+  showMetrics = false,
   metrics,
   action,
   children,
@@ -407,6 +432,7 @@ function ComponentStatus({
   enabled: boolean;
   healthy: boolean;
   summary: string;
+  showMetrics?: boolean;
   metrics?: ReactNode;
   action?: ReactNode;
   children?: ReactNode;
@@ -427,8 +453,24 @@ function ComponentStatus({
             {!enabled ? "未启用" : healthy ? "正常" : "需关注"}
           </Badge>
         </ItemTitle>
-        <ItemDescription>{summary}</ItemDescription>
-        {metrics && <ItemDescription>{metrics}</ItemDescription>}
+        {!healthy && <ItemDescription>{summary}</ItemDescription>}
+        {(!healthy || showMetrics) && metrics && (
+          <ItemDescription>{metrics}</ItemDescription>
+        )}
+        {healthy && (
+          <Collapsible>
+            <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
+              查看{title}详情
+            </CollapsibleTrigger>
+            <CollapsibleContent keepMounted>
+              <ItemDescription>{summary}</ItemDescription>
+              {!showMetrics && metrics && (
+                <ItemDescription>{metrics}</ItemDescription>
+              )}
+              {children}
+            </CollapsibleContent>
+          </Collapsible>
+        )}
       </ItemContent>
       {action && <ItemActions className="flex-wrap">{action}</ItemActions>}
       {!healthy && (

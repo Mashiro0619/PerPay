@@ -560,7 +560,7 @@ export function SettingsEditor({
         value={initialSettings.collection_policy?.minimum_scan_interval_seconds ?? initialSettings.provider?.minimum_scan_interval_seconds ?? initialSettings.collection_policy?.active_scan_interval_seconds ?? initialSettings.provider?.active_scan_interval_seconds ?? PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds}
         min={5}
         max={3600}
-        hint="一轮采集完成后至少等待多久才能开始下一轮；手动核实也不能突破，不能大于活跃间隔。分页续采及限流退避由后端管理。"
+        hint="每轮结束后的最短等待，手动核实同样受限；不得大于活跃间隔。"
       />
       <NumberField
         name="safety_lag_seconds"
