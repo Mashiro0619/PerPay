@@ -39,5 +39,13 @@ describe("maintenance documentation version contract", () => {
     assert.ok(documented);
     assert.equal(Number(documented[1]), DATABASE_COMPATIBILITY.maximum);
     assert.ok(usage.includes("docs/maintenance.md#固定版本与回滚"));
+    assert.ok(usage.includes("POST /api/admin/v1/sites"));
+    assert.ok(usage.includes("PUT /api/admin/v1/sites/:clientId"));
+    assert.ok(usage.includes("POST /api/admin/v1/sites/:clientId/secrets/webhook_secret/actions/view"));
+    assert.ok(usage.includes("PUT /api/admin/v1/settings/collection-policy"));
+    assert.ok(usage.includes("实例设置 → 采集设置"));
+    assert.ok(usage.includes("最小间隔 ≤ 活跃间隔 ≤ 常规间隔"));
+    assert.equal(usage.includes("PUT /api/admin/v1/settings/notifications"), false);
+    assert.equal(usage.includes("实例设置 → 支付宝接入 → 账单采集"), false);
   });
 });

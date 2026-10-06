@@ -20,9 +20,10 @@ PerPay 无需在手机上运行挂机监听软件，但服务器需持续运行�
 
 1. 通过 `POST /api/admin/v1/setup` 设置管理员密码，再通过 `POST /api/admin/v1/session/login` 创建管理员会话。
 2. 使用 `POST /api/admin/v1/settings/provider/application-key/actions/generate` 首次生成支付宝应用密钥对（公钥和私钥），再配置支付宝接入与经营码；此首次生成接口保持幂等，不直接替换已有密钥对。需要更换时，使用下述应用公钥变更流程。`POST /api/admin/v1/sites/:clientId/secrets/api_secret/actions/rotate` 生成或轮换的是对应业务网站的 PerPay API 密钥，两者不能混用。
-3. 使用 `PUT /api/admin/v1/settings/notifications` 启用通知并填写网站的 HTTPS Origin，例如 `https://shop.example.com`。这里只填写来源，不填写路径。
-4. 使用密钥 reveal 管理接口查看通知密钥，并只保存到网站后端的环境变量或密钥管理器。
-5. 创建订单时，将 `notify_url` 填成已允许来源下的完整地址，例如 `https://shop.example.com/webhooks/perpay`。
+3. 使用 `POST /api/admin/v1/sites` 创建网站，提交 UUID `operation_id` 和完整 `configuration`，初始 `notifications_enabled` 为 `false`。可先通过 `GET /api/admin/v1/settings/site-defaults` 取得策略模板；客户端 ID 由服务端生成，不能自行指定。
+4. 在该网站下调用 `POST /api/admin/v1/sites/:clientId/secrets/api_secret/actions/rotate` 生成 API 密钥；需要通知时，再调用 `POST /api/admin/v1/sites/:clientId/secrets/webhook_secret/actions/rotate` 生成通知密钥。每次携带最新的网站 `revision`，后一次操作使用前一次响应中的版本。密钥只保存到对应网站后端的环境变量或密钥管理器；已有通知密钥可通过 `POST /api/admin/v1/sites/:clientId/secrets/webhook_secret/actions/view` 显式查看，无需轮换。
+5. 使用 `PUT /api/admin/v1/sites/:clientId` 提交最新 `revision` 与完整 `configuration`，设置 `notifications_enabled: true` 和精确 `notification_origin`，例如 `https://shop.example.com`（只填写来源，不填写路径）。需要返回链接时另行填写 `return_origin`；二者相互独立。全局通知写接口已退役，不再代表某个默认网站。
+6. 创建订单时，将 `notify_url` 填成已允许通知来源下的完整地址，例如 `https://shop.example.com/webhooks/perpay`。完整配置字段及并发控制见[多业务网站指南](docs/multi-site.md#管理接口与查询)。
 
 ### 界面显示
 
@@ -48,33 +49,34 @@ PerPay 无需在手机上运行挂机监听软件，但服务器需持续运行�
 
 1. `POST /api/admin/v1/settings/provider/application-key/actions/regenerate`：提交当前 `revision`、当前 `base_fingerprint` 和新的 UUID `change_id`。首次接入前替换原密钥对；已经接入时只生成加密保存的待启用密钥。重复请求必须保留同一请求体，不会生成另一把密钥。
 2. 从配置响应的 `pending_application_key.public_key` 取得待启用应用公钥，并上传到同一个支付宝应用。`application_public_key` 始终表示 PerPay 当前使用的公钥。
-3. `POST /api/admin/v1/settings/provider/application-key/actions/activate`：提交最新 `revision`、待启用 `change_id`，以及上传新应用公钥后从同一支付宝应用重新获取的 `platform_public_key`（必填，不允许省略或留空，也不会沿用已保存的旧公钥）。服务端使用待启用私钥做一次有超时上限的只读账单查询并验签，成功后才原子切换密钥；失败不更换当前密钥。支付配置版本会在成功启用时递增，支付宝账户身份和历史业务关联不变。
+3. `POST /api/admin/v1/settings/provider/application-key/actions/activate`：提交最新 `revision`、待启用 `change_id`，以及上传新应用公钥后从同一支付宝应用重新获取的 `platform_public_key`（必填，不允许省略或留空，也不会沿用已保存的旧公钥）。服务端使用待启用私钥做一次有超时上限的只读账单查询并验签，成功后才原子切换密钥；失败不更换当前密钥。支付配置版本会在成功启用时递增，内部采集来源代次和历史业务关联不变。
 4. 不再更换时，可调用 `POST /api/admin/v1/settings/provider/application-key/actions/discard`，提交最新 `revision` 与 `change_id`。这不会撤回支付宝侧的上传；若已上传新公钥，应先在支付宝恢复当前应用公钥，并在 PerPay 的支付宝设置中同步恢复后获取的支付宝公钥。
 
 待启用密钥不会因刷新或重启丢失；生成、启用和放弃都有审计记录，私钥不出现在这些响应中。存在待启用变更时不能切换支付宝应用或再生成另一把公钥。数据库迁移 28 增加密钥变更表，不改写原密钥、配置或业务数据；当前最新 schema 为 34（1.0.0 开发分支；部署前确认对应版本已发布，v0.3.2 镜像最高支持 33）：迁移 29 将 API 客户端身份与凭证分离，30 增加自定义支付系统名称，31 增加可选商家帮助链接，32 增加默认关闭的管理员 IP 白名单，33 增加最小采集间隔与持久化调度保护，34 将网站策略和业务密钥无损迁移到独立网站模型。升级与回滚请按[维护与恢复](docs/maintenance.md#固定版本与回滚)核对构建兼容范围，并保留数据库备份和主密钥。
 
 ## 账本采集节奏
 
-在 **实例设置 → 支付宝接入 → 账单采集** 中配置两个间隔，首次向导中也直接展示：
+在 **实例设置 → 采集设置** 中配置三个间隔，与支付宝应用配置独立保存；这些是 PerPay 自定义策略，不是支付宝官方参数：
 
 | 设置 | 新配置默认值 | 使用时机 |
 | --- | --- | --- |
 | 常规采集间隔（`scan_interval_seconds`） | 60 秒 | 没有有效待支付订单，且收尾期已结束。 |
-| 活跃采集间隔（`active_scan_interval_seconds`） | 8 秒 | 当前采集账户仍有未过期的 `OPEN / UNPAID` 订单，或有尚在收尾期的未支付订单。 |
+| 活跃采集间隔（`active_scan_interval_seconds`） | 8 秒 | 当前共享采集来源仍有未过期的 `OPEN / UNPAID` 订单，或有尚在收尾期的未支付订单。 |
+| 采集最小间隔（`minimum_scan_interval_seconds`） | 8 秒 | 收银台手动核实可以提前请求下一轮，但不得早于上一轮完成后的最小等待时间。 |
 
-两个间隔均为 5～3600 秒的整数，活跃间隔不能大于常规间隔；两者相同即保持固定频率。新配置的采集有效时限默认为 120 秒，须至少为常规间隔的两倍，安全延迟也不能超过该有效时限。保存后由运行时热更新，无须重启进程。
+三个间隔均为 5～3600 秒的整数，必须满足 **最小间隔 ≤ 活跃间隔 ≤ 常规间隔**；活跃与常规相同时自动采集保持固定基础频率。新配置的采集有效时限默认为 120 秒，须至少为常规间隔的两倍，安全延迟也不能超过该有效时限。保存后由运行时热更新，无须重启进程，不清空既有最小等待、限流或失败退避。
 
 订单关闭或过期后，仍未支付的订单会保留 `max(60 秒, 安全延迟 + 活跃间隔)` 的自动收尾期，以减少临近结束付款的发现延迟；已确认到账的订单不再需要收尾。所有订单共享同一个采集任务，重启后从数据库重新判断当前模式。收尾期结束不代表停止查账，常规采集与既有补扫仍会处理迟到流水。
 
-**升级不会自动改变已有采集频率：** 原间隔会同时成为常规和活跃间隔，例如原来的 10 秒会保留为 10／10 秒。希望启用 60／8 秒时，请主动调整后台设置。管理 API 更新支付宝配置时，若省略 `active_scan_interval_seconds`，两档均使用请求中的 `scan_interval_seconds`，以兼容旧客户端。
+**升级不会自动改变已有采集频率：** 从 0.3.2 升级保留三个间隔及持久化调度保护；更早的迁移分别用原常规值初始化活跃间隔、用原活跃值初始化最小间隔，不自动提高请求频率。1.0.0 使用 `PUT /api/admin/v1/settings/collection-policy`，须提交当前实例 `revision` 和完整策略：`timeout_milliseconds`、`scan_interval_seconds`、`active_scan_interval_seconds`、`minimum_scan_interval_seconds`、`safety_lag_seconds`、`maximum_success_age_seconds`。不再通过支付宝接入接口提交采集字段；缺失字段或约束冲突明确报错，不静默调整其他间隔。
 
-间隔指上一轮采集完成后的正常等待时间，不是到账确认时限或严格的请求频率上限。5 秒采集仍受安全延迟、支付宝流水可见时间与请求耗时影响；限流、失败退避和补扫续跑规则继续生效，新订单不会绕过冷却。采集日志中的 `scan_mode`（`normal / active / tail`）和 `scan_interval_milliseconds` 可用于核对当前模式与基础间隔。
+间隔按上一轮完成到下一轮开始计算，不是分页请求之间的间隔或到账确认时限。活跃 8 秒、最小 5 秒时，完成后第 4 秒点击核实，最早第 5 秒启动；完成后再按活跃间隔等待 8 秒。已有采集任务时复用，多个网站的核实请求合并；最小间隔不抢占补采、分页续采或覆盖限流和失败退避。5 秒采集仍受安全延迟、支付宝流水可见时间与请求耗时影响，新订单不会绕过冷却。采集日志中的 `scan_mode`（`normal / active / tail`）和 `scan_interval_milliseconds` 可用于核对当前模式与基础间隔。
 
 ### 金额复用冷却与付款截止
 
 在 **业务网站 → 选择网站 → 订单设置** 中直接配置“金额复用冷却（秒）”，默认 600 秒（10 分钟），范围 60～3600 秒。管理 API 字段为 `amount_reuse_cooldown_seconds`；网站配置按完整对象及网站版本保存，修改不追溯改变历史订单。
 
-- 每笔订单在创建时固定其冷却参数。修改设置不改变已有订单；升级时已有订单采用 600 秒快照，但不会重置历史结束时间、扩展付款窗口或重新确认历史付款。
+- 每笔订单在创建时固定其冷却参数。修改设置及升级 1.0.0 均保留已有快照，不重置历史结束时间、扩展付款窗口或重新确认历史付款。只有早期引入冷却字段的迁移对原本没有该字段的订单初始化 600 秒快照。
 - 主动关闭从关闭时刻计算冷却，自然过期从原定到期时刻计算，不因后台较晚处理过期而重新开始计时。已到账订单也不会提前复用金额。
 - 从小到大选择未占用且满足冷却条件的应付金额；已冷却的较小尾差优先于从未使用过的较大尾差。已展示的应付金额不会改变。换码或重启不会清空冷却。
 - **冷却不是补付宽限期。** 在订单有效期内实际付款、但较晚采集到流水，仍可正常自动确认；关闭或过期后才实际付款，不自动补认原订单，入账仍保留并按现有异常流程处理。
@@ -398,9 +400,9 @@ export async function receivePerPayWebhook(request) {
 - 订单和通知列表只按**创建日期**筛选，日期统一北京时间；通知的创建日期指投递记录创建日期。支持全部、今天、昨天、近 7／30 天和自定义范围。
 - GET 管理订单及通知列表增加可选 `created_from`、`created_to`（`YYYY-MM-DD`）。必须成对，包含起止两天；服务端使用左闭右开时间范围。日期参与游标绑定，切换日期后重置分页，旧链接无日期时行为不变。
 - 订单列表显示付款确认时间，手机默认隐藏，可从列菜单展开。时间来自最近一次 `PAYMENT_CONFIRMED` 事件，不是支付宝交易发生时间；争议订单仍保留历史确认时间。
-- 在订单列表选择创建日期后点击“导出 CSV”，导出当前关键词、状态、日期与排序的**全部结果**，不是当前页。最多 10,000 条、日期跨度最多 366 天，超限须缩小范围；不导出业务通知。
-- 接口为 `POST /api/admin/v1/orders/export`，请求包含必填日期及可选 `q`、`payment_status`、`checkout_status`、`sort_by`、`sort_order`。使用管理员会话、同源及 CSRF 校验，不使用业务 API 签名；读取请求后复核会话。
-- 文件包含商户／内部订单号、商品、原始／应付／实收金额、币种、当前付款／收银台状态、创建／付款确认时间。金额两位小数，空实收不同于零；采用 UTF-8 BOM、CSV 转义和公式注入防护。备注、通知正文、密钥及收银台能力链接不导出。
+- 在订单列表选择网站和创建日期后点击“导出 CSV”，导出当前网站范围、关键词、状态、日期与排序的**全部结果**，不是当前页。最多 10,000 条、日期跨度最多 366 天，超限须缩小范围；不导出业务通知。
+- 接口为 `POST /api/admin/v1/orders/export`，请求包含必填日期及可选 `api_client_id`、`q`、`payment_status`、`checkout_status`、`sort_by`、`sort_order`。订单、通知列表及其分页游标同样绑定网站筛选。使用管理员会话、同源及 CSRF 校验，不使用业务 API 签名；读取请求后复核会话。
+- 文件包含网站名称／客户端 ID、商户／内部订单号、商品、原始／应付／实收金额、币种、当前付款／收银台状态、创建／付款确认时间。金额两位小数，空实收不同于零；采用 UTF-8 BOM、CSV 转义和公式注入防护。备注、通知正文、密钥及收银台能力链接不导出。
 - 导出使用单个一致的数据库读取快照，不触发订单到期处理或修改财务记录。它是订单明细，**不是到账日结或净收入报表**；收款已确认也不代表通知已送达。
 
 配置表单的请求／通知超时以秒显示，备份间隔可用秒、小时或天；API 仍使用原有毫秒／秒字段，转换不舍入。采集组“采用推荐值”只改草稿，保存后才生效，加载不覆盖旧配置。备份策略保存不表示任务已启动或恢复已验证，参见[启用与验证备份](docs/maintenance.md#启用与验证备份)。
