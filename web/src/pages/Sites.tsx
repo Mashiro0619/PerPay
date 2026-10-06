@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
 import { api, ApiError, queryClient, result, type Site, type SiteConfiguration, type SitePolicy } from "@/api/client";
@@ -53,6 +53,13 @@ function SiteEditor({ initial, configuration }: { initial: Site | null; configur
   const [confirmation, setConfirmation] = useState<"save" | "api" | "webhook" | "delete" | null>(null);
   const [copyError, setCopyError] = useState<Error | null>(null);
   const [revealed, setRevealed] = useState<{ label: string; value: string } | null>(null);
+  const secretDisplayGeneration = useRef(0);
+  useEffect(() => () => { secretDisplayGeneration.current++; }, []);
+  const hideSecret = () => {
+    secretDisplayGeneration.current++;
+    setRevealed(null);
+    // Do not reset/abort the mutation: hiding is not cancellation of a committed rotation.
+  };
   const [feedback, setFeedback] = useFeedback();
   const cacheSite = (site: Site) => queryClient.setQueryData(["site-editor", site.client_id], { site, configuration: site.configuration });
   const save = useMutation({ networkMode: "always", retry: false,
@@ -69,13 +76,17 @@ function SiteEditor({ initial, configuration }: { initial: Site | null; configur
       if (!saved) return;
       const path = { clientId: saved.client_id };
       if (kind === "delete") { await result(api.deleteSite({ path, body: { revision: saved.revision } })); clearDraft(); queryClient.removeQueries({ queryKey: ["site-editor", saved.client_id], exact: true }); void queryClient.invalidateQueries({ queryKey: ["sites"] }); void queryClient.invalidateQueries({ queryKey: ["settings"] }); void navigate("/sites"); return; }
+      const displayGeneration = ++secretDisplayGeneration.current;
       if (kind === "view-api" || kind === "view-webhook") {
         const response = await result(kind === "view-api" ? api.viewSiteApiSecret({ path, body: {} }) : api.viewSiteWebhookSecret({ path, body: {} }));
-        setRevealed({ label: kind === "view-api" ? "API 密钥" : "通知签名密钥", value: response.data.secret }); return;
+        if (displayGeneration === secretDisplayGeneration.current) setRevealed({ label: kind === "view-api" ? "API 密钥" : "通知签名密钥", value: response.data.secret });
+        return;
       }
       const response = await result(kind === "api" ? api.rotateSiteApiSecret({ path, body: { revision: saved.revision } }) : api.rotateSiteWebhookSecret({ path, body: { revision: saved.revision } }));
       cacheSite(response.data.site);
-      setSaved(response.data.site); setRevealed({ label: kind === "api" ? "API 密钥" : "通知签名密钥", value: response.data.secret }); setFeedback("密钥已生成或轮换，请更新业务网站配置。");
+      setSaved(response.data.site);
+      if (displayGeneration === secretDisplayGeneration.current) setRevealed({ label: kind === "api" ? "API 密钥" : "通知签名密钥", value: response.data.secret });
+      setFeedback("密钥已生成或轮换，请更新业务网站配置。");
     },
   });
   const errors = save.error instanceof ApiError ? save.error.fields : {};
@@ -96,7 +107,7 @@ function SiteEditor({ initial, configuration }: { initial: Site | null; configur
       <SitePolicyFields value={draft.policy} errors={errors} onChange={policy => change(p => { p.policy = policy; })} />
     </FieldGroup></CardContent><CardFooter><Button type="submit" disabled={busy}>{save.isPending ? "正在保存…" : "保存网站"}</Button></CardFooter></Card></FieldSet></form>
     {saved && <Card><CardHeader><CardTitle>网站密钥与删除</CardTitle><CardDescription>轮换后旧密钥失效；删除仅允许没有历史订单的网站。</CardDescription></CardHeader><CardContent className="flex flex-wrap gap-2"><Button variant="outline" disabled={busy} onClick={() => action.mutate("view-api")}>查看 API 密钥</Button><Button variant="outline" disabled={busy} onClick={() => setConfirmation("api")}>生成／轮换 API 密钥</Button><Button variant="outline" disabled={busy} onClick={() => action.mutate("view-webhook")}>查看通知密钥</Button><Button variant="outline" disabled={busy} onClick={() => setConfirmation("webhook")}>生成／轮换通知密钥</Button><Button variant="destructive" disabled={busy} onClick={() => setConfirmation("delete")}>删除空网站</Button></CardContent></Card>}
-    {revealed && <Card><CardHeader><CardTitle>{revealed.label}</CardTitle><CardDescription>仅在当前页面显示，请勿发送给其他网站。</CardDescription></CardHeader><CardContent><Input aria-label={revealed.label} readOnly value={revealed.value} autoComplete="off" /></CardContent><CardFooter><Button variant="outline" onClick={() => { setRevealed(null); action.reset(); }}>隐藏密钥</Button></CardFooter></Card>}
+    {revealed && <Card><CardHeader><CardTitle>{revealed.label}</CardTitle><CardDescription>仅在当前页面显示，请勿发送给其他网站。隐藏不会撤销已提交的生成或轮换操作。</CardDescription></CardHeader><CardContent><Input aria-label={revealed.label} readOnly value={revealed.value} autoComplete="off" /></CardContent><CardFooter><Button variant="outline" onClick={hideSecret}>隐藏密钥</Button></CardFooter></Card>}
     <AlertDialog open={confirmation !== null} onOpenChange={open => { if (!open) setConfirmation(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>确认{confirmation === "delete" ? "删除网站" : confirmation === "save" ? "保存配置" : "生成或轮换密钥"}？</AlertDialogTitle><AlertDialogDescription>{confirmation === "delete" ? "此操作不能撤销，客户端 ID 不会再次使用。有历史订单的网站只能暂停接单。" : confirmation === "save" ? "网站参数将用于后续新订单和通知；历史金额、有效期和经营码关联不会修改。" : "如果已有密钥，本次会使其退役。请同步更新对应业务网站，失败时不要盲目再次轮换，应先查看当前密钥。"}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>取消</AlertDialogCancel><AlertDialogAction disabled={busy} onClick={() => { const selected = confirmation; setConfirmation(null); if (selected === "save") save.mutate(); else if (selected) action.mutate(selected); }}>确认</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
   </div>;
 }
