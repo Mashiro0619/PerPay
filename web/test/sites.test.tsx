@@ -147,3 +147,35 @@ describe("website field feedback", () => {
     expect(view.writes).toHaveLength(2); expect(screen.getByLabelText("帮助链接")).toHaveAttribute("aria-invalid", "false");
   });
 });
+
+describe("website editor cache consistency", () => {
+  it("reopens a saved website with its current configuration and revision", async () => {
+    const view = mount(); const user = userEvent.setup();
+    const name = await screen.findByLabelText("网站名称"); fireEvent.change(name, { target: { value: "保存后的名字" } });
+    await user.click(screen.getByRole("button", { name: "保存网站" })); await user.click(await screen.findByRole("button", { name: "确认" }));
+    await screen.findByText("网站配置已保存");
+    await act(async () => { await view.router.navigate("/sites"); });
+    await act(async () => { await view.router.navigate("/sites/site_test"); });
+    expect(await screen.findByLabelText("网站名称")).toHaveValue("保存后的名字");
+    await user.click(screen.getByRole("button", { name: "保存网站" })); await user.click(await screen.findByRole("button", { name: "确认" }));
+    await waitFor(() => expect(view.writes).toHaveLength(2)); expect(view.writes[1]!.body.revision).toBe(1);
+  });
+  it("keeps key rotation revisions on reentry without caching the revealed secret", async () => {
+    const view = mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "生成／轮换 API 密钥" }));
+    await user.click(await screen.findByRole("button", { name: "确认" }));
+    await screen.findByDisplayValue("synthetic-site-key");
+    expect(JSON.stringify(queryClient.getQueryData(["site-editor", "site_test"]))).not.toContain("synthetic-site-key");
+    await act(async () => { await view.router.navigate("/sites"); });
+    await act(async () => { await view.router.navigate("/sites/site_test"); });
+    expect(screen.queryByDisplayValue("synthetic-site-key")).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "保存网站" })); await user.click(await screen.findByRole("button", { name: "确认" }));
+    await waitFor(() => expect(view.writes).toHaveLength(2)); expect(view.writes[1]!.body.revision).toBe(1);
+  });
+  it("evicts the deleted website editor instead of keeping a usable-looking cached form", async () => {
+    const view = mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "删除空网站" })); await user.click(await screen.findByRole("button", { name: "确认" }));
+    await waitFor(() => expect(view.router.state.location.pathname).toBe("/sites"));
+    expect(queryClient.getQueryData(["site-editor", "site_test"])).toBeUndefined();
+  });
+});

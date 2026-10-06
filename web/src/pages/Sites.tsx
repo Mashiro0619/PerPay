@@ -54,9 +54,11 @@ function SiteEditor({ initial, configuration }: { initial: Site | null; configur
   const [copyError, setCopyError] = useState<Error | null>(null);
   const [revealed, setRevealed] = useState<{ label: string; value: string } | null>(null);
   const [feedback, setFeedback] = useFeedback();
+  const cacheSite = (site: Site) => queryClient.setQueryData(["site-editor", site.client_id], { site, configuration: site.configuration });
   const save = useMutation({ networkMode: "always", retry: false,
     mutationFn: async () => saved ? result(api.updateSite({ path: { clientId: saved.client_id }, body: { revision: saved.revision, configuration: draft } })) : result(api.createSite({ body: { operation_id: operationId, configuration: draft } })),
     onSuccess: response => {
+      cacheSite(response.data);
       setSaved(response.data); setDraft(structuredClone(response.data.configuration)); setBaseline(JSON.stringify(response.data.configuration)); clearDraft(); setFeedback("网站配置已保存");
       void queryClient.invalidateQueries({ queryKey: ["sites"] });
       if (!saved) { void queryClient.invalidateQueries({ queryKey: ["settings"] }); void navigate("/sites/" + response.data.client_id); }
@@ -66,12 +68,13 @@ function SiteEditor({ initial, configuration }: { initial: Site | null; configur
     mutationFn: async (kind: "api" | "webhook" | "view-api" | "view-webhook" | "delete"): Promise<void> => {
       if (!saved) return;
       const path = { clientId: saved.client_id };
-      if (kind === "delete") { await result(api.deleteSite({ path, body: { revision: saved.revision } })); clearDraft(); void queryClient.invalidateQueries({ queryKey: ["sites"] }); void queryClient.invalidateQueries({ queryKey: ["settings"] }); void navigate("/sites"); return; }
+      if (kind === "delete") { await result(api.deleteSite({ path, body: { revision: saved.revision } })); clearDraft(); queryClient.removeQueries({ queryKey: ["site-editor", saved.client_id], exact: true }); void queryClient.invalidateQueries({ queryKey: ["sites"] }); void queryClient.invalidateQueries({ queryKey: ["settings"] }); void navigate("/sites"); return; }
       if (kind === "view-api" || kind === "view-webhook") {
         const response = await result(kind === "view-api" ? api.viewSiteApiSecret({ path, body: {} }) : api.viewSiteWebhookSecret({ path, body: {} }));
         setRevealed({ label: kind === "view-api" ? "API 密钥" : "通知签名密钥", value: response.data.secret }); return;
       }
       const response = await result(kind === "api" ? api.rotateSiteApiSecret({ path, body: { revision: saved.revision } }) : api.rotateSiteWebhookSecret({ path, body: { revision: saved.revision } }));
+      cacheSite(response.data.site);
       setSaved(response.data.site); setRevealed({ label: kind === "api" ? "API 密钥" : "通知签名密钥", value: response.data.secret }); setFeedback("密钥已生成或轮换，请更新业务网站配置。");
     },
   });
