@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import type { RuntimeSettings } from "../src/api/client";
+import type { RuntimeSettings, Site, SiteConfiguration, SitePolicy } from "../src/api/client";
 import { json } from "./fixtures";
 import { configuredThrough, mountOnboarding } from "./onboarding-fixture";
 
@@ -69,5 +69,39 @@ describe("website-aware instance settings", () => {
     expect(screen.getByRole("heading", { name: "网站与备份" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "保存通知" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "生成 API 密钥" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "请先创建业务网站" })).toBeDisabled();
+  });
+
+  it("returns from website creation with refreshed setup completion without generating API credentials", async () => {
+    let data = instanceSettings();
+    let site: Site | null = null;
+    const writes: string[] = [];
+    const policy: SitePolicy = {
+      orders: { order_ttl_seconds: 300, amount_offset_maximum_cents: 99, amount_reuse_cooldown_seconds: 600, pending_order_limit: null },
+      display: { checkout_name: "网站收银台", checkout_help_url: null, checkout_show_product_name: true },
+      notification_delivery: { timeout_milliseconds: 5000, maximum_attempts: 12, retry_base_seconds: 5, retry_maximum_seconds: 3600 },
+    };
+    const view = mountOnboarding({ stage: 4, path: "/settings/onboarding", handle: request => {
+      const path = new URL(request.url).pathname;
+      if (request.method !== "GET") writes.push(path);
+      if (path === "/api/admin/v1/settings") return json({ data });
+      if (path.endsWith("/site-defaults")) return json({ data: { revision: 0, policy } });
+      if (path === "/api/admin/v1/sites" && request.method === "POST") return request.json().then((body: { configuration: SiteConfiguration }) => {
+        site = { client_id: "site_created", revision: 0, configuration: body.configuration, created_at: "2026-10-06T00:00:00.000Z", updated_at: "2026-10-06T00:00:00.000Z", deleted_at: null };
+        data = { ...data, completion: { ...data.completion, sites: true } };
+        return json({ data: site }, 201);
+      });
+      if (path === "/api/admin/v1/sites/site_created") return json({ data: site });
+      return undefined;
+    } });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "创建业务网站" }));
+    await user.type(await screen.findByRole("textbox", { name: "网站名称" }), "测试网站");
+    await user.click(screen.getByRole("button", { name: "保存网站" }));
+    await user.click(await screen.findByRole("button", { name: "确认" }));
+    await waitFor(() => expect(view.router.state.location.pathname).toBe("/sites/site_created"));
+    await user.click(await screen.findByRole("link", { name: "回到配置向导" }));
+    expect(await screen.findByRole("heading", { name: "收款检查" })).toBeVisible();
+    expect(writes).toEqual(["/api/admin/v1/sites"]);
   });
 });

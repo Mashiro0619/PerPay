@@ -38,7 +38,7 @@ import {
 import { useVisibleCheck } from "@/lib/use-visible-check";
 import { Link, useNavigate } from "@/navigation";
 import { CopyValue } from "@/components/copy-value";
-import { ErrorNotice, QueryView } from "@/components/request-state";
+import { ErrorNotice, QueryView, Loading } from "@/components/request-state";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
@@ -137,6 +137,7 @@ export default function Onboarding() {
             <OnboardingFlow
               key={editorVersion}
               settings={data}
+              resolvingSettings={settings.isFetching}
               instanceId={instance.data?.data.instance_id ?? null}
               onReload={reload}
               onActivationLockChange={setActivationLocked}
@@ -149,11 +150,13 @@ export default function Onboarding() {
 }
 function OnboardingFlow({
   settings,
+  resolvingSettings,
   instanceId,
   onReload,
   onActivationLockChange,
 }: {
   settings: RuntimeSettings;
+  resolvingSettings: boolean;
   instanceId: string | null;
   onReload: () => void;
   onActivationLockChange: (locked: boolean) => void;
@@ -184,7 +187,8 @@ function OnboardingFlow({
     if (next) void navigate(onboardingPath(next));
   }
   if (requested === "api") return <Navigate to={settings.site_mode ? "/sites" : "/settings/security"} replace />;
-  if (requested !== step) return <Navigate to={onboardingPath(step)} replace />;
+  // Do not redirect based on an invalidated cached setup snapshot while its refresh is in flight.
+  if (requested !== step) return resolvingSettings ? <Loading /> : <Navigate to={onboardingPath(step)} replace />;
   const completed = [
     settings.completion.application_key,
     settings.completion.provider && !pendingApplicationKey,
@@ -627,7 +631,7 @@ function OptionalSettings({
         </section>
       </div>
       {renderActions(
-        <Link className={buttonVariants()} to={onboardingPath("check")}>
+        settings.site_mode && !settings.completion.sites ? <Button disabled>请先创建业务网站</Button> : <Link className={buttonVariants()} to={onboardingPath("check")}>
           继续
         </Link>,
       )}

@@ -59,14 +59,14 @@ function SiteEditor({ initial, configuration }: { initial: Site | null; configur
     onSuccess: response => {
       setSaved(response.data); setDraft(structuredClone(response.data.configuration)); setBaseline(JSON.stringify(response.data.configuration)); clearDraft(); setFeedback("网站配置已保存");
       void queryClient.invalidateQueries({ queryKey: ["sites"] });
-      if (!saved) void navigate("/sites/" + response.data.client_id);
+      if (!saved) { void queryClient.invalidateQueries({ queryKey: ["settings"] }); void navigate("/sites/" + response.data.client_id); }
     },
   });
   const action = useMutation({ networkMode: "always", retry: false,
     mutationFn: async (kind: "api" | "webhook" | "view-api" | "view-webhook" | "delete"): Promise<void> => {
       if (!saved) return;
       const path = { clientId: saved.client_id };
-      if (kind === "delete") { await result(api.deleteSite({ path, body: { revision: saved.revision } })); clearDraft(); void queryClient.invalidateQueries({ queryKey: ["sites"] }); void navigate("/sites"); return; }
+      if (kind === "delete") { await result(api.deleteSite({ path, body: { revision: saved.revision } })); clearDraft(); void queryClient.invalidateQueries({ queryKey: ["sites"] }); void queryClient.invalidateQueries({ queryKey: ["settings"] }); void navigate("/sites"); return; }
       if (kind === "view-api" || kind === "view-webhook") {
         const response = await result(kind === "view-api" ? api.viewSiteApiSecret({ path, body: {} }) : api.viewSiteWebhookSecret({ path, body: {} }));
         setRevealed({ label: kind === "view-api" ? "API 密钥" : "通知签名密钥", value: response.data.secret }); return;
@@ -79,6 +79,7 @@ function SiteEditor({ initial, configuration }: { initial: Site | null; configur
   const change = (edit: (next: SiteConfiguration) => void) => { const next = structuredClone(draft); edit(next); setDraft(next); setFeedback(""); save.reset(); };
   return <div className="flex flex-col gap-6">
     <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-2xl font-semibold">{saved ? "编辑业务网站" : "创建业务网站"}</h2><Link to="/sites" className={buttonVariants({ variant: "outline" })}>返回网站列表</Link></div>
+    {saved && <Link to="/settings/onboarding/check" className={buttonVariants({ variant: "outline", className: "w-fit" })}>回到配置向导</Link>}
     <ErrorNotice error={save.error || action.error || copyError} /><SuccessMessage message={feedback} />
     {saved && <Card><CardHeader><CardTitle>接入信息</CardTitle><CardDescription>客户端 ID 不可修改。PerPay API 密钥不是支付宝开放平台密钥。</CardDescription></CardHeader><CardContent><FieldGroup><Field><FieldLabel>客户端 ID<Input readOnly value={saved.client_id} /></FieldLabel></Field><Field><FieldLabel>PerPay 地址<Input readOnly value={window.location.origin} /></FieldLabel></Field></FieldGroup></CardContent><CardFooter><Button variant="outline" onClick={() => void navigator.clipboard.writeText(JSON.stringify({ client_id: saved.client_id, perpay_url: window.location.origin }, null, 2)).then(() => setFeedback("接入信息已复制"), () => setCopyError(new Error("复制失败，请手动复制。")))}>复制接入信息</Button></CardFooter></Card>}
     <form onSubmit={event => { event.preventDefault(); setConfirmation("save"); }}><FieldSet disabled={busy}><Card><CardHeader><CardTitle>网站配置</CardTitle><CardDescription>保存后独立生效，不跟随网站默认模板变化。</CardDescription></CardHeader><CardContent><FieldGroup>
