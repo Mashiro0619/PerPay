@@ -7,7 +7,7 @@ export const NavigationContext = createContext<(() => void) | null>(null);
 export const useNavigationMenu = () => useContext(NavigationContext);
 
 export function isPrivateRoute(pathname: string) {
-  return ["settings", "test-payment", "login", "setup"].includes(pathname.split("/")[1] ?? "");
+  return ["settings", "sites", "test-payment", "login", "setup"].includes(pathname.split("/")[1] ?? "");
 }
 
 function useRouteMotion() {
