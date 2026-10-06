@@ -161,7 +161,7 @@ function BackupIntervalField({
   return (
     <Field data-invalid={!!error}>
       <FieldLabel htmlFor="setting-interval_seconds">备份间隔</FieldLabel>
-      <div className="flex items-center gap-2">
+      <div className="flex max-w-xs items-center gap-2">
         <Input
           id="setting-interval_seconds"
           name="interval_seconds"
@@ -506,11 +506,11 @@ export function SettingsEditor({
       </Field>
   );
   const providerCollection = (
-    <FieldGroup className="grid sm:grid-cols-2">
+    <FieldGroup className="settings-fields">
       <Button
         type="button"
         variant="outline"
-        className="w-fit sm:col-span-2"
+        className="w-fit col-span-full"
         onClick={recommendedProvider}
       >
         采用推荐值
@@ -646,7 +646,7 @@ export function SettingsEditor({
               </FieldError>
             )}
           </Field>
-          <FieldGroup className="grid sm:grid-cols-2">
+          <FieldGroup className="settings-fields">
             <NumberField
               name="timeout_milliseconds"
               error={fieldErrors.timeout_milliseconds}
@@ -688,7 +688,7 @@ export function SettingsEditor({
   const backupFields = (
     <FieldGroup>
       <BackupStatus />
-      <FieldGroup className="grid sm:grid-cols-2">
+      <FieldGroup className="settings-fields">
         <BackupIntervalField
           value={initialSettings.backup.interval_seconds}
           error={fieldErrors.interval_seconds}
@@ -718,17 +718,18 @@ export function SettingsEditor({
     </FieldGroup>
   );
   const displayRowClassName =
-    "gap-3 @md/field-group:grid @md/field-group:min-h-8 @md/field-group:grid-cols-[10rem_minmax(0,1fr)] @md/field-group:*:self-center";
+    "gap-2";
   const displayFields = (
     <FieldGroup className="gap-6">
       <Field
-        orientation="responsive"
+        orientation="vertical"
         className={displayRowClassName}
         data-invalid={!!fieldErrors.system_name}
       >
         <FieldLabel htmlFor="setting-system-name">支付系统名称</FieldLabel>
         <FieldContent className="min-w-0">
           <Input
+            className="max-w-md"
             id="setting-system-name"
             name="system_name"
             required
@@ -748,7 +749,7 @@ export function SettingsEditor({
       </Field>
       {!settings.site_mode && <>
       <Field
-        orientation="responsive"
+        orientation="vertical"
         className={displayRowClassName}
         data-invalid={!!fieldErrors.checkout_help_url}
       >
@@ -775,7 +776,7 @@ export function SettingsEditor({
         </FieldContent>
       </Field>
       </>}
-      <Field orientation="responsive" className={displayRowClassName}>
+      <Field orientation="vertical" className={displayRowClassName}>
         <FieldLabel id="dashboard-chart-type-label">首页图表样式</FieldLabel>
         <FieldContent className="min-w-0 items-start">
           <input type="hidden" name="dashboard_chart_type" value={chartType} />
@@ -806,7 +807,7 @@ export function SettingsEditor({
         </FieldContent>
       </Field>
       {!settings.site_mode && <>
-      <Field orientation="responsive" className={displayRowClassName}>
+      <Field orientation="vertical" className={displayRowClassName}>
         <FieldLabel htmlFor="checkout-show-product-name">
           收银台显示商品名称
         </FieldLabel>
@@ -824,7 +825,7 @@ export function SettingsEditor({
   );
   const advancedFields = (
     <FieldGroup>
-      <FieldGroup className="grid sm:grid-cols-2">
+      <FieldGroup className="settings-fields">
         <NumberField
           name="checkout_key_rotation_days"
           error={fieldErrors.checkout_key_rotation_days}

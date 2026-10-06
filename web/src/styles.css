@@ -227,3 +227,13 @@
     --sidebar-ring: oklch(0.556 0 0);
   }
 }
+
+/* Settings have their own reading width, independent of wide tables/charts. */
+.admin-settings-layout { width: 100%; max-width: 56rem; }
+.admin-settings-layout [data-slot="field"] { min-width: 0; }
+.admin-settings-layout input[type="number"] { width: 100%; max-width: 12rem; }
+.admin-settings-layout [data-slot="field"][data-orientation="horizontal"] { max-width: 28rem; }
+.admin-settings-layout [data-slot="field"][data-orientation="horizontal"] > [data-slot="field-label"] { flex: 0 1 auto; }
+.settings-fields { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 1.25rem 2rem; }
+.settings-fields > [data-slot="field-legend"], .settings-fields > [data-slot="field-description"] { grid-column: 1 / -1; }
+@container main (min-width: 38rem) { .settings-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

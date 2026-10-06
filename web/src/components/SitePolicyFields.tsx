@@ -23,6 +23,7 @@ export function SitePolicyFields({
   onChange: (value: SitePolicy) => void;
   errors?: Readonly<Record<string, string>>;
 }) {
+  const limitId = useId();
   const error = (path: string) =>
     errors["configuration.policy." + path] ?? errors["policy." + path];
   const change = (edit: (next: SitePolicy) => void) => {
@@ -33,7 +34,7 @@ export function SitePolicyFields({
   return (
     <FieldGroup>
       {(!section || section === "orders") && (
-        <FieldSet>
+        <FieldSet className="settings-fields">
           <FieldLegend>订单设置</FieldLegend>
           <FieldDescription>
             以下是 PerPay 的网站订单规则。金额占用仍由整个实例统一管理。
@@ -64,6 +65,7 @@ export function SitePolicyFields({
           />
           <NumberField
             label="金额复用冷却（秒）"
+            hint="冷却结束后优先复用最小尾差；历史订单期限不变。"
             error={error("orders.amount_reuse_cooldown_seconds")}
             value={value.orders.amount_reuse_cooldown_seconds}
             min={60}
@@ -74,37 +76,34 @@ export function SitePolicyFields({
               })
             }
           />
-          <FieldDescription>
-            冷却结束后可再次分配，系统优先使用最小可用尾差；不修改历史订单的冷却期限。
-          </FieldDescription>
+
           <Field data-invalid={!!error("orders.pending_order_limit")}>
-            <FieldLabel>
-              待付款订单上限
-              <Input
-                aria-invalid={!!error("orders.pending_order_limit")}
-                aria-describedby={
-                  error("orders.pending_order_limit")
-                    ? "site-order-limit-error"
-                    : undefined
-                }
-                aria-label="待付款订单上限"
-                type="number"
-                min={1}
-                step={1}
-                value={value.orders.pending_order_limit ?? ""}
-                onChange={(e) =>
-                  change((p) => {
-                    p.orders.pending_order_limit =
-                      e.target.value === "" ? null : Number(e.target.value);
-                  })
-                }
-              />
-            </FieldLabel>
+            <FieldLabel htmlFor={limitId}>待付款订单上限</FieldLabel>
+            <Input
+              id={limitId}
+              aria-invalid={!!error("orders.pending_order_limit")}
+              aria-describedby={
+                error("orders.pending_order_limit")
+                  ? limitId + "-error"
+                  : undefined
+              }
+              aria-label="待付款订单上限"
+              type="number"
+              min={1}
+              step={1}
+              value={value.orders.pending_order_limit ?? ""}
+              onChange={(e) =>
+                change((p) => {
+                  p.orders.pending_order_limit =
+                    e.target.value === "" ? null : Number(e.target.value);
+                })
+              }
+            />
             <FieldDescription>
               留空表示不限。这不是预留金额槽位，也不保证收款容量。
             </FieldDescription>
             {error("orders.pending_order_limit") && (
-              <FieldError id="site-order-limit-error">
+              <FieldError id={limitId + "-error"}>
                 {error("orders.pending_order_limit")}
               </FieldError>
             )}
@@ -152,7 +151,7 @@ export function SitePolicyFields({
         </FieldSet>
       )}
       {(!section || section === "integration") && (
-        <FieldSet>
+        <FieldSet className="settings-fields">
           <FieldLegend>通知投递策略</FieldLegend>
           <NumberField
             label="通知超时（毫秒）"
@@ -214,7 +213,9 @@ function NumberField({
   max,
   onChange,
   error,
+  hint,
 }: {
+  hint?: string;
   label: string;
   value: number;
   min: number;
@@ -222,28 +223,33 @@ function NumberField({
   onChange: (value: number) => void;
   error?: string | undefined;
 }) {
-  const errorId = useId();
+  const errorId = useId(),
+    inputId = errorId + "-input";
   return (
     <Field data-invalid={!!error}>
-      <FieldLabel>
-        {label}
-        <Input
-          aria-describedby={error ? errorId : undefined}
-          aria-invalid={!!error}
-          aria-label={label}
-          required
-          type="number"
-          min={min}
-          max={max}
-          step={1}
-          value={Number.isFinite(value) ? value : ""}
-          onChange={(e) =>
-            onChange(
-              e.target.value === "" ? Number.NaN : Number(e.target.value),
-            )
-          }
-        />
-      </FieldLabel>
+      <FieldLabel htmlFor={inputId}>{label}</FieldLabel>
+      <Input
+        id={inputId}
+        aria-describedby={
+          [hint && errorId + "-hint", error && errorId]
+            .filter(Boolean)
+            .join(" ") || undefined
+        }
+        aria-invalid={!!error}
+        aria-label={label}
+        required
+        type="number"
+        min={min}
+        max={max}
+        step={1}
+        value={Number.isFinite(value) ? value : ""}
+        onChange={(e) =>
+          onChange(e.target.value === "" ? Number.NaN : Number(e.target.value))
+        }
+      />
+      {hint && (
+        <FieldDescription id={errorId + "-hint"}>{hint}</FieldDescription>
+      )}
       {error && <FieldError id={errorId}>{error}</FieldError>}
     </Field>
   );
@@ -271,7 +277,10 @@ export function SiteTextField({
   const id = useId(),
     errorId = id + "-error";
   return (
-    <Field data-invalid={!!error}>
+    <Field
+      className={type === "text" ? "max-w-md" : undefined}
+      data-invalid={!!error}
+    >
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <Input
         id={id}

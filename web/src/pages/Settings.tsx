@@ -82,7 +82,7 @@ export default function Settings() {
     });
   }
   return (
-    <div className="@container/settings flex w-full min-w-0 flex-col gap-6">
+    <div className="admin-settings-layout @container/settings flex w-full min-w-0 flex-col gap-6">
       <PageHeaderActions>
         <Link
           className={buttonVariants({ variant: "ghost", size: "sm" })}

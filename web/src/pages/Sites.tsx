@@ -350,7 +350,7 @@ function SiteEditor({
     save.reset();
   };
   return (
-    <div className="flex flex-col gap-6">
+    <div className="admin-settings-layout flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-2xl font-semibold">
           {saved ? saved.configuration.name + " · 网站设置" : "创建业务网站"}
@@ -389,16 +389,10 @@ function SiteEditor({
           <CardContent>
             <FieldGroup>
               <Field>
-                <FieldLabel>
-                  客户端 ID
-                  <Input readOnly value={saved.client_id} />
-                </FieldLabel>
+                <FieldLabel htmlFor="site-client-id">客户端 ID</FieldLabel><Input id="site-client-id" readOnly value={saved.client_id} />
               </Field>
               <Field>
-                <FieldLabel>
-                  PerPay 地址
-                  <Input readOnly value={window.location.origin} />
-                </FieldLabel>
+                <FieldLabel htmlFor="site-base-url">PerPay 地址</FieldLabel><Input id="site-base-url" readOnly value={window.location.origin} />
               </Field>
             </FieldGroup>
           </CardContent>
@@ -717,7 +711,7 @@ function DefaultsEditor({
     },
   });
   return (
-    <div className="flex flex-col gap-6">
+    <div className="admin-settings-layout flex flex-col gap-6">
       <h2 className="text-2xl font-semibold">网站默认模板</h2>
       <p>只用于以后创建网站时预填表单，不会覆盖已有网站。</p>
       <ErrorNotice error={save.error} />

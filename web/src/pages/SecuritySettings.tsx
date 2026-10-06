@@ -117,7 +117,7 @@ export function SecuritySettings({
   });
   return (
     <>
-      <div className="grid min-w-0 items-start gap-4 @5xl/settings:grid-cols-2">
+      <div className="grid min-w-0 items-start gap-4 @3xl/settings:grid-cols-2">
         <AdminAccessSettings settings={settings} onSaved={onSaved} />
         <Card>
           <CardHeader>
@@ -703,7 +703,7 @@ function PasswordForm() {
         <CardContent>
           <FieldSet disabled={change.isPending}>
             <FieldGroup>
-              <FieldGroup className="grid sm:grid-cols-2">
+              <FieldGroup className="settings-fields">
                 <Field data-invalid={invalidField === "password"}>
                   <FieldLabel htmlFor="new-password">新密码</FieldLabel>
                   <Input

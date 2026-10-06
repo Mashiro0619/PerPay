@@ -39,8 +39,8 @@ describe("instance display settings", () => {
     const rows = [...displayFields.children];
     expect(rows).toHaveLength(4);
     for (const row of rows) {
-      expect(row).toHaveAttribute("data-orientation", "responsive");
-      expect(row).toHaveClass("@md/field-group:grid-cols-[10rem_minmax(0,1fr)]");
+      expect(row).toHaveAttribute("data-orientation", "vertical");
+      expect(row).not.toContainElement(row.querySelector("label input"));
     }
     expect(rows[0]).toContainElement(name);
     expect(rows[2]).toContainElement(screen.getByRole("group", { name: "首页图表样式" }));
