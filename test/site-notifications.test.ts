@@ -47,6 +47,30 @@ function networkFailure(): never {
 }
 
 describe("website notification processing", () => {
+  it("rejects a cross-site signing reference at insertion and detects it if update protections were bypassed", async () => {
+    const f = await createSitePaymentFixture();
+    try {
+      const a = configure(f, "A"), b = configure(f, "B");
+      createEvent(f, a.clientId, "https://a.example.com/notify");
+      const webhooks = new WebhookStore(f.database); webhooks.materialize(10, f.now(), a.clientId);
+      const claim = webhooks.claimNext({ clientId: a.clientId, siteRevision: a.revision, now: f.now(), maximumAttempts: 3, leaseMilliseconds: 30000 });
+      assert.ok(claim);
+      const otherKey = f.database.read(db => Number(db.prepare("SELECT key_version FROM webhook_signing_keys WHERE client_id = ? AND retired_at IS NULL").get(b.clientId)?.key_version));
+      assert.throws(() => f.database.write(db => db.prepare(`INSERT INTO webhook_attempts
+        (attempt_id, delivery_id, attempt_number, lease_token, key_version, request_timestamp, request_body_fingerprint, outcome, started_at)
+        SELECT ?, delivery_id, attempt_number, lease_token, ?, request_timestamp, request_body_fingerprint, outcome, started_at
+        FROM webhook_attempts WHERE attempt_id = ?`).run(randomUUID(), otherKey, claim.attempt.attemptId)), /notification signing key belongs to another website/);
+      const rewrite = (version: number | bigint) => f.database.write(db => {
+        const trigger = String(db.prepare("SELECT sql FROM sqlite_schema WHERE name = 'webhook_attempts_valid_update'").get()!.sql);
+        db.exec("DROP TRIGGER webhook_attempts_valid_update");
+        db.prepare("UPDATE webhook_attempts SET key_version = ? WHERE attempt_id = ?").run(version, claim.attempt.attemptId);
+        db.exec(trigger);
+      });
+      rewrite(otherKey);
+      const integrity = f.database.integrityCheck(); assert.equal(integrity.schema, "ok"); assert.equal(integrity.ok, false); assert.ok(integrity.domainViolations > 0);
+      rewrite(claim.key.keyVersion); assert.equal(f.database.integrityCheck().ok, true);
+    } finally { f.close(); }
+  });
   it("fairly selects sites and signs every attempt with its own website key", async () => {
     const f = await createSitePaymentFixture();
     try {

@@ -11,6 +11,26 @@ function prepared() {
   return { ...f, store, input };
 }
 describe("website transactional store", () => {
+  it("rolls back website identity and deletion when audit append fails", () => {
+    const f = prepared();
+    try {
+      const snapshot = () => Object.fromEntries(["api_client_config", "api_client_keys", "sites", "site_creation_requests", "audit_events"].map(table =>
+        [table, f.connection.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
+      const fail = () => f.connection.exec("CREATE TEMP TRIGGER reject_site_audit BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT, 'injected site audit failure'); END;");
+      const input = f.input(), beforeCreate = snapshot();
+      fail(); assert.throws(() => f.store.create(input, audit), /injected site audit failure/);
+      assert.deepEqual(snapshot(), beforeCreate);
+      f.connection.exec("DROP TRIGGER reject_site_audit");
+      const site = f.store.create(input, audit);
+      f.store.rotateSecret(site.clientId, "api_secret", site.revision, audit);
+      const beforeDelete = snapshot();
+      fail(); assert.throws(() => f.store.delete(site.clientId, 1, audit), /injected site audit failure/);
+      assert.deepEqual(snapshot(), beforeDelete); assert.ok(f.store.credential(site.clientId));
+      f.connection.exec("DROP TRIGGER reject_site_audit");
+      f.store.delete(site.clientId, 1, audit);
+      assert.equal(f.store.credential(site.clientId), null);
+    } finally { f.close(); }
+  });
   it("creates two independent identities without changing instance settings", () => {
     const f = prepared();
     try {

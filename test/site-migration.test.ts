@@ -6,6 +6,7 @@ import { RuntimeSecretCipher } from "../src/settings/crypto.ts";
 import { fingerprintApiSecret } from "../src/identity/service.ts";
 import { fingerprintSecret } from "../src/settings/model.ts";
 import { countSiteDomainViolations } from "../src/sites/integrity.ts";
+import { SiteSecretCipher } from "../src/sites/crypto.ts";
 import { createSiteFixture } from "./site-fixture.ts";
 
 function seedLegacy() {
@@ -28,6 +29,34 @@ function schema(f: ReturnType<typeof createSiteFixture>) {
   return f.connection.prepare("SELECT type, name, sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY type, name").all();
 }
 describe("multi-site schema migration", () => {
+  it("rolls back all schema and data after failing midway through business-key re-encryption", t => {
+    const f = seedLegacy();
+    try {
+      const beforeSchema = schema(f);
+      const secrets = f.connection.prepare("SELECT * FROM runtime_secrets ORDER BY secret_name").all();
+      const keys = f.connection.prepare("SELECT * FROM webhook_signing_keys").all();
+      const original = SiteSecretCipher.prototype.encrypt;
+      let calls = 0;
+      const injected = t.mock.method(SiteSecretCipher.prototype, "encrypt", function(this: SiteSecretCipher, ...args: Parameters<SiteSecretCipher["encrypt"]>) {
+        if (++calls === 2) {
+          assert.equal(f.connection.prepare("SELECT count(*) AS n FROM site_secrets").get()?.n, 1n);
+          throw new Error("injected second-key encryption failure");
+        }
+        return original.apply(this, args);
+      });
+      assert.throws(() => f.migrate(), /injected second-key/);
+      assert.equal(calls, 2);
+      assert.deepEqual(schema(f), beforeSchema);
+      assert.deepEqual(f.connection.prepare("SELECT * FROM runtime_secrets ORDER BY secret_name").all(), secrets);
+      assert.deepEqual(f.connection.prepare("SELECT * FROM webhook_signing_keys").all(), keys);
+      assert.equal(f.connection.prepare("SELECT 1 FROM sqlite_temp_schema WHERE name LIKE 'perpay_v34_%'").get(), undefined);
+      injected.mock.restore();
+      f.migrate();
+      assert.equal(f.store().credential("default")?.secret, f.api);
+      assert.equal(f.store().notificationSecret("default"), f.webhook);
+      assert.equal(countSiteDomainViolations(f.connection), 0);
+    } finally { f.close(); }
+  });
   it("preserves old credential history without enabling an API key whose material was never stored", () => {
     const f = createSiteFixture();
     try {
