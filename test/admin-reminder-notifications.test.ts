@@ -13,7 +13,7 @@ it("continues retrying ignored notifications, retains dismissal through final fa
     const context = { actorId: "admin", requestId: "ignore-notification", remoteAddressHash: "a".repeat(64) };
     const store = fixture.webhooks;
     const now = Date.now(); assert.equal(store.materialize(10, now), 1);
-    const first = store.claimNext({ now, leaseMilliseconds: 10_000, maximumAttempts: 2 }); assert.ok(first);
+    const first = store.claimNext({ clientId: "default", siteRevision: fixture.services.sites.get("default")!.revision, now, leaseMilliseconds: 10_000, maximumAttempts: 2 }); assert.ok(first);
     function finish(attempt: ClaimedWebhookAttempt, at: number, acknowledged = false) {
       return store.completeAttempt({ deliveryId: attempt.delivery.deliveryId, attemptId: attempt.attempt.attemptId,
         leaseToken: attempt.attempt.leaseToken, outcome: acknowledged ? "ACKNOWLEDGED" : "RETRYABLE_FAILURE", now: at,
@@ -26,7 +26,7 @@ it("continues retrying ignored notifications, retains dismissal through final fa
     const ignored = ignoreAllAdminWorkItems(fixture.database, { operation_id: randomUUID(), type: "NOTIFICATION_FAILURE" }, context);
     assert.equal(ignored.ignored_count, 1); assert.deepEqual(store.counts(), { pending: 1, dead: 0 });
     assert.equal(adminWorkItemPage(fixture.database, { type: "ALL", cursor: null, limit: 20 }).items.length, 0);
-    const retry = store.claimNext({ now: failed.nextAttemptAt, leaseMilliseconds: 10_000, maximumAttempts: 2 }); assert.ok(retry);
+    const retry = store.claimNext({ clientId: "default", siteRevision: fixture.services.sites.get("default")!.revision, now: failed.nextAttemptAt, leaseMilliseconds: 10_000, maximumAttempts: 2 }); assert.ok(retry);
     assert.equal(retry.delivery.deliveryId, failed.deliveryId);
     assert.equal(adminWorkItemPage(fixture.database, { type: "NOTIFICATION_FAILURE", visibility: "IGNORED", cursor: null, limit: 20 }).items[0]?.ended, false);
     const dead = finish(retry, failed.nextAttemptAt + 1); assert.equal(dead.status, "DEAD_LETTER");
@@ -37,14 +37,14 @@ it("continues retrying ignored notifications, retains dismissal through final fa
     assert.equal(analytics.notifications.failed, 1, "operational failure counts must not be hidden");
     const replay = store.replay({ redeliveryId: randomUUID(), deliveryId: dead.deliveryId, actorId: "admin", reason: "new isolated redelivery", activeAllowedOrigin: allowedOrigin, now: dead.updatedAt + 1 });
     assert.notEqual(replay.delivery.deliveryId, dead.deliveryId);
-    const redelivery = store.claimNext({ now: replay.delivery.nextAttemptAt, leaseMilliseconds: 10_000, maximumAttempts: 2 }); assert.ok(redelivery);
+    const redelivery = store.claimNext({ clientId: "default", siteRevision: fixture.services.sites.get("default")!.revision, now: replay.delivery.nextAttemptAt, leaseMilliseconds: 10_000, maximumAttempts: 2 }); assert.ok(redelivery);
     const newFailure = finish(redelivery, replay.delivery.nextAttemptAt + 1);
     assert.deepEqual(adminWorkItemPage(fixture.database, { type: "ALL", cursor: null, limit: 20 }).items.map((item) => item.itemId), [newFailure.deliveryId]);
     const originalHistory = adminWorkItemPage(fixture.database, { type: "NOTIFICATION_FAILURE", visibility: "IGNORED", cursor: null, limit: 20 });
     assert.equal(originalHistory.items[0]?.ended, true);
     const ignoreNew = ignoreAllAdminWorkItems(fixture.database, { operation_id: randomUUID(), type: "NOTIFICATION_FAILURE" }, context);
     assert.equal(ignoreNew.ignored_count, 1);
-    const final = store.claimNext({ now: newFailure.nextAttemptAt, leaseMilliseconds: 10_000, maximumAttempts: 2 }); assert.ok(final);
+    const final = store.claimNext({ clientId: "default", siteRevision: fixture.services.sites.get("default")!.revision, now: newFailure.nextAttemptAt, leaseMilliseconds: 10_000, maximumAttempts: 2 }); assert.ok(final);
     assert.equal(finish(final, newFailure.nextAttemptAt + 1, true).status, "ACKNOWLEDGED");
     const history = adminWorkItemPage(fixture.database, { type: "NOTIFICATION_FAILURE", visibility: "IGNORED", cursor: null, limit: 20 });
     assert.equal(history.items.length, 2); assert.ok(history.items.every((item) => item.ended));

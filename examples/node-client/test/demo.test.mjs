@@ -18,7 +18,7 @@ const orderId = '11111111-1111-4111-8111-111111111111';
 const keyId = '22222222-2222-4222-8222-222222222222';
 const no = 'DEMO-test-001';
 const input = { merchant_order_no: no, amount: '0.01', product_name: '示例商品', note: '', confirm_real_payment: true };
-const config = { url: origin, secret: secret.toString('base64url'), port: 6196, database: ':memory:', notifyUrl: 'https://shop.example.com/webhooks/perpay', webhookSecret: secret };
+const config = { clientId: 'default', url: origin, secret: secret.toString('base64url'), port: 6196, database: ':memory:', notifyUrl: 'https://shop.example.com/webhooks/perpay', webhookSecret: secret };
 const payload = () => orderPayload(input, config);
 const snapshot = (version = 1, status = 'UNPAID') => ({ order_id: orderId, merchant_order_no: no, requested_amount_cents: 1, payable_amount_cents: 2, received_amount_cents: status === 'UNPAID' ? null : 2, currency: 'CNY', payment_status: status, refund_status: 'NONE', version });
 function webhook({ eventId = randomUUID(), deliveryId = randomUUID(), version = 2, status = 'CONFIRMED', timestamp = Date.now(), extra = {} } = {}) {
@@ -31,7 +31,7 @@ function webhook({ eventId = randomUUID(), deliveryId = randomUUID(), version = 
   return { bytes, headers, event };
 }
 async function serverFixture(t, overrides = {}) {
-  const store = new DemoStore(':memory:', origin);
+  const store = new DemoStore(':memory:', origin, config.clientId);
   const client = overrides.client ?? { createOrder: async () => { throw new DemoError(502, 'synthetic network failure'); } };
   const app = createDemoServer({ config: { ...config, ...overrides }, store, client });
   app.server.listen(0, '127.0.0.1'); await once(app.server, 'listening');
@@ -44,18 +44,25 @@ async function serverFixture(t, overrides = {}) {
 describe('standalone PerPay caller demo', () => {
   it('signs exact UTF-8 bytes with second timestamps and fresh nonces', () => {
     const body = Buffer.from(JSON.stringify(payload()));
-    const first = signRequest(secret, 'POST', '/api/v1/orders', body, 2000000000123);
-    const second = signRequest(secret, 'POST', '/api/v1/orders', body, 2000000000123);
+    const first = signRequest(secret, config.clientId, 'POST', '/api/v1/orders', body, 2000000000123);
+    const second = signRequest(secret, config.clientId, 'POST', '/api/v1/orders', body, 2000000000123);
     const text = ['PERPAY-HMAC-SHA256', 'v1', 'POST', '/api/v1/orders', '2000000000', first['x-perpay-nonce'], 'default', createHash('sha256').update(body).digest('hex')].join('\n');
     assert.equal(first['x-perpay-signature'], createHmac('sha256', secret).update(text).digest('hex'));
     assert.notEqual(first['x-perpay-nonce'], second['x-perpay-nonce']);
     assert.equal(Buffer.from(first['x-perpay-nonce'], 'base64url').length, 32);
   });
+  it('requires an explicit website and includes it in signature material', () => {
+    assert.throws(() => new PerPayClient({ ...config, clientId: undefined }), /PERPAY_CLIENT_ID/);
+    const first = signRequest(secret, 'site_first', 'GET', '/api/v1/orders/test', Buffer.alloc(0), 2000000000123, 'fixed_nonce');
+    const second = signRequest(secret, 'site_second', 'GET', '/api/v1/orders/test', Buffer.alloc(0), 2000000000123, 'fixed_nonce');
+    assert.equal(first['x-perpay-client-id'], 'site_first');
+    assert.notEqual(first['x-perpay-signature'], second['x-perpay-signature']);
+  });
   it('rejects placeholder keys, unsafe URLs and arbitrary request targets', () => {
     assert.throws(() => decodeKey('replace-me', 'API'));
     for (const url of ['http://remote.example', 'https://user:pass@example.com', 'https://example.com/admin', 'https://example.com/?x=1']) assert.throws(() => perpayOrigin(url));
     assert.equal(perpayOrigin(origin), origin);
-    assert.throws(() => signRequest(secret, 'GET', 'https://evil.example', Buffer.alloc(0)));
+    assert.throws(() => signRequest(secret, config.clientId, 'GET', 'https://evil.example', Buffer.alloc(0)));
   });
   it('requires explicit real-order confirmation and parses decimal amounts without floats', () => {
     assert.throws(() => orderPayload({ ...input, confirm_real_payment: false }, config));
@@ -63,7 +70,7 @@ describe('standalone PerPay caller demo', () => {
     for (const amount of ['0', '1e2', '1.001', '100.01', '-1']) assert.throws(() => orderPayload({ ...input, amount }, config));
   });
   it('requires callbacks by default rather than silently switching to manual queries', () => {
-    const env = { PERPAY_URL: origin, PERPAY_API_SECRET: secret.toString('base64url') };
+    const env = { PERPAY_CLIENT_ID: config.clientId, PERPAY_URL: origin, PERPAY_API_SECRET: secret.toString('base64url') };
     for (const incomplete of [env, { ...env, DEMO_NOTIFY_URL: config.notifyUrl }, { ...env, PERPAY_WEBHOOK_SECRET: secret.toString('base64url') }]) {
       assert.throws(() => readConfig(incomplete), /DEMO_NOTIFY_URL.*PERPAY_WEBHOOK_SECRET/);
     }
@@ -88,7 +95,7 @@ describe('standalone PerPay caller demo', () => {
     await assert.rejects(client.createOrder(payload()), error => error instanceof DemoError && !error.message.includes(secret.toString('base64url')));
   });
   it('persists immutable parameters before retries and rejects changes to the same business number', () => {
-    const store = new DemoStore(':memory:', origin);
+    const store = new DemoStore(':memory:', origin, config.clientId);
     try { store.prepare(payload()); assert.deepEqual(store.prepare(payload()).request, payload()); assert.throws(() => store.prepare({ ...payload(), amount_cents: 99 })); assert.equal(store.list().length, 1); }
     finally { store.close(); }
   });
@@ -100,7 +107,7 @@ describe('standalone PerPay caller demo', () => {
     const mismatch = webhook({ extra: { event_id: randomUUID() } }); assert.throws(() => verifyWebhook(mismatch.headers, mismatch.bytes, secret));
   });
   it('deduplicates events, rejects conflicting event bodies and ignores lower versions', () => {
-    const store = new DemoStore(':memory:', origin);
+    const store = new DemoStore(':memory:', origin, config.clientId);
     try {
       store.prepare(payload()); const signed = webhook(); const verified = verifyWebhook(signed.headers, signed.bytes, secret);
       assert.equal(store.receive(verified), 'updated'); assert.equal(store.receive(verified), 'duplicate');
@@ -111,18 +118,19 @@ describe('standalone PerPay caller demo', () => {
     } finally { store.close(); }
   });
   it('does not apply a valid signature to an order with a mismatched amount', () => {
-    const store = new DemoStore(':memory:', origin);
+    const store = new DemoStore(':memory:', origin, config.clientId);
     try { store.prepare(payload()); const signed = webhook({ extra: { requested_amount_cents: 2 } }); assert.throws(() => store.receive(verifyWebhook(signed.headers, signed.bytes, secret))); assert.equal(store.events().length, 0); assert.equal(store.get(no).snapshot, null); }
     finally { store.close(); }
   });
   it('preserves receipt deduplication and pending orders after a restart', () => {
     const directory = mkdtempSync(join(tmpdir(), 'perpay-demo-test-'));
-    let store = new DemoStore(join(directory, 'demo.sqlite3'), origin);
+    let store = new DemoStore(join(directory, 'demo.sqlite3'), origin, config.clientId);
     try {
       store.prepare(payload()); const signed = webhook(); const verified = verifyWebhook(signed.headers, signed.bytes, secret); store.receive(verified); store.close();
-      store = new DemoStore(join(directory, 'demo.sqlite3'), origin);
+      store = new DemoStore(join(directory, 'demo.sqlite3'), origin, config.clientId);
       assert.equal(store.receive(verified), 'duplicate'); assert.equal(store.get(no).snapshot.version, 2);
-      assert.throws(() => new DemoStore(join(directory, 'demo.sqlite3'), 'https://other.example'));
+      assert.throws(() => new DemoStore(join(directory, 'demo.sqlite3'), 'https://other.example', config.clientId));
+      assert.throws(() => new DemoStore(join(directory, 'demo.sqlite3'), origin, 'site_other'));
     } finally { store.close(); if (dirname(resolve(directory)) !== resolve(tmpdir()) || !basename(directory).startsWith('perpay-demo-test-')) throw new Error('unsafe cleanup'); rmSync(directory, { recursive: true }); }
   });
   it('rejects off-origin checkout URLs', () => {

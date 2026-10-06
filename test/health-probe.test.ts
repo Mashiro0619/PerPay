@@ -95,7 +95,7 @@ describe("public health probe caching", () => {
       const conflicts = t.mock.method(ledger, "conflictSummary");
       const exceptions = t.mock.method(reconciliation, "exceptionSummary");
       let paymentRevision = 2; let transitioning = false;
-      let account = services.settings.snapshot().activeProviderAccountKey;
+      let account = services.settings.instanceSnapshot().activeProviderAccountKey;
       const app = createApp({ ...services, ledger, reconciliation, startedAt: new Date(),
         runtimeStatus: () => ({ configured: true, transitioning, paymentRevision,
           activeProviderAccountKey: account,

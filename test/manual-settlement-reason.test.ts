@@ -1,3 +1,4 @@
+import { withLegacyPaymentFixture } from "./legacy-payment-fixture.ts";
 import { apiClientCredentialsDowngradeSql } from "./api-client-schema-fixture.ts";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -100,7 +101,7 @@ describe("optional manual settlement reasons", () => {
   });
 
   it("preserves old reasons and fingerprints during migration and supports backup/restore of missing reasons", async () => {
-    await withHttpFixture(async (fixture) => {
+    await withLegacyPaymentFixture(async (fixture) => {
       const order = fixture.createOrder("legacy-reason", 999);
       const entry = fixture.recordCredit("legacy-reason-entry", 900, 1);
       const legacy = fixture.reconciliation.settleManually({ financialOperationId: randomUUID(), orderId: order.orderId, ledgerEntryId: entry.ledgerEntryId, actorId: "admin", reason: "历史核对理由" });
@@ -117,7 +118,7 @@ describe("optional manual settlement reasons", () => {
       try {
         previous.exec(`${apiClientCredentialsDowngradeSql()} DROP TABLE provider_application_key_changes; DELETE FROM schema_migrations WHERE version = 28; DROP TRIGGER financial_operations_reason_required; DELETE FROM schema_migrations WHERE version = 27;`);
       } finally { previous.close(); }
-      const upgraded = await AppDatabase.open(databasePath);
+      const upgraded = await AppDatabase.open(databasePath, { masterKey: fixture.services.config.masterKey });
       const backupPath = join(fixture.directory, "manual-optional-backup.sqlite3");
       const input = { financialOperationId: randomUUID(), orderId: newOrder.orderId, ledgerEntryId: newEntry.ledgerEntryId, actorId: "admin", reason: null };
       try {
@@ -140,9 +141,18 @@ describe("optional manual settlement reasons", () => {
         ).run(randomUUID(), "invalid-reverse-" + randomUUID(), input.financialOperationId)), /financial operation reason is required/);
       } finally { restored.close(); }
       // A missing reason must not be accepted as old v26 evidence by backup verification.
-      const damaged = new DatabaseSync(backupPath);
+      const damaged = new DatabaseSync(databasePath + ".pre-migration-v26-to-v34.sqlite3", { readBigInts: true });
       try {
-        damaged.exec(`${apiClientCredentialsDowngradeSql()} DROP TABLE provider_application_key_changes; DELETE FROM schema_migrations WHERE version = 28; DROP TRIGGER financial_operations_reason_required; DELETE FROM schema_migrations WHERE version = 27;`);
+        assert.equal(inspectDatabaseIntegrity(damaged).ok, true);
+        const owner = {
+          read: <T>(operation: (db: DatabaseSync) => T): T => operation(damaged),
+          write: <T>(operation: (db: DatabaseSync) => T): T => {
+            damaged.exec("BEGIN IMMEDIATE");
+            try { const result = operation(damaged); damaged.exec("COMMIT"); return result; }
+            catch (error) { if (damaged.isTransaction) damaged.exec("ROLLBACK"); throw error; }
+          },
+        } as AppDatabase;
+        new ReconciliationStore(owner).settleManually(input);
         assert.equal(inspectDatabaseIntegrity(damaged).ok, false);
       } finally { damaged.close(); }
     });

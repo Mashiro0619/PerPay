@@ -6,6 +6,10 @@ export const MERCHANT_NO = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 export class DemoError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
+export function validateClientId(value) {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/.test(value)) throw new Error('请填写 PERPAY_CLIENT_ID，使用业务网站页面显示的客户端 ID。');
+  return value;
+}
 export function decodeKey(value, name) {
   if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(value)) throw new Error('请在 .env 中填写 ' + name + '，使用 PerPay 生成的 32 字节 base64url 密钥。');
   const bytes = Buffer.from(value, 'base64url');
@@ -21,16 +25,17 @@ export function perpayOrigin(value) {
   }
   return url.origin;
 }
-export function signRequest(secret, method, target, body, now = Date.now(), nonce = randomBytes(32).toString('base64url')) {
+export function signRequest(secret, clientId, method, target, body, now = Date.now(), nonce = randomBytes(32).toString('base64url')) {
+  clientId = validateClientId(clientId);
   // Only fixed ASCII paths without queries are used here. Arbitrary paths/queries
   // require PerPay canonicalization; do not copy this shortcut into a generic SDK.
   if (!/^\/api\/v1\/orders(?:\/[A-Za-z0-9._-]+|\/by-merchant-no\/[A-Za-z0-9._-]+)?$/.test(target)) throw new Error('Unsupported demo request target');
   const timestamp = String(Math.floor(now / 1000));
   const digest = createHash('sha256').update(body).digest('hex');
-  const material = ['PERPAY-HMAC-SHA256', 'v1', method, target, timestamp, nonce, 'default', digest].join('\n');
+  const material = ['PERPAY-HMAC-SHA256', 'v1', method, target, timestamp, nonce, clientId, digest].join('\n');
   return {
     'content-type': 'application/json',
-    'x-perpay-client-id': 'default', 'x-perpay-timestamp': timestamp,
+    'x-perpay-client-id': clientId, 'x-perpay-timestamp': timestamp,
     'x-perpay-nonce': nonce, 'x-perpay-signature-version': 'v1',
     'x-perpay-signature': createHmac('sha256', secret).update(material, 'utf8').digest('hex'),
   };
@@ -46,7 +51,8 @@ async function responseBytes(response, maximum = 256 * 1024) {
   return Buffer.concat(chunks);
 }
 export class PerPayClient {
-  constructor({ url, secret, fetchImpl = fetch, timeout = 10000 }) {
+  constructor({ url, secret, clientId, fetchImpl = fetch, timeout = 10000 }) {
+    this.clientId = validateClientId(clientId);
     this.origin = perpayOrigin(url); this.secret = decodeKey(secret, 'PERPAY_API_SECRET');
     this.fetch = fetchImpl; this.timeout = timeout;
   }
@@ -54,7 +60,7 @@ export class PerPayClient {
     const body = data === undefined ? Buffer.alloc(0) : Buffer.from(JSON.stringify(data), 'utf8');
     try {
       const response = await this.fetch(this.origin + target, {
-        method, headers: signRequest(this.secret, method, target, body),
+        method, headers: signRequest(this.secret, this.clientId, method, target, body),
         ...(method === 'GET' ? {} : { body }), redirect: 'error', signal: AbortSignal.timeout(this.timeout),
       });
       if (!/^application\/json(?:;|$)/i.test(response.headers.get('content-type') ?? '')) throw new DemoError(502, 'PerPay 未返回 JSON，请检查地址和反向代理。');

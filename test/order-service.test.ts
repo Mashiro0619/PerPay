@@ -1,3 +1,4 @@
+import { seedFixedSite } from "./fixed-site-fixture.ts";
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -6,7 +7,6 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 
 import { AppDatabase } from "../src/database/database.ts";
-import { IdentityStore } from "../src/database/identity-store.ts";
 import { LEDGER_PROVIDER_KIND } from "../src/ledger/model.ts";
 import { LedgerStore } from "../src/ledger/store.ts";
 import { createOrderRequestSchema } from "../src/orders/model.ts";
@@ -465,16 +465,12 @@ function bindProvider(ledger: LedgerStore, providerAccountKey: string, appId: st
 async function withDatabase(
   name: string,
   operation: (database: AppDatabase) => void | Promise<void>,
-  initializeApiClient = true,
+  _initializeApiClient = true,
 ): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), `perpay-order-service-${name}-`));
   const database = await AppDatabase.open(join(directory, "perpay.sqlite"));
   try {
-    if (initializeApiClient) {
-      new IdentityStore(database).transaction((transaction) => {
-        transaction.syncApiClient("default", "3".repeat(64), Date.now());
-      });
-    }
+    seedFixedSite(database, "default", Date.now());
     await operation(database);
   } finally {
     database.close();

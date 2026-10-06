@@ -2,10 +2,11 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { DemoError, validateSnapshot } from './perpay.mjs';
+import { DemoError, validateSnapshot, validateClientId } from './perpay.mjs';
 
 export class DemoStore {
-  constructor(filename, origin) {
+  constructor(filename, origin, clientId) {
+    clientId = validateClientId(clientId);
     if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
     this.db = new DatabaseSync(filename);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;');
@@ -14,9 +15,18 @@ export class DemoStore {
       'CREATE TABLE IF NOT EXISTS orders (merchant_order_no TEXT PRIMARY KEY, request_json TEXT NOT NULL, order_id TEXT UNIQUE, snapshot_json TEXT, last_error TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL) STRICT;',
       'CREATE TABLE IF NOT EXISTS received_events (event_id TEXT PRIMARY KEY, body_sha256 TEXT NOT NULL, merchant_order_no TEXT NOT NULL, event_type TEXT NOT NULL, order_version INTEGER NOT NULL, disposition TEXT NOT NULL, received_at INTEGER NOT NULL) STRICT;',
     ].join('\n'));
-    const existing = this.db.prepare('SELECT value FROM meta WHERE name = ?').get('perpay_origin');
-    if (existing && existing.value !== origin) { this.db.close(); throw new Error('数据目录已绑定另一个 PerPay 实例。请使用新的 DEMO_DATA_DIR，不要把旧业务单号发到新实例。'); }
-    this.db.prepare('INSERT OR IGNORE INTO meta VALUES (?, ?)').run('perpay_origin', origin);
+    try {
+      this.transaction(() => {
+        const existing = this.db.prepare('SELECT value FROM meta WHERE name = ?').get('perpay_origin');
+        const website = this.db.prepare('SELECT value FROM meta WHERE name = ?').get('perpay_client_id');
+        const historical = this.db.prepare('SELECT 1 FROM orders LIMIT 1').get();
+        if ((existing && existing.value !== origin) || (website && website.value !== clientId) || (!website && historical && clientId !== 'default')) {
+          throw new Error('数据目录已绑定另一个 PerPay 实例或业务网站。请使用新的 DEMO_DATA_DIR，不要把旧业务单号发到另一个网站。');
+        }
+        this.db.prepare('INSERT OR IGNORE INTO meta VALUES (?, ?)').run('perpay_origin', origin);
+        this.db.prepare('INSERT OR IGNORE INTO meta VALUES (?, ?)').run('perpay_client_id', clientId);
+      });
+    } catch (error) { this.db.close(); throw error; }
   }
   transaction(action) {
     this.db.exec('BEGIN IMMEDIATE');

@@ -314,6 +314,8 @@ const disabledBackupHealth = Object.freeze({
 });
 
 export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
+  const sites = dependencies.sites ?? dependencies.settings?.siteStore();
+  if (sites && !dependencies.sites) dependencies = { ...dependencies, sites };
   const app = new Hono<AppEnvironment>();
   const publicCheckoutBudget = new PublicCheckoutRateLimiter();
   const manualCheckoutBudget = new PublicCheckoutRateLimiter({sourceBurst:5,sourceRequestsPerSecond:1,globalBurst:30,globalRequestsPerSecond:10});
@@ -2279,7 +2281,7 @@ async function systemStatus(dependencies: AppDependencies, administrator = false
     },
     webhook: serializeWebhookHealth(webhook),
     work_items: operations.workItems,
-    ...(dependencies.settings ? { backup_policy: dependencies.settings.view().backup } : {}),
+    ...(dependencies.settings ? { backup_policy: dependencies.settings.publicView().backup } : {}),
     backup,
   };
 }

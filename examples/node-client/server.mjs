@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DemoError, MERCHANT_NO, PerPayClient, decodeKey, orderSnapshot, perpayOrigin, verifyWebhook } from './perpay.mjs';
+import { DemoError, MERCHANT_NO, PerPayClient, decodeKey, orderSnapshot, perpayOrigin, validateClientId, verifyWebhook } from './perpay.mjs';
 import { DemoStore } from './store.mjs';
 
 const directory = fileURLToPath(new URL('.', import.meta.url));
@@ -12,6 +12,7 @@ export function readConfig(env = process.env) {
   const port = Number(env.DEMO_PORT ?? '6196');
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('DEMO_PORT 必须是 1–65535 的整数。');
   const url = perpayOrigin(env.PERPAY_URL ?? 'http://127.0.0.1:6190');
+  const clientId = validateClientId(env.PERPAY_CLIENT_ID);
   const secret = env.PERPAY_API_SECRET ?? '';
   decodeKey(secret, 'PERPAY_API_SECRET');
   const notifyUrl = env.DEMO_NOTIFY_URL;
@@ -20,7 +21,7 @@ export function readConfig(env = process.env) {
   let notify;
   try { notify = new URL(notifyUrl); } catch { throw new Error('DEMO_NOTIFY_URL 不是完整 URL。'); }
   if (notify.protocol !== 'https:' || notify.username || notify.password || notify.port || notify.search || notify.hash || notify.pathname !== '/webhooks/perpay') throw new Error('DEMO_NOTIFY_URL 必须是公开 HTTPS 来源下的 /webhooks/perpay 地址，不带端口或查询参数。');
-  return { port, url, secret, notifyUrl, webhookSecret, database: join(resolve(directory, env.DEMO_DATA_DIR ?? 'data'), 'demo.sqlite3') };
+  return { port, url, clientId, secret, notifyUrl, webhookSecret, database: join(resolve(directory, env.DEMO_DATA_DIR ?? 'data'), 'demo.sqlite3') };
 }
 function json(response, status, data) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
@@ -55,7 +56,7 @@ export function orderPayload(input, config) {
   if (!product || Array.from(product).length > 200 || !product.isWellFormed() || /[\u0000-\u001f\u007f]/.test(product) || Array.from(note).length > 500 || !note.isWellFormed() || /[\u0000-\u001f\u007f]/.test(note)) throw new DemoError(400, '商品名或备注无效；商品名最多 200 字，备注最多 500 字，不含控制字符。');
   return { idempotency_key: 'demo:' + input.merchant_order_no, merchant_order_no: input.merchant_order_no, amount_cents: cents, product_name: product, ...(note ? { note } : {}), notify_url: config.notifyUrl };
 }
-export function createDemoServer({ config, client = new PerPayClient(config), store = new DemoStore(config.database, config.url) }) {
+export function createDemoServer({ config, client = new PerPayClient(config), store = new DemoStore(config.database, config.url, config.clientId) }) {
   const csrf = randomBytes(32).toString('base64url');
   const pending = new Map();
   async function perform(no, create) {

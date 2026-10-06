@@ -28,6 +28,19 @@ function schema(f: ReturnType<typeof createSiteFixture>) {
   return f.connection.prepare("SELECT type, name, sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY type, name").all();
 }
 describe("multi-site schema migration", () => {
+  it("preserves old credential history without enabling an API key whose material was never stored", () => {
+    const f = createSiteFixture();
+    try {
+      f.owner.write(connection => new IdentityTransaction(connection).syncApiClient("default", "a".repeat(64), Date.now()));
+      const history = f.connection.prepare("SELECT * FROM api_client_keys").all();
+      f.migrate();
+      assert.deepEqual(f.connection.prepare("SELECT * FROM api_client_keys").all(), history);
+      assert.equal(f.store().credential("default"), null);
+      assert.equal(f.connection.prepare("SELECT enabled FROM api_client_config").get()?.enabled, 0n);
+      assert.equal(f.store().get("default")?.configuration.accepting_orders, true);
+      assert.equal(countSiteDomainViolations(f.connection), 0);
+    } finally { f.close(); }
+  });
   it("creates no implicit default site in a fresh database", () => {
     const f = createSiteFixture();
     try {

@@ -33,6 +33,7 @@ describe("isolated documentation preview", () => {
       assert.equal(stats.daily.reduce((sum, row) => sum + row.confirmed_amount_cents, 0), stats.confirmations.amount_cents);
       assert.equal(stats.daily.reduce((sum, row) => sum + row.orders_created, 0), stats.orders.created);
       assert.equal(demo.database.integrityCheck().ok, true);
+      assert.equal(demo.database.read(db => db.prepare("SELECT count(DISTINCT api_client_id) AS total FROM payment_orders").get()?.total), 2n);
       const names = demo.database.read(connection => connection.prepare("SELECT DISTINCT product_name FROM payment_orders").all());
       assert.equal(names.length, 8);
       for (const row of names) assert.match(String(row.product_name), /^演示商品 [A-H] · /u);
@@ -40,6 +41,7 @@ describe("isolated documentation preview", () => {
       const blockedRequests = [
         ["POST", "/api/v1/orders"],
         ["PUT", "/api/admin/v1/settings/provider"],
+        ["POST", "/api/admin/v1/sites"],
         ["POST", "/api/admin/v1/settings/provider/verify"],
         ["POST", "/api/admin/v1/webhooks/deliveries/example/actions/replay"],
         ["PUT", "/api/admin/v1/orders/" + demo.featured + "/refund-mark"],

@@ -1,3 +1,5 @@
+import { seedFixedSite } from "./fixed-site-fixture.ts";
+import { SiteStore } from "../src/sites/store.ts";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,7 +11,7 @@ import { AppDatabase } from "../src/database/database.ts";
 import { IdentityStore } from "../src/database/identity-store.ts";
 import { createOrderRequestSchema } from "../src/orders/model.ts";
 import { RuntimeSettingsStore } from "../src/settings/store.ts";
-import { createConfiguredHttpServices } from "./http-fixture.ts";
+import { createConfiguredLegacyHttpServices } from "./http-fixture.ts";
 import { apiClientCredentialsDowngradeSql } from "./api-client-schema-fixture.ts";
 
 describe("API client identity without credentials", () => {
@@ -19,6 +21,7 @@ describe("API client identity without credentials", () => {
     let database = await AppDatabase.open(path);
     try {
       const now = Date.now();
+      seedFixedSite(database, "default", now);
       new IdentityStore(database).transaction((identity) => {
         identity.ensureApiClientIdentity("default", now);
         identity.ensureApiClientIdentity("default", now + 1);
@@ -36,14 +39,11 @@ describe("API client identity without credentials", () => {
       }), /CHECK constraint failed/);
       database.close();
       database = await AppDatabase.open(path);
-      const identity = new IdentityStore(database);
-      identity.transaction((transaction) => {
-        // A wall-clock rollback must not predate the identity's creation.
-        assert.equal(transaction.syncApiClient("default", "a".repeat(64), now - 100).keyVersion, 1);
-        transaction.ensureApiClientIdentity("default", now + 1);
-        assert.equal(transaction.activeApiClient("default")?.enabled, true);
-        assert.equal(transaction.syncApiClient("default", "b".repeat(64), now + 2).keyVersion, 2);
-      });
+      const sites = new SiteStore(database, Buffer.alloc(32, 7));
+      const first = sites.rotateSecret("default", "api_secret", 0, { actorId: "admin" }, now - 100);
+      assert.equal(sites.credential("default")?.keyVersion, 1);
+      sites.rotateSecret("default", "api_secret", first.site.revision, { actorId: "admin" }, now + 2);
+      assert.equal(sites.credential("default")?.keyVersion, 2);
       assert.equal(database.integrityCheck().ok, true);
     } finally {
       database.close();
@@ -54,7 +54,7 @@ describe("API client identity without credentials", () => {
 
   it("migrates issued credentials without changing orders, nonces, key history or audit evidence", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-client-identity-migration-"));
-    const services = await createConfiguredHttpServices({
+    const services = await createConfiguredLegacyHttpServices({
       directory,
       apiSecret: Buffer.alloc(32, 7).toString("base64url"),
       collectionCodePayload: "https://qr.alipay.com/client-identity-migration",
@@ -75,7 +75,7 @@ describe("API client identity without credentials", () => {
           Math.floor(now / 1000), credential.keyVersion, credential.secretFingerprint, now), true);
       });
       const history = (database: AppDatabase) => database.read((connection) => ({
-        client: connection.prepare("SELECT * FROM api_client_config").all(),
+        client: connection.prepare("SELECT client_id, secret_fingerprint, key_version, enabled, created_at, updated_at FROM api_client_config").all(),
         keys: connection.prepare("SELECT * FROM api_client_keys ORDER BY key_version").all(),
         nonces: connection.prepare("SELECT * FROM api_nonces ORDER BY nonce").all(),
         orders: connection.prepare("SELECT * FROM payment_orders ORDER BY order_id").all(),
@@ -88,13 +88,13 @@ describe("API client identity without credentials", () => {
       try {
         legacy.exec(`BEGIN IMMEDIATE; ${apiClientCredentialsDowngradeSql()} COMMIT;`);
       } finally { legacy.close(); }
-      reopened = await AppDatabase.open(services.config.databasePath);
+      reopened = await AppDatabase.open(services.config.databasePath, { masterKey: services.config.masterKey });
       assert.deepEqual(history(reopened), before);
       assert.equal(reopened.integrityCheck().ok, true);
       const settings = new RuntimeSettingsStore(reopened, services.config.masterKey);
       settings.initialize();
-      assert.equal(settings.apiCredential()?.secret, rotatedSecret);
-      assert.equal(settings.apiCredential()?.keyVersion, 2);
+      assert.equal(settings.siteStore()!.credential("default")?.secret, rotatedSecret);
+      assert.equal(settings.siteStore()!.credential("default")?.keyVersion, 2);
     } finally {
       reopened?.close();
       services.database.close();

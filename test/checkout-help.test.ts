@@ -31,17 +31,16 @@ it("validates navigation targets without fetching them", () => {
 it("persists help links, preserves omissions and clears null without changing payment revision", async () => {
   await withHttpFixture(async ({ app, services, createOrder }) => {
     const auth = await login(app);
-    const before = services.settings.view();
+    const before = services.settings.instanceView();
     const save = (extra: object) =>
-      app.request("/api/admin/v1/settings/display", {
+      app.request("/api/admin/v1/sites/default", {
         method: "PUT",
         headers: financialHeaders(auth),
-        body: JSON.stringify({
-          revision: services.settings.view().revision,
-          checkout_show_product_name: true,
-          dashboard_chart_type: "AREA",
-          ...extra,
-        }),
+        body: JSON.stringify((() => {
+          const site = services.sites.get("default")!;
+          return { revision: site.revision, configuration: { ...site.configuration, policy: { ...site.configuration.policy,
+            display: { ...site.configuration.policy.display, ...extra } } } };
+        })()),
       });
     assert.equal(
       (await save({ checkout_help_url: "https://shop.example.com/help" }))
@@ -50,7 +49,7 @@ it("persists help links, preserves omissions and clears null without changing pa
     );
     assert.equal((await save({})).status, 200);
     assert.equal(
-      services.settings.display().checkoutHelpUrl,
+      services.sites.get("default")!.configuration.policy.display.checkout_help_url,
       "https://shop.example.com/help",
     );
     const html = await (await app.request("/checkout/" + createOrder("help-link-checkout", 100).checkoutToken)).text();
@@ -59,7 +58,7 @@ it("persists help links, preserves omissions and clears null without changing pa
       "https://shop.example.com/help",
     );
     assert.equal(
-      services.settings.view().payment_revision,
+      services.settings.instanceView().payment_revision,
       before.payment_revision,
     );
     assert.equal(
@@ -67,6 +66,6 @@ it("persists help links, preserves omissions and clears null without changing pa
       422,
     );
     assert.equal((await save({ checkout_help_url: null })).status, 200);
-    assert.equal(services.settings.display().checkoutHelpUrl, null);
+    assert.equal(services.sites.get("default")!.configuration.policy.display.checkout_help_url, null);
   });
 });

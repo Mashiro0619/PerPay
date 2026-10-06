@@ -1,3 +1,4 @@
+import { createLegacySettingsDatabase } from "./legacy-settings-fixture.ts";
 import { generateKeyPairSync } from "node:crypto";
 import { join } from "node:path";
 
@@ -19,14 +20,17 @@ const platformPublicKey = platformKeys.publicKey
 
 export const HTTP_TEST_ADMIN_PASSWORD = "a-secure-local-password";
 
-export async function createConfiguredHttpServices(options: {
+export interface ConfiguredHttpOptions {
   readonly directory: string;
   readonly apiSecret: string | null;
   readonly collectionCodePayload: string;
   readonly publicUrl?: string | undefined;
   readonly environment?: NodeJS.ProcessEnv | undefined;
   readonly identityClock?: (() => number) | undefined;
-}) {
+}
+
+/** Construct historical data before opening it through the real current migration path. */
+export async function createConfiguredLegacyHttpServices(options: ConfiguredHttpOptions) {
   const config = loadConfig({
     PERPAY_MASTER_KEY: MASTER_KEY,
     PERPAY_DATA_DIR: join(options.directory, "data"),
@@ -34,7 +38,8 @@ export async function createConfiguredHttpServices(options: {
     PERPAY_PUBLIC_URL: options.publicUrl ?? "http://localhost:6190",
     ...options.environment,
   });
-  const database = await AppDatabase.open(config.databasePath);
+  const legacy = createLegacySettingsDatabase(config.databasePath);
+  const database = legacy.owner;
   const identity = new IdentityService(database, options.identityClock ?? Date.now);
   await identity.initialize();
   await identity.setupAdmin(HTTP_TEST_ADMIN_PASSWORD);
@@ -64,6 +69,22 @@ export async function createConfiguredHttpServices(options: {
   const orders = new OrderService(database, () => settings.snapshot());
   orders.initialize();
   return { config, database, identity, settingsStore, settings, orders };
+}
+
+export async function createConfiguredHttpServices(options: ConfiguredHttpOptions) {
+  const legacy = await createConfiguredLegacyHttpServices(options);
+  const { config } = legacy;
+  legacy.database.close();
+  const upgraded = await AppDatabase.open(config.databasePath, { masterKey: config.masterKey });
+  const upgradedStore = new RuntimeSettingsStore(upgraded, config.masterKey);
+  const upgradedSettings = new RuntimeSettingsService({ store: upgradedStore });
+  upgradedSettings.initialize();
+  const sites = upgradedStore.siteStore()!;
+  const upgradedIdentity = new IdentityService(upgraded, options.identityClock ?? Date.now);
+  await upgradedIdentity.initialize();
+  const orders = new OrderService(upgraded, () => upgradedSettings.instanceSnapshot(), undefined, sites, "default");
+  orders.initialize();
+  return { config, database: upgraded, identity: upgradedIdentity, settingsStore: upgradedStore, settings: upgradedSettings, orders, sites };
 }
 
 function audit(suffix: string) {

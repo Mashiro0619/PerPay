@@ -1,3 +1,4 @@
+import { configureTestSiteNotifications } from "./site-notification-fixture.ts";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -10,7 +11,6 @@ import type { LedgerEntry } from "../src/ledger/model.ts";
 import { LedgerStore } from "../src/ledger/store.ts";
 import { createOrderRequestSchema, type OrderProjection } from "../src/orders/model.ts";
 import { WebhookStore } from "../src/notifications/store.ts";
-import { webhookSigningKeyFingerprint } from "../src/notifications/model.ts";
 import {
   ReconciliationStore,
   type ReconcileEntryResult,
@@ -65,7 +65,7 @@ export async function withHttpFixture(
   try {
     const ledger = new LedgerStore(database);
     const webhooks = new WebhookStore(database);
-    const providerAccountKey = settings.snapshot().activeProviderAccountKey;
+    const providerAccountKey = settings.instanceSnapshot().activeProviderAccountKey;
     if (!providerAccountKey) throw new Error("provider account is not configured");
     const reconciliation = new ReconciliationStore(database);
     const window = {
@@ -221,7 +221,7 @@ export async function responseErrorCode(response: Response): Promise<string> {
   return ((await response.json()) as { error: { code: string } }).error.code;
 }
 
-function recordLedgerEntry(
+export function recordLedgerEntry(
   store: LedgerStore,
   window: { readonly start: string; readonly end: string },
   externalEventId: string,
@@ -326,11 +326,8 @@ function formatProviderTimestamp(milliseconds: number): string {
 /** All destinations are synthetic; store tests never open a network connection. */
 export function enableNotifications(fixture: ReconciliationHttpFixture) {
   const allowedOrigin = "https://business.example.com";
-  const secret = Buffer.alloc(32, 73).toString("base64url");
-  const store = fixture.services.settingsStore;
-  store.saveWebhook({ revision: store.snapshot().revision, enabled: true, allowed_origin: allowedOrigin,
-    timeout_milliseconds: 5000, maximum_attempts: 2, retry_base_seconds: 1, retry_maximum_seconds: 60, secret,
-  }, { actorId: "admin", requestId: "enable-isolated-notifications", remoteAddressHash: "a".repeat(64) });
-  fixture.webhooks.syncSigningKey({ secretFingerprint: webhookSigningKeyFingerprint(secret), now: Date.now() });
+  configureTestSiteNotifications(fixture.services.sites, "default", { enabled: true, allowed_origin: allowedOrigin,
+    timeout_milliseconds: 5000, maximum_attempts: 2, retry_base_seconds: 1, retry_maximum_seconds: 60,
+  });
   return { allowedOrigin, notifyUrl: allowedOrigin + "/notify" };
 }

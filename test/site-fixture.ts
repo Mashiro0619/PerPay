@@ -7,7 +7,7 @@ import { SiteStore } from "../src/sites/store.ts";
 
 export function createSiteFixture() {
   const connection = new DatabaseSync(":memory:", { enableForeignKeyConstraints: true, readBigInts: true });
-  for (const migration of migrations) connection.exec(migration.sql);
+  for (const migration of migrations.filter(migration => migration.version <= 33)) connection.exec(migration.sql);
   const instanceId = (connection.prepare("SELECT value FROM system_metadata WHERE key = 'instance_id'").get() as { value: string }).value;
   const masterKey = randomBytes(32);
   const owner = {

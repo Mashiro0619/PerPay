@@ -9,7 +9,7 @@ import { createIpPolicy } from "../src/infrastructure/network/ip-policy.ts";
 import { adminAccessSchema, createAdminAccessPolicy } from "../src/settings/admin-access.ts";
 import { createApp } from "../src/http/app.ts";
 import {
-  createConfiguredHttpServices,
+  createConfiguredHttpServices, createConfiguredLegacyHttpServices,
   HTTP_TEST_ADMIN_PASSWORD,
 } from "./http-fixture.ts";
 import { disableAdministratorAllowlist } from "../src/identity/allowlist-recovery.ts";
@@ -91,7 +91,7 @@ describe("administrator IP allowlist", () => {
           enabled: false,
           cidrs: [],
         });
-        const before = services.settings.view();
+        const before = services.settings.instanceView();
         await assert.rejects(
           services.settings.saveAdminAccess(
             {
@@ -103,14 +103,14 @@ describe("administrator IP allowlist", () => {
             audit,
           ),
         );
-        assert.equal(services.settings.view().revision, before.revision);
+        assert.equal(services.settings.instanceView().revision, before.revision);
         await services.settings.saveAdminAccess(
           { revision: before.revision, enabled: true, cidrs: ["192.0.2.0/24"] },
           "192.0.2.1",
           audit,
         );
         assert.equal(
-          services.settings.view().payment_revision,
+          services.settings.instanceView().payment_revision,
           before.payment_revision,
         );
         await assert.rejects(
@@ -202,7 +202,7 @@ describe("administrator IP allowlist", () => {
             },
             body: JSON.stringify(body),
           });
-        const revision = services.settings.view().revision;
+        const revision = services.settings.instanceView().revision;
         assert.equal(
           (
             await put(
@@ -300,7 +300,7 @@ describe("administrator IP allowlist", () => {
     const directory = mkdtempSync(
       join(tmpdir(), "perpay-allowlist-migration-"),
     );
-    const services = await createConfiguredHttpServices({
+    const services = await createConfiguredLegacyHttpServices({
       directory,
       apiSecret: null,
       collectionCodePayload: "https://qr.alipay.com/allowlist-migration",
@@ -323,14 +323,14 @@ describe("administrator IP allowlist", () => {
           confirmed: true,
         }),
       );
-      reopened = await AppDatabase.open(services.config.databasePath);
+      reopened = await AppDatabase.open(services.config.databasePath, { masterKey: services.config.masterKey });
       const store = new RuntimeSettingsStore(
         reopened,
         services.config.masterKey,
       );
       assert.deepEqual(store.adminAccess(), { enabled: false, cidrs: [] });
-      assert.equal(store.snapshot().revision, before.revision);
-      assert.equal(store.snapshot().paymentRevision, before.payment_revision);
+      assert.equal(store.instanceSnapshot().revision, before.revision);
+      assert.equal(store.instanceSnapshot().paymentRevision, before.payment_revision);
       const app = createApp({
         ...services,
         database: reopened,

@@ -21,7 +21,7 @@ const errorCode = (code: SettingsError["code"]) => (error: unknown) =>
 describe("application key regeneration and staged rotation", () => {
   it("regenerates the initial pair explicitly and replays the same operation", async () => {
     await withKeyFixture(false, async (f) => {
-      const before = f.settings.view();
+      const before = f.settings.instanceView();
       const request = changeRequest(f.settings);
       const generated = await f.settings.regenerateProviderApplicationKey(
         request,
@@ -86,8 +86,8 @@ describe("application key regeneration and staged rotation", () => {
 
   it("keeps the active private key while encrypting a durable pending replacement", async () => {
     await withKeyFixture(true, async (f) => {
-      const before = f.settings.view();
-      const activePrivate = f.settings.snapshot().provider!.privateKeyPem;
+      const before = f.settings.instanceView();
+      const activePrivate = f.settings.instanceSnapshot().provider!.privateKeyPem;
       const request = changeRequest(f.settings);
       const generated = await f.settings.regenerateProviderApplicationKey(
         request,
@@ -101,7 +101,7 @@ describe("application key regeneration and staged rotation", () => {
         before.application_public_key,
       );
       assert.equal(
-        f.settings.snapshot().provider!.privateKeyPem,
+        f.settings.instanceSnapshot().provider!.privateKeyPem,
         activePrivate,
       );
       assert.equal(
@@ -134,9 +134,9 @@ describe("application key regeneration and staged rotation", () => {
         false,
       );
       await f.reopen();
-      assert.deepEqual(f.settings.view().pending_application_key, pending);
+      assert.deepEqual(f.settings.instanceView().pending_application_key, pending);
       assert.equal(
-        f.settings.snapshot().provider!.privateKeyPem,
+        f.settings.instanceSnapshot().provider!.privateKeyPem,
         activePrivate,
       );
       assert.equal(
@@ -159,7 +159,7 @@ describe("application key regeneration and staged rotation", () => {
   it("requires an explicit non-blank Alipay public key even for direct service callers", async () => {
     await withKeyFixture(true, async (f) => {
       const generated = await f.settings.regenerateProviderApplicationKey(changeRequest(f.settings), keyAudit());
-      const before = f.settings.snapshot();
+      const before = f.settings.instanceSnapshot();
       for (const value of [undefined, "", " \n\t "]) {
         const input = {
           revision: generated.settings.revision,
@@ -172,8 +172,8 @@ describe("application key regeneration and staged rotation", () => {
           ),
           (error: unknown) => error instanceof ZodError && error.issues.some(issue => issue.path[0] === "platform_public_key"),
         );
-        assert.deepEqual(f.settings.snapshot(), before);
-        assert.deepEqual(f.settings.view(), generated.settings);
+        assert.deepEqual(f.settings.instanceSnapshot(), before);
+        assert.deepEqual(f.settings.instanceView(), generated.settings);
         assert.deepEqual(f.events, []);
       }
     });
@@ -192,7 +192,7 @@ describe("application key regeneration and staged rotation", () => {
         assert.equal(provider.applicationKeyFingerprint, pending.fingerprint);
         assert.equal(provider.publicKeyPem, nextPlatformPem.trim());
         assert.notEqual(
-          f.settings.snapshot().provider!.applicationKeyFingerprint,
+          f.settings.instanceSnapshot().provider!.applicationKeyFingerprint,
           pending.fingerprint,
         );
       };
@@ -214,7 +214,7 @@ describe("application key regeneration and staged rotation", () => {
         generated.settings.payment_revision + 1,
       );
       assert.equal(
-        f.settings.snapshot().provider!.publicKeyPem,
+        f.settings.instanceSnapshot().provider!.publicKeyPem,
         nextPlatformPem.trim(),
       );
       assert.deepEqual(f.ledger.providerIdentityHistory(), history);
@@ -250,7 +250,7 @@ describe("application key regeneration and staged rotation", () => {
         changeRequest(f.settings),
         keyAudit(),
       );
-      const before = f.settings.view();
+      const before = f.settings.instanceView();
       const request = {
         platform_public_key: nextPlatformPem,
         revision: before.revision,
@@ -271,7 +271,7 @@ describe("application key regeneration and staged rotation", () => {
           return true;
         },
       );
-      assert.deepEqual(f.settings.view(), before);
+      assert.deepEqual(f.settings.instanceView(), before);
       assert.deepEqual(f.events, ["verify"]);
       f.hooks.verify = async () => {};
       const saved = await f.settings.activateProviderApplicationKey(
@@ -300,7 +300,7 @@ describe("application key regeneration and staged rotation", () => {
         /platform public key/,
       );
       assert.deepEqual(f.events, []);
-      assert.deepEqual(f.settings.view(), generated.settings);
+      assert.deepEqual(f.settings.instanceView(), generated.settings);
     });
   });
 
@@ -373,7 +373,7 @@ describe("application key regeneration and staged rotation", () => {
 
   it("discards pending material without replacing the active pair or touching payment runtime", async () => {
     await withKeyFixture(true, async (f) => {
-      const before = f.settings.view();
+      const before = f.settings.instanceView();
       const generated = await f.settings.regenerateProviderApplicationKey(
         changeRequest(f.settings),
         keyAudit(),
@@ -475,7 +475,7 @@ describe("application key regeneration and staged rotation", () => {
         ),
         errorCode("provider_application_key_verification_failed"),
       );
-      assert.deepEqual(f.settings.view(), generated.settings);
+      assert.deepEqual(f.settings.instanceView(), generated.settings);
       assert.deepEqual(f.events, ["verify", "pause", "apply"]);
     });
   });
@@ -508,16 +508,16 @@ describe("application key regeneration and staged rotation", () => {
         errorCode("settings_revision_conflict"),
       );
       assert.equal(
-        f.settings.view().application_public_key,
+        f.settings.instanceView().application_public_key,
         generated.settings.application_public_key,
       );
       assert.deepEqual(
-        f.settings.view().pending_application_key,
+        f.settings.instanceView().pending_application_key,
         generated.settings.pending_application_key,
       );
       assert.deepEqual(f.events, ["verify", "pause", "apply"]);
       assert.equal(
-        f.settings.view().payment_revision,
+        f.settings.instanceView().payment_revision,
         generated.settings.payment_revision,
       );
     });
@@ -542,10 +542,10 @@ describe("application key regeneration and staged rotation", () => {
         AggregateError,
       );
       assert.equal(
-        f.settings.view().application_key_fingerprint,
+        f.settings.instanceView().application_key_fingerprint,
         generated.fingerprint,
       );
-      assert.equal(f.settings.view().pending_application_key, null);
+      assert.equal(f.settings.instanceView().pending_application_key, null);
       f.hooks.apply = async () => {};
       const recovered = await f.settings.activateProviderApplicationKey(
         request,
@@ -568,7 +568,7 @@ describe("application key regeneration and staged rotation", () => {
       const backup = join(f.directory, "rotation-backup.sqlite3");
       await f.database.backupDetailed(backup);
       await f.reopen(backup);
-      assert.deepEqual(f.settings.view(), generated.settings);
+      assert.deepEqual(f.settings.instanceView(), generated.settings);
       assert.equal(f.database.integrityCheck().ok, true);
       const activated = await f.settings.activateProviderApplicationKey(
         {
@@ -589,7 +589,7 @@ describe("application key regeneration and staged rotation", () => {
     await withKeyFixture(true, async (f) => {
       const capture = () =>
         f.database.read((db) => ({
-          config: db.prepare("SELECT * FROM runtime_configuration").get(),
+          config: db.prepare("SELECT revision, payment_revision, provider_environment, provider_app_id, provider_account_key, provider_scan_interval_milliseconds, provider_active_scan_interval_milliseconds, provider_safety_lag_milliseconds FROM runtime_configuration").get(),
           secrets: db
             .prepare("SELECT * FROM runtime_secrets ORDER BY secret_name")
             .all(),
@@ -611,7 +611,7 @@ describe("application key regeneration and staged rotation", () => {
       }
       await f.reopen();
       assert.deepEqual(capture(), original);
-      assert.equal(f.settings.view().pending_application_key, null);
+      assert.equal(f.settings.instanceView().pending_application_key, null);
       assert.equal(f.database.integrityCheck().ok, true);
       assert.ok(
         new RuntimeSettingsStore(
@@ -619,12 +619,12 @@ describe("application key regeneration and staged rotation", () => {
           keyMaster,
         ).providerApplicationKey(),
       );
-    });
+    }, true);
   });
   it("rolls both active secrets and pending state back if the final write fails", async () => {
     await withKeyFixture(true, async (f) => {
       const generated = await f.settings.regenerateProviderApplicationKey(changeRequest(f.settings), keyAudit());
-      const before = f.settings.view();
+      const before = f.settings.instanceView();
       const secrets = () => f.database.read(db => db.prepare("SELECT * FROM runtime_secrets ORDER BY secret_name").all());
       const beforeSecrets = secrets();
       f.database.write(db => db.exec(`
@@ -636,7 +636,7 @@ describe("application key regeneration and staged rotation", () => {
           platform_public_key: nextPlatformPem,
           revision: before.revision, change_id: generated.settings.pending_application_key!.change_id,
         }, keyAudit()), /synthetic final write failure/);
-        assert.deepEqual(f.settings.view(), before);
+        assert.deepEqual(f.settings.instanceView(), before);
         assert.deepEqual(secrets(), beforeSecrets);
         assert.deepEqual(f.events, ["verify", "pause", "apply"]);
       } finally { f.database.write(db => db.exec("DROP TRIGGER test_reject_key_activation")); }
@@ -655,7 +655,7 @@ describe("application key regeneration and staged rotation", () => {
       const failed = results.find(result => result.status === "rejected") as PromiseRejectedResult;
       assert.ok(errorCode("settings_revision_conflict")(failed.reason));
       assert.equal(f.database.read(db => Number((db.prepare("SELECT COUNT(*) AS count FROM provider_application_key_changes").get() as { count: bigint }).count)), 1);
-      assert.ok(f.settings.view().pending_application_key);
+      assert.ok(f.settings.instanceView().pending_application_key);
       assert.equal(f.database.integrityCheck().ok, true);
     });
   });

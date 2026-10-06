@@ -14,7 +14,7 @@ describe("provider switch final collection guard", () => {
         let now = Date.now();
         const runtime = new RuntimeController({ database: f.database, orders: f.services.orders,
           ledger: f.ledger, reconciliation: f.reconciliation, webhooks: f.webhooks, clock: () => now });
-        const snapshot = f.services.settings.snapshot();
+        const snapshot = f.services.settings.instanceSnapshot();
         assert.doesNotThrow(() => runtime.assertProviderSwitchAllowed(snapshot));
         const order = f.createOrder("switch-zero-ledger", 1000);
         assert.throws(() => runtime.assertProviderSwitchAllowed(snapshot), blocked);
@@ -68,8 +68,8 @@ describe("provider switch final collection guard", () => {
         safety_lag_seconds: provider.safetyLagMilliseconds / 1000,
         maximum_success_age_seconds: provider.maximumSuccessAgeMilliseconds / 1000,
       }, { actorId: "admin" }), blocked);
-      assert.equal(settings.snapshot().activeProviderAccountKey, before.activeProviderAccountKey);
-      assert.equal(settings.snapshot().revision, before.revision);
+      assert.equal(settings.instanceSnapshot().activeProviderAccountKey, before.activeProviderAccountKey);
+      assert.equal(settings.instanceSnapshot().revision, before.revision);
       const entry = f.recordCredit("first-late-credit", order.payableAmountCents, 0);
       assert.equal(f.reconciliation.reconcileEntry(entry.ledgerEntryId, order.createdAt + 121_000).kind, "auto_settled");
       assert.equal(f.database.integrityCheck().ok, true);

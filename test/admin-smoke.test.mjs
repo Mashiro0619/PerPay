@@ -22,7 +22,7 @@ async function open(directory, clock = Date.now) {
   await identity.initialize();
   const settings = new RuntimeSettingsService({ store: new RuntimeSettingsStore(database, config.masterKey) });
   settings.initialize();
-  const orders = new OrderService(database, () => settings.snapshot());
+  const orders = new OrderService(database, () => settings.instanceSnapshot());
   orders.initialize();
   return { database, identity, app: createApp({ config, database, identity, settings, orders, startedAt: new Date() }) };
 }

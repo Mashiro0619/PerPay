@@ -89,9 +89,9 @@ async function fixture() {
       body: JSON.stringify(payload),
     });
   const request = () => ({
-    revision: settings.view().revision,
+    revision: settings.instanceView().revision,
     change_id: randomUUID(),
-    base_fingerprint: settings.view().application_key_fingerprint!,
+    base_fingerprint: settings.instanceView().application_key_fingerprint!,
   });
   return {
     ...services,
@@ -108,7 +108,7 @@ async function fixture() {
 describe("administrator key rotation HTTP contract", () => {
   it("requires administrator authentication, CSRF and trusted origin for every new action", async () => {
     await withFixture(async (f) => {
-      const before = f.settings.view();
+      const before = f.settings.instanceView();
       for (const action of ["regenerate", "activate", "discard"]) {
         const payload =
           action === "regenerate"
@@ -147,7 +147,7 @@ describe("administrator key rotation HTTP contract", () => {
           422,
         );
       }
-      assert.deepEqual(f.settings.view(), before);
+      assert.deepEqual(f.settings.instanceView(), before);
       assert.equal(f.probe.calls, 0);
     });
   });
@@ -156,8 +156,8 @@ describe("administrator key rotation HTTP contract", () => {
     await withFixture(async (f) => {
       const request = f.request();
       assert.equal((await f.post("regenerate", request)).status, 201);
-      const before = f.settings.snapshot();
-      const pending = f.settings.view().pending_application_key;
+      const before = f.settings.instanceSnapshot();
+      const pending = f.settings.instanceView().pending_application_key;
       for (const value of [undefined, null, "", "   ", "\n\t ", 123]) {
         const response = await f.post("activate", {
           revision: before.revision,
@@ -168,8 +168,8 @@ describe("administrator key rotation HTTP contract", () => {
         const envelope = await response.json() as { error: { code: string; message: string } };
         assert.equal(envelope.error.code, "validation_failed");
         assert.equal(envelope.error.message, "请求字段校验失败");
-        assert.deepEqual(f.settings.snapshot(), before);
-        assert.deepEqual(f.settings.view().pending_application_key, pending);
+        assert.deepEqual(f.settings.instanceSnapshot(), before);
+        assert.deepEqual(f.settings.instanceView().pending_application_key, pending);
         assert.equal(f.probe.calls, 0);
       }
       assert.equal(f.database.integrityCheck().ok, true);
@@ -178,7 +178,7 @@ describe("administrator key rotation HTTP contract", () => {
 
   it("exposes durable pending public data and only activates after successful verification", async () => {
     await withFixture(async (f) => {
-      const before = f.settings.view();
+      const before = f.settings.instanceView();
       const order = f.orders.create({
         idempotency_key: "key-rotation-open-order",
         merchant_order_no: "key-rotation-open-order",
@@ -258,23 +258,23 @@ describe("administrator key rotation HTTP contract", () => {
         ((await failure.json()) as { error: { code: string } }).error.code,
         "provider_application_key_verification_failed",
       );
-      assert.deepEqual(f.settings.view(), data.settings);
+      assert.deepEqual(f.settings.instanceView(), data.settings);
       f.probe.fail = false;
       const activated = await f.post("activate", activate);
       assert.equal(activated.status, 200);
       assert.equal(activated.headers.get("cache-control"), "no-store");
-      assert.equal(f.settings.view().application_public_key, data.public_key);
-      assert.equal(f.settings.view().pending_application_key, null);
+      assert.equal(f.settings.instanceView().application_public_key, data.public_key);
+      assert.equal(f.settings.instanceView().pending_application_key, null);
       const activatedView = (await activated.json() as { data: ReturnType<RuntimeSettingsService["view"]> }).data;
       assert.equal(activatedView.provider!.platform_public_key, nextPlatformPem.trim());
       assert.equal(data.settings.provider!.platform_public_key, before.provider!.platform_public_key);
       assert.notEqual(activatedView.provider!.platform_public_key, before.provider!.platform_public_key);
       assert.equal(
-        f.settings.view().payment_revision,
+        f.settings.instanceView().payment_revision,
         before.payment_revision + 1,
       );
       assert.equal(
-        f.settings.view().provider!.provider_account_key,
+        f.settings.instanceView().provider!.provider_account_key,
         before.provider!.provider_account_key,
       );
       assert.deepEqual(orderRow(), originalOrder);
@@ -282,18 +282,18 @@ describe("administrator key rotation HTTP contract", () => {
       assert.equal((await f.post("activate", { ...activate, platform_public_key: platformPem })).status, 409);
       assert.equal(f.probe.calls, 2);
       assert.deepEqual(f.probe.publicKeys, [nextPlatformPem.trim(), nextPlatformPem.trim()]);
-      assert.equal(f.settings.snapshot().provider!.publicKeyPem, nextPlatformPem.trim());
+      assert.equal(f.settings.instanceSnapshot().provider!.publicKeyPem, nextPlatformPem.trim());
       assert.equal(f.database.integrityCheck().ok, true);
     });
   });
 
   it("discards only the selected pending key and refuses an obsolete activation", async () => {
     await withFixture(async (f) => {
-      const original = f.settings.view();
+      const original = f.settings.instanceView();
       const first = f.request();
       assert.equal((await f.post("regenerate", first)).status, 201);
       const discard = {
-        revision: f.settings.view().revision,
+        revision: f.settings.instanceView().revision,
         change_id: first.change_id,
       };
       assert.equal((await f.post("discard", discard)).status, 200);
@@ -303,7 +303,7 @@ describe("administrator key rotation HTTP contract", () => {
       assert.equal(
         (
           await f.post("activate", {
-            revision: f.settings.view().revision,
+            revision: f.settings.instanceView().revision,
             change_id: first.change_id,
             platform_public_key: nextPlatformPem,
           })
@@ -311,15 +311,15 @@ describe("administrator key rotation HTTP contract", () => {
         409,
       );
       assert.equal(
-        f.settings.view().pending_application_key!.change_id,
+        f.settings.instanceView().pending_application_key!.change_id,
         next.change_id,
       );
       assert.equal(
-        f.settings.view().application_public_key,
+        f.settings.instanceView().application_public_key,
         original.application_public_key,
       );
       assert.equal(
-        f.settings.view().payment_revision,
+        f.settings.instanceView().payment_revision,
         original.payment_revision,
       );
       assert.equal(f.probe.calls, 0);

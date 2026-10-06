@@ -30,7 +30,9 @@ CREATE TABLE api_client_config (
         )
       ) STRICT;
 INSERT INTO api_client_config(client_id, secret_fingerprint, key_version, enabled, created_at, updated_at)
-SELECT client_id, secret_fingerprint, key_version, enabled, created_at, updated_at FROM perpay_v34_clients;
+SELECT client_id, secret_fingerprint, key_version,
+ CASE WHEN EXISTS (SELECT 1 FROM perpay_v34_secrets WHERE secret_name = 'api_secret') THEN enabled ELSE 0 END,
+ created_at, updated_at FROM perpay_v34_clients;
 -- An initialized old instance may never have issued an API key. Preserve its website
 -- without manufacturing credentials. A fresh migration chain has none of this state.
 INSERT INTO api_client_config(client_id, secret_fingerprint, key_version, enabled, created_at, updated_at)

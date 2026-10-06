@@ -28,15 +28,17 @@ const ledger = new LedgerStore(database);
 const reconciliation = new ReconciliationStore(database);
 const webhooks = new WebhookStore(database);
 const settingsStore = new RuntimeSettingsStore(database, config.masterKey);
+const sites = settingsStore.siteStore();
+if (!sites) throw new Error("schema 34 website configuration is required");
 let settings!: RuntimeSettingsService;
-const orders = new OrderService(database, () => settingsStore.siteStore() ? settings.instanceSnapshot() : settings.snapshot(), undefined, settingsStore.siteStore() ?? undefined);
+const orders = new OrderService(database, () => settings.instanceSnapshot(), undefined, sites);
 const runtime = new RuntimeController({
   database,
   orders,
   ledger,
   reconciliation,
   webhooks,
-  sites: settingsStore.siteStore(),
+  sites,
 });
 settings = new RuntimeSettingsService({
   store: settingsStore,
@@ -64,7 +66,7 @@ const app = createApp({
   database,
   identity,
   settings,
-  sites: settingsStore.siteStore() ?? undefined,
+  sites,
   runtimeStatus: () => runtime.status(),
   orders,
   ledger,

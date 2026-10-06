@@ -154,7 +154,7 @@ describe("health endpoints", () => {
           inFlight: false,
           lastAttemptAt: collectionNow,
           lastSuccessAt:
-            collectionNow - settings.snapshot().provider!.maximumSuccessAgeMilliseconds,
+            collectionNow - settings.instanceSnapshot().provider!.maximumSuccessAgeMilliseconds,
           lastErrorCode: null,
           consecutiveFailures: 0,
         }),
@@ -204,7 +204,7 @@ describe("health endpoints", () => {
           inFlight: false,
           lastAttemptAt: collectionNow,
           lastSuccessAt:
-            collectionNow - settings.snapshot().provider!.maximumSuccessAgeMilliseconds - 1,
+            collectionNow - settings.instanceSnapshot().provider!.maximumSuccessAgeMilliseconds - 1,
           lastErrorCode: "remote_authorization_failed",
           consecutiveFailures: 4,
         }),
@@ -969,56 +969,8 @@ describe("identity HTTP contract", () => {
       };
       const first = await app.request("/api/v1/system/status", { headers });
       assert.equal(first.status, 200);
-      const parsedFirst = await first.json() as {
-        data: {
-          database: { ok: boolean; result: string };
-          ledger: {
-            collection_ready: boolean;
-            last_success_age_milliseconds: number | null;
-            maximum_success_age_milliseconds: number;
-          };
-          reconciliation: {
-            confirmation_ready: boolean;
-            last_success_age_milliseconds: number | null;
-            maximum_success_age_milliseconds: number;
-          };
-          backup: Record<string, unknown>;
-        };
-      };
-      assert.deepEqual(parsedFirst.data.database, { ok: true, result: "ok" });
-      assert.deepEqual(
-        {
-          collection_ready: parsedFirst.data.ledger.collection_ready,
-          last_success_age_milliseconds:
-            parsedFirst.data.ledger.last_success_age_milliseconds,
-          maximum_success_age_milliseconds:
-            parsedFirst.data.ledger.maximum_success_age_milliseconds,
-        },
-        {
-          collection_ready: true,
-          last_success_age_milliseconds: 0,
-          maximum_success_age_milliseconds: 60_000,
-        },
-      );
-      assert.deepEqual(
-        {
-          confirmation_ready: parsedFirst.data.reconciliation.confirmation_ready,
-          last_success_age_milliseconds:
-            parsedFirst.data.reconciliation.last_success_age_milliseconds,
-          maximum_success_age_milliseconds:
-            parsedFirst.data.reconciliation.maximum_success_age_milliseconds,
-        },
-        {
-          confirmation_ready: true,
-          last_success_age_milliseconds: 0,
-          maximum_success_age_milliseconds: 60_000,
-        },
-      );
-      assert.deepEqual(parsedFirst.data.backup, {
-        enabled: true,
-        ...signedBackupHealth,
-        instance_matches: true,
-      });
+      const parsedFirst = await first.json();
+      assert.deepEqual(parsedFirst, { data: { status: "ready", code: null, client_id: "default", accepting_orders: true, notifications_enabled: false } });
       const firstBody = JSON.stringify(parsedFirst);
       assert.equal(firstBody.includes(apiSecret), false);
 
@@ -1147,7 +1099,7 @@ describe("order HTTP contract", () => {
         "reconciliation_not_ready",
       );
 
-      collectionNow += settings.snapshot().provider!.maximumSuccessAgeMilliseconds + 1;
+      collectionNow += settings.instanceSnapshot().provider!.maximumSuccessAgeMilliseconds + 1;
       collectionState = "degraded";
       collectionLastErrorCode = "remote_authorization_failed";
       collectionConsecutiveFailures = 4;
@@ -1280,7 +1232,7 @@ describe("order HTTP contract", () => {
 
       reconciliationState = "degraded";
       reconciliationLastSuccessAt =
-        collectionNow - settings.snapshot().provider!.maximumSuccessAgeMilliseconds - 1;
+        collectionNow - settings.instanceSnapshot().provider!.maximumSuccessAgeMilliseconds - 1;
       const staleReconciliation = await ready.request(target, {
         method: "POST",
         headers: {

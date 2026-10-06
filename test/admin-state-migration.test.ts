@@ -1,3 +1,4 @@
+import { withLegacyPaymentFixture } from "./legacy-payment-fixture.ts";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
@@ -9,7 +10,7 @@ import { adminRefundMarks, adminRefundMarkHistory, setAdminRefundMark } from "..
 import { adminWorkItemPage, ignoreAllAdminWorkItems } from "../src/http/admin-work-items.ts";
 import { WebhookStore } from "../src/notifications/store.ts";
 import { administratorStateDowngradeSql } from "./admin-state-schema-fixture.ts";
-import { enableNotifications, withHttpFixture } from "./reconciliation-http-fixture.ts";
+import { RuntimeSettingsStore } from "../src/settings/store.ts";
 import { seedLegacyRefund } from "./legacy-refund-fixture.ts";
 import { seedLegacyDebitException } from "./legacy-debit-exception-fixture.ts";
 
@@ -19,8 +20,8 @@ function historicalSnapshot(database: AppDatabase) {
 }
 
 it("upgrades schema 22 without rewriting historical money, refund evidence, queued notices or audit hashes, and persists admin state through restart", async () => {
-  await withHttpFixture(async (fixture) => {
-    const { notifyUrl } = enableNotifications(fixture);
+  await withLegacyPaymentFixture(async (fixture) => {
+    const { notifyUrl } = fixture.enableNotifications();
     const order = fixture.createSettlement("migration-refund", 999, notifyUrl).order;
     const debit = fixture.recordDebit("migration-legacy-refund", 100, 5);
     const legacyRefund = seedLegacyRefund(fixture.database, { financialOperationId: randomUUID(), orderId: order.orderId, ledgerEntryId: debit.ledgerEntryId, actorId: "admin", reason: "pre-retirement partial refund", now: Date.now() });
@@ -39,7 +40,7 @@ it("upgrades schema 22 without rewriting historical money, refund evidence, queu
       assert.equal(Number((legacy.prepare("SELECT max(version) AS version FROM schema_migrations").get() as { version: bigint }).version), 22);
       assert.equal(inspectDatabaseIntegrity(legacy).ok, true);
     } finally { legacy.close(); }
-    let upgraded = await AppDatabase.open(databasePath);
+    let upgraded = await AppDatabase.open(databasePath, { masterKey: fixture.services.config.masterKey });
     try {
       assert.deepEqual(historicalSnapshot(upgraded), before);
       assert.equal(Number(upgraded.read((connection) => (connection.prepare("SELECT max(version) AS version FROM schema_migrations").get() as { version: bigint }).version)), DATABASE_COMPATIBILITY.maximum);
@@ -66,7 +67,7 @@ it("upgrades schema 22 without rewriting historical money, refund evidence, queu
       const deliveredTypes: string[] = [];
       for (let i = 0; i < 2; i += 1) {
         const now = Date.now();
-        const claim = notifications.claimNext({ now, leaseMilliseconds: 10000, maximumAttempts: 2 }); assert.ok(claim);
+        const claim = notifications.claimNext({ clientId: "default", siteRevision: new RuntimeSettingsStore(upgraded, fixture.services.config.masterKey).siteStore()!.get("default")!.revision, now, leaseMilliseconds: 10000, maximumAttempts: 2 }); assert.ok(claim);
         deliveredTypes.push(claim.event.eventType);
         assert.equal(claim.event.payloadJson.includes("refund_mark"), false);
         assert.equal(claim.event.payloadJson.includes(request.note), false);

@@ -1,3 +1,4 @@
+import { configureTestSiteNotifications } from "./site-notification-fixture.ts";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { DatabaseSync } from "node:sqlite";
@@ -284,17 +285,13 @@ describe("administrator global list queries", () => {
   });
   it("searches notification identities, URLs and error codes, with projection-aligned retry sorting", async () => {
     await withHttpFixture(async (f) => {
-      const secret = Buffer.alloc(32, 33).toString("base64url");
-      f.services.settingsStore.saveWebhook(
-        {
-          revision: f.services.settings.snapshot().revision,
+      configureTestSiteNotifications(f.services.sites, "default", {
           enabled: true,
           allowed_origin: "https://query.example.test",
           timeout_milliseconds: 5000,
           maximum_attempts: 3,
           retry_base_seconds: 10,
           retry_maximum_seconds: 60,
-          secret,
         },
         {
           actorId: "admin",
@@ -302,12 +299,6 @@ describe("administrator global list queries", () => {
           remoteAddressHash: "0".repeat(64),
         },
       );
-      const fingerprint =
-        f.services.settings.snapshot().webhook.signingKeyFingerprint!;
-      f.webhooks.syncSigningKey({
-        secretFingerprint: fingerprint,
-        now: Date.now(),
-      });
       const orders = Array.from(
         { length: 6 },
         (_, i) =>
@@ -319,7 +310,7 @@ describe("administrator global list queries", () => {
       );
       f.webhooks.materialize(20, Date.now());
       for (let i = 0; i < 2; i++) {
-        const claim = f.webhooks.claimNext({
+        const claim = f.webhooks.claimNext({ clientId: "default", siteRevision: f.services.sites.get("default")!.revision,
           now: Date.now(),
           leaseMilliseconds: 30000,
           maximumAttempts: 3,

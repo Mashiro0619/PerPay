@@ -173,7 +173,7 @@ describe("read-only manual settlement candidate discovery", () => {
       const expired = f.createOrder("expired-pick", 6000);
       const expiredReader = new OrderService(
         f.database,
-        () => f.services.settings.snapshot(),
+        () => f.services.settings.instanceSnapshot(),
         () => expired.checkout.expiresAt + 1000,
       );
       assert.equal(
@@ -217,7 +217,7 @@ describe("read-only manual settlement candidate discovery", () => {
       const paid = f.createSettlement("paid-pick", 8000);
       const local = f.createOrder("local-pick", 9000);
       const entry = f.recordCredit("local-credit", local.payableAmountCents, 1);
-      const source = f.services.settings.snapshot();
+      const source = f.services.settings.instanceSnapshot();
       f.ledger.bindProviderIdentity({
         providerAccountKey: "another-account",
         providerKind: "alipay",
@@ -227,7 +227,7 @@ describe("read-only manual settlement candidate discovery", () => {
       const otherService = new OrderService(f.database, () => ({
         ...source,
         activeProviderAccountKey: "another-account",
-      }));
+      }), undefined, f.services.sites, "default");
       const foreign = otherService.create(
         createOrderRequestSchema.parse({
           idempotency_key: "foreign-pick",

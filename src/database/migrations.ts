@@ -1,3 +1,4 @@
+import { MULTI_SITE_SCHEMA_SQL } from "../sites/migrations/schema.ts";
 import { createHash } from "node:crypto";
 
 export interface Migration {
@@ -4994,4 +4995,5 @@ export const migrations: readonly Migration[] = [
       ) STRICT;
     `,
   },
+  { version: 34, name: "multi_business_websites", sql: MULTI_SITE_SCHEMA_SQL, postApply: "migrate_websites_v1" },
 ] as const;

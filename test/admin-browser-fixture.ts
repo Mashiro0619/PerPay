@@ -1,3 +1,4 @@
+import { configureTestSiteNotifications } from "./site-notification-fixture.ts";
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -24,10 +25,9 @@ const configured = await createConfiguredHttpServices({
   collectionCodePayload: "https://qr.alipay.com/browser-fixture-only",
   publicUrl: "http://127.0.0.1:6194",
 });
-await configured.settings.saveWebhook({
-  revision: configured.settings.view().revision,
+await configureTestSiteNotifications(configured.sites, "default", {
   enabled: true,
-  allowed_origin: "https://shop.example.com",
+  allowed_origin: "https://shop.example.com", return_origin: "https://shop.example.com",
   timeout_milliseconds: 5000,
   maximum_attempts: 1,
   retry_base_seconds: 10,
@@ -37,10 +37,7 @@ await configured.settings.saveWebhook({
 const ledger = new LedgerStore(configured.database);
 const reconciliation = new ReconciliationStore(configured.database);
 const webhooks = new WebhookStore(configured.database);
-const fingerprint = configured.settings.snapshot().webhook.signingKeyFingerprint;
-if (!fingerprint) throw new Error("fixture webhook signing key is missing");
-webhooks.syncSigningKey({ secretFingerprint: fingerprint, now: Date.now() });
-const providerAccountKey = configured.settings.snapshot().activeProviderAccountKey;
+const providerAccountKey = configured.settings.instanceSnapshot().activeProviderAccountKey;
 if (!providerAccountKey) throw new Error("fixture provider identity is missing");
 
 function providerTime(timestamp: number): string {
@@ -94,7 +91,7 @@ if (unmatchedDebit) reconciliation.reconcileEntry(unmatchedDebit.ledgerEntryId);
 record("1.001", "CREDIT");
 webhooks.materialize(100, Date.now());
 for (let attempt = 0; attempt < 18; attempt += 1) {
-  const claim = webhooks.claimNext({ now: Date.now(), leaseMilliseconds: 30000, maximumAttempts: 1 });
+  const claim = webhooks.claimNext({ clientId: "default", siteRevision: configured.sites.get("default")!.revision, now: Date.now(), leaseMilliseconds: 30000, maximumAttempts: 1 });
   if (!claim) break;
   const failed = attempt === 3;
   webhooks.completeAttempt({
@@ -119,7 +116,7 @@ const populatedApp = createApp({
   reconciliationHealth: () => ({ ...healthy(), pendingOrders: 3, continuationPending: false }),
   webhookHealth: () => ({ ...healthy(), pendingDeliveries: 2, deadLetters: 1 }),
 });
-const freshApp = createApp({ config: freshConfig, database: freshDatabase, identity: freshIdentity, settings: freshSettings, orders: new OrderService(freshDatabase, () => freshSettings.snapshot()), startedAt: new Date() });
+const freshApp = createApp({ config: freshConfig, database: freshDatabase, identity: freshIdentity, settings: freshSettings, orders: new OrderService(freshDatabase, () => freshSettings.instanceSnapshot()), startedAt: new Date() });
 const servers = [serve({ fetch: populatedApp.fetch, hostname: "127.0.0.1", port: 6194 }), serve({ fetch: freshApp.fetch, hostname: "127.0.0.1", port: 6195 })];
 console.log("Isolated synthetic admin fixtures: http://127.0.0.1:6194/admin and http://127.0.0.1:6195/admin");
 console.log("No provider or webhook transport is running. Do not use these fixtures for real payments.");

@@ -1,3 +1,4 @@
+import { createLegacySettingsDatabase } from "./legacy-settings-fixture.ts";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,8 +18,8 @@ describe("adaptive ledger interval migration", () => {
       const databasePath = join(directory, "database.sqlite3");
       try {
         // Start with a domain-valid initialized database, then restore its v19 structure.
-        const initialized = await AppDatabase.open(databasePath);
-        initialized.close();
+        const initialized = createLegacySettingsDatabase(databasePath);
+        initialized.connection.close();
         const legacy = new DatabaseSync(databasePath, { enableForeignKeyConstraints: true, readBigInts: true });
         try {
           legacy.prepare(`UPDATE runtime_configuration

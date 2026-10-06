@@ -1,3 +1,5 @@
+import { withLegacyPaymentFixture } from "./legacy-payment-fixture.ts";
+import { setTestSiteDisplay } from "./site-display-fixture.ts";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { it, mock } from "node:test";
@@ -20,7 +22,7 @@ import {
 it("persists validated display settings with CSRF, revisions and audit without changing payment state", async () => {
   await withHttpFixture(async ({ app, services, database, createOrder }) => {
     createOrder("display-contract", 1000);
-    const original = services.settings.view();
+    const original = services.settings.instanceView();
     const ordersBefore = database.read((c) =>
       c.prepare("SELECT * FROM payment_orders").all(),
     );
@@ -29,7 +31,6 @@ it("persists validated display settings with CSRF, revisions and audit without c
     const input = {
       system_name: "星河收款",
       revision: original.revision,
-      checkout_show_product_name: false,
       dashboard_chart_type: "BAR",
     };
     const save = (body: unknown, requestHeaders = headers) =>
@@ -39,9 +40,7 @@ it("persists validated display settings with CSRF, revisions and audit without c
         body: JSON.stringify(body),
       });
     assert.deepEqual(original.display, {
-      checkout_help_url: null,
       system_name: "PerPay",
-      checkout_show_product_name: true,
       dashboard_chart_type: "AREA",
     });
     assert.equal(
@@ -67,17 +66,15 @@ it("persists validated display settings with CSRF, revisions and audit without c
       { ...input, unknown: true },
     ])
       assert.equal((await save(bad)).status, 422);
-    assert.equal(services.settings.view().revision, original.revision);
+    assert.equal(services.settings.instanceView().revision, original.revision);
     const response = await save(input);
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("cache-control"), "no-store");
-    const saved = services.settings.view();
+    const saved = services.settings.instanceView();
     assert.equal(saved.revision, original.revision + 1);
     assert.equal(saved.payment_revision, original.payment_revision);
     assert.deepEqual(saved.display, {
-      checkout_help_url: null,
       system_name: "星河收款",
-      checkout_show_product_name: false,
       dashboard_chart_type: "BAR",
     });
     assert.deepEqual(saved.provider, original.provider);
@@ -97,8 +94,6 @@ it("persists validated display settings with CSRF, revisions and audit without c
     ) as { details_json: string }[];
     assert.equal(audit.length, 1);
     assert.deepEqual(JSON.parse(audit[0]!.details_json), {
-      ...input,
-      checkout_help_url: null,
       revision: saved.revision,
       payment_revision_changed: false,
     });
@@ -109,7 +104,7 @@ it("persists validated display settings with CSRF, revisions and audit without c
         store: new RuntimeSettingsStore(reopened, services.config.masterKey),
       });
       settings.initialize();
-      assert.deepEqual(settings.view().display, saved.display);
+      assert.deepEqual(settings.instanceView().display, saved.display);
       assert.equal(reopened.integrityCheck().ok, true);
     } finally {
       reopened.close();
@@ -122,14 +117,7 @@ it("applies checkout product visibility to SSR without changing public order dat
     async ({ app, services, createOrder, createSettlement }) => {
       const order = createOrder("checkout-visible", 1000);
       const paid = createSettlement("checkout-paid", 2000).order;
-      await services.settings.saveDisplay(
-        {
-          revision: services.settings.view().revision,
-          checkout_show_product_name: false,
-          dashboard_chart_type: "LINE",
-        },
-        { actorId: "admin" },
-      );
+      setTestSiteDisplay(services.sites, "default", { checkout_show_product_name: false });
       for (const record of [order, paid]) {
         const response = await app.request("/checkout/" + record.checkoutToken);
         assert.equal(response.status, 200);
@@ -147,14 +135,7 @@ it("applies checkout product visibility to SSR without changing public order dat
         };
         assert.equal(publicData.data.product_name, record.productName);
       }
-      await services.settings.saveDisplay(
-        {
-          revision: services.settings.view().revision,
-          checkout_show_product_name: true,
-          dashboard_chart_type: "AREA",
-        },
-        { actorId: "admin" },
-      );
+      setTestSiteDisplay(services.sites, "default", { checkout_show_product_name: true });
       const html = await (
         await app.request("/checkout/" + order.checkoutToken)
       ).text();
@@ -168,9 +149,9 @@ it("applies checkout product visibility to SSR without changing public order dat
 });
 
 it("upgrades schema 23 with presentation defaults while preserving revisions, collection timing and evidence", async () => {
-  await withHttpFixture(async ({ database, services, createSettlement }) => {
+  await withLegacyPaymentFixture(async ({ database, services, createSettlement }) => {
     createSettlement("display-migration", 990);
-    const before = services.settings.view();
+    const before = services.settings.instanceView();
     const tables = [
       "payment_orders",
       "order_events",
@@ -193,22 +174,18 @@ it("upgrades schema 23 with presentation defaults while preserving revisions, co
     } finally {
       legacy.close();
     }
-    const upgraded = await AppDatabase.open(services.config.databasePath);
+    const upgraded = await AppDatabase.open(services.config.databasePath, { masterKey: services.config.masterKey });
     try {
       const settings = new RuntimeSettingsService({
         store: new RuntimeSettingsStore(upgraded, services.config.masterKey),
       });
       settings.initialize();
-      const after = settings.view();
+      const after = settings.instanceView();
       assert.equal(after.revision, before.revision);
       assert.equal(after.payment_revision, before.payment_revision);
       assert.deepEqual(after.provider, before.provider);
-      assert.deepEqual(after.display, {
-        checkout_help_url: null,
-        system_name: "PerPay",
-        checkout_show_product_name: true,
-        dashboard_chart_type: "AREA",
-      });
+      assert.deepEqual(after.display, { system_name: "PerPay", dashboard_chart_type: "AREA" });
+      assert.deepEqual(settings.siteStore()!.get("default")!.configuration.policy.display, { checkout_name: "PerPay", checkout_help_url: null, checkout_show_product_name: true });
       assert.deepEqual(snapshot(upgraded), evidence);
       assert.equal(upgraded.integrityCheck().ok, true);
     } finally {
@@ -225,14 +202,7 @@ for (const failure of [429, 503] as const) {
     async () => {
       await withHttpFixture(async ({ app, services, createOrder }) => {
         const order = createOrder("display-recovery-" + failure, 4900);
-        await services.settings.saveDisplay(
-          {
-            revision: services.settings.view().revision,
-            checkout_show_product_name: false,
-            dashboard_chart_type: "AREA",
-          },
-          { actorId: "admin" },
-        );
+        setTestSiteDisplay(services.sites, "default", { checkout_show_product_name: false });
         const failureMock =
           failure === 429
             ? mock.method(
@@ -345,22 +315,22 @@ it("renders a lightweight limited page without attempting a failing display sett
 it("validates and persists a public system name while legacy display requests preserve it", async () => {
   await withHttpFixture(async ({ app, services }) => {
     const auth = await login(app);
-    const input = { revision: services.settings.view().revision,
-      checkout_show_product_name: true, dashboard_chart_type: "AREA" };
+    const input = { revision: services.settings.instanceView().revision,
+      dashboard_chart_type: "AREA" };
     const save = (body: unknown) => app.request("/api/admin/v1/settings/display", {
       method: "PUT", headers: financialHeaders(auth), body: JSON.stringify(body),
     });
     for (const system_name of ["", "   ", "x".repeat(41), "bad\u0000name", "bad\nname", "bad\u202ename", 123]) {
       assert.equal((await save({ ...input, system_name })).status, 422);
     }
-    assert.equal(services.settings.view().revision, input.revision);
+    assert.equal(services.settings.instanceView().revision, input.revision);
     assert.equal((await save({ ...input, system_name: "  星河收款  " })).status, 200);
-    assert.equal(services.settings.view().display.system_name, "星河收款");
+    assert.equal(services.settings.instanceView().display.system_name, "星河收款");
     assert.equal(services.settings.display().systemName, "星河收款");
     assert.equal((await save({ ...input, revision: input.revision + 1 })).status, 200);
-    assert.equal(services.settings.view().display.system_name, "星河收款");
+    assert.equal(services.settings.instanceView().display.system_name, "星河收款");
     assert.equal((await save({ ...input, revision: input.revision + 2, system_name: "PerPay" })).status, 200);
-    assert.equal(services.settings.view().display.system_name, "PerPay");
+    assert.equal(services.settings.instanceView().display.system_name, "PerPay");
   });
 });
 
@@ -368,8 +338,9 @@ it("escapes public names and reads anonymous branding without decrypting secrets
   await withHttpFixture(async ({ app, services, createOrder }) => {
     const order = createOrder("brand-checkout", 1000);
     const name = '"/><script>x</script>& $&';
-    await services.settings.saveDisplay({ revision: services.settings.view().revision,
-      system_name: name, checkout_show_product_name: true, dashboard_chart_type: "AREA" }, { actorId: "admin" });
+    await services.settings.saveInstanceDisplay({ revision: services.settings.instanceView().revision,
+      system_name: name, dashboard_chart_type: "AREA" }, { actorId: "admin" });
+    setTestSiteDisplay(services.sites, "default", { checkout_name: name });
     const decrypt = mock.method(RuntimeSecretCipher.prototype, "decrypt", () => { throw new Error("secrets must not be read"); });
     try {
       for (const path of ["/admin/", "/admin/login", "/admin/setup"]) {
@@ -386,7 +357,7 @@ it("escapes public names and reads anonymous branding without decrypting secrets
         const response = await app.request("/checkout/" + token);
         const html = await response.text();
         assert.equal(readCheckoutInitial(html).systemName, name);
-        assert.ok(!html.includes("<script>x</script>") && !html.includes("PerPay 收银台"));
+        assert.ok(!html.includes("<script>x</script>"));
       }
     } finally { decrypt.mock.restore(); }
   });

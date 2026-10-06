@@ -1,3 +1,5 @@
+import { SiteStore, SiteError } from "../src/sites/store.ts";
+import { randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { createPrivateKey, createPublicKey, generateKeyPairSync } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -25,126 +27,53 @@ const platformPublicKey = platformKeys.publicKey
   .toString();
 
 describe("runtime settings", () => {
-  it("defaults the amount cooldown and preserves it when an older client omits the field", async () => {
+  it("saves complete website cooldown policy without modifying the instance or template", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-cooldown-settings-"));
     const database = await AppDatabase.open(join(directory, "database.sqlite3"));
     try {
-      const settings = service(database, masterKey);
-      const base = { code_payload: "https://qr.alipay.com/cooldown-settings", order_ttl_seconds: 300, amount_offset_maximum_cents: 99 };
-      const first = await settings.saveCollection({ revision: 0, ...base }, audit("cooldown-default"));
-      assert.equal(first.collection?.amount_reuse_cooldown_seconds, 600);
-      const changed = await settings.saveCollection({ revision: first.revision, ...base, amount_reuse_cooldown_seconds: 1200 }, audit("cooldown-change"));
-      assert.equal(changed.collection?.amount_reuse_cooldown_seconds, 1200);
-      const legacy = await settings.saveCollection({ revision: changed.revision, ...base, order_ttl_seconds: 450 }, audit("cooldown-legacy"));
-      assert.equal(legacy.collection?.amount_reuse_cooldown_seconds, 1200);
-      assert.equal(settings.snapshot().collection?.amountReuseCooldownSeconds, 1200);
-      for (const value of [0, 59, 3601, 600.5]) {
-        await assert.rejects(settings.saveCollection({ revision: legacy.revision, ...base, amount_reuse_cooldown_seconds: value }, audit("cooldown-invalid")));
+      const settings = service(database, masterKey), sites = new SiteStore(database, masterKey);
+      const original = settings.instanceSnapshot(), template = sites.defaults();
+      const site = sites.create({ operation_id: randomUUID(), configuration: { name: "A", accepting_orders: true, notifications_enabled: false, notification_origin: null, return_origin: null, policy: template.policy } }, audit("create"));
+      assert.equal(site.configuration.policy.orders.amount_reuse_cooldown_seconds, 600);
+      const configuration = { ...site.configuration, policy: { ...site.configuration.policy, orders: { ...site.configuration.policy.orders, amount_reuse_cooldown_seconds: 1200 } } };
+      const updated = sites.update(site.clientId, { revision: site.revision, configuration }, audit("cooldown"));
+      assert.equal(updated.configuration.policy.orders.amount_reuse_cooldown_seconds, 1200);
+      for (const value of [0, 59, 3601, 600.5, undefined]) {
+        assert.throws(() => sites.update(site.clientId, { revision: updated.revision, configuration: { ...configuration, policy: { ...configuration.policy, orders: { ...configuration.policy.orders, amount_reuse_cooldown_seconds: value } } } }, audit("invalid")));
       }
-      assert.equal(settings.view().revision, legacy.revision);
+      assert.deepEqual(sites.get(site.clientId), updated);
+      assert.deepEqual(sites.defaults(), template);
+      assert.deepEqual(settings.instanceSnapshot(), original);
     } finally { database.close(); rmSync(directory, { recursive: true, force: true }); }
   });
 
-
-  it("encrypts secrets, enforces revisions, and rejects the wrong deployment key", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "perpay-settings-"));
-    const databasePath = join(directory, "perpay.sqlite3");
-    const database = await AppDatabase.open(databasePath);
+  it("encrypts secrets, enforces website revisions, and rejects the wrong deployment key", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-settings-")), path = join(directory, "perpay.sqlite3");
+    let database = await AppDatabase.open(path, { masterKey });
     try {
-      const settings = service(database, masterKey);
-      assert.equal(database.read((connection) => Number((connection.prepare(
-        "SELECT provider_safety_lag_milliseconds FROM runtime_configuration WHERE singleton_key = 1",
-      ).get() as { provider_safety_lag_milliseconds: bigint }).provider_safety_lag_milliseconds)), 10_000);
-      assert.deepEqual(settings.status(), {
-        revision: 0,
-        paymentRevision: 0,
-        updatedAt: settings.status().updatedAt,
-        complete: false,
-        collectionConfigured: false,
-        providerConfigured: false,
-        apiConfigured: false,
-        notificationConfigured: true,
-        activeProviderAccountKey: null,
-      });
-
-      await settings.saveCollection({
-        revision: 0,
-        code_payload: "https://qr.alipay.com/settings",
-        order_ttl_seconds: 300,
-        amount_offset_maximum_cents: 19,
-      }, audit("collection"));
+      const settings = service(database, masterKey), sites = new SiteStore(database, masterKey);
+      await settings.saveCollectionCode({ revision: 0, code_payload: "https://qr.alipay.com/settings" }, audit("qr"));
       await settings.saveProvider(providerInput(1, "2026000000000001"), audit("provider"));
-      assert.equal(settings.view().provider?.safety_lag_seconds, 10);
-      assert.equal(settings.view().collection_policy.active_scan_interval_seconds, 10);
-      assert.equal(settings.view().completion.complete, true);
-      assert.equal(settings.view().completion.api, false);
-      assert.equal(settings.view().completion.next_step, null);
-      assert.equal(settings.apiCredential(), null);
-      const rotated = await settings.rotateApiSecret(2, audit("api"));
-      assert.equal(rotated.client_id, "default");
+      const site = sites.create({ operation_id: randomUUID(), configuration: { name: "A", accepting_orders: true, notifications_enabled: false, notification_origin: null, return_origin: null, policy: sites.defaults().policy } }, audit("create"));
+      assert.equal(sites.credential(site.clientId), null);
+      const rotated = sites.rotateSecret(site.clientId, "api_secret", site.revision, audit("api"));
       assert.match(rotated.secret, /^[A-Za-z0-9_-]{43}$/);
-      assert.equal(rotated.settings.completion.complete, true);
-      assert.equal(rotated.settings.completion.application_key, true);
-      assert.equal(rotated.settings.completion.next_step, null);
-      assert.equal(rotated.settings.payment_revision, 2);
-      assert.equal(rotated.settings.secrets.api_secret.masked, `••••${rotated.secret.slice(-4)}`);
-      assert.equal(settings.revealSecret("api_secret", audit("reveal")), rotated.secret);
-      const credential = settings.apiCredential();
-      assert.ok(credential);
-      assert.equal(credential.clientId, "default");
-      assert.equal(credential.keyVersion, 1);
-      assert.equal(credential.secret, rotated.secret);
-      assert.equal(credential.secretFingerprint, rotated.settings.secrets.api_secret.fingerprint);
-
-      const stored = database.read((connection) => connection.prepare(
-        `SELECT ciphertext, nonce, authentication_tag
-           FROM runtime_secrets WHERE secret_name = 'api_secret'`,
-      ).get() as {
-        ciphertext: Uint8Array;
-        nonce: Uint8Array;
-        authentication_tag: Uint8Array;
-      });
-      assert.equal(Buffer.from(stored.ciphertext).includes(Buffer.from(rotated.secret)), false);
-      assert.equal(stored.nonce.byteLength, 12);
-      assert.equal(stored.authentication_tag.byteLength, 16);
-
-      await assert.rejects(
-        settings.rotateApiSecret(2, audit("stale")),
-        (error: unknown) =>
-          error instanceof SettingsError && error.code === "settings_revision_conflict",
-      );
-      assert.equal(settings.status().revision, 3);
-      assert.equal(
-        database.read((connection) => Number((connection.prepare(
-          "SELECT COUNT(*) AS count FROM api_client_config",
-        ).get() as { count: bigint }).count)),
-        1,
-      );
-      const auditJson = database.read((connection) =>
-        [...connection.prepare(
-          `SELECT details_json FROM audit_events
-            WHERE action LIKE 'settings.%' OR action LIKE 'api_client.%'`,
-        ).iterate()].map((row) => String((row as { details_json: string }).details_json)).join("\n")
-      );
-      assert.equal(auditJson.includes(rotated.secret), false);
-      assert.equal(auditJson.includes(applicationPrivateKey), false);
-    } finally {
-      database.close();
-    }
-
-    const restored = await AppDatabase.open(databasePath);
-    try {
-      assert.throws(
-        () => new RuntimeSettingsStore(restored, replacementMasterKey).initialize(),
-        /PERPAY_MASTER_KEY does not match this database/i,
-      );
-      const correct = new RuntimeSettingsStore(restored, masterKey);
-      correct.initialize();
+      assert.equal(sites.revealSecret(site.clientId, "api_secret", audit("reveal")), rotated.secret);
+      assert.equal(sites.credential(site.clientId)?.keyVersion, 1);
+      const row = database.read(connection => connection.prepare("SELECT ciphertext FROM site_secrets WHERE client_id = ? AND secret_name = 'api_secret'").get(site.clientId))!;
+      assert.equal(Buffer.from(row.ciphertext as Uint8Array).includes(Buffer.from(rotated.secret)), false);
+      assert.throws(() => sites.rotateSecret(site.clientId, "api_secret", site.revision, audit("stale")), error => error instanceof SiteError && error.code === "site_revision_conflict");
+      assert.equal(settings.instanceView().revision, 2);
+      const logs = database.read(connection => connection.prepare("SELECT details_json FROM audit_events").all());
+      assert.equal(JSON.stringify(logs).includes(rotated.secret), false);
+      assert.equal(JSON.stringify(logs).includes(applicationPrivateKey), false);
+      database.close(); database = await AppDatabase.open(path, { masterKey });
+      assert.throws(() => new RuntimeSettingsStore(database, replacementMasterKey).initialize(), /PERPAY_MASTER_KEY does not match/);
+      const correct = new RuntimeSettingsStore(database, masterKey); correct.initialize();
       assert.equal(correct.status().complete, true);
-    } finally {
-      restored.close();
-      rmSync(directory, { recursive: true, force: true });
-    }
+      assert.equal(correct.siteStore()!.credential(site.clientId)?.secret, rotated.secret);
+      assert.equal(database.integrityCheck().ok, true);
+    } finally { database.close(); rmSync(directory, { recursive: true, force: true }); }
   });
 
   it("persists and applies both scan intervals while legacy updates restore a fixed cadence", async () => {
@@ -168,7 +97,7 @@ describe("runtime settings", () => {
       }, audit("adaptive-first"));
       assert.equal(first.collection_policy.scan_interval_seconds, 30);
       assert.equal(first.collection_policy.active_scan_interval_seconds, 5);
-      assert.equal(new RuntimeSettingsStore(database, masterKey).snapshot().provider?.activeScanIntervalMilliseconds, 5_000);
+      assert.equal(new RuntimeSettingsStore(database, masterKey).instanceSnapshot().provider?.activeScanIntervalMilliseconds, 5_000);
       const account = first.provider?.provider_account_key;
       const changed = await settings.saveProvider({
         ...providerInput(1, "2026000000000001"), scan_interval_seconds: 60,
@@ -196,13 +125,12 @@ describe("runtime settings", () => {
     const database = await AppDatabase.open(join(directory, "perpay.sqlite3"));
     try {
       const settings = service(database, masterKey);
-      assert.deepEqual(settings.view().completion, {
+      assert.deepEqual(settings.instanceView().completion, {
         complete: false,
         application_key: false,
         collection: false,
         provider: false,
-        api: false,
-        notifications: true,
+        sites: false,
         next_step: "GENERATE_APPLICATION_KEY",
       });
       const initialProvider = providerInput(0, "2026000000000098");
@@ -274,7 +202,7 @@ describe("runtime settings", () => {
         }, audit("provider-with-mismatched-generated-key")),
         /does not match the generated application public key/u,
       );
-      assert.equal(settings.view().revision, 1);
+      assert.equal(settings.instanceView().revision, 1);
 
       const saved = await settings.saveProvider({
         ...input,
@@ -318,7 +246,7 @@ describe("runtime settings", () => {
       });
       settings.initialize();
       await settings.saveProvider(providerInput(0, "2026000000000001"), audit("active-provider"));
-      const before = settings.view();
+      const before = settings.instanceView();
       const privateKeyBefore = settings.revealSecret("provider_private_key", audit("active-key-before"));
       pauses = 0;
       applies = 0;
@@ -328,8 +256,8 @@ describe("runtime settings", () => {
         (error: unknown) => error instanceof SettingsError &&
           error.code === "provider_application_key_rotation_not_supported",
       );
-      assert.equal(settings.view().revision, before.revision);
-      assert.equal(settings.view().payment_revision, before.payment_revision);
+      assert.equal(settings.instanceView().revision, before.revision);
+      assert.equal(settings.instanceView().payment_revision, before.payment_revision);
       assert.equal(
         settings.revealSecret("provider_private_key", audit("active-key-after")),
         privateKeyBefore,
@@ -348,7 +276,7 @@ describe("runtime settings", () => {
     try {
       const settings = service(database, masterKey);
       await settings.saveProvider(providerInput(0, "2026000000000001"), audit("active-provider"));
-      const before = settings.view();
+      const before = settings.instanceView();
       const privateKeyBefore = settings.revealSecret(
         "provider_private_key",
         audit("active-private-key-before"),
@@ -366,8 +294,8 @@ describe("runtime settings", () => {
           error.code === "provider_application_key_rotation_not_supported",
       );
 
-      assert.equal(settings.view().revision, before.revision);
-      assert.equal(settings.view().payment_revision, before.payment_revision);
+      assert.equal(settings.instanceView().revision, before.revision);
+      assert.equal(settings.instanceView().payment_revision, before.payment_revision);
       assert.equal(
         settings.revealSecret("provider_private_key", audit("active-private-key-after")),
         privateKeyBefore,
@@ -396,14 +324,14 @@ describe("runtime settings", () => {
       });
       settings.initialize();
 
-      assert.equal(settings.snapshot().activeProviderAccountKey, null);
+      assert.equal(settings.instanceSnapshot().activeProviderAccountKey, null);
       await assert.rejects(
         settings.generateProviderApplicationKey(0, audit("historical-key-regenerate")),
         (error: unknown) => error instanceof SettingsError &&
           error.code === "provider_application_key_rotation_not_supported",
       );
-      assert.equal(settings.view().revision, 0);
-      assert.equal(settings.view().application_public_key, null);
+      assert.equal(settings.instanceView().revision, 0);
+      assert.equal(settings.instanceView().application_public_key, null);
       assert.equal(
         database.read((connection) => Number((connection.prepare(
           `SELECT COUNT(*) AS count
@@ -423,7 +351,7 @@ describe("runtime settings", () => {
     const database = await AppDatabase.open(join(directory, "perpay.sqlite3"));
     try {
       const settings = service(database, masterKey);
-      await settings.rotateApiSecret(0, audit("missing-guard-secret"));
+      await settings.generateProviderApplicationKey(0, audit("missing-guard-secret"));
       const guard = database.read((connection) => connection.prepare(
         `SELECT cipher_version, nonce, ciphertext, authentication_tag, created_at
            FROM runtime_master_key_guard WHERE singleton_key = 1`,
@@ -477,7 +405,7 @@ describe("runtime settings", () => {
       });
       const recovered = new RuntimeSettingsStore(database, masterKey);
       recovered.initialize();
-      assert.equal(recovered.status().apiConfigured, true);
+      assert.ok(recovered.providerApplicationKey());
       assert.equal(
         database.read((connection) => inspectDatabaseIntegrity(connection)).ok,
         true,
@@ -494,7 +422,7 @@ describe("runtime settings", () => {
     try {
       const settings = service(database, masterKey);
       await settings.saveProvider(providerInput(0, "2026000000000001"), audit("first"));
-      const before = settings.snapshot();
+      const before = settings.instanceSnapshot();
       assert.ok(before.activeProviderAccountKey);
       database.write((connection) => connection.exec(`
         CREATE TRIGGER test_abort_runtime_provider_update
@@ -512,7 +440,7 @@ describe("runtime settings", () => {
         ),
         /injected provider settings failure/,
       );
-      const after = settings.snapshot();
+      const after = settings.instanceSnapshot();
       assert.equal(after.revision, before.revision);
       assert.equal(after.paymentRevision, before.paymentRevision);
       assert.equal(after.activeProviderAccountKey, before.activeProviderAccountKey);
@@ -544,18 +472,18 @@ describe("runtime settings", () => {
     try {
       const settings = service(database, masterKey);
       await settings.saveProvider(providerInput(0, "2026000000000001"), audit("provider-a1"));
-      const first = settings.snapshot().activeProviderAccountKey;
+      const first = settings.instanceSnapshot().activeProviderAccountKey;
       const firstPrivateKey = settings.revealSecret("provider_private_key", audit("provider-a1-key"));
       await settings.saveProvider(
         providerInputWithoutPrivateKey(1, "2026000000000002"),
         audit("provider-b"),
       );
-      const second = settings.snapshot().activeProviderAccountKey;
+      const second = settings.instanceSnapshot().activeProviderAccountKey;
       await settings.saveProvider(
         providerInputWithoutPrivateKey(2, "2026000000000001"),
         audit("provider-a2"),
       );
-      const third = settings.snapshot().activeProviderAccountKey;
+      const third = settings.instanceSnapshot().activeProviderAccountKey;
 
       assert.ok(first);
       assert.ok(second);
@@ -594,10 +522,10 @@ describe("runtime settings", () => {
       });
       settings.initialize();
 
-      const rotated = await settings.rotateApiSecret(0, audit("apply-retry"));
+      const saved = await settings.saveCollectionCode({ revision: 0, code_payload: "https://qr.alipay.com/apply-retry" }, audit("apply-retry"));
       assert.equal(attempts, 2);
-      assert.equal(rotated.settings.revision, 1);
-      assert.equal(settings.revealSecret("api_secret", audit("apply-retry-reveal")), rotated.secret);
+      assert.equal(saved.revision, 1);
+      assert.equal(settings.instanceSnapshot().collection?.codePayload, "https://qr.alipay.com/apply-retry");
     } finally {
       database.close();
       rmSync(directory, { recursive: true, force: true });
@@ -634,7 +562,7 @@ describe("runtime settings", () => {
         checkout_terminal_observation_seconds: 3_600,
       });
       assert.equal(applyCount, 0);
-      assert.deepEqual(settings.snapshot().advanced, {
+      assert.deepEqual(settings.instanceSnapshot().advanced, {
         checkoutKeyRotationDays: 30,
         checkoutTerminalObservationSeconds: 3_600,
       });
@@ -838,11 +766,9 @@ describe("runtime settings", () => {
       collectionAttempts = 0;
       applyAttempts = 0;
 
-      const view = await settings.saveCollection({
+      const view = await settings.saveCollectionCode({
         revision: 1,
         code_payload: "https://qr.alipay.com/whole-apply-retry",
-        order_ttl_seconds: 300,
-        amount_offset_maximum_cents: 19,
       }, audit("whole-retry-collection"));
       assert.equal(view.revision, 2);
       assert.equal(collectionAttempts, 2);
@@ -853,7 +779,7 @@ describe("runtime settings", () => {
     }
   });
 
-  it("keeps a committed API secret recoverable when runtime application fails twice", async () => {
+  it("keeps a committed QR update recoverable when runtime application fails twice", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-settings-api-apply-failure-"));
     const database = await AppDatabase.open(join(directory, "perpay.sqlite3"));
     try {
@@ -866,12 +792,10 @@ describe("runtime settings", () => {
       settings.initialize();
 
       await assert.rejects(
-        settings.rotateApiSecret(0, audit("api-apply-failure")),
+        settings.saveCollectionCode({ revision: 0, code_payload: "https://qr.alipay.com/apply-failure" }, audit("qr-apply-failure")),
         (error: unknown) => error instanceof AggregateError && error.errors.length === 2,
       );
-      const recovered = settings.revealSecret("api_secret", audit("api-apply-reveal"));
-      assert.match(recovered, /^[A-Za-z0-9_-]{43}$/u);
-      assert.equal(settings.apiCredential()?.secret, recovered);
+      assert.equal(settings.instanceSnapshot().collection?.codePayload, "https://qr.alipay.com/apply-failure");
       assert.equal(settings.status().revision, 1);
     } finally {
       database.close();

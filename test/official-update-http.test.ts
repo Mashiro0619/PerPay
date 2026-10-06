@@ -24,7 +24,7 @@ test("official update checks require a session and never gate login or collectio
     await identity.setupAdmin("synthetic-update-test-password");
     const settings = new RuntimeSettingsService({ store: new RuntimeSettingsStore(database, config.masterKey) });
     settings.initialize();
-    const orders = new OrderService(database, () => settings.snapshot());
+    const orders = new OrderService(database, () => settings.instanceSnapshot());
     let requests = 0, clock = Date.now(), unavailable = false;
     const updateChecker = new OfficialUpdateChecker({ currentVersion: CURRENT_VERSION, clock: () => clock, fetch: async () => {
       requests++;
@@ -42,7 +42,7 @@ test("official update checks require a session and never gate login or collectio
     assert.equal(requests, 0, "login must not await any external update request");
     const cookie = login.headers.getSetCookie().map(value => value.split(";", 1)[0]).join("; ");
     const headers = { cookie };
-    const before = settings.view();
+    const before = settings.instanceView();
     const readiness = await (await app.request("/readyz")).json();
     const response = await app.request("/api/admin/v1/system/update", { headers });
     assert.equal(response.status, 200);
@@ -64,7 +64,7 @@ test("official update checks require a session and never gate login or collectio
     assert.equal((await app.request("/api/admin/v1/session", { headers })).status, 200);
     assert.equal((await app.request("/healthz")).status, 200);
     assert.deepEqual(await (await app.request("/readyz")).json(), readiness);
-    assert.deepEqual(settings.view(), before);
+    assert.deepEqual(settings.instanceView(), before);
     identity.revokeAllSessions(identity.authenticate(cookie.match(/perpay_session=([^;]+)/)![1]!)!);
     assert.equal((await app.request("/api/admin/v1/system/update", { headers })).status, 401);
     assert.equal(requests, 2);

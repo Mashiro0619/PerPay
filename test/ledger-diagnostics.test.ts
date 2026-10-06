@@ -89,7 +89,7 @@ describe("persisted ingestion diagnostics", () => {
     const secret = Buffer.alloc(32, 7);
     const services = await createConfiguredHttpServices({ directory, apiSecret: secret.toString("base64url"), collectionCodePayload: "https://qr.alipay.com/diagnostic-test" });
     try {
-      const snapshot = services.settings.snapshot(); const account = snapshot.activeProviderAccountKey!;
+      const snapshot = services.settings.instanceSnapshot(); const account = snapshot.activeProviderAccountKey!;
       const store = new LedgerStore(services.database);
       const now = Date.now();
       const run = store.startIngestRun({ providerAccountKey: account, start: "2026-08-14 11:00:00", end: "2026-08-14 12:00:00", pageSize: 2, now });
@@ -141,7 +141,7 @@ describe("persisted ingestion diagnostics", () => {
     const pendingScan = new Promise<void>(resolve => { finishScan = resolve; });
     try {
       const ledger = new LedgerStore(services.database);
-      const account = services.settings.snapshot().activeProviderAccountKey!;
+      const account = services.settings.instanceSnapshot().activeProviderAccountKey!;
       let now = Date.now(); const start = now; let providerCalls = 0;
       const timers = new Map<NodeJS.Timeout, { at: number; callback: () => void }>();
       const service = new LedgerIngestService({ store: ledger, providerAccountKey: account, pageSize: 2, clock: () => now,

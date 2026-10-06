@@ -1,3 +1,4 @@
+import { createLegacySettingsDatabase } from "./legacy-settings-fixture.ts";
 import assert from "node:assert/strict";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -43,9 +44,9 @@ export const providerInput = (revision: number) => ({
   maximum_success_age_seconds: 120,
 });
 export const changeRequest = (settings: RuntimeSettingsService) => ({
-  revision: settings.view().revision,
+  revision: settings.instanceView().revision,
   change_id: randomUUID(),
-  base_fingerprint: settings.view().application_key_fingerprint!,
+  base_fingerprint: settings.instanceView().application_key_fingerprint!,
 });
 
 export async function withKeyFixture(
@@ -53,8 +54,9 @@ export async function withKeyFixture(
   test: (
     fixture: Awaited<ReturnType<typeof createKeyFixture>>,
   ) => Promise<void>,
+  legacyForMigration = false,
 ): Promise<void> {
-  const fixture = await createKeyFixture(active);
+  const fixture = await createKeyFixture(active, legacyForMigration);
   try {
     await test(fixture);
   } finally {
@@ -70,10 +72,10 @@ export async function withKeyFixture(
   }
 }
 
-async function createKeyFixture(active: boolean) {
+async function createKeyFixture(active: boolean, legacyForMigration: boolean) {
   const directory = mkdtempSync(join(tmpdir(), "perpay-key-rotation-"));
   const databasePath = join(directory, "perpay.sqlite3");
-  const database = await AppDatabase.open(databasePath);
+  const database = legacyForMigration ? createLegacySettingsDatabase(databasePath).owner : await AppDatabase.open(databasePath);
   const events: string[] = [];
   const hooks: {
     verify?: ProviderKeyVerifier;
@@ -114,7 +116,7 @@ async function createKeyFixture(active: boolean) {
     hooks,
     async reopen(path = databasePath) {
       fixture.database.close();
-      fixture.database = await AppDatabase.open(path);
+      fixture.database = await AppDatabase.open(path, { masterKey: keyMaster });
       Object.assign(fixture, services(fixture.database));
     },
   };

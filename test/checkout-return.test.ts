@@ -1,3 +1,4 @@
+import { configureTestSiteNotifications } from "./site-notification-fixture.ts";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { it } from "node:test";
@@ -14,17 +15,16 @@ for (const state of ["UNPAID", "CONFIRMED", "CLOSED", "EXPIRED", "DISPUTED", "UN
     async () => {
       await withHttpFixture(async (fixture) => {
         const { services, database, baseTime } = fixture;
-        await services.settings.saveWebhook({
-          revision: services.settings.view().revision,
+        await configureTestSiteNotifications(services.sites, "default", {
           enabled: true,
-          allowed_origin: "https://shop.example.com",
+          allowed_origin: "https://shop.example.com", return_origin: "https://shop.example.com",
           timeout_milliseconds: 5000,
           maximum_attempts: 5,
           retry_base_seconds: 10,
           retry_maximum_seconds: 600,
         }, { actorId: "admin" });
         let now = baseTime + 1000;
-        const orders = new OrderService(database, () => services.settings.snapshot(), () => now);
+        const orders = new OrderService(database, () => services.settings.instanceSnapshot(), () => now, services.sites, "default");
         const order = orders.create(createOrderRequestSchema.parse({
           idempotency_key: "checkout-return-" + state,
           merchant_order_no: "checkout-return-" + state,
@@ -87,17 +87,17 @@ for (const mode of ["both", "notify-only", "return-only", "neither"] as const) {
       const helpUrl = "https://support.example.com/payment-guide";
       const hasNotify = mode === "both" || mode === "notify-only";
       const hasReturn = mode === "both" || mode === "return-only";
-      await services.settings.saveWebhook({
-        revision: services.settings.view().revision,
-        enabled: true, allowed_origin: "https://shop.example.com",
+      await configureTestSiteNotifications(services.sites, "default", {
+        enabled: true, allowed_origin: "https://shop.example.com", return_origin: "https://shop.example.com",
         timeout_milliseconds: 5000, maximum_attempts: 5,
         retry_base_seconds: 10, retry_maximum_seconds: 600,
       }, { actorId: "admin" });
-      await services.settings.saveDisplay({
-        revision: services.settings.view().revision,
-        checkout_show_product_name: true, dashboard_chart_type: "AREA",
-        checkout_help_url: helpUrl,
-      }, { actorId: "admin" });
+      const site = services.sites.get("default")!;
+      services.sites.update("default", { revision: site.revision, configuration: {
+        ...site.configuration, policy: { ...site.configuration.policy, display: {
+          ...site.configuration.policy.display, checkout_help_url: helpUrl, checkout_show_product_name: true,
+        } },
+      } }, { actorId: "admin" });
       const order = services.orders.create(createOrderRequestSchema.parse({
         idempotency_key: "separate-urls-" + mode,
         merchant_order_no: "separate-urls-" + mode,

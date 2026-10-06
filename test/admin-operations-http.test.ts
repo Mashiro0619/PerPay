@@ -36,7 +36,7 @@ describe("administrator operation HTTP contracts", () => {
       assert.equal(first.refund_mark.updated_by, "admin"); assert.equal(first.refund_mark.note, body.note);
       const replay = await okData(await mark(fixture, auth, order.orderId, body));
       assert.deepEqual(replay, first);
-      for (const path of ["/api/admin/v1/orders/" + order.orderId, "/api/admin/v1/orders/by-merchant-no/" + order.merchantOrderNo]) {
+      for (const path of ["/api/admin/v1/orders/" + order.orderId, "/api/admin/v1/orders/by-merchant-no/" + order.merchantOrderNo + "?api_client_id=default"]) {
         const detail = await okData<Record<string, any>>(await fixture.app.request(path, { headers: { cookie: auth.cookie } }));
         assert.deepEqual(detail.refund_mark, first.refund_mark); assert.equal(detail.refund_mark_history.length, 1);
         assert.equal(detail.version, order.version + 1); assert.equal(detail.refund.status, "NONE");
@@ -162,14 +162,14 @@ describe("administrator operation HTTP contracts", () => {
       const debit = fixture.recordDebit("quiet-debit", 111, 1);
       for (let i = 0; i < 3; i += 1) assert.equal(fixture.reconciliation.reconcileEntry(debit.ledgerEntryId).kind, "ignored");
       assert.equal(fixture.reconciliation.reconcilePending().processed, 0);
-      assert.equal(fixture.reconciliation.exceptionSummary(fixture.services.settings.snapshot().activeProviderAccountKey!).total, 0);
+      assert.equal(fixture.reconciliation.exceptionSummary(fixture.services.settings.instanceSnapshot().activeProviderAccountKey!).total, 0);
       for (const type of ["UNMATCHED_DEBIT", "UNLINKED_REFUND"] as const) {
         const id = seedLegacyDebitException(fixture.database, debit.ledgerEntryId, type);
         const detail = await okData<Record<string, any>>(await fixture.app.request("/api/admin/v1/reconciliation/exceptions/" + id, { headers: { cookie: auth.cookie } }));
         assert.equal(detail.status, "OPEN"); assert.equal(detail.resolution, null);
       }
       assert.deepEqual(await okData(await fixture.app.request("/api/admin/v1/reconciliation/exceptions", { headers: { cookie: auth.cookie } })), []);
-      const summary = fixture.reconciliation.exceptionSummary(fixture.services.settings.snapshot().activeProviderAccountKey!);
+      const summary = fixture.reconciliation.exceptionSummary(fixture.services.settings.instanceSnapshot().activeProviderAccountKey!);
       assert.equal(summary.open, 0); assert.equal(summary.resolved, 0); assert.equal(summary.total, 2);
       assert.equal(adminWorkItemPage(fixture.database, { type: "ALL", cursor: null, limit: 20 }).items.length, 0);
       const analytics = await okData<Record<string, any>>(await fixture.app.request("/api/admin/v1/system/analytics", { headers: { cookie: auth.cookie } }));

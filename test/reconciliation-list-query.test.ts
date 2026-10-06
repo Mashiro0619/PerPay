@@ -229,7 +229,7 @@ describe("reconciliation and reminder global queries", () => {
           );
         }
         const account =
-          f.services.settings.snapshot().activeProviderAccountKey!;
+          f.services.settings.instanceSnapshot().activeProviderAccountKey!;
         const legacy = Buffer.from(
           resource.includes("conflicts")
             ? "perpay:ledger-conflicts:v2\n" +

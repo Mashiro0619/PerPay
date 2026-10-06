@@ -1,3 +1,5 @@
+import { seedFixedSite } from "./fixed-site-fixture.ts";
+import { SiteStore } from "../src/sites/store.ts";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,10 +10,9 @@ import { loadConfig } from "../src/config.ts";
 import { AppDatabase } from "../src/database/database.ts";
 import { ANONYMOUS_PASSWORD_BURST, ANONYMOUS_PASSWORD_INTERVAL_MS, appendAuditEvent } from "../src/database/identity-store.ts";
 import { PasswordInputError } from "../src/identity/crypto.ts";
-import { IDENTITY_LIMITS, IdentityError, IdentityService, fingerprintApiSecret } from "../src/identity/service.ts";
+import { IDENTITY_LIMITS, IdentityError, IdentityService } from "../src/identity/service.ts";
 
 const adminPassword = "a-secure-local-password";
-const apiSecret = Buffer.alloc(32, 7).toString("base64url");
 const masterKey = "0123456789abcdef".repeat(4);
 
 async function fixture(
@@ -28,9 +29,8 @@ async function fixture(
   await identity.initialize();
   if (setup) {
     await identity.setupAdmin(adminPassword, { sourceAddress: "127.0.0.1" });
-    identity.store.transaction((transaction) => {
-      transaction.syncApiClient("default", fingerprintApiSecret(apiSecret), clock.now);
-    });
+    seedFixedSite(database, "default", clock.now);
+    new SiteStore(database, Buffer.alloc(32, 7)).rotateSecret("default", "api_secret", 0, { actorId: "admin" }, clock.now);
   }
   return {
     directory,

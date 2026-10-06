@@ -16,6 +16,7 @@
 
    ```dotenv
    PERPAY_URL=https://你的PerPay域名
+   PERPAY_CLIENT_ID=业务网站页面显示的客户端ID
    PERPAY_API_SECRET=网站API密钥
    DEMO_NOTIFY_URL=https://你的业务域名/webhooks/perpay
    PERPAY_WEBHOOK_SECRET=通知签名密钥
@@ -39,3 +40,9 @@
 - 不要分享 `.env` 和 `data`。示例不执行发货、充值或退款，不能原样上线。
 - 签名见 `perpay.mjs`，通知验签后入库、去重及版本保护见 `store.mjs`；协议见 [接入说明](https://github.com/Mashiro0619/PerPay/blob/main/USAGE.md)。
 - `npm test` 运行合成数据测试；仓库根目录 `npm run demo:package` 生成 `dist/demo.zip`。
+
+## 多网站与本地数据
+
+每份示例服务连接一个明确的网站，必须填写 `PERPAY_CLIENT_ID`，不会自动使用 `default`。多份业务网站可以指向同一 `PERPAY_URL`，但分别使用各自 API／通知密钥、回调地址、端口和 `DEMO_DATA_DIR`。PerPay 后台也要分别配置通知来源。
+
+本地数据库绑定 PerPay 来源和网站 ID，不能通过修改环境变量把旧订单带到另一个网站。旧示例数据库只可在原实例的 `default` 网站下原地使用；其他网站使用新的数据目录。轮换同一网站密钥不会改变此绑定。示例不负责部署或自动同步密钥。

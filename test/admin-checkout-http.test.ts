@@ -116,7 +116,7 @@ describe("administrator checkout navigation", () => {
       for (const path of [
         "/api/admin/v1/orders",
         "/api/admin/v1/orders/" + order.orderId,
-        "/api/admin/v1/orders/by-merchant-no/" + order.merchantOrderNo,
+        "/api/admin/v1/orders/by-merchant-no/" + order.merchantOrderNo + "?api_client_id=default",
       ]) {
         const response = await fixture.app.request(path, {
           headers: { cookie: auth.cookie },
@@ -195,7 +195,7 @@ describe("administrator checkout navigation", () => {
       let now = order.checkout.expiresAt + 1;
       const orders = new OrderService(
         fixture.database,
-        () => fixture.services.settings.snapshot(),
+        () => fixture.services.settings.instanceSnapshot(),
         () => now,
       );
       const app = createApp({

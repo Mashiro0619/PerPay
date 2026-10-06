@@ -1,3 +1,4 @@
+import { configureTestSiteNotifications } from "./site-notification-fixture.ts";
 import assert from "node:assert/strict";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -14,7 +15,6 @@ import type { LedgerEntry } from "../src/ledger/model.ts";
 import { LedgerStore } from "../src/ledger/store.ts";
 import {
   WebhookStore,
-  webhookSigningKeyFingerprint,
   type WebhookEvent,
 } from "../src/notifications/index.ts";
 import type { OrderProjection } from "../src/orders/model.ts";
@@ -26,7 +26,6 @@ import { createConfiguredHttpServices, HTTP_TEST_ADMIN_PASSWORD } from "./http-f
 
 const ADMIN_PASSWORD = HTTP_TEST_ADMIN_PASSWORD;
 const API_SECRET = Buffer.alloc(32, 41).toString("base64url");
-const WEBHOOK_SECRET = Buffer.alloc(32, 73).toString("base64url");
 const COLLECTION_CODE = "https://qr.alipay.com/fkx-notifications-http";
 const PUBLIC_ORIGIN = "http://localhost:6190";
 const ALLOWED_ORIGIN = "https://hooks.mashiro.dev";
@@ -410,17 +409,13 @@ async function withNotificationFixture(
   });
   const { config, database, identity, settings, settingsStore, orders: ordersService } = services;
   try {
-    saveWebhookStoreSettings(settingsStore, true, ALLOWED_ORIGIN, WEBHOOK_SECRET);
+    saveWebhookStoreSettings(settingsStore, true, ALLOWED_ORIGIN);
     const reconciliation = new ReconciliationStore(database);
     const ledger = new LedgerStore(database);
-    const providerAccountKey = settings.snapshot().activeProviderAccountKey;
+    const providerAccountKey = settings.instanceSnapshot().activeProviderAccountKey;
     if (!providerAccountKey) throw new Error("provider account is not configured");
     const isolatedEvent = isolatedWebhookEvent(orderClock);
     const webhooks = new IsolatedWebhookStore(database, isolatedEvent);
-    webhooks.syncSigningKey({
-      secretFingerprint: webhookSigningKeyFingerprint(WEBHOOK_SECRET),
-      now: Date.now(),
-    });
     const app = createApp({
       config,
       database,
@@ -481,7 +476,7 @@ async function withNotificationFixture(
     assert.equal(webhooks.materialize(10, Date.now()), 2);
     const deliveries: FixtureDelivery[] = [];
     while (true) {
-      const claimed = webhooks.claimNext({
+      const claimed = webhooks.claimNext({ clientId: "default", siteRevision: settingsStore.siteStore()!.get("default")!.revision,
         now: Date.now(),
         leaseMilliseconds: 30_000,
         maximumAttempts: 3,
@@ -608,22 +603,10 @@ function saveWebhookStoreSettings(
   store: RuntimeSettingsStore,
   enabled: boolean,
   allowedOrigin: string | null,
-  secret: string | null = null,
 ): void {
-  const revision = store.snapshot().revision;
-  store.saveWebhook({
-    revision,
-    enabled,
+  configureTestSiteNotifications(store.siteStore()!, "default", { enabled,
     ...(enabled && allowedOrigin ? { allowed_origin: allowedOrigin } : {}),
-    timeout_milliseconds: 5_000,
-    maximum_attempts: 5,
-    retry_base_seconds: 1,
-    retry_maximum_seconds: 60,
-    secret,
-  }, {
-    actorId: "admin",
-    requestId: `notifications-http-webhook-${revision}`,
-    remoteAddressHash: "a".repeat(64),
+    timeout_milliseconds: 5000, maximum_attempts: 5, retry_base_seconds: 1, retry_maximum_seconds: 60,
   });
 }
 

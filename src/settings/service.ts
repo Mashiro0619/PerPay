@@ -1,4 +1,5 @@
 import { collectionPolicyInputSchema, type CollectionPolicyInput } from "./collection-policy.ts";
+import { collectionCodeError } from "../shared/collection-code.ts";
 import { collectionCodeInputSchema, providerApplicationInputSchema, instanceDisplayInputSchema, type InstanceDisplayInput, type CollectionCodeInput, type ProviderApplicationInput } from "./model.ts";
 import { adminAccessInputSchema, createAdminAccessPolicy, type AdminAccessInput, type AdminAccess } from "./admin-access.ts";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -206,7 +207,7 @@ export class RuntimeSettingsService {
     const snapshot = this.instanceSnapshot();
     const applicationKey = this.#store.providerApplicationKey();
     const pending = this.#store.pendingApplicationKey();
-    const collectionConfigured = snapshot.collection !== null;
+    const collectionConfigured = snapshot.collection !== null && collectionCodeError(snapshot.collection.codePayload) === null;
     const providerConfigured = snapshot.provider !== null && snapshot.activeProviderAccountKey !== null;
     return {
       site_mode: true,

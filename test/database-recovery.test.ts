@@ -1,3 +1,5 @@
+import { createLegacySettingsDatabase } from "./legacy-settings-fixture.ts";
+import { seedFixedSite } from "./fixed-site-fixture.ts";
 import assert from "node:assert/strict";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import fs, { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
@@ -48,7 +50,7 @@ import { DATABASE_COMPATIBILITY } from "../src/version.ts";
 import { securityHardeningDowngradeSql } from "./security-schema-fixture.ts";
 
 const API_SECRET = "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc";
-const COLLECTION_CODE = "https://qr.local.invalid/recovery-test";
+const COLLECTION_CODE = "https://qr.alipay.com/recovery-test";
 const PROVIDER_IDENTITY = {
   providerAccountKey: "primary",
   providerKind: "alipay",
@@ -431,7 +433,7 @@ describe("database recovery boundaries", () => {
         try {
            const restoredSettings = runtimeSettings(restored, config);
            restoredSettings.initialize();
-           const restoredOrders = new OrderService(restored, () => restoredSettings.snapshot());
+           const restoredOrders = new OrderService(restored, () => restoredSettings.instanceSnapshot(), undefined, restoredSettings.siteStore()!, "default");
            restoredOrders.initialize();
            const restoredOrder = restoredOrders.getByMerchantOrderNumber("recovery-1");
           assert.equal(restoredOrder.orderId, order.orderId);
@@ -848,7 +850,7 @@ describe("database recovery boundaries", () => {
     await withOrderDatabase("perpay-v9-financial-state-repair-", async (context) => {
       const { database, databasePath, directory, order, settings, close } = context;
       const ledger = new LedgerStore(database);
-      const providerAccountKey = settings.snapshot().activeProviderAccountKey;
+      const providerAccountKey = settings.instanceSnapshot().activeProviderAccountKey;
       if (!providerAccountKey) throw new Error("recovery provider account is missing");
       const entry = recordRecoveryCredit(
         ledger,
@@ -1159,7 +1161,7 @@ describe("database recovery boundaries", () => {
       } finally {
         restored.close();
       }
-    });
+    }, true);
   });
 
   it("rolls back every v9 change when evidence backfill fails partway", async () => {
@@ -1343,11 +1345,12 @@ async function withOrderDatabase(
     readonly order: ReturnType<OrderService["get"]>;
     readonly close: () => void;
   }) => Promise<void>,
+  legacyForMigration = false,
 ): Promise<void> {
   await withDirectory(prefix, async (directory) => {
     const databasePath = join(directory, "database.sqlite3");
     const config = testConfig(directory);
-    const database = await AppDatabase.open(databasePath);
+    const database = legacyForMigration ? createLegacySettingsDatabase(databasePath).owner : await AppDatabase.open(databasePath);
     let closed = false;
     const close = () => {
       if (closed) return;
@@ -1358,7 +1361,7 @@ async function withOrderDatabase(
       const identity = new IdentityService(database, config);
       await identity.initialize();
        const settings = configureRuntimeSettings(database, config);
-       const orders = new OrderService(database, () => settings.snapshot());
+       const orders = new OrderService(database, () => settings.siteStore() ? settings.instanceSnapshot() : settings.snapshot(), undefined, settings.siteStore() ?? undefined, "default");
        orders.initialize();
        const created = orders.create(
          createOrderRequestSchema.parse({
@@ -1400,7 +1403,7 @@ async function createVersionEighteenCompensationDatabase(
   legacyKey: string,
   legacyValue: string,
 ): Promise<void> {
-  const current = await AppDatabase.open(databasePath);
+  const current = createLegacySettingsDatabase(databasePath).owner;
   try {
     new LedgerStore(current).bindProviderIdentity(PROVIDER_IDENTITY, 1_800_000_000_000);
   } finally {
@@ -1531,12 +1534,8 @@ function configureRuntimeSettings(
     requestId: "database-recovery-settings",
     remoteAddressHash: "a".repeat(64),
   };
-  store.saveCollection({
-    revision: 0,
-    code_payload: COLLECTION_CODE,
-    order_ttl_seconds: 300,
-    amount_offset_maximum_cents: 99,
-  }, audit);
+  if (store.siteStore()) store.saveCollectionCode({ revision: 0, code_payload: COLLECTION_CODE }, audit);
+  else store.saveCollection({ revision: 0, code_payload: COLLECTION_CODE, order_ttl_seconds: 300, amount_offset_maximum_cents: 99 }, audit);
   const provider = parseProviderKeys({
     environment: "PRODUCTION",
     appId: PROVIDER_IDENTITY.externalAccountId,
@@ -1572,7 +1571,10 @@ function configureRuntimeSettings(
     },
     audit,
   });
-  store.saveApiSecret(API_SECRET, 2, audit);
+  if (store.siteStore()) {
+    seedFixedSite(database, "default", Date.now(), config.masterKey);
+    store.siteStore()!.rotateSecret("default", "api_secret", 0, audit);
+  } else store.saveApiSecret(API_SECRET, 2, audit);
   const settings = new RuntimeSettingsService({ store });
   settings.initialize();
   return settings;

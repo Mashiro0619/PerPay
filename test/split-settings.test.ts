@@ -25,8 +25,8 @@ describe("separate instance settings responsibilities", () => {
       const service = new RuntimeSettingsService({ store }); service.initialize();
       const policy = service.collectionPolicy();
       await service.saveCollectionPolicy({ ...policy, scan_interval_seconds: 30, maximum_success_age_seconds: 60 }, audit);
-      assert.equal(store.snapshot().provider, null);
-      assert.equal(store.snapshot().collection, null);
+      assert.equal(store.instanceSnapshot().provider, null);
+      assert.equal(store.instanceSnapshot().collection, null);
       assert.equal(service.collectionPolicy().scan_interval_seconds, 30);
       assert.equal(database.integrityCheck().ok, true);
     } finally { database.close(); remove(directory); }
@@ -38,7 +38,8 @@ describe("separate instance settings responsibilities", () => {
       const readUnrelated = () => f.database.read(connection => ({
         secrets: connection.prepare("SELECT * FROM runtime_secrets ORDER BY secret_name").all(),
         identity: connection.prepare("SELECT * FROM provider_account_bindings ORDER BY provider_account_key").all(),
-        collection: connection.prepare("SELECT collection_code_payload, order_ttl_seconds, amount_offset_maximum_cents, amount_reuse_cooldown_seconds FROM runtime_configuration").get(),
+        collection: connection.prepare("SELECT collection_code_payload FROM runtime_configuration").get(),
+        sites: connection.prepare("SELECT * FROM sites ORDER BY client_id").all(),
       }));
       const before = readUnrelated();
       const policy = f.settings.collectionPolicy();
@@ -57,7 +58,7 @@ describe("separate instance settings responsibilities", () => {
       await f.settings.saveCollectionCode({ revision: before.revision, code_payload: "https://qr.alipay.com/new-code" }, audit);
       const afterQr = f.settings.collectionPolicy();
       assert.deepEqual({ ...afterQr, revision: before.revision }, before);
-      assert.equal(f.settings.snapshot().collection?.codePayload, "https://qr.alipay.com/new-code");
+      assert.equal(f.settings.instanceSnapshot().collection?.codePayload, "https://qr.alipay.com/new-code");
       await f.settings.saveProviderApplication({ revision: afterQr.revision, environment: "PRODUCTION", app_id: "2026000000000001" }, audit);
       assert.deepEqual({ ...f.settings.collectionPolicy(), revision: before.revision }, before);
       assert.equal(f.database.integrityCheck().ok, true);

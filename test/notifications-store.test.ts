@@ -1,3 +1,6 @@
+import { SiteStore } from "../src/sites/store.ts";
+import { configureTestSiteNotifications } from "./site-notification-fixture.ts";
+import { seedFixedSite } from "./fixed-site-fixture.ts";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -44,7 +47,7 @@ describe("WebhookStore", () => {
     await withWebhookContext(async ({ database, store, outboxCreatedAt }) => {
       assert.equal(store.materialize(10, DELIVERY_TIME), 1);
       assert.equal(store.materialize(10, DELIVERY_TIME), 0);
-      const claimed = store.claimNext({
+      const claimed = store.claimNext({ clientId: API_CLIENT_ID,
         now: DELIVERY_TIME,
         leaseMilliseconds: 30_000,
         maximumAttempts: 3,
@@ -69,7 +72,7 @@ describe("WebhookStore", () => {
       assert.equal(retry.attemptCount, 1);
       assert.equal(retry.nextAttemptAt > DELIVERY_TIME + 1_000, true);
 
-      const second = store.claimNext({
+      const second = store.claimNext({ clientId: API_CLIENT_ID,
         now: retry.nextAttemptAt,
         leaseMilliseconds: 30_000,
         maximumAttempts: 3,
@@ -223,7 +226,7 @@ describe("WebhookStore", () => {
   });
 
   it("creates immutable replay generations and replays one request key exactly", async () => {
-    await withWebhookContext(async ({ database, store }) => {
+    await withWebhookContext(async ({ database, store, sites }) => {
       const original = acknowledgeFirstDelivery(store);
       const redeliveryId = randomUUID();
       const reason = "😀".repeat(500);
@@ -271,6 +274,7 @@ describe("WebhookStore", () => {
           error instanceof WebhookStoreError &&
           error.code === "webhook_operation_conflict",
       );
+      configureTestSiteNotifications(sites, API_CLIENT_ID, { enabled: false });
       assert.throws(
         () => store.replay({
           ...input,
@@ -280,6 +284,7 @@ describe("WebhookStore", () => {
         (error: unknown) =>
           error instanceof WebhookStoreError && error.code === "webhook_disabled",
       );
+      configureTestSiteNotifications(sites, API_CLIENT_ID, { enabled: true, allowed_origin: "https://rotated.example.test" });
       assert.throws(
         () => store.replay({
           ...input,
@@ -289,6 +294,7 @@ describe("WebhookStore", () => {
         (error: unknown) =>
           error instanceof WebhookStoreError && error.code === "webhook_target_inactive",
       );
+      configureTestSiteNotifications(sites, API_CLIENT_ID, { enabled: true, allowed_origin: ALLOWED_ORIGIN });
       assert.throws(
         () => store.replay({
           ...input,
@@ -316,12 +322,11 @@ describe("WebhookStore", () => {
           details_json: string;
         }>;
         assert.deepEqual(rows.map((row) => row.action), [
-          "webhook.signing_key_initialized",
           "webhook.delivery_redelivered",
         ]);
-        assert.equal(rows[1]?.actor_type, "ADMIN");
-        assert.equal(rows[1]?.actor_id, "admin");
-        assert.equal(rows[1]?.subject_id, created.delivery.deliveryId);
+        assert.equal(rows[0]?.actor_type, "ADMIN");
+        assert.equal(rows[0]?.actor_id, "admin");
+        assert.equal(rows[0]?.subject_id, created.delivery.deliveryId);
         assert.equal(rows.some((row) => row.details_json.includes("secret")), false);
       });
       assert.equal(database.integrityCheck().ok, true);
@@ -329,9 +334,9 @@ describe("WebhookStore", () => {
   });
 
   it("recovers expired leases, honors a lowered maximum, and rotates keys monotonically", async () => {
-    await withWebhookContext(async ({ database, store, signingSecret }) => {
+    await withWebhookContext(async ({ database, store, signingSecret, sites }) => {
       assert.equal(store.materialize(10, DELIVERY_TIME), 1);
-      const claimed = store.claimNext({
+      const claimed = store.claimNext({ clientId: API_CLIENT_ID,
         now: DELIVERY_TIME,
         leaseMilliseconds: 1_000,
         maximumAttempts: 12,
@@ -342,7 +347,7 @@ describe("WebhookStore", () => {
       assert.equal(recovered?.delivery.status, "RETRY_WAIT");
       assert.equal(recovered?.attempts[0]?.outcome, "OUTCOME_UNKNOWN");
 
-      assert.equal(store.claimNext({
+      assert.equal(store.claimNext({ clientId: API_CLIENT_ID,
         now: DELIVERY_TIME + 1_000,
         leaseMilliseconds: 1_000,
         maximumAttempts: 1,
@@ -363,29 +368,20 @@ describe("WebhookStore", () => {
       assert.equal(replay.delivery.status, "PENDING");
       assert.deepEqual(store.counts(), { pending: 1, dead: 0 });
 
-      const active = store.activeSigningKey();
-      assert.ok(active);
-      const rotated = store.syncSigningKey({
-        secretFingerprint: webhookSigningKeyFingerprint(
-          Buffer.alloc(32, 91).toString("base64url"),
-        ),
-        now: active.activatedAt - 10_000,
-      });
-      assert.equal(rotated.keyVersion, active.keyVersion + 1);
-      assert.equal(rotated.activatedAt, active.activatedAt);
-      const afterRotation = store.claimNext({ now: DELIVERY_TIME + 2_000, leaseMilliseconds: 1_000, maximumAttempts: 12 });
+      const active = claimed.key;
+      const current = sites.get(API_CLIENT_ID)!;
+      sites.rotateSecret(API_CLIENT_ID, "webhook_secret", current.revision, { actorId: "admin" }, active.activatedAt - 10_000);
+      const rotated = database.read(connection => connection.prepare("SELECT key_version, key_id, activated_at FROM webhook_signing_keys WHERE client_id = ? AND retired_at IS NULL").get(API_CLIENT_ID))!;
+      assert.equal(Number(rotated.key_version), active.keyVersion + 1);
+      assert.equal(Number(rotated.activated_at), active.activatedAt);
+      const afterRotation = store.claimNext({ clientId: API_CLIENT_ID, now: DELIVERY_TIME + 2_000, leaseMilliseconds: 1_000, maximumAttempts: 12 });
       assert.ok(afterRotation);
-      assert.equal(afterRotation.key.keyId, rotated.keyId);
-      assert.equal(afterRotation.attempt.keyVersion, rotated.keyVersion);
+      assert.equal(afterRotation.key.keyId, rotated.key_id);
+      assert.equal(afterRotation.attempt.keyVersion, Number(rotated.key_version));
       assert.equal(store.delivery(claimed.delivery.deliveryId)?.attempts[0]?.keyVersion, active.keyVersion);
       assert.throws(
-        () => store.syncSigningKey({
-          secretFingerprint: webhookSigningKeyFingerprint(signingSecret),
-          now: active.activatedAt + 1,
-        }),
-        (error: unknown) =>
-          error instanceof WebhookStoreError &&
-          error.code === "webhook_signing_key_rollback",
+        () => store.syncSigningKey({ secretFingerprint: webhookSigningKeyFingerprint(signingSecret), now: active.activatedAt + 1 }),
+        /website scope/,
       );
       assert.equal(database.integrityCheck().ok, true);
     });
@@ -488,6 +484,7 @@ interface WebhookTestContext {
   readonly order: StoredOrderAggregate;
   readonly outboxCreatedAt: number;
   readonly signingSecret: string;
+  readonly sites: SiteStore;
 }
 
 async function withWebhookContext(
@@ -497,19 +494,7 @@ async function withWebhookContext(
   const database = await AppDatabase.open(join(directory, "database.sqlite3"));
   let now = BASE_TIME;
   try {
-    database.write((connection) => {
-      connection.prepare(
-        `INSERT INTO api_client_config(
-           singleton_key, client_id, secret_fingerprint, key_version,
-           enabled, created_at, updated_at
-         ) VALUES (1, ?, ?, 1, 1, ?, ?)`,
-      ).run(API_CLIENT_ID, "a".repeat(64), now, now);
-      connection.prepare(
-        `INSERT INTO api_client_keys(
-           client_id, key_version, secret_fingerprint, activated_at, retired_at
-         ) VALUES (?, 1, ?, ?, NULL)`,
-      ).run(API_CLIENT_ID, "a".repeat(64), now);
-    });
+    seedFixedSite(database, API_CLIENT_ID, now);
     // Bind the provider generation before creating the collection profile. Schema v14
     // records an immutable profile-to-provider link at profile creation time; creating
     // the profile first would leave the legacy `primary` profile without that link and
@@ -563,18 +548,20 @@ async function withWebhookContext(
     });
     now = outboxCreatedAt;
 
-    const signingSecret = Buffer.alloc(32, 77).toString("base64url");
-    const store = new WebhookStore(database);
-    store.syncSigningKey({
-      secretFingerprint: webhookSigningKeyFingerprint(signingSecret),
-      now: outboxCreatedAt,
-    });
+    const sites = new SiteStore(database, Buffer.alloc(32, 7));
+    configureTestSiteNotifications(sites, API_CLIENT_ID, { enabled: true, allowed_origin: ALLOWED_ORIGIN });
+    const signingSecret = sites.notificationSecret(API_CLIENT_ID)!;
+    const store = new class extends WebhookStore {
+      override claimNext(input: Parameters<WebhookStore["claimNext"]>[0]) {
+        return super.claimNext({ ...input, clientId: API_CLIENT_ID, siteRevision: sites.get(API_CLIENT_ID)!.revision });
+      }
+    }(database);
     await operation({
       database,
       store,
       order: created.aggregate,
       outboxCreatedAt,
-      signingSecret,
+      signingSecret, sites,
     });
   } finally {
     database.close();
@@ -584,7 +571,7 @@ async function withWebhookContext(
 
 function acknowledgeFirstDelivery(store: WebhookStore) {
   assert.equal(store.materialize(10, DELIVERY_TIME), 1);
-  const claimed = store.claimNext({
+  const claimed = store.claimNext({ clientId: API_CLIENT_ID,
     now: DELIVERY_TIME,
     leaseMilliseconds: 30_000,
     maximumAttempts: 3,
@@ -611,7 +598,7 @@ function acknowledgeFirstDelivery(store: WebhookStore) {
 }
 
 function acknowledgeNextDelivery(store: WebhookStore, now: number) {
-  const claimed = store.claimNext({
+  const claimed = store.claimNext({ clientId: API_CLIENT_ID,
     now,
     leaseMilliseconds: 30_000,
     maximumAttempts: 3,

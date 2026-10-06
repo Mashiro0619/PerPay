@@ -171,7 +171,7 @@ describe("reconciliation HTTP contract", () => {
       assert.deepEqual(closedData.map((order) => order.order_id), [closed.orderId]);
 
       const byMerchant = await fixture.app.request(
-        `/api/admin/v1/orders/by-merchant-no/${confirmed.merchantOrderNo}`,
+        `/api/admin/v1/orders/by-merchant-no/${confirmed.merchantOrderNo}?api_client_id=default`,
         { headers: { cookie: auth.cookie } },
       );
       assert.equal(byMerchant.status, 200);

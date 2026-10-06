@@ -8,13 +8,13 @@ import { it } from "node:test";
 import { AppDatabase } from "../src/database/database.ts";
 import { OrderStore } from "../src/database/order-store.ts";
 import { createOrderRequestSchema, fingerprintCreateOrderRequest, digestIdempotencyKey } from "../src/orders/model.ts";
-import { createConfiguredHttpServices } from "./http-fixture.ts";
+import { createConfiguredLegacyHttpServices } from "./http-fixture.ts";
 import { securityHardeningDowngradeSql } from "./security-schema-fixture.ts";
 import { DATABASE_COMPATIBILITY } from "../src/version.ts";
 
 it("upgrades schema 20 without changing historical payment windows, events or audit evidence", async () => {
   const directory = mkdtempSync(join(tmpdir(), "perpay-security-migration-"));
-  const services = await createConfiguredHttpServices({ directory,
+  const services = await createConfiguredLegacyHttpServices({ directory,
     apiSecret: Buffer.alloc(32, 7).toString("base64url"), collectionCodePayload: "https://qr.alipay.com/migration-test" });
   let reopened: AppDatabase | undefined;
   const base = 2_000_000_000_000;
@@ -55,7 +55,7 @@ it("upgrades schema 20 without changing historical payment windows, events or au
       `);
     } finally { legacy.close(); }
 
-    reopened = await AppDatabase.open(services.config.databasePath);
+    reopened = await AppDatabase.open(services.config.databasePath, { masterKey: services.config.masterKey });
     assert.deepEqual(history(reopened), before);
     assert.equal(reopened.integrityCheck().ok, true);
     assert.equal(reopened.read((connection) => Number((connection.prepare(

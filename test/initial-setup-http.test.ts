@@ -235,7 +235,7 @@ async function createFixture(clock: () => number = Date.now) {
     store: new RuntimeSettingsStore(database, config.masterKey),
   });
   settings.initialize();
-  const orders = new OrderService(database, () => settings.snapshot());
+  const orders = new OrderService(database, () => settings.instanceSnapshot());
   const app = createApp({
     config,
     database,

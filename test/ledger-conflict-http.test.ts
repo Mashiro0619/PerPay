@@ -44,7 +44,7 @@ describe("ledger conflict HTTP operations", () => {
     t.mock.method(performance, "now", () => probeNow);
     try {
       const ledger = new LedgerStore(database);
-      const providerAccountKey = settings.snapshot().activeProviderAccountKey;
+      const providerAccountKey = settings.instanceSnapshot().activeProviderAccountKey;
       if (!providerAccountKey) throw new Error("provider account is not configured");
       const reconciliation = new ReconciliationStore(database);
       const conflict = createInvalidAmountConflict(ledger, providerAccountKey);

@@ -14,7 +14,7 @@ it("takes ignore-all membership inside the SQLite write transaction and leaves a
     const entry = fixture.recordCredit("transaction-cutoff", 100, 1);
     const original = fixture.reconciliation.reconcileEntry(entry.ledgerEntryId); assert.equal(original.kind, "unmatched");
     const newId = randomUUID();
-    const provider = fixture.services.settings.snapshot().activeProviderAccountKey!;
+    const provider = fixture.services.settings.instanceSnapshot().activeProviderAccountKey!;
     const details = JSON.stringify({ reason: "isolated concurrent insertion" });
     const shared = new Int32Array(new SharedArrayBuffer(3 * Int32Array.BYTES_PER_ELEMENT));
     const worker = new Worker(`

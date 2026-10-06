@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import fs, {
@@ -1017,15 +1018,10 @@ describe("database migration backup maintenance", () => {
     const database = await openTestDatabase(databasePath);
     const settings = new RuntimeSettingsStore(database, TEST_MASTER_KEY);
     try {
-      settings.saveApiSecret(
-        Buffer.alloc(32, 0x33).toString("base64url"),
-        0,
-        {
-          actorId: "admin",
-          requestId: "migration-guard-secret-test",
-          remoteAddressHash: "0".repeat(64),
-        },
-      );
+      const sites = settings.siteStore()!;
+      const site = sites.create({ operation_id: randomUUID(), configuration: { name: "维护测试", accepting_orders: true,
+        notifications_enabled: false, notification_origin: null, return_origin: null, policy: sites.defaults().policy } }, { actorId: "admin" });
+      sites.rotateSecret(site.clientId, "api_secret", site.revision, { actorId: "admin" });
       await database.backupDetailed(backupPath);
     } finally {
       database.close();

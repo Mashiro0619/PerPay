@@ -102,7 +102,7 @@ describe("provider account generation migration", () => {
         remoteAddressHash: "a".repeat(64),
       });
 
-      assert.equal(settings.snapshot().activeProviderAccountKey, "primary");
+      assert.equal(settings.instanceSnapshot().activeProviderAccountKey, "primary");
       assert.deepEqual(database.read((connection) => ({
         bindings: Number((connection.prepare(
           "SELECT COUNT(*) AS count FROM provider_account_bindings",
@@ -156,7 +156,7 @@ describe("provider account generation migration", () => {
           error instanceof SettingsError && error.code === "provider_switch_blocked",
       );
       assert.equal(guardedAccountKey, "primary");
-      assert.equal(settings.snapshot().revision, 0);
+      assert.equal(settings.instanceSnapshot().revision, 0);
       assert.equal(ledger.activeProviderIdentity()?.providerAccountKey, "primary");
     } finally {
       database.close();

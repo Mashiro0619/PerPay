@@ -27,18 +27,18 @@ describe("advanced settings HTTP contract", () => {
     });
     try {
       const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
-      assert.equal(settings.view().completion.complete, true);
-      assert.equal(settings.view().completion.api, false);
-      assert.equal(settings.view().completion.next_step, null);
+      assert.equal(settings.instanceView().completion.complete, true);
+      assert.equal(settings.instanceView().completion.sites, true);
+      assert.equal(settings.instanceView().completion.next_step, null);
       const headers = await loginHeaders(app);
       const response = await app.request("/api/admin/v1/system/status", { headers });
       assert.equal(response.status, 200);
       assert.equal((await response.json() as { data: { configured: boolean } }).data.configured, true);
       const business = await app.request("/api/v1/orders", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-      assert.equal(business.status, 503);
-      assert.equal((await business.json() as { error: { code: string } }).error.code, "system_not_configured");
+      assert.equal(business.status, 401);
+      assert.equal((await business.json() as { error: { code: string } }).error.code, "api_authentication_failed");
       assert.equal((await app.request("/api/admin/v1/settings")).status, 401);
-      assert.equal(settings.apiCredential(), null);
+      assert.equal(settings.siteStore()!.credential("default"), null);
     } finally {
       database.close();
       assert.ok(directory.startsWith(join(tmpdir(), "perpay-no-api-credential-")));
@@ -57,7 +57,7 @@ describe("advanced settings HTTP contract", () => {
     try {
       const elevatedHeaders = await loginHeaders(app);
       const revealed = await app.request(
-        "/api/admin/v1/settings/secrets/api_secret/actions/reveal",
+        "/api/admin/v1/sites/default/secrets/api_secret/actions/view",
         {
           method: "POST",
           headers: elevatedHeaders,
@@ -67,7 +67,7 @@ describe("advanced settings HTTP contract", () => {
       assert.equal(revealed.status, 200);
       assert.equal(revealed.headers.get("cache-control"), "no-store");
       assert.deepEqual(await revealed.json(), {
-        data: { name: "api_secret", value: apiSecret },
+        data: { secret: apiSecret },
       });
 
       const saved = await app.request("/api/admin/v1/settings/advanced", {
@@ -175,7 +175,7 @@ describe("backup settings HTTP contract", () => {
 });
 
 describe("adaptive scan settings HTTP contract", () => {
-  it("round-trips both intervals, reports field errors and accepts legacy updates", async () => {
+  it("round-trips isolated collection intervals and rejects incomplete mixed-era requests", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-http-adaptive-settings-"));
     const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
       directory, apiSecret, collectionCodePayload: "https://qr.alipay.com/adaptive-settings", publicUrl: origin,
@@ -183,9 +183,9 @@ describe("adaptive scan settings HTTP contract", () => {
     const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
     try {
       const headers = await loginHeaders(app);
-      const original = settings.view();
-      const { provider_account_key: _account, ...provider } = original.provider!;
-      const update = (body: unknown) => app.request("/api/admin/v1/settings/provider", {
+      const original = settings.instanceView();
+      const provider = original.collection_policy;
+      const update = (body: unknown) => app.request("/api/admin/v1/settings/collection-policy", {
         method: "PUT", headers, body: JSON.stringify(body),
       });
       for (const invalid of [4, 31, 3601, 5.5]) {
@@ -194,18 +194,18 @@ describe("adaptive scan settings HTTP contract", () => {
         const body = await response.json() as { error: { fields: Record<string, string> } };
         assert.ok(body.error.fields.active_scan_interval_seconds);
       }
-      assert.deepEqual(settings.view(), original);
+      assert.deepEqual(settings.instanceView(), original);
       const saved = await update({ ...provider, revision: original.revision, scan_interval_seconds: 30, active_scan_interval_seconds: 5, minimum_scan_interval_seconds: 5 });
       assert.equal(saved.status, 200);
-      const body = await saved.json() as { data: { revision: number; provider: { scan_interval_seconds: number; active_scan_interval_seconds: number } } };
-      assert.equal(body.data.provider.scan_interval_seconds, 30);
-      assert.equal(body.data.provider.active_scan_interval_seconds, 5);
-      assert.equal(settings.view().provider?.minimum_scan_interval_seconds, 5);
+      const body = await saved.json() as { data: { revision: number; collection_policy: { scan_interval_seconds: number; active_scan_interval_seconds: number } } };
+      assert.equal(body.data.collection_policy.scan_interval_seconds, 30);
+      assert.equal(body.data.collection_policy.active_scan_interval_seconds, 5);
+      assert.equal(settings.instanceView().collection_policy.minimum_scan_interval_seconds, 5);
       const { active_scan_interval_seconds: _active, minimum_scan_interval_seconds: _minimum, ...legacy } = provider;
       const restored = await update({ ...legacy, revision: body.data.revision, scan_interval_seconds: 10 });
-      assert.equal(restored.status, 200);
-      assert.equal(settings.view().provider?.active_scan_interval_seconds, 10);
-      assert.equal(settings.view().provider?.minimum_scan_interval_seconds, 5);
+      assert.equal(restored.status, 422);
+      assert.equal(settings.instanceView().collection_policy.active_scan_interval_seconds, 5);
+      assert.equal(settings.instanceView().collection_policy.minimum_scan_interval_seconds, 5);
     } finally {
       database.close();
       assert.ok(directory.startsWith(join(tmpdir(), "perpay-http-adaptive-settings-")));
@@ -231,7 +231,7 @@ describe("provider application key HTTP contract", () => {
       store: new RuntimeSettingsStore(database, config.masterKey),
     });
     settings.initialize();
-    const orders = new OrderService(database, () => settings.snapshot());
+    const orders = new OrderService(database, () => settings.instanceSnapshot());
     orders.initialize();
     const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
     try {
@@ -361,10 +361,6 @@ describe("provider application key HTTP contract", () => {
           environment: "PRODUCTION",
           app_id: "2026000000000001",
           private_key: replacementPrivateKey,
-          timeout_milliseconds: 8_000,
-          scan_interval_seconds: 10,
-          safety_lag_seconds: 10,
-          maximum_success_age_seconds: 60,
         }),
       });
       assert.equal(update.status, 409);
@@ -419,8 +415,8 @@ describe("actionable collection configuration errors", () => {
     const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
     try {
       const headers = await loginHeaders(app);
-      const original = settings.view();
-      const invalid = await app.request("/api/admin/v1/settings/collection", { method: "PUT", headers, body: JSON.stringify({ revision: original.revision, code_payload: "not-a-payment-code", order_ttl_seconds: 300, amount_offset_maximum_cents: 99 }) });
+      const original = settings.instanceView();
+      const invalid = await app.request("/api/admin/v1/settings/collection", { method: "PUT", headers, body: JSON.stringify({ revision: original.revision, code_payload: "not-a-payment-code" }) });
       assert.equal(invalid.status, 422);
       assert.ok((await invalid.json() as { error: { fields: Record<string, string> } }).error.fields.code_payload);
       const { provider_account_key: _account, ...provider } = original.provider!;
@@ -432,7 +428,7 @@ describe("actionable collection configuration errors", () => {
         assert.match(body.error.fields.platform_public_key!, /支付宝.*公钥/);
         assert.equal(JSON.stringify(body).includes(platform_public_key), false);
       }
-      assert.deepEqual(settings.view(), original);
+      assert.deepEqual(settings.instanceView(), original);
     } finally {
       database.close();
       assert.ok(directory.startsWith(join(tmpdir(), "perpay-field-validation-")));
@@ -442,10 +438,10 @@ describe("actionable collection configuration errors", () => {
 
   it("marks a legacy invalid payload incomplete but keeps it visible for correction", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-legacy-code-"));
-    const { database, settings, settingsStore, config, identity, orders } = await createConfiguredHttpServices({ directory, apiSecret, collectionCodePayload: "https://qr.alipay.com/legacy-test", publicUrl: origin });
+    const { database, settings, config, identity, orders } = await createConfiguredHttpServices({ directory, apiSecret, collectionCodePayload: "https://qr.alipay.com/legacy-test", publicUrl: origin });
     try {
-      settingsStore.saveCollection({ revision: settings.view().revision, code_payload: "not-a-payment-code", order_ttl_seconds: 300, amount_offset_maximum_cents: 99 }, { actorId: "admin", requestId: "legacy-save", remoteAddressHash: "0".repeat(64) });
-      const view = settings.view();
+      database.write(connection => connection.prepare("UPDATE runtime_configuration SET collection_code_payload = 'not-a-payment-code', revision = revision + 1, payment_revision = payment_revision + 1 WHERE singleton_key = 1").run());
+      const view = settings.instanceView();
       assert.equal(view.completion.collection, false); assert.equal(view.completion.complete, false);
       assert.equal(view.collection?.code_payload, "not-a-payment-code");
       const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
@@ -465,8 +461,8 @@ describe("saved Alipay public key visibility", () => {
     });
     const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
     try {
-      const before = settings.view();
-      const snapshot = settings.snapshot();
+      const before = settings.instanceView();
+      const snapshot = settings.instanceSnapshot();
       const anonymous = await app.request("/api/admin/v1/settings");
       assert.equal(anonymous.status, 401);
       assert.equal((await anonymous.text()).includes(snapshot.provider!.publicKeyPem), false);
@@ -480,7 +476,7 @@ describe("saved Alipay public key visibility", () => {
         assert.match(data.provider!.platform_public_key, /^-----BEGIN PUBLIC KEY-----/);
         assert.deepEqual(data, before);
         const serialized = JSON.stringify(data);
-        for (const secret of [snapshot.provider!.privateKeyPem, snapshot.apiSecret, snapshot.webhook.secret]) {
+        for (const secret of [snapshot.provider!.privateKeyPem, apiSecret, settings.siteStore()!.notificationSecret("default")]) {
           if (secret) assert.equal(serialized.includes(JSON.stringify(secret).slice(1, -1)), false);
         }
         assert.equal(serialized.includes("PRIVATE KEY"), false);
@@ -492,7 +488,7 @@ describe("saved Alipay public key visibility", () => {
       assert.equal(response.status, 200);
       const { data } = await response.json() as { data: ReturnType<RuntimeSettingsService["view"]> };
       assert.equal(data.provider!.platform_public_key, snapshot.provider!.publicKeyPem);
-      assert.equal(settings.snapshot().provider!.privateKeyPem, snapshot.provider!.privateKeyPem);
+      assert.equal(settings.instanceSnapshot().provider!.privateKeyPem, snapshot.provider!.privateKeyPem);
     } finally {
       database.close();
       assert.ok(directory.startsWith(join(tmpdir(), "perpay-public-key-visibility-")));

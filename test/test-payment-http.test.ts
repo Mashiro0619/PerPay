@@ -39,7 +39,7 @@ describe("administrator test payment HTTP contract", () => {
             reading.resolve();
             await release.promise;
             controller.enqueue(Buffer.from(JSON.stringify({
-              test_payment_id: TEST_PAYMENT_ID, amount_cents: 100,
+              api_client_id: "default", test_payment_id: TEST_PAYMENT_ID, amount_cents: 100,
             })));
             controller.close();
           },
@@ -94,18 +94,18 @@ describe("administrator test payment HTTP contract", () => {
       const response = await app.request("/api/admin/v1/test-payments", {
         method: "POST",
         headers: login.headers,
-        body: JSON.stringify({ test_payment_id: TEST_PAYMENT_ID, amount_cents: 100 }),
+        body: JSON.stringify({ api_client_id: "default", test_payment_id: TEST_PAYMENT_ID, amount_cents: 100 }),
       });
       assert.equal(response.status, 201);
       assert.equal(orderCount(services.database), 1);
-      assert.equal(services.settings.view().completion.complete, true);
-      assert.equal(services.settings.apiCredential(), null);
+      assert.equal(services.settings.instanceView().completion.complete, true);
+      assert.equal(services.sites.credential("default"), null);
       assert.equal(services.database.integrityCheck().ok, true);
       services.database.read((connection) => {
         assert.equal(connection.prepare("SELECT 1 FROM api_client_keys").get(), undefined);
       });
-      await services.settings.rotateApiSecret(services.settings.view().revision, { actorId: "admin" });
-      assert.equal(services.settings.apiCredential()?.keyVersion, 1);
+      services.sites.rotateSecret("default", "api_secret", services.sites.get("default")!.revision, { actorId: "admin" });
+      assert.equal(services.sites.credential("default")?.keyVersion, 1);
       assert.equal(orderCount(services.database), 1);
       const unsignedBusinessRequest = await app.request("/api/v1/orders", {
         method: "POST", headers: { "content-type": "application/json" }, body: "{}",
@@ -142,7 +142,7 @@ describe("administrator test payment HTTP contract", () => {
       onOrderAvailable: (orderId) => triggeredOrderIds.push(orderId),
     });
     const target = "/api/admin/v1/test-payments";
-    const request = { test_payment_id: TEST_PAYMENT_ID, amount_cents: 100 };
+    const request = { api_client_id: "default", test_payment_id: TEST_PAYMENT_ID, amount_cents: 100 };
 
     try {
       const anonymous = await ready.request(target, jsonRequest(request));
@@ -237,7 +237,7 @@ describe("administrator test payment HTTP contract", () => {
       const unreadyNewRequest = await unready.request(target, {
         method: "POST",
         headers: login.headers,
-        body: JSON.stringify({ ...request, test_payment_id: "12345678-1234-4123-8123-123456789abd" }),
+        body: JSON.stringify({ ...request, api_client_id: "default", test_payment_id: "12345678-1234-4123-8123-123456789abd" }),
       });
       assert.equal(unreadyNewRequest.status, 503);
       assert.equal(await errorCode(unreadyNewRequest), "reconciliation_not_ready");

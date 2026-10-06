@@ -73,7 +73,7 @@ describe("provider timing defaults", () => {
           store: new RuntimeSettingsStore(database, Buffer.alloc(32, 0x31)),
         });
         settings.initialize();
-        assert.equal(settings.view().provider, null);
+        assert.equal(settings.instanceView().provider, null);
         assert.equal(settings.status().complete, false);
         assert.equal(settings.status().revision, 0);
         assert.throws(() => database.write((connection) => connection.exec(

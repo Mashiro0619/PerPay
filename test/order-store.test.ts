@@ -1,3 +1,4 @@
+import { seedFixedSite } from "./fixed-site-fixture.ts";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -1205,23 +1206,7 @@ async function withStore(
     database.close();
   };
   try {
-    database.write((connection) => {
-      connection
-        .prepare(
-          `INSERT INTO api_client_config(
-             singleton_key, client_id, secret_fingerprint, key_version,
-             enabled, created_at, updated_at
-           ) VALUES (1, ?, ?, 1, 1, ?, ?)`,
-        )
-        .run(API_CLIENT_ID, "a".repeat(64), now, now);
-      connection
-        .prepare(
-          `INSERT INTO api_client_keys(
-             client_id, key_version, secret_fingerprint, activated_at, retired_at
-           ) VALUES (?, 1, ?, ?, NULL)`,
-        )
-        .run(API_CLIENT_ID, "a".repeat(64), now);
-    });
+    seedFixedSite(database, API_CLIENT_ID, now);
     await operation({
       database,
       databasePath,

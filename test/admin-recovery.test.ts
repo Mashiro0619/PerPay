@@ -36,7 +36,7 @@ describe("offline administrator recovery", () => {
     const app = await fixture(context);
     const login = await app.identity.login(HTTP_TEST_ADMIN_PASSWORD);
     app.orders.create(createOrderRequestSchema.parse({ idempotency_key: "recovery-preserve-key", merchant_order_no: "recovery-preserve-order", amount_cents: 100, product_name: "保留的测试订单" }));
-    const originalSettings = app.settings.snapshot();
+    const originalSettings = app.settings.instanceSnapshot();
     const preserved = (database: AppDatabase) => database.read((connection) => ["payment_orders", "runtime_secrets", "api_client_keys", "collection_profiles"].map((table) => connection.prepare("SELECT * FROM " + table).all()));
     const before = preserved(app.database);
     const generation = app.identity.store.read((transaction) => transaction.adminIdentity()!.sessionGeneration);
@@ -48,7 +48,7 @@ describe("offline administrator recovery", () => {
     const reopened = await AppDatabase.open(app.config.databasePath);
     try {
       assert.deepEqual(preserved(reopened), before);
-      assert.deepEqual(new RuntimeSettingsStore(reopened, app.config.masterKey).snapshot(), originalSettings);
+      assert.deepEqual(new RuntimeSettingsStore(reopened, app.config.masterKey).instanceSnapshot(), originalSettings);
       const identity = new IdentityService(reopened);
       assert.equal(identity.authenticate(login.sessionToken), undefined);
       await assert.rejects(identity.login(HTTP_TEST_ADMIN_PASSWORD));

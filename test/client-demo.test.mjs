@@ -1,3 +1,4 @@
+import { configureTestSiteNotifications } from './site-notification-fixture.ts';
 // SPDX-License-Identifier: MIT
 // All credentials, orders and provider health here are isolated test fixtures.
 import '../examples/node-client/test/demo.test.mjs';
@@ -18,7 +19,7 @@ import { createConfiguredHttpServices } from './http-fixture.ts';
 
 const secret = Buffer.alloc(32, 0x54);
 const origin = 'http://127.0.0.1:6190';
-const config = { url: origin, secret: secret.toString('base64url'), database: ':memory:', notifyUrl: 'https://shop.example.com/webhooks/perpay', webhookSecret: secret };
+const config = { clientId: 'default', url: origin, secret: secret.toString('base64url'), database: ':memory:', notifyUrl: 'https://shop.example.com/webhooks/perpay', webhookSecret: secret };
 const input = { merchant_order_no: 'DEMO-integration-001', amount: '0.29', product_name: '中文商品 🍵', note: '逐字节签名', confirm_real_payment: true };
 
 async function fixture(t) {
@@ -30,8 +31,8 @@ async function fixture(t) {
     rmSync(directory, { recursive: true, force: true });
   });
   services = await createConfiguredHttpServices({ directory, apiSecret: config.secret, collectionCodePayload: 'https://qr.alipay.com/demo-isolated-fixture', publicUrl: origin });
-  await services.settings.saveWebhook({ revision: services.settings.view().revision, enabled: true, allowed_origin: 'https://shop.example.com', timeout_milliseconds: 5000, maximum_attempts: 5, retry_base_seconds: 10, retry_maximum_seconds: 600 }, { actorId: 'admin', requestId: 'demo-callback-fixture', remoteAddressHash: '0'.repeat(64) });
-  const demoConfig = { ...config, webhookSecret: Buffer.from(services.settings.snapshot().webhook.secret, 'base64url') };
+  configureTestSiteNotifications(services.sites, 'default', { enabled: true, allowed_origin: 'https://shop.example.com' });
+  const demoConfig = { ...config, webhookSecret: Buffer.from(services.sites.notificationSecret('default'), 'base64url') };
   const health = () => ({ enabled: true, state: 'healthy', inFlight: false, lastAttemptAt: Date.now(), lastSuccessAt: Date.now(), lastErrorCode: null, consecutiveFailures: 0 });
   const app = createApp({ ...services, startedAt: new Date(), ledgerHealth: health, reconciliationHealth: () => ({ ...health(), pendingOrders: 0, continuationPending: false }) });
   const requests = [];
@@ -50,7 +51,7 @@ describe('caller demo compatibility with PerPay', () => {
       ['POST', '/api/v1/orders', Buffer.from(JSON.stringify(orderPayload(input, config)))],
       ['GET', '/api/v1/orders/by-merchant-no/' + input.merchant_order_no, Buffer.alloc(0)],
     ]) {
-      const headers = signRequest(secret, method, target, bytes);
+      const headers = signRequest(secret, config.clientId, method, target, bytes);
       const server = signApiRequest({ secret, method, target, body: bytes, clientId: 'default', timestamp: headers['x-perpay-timestamp'], nonce: headers['x-perpay-nonce'] });
       assert.equal(headers['x-perpay-signature'], server.signature);
       assert.equal(headers['x-perpay-signature-version'], server.version);
@@ -74,7 +75,7 @@ describe('caller demo compatibility with PerPay', () => {
     await assert.rejects(client.createOrder({ ...payload, amount_cents: 30 }), /409/);
     // The server must reject the demo's signature if the transmitted bytes change.
     const bytes = Buffer.from(JSON.stringify(payload));
-    const tampered = await app.request('/api/v1/orders', { method: 'POST', headers: signRequest(secret, 'POST', '/api/v1/orders', bytes), body: Buffer.concat([bytes, Buffer.from(' ')]) });
+    const tampered = await app.request('/api/v1/orders', { method: 'POST', headers: signRequest(secret, config.clientId, 'POST', '/api/v1/orders', bytes), body: Buffer.concat([bytes, Buffer.from(' ')]) });
     assert.equal(tampered.status, 401);
   });
 
@@ -86,7 +87,7 @@ describe('caller demo compatibility with PerPay', () => {
       if (loseResponse) { loseResponse = false; throw new Error('synthetic connection loss after commit'); }
       return response;
     } });
-    const store = new DemoStore(':memory:', origin);
+    const store = new DemoStore(':memory:', origin, config.clientId);
     t.after(() => store.close());
     store.prepare(orderPayload(input, config));
     await assert.rejects(lossyClient.createOrder(store.get(input.merchant_order_no).request));
@@ -100,7 +101,7 @@ describe('caller demo compatibility with PerPay', () => {
   it('accepts the backend webhook signer and returns an ACK accepted by the backend', async t => {
     const { client, requests, demoConfig } = await fixture(t);
     const created = await client.createOrder(orderPayload(input, config));
-    const store = new DemoStore(':memory:', origin);
+    const store = new DemoStore(':memory:', origin, config.clientId);
     store.prepare(orderPayload(input, config));
     store.apply(orderSnapshot(created, origin), 'api');
     const { server } = createDemoServer({ config: demoConfig, client, store });

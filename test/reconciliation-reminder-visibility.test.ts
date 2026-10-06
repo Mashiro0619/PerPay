@@ -42,7 +42,7 @@ describe("reconciliation reminder visibility", () => {
         const ids = scenario.seed(fixture, 5, 0);
         const other = cases.find(item => item.type !== scenario.type)!;
         const otherIds = other.seed(fixture, 1, 1);
-        const account = fixture.services.settings.snapshot().activeProviderAccountKey!;
+        const account = fixture.services.settings.instanceSnapshot().activeProviderAccountKey!;
         const before = await readPages();
         assert.deepEqual(new Set(before), new Set(ids));
         const summaries = { conflicts: fixture.ledger.conflictSummary(account), exceptions: fixture.reconciliation.exceptionSummary(account) };
@@ -103,7 +103,7 @@ function seedExceptions(fixture: ReconciliationHttpFixture, count: number, batch
 function seedConflicts(fixture: ReconciliationHttpFixture, count: number, batch: number): string[] {
   const start = "2026-08-" + (10 + batch) + " 00:00:00";
   const end = "2026-08-" + (10 + batch) + " 01:00:00";
-  const run = fixture.ledger.startIngestRun({ start, end, pageSize: count, providerAccountKey: fixture.services.settings.snapshot().activeProviderAccountKey!, now: fixture.baseTime });
+  const run = fixture.ledger.startIngestRun({ start, end, pageSize: count, providerAccountKey: fixture.services.settings.instanceSnapshot().activeProviderAccountKey!, now: fixture.baseTime });
   const details = Array.from({ length: count }, (_, index) => ({
     raw: { account_log_id: "reminder-conflict-" + batch + "-" + index, amount: "1.001", direction: "DEBIT", occurred_at: start },
     accountLogId: "reminder-conflict-" + batch + "-" + index, amount: "1.001", direction: "DEBIT" as const,

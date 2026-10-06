@@ -5,15 +5,12 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve, sep } from "node:path";
 import { OrderService } from "../src/orders/service.ts";
 import { SiteStore } from "../src/sites/store.ts";
-import { MULTI_SITE_SCHEMA_SQL } from "../src/sites/migrations/schema.ts";
-import { migrateSiteData } from "../src/sites/migrations/data.ts";
 import { createConfiguredHttpServices } from "./http-fixture.ts";
 
 export async function createSitePaymentFixture() {
   const directory = mkdtempSync(join(tmpdir(), "perpay-site-orders-"));
   const services = await createConfiguredHttpServices({ directory, apiSecret: null, collectionCodePayload: "https://qr.alipay.com/site-orders" });
-  const snapshot = services.settings.snapshot();
-  services.database.write(connection => { connection.exec(MULTI_SITE_SCHEMA_SQL); migrateSiteData(connection, services.config.masterKey); });
+  const snapshot = services.settings.instanceSnapshot();
   const sites = new SiteStore(services.database, services.config.masterKey);
   let now = Date.now();
   const orders = new OrderService(services.database, () => services.settings.instanceSnapshot(), () => now, sites);

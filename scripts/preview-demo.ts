@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Disposable documentation data; never imports main.ts or starts external workers.
 import assert from "node:assert/strict";
-import { createHash, generateKeyPairSync, randomBytes } from "node:crypto";
+import { createHash, generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
 import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
@@ -82,22 +82,16 @@ export async function createPreviewDemo(options: { port?: number; now?: number }
     const audit = { actorId: "admin", requestId: "documentation-fixture", remoteAddressHash: "0".repeat(64) };
     const application = generateKeyPairSync("rsa", { modulusLength: 2048 });
     const platform = generateKeyPairSync("rsa", { modulusLength: 2048 });
-    await settings.saveCollection({
-      revision: settings.view().revision,
+    await settings.saveCollectionCode({
+      revision: settings.instanceView().revision,
       code_payload: "https://qr.alipay.com/perpay-documentation-no-real-payment",
-      order_ttl_seconds: 1800, amount_offset_maximum_cents: 99,
     }, audit);
     await settings.saveProvider({
-      revision: settings.view().revision, environment: "SANDBOX", app_id: "2026000000000001",
+      revision: settings.instanceView().revision, environment: "SANDBOX", app_id: "2026000000000001",
       private_key: application.privateKey.export({ format: "pem", type: "pkcs8" }).toString(),
       platform_public_key: platform.publicKey.export({ format: "pem", type: "spki" }).toString(),
       timeout_milliseconds: 8000, scan_interval_seconds: 60, active_scan_interval_seconds: 8,
       safety_lag_seconds: 10, maximum_success_age_seconds: 120,
-    }, audit);
-    settingsStore.saveApiSecret(randomBytes(32).toString("base64url"), settings.view().revision, audit);
-    await settings.saveWebhook({
-      revision: settings.view().revision, enabled: true, allowed_origin: "https://shop.example.com",
-      timeout_milliseconds: 5000, maximum_attempts: 5, retry_base_seconds: 10, retry_maximum_seconds: 600,
     }, audit);
     const midnight = Math.floor((capturedAt + 8 * 3_600_000) / DAY) * DAY - 8 * 3_600_000;
     let now = midnight - 29 * DAY;
@@ -110,15 +104,26 @@ export async function createPreviewDemo(options: { port?: number; now?: number }
       connection.prepare("UPDATE order_clock SET last_now_ms = ? WHERE singleton_key = 1").run(now);
       connection.exec(trigger as string);
     });
-    const orders = new OrderService(db, () => settings.snapshot(), () => liveStarted === null ? now : liveNow());
+    const sites = settingsStore.siteStore()!;
+    const demoSites = ["演示商店", "演示订阅网站"].map(name => {
+      const policy = sites.defaults().policy;
+      const site = sites.create({ operation_id: randomUUID(), configuration: {
+        name, accepting_orders: true, notifications_enabled: false,
+        notification_origin: "https://shop.example.com", return_origin: "https://shop.example.com",
+        policy: { ...policy, orders: { ...policy.orders, order_ttl_seconds: 1800 }, display: { ...policy.display, checkout_name: name } },
+      } }, audit, now);
+      const api = sites.rotateSecret(site.clientId, "api_secret", site.revision, audit, now);
+      const webhook = sites.rotateSecret(site.clientId, "webhook_secret", api.site.revision, audit, now);
+      return sites.update(site.clientId, { revision: webhook.site.revision,
+        configuration: { ...webhook.site.configuration, notifications_enabled: true } }, audit, now);
+    });
+    const orders = new OrderService(db, () => settings.instanceSnapshot(), () => liveStarted === null ? now : liveNow(), sites);
     orders.initialize();
     const ledger = new LedgerStore(db);
     const reconciliation = new ReconciliationStore(db);
     const webhooks = new WebhookStore(db);
-    const snapshot = settings.snapshot();
-    assert.ok(snapshot.webhook.signingKeyFingerprint);
+    const snapshot = settings.instanceSnapshot();
     assert.ok(snapshot.activeProviderAccountKey);
-    webhooks.syncSigningKey({ secretFingerprint: snapshot.webhook.signingKeyFingerprint, now });
     const providerAccountKey = snapshot.activeProviderAccountKey;
     let sequence = 0;
     let ledgerSequence = 0;
@@ -144,9 +149,9 @@ export async function createPreviewDemo(options: { port?: number; now?: number }
       assert.ok(entry?.kind === "created");
       return entry.entry;
     }
-    function deliver(outcome: CompleteWebhookAttemptInput["outcome"] = "ACKNOWLEDGED", maximumAttempts = 5) {
-      webhooks.materialize(100, now);
-      const claim = webhooks.claimNext({ now, leaseMilliseconds: 30_000, maximumAttempts });
+    function deliver(clientId: string, outcome: CompleteWebhookAttemptInput["outcome"] = "ACKNOWLEDGED", maximumAttempts = 5) {
+      webhooks.materialize(100, now, clientId);
+      const claim = webhooks.claimNext({ clientId, siteRevision: sites.get(clientId)!.revision, now, leaseMilliseconds: 30_000, maximumAttempts });
       if (!claim) return;
       webhooks.completeAttempt({
         deliveryId: claim.delivery.deliveryId, attemptId: claim.attempt.attemptId, leaseToken: claim.attempt.leaseToken,
@@ -160,7 +165,9 @@ export async function createPreviewDemo(options: { port?: number; now?: number }
     }
     function create(productIndex: number, status: "paid" | "closed" | "expired" | "open" = "paid", notify = true, deliveryOutcome: CompleteWebhookAttemptInput["outcome"] = "ACKNOWLEDGED") {
       const [product, amount] = PRODUCTS[productIndex % PRODUCTS.length]!;
-      const order = orders.create(createOrderRequestSchema.parse({
+      const site = demoSites[sequence % demoSites.length]!;
+      const siteOrders = orders.forSite(site.clientId);
+      const order = siteOrders.create(createOrderRequestSchema.parse({
         idempotency_key: "readme-" + ++sequence,
         merchant_order_no: "MG" + beijing(now).slice(0, 10).replaceAll("-", "") + "-" + String(sequence).padStart(4, "0"),
         product_name: product, amount_cents: amount, note: "示例商户 · 文档演示订单（非真实交易）",
@@ -171,12 +178,12 @@ export async function createPreviewDemo(options: { port?: number; now?: number }
         const entry = credit(order.payableAmountCents, product);
         assert.equal(reconciliation.reconcileEntry(entry.ledgerEntryId, now + 2500).kind, "auto_settled");
         now += 3000;
-        deliver(deliveryOutcome, deliveryOutcome === "PERMANENT_FAILURE" ? 1 : 5);
+        deliver(site.clientId, deliveryOutcome, deliveryOutcome === "PERMANENT_FAILURE" ? 1 : 5);
       } else if (status === "closed") {
         now += 8000;
-        orders.close(order.orderId);
+        siteOrders.close(order.orderId);
       }
-      return order;
+      return { ...order, apiClientId: site.clientId };
     }
     // Seed complete prior days; today's small batch leaves room for recent scenarios.
     // Just after midnight, keep today's historical batch on the previous evening.
@@ -207,7 +214,7 @@ export async function createPreviewDemo(options: { port?: number; now?: number }
     const checkout = create(0, "open");
     for (const index of [3, 4, 6]) { now += 20_000; create(index, "open"); }
     now = capturedAt;
-    orders.get(checkout.orderId);
+    orders.forSite(checkout.apiClientId).get(checkout.orderId);
     const stats = systemAnalytics(db, 30, now);
     assert.ok(stats.orders.created > 400);
     assert.equal(stats.pending.orders, 4);
@@ -215,9 +222,9 @@ export async function createPreviewDemo(options: { port?: number; now?: number }
 
     liveStarted = performance.now();
     // Health is explicitly simulated; no scheduler, provider client or webhook transport runs.
-    const healthy = () => ({ enabled: true, state: "healthy" as const, inFlight: false, lastAttemptAt: liveNow() - 3000, lastSuccessAt: liveNow() - 2000, lastErrorCode: null, consecutiveFailures: 0, paymentRevision: settings.snapshot().paymentRevision });
+    const healthy = () => ({ enabled: true, state: "healthy" as const, inFlight: false, lastAttemptAt: liveNow() - 3000, lastSuccessAt: liveNow() - 2000, lastErrorCode: null, consecutiveFailures: 0, paymentRevision: settings.instanceSnapshot().paymentRevision });
     const app = createApp({
-      config, database: db, identity, settings, orders, ledger, reconciliation, webhookStore: webhooks,
+      config, database: db, identity, settings, sites, orders, ledger, reconciliation, webhookStore: webhooks,
       startedAt: new Date(capturedAt - 8 * DAY), clock: liveNow, demoMode: true,
       ledgerHealth: healthy,
       reconciliationHealth: () => ({ ...healthy(), pendingOrders: systemAnalytics(db, 7, liveNow()).pending.orders, continuationPending: false }),

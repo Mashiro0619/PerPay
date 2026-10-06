@@ -28,7 +28,7 @@ it("blocks readiness and new payments until an actual provider scan succeeds", a
   }));
   const runtime = new RuntimeController({ database: services.database, orders: services.orders, ledger, reconciliation, webhooks, clock: () => now });
   try {
-    await runtime.start(services.settings.snapshot());
+    await runtime.start(services.settings.instanceSnapshot());
     await runtime.triggerReconciliation("first-scan-test");
     await new Promise<void>((done) => setImmediate(done));
     const app = createApp({
@@ -50,13 +50,13 @@ it("blocks readiness and new payments until an actual provider scan succeeds", a
       "x-csrf-token": authentication.data.csrf_token,
     };
     const create = () => app.request("/api/admin/v1/test-payments", {
-      method: "POST", headers, body: JSON.stringify({ amount_cents: 1, test_payment_id: randomUUID() }),
+      method: "POST", headers, body: JSON.stringify({ amount_cents: 1, api_client_id: "default", test_payment_id: randomUUID() }),
     });
     assert.equal((await create()).status, 503);
     assert.equal(provider.mock.callCount(), 0);
     now += 30_000;
     await runtime.beginPaymentTransition();
-    await runtime.apply(services.settings.snapshot());
+    await runtime.apply(services.settings.instanceSnapshot());
     for (let attempt = 0; attempt < 50 && runtime.ledgerHealth().lastSuccessAt === null; attempt++) {
       await new Promise<void>((done) => setImmediate(done));
     }
