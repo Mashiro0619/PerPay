@@ -39,9 +39,9 @@ describe("secret visibility lifecycle", () => {
         completion: { ...settings.completion, api: true },
         secrets: {
           ...settings.secrets,
-          api_secret: { ...settings.secrets.api_secret, configured: true },
+          api_secret: { ...settings.secrets.api_secret!, configured: true },
           webhook_secret: {
-            ...settings.secrets.webhook_secret,
+            ...settings.secrets.webhook_secret!,
             configured: true,
           },
         },
@@ -135,7 +135,7 @@ describe("secret visibility lifecycle", () => {
         completion: { ...settings.completion, api: true },
         secrets: {
           ...settings.secrets,
-          api_secret: { ...settings.secrets.api_secret, configured: true },
+          api_secret: { ...settings.secrets.api_secret!, configured: true },
         },
       };
       const onSaved = vi.fn();

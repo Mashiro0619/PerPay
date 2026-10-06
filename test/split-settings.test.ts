@@ -90,8 +90,8 @@ it("saves split instance settings on schema 34 without rewriting any website pol
     const before = untouched();
     const policy = f.settings.collectionPolicy();
     await f.settings.saveCollectionPolicy({ ...policy, scan_interval_seconds: 30, maximum_success_age_seconds: 60 }, audit);
-    await f.settings.saveCollectionCode({ revision: f.settings.view().revision, code_payload: "https://qr.alipay.com/updated-site-code" }, audit);
-    await f.settings.saveProviderApplication({ revision: f.settings.view().revision, environment: "PRODUCTION", app_id: "2026000000000001" }, audit);
+    await f.settings.saveCollectionCode({ revision: f.settings.instanceView().revision, code_payload: "https://qr.alipay.com/updated-site-code" }, audit);
+    await f.settings.saveProviderApplication({ revision: f.settings.instanceView().revision, environment: "PRODUCTION", app_id: "2026000000000001" }, audit);
     assert.deepEqual(untouched(), before);
     assert.equal(f.settings.collectionPolicy().scan_interval_seconds, 30);
   } finally { f.close(); }

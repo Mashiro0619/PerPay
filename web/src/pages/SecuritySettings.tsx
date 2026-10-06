@@ -1,3 +1,4 @@
+import { Link } from "@/navigation";
 import { AdminAccessSettings } from "./AdminAccessSettings";
 import { DialogBody } from "@/components/admin-dialog";
 import { useSystemName } from "@/branding";
@@ -124,8 +125,7 @@ export function SecuritySettings({
               密钥
             </CardTitle>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm text-muted-foreground">API 客户端 ID</span>
-              <CopyValue tooltip value="default" label="复制 API 客户端 ID" />
+              {settings.site_mode ? <Link to="/sites">业务网站密钥与客户端 ID</Link> : <><span className="text-sm text-muted-foreground">API 客户端 ID</span><CopyValue tooltip value="default" label="复制 API 客户端 ID" /></>}
               <a href="https://github.com/Mashiro0619/PerPay/blob/main/USAGE.md" target="_blank" rel="noopener noreferrer" className="text-sm underline underline-offset-4">接入文档</a>
             </div>
           </CardHeader>
@@ -138,8 +138,9 @@ export function SecuritySettings({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {secrets.map(([name, title, purpose]) => {
+                {secrets.filter(([name]) => !settings.site_mode || (name !== "api_secret" && name !== "webhook_secret")).map(([name, title, purpose]) => {
                   const metadata = settings.secrets[name];
+                  if (!metadata) return null;
                   const status = (
                     <StatusBadge
                       value={metadata.configured ? "CONFIRMED" : "UNPAID"}
@@ -472,7 +473,7 @@ export function NotificationKeyActions({
   const [dialog, setDialog] = useState<"reveal" | "rotate" | null>(null);
   const origin = useRef<HTMLButtonElement | null>(null);
   const menu = useRef<HTMLButtonElement | null>(null);
-  if (!settings.secrets.webhook_secret.configured) return null;
+  if (!settings.secrets.webhook_secret?.configured) return null;
   const table = presentation === "table";
   return (
     <>

@@ -183,7 +183,7 @@ function OnboardingFlow({
     void refreshOperationalData();
     if (next) void navigate(onboardingPath(next));
   }
-  if (requested === "api") return <Navigate to="/settings/security" replace />;
+  if (requested === "api") return <Navigate to={settings.site_mode ? "/sites" : "/settings/security"} replace />;
   if (requested !== step) return <Navigate to={onboardingPath(step)} replace />;
   const completed = [
     settings.completion.application_key,
@@ -428,15 +428,15 @@ function OnboardingFlow({
           {step === "collection" && (
             <OnboardingStepLayout
               help={
-                <OnboardingHelp title="确认收款账户与金额规则">
+                <OnboardingHelp title="确认经营收款码">
                   <p>
-                    经营码应属于已接入的支付宝账户。上传图片后先核对识别内容，也可直接粘贴经营码内容。
+                    使用本实例共用的支付宝经营收款码。上传图片后先核对识别内容，也可直接粘贴经营码内容。
                   </p>
                   <p>
                     金额尾差用于区分订单。付款人需要按收银台显示的应付金额付款。
                   </p>
                   <p>
-                    金额复用冷却不会延长订单有效期，已有订单继续使用创建时的配置。
+                    订单有效期、尾差和金额冷却在各业务网站中配置；采集间隔和安全延迟在采集设置中配置。
                   </p>
                 </OnboardingHelp>
               }
@@ -588,6 +588,7 @@ function OptionalSettings({
         className="grid min-w-0 items-start gap-5 @3xl/onboarding:grid-cols-2"
         data-onboarding-optional
       >
+        {settings.site_mode ? <section className="flex flex-col gap-3"><h3 className="font-medium">业务网站</h3><p>创建自有业务网站，为它配置独立的订单策略、展示、API 与通知密钥。实例共用经营码与采集对账，不需要为测试收款先签发 API 密钥。</p><div className="flex flex-wrap gap-2"><Link to="/sites/new" className={buttonVariants()}>创建业务网站</Link><Link to="/sites" className={buttonVariants({ variant: "outline" })}>管理业务网站</Link></div></section> : <>
         <section
           className="flex min-w-0 flex-col gap-3"
           aria-labelledby="onboarding-notifications-title"
@@ -607,6 +608,7 @@ function OptionalSettings({
             }
           />
         </section>
+        </>}
         <section
           className="flex min-w-0 flex-col gap-3"
           aria-labelledby="onboarding-backup-title"
@@ -865,7 +867,7 @@ export function ReadinessCheck({
           </div>
         </Alert>
       )}
-      {!settings.notifications.enabled && (
+      {!settings.site_mode && !settings.notifications?.enabled && (
         <p className="text-sm text-muted-foreground">
           业务通知未启用（可选），不影响收款；业务系统后端需主动向 {systemName}{" "}
           查询订单状态。

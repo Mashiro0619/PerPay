@@ -32,7 +32,7 @@ const edit = (label: string, value: string) =>
 
 describe("first collection onboarding", () => {
   it.each([
-    { path: onboardingPath("optional"), step: "optional", title: "通知与备份" },
+    { path: onboardingPath("optional"), step: "optional", title: "网站与备份" },
     { path: onboardingPath(), step: "check", title: "收款检查" },
   ])(
     "reveals the active step and preserves heading focus after entering $path",

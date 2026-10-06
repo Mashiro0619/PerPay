@@ -375,39 +375,41 @@ export type RuntimeSettings = {
     application_key_fingerprint: Sha256Fingerprint | null;
     pending_application_key: PendingApplicationKey | null;
     provider_generations: Array<ProviderGeneration>;
-    notifications: NotificationSettings;
+    notifications?: NotificationSettings;
     advanced: AdvancedSettings;
     backup: BackupSettings;
     display: DisplaySettings;
     secrets: RuntimeSecretMetadataMap;
     collection_policy?: CollectionPolicyRequest;
+    site_mode?: boolean;
 };
 export type SettingsCompletion = {
     complete: boolean;
     application_key: boolean;
     collection: boolean;
     provider: boolean;
-    api: boolean;
-    notifications: boolean;
+    api?: boolean;
+    notifications?: boolean;
     next_step: 'GENERATE_APPLICATION_KEY' | 'CONFIGURE_PROVIDER' | 'CONFIGURE_COLLECTION' | 'GENERATE_API_KEY' | null;
+    sites?: boolean;
 };
 export type CollectionSettings = {
     code_payload: string;
-    order_ttl_seconds: number;
-    amount_offset_maximum_cents: number;
-    amount_reuse_cooldown_seconds: number;
+    order_ttl_seconds?: number;
+    amount_offset_maximum_cents?: number;
+    amount_reuse_cooldown_seconds?: number;
 };
 export type ProviderSettings = {
     environment: 'PRODUCTION' | 'SANDBOX';
     app_id: string;
     platform_public_key: string;
     provider_account_key: string;
-    timeout_milliseconds: number;
-    scan_interval_seconds: number;
-    minimum_scan_interval_seconds: number;
-    active_scan_interval_seconds: number;
-    safety_lag_seconds: number;
-    maximum_success_age_seconds: number;
+    timeout_milliseconds?: number;
+    scan_interval_seconds?: number;
+    minimum_scan_interval_seconds?: number;
+    active_scan_interval_seconds?: number;
+    safety_lag_seconds?: number;
+    maximum_success_age_seconds?: number;
 };
 export type ProviderGeneration = {
     provider_account_key: string;
@@ -433,7 +435,7 @@ export type SystemName = string;
 export type DisplaySettings = {
     system_name?: SystemName;
     checkout_help_url?: string | null;
-    checkout_show_product_name: boolean;
+    checkout_show_product_name?: boolean;
     dashboard_chart_type: DashboardChartType;
 };
 export type BackupSettings = {
@@ -442,10 +444,10 @@ export type BackupSettings = {
 };
 export type RuntimeSecretName = 'api_secret' | 'provider_private_key' | 'provider_public_key' | 'webhook_secret';
 export type RuntimeSecretMetadataMap = {
-    api_secret: RuntimeSecretMetadata;
+    api_secret?: RuntimeSecretMetadata;
     provider_private_key: RuntimeSecretMetadata;
     provider_public_key: RuntimeSecretMetadata;
-    webhook_secret: RuntimeSecretMetadata;
+    webhook_secret?: RuntimeSecretMetadata;
 };
 export type RuntimeSecretMetadata = {
     configured: boolean;
@@ -483,7 +485,7 @@ export type DisplaySettingsRequest = {
     system_name?: SystemName;
     checkout_help_url?: string | null;
     revision: number;
-    checkout_show_product_name: boolean;
+    checkout_show_product_name?: boolean;
     dashboard_chart_type: DashboardChartType;
 };
 export type BackupSettingsRequest = {

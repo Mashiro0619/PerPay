@@ -367,7 +367,7 @@ describe("application key regeneration and staged rotation", () => {
         { platform_public_key: nextPlatformPem, revision: updated.revision, change_id: changeId },
         keyAudit(),
       );
-      assert.equal(saved.provider!.timeout_milliseconds, 5000);
+      assert.equal(saved.collection_policy.timeout_milliseconds, 5000);
     });
   });
 

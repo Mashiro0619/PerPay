@@ -1,4 +1,4 @@
-import { collectionCodeInputSchema, providerApplicationInputSchema } from "../settings/model.ts";
+import { collectionCodeInputSchema, providerApplicationInputSchema, instanceDisplayInputSchema } from "../settings/model.ts";
 import { SiteError, type SiteStore } from "../sites/store.ts";
 import { createSiteInputSchema, updateSiteInputSchema, updateSiteDefaultsInputSchema, siteClientIdSchema, type SiteSnapshot } from "../sites/model.ts";
 import { collectionPolicyInputSchema } from "../settings/collection-policy.ts";
@@ -830,7 +830,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     if (dependencies.demoMode) throw new HttpApiError(403, "demo_read_only", "只读演示不允许修改采集设置。");
     requireCurrentSession(context, dependencies.identity);
     const data = await settingsOperation(() => requireSettingsService(dependencies).saveCollectionPolicy(body, settingsAuditContext(context, dependencies)));
-    return context.json({ data });
+    return context.json({ data: data });
   });
 
   app.post("/api/admin/v1/work-items/actions/ignore-all", adminSession, financialWrite, async (context) => {
@@ -853,7 +853,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   });
 
   app.get("/api/admin/v1/settings/admin-access", adminSession, context => {
-    const settings = requireSettingsService(dependencies).view();
+    const settings = requireSettingsService(dependencies).publicView();
     const source = remoteAddress(context, dependencies.config.trustedProxy);
     return context.json({ data: {
       revision: settings.revision,
@@ -870,11 +870,11 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         settingsAuditContext(context, dependencies),
       )
     );
-    return context.json({ data });
+    return context.json({ data: data });
   });
 
   app.get("/api/admin/v1/settings", adminSession, (context) => {
-    return context.json({ data: requireSettingsService(dependencies).view() });
+    return context.json({ data: requireSettingsService(dependencies).publicView() });
   });
 
   app.post(
@@ -922,7 +922,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       const data = await settingsOperation(() => legacy
         ? requireSettingsService(dependencies).saveCollection(parseJsonBytes(bytes, collectionSettingsInputSchema), settingsAuditContext(context, dependencies))
         : requireSettingsService(dependencies).saveCollectionCode(parseJsonBytes(bytes, collectionCodeInputSchema), settingsAuditContext(context, dependencies)));
-      return context.json({ data });
+      return context.json({ data: data });
     },
   );
 
@@ -938,7 +938,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       const data = await settingsOperation(() => legacy
         ? requireSettingsService(dependencies).saveProvider(parseJsonBytes(bytes, providerSettingsInputSchema), settingsAuditContext(context, dependencies))
         : requireSettingsService(dependencies).saveProviderApplication(parseJsonBytes(bytes, providerApplicationInputSchema), settingsAuditContext(context, dependencies)));
-      return context.json({ data });
+      return context.json({ data: data });
     },
   );
 
@@ -954,7 +954,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
           settingsAuditContext(context, dependencies),
         )
       );
-      return context.json({ data }, data.created ? 201 : 200);
+      return context.json({ data: data }, data.created ? 201 : 200);
     },
   );
 
@@ -967,7 +967,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       const data = await settingsOperation(() => requireSettingsService(dependencies).regenerateProviderApplicationKey(
         body, settingsAuditContext(context, dependencies),
       ));
-      return context.json({ data }, data.created ? 201 : 200);
+      return context.json({ data: data }, data.created ? 201 : 200);
     },
   );
 
@@ -980,7 +980,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       const data = await settingsOperation(() => requireSettingsService(dependencies).activateProviderApplicationKey(
         body, settingsAuditContext(context, dependencies), context.req.raw.signal,
       ));
-      return context.json({ data });
+      return context.json({ data: data });
     },
   );
 
@@ -993,7 +993,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       const data = await settingsOperation(() => requireSettingsService(dependencies).discardProviderApplicationKey(
         body, settingsAuditContext(context, dependencies),
       ));
-      return context.json({ data });
+      return context.json({ data: data });
     },
   );
 
@@ -1010,7 +1010,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
           settingsAuditContext(context, dependencies),
         )
       );
-      return context.json({ data });
+      return context.json({ data: data });
     },
   );
 
@@ -1026,7 +1026,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
           settingsAuditContext(context, dependencies),
         )
       );
-      return context.json({ data });
+      return context.json({ data: data });
     },
   );
 
@@ -1035,6 +1035,12 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     adminSession,
     financialWrite,
     async (context) => {
+      if (dependencies.sites) {
+        const body = await readJson(context, instanceDisplayInputSchema, MAX_JSON_BODY_BYTES);
+        requireCurrentSession(context, dependencies.identity);
+        const data = await settingsOperation(() => requireSettingsService(dependencies).saveInstanceDisplay(body, settingsAuditContext(context, dependencies)));
+        return context.json({ data });
+      }
       const body = await readJson(context, displaySettingsInputSchema, MAX_JSON_BODY_BYTES);
       const data = await settingsOperation(() =>
         requireSettingsService(dependencies).saveDisplay(
@@ -1042,7 +1048,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
           settingsAuditContext(context, dependencies),
         )
       );
-      return context.json({ data });
+      return context.json({ data: data });
     },
   );
 
@@ -1058,7 +1064,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
           settingsAuditContext(context, dependencies),
         )
       );
-      return context.json({ data });
+      return context.json({ data: data });
     },
   );
 
@@ -1075,7 +1081,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
           settingsAuditContext(context, dependencies),
         )
       );
-      return context.json({ data }, 201);
+      return context.json({ data: data }, 201);
     },
   );
 
@@ -1089,7 +1095,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       const data = await settingsOperation(() =>
         requireSettingsService(dependencies).rotateWebhookSecret(body.revision, settingsAuditContext(context, dependencies)),
       );
-      return context.json({ data }, 201);
+      return context.json({ data: data }, 201);
     },
   );
 
@@ -1430,7 +1436,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       const body = await readJson(context, webhookReplayRequestSchema, MAX_JSON_BODY_BYTES);
       const session = requireCurrentSession(context, dependencies.identity);
       const store = requireWebhookStore(dependencies);
-      const webhook = dependencies.settings?.snapshot().webhook;
+      const webhook = dependencies.sites ? undefined : dependencies.settings?.snapshot().webhook;
       const result = store.replay({
         redeliveryId: body.redelivery_id,
         deliveryId,
@@ -2168,7 +2174,7 @@ function currentReconciliationHealth(
 
 function currentRuntimeStatus(dependencies: AppDependencies): PaymentRuntimeStatus {
   if (dependencies.runtimeStatus) return dependencies.runtimeStatus();
-  const snapshot = dependencies.settings?.snapshot();
+  const snapshot = dependencies.settings?.instanceSnapshot();
   return {
     configured: snapshot !== undefined &&
       snapshot.collection !== null && collectionCodeError(snapshot.collection.codePayload) === null &&

@@ -1,3 +1,4 @@
+import type { InstanceSettingsView } from "../src/settings/service.ts";
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { describe, it } from "node:test";
@@ -19,6 +20,52 @@ function apiHeaders(clientId: string, secret: string, target: string) {
   return { "x-perpay-signature-version": signed.version, "x-perpay-client-id": signed.clientId, "x-perpay-timestamp": signed.timestamp, "x-perpay-nonce": signed.nonce, "x-perpay-signature": signed.signature };
 }
 describe("business website HTTP boundaries", () => {
+  it("returns only instance configuration without consulting the legacy website view", async t => {
+    const f = await fixture();
+    try {
+      t.mock.method(f.settings, "view", () => { throw new Error("legacy view must not be read"); });
+      t.mock.method(f.settings, "snapshot", () => { throw new Error("legacy snapshot must not be read"); });
+      const response = await f.app.request("/api/admin/v1/settings", { headers: f.headers });
+      assert.equal(response.status, 200);
+      const { data } = await response.json() as { data: InstanceSettingsView };
+      assert.equal(data.site_mode, true);
+      assert.ok(data.collection); assert.ok(data.provider);
+      assert.equal("notifications" in data, false);
+      assert.deepEqual(Object.keys(data.collection), ["code_payload"]);
+      assert.deepEqual(Object.keys(data.secrets).sort(), ["provider_private_key", "provider_public_key"]);
+      assert.deepEqual(Object.keys(data.display).sort(), ["dashboard_chart_type", "system_name"]);
+      assert.equal("scan_interval_seconds" in data.provider, false);
+      const before = f.sites.get("default");
+      const saved = await f.app.request("/api/admin/v1/settings/display", { method: "PUT", headers: f.headers,
+        body: JSON.stringify({ revision: data.revision, system_name: "实例后台", dashboard_chart_type: "BAR" }) });
+      assert.equal(saved.status, 200);
+      const result = (await saved.json() as { data: InstanceSettingsView }).data;
+      assert.equal(result.payment_revision, data.payment_revision);
+      assert.equal(result.revision, data.revision + 1);
+      assert.deepEqual(f.sites.get("default"), before);
+      const mixed = await f.app.request("/api/admin/v1/settings/display", { method: "PUT", headers: f.headers,
+        body: JSON.stringify({ revision: result.revision, dashboard_chart_type: "AREA", checkout_show_product_name: false }) });
+      assert.equal(mixed.status, 422);
+      let revision = result.revision;
+      const changes: Array<[string, object]> = [
+        ["collection", { code_payload: "https://qr.alipay.com/new-instance-code" }],
+        ["collection-policy", { ...data.collection_policy, scan_interval_seconds: 30, maximum_success_age_seconds: 60 }],
+        ["provider", { environment: data.provider.environment, app_id: data.provider.app_id }],
+        ["advanced", data.advanced],
+        ["backup", data.backup],
+      ];
+      for (const [section, fields] of changes) {
+        const updated = await f.app.request("/api/admin/v1/settings/" + section, { method: "PUT", headers: f.headers, body: JSON.stringify({ ...fields, revision }) });
+        assert.equal(updated.status, 200, section);
+        const value = (await updated.json() as { data: { revision: number; site_mode: boolean; notifications?: unknown; secrets: object } }).data;
+        assert.equal(value.site_mode, true);
+        assert.equal(value.notifications, undefined);
+        assert.deepEqual(Object.keys(value.secrets).sort(), ["provider_private_key", "provider_public_key"]);
+        revision = value.revision;
+      }
+      assert.deepEqual(f.sites.get("default"), before);
+    } finally { f.close(); }
+  });
   it("requires admin authentication and CSRF for creating a website", async () => {
     const f = await fixture();
     try {

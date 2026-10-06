@@ -21,7 +21,7 @@ export function configuredThrough(stage: number): RuntimeSettings {
   for (const name of Object.keys(value.secrets) as Array<
     keyof typeof value.secrets
   >)
-    value.secrets[name] = { ...value.secrets[name] };
+    value.secrets[name] = { ...value.secrets[name]! };
   value.application_public_key =
     stage >= 1 ? "synthetic-application-public-key" : null;
   value.application_key_fingerprint = stage >= 1 ? "a".repeat(64) : null;
@@ -42,7 +42,7 @@ export function configuredThrough(stage: number): RuntimeSettings {
         }
       : null;
   value.collection_policy = { revision: value.revision, timeout_milliseconds: 8000, scan_interval_seconds: stage >= 2 ? 10 : 60, active_scan_interval_seconds: stage >= 2 ? 10 : 8, minimum_scan_interval_seconds: stage >= 2 ? 10 : 8, safety_lag_seconds: 10, maximum_success_age_seconds: stage >= 2 ? 60 : 120 };
-  value.secrets.api_secret.configured = stage >= 4;
+  value.secrets.api_secret!.configured = stage >= 4;
   value.secrets.provider_private_key.configured = stage >= 1;
   value.secrets.provider_public_key.configured = stage >= 2;
   return completion(value);
@@ -66,10 +66,10 @@ function completion(value: RuntimeSettings): RuntimeSettings {
     application_key: value.application_public_key !== null,
     provider: value.provider !== null,
     collection: value.collection !== null,
-    api: value.secrets.api_secret.configured,
+    api: value.secrets.api_secret!.configured,
     complete: Boolean(value.provider && value.collection),
     notifications:
-      !value.notifications.enabled || value.secrets.webhook_secret.configured,
+      !value.notifications!.enabled || value.secrets.webhook_secret!.configured,
     next_step: !value.application_public_key
       ? "GENERATE_APPLICATION_KEY"
       : !value.provider
@@ -174,8 +174,8 @@ export function mountOnboarding(
   );
   let saved = options.pendingKey ? pendingApplicationKey() : configuredThrough(options.stage ?? 0);
   if (options.notificationKey) {
-    saved.notifications = { ...saved.notifications, enabled: true, allowed_origin: "https://business.example" };
-    saved.secrets.webhook_secret = { ...saved.secrets.webhook_secret, configured: true, version: 1 };
+    saved.notifications = { ...saved.notifications!, enabled: true, allowed_origin: "https://business.example" };
+    saved.secrets.webhook_secret = { ...saved.secrets.webhook_secret!, configured: true, version: 1 };
   }
   let signedIn = options.signedIn ?? true;
   const fetchMock = vi.fn(async (request: Request) => {
@@ -288,7 +288,7 @@ export function mountOnboarding(
     if (endpoint.endsWith("/notification-key/actions/rotate")) {
       const { revision } = await request.clone().json();
       if (revision !== saved.revision) return apiError("settings_revision_conflict", "stale revision");
-      saved = { ...saved, revision: revision + 1, secrets: { ...saved.secrets, webhook_secret: { ...saved.secrets.webhook_secret, version: (saved.secrets.webhook_secret.version ?? 0) + 1 } } };
+      saved = { ...saved, revision: revision + 1, secrets: { ...saved.secrets, webhook_secret: { ...saved.secrets.webhook_secret!, version: (saved.secrets.webhook_secret!.version ?? 0) + 1 } } };
       return json({ data: { settings: saved, secret: "synthetic-rotated-notification-secret" } });
     }
     if (endpoint.endsWith("/api-key/actions/rotate")) {
@@ -297,7 +297,7 @@ export function mountOnboarding(
         revision: saved.revision + 1,
         secrets: {
           ...saved.secrets,
-          api_secret: { ...saved.secrets.api_secret, configured: true },
+          api_secret: { ...saved.secrets.api_secret!, configured: true },
         },
       });
       return json({
@@ -322,7 +322,7 @@ export function mountOnboarding(
         [section]: body,
       });
       if (section === "notifications")
-        saved.secrets.webhook_secret.configured = body.enabled;
+        saved.secrets.webhook_secret!.configured = body.enabled;
       return json({ data: saved });
     }
     return apiError(

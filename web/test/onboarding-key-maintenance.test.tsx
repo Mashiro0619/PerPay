@@ -88,7 +88,7 @@ describe("non-blocking pending application keys", () => {
       }),
     );
     await screen.findByText("synthetic-pending-application-public-key");
-    for (const name of ["经营码", "通知与备份", "收款检查"])
+    for (const name of ["经营码", "网站与备份", "收款检查"])
       expect(
         screen.getByRole("link", { name: new RegExp(name) }),
       ).not.toHaveAttribute("aria-disabled", "true");
@@ -122,11 +122,11 @@ describe("non-blocking pending application keys", () => {
     expect(screen.getByText("新应用公钥尚未启用")).toBeVisible();
     fireEvent.change(orderTtl, { target: { value: "https://qr.alipay.com/updated-during-key-change" } });
     await user.click(screen.getByRole("button", { name: "保存并继续" }));
-    await screen.findByRole("heading", { name: "通知与备份", level: 2 });
+    await screen.findByRole("heading", { name: "网站与备份", level: 2 });
     expect(view.saved.collection!.code_payload).toBe("https://qr.alipay.com/updated-during-key-change");
     expect(view.saved.pending_application_key).toEqual(pending);
     expect(view.saved.application_public_key).toBe(currentKey);
-    await user.click(screen.getByRole("link", { name: /通知与备份/ }));
+    await user.click(screen.getByRole("link", { name: /网站与备份/ }));
     fireEvent.change(await screen.findByLabelText("备份间隔"), {
       target: { value: "2" },
     });

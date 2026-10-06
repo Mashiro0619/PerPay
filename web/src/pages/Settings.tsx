@@ -1,3 +1,4 @@
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { RefreshButton } from "@/components/refresh-button";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { useEffect, useRef, useState } from "react";
@@ -102,8 +103,10 @@ export default function Settings() {
       </div>
       <QueryView query={settings}>
         {({ data }) => {
+          if (data.site_mode && requestedSection === "notifications") return <Alert><AlertTitle>通知设置已迁移</AlertTitle><AlertDescription>每个网站分别配置通知来源、签名密钥和投递策略。<Link to="/sites">前往业务网站</Link></AlertDescription></Alert>;
+          const availableSections = data.site_mode ? sections.filter(([value]) => value !== "notifications") : sections;
           const section =
-            sections.find(([value]) => value === requestedSection)?.[0] ??
+            availableSections.find(([value]) => value === requestedSection)?.[0] ??
             (data.completion.complete ? "collection" : "provider");
           const changeSection = (value: string | null) => {
             if (!value) return;
@@ -126,7 +129,7 @@ export default function Settings() {
                   activateOnFocus={false}
                   className="min-w-max justify-start"
                 >
-                  {sections.map(([value, title]) => {
+                  {availableSections.map(([value, title]) => {
                     const Icon = sectionIcons[value];
                     return (
                       <TabsTrigger

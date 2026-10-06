@@ -269,6 +269,8 @@ export type WebhookSettingsInput = z.infer<typeof webhookSettingsInputSchema>;
 export type AdvancedSettingsInput = z.infer<typeof advancedSettingsInputSchema>;
 export type BackupSettingsInput = z.infer<typeof backupSettingsInputSchema>;
 export type DisplaySettingsInput = z.infer<typeof displaySettingsInputSchema>;
+export const instanceDisplayInputSchema = displaySettingsInputSchema.pick({ revision: true, system_name: true, dashboard_chart_type: true }).strict();
+export type InstanceDisplayInput = z.infer<typeof instanceDisplayInputSchema>;
 
 export function providerEndpoint(environment: ProviderEnvironment): ProviderSettings["endpoint"] {
   return environment === "PRODUCTION"

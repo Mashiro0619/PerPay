@@ -8,7 +8,7 @@ import { LedgerStore } from "../src/ledger/store.ts";
 import {
   RuntimeSettingsService,
   RuntimeSettingsStore,
-  type RuntimeSettingsSnapshot,
+
 } from "../src/settings/index.ts";
 import type { ProviderKeyVerifier } from "../src/settings/provider-key-verification.ts";
 
@@ -77,7 +77,7 @@ async function createKeyFixture(active: boolean) {
   const events: string[] = [];
   const hooks: {
     verify?: ProviderKeyVerifier;
-    apply?: (snapshot: RuntimeSettingsSnapshot) => Promise<void>;
+    apply?: (snapshot: import("../src/settings/store.ts").PaymentSettingsSnapshot) => Promise<void>;
     pause?: () => Promise<void>;
   } = {};
   const services = (db: AppDatabase) => {

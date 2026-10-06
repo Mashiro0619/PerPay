@@ -102,7 +102,7 @@ describe("onboarding workspace and credential handoff", () => {
         within(footer).queryByRole("button", { name: "刷新" }),
       ).not.toBeInTheDocument();
       expect(
-        within(workspace).getByRole("link", { name: /通知与备份.*可选/ }),
+        within(workspace).getByRole("link", { name: /网站与备份.*可选/ }),
       ).toBeVisible();
       if (["application", "provider", "collection"].includes(step.id)) {
         expect(

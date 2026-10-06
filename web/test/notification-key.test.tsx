@@ -153,7 +153,7 @@ describe("notification signing key rotation", () => {
       stage: 4,
       path: "/settings/onboarding/optional",
     });
-    await screen.findByRole("heading", { name: "通知与备份", level: 2 });
+    await screen.findByRole("heading", { name: "网站与备份", level: 2 });
     expect(
       screen.queryByRole("button", { name: "通知密钥操作" }),
     ).not.toBeInTheDocument();

@@ -122,7 +122,7 @@ describe("onboarding payment readiness", () => {
   });
   it("treats disabled optional notifications and backups as a completed setup", async () => {
     const settings = configuredThrough(4);
-    settings.notifications.enabled = false;
+    settings.notifications!.enabled = false;
     const status = completeStatus();
     status.webhook.enabled = false;
     status.backup.enabled = false;

@@ -16,11 +16,11 @@ export const onboardingSteps = [
   {
     id: "collection",
     title: "经营码",
-    description: "使用接入账户的经营码，并确认订单有效期与金额规则。",
+    description: "导入本实例共用的经营收款码，网站订单策略单独设置。",
   },
   {
     id: "optional",
-    title: "通知与备份",
+    title: "网站与备份",
     description: "按需开启付款通知和自动备份，不启用也可以继续。",
   },
   {
@@ -48,6 +48,7 @@ export function onboardingStepDescription(
   }
   if (step === "provider" && settings.pending_application_key)
     return "填写上传后获取的支付宝公钥，验证并启用新密钥。";
+  if (step === "optional" && settings.site_mode) return "创建业务网站，按需设置自动备份。网站各自配置通知，不使用全局业务密钥。";
   return onboardingSteps.find((item) => item.id === step)!.description;
 }
 
@@ -60,7 +61,7 @@ export function nextRequiredStep(settings: RuntimeSettings): OnboardingStep {
   } as const;
   return settings.completion.next_step
     ? steps[settings.completion.next_step]
-    : "check";
+    : settings.site_mode && !settings.completion.sites ? "optional" : "check";
 }
 
 export function resolveOnboardingStep(

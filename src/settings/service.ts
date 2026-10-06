@@ -1,5 +1,5 @@
 import { collectionPolicyInputSchema, type CollectionPolicyInput } from "./collection-policy.ts";
-import { collectionCodeInputSchema, providerApplicationInputSchema, type CollectionCodeInput, type ProviderApplicationInput } from "./model.ts";
+import { collectionCodeInputSchema, providerApplicationInputSchema, instanceDisplayInputSchema, type InstanceDisplayInput, type CollectionCodeInput, type ProviderApplicationInput } from "./model.ts";
 import { adminAccessInputSchema, createAdminAccessPolicy, type AdminAccessInput, type AdminAccess } from "./admin-access.ts";
 import { randomBytes, randomUUID } from "node:crypto";
 
@@ -42,6 +42,7 @@ import {
   RuntimeSettingsStore,
   SettingsError,
   type SettingsAuditContext,
+  type PaymentSettingsSnapshot,
 } from "./store.ts";
 
 export interface RuntimeSettingsView {
@@ -124,17 +125,29 @@ export interface RuntimeSettingsView {
   readonly secrets: Readonly<Record<RuntimeSecretName, ReturnType<RuntimeSettingsStore["secretMetadata"]>>>;
 }
 
+/** Public instance settings never contain a default website's configuration. */
+export type InstanceSettingsView = Omit<RuntimeSettingsView,
+  "completion" | "collection" | "provider" | "notifications" | "display" | "secrets"
+> & {
+  readonly site_mode: true;
+  readonly completion: Omit<RuntimeSettingsView["completion"], "api" | "notifications"> & { readonly sites: boolean };
+  readonly collection: { readonly code_payload: string } | null;
+  readonly provider: Pick<NonNullable<RuntimeSettingsView["provider"]>, "environment" | "app_id" | "platform_public_key" | "provider_account_key"> | null;
+  readonly display: Pick<RuntimeSettingsView["display"], "system_name" | "dashboard_chart_type">;
+  readonly secrets: Pick<RuntimeSettingsView["secrets"], "provider_private_key" | "provider_public_key">;
+};
+
 export type ProviderSwitchGuard = (input: {
-  readonly current: RuntimeSettingsSnapshot;
+  readonly current: PaymentSettingsSnapshot;
   readonly currentProviderAccountKey: string;
   readonly nextAppId: string;
   readonly nextEndpoint: string;
 }) => void | Promise<void>;
 
-export type SettingsApplied = (snapshot: RuntimeSettingsSnapshot) => void | Promise<void>;
+export type SettingsApplied = (snapshot: PaymentSettingsSnapshot) => void | Promise<void>;
 export type PaymentMutationStarted = () => void | Promise<void>;
 export type CollectionApplied = (
-  collection: NonNullable<RuntimeSettingsSnapshot["collection"]>,
+  collection: Pick<NonNullable<RuntimeSettingsSnapshot["collection"]>, "codePayload">,
   providerAccountKey: string,
 ) => void | Promise<void>;
 export type ProviderHistory = () => readonly ProviderIdentityActivation[];
@@ -167,9 +180,9 @@ export class RuntimeSettingsService {
     this.#verifyProviderApplicationKey = options.verifyProviderApplicationKey ?? verifyProviderApplicationKey;
   }
 
-  initialize(): RuntimeSettingsSnapshot {
+  initialize(): PaymentSettingsSnapshot {
     this.#store.initialize();
-    return this.#store.snapshot();
+    return this.#store.paymentSnapshot();
   }
 
   display() {
@@ -177,6 +190,65 @@ export class RuntimeSettingsService {
   }
 
   instanceSnapshot() { return this.#store.instanceSnapshot(); }
+
+  saveInstanceDisplay(input: InstanceDisplayInput, audit: SettingsAuditContext): Promise<InstanceSettingsView> {
+    return this.#exclusive(async () => {
+      this.#store.saveInstanceDisplay(instanceDisplayInputSchema.parse(input), audit);
+      return this.instanceView();
+    });
+  }
+
+  publicView(): RuntimeSettingsView | InstanceSettingsView {
+    return this.siteStore() ? this.instanceView() : this.view();
+  }
+
+  instanceView(): InstanceSettingsView {
+    const snapshot = this.instanceSnapshot();
+    const applicationKey = this.#store.providerApplicationKey();
+    const pending = this.#store.pendingApplicationKey();
+    const collectionConfigured = snapshot.collection !== null;
+    const providerConfigured = snapshot.provider !== null && snapshot.activeProviderAccountKey !== null;
+    return {
+      site_mode: true,
+      revision: snapshot.revision,
+      payment_revision: snapshot.paymentRevision,
+      updated_at: new Date(snapshot.updatedAt).toISOString(),
+      admin_access: snapshot.adminAccess,
+      collection_policy: this.collectionPolicy(),
+      completion: {
+        complete: collectionConfigured && providerConfigured,
+        application_key: applicationKey !== null,
+        collection: collectionConfigured,
+        provider: providerConfigured,
+        sites: (this.siteStore()?.list(null, 1).length ?? 0) > 0,
+        next_step: configurationNextStep({ applicationKeyConfigured: applicationKey !== null, providerConfigured, collectionConfigured }),
+      },
+      collection: snapshot.collection ? { code_payload: snapshot.collection.codePayload } : null,
+      provider: snapshot.provider && snapshot.activeProviderAccountKey ? {
+        environment: snapshot.provider.environment,
+        app_id: snapshot.provider.appId,
+        platform_public_key: snapshot.provider.publicKeyPem,
+        provider_account_key: snapshot.activeProviderAccountKey,
+      } : null,
+      application_public_key: applicationKey?.uploadPublicKey ?? null,
+      application_key_fingerprint: applicationKey?.fingerprint ?? null,
+      pending_application_key: pending?.key ? {
+        change_id: pending.changeId, public_key: pending.key.uploadPublicKey,
+        fingerprint: pending.newFingerprint, app_id: pending.appId!, environment: pending.environment!,
+        created_at: new Date(pending.createdAt).toISOString(),
+      } : null,
+      provider_generations: this.#providerHistory().map(generation => ({
+        provider_account_key: generation.providerAccountKey, app_id: generation.externalAccountId,
+        environment: generation.endpoint === providerEndpoint("SANDBOX") ? "SANDBOX" : "PRODUCTION",
+        activated_at: new Date(generation.activatedAt).toISOString(),
+        active: generation.providerAccountKey === snapshot.activeProviderAccountKey,
+      })),
+      advanced: { checkout_key_rotation_days: snapshot.advanced.checkoutKeyRotationDays, checkout_terminal_observation_seconds: snapshot.advanced.checkoutTerminalObservationSeconds },
+      backup: { interval_seconds: snapshot.backup.intervalSeconds, keep_count: snapshot.backup.keepCount },
+      display: { system_name: snapshot.display.systemName ?? "PerPay", dashboard_chart_type: snapshot.display.dashboardChartType },
+      secrets: { provider_private_key: this.#store.secretMetadata("provider_private_key"), provider_public_key: this.#store.secretMetadata("provider_public_key") },
+    };
+  }
 
   snapshot(): RuntimeSettingsSnapshot {
     return this.#store.snapshot();
@@ -293,15 +365,15 @@ export class RuntimeSettingsService {
     return this.#store.collectionPolicy();
   }
 
-  saveProviderApplication(input: ProviderApplicationInput, audit: SettingsAuditContext): Promise<RuntimeSettingsView> {
+  saveProviderApplication(input: ProviderApplicationInput, audit: SettingsAuditContext): Promise<RuntimeSettingsView | InstanceSettingsView> {
     const parsed = providerApplicationInputSchema.parse(input);
     return this.saveProvider({ ...this.#store.collectionPolicy(), ...parsed }, audit);
   }
 
-  saveCollectionCode(input: CollectionCodeInput, audit: SettingsAuditContext): Promise<RuntimeSettingsView> {
+  saveCollectionCode(input: CollectionCodeInput, audit: SettingsAuditContext): Promise<RuntimeSettingsView | InstanceSettingsView> {
     return this.#exclusive(async () => {
       const parsed = collectionCodeInputSchema.parse(input);
-      const current = this.#store.snapshot();
+      const current = this.#store.paymentSnapshot();
       if (current.revision !== parsed.revision) throw revisionConflict(parsed.revision, current.revision);
       let committed = false;
       try {
@@ -311,7 +383,7 @@ export class RuntimeSettingsService {
         await this.#applyCommitted(snapshot, async () => {
           if (snapshot.collection && snapshot.activeProviderAccountKey !== null) await this.#onCollectionApplied(snapshot.collection, snapshot.activeProviderAccountKey);
         });
-        return this.view();
+        return this.publicView();
       } catch (error) {
         if (!committed) await this.#restoreCurrentRuntime(error);
         throw error;
@@ -319,10 +391,10 @@ export class RuntimeSettingsService {
     });
   }
 
-  saveCollectionPolicy(input: CollectionPolicyInput, audit: SettingsAuditContext): Promise<RuntimeSettingsView> {
+  saveCollectionPolicy(input: CollectionPolicyInput, audit: SettingsAuditContext): Promise<RuntimeSettingsView | InstanceSettingsView> {
     return this.#exclusive(async () => {
       const parsed = collectionPolicyInputSchema.parse(input);
-      const current = this.#store.snapshot();
+      const current = this.#store.paymentSnapshot();
       if (current.revision !== parsed.revision) throw revisionConflict(parsed.revision, current.revision);
       let committed = false;
       try {
@@ -330,7 +402,7 @@ export class RuntimeSettingsService {
         const snapshot = this.#store.saveCollectionPolicy(parsed, audit);
         committed = true;
         await this.#applyCommitted(snapshot);
-        return this.view();
+        return this.publicView();
       } catch (error) {
         if (!committed) await this.#restoreCurrentRuntime(error);
         throw error;
@@ -363,13 +435,13 @@ export class RuntimeSettingsService {
     });
   }
 
-  saveProvider(input: ProviderSettingsInput, audit: SettingsAuditContext): Promise<RuntimeSettingsView> {
+  saveProvider(input: ProviderSettingsInput, audit: SettingsAuditContext): Promise<RuntimeSettingsView | InstanceSettingsView> {
     return this.#exclusive(async () => {
       let committed = false;
       let transitionStarted = false;
       try {
         const parsed = providerSettingsInputSchema.parse(input);
-        const current = this.#store.snapshot();
+        const current = this.#store.paymentSnapshot();
         if (current.revision !== parsed.revision) throw revisionConflict(parsed.revision, current.revision);
         const endpoint = providerEndpoint(parsed.environment);
         const historicalActive = latestProviderGeneration(this.#providerHistory());
@@ -477,7 +549,7 @@ export class RuntimeSettingsService {
             await this.#onCollectionApplied(snapshot.collection, accountKey);
           }
         });
-        return this.view();
+        return this.publicView();
       } catch (error) {
         if (!committed && transitionStarted) await this.#restoreCurrentRuntime(error);
         throw error;
@@ -490,12 +562,12 @@ export class RuntimeSettingsService {
     audit: SettingsAuditContext,
   ): Promise<{
     readonly created: boolean;
-    readonly settings: RuntimeSettingsView;
+    readonly settings: RuntimeSettingsView | InstanceSettingsView;
     readonly public_key: string;
     readonly fingerprint: string;
   }> {
     return this.#exclusive(async () => {
-      const current = this.#store.snapshot();
+      const current = this.#store.paymentSnapshot();
       if (
         current.provider !== null ||
         current.activeProviderAccountKey !== null ||
@@ -513,7 +585,7 @@ export class RuntimeSettingsService {
         }
         return {
           created: false,
-          settings: this.view(),
+          settings: this.publicView(),
           public_key: existing.uploadPublicKey,
           fingerprint: existing.fingerprint,
         };
@@ -530,7 +602,7 @@ export class RuntimeSettingsService {
       });
       return {
         created: true,
-        settings: this.view(),
+        settings: this.publicView(),
         public_key: generated.uploadPublicKey,
         fingerprint: generated.fingerprint,
       };
@@ -543,7 +615,7 @@ export class RuntimeSettingsService {
   ) {
     return this.#exclusive(async () => {
       const parsed = regenerateProviderApplicationKeySchema.parse(input);
-      const current = this.#store.snapshot();
+      const current = this.#store.paymentSnapshot();
       const currentKey = this.#store.providerApplicationKey();
       const replay = this.#store.applicationKeyChange(parsed.change_id);
       if (replay) {
@@ -554,7 +626,7 @@ export class RuntimeSettingsService {
           throw keyChangeConflict();
         }
         const key = replay.key ?? currentKey!;
-        return { created: false, settings: this.view(), public_key: key.uploadPublicKey, fingerprint: key.fingerprint };
+        return { created: false, settings: this.publicView(), public_key: key.uploadPublicKey, fingerprint: key.fingerprint };
       }
       if (current.revision !== parsed.revision) throw revisionConflict(parsed.revision, current.revision);
       if (!currentKey || currentKey.fingerprint !== parsed.base_fingerprint) throw keyChangeConflict();
@@ -569,7 +641,7 @@ export class RuntimeSettingsService {
         expectedRevision: parsed.revision, changeId: parsed.change_id,
         baseFingerprint: parsed.base_fingerprint, key, audit,
       });
-      return { created: true, settings: this.view(), public_key: key.uploadPublicKey, fingerprint: key.fingerprint };
+      return { created: true, settings: this.publicView(), public_key: key.uploadPublicKey, fingerprint: key.fingerprint };
     });
   }
 
@@ -577,10 +649,10 @@ export class RuntimeSettingsService {
     input: ActivateProviderApplicationKeyInput,
     audit: SettingsAuditContext,
     signal?: AbortSignal,
-  ): Promise<RuntimeSettingsView> {
+  ): Promise<RuntimeSettingsView | InstanceSettingsView> {
     return this.#exclusive(async () => {
       const parsed = activateProviderApplicationKeySchema.parse(input);
-      const current = this.#store.snapshot();
+      const current = this.#store.paymentSnapshot();
       const change = this.#store.applicationKeyChange(parsed.change_id);
       if (!change || !change.providerAccountKey) throw keyChangeConflict();
       if (change.state === "ACTIVATED") {
@@ -591,7 +663,7 @@ export class RuntimeSettingsService {
           parsed.platform_public_key).platformKeyFingerprint !== current.provider.platformKeyFingerprint) throw keyChangeConflict();
         // A lost response may follow a committed change whose runtime application failed.
         await this.#applyCommitted(current);
-        return this.view();
+        return this.publicView();
       }
       if (current.revision !== parsed.revision) throw revisionConflict(parsed.revision, current.revision);
       assertPendingKeyMatches(current, change);
@@ -615,7 +687,7 @@ export class RuntimeSettingsService {
         });
         committed = true;
         await this.#applyCommitted(snapshot);
-        return this.view();
+        return this.publicView();
       } catch (error) {
         if (!committed && transitionStarted) await this.#restoreCurrentRuntime(error);
         throw error;
@@ -626,18 +698,18 @@ export class RuntimeSettingsService {
   discardProviderApplicationKey(
     input: ApplicationKeyChangeActionInput,
     audit: SettingsAuditContext,
-  ): Promise<RuntimeSettingsView> {
+  ): Promise<RuntimeSettingsView | InstanceSettingsView> {
     return this.#exclusive(async () => {
       const parsed = applicationKeyChangeActionSchema.parse(input);
-      const current = this.#store.snapshot();
+      const current = this.#store.paymentSnapshot();
       const change = this.#store.applicationKeyChange(parsed.change_id);
-      if (change?.state === "DISCARDED" && change.finishedRevision === parsed.revision + 1) return this.view();
+      if (change?.state === "DISCARDED" && change.finishedRevision === parsed.revision + 1) return this.publicView();
       if (current.revision !== parsed.revision) throw revisionConflict(parsed.revision, current.revision);
       assertPendingKeyMatches(current, change);
       this.#store.finishApplicationKeyChange({
         expectedRevision: parsed.revision, changeId: parsed.change_id, audit,
       });
-      return this.view();
+      return this.publicView();
     });
   }
 
@@ -685,19 +757,19 @@ export class RuntimeSettingsService {
     });
   }
 
-  saveAdvanced(input: AdvancedSettingsInput, audit: SettingsAuditContext): Promise<RuntimeSettingsView> {
+  saveAdvanced(input: AdvancedSettingsInput, audit: SettingsAuditContext): Promise<RuntimeSettingsView | InstanceSettingsView> {
     return this.#exclusive(async () => {
       const parsed = advancedSettingsInputSchema.parse(input);
       this.#store.saveAdvanced(parsed, audit);
-      return this.view();
+      return this.publicView();
     });
   }
 
-  saveBackup(input: BackupSettingsInput, audit: SettingsAuditContext): Promise<RuntimeSettingsView> {
+  saveBackup(input: BackupSettingsInput, audit: SettingsAuditContext): Promise<RuntimeSettingsView | InstanceSettingsView> {
     return this.#exclusive(async () => {
       const parsed = backupSettingsInputSchema.parse(input);
       this.#store.saveBackup(parsed, audit);
-      return this.view();
+      return this.publicView();
     });
   }
 
@@ -705,14 +777,14 @@ export class RuntimeSettingsService {
     return this.#store.adminAccess();
   }
 
-  saveAdminAccess(input: AdminAccessInput, source: string, audit: SettingsAuditContext): Promise<RuntimeSettingsView> {
+  saveAdminAccess(input: AdminAccessInput, source: string, audit: SettingsAuditContext): Promise<RuntimeSettingsView | InstanceSettingsView> {
     return this.#exclusive(async () => {
       const parsed = adminAccessInputSchema.parse(input);
       if (parsed.enabled && !createAdminAccessPolicy(parsed.cidrs).isTrusted(source)) {
         throw new SettingsFieldError("cidrs", "白名单必须允许当前客户端 IP，无法识别来源时不能启用。");
       }
       this.#store.saveAdminAccess(parsed, audit);
-      return this.view();
+      return this.publicView();
     });
   }
 
@@ -729,7 +801,7 @@ export class RuntimeSettingsService {
   }
 
   async #applyCommitted(
-    snapshot: RuntimeSettingsSnapshot,
+    snapshot: PaymentSettingsSnapshot,
     beforeApply?: (() => void | Promise<void>) | undefined,
   ): Promise<void> {
     const apply = async () => {
@@ -752,7 +824,7 @@ export class RuntimeSettingsService {
 
   async #restoreCurrentRuntime(originalError: unknown): Promise<void> {
     try {
-      await this.#onApplied(this.#store.snapshot());
+      await this.#onApplied(this.#store.paymentSnapshot());
     } catch (recoveryError) {
       throw new AggregateError(
         [originalError, recoveryError],
@@ -780,7 +852,7 @@ function keyChangeConflict(): SettingsError {
   return new SettingsError("provider_application_key_change_conflict", "the application key change no longer matches; reload the current configuration");
 }
 
-function assertPendingKeyMatches(current: RuntimeSettingsSnapshot, change: ProviderApplicationKeyChange | null): void {
+function assertPendingKeyMatches(current: PaymentSettingsSnapshot, change: ProviderApplicationKeyChange | null): void {
   if (!change || change.state !== "PENDING" || !change.key || !current.provider ||
     current.activeProviderAccountKey !== change.providerAccountKey || current.provider.appId !== change.appId ||
     current.provider.environment !== change.environment || current.provider.applicationKeyFingerprint !== change.baseFingerprint) {

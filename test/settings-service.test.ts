@@ -75,7 +75,7 @@ describe("runtime settings", () => {
       }, audit("collection"));
       await settings.saveProvider(providerInput(1, "2026000000000001"), audit("provider"));
       assert.equal(settings.view().provider?.safety_lag_seconds, 10);
-      assert.equal(settings.view().provider?.active_scan_interval_seconds, 10);
+      assert.equal(settings.view().collection_policy.active_scan_interval_seconds, 10);
       assert.equal(settings.view().completion.complete, true);
       assert.equal(settings.view().completion.api, false);
       assert.equal(settings.view().completion.next_step, null);
@@ -166,8 +166,8 @@ describe("runtime settings", () => {
       const first = await settings.saveProvider({
         ...providerInput(0, "2026000000000001"), scan_interval_seconds: 30, active_scan_interval_seconds: 5,
       }, audit("adaptive-first"));
-      assert.equal(first.provider?.scan_interval_seconds, 30);
-      assert.equal(first.provider?.active_scan_interval_seconds, 5);
+      assert.equal(first.collection_policy.scan_interval_seconds, 30);
+      assert.equal(first.collection_policy.active_scan_interval_seconds, 5);
       assert.equal(new RuntimeSettingsStore(database, masterKey).snapshot().provider?.activeScanIntervalMilliseconds, 5_000);
       const account = first.provider?.provider_account_key;
       const changed = await settings.saveProvider({
@@ -176,8 +176,8 @@ describe("runtime settings", () => {
       }, audit("adaptive-change"));
       assert.equal(changed.provider?.provider_account_key, account);
       const legacy = await settings.saveProvider(providerInput(2, "2026000000000001"), audit("adaptive-legacy"));
-      assert.equal(legacy.provider?.scan_interval_seconds, 10);
-      assert.equal(legacy.provider?.active_scan_interval_seconds, 10);
+      assert.equal(legacy.collection_policy.scan_interval_seconds, 10);
+      assert.equal(legacy.collection_policy.active_scan_interval_seconds, 10);
       assert.deepEqual(applied, [
         { normal: 30_000, active: 5_000, paymentRevision: 1 },
         { normal: 60_000, active: 10_000, paymentRevision: 2 },

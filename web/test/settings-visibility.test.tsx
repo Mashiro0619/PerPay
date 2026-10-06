@@ -40,7 +40,7 @@ describe.each([false, true])("directly visible settings (guided: %s)", (guided) 
   it.each(sections)("shows $section parameters without a disclosure or implicit save", ({ section, fields }) => {
     const settings = configuredThrough(4);
     settings.notifications = {
-      ...settings.notifications,
+      ...settings.notifications!,
       enabled: true,
       allowed_origin: "https://shop.example.com",
     };

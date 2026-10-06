@@ -272,7 +272,7 @@ export function SettingsEditor({
   const [decoding, setDecoding] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [notificationEnabled, setNotificationEnabled] = useState(
-    settings.notifications.enabled,
+    settings.notifications?.enabled ?? false,
   );
   const [showProductName, setShowProductName] = useState(
     settings.display?.checkout_show_product_name ?? true,
@@ -628,7 +628,7 @@ export function SettingsEditor({
               name="allowed_origin"
               type="url"
               required={notificationEnabled}
-              defaultValue={initialSettings.notifications.allowed_origin ?? ""}
+              defaultValue={initialSettings.notifications?.allowed_origin ?? ""}
               placeholder="https://shop.example.com"
               aria-invalid={!!fieldErrors.allowed_origin}
               aria-describedby={
@@ -652,7 +652,7 @@ export function SettingsEditor({
               error={fieldErrors.timeout_milliseconds}
               label="通知超时（秒）"
               scale={1000}
-              value={initialSettings.notifications.timeout_milliseconds}
+              value={(initialSettings.notifications?.timeout_milliseconds ?? 5000)}
               min={1000}
               max={30000}
             />
@@ -660,7 +660,7 @@ export function SettingsEditor({
               name="maximum_attempts"
               error={fieldErrors.maximum_attempts}
               label="最大尝试次数"
-              value={initialSettings.notifications.maximum_attempts}
+              value={(initialSettings.notifications?.maximum_attempts ?? 12)}
               min={1}
               max={100}
             />
@@ -668,7 +668,7 @@ export function SettingsEditor({
               name="retry_base_seconds"
               error={fieldErrors.retry_base_seconds}
               label="首次重试间隔（秒）"
-              value={initialSettings.notifications.retry_base_seconds}
+              value={(initialSettings.notifications?.retry_base_seconds ?? 5)}
               min={1}
               max={3600}
             />
@@ -676,7 +676,7 @@ export function SettingsEditor({
               name="retry_maximum_seconds"
               error={fieldErrors.retry_maximum_seconds}
               label="最大重试间隔（秒）"
-              value={initialSettings.notifications.retry_maximum_seconds}
+              value={(initialSettings.notifications?.retry_maximum_seconds ?? 3600)}
               min={1}
               max={86400}
             />
@@ -746,6 +746,7 @@ export function SettingsEditor({
           )}
         </FieldContent>
       </Field>
+      {!settings.site_mode && <>
       <Field
         orientation="responsive"
         className={displayRowClassName}
@@ -773,6 +774,7 @@ export function SettingsEditor({
           )}
         </FieldContent>
       </Field>
+      </>}
       <Field orientation="responsive" className={displayRowClassName}>
         <FieldLabel id="dashboard-chart-type-label">首页图表样式</FieldLabel>
         <FieldContent className="min-w-0 items-start">
@@ -803,6 +805,7 @@ export function SettingsEditor({
           </ToggleGroup>
         </FieldContent>
       </Field>
+      {!settings.site_mode && <>
       <Field orientation="responsive" className={displayRowClassName}>
         <FieldLabel htmlFor="checkout-show-product-name">
           收银台显示商品名称
@@ -816,6 +819,7 @@ export function SettingsEditor({
           />
         </FieldContent>
       </Field>
+      </>}
     </FieldGroup>
   );
   const advancedFields = (
@@ -1062,6 +1066,8 @@ async function saveSettings(
     } }))).data;
   }
   if (section === "notifications") {
+    if (settings.site_mode || !settings.notifications) throw new Error("通知设置已迁移至业务网站。");
+    const notifications = settings.notifications;
     const enabled = form.has("enabled");
     const notificationNumber = (
       key:
@@ -1069,7 +1075,7 @@ async function saveSettings(
         | "maximum_attempts"
         | "retry_base_seconds"
         | "retry_maximum_seconds",
-    ) => (form.has(key) ? integer(key) : settings.notifications[key]);
+    ) => (form.has(key) ? integer(key) : notifications[key]);
     return (
       await result(
         api.updateNotificationSettings({
@@ -1099,8 +1105,7 @@ async function saveSettings(
           body: {
             revision,
             system_name: text("system_name"),
-            checkout_help_url: text("checkout_help_url") || null,
-            checkout_show_product_name: form.has("checkout_show_product_name"),
+            ...(settings.site_mode ? {} : { checkout_help_url: text("checkout_help_url") || null, checkout_show_product_name: form.has("checkout_show_product_name") }),
             dashboard_chart_type: chartType,
           },
         }),

@@ -265,8 +265,8 @@ describe("minimal onboarding", () => {
 
   it("reads a secret once only after the explicit view action", async () => {
     const settings = configuredThrough(4);
-    settings.notifications.enabled = true;
-    settings.secrets.webhook_secret.configured = true;
+    settings.notifications!.enabled = true;
+    settings.secrets.webhook_secret!.configured = true;
     const view = mountOnboarding({
       stage: 4,
       path: onboardingPath("optional"),

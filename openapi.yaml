@@ -4312,7 +4312,6 @@ components:
         - application_key_fingerprint
         - pending_application_key
         - provider_generations
-        - notifications
         - advanced
         - backup
         - display
@@ -4361,6 +4360,7 @@ components:
             $ref: "#/components/schemas/ProviderGeneration"
         notifications:
           $ref: "#/components/schemas/NotificationSettings"
+          deprecated: true
         advanced:
           $ref: "#/components/schemas/AdvancedSettings"
         backup:
@@ -4371,10 +4371,18 @@ components:
           $ref: "#/components/schemas/RuntimeSecretMetadataMap"
         collection_policy:
           $ref: "#/components/schemas/CollectionPolicyRequest"
+        site_mode:
+          type: boolean
+          description: True for website-aware instance settings. Website policies and business secret metadata are not returned in this mode.
     SettingsCompletion:
       type: object
       additionalProperties: false
-      required: [complete, application_key, collection, provider, api, notifications, next_step]
+      required:
+        - complete
+        - application_key
+        - collection
+        - provider
+        - next_step
       properties:
         complete:
           type: boolean
@@ -4382,39 +4390,57 @@ components:
         application_key:
           type: boolean
           description: Whether the encrypted application private key and uploadable public key exist.
-        collection: { type: boolean }
-        provider: { type: boolean }
-        api: { type: boolean }
-        notifications: { type: boolean }
+        collection:
+          type: boolean
+        provider:
+          type: boolean
+        api:
+          type: boolean
+          deprecated: true
+        notifications:
+          type: boolean
+          deprecated: true
         next_step:
-          type: [string, 'null']
+          type:
+            - string
+            - "null"
           enum:
             - GENERATE_APPLICATION_KEY
             - CONFIGURE_PROVIDER
             - CONFIGURE_COLLECTION
             - GENERATE_API_KEY
             - null
-          description: >-
-            First incomplete required instance configuration step. GENERATE_API_KEY is retained for compatibility but is no longer emitted. Null means
-            configuration is complete; payment readiness must still be checked through `/readyz`
-            or the administrator system-status endpoint.
+          description: First incomplete required instance configuration step. GENERATE_API_KEY is retained for compatibility but is no longer emitted. Null means configuration is complete; payment readiness must still be checked through `/readyz` or the administrator system-status endpoint.
+        sites:
+          type: boolean
+          description: At least one non-deleted website exists. Does not gate the shared payment engine.
     CollectionSettings:
       type: object
       additionalProperties: false
-      required: [code_payload, order_ttl_seconds, amount_offset_maximum_cents, amount_reuse_cooldown_seconds]
+      required:
+        - code_payload
       properties:
         code_payload:
           type: string
           minLength: 8
           x-perpay-max-utf8-bytes: 2331
           description: Original Alipay collection link on qr.alipay.com (HTTP or HTTPS, case-insensitive). Format validation does not verify the recipient account.
-        order_ttl_seconds: { type: integer, minimum: 60, maximum: 1800 }
-        amount_offset_maximum_cents: { type: integer, minimum: 1, maximum: 99 }
+        order_ttl_seconds:
+          type: integer
+          minimum: 60
+          maximum: 1800
+          deprecated: true
+        amount_offset_maximum_cents:
+          type: integer
+          minimum: 1
+          maximum: 99
+          deprecated: true
         amount_reuse_cooldown_seconds:
           type: integer
           minimum: 60
           maximum: 3600
           description: Amount reuse cooldown after checkout closure or effective expiry. Defaults to 600 seconds; it does not extend the payment window.
+          deprecated: true
     ProviderSettings:
       type: object
       additionalProperties: false
@@ -4423,48 +4449,55 @@ components:
         - app_id
         - platform_public_key
         - provider_account_key
-        - timeout_milliseconds
-        - scan_interval_seconds
-        - active_scan_interval_seconds
-        - minimum_scan_interval_seconds
-        - safety_lag_seconds
-        - maximum_success_age_seconds
       properties:
-        environment: { type: string, enum: [PRODUCTION, SANDBOX] }
-        app_id: { type: string, pattern: '^[A-Za-z0-9._-]{1,64}$' }
+        environment:
+          type: string
+          enum:
+            - PRODUCTION
+            - SANDBOX
+        app_id:
+          type: string
+          pattern: ^[A-Za-z0-9._-]{1,64}$
         platform_public_key:
           type: string
           description: Saved Alipay platform public key in PEM form, returned to authenticated administrators for editing. Never an application private key.
         provider_account_key:
           type: string
           description: Internal immutable account-generation identifier; not a provider credential.
-        timeout_milliseconds: { type: integer, minimum: 1000, maximum: 120000 }
+        timeout_milliseconds:
+          type: integer
+          minimum: 1000
+          maximum: 120000
+          deprecated: true
         scan_interval_seconds:
           type: integer
           minimum: 5
           maximum: 3600
           description: Normal wait after a completed scan when no payable orders or tail observation remain. New setup defaults to 30 seconds.
+          deprecated: true
         minimum_scan_interval_seconds:
           type: integer
           minimum: 5
           maximum: 3600
           description: Minimum delay after a scan completes, including manual requests. Must not exceed the active interval. Omitted updates preserve the existing value.
+          deprecated: true
         active_scan_interval_seconds:
           type: integer
           minimum: 5
           maximum: 3600
-          description: >-
-            Wait after a completed scan while an unexpired OPEN/UNPAID order exists for the active account,
-            or a closed/expired UNPAID order remains within max(60 seconds, safety_lag_seconds plus this interval)
-            of its end time. Must not exceed scan_interval_seconds. Omitted in legacy update requests to use
-            scan_interval_seconds for both intervals. New setup defaults to 8 seconds (60 seconds when idle). Existing configurations
-            retain their previous interval for both modes. Provider cooldowns and catch-up scheduling still apply.
+          description: Wait after a completed scan while an unexpired OPEN/UNPAID order exists for the active account, or a closed/expired UNPAID order remains within max(60 seconds, safety_lag_seconds plus this interval) of its end time. Must not exceed scan_interval_seconds. Omitted in legacy update requests to use scan_interval_seconds for both intervals. New setup defaults to 8 seconds (60 seconds when idle). Existing configurations retain their previous interval for both modes. Provider cooldowns and catch-up scheduling still apply.
+          deprecated: true
         safety_lag_seconds:
           type: integer
           minimum: 5
           maximum: 300
           description: Skip the newest provider transactions for this many seconds while they stabilize.
-        maximum_success_age_seconds: { type: integer, minimum: 10, maximum: 86400 }
+          deprecated: true
+        maximum_success_age_seconds:
+          type: integer
+          minimum: 10
+          maximum: 86400
+          deprecated: true
     ProviderGeneration:
       type: object
       additionalProperties: false
@@ -4522,19 +4555,25 @@ components:
     DisplaySettings:
       type: object
       additionalProperties: false
-      required: [checkout_show_product_name, dashboard_chart_type]
+      required:
+        - dashboard_chart_type
       properties:
-        system_name: { $ref: '#/components/schemas/SystemName' }
+        system_name:
+          $ref: "#/components/schemas/SystemName"
         checkout_help_url:
-          type: [string, 'null']
+          type:
+            - string
+            - "null"
           description: Optional public HTTPS help link (at most 2048 UTF-8 bytes); omit to preserve, null to clear.
           maxLength: 2048
+          deprecated: true
         checkout_show_product_name:
           type: boolean
           default: true
           description: Shows the product name on checkout pages; order APIs and notification payloads are unchanged.
+          deprecated: true
         dashboard_chart_type:
-          $ref: '#/components/schemas/DashboardChartType'
+          $ref: "#/components/schemas/DashboardChartType"
     BackupSettings:
       type: object
       additionalProperties: false
@@ -4548,12 +4587,20 @@ components:
     RuntimeSecretMetadataMap:
       type: object
       additionalProperties: false
-      required: [api_secret, provider_private_key, provider_public_key, webhook_secret]
+      required:
+        - provider_private_key
+        - provider_public_key
       properties:
-        api_secret: { $ref: '#/components/schemas/RuntimeSecretMetadata' }
-        provider_private_key: { $ref: '#/components/schemas/RuntimeSecretMetadata' }
-        provider_public_key: { $ref: '#/components/schemas/RuntimeSecretMetadata' }
-        webhook_secret: { $ref: '#/components/schemas/RuntimeSecretMetadata' }
+        api_secret:
+          $ref: "#/components/schemas/RuntimeSecretMetadata"
+          deprecated: true
+        provider_private_key:
+          $ref: "#/components/schemas/RuntimeSecretMetadata"
+        provider_public_key:
+          $ref: "#/components/schemas/RuntimeSecretMetadata"
+        webhook_secret:
+          $ref: "#/components/schemas/RuntimeSecretMetadata"
+          deprecated: true
     RuntimeSecretMetadata:
       type: object
       additionalProperties: false
@@ -4655,16 +4702,27 @@ components:
     DisplaySettingsRequest:
       type: object
       additionalProperties: false
-      required: [revision, checkout_show_product_name, dashboard_chart_type]
+      required:
+        - revision
+        - dashboard_chart_type
       properties:
-        system_name: { $ref: '#/components/schemas/SystemName' }
+        system_name:
+          $ref: "#/components/schemas/SystemName"
         checkout_help_url:
-          type: [string, 'null']
+          type:
+            - string
+            - "null"
           description: Optional public HTTPS help link (at most 2048 UTF-8 bytes); omit to preserve, null to clear.
           maxLength: 2048
-        revision: { type: integer, minimum: 0 }
-        checkout_show_product_name: { type: boolean }
-        dashboard_chart_type: { $ref: '#/components/schemas/DashboardChartType' }
+          deprecated: true
+        revision:
+          type: integer
+          minimum: 0
+        checkout_show_product_name:
+          type: boolean
+          deprecated: true
+        dashboard_chart_type:
+          $ref: "#/components/schemas/DashboardChartType"
     BackupSettingsRequest:
       type: object
       additionalProperties: false

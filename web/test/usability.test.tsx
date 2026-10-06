@@ -187,7 +187,7 @@ describe("short feedback and safe settings", () => {
   });
   it("keeps disabled notification consequences only while notifications are disabled", () => {
     const settings = configuredThrough(4);
-    settings.notifications.enabled = false;
+    settings.notifications!.enabled = false;
     render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter>

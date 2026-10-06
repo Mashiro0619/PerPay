@@ -1,6 +1,5 @@
 import type { InstanceRuntimeSettingsSnapshot } from "./model.ts";
-import { SiteStore, readSite } from "../sites/store.ts";
-import { sitePolicySchema } from "../sites/model.ts";
+import { SiteStore } from "../sites/store.ts";
 import { collectionPolicyInputSchema, type CollectionPolicyInput } from "./collection-policy.ts";
 import { collectionCodeInputSchema, type CollectionCodeInput } from "./model.ts";
 import { readAdminAccess, type AdminAccessInput, type AdminAccess } from "./admin-access.ts";
@@ -38,6 +37,8 @@ import {
 } from "./model.ts";
 import { RuntimeSecretCipher, type EncryptedSecret } from "./crypto.ts";
 
+export type PaymentSettingsSnapshot = RuntimeSettingsSnapshot | InstanceRuntimeSettingsSnapshot;
+
 interface ConfigurationRow {
   readonly revision: bigint | number;
   readonly payment_revision: bigint | number;
@@ -73,7 +74,6 @@ interface ConfigurationRow {
 
 interface SecretRow {
   readonly client_id?: string;
-  readonly site_secret?: boolean;
   readonly secret_name: RuntimeSecretName;
   readonly secret_version: bigint | number;
   readonly cipher_version: bigint | number;
@@ -185,7 +185,7 @@ export class RuntimeSettingsStore {
   /** Reads public presentation flags without loading or decrypting runtime secrets. */
   display(): DisplaySettings {
     return this.#database.read((connection) => {
-      const row = readConfiguration(connection);
+      const row = connection.prepare("SELECT * FROM runtime_configuration WHERE singleton_key = 1").get() as unknown as ConfigurationRow | undefined;
       if (!row) throw new Error("runtime configuration singleton is missing");
       return {
         systemName: row.system_name,
@@ -229,10 +229,7 @@ export class RuntimeSettingsStore {
    * must use this pair and pass the generation back when consuming a nonce.
    */
   apiCredential(): ApiCredentialSnapshot | null {
-    if (this.siteStore()) {
-      const credential = this.#sites.credential(API_CLIENT_ID);
-      return credential ? { ...credential, clientId: API_CLIENT_ID } : null;
-    }
+    if (this.siteStore()) throw new Error("API credentials require explicit website identity");
     return this.#database.read((connection) => {
       const row = connection.prepare(
         `SELECT secret.secret_name, secret.secret_version, secret.cipher_version,
@@ -261,10 +258,10 @@ export class RuntimeSettingsStore {
   }
 
   status(): RuntimeSettingsStatus {
-    const snapshot = this.snapshot();
+    const snapshot = this.paymentSnapshot();
     const collectionConfigured = snapshot.collection !== null && collectionCodeError(snapshot.collection.codePayload) === null;
     const providerConfigured = snapshot.provider !== null && snapshot.activeProviderAccountKey !== null;
-    const apiConfigured = snapshot.apiSecret !== null;
+    const apiConfigured = "apiSecret" in snapshot && snapshot.apiSecret !== null;
     return {
       revision: snapshot.revision,
       paymentRevision: snapshot.paymentRevision,
@@ -273,7 +270,7 @@ export class RuntimeSettingsStore {
       collectionConfigured,
       providerConfigured,
       apiConfigured,
-      notificationConfigured: !snapshot.webhook.enabled || snapshot.webhook.secret !== null,
+      notificationConfigured: !("webhook" in snapshot) || !snapshot.webhook.enabled || snapshot.webhook.secret !== null,
       activeProviderAccountKey: snapshot.activeProviderAccountKey,
     };
   }
@@ -301,11 +298,11 @@ export class RuntimeSettingsStore {
     readonly baseFingerprint: string;
     readonly key: ProviderApplicationKeyMaterial;
     readonly audit: SettingsAuditContext;
-  }): RuntimeSettingsSnapshot {
+  }): PaymentSettingsSnapshot {
     const key = parseProviderApplicationPrivateKey(input.key.privateKeyPem);
     return this.#database.write((connection) => {
       assertRevision(connection, input.expectedRevision);
-      const current = this.#snapshot(connection);
+      const current = this.#paymentSnapshot(connection);
       const original = readSecret(connection, "provider_private_key");
       if (!original || original.secret_fingerprint !== input.baseFingerprint) {
         throw new SettingsError("provider_application_key_change_conflict", "the application key changed before regeneration");
@@ -351,7 +348,7 @@ export class RuntimeSettingsStore {
           previous_fingerprint: input.baseFingerprint,
           application_key_fingerprint: key.fingerprint,
         });
-      return this.#snapshot(connection);
+      return this.#paymentSnapshot(connection);
     });
   }
 
@@ -360,10 +357,10 @@ export class RuntimeSettingsStore {
     readonly changeId: string;
     readonly provider?: ProviderSettings;
     readonly audit: SettingsAuditContext;
-  }): RuntimeSettingsSnapshot {
+  }): PaymentSettingsSnapshot {
     return this.#database.write((connection) => {
       assertRevision(connection, input.expectedRevision);
-      const current = this.#snapshot(connection);
+      const current = this.#paymentSnapshot(connection);
       const change = readApplicationKeyChange(connection, this.#cipher, input.changeId);
       if (!change || change.state !== "PENDING" || !change.key) {
         throw new SettingsError("provider_application_key_change_conflict", "this pending application key is no longer available");
@@ -402,7 +399,7 @@ export class RuntimeSettingsStore {
           application_key_fingerprint: change.newFingerprint,
           ...(provider ? { platform_key_fingerprint: provider.platformKeyFingerprint } : {}),
         });
-      return this.#snapshot(connection);
+      return this.#paymentSnapshot(connection);
     });
   }
 
@@ -461,7 +458,7 @@ export class RuntimeSettingsStore {
     };
     readonly audit: SettingsAuditContext;
     readonly now?: number;
-  }): RuntimeSettingsSnapshot {
+  }): PaymentSettingsSnapshot {
     const now = input.now ?? Date.now();
     return this.#database.write((connection) => {
       assertRevision(connection, input.expectedRevision);
@@ -528,7 +525,7 @@ export class RuntimeSettingsStore {
         application_key_fingerprint: input.privateKeyFingerprint,
         platform_key_fingerprint: input.publicKeyFingerprint,
       });
-      return this.#snapshot(connection);
+      return this.#paymentSnapshot(connection);
     });
   }
 
@@ -538,7 +535,7 @@ export class RuntimeSettingsStore {
     readonly fingerprint: string;
     readonly audit: SettingsAuditContext;
     readonly now?: number;
-  }): RuntimeSettingsSnapshot {
+  }): PaymentSettingsSnapshot {
     const key = parseProviderApplicationPrivateKey(input.privateKeyPem);
     if (key.fingerprint !== input.fingerprint) {
       throw new RangeError("provider application key fingerprint does not match the private key");
@@ -546,7 +543,7 @@ export class RuntimeSettingsStore {
     const now = input.now ?? Date.now();
     return this.#database.write((connection) => {
       assertRevision(connection, input.expectedRevision);
-      const configuration = readConfiguration(connection);
+      const configuration = connection.prepare("SELECT provider_account_key FROM runtime_configuration WHERE singleton_key = 1").get() as { provider_account_key: string | null };
       const historicalProvider = connection.prepare(
         "SELECT 1 AS present FROM provider_account_bindings LIMIT 1",
       ).get() as { readonly present: number } | undefined;
@@ -588,7 +585,7 @@ export class RuntimeSettingsStore {
           application_key_fingerprint: key.fingerprint,
         },
       );
-      return this.#snapshot(connection);
+      return this.#paymentSnapshot(connection);
     });
   }
 
@@ -719,7 +716,7 @@ export class RuntimeSettingsStore {
     });
   }
 
-  saveCollectionPolicy(input: CollectionPolicyInput, audit: SettingsAuditContext, now = Date.now()): RuntimeSettingsSnapshot {
+  saveCollectionPolicy(input: CollectionPolicyInput, audit: SettingsAuditContext, now = Date.now()): PaymentSettingsSnapshot {
     const parsed = collectionPolicyInputSchema.parse(input);
     return this.#database.write(connection => {
       assertRevision(connection, parsed.revision);
@@ -727,17 +724,17 @@ export class RuntimeSettingsStore {
         "UPDATE runtime_configuration SET revision = revision + 1, payment_revision = payment_revision + 1, provider_timeout_milliseconds = ?, provider_scan_interval_milliseconds = ?, provider_active_scan_interval_milliseconds = ?, provider_minimum_scan_interval_milliseconds = ?, provider_safety_lag_milliseconds = ?, provider_maximum_success_age_milliseconds = ?, updated_at = ? WHERE singleton_key = 1 AND revision = ?",
       ).run(parsed.timeout_milliseconds, parsed.scan_interval_seconds * 1000, parsed.active_scan_interval_seconds * 1000, parsed.minimum_scan_interval_seconds * 1000, parsed.safety_lag_seconds * 1000, parsed.maximum_success_age_seconds * 1000, now, parsed.revision).changes);
       appendSettingsAudit(connection, audit, now, "settings.collection_policy_updated", { revision: parsed.revision + 1, payment_revision_changed: true });
-      return this.#snapshot(connection);
+      return this.#paymentSnapshot(connection);
     });
   }
 
-  saveCollectionCode(input: CollectionCodeInput, audit: SettingsAuditContext, now = Date.now()): RuntimeSettingsSnapshot {
+  saveCollectionCode(input: CollectionCodeInput, audit: SettingsAuditContext, now = Date.now()): PaymentSettingsSnapshot {
     const parsed = collectionCodeInputSchema.parse(input);
     return this.#database.write(connection => {
       assertRevision(connection, parsed.revision);
       assertUpdated(connection.prepare("UPDATE runtime_configuration SET collection_code_payload = ?, revision = revision + 1, payment_revision = payment_revision + 1, updated_at = ? WHERE singleton_key = 1 AND revision = ?").run(parsed.code_payload, now, parsed.revision).changes);
       appendSettingsAudit(connection, audit, now, "settings.collection_code_updated", { revision: parsed.revision + 1, payment_revision_changed: true });
-      return this.#snapshot(connection);
+      return this.#paymentSnapshot(connection);
     });
   }
 
@@ -745,7 +742,7 @@ export class RuntimeSettingsStore {
     input: AdvancedSettingsInput,
     audit: SettingsAuditContext,
     now = Date.now(),
-  ): RuntimeSettingsSnapshot {
+  ): PaymentSettingsSnapshot {
     return this.#database.write((connection) => {
       assertRevision(connection, input.revision);
       const updated = connection.prepare(
@@ -768,7 +765,7 @@ export class RuntimeSettingsStore {
         checkout_terminal_observation_seconds: input.checkout_terminal_observation_seconds,
         payment_revision_changed: false,
       });
-      return this.#snapshot(connection);
+      return this.#paymentSnapshot(connection);
     });
   }
 
@@ -776,7 +773,7 @@ export class RuntimeSettingsStore {
     input: BackupSettingsInput,
     audit: SettingsAuditContext,
     now = Date.now(),
-  ): RuntimeSettingsSnapshot {
+  ): PaymentSettingsSnapshot {
     return this.#database.write((connection) => {
       assertRevision(connection, input.revision);
       const updated = connection.prepare(
@@ -798,7 +795,16 @@ export class RuntimeSettingsStore {
         interval_seconds: input.interval_seconds,
         keep_count: input.keep_count,
       });
-      return this.#snapshot(connection);
+      return this.#paymentSnapshot(connection);
+    });
+  }
+
+  saveInstanceDisplay(input: import("./model.ts").InstanceDisplayInput, audit: SettingsAuditContext, now = Date.now()): void {
+    this.#database.write(connection => {
+      assertRevision(connection, input.revision);
+      assertUpdated(connection.prepare("UPDATE runtime_configuration SET revision = revision + 1, system_name = COALESCE(?, system_name), dashboard_chart_type = ?, updated_at = max(updated_at, ?) WHERE singleton_key = 1 AND revision = ?")
+        .run(input.system_name ?? null, input.dashboard_chart_type, now, input.revision).changes);
+      appendSettingsAudit(connection, audit, now, "settings.display_updated", { revision: input.revision + 1, payment_revision_changed: false });
     });
   }
 
@@ -879,7 +885,10 @@ export class RuntimeSettingsStore {
 
   /** Reads only instance settings and provider keys; never consults sites or creation templates. */
   instanceSnapshot(): InstanceRuntimeSettingsSnapshot {
-    return this.#database.read(connection => {
+    return this.#database.read(connection => this.#instanceSnapshot(connection));
+  }
+
+  #instanceSnapshot(connection: DatabaseSync): InstanceRuntimeSettingsSnapshot {
       const row = connection.prepare("SELECT * FROM runtime_configuration WHERE singleton_key = 1").get() as unknown as ConfigurationRow | undefined;
       if (!row) throw new Error("runtime configuration singleton is missing");
       return {
@@ -897,7 +906,12 @@ export class RuntimeSettingsStore {
         display: { systemName: row.system_name, dashboardChartType: row.dashboard_chart_type },
         activeProviderAccountKey: row.provider_account_key,
       };
-    });
+  }
+
+  paymentSnapshot(): PaymentSettingsSnapshot { return this.#database.read(connection => this.#paymentSnapshot(connection)); }
+
+  #paymentSnapshot(connection: DatabaseSync): PaymentSettingsSnapshot {
+    return hasSiteSchema(connection) ? this.#instanceSnapshot(connection) : this.#snapshot(connection);
   }
 
   #provider(connection: DatabaseSync, row: ConfigurationRow): ProviderSettings | null {
@@ -1016,27 +1030,7 @@ function hasSiteSchema(connection: DatabaseSync): boolean {
 }
 
 function readConfiguration(connection: DatabaseSync): ConfigurationRow {
-  if (hasSiteSchema(connection)) {
-    const base = connection.prepare("SELECT * FROM runtime_configuration WHERE singleton_key = 1").get() as unknown as ConfigurationRow | undefined;
-    if (!base) throw new Error("runtime configuration singleton is missing");
-    const legacy = readSite(connection, API_CLIENT_ID);
-    const defaults = connection.prepare("SELECT policy FROM site_defaults WHERE singleton_key = 1").get() as { policy: string } | undefined;
-    if (!defaults) throw new Error("website defaults are missing");
-    const policy = legacy?.configuration.policy ?? sitePolicySchema.parse(JSON.parse(defaults.policy));
-    return { ...base,
-      order_ttl_seconds: policy.orders.order_ttl_seconds,
-      amount_offset_maximum_cents: policy.orders.amount_offset_maximum_cents,
-      amount_reuse_cooldown_seconds: policy.orders.amount_reuse_cooldown_seconds,
-      webhook_enabled: legacy?.configuration.notifications_enabled ? 1 : 0,
-      webhook_allowed_origin: legacy?.configuration.notification_origin ?? null,
-      webhook_timeout_milliseconds: policy.notification_delivery.timeout_milliseconds,
-      webhook_maximum_attempts: policy.notification_delivery.maximum_attempts,
-      webhook_retry_base_milliseconds: policy.notification_delivery.retry_base_seconds * 1000,
-      webhook_retry_maximum_milliseconds: policy.notification_delivery.retry_maximum_seconds * 1000,
-      checkout_help_url: policy.display.checkout_help_url,
-      checkout_show_product_name: policy.display.checkout_show_product_name ? 1 : 0,
-    };
-  }
+  if (hasSiteSchema(connection)) throw new Error("Legacy settings snapshot is unavailable for website schema");
   const row = connection.prepare(
     `SELECT revision, payment_revision, collection_code_payload,
             order_ttl_seconds, amount_offset_maximum_cents, amount_reuse_cooldown_seconds,
@@ -1100,7 +1094,9 @@ function readApplicationKeyChange(
 }
 
 function assertRevision(connection: DatabaseSync, expected: number): void {
-  const current = safeInteger(readConfiguration(connection).revision, "runtime configuration revision");
+  const row = connection.prepare("SELECT revision FROM runtime_configuration WHERE singleton_key = 1").get() as { revision: number | bigint } | undefined;
+  if (!row) throw new Error("runtime configuration singleton is missing");
+  const current = safeInteger(row.revision, "runtime configuration revision");
   if (current !== expected) {
     throw new SettingsError(
       "settings_revision_conflict",
@@ -1117,10 +1113,7 @@ function assertUpdated(changes: bigint | number): void {
 }
 
 function readSecret(connection: DatabaseSync, name: RuntimeSecretName): SecretRow | null {
-  if ((name === "api_secret" || name === "webhook_secret") && hasSiteSchema(connection)) {
-    const row = connection.prepare("SELECT * FROM site_secrets WHERE client_id = ? AND secret_name = ?").get(API_CLIENT_ID, name) as unknown as SecretRow | undefined;
-    return row ? { ...row, site_secret: true } : null;
-  }
+  if ((name === "api_secret" || name === "webhook_secret") && hasSiteSchema(connection)) throw new Error("Business secrets require explicit website identity");
   const row = connection.prepare(
     `SELECT secret_name, secret_version, cipher_version, nonce,
             ciphertext, authentication_tag, secret_fingerprint, updated_at
@@ -1179,8 +1172,7 @@ function writeSecret(
 }
 
 function decryptSecret(cipher: RuntimeSecretCipher, row: SecretRow): string {
-  const name = row.site_secret && row.client_id && (row.secret_name === "api_secret" || row.secret_name === "webhook_secret") ? `site:${row.client_id}:${row.secret_name}` as const : row.secret_name;
-  return cipher.decrypt(name, safeInteger(row.secret_version, "secret version"), {
+  return cipher.decrypt(row.secret_name, safeInteger(row.secret_version, "secret version"), {
     cipherVersion: safeInteger(row.cipher_version, "secret cipher version") as 1,
     nonce: Buffer.from(row.nonce),
     ciphertext: Buffer.from(row.ciphertext),
