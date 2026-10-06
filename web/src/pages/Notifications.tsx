@@ -1,4 +1,6 @@
-import { SitePicker } from "@/components/site-picker";
+import { useWorkspace } from "@/workspace";
+import { useQuery } from '@/lib/workspace-query';
+import { useWorkspaceApi } from "@/workspace";
 import { SiteIdentity } from "@/components/site-identity";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { RefreshButton } from "@/components/refresh-button";
@@ -11,16 +13,11 @@ import { ListActionsMenu } from "@/components/list-actions-menu";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { BusinessTable } from "@/components/business-table";
 import type { ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+
 import { ArrowLeft, RefreshCw, Settings2 } from "lucide-react";
 import { useParams, useSearchParams } from "react-router";
 import { Link, useDetailBack } from "@/navigation";
-import {
-  api,
-  refreshOperationalData,
-  result,
-  type WebhookDeliveryStatus,
-} from "@/api/client";
+import { refreshOperationalData, result, type WebhookDeliveryStatus } from "@/api/client";
 import { useCursor } from "@/lib/cursor";
 import { dateTime } from "@/lib/format";
 import { notificationErrorName } from "@/lib/detail-summary";
@@ -52,12 +49,6 @@ export default function Notifications() {
   const [search, setSearch] = useSearchParams();
   const status =
     statuses.find((item) => item.value === search.get("status"))?.value ?? "";
-  function changeSite(value: string) {
-    const next = new URLSearchParams(search);
-    if (value) next.set("api_client_id", value); else next.delete("api_client_id");
-    next.delete("cursor"); next.delete("page");
-    setSearch(next, { replace: true });
-  }
   function changeStatus(value: string | null) {
     const next = new URLSearchParams(search);
     if (value) next.set("status", value);
@@ -68,8 +59,6 @@ export default function Notifications() {
   }
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      <SitePicker value={search.get("api_client_id") ?? ""} onChange={changeSite} />
-      {search.get("api_client_id") && <Button variant="ghost" onClick={() => changeSite("")}>查看全部网站</Button>}
       <ToggleGroup
         variant="outline"
         value={[status]}
@@ -120,8 +109,8 @@ function DeliveryPage({
   status: WebhookDeliveryStatus | undefined;
   filters: ReactNode;
 }) {
-  const [search] = useSearchParams();
-  const clientId = search.get("api_client_id");
+  const api = useWorkspaceApi();
+  const { clientId } = useWorkspace();
   const pagination = useCursor();
   const listQuery = useListQuery(
     DELIVERY_SORT_FIELDS,
@@ -157,7 +146,7 @@ function DeliveryPage({
         desktopActions={
           <>
             <Link
-              to="/settings/notifications"
+              to={clientId ? "/sites/" + encodeURIComponent(clientId) + "/settings/integration" : "/sites"}
               className={buttonVariants({ variant: "outline" })}
             >
               通知设置
@@ -180,7 +169,7 @@ function DeliveryPage({
             {() => (
               <>
                 <DropdownMenuItem
-                  render={<Link to="/settings/notifications" />}
+                  render={<Link to={clientId ? "/sites/" + encodeURIComponent(clientId) + "/settings/integration" : "/sites"} />}
                 >
                   <Settings2 />
                   通知设置
@@ -347,6 +336,7 @@ export function NotificationDetail() {
   return <DeliveryDetail key={deliveryId} deliveryId={deliveryId} />;
 }
 function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
+  const api = useWorkspaceApi();
   const back = useDetailBack("/notifications", "业务通知");
   const delivery = useQuery({
     queryKey: ["notification", deliveryId],

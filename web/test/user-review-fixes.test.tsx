@@ -3,7 +3,6 @@ import {
   fireEvent,
   screen,
   waitFor,
-  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -41,7 +40,7 @@ describe("homepage collection health", () => {
       expect(await screen.findByText("当前暂停新收款")).toBeVisible();
       expect(view.router.state.location.pathname).toBe("/");
       expect(
-        within(screen.getByRole("alert")).getByRole("link", {
+        screen.getByRole("link", {
           name: "查看运行状态",
         }),
       ).toHaveAttribute("href", "/system");

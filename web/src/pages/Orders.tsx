@@ -1,4 +1,9 @@
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+import { useState } from "react";
 import { SitePicker } from "@/components/site-picker";
+import { useWorkspace } from "@/workspace";
+import { useQuery } from '@/lib/workspace-query';
+import { useWorkspaceApi } from "@/workspace";
 import { CreatedDateFilter } from "@/components/created-date-filter";
 import { OrderExport } from "@/components/order-export";
 import { useListQuery, ORDER_SORT_FIELDS } from "@/lib/list-query";
@@ -8,15 +13,10 @@ import {
 } from "@/components/list-query-toolbar";
 import { ListActionsMenu } from "@/components/list-actions-menu";
 import { useLayoutEffect, useRef, type ReactNode } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from '@tanstack/react-query';
 import { useSearchParams } from "react-router";
 import { useNavigate } from "@/navigation";
-import {
-  api,
-  result,
-  type CheckoutStatus,
-  type PaymentStatus,
-} from "@/api/client";
+import { result, type CheckoutStatus, type PaymentStatus } from "@/api/client";
 import { useCursor } from "@/lib/cursor";
 import {
   TestPaymentButton,
@@ -57,7 +57,9 @@ const searchOptions = [
   { value: "internal", label: "内部订单编号" },
 ];
 export default function Orders() {
-  const lookup = useOrderLookup();
+  const { clientId } = useWorkspace();
+  const [lookupSite, setLookupSite] = useState("");
+  const lookup = useOrderLookup(clientId ?? lookupSite);
   const [search, setSearch] = useSearchParams();
   const paymentValue = search.get("payment");
   const checkoutValue = search.get("checkout");
@@ -98,8 +100,7 @@ export default function Orders() {
       className="flex w-full min-w-0 flex-col gap-3"
       data-business-list="orders"
     >
-      <SitePicker value={search.get("api_client_id") ?? ""} onChange={value => filter("api_client_id", value)} />
-      {search.get("api_client_id") && <Button variant="ghost" onClick={() => filter("api_client_id", null)}>查看全部网站</Button>}
+      {!clientId && <Collapsible><CollapsibleTrigger render={<Button variant="outline" />}>按商户订单号查询：选择本次查询的网站</CollapsibleTrigger><CollapsibleContent><SitePicker value={lookupSite} onChange={setLookupSite} /></CollapsibleContent></Collapsible>}
       <OrderPage
         desktopFilters={
           <>
@@ -169,8 +170,8 @@ export default function Orders() {
     </div>
   );
 }
-function useOrderLookup() {
-  const [search] = useSearchParams();
+function useOrderLookup(clientId: string) {
+  const api = useWorkspaceApi();
   const navigate = useNavigate();
   const active = useRef<AbortController | null>(null);
   function cancel() {
@@ -197,7 +198,7 @@ function useOrderLookup() {
         ? result(
             api.getAdministratorOrderByMerchantNumber({
               path: { merchantOrderNo: value },
-              query: { api_client_id: search.get("api_client_id") ?? "" },
+              query: { api_client_id: clientId },
               signal,
             }),
           )
@@ -250,8 +251,8 @@ function OrderPage({
   checkout: CheckoutStatus | undefined;
   onClearFilters: () => void;
 }) {
-  const [siteSearch] = useSearchParams();
-  const clientId = siteSearch.get("api_client_id");
+  const api = useWorkspaceApi();
+  const { clientId } = useWorkspace();
   const pagination = useCursor();
   const listQuery = useListQuery(ORDER_SORT_FIELDS, "created_at", "desc", true);
   const orders = useQuery({

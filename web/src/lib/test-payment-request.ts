@@ -1,3 +1,4 @@
+import { workspaceApi } from "@/api/workspace";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
@@ -33,6 +34,9 @@ function definitelyRejected(error: unknown) {
 
 export function useTestPaymentRequest(active: boolean) {
   const [clientId, setClientId] = useState("");
+  const [fixedClientId, setFixedClientId] = useState<string | null>(null);
+  const ownerScope = useRef<string | null>(null);
+  const requestedScope = useRef<string | null>(null);
   const [amount, setAmount] = useState("0.01");
   const [validation, setValidation] = useState<Error | null>(null);
   const [generation, setGeneration] = useState(0);
@@ -58,7 +62,7 @@ export function useTestPaymentRequest(active: boolean) {
       );
       try {
         const response = await result(
-          api.createAdministratorTestPayment({
+          workspaceApi(ownerScope.current).createAdministratorTestPayment({
             body,
             signal: operation.signal,
           }),
@@ -161,7 +165,15 @@ export function useTestPaymentRequest(active: boolean) {
     setValidation(null);
     create.reset();
   }
+  function bindSite(value: string | null) {
+    requestedScope.current = value;
+    if (sending.current || pending || unresolved.current) return;
+    if (ownerScope.current === value) return;
+    ownerScope.current = value; setFixedClientId(value); setClientId(value ?? "");
+    key.current = createOperationKey(); setValidation(null); create.reset(); setGeneration(n => n + 1);
+  }
   function editSite(value: string) {
+    if (ownerScope.current) return;
     if (sending.current || pending || unresolved.current || create.data) return;
     setClientId(value);
     setValidation(null);
@@ -170,6 +182,9 @@ export function useTestPaymentRequest(active: boolean) {
   function startNew() {
     if (sending.current || pending || unresolved.current || !create.data)
       return;
+    if (ownerScope.current !== requestedScope.current) {
+      ownerScope.current = requestedScope.current; setFixedClientId(requestedScope.current); setClientId(requestedScope.current ?? "");
+    }
     key.current = createOperationKey();
     setAmount("0.01");
     setValidation(null);
@@ -178,6 +193,8 @@ export function useTestPaymentRequest(active: boolean) {
   }
   return {
     clientId,
+    fixedClientId,
+    bindSite,
     editSite,
     amount,
     validation,

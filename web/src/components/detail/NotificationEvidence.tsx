@@ -1,15 +1,10 @@
+import { useQuery } from '@/lib/workspace-query';
+import { useWorkspaceApi } from "@/workspace";
 import { Button } from "@/components/ui/button";
 import { SiteIdentity } from "@/components/site-identity";
 import { useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import {
-  api,
-  refreshOperationalData,
-  result,
-  type OrderWebhookDeliveryDetail,
-  type WebhookDeliveryDetail,
-  type WebhookAttempt,
-} from "@/api/client";
+
+import { refreshOperationalData, result, type OrderWebhookDeliveryDetail, type WebhookDeliveryDetail, type WebhookAttempt } from "@/api/client";
 import { useCursor } from "@/lib/cursor";
 import {
   attemptResult,
@@ -56,6 +51,7 @@ export function DeliveryCard({
   attemptsAvailable?: boolean;
   sectionTitle?: string;
 }) {
+  const api = useWorkspaceApi();
   const [snapshot, setSnapshot] = useState<DeliveryContext | null>(null);
   const [sent, setSent] = useState(false);
   const [message, setMessage] = useFeedback();
@@ -233,6 +229,7 @@ export function OrderNotifications({
   orderId: string;
   notifyUrl: string | null;
 }) {
+  const api = useWorkspaceApi();
   const pagination = useCursor();
   const query = useQuery({
     queryKey: ["order-notifications", orderId, pagination.cursor],

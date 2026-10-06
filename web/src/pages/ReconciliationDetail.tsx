@@ -1,12 +1,15 @@
+import { useWorkspace } from "@/workspace";
+import { useQuery } from '@/lib/workspace-query';
+import { useWorkspaceApi } from "@/workspace";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { RefreshButton } from "@/components/refresh-button";
 import { useSystemName } from "@/branding";
 import { useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+
 import { ArrowLeft } from "lucide-react";
 import { useParams } from "react-router";
 import { Link, useDetailBack } from "@/navigation";
-import { api, refreshOperationalData, result } from "@/api/client";
+import { refreshOperationalData, result } from "@/api/client";
 import { dateTime, money } from "@/lib/format";
 import { label } from "@/lib/labels";
 import { QueryView } from "@/components/request-state";
@@ -34,7 +37,9 @@ import {
 } from "@/components/ui/card";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 export default function EvidenceDetail() {
+  const { clientId } = useWorkspace();
   const { kind = "", resourceId = "" } = useParams();
+  if (clientId && kind === "conflicts") return <p>共享账本冲突不属于单个网站，请<Link global to="/work-items">返回一级全局待办</Link>处理。</p>;
   if (kind === "conflicts")
     return <ConflictDetail key={resourceId} resourceId={resourceId} />;
   if (kind === "matches")
@@ -63,14 +68,16 @@ function EvidenceHeading({
   section?: string;
 }) {
   const systemName = useSystemName();
+  const { clientId, site } = useWorkspace();
+  const siteName = clientId ? site?.data?.data.configuration.name ?? clientId : "全部网站";
   const back = useDetailBack(
     "/reconciliation" + (section ? "?tab=" + section : ""),
     "账本与对账",
   );
   const fetching = useDetailFetching();
   useEffect(() => {
-    document.title = title + ` · ${systemName}`;
-  }, [title, systemName]);
+    document.title = title + ` · ${siteName} · ${systemName}`;
+  }, [title, systemName, siteName]);
   return (
     <div className="flex items-center justify-between gap-4">
       <Link
@@ -88,6 +95,7 @@ function EvidenceHeading({
   );
 }
 function ConflictDetail({ resourceId }: { resourceId: string }) {
+  const api = useWorkspaceApi();
   const query = useQuery({
     queryKey: ["conflict", resourceId],
     queryFn: ({ signal }) =>
@@ -105,6 +113,7 @@ function ConflictDetail({ resourceId }: { resourceId: string }) {
   );
 }
 function MatchDetail({ resourceId }: { resourceId: string }) {
+  const api = useWorkspaceApi();
   const query = useQuery({
     queryKey: ["match", resourceId],
     queryFn: ({ signal }) =>
@@ -122,6 +131,7 @@ function MatchDetail({ resourceId }: { resourceId: string }) {
   );
 }
 function ExceptionDetail({ resourceId }: { resourceId: string }) {
+  const api = useWorkspaceApi();
   const query = useQuery({
     queryKey: ["exception", resourceId],
     queryFn: ({ signal }) =>
@@ -142,6 +152,7 @@ function ExceptionDetail({ resourceId }: { resourceId: string }) {
   );
 }
 function CandidateDetail({ resourceId }: { resourceId: string }) {
+  const api = useWorkspaceApi();
   const query = useQuery({
     queryKey: ["candidate", resourceId],
     queryFn: ({ signal }) =>
@@ -162,6 +173,7 @@ function CandidateDetail({ resourceId }: { resourceId: string }) {
   );
 }
 function LedgerDetail({ resourceId }: { resourceId: string }) {
+  const api = useWorkspaceApi();
   const ledger = useQuery({
     queryKey: ["ledger", resourceId],
     queryFn: ({ signal }) =>

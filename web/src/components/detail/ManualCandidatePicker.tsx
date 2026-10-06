@@ -1,7 +1,9 @@
+import { useQuery } from '@/lib/workspace-query';
+import { useWorkspace, useWorkspaceApi } from "@/workspace";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+
 import { Search } from "lucide-react";
-import { api, result, type ManualSettlementRecommendation } from "@/api/client";
+import { result, type ManualSettlementRecommendation } from "@/api/client";
 import { normalizeKeyword } from "@/lib/list-query";
 import { dateTime, money } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -46,7 +48,9 @@ export function ManualCandidatePicker({
   disabled: boolean;
   onSelect: (id: string, title: string) => void;
 }) {
-  const noun = kind === "orders" ? "订单" : "收入流水";
+  const api = useWorkspaceApi();
+  const { clientId } = useWorkspace();
+  const noun = kind === "orders" ? "订单" : clientId ? "共享收入流水" : "收入流水";
   const [draft, setDraft] = useState("");
   const [q, setQ] = useState("");
   const [view, setView] = useState<"recommended" | "all">(

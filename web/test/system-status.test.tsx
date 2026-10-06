@@ -166,7 +166,7 @@ describe("shared runtime presentation", () => {
     expect(reads()).toBe(2);
     await userEvent
       .setup()
-      .click(screen.getByRole("link", { name: "收款概览" }));
+      .click(screen.getByRole("link", { name: "总览" }));
     await screen.findByRole("heading", { name: "收款趋势" });
     await waitFor(() => expect(reads()).toBe(3));
   });
@@ -221,7 +221,7 @@ describe("shared runtime presentation", () => {
     expect(screen.queryByText("有运行告警")).not.toBeInTheDocument();
     expect(screen.getByText("待核对订单 0 · 异常提醒 0")).toBeVisible();
     expect(screen.queryByRole("link", { name: "查看未忽略提醒" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("link", { name: "待处理" }));
+    await user.click(screen.getByRole("link", { name: "全局待办" }));
     await user.click(screen.getByRole("button", { name: "已忽略" }));
     await screen.findByRole("link", { name: "收入尚未匹配订单" });
     await user.click(screen.getByRole("button", { name: "恢复提醒" }));

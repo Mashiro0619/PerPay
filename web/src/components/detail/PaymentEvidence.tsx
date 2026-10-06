@@ -1,15 +1,8 @@
+import { useQuery } from '@/lib/workspace-query';
+import { useWorkspaceApi } from "@/workspace";
 import { useId } from "react";
-import { useQuery } from "@tanstack/react-query";
-import {
-  api,
-  result,
-  type AdminOrderDetail,
-  type FinancialException,
-  type MatchCandidate,
-  type PaymentMatchDetail,
-  type ReconciliationLedgerEntry,
-  type ReconciliationOrder,
-} from "@/api/client";
+
+import { result, type AdminOrderDetail, type FinancialException, type MatchCandidate, type PaymentMatchDetail, type ReconciliationLedgerEntry, type ReconciliationOrder } from "@/api/client";
 import {
   candidateFacts,
   detailTimestamp,
@@ -90,6 +83,7 @@ export function useRelatedLedger(
   ledgerId: string | null,
   known?: ReconciliationLedgerEntry,
 ) {
+  const api = useWorkspaceApi();
   const query = useQuery({
     queryKey: ["ledger", ledgerId],
     enabled: !!ledgerId && !known,
@@ -330,6 +324,7 @@ export function ExceptionCard({
   candidate?: MatchCandidate | undefined;
   embedded?: boolean;
 }) {
+  const api = useWorkspaceApi();
   const { entry, query } = useRelatedLedger(exception.ledger_entry_id, ledger);
   const { order, query: orderQuery } = useRelatedOrder(
     exception.order_id,

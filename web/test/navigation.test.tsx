@@ -177,7 +177,7 @@ describe("navigation and draft protection", () => {
             .getAll()
             .some((mutation) => mutation.state.isPaused),
         ).toBe(false);
-        await user.click(screen.getByRole("link", { name: "订单" }));
+        await user.click(screen.getByRole("link", { name: "全部订单" }));
         await user.click(
           await screen.findByRole("button", { name: "放弃修改并继续" }),
         );
@@ -313,11 +313,9 @@ describe("navigation and draft protection", () => {
   });
 
   it("keeps the test-payment action accessible while compacting its visible label on small screens", async () => {
-    const { container } = mount({ path: "/", configured: true });
+    mount({ path: "/", configured: true });
     await screen.findByRole("heading", { name: "收款趋势" });
-    const testPayment = container.querySelector(
-      'header button[aria-haspopup="dialog"]',
-    );
+    const testPayment = screen.getByRole("button", { name: "测试收款" });
     expect(testPayment).not.toHaveClass("hidden");
     expect(testPayment).toHaveClass("inline-flex");
     expect(testPayment).toHaveAccessibleName("测试收款");
@@ -356,7 +354,7 @@ describe("navigation and draft protection", () => {
     expect(
       container.querySelector(".payment-pipeline, .daily-chart"),
     ).toBeNull();
-    expect(screen.getByRole("heading", { name: "待处理" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "全局待办" })).toBeVisible();
     expect(await screen.findByText("当前暂停新收款")).toBeVisible();
     await userEvent
       .setup()
@@ -483,10 +481,10 @@ describe("navigation and draft protection", () => {
     expect(router.state.location.pathname).toBe("/settings/collection-policy");
     await user.click(screen.getByRole("button", { name: "继续编辑" }));
     expect(field).toHaveValue(450);
-    await user.click(screen.getByRole("link", { name: "订单" }));
+    await user.click(screen.getByRole("link", { name: "全部订单" }));
     await user.click(screen.getByRole("button", { name: "放弃修改并继续" }));
     expect(
-      await screen.findByRole("heading", { name: "订单", level: 1 }),
+      await screen.findByRole("heading", { name: "全部订单", level: 1 }),
     ).toBeVisible();
     await waitFor(() => expect(unloadIsBlocked()).toBe(false));
   });
@@ -605,7 +603,7 @@ describe("overview layout and demo indicator", () => {
     mount({ path: "/", configured: true });
     const trend = await screen.findByRole("heading", { name: "收款趋势" });
     const metrics = screen.getByText("今日确认金额", { exact: true });
-    const work = screen.getByRole("heading", { name: "待处理" });
+    const work = screen.getByRole("heading", { name: "全局待办" });
     const recent = screen.getByRole("heading", {
       name: "最近订单",
     });
@@ -776,7 +774,7 @@ describe("shared content width navigation", () => {
   it("retains the layout between routes and does not reset order filters", async () => {
     const path = "/orders?q=long&sort_by=created_at&sort_order=asc&created_from=2026-10-01&created_to=2026-10-02";
     const { router, container, fetchMock } = mount({ configured: true, path });
-    await screen.findByRole("heading", { name: "订单" });
+    await screen.findByRole("heading", { name: "全部订单" });
     await waitFor(() => expect(fetchMock.mock.calls.some(([request]) => new URL(request.url).pathname === "/api/admin/v1/orders")).toBe(true));
     const before = fetchMock.mock.calls.length;
     const location = router.state.location;

@@ -1,3 +1,4 @@
+import { Link } from "@/navigation";
 import type { ReactNode } from "react";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { AlertCircle } from "lucide-react";
@@ -26,6 +27,7 @@ export function ErrorNotice({
         <p>
           {error instanceof Error ? error.message : "请求失败，请稍后重试。"}
         </p>
+        {error instanceof ApiError && error.code === "site_scope_conflict" && <Link global to="/reconciliation" className="underline">前往一级共享账本</Link>}
         {error instanceof ApiError && (
           <>
             {error.retryAfter !== null && (

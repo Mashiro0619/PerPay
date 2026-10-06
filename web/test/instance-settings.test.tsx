@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { queryClient, type RuntimeSettings, type Site, type SiteConfiguration, type SitePolicy } from "../src/api/client";
@@ -100,8 +100,8 @@ describe("website-aware instance settings", () => {
     await user.click(screen.getByRole("button", { name: "保存网站" }));
     await user.click(await screen.findByRole("button", { name: "确认" }));
     await waitFor(() => expect(view.router.state.location.pathname).toBe("/sites/site_created"));
-    await waitFor(() => expect(queryClient.getQueryState(["site-editor", "site_created"])?.status).toBe("success"));
-    fireEvent.click(await screen.findByRole("link", { name: "回到配置向导" }));
+    await waitFor(() => expect(queryClient.getQueryState(["workspace-site", "site_created"])?.status).toBe("success"));
+    await act(async () => { await view.router.navigate("/settings/onboarding/check"); });
     expect(await screen.findByRole("heading", { name: "收款检查" })).toBeVisible();
     expect(writes).toEqual(["/api/admin/v1/sites"]);
   });

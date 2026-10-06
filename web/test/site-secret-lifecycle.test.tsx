@@ -32,7 +32,7 @@ function mount(action: "view" | "rotate", purpose: "api_secret" | "webhook_secre
     }
     return json({ data: { secret: "explicit-secret" } });
   }));
-  const router = createMemoryRouter([{ path: "/sites/:clientId", element: <DraftProvider><SiteEditorPage /></DraftProvider> }], { initialEntries: ["/sites/site_a"] });
+  const router = createMemoryRouter([{ path: "/sites/:clientId/settings/:section", element: <DraftProvider><SiteEditorPage /></DraftProvider> }], { initialEntries: ["/sites/site_a/settings/integration"] });
   render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
   return { router, requests, delay: () => { delayNext = true; }, release };
 }
@@ -59,7 +59,7 @@ describe("website secret display lifetime", () => {
       await waitFor(() => expect(screen.getByRole("button", { name: "查看 API 密钥" })).not.toBeDisabled());
       expect(screen.queryByDisplayValue("late-secret")).not.toBeInTheDocument();
       if (action === "rotate") {
-        expect(queryClient.getQueryData(["site-editor", "site_a"])).toMatchObject({ site: { revision: 1 } });
+        expect(queryClient.getQueryData(["site-editor", "site_a", "integration"])).toMatchObject({ site: { revision: 1 } });
         expect(await screen.findByText("密钥已生成或轮换，请更新业务网站配置。")).toBeVisible();
       }
       expect(JSON.stringify(queryClient.getQueryCache().getAll().map(query => query.state.data))).not.toContain("secret");
@@ -76,8 +76,8 @@ describe("website secret display lifetime", () => {
     view.delay();
     await user.click(screen.getByRole("button", { name: "查看通知密钥" }));
     await waitFor(() => expect(view.requests).toHaveLength(2));
-    await act(async () => { await view.router.navigate("/sites/site_b"); });
-    await screen.findByDisplayValue("B");
+    await act(async () => { await view.router.navigate("/sites/site_b/settings/integration"); });
+    await screen.findByRole("heading", { name: "B · 网站设置" });
     await act(async () => { view.release(); });
     expect(screen.queryByDisplayValue("explicit-secret")).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue("late-secret")).not.toBeInTheDocument();

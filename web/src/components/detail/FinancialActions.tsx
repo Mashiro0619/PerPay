@@ -1,10 +1,8 @@
+import { useWorkspace } from "@/workspace";
+import { Link } from "@/navigation";
+import { useWorkspaceApi } from "@/workspace";
 import { useRef, useState } from "react";
-import {
-  api,
-  refreshOperationalData,
-  result,
-  type PaymentMatchDetail,
-} from "../../api/client";
+import { refreshOperationalData, result, type PaymentMatchDetail } from "../../api/client";
 import { FinancialDialog } from "../../pages/FinancialDialog";
 import { ReasonDialog } from "../ReasonDialog";
 import { SuccessMessage, useFeedback } from "../Feedback";
@@ -23,10 +21,12 @@ export function AssociateIncomeAction({
   orderLabel?: string;
   ledgerLabel?: string;
 }) {
+  const { clientId } = useWorkspace();
   const [open, setOpen] = useState(false);
   const [saved, setSaved] = useState(false);
   const [message, setMessage] = useFeedback();
   const finalFocus = useRef<HTMLElement | null>(null);
+  if (clientId && !orderId) return <Link global to="/reconciliation">共享流水：请从本站订单发起关联，或到一级共享账本处理。</Link>;
   return (
     <>
       <Button
@@ -67,6 +67,7 @@ export function ReverseMatchAction({
   match: PaymentMatchDetail;
   embedded?: boolean;
 }) {
+  const api = useWorkspaceApi();
   const [snapshot, setSnapshot] = useState<PaymentMatchDetail | null>(null);
   const finalFocus = useRef<HTMLElement | null>(null);
   const [saved, setSaved] = useState(false);

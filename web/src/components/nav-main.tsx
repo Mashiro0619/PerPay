@@ -10,7 +10,7 @@ import {
 
 export type NavigationItem = { title: string; url: string; icon: LucideIcon };
 export const isNavigationItemActive = (pathname: string, url: string) =>
-  pathname === url || (url !== "/" && pathname.startsWith(url + "/"));
+  pathname === url || (url !== "/" && !/^\/sites\/[^/]+$/.test(url) && pathname.startsWith(url.replace(/\/settings\/basic$/, "/settings") + "/"));
 
 export function NavMain({
   items,

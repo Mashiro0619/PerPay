@@ -1,3 +1,4 @@
+import { WorkspaceProvider } from "../src/workspace";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -37,10 +38,10 @@ function Location() {
 function renderPage(search = "") {
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={["/work-items" + search]}>
+      <MemoryRouter initialEntries={[search.includes("api_client_id=site_a") ? "/sites/site_a/work-items" : "/work-items" + search]}><WorkspaceProvider>
         <WorkItems />
         <Location />
-      </MemoryRouter>
+      </WorkspaceProvider></MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -115,8 +116,9 @@ describe("reminder dismissal", () => {
     expect(await screen.findByText(/仅限业务网站 site_a/)).toBeVisible();
     await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /确认忽略/ }));
     await waitFor(() => expect(requests.some(request => request.method === "POST")).toBe(true));
-    expect(await requests.find(request => request.method === "POST")!.json()).toMatchObject({ api_client_id: "site_a", type: "ALL" });
-    expect(requests.filter(request => request.method === "GET").every(request => new URL(request.url).searchParams.get("api_client_id") === "site_a")).toBe(true);
+    expect(await requests.find(request => request.method === "POST")!.json()).not.toHaveProperty("api_client_id");
+    expect(new URL(requests.find(request => request.method === "POST")!.url).pathname).toBe("/api/admin/v1/sites/site_a/work-items/actions/ignore-all");
+    expect(requests.filter(request => request.method === "GET").every(request => new URL(request.url).pathname.startsWith("/api/admin/v1/sites/site_a"))).toBe(true);
   });
   it.each(scopes)(
     "dismisses all pages only within %s and refreshes home and every scope",

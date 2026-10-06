@@ -1,7 +1,8 @@
+import { workspaceApi } from "@/api/workspace";
 import { useEffect, useRef, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle2, Clock3, RefreshCw } from "lucide-react";
-import { api, queryClient, result, type Order } from "@/api/client";
+import { queryClient, result, type Order } from "@/api/client";
 import { Link } from "@/navigation";
 import { dateTime, money, safeCheckoutUrl } from "@/lib/format";
 import { StatusBadge } from "@/components/business-status";
@@ -22,16 +23,20 @@ import { Spinner } from "@/components/ui/spinner";
 // Mount this observer inside the popup: closing it stops polling and aborts unfinished reads.
 export function TestPaymentResult({
   created,
+  workspaceClientId = null,
   onNew,
   onClose,
 }: {
   created: Order;
+  workspaceClientId?: string | null;
   onNew: () => void;
   onClose?: () => void;
 }) {
+  const api = workspaceApi(workspaceClientId);
+  const orderHref = (workspaceClientId ? "/sites/" + encodeURIComponent(workspaceClientId) : "") + "/orders/" + created.order_id;
   const title = useRef<HTMLHeadingElement>(null);
   const current = useQuery({
-    queryKey: ["order", created.order_id],
+    queryKey: ["order", created.order_id, ...(workspaceClientId ? [{ workspace: workspaceClientId }] : [])],
     queryFn: ({ signal }) =>
       result(
         api.getAdministratorOrder({
@@ -206,7 +211,7 @@ export function TestPaymentResult({
         {canPay && (
           <Link
             className={buttonVariants({ variant: "outline", size: "sm" })}
-            to={"/orders/" + created.order_id}
+            global to={orderHref}
           >
             查看订单
           </Link>

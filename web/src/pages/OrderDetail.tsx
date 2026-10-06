@@ -1,7 +1,9 @@
+import { useQuery } from '@/lib/workspace-query';
+import { useWorkspace, useWorkspaceApi } from "@/workspace";
 import { InlineEmpty } from "@/components/admin-empty";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { RefreshButton } from "@/components/refresh-button";
-import { useQuery } from "@tanstack/react-query";
+
 import {
   ArrowLeft,
   Check,
@@ -11,14 +13,7 @@ import {
   Plus,
 } from "lucide-react";
 import { useParams } from "react-router";
-import {
-  api,
-  refreshOperationalData,
-  result,
-  type AdminOrderDetail,
-  type AdminOrderEvent,
-  type PaymentMatchDetail,
-} from "@/api/client";
+import { refreshOperationalData, result, type AdminOrderDetail, type AdminOrderEvent, type PaymentMatchDetail } from "@/api/client";
 import { Link, useDetailBack } from "@/navigation";
 import { eventExplanation, isHistoricalException } from "@/lib/detail-summary";
 import { dateTime, money } from "@/lib/format";
@@ -63,6 +58,7 @@ import {
 } from "@/components/ui/item";
 import { RefundMarkPanel } from "./RefundMark";
 export function OrderDetail() {
+  const api = useWorkspaceApi();
   const { orderId = "" } = useParams();
   const back = useDetailBack("/orders", "全部订单");
   const fetching = useDetailFetching();
@@ -93,6 +89,7 @@ export function OrderDetail() {
   );
 }
 function OrderDesk({ order }: { order: AdminOrderDetail }) {
+  const { clientId } = useWorkspace();
   const matches = order.reconciliation.matches;
   const active = matches.filter((match) => match.status === "SETTLED");
   const reversed = matches.filter((match) => match.status === "REVERSED");
@@ -165,7 +162,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
               <a
                 className={buttonVariants({ variant: "outline", size: "sm" })}
                 href={
-                  "/api/admin/v1/orders/" +
+                  "/api/admin/v1" + (clientId ? "/sites/" + encodeURIComponent(clientId) : "") + "/orders/" +
                   encodeURIComponent(order.order_id) +
                   "/checkout"
                 }

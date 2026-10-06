@@ -93,7 +93,7 @@ function TestPaymentForm({ dialog }: { dialog?: TestPaymentDialogProps }) {
   const form = (
     <form id={formId} onSubmit={submit}>
       <FieldGroup>
-        <SitePicker value={request.clientId} onChange={request.editSite} disabled={create.isPending || !!recovery || !!create.data} />
+        {request.fixedClientId ? <Field><FieldLabel>本次操作所属网站</FieldLabel><FieldDescription className="break-all">{request.fixedClientId}（已固定，切换后台不会改绑此请求）</FieldDescription></Field> : <SitePicker value={request.clientId} onChange={request.editSite} disabled={create.isPending || !!recovery || !!create.data} />}
         {recovery && (
           <Alert>
             <AlertCircle />
@@ -239,7 +239,7 @@ function TestPaymentForm({ dialog }: { dialog?: TestPaymentDialogProps }) {
             </DialogDescription>
           </DialogHeader>
           {order ? (
-            <TestPaymentResult
+            <TestPaymentResult workspaceClientId={request.fixedClientId}
               created={order}
               onNew={startNew}
               onClose={() => dialog.onOpenChange(false)}
@@ -269,7 +269,7 @@ function TestPaymentForm({ dialog }: { dialog?: TestPaymentDialogProps }) {
   return (
     <Card>
       {order ? (
-        <TestPaymentResult created={order} onNew={startNew} />
+        <TestPaymentResult workspaceClientId={request.fixedClientId} created={order} onNew={startNew} />
       ) : (
         <>
           <CardHeader>

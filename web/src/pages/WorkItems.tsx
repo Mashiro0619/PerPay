@@ -1,4 +1,6 @@
-import { SitePicker } from "@/components/site-picker";
+import { useWorkspace } from "@/workspace";
+import { useQuery } from '@/lib/workspace-query';
+import { useWorkspaceApi } from "@/workspace";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { RefreshButton } from "@/components/refresh-button";
 import { DialogBody } from "@/components/admin-dialog";
@@ -7,16 +9,10 @@ import { ListQueryToolbar } from "@/components/list-query-toolbar";
 import { ListActionsMenu } from "@/components/list-actions-menu";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from '@tanstack/react-query';
 import { RefreshCw, EyeOff } from "lucide-react";
 import { useLocation, useSearchParams } from "react-router";
-import {
-  api,
-  refreshOperationalData,
-  result,
-  type AdminWorkItem,
-  type AdminWorkItemTypeFilter,
-} from "@/api/client";
+import { refreshOperationalData, result, type AdminWorkItem, type AdminWorkItemTypeFilter } from "@/api/client";
 import {
   useReminderRestores,
   needsReminderRefresh,
@@ -58,10 +54,12 @@ const filters = [
 ] as const;
 type Visibility = "ACTIVE" | "IGNORED";
 export default function WorkItems() {
+  const api = useWorkspaceApi();
+  const { clientId: workspaceClientId } = useWorkspace();
   const mounted = useMounted();
   const [search, setSearch] = useSearchParams();
   const type =
-    filters.find(([value]) => value === search.get("type"))?.[0] ?? "ALL";
+    filters.find(([value]) => value === search.get("type") && (!workspaceClientId || value !== "LEDGER_CONFLICT"))?.[0] ?? "ALL";
   const visibility: Visibility =
     search.get("visibility") === "IGNORED" ? "IGNORED" : "ACTIVE";
   const [batch, setBatch] = useState<{
@@ -149,7 +147,7 @@ export default function WorkItems() {
         {/* Keep tab indicators and focus rings inside the horizontal scroller. */}
         <div className="-m-1 min-w-0 scroll-p-1 overflow-x-auto p-1">
           <TabsList aria-label="待处理类型">
-            {filters.map(([value, name]) => (
+            {filters.filter(([value]) => !workspaceClientId || value !== "LEDGER_CONFLICT").map(([value, name]) => (
               <TabsTrigger
                 key={value}
                 value={value}
@@ -166,9 +164,7 @@ export default function WorkItems() {
             ))}
           </TabsList>
         </div>
-      <SitePicker value={search.get("api_client_id") ?? ""} disabled={ignore.isPending} onChange={value => { const next = new URLSearchParams(search); if (value) next.set("api_client_id", value); else next.delete("api_client_id"); next.delete("cursor"); next.delete("page"); setSearch(next, { replace: true }); setMessage(""); }} />
-      {search.has("api_client_id") && <Button variant="ghost" disabled={ignore.isPending} onClick={() => { const next = new URLSearchParams(search); next.delete("api_client_id"); next.delete("cursor"); next.delete("page"); setSearch(next, { replace: true }); }}>查看全部网站</Button>}
-        {search.has("api_client_id") && <Alert><AlertTitle>仅显示网站已归属的提醒</AlertTitle><AlertDescription>账本冲突与无法明确归属订单的异常保留在全局视图，请选择“查看全部网站”处理。</AlertDescription></Alert>}
+        {workspaceClientId !== null && <Alert><AlertTitle>仅显示网站已归属的提醒</AlertTitle><AlertDescription>账本冲突与无法明确归属订单的异常保留在全局视图，请返回一级全局待办处理。</AlertDescription></Alert>}
         <TabsContent value={type}>
           <WorkItemPage
             key={type + ":" + visibility}
@@ -186,7 +182,7 @@ export default function WorkItems() {
               ignore.reset();
               setBatch({
                 type,
-                clientId: search.get("api_client_id"),
+                clientId: workspaceClientId,
                 q: (search.get("q") ?? "").trim(),
                 name: filters.find(([value]) => value === type)![1],
                 operation_id: crypto.randomUUID(),
@@ -264,9 +260,9 @@ function WorkItemPage({
   onVisibility: (value: Visibility) => void;
   onIgnore: (trigger?: HTMLElement | null) => void;
 }) {
+  const api = useWorkspaceApi();
   const mounted = useMounted();
-  const [siteSearch] = useSearchParams();
-  const clientId = siteSearch.get("api_client_id");
+  const { clientId } = useWorkspace();
   const pagination = useCursor();
   const sortFields =
     visibility === "IGNORED"

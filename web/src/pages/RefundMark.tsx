@@ -1,13 +1,8 @@
+import { useWorkspaceApi } from "@/workspace";
 import { useSystemName } from "@/branding";
 import { useId, useRef, useState, type FormEvent } from "react";
 import { ChevronDown } from "lucide-react";
-import {
-  api,
-  refreshOperationalData,
-  result,
-  type AdminOrderDetail,
-  type AdminRefundMarkRequest,
-} from "@/api/client";
+import { refreshOperationalData, result, type AdminOrderDetail, type AdminRefundMarkRequest } from "@/api/client";
 import { useOperationKey } from "@/lib/idempotency";
 import { useFixedOperation } from "@/lib/fixed-operation";
 import { isRefundMarkReceipt, refundMarkNoteError } from "@/lib/refund-mark";
@@ -188,6 +183,7 @@ export function RefundMarkDialog({
   onSuccess: () => void;
   finalFocus?: (() => HTMLElement | null) | undefined;
 }) {
+  const api = useWorkspaceApi();
   const systemName = useSystemName();
   const [context] = useState(() => ({ order, orderId, version, marked }));
   const [note, setNote] = useState("");

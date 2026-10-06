@@ -1,10 +1,6 @@
+import { useWorkspaceApi } from "@/workspace";
 import { useId, useState } from "react";
-import {
-  api,
-  refreshOperationalData,
-  result,
-  type LedgerConflictDetail,
-} from "@/api/client";
+import { refreshOperationalData, result, type LedgerConflictDetail } from "@/api/client";
 import { dateTime } from "@/lib/format";
 import { ConflictComparison } from "./ConflictComparison";
 import { label } from "@/lib/labels";
@@ -37,6 +33,7 @@ const explanations: Record<string, string> = {
 };
 
 export function ConflictCard({ detail }: { detail: LedgerConflictDetail }) {
+  const api = useWorkspaceApi();
   const [confirm, setConfirm] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [message, setMessage] = useFeedback();

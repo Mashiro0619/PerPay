@@ -30,12 +30,12 @@ export function SectionCards({
     {
       title: "当前待付款",
       value: analytics ? count(analytics.pending.orders) : "—",
-      href: "/orders?payment=UNPAID&checkout=OPEN" + (clientId ? "&api_client_id=" + encodeURIComponent(clientId) : ""),
+      href: (clientId ? "/sites/" + encodeURIComponent(clientId) : "") + "/orders?payment=UNPAID&checkout=OPEN",
     },
     {
       title: "需处理事项",
       value: workItems == null ? "—" : count(workItems),
-      href: "/work-items" + (clientId ? "?api_client_id=" + encodeURIComponent(clientId) : ""),
+      href: (clientId ? "/sites/" + encodeURIComponent(clientId) : "") + "/work-items",
     },
   ];
   return (

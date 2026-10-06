@@ -1,3 +1,4 @@
+import { useWorkspace, useWorkspaceApi } from "@/workspace";
 import {
   useCallback,
   useEffect,
@@ -8,7 +9,7 @@ import {
 } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { AlertCircle } from "lucide-react";
-import { ApiError, api, refreshOperationalData, result } from "@/api/client";
+import { ApiError, refreshOperationalData, result } from "@/api/client";
 import { useOperationKey } from "@/lib/idempotency";
 import { operationReasonError, useFixedOperation } from "@/lib/fixed-operation";
 import { OperationRecoveryNotice } from "@/components/operation-recovery-notice";
@@ -56,6 +57,8 @@ export function FinancialDialog({
   onSuccess: () => void;
   finalFocus?: (() => HTMLElement | null) | undefined;
 }) {
+  const api = useWorkspaceApi();
+  const { clientId } = useWorkspace();
   const [context] = useState(() => ({
     initialOrderId,
     initialLedgerId,
@@ -99,10 +102,7 @@ export function FinancialDialog({
           }),
         ),
         result(
-          api.getReconciliationLedgerEntry({
-            path: { ledgerEntryId: input.ledgerId },
-            signal: input.signal,
-          }),
+          clientId ? api.siteGetReconciliationLedgerEntry({ path: { clientId, ledgerEntryId: input.ledgerId }, query: { order_id: input.orderId }, signal: input.signal }) : api.getReconciliationLedgerEntry({ path: { ledgerEntryId: input.ledgerId }, signal: input.signal }),
         ),
       ]);
       if (input.signal.aborted)
@@ -233,7 +233,7 @@ export function FinancialDialog({
         <DialogHeader className="shrink-0 pr-8">
           <DialogTitle>人工关联收款</DialogTitle>
           <DialogDescription>
-            将这笔收入关联到订单并确认付款。
+            {clientId ? "固定本站订单，从实例共享流水中选择收款。涉及其他网站或共享冲突时，请到一级后台处理。" : "将这笔收入关联到订单并确认付款。"}
           </DialogDescription>
         </DialogHeader>
         <form className="contents" onSubmit={submit}>

@@ -1,12 +1,9 @@
+import { useQuery } from '@/lib/workspace-query';
+import { useWorkspaceApi } from "@/workspace";
 import { useRef, type ReactNode } from "react";
-import { useIsFetching, useQuery } from "@tanstack/react-query";
+import { useIsFetching } from '@tanstack/react-query';
 import { ExternalLink } from "lucide-react";
-import {
-  api,
-  result,
-  type AdminOrderDetail,
-  type ReconciliationOrder,
-} from "@/api/client";
+import { result, type AdminOrderDetail, type ReconciliationOrder } from "@/api/client";
 import { Link } from "@/navigation";
 import { dateTime, money } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -199,6 +196,7 @@ export function useRelatedOrder(
   orderId: string | null,
   known?: ReconciliationOrder | AdminOrderDetail,
 ) {
+  const api = useWorkspaceApi();
   const query = useQuery({
     queryKey: ["order", orderId],
     enabled: !!orderId && !known,

@@ -1,3 +1,4 @@
+import { useWorkspace } from "@/workspace";
 import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ApiError, type AdminWorkItem } from "@/api/client";
@@ -26,6 +27,7 @@ type Attempt = {
 
 /** A refreshed row may disappear before its receipt arrives; the list owns the requests. */
 export function useReminderRestores() {
+  const { clientId } = useWorkspace();
   const [states, setStates] = useState(new Map<string, ReminderRestoreState>());
   const current = useRef(states);
   const alive = useRef(true);
@@ -114,6 +116,7 @@ export function useReminderRestores() {
       )
         return false;
       const command = previous?.command ?? {
+        ...(clientId ? { clientId } : {}),
         type: item.type,
         resourceId: item.resource_id,
         operationId: crypto.randomUUID(),

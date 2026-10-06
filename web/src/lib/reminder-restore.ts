@@ -1,6 +1,8 @@
-import { ApiError, api, result, type AdminWorkItem } from "@/api/client";
+import { workspaceApi } from "@/api/workspace";
+import { ApiError, result, type AdminWorkItem } from "@/api/client";
 export type RestoreOutcome = "restored" | "already" | "ended" | "missing";
 export type RestoreCommand = {
+  clientId?: string | null;
   type: AdminWorkItem["type"];
   resourceId: string;
   operationId: string;
@@ -11,7 +13,7 @@ export async function restoreReminder(
 ): Promise<RestoreOutcome> {
   try {
     const response = await result(
-      api.restoreAdministratorWorkItem({
+      workspaceApi(command.clientId ?? null).restoreAdministratorWorkItem({
         path: { type: command.type, resourceId: command.resourceId },
         body: { operation_id: command.operationId },
         signal,

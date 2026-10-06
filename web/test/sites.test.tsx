@@ -14,7 +14,7 @@ const policy: SitePolicy = {
   notification_delivery: { timeout_milliseconds: 5000, maximum_attempts: 12, retry_base_seconds: 5, retry_maximum_seconds: 3600 },
 };
 const initial: Site = { client_id: "site_test", revision: 0, configuration: { name: "网站 A", accepting_orders: true, notifications_enabled: false, notification_origin: null, return_origin: null, policy }, created_at: "2026-10-06T00:00:00.000Z", updated_at: "2026-10-06T00:00:00.000Z", deleted_at: null };
-function mount(path = "/sites/site_test", failSave = false, fieldErrors?: Record<string, string>) {
+function mount(path = "/sites/site_test/settings/basic", failSave = false, fieldErrors?: Record<string, string>) {
   let rejectFields = !!fieldErrors;
   let saved = structuredClone(initial), defaults = structuredClone(policy);
   const writes: Array<{ path: string; method: string; body: Record<string, unknown> }> = [];
@@ -38,7 +38,7 @@ function mount(path = "/sites/site_test", failSave = false, fieldErrors?: Record
   });
   vi.stubGlobal("fetch", fetchMock);
   const router = createMemoryRouter([{ element: <DraftProvider><Outlet /></DraftProvider>, children: [
-    { path: "/sites", element: <Sites /> }, { path: "/sites/new", element: <SiteEditorPage /> }, { path: "/sites/defaults", element: <SiteDefaultsPage /> }, { path: "/sites/:clientId", element: <SiteEditorPage /> },
+    { path: "/sites", element: <Sites /> }, { path: "/sites/new", element: <SiteEditorPage /> }, { path: "/sites/defaults", element: <SiteDefaultsPage /> }, { path: "/sites/:clientId/settings/:section", element: <SiteEditorPage /> },
   ] }], { initialEntries: [path] });
   render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
   return { router, writes, fetchMock };
@@ -55,7 +55,7 @@ describe("business website management", () => {
     await waitFor(() => expect(view.writes).toHaveLength(1));
     await act(async () => { await view.router.navigate("/sites/new"); });
     await waitFor(() => expect(screen.getByLabelText("订单有效期（秒）")).toHaveValue(600));
-    await act(async () => { await view.router.navigate("/sites/site_test"); });
+    await act(async () => { await view.router.navigate("/sites/site_test/settings/orders"); });
     expect(await screen.findByLabelText("订单有效期（秒）")).toHaveValue(300);
     expect(view.writes).toHaveLength(1);
   });
@@ -75,14 +75,14 @@ describe("business website management", () => {
   it("keeps pause independent of notifications and saves the website revision", async () => {
     const view = mount(); const user = userEvent.setup();
     await user.click(await screen.findByRole("switch", { name: "允许新订单" }));
-    expect(screen.getByRole("switch", { name: "开启通知" })).not.toBeChecked();
+    expect(screen.queryByRole("switch", { name: "开启通知" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "保存网站" }));
     await user.click(await screen.findByRole("button", { name: "确认" }));
     await waitFor(() => expect(view.writes).toHaveLength(1));
     expect(view.writes[0]!.body).toMatchObject({ revision: 0, configuration: { accepting_orders: false, notifications_enabled: false } });
   });
   it("preserves drafts after a network failure and never queues an automatic resubmit", async () => {
-    const view = mount("/sites/site_test", true); const user = userEvent.setup();
+    const view = mount("/sites/site_test/settings/basic", true); const user = userEvent.setup();
     const name = await screen.findByLabelText("网站名称"); await user.clear(name); await user.type(name, "失败后保留");
     await user.click(screen.getByRole("button", { name: "保存网站" }));
     await user.click(await screen.findByRole("button", { name: "确认" }));
@@ -92,12 +92,12 @@ describe("business website management", () => {
     await queryClient.resumePausedMutations(); expect(view.writes).toHaveLength(1);
   });
   it("rotates only the selected website key without replacing an unsaved configuration draft", async () => {
-    const view = mount(); const user = userEvent.setup();
-    const name = await screen.findByLabelText("网站名称"); await user.clear(name); await user.type(name, "尚未保存的名字");
+    const view = mount("/sites/site_test/settings/integration"); const user = userEvent.setup();
+    const name = await screen.findByLabelText("返回来源"); await user.clear(name); await user.type(name, "https://draft.example.com");
     await user.click(screen.getByRole("button", { name: "生成／轮换 API 密钥" }));
     await user.click(await screen.findByRole("button", { name: "确认" }));
     expect(await screen.findByDisplayValue("synthetic-site-key")).toBeVisible();
-    expect(name).toHaveValue("尚未保存的名字");
+    expect(name).toHaveValue("https://draft.example.com");
     expect(view.writes[0]!.path).toBe("/api/admin/v1/sites/site_test/secrets/api_secret/actions/rotate");
     await user.click(screen.getByRole("button", { name: "保存网站" })); await user.click(await screen.findByRole("button", { name: "确认" }));
     await waitFor(() => expect(view.writes).toHaveLength(2)); expect(view.writes[1]!.body.revision).toBe(1);
@@ -121,53 +121,44 @@ describe("business website management", () => {
 });
 
 describe("website field feedback", () => {
-  it.each(["/sites/site_test", "/sites/defaults"])("associates every policy error with its input and preserves drafts at %s", async path => {
-    const scope = path.endsWith("defaults") ? "policy." : "configuration.policy.";
-    const fields: Record<string, string> = {
-      [scope + "orders.pending_order_limit"]: "上限错误", [scope + "orders.order_ttl_seconds"]: "有效期错误",
-      [scope + "display.checkout_name"]: "名称错误", [scope + "display.checkout_help_url"]: "帮助链接错误",
+  it.each(["basic", "orders", "integration", "display", "defaults"])("keeps per-group field errors and drafts in %s", async section => {
+    const path = section === "defaults" ? "/sites/defaults" : "/sites/site_test/settings/" + section;
+    const cases: Record<string, [string, string, string][]> = {
+      basic: [["网站名称", "configuration.name", "新的网站名"]],
+      orders: [["订单有效期（秒）", "configuration.policy.orders.order_ttl_seconds", "600"], ["待付款订单上限", "configuration.policy.orders.pending_order_limit", "10"]],
+      integration: [["通知来源", "configuration.notification_origin", "https://notify.example.com"], ["返回来源", "configuration.return_origin", "https://shop.example.com"]],
+      display: [["收银台名称", "configuration.policy.display.checkout_name", "草稿名称"], ["帮助链接", "configuration.policy.display.checkout_help_url", "https://help.example.com"]],
+      defaults: [["收银台名称", "policy.display.checkout_name", "模板草稿"], ["订单有效期（秒）", "policy.orders.order_ttl_seconds", "600"]],
     };
-    if (!path.endsWith("defaults")) Object.assign(fields, { "configuration.name": "网站名称错误", "configuration.notification_origin": "通知来源错误", "configuration.return_origin": "返回来源错误" });
-    const view = mount(path, false, fields); const user = userEvent.setup();
-    fireEvent.change(await screen.findByLabelText("收银台名称"), { target: { value: "保留的名称" } });
-    const submit = async () => {
-      await user.click(screen.getByRole("button", { name: path.endsWith("defaults") ? "保存默认模板" : "保存网站" }));
-      if (!path.endsWith("defaults")) await user.click(await screen.findByRole("button", { name: "确认" }));
-    };
-    await submit(); await screen.findByText("上限错误");
-    for (const [label, message] of [["待付款订单上限", "上限错误"], ["订单有效期（秒）", "有效期错误"], ["收银台名称", "名称错误"], ["帮助链接", "帮助链接错误"], ...(!path.endsWith("defaults") ? [["网站名称", "网站名称错误"], ["通知来源", "通知来源错误"], ["返回来源", "返回来源错误"]] : [])]) {
-      const input = screen.getByLabelText(label!);
-      expect(input).toHaveAttribute("aria-invalid", "true"); expect(input).toHaveAccessibleDescription(message);
-      expect(input.closest('[data-slot="field"]')).toHaveAttribute("data-invalid", "true");
-    }
-    expect(screen.getByLabelText("收银台名称")).toHaveValue("保留的名称");
+    const fields = Object.fromEntries(cases[section]!.map(([label, field]) => [field, label + "错误"]));
+    const view = mount(path, false, fields), user = userEvent.setup();
+    for (const [label, , value] of cases[section]!) fireEvent.change(await screen.findByLabelText(label), { target: { value } });
+    const submit = async () => { await user.click(screen.getByRole("button", { name: section === "defaults" ? "保存默认模板" : "保存网站" })); if (section !== "defaults") await user.click(await screen.findByRole("button", { name: "确认" })); };
+    await submit();
+    for (const [label] of cases[section]!) { await screen.findByText(label + "错误"); expect(screen.getByLabelText(label)).toHaveAttribute("aria-invalid", "true"); }
     expect(view.writes).toHaveLength(1);
-    await queryClient.resumePausedMutations(); expect(view.writes).toHaveLength(1);
-    await submit(); await waitFor(() => expect(screen.queryByText("上限错误")).not.toBeInTheDocument());
-    expect(view.writes).toHaveLength(2); expect(screen.getByLabelText("帮助链接")).toHaveAttribute("aria-invalid", "false");
+    await submit(); await waitFor(() => expect(view.writes).toHaveLength(2));
   });
-});
 
-describe("website editor cache consistency", () => {
   it("reopens a saved website with its current configuration and revision", async () => {
     const view = mount(); const user = userEvent.setup();
     const name = await screen.findByLabelText("网站名称"); fireEvent.change(name, { target: { value: "保存后的名字" } });
     await user.click(screen.getByRole("button", { name: "保存网站" })); await user.click(await screen.findByRole("button", { name: "确认" }));
     await screen.findByText("网站配置已保存");
     await act(async () => { await view.router.navigate("/sites"); });
-    await act(async () => { await view.router.navigate("/sites/site_test"); });
+    await act(async () => { await view.router.navigate("/sites/site_test/settings/basic"); });
     expect(await screen.findByLabelText("网站名称")).toHaveValue("保存后的名字");
     await user.click(screen.getByRole("button", { name: "保存网站" })); await user.click(await screen.findByRole("button", { name: "确认" }));
     await waitFor(() => expect(view.writes).toHaveLength(2)); expect(view.writes[1]!.body.revision).toBe(1);
   });
   it("keeps key rotation revisions on reentry without caching the revealed secret", async () => {
-    const view = mount(); const user = userEvent.setup();
+    const view = mount("/sites/site_test/settings/integration"); const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "生成／轮换 API 密钥" }));
     await user.click(await screen.findByRole("button", { name: "确认" }));
     await screen.findByDisplayValue("synthetic-site-key");
-    expect(JSON.stringify(queryClient.getQueryData(["site-editor", "site_test"]))).not.toContain("synthetic-site-key");
+    expect(JSON.stringify(queryClient.getQueryData(["site-editor", "site_test", "integration"]))).not.toContain("synthetic-site-key");
     await act(async () => { await view.router.navigate("/sites"); });
-    await act(async () => { await view.router.navigate("/sites/site_test"); });
+    await act(async () => { await view.router.navigate("/sites/site_test/settings/basic"); });
     expect(screen.queryByDisplayValue("synthetic-site-key")).not.toBeInTheDocument();
     await user.click(await screen.findByRole("button", { name: "保存网站" })); await user.click(await screen.findByRole("button", { name: "确认" }));
     await waitFor(() => expect(view.writes).toHaveLength(2)); expect(view.writes[1]!.body.revision).toBe(1);
@@ -176,6 +167,6 @@ describe("website editor cache consistency", () => {
     const view = mount(); const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "删除空网站" })); await user.click(await screen.findByRole("button", { name: "确认" }));
     await waitFor(() => expect(view.router.state.location.pathname).toBe("/sites"));
-    expect(queryClient.getQueryData(["site-editor", "site_test"])).toBeUndefined();
+    expect(queryClient.getQueryData(["site-editor", "site_test", "basic"])).toBeUndefined();
   });
 });

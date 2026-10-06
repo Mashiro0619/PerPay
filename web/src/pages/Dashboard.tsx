@@ -1,4 +1,5 @@
-import { SitePicker } from "@/components/site-picker";
+import { SiteStatusNotice } from "@/workspace";
+import { SiteOverviewList } from "@/components/site-overview-list";
 import { SystemStatusBoundary } from "@/features/system-status";
 import {
   AlertCircle,
@@ -56,7 +57,6 @@ export default function Dashboard() {
 function DashboardContent() {
   const {
     clientId,
-    changeSite,
     range,
     analytics,
     settings,
@@ -71,7 +71,7 @@ function DashboardContent() {
   const location = useLocation();
   const instanceId = status.data?.data.instance_id;
   if (
-    settings.data &&
+    !clientId && settings.data &&
     !settings.isError &&
     !settings.data.data.completion.complete &&
     instanceId &&
@@ -106,8 +106,7 @@ function DashboardContent() {
       className="flex w-full min-w-0 flex-col gap-4"
       data-overview-layout
     >
-      <SitePicker value={clientId ?? ""} onChange={changeSite} />
-      {clientId && <Button variant="ghost" onClick={() => changeSite("")}>查看全部网站</Button>}
+      {clientId && <SiteStatusNotice />}
       {needsStatus && (
         <div className="flex flex-col gap-4">
           <ErrorNotice
@@ -144,7 +143,7 @@ function DashboardContent() {
           ) : blocked ? (
             <Alert variant="destructive">
               <AlertCircle />
-              <AlertTitle>当前暂停新收款</AlertTitle>
+              <AlertTitle>{clientId ? "实例共享收款引擎异常" : "当前暂停新收款"}</AlertTitle>
               <AlertDescription>
                 <p>{reason}</p>
                 <Link
@@ -192,15 +191,16 @@ function DashboardContent() {
           pending={analytics.isPending || analytics.isPlaceholderData}
         />
       </div>
+      {!clientId && <SiteOverviewList range={range} />}
       <div className="grid min-w-0 items-start gap-4 @5xl/main:grid-cols-[minmax(18rem,1fr)_minmax(0,2fr)]">
         <Card size="sm">
           <CardHeader>
             <CardTitle role="heading" aria-level={2}>
-              {clientId ? "网站待处理" : "待处理"}
+              {clientId ? "本站待办" : "全局待办"}
             </CardTitle>
             <CardAction>
               <Link
-                to={clientId ? "/work-items?api_client_id=" + encodeURIComponent(clientId) : "/work-items"}
+                to={"/work-items"}
                 className={buttonVariants({ variant: "ghost", size: "sm" })}
               >
                 查看全部
@@ -254,7 +254,7 @@ function DashboardContent() {
             </CardTitle>
             <CardAction>
               <Link
-                to={clientId ? "/orders?api_client_id=" + encodeURIComponent(clientId) : "/orders"}
+                to={"/orders"}
                 className={buttonVariants({ variant: "ghost", size: "sm" })}
               >
                 全部订单

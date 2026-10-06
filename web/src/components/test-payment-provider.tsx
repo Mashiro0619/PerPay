@@ -1,3 +1,4 @@
+import { useWorkspace } from "@/workspace";
 import {
   createContext,
   useContext,
@@ -24,6 +25,7 @@ const TestPaymentContext = createContext<
 
 export function TestPaymentProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
+  const { clientId } = useWorkspace();
   const [open, setOpen] = useState(false);
   const [started, setStarted] = useState(false);
   const standalone = useMatch("/test-payment") !== null;
@@ -36,6 +38,7 @@ export function TestPaymentProvider({ children }: { children: ReactNode }) {
     <TestPaymentContext
       value={(element) => {
         trigger.current = element;
+        request.bindSite(clientId);
         setStarted(true);
         setOpen(true);
       }}

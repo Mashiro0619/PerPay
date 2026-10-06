@@ -1,3 +1,4 @@
+import { WorkspaceProvider, WorkspaceOutlet, useWorkspace } from "@/workspace";
 import { AdminContent, ContentWidthProvider } from "@/components/content-width";
 import { PageHeaderActionsProvider } from "@/components/page-header-actions";
 import { useSystemName } from "@/branding";
@@ -12,7 +13,6 @@ import { useMutation } from "@tanstack/react-query";
 import {
   createRoutesFromElements,
   Navigate,
-  Outlet,
   Route,
   useLocation,
   useMatch,
@@ -62,9 +62,13 @@ function AppShell() {
 }
 function Workspace() {
   const systemName = useSystemName();
+  const scope = useWorkspace();
   const { setOpenMobile, toggleSidebar } = useSidebar();
   const session = useSession();
   const location = useLocation();
+  const localPath = scope.clientId
+    ? location.pathname.slice(scope.base.length) || "/"
+    : location.pathname;
   const navigate = useNavigate();
   const { requestDiscard } = useDraftGuard();
   const logout = useMutation({
@@ -100,20 +104,38 @@ function Workspace() {
   const current = [...navigation]
     .reverse()
     .find((item) =>
-      item.url === "/"
-        ? location.pathname === "/"
-        : location.pathname.startsWith(item.url),
+      item.url === "/" ? localPath === "/" : localPath.startsWith(item.url),
     );
   const testPaymentPage = useMatch("/test-payment");
   const title = testPaymentPage
     ? "测试收款"
     : location.pathname.startsWith("/settings/onboarding")
       ? "配置向导"
-      : (current?.title ?? systemName);
-  const overview = location.pathname === "/";
+      : scope.clientId
+        ? ({
+            "/": "网站概览",
+            "/orders": "本站订单",
+            "/notifications": "本站通知",
+            "/work-items": "本站待办",
+            "/settings": "网站设置",
+            "/reconciliation": "本站对账证据",
+          }["/" + (localPath.split("/")[1] ?? "")] ?? "网站后台")
+        : (current?.title ?? systemName);
+  const overview = localPath === "/";
   useEffect(() => {
-    document.title = title + ` · ${systemName}`;
-  }, [title, systemName]);
+    document.title = [
+      title,
+      scope.clientId
+        ? (scope.site?.data?.data.configuration.name ?? scope.clientId)
+        : "全部网站",
+      systemName,
+    ].join(" · ");
+  }, [
+    title,
+    systemName,
+    scope.clientId,
+    scope.site?.data?.data.configuration.name,
+  ]);
   return (
     <NavigationContext value={toggleSidebar}>
       <a
@@ -139,7 +161,7 @@ function Workspace() {
             </div>
           )}
           <OfficialUpdateNotice hidden={location.pathname === "/system"} />
-          <Outlet />
+          <WorkspaceOutlet />
         </AdminContent>
       </SidebarInset>
     </NavigationContext>
@@ -152,11 +174,13 @@ export const appRoutes = createRoutesFromElements(
     element={
       <AuthBoundary>
         <DraftProvider>
-          <TestPaymentProvider>
-            <SystemStatusBoundary>
-              <AppShell />
-            </SystemStatusBoundary>
-          </TestPaymentProvider>
+          <WorkspaceProvider>
+            <TestPaymentProvider>
+              <SystemStatusBoundary>
+                <AppShell />
+              </SystemStatusBoundary>
+            </TestPaymentProvider>
+          </WorkspaceProvider>
         </DraftProvider>
       </AuthBoundary>
     }
@@ -209,10 +233,74 @@ export const appRoutes = createRoutesFromElements(
         Component: (await import("./pages/Notifications")).NotificationDetail,
       })}
     />
-    <Route path="sites" lazy={async () => ({ Component: (await import("./pages/Sites")).default })} />
-    <Route path="sites/new" lazy={async () => ({ Component: (await import("./pages/Sites")).SiteEditorPage })} />
-    <Route path="sites/defaults" lazy={async () => ({ Component: (await import("./pages/Sites")).SiteDefaultsPage })} />
-    <Route path="sites/:clientId" lazy={async () => ({ Component: (await import("./pages/Sites")).SiteEditorPage })} />
+    <Route
+      path="sites"
+      lazy={async () => ({
+        Component: (await import("./pages/Sites")).default,
+      })}
+    />
+    <Route
+      path="sites/new"
+      lazy={async () => ({
+        Component: (await import("./pages/Sites")).SiteEditorPage,
+      })}
+    />
+    <Route
+      path="sites/defaults"
+      lazy={async () => ({
+        Component: (await import("./pages/Sites")).SiteDefaultsPage,
+      })}
+    />
+    <Route path="sites/:clientId">
+      <Route
+        index
+        lazy={async () => ({
+          Component: (await import("./pages/Dashboard")).default,
+        })}
+      />
+      <Route
+        path="orders"
+        lazy={async () => ({
+          Component: (await import("./pages/Orders")).default,
+        })}
+      />
+      <Route
+        path="orders/:orderId"
+        lazy={async () => ({
+          Component: (await import("./pages/Orders")).OrderDetail,
+        })}
+      />
+      <Route
+        path="notifications"
+        lazy={async () => ({
+          Component: (await import("./pages/Notifications")).default,
+        })}
+      />
+      <Route
+        path="notifications/:deliveryId"
+        lazy={async () => ({
+          Component: (await import("./pages/Notifications")).NotificationDetail,
+        })}
+      />
+      <Route
+        path="work-items"
+        lazy={async () => ({
+          Component: (await import("./pages/WorkItems")).default,
+        })}
+      />
+      <Route
+        path="reconciliation/:kind/:resourceId"
+        lazy={async () => ({
+          Component: (await import("./pages/ReconciliationDetail")).default,
+        })}
+      />
+      <Route
+        path="settings/:section?"
+        lazy={async () => ({
+          Component: (await import("./pages/Sites")).SiteEditorPage,
+        })}
+      />
+    </Route>
     <Route
       path="settings/onboarding/:step?"
       lazy={async () => ({

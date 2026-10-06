@@ -1,11 +1,7 @@
+import { useWorkspaceApi } from "@/workspace";
 import { useEffect, useRef, useState } from "react";
 import { Download } from "lucide-react";
-import {
-  api,
-  csvResult,
-  type CheckoutStatus,
-  type PaymentStatus,
-} from "@/api/client";
+import { csvResult, type CheckoutStatus, type PaymentStatus } from "@/api/client";
 import { createdDateRange } from "../../../src/shared/created-dates";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -23,6 +19,7 @@ export function OrderExport({
   checkout: CheckoutStatus | undefined;
   clientId?: string | null;
 }) {
+  const api = useWorkspaceApi();
   const active = useRef<AbortController | null>(null);
   const [pending, setPending] = useState(false),
     [error, setError] = useState<Error | null>(null);

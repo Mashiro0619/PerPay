@@ -1,12 +1,16 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useWorkspace } from "@/workspace";
+import { useQuery } from '@/lib/workspace-query';
+import { useWorkspaceApi } from "@/workspace";
+import { keepPreviousData } from '@tanstack/react-query';
 import { useSearchParams } from "react-router";
-import { api, result } from "@/api/client";
+import { result } from "@/api/client";
 import { useSystemStatus } from "@/features/system-status";
 export function useOverview() {
+  const api = useWorkspaceApi();
   const [search, setSearch] = useSearchParams();
-  const clientId = search.get("api_client_id");
+  const { clientId } = useWorkspace();
   const selected = Number(search.get("range"));
-  const range = selected === 7 || selected === 90 ? selected : 30;
+  const range: 7 | 30 | 90 = selected === 7 || selected === 90 ? selected : 30;
   const { status, unavailable, checking } = useSystemStatus();
   const analytics = useQuery({
     queryKey: ["analytics", range, clientId],
@@ -38,11 +42,6 @@ export function useOverview() {
   });
   return {
     clientId,
-    changeSite: (value: string) => {
-      const next = new URLSearchParams(search);
-      if (value) next.set("api_client_id", value); else next.delete("api_client_id");
-      setSearch(next, { replace: true });
-    },
     range,
     analytics,
     settings,
