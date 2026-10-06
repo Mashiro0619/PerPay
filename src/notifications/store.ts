@@ -1,3 +1,4 @@
+import { assertSiteResource } from "../sites/admin-scope.ts";
 import { readSite } from "../sites/store.ts";
 import { siteClientIdSchema } from "../sites/model.ts";
 import { normalizeListQuery, DELIVERY_SORT_FIELDS, type DeliverySort, type ListQuery, type ListPosition } from "../shared/list-query.ts";
@@ -569,6 +570,7 @@ export class WebhookStore {
   }
 
   replay(input: {
+    readonly expectedClientId?: string | undefined;
     readonly redeliveryId: string;
     readonly deliveryId: string;
     readonly actorId: string;
@@ -585,6 +587,7 @@ export class WebhookStore {
     assertActiveAllowedOrigin(input.activeAllowedOrigin);
     assertTime(input.now, "webhook replay time");
     return this.#database.write((connection) => {
+      assertSiteResource(connection, input.expectedClientId, "delivery", input.deliveryId);
       const original = connection
         .prepare("SELECT * FROM webhook_deliveries WHERE delivery_id = ?")
         .get(input.deliveryId) as DeliveryRow | undefined;

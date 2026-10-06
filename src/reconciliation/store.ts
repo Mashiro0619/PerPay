@@ -1,3 +1,4 @@
+import { assertSiteOrder, assertSiteLedger } from "../sites/admin-scope.ts";
 import { readManualCandidates, type ManualCandidateQuery, type ManualCandidatePage } from "./manual-candidates.ts";
 import { normalizeListQuery, MATCH_SORT_FIELDS, EXCEPTION_SORT_FIELDS, type MatchSort, type ExceptionSort, type ListQuery, type ListPosition } from "../shared/list-query.ts";
 import { listKeyset, listSearch } from "../database/list-query.ts";
@@ -150,6 +151,7 @@ export interface PaymentMatchHistoryPage {
 }
 
 export interface FinancialDecisionInput {
+  readonly expectedClientId?: string | undefined;
   readonly financialOperationId: string;
   readonly paymentMatchId: string;
   readonly actorId: string;
@@ -158,6 +160,7 @@ export interface FinancialDecisionInput {
 }
 
 export interface ManualSettlementInput {
+  readonly expectedClientId?: string | undefined;
   readonly financialOperationId: string;
   readonly orderId: string;
   readonly ledgerEntryId: string;
@@ -571,6 +574,7 @@ export class ReconciliationStore {
   settleManually(input: ManualSettlementInput): FinancialDecisionResult {
     const reason = validateManualSettlementInput(input);
     return this.#database.write((connection) => {
+      assertSiteOrder(connection, input.expectedClientId, input.orderId);
       const now = financialNow(connection, input.now);
       const existingOperation = readOperation(connection, input.financialOperationId);
       const existingMatch = existingOperation?.operationType === "MANUAL_SETTLEMENT"
@@ -591,6 +595,7 @@ export class ReconciliationStore {
       const replay = readDecisionReplay(connection, input.financialOperationId, operationInput);
       if (replay) return decisionResult(connection, replay, paymentMatchId, true);
 
+      assertSiteLedger(connection, input.expectedClientId, input.ledgerEntryId);
       const entry = requireLedgerEntry(connection, input.ledgerEntryId);
       const order = requireOrderDecision(connection, input.orderId);
       if (
@@ -709,6 +714,7 @@ export class ReconciliationStore {
       const now = financialNow(connection, input.now);
       const match = readPaymentMatch(connection, input.paymentMatchId);
       if (!match) throw new ReconciliationError("match_not_found", "payment match does not exist");
+      assertSiteOrder(connection, input.expectedClientId, match.orderId);
       const existingOperation = readOperation(connection, input.financialOperationId);
       const reversesOperationId = existingOperation?.operationType === "REVERSE_SETTLEMENT"
         ? existingOperation.reversesOperationId
@@ -730,6 +736,7 @@ export class ReconciliationStore {
         throw new ReconciliationError("match_state_conflict", "only a settled match can be reversed");
       }
       const entry = requireLedgerEntry(connection, match.ledgerEntryId);
+      assertSiteLedger(connection, input.expectedClientId, match.ledgerEntryId);
       const order = requireOrderDecision(connection, match.orderId);
       if (entry.state !== "ALLOCATED" || order.payment_status !== "CONFIRMED") {
         throw new ReconciliationError("match_state_conflict", "settlement facts have changed");

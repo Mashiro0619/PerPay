@@ -1171,7 +1171,7 @@ export type WebhookRedeliveryEnvelope = {
     };
 };
 export type Sha256Fingerprint = string;
-export type ErrorCode = 'admin_ip_not_allowed' | 'admin_operation_conflict' | 'refund_mark_version_conflict' | 'refund_mark_not_allowed' | 'refund_recording_retired' | 'work_item_not_found' | 'work_item_ended' | 'amount_slots_exhausted' | 'api_authentication_failed' | 'api_client_invalid' | 'api_nonce_replayed' | 'asset_not_found' | 'auth_rate_limited' | 'candidate_not_found' | 'candidate_set_changed' | 'checkout_code_generation_failed' | 'checkout_code_not_found' | 'checkout_not_found' | 'csrf_invalid' | 'duplicate_json_key' | 'event_not_found' | 'financial_clock_unavailable' | 'financial_exception_not_found' | 'forwarded_header_invalid' | 'idempotency_conflict' | 'identity_already_initialized' | 'identity_not_initialized' | 'internal_error' | 'invalid_content_length' | 'invalid_credentials' | 'invalid_json' | 'ledger_conflict_action_not_allowed' | 'ledger_conflict_not_found' | 'ledger_conflict_operation_conflict' | 'ledger_conflict_state_conflict' | 'ledger_entry_not_found' | 'ledger_unavailable' | 'match_not_found' | 'match_state_conflict' | 'merchant_order_no_conflict' | 'operation_conflict' | 'order_clock_unavailable' | 'order_not_found' | 'origin_not_allowed' | 'password_unchanged' | 'password_work_busy' | 'provider_application_key_missing' | 'provider_application_key_rotation_not_supported' | 'provider_application_key_change_pending' | 'provider_application_key_change_conflict' | 'provider_application_key_verification_failed' | 'provider_switch_blocked' | 'public_checkout_rate_limited' | 'reconciliation_not_ready' | 'reconciliation_unavailable' | 'request_body_too_large' | 'request_body_unreadable' | 'return_url_invalid' | 'return_url_not_allowed' | 'route_not_found' | 'secret_not_found' | 'session_invalid' | 'settings_not_configured' | 'settings_revision_conflict' | 'settings_unavailable' | 'settings_validation_failed' | 'system_not_configured' | 'system_not_ready' | 'unsupported_media_type' | 'update_check_unavailable' | 'validation_failed' | 'webhook_delivery_not_found' | 'webhook_delivery_state_conflict' | 'webhook_disabled' | 'webhook_event_not_found' | 'webhook_operation_conflict' | 'webhook_signing_key_rollback' | 'webhook_signing_key_unavailable' | 'webhook_target_inactive' | 'webhook_target_invalid' | 'webhook_target_not_allowed' | 'webhook_unavailable' | 'site_not_found' | 'site_revision_conflict' | 'site_operation_conflict' | 'site_has_history' | 'site_paused' | 'site_order_limit_exceeded' | 'site_secret_missing' | 'demo_read_only' | 'site_settings_moved';
+export type ErrorCode = 'admin_ip_not_allowed' | 'admin_operation_conflict' | 'refund_mark_version_conflict' | 'refund_mark_not_allowed' | 'refund_recording_retired' | 'work_item_not_found' | 'work_item_ended' | 'amount_slots_exhausted' | 'api_authentication_failed' | 'api_client_invalid' | 'api_nonce_replayed' | 'asset_not_found' | 'auth_rate_limited' | 'candidate_not_found' | 'candidate_set_changed' | 'checkout_code_generation_failed' | 'checkout_code_not_found' | 'checkout_not_found' | 'csrf_invalid' | 'duplicate_json_key' | 'event_not_found' | 'financial_clock_unavailable' | 'financial_exception_not_found' | 'forwarded_header_invalid' | 'idempotency_conflict' | 'identity_already_initialized' | 'identity_not_initialized' | 'internal_error' | 'invalid_content_length' | 'invalid_credentials' | 'invalid_json' | 'ledger_conflict_action_not_allowed' | 'ledger_conflict_not_found' | 'ledger_conflict_operation_conflict' | 'ledger_conflict_state_conflict' | 'ledger_entry_not_found' | 'ledger_unavailable' | 'match_not_found' | 'match_state_conflict' | 'merchant_order_no_conflict' | 'operation_conflict' | 'order_clock_unavailable' | 'order_not_found' | 'origin_not_allowed' | 'password_unchanged' | 'password_work_busy' | 'provider_application_key_missing' | 'provider_application_key_rotation_not_supported' | 'provider_application_key_change_pending' | 'provider_application_key_change_conflict' | 'provider_application_key_verification_failed' | 'provider_switch_blocked' | 'public_checkout_rate_limited' | 'reconciliation_not_ready' | 'reconciliation_unavailable' | 'request_body_too_large' | 'request_body_unreadable' | 'return_url_invalid' | 'return_url_not_allowed' | 'route_not_found' | 'secret_not_found' | 'session_invalid' | 'settings_not_configured' | 'settings_revision_conflict' | 'settings_unavailable' | 'settings_validation_failed' | 'system_not_configured' | 'system_not_ready' | 'unsupported_media_type' | 'update_check_unavailable' | 'validation_failed' | 'webhook_delivery_not_found' | 'webhook_delivery_state_conflict' | 'webhook_disabled' | 'webhook_event_not_found' | 'webhook_operation_conflict' | 'webhook_signing_key_rollback' | 'webhook_signing_key_unavailable' | 'webhook_target_inactive' | 'webhook_target_invalid' | 'webhook_target_not_allowed' | 'webhook_unavailable' | 'site_not_found' | 'site_scope_conflict' | 'site_revision_conflict' | 'site_operation_conflict' | 'site_has_history' | 'site_paused' | 'site_order_limit_exceeded' | 'site_secret_missing' | 'demo_read_only' | 'site_settings_moved';
 export type ErrorEnvelope = {
     error: {
         code: ErrorCode;
@@ -3007,6 +3007,715 @@ export type UpdateCollectionPolicyResponses = {
     200: RuntimeSettingsEnvelope;
 };
 export type UpdateCollectionPolicyResponse = UpdateCollectionPolicyResponses[keyof UpdateCollectionPolicyResponses];
+export type SiteGetAdministratorSystemAnalyticsData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: {
+        range?: 7 | 30 | 90;
+    };
+    url: '/api/admin/v1/sites/{clientId}/system/analytics';
+};
+export type SiteGetAdministratorSystemAnalyticsErrors = {
+    401: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    422: ErrorEnvelope;
+};
+export type SiteGetAdministratorSystemAnalyticsError = SiteGetAdministratorSystemAnalyticsErrors[keyof SiteGetAdministratorSystemAnalyticsErrors];
+export type SiteGetAdministratorSystemAnalyticsResponses = {
+    200: SystemAnalyticsEnvelope;
+};
+export type SiteGetAdministratorSystemAnalyticsResponse = SiteGetAdministratorSystemAnalyticsResponses[keyof SiteGetAdministratorSystemAnalyticsResponses];
+export type SiteListAdministratorWorkItemsData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: {
+        type?: AdminWorkItemTypeFilter;
+        visibility?: 'ACTIVE' | 'IGNORED';
+        q?: string;
+        sort_by?: 'actionable_at' | 'created_at' | 'ignored_at';
+        sort_order?: 'asc' | 'desc';
+        limit?: number;
+        cursor?: string;
+    };
+    url: '/api/admin/v1/sites/{clientId}/work-items';
+};
+export type SiteListAdministratorWorkItemsErrors = {
+    401: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type SiteListAdministratorWorkItemsError = SiteListAdministratorWorkItemsErrors[keyof SiteListAdministratorWorkItemsErrors];
+export type SiteListAdministratorWorkItemsResponses = {
+    200: AdminWorkItemPageEnvelope;
+};
+export type SiteListAdministratorWorkItemsResponse = SiteListAdministratorWorkItemsResponses[keyof SiteListAdministratorWorkItemsResponses];
+export type SiteGetAdministratorWorkItemSummaryData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/work-items/summary';
+};
+export type SiteGetAdministratorWorkItemSummaryErrors = {
+    401: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    422: ErrorEnvelope;
+};
+export type SiteGetAdministratorWorkItemSummaryError = SiteGetAdministratorWorkItemSummaryErrors[keyof SiteGetAdministratorWorkItemSummaryErrors];
+export type SiteGetAdministratorWorkItemSummaryResponses = {
+    200: {
+        data: {
+            total: number;
+        };
+    };
+};
+export type SiteGetAdministratorWorkItemSummaryResponse = SiteGetAdministratorWorkItemSummaryResponses[keyof SiteGetAdministratorWorkItemSummaryResponses];
+export type SiteIgnoreAllAdministratorWorkItemsData = {
+    body: {
+        operation_id: ResourceId;
+        type: AdminWorkItemTypeFilter;
+        q?: string;
+    };
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/work-items/actions/ignore-all';
+};
+export type SiteIgnoreAllAdministratorWorkItemsErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+};
+export type SiteIgnoreAllAdministratorWorkItemsError = SiteIgnoreAllAdministratorWorkItemsErrors[keyof SiteIgnoreAllAdministratorWorkItemsErrors];
+export type SiteIgnoreAllAdministratorWorkItemsResponses = {
+    200: IgnoreAllWorkItemsEnvelope;
+};
+export type SiteIgnoreAllAdministratorWorkItemsResponse = SiteIgnoreAllAdministratorWorkItemsResponses[keyof SiteIgnoreAllAdministratorWorkItemsResponses];
+export type SiteRestoreAdministratorWorkItemData = {
+    body: AdminOperationRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        clientId: string;
+        type: 'FINANCIAL_EXCEPTION' | 'LEDGER_CONFLICT' | 'NOTIFICATION_FAILURE';
+        resourceId: ResourceId;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/work-items/{type}/{resourceId}/actions/restore';
+};
+export type SiteRestoreAdministratorWorkItemErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+};
+export type SiteRestoreAdministratorWorkItemError = SiteRestoreAdministratorWorkItemErrors[keyof SiteRestoreAdministratorWorkItemErrors];
+export type SiteRestoreAdministratorWorkItemResponses = {
+    200: RestoreWorkItemEnvelope;
+};
+export type SiteRestoreAdministratorWorkItemResponse = SiteRestoreAdministratorWorkItemResponses[keyof SiteRestoreAdministratorWorkItemResponses];
+export type SiteListAdministratorOrdersData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: {
+        created_from?: string;
+        created_to?: string;
+        checkout_status?: CheckoutStatus;
+        payment_status?: PaymentStatus;
+        q?: string;
+        sort_by?: 'created_at' | 'payable_amount_cents' | 'received_amount_cents';
+        sort_order?: 'asc' | 'desc';
+        limit?: number;
+        cursor?: string;
+    };
+    url: '/api/admin/v1/sites/{clientId}/orders';
+};
+export type SiteListAdministratorOrdersErrors = {
+    401: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type SiteListAdministratorOrdersError = SiteListAdministratorOrdersErrors[keyof SiteListAdministratorOrdersErrors];
+export type SiteListAdministratorOrdersResponses = {
+    200: AdminOrderPageEnvelope;
+};
+export type SiteListAdministratorOrdersResponse = SiteListAdministratorOrdersResponses[keyof SiteListAdministratorOrdersResponses];
+export type SiteExportAdministratorOrdersData = {
+    body: {
+        created_from: string;
+        created_to: string;
+        q?: string;
+        sort_by?: 'created_at' | 'payable_amount_cents' | 'received_amount_cents';
+        sort_order?: 'asc' | 'desc';
+        payment_status?: PaymentStatus;
+        checkout_status?: CheckoutStatus;
+    };
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/orders/export';
+};
+export type SiteExportAdministratorOrdersErrors = {
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type SiteExportAdministratorOrdersError = SiteExportAdministratorOrdersErrors[keyof SiteExportAdministratorOrdersErrors];
+export type SiteExportAdministratorOrdersResponses = {
+    200: string;
+};
+export type SiteExportAdministratorOrdersResponse = SiteExportAdministratorOrdersResponses[keyof SiteExportAdministratorOrdersResponses];
+export type SiteCreateAdministratorTestPaymentData = {
+    body: {
+        test_payment_id: string;
+        amount_cents: number;
+    };
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/test-payments';
+};
+export type SiteCreateAdministratorTestPaymentErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type SiteCreateAdministratorTestPaymentError = SiteCreateAdministratorTestPaymentErrors[keyof SiteCreateAdministratorTestPaymentErrors];
+export type SiteCreateAdministratorTestPaymentResponses = {
+    200: OrderEnvelope;
+    201: OrderEnvelope;
+};
+export type SiteCreateAdministratorTestPaymentResponse = SiteCreateAdministratorTestPaymentResponses[keyof SiteCreateAdministratorTestPaymentResponses];
+export type SiteGetAdministratorOrderByMerchantNumberData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path: {
+        clientId: string;
+        merchantOrderNo: MerchantOrderNumber;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/orders/by-merchant-no/{merchantOrderNo}';
+};
+export type SiteGetAdministratorOrderByMerchantNumberErrors = {
+    401: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type SiteGetAdministratorOrderByMerchantNumberError = SiteGetAdministratorOrderByMerchantNumberErrors[keyof SiteGetAdministratorOrderByMerchantNumberErrors];
+export type SiteGetAdministratorOrderByMerchantNumberResponses = {
+    200: AdminOrderDetailEnvelope;
+};
+export type SiteGetAdministratorOrderByMerchantNumberResponse = SiteGetAdministratorOrderByMerchantNumberResponses[keyof SiteGetAdministratorOrderByMerchantNumberResponses];
+export type SiteGetAdministratorOrderData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path: {
+        clientId: string;
+        orderId: ResourceId;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/orders/{orderId}';
+};
+export type SiteGetAdministratorOrderErrors = {
+    401: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type SiteGetAdministratorOrderError = SiteGetAdministratorOrderErrors[keyof SiteGetAdministratorOrderErrors];
+export type SiteGetAdministratorOrderResponses = {
+    200: AdminOrderDetailEnvelope;
+};
+export type SiteGetAdministratorOrderResponse = SiteGetAdministratorOrderResponses[keyof SiteGetAdministratorOrderResponses];
+export type SiteOpenAdministratorOrderCheckoutData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path: {
+        clientId: string;
+        orderId: ResourceId;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/orders/{orderId}/checkout';
+};
+export type SiteOpenAdministratorOrderCheckoutErrors = {
+    401: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type SiteOpenAdministratorOrderCheckoutError = SiteOpenAdministratorOrderCheckoutErrors[keyof SiteOpenAdministratorOrderCheckoutErrors];
+export type SiteListAdministratorOrderWebhookDeliveriesData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path: {
+        clientId: string;
+        orderId: ResourceId;
+    };
+    query?: {
+        limit?: number;
+        cursor?: string;
+    };
+    url: '/api/admin/v1/sites/{clientId}/orders/{orderId}/notifications/deliveries';
+};
+export type SiteListAdministratorOrderWebhookDeliveriesErrors = {
+    401: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type SiteListAdministratorOrderWebhookDeliveriesError = SiteListAdministratorOrderWebhookDeliveriesErrors[keyof SiteListAdministratorOrderWebhookDeliveriesErrors];
+export type SiteListAdministratorOrderWebhookDeliveriesResponses = {
+    200: OrderWebhookDeliveryPageEnvelope;
+};
+export type SiteListAdministratorOrderWebhookDeliveriesResponse = SiteListAdministratorOrderWebhookDeliveriesResponses[keyof SiteListAdministratorOrderWebhookDeliveriesResponses];
+export type SiteSetAdministratorRefundMarkData = {
+    body: AdminRefundMarkRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        clientId: string;
+        orderId: ResourceId;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/orders/{orderId}/refund-mark';
+};
+export type SiteSetAdministratorRefundMarkErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+};
+export type SiteSetAdministratorRefundMarkError = SiteSetAdministratorRefundMarkErrors[keyof SiteSetAdministratorRefundMarkErrors];
+export type SiteSetAdministratorRefundMarkResponses = {
+    200: AdminRefundMarkEnvelope;
+};
+export type SiteSetAdministratorRefundMarkResponse = SiteSetAdministratorRefundMarkResponses[keyof SiteSetAdministratorRefundMarkResponses];
+export type SiteListWebhookDeliveriesData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: {
+        created_from?: string;
+        created_to?: string;
+        status?: WebhookDeliveryStatus;
+        q?: string;
+        sort_by?: 'created_at' | 'attempt_count' | 'next_attempt_at';
+        sort_order?: 'asc' | 'desc';
+        limit?: number;
+        cursor?: string;
+    };
+    url: '/api/admin/v1/sites/{clientId}/webhooks/deliveries';
+};
+export type SiteListWebhookDeliveriesErrors = {
+    401: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type SiteListWebhookDeliveriesError = SiteListWebhookDeliveriesErrors[keyof SiteListWebhookDeliveriesErrors];
+export type SiteListWebhookDeliveriesResponses = {
+    200: WebhookDeliveryPageEnvelope;
+};
+export type SiteListWebhookDeliveriesResponse = SiteListWebhookDeliveriesResponses[keyof SiteListWebhookDeliveriesResponses];
+export type SiteGetWebhookDeliveryData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path: {
+        clientId: string;
+        deliveryId: ResourceId;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/webhooks/deliveries/{deliveryId}';
+};
+export type SiteGetWebhookDeliveryErrors = {
+    401: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type SiteGetWebhookDeliveryError = SiteGetWebhookDeliveryErrors[keyof SiteGetWebhookDeliveryErrors];
+export type SiteGetWebhookDeliveryResponses = {
+    200: WebhookDeliveryDetailEnvelope;
+};
+export type SiteGetWebhookDeliveryResponse = SiteGetWebhookDeliveryResponses[keyof SiteGetWebhookDeliveryResponses];
+export type SiteListWebhookDeliveryAttemptsData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path: {
+        clientId: string;
+        deliveryId: ResourceId;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/webhooks/deliveries/{deliveryId}/attempts';
+};
+export type SiteListWebhookDeliveryAttemptsErrors = {
+    401: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type SiteListWebhookDeliveryAttemptsError = SiteListWebhookDeliveryAttemptsErrors[keyof SiteListWebhookDeliveryAttemptsErrors];
+export type SiteListWebhookDeliveryAttemptsResponses = {
+    200: WebhookAttemptListEnvelope;
+};
+export type SiteListWebhookDeliveryAttemptsResponse = SiteListWebhookDeliveryAttemptsResponses[keyof SiteListWebhookDeliveryAttemptsResponses];
+export type SiteRedeliverWebhookDeliveryData = {
+    body: WebhookRedeliveryRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        clientId: string;
+        deliveryId: ResourceId;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/webhooks/deliveries/{deliveryId}/actions/redeliver';
+};
+export type SiteRedeliverWebhookDeliveryErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type SiteRedeliverWebhookDeliveryError = SiteRedeliverWebhookDeliveryErrors[keyof SiteRedeliverWebhookDeliveryErrors];
+export type SiteRedeliverWebhookDeliveryResponses = {
+    200: WebhookRedeliveryEnvelope;
+    201: WebhookRedeliveryEnvelope;
+};
+export type SiteRedeliverWebhookDeliveryResponse = SiteRedeliverWebhookDeliveryResponses[keyof SiteRedeliverWebhookDeliveryResponses];
+export type SiteGetReconciliationCandidateData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path: {
+        clientId: string;
+        candidateId: ResourceId;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/reconciliation/candidates/{candidateId}';
+};
+export type SiteGetReconciliationCandidateErrors = {
+    401: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type SiteGetReconciliationCandidateError = SiteGetReconciliationCandidateErrors[keyof SiteGetReconciliationCandidateErrors];
+export type SiteGetReconciliationCandidateResponses = {
+    200: MatchCandidateEnvelope;
+};
+export type SiteGetReconciliationCandidateResponse = SiteGetReconciliationCandidateResponses[keyof SiteGetReconciliationCandidateResponses];
+export type SiteGetPaymentMatchData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path: {
+        clientId: string;
+        paymentMatchId: ResourceId;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/reconciliation/matches/{paymentMatchId}';
+};
+export type SiteGetPaymentMatchErrors = {
+    401: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type SiteGetPaymentMatchError = SiteGetPaymentMatchErrors[keyof SiteGetPaymentMatchErrors];
+export type SiteGetPaymentMatchResponses = {
+    200: PaymentMatchEnvelope;
+};
+export type SiteGetPaymentMatchResponse = SiteGetPaymentMatchResponses[keyof SiteGetPaymentMatchResponses];
+export type SiteGetFinancialExceptionData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path: {
+        clientId: string;
+        exceptionId: ResourceId;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/reconciliation/exceptions/{exceptionId}';
+};
+export type SiteGetFinancialExceptionErrors = {
+    401: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type SiteGetFinancialExceptionError = SiteGetFinancialExceptionErrors[keyof SiteGetFinancialExceptionErrors];
+export type SiteGetFinancialExceptionResponses = {
+    200: FinancialExceptionEnvelope;
+};
+export type SiteGetFinancialExceptionResponse = SiteGetFinancialExceptionResponses[keyof SiteGetFinancialExceptionResponses];
+export type SiteGetReconciliationLedgerEntryData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path: {
+        clientId: string;
+        ledgerEntryId: ResourceId;
+    };
+    query?: {
+        order_id?: string;
+    };
+    url: '/api/admin/v1/sites/{clientId}/reconciliation/ledger-entries/{ledgerEntryId}';
+};
+export type SiteGetReconciliationLedgerEntryErrors = {
+    401: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type SiteGetReconciliationLedgerEntryError = SiteGetReconciliationLedgerEntryErrors[keyof SiteGetReconciliationLedgerEntryErrors];
+export type SiteGetReconciliationLedgerEntryResponses = {
+    200: ReconciliationLedgerEntryEnvelope;
+};
+export type SiteGetReconciliationLedgerEntryResponse = SiteGetReconciliationLedgerEntryResponses[keyof SiteGetReconciliationLedgerEntryResponses];
+export type SiteListLedgerEntryCandidatesData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path: {
+        clientId: string;
+        ledgerEntryId: ResourceId;
+    };
+    query?: {
+        order_id?: string;
+    };
+    url: '/api/admin/v1/sites/{clientId}/reconciliation/ledger-entries/{ledgerEntryId}/candidates';
+};
+export type SiteListLedgerEntryCandidatesErrors = {
+    401: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type SiteListLedgerEntryCandidatesError = SiteListLedgerEntryCandidatesErrors[keyof SiteListLedgerEntryCandidatesErrors];
+export type SiteListLedgerEntryCandidatesResponses = {
+    200: MatchCandidateListEnvelope;
+};
+export type SiteListLedgerEntryCandidatesResponse = SiteListLedgerEntryCandidatesResponses[keyof SiteListLedgerEntryCandidatesResponses];
+export type SiteListManualSettlementLedgerEntriesData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query: {
+        order_id: string;
+        q?: string;
+        view?: 'recommended' | 'all';
+        limit?: number;
+        cursor?: string;
+    };
+    url: '/api/admin/v1/sites/{clientId}/reconciliation/settlements/manual/ledger-entries';
+};
+export type SiteListManualSettlementLedgerEntriesErrors = {
+    401: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type SiteListManualSettlementLedgerEntriesError = SiteListManualSettlementLedgerEntriesErrors[keyof SiteListManualSettlementLedgerEntriesErrors];
+export type SiteListManualSettlementLedgerEntriesResponses = {
+    200: {
+        data: Array<ManualSettlementLedgerCandidate>;
+        page: ManualSettlementPageInfo;
+    };
+};
+export type SiteListManualSettlementLedgerEntriesResponse = SiteListManualSettlementLedgerEntriesResponses[keyof SiteListManualSettlementLedgerEntriesResponses];
+export type SiteCreateManualSettlementData = {
+    body: ManualSettlement;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/reconciliation/settlements/manual';
+};
+export type SiteCreateManualSettlementErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type SiteCreateManualSettlementError = SiteCreateManualSettlementErrors[keyof SiteCreateManualSettlementErrors];
+export type SiteCreateManualSettlementResponses = {
+    200: FinancialDecisionEnvelope;
+};
+export type SiteCreateManualSettlementResponse = SiteCreateManualSettlementResponses[keyof SiteCreateManualSettlementResponses];
+export type SiteReversePaymentSettlementData = {
+    body: FinancialDecision;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        clientId: string;
+        paymentMatchId: ResourceId;
+    };
+    query?: never;
+    url: '/api/admin/v1/sites/{clientId}/reconciliation/matches/{paymentMatchId}/actions/reverse';
+};
+export type SiteReversePaymentSettlementErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type SiteReversePaymentSettlementError = SiteReversePaymentSettlementErrors[keyof SiteReversePaymentSettlementErrors];
+export type SiteReversePaymentSettlementResponses = {
+    200: FinancialDecisionEnvelope;
+};
+export type SiteReversePaymentSettlementResponse = SiteReversePaymentSettlementResponses[keyof SiteReversePaymentSettlementResponses];
+export type ListSiteOverviewData = {
+    body?: never;
+    path?: never;
+    query?: {
+        q?: string;
+        range?: 7 | 30 | 90;
+        limit?: number;
+        cursor?: string;
+    };
+    url: '/api/admin/v1/sites/overview';
+};
+export type ListSiteOverviewErrors = {
+    401: ErrorEnvelope;
+    422: ErrorEnvelope;
+};
+export type ListSiteOverviewError = ListSiteOverviewErrors[keyof ListSiteOverviewErrors];
+export type ListSiteOverviewResponses = {
+    200: {
+        data: Array<{
+            client_id: string;
+            name: string;
+            accepting_orders: boolean;
+            notifications_enabled: boolean;
+            confirmed_count: number;
+            confirmed_amount_cents: number;
+            pending_orders: number;
+            work_items: number;
+        }>;
+        page: {
+            next_cursor: string | null;
+        };
+    };
+};
+export type ListSiteOverviewResponse = ListSiteOverviewResponses[keyof ListSiteOverviewResponses];
 export type ReceivePaymentOrderWebhookWebhookPayload = WebhookPayload;
 export type ReceivePaymentOrderWebhookWebhookRequest = {
     body: ReceivePaymentOrderWebhookWebhookPayload;

@@ -1,3 +1,4 @@
+import { assertSiteResource } from "../sites/admin-scope.ts";
 import { siteClientIdSchema } from "../sites/model.ts";
 import {
   ListQueryError,
@@ -131,7 +132,7 @@ interface WorkItemRow {
 
 // One projection drives tabs, home-page reminders, status counts, bulk selection and restore checks.
 // It includes ended records so ignored history survives the underlying resolution.
-const WORK_ITEMS_CTE = `
+export const WORK_ITEMS_CTE = `
   WITH resources AS (
     SELECT 'FINANCIAL_EXCEPTION' AS kind, exception.exception_id AS item_id,
       exception.provider_account_key, exception.status, exception.exception_type AS category,
@@ -446,6 +447,10 @@ export function restoreAdminWorkItem(
     resource_id: input.resource_id,
   });
   return database.write((connection) => {
+    if (context.expectedClientId) {
+      if (input.type === "LEDGER_CONFLICT") throw new AdminOperationError(404, "work_item_not_found", "共享冲突请在一级后台处理");
+      assertSiteResource(connection, context.expectedClientId, input.type === "NOTIFICATION_FAILURE" ? "delivery" : "exception", input.resource_id);
+    }
     const replay = replayAdminOperation<RestoreWorkItemResult>(
       connection,
       input.operation_id,

@@ -83,6 +83,7 @@ export const HTTP_ERROR_CODES = Object.freeze([
   "webhook_target_not_allowed",
   "webhook_unavailable",
   "site_not_found",
+  "site_scope_conflict",
   "site_revision_conflict",
   "site_operation_conflict",
   "site_has_history",

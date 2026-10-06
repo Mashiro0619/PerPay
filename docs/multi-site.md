@@ -67,3 +67,28 @@ PerPay 1.0.0 支持多个自有网站共用一套经营收款码、支付宝开�
 旧网站无损迁移为普通网站 `default`，保留已有密钥、订单、幂等命名空间、nonce 和通知引用；从未签发的密钥不补发。新装不会创建隐藏的 `default`。
 
 必须先停止 app 和 backup、备份并单独保管主密钥，维护工具与数据库版本匹配。schema 34 事务需要主密钥验证和业务密文重加密；回退必须恢复升级前备份，不可直接用 0.3.2 打开新库。详见 [1.0.0 升级与破坏性变更](releases/v1.0.0.md)。
+
+## 管理接口的网站范围
+
+同一管理员会话可使用全局 `/api/admin/v1/orders`，也可使用网站路径
+`/api/admin/v1/sites/{clientId}/orders`；后者的身份只来自路径，正文和查询均不得再传 `api_client_id`。
+订单详情、导出、通知及尝试、待办、测试收款和订单财务操作沿用相同结构，完整路径见 OpenAPI。
+本站路径中的其他网站资源返回 404；涉及共享账本冲突或其他网站收款证据的新财务操作返回
+`409 site_scope_conflict`，须在一级共享账本处理。合法历史操作的指纹和重试结果保持不变。
+
+`GET /api/admin/v1/sites/overview?range=30&limit=20&q=网站名称` 分页批量返回网站概览：
+`confirmed_count` 与 `confirmed_amount_cents` 是选定北京时间区间内的确认订单指标；
+`pending_orders` 和 `work_items` 是当前状态指标。网站游标绑定搜索和时间范围，不可跨条件复用。
+全局总量取全局概览，不累加当前分页的网站行。
+
+示例（继续使用现有会话和 CSRF 保护，不使用商户 HMAC）：
+
+```http
+GET /api/admin/v1/sites/site_xxx/orders?payment_status=UNPAID
+GET /api/admin/v1/sites/site_xxx/orders/{orderId}
+GET /api/admin/v1/sites/site_xxx/webhooks/deliveries/{deliveryId}/attempts
+POST /api/admin/v1/sites/site_xxx/reconciliation/settlements/manual
+Content-Type: application/json
+
+{"financial_operation_id":"原操作 UUID","order_id":"本站订单 UUID","ledger_entry_id":"共享流水 UUID","reason":"核实依据"}
+```

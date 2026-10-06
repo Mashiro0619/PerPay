@@ -3160,6 +3160,1737 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CollectionPolicyRequest"
+  /api/admin/v1/sites/{clientId}/system/analytics:
+    get:
+      tags:
+        - System
+      operationId: siteGetAdministratorSystemAnalytics
+      summary: 本站：Read real order and notification aggregates for the dashboard
+      description: Returns daily aggregates from SQLite using Beijing calendar days
+        (Asia/Shanghai, UTC+08:00), including the current day. Empty days are
+        returned as zeroes; the endpoint never creates synthetic activity or trend
+        values. Range boundaries are absolute ISO 8601 timestamps.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - name: range
+          in: query
+          required: false
+          description: Number of Beijing calendar days to include. Defaults to 30.
+          schema:
+            type: integer
+            enum:
+              - 7
+              - 30
+              - 90
+            default: 30
+      responses:
+        "200":
+          description: Real dashboard aggregates and daily series
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemAnalyticsEnvelope"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /api/admin/v1/sites/{clientId}/work-items:
+    get:
+      tags:
+        - System
+      operationId: siteListAdministratorWorkItems
+      summary: 本站：Page through active or dismissed administrator reminders
+      description: >
+        Searches item and related business IDs, product name, external event ID,
+        notification URL and error/type codes before paging. ignored_at sorting is
+        valid only for IGNORED. New cursors bind keyword, sort, type and
+        visibility; old cursors only with original defaults. Pagination is a live
+        list, not a persistent database snapshot. ACTIVE combines undismissed open
+        financial exceptions, open ledger conflicts, retry-wait notifications and
+        latest dead-letter notifications from every retained provider generation.
+        Legacy UNMATCHED_DEBIT and UNLINKED_REFUND warnings are excluded without
+        changing their status. A single SQLite read drives each page and home-page
+        reminders. By default ACTIVE sorts by descending actionable time, type and
+        resource ID; IGNORED sorts by dismissal time, type and resource ID.
+        IGNORED retains resolved or acknowledged records with ended=true and keeps
+        ignored notifications visible during subsequent pending/leased retries.
+        Each item links to its original detailed resource endpoint. Dismissal
+        changes neither financial facts nor conflict constraints and never stops
+        notification retries.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - name: type
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AdminWorkItemTypeFilter"
+        - name: visibility
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - ACTIVE
+              - IGNORED
+            default: ACTIVE
+        - name: q
+          in: query
+          required: false
+          description: Trimmed literal substring, at most 100 Unicode characters. No
+            wildcard expansion and no raw payload, secret or financial-reason
+            search.
+          schema:
+            type: string
+            maxLength: 100
+        - name: sort_by
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - actionable_at
+              - created_at
+              - ignored_at
+        - name: sort_order
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: desc
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque canonical base64url cursor returned by the previous page.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 2048
+            pattern: ^[A-Za-z0-9_-]+$
+      responses:
+        "200":
+          description: One globally ordered page of active or ignored reminders
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminWorkItemPageEnvelope"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /api/admin/v1/sites/{clientId}/work-items/summary:
+    get:
+      tags:
+        - System
+      operationId: siteGetAdministratorWorkItemSummary
+      summary: 本站：Count current actionable reminders, optionally scoped by website
+      description: Counts the complete ACTIVE work-item view before pagination,
+        without date or keyword filtering. Website scope includes only explicitly
+        owned order reminders; shared conflicts and unallocated exceptions remain
+        global. Read failures return an error, never a zero count.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Current actionable reminder totals
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: false
+                    required:
+                      - total
+                    properties:
+                      total:
+                        type: integer
+                        minimum: 0
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /api/admin/v1/sites/{clientId}/work-items/actions/ignore-all:
+    post:
+      tags:
+        - System
+      operationId: siteIgnoreAllAdministratorWorkItems
+      summary: 本站：Dismiss every current reminder in the selected category, across all
+        pages
+      description: Dismisses reminders only. Underlying evidence, conflicts and
+        notification retries are unchanged. The operation UUID replays its
+        original result without dismissing newer items.
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - operation_id
+                - type
+              properties:
+                operation_id:
+                  $ref: "#/components/schemas/ResourceId"
+                type:
+                  $ref: "#/components/schemas/AdminWorkItemTypeFilter"
+                q:
+                  type: string
+                  maxLength: 100
+                  description: Optional normalized keyword defining the complete matching scope
+                    across pages. Retry must keep the same operation ID and
+                    normalized keyword. Empty keywords preserve legacy request
+                    fingerprints.
+      responses:
+        "200":
+          description: Original batch result, including on replay
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IgnoreAllWorkItemsEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /api/admin/v1/sites/{clientId}/work-items/{type}/{resourceId}/actions/restore:
+    post:
+      tags:
+        - System
+      operationId: siteRestoreAdministratorWorkItem
+      summary: 本站：Restore a dismissed reminder without changing its underlying record
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - FINANCIAL_EXCEPTION
+              - LEDGER_CONFLICT
+              - NOTIFICATION_FAILURE
+        - name: resourceId
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/ResourceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminOperationRequest"
+      responses:
+        "200":
+          description: Reminder restored or original result replayed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestoreWorkItemEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /api/admin/v1/sites/{clientId}/orders:
+    get:
+      tags:
+        - Admin Orders
+      operationId: siteListAdministratorOrders
+      summary: 本站：Page through orders for operational inspection
+      description: >
+        Search covers order ID, merchant order number and product name before
+        pagination. Default order is creation time descending, then order ID.
+        Sorting uses an ID tie-breaker and puts nulls last. New cursors bind the
+        normalized keyword, sort and both status filters; old cursors are accepted
+        only with their original default query. Lists remain live, not database
+        snapshots. Checkout tokens, token digests, idempotency digests, request
+        fingerprints, and secrets are never returned.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CreatedFrom"
+        - $ref: "#/components/parameters/CreatedTo"
+        - $ref: "#/components/parameters/RequestId"
+        - name: checkout_status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/CheckoutStatus"
+        - name: payment_status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/PaymentStatus"
+        - name: q
+          in: query
+          required: false
+          description: Trimmed literal substring, at most 100 Unicode characters. Percent
+            and underscore are ordinary text; secrets, raw payloads and financial
+            reasons are not searched.
+          schema:
+            type: string
+            maxLength: 100
+        - name: sort_by
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - created_at
+              - payable_amount_cents
+              - received_amount_cents
+            default: created_at
+        - name: sort_order
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: desc
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque canonical base64url cursor returned by the preceding page.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 2048
+            pattern: ^[A-Za-z0-9_-]+$
+      responses:
+        "200":
+          description: Filtered administrator order page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOrderPageEnvelope"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /api/admin/v1/sites/{clientId}/orders/export:
+    post:
+      tags:
+        - Admin Orders
+      operationId: siteExportAdministratorOrders
+      summary: 本站：Export all matching orders as a protected UTF-8 CSV
+      description: >
+        Requires administrator session, same origin and CSRF; session is checked
+        again after reading the body. A single SELECT provides a consistent
+        snapshot without expiry sweeps or financial writes. Required creation
+        dates include both Beijing days, at most 366 days. At most 10,000 matching
+        orders; excess results fail with validation_failed, never a truncated
+        file. Filters and sorting match the order list. CSV uses a UTF-8 BOM,
+        CRLF, quoted cells and spreadsheet formula protection. Fixed fields are
+        merchant number, internal ID, product, original/payable/received amounts
+        (two decimals, null received is blank), currency, current payment and
+        checkout status, creation time, latest PAYMENT_CONFIRMED time (Beijing).
+        Disputed orders retain historical confirmation times; these are not
+        provider transaction timestamps. No notes, notification payloads, keys or
+        checkout capability links are included.
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - created_from
+                - created_to
+              properties:
+                created_from:
+                  type: string
+                  format: date
+                created_to:
+                  type: string
+                  format: date
+                q:
+                  type: string
+                  maxLength: 100
+                sort_by:
+                  type: string
+                  enum:
+                    - created_at
+                    - payable_amount_cents
+                    - received_amount_cents
+                  default: created_at
+                sort_order:
+                  type: string
+                  enum:
+                    - asc
+                    - desc
+                  default: desc
+                payment_status:
+                  $ref: "#/components/schemas/PaymentStatus"
+                checkout_status:
+                  $ref: "#/components/schemas/CheckoutStatus"
+      responses:
+        "200":
+          description: Complete order CSV attachment
+          content:
+            text/csv:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /api/admin/v1/sites/{clientId}/test-payments:
+    post:
+      tags:
+        - Admin Orders
+      operationId: siteCreateAdministratorTestPayment
+      summary: 本站：Create a real small-value payment test order
+      description: Creates an ordinary collection-code order that must pass through
+        the configured provider collection and automatic reconciliation path. It
+        never simulates a ledger entry or payment confirmation, does not request a
+        notification delivery, and does not refund a real transfer. The same
+        `test_payment_id` and amount replay the original order; reusing the
+        identifier with another amount returns an idempotency conflict. The
+        returned payable amount may include a unique amount offset and is the
+        exact amount the payer must use.
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - test_payment_id
+                - amount_cents
+              properties:
+                test_payment_id:
+                  type: string
+                  format: uuid
+                  pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$
+                  description: Client-generated UUID v4 retained across retries of the same user
+                    action.
+                amount_cents:
+                  type: integer
+                  minimum: 1
+                  maximum: 10000
+            example:
+              test_payment_id: 12345678-1234-4123-8123-123456789abc
+              amount_cents: 100
+      responses:
+        "200":
+          description: The idempotent test order already existed
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderEnvelope"
+        "201":
+          description: Test order created
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /api/admin/v1/sites/{clientId}/orders/by-merchant-no/{merchantOrderNo}:
+    get:
+      tags:
+        - Admin Orders
+      operationId: siteGetAdministratorOrderByMerchantNumber
+      summary: 本站：Read one order by its exact merchant order number
+      description: Uses the instance's configured API client scope without requiring
+        merchant HMAC credentials.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - name: merchantOrderNo
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/MerchantOrderNumber"
+      responses:
+        "200":
+          description: Sanitized order detail and immutable event history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOrderDetailEnvelope"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /api/admin/v1/sites/{clientId}/orders/{orderId}:
+    get:
+      tags:
+        - Admin Orders
+      operationId: siteGetAdministratorOrder
+      summary: 本站：Read one order by its internal identifier
+      description: Returns sanitized order facts, its notification target, and
+        immutable event history.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/OrderId"
+      responses:
+        "200":
+          description: Sanitized order detail and immutable event history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOrderDetailEnvelope"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /api/admin/v1/sites/{clientId}/orders/{orderId}/checkout:
+    get:
+      tags:
+        - Admin Orders
+      operationId: siteOpenAdministratorOrderCheckout
+      summary: 本站：Open an order's existing public checkout in the browser
+      description: >
+        Requires an active administrator session. Redirects to the same-origin
+        public checkout using the order's existing capability; no new order,
+        token, or payment session is created. Intended for a browser link, not a
+        JSON fetch. List and detail JSON remain capability-free. This lookup does
+        not reopen closed or expired orders, extend validity, or change payment
+        state. The public checkout still enforces payment-entry readiness and the
+        original terminal observation window, and can return 404 after that window
+        has elapsed. The redirect response is not cacheable and does not send a
+        referrer.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/OrderId"
+      responses:
+        "302":
+          description: Same-origin navigation to the order's existing public checkout
+          headers:
+            Location:
+              required: true
+              description: Relative path to the existing capability-based checkout
+              schema:
+                type: string
+                pattern: ^/checkout/pct1_[A-Za-z0-9_-]{43}$
+            Cache-Control:
+              schema:
+                type: string
+                enum:
+                  - no-store
+            Referrer-Policy:
+              schema:
+                type: string
+                enum:
+                  - no-referrer
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /api/admin/v1/sites/{clientId}/orders/{orderId}/notifications/deliveries:
+    get:
+      tags:
+        - Admin Orders
+        - Notifications
+      operationId: siteListAdministratorOrderWebhookDeliveries
+      summary: 本站：Page through the complete notification delivery history for one order
+      description: >
+        Each item includes the immutable event, notification target, delivery
+        generation, and every persisted delivery attempt. Results use descending
+        creation-time and delivery-ID ordering. The opaque cursor is bound to the
+        order ID and cannot be reused for another order.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/OrderId"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque canonical base64url cursor returned by the previous page.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+            pattern: ^[A-Za-z0-9_-]+$
+      responses:
+        "200":
+          description: Complete notification delivery records belonging only to this order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderWebhookDeliveryPageEnvelope"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "503":
+          $ref: "#/components/responses/WebhookUnavailable"
+  /api/admin/v1/sites/{clientId}/orders/{orderId}/refund-mark:
+    put:
+      tags:
+        - Orders
+      operationId: siteSetAdministratorRefundMark
+      summary: 本站：Set or clear an administrator-only declaration of an external refund
+      description: Does not transfer funds, verify a refund, change payment facts or
+        emit a webhook. Marking requires a received amount and CONFIRMED or
+        DISPUTED payment; history is retained. The version is independent from the
+        business order version.
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/ResourceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminRefundMarkRequest"
+      responses:
+        "200":
+          description: Administrator mark recorded or original result replayed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminRefundMarkEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /api/admin/v1/sites/{clientId}/webhooks/deliveries:
+    get:
+      tags:
+        - Notifications
+      operationId: siteListWebhookDeliveries
+      summary: 本站：Page through notification deliveries
+      description: >
+        Search covers delivery/event/order IDs, merchant order number, target URL
+        and error code before pagination. Default order is creation time
+        ascending, then delivery ID. Nulls are always last; next_attempt_at is
+        null outside PENDING/RETRY_WAIT, matching the returned projection. New
+        cursors bind keyword, sort and status; old cursors work only with the
+        original default query. This is a live list, not a database snapshot.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CreatedFrom"
+        - $ref: "#/components/parameters/CreatedTo"
+        - $ref: "#/components/parameters/RequestId"
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/WebhookDeliveryStatus"
+        - name: q
+          in: query
+          required: false
+          description: Trimmed literal substring, at most 100 Unicode characters. Percent
+            and underscore are ordinary text; secrets, raw payloads and financial
+            reasons are not searched.
+          schema:
+            type: string
+            maxLength: 100
+        - name: sort_by
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - created_at
+              - attempt_count
+              - next_attempt_at
+            default: created_at
+        - name: sort_order
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: asc
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque, canonical base64url cursor returned by the preceding page.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 2048
+            pattern: ^[A-Za-z0-9_-]+$
+      responses:
+        "200":
+          description: Notification delivery page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookDeliveryPageEnvelope"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "503":
+          $ref: "#/components/responses/WebhookUnavailable"
+  /api/admin/v1/sites/{clientId}/webhooks/deliveries/{deliveryId}:
+    get:
+      tags:
+        - Notifications
+      operationId: siteGetWebhookDelivery
+      summary: 本站：Read one notification delivery
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/WebhookDeliveryId"
+      responses:
+        "200":
+          description: Delivery, immutable event, and target details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookDeliveryDetailEnvelope"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          $ref: "#/components/responses/WebhookUnavailable"
+  /api/admin/v1/sites/{clientId}/webhooks/deliveries/{deliveryId}/attempts:
+    get:
+      tags:
+        - Notifications
+      operationId: siteListWebhookDeliveryAttempts
+      summary: 本站：List persisted attempts for one notification delivery
+      description: >
+        Returns at most 100 attempts in attempt-number order. The internal
+        delivery lease token is deliberately excluded from every HTTP projection.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/WebhookDeliveryId"
+      responses:
+        "200":
+          description: Delivery attempts and diagnostic evidence
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookAttemptListEnvelope"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          $ref: "#/components/responses/WebhookUnavailable"
+  /api/admin/v1/sites/{clientId}/webhooks/deliveries/{deliveryId}/actions/redeliver:
+    post:
+      tags:
+        - Notifications
+      operationId: siteRedeliverWebhookDelivery
+      summary: 本站：Create or replay an administrative redelivery
+      description: >
+        Only the latest acknowledged or dead-letter delivery in an event-target
+        generation chain can be redelivered. An exact replay of the same
+        `redelivery_id`, actor, source delivery, and reason returns HTTP 200 with
+        the same delivery and `replayed: true`. Reuse with different input or
+        after the source state changes returns HTTP 409. An already-created exact
+        replay remains readable after delivery is disabled or the allowed origin
+        changes; only creation of a new generation is constrained by the current
+        configuration.
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - $ref: "#/components/parameters/WebhookDeliveryId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookRedeliveryRequest"
+      responses:
+        "200":
+          description: Exact idempotent replay of an existing redelivery
+          headers:
+            Location:
+              description: Administrative detail URL for the existing delivery.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookRedeliveryEnvelope"
+        "201":
+          description: A new pending redelivery generation was created
+          headers:
+            Location:
+              description: Administrative detail URL for the created delivery.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookRedeliveryEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "503":
+          $ref: "#/components/responses/WebhookUnavailable"
+  /api/admin/v1/sites/{clientId}/reconciliation/candidates/{candidateId}:
+    get:
+      tags:
+        - Reconciliation
+      operationId: siteGetReconciliationCandidate
+      summary: 本站：Read one amount-inferred match candidate
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CandidateId"
+      responses:
+        "200":
+          description: Match candidate and immutable evidence snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchCandidateEnvelope"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          $ref: "#/components/responses/ReconciliationUnavailable"
+  /api/admin/v1/sites/{clientId}/reconciliation/matches/{paymentMatchId}:
+    get:
+      tags:
+        - Reconciliation
+      operationId: siteGetPaymentMatch
+      summary: 本站：Read one settled or reversed payment association
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/PaymentMatchId"
+      responses:
+        "200":
+          description: Payment association, candidate evidence, ledger entry, order
+            summary, and state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentMatchEnvelope"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          $ref: "#/components/responses/ReconciliationUnavailable"
+  /api/admin/v1/sites/{clientId}/reconciliation/exceptions/{exceptionId}:
+    get:
+      tags:
+        - Reconciliation
+      operationId: siteGetFinancialException
+      summary: 本站：Read one financial exception
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/ExceptionId"
+      responses:
+        "200":
+          description: Financial exception and resolution state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinancialExceptionEnvelope"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          $ref: "#/components/responses/ReconciliationUnavailable"
+  /api/admin/v1/sites/{clientId}/reconciliation/ledger-entries/{ledgerEntryId}:
+    get:
+      tags:
+        - Reconciliation
+      operationId: siteGetReconciliationLedgerEntry
+      summary: 本站：Read one normalized ledger entry for administrator review
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/LedgerEntryId"
+        - name: order_id
+          in: query
+          schema:
+            type: string
+          description: 选择共享流水时固定的本站订单
+      responses:
+        "200":
+          description: Normalized ledger facts and declared transaction-time precision
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReconciliationLedgerEntryEnvelope"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          $ref: "#/components/responses/ReconciliationUnavailable"
+  /api/admin/v1/sites/{clientId}/reconciliation/ledger-entries/{ledgerEntryId}/candidates:
+    get:
+      tags:
+        - Reconciliation
+      operationId: siteListLedgerEntryCandidates
+      summary: 本站：List candidates generated for one ledger entry
+      description: A well-formed unknown ledger entry identifier returns HTTP 404.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/LedgerEntryId"
+        - name: order_id
+          in: query
+          schema:
+            type: string
+          description: 选择共享流水时固定的本站订单
+      responses:
+        "200":
+          description: Candidates ordered by creation time and identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchCandidateListEnvelope"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          $ref: "#/components/responses/ReconciliationUnavailable"
+  /api/admin/v1/sites/{clientId}/reconciliation/settlements/manual/ledger-entries:
+    get:
+      tags:
+        - Reconciliation
+      operationId: siteListManualSettlementLedgerEntries
+      summary: 本站：Search eligible ledger-entries for an administrator manual settlement
+      description: >
+        Read-only discovery; never creates matching candidates or financial facts.
+        Eligibility preserves unpaid/no-basis orders, compatible historical
+        provider ownership and currency, unallocated credit entries, and the
+        absence of an active settlement. Closed/expired unpaid orders remain
+        eligible. Recommended view restricts to equal amounts, prioritizes overlap
+        of the order/amount-slot window with the transaction timestamp interval,
+        then time distance; ties use record time and ID descending. All view uses
+        record time and ID descending. Search happens before pagination, treats
+        percent and underscore literally, and also matches a valid positive
+        decimal amount by exact integer cents. Cursors bind this endpoint,
+        context, normalized keyword and view. Results remain live, not snapshots.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - name: order_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+          description: Literal substring over identifiers and product name (orders) or
+            counterparty (ledger). Notes, financial reasons and raw payloads are
+            not searched.
+        - name: view
+          in: query
+          schema:
+            type: string
+            enum:
+              - recommended
+              - all
+          description: Defaults to recommended with context, otherwise all. Recommended
+            requires context.
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 2048
+      responses:
+        "200":
+          description: Eligible records with advisory recommendation evidence
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - data
+                  - page
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ManualSettlementLedgerCandidate"
+                  page:
+                    $ref: "#/components/schemas/ManualSettlementPageInfo"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /api/admin/v1/sites/{clientId}/reconciliation/settlements/manual:
+    post:
+      tags:
+        - Reconciliation
+      operationId: siteCreateManualSettlement
+      summary: 本站：Explicitly associate a collected credit with an unpaid order
+      description: >
+        The server does not require the credit amount to equal the requested or
+        payable amount. The administrator must have independently reviewed
+        sufficient payer evidence.
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+      requestBody:
+        $ref: "#/components/requestBodies/ManualSettlement"
+      responses:
+        "200":
+          description: Credit associated with the order or exactly replayed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinancialDecisionEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "503":
+          $ref: "#/components/responses/ReconciliationUnavailable"
+  /api/admin/v1/sites/{clientId}/reconciliation/matches/{paymentMatchId}/actions/reverse:
+    post:
+      tags:
+        - Reconciliation
+      operationId: siteReversePaymentSettlement
+      summary: 本站：Reverse an incorrect settled association
+      description: Posts reversing entries, marks the order disputed, and opens a
+        reconciliation exception.
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - $ref: "#/components/parameters/PaymentMatchId"
+      requestBody:
+        $ref: "#/components/requestBodies/FinancialDecision"
+      responses:
+        "200":
+          description: Settlement reversed or exactly replayed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinancialDecisionEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "503":
+          $ref: "#/components/responses/ReconciliationUnavailable"
+  /api/admin/v1/sites/overview:
+    get:
+      operationId: listSiteOverview
+      summary: 分页批量读取各网站概览
+      tags:
+        - Admin Orders
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 128
+        - name: range
+          in: query
+          schema:
+            type: integer
+            enum:
+              - 7
+              - 30
+              - 90
+            default: 30
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 区间确认指标与当前待付款和待办数量；按网站批量聚合
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - page
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                        - client_id
+                        - name
+                        - accepting_orders
+                        - notifications_enabled
+                        - confirmed_count
+                        - confirmed_amount_cents
+                        - pending_orders
+                        - work_items
+                      properties:
+                        client_id:
+                          type: string
+                        name:
+                          type: string
+                        accepting_orders:
+                          type: boolean
+                        notifications_enabled:
+                          type: boolean
+                        confirmed_count:
+                          type: integer
+                          minimum: 0
+                        confirmed_amount_cents:
+                          type: integer
+                          minimum: 0
+                        pending_orders:
+                          type: integer
+                          minimum: 0
+                        work_items:
+                          type: integer
+                          minimum: 0
+                  page:
+                    type: object
+                    required:
+                      - next_cursor
+                    properties:
+                      next_cursor:
+                        type:
+                          - string
+                          - "null"
+        "401":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: 请求范围不匹配或资源不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 webhooks:
   paymentOrderStateChanged:
     post:
@@ -6606,6 +8337,7 @@ components:
         - webhook_target_not_allowed
         - webhook_unavailable
         - site_not_found
+        - site_scope_conflict
         - site_revision_conflict
         - site_operation_conflict
         - site_has_history

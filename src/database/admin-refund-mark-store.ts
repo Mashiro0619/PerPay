@@ -1,3 +1,4 @@
+import { assertSiteOrder } from "../sites/admin-scope.ts";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import type { AppDatabase } from "./database.ts";
@@ -42,6 +43,7 @@ export function setAdminRefundMark(database: AppDatabase, orderId: string, input
   const note = request.note || null;
   const fingerprint = adminFingerprint({ order_id: orderId, version: request.version, marked: request.marked, note });
   return database.write((connection) => {
+    assertSiteOrder(connection, context.expectedClientId, orderId);
     const replay = replayAdminOperation<{ operation_id: string; refund_mark: AdminRefundMark }>(connection, request.operation_id, "orders.refund_mark", fingerprint, context.actorId);
     if (replay) return replay;
     const order = connection.prepare("SELECT payment_status, received_amount_cents FROM payment_orders WHERE order_id = ?").get(orderId) as { payment_status: string; received_amount_cents: number | bigint | null } | undefined;

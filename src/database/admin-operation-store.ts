@@ -7,13 +7,14 @@ import { appendAuditEvent } from "./identity-store.ts";
 export const adminOperationIdSchema = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 export type AdminOperationAction = "work_items.ignore_all" | "work_items.restore" | "orders.refund_mark";
 export interface AdminOperationContext {
+  readonly expectedClientId?: string | undefined;
   readonly actorId: string;
   readonly requestId?: string | undefined;
   readonly remoteAddressHash?: string | undefined;
   readonly now?: number | undefined;
 }
 export type AdminOperationErrorCode = "admin_operation_conflict" | "work_item_not_found" | "work_item_ended"
-  | "order_not_found" | "refund_mark_version_conflict" | "refund_mark_not_allowed" | "refund_recording_retired";
+  | "site_scope_conflict" | "order_not_found" | "refund_mark_version_conflict" | "refund_mark_not_allowed" | "refund_recording_retired";
 export class AdminOperationError extends Error {
   readonly status: 404 | 409 | 410;
   readonly code: AdminOperationErrorCode;

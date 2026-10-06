@@ -1,3 +1,5 @@
+import { assertSiteOrder, assertSiteResource, assertSiteLedger, SITE_ADMIN_ROUTES } from "../sites/admin-scope.ts";
+import { siteOverview } from "./site-overview.ts";
 import { collectionCodeInputSchema, providerApplicationInputSchema, instanceDisplayInputSchema } from "../settings/model.ts";
 import { SiteError, type SiteStore } from "../sites/store.ts";
 import { createSiteInputSchema, updateSiteInputSchema, updateSiteDefaultsInputSchema, siteClientIdSchema, type SiteSnapshot } from "../sites/model.ts";
@@ -168,6 +170,7 @@ const LEDGER_CONFLICT_STATUSES = new Set<LedgerConflictStatus>([
 type AppEnvironment = {
   Bindings: Partial<HttpBindings>;
   Variables: {
+    adminSiteId: string | undefined;
     requestId: string;
     adminSession: AuthenticatedSession;
     apiRawBody: Buffer;
@@ -628,7 +631,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   });
 
   app.get("/api/admin/v1/system/analytics", adminSession, (context) => {
-    const values = new URL(context.req.url).searchParams;
+    const values = adminQuery(context);
     const rawRange = values.get("range");
     const clientId = values.get("api_client_id");
     if (values.size > (rawRange === null ? 0 : 1) + (clientId === null ? 0 : 1) || [...values.keys()].some(key => key !== "range" && key !== "api_client_id") || (clientId !== null && !siteClientIdSchema.safeParse(clientId).success) || (rawRange !== null && !/^(?:7|30|90)$/.test(rawRange))) {
@@ -638,7 +641,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   });
 
   app.get("/api/admin/v1/work-items/summary", adminSession, (context) => {
-    const values = new URL(context.req.url).searchParams;
+    const values = adminQuery(context);
     const clientId = values.get("api_client_id");
     if ([...values.keys()].some(key => key !== "api_client_id") || values.getAll("api_client_id").length > 1 ||
       (clientId !== null && !siteClientIdSchema.safeParse(clientId).success)) {
@@ -728,7 +731,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     (context) => {
       const parsed = merchantOrderNumberSchema.safeParse(context.req.param("merchantOrderNo"));
       if (!parsed.success) throw orderNotFoundHttpError();
-      const values = new URL(context.req.url).searchParams;
+      const values = adminQuery(context);
       const clientIds = values.getAll("api_client_id");
       if (dependencies.sites && (clientIds.length !== 1 || !siteClientIdSchema.safeParse(clientIds[0]).success)) throw new HttpApiError(422, "validation_failed", "请指定商户订单号所属的业务网站");
       const service = dependencies.sites ? dependencies.orders.forSite(clientIds[0]!) : dependencies.orders;
@@ -777,6 +780,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   );
 
   if (dependencies.sites) {
+    app.get("/api/admin/v1/sites/overview", adminSession, context => context.json(siteOverview(dependencies.database, new URL(context.req.url).searchParams, dependencies.clock?.() ?? Date.now())));
     const sites = dependencies.sites;
     const siteId = (context: Context<AppEnvironment>) => {
       const parsed = siteClientIdSchema.safeParse(context.req.param("clientId"));
@@ -1270,7 +1274,11 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const {query, encode} = readManualCandidateQuery(new URL(context.req.url).searchParams, "ledger-entries");
     const page = requireReconciliationStore(dependencies).manualLedgerPage(query);
     if (!page) throw new HttpApiError(404, "order_not_found", "订单不存在");
-    return context.json({data: page.items.map(item => ({ledger_entry: serializeReconciliationLedger(item.record), recommendation: serializeManualRecommendation(item.recommendation)})), page: {next_cursor: encode(page.nextPosition)}});
+    const safeItems = context.get("adminSiteId") ? dependencies.database.read(db => page.items.filter(item => {
+      try { assertSiteLedger(db, context.get("adminSiteId"), item.record.ledgerEntryId); return true; }
+      catch (error) { if (error instanceof AdminOperationError && error.code === "site_scope_conflict") return false; throw error; }
+    })) : page.items;
+    return context.json({data: safeItems.map(item => ({ledger_entry: serializeReconciliationLedger(item.record), recommendation: serializeManualRecommendation(item.recommendation)})), page: {next_cursor: encode(page.nextPosition)}});
   });
 
   app.get("/api/admin/v1/reconciliation/matches", adminSession, (context) => {
@@ -1340,6 +1348,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       const body = await readJson(context, financialDecisionRequestSchema, MAX_JSON_BODY_BYTES);
       const session = requireCurrentSession(context, dependencies.identity);
       const result = requireReconciliationStore(dependencies).reverseSettlement({
+        expectedClientId: context.get("adminSiteId"),
         financialOperationId: body.financial_operation_id,
         paymentMatchId,
         actorId: session.session.username,
@@ -1362,6 +1371,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       );
       const session = requireCurrentSession(context, dependencies.identity);
       const result = requireReconciliationStore(dependencies).settleManually({
+        expectedClientId: context.get("adminSiteId"),
         financialOperationId: body.financial_operation_id,
         orderId: body.order_id,
         ledgerEntryId: body.ledger_entry_id,
@@ -1453,6 +1463,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       const store = requireWebhookStore(dependencies);
       const webhook = dependencies.sites ? undefined : dependencies.settings?.snapshot().webhook;
       const result = store.replay({
+        expectedClientId: context.get("adminSiteId"),
         redeliveryId: body.redelivery_id,
         deliveryId,
         actorId: session.session.username,
@@ -1606,6 +1617,35 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     return context.json({ data: await systemStatus(dependencies) });
   });
 
+  if (dependencies.sites) {
+    const registered = [...app.routes];
+    const scope: MiddlewareHandler<AppEnvironment> = async (context, next) => {
+      const clientId = context.req.param("clientId")!;
+      if (!siteClientIdSchema.safeParse(clientId).success || !dependencies.sites!.get(clientId)) throw new HttpApiError(404, "site_not_found", "业务网站不存在");
+      const values = new URL(context.req.url).searchParams;
+      if (values.has("api_client_id")) throw new HttpApiError(422, "validation_failed", "网站身份只能由路径指定");
+      if (dependencies.demoMode && !["GET", "HEAD"].includes(context.req.method) && !context.req.path.endsWith("/orders/export")) throw new HttpApiError(403, "demo_read_only", "只读演示不执行写操作");
+      context.set("adminSiteId", clientId);
+      dependencies.database.read(db => {
+        for (const [param, kind] of [["orderId", "order"], ["deliveryId", "delivery"], ["paymentMatchId", "match"], ["candidateId", "candidate"], ["exceptionId", "exception"]] as const) {
+          const id = context.req.param(param); if (id) assertSiteResource(db, clientId, kind, id);
+        }
+        const order = values.get("order_id"); if (order) assertSiteOrder(db, clientId, order);
+        const ledger = context.req.param("ledgerEntryId");
+        if (ledger) {
+          assertSiteLedger(db, clientId, ledger);
+          if (!order && !db.prepare("SELECT 1 FROM (SELECT order_id FROM payment_matches WHERE ledger_entry_id = ? UNION SELECT order_id FROM match_candidates WHERE ledger_entry_id = ? UNION SELECT order_id FROM financial_exceptions WHERE ledger_entry_id = ?) e JOIN payment_orders o ON o.order_id = e.order_id WHERE o.api_client_id = ? LIMIT 1").get(ledger, ledger, ledger, clientId)) throw new HttpApiError(404, "ledger_entry_not_found", "请从本站订单选择共享流水");
+        }
+      });
+      await next();
+    };
+    for (const [method, suffix] of SITE_ADMIN_ROUTES) {
+      const controllers = registered.filter(route => route.method === method && route.path === "/api/admin/v1" + suffix).map(route => route.handler).filter(handler => handler !== adminSession);
+      if (!controllers.length) throw new Error("missing website controller: " + suffix);
+      app.on(method, "/api/admin/v1/sites/:clientId" + suffix, adminSession, scope, ...controllers);
+    }
+  }
+
   app.notFound((context) =>
     errorResponse(context, 404, "route_not_found", "请求的资源不存在"),
   );
@@ -1755,6 +1795,7 @@ function settingsAuditContext(
   const session = requireCurrentSession(context, dependencies.identity);
   return {
     actorId: session.session.username,
+    expectedClientId: context.get("adminSiteId"),
     requestId: context.get("requestId"),
     remoteAddressHash: dependencies.identity.sourceHash(
       remoteAddress(context, dependencies.config.trustedProxy),
@@ -1987,7 +2028,13 @@ async function readJson<T>(
   maximumBytes: number,
 ): Promise<T> {
   const bytes = await readBodyLimited(context, maximumBytes);
-  return parseJsonBytes(bytes, schema);
+  const parsed = parseJsonBytes(bytes, schema);
+  const clientId = context.get("adminSiteId");
+  if (clientId && parsed && typeof parsed === "object") {
+    if ("api_client_id" in parsed) throw new HttpApiError(422, "validation_failed", "网站身份只能由路径指定");
+    if ([orderExportSchema, testPaymentRequestSchema, ignoreAllWorkItemsSchema].some(candidate => candidate as z.ZodType === schema)) return { ...parsed, api_client_id: clientId };
+  }
+  return parsed;
 }
 
 function parseJsonBytes<T>(bytes: Uint8Array, schema: z.ZodType<T>): T {
@@ -2684,7 +2731,7 @@ function readAdminWorkItemPageQuery(context: Context<AppEnvironment>): {
   readonly query: ListQuery<WorkItemSort>;
   readonly type: AdminWorkItemType; readonly visibility: AdminWorkItemVisibility; readonly limit: number; readonly cursor: AdminWorkItemCursor | null;
 } {
-  const values = new URL(context.req.url).searchParams;
+  const values = adminQuery(context);
   for (const key of values.keys()) {
     if (!["api_client_id", "type", "visibility", "limit", "cursor", "q", "sort_by", "sort_order"].includes(key) || values.getAll(key).length > 1) {
       throw new HttpApiError(422, "validation_failed", "查询参数校验失败");
@@ -2740,7 +2787,7 @@ function readAdminOrderPageQuery(context: Context<AppEnvironment>): {
   readonly filters: AdminOrderFilters;
   readonly cursor: AdminOrderCursor | null;
 } {
-  const values = new URL(context.req.url).searchParams;
+  const values = adminQuery(context);
   const query = readListQuery(values, ORDER_SORT_FIELDS, "created_at", "desc");
   for (const key of values.keys()) {
     if (
@@ -3131,7 +3178,7 @@ function readWebhookDeliveryPageQuery(context: Context<AppEnvironment>): {
   readonly status: WebhookDeliveryStatus | null;
   readonly cursor: WebhookDeliveryCursor | null;
 } {
-  const values = new URL(context.req.url).searchParams;
+  const values = adminQuery(context);
   const query = readListQuery(values, DELIVERY_SORT_FIELDS, "created_at", "asc");
   for (const key of values.keys()) {
     if (key !== "api_client_id" && key !== "limit" && key !== "status" && key !== "cursor" && key !== "q" && key !== "sort_by" && key !== "sort_order" && key !== "created_from" && key !== "created_to") {
@@ -3949,4 +3996,11 @@ function scopedOrders(dependencies: AppDependencies, context: Context<AppEnviron
 function serializeSite(site: SiteSnapshot) {
   return { client_id: site.clientId, revision: site.revision, configuration: site.configuration,
     created_at: new Date(site.createdAt).toISOString(), updated_at: new Date(site.updatedAt).toISOString(), deleted_at: site.deletedAt === null ? null : new Date(site.deletedAt).toISOString() };
+}
+
+function adminQuery(context: Context<AppEnvironment>): URLSearchParams {
+  const values = new URL(context.req.url).searchParams;
+  const clientId = context.get("adminSiteId");
+  if (clientId) values.set("api_client_id", clientId);
+  return values;
 }
