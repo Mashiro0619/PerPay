@@ -23,6 +23,7 @@ import { Link, useDetailBack } from "@/navigation";
 import { eventExplanation, isHistoricalException } from "@/lib/detail-summary";
 import { dateTime, money } from "@/lib/format";
 import { label } from "@/lib/labels";
+import { cn } from "@/lib/utils";
 import { StatusBadge } from "@/components/business-status";
 import { CopyValue } from "@/components/copy-value";
 import { QueryView } from "@/components/request-state";
@@ -121,7 +122,13 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
         </h2>
         <StatusBadge value={order.payment.status} />
       </div>
-      <div className="grid min-w-0 items-start gap-4 @3xl/order:grid-cols-[minmax(0,1fr)_16rem] @7xl/order:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_16rem]">
+      <div
+        className={cn(
+          "grid min-w-0 items-start gap-4 @3xl/order:grid-cols-[minmax(0,1fr)_16rem] @7xl/order:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_16rem]",
+          "[&_[data-slot=card][data-size]]:[--card-spacing:--spacing(4)] @3xl/order:[&_[data-slot=card][data-size]]:[--card-spacing:--spacing(5)]",
+          "[&_[data-slot=card]]:gap-4 [&_[data-slot=card-content]]:gap-4",
+        )}
+      >
         <section
           aria-label="金额与订单信息"
           className="grid min-w-0 items-start gap-4 @3xl/order:col-span-2 @3xl/order:grid-cols-2 @7xl/order:col-span-1 @7xl/order:grid-cols-1"
