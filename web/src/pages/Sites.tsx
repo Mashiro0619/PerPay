@@ -619,7 +619,7 @@ function SiteEditor({
           <CardHeader>
             <CardTitle>网站密钥</CardTitle>
             <CardDescription>
-              轮换后旧密钥立即失效。
+              API 密钥轮换后旧密钥立即退役。通知密钥轮换时，已在途的通知仍可能使用旧签名，下一次投递尝试使用新密钥；接收端过渡期间应兼容新旧签名，密钥疑似泄露时应停止信任旧密钥。
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
@@ -718,7 +718,9 @@ function SiteEditor({
                 ? "此操作不能撤销，客户端 ID 不会再次使用。有历史订单的网站只能暂停接单。"
                 : confirmation === "save"
                   ? impact
-                  : "如果已有密钥，本次会使其退役。请同步更新对应业务网站，失败时不要盲目再次轮换，应先查看当前密钥。"}
+                  : confirmation === "webhook"
+                    ? "下一次通知投递尝试将使用新密钥，已在途的请求仍可能使用旧签名。请在接收端过渡期间兼容新旧签名，密钥疑似泄露时应停止信任旧密钥。失败时不要盲目再次轮换，应先查看当前密钥。"
+                    : "如果已有 API 密钥，本次会使其立即退役。请同步更新对应业务网站，失败时不要盲目再次轮换，应先查看当前密钥。"}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
