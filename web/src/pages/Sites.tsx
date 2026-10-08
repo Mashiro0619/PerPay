@@ -10,7 +10,7 @@ import {
   ItemActions,
 } from "@/components/ui/item";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
 import {
@@ -251,17 +251,33 @@ function SiteEditor({
     value: string;
   } | null>(null);
   const secretDisplayGeneration = useRef(0);
+  const secretDisplayRequest = useRef<number | null>(null);
+  const observedSecretRevision = useRef(initial?.revision ?? -1);
   useEffect(
     () => () => {
       secretDisplayGeneration.current++;
+      secretDisplayRequest.current = null;
     },
     [],
   );
-  const hideSecret = () => {
+  const invalidateSecretDisplay = useCallback(() => {
     secretDisplayGeneration.current++;
     setRevealed(null);
+  }, []);
+  const hideSecret = useCallback(() => {
+    secretDisplayRequest.current = null;
+    invalidateSecretDisplay();
     // Do not reset/abort the mutation: hiding is not cancellation of a committed rotation.
-  };
+  }, [invalidateSecretDisplay]);
+  const observeSecretRevision = useCallback((revision: number) => {
+    if (revision <= observedSecretRevision.current) return;
+    observedSecretRevision.current = revision;
+    invalidateSecretDisplay();
+  }, [invalidateSecretDisplay]);
+  useEffect(() => {
+    // A newer snapshot can retire a key even while a view/rotation is pending.
+    if (initial) observeSecretRevision(initial.revision);
+  }, [initial, observeSecretRevision]);
   const [feedback, setFeedback] = useFeedback();
   const revisionConflict = (error: unknown) => {
     if (!isSiteRevisionConflict(error)) return;
@@ -284,7 +300,8 @@ function SiteEditor({
         : Promise.reject(new Error("缺少网站身份")),
     onError: revisionConflict,
     onSuccess: async (response) => {
-      await cacheSite(response.data);
+      const latest = await cacheSite(response.data);
+      observeSecretRevision(latest.revision);
       setSaved(response.data);
       setDraft(structuredClone(response.data.configuration));
       setNeedsReview(false);
@@ -323,13 +340,16 @@ function SiteEditor({
         void navigate("/sites");
         return;
       }
+      observeSecretRevision(latestEditorSnapshot(saved).site.revision);
       const displayGeneration = ++secretDisplayGeneration.current;
+      secretDisplayRequest.current = displayGeneration;
       if (kind === "view-api" || kind === "view-webhook") {
         const response = await result(
           kind === "view-api"
             ? api.viewSiteApiSecret({ path, body: {} })
             : api.viewSiteWebhookSecret({ path, body: {} }),
         );
+        observeSecretRevision(latestEditorSnapshot(saved).site.revision);
         if (displayGeneration === secretDisplayGeneration.current)
           setRevealed({
             label: kind === "view-api" ? "API 密钥" : "通知签名密钥",
@@ -348,18 +368,28 @@ function SiteEditor({
               body: { revision: saved.revision },
             }),
       );
-      await cacheSite(response.data.site);
+      // Publishing this rotation's own revision must keep its returned key valid.
+      // A newer snapshot still invalidates the display without cancelling the write.
+      observedSecretRevision.current = Math.max(observedSecretRevision.current, response.data.site.revision);
+      const latest = await cacheSite(response.data.site);
+      observeSecretRevision(latest.revision);
       setSaved(response.data.site);
-      if (displayGeneration === secretDisplayGeneration.current)
+      const superseded = response.data.site.revision < observedSecretRevision.current;
+      // A GET may already have observed this same committed rotation. Preserve its
+      // explicit display request unless the user hid it or another request replaced it.
+      if (secretDisplayRequest.current === displayGeneration && !superseded)
         setRevealed({
           label: kind === "api" ? "API 密钥" : "通知签名密钥",
           value: response.data.secret,
         });
-      setFeedback("密钥已生成或轮换，请更新业务网站配置。");
+      setFeedback(superseded
+        ? "密钥操作已完成，网站配置已有更新，请重新查看当前密钥。"
+        : "密钥已生成或轮换，请更新业务网站配置。");
     },
     onError: revisionConflict,
   });
   function applyReview(site: Site, configuration: SiteConfiguration) {
+    observeSecretRevision(site.revision);
     setSaved(site);
     setDraft(configuration);
     setReview(null);
@@ -382,6 +412,7 @@ function SiteEditor({
     },
     onSuccess: site => {
       if (!mounted.current || !saved) return;
+      observeSecretRevision(site.revision);
       const merged = mergeSiteConfiguration(saved.configuration, draft, site.configuration, section);
       setChoices({});
       if (merged.conflicts.length) setReview({ site, ...merged });
