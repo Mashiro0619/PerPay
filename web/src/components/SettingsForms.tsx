@@ -9,7 +9,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { onlineManager, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ChartArea,
   ChartColumn,
@@ -262,6 +262,7 @@ export function SettingsEditor({
     });
   }
   const draft = useFormDraft();
+  const queryClient = useQueryClient();
   const [environment, setEnvironment] = useState(
     initialSettings.provider?.environment ?? "PRODUCTION",
   );
@@ -302,9 +303,19 @@ export function SettingsEditor({
     };
   }, []);
   const save = useMutation({
-    mutationFn: (form: FormData) => saveSettings(section, form, settings),
+    networkMode: "always",
+    retry: false,
+    mutationFn: (form: FormData) => {
+      if (!onlineManager.isOnline() || !navigator.onLine)
+        throw new Error("网络已断开，设置未提交。恢复连接后请重新提交。");
+      return saveSettings(section, form, settings);
+    },
     onSuccess: (data, form) => {
-      if (!mounted.current) return;
+      if (!mounted.current) {
+        // A dispatched save can complete after navigation; reread it on return.
+        void queryClient.invalidateQueries({ queryKey: ["settings"], exact: true, refetchType: "none" });
+        return;
+      }
       if (section === "display" && data.display?.system_name)
         setSystemName(data.display.system_name);
       draft.markSaved(form);

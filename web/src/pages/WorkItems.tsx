@@ -9,7 +9,7 @@ import { ListQueryToolbar } from "@/components/list-query-toolbar";
 import { ListActionsMenu } from "@/components/list-actions-menu";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { useEffect, useRef, useState } from "react";
-import { useMutation } from '@tanstack/react-query';
+import { onlineManager, useMutation } from '@tanstack/react-query';
 import { RefreshCw, EyeOff } from "lucide-react";
 import { useLocation, useSearchParams } from "react-router";
 import { refreshOperationalData, result, type AdminWorkItem, type AdminWorkItemTypeFilter } from "@/api/client";
@@ -73,8 +73,12 @@ export default function WorkItems() {
   const cancelIgnore = useRef<HTMLButtonElement | null>(null);
   const [message, setMessage] = useFeedback();
   const ignore = useMutation({
-    mutationFn: (input: NonNullable<typeof batch>) =>
-      result(
+    networkMode: "always",
+    retry: false,
+    mutationFn: (input: NonNullable<typeof batch>) => {
+      if (!onlineManager.isOnline() || !navigator.onLine)
+        throw new Error("网络已断开，忽略操作未提交。恢复连接后请重新提交。");
+      return result(
         api.ignoreAllAdministratorWorkItems({
           body: {
             operation_id: input.operation_id,
@@ -83,7 +87,8 @@ export default function WorkItems() {
             ...(input.q ? { q: input.q } : {}),
           },
         }),
-      ),
+      );
+    },
     onSuccess: ({ data }, input) => {
       void refreshOperationalData();
       if (!mounted.current) return;

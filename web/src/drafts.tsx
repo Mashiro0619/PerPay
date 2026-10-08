@@ -133,7 +133,7 @@ export function DraftProvider({ children }: { children: ReactNode }) {
             <AlertDialogTitle>放弃未保存的修改？</AlertDialogTitle>
           </AlertDialogHeader>
           <DialogBody><AlertDialogDescription>
-              此页面的修改不会保存。
+              尚未提交的修改将被放弃。已提交的保存可能继续执行，请重新读取后核对结果。
             </AlertDialogDescription></DialogBody>
           <AlertDialogFooter>
             <AlertDialogCancel>继续编辑</AlertDialogCancel>
