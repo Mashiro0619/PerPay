@@ -242,7 +242,7 @@ export function TestPaymentResult({
         打开收银台
       </a>
     ) : (
-      <Link className={buttonVariants()} to={"/orders/" + created.order_id}>
+      <Link className={buttonVariants()} global to={orderHref}>
         查看订单
       </Link>
     );

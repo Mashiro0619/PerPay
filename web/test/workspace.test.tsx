@@ -336,3 +336,75 @@ it("hides business controls on metadata refresh failure without throwing away an
   );
   expect(screen.getByLabelText("待保存草稿")).toHaveValue("不要丢失");
 });
+
+it.each([
+  ["CONFIRMED", "OPEN", "收款已确认"],
+  ["UNPAID", "EXPIRED", "收银台已过期"],
+  ["UNPAID", "CLOSED", "收银台已关闭"],
+  ["DISPUTED", "CLOSED", "收款需要核查"],
+  ["UNPAID", "ERROR", "最新状态暂不可用"],
+] as const)(
+  "opens the original site's recovered test order after switching workspaces (%s / %s)",
+  async (paymentStatus, checkoutStatus, notice) => {
+    let reject!: (reason: Error) => void;
+    const pending = new Promise<Response>((_, fail) => { reject = fail; });
+    const writes: Request[] = [];
+    const reads: string[] = [];
+    const created = {
+      ...order,
+      api_client_id: "a",
+      checkout: { ...order.checkout, checkout_url: "/checkout/test-original-site" },
+    };
+    const view = mountOnboarding({
+      stage: 4,
+      path: "/sites/a/orders",
+      handle: (req) => {
+        const path = new URL(req.url).pathname;
+        if (/^\/api\/admin\/v1\/sites\/[ab]$/.test(path))
+          return json({ data: site(path.at(-1)!) });
+        if (path.endsWith("/orders"))
+          return json({ data: [], page: { next_cursor: null } });
+        if (path.endsWith("/test-payments")) {
+          writes.push(req.clone());
+          return writes.length === 1 ? pending : json({ data: created });
+        }
+        if (path.endsWith("/orders/" + orderId)) {
+          reads.push(path);
+          return checkoutStatus === "ERROR"
+            ? json({ error: { code: "internal_error", message: "订单查询暂时失败" } }, 503)
+            : json({ data: {
+                ...created,
+                checkout: { ...created.checkout, status: checkoutStatus },
+                payment: { ...created.payment, status: paymentStatus },
+              } });
+        }
+        return undefined;
+      },
+    });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "测试收款" }));
+    const create = screen.getByRole("button", { name: "创建测试订单" });
+    await waitFor(() => expect(create).toBeEnabled());
+    await user.click(create);
+    await waitFor(() => expect(writes).toHaveLength(1));
+    await act(async () => { await view.router.navigate("/sites/b/orders"); });
+    await act(async () => {
+      reject(new TypeError("response lost"));
+      await pending.catch(() => {});
+    });
+    await user.click(await screen.findByRole("button", { name: "测试收款" }));
+    await user.click(await screen.findByRole("button", { name: "重试原请求" }));
+    await screen.findByText(notice);
+    expect(writes.map((request) => new URL(request.url).pathname)).toEqual([
+      "/api/admin/v1/sites/a/test-payments",
+      "/api/admin/v1/sites/a/test-payments",
+    ]);
+    expect(await writes[1]!.json()).toEqual(await writes[0]!.json());
+    expect(reads).toContain("/api/admin/v1/sites/a/orders/" + orderId);
+    expect(reads).not.toContain("/api/admin/v1/sites/b/orders/" + orderId);
+    const link = screen.getByRole("link", { name: "查看订单" });
+    expect(link).toHaveAttribute("href", "/sites/a/orders/" + orderId);
+    await user.click(link);
+    await waitFor(() => expect(view.router.state.location.pathname).toBe("/sites/a/orders/" + orderId));
+  },
+);
