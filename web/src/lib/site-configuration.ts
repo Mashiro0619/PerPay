@@ -1,4 +1,4 @@
-import type { SiteConfiguration } from "@/api/client";
+import type { SiteConfiguration, SitePolicy } from "@/api/client";
 
 // These are the fields editable in each website settings group. Merge only local
 // changes in that group; every other value must come from the latest snapshot.
@@ -32,7 +32,7 @@ export type SiteFieldConflict = {
 };
 export type SiteConflictChoices = Partial<Record<FieldPath, "local" | "remote">>;
 
-function fieldLocation(configuration: SiteConfiguration, path: FieldPath) {
+function fieldLocation(configuration: object, path: FieldPath) {
   const parts = path.split(".");
   const key = parts.pop()!;
   let target = configuration as unknown as Record<string, unknown>;
@@ -40,21 +40,20 @@ function fieldLocation(configuration: SiteConfiguration, path: FieldPath) {
   return { target, key };
 }
 
-function read(configuration: SiteConfiguration, path: FieldPath): FieldValue {
+function read(configuration: object, path: FieldPath): FieldValue {
   const { target, key } = fieldLocation(configuration, path);
   return target[key] as FieldValue;
 }
 
-export function mergeSiteConfiguration(
-  base: SiteConfiguration,
-  draft: SiteConfiguration,
-  remote: SiteConfiguration,
-  section: string,
+function mergeFields<Configuration extends object>(
+  base: Configuration,
+  draft: Configuration,
+  remote: Configuration,
+  selectedFields: ReadonlyArray<(typeof fields)[number]>,
 ) {
   const configuration = structuredClone(remote);
   const conflicts: SiteFieldConflict[] = [];
-  for (const [group, path, label] of fields) {
-    if (section !== group) continue;
+  for (const [, path, label] of selectedFields) {
     const before = read(base, path), local = read(draft, path), latest = read(remote, path);
     if (Object.is(local, before)) continue;
     if (!Object.is(latest, before) && !Object.is(latest, local)) {
@@ -67,11 +66,29 @@ export function mergeSiteConfiguration(
   return { configuration, conflicts };
 }
 
-export function resolveSiteConflicts(
-  configuration: SiteConfiguration,
+export function mergeSiteConfiguration(
+  base: SiteConfiguration,
+  draft: SiteConfiguration,
+  remote: SiteConfiguration,
+  section: string,
+) {
+  return mergeFields(base, draft, remote, fields.filter(([group]) => section === group));
+}
+
+export function mergeSitePolicy(base: SitePolicy, draft: SitePolicy, remote: SitePolicy) {
+  // Template tabs share one draft, so retain local changes from every policy group.
+  const merged = mergeFields(
+    { policy: base }, { policy: draft }, { policy: remote },
+    fields.filter(([, path]) => path.startsWith("policy.")),
+  );
+  return { policy: merged.configuration.policy, conflicts: merged.conflicts };
+}
+
+function resolveFieldConflicts<Configuration extends object>(
+  configuration: Configuration,
   conflicts: SiteFieldConflict[],
   choices: SiteConflictChoices,
-): SiteConfiguration | null {
+): Configuration | null {
   if (conflicts.some(conflict => !choices[conflict.path])) return null;
   const resolved = structuredClone(configuration);
   for (const conflict of conflicts) {
@@ -79,6 +96,22 @@ export function resolveSiteConflicts(
     target[key] = choices[conflict.path] === "local" ? conflict.local : conflict.remote;
   }
   return resolved;
+}
+
+export function resolveSiteConflicts(
+  configuration: SiteConfiguration,
+  conflicts: SiteFieldConflict[],
+  choices: SiteConflictChoices,
+): SiteConfiguration | null {
+  return resolveFieldConflicts(configuration, conflicts, choices);
+}
+
+export function resolveSitePolicyConflicts(
+  policy: SitePolicy,
+  conflicts: SiteFieldConflict[],
+  choices: SiteConflictChoices,
+): SitePolicy | null {
+  return resolveFieldConflicts({ policy }, conflicts, choices)?.policy ?? null;
 }
 
 export function siteFieldValue(value: FieldValue): string {

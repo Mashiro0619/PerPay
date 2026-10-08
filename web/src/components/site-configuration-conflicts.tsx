@@ -5,19 +5,20 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Field, FieldDescription, FieldGroup, FieldTitle } from "@/components/ui/field";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
-export function SiteConfigurationConflicts({ conflicts, choices, onChoose, onApply, disabled }: {
+export function SiteConfigurationConflicts({ conflicts, choices, onChoose, onApply, disabled, saveLabel = "保存网站" }: {
   conflicts: SiteFieldConflict[];
   choices: SiteConflictChoices;
   onChoose: (choices: SiteConflictChoices) => void;
   onApply: () => void;
   disabled: boolean;
+  saveLabel?: string;
 }) {
   const id = useId();
   return (
     <Card>
       <CardHeader>
         <CardTitle>同一字段存在不同修改</CardTitle>
-        <CardDescription>无冲突的修改已合并。请选择以下字段要保留的值，应用核对结果后再保存网站。</CardDescription>
+        <CardDescription>无冲突的修改已合并。请选择以下字段要保留的值，应用核对结果后再{saveLabel}。</CardDescription>
       </CardHeader>
       <CardContent>
         <FieldGroup>

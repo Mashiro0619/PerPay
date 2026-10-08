@@ -20,7 +20,6 @@ import {
   result,
   type Site,
   type SiteConfiguration,
-  type SitePolicy,
 } from "@/api/client";
 import { Link, useNavigate } from "@/navigation";
 import { useDirtyDraft } from "@/drafts";
@@ -627,6 +626,7 @@ function SiteEditor({
                 )}
                 <SitePolicyFields
                   section={section === "all" ? undefined : section}
+                  disabled={busy || requiresReview}
                   value={draft.policy}
                   errors={errors}
                   onChange={(policy) =>
@@ -775,107 +775,4 @@ function SiteEditor({
   );
 }
 
-export function SiteDefaultsPage() {
-  const query = useQuery({
-    queryKey: ["site-defaults"],
-    queryFn: ({ signal }) => result(api.getSiteDefaults({ signal })),
-    staleTime: Infinity,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-  });
-  return (
-    <QueryView query={query}>
-      {(response) => <DefaultsEditor initial={response.data} />}
-    </QueryView>
-  );
-}
-function DefaultsEditor({
-  initial,
-}: {
-  initial: { revision: number; policy: SitePolicy };
-}) {
-  const [section, setSection] = useState("orders");
-  const formRef = useRef<HTMLFormElement>(null);
-  const [saved, setSaved] = useState(initial);
-  const [draft, setDraft] = useState(() => structuredClone(initial.policy));
-  const clearDraft = useDirtyDraft(
-    JSON.stringify(draft) !== JSON.stringify(saved.policy),
-  );
-  const [feedback, setFeedback] = useFeedback();
-  const save = useMutation({
-    networkMode: "always",
-    retry: false,
-    mutationFn: () =>
-      result(
-        api.updateSiteDefaults({
-          body: { revision: saved.revision, policy: draft },
-        }),
-      ),
-    onSuccess: (response) => {
-      setSaved(response.data);
-      setDraft(structuredClone(response.data.policy));
-      clearDraft();
-      setFeedback("模板已保存，已有网站不受影响。");
-      queryClient.setQueryData(["site-defaults"], response);
-    },
-  });
-  useEffect(() => {
-    if (!(save.error instanceof ApiError)) return;
-    const field = Object.keys(save.error.fields)[0];
-    if (!field) return;
-    setSection(
-      field.includes("display.")
-        ? "display"
-        : field.includes("notification_delivery.")
-          ? "integration"
-          : "orders",
-    );
-  }, [save.error]);
-  useEffect(() => {
-    if (save.error)
-      formRef.current
-        ?.querySelector<HTMLElement>('[aria-invalid="true"]')
-        ?.focus();
-  }, [section, save.error]);
-  return (
-    <div className="admin-settings-layout flex flex-col gap-6">
-      <h2 className="text-2xl font-semibold">网站默认模板</h2>
-      <p className="text-sm text-muted-foreground">
-        仅用于新网站，已有网站不变。
-      </p>
-      <Tabs
-        value={section}
-        onValueChange={(value) => {
-          if (value) setSection(value);
-        }}
-      >
-        <TabsList aria-label="模板分组">
-          <TabsTrigger value="orders">订单设置</TabsTrigger>
-          <TabsTrigger value="display">收银台展示</TabsTrigger>
-          <TabsTrigger value="integration">通知策略</TabsTrigger>
-        </TabsList>
-      </Tabs>
-      <ErrorNotice error={save.error} />
-      <SuccessMessage message={feedback} />
-      <form
-        ref={formRef}
-        onSubmit={(event) => {
-          event.preventDefault();
-          save.mutate();
-        }}
-      >
-        <FieldSet disabled={save.isPending}>
-          <SitePolicyFields
-            section={section}
-            value={draft}
-            errors={save.error instanceof ApiError ? save.error.fields : {}}
-            onChange={setDraft}
-          />
-          <Button type="submit" className="w-fit" disabled={save.isPending}>
-            保存默认模板
-          </Button>
-        </FieldSet>
-      </form>
-    </div>
-  );
-}
+export { default as SiteDefaultsPage } from "./SiteDefaults";

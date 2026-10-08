@@ -24,8 +24,10 @@ export function SitePolicyFields({
   onChange,
   errors = {},
   section,
+  disabled = false,
 }: {
   section?: string | undefined;
+  disabled?: boolean;
   value: SitePolicy;
   onChange: (value: SitePolicy) => void;
   errors?: Readonly<Record<string, string>>;
@@ -48,6 +50,7 @@ export function SitePolicyFields({
   const error = (path: string) =>
     errors["configuration.policy." + path] ?? errors["policy." + path];
   const change = (edit: (next: SitePolicy) => void) => {
+    if (disabled) return;
     const next = structuredClone(value);
     edit(next);
     onChange(next);
@@ -55,7 +58,7 @@ export function SitePolicyFields({
   return (
     <FieldGroup>
       {(!section || section === "orders") && (
-        <FieldSet className="settings-fields">
+        <FieldSet className="settings-fields" disabled={disabled}>
           <FieldLegend className={section ? "sr-only" : undefined}>订单设置</FieldLegend>
           <NumberField
             label="订单有效期（秒）"
@@ -127,7 +130,7 @@ export function SitePolicyFields({
         </FieldSet>
       )}
       {(!section || section === "display") && (
-        <FieldSet>
+        <FieldSet disabled={disabled}>
           <FieldLegend className={section ? "sr-only" : undefined}>收银台展示</FieldLegend>
           <SiteTextField
             label="收银台名称"
@@ -152,10 +155,11 @@ export function SitePolicyFields({
               })
             }
           />
-          <Field orientation="horizontal">
+          <Field orientation="horizontal" data-disabled={disabled}>
             <FieldLabel htmlFor="site-show-product">显示商品名称</FieldLabel>
             <Switch
               id="site-show-product"
+              disabled={disabled}
               checked={value.display.checkout_show_product_name}
               onCheckedChange={(checked) =>
                 change((p) => {
@@ -182,7 +186,7 @@ export function SitePolicyFields({
             高级设置
           </CollapsibleTrigger>
           <CollapsibleContent ref={content} keepMounted>
-            <FieldSet className="settings-fields pt-4">
+            <FieldSet className="settings-fields pt-4" disabled={disabled}>
               <FieldLegend className="sr-only">通知投递策略</FieldLegend>
               <NumberField
                 label="通知超时（毫秒）"
