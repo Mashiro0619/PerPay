@@ -121,10 +121,10 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
         </h2>
         <StatusBadge value={order.payment.status} />
       </div>
-      <div className="grid min-w-0 items-start gap-4 @3xl/order:grid-cols-[minmax(0,1.6fr)_minmax(16rem,1fr)] @5xl/order:grid-cols-[minmax(16rem,1fr)_minmax(0,1.6fr)_minmax(16rem,1fr)]">
+      <div className="grid min-w-0 items-start gap-4 @3xl/order:grid-cols-[minmax(0,1fr)_16rem] @7xl/order:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_16rem]">
         <section
           aria-label="金额与订单信息"
-          className="grid min-w-0 items-start gap-4 @3xl/order:col-span-2 @3xl/order:grid-cols-2 @5xl/order:col-span-1 @5xl/order:grid-cols-1"
+          className="grid min-w-0 items-start gap-4 @3xl/order:col-span-2 @3xl/order:grid-cols-2 @7xl/order:col-span-1 @7xl/order:grid-cols-1"
         >
           <Card>
             <CardHeader>
@@ -184,9 +184,8 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
                 订单信息
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex min-w-0 flex-col gap-3">
               <DetailFields
-                compact
                 className="@sm/detail-fields:grid-cols-1"
                 items={[
                   [
@@ -196,6 +195,12 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
                       label="复制商户订单号"
                     />,
                   ],
+                ]}
+              />
+              <DetailFields
+                compact
+                className="@sm/detail-fields:grid-cols-1"
+                items={[
                   ["创建时间", dateTime(order.created_at)],
                   ...(confirmed
                     ? [

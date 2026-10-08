@@ -20,6 +20,7 @@ import {
 } from "@/lib/detail-summary";
 import { dateTime, money } from "@/lib/format";
 import { label } from "@/lib/labels";
+import { cn } from "@/lib/utils";
 import { CopyValue } from "@/components/copy-value";
 import { StatusBadge } from "@/components/business-status";
 import { ErrorNotice, Loading } from "@/components/request-state";
@@ -46,7 +47,10 @@ export function LedgerFacts({
   return (
     <DetailFields
       compact={compact}
-      wide={["流水备注"]}
+      className={cn(
+        compact && "@sm/detail-fields:grid-cols-1 @4xl/detail-fields:grid-cols-2",
+      )}
+      wide={["支付宝订单号", "流水商户单号", "流水备注"]}
       items={[
         [
           "流水金额",
@@ -157,7 +161,7 @@ export function CandidateEvidence({
       {facts.length < 3 && (
         <p className="text-sm text-muted-foreground">匹配依据不完整</p>
       )}
-      <DetailFields items={shownFacts} />
+      <DetailFields wide={["金额占用窗口"]} items={shownFacts} />
     </section>
   );
 }

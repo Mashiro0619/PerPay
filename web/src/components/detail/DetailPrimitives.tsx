@@ -75,7 +75,7 @@ export function DetailFields({
             compact
               ? "grid min-w-0 grid-cols-[6rem_minmax(0,1fr)] items-baseline gap-x-2 gap-y-1"
               : "flex min-w-0 flex-col gap-1",
-            wide.includes(name) && "@sm/detail-fields:col-span-2",
+            wide.includes(name) && "col-span-full",
           )}
         >
           <dt className="text-sm text-muted-foreground">{name}</dt>
