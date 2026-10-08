@@ -9,7 +9,7 @@ import { HealthProbeCache } from "../infrastructure/health-probe-cache.ts";
 import type { CheckoutVerification } from "../shared/checkout-verification.ts";
 import { adminAccessInputSchema, readAdminAccess, createAdminAccessPolicy } from "../settings/admin-access.ts";
 import { exportOrders, orderExportSchema } from "./order-export.ts";
-import { adminOrderIdentities } from "./admin-order-summary.ts";
+import { adminOrderIdentities, type OrderIdentitySummary } from "./admin-order-summary.ts";
 import { readManualCandidateQuery } from "./manual-candidates.ts";
 import type { ManualRecommendation } from "../reconciliation/manual-candidates.ts";
 import { MATCH_SORT_FIELDS, CONFLICT_SORT_FIELDS, EXCEPTION_SORT_FIELDS, WORK_ITEM_SORT_FIELDS, type MatchSort, type ConflictSort, type ExceptionSort, type WorkItemSort } from "../shared/list-query.ts";
@@ -1268,7 +1268,8 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const {query, encode} = readManualCandidateQuery(new URL(context.req.url).searchParams, "orders");
     const page = requireReconciliationStore(dependencies).manualOrderPage(query);
     if (!page) throw new HttpApiError(404, "ledger_entry_not_found", "账务流水不存在");
-    return context.json({data: page.items.map(item => ({order: serializeReconciliationOrder(item.record), recommendation: serializeManualRecommendation(item.recommendation)})), page: {next_cursor: encode(page.nextPosition)}});
+    const identities = adminOrderIdentities(dependencies.database, page.items.map(item => item.record.orderId));
+    return context.json({data: page.items.map(item => ({order: serializeReconciliationOrder(item.record, identities.get(item.record.orderId)!), recommendation: serializeManualRecommendation(item.recommendation)})), page: {next_cursor: encode(page.nextPosition)}});
   });
   app.get("/api/admin/v1/reconciliation/settlements/manual/ledger-entries", adminSession, context => {
     const {query, encode} = readManualCandidateQuery(new URL(context.req.url).searchParams, "ledger-entries");
@@ -1285,8 +1286,9 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const query = readPaymentMatchHistoryPageQuery(context);
     const page = requireReconciliationStore(dependencies)
       .paymentMatchHistoryPage(query.status, query.cursor, query.limit, query.query);
+    const identities = adminOrderIdentities(dependencies.database, page.matches.map(match => match.order.orderId));
     return context.json({
-      data: page.matches.map(serializePaymentMatchDetail),
+      data: page.matches.map(match => serializePaymentMatchDetail(match, identities.get(match.order.orderId)!)),
       page: {
         next_cursor: encodePaymentMatchHistoryCursor(page.nextCursor, query.status, query.query),
       },
@@ -1301,7 +1303,8 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     );
     const match = requireReconciliationStore(dependencies).paymentMatchDetail(paymentMatchId);
     if (!match) throw new HttpApiError(404, "match_not_found", "支付关联不存在");
-    return context.json({ data: serializePaymentMatchDetail(match) });
+    const identity = adminOrderIdentities(dependencies.database, [match.order.orderId]).get(match.order.orderId)!;
+    return context.json({ data: serializePaymentMatchDetail(match, identity) });
   });
 
   app.get("/api/admin/v1/reconciliation/exceptions", adminSession, (context) => {
@@ -3418,15 +3421,16 @@ function serializeAdminWorkItem(item: AdminWorkItem) {
 }
 
 function serializeAdminOrderDetail(order: AdminOrderDetailProjection, database: AppDatabase, reconciliation?: ReconciliationStore) {
+  const identity = adminOrderIdentities(database, [order.orderId]).get(order.orderId)!;
   const financialContext = reconciliation
     ? {
-      matches: reconciliation.paymentMatchDetailsForOrder(order.orderId).map(serializePaymentMatchDetail),
+      matches: reconciliation.paymentMatchDetailsForOrder(order.orderId).map(match => serializePaymentMatchDetail(match, identity)),
       exceptions: serializeFinancialExceptions(reconciliation.financialExceptionsForOrder(order.orderId), database),
     }
     : { matches: [], exceptions: [] };
   return {
     ...serializeAdminOrderSummary(order),
-    site_name: adminOrderIdentities(database, [order.orderId]).get(order.orderId)?.site_name ?? null,
+    site_name: identity.site_name,
     note: order.note,
     notification: { notify_url: order.notification.notifyUrl },
     events: order.events.map((event) => ({
@@ -3641,14 +3645,14 @@ function serializePaymentMatch(match: PaymentMatch) {
   };
 }
 
-function serializePaymentMatchDetail(review: PaymentMatchDetail) {
+function serializePaymentMatchDetail(review: PaymentMatchDetail, identity: OrderIdentitySummary) {
   return {
     ...serializePaymentMatch(review.paymentMatch),
     candidate: review.candidate ? serializeCandidate(review.candidate) : null,
     creation_operation: serializeFinancialOperation(review.creationOperation),
     resolution_operation: review.resolutionOperation ? serializeFinancialOperation(review.resolutionOperation) : null,
     ledger_entry: serializeReconciliationLedger(review.ledgerEntry),
-    order: serializeReconciliationOrder(review.order),
+    order: serializeReconciliationOrder(review.order, identity),
   };
 }
 
@@ -3675,9 +3679,11 @@ function serializeReconciliationLedger(entry: ReconciliationLedgerProjection) {
   };
 }
 
-function serializeReconciliationOrder(order: ReconciliationOrderProjection) {
+function serializeReconciliationOrder(order: ReconciliationOrderProjection, identity: OrderIdentitySummary) {
   return {
     order_id: order.orderId,
+    api_client_id: identity.api_client_id,
+    site_name: identity.site_name,
     merchant_order_no: order.merchantOrderNo,
     requested_amount_cents: order.requestedAmountCents,
     payable_amount_cents: order.payableAmountCents,

@@ -43,6 +43,46 @@ function financialSnapshot(f: ReconciliationHttpFixture) {
   );
 }
 describe("read-only manual settlement candidate discovery", () => {
+  it("returns current website identity for cross-site duplicate merchant numbers and every match view", async () => {
+    await withHttpFixture(async (f) => {
+      const sites = f.services.sites;
+      const configuration = { name: "同名网站", accepting_orders: true, notifications_enabled: false, notification_origin: null, return_origin: null, policy: sites.defaults().policy };
+      const a = sites.create({ operation_id: randomUUID(), configuration }, { actorId: "admin" });
+      const b = sites.create({ operation_id: randomUUID(), configuration }, { actorId: "admin" });
+      const request = createOrderRequestSchema.parse({ merchant_order_no: "shared-number", idempotency_key: "shared-key", amount_cents: 10000, product_name: "同名商品" });
+      const first = f.services.orders.forSite(a.clientId).create(request).order;
+      const second = f.services.orders.forSite(b.clientId).create(request).order;
+      const c = await client(f);
+      const entry = f.recordCredit("website-identity", first.payableAmountCents, 1);
+      const expected = new Map([[first.orderId, a.clientId], [second.orderId, b.clientId]]);
+      for (const suffix of ["orders", "orders?q=shared-number", "orders?ledger_entry_id=" + entry.ledgerEntryId + "&view=all"]) {
+        const page = await c.page(suffix);
+        assert.equal(page.data.length, 2);
+        for (const item of page.data) {
+          assert.equal(item.order.api_client_id, expected.get(item.order.order_id));
+          assert.equal(item.order.site_name, "同名网站");
+        }
+      }
+      const recommended = await c.page("orders?ledger_entry_id=" + entry.ledgerEntryId);
+      assert.deepEqual(recommended.data.map(item => item.order.api_client_id), [a.clientId]);
+      const settlement = f.reconciliation.settleManually({ orderId: first.orderId, ledgerEntryId: entry.ledgerEntryId, reason: null, financialOperationId: randomUUID(), actorId: "admin" });
+      sites.update(a.clientId, { revision: a.revision, configuration: { ...a.configuration, name: "更新后的网站" } }, { actorId: "admin" });
+      const get = async (path: string) => {
+        const response = await f.app.request("/api/admin/v1" + path, { headers: { cookie: c.auth.cookie } });
+        assert.equal(response.status, 200, await response.clone().text());
+        return (await response.json()) as { data: any };
+      };
+      const matches = [
+        (await get("/reconciliation/matches")).data[0],
+        (await get("/reconciliation/matches/" + settlement.paymentMatch.paymentMatchId)).data,
+        (await get("/orders/" + first.orderId)).data.reconciliation.matches[0],
+      ];
+      for (const match of matches) {
+        assert.equal(match.order.api_client_id, a.clientId);
+        assert.equal(match.order.site_name, "更新后的网站");
+      }
+    });
+  });
   it("searches complete order pages with exact money and literal Unicode without financial writes", async () => {
     await withHttpFixture(async (f) => {
       const orders = Array.from({ length: 12 }, (_, i) =>

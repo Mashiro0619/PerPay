@@ -7638,6 +7638,8 @@ components:
       additionalProperties: false
       required:
         - order_id
+        - api_client_id
+        - site_name
         - merchant_order_no
         - requested_amount_cents
         - payable_amount_cents
@@ -7657,6 +7659,12 @@ components:
         - version
       properties:
         order_id: { $ref: '#/components/schemas/ResourceId' }
+        api_client_id:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$'
+        site_name: { type: [string, 'null'], description: Current owning website name; administrator responses only. Null for historical pre-website schema fixtures. }
         merchant_order_no: { type: string, minLength: 1, maxLength: 128 }
         requested_amount_cents: { type: integer, minimum: 1, maximum: 9999999999 }
         payable_amount_cents: { type: integer, minimum: 2, maximum: 9999999999 }

@@ -35,6 +35,7 @@ interface Choice {
   title: string;
   summary: string;
   identifiers: string;
+  website?: string;
   recommendation: ManualSettlementRecommendation | null;
 }
 export function ManualCandidatePicker({
@@ -90,6 +91,7 @@ export function ManualCandidatePicker({
               " · " +
               ({OPEN: "收银台开放中", CLOSED: "收银台已关闭", EXPIRED: "收银台已过期"}[order.checkout_status]),
             identifiers: order.merchant_order_no,
+            website: `${order.site_name ?? "名称不可用"} · ${order.api_client_id}`,
             recommendation,
           })),
         };
@@ -217,6 +219,11 @@ export function ManualCandidatePicker({
                       <ItemTitle className="whitespace-normal wrap-anywhere">
                         {choice.title}
                       </ItemTitle>
+                      {choice.website && (
+                        <ItemDescription className="line-clamp-none whitespace-normal wrap-anywhere">
+                          所属网站：{choice.website}
+                        </ItemDescription>
+                      )}
                       <ItemDescription>{choice.summary}</ItemDescription>
                       <ItemDescription className="whitespace-normal wrap-anywhere">
                         {choice.identifiers}
@@ -235,7 +242,7 @@ export function ManualCandidatePicker({
                         variant="outline"
                         size="sm"
                         disabled={disabled}
-                        aria-label={"选择" + noun + "：" + choice.title}
+                        aria-label={"选择" + noun + "：" + choice.title + (choice.website ? " · " + choice.website : "")}
                         onClick={() => onSelect(choice.id, choice.title)}
                       >
                         选择

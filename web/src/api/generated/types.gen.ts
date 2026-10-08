@@ -943,6 +943,8 @@ export type ReconciliationLedgerEntry = {
 };
 export type ReconciliationOrder = {
     order_id: ResourceId;
+    api_client_id: string;
+    site_name: string | null;
     merchant_order_no: string;
     requested_amount_cents: number;
     payable_amount_cents: number;

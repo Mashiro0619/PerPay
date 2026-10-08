@@ -178,6 +178,9 @@ export function OrderFacts({
             order.product_name
           )}
         </ItemTitle>
+        <ItemDescription className="line-clamp-none whitespace-normal wrap-anywhere">
+          所属网站：{order.site_name ?? "名称不可用"} · {order.api_client_id}
+        </ItemDescription>
         <ItemDescription>
           应付 {money(order.payable_amount_cents)} · 实收{" "}
           {money(order.received_amount_cents)}

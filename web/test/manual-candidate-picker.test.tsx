@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -71,6 +72,34 @@ const chooseLedger = () =>
   screen.findByRole("button", { name: /^选择收入流水：/ });
 const chooseOrder = () => screen.findByRole("button", { name: /^选择订单：/ });
 describe("manual settlement selection instead of ID entry", () => {
+  it.each(["网站 B", "网站 A"])("keeps website identity visible through confirmation when the other website is %s", async (otherName) => {
+    const selected = { ...order, site_name: "网站 A", api_client_id: "site-a", merchant_order_no: "shared-number" };
+    const choices: ManualSettlementOrderCandidate[] = [
+      { ...orderChoice, order: { ...orderChoice.order, site_name: selected.site_name, api_client_id: selected.api_client_id, merchant_order_no: selected.merchant_order_no, checkout_status: "OPEN" } },
+      { ...orderChoice, order: { ...orderChoice.order, order_id: "99999999-9999-4999-8999-999999999999", site_name: otherName, api_client_id: "site-b", merchant_order_no: selected.merchant_order_no, payable_amount_cents: order.payable_amount_cents + 1 } },
+    ];
+    const view = mount({ initialLedgerId: ledgerId, lockContext: true }, (request) => {
+      const path = new URL(request.url).pathname;
+      if (path.endsWith("/manual/orders")) return json({ data: choices, page: { next_cursor: null } });
+      if (path.endsWith("/orders/" + orderId)) return json({ data: selected });
+    });
+    const identity = await screen.findByText(/网站 A · site-a/);
+    expect(screen.getByText(new RegExp(otherName + " · site-b"))).toBeVisible();
+    const candidate = identity.closest('[data-slot="item"]')!;
+    await userEvent.click(within(candidate as HTMLElement).getByRole("button", { name: /选择订单：.*网站 A · site-a/ }));
+    expect(await screen.findByRole("button", { name: "确认关联收款" })).toBeEnabled();
+    expect(screen.getByText(/网站 A · site-a/)).toBeVisible();
+    expect(screen.queryByText(/site-b/)).not.toBeInTheDocument();
+    expect(view.requests.every((request) => request.method === "GET")).toBe(true);
+  });
+  it("retains the client ID when the historical website name is unavailable", async () => {
+    mount({ initialOrderId: orderId, initialLedgerId: ledgerId, lockContext: true }, (request) => {
+      if (new URL(request.url).pathname.endsWith("/orders/" + orderId))
+        return json({ data: { ...order, site_name: null, api_client_id: "historical-site" } });
+    });
+    expect(await screen.findByRole("button", { name: "确认关联收款" })).toBeEnabled();
+    expect(screen.getByText(/historical-site/)).toBeVisible();
+  });
   it("omits the differing-amount hint while keeping the candidate selectable", async () => {
     const view = mount({ initialOrderId: orderId, lockContext: true }, (request) => {
       if (!new URL(request.url).pathname.endsWith("/manual/ledger-entries")) return;
