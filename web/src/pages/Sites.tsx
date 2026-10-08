@@ -27,6 +27,9 @@ import { useDirtyDraft } from "@/drafts";
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import { SuccessMessage, useFeedback } from "@/components/Feedback";
 import { SitePolicyFields, SiteTextField } from "@/components/SitePolicyFields";
+import { SiteConfigurationConflicts } from "@/components/site-configuration-conflicts";
+import { mergeSiteConfiguration, resolveSiteConflicts, type SiteConflictChoices } from "@/lib/site-configuration";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -146,25 +149,45 @@ export function SiteEditorPage() {
   const { clientId } = useParams();
   return clientId ? <ExistingSiteEditor /> : <CreateSite />;
 }
+type SiteEditorSnapshot = { site: Site; configuration: SiteConfiguration };
+const siteEditorKey = (clientId: string) => ["site-editor", clientId] as const;
+function latestEditorSnapshot(site: Site): SiteEditorSnapshot {
+  const cached = queryClient.getQueryData<SiteEditorSnapshot>(siteEditorKey(site.client_id));
+  return cached && cached.site.revision > site.revision
+    ? cached
+    : { site, configuration: site.configuration };
+}
+async function cacheSite(site: Site): Promise<Site> {
+  // A GET begun before this write must not replace the committed snapshot later.
+  await queryClient.cancelQueries({ queryKey: siteEditorKey(site.client_id) });
+  await queryClient.cancelQueries({ queryKey: ["workspace-site", site.client_id] });
+  const snapshot = latestEditorSnapshot(site);
+  queryClient.setQueryData(siteEditorKey(site.client_id), snapshot);
+  queryClient.setQueryData<{ data: Site }>(["workspace-site", site.client_id], previous =>
+    previous && previous.data.revision > snapshot.site.revision ? previous : { data: snapshot.site },
+  );
+  void queryClient.invalidateQueries({ queryKey: ["site-overview"] });
+  return snapshot.site;
+}
+function isSiteRevisionConflict(error: unknown) {
+  return error instanceof ApiError && error.status === 409 && error.code === "site_revision_conflict";
+}
 function ExistingSiteEditor() {
   const { clientId, section = "basic" } = useParams();
   const query = useQuery({
-    queryKey: ["site-editor", clientId ?? "new", section],
+    queryKey: siteEditorKey(clientId ?? "new"),
     staleTime: Infinity,
     gcTime: clientId ? 5 * 60_000 : 0,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     queryFn: async ({
       signal,
-    }): Promise<{ site: Site | null; configuration: SiteConfiguration }> => {
+    }): Promise<SiteEditorSnapshot> => {
       if (clientId) {
         const response = await result(
           api.getSite({ path: { clientId }, signal }),
         );
-        return {
-          site: response.data,
-          configuration: response.data.configuration,
-        };
+        return latestEditorSnapshot(response.data);
       }
       throw new Error("缺少网站身份");
     },
@@ -206,8 +229,20 @@ function SiteEditor({
   const visible = (value: string) => section === "all" || section === value;
   const [saved, setSaved] = useState(initial);
   const [draft, setDraft] = useState(() => structuredClone(configuration));
-  const [baseline, setBaseline] = useState(() => JSON.stringify(configuration));
-  const clearDraft = useDirtyDraft(JSON.stringify(draft) !== baseline);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved?.configuration ?? configuration);
+  const clearDraft = useDirtyDraft(dirty);
+  const [needsReview, setNeedsReview] = useState(false);
+  const [review, setReview] = useState<({ site: Site } & ReturnType<typeof mergeSiteConfiguration>) | null>(null);
+  const [choices, setChoices] = useState<SiteConflictChoices>({});
+  const reloadController = useRef<AbortController | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      reloadController.current?.abort();
+    };
+  }, []);
   const [confirmation, setConfirmation] = useState<
     "save" | "api" | "webhook" | "delete" | null
   >(null);
@@ -228,15 +263,12 @@ function SiteEditor({
     // Do not reset/abort the mutation: hiding is not cancellation of a committed rotation.
   };
   const [feedback, setFeedback] = useFeedback();
-  const cacheSite = (site: Site) => {
-    queryClient.setQueryData(["site-editor", site.client_id, section], {
-      site,
-      configuration: site.configuration,
-    });
-    queryClient.setQueryData(["workspace-site", site.client_id], {
-      data: site,
-    });
-    void queryClient.invalidateQueries({ queryKey: ["site-overview"] });
+  const revisionConflict = (error: unknown) => {
+    if (!isSiteRevisionConflict(error)) return;
+    setNeedsReview(true);
+    setReview(null);
+    setChoices({});
+    setFeedback("");
   };
   const save = useMutation({
     networkMode: "always",
@@ -250,11 +282,13 @@ function SiteEditor({
             }),
           )
         : Promise.reject(new Error("缺少网站身份")),
-    onSuccess: (response) => {
-      cacheSite(response.data);
+    onError: revisionConflict,
+    onSuccess: async (response) => {
+      await cacheSite(response.data);
       setSaved(response.data);
       setDraft(structuredClone(response.data.configuration));
-      setBaseline(JSON.stringify(response.data.configuration));
+      setNeedsReview(false);
+      setReview(null);
       clearDraft();
       setFeedback("网站配置已保存");
       void queryClient.invalidateQueries({ queryKey: ["sites"] });
@@ -314,7 +348,7 @@ function SiteEditor({
               body: { revision: saved.revision },
             }),
       );
-      cacheSite(response.data.site);
+      await cacheSite(response.data.site);
       setSaved(response.data.site);
       if (displayGeneration === secretDisplayGeneration.current)
         setRevealed({
@@ -323,9 +357,54 @@ function SiteEditor({
         });
       setFeedback("密钥已生成或轮换，请更新业务网站配置。");
     },
+    onError: revisionConflict,
+  });
+  function applyReview(site: Site, configuration: SiteConfiguration) {
+    setSaved(site);
+    setDraft(configuration);
+    setReview(null);
+    setChoices({});
+    setNeedsReview(false);
+    save.reset();
+    action.reset();
+    setFeedback("最新配置已合并，尚未保存");
+  }
+  const reload = useMutation({
+    networkMode: "always",
+    retry: false,
+    mutationFn: async () => {
+      if (!saved) throw new Error("缺少网站身份");
+      const controller = new AbortController();
+      reloadController.current = controller;
+      const response = await result(api.getSite({ path: { clientId: saved.client_id }, signal: controller.signal }));
+      controller.signal.throwIfAborted();
+      return cacheSite(response.data);
+    },
+    onSuccess: site => {
+      if (!mounted.current || !saved) return;
+      const merged = mergeSiteConfiguration(saved.configuration, draft, site.configuration, section);
+      setChoices({});
+      if (merged.conflicts.length) setReview({ site, ...merged });
+      else applyReview(site, merged.configuration);
+    },
   });
   const errors = save.error instanceof ApiError ? save.error.fields : {};
-  const busy = save.isPending || action.isPending;
+  const busy = save.isPending || action.isPending || reload.isPending;
+  const requiresReview = needsReview || !!review || (!!initial && !!saved && initial.revision > saved.revision && dirty);
+  useEffect(() => {
+    // The write/reload callback adopts its own response and must finish first.
+    if (busy || !initial || !saved || initial.revision <= saved.revision) return;
+    if (dirty || needsReview) {
+      setNeedsReview(true);
+      if (review && initial.revision > review.site.revision) {
+        setReview(null);
+        setChoices({});
+      }
+      return;
+    }
+    setSaved(initial);
+    setDraft(structuredClone(initial.configuration));
+  }, [initial, saved, dirty, needsReview, review, busy]);
   const change = (edit: (next: SiteConfiguration) => void) => {
     const next = structuredClone(draft);
     edit(next);
@@ -376,6 +455,30 @@ function SiteEditor({
         </Tabs>
       )}
       <ErrorNotice error={save.error || action.error} />
+      <ErrorNotice error={reload.error} />
+      {requiresReview && (
+        <Alert>
+          <AlertTitle>网站配置已变更</AlertTitle>
+          <AlertDescription>
+            <p>你的修改仍保留。读取最新配置后会合并无冲突的字段；同一字段的不同修改需要核对选择。核对不会自动保存或重试密钥操作。</p>
+            <Button variant="outline" disabled={busy} onClick={() => reload.mutate()}>
+              {reload.isPending ? "正在读取…" : "读取最新配置并核对"}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+      {review && (
+        <SiteConfigurationConflicts
+          conflicts={review.conflicts}
+          choices={choices}
+          onChoose={setChoices}
+          disabled={busy}
+          onApply={() => {
+            const configuration = resolveSiteConflicts(review.configuration, review.conflicts, choices);
+            if (configuration) applyReview(review.site, configuration);
+          }}
+        />
+      )}
       <SuccessMessage message={feedback} />
       {saved && visible("integration") && (
         <Card>
@@ -403,11 +506,12 @@ function SiteEditor({
       <form
         onSubmit={(event) => {
           event.preventDefault();
+          if (busy || requiresReview) return;
           if (impact) setConfirmation("save");
           else save.mutate();
         }}
       >
-        <FieldSet disabled={busy}>
+        <FieldSet disabled={busy || !!review}>
           <Card>
             <CardContent>
               <FieldGroup>
@@ -503,7 +607,7 @@ function SiteEditor({
               </FieldGroup>
             </CardContent>
             <CardFooter>
-              <Button type="submit" disabled={busy}>
+              <Button type="submit" disabled={busy || requiresReview}>
                 {save.isPending ? "正在保存…" : "保存网站"}
               </Button>
             </CardFooter>
@@ -528,7 +632,7 @@ function SiteEditor({
             </Button>
             <Button
               variant="outline"
-              disabled={busy}
+              disabled={busy || requiresReview}
               onClick={() => setConfirmation("api")}
             >
               生成／轮换 API 密钥
@@ -542,7 +646,7 @@ function SiteEditor({
             </Button>
             <Button
               variant="outline"
-              disabled={busy}
+              disabled={busy || requiresReview}
               onClick={() => setConfirmation("webhook")}
             >
               生成／轮换通知密钥
@@ -561,7 +665,7 @@ function SiteEditor({
           <CardContent>
             <Button
               variant="destructive"
-              disabled={busy}
+              disabled={busy || requiresReview}
               onClick={() => setConfirmation("delete")}
             >
               删除空网站
@@ -620,8 +724,9 @@ function SiteEditor({
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
-              disabled={busy}
+              disabled={busy || requiresReview}
               onClick={() => {
+                if (busy || requiresReview) return;
                 const selected = confirmation;
                 setConfirmation(null);
                 if (selected === "save") save.mutate();

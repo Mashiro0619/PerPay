@@ -59,7 +59,7 @@ describe("website secret display lifetime", () => {
       await waitFor(() => expect(screen.getByRole("button", { name: "查看 API 密钥" })).not.toBeDisabled());
       expect(screen.queryByDisplayValue("late-secret")).not.toBeInTheDocument();
       if (action === "rotate") {
-        expect(queryClient.getQueryData(["site-editor", "site_a", "integration"])).toMatchObject({ site: { revision: 1 } });
+        expect(queryClient.getQueryData(["site-editor", "site_a"])).toMatchObject({ site: { revision: 1 } });
         expect(await screen.findByText("密钥已生成或轮换，请更新业务网站配置。")).toBeVisible();
       }
       expect(JSON.stringify(queryClient.getQueryCache().getAll().map(query => query.state.data))).not.toContain("secret");

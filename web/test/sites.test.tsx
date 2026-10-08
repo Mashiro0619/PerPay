@@ -17,6 +17,8 @@ const initial: Site = { client_id: "site_test", revision: 0, configuration: { na
 function mount(path = "/sites/site_test/settings/basic", failSave = false, fieldErrors?: Record<string, string>) {
   let rejectFields = !!fieldErrors;
   let saved = structuredClone(initial), defaults = structuredClone(policy);
+  let failRead = false;
+  let delayedRead: ((snapshot: Site) => Promise<Response>) | null = null;
   const writes: Array<{ path: string; method: string; body: Record<string, unknown> }> = [];
   const fetchMock = vi.fn(async (request: Request) => {
     const path = new URL(request.url).pathname;
@@ -25,6 +27,8 @@ function mount(path = "/sites/site_test/settings/basic", failSave = false, field
       writes.push({ path, method: request.method, body });
       if (failSave) throw new TypeError("network failure");
       if (rejectFields) { rejectFields = false; return json({ error: { code: "validation_failed", message: "请修正字段", fields: fieldErrors } }, 422); }
+      if (body.revision !== undefined && !path.endsWith("/site-defaults") && body.revision !== saved.revision)
+        return json({ error: { code: "site_revision_conflict", message: "网站配置已变更，请刷新后重试。" } }, 409);
       if (path.endsWith("/actions/rotate")) { saved = { ...saved, revision: saved.revision + 1 }; return json({ data: { site: saved, secret: "synthetic-site-key" } }); }
       if (path.endsWith("/actions/view")) return json({ data: { secret: "synthetic-site-key" } });
       if (path.endsWith("/site-defaults")) { defaults = body.policy as SitePolicy; return json({ data: { revision: 1, policy: defaults } }); }
@@ -34,6 +38,12 @@ function mount(path = "/sites/site_test/settings/basic", failSave = false, field
     }
     if (path.endsWith("/site-defaults")) return json({ data: { revision: 0, policy: defaults } });
     if (path === "/api/admin/v1/sites") return json({ data: [saved], page: { next_cursor: null } });
+    if (failRead) throw new TypeError("latest configuration unavailable");
+    if (delayedRead) {
+      const read = delayedRead;
+      delayedRead = null;
+      return read(structuredClone(saved));
+    }
     return json({ data: saved });
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -41,7 +51,24 @@ function mount(path = "/sites/site_test/settings/basic", failSave = false, field
     { path: "/sites", element: <Sites /> }, { path: "/sites/new", element: <SiteEditorPage /> }, { path: "/sites/defaults", element: <SiteDefaultsPage /> }, { path: "/sites/:clientId/settings/:section", element: <SiteEditorPage /> },
   ] }], { initialEntries: [path] });
   render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
-  return { router, writes, fetchMock };
+  return {
+    router, writes, fetchMock,
+    changeRemote(edit: (configuration: Site["configuration"]) => void) {
+      const configuration = structuredClone(saved.configuration);
+      edit(configuration);
+      saved = { ...saved, revision: saved.revision + 1, configuration };
+    },
+    failReads(value: boolean) { failRead = value; },
+    delayNextRead() {
+      let release!: () => void;
+      let started = false;
+      delayedRead = snapshot => new Promise(resolve => {
+        started = true;
+        release = () => resolve(json({ data: snapshot }));
+      });
+      return { started: () => started, release: () => release() };
+    },
+  };
 }
 afterEach(() => onlineManager.setOnline(true));
 
@@ -96,6 +123,189 @@ describe("business website management", () => {
 
 });
 
+describe("website configuration recovery", () => {
+  it("saves across basic, orders, and basic again with the latest complete configuration", async () => {
+    const view = mount(), user = userEvent.setup();
+    fireEvent.change(await screen.findByLabelText("网站名称"), { target: { value: "第一次改名" } });
+    await user.click(screen.getByRole("button", { name: "保存网站" }));
+    await screen.findByText("网站配置已保存");
+    await user.click(screen.getByRole("tab", { name: "订单设置" }));
+    fireEvent.change(await screen.findByLabelText("订单有效期（秒）"), { target: { value: "600" } });
+    await user.click(screen.getByRole("button", { name: "保存网站" }));
+    await screen.findByText("网站配置已保存");
+    await user.click(screen.getByRole("tab", { name: "基本信息" }));
+    fireEvent.change(await screen.findByLabelText("网站名称"), { target: { value: "第二次改名" } });
+    await user.click(screen.getByRole("button", { name: "保存网站" }));
+    await waitFor(() => expect(view.writes).toHaveLength(3));
+    expect(view.writes.map(write => write.body.revision)).toEqual([0, 1, 2]);
+    expect(view.writes[2]!.body).toMatchObject({ configuration: { name: "第二次改名", policy: { orders: { order_ttl_seconds: 600 } } } });
+    await screen.findByText("网站配置已保存");
+  });
+
+  it("keeps drafts through failed reloads and merges remote fields before an explicit save", async () => {
+    const view = mount(), user = userEvent.setup();
+    fireEvent.change(await screen.findByLabelText("网站名称"), { target: { value: "我的修改" } });
+    view.changeRemote(configuration => { configuration.policy.orders.order_ttl_seconds = 600; });
+    await user.click(screen.getByRole("button", { name: "保存网站" }));
+    const reload = await screen.findByRole("button", { name: "读取最新配置并核对" });
+    expect(screen.getByRole("button", { name: "保存网站" })).toBeDisabled();
+    view.failReads(true);
+    await user.click(reload);
+    await screen.findByText("无法连接服务，请检查网络后重试。");
+    expect(screen.getByLabelText("网站名称")).toHaveValue("我的修改");
+    view.failReads(false);
+    await user.click(screen.getByRole("button", { name: "读取最新配置并核对" }));
+    await screen.findByText("最新配置已合并，尚未保存");
+    expect(view.writes).toHaveLength(1);
+    expect(screen.getByLabelText("网站名称")).toHaveValue("我的修改");
+    await user.click(screen.getByRole("button", { name: "保存网站" }));
+    await waitFor(() => expect(view.writes).toHaveLength(2));
+    expect(view.writes[1]!.body).toMatchObject({ revision: 1, configuration: { name: "我的修改", policy: { orders: { order_ttl_seconds: 600 } } } });
+    await screen.findByText("网站配置已保存");
+  });
+
+  it.each(["保留我的修改", "采用服务器值"])("requires an explicit same-field conflict choice: %s", async choice => {
+    const view = mount(), user = userEvent.setup();
+    fireEvent.change(await screen.findByLabelText("网站名称"), { target: { value: "我的修改" } });
+    view.changeRemote(configuration => { configuration.name = "服务器修改"; configuration.policy.orders.order_ttl_seconds = 600; });
+    await user.click(screen.getByRole("button", { name: "保存网站" }));
+    await user.click(await screen.findByRole("button", { name: "读取最新配置并核对" }));
+    await screen.findByText("同一字段存在不同修改");
+    expect(screen.getByRole("button", { name: "保存网站" })).toBeDisabled();
+    expect(screen.getByText("原值：网站 A")).toBeVisible();
+    expect(screen.getByText("服务器值：服务器修改")).toBeVisible();
+    expect(screen.getByText("我的值：我的修改")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: choice }));
+    await user.click(screen.getByRole("button", { name: "应用核对结果" }));
+    expect(view.writes).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "保存网站" }));
+    await waitFor(() => expect(view.writes).toHaveLength(2));
+    expect(view.writes[1]!.body).toMatchObject({ revision: 1, configuration: { name: choice === "保留我的修改" ? "我的修改" : "服务器修改", policy: { orders: { order_ttl_seconds: 600 } } } });
+  });
+
+  it("adopts remote snapshots when clean and preserves dirty drafts for explicit comparison", async () => {
+    const view = mount(), user = userEvent.setup();
+    await screen.findByLabelText("网站名称");
+    view.changeRemote(configuration => { configuration.name = "远端名称"; });
+    await act(async () => { await queryClient.invalidateQueries({ queryKey: ["site-editor"] }); });
+    await waitFor(() => expect(screen.getByLabelText("网站名称")).toHaveValue("远端名称"));
+    fireEvent.change(screen.getByLabelText("网站名称"), { target: { value: "尚未保存" } });
+    view.changeRemote(configuration => { configuration.policy.orders.order_ttl_seconds = 900; });
+    await act(async () => { await queryClient.invalidateQueries({ queryKey: ["site-editor"] }); });
+    expect(screen.getByLabelText("网站名称")).toHaveValue("尚未保存");
+    await waitFor(() => expect(screen.getByRole("button", { name: "保存网站" })).toBeDisabled());
+    await user.click(await screen.findByRole("button", { name: "读取最新配置并核对" }));
+    await screen.findByText("最新配置已合并，尚未保存");
+    await user.click(screen.getByRole("button", { name: "保存网站" }));
+    await waitFor(() => expect(view.writes).toHaveLength(1));
+    expect(view.writes[0]!.body).toMatchObject({ revision: 2, configuration: { name: "尚未保存", policy: { orders: { order_ttl_seconds: 900 } } } });
+  });
+
+  it("keeps drafts and repeats comparison when another conflict occurs after merging", async () => {
+    const view = mount(), user = userEvent.setup();
+    fireEvent.change(await screen.findByLabelText("网站名称"), { target: { value: "我的修改" } });
+    view.changeRemote(configuration => { configuration.policy.orders.order_ttl_seconds = 600; });
+    await user.click(screen.getByRole("button", { name: "保存网站" }));
+    await user.click(await screen.findByRole("button", { name: "读取最新配置并核对" }));
+    await screen.findByText("最新配置已合并，尚未保存");
+    view.changeRemote(configuration => { configuration.policy.display.checkout_name = "最新收银台"; });
+    await user.click(screen.getByRole("button", { name: "保存网站" }));
+    await user.click(await screen.findByRole("button", { name: "读取最新配置并核对" }));
+    await screen.findByText("最新配置已合并，尚未保存");
+    expect(screen.getByLabelText("网站名称")).toHaveValue("我的修改");
+    expect(view.writes).toHaveLength(2);
+    await user.click(screen.getByRole("button", { name: "保存网站" }));
+    await waitFor(() => expect(view.writes).toHaveLength(3));
+    expect(view.writes[2]!.body).toMatchObject({ revision: 2, configuration: { name: "我的修改", policy: { orders: { order_ttl_seconds: 600 }, display: { checkout_name: "最新收银台" } } } });
+  });
+
+  it("merges separate nested fields in the same group while resolving only the overlapping field", async () => {
+    const view = mount("/sites/site_test/settings/orders"), user = userEvent.setup();
+    fireEvent.change(await screen.findByLabelText("订单有效期（秒）"), { target: { value: "600" } });
+    fireEvent.change(screen.getByLabelText("待付款订单上限"), { target: { value: "10" } });
+    view.changeRemote(configuration => {
+      configuration.name = "远端名称";
+      configuration.policy.orders.order_ttl_seconds = 900;
+      configuration.policy.orders.amount_reuse_cooldown_seconds = 1200;
+    });
+    await user.click(screen.getByRole("button", { name: "保存网站" }));
+    await user.click(await screen.findByRole("button", { name: "读取最新配置并核对" }));
+    await user.click(await screen.findByRole("button", { name: "保留我的修改" }));
+    await user.click(screen.getByRole("button", { name: "应用核对结果" }));
+    expect(screen.getByLabelText("金额复用冷却（秒）")).toHaveValue(1200);
+    expect(screen.getByLabelText("待付款订单上限")).toHaveValue(10);
+    await user.click(screen.getByRole("button", { name: "保存网站" }));
+    await waitFor(() => expect(view.writes).toHaveLength(2));
+    expect(view.writes[1]!.body).toMatchObject({ revision: 1, configuration: { name: "远端名称", policy: { orders: { order_ttl_seconds: 600, amount_reuse_cooldown_seconds: 1200, pending_order_limit: 10 } } } });
+  });
+
+  it("merges display text, nullable links, and remote switches without reverting remote fields", async () => {
+    const view = mount("/sites/site_test/settings/display"), user = userEvent.setup();
+    fireEvent.change(await screen.findByLabelText("收银台名称"), { target: { value: "我的收银台" } });
+    fireEvent.change(screen.getByLabelText("帮助链接"), { target: { value: "https://help.example.com" } });
+    view.changeRemote(configuration => { configuration.policy.display.checkout_show_product_name = false; });
+    await user.click(screen.getByRole("button", { name: "保存网站" }));
+    await user.click(await screen.findByRole("button", { name: "读取最新配置并核对" }));
+    await screen.findByText("最新配置已合并，尚未保存");
+    expect(screen.getByRole("switch", { name: "显示商品名称" })).not.toBeChecked();
+    await user.click(screen.getByRole("button", { name: "保存网站" }));
+    await waitFor(() => expect(view.writes).toHaveLength(2));
+    expect(view.writes[1]!.body).toMatchObject({ revision: 1, configuration: { policy: { display: { checkout_name: "我的收银台", checkout_help_url: "https://help.example.com", checkout_show_product_name: false } } } });
+  });
+
+  it("requires explicit retry after a rotation conflict and retains integration drafts through rotation", async () => {
+    const view = mount(), user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "接入与通知" }));
+    fireEvent.change(await screen.findByLabelText("返回来源"), { target: { value: "https://draft.example.com" } });
+    await user.click(screen.getByRole("button", { name: "高级设置" }));
+    fireEvent.change(await screen.findByLabelText("最大投递次数"), { target: { value: "15" } });
+    view.changeRemote(configuration => {
+      configuration.policy.orders.order_ttl_seconds = 600;
+      configuration.policy.notification_delivery.timeout_milliseconds = 7000;
+    });
+    await user.click(screen.getByRole("button", { name: "生成／轮换通知密钥" }));
+    await user.click(await screen.findByRole("button", { name: "确认" }));
+    await user.click(await screen.findByRole("button", { name: "读取最新配置并核对" }));
+    await screen.findByText("最新配置已合并，尚未保存");
+    expect(view.writes).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "生成／轮换通知密钥" }));
+    await user.click(await screen.findByRole("button", { name: "确认" }));
+    await screen.findByDisplayValue("synthetic-site-key");
+    expect(screen.getByLabelText("返回来源")).toHaveValue("https://draft.example.com");
+    expect(screen.getByLabelText("最大投递次数")).toHaveValue(15);
+    expect(queryClient.getQueryData<{ site: Site }>(["site-editor", "site_test"])?.site.configuration.return_origin).toBeNull();
+    await user.click(screen.getByRole("tab", { name: "基本信息" }));
+    await screen.findByRole("button", { name: "放弃修改并继续" });
+    await user.click(screen.getByRole("button", { name: "继续编辑" }));
+    await user.click(screen.getByRole("button", { name: "保存网站" }));
+    await user.click(await screen.findByRole("button", { name: "确认" }));
+    await screen.findByText("网站配置已保存");
+    expect(view.writes[2]!.body).toMatchObject({ revision: 2, configuration: { return_origin: "https://draft.example.com", policy: { orders: { order_ttl_seconds: 600 }, notification_delivery: { maximum_attempts: 15, timeout_milliseconds: 7000 } } } });
+    await user.click(screen.getByRole("tab", { name: "基本信息" }));
+    fireEvent.change(await screen.findByLabelText("网站名称"), { target: { value: "轮换后改名" } });
+    await user.click(screen.getByRole("button", { name: "保存网站" }));
+    await waitFor(() => expect(view.writes).toHaveLength(4));
+    expect(view.writes[3]!.body.revision).toBe(3);
+  });
+
+  it("cancels an older background read before publishing a committed save", async () => {
+    const view = mount(), user = userEvent.setup();
+    fireEvent.change(await screen.findByLabelText("网站名称"), { target: { value: "第一次保存" } });
+    const delayed = view.delayNextRead();
+    let refresh!: Promise<void>;
+    await act(async () => { refresh = queryClient.invalidateQueries({ queryKey: ["site-editor"] }); });
+    await waitFor(() => expect(delayed.started()).toBe(true));
+    await user.click(screen.getByRole("button", { name: "保存网站" }));
+    await screen.findByText("网站配置已保存");
+    await act(async () => { delayed.release(); await refresh; });
+    expect(screen.getByLabelText("网站名称")).toHaveValue("第一次保存");
+    fireEvent.change(screen.getByLabelText("网站名称"), { target: { value: "第二次保存" } });
+    await user.click(screen.getByRole("button", { name: "保存网站" }));
+    await waitFor(() => expect(view.writes).toHaveLength(2));
+    expect(view.writes[1]!.body.revision).toBe(1);
+  });
+});
+
 describe("website field feedback", () => {
   it.each(["basic", "orders", "integration", "display", "defaults"])("keeps per-group field errors and drafts in %s", async section => {
     const path = section === "defaults" ? "/sites/defaults" : "/sites/site_test/settings/" + section;
@@ -132,7 +342,7 @@ describe("website field feedback", () => {
     await user.click(await screen.findByRole("button", { name: "生成／轮换 API 密钥" }));
     await user.click(await screen.findByRole("button", { name: "确认" }));
     await screen.findByDisplayValue("synthetic-site-key");
-    expect(JSON.stringify(queryClient.getQueryData(["site-editor", "site_test", "integration"]))).not.toContain("synthetic-site-key");
+    expect(JSON.stringify(queryClient.getQueryData(["site-editor", "site_test"]))).not.toContain("synthetic-site-key");
     await act(async () => { await view.router.navigate("/sites"); });
     await act(async () => { await view.router.navigate("/sites/site_test/settings/basic"); });
     expect(screen.queryByDisplayValue("synthetic-site-key")).not.toBeInTheDocument();
@@ -143,6 +353,6 @@ describe("website field feedback", () => {
     const view = mount(); const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "删除空网站" })); await user.click(await screen.findByRole("button", { name: "确认" }));
     await waitFor(() => expect(view.router.state.location.pathname).toBe("/sites"));
-    expect(queryClient.getQueryData(["site-editor", "site_test", "basic"])).toBeUndefined();
+    expect(queryClient.getQueryData(["site-editor", "site_test"])).toBeUndefined();
   });
 });
