@@ -4,7 +4,7 @@
 
 ## 配置与启动
 
-1. [配好 PerPay](https://github.com/Mashiro0619/PerPay/blob/main/docs/alipay-setup.md)，复制**网站 API 密钥**。启用“业务通知”，允许的 Origin 填你的业务域名（如 `https://shop.example.com`），保存并取得**通知签名密钥**。
+1. [配好 PerPay](https://github.com/Mashiro0619/PerPay/blob/main/docs/alipay-setup.md)，创建业务网站，进入“网站设置 → 接入与通知”。先点击“生成／轮换 API 密钥”和“生成／轮换通知密钥”，复制**网站 API 密钥**、**通知签名密钥**和**客户端 ID**。已有密钥可直接查看复用，无需轮换；先保持通知关闭，保存配置不会自动生成密钥。
 2. 将业务域名下的 `POST /webhooks/perpay` 转发到 Demo 的 `http://127.0.0.1:6196/webhooks/perpay`，保留原始正文和请求头。**只开放回调路径**，Demo 页面没有登录保护。
 3. 解压 `demo.zip`，在 `perpay-client-demo` 中打开终端；源码位于 `examples/node-client`。复制配置模板：
 
@@ -12,7 +12,7 @@
    Copy-Item .env.example .env
    ```
 
-   Linux / macOS 使用 `cp .env.example .env`。已有 `.env` 直接编辑，填好四项：
+   Linux / macOS 使用 `cp .env.example .env`。已有 `.env` 直接编辑，填好五项：
 
    ```dotenv
    PERPAY_URL=https://你的PerPay域名
@@ -25,6 +25,7 @@
    PerPay 地址不带 `/admin`；两种密钥不要混用。回调地址和签名密钥缺一项都会停止启动，不会自动退回查单模式。
 
 4. 运行 `npm start`，打开 [http://127.0.0.1:6196](http://127.0.0.1:6196)。远程服务器运行时，用 SSH 转发端口访问页面。修改配置后需重启。
+5. 接收端配置完成后，回到该网站的“网站设置 → 接入与通知”，通知来源填业务域名的 HTTPS Origin（如 `https://shop.example.com`，不带回调路径），开启通知并保存。确认保存成功后再创建测试订单；订单的回调地址必须属于该来源。
 
 ## 试一笔
 
