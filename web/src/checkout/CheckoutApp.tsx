@@ -125,7 +125,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
   const retryAllowed =
     state.visual !== "NOT_FOUND" &&
     (!order ||
-      ["UNPAID", "UNAVAILABLE", "RATE_LIMITED"].includes(state.visual));
+      ["UNPAID", "EXPIRED", "CLOSED", "UNAVAILABLE", "RATE_LIMITED"].includes(state.visual));
   const blocked = state.busy || state.unavailable || state.retryAt > Date.now();
   const desktopWidth =
     order &&

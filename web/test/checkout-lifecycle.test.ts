@@ -928,7 +928,7 @@ describe("checkout merchant actions", () => {
     "http://help.example.com",
     "javascript:alert(1)",
   ])(
-    "leaves no help placeholder or empty actions when help is absent or invalid: %s",
+    "keeps status queries without a help placeholder when help is absent or invalid: %s",
     (helpUrl) => {
       const order = initial().checkout!;
       order.return_url = null;
@@ -946,7 +946,7 @@ describe("checkout merchant actions", () => {
         screen.queryByRole("link", { name: "商家帮助" }),
       ).not.toBeInTheDocument();
       expect(container.querySelector("[data-checkout-help]")).toBeNull();
-      expect(container.querySelector("[data-checkout-actions]")).toBeNull();
+      expect(screen.getByRole("button", { name: "查询付款状态" })).toBeVisible();
     },
   );
 

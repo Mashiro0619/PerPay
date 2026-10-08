@@ -75,7 +75,7 @@ export function createCheckoutController(initial: CheckoutInitial) {
   const interval = () =>
     state.visual === "UNPAID"
       ? 2500
-      : ["CONFIRMED", "DISPUTED"].includes(state.visual)
+      : ["CONFIRMED", "DISPUTED", "EXPIRED", "CLOSED"].includes(state.visual)
         ? 30000
         : ["UNAVAILABLE", "RATE_LIMITED"].includes(state.visual)
           ? 2500
@@ -94,6 +94,8 @@ export function createCheckoutController(initial: CheckoutInitial) {
         Math.max(250, delay, state.retryAt - Date.now()),
       );
   };
+  const currentServerTime = () =>
+    serverTime + Math.max(0, mono() - anchor, Date.now() - wallAnchor);
   function updateClock() {
     if (state.busy && manualDeadline > 0 && mono() >= manualDeadline) {
       manualDeadline = 0;
@@ -102,8 +104,7 @@ export function createCheckoutController(initial: CheckoutInitial) {
         feedback: "核实仍可能继续，页面会自动更新；请勿重复付款。",
       });
     }
-    const now =
-      serverTime + Math.max(0, mono() - anchor, Date.now() - wallAnchor);
+    const now = currentServerTime();
     const suspended =
       state.visual === "UNPAID" &&
       (!state.order || Date.parse(state.order.checkout.expires_at) <= now);
@@ -190,7 +191,9 @@ export function createCheckoutController(initial: CheckoutInitial) {
       manual &&
       !initial.demoMode &&
       state.order?.checkout.status === "OPEN" &&
-      state.order.payment.status === "UNPAID";
+      state.order.payment.status === "UNPAID" &&
+      // The rendered countdown can be one tick behind the actual send time.
+      Date.parse(state.order.checkout.expires_at) > currentServerTime();
     const target = new URL(
       initial.apiUrl + (checking ? "/check" : ""),
       location.origin,
