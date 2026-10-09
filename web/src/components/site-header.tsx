@@ -1,5 +1,6 @@
-import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { useWorkspace } from "@/workspace";
+import { useLocation } from "react-router";
+import { isGlobalNavigationPage } from "@/lib/navigation-selection";
 import { Link } from "@/navigation";
 import { RefreshButton } from "@/components/refresh-button";
 import { ContentWidthControl } from "@/components/content-width";
@@ -20,6 +21,11 @@ export function SiteHeader({
   overview: boolean;
 }) {
   const scope = useWorkspace();
+  const { pathname } = useLocation();
+  const workspaceName = scope.clientId
+    ? (scope.site?.data?.data.configuration.name ?? scope.clientId)
+    : isGlobalNavigationPage(pathname) ? "全局" : "全部网站";
+  const pagePath = `${workspaceName} / ${title}`;
   const fetching = useIsFetching({ queryKey: ["analytics"] }) > 0;
   return (
     <header className="flex min-h-(--header-height) shrink-0 flex-col gap-1 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
@@ -35,22 +41,33 @@ export function SiteHeader({
               <Link
                 global
                 to="/"
-                className="hidden text-sm text-muted-foreground lg:inline"
+                className="hidden shrink-0 text-sm text-muted-foreground md:inline"
               >
                 全部网站
               </Link>
-              <span className="hidden text-muted-foreground lg:inline">/</span>
+              <span
+                aria-hidden="true"
+                className="hidden shrink-0 text-muted-foreground md:inline"
+              >
+                /
+              </span>
             </>
           )}
-          <WorkspaceSwitcher />
-          <span className="hidden text-muted-foreground md:inline">/</span>
+          <span
+            className="min-w-0 max-w-40 truncate text-sm text-muted-foreground sm:max-w-64"
+            title={workspaceName}
+          >
+            {workspaceName}
+          </span>
+          <span
+            aria-hidden="true"
+            className="hidden shrink-0 text-muted-foreground md:inline"
+          >
+            /
+          </span>
           <h1
-            className="sr-only md:not-sr-only md:truncate md:text-sm md:font-medium"
-            title={
-              scope.clientId
-                ? `${scope.site?.data?.data.configuration.name ?? scope.clientId} / ${title}`
-                : title
-            }
+            className="sr-only md:not-sr-only md:min-w-0 md:truncate md:text-sm md:font-medium"
+            title={pagePath}
           >
             {title}
           </h1>
@@ -79,11 +96,9 @@ export function SiteHeader({
       <div
         aria-hidden="true"
         className="w-full truncate px-4 pb-2 text-xs text-muted-foreground md:hidden"
+        title={pagePath}
       >
-        {scope.clientId
-          ? `${scope.site?.data?.data.configuration.name ?? scope.clientId} / `
-          : "全部网站 / "}
-        {title}
+        {pagePath}
       </div>
     </header>
   );

@@ -223,7 +223,7 @@ describe("shared runtime presentation", () => {
     await user.click(screen.getByRole("button",{name:"查看自动确认详情"}));
     expect(screen.getByText("待核对订单 0 · 异常提醒 0")).toBeVisible();
     expect(screen.queryByRole("link", { name: "查看未忽略提醒" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("link", { name: "全局待办" }));
+    await user.click(screen.getByRole("link", { name: "待办" }));
     await user.click(screen.getByRole("button", { name: "已忽略" }));
     await screen.findByRole("link", { name: "收入尚未匹配订单" });
     await user.click(screen.getByRole("button", { name: "恢复提醒" }));

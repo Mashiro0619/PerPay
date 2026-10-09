@@ -1,4 +1,5 @@
 import { useWorkspace } from "@/workspace";
+import { actualPageAddress } from "@/lib/navigation-selection";
 import {
   createContext,
   useContext,
@@ -25,6 +26,7 @@ const TestPaymentContext = createContext<
 
 export function TestPaymentProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
+  const pageAddress = actualPageAddress(location);
   const { clientId } = useWorkspace();
   const [open, setOpen] = useState(false);
   const [started, setStarted] = useState(false);
@@ -33,7 +35,7 @@ export function TestPaymentProvider({ children }: { children: ReactNode }) {
   const trigger = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     setOpen(false);
-  }, [location.pathname, location.search]);
+  }, [pageAddress]);
   return (
     <TestPaymentContext
       value={(element) => {

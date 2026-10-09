@@ -1,4 +1,5 @@
 import { useLocation, useSearchParams } from "react-router";
+import { actualPageAddress } from "@/lib/navigation-selection";
 
 type PageTrail = {
   scope: string;
@@ -11,7 +12,7 @@ export function useCursor(key = "cursor") {
   const location = useLocation();
   const [search, setSearch] = useSearchParams();
   const pageKey = key === "cursor" ? "page" : key + "_page";
-  const scopeSearch = new URLSearchParams(search);
+  const scopeSearch = new URLSearchParams(actualPageAddress(location).slice(location.pathname.length));
   scopeSearch.delete(key);
   scopeSearch.delete(pageKey);
   scopeSearch.sort();

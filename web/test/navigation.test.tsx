@@ -177,7 +177,7 @@ describe("navigation and draft protection", () => {
             .getAll()
             .some((mutation) => mutation.state.isPaused),
         ).toBe(false);
-        await user.click(screen.getByRole("link", { name: "全部订单" }));
+        await user.click(screen.getByRole("link", { name: "订单" }));
         await user.click(
           await screen.findByRole("button", { name: "放弃修改并继续" }),
         );
@@ -481,7 +481,7 @@ describe("navigation and draft protection", () => {
     expect(router.state.location.pathname).toBe("/settings/collection-policy");
     await user.click(screen.getByRole("button", { name: "继续编辑" }));
     expect(field).toHaveValue(450);
-    await user.click(screen.getByRole("link", { name: "全部订单" }));
+    await user.click(screen.getByRole("link", { name: "订单" }));
     await user.click(screen.getByRole("button", { name: "放弃修改并继续" }));
     expect(
       await screen.findByRole("heading", { name: "全部订单", level: 1 }),

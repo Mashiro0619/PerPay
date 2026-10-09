@@ -18,7 +18,9 @@ import {
 import { workspaceApi } from "../src/api/workspace";
 import { queryClient, result } from "../src/api/client";
 import { Link, useDetailBack } from "../src/navigation";
-import { mountOnboarding } from "./onboarding-fixture";
+import { DraftProvider } from "../src/drafts";
+import { TestPaymentButton, TestPaymentProvider } from "../src/components/test-payment-provider";
+import { mountOnboarding, systemStatus } from "./onboarding-fixture";
 import { json, order, orderId } from "./fixtures";
 const site = (id: string) => ({
   client_id: id,
@@ -196,7 +198,7 @@ describe("two-level workspace boundaries", () => {
     expect(reads).toEqual(["/api/admin/v1/sites/a"]);
     expect(screen.queryByText("global-leak")).not.toBeInTheDocument();
   });
-  it("changes the real shell navigation and returns to the target website overview", async () => {
+  it("keeps the current business section and shared navigation in the real shell when switching websites", async () => {
     const reads: string[] = [];
     const view = mountOnboarding({
       stage: 4,
@@ -227,22 +229,38 @@ describe("two-level workspace boundaries", () => {
     });
     await screen.findByRole("heading", { name: "本站订单" });
     const nav = screen.getByRole("navigation", { name: "主导航" });
-    expect(within(nav).getByRole("link", { name: "本站通知" })).toHaveAttribute(
+    const selector = screen.getByRole("navigation", { name: "网站选择" });
+    expect(within(nav).getByRole("link", { name: "通知" })).toHaveAttribute(
       "href",
       "/sites/a/notifications",
     );
-    expect(
-      within(nav).queryByRole("link", { name: "共享账本" }),
-    ).not.toBeInTheDocument();
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "切换后台" }));
-    await user.click(await screen.findByRole("link", { name: /网站 B/ }));
-    await waitFor(() =>
-      expect(view.router.state.location.pathname).toBe("/sites/b"),
+    expect(screen.getByRole("link", { name: "共享账本" })).toHaveAttribute(
+      "href",
+      "/reconciliation?selected_site=a",
     );
-    await screen.findByRole("heading", { name: "网站概览" });
+    expect(
+      screen.queryByRole("button", { name: "切换后台" }),
+    ).not.toBeInTheDocument();
+    expect(within(selector).getByRole("link", { name: "管理网站" })).toHaveAttribute(
+      "href",
+      "/sites?selected_site=a",
+    );
+    expect(await within(selector).findByRole("link", { name: "网站 A" })).toHaveAttribute(
+      "aria-current",
+      "location",
+    );
+    const user = userEvent.setup();
+    await user.click(await within(selector).findByRole("link", { name: "网站 B" }));
+    await waitFor(() =>
+      expect(view.router.state.location.pathname).toBe("/sites/b/orders"),
+    );
+    await screen.findByRole("heading", { name: "本站订单" });
     await waitFor(() => expect(document.title).toContain("网站 B"));
-    expect(reads).toContain("/api/admin/v1/sites/b/system/analytics");
+    expect(within(selector).getByRole("link", { name: "网站 B" })).toHaveAttribute(
+      "aria-current",
+      "location",
+    );
+    expect(reads).toContain("/api/admin/v1/sites/b/orders");
     expect(reads).not.toContain("/api/admin/v1/orders");
   });
 });
@@ -300,6 +318,73 @@ it("fixes a test-payment request to A while switching to B and retries the origi
     expect(screen.getByRole("button", { name: "重试原请求" })).toBeEnabled(),
   );
   expect(screen.getByText("创建结果待确认")).toBeVisible();
+});
+
+it("keeps a global test-payment dialog and its original request through selection-only navigation", async () => {
+  const writes: Request[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+    const path = new URL(request.url).pathname;
+    if (path.endsWith("/test-payments") && request.method === "POST") {
+      writes.push(request.clone());
+      throw new TypeError("response lost");
+    }
+    if (path === "/api/admin/v1/system/status") return json({ data: systemStatus() });
+    if (path === "/api/admin/v1/sites")
+      return json({ data: [site("a"), site("b")], page: { next_cursor: null } });
+    if (/^\/api\/admin\/v1\/sites\/[ab]$/.test(path))
+      return json({ data: site(path.at(-1)!) });
+    return json({ error: { code: "route_not_found", message: "unexpected test request" } }, 404);
+  }));
+  function SharedPage() {
+    return <><h1>全局页面</h1><TestPaymentButton /></>;
+  }
+  const router = createMemoryRouter([{
+    element: <DraftProvider><WorkspaceProvider><TestPaymentProvider><WorkspaceOutlet /></TestPaymentProvider></WorkspaceProvider></DraftProvider>,
+    children: [
+      { path: "/reconciliation", element: <SharedPage /> },
+      { path: "/system", element: <SharedPage /> },
+    ],
+  }], { initialEntries: ["/reconciliation?selected_site=a"] });
+  render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "测试收款" }));
+  const dialog = await screen.findByRole("dialog", { name: "测试收款" });
+  const picker = within(dialog).getByRole("combobox", { name: "业务网站" });
+  await user.click(picker);
+  await user.click(await screen.findByRole("option", { name: "网站 A" }));
+  const create = within(dialog).getByRole("button", { name: "创建测试订单" });
+  await waitFor(() => expect(create).toBeEnabled());
+  await user.click(create);
+  await within(dialog).findByText("创建结果待确认");
+  const original = await writes[0]!.clone().json();
+  expect(original).toMatchObject({ api_client_id: "a", amount_cents: 1, test_payment_id: expect.any(String) });
+
+  await act(async () => { await router.navigate("/reconciliation?selected_site=b"); });
+  expect(screen.getByRole("dialog", { name: "测试收款" })).toBe(dialog);
+  expect(picker).toHaveTextContent("网站 A");
+  expect(picker).toBeDisabled();
+  await user.click(within(dialog).getByRole("button", { name: "重试原请求" }));
+  await waitFor(() => expect(writes).toHaveLength(2));
+  expect(await writes[1]!.clone().json()).toEqual(original);
+
+  await act(async () => { await router.navigate("/system?selected_site=b"); });
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "测试收款" })).not.toBeInTheDocument());
+  const unload = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(unload);
+  expect(unload.defaultPrevented).toBe(true);
+  await user.click(screen.getByRole("button", { name: "测试收款" }));
+  const reopened = await screen.findByRole("dialog", { name: "测试收款" });
+  expect(within(reopened).getByRole("combobox", { name: "业务网站" })).toHaveTextContent("网站 A");
+  const retry = within(reopened).getByRole("button", { name: "重试原请求" });
+  await waitFor(() => expect(retry).toBeEnabled());
+  await user.click(retry);
+  await waitFor(() => expect(writes).toHaveLength(3));
+  expect(await writes[2]!.clone().json()).toEqual(original);
+  expect(writes.map((request) => new URL(request.url).pathname)).toEqual([
+    "/api/admin/v1/test-payments",
+    "/api/admin/v1/test-payments",
+    "/api/admin/v1/test-payments",
+  ]);
 });
 
 it("hides business controls on metadata refresh failure without throwing away an existing draft", async () => {

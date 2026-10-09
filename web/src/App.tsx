@@ -23,7 +23,8 @@ import { DraftProvider, useDraftGuard } from "@/drafts";
 import { Link, NavigationContext, useNavigate } from "@/navigation";
 import { OfficialUpdateNotice } from "@/updates";
 import { deferOnboarding, deferredInstance } from "@/lib/onboarding";
-import { AppSidebar, navigation } from "@/components/app-sidebar";
+import { AppSidebar } from "@/components/app-sidebar";
+import { isGlobalNavigationPage, navigationSection, type NavigationSection } from "@/lib/navigation-selection";
 import { SiteHeader } from "@/components/site-header";
 import { TestPaymentProvider } from "@/components/test-payment-provider";
 import TestPayment from "@/pages/TestPayment";
@@ -41,6 +42,17 @@ import {
   SidebarInset,
   useSidebar,
 } from "@/components/ui/sidebar";
+
+const globalPageTitles: Record<NavigationSection, string> = {
+  overview: "总览",
+  orders: "全部订单",
+  "work-items": "全局待办",
+  notifications: "全部通知",
+  settings: "实例设置",
+  reconciliation: "共享账本",
+  system: "运行状态",
+  sites: "业务网站",
+};
 
 function AppShell() {
   return (
@@ -101,11 +113,8 @@ function Workspace() {
   useEffect(() => {
     setOpenMobile(false);
   }, [location.key, setOpenMobile]);
-  const current = [...navigation]
-    .reverse()
-    .find((item) =>
-      item.url === "/" ? localPath === "/" : localPath.startsWith(item.url),
-    );
+  const section = navigationSection(location.pathname);
+  const globalPage = isGlobalNavigationPage(location.pathname);
   const testPaymentPage = useMatch("/test-payment");
   const title = testPaymentPage
     ? "测试收款"
@@ -120,14 +129,14 @@ function Workspace() {
             "/settings": "网站设置",
             "/reconciliation": "本站对账证据",
           }["/" + (localPath.split("/")[1] ?? "")] ?? "网站后台")
-        : (current?.title ?? systemName);
+        : (section ? globalPageTitles[section] : systemName);
   const overview = localPath === "/";
   useEffect(() => {
     document.title = [
       title,
       scope.clientId
         ? (scope.site?.data?.data.configuration.name ?? scope.clientId)
-        : "全部网站",
+        : globalPage ? "全局" : "全部网站",
       systemName,
     ].join(" · ");
   }, [
@@ -135,6 +144,7 @@ function Workspace() {
     systemName,
     scope.clientId,
     scope.site?.data?.data.configuration.name,
+    globalPage,
   ]);
   return (
     <NavigationContext value={toggleSidebar}>

@@ -1,4 +1,5 @@
 import { workspaceScope, workspaceHref } from "./lib/workspace-scope";
+import { withNavigationSelection } from "./lib/navigation-selection";
 import { createContext, createElement, useCallback, useContext, type Ref } from "react";
 import { Link as RouterLink, NavLink as RouterNavLink, useLocation, useNavigate as useRouterNavigate, type LinkProps, type NavLinkProps, type NavigateFunction, type NavigateOptions, type To } from "react-router";
 
@@ -21,25 +22,49 @@ function destinationAllowsMotion(destination: To) {
   return !isPrivateRoute(typeof destination === "string" ? destination.split(/[?#]/)[0]! : destination.pathname ?? "");
 }
 
-export function Link({ viewTransition = true, global = false, ...props }: LinkProps & { global?: boolean; ref?: Ref<HTMLAnchorElement> }) {
+type NavigationOptions = { global?: boolean; preserveSelectedSite?: boolean };
+
+export function Link({ viewTransition = true, global = false, preserveSelectedSite = true, ...props }: LinkProps & NavigationOptions & { ref?: Ref<HTMLAnchorElement> }) {
   const enabled = useRouteMotion();
   const location = useLocation();
-  const to = global ? props.to : workspaceHref(workspaceScope(location.pathname), props.to);
-  return createElement(RouterLink, { ...props, to, state: props.state ?? detailNavigationState(to, location), viewTransition: viewTransition && enabled && destinationAllowsMotion(props.to) });
+  const to = withNavigationSelection(
+    global ? props.to : workspaceHref(workspaceScope(location.pathname), props.to),
+    location,
+    preserveSelectedSite,
+  );
+  return createElement(RouterLink, { ...props, to, state: props.state !== undefined ? props.state : detailNavigationState(to, location), viewTransition: viewTransition && enabled && destinationAllowsMotion(props.to) });
 }
 
-export function NavLink({ viewTransition = true, ...props }: NavLinkProps & { ref?: Ref<HTMLAnchorElement> }) {
+export function NavLink({ viewTransition = true, preserveSelectedSite = true, ...props }: NavLinkProps & Pick<NavigationOptions, "preserveSelectedSite"> & { ref?: Ref<HTMLAnchorElement> }) {
   const enabled = useRouteMotion();
-  return createElement(RouterNavLink, { ...props, viewTransition: viewTransition && enabled && destinationAllowsMotion(props.to) });
+  const location = useLocation();
+  const to = withNavigationSelection(props.to, location, preserveSelectedSite);
+  return createElement(RouterNavLink, { ...props, to, viewTransition: viewTransition && enabled && destinationAllowsMotion(props.to) });
 }
 
-export function useNavigate(): NavigateFunction {
+type WorkspaceNavigateFunction = {
+  (to: To, options?: NavigateOptions & NavigationOptions): ReturnType<NavigateFunction>;
+  (delta: number): ReturnType<NavigateFunction>;
+};
+
+export function useNavigate(): WorkspaceNavigateFunction {
   const navigate = useRouterNavigate();
   const location = useLocation();
   const enabled = useRouteMotion();
-  return useCallback(((destination: To | number, options?: NavigateOptions) => typeof destination === "number"
-    ? navigate(destination)
-    : navigate(workspaceHref(workspaceScope(location.pathname), destination), { ...options, state: options?.state ?? detailNavigationState(workspaceHref(workspaceScope(location.pathname), destination), location), viewTransition: options?.viewTransition !== false && enabled && destinationAllowsMotion(destination) })) as NavigateFunction, [navigate, enabled, location]);
+  return useCallback(((destination: To | number, options?: NavigateOptions & NavigationOptions) => {
+    if (typeof destination === "number") return navigate(destination);
+    const { global = false, preserveSelectedSite = true, ...routerOptions } = options ?? {};
+    const to = withNavigationSelection(
+      global ? destination : workspaceHref(workspaceScope(location.pathname), destination),
+      location,
+      preserveSelectedSite,
+    );
+    return navigate(to, {
+      ...routerOptions,
+      state: routerOptions.state !== undefined ? routerOptions.state : detailNavigationState(to, location),
+      viewTransition: routerOptions.viewTransition !== false && enabled && destinationAllowsMotion(destination),
+    });
+  }) as WorkspaceNavigateFunction, [navigate, enabled, location]);
 }
 
 function localPath(path: string) { const scope = workspaceScope(path); return scope.clientId ? path.slice(scope.base.length) || "/" : path; }

@@ -1,11 +1,9 @@
-import { Badge } from "@/components/ui/badge";
-import { useWorkspace } from "@/workspace";
+import { useNavigationWorkspace } from "@/workspace";
 import { useSystemName } from "@/branding";
 import { useOptionalSystemStatus } from "@/features/system-status";
-import type { ComponentProps } from "react";
+import { useEffect, useState, type ComponentProps } from "react";
 import {
   Activity,
-  Globe,
   Bell,
   ClipboardList,
   LayoutDashboard,
@@ -14,28 +12,47 @@ import {
   WalletCards,
 } from "lucide-react";
 import { Link } from "@/navigation";
-import { NavMain } from "@/components/nav-main";
+import { navigationSection, sidebarHref, type NavigationSection } from "@/lib/navigation-selection";
+import { NavMain, type NavigationItem } from "@/components/nav-main";
 import { NavSecondary } from "@/components/nav-secondary";
 import { NavUser } from "@/components/nav-user";
+import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+const SITE_MENU_STORAGE_KEY = "perpay:sidebar-sites";
+type SiteMenuDisclosure = { context: string; open: boolean };
+
+function readSiteMenuDisclosure(context: string): SiteMenuDisclosure {
+  try {
+    const saved: unknown = JSON.parse(window.sessionStorage.getItem(SITE_MENU_STORAGE_KEY) ?? "null");
+    if (saved && typeof saved === "object" && "version" in saved && saved.version === 1 &&
+      "context" in saved && typeof saved.context === "string" && "open" in saved && typeof saved.open === "boolean") {
+      return { context, open: saved.context === context || context === "global" ? saved.open : true };
+    }
+  } catch {
+    // Navigation remains usable when browser storage is unavailable.
+  }
+  return { context, open: context !== "global" };
+}
+
 export const navigation = [
-  { url: "/", title: "总览", icon: LayoutDashboard },
-  { url: "/sites", title: "业务网站", icon: Globe },
-  { url: "/orders", title: "全部订单", icon: ClipboardList },
-  { url: "/work-items", title: "全局待办", icon: ListChecks },
-  { url: "/reconciliation", title: "共享账本", icon: WalletCards },
-  { url: "/notifications", title: "全部通知", icon: Bell },
-  { url: "/settings", title: "实例设置", icon: Settings2 },
-  { url: "/system", title: "运行状态", icon: Activity },
-];
+  { section: "overview", url: "/", title: "总览", icon: LayoutDashboard },
+  { section: "orders", url: "/orders", title: "订单", icon: ClipboardList },
+  { section: "work-items", url: "/work-items", title: "待办", icon: ListChecks },
+  { section: "notifications", url: "/notifications", title: "通知", icon: Bell },
+  { section: "settings", url: "/settings", title: "设置", icon: Settings2 },
+  { section: "reconciliation", url: "/reconciliation", title: "共享账本", icon: WalletCards },
+  { section: "system", url: "/system", title: "运行状态", icon: Activity },
+] satisfies (NavigationItem & { section: NavigationSection })[];
 export function AppSidebar({
   pathname,
   username,
@@ -49,14 +66,28 @@ export function AppSidebar({
   onLogout: () => void;
 }) {
   const systemName = useSystemName();
-  const { clientId, base, site } = useWorkspace();
-  const siteNavigation = [
-    { url: base, title: "网站概览", icon: LayoutDashboard },
-    { url: base + "/orders", title: "本站订单", icon: ClipboardList },
-    { url: base + "/notifications", title: "本站通知", icon: Bell },
-    { url: base + "/work-items", title: "本站待办", icon: ListChecks },
-    { url: base + "/settings/basic", title: "网站设置", icon: Settings2 },
-  ];
+  const selection = useNavigationWorkspace();
+  const section = navigationSection(pathname);
+  const siteMenuContext = selection.clientId ? "site:" + selection.clientId
+    : section === "sites" ? "sites" : "global";
+  // Keep this state outside the mobile Sheet, which unmounts its menu on close.
+  const [siteMenu, setSiteMenu] = useState(() => readSiteMenuDisclosure(siteMenuContext));
+  if (siteMenu.context !== siteMenuContext) {
+    setSiteMenu({ context: siteMenuContext, open: siteMenuContext === "global" ? siteMenu.open : true });
+  }
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(SITE_MENU_STORAGE_KEY, JSON.stringify({ version: 1, ...siteMenu }));
+    } catch {
+      // Session persistence is optional; the in-memory disclosure still works.
+    }
+  }, [siteMenu]);
+  const items = navigation.map(item => ({
+    ...item,
+    url: sidebarHref(item.section, selection),
+    global: true,
+    active: section === item.section,
+  }));
   const sharedStatus = useOptionalSystemStatus();
   const statusNotice = sharedStatus?.checking
     ? sharedStatus.unavailable
@@ -82,38 +113,41 @@ export function AppSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-        {clientId && site?.data && !site.isError && (
-          <div className="flex flex-wrap gap-2 px-2">
-            <Badge variant="secondary">
-              {site.data.data.configuration.accepting_orders
-                ? "接单中"
-                : "已暂停接单"}
-            </Badge>
-            <Badge variant="outline">
-              {site.data.data.configuration.notifications_enabled
-                ? "通知已开启"
-                : "通知已关闭"}
-            </Badge>
-          </div>
-        )}
       </SidebarHeader>
       <SidebarContent>
-        <nav aria-label="主导航">
-          <NavMain
-            items={clientId ? siteNavigation : navigation.slice(0, 6)}
-            pathname={pathname}
-          />
+        <nav aria-label="网站选择">
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <WorkspaceSwitcher
+                  open={siteMenu.open}
+                  onOpenChange={open => setSiteMenu({ context: siteMenuContext, open })}
+                />
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
         </nav>
-        {!clientId && (
-          <NavSecondary
-            items={navigation.slice(6)}
-            pathname={pathname}
-            notice={statusNotice ?? null}
-            className="mt-auto"
-          />
-        )}
+        <nav aria-label="主导航">
+          <NavMain items={items.slice(0, 4)} pathname={pathname} />
+        </nav>
       </SidebarContent>
       <SidebarFooter>
+        <nav aria-label="设置导航">
+          <NavSecondary
+            items={items.slice(4, 5)}
+            pathname={pathname}
+            className="p-0"
+          />
+        </nav>
+        <nav aria-label="全局管理">
+          <NavSecondary
+            items={items.slice(5)}
+            pathname={pathname}
+            notice={statusNotice ?? null}
+            label="全局管理"
+            className="p-0"
+          />
+        </nav>
         <NavUser name={username} pending={logoutPending} onLogout={onLogout} />
       </SidebarFooter>
     </Sidebar>

@@ -1,6 +1,6 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { Navigate, Outlet, useLocation } from "react-router";
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { queryOptions, useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { api, result, type Site } from "@/api/client";
 import { workspaceApi } from "@/api/workspace";
 import {
@@ -9,40 +9,62 @@ import {
   type WorkspaceScope,
 } from "@/lib/workspace-scope";
 import { ErrorNotice, QueryView } from "@/components/request-state";
-const WorkspaceContext = createContext<
-  WorkspaceScope & { site?: UseQueryResult<{ data: Site }> }
->({ clientId: null, base: "" });
+import { navigationSelection } from "@/lib/navigation-selection";
+
+type Workspace = WorkspaceScope & { site?: UseQueryResult<{ data: Site }> };
+const WorkspaceContext = createContext<Workspace>({ clientId: null, base: "" });
+const NavigationWorkspaceContext = createContext<Workspace>({ clientId: null, base: "" });
 export const useWorkspace = () => useContext(WorkspaceContext);
+// Navigation can remember a site on shared pages without changing their API scope.
+export const useNavigationWorkspace = () => useContext(NavigationWorkspaceContext);
 export function useWorkspaceApi() {
   const { clientId } = useWorkspace();
   return useMemo(() => workspaceApi(clientId), [clientId]);
 }
-export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const location = useLocation(),
-    scope = useMemo(
-      () => workspaceScope(location.pathname),
-      [location.pathname],
-    );
-  const site = useQuery({
-    queryKey: ["workspace-site", scope.clientId],
+function workspaceSiteQuery(clientId: string | null) {
+  return queryOptions({
+    queryKey: ["workspace-site", clientId],
     queryFn: async ({ signal }) => {
       const response = await result(
-        api.getSite({ path: { clientId: scope.clientId! }, signal }),
+        api.getSite({ path: { clientId: clientId! }, signal }),
       );
       if (
-        response.data.client_id !== scope.clientId ||
+        response.data.client_id !== clientId ||
         response.data.deleted_at
       )
         throw new Error("网站身份与当前后台不一致，请重新加载。");
       return response;
     },
-    enabled: !!scope.clientId,
+    enabled: !!clientId,
     staleTime: 0,
+  });
+}
+export function WorkspaceProvider({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  const scope = useMemo(
+    () => workspaceScope(location.pathname),
+    [location.pathname],
+  );
+  const selection = useMemo(
+    () => navigationSelection(location),
+    [location.pathname, location.search],
+  );
+  const site = useQuery(workspaceSiteQuery(scope.clientId));
+  const selectedSite = useQuery({
+    ...workspaceSiteQuery(selection.clientId),
+    enabled: !!selection.clientId && selection.clientId !== scope.clientId,
   });
   const redirect = legacyWorkspaceUrl(location.pathname, location.search);
   if (redirect) return <Navigate to={redirect} replace />;
   return (
-    <WorkspaceContext value={{ ...scope, site }}>{children}</WorkspaceContext>
+    <WorkspaceContext value={{ ...scope, site }}>
+      <NavigationWorkspaceContext value={{
+        ...selection,
+        site: selection.clientId === scope.clientId ? site : selectedSite,
+      }}>
+        {children}
+      </NavigationWorkspaceContext>
+    </WorkspaceContext>
   );
 }
 export function WorkspaceOutlet() {

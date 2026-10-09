@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { useBlocker } from "react-router";
+import { actualPageAddress } from "@/lib/navigation-selection";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -47,10 +48,7 @@ export function DraftProvider({ children }: { children: ReactNode }) {
   // React Router supports one blocker. Keep submitted operations and drafts
   // in the same arbiter rather than letting either guard replace the other.
   const blocker = useBlocker(({ currentLocation, nextLocation }) => {
-    if (
-      currentLocation.pathname === nextLocation.pathname &&
-      currentLocation.search === nextLocation.search
-    )
+    if (actualPageAddress(currentLocation) === actualPageAddress(nextLocation))
       return false;
     operationWasBlocked.current = protectedOperation() !== null;
     return operationWasBlocked.current || drafts.current.size > 0;
