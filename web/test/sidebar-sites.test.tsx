@@ -129,8 +129,9 @@ describe("business websites in the sidebar", () => {
     const shared = within(nav).getByRole("navigation", { name: "全局管理" });
     expect(within(settings).getByRole("link", { name: "设置" })).toHaveAttribute("href", "/settings");
     expect(settings.closest("[data-slot=sidebar-footer]")).toContainElement(shared);
-    expect(settings.compareDocumentPosition(shared) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(shared.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const selector = within(nav).getByRole("navigation", { name: "网站选择" });
+    expect(within(nav).getByRole("navigation", { name: "主导航" }).compareDocumentPosition(selector) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(selector).queryByRole("link", { name: "业务网站" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "切换后台" })).not.toBeInTheDocument();
     expect(view.listReads).toHaveLength(0);

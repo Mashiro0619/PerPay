@@ -115,6 +115,9 @@ export function AppSidebar({
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
+        <nav aria-label="主导航">
+          <NavMain items={items.slice(0, 4)} pathname={pathname} />
+        </nav>
         <nav aria-label="网站选择">
           <SidebarGroup>
             <SidebarGroupContent>
@@ -127,24 +130,21 @@ export function AppSidebar({
             </SidebarGroupContent>
           </SidebarGroup>
         </nav>
-        <nav aria-label="主导航">
-          <NavMain items={items.slice(0, 4)} pathname={pathname} />
-        </nav>
       </SidebarContent>
       <SidebarFooter>
-        <nav aria-label="设置导航">
-          <NavSecondary
-            items={items.slice(4, 5)}
-            pathname={pathname}
-            className="p-0"
-          />
-        </nav>
         <nav aria-label="全局管理">
           <NavSecondary
             items={items.slice(5)}
             pathname={pathname}
             notice={statusNotice ?? null}
             label="全局管理"
+            className="p-0"
+          />
+        </nav>
+        <nav aria-label="设置导航">
+          <NavSecondary
+            items={items.slice(4, 5)}
+            pathname={pathname}
             className="p-0"
           />
         </nav>
