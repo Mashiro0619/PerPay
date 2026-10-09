@@ -65,10 +65,10 @@ export function CopyValue({
           />
         </div>
       ) : (
-        <>
+        <div className="flex min-w-0 max-w-full items-center gap-1">
           <span className="min-w-0 break-all">{value}</span>
           {action}
-        </>
+        </div>
       )}
       <span
         role="status"
