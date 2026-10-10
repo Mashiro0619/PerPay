@@ -12,6 +12,7 @@ import {
   numberField,
 } from "@/lib/detail-summary";
 import { dateTime, money } from "@/lib/format";
+import { ListDateTime, ListMoney } from "@/components/list-primitives";
 import { label } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { CopyValue } from "@/components/copy-value";
@@ -48,9 +49,7 @@ export function LedgerFacts({
         [
           "流水金额",
           <span className="flex flex-wrap items-center gap-2">
-            <strong className="tabular-nums">
-              {money(entry.amount_cents)}
-            </strong>
+            <ListMoney value={entry.amount_cents} />
             <StatusBadge value={entry.direction} />
           </span>,
         ],
@@ -170,16 +169,16 @@ export function MatchCard({
   const reversal =
     match.status === "REVERSED" ? match.resolution_operation : null;
   return (
-    <Card size={embedded ? "sm" : "default"} aria-label="收款关联记录">
+    <Card size={embedded ? "sm" : "default"} data-density="compact" aria-label="收款关联记录">
       <CardHeader>
-        <CardTitle role="heading" aria-level={2}>
+        <CardTitle className="record-list-title" role="heading" aria-level={2}>
           {embedded && match.status === "SETTLED" ? "收款依据" : "收款记录"}
         </CardTitle>
-        <CardDescription>
+        <CardDescription className="record-list-meta">
           {match.evidence_type === "MANUAL"
             ? "人工关联 · " + (operation?.actor_id ?? "未记录")
             : "按金额与付款时间推断"}{" "}
-          · {dateTime(operation?.created_at ?? match.created_at)}
+          · <ListDateTime value={operation?.created_at ?? match.created_at} inline />
         </CardDescription>
         <CardAction>
           <StatusBadge value={match.status} />
@@ -240,12 +239,12 @@ export function CandidateCard({
       : order.payment_status
     : null;
   return (
-    <Card aria-label="匹配候选证据">
+    <Card size={embedded ? "sm" : "default"} data-density="compact" aria-label="匹配候选证据">
       <CardHeader>
-        <CardTitle role="heading" aria-level={2}>
+        <CardTitle className="record-list-title" role="heading" aria-level={2}>
           金额推断候选
         </CardTitle>
-        <CardDescription>候选不代表付款确认。</CardDescription>
+        <CardDescription className="record-list-meta">候选不代表付款确认。</CardDescription>
         <CardAction>
           <StatusBadge value={candidate.status} />
         </CardAction>
@@ -363,12 +362,12 @@ export function ExceptionCard({
       (entry?.direction === "CREDIT" &&
         ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(entry.state)));
   return (
-    <Card aria-label="账务异常记录">
+    <Card size={embedded ? "sm" : "default"} data-density="compact" aria-label="账务异常记录">
       <CardHeader>
-        <CardTitle role="heading" aria-level={2}>
+        <CardTitle className="record-list-title" role="heading" aria-level={2}>
           {label(exception.exception_type)}
         </CardTitle>
-        <CardDescription>{exceptionExplanation(exception)}</CardDescription>
+        <CardDescription className="record-list-meta">{exceptionExplanation(exception)}</CardDescription>
         <CardAction>
           <StatusBadge
             value={exception.reminder_ignored ? "NONE" : exception.status}

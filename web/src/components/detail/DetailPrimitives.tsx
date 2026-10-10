@@ -5,7 +5,7 @@ import { useIsFetching } from '@tanstack/react-query';
 import { ExternalLink } from "lucide-react";
 import { result, type AdminOrderDetail, type ReconciliationOrder } from "@/api/client";
 import { Link } from "@/navigation";
-import { dateTime, money } from "@/lib/format";
+import { ListDateTime, ListMoney } from "@/components/list-primitives";
 import { cn } from "@/lib/utils";
 import { CopyValue } from "@/components/copy-value";
 import { StatusBadge } from "@/components/business-status";
@@ -75,7 +75,7 @@ export function DetailFields({
             wide.includes(name) && "col-span-full",
           )}
         >
-          <dt className="text-sm text-muted-foreground">{name}</dt>
+          <dt className="record-list-meta">{name}</dt>
           <dd className="min-w-0 text-sm whitespace-pre-wrap wrap-anywhere">
             {value === "" || value == null ? "—" : value}
           </dd>
@@ -167,29 +167,27 @@ export function OrderFacts({
   const payment =
     "payment" in order ? order.payment.status : order.payment_status;
   return (
-    <Item variant="outline">
+    <Item className="record-list-row" size="sm">
       <ItemContent className="min-w-0">
-        <ItemTitle className="break-all">
+        <ItemTitle className="record-list-title" title={order.product_name}>
           {linked ? (
-            <Link to={"/orders/" + order.order_id} className="hover:underline">
+            <Link to={"/orders/" + order.order_id}>
               {order.product_name}
             </Link>
           ) : (
             order.product_name
           )}
         </ItemTitle>
-        <ItemDescription className="line-clamp-none whitespace-normal wrap-anywhere">
+        <ItemDescription className="record-list-meta line-clamp-none whitespace-normal wrap-anywhere">
           所属网站：{order.site_name ?? "名称不可用"} · {order.api_client_id}
         </ItemDescription>
-        <ItemDescription>
-          应付 {money(order.payable_amount_cents)} · 实收{" "}
-          {money(order.received_amount_cents)}
-        </ItemDescription>
-        <ItemDescription className="break-all">
-          {order.merchant_order_no} · {dateTime(order.created_at)}
+        <ItemDescription className="record-list-meta wrap-anywhere">
+          {order.merchant_order_no} · <ListDateTime value={order.created_at} inline />
         </ItemDescription>
       </ItemContent>
-      <ItemActions>
+      <ItemActions className="flex-col items-end self-start">
+        <div className="flex items-baseline gap-2"><span className="record-list-meta">应付</span><ListMoney value={order.payable_amount_cents} label="应付金额" /></div>
+        <div className="flex items-baseline gap-2"><span className="record-list-meta">实收</span><ListMoney value={order.received_amount_cents} label="实收金额" secondary /></div>
         <StatusBadge value={payment} />
       </ItemActions>
     </Item>

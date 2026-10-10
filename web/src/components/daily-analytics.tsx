@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { SystemAnalytics } from "@/api/client";
-import { count, money } from "@/lib/format";
+import { count } from "@/lib/format";
+import { useListSize } from "@/hooks/use-list-size";
+import { ListIdentity, ListMoney, ListSummary, ListSummaryField } from "@/components/list-primitives";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 import {
@@ -10,6 +12,7 @@ import {
   PaginationItem,
 } from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Item, ItemGroup } from "@/components/ui/item";
 import {
   Table,
   TableBody,
@@ -35,6 +38,7 @@ function DailyAnalyticsTable({
   range,
   pending,
 }: DailyAnalyticsProps) {
+  const { ref, isSummary } = useListSize();
   const [requestedPage, setPage] = useState(1);
   // This is at most 90 aggregated days, not a client-side search of business records.
   const days =
@@ -45,19 +49,59 @@ function DailyAnalyticsTable({
 
   return (
     <div
+      ref={ref}
       className="flex w-full min-w-0 flex-col gap-3"
       role="region"
       aria-label="每日数据"
       aria-busy={pending}
     >
-      <div className="min-w-0 overflow-hidden rounded-lg border">
-        <Table aria-label="每日收款数据">
+      {isSummary ? (
+        <ItemGroup className="record-list" data-density="compact" aria-label="每日收款数据">
+          {pending ? (
+            Array.from({ length: Math.min(range, PAGE_SIZE) }, (_, index) => (
+              <Item key={index} className="record-list-row" size="sm" aria-hidden="true">
+                <div className="flex w-full flex-col gap-3">
+                  <Skeleton className="h-5 w-28" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              </Item>
+            ))
+          ) : rows.length ? (
+            rows.map((day) => (
+              <Item key={day.date} className="record-list-row" size="sm" role="listitem">
+                <ListSummary
+                  identity={<ListIdentity><time dateTime={day.date}>{day.date}</time></ListIdentity>}
+                  aside={
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="record-list-meta">确认金额</span>
+                      <ListMoney value={day.confirmed_amount_cents} />
+                    </div>
+                  }
+                >
+                  <ListSummaryField label="确认次数">{count(day.confirmations)}</ListSummaryField>
+                  <ListSummaryField label="新建订单">{count(day.orders_created)}</ListSummaryField>
+                </ListSummary>
+              </Item>
+            ))
+          ) : (
+            <Empty><EmptyHeader><EmptyTitle>{analytics ? "暂无每日数据" : "统计数据暂不可用"}</EmptyTitle></EmptyHeader></Empty>
+          )}
+        </ItemGroup>
+      ) : (
+      <div className="business-table-surface" data-embedded="true" data-density="compact">
+        <Table className="business-table" aria-label="每日收款数据">
+          <colgroup>
+            <col data-column-layout="datetime" />
+            <col data-column-layout="amount" />
+            <col data-column-layout="number" />
+            <col data-column-layout="number" />
+          </colgroup>
           <TableHeader>
             <TableRow>
               <TableHead className="pl-4">日期</TableHead>
-              <TableHead className="text-right">确认金额</TableHead>
-              <TableHead className="text-right">确认次数</TableHead>
-              <TableHead className="pr-4 text-right">新建订单</TableHead>
+              <TableHead data-column-layout="amount">确认金额</TableHead>
+              <TableHead data-column-layout="number">确认次数</TableHead>
+              <TableHead data-column-layout="number">新建订单</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -77,13 +121,13 @@ function DailyAnalyticsTable({
                   <TableCell className="pl-4">
                     <time dateTime={day.date}>{day.date}</time>
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {money(day.confirmed_amount_cents)}
+                  <TableCell data-column-layout="amount">
+                    <ListMoney value={day.confirmed_amount_cents} />
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell data-column-layout="number">
                     {count(day.confirmations)}
                   </TableCell>
-                  <TableCell className="pr-4 text-right tabular-nums">
+                  <TableCell data-column-layout="number">
                     {count(day.orders_created)}
                   </TableCell>
                 </TableRow>
@@ -104,6 +148,7 @@ function DailyAnalyticsTable({
           </TableBody>
         </Table>
       </div>
+      )}
       <Pagination
         className="flex-wrap justify-between gap-2"
         aria-label="每日数据分页"

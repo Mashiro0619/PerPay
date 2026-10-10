@@ -826,13 +826,13 @@ export function ReadinessCheck({
           </AlertDescription>
         </Alert>
       )}
-      <ItemGroup className="grid min-w-0 grid-cols-1 gap-3 @3xl/onboarding:grid-cols-2">
+      <ItemGroup className="record-list" data-density="compact">
         {checks.map((check) => (
-          <Item key={check.title} variant="outline" className="min-w-0">
+          <Item key={check.title} className="record-list-row" size="sm" role="listitem">
             <ItemContent className="min-w-0">
-              <ItemTitle>{check.title}</ItemTitle>
+              <ItemTitle className="record-list-title">{check.title}</ItemTitle>
               {check.status !== "已通过" && (
-                <ItemDescription role="status">{check.status}</ItemDescription>
+                <ItemDescription className="record-list-meta" role="status">{check.status}</ItemDescription>
               )}
               {check.error && (
                 <p className="break-words text-sm text-destructive">
@@ -857,7 +857,7 @@ export function ReadinessCheck({
           <CircleAlert />
           <AlertTitle>运行提醒（不是配置缺项）</AlertTitle>
           <AlertDescription className="min-w-0">
-            <ul className="flex list-inside list-disc flex-col gap-1 break-words">
+            <ul className="record-list-meta flex list-inside list-disc flex-col gap-1 break-words">
               {runtimeWarnings.map((warning) => (
                 <li key={warning}>{warning}</li>
               ))}

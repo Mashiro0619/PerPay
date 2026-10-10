@@ -161,7 +161,7 @@ function SystemContent() {
                     )}
                   </CardHeader>
                   <CardContent>
-                    <ItemGroup>
+                    <ItemGroup className="record-list" data-density="compact">
                       <ComponentStatus
                         title="账本采集"
                         showMetrics={data.work_items == null || conflicts > 0}
@@ -439,10 +439,10 @@ function ComponentStatus({
   children?: ReactNode;
 }) {
   return (
-    <Item variant="outline">
-      <ItemContent>
-        <ItemTitle>
-          {title}
+    <Item className="record-list-row" size="sm" role="listitem">
+      <ItemContent className="min-w-0">
+        <ItemTitle className="max-w-full flex-wrap">
+          <span className="record-list-title">{title}</span>
           <Badge variant={enabled && !healthy ? "destructive" : "outline"}>
             {enabled ? (
               healthy ? (
@@ -454,9 +454,9 @@ function ComponentStatus({
             {!enabled ? "未启用" : healthy ? "正常" : "需关注"}
           </Badge>
         </ItemTitle>
-        {!healthy && <ItemDescription>{summary}</ItemDescription>}
+        {!healthy && <ItemDescription className="record-list-meta">{summary}</ItemDescription>}
         {(!healthy || showMetrics) && metrics && (
-          <ItemDescription>{metrics}</ItemDescription>
+          <ItemDescription className="record-list-meta">{metrics}</ItemDescription>
         )}
         {healthy && (
           <Collapsible>
@@ -464,9 +464,9 @@ function ComponentStatus({
               查看{title}详情
             </CollapsibleTrigger>
             <CollapsibleContent keepMounted>
-              <ItemDescription>{summary}</ItemDescription>
+              <ItemDescription className="record-list-meta">{summary}</ItemDescription>
               {!showMetrics && metrics && (
-                <ItemDescription>{metrics}</ItemDescription>
+                <ItemDescription className="record-list-meta">{metrics}</ItemDescription>
               )}
               {children}
             </CollapsibleContent>

@@ -13,6 +13,7 @@ import { ConflictCard } from "../src/components/detail/ConflictEvidence";
 import { ConflictComparison } from "../src/components/detail/ConflictComparison";
 import { CandidateEvidence } from "../src/components/detail/PaymentEvidence";
 import { candidate, failedAttempt, detailLedger } from "./detail-fixtures";
+import { mobileMedia } from "./mobile-media";
 const id = "11111111-1111-4111-8111-111111111111";
 const time = "2026-09-23T00:00:00.000Z";
 function conflict(existing: boolean): LedgerConflictDetail {
@@ -249,12 +250,14 @@ describe("always-visible detail evidence", () => {
   it.each([false, true])(
     "keeps mobile values paired field-by-field without repeating the unavailable ledger (existing=%s)",
     (existing) => {
+      mobileMedia(390);
       const detail = conflict(existing);
       detail.incoming_event!.trans_memo = "第一行\n第二行 <原始文字>";
       const { container } = render(<ConflictComparison detail={detail} />);
       const mobile = container.querySelector(
         "[data-comparison-mobile]",
       )! as HTMLElement;
+      expect(screen.queryByRole("table")).not.toBeInTheDocument();
       const amount = within(mobile).getByRole("group", { name: "交易金额" });
       expect(mobile).toHaveAttribute("role", "group");
       expect(mobile).toHaveAccessibleName("逐字段交易对照");

@@ -2,10 +2,12 @@ import { InlineEmpty } from "@/components/admin-empty";
 import { useId, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { WebhookAttempt } from "@/api/client";
-import { dateTime } from "@/lib/format";
+import { useListSize } from "@/hooks/use-list-size";
+import { ListDateTime, ListIdentity, ListSummary, ListSummaryField } from "@/components/list-primitives";
 import { attemptResult } from "@/lib/detail-summary";
 import { label } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
+import { Item, ItemGroup } from "@/components/ui/item";
 import {
   Pagination,
   PaginationContent,
@@ -28,6 +30,7 @@ export function DeliveryAttempts({
   available: boolean;
 }) {
   const titleId = useId();
+  const { ref, isSummary } = useListSize<HTMLElement>();
   const [requestedPage, setPage] = useState(1);
   const ordered = attempts.toSorted(
     (a, b) =>
@@ -39,14 +42,28 @@ export function DeliveryAttempts({
   const page = Math.min(requestedPage, pages);
   const rows = ordered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   return (
-    <section className="flex min-w-0 flex-col gap-3" aria-labelledby={titleId}>
+    <section ref={ref} className="flex min-w-0 flex-col gap-3" aria-labelledby={titleId}>
       <h3 id={titleId} className="text-sm font-medium">
         投递尝试{available ? "（" + attempts.length + "）" : ""}
       </h3>
       {available ? (
         <>
-          <div className="min-w-0 overflow-hidden rounded-lg border">
-            <Table className="table-fixed" aria-labelledby={titleId}>
+          {isSummary ? (
+            <ItemGroup className="record-list" data-density="compact" aria-labelledby={titleId}>
+              {rows.length ? rows.map((attempt) => (
+                <Item key={attempt.attempt_id} className="record-list-row" size="sm" role="listitem">
+                  <ListSummary
+                    identity={<ListIdentity meta={<ListDateTime value={attempt.started_at} inline />}>第 {attempt.attempt_number} 次</ListIdentity>}
+                    aside={<span className="record-list-title">{label(attempt.outcome)}</span>}
+                  >
+                    <ListSummaryField label="HTTP / ACK">{attemptResult(attempt)}</ListSummaryField>
+                  </ListSummary>
+                </Item>
+              )) : <InlineEmpty>暂无尝试明细</InlineEmpty>}
+            </ItemGroup>
+          ) : (
+          <div className="business-table-surface" data-embedded="true" data-density="compact">
+            <Table className="business-table table-fixed" aria-labelledby={titleId}>
               <colgroup>
                 <col className="w-2/5" />
                 <col className="w-1/4" />
@@ -68,15 +85,9 @@ export function DeliveryAttempts({
                   rows.map((attempt) => (
                     <TableRow key={attempt.attempt_id}>
                       <TableCell className="align-top whitespace-normal">
-                        <div className="flex flex-col gap-1">
+                        <ListIdentity meta={<ListDateTime value={attempt.started_at} inline />}>
                           第 {attempt.attempt_number} 次
-                          <time
-                            className="text-xs text-muted-foreground"
-                            dateTime={attempt.started_at}
-                          >
-                            {dateTime(attempt.started_at)}
-                          </time>
-                        </div>
+                        </ListIdentity>
                       </TableCell>
                       <TableCell className="align-top whitespace-normal break-words">
                         {label(attempt.outcome)}
@@ -96,6 +107,7 @@ export function DeliveryAttempts({
               </TableBody>
             </Table>
           </div>
+          )}
           {pages > 1 && (
             <Pagination
               aria-label="投递尝试分页"

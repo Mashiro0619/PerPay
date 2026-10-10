@@ -49,11 +49,12 @@ describe("ordinary administrator views", () => {
     );
     const row = screen
       .getByRole("button", { name: "查看应用私钥" })
-      .closest("tr")!;
+      .closest<HTMLElement>('[role="listitem"]')!;
     expect(within(row).getByText("已配置")).toBeVisible();
     expect(
-      within(row).getByText("更新于 " + dateTime(updatedAt)),
+      within(row).getByLabelText(dateTime(updatedAt)),
     ).toBeVisible();
+    expect(row).toHaveTextContent("更新于 " + dateTime(updatedAt));
     expect(row).not.toHaveTextContent(/版本|指纹|777/);
   });
 

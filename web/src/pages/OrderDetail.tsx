@@ -20,6 +20,7 @@ import { dateTime, money } from "@/lib/format";
 import { label } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "@/components/business-status";
+import { ListDateTime, ListMoney } from "@/components/list-primitives";
 import { CopyValue } from "@/components/copy-value";
 import { QueryView } from "@/components/request-state";
 import {
@@ -138,22 +139,18 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
               </p>
             </CardHeader>
             <CardContent>
-              <ItemGroup>
-                <Item variant="muted" size="sm">
+              <ItemGroup className="record-list" data-density="compact">
+                <Item className="record-list-row" size="sm">
                   <ItemContent>
                     <ItemDescription>应付金额</ItemDescription>
                   </ItemContent>
-                  <span className="font-medium tabular-nums">
-                    {money(order.payable_amount_cents)}
-                  </span>
+                  <ListMoney value={order.payable_amount_cents} />
                 </Item>
-                <Item size="sm">
+                <Item className="record-list-row" size="sm">
                   <ItemContent>
                     <ItemDescription>原始金额</ItemDescription>
                   </ItemContent>
-                  <span className="tabular-nums">
-                    {money(order.requested_amount_cents)}
-                  </span>
+                  <ListMoney value={order.requested_amount_cents} secondary />
                 </Item>
               </ItemGroup>
             </CardContent>
@@ -393,7 +390,7 @@ function OrderTimeline({
   );
   const ordered = [...events].sort((a, b) => b.sequence - a.sequence);
   const entries = (values: AdminOrderEvent[]) => (
-    <ItemGroup>
+    <ItemGroup className="record-list list-timeline" data-density="compact">
       {values.map((event) => {
         const operationId = event.details.financial_operation_id;
         const operation =
@@ -402,7 +399,7 @@ function OrderTimeline({
             : undefined;
         const explanation = eventExplanation(event);
         return (
-          <Item key={event.event_id} size="sm" variant="muted">
+          <Item key={event.event_id} className="record-list-row" size="sm" role="listitem">
             <ItemMedia variant="icon">
               {event.event_type === "PAYMENT_CONFIRMED" ? (
                 <Check />
@@ -412,18 +409,16 @@ function OrderTimeline({
                 <Clock3 />
               )}
             </ItemMedia>
-            <ItemContent>
-              <ItemTitle>{label(event.event_type)}</ItemTitle>
-              <ItemDescription>
-                <time dateTime={event.occurred_at}>
-                  {dateTime(event.occurred_at)}
-                </time>
+            <ItemContent className="min-w-0">
+              <ItemTitle className="record-list-title">{label(event.event_type)}</ItemTitle>
+              <ItemDescription className="record-list-meta">
+                <ListDateTime value={event.occurred_at} inline />
               </ItemDescription>
               {explanation && (
-                <p className="text-sm text-muted-foreground">{explanation}</p>
+                <p className="record-list-meta">{explanation}</p>
               )}
               {operation?.reason && (
-                <p className="text-sm text-muted-foreground">
+                <p className="record-list-meta">
                   {operation.actor_id ? operation.actor_id + "：" : ""}
                   {operation.reason}
                 </p>

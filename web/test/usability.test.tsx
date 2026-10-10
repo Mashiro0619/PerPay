@@ -413,7 +413,7 @@ describe("short feedback and safe settings", () => {
       ["业务通知", "NOTIFICATION_FAILURE"],
     ]) {
       const row = screen
-        .getByText(title!, { selector: '[data-slot="item-title"]' })
+        .getByText(title!)
         .closest("[data-slot=item]")! as HTMLElement;
       expect(
         within(row).getByRole("link", { name: "查看未忽略提醒" }),

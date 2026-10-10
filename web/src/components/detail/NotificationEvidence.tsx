@@ -13,6 +13,7 @@ import {
   notificationRecoveryHint,
 } from "@/lib/detail-summary";
 import { dateTime } from "@/lib/format";
+import { ListDateTime, ListIdentity } from "@/components/list-primitives";
 import { label } from "@/lib/labels";
 import { StatusBadge } from "@/components/business-status";
 import { CopyValue } from "@/components/copy-value";
@@ -62,12 +63,12 @@ export function DeliveryCard({
   const terminal =
     delivery.status === "ACKNOWLEDGED" || delivery.status === "DEAD_LETTER";
   return (
-    <Card size={embedded ? "sm" : "default"} aria-label="业务通知记录">
+    <Card size={embedded ? "sm" : "default"} data-density="compact" aria-label="业务通知记录">
       <CardHeader>
-        <CardTitle role="heading" aria-level={2}>
+        <CardTitle className="record-list-title" role="heading" aria-level={2}>
           {sectionTitle ?? label(detail.event.event_type)}
         </CardTitle>
-        <CardDescription>
+        <CardDescription className="record-list-meta">
           {!detail.is_latest
             ? "历史投递"
             : delivery.status === "DEAD_LETTER"
@@ -78,7 +79,7 @@ export function DeliveryCard({
                   ? "通知已送达"
                   : "等待投递结果"}
         </CardDescription>
-        <CardDescription>
+        <CardDescription className="record-list-meta">
           {attemptsAvailable
             ? delivery.attempt_count === 0
               ? attemptResult(undefined)
@@ -269,17 +270,21 @@ export function OrderNotifications({
                   sectionTitle="业务通知"
                 />
                 {query.data.data.length > 1 && (
-                  <Accordion>
+                  <Accordion className="record-list" data-density="compact">
                     {query.data.data
                       .slice(1)
                       .map((detail: OrderWebhookDeliveryDetail) => (
                         <AccordionItem
+                          className="record-list-row"
                           key={detail.delivery.delivery_id}
                           value={detail.delivery.delivery_id}
                         >
-                          <AccordionTrigger>
-                            {label(detail.event.event_type)} ·{" "}
-                            {dateTime(detail.delivery.created_at)}
+                          <AccordionTrigger className="items-center gap-3 py-0">
+                            <div className="min-w-0 flex-1">
+                              <ListIdentity meta={<ListDateTime value={detail.delivery.created_at} inline />}>
+                                <span>{label(detail.event.event_type)}</span>
+                              </ListIdentity>
+                            </div>
                             <StatusBadge value={detail.delivery.status} />
                           </AccordionTrigger>
                           <AccordionContent>

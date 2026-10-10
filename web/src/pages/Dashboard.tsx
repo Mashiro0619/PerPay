@@ -14,7 +14,7 @@ import {
   isOnboardingDeferred,
   onboardingPath,
 } from "@/lib/onboarding";
-import { dateTime } from "@/lib/format";
+import { ListDateTime } from "@/components/list-primitives";
 import { workItemHref, workItemTitle } from "@/lib/labels";
 import { SectionCards } from "@/components/section-cards";
 import { ChartAreaInteractive } from "@/components/chart-area-interactive";
@@ -36,9 +36,7 @@ import {
   ItemTitle,
   ItemDescription,
   ItemActions,
-  ItemSeparator,
 } from "@/components/ui/item";
-import { Fragment } from "react";
 import {
   Empty,
   EmptyHeader,
@@ -209,25 +207,24 @@ function DashboardContent() {
             <QueryView query={work}>
               {(page) =>
                 page.data.length ? (
-                  <ItemGroup className="has-data-[size=sm]:gap-0">
-                    {page.data.map((item, index) => (
-                      <Fragment key={item.type + item.resource_id}>
-                        {index > 0 && <ItemSeparator className="my-0" />}
+                  <ItemGroup className="record-list" data-density="compact">
+                    {page.data.map((item) => (
                         <Item
+                          key={item.type + item.resource_id}
+                          className="record-list-row"
                           size="sm"
                           render={<Link to={workItemHref(item)} />}
                         >
-                          <ItemContent>
-                            <ItemTitle>{workItemTitle(item)}</ItemTitle>
-                            <ItemDescription>
-                              {dateTime(item.actionable_at)}
+                          <ItemContent className="min-w-0">
+                            <ItemTitle className="record-list-title">{workItemTitle(item)}</ItemTitle>
+                            <ItemDescription className="record-list-meta">
+                              <ListDateTime value={item.actionable_at} inline />
                             </ItemDescription>
                           </ItemContent>
                           <ItemActions>
                             <ChevronRight />
                           </ItemActions>
                         </Item>
-                      </Fragment>
                     ))}
                   </ItemGroup>
                 ) : (

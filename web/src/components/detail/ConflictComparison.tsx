@@ -3,6 +3,7 @@ import { ArrowLeftRight, CircleAlert } from "lucide-react";
 import type { LedgerConflictDetail } from "@/api/client";
 import { conflictComparison } from "@/lib/conflict-comparison";
 import { cn } from "@/lib/utils";
+import { useListSize } from "@/hooks/use-list-size";
 import {
   Table,
   TableHeader,
@@ -44,13 +45,22 @@ export function ConflictComparison({
 }: {
   detail: LedgerConflictDetail;
 }) {
+  if (!detail.incoming_event && !detail.existing_ledger_entry) return null;
+  return <ComparisonContent detail={detail} />;
+}
+function ComparisonContent({
+  detail,
+}: {
+  detail: LedgerConflictDetail;
+}) {
   const titleId = useId();
+  const { ref, isSummary } = useListSize<HTMLElement>();
   const existing = detail.existing_ledger_entry;
-  if (!detail.incoming_event && !existing) return null;
   const rows = conflictComparison(detail);
   return (
     <section
-      className="@container/comparison flex w-full min-w-0 flex-col gap-3"
+      ref={ref}
+      className="flex w-full min-w-0 flex-col gap-3"
       aria-labelledby={titleId}
       data-conflict-comparison
     >
@@ -62,11 +72,14 @@ export function ConflictComparison({
           <p className="text-xs text-muted-foreground">无可对照流水</p>
         )}
       </div>
+      {!isSummary ? (
       <div
-        className="hidden min-w-0 overflow-hidden rounded-lg border @[640px]/comparison:block"
+        className="business-table-surface"
+        data-embedded="true"
+        data-density="compact"
         data-comparison-desktop
       >
-        <Table aria-labelledby={titleId} className="table-fixed">
+        <Table aria-labelledby={titleId} className="business-table table-fixed">
           <colgroup>
             <col className="w-32" />
             <col />
@@ -107,10 +120,12 @@ export function ConflictComparison({
           </TableBody>
         </Table>
       </div>
+      ) : (
       <ItemGroup
         role="group"
         aria-label="逐字段交易对照"
-        className="@[640px]/comparison:hidden"
+        className="record-list"
+        data-density="compact"
         data-comparison-mobile
       >
         {rows.map((row) => (
@@ -118,13 +133,12 @@ export function ConflictComparison({
             key={row.name}
             role="group"
             aria-label={row.name}
-            variant="outline"
             size="sm"
-            className="min-w-0 items-stretch"
+            className="record-list-row items-stretch"
             data-comparison-field
           >
             <ItemHeader>
-              <ItemTitle>{row.name}</ItemTitle>
+              <ItemTitle className="record-list-title">{row.name}</ItemTitle>
               <span data-comparison-result>
                 <Difference row={row} />
               </span>
@@ -150,6 +164,7 @@ export function ConflictComparison({
           </Item>
         ))}
       </ItemGroup>
+      )}
     </section>
   );
 }

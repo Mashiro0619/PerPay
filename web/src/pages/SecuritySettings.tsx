@@ -22,12 +22,12 @@ import { useSession } from "@/auth";
 import { waitForOperation } from "@/lib/operation-timeout";
 import {
   MIN_ADMIN_PASSWORD_CHARACTERS,
-  dateTime,
   validatePassword,
 } from "@/lib/format";
 import { useDirtyDraft, useDraftGuard } from "@/drafts";
 import { CopyValue } from "@/components/copy-value";
 import { StatusBadge } from "@/components/business-status";
+import { ListDateTime } from "@/components/list-primitives";
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -50,13 +50,13 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "@/components/ui/table";
+  Item,
+  ItemGroup,
+  ItemContent,
+  ItemTitle,
+  ItemDescription,
+  ItemActions,
+} from "@/components/ui/item";
 import {
   Dialog,
   DialogContent,
@@ -130,14 +130,7 @@ export function SecuritySettings({
             </div>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>用途</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <ItemGroup className="record-list" data-density="compact" aria-label="密钥清单">
                 {secrets.filter(([name]) => !settings.site_mode || (name !== "api_secret" && name !== "webhook_secret")).map(([name, title, purpose]) => {
                   const metadata = settings.secrets[name];
                   if (!metadata) return null;
@@ -148,31 +141,23 @@ export function SecuritySettings({
                     />
                   );
                   return (
-                    <TableRow key={name}>
-                      <TableCell className="whitespace-normal py-3">
-                        <div className="flex flex-col gap-1">
+                    <Item key={name} className="record-list-row" size="sm" role="listitem">
+                      <ItemContent className="min-w-0 flex-[1_1_14rem]">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-medium">{title}</span>
+                            <ItemTitle className="record-list-title">{title}</ItemTitle>
                             {status}
                           </div>
-                          <span className="text-sm text-muted-foreground">
+                          <ItemDescription className="record-list-meta">
                             {purpose}
-                          </span>
+                          </ItemDescription>
                           {metadata.configured &&
                             metadata.updatedAt !== null && (
-                              <time
-                                className="text-xs text-muted-foreground"
-                                dateTime={new Date(
-                                  metadata.updatedAt,
-                                ).toISOString()}
-                              >
-                                更新于 {dateTime(metadata.updatedAt)}
-                              </time>
+                              <ItemDescription className="record-list-meta">
+                                更新于 <ListDateTime value={metadata.updatedAt} inline />
+                              </ItemDescription>
                             )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap items-center justify-end gap-1">
+                      </ItemContent>
+                      <ItemActions className="ml-auto flex-wrap justify-end gap-1">
                           {name === "webhook_secret" && metadata.configured ? (
                             <NotificationKeyActions
                               presentation="table"
@@ -237,13 +222,11 @@ export function SecuritySettings({
                                 生成
                               </Button>
                             ))}
-                        </div>
-                      </TableCell>
-                    </TableRow>
+                      </ItemActions>
+                    </Item>
                   );
                 })}
-              </TableBody>
-            </Table>
+            </ItemGroup>
           </CardContent>
         </Card>
         <FieldGroup className="min-w-0 gap-4">

@@ -9,9 +9,9 @@ import { isRefundMarkReceipt, refundMarkNoteError } from "@/lib/refund-mark";
 import { useOperationNavigation } from "@/drafts";
 import { OperationRecoveryNotice } from "@/components/operation-recovery-notice";
 import { OperationNavigationDialog } from "@/components/operation-navigation-dialog";
-import { dateTime, money } from "@/lib/format";
 import { StatusBadge } from "@/components/business-status";
 import { CopyValue } from "@/components/copy-value";
+import { ListDateTime, ListMoney } from "@/components/list-primitives";
 import { ErrorNotice } from "@/components/request-state";
 import { RecordTools } from "@/components/detail/RecordTools";
 import { SuccessMessage, useFeedback } from "@/components/Feedback";
@@ -70,7 +70,7 @@ export function RefundMarkPanel({
     <div className="flex flex-col gap-4">
       {(mark.marked || hasHistory) && (
         <section aria-label="管理员退款标记" className="flex flex-col gap-2">
-          <Item variant="outline">
+          <Item className="record-list-row" size="sm">
             <ItemContent>
               <ItemTitle>
                 <StatusBadge
@@ -78,8 +78,8 @@ export function RefundMarkPanel({
                   label={mark.marked ? "已标记退款" : "标记已撤销"}
                 />
               </ItemTitle>
-              <ItemDescription>
-                {mark.updated_by ?? "管理员"} · {dateTime(mark.updated_at)}
+              <ItemDescription className="record-list-meta">
+                {mark.updated_by ?? "管理员"} · <ListDateTime value={mark.updated_at} inline />
               </ItemDescription>
               {mark.note && (
                 <p className="text-sm whitespace-pre-wrap break-words">
@@ -95,19 +95,19 @@ export function RefundMarkPanel({
                 标记历史
               </CollapsibleTrigger>
               <CollapsibleContent>
-                <ItemGroup>
+                <ItemGroup className="record-list list-timeline" data-density="compact">
                   {order.refund_mark_history.map((event) => (
-                    <Item key={event.operation_id} role="listitem" size="sm">
+                    <Item key={event.operation_id} className="record-list-row" role="listitem" size="sm">
                       <ItemContent>
-                        <ItemTitle>
+                        <ItemTitle className="record-list-title">
                           {event.marked ? "标记已退款" : "撤销退款标记"}
                         </ItemTitle>
-                        <ItemDescription>
+                        <ItemDescription className="record-list-meta">
                           {event.updated_by ?? "管理员"} ·{" "}
-                          {dateTime(event.updated_at)}
+                          <ListDateTime value={event.updated_at} inline />
                         </ItemDescription>
                         {event.note && (
-                          <p className="text-sm whitespace-pre-wrap break-words">
+                          <p className="record-list-meta whitespace-pre-wrap break-words">
                             {event.note}
                           </p>
                         )}
@@ -305,18 +305,16 @@ export function RefundMarkDialog({
               />
             )}
             {context.order && (
-              <Item variant="outline">
-                <ItemContent>
-                  <ItemTitle className="line-clamp-none break-all">
+              <Item className="record-list-row" size="sm">
+                <ItemContent className="min-w-0">
+                  <ItemTitle className="record-list-title">
                     {context.order.product_name}
                   </ItemTitle>
-                  <ItemDescription>
-                    实收 {money(context.order.received_amount_cents)}
-                  </ItemDescription>
-                  <ItemDescription className="break-all">
+                  <ItemDescription className="record-list-meta wrap-anywhere">
                     {context.order.merchant_order_no}
                   </ItemDescription>
                 </ItemContent>
+                <div className="flex flex-col items-end gap-1"><span className="record-list-meta">实收</span><ListMoney value={context.order.received_amount_cents} /></div>
               </Item>
             )}
             <Field data-invalid={!!validation} data-disabled={save.isPending}>

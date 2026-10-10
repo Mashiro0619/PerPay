@@ -6,6 +6,7 @@ import { Search } from "lucide-react";
 import { result, type ManualSettlementRecommendation } from "@/api/client";
 import { normalizeKeyword } from "@/lib/list-query";
 import { dateTime, money } from "@/lib/format";
+import { ListDateTime, ListMoney } from "@/components/list-primitives";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldError } from "@/components/ui/field";
 import {
@@ -34,6 +35,8 @@ interface Choice {
   id: string;
   title: string;
   summary: string;
+  amount: number;
+  occurredAt: string;
   identifiers: string;
   website?: string;
   recommendation: ManualSettlementRecommendation | null;
@@ -84,12 +87,9 @@ export function ManualCandidatePicker({
           choices: response.data.map(({ order, recommendation }) => ({
             id: order.order_id,
             title: order.product_name,
-            summary:
-              money(order.payable_amount_cents) +
-              " · " +
-              dateTime(order.created_at) +
-              " · " +
-              ({OPEN: "收银台开放中", CLOSED: "收银台已关闭", EXPIRED: "收银台已过期"}[order.checkout_status]),
+            summary: {OPEN: "收银台开放中", CLOSED: "收银台已关闭", EXPIRED: "收银台已过期"}[order.checkout_status],
+            amount: order.payable_amount_cents,
+            occurredAt: order.created_at,
             identifiers: order.merchant_order_no,
             website: `${order.site_name ?? "名称不可用"} · ${order.api_client_id}`,
             recommendation,
@@ -109,7 +109,9 @@ export function ManualCandidatePicker({
             id: entry.ledger_entry_id,
             title:
               money(entry.amount_cents) + " · " + dateTime(entry.occurred_at),
-            summary: entry.other_account ?? "未提供交易对方",
+            summary: entry.other_account || "未提供交易对方",
+            amount: entry.amount_cents,
+            occurredAt: entry.occurred_at,
             identifiers: [
               entry.provider_order_no,
               entry.merchant_order_no,
@@ -212,31 +214,35 @@ export function ManualCandidatePicker({
         query.data && (
           <>
             {query.data.choices.length ? (
-              <ItemGroup>
+              <ItemGroup className="record-list" data-density="compact">
                 {query.data.choices.map((choice) => (
-                  <Item variant="outline" size="sm" key={choice.id}>
+                  <Item className="record-list-row" size="sm" key={choice.id} role="listitem">
                     <ItemContent className="min-w-0">
-                      <ItemTitle className="whitespace-normal wrap-anywhere">
-                        {choice.title}
+                      <ItemTitle className="record-list-title" title={kind === "orders" ? choice.title : choice.summary}>
+                        {kind === "orders" ? choice.title : choice.summary}
                       </ItemTitle>
                       {choice.website && (
-                        <ItemDescription className="line-clamp-none whitespace-normal wrap-anywhere">
+                        <ItemDescription className="record-list-meta line-clamp-none whitespace-normal wrap-anywhere">
                           所属网站：{choice.website}
                         </ItemDescription>
                       )}
-                      <ItemDescription>{choice.summary}</ItemDescription>
-                      <ItemDescription className="whitespace-normal wrap-anywhere">
+                      <ItemDescription className="record-list-meta">
+                        <ListDateTime value={choice.occurredAt} inline />
+                        {kind === "orders" && " · " + choice.summary}
+                      </ItemDescription>
+                      <ItemDescription className="record-list-meta whitespace-normal wrap-anywhere">
                         {choice.identifiers}
                       </ItemDescription>
                       {choice.recommendation?.amount_match && (
-                        <ItemDescription>
+                        <ItemDescription className="record-list-meta">
                           {choice.recommendation.time_window_overlap
                             ? "同金额 · 匹配时间窗口重叠，仍需核对"
                             : "同金额 · 时间不在匹配窗口内，请核对"}
                         </ItemDescription>
                       )}
                     </ItemContent>
-                    <ItemActions>
+                    <ItemActions className="flex-col items-end self-start">
+                      <ListMoney value={choice.amount} />
                       <Button
                         type="button"
                         variant="outline"

@@ -43,7 +43,10 @@ describe("first collection onboarding", () => {
         name: new RegExp(title),
       });
       expect(selected).toHaveAttribute("aria-current", "step");
-      expect(screen.getByRole("heading", { name: title })).toHaveFocus();
+      // The active step can commit before OnboardingFlow's passive focus effect.
+      await waitFor(() =>
+        expect(screen.getByRole("heading", { name: title })).toHaveFocus(),
+      );
       expect(view.writes()).toHaveLength(0);
     },
   );

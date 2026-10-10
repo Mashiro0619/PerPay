@@ -453,7 +453,8 @@ describe("order detail work surface", () => {
     expect(
       within(dialog).queryByLabelText("收入流水编号"),
     ).not.toBeInTheDocument();
-    expect(await within(dialog).findByText(/应付.*实收/)).toBeVisible();
+    expect(await within(dialog).findByLabelText(/^应付金额 /)).toBeVisible();
+    expect(within(dialog).getByLabelText(/^实收金额 /)).toBeVisible();
     expect(
       within(dialog).queryByText("请核对这笔关联"),
     ).not.toBeInTheDocument();
