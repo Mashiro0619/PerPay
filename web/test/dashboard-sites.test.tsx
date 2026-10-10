@@ -21,6 +21,8 @@ function mount(summary?: (clientId: string) => Promise<Response>) {
   const summaryReads: string[] = [];
   vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
     const url = new URL(request.url), clientId = /\/sites\/([^/]+)/.exec(url.pathname)?.[1] ?? "";
+    if (url.pathname === "/api/admin/v1/sites/overview")
+      return json({ data: [], period: { from: "2026-09-11", to: "2026-10-10" }, max_confirmed_amount_cents: 0, page: { next_cursor: null } });
     if (url.pathname.endsWith("/settings")) return json({ data: { ...settings, site_mode: true, completion: { ...settings.completion, complete: true, sites: true } } });
     if (url.pathname.endsWith("/analytics")) return json({ data: { pending: { orders: clientId === "site_b" ? 4 : 3 }, daily: [] } });
     if (url.pathname.endsWith("/work-items/summary")) {

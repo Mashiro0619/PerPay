@@ -9,6 +9,7 @@ import { vi } from "vitest";
 import { appRoutes } from "../src/App";
 import {
   queryClient,
+  type ListSiteOverviewResponse,
   type RuntimeSettings,
   type SystemStatus,
 } from "../src/api/client";
@@ -183,6 +184,19 @@ export function mountOnboarding(
     if (override !== undefined) return override;
     const url = new URL(request.url);
     const endpoint = url.pathname;
+    if (endpoint === "/api/admin/v1/sites/overview") {
+      const days = Number(url.searchParams.get("range") ?? 30);
+      const last = Date.parse("2026-10-10T12:00:00.000Z");
+      return json({
+        period: { from: new Date(last - (days - 1) * 86_400_000).toISOString().slice(0, 10), to: "2026-10-10" },
+        max_confirmed_amount_cents: 0,
+        data: [{
+          client_id: "site_test", name: "测试网站", accepting_orders: true, notifications_enabled: false,
+          confirmed_count: 0, confirmed_amount_cents: 0, pending_orders: 0, work_items: 0,
+        }],
+        page: { next_cursor: null },
+      } satisfies ListSiteOverviewResponse);
+    }
     if (endpoint === "/api/admin/v1/sites") return json({ data: [{ client_id: "site_test", revision: 0, configuration: { name: "测试网站", accepting_orders: true, notifications_enabled: false } }], page: { next_cursor: null } });
     if (endpoint.endsWith("/session/login")) {
       signedIn = true;

@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { queryClient, type Site } from "../src/api/client";
+import { queryClient, type ListSiteOverviewResponse, type Site } from "../src/api/client";
 import { json, order, orderId } from "./fixtures";
 import { matchId, paymentMatch } from "./detail-fixtures";
 import { recordAction } from "./menu-helper";
@@ -73,6 +73,25 @@ function mountSidebar({
       if (url.pathname === "/api/admin/v1/sites") {
         listReads.push(url);
         return list?.(url) ?? json({ data: sites, page: { next_cursor: null } });
+      }
+      if (url.pathname === "/api/admin/v1/sites/overview") {
+        const days = Number(url.searchParams.get("range") ?? 30);
+        const last = Date.parse("2026-10-10T12:00:00.000Z");
+        return json({
+          period: { from: new Date(last - (days - 1) * 86_400_000).toISOString().slice(0, 10), to: "2026-10-10" },
+          max_confirmed_amount_cents: 0,
+          data: sites.map(site => ({
+            client_id: site.client_id,
+            name: site.configuration.name,
+            accepting_orders: site.configuration.accepting_orders,
+            notifications_enabled: site.configuration.notifications_enabled,
+            confirmed_count: 0,
+            confirmed_amount_cents: 0,
+            pending_orders: 0,
+            work_items: 0,
+          })),
+          page: { next_cursor: null },
+        } satisfies ListSiteOverviewResponse);
       }
       const metadata = /^\/api\/admin\/v1\/sites\/([^/]+)$/.exec(url.pathname);
       if (metadata) {
