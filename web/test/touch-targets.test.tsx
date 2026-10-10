@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { MemoryRouter } from "react-router";
+import { SiteIdentity } from "../src/components/site-identity";
 import { Button } from "../src/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "../src/components/ui/tabs";
 import {
@@ -31,6 +33,16 @@ function touchValue(element: Element, property: string) {
 }
 
 describe("composed touch targets", () => {
+  it("gives independent summary links a full touch target beside row navigation", () => {
+    render(<MemoryRouter>
+      <SiteIdentity clientId="shop" name="网站" />
+      <a href="/orders/example" className="list-secondary-link">关联订单</a>
+    </MemoryRouter>);
+    for (const link of screen.getAllByRole("link")) {
+      expect(touchValue(link, "min-height")).toBe("44px");
+      expect(touchValue(link, "min-width")).toBe("44px");
+    }
+  });
   it("reserves the trigger height plus both list paddings for every TabsList", () => {
     const { container } = render(
       <Tabs defaultValue="all">

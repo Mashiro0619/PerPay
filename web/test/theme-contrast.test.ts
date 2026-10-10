@@ -39,6 +39,9 @@ const pairs = [
   ["sidebar-foreground", "sidebar"],
   ["accent-foreground", "accent"],
   ["destructive", "background"],
+  ["success-foreground", "success"],
+  ["warning-foreground", "warning"],
+  ["danger-foreground", "danger"],
 ];
 describe("official Neutral theme", () => {
   for (const mode of [":root", ".dark"])
@@ -104,6 +107,6 @@ describe("neutral chart colors", () => {
   it("uses the same series palette before and after dark-mode initialization", () => {
     const dark = variables(".dark");
     const fallback = variables(":root:not([data-theme])");
-    for (const name of ["chart-1", "chart-2"]) expect(fallback[name]).toBe(dark[name]);
+    for (const name of ["chart-1", "chart-2", "success", "success-foreground", "warning", "warning-foreground", "danger", "danger-foreground"]) expect(fallback[name]).toBe(dark[name]);
   });
 });

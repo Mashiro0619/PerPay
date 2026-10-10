@@ -10,16 +10,23 @@ import { money } from "@/lib/format";
 import { useListQuery, DELIVERY_SORT_FIELDS } from "@/lib/list-query";
 import { ListQueryToolbar } from "@/components/list-query-toolbar";
 import { ListActionsMenu } from "@/components/list-actions-menu";
+import { ListColumnsProvider } from "@/components/list-columns";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { BusinessTable } from "@/components/business-table";
+import { BusinessTable, type BusinessColumn } from "@/components/business-table";
+import {
+  ListDateTime,
+  ListIdentity,
+  ListMeta,
+  ListSummary,
+  ListSummaryField,
+} from "@/components/list-primitives";
 import type { ReactNode } from "react";
 
 import { ArrowLeft, RefreshCw, Settings2 } from "lucide-react";
 import { useParams, useSearchParams } from "react-router";
 import { Link, useDetailBack } from "@/navigation";
-import { refreshOperationalData, result, type WebhookDeliveryStatus } from "@/api/client";
+import { refreshOperationalData, result, type WebhookDeliveryStatus, type WebhookDeliverySummary } from "@/api/client";
 import { useCursor } from "@/lib/cursor";
-import { dateTime } from "@/lib/format";
 import { notificationErrorName } from "@/lib/detail-summary";
 import { label } from "@/lib/labels";
 import { DeliveryCard } from "@/components/detail/NotificationEvidence";
@@ -134,7 +141,118 @@ function DeliveryPage({
         }),
       ),
   });
+  const columns: BusinessColumn<WebhookDeliverySummary>[] = [
+    {
+      id: "identity",
+      label: "通知事件",
+      hideable: false,
+      layout: "identity",
+      summaryDefault: true,
+      cell: (delivery, context) => (
+        <ListIdentity
+          meta={
+            <ListMeta>
+              <span className="list-code" title={delivery.order_summary?.merchant_order_no}>
+                {delivery.order_summary?.merchant_order_no ?? label(delivery.event.event_type)}
+              </span>
+              {delivery.order_summary && (
+                <span className="whitespace-nowrap tabular-nums">
+                  {money(delivery.order_summary.payable_amount_cents)}
+                </span>
+              )}
+              {!clientId && (
+                <SiteIdentity
+                  clientId={delivery.order_summary?.api_client_id}
+                  name={delivery.order_summary?.site_name}
+                />
+              )}
+            </ListMeta>
+          }
+          description={(context.showInSummary("created_at") || context.showInSummary("attempt_count")) && (
+            <ListMeta>
+              {context.showInSummary("created_at") && <ListDateTime value={delivery.created_at} inline />}
+              {context.showInSummary("attempt_count") && <span>已尝试 {delivery.attempt_count} 次</span>}
+            </ListMeta>
+          )}
+        >
+          <Link
+            data-row-link
+            className="list-primary-link"
+            title={delivery.order_summary?.product_name ?? label(delivery.event.event_type)}
+            to={"/notifications/" + delivery.delivery_id}
+          >
+            {delivery.order_summary?.product_name ?? label(delivery.event.event_type)}
+          </Link>
+        </ListIdentity>
+      ),
+    },
+    {
+      id: "order",
+      label: "关联订单",
+      layout: "text",
+      summaryDefault: false,
+      responsive: { minWidthRem: 75, basis: "container" },
+      cell: (delivery) => (
+        <Link
+          className="list-secondary-link list-code"
+          to={"/orders/" + delivery.event.order_id}
+        >
+          {delivery.order_summary?.merchant_order_no ?? "查看订单"}
+        </Link>
+      ),
+    },
+    {
+      id: "status",
+      label: "送达结果",
+      layout: "status",
+      summaryDefault: true,
+      cell: (delivery, context) => (
+        <div className="flex flex-col items-start gap-1.5">
+          <StatusBadge value={delivery.status} />
+          {delivery.last_error_code && (
+            <span className="text-xs text-muted-foreground">
+              {notificationErrorName(delivery.last_error_code)}
+            </span>
+          )}
+          {delivery.next_attempt_at && context.showInSummary("next_attempt_at") && (
+            <ListMeta>
+              <span>下次 <ListDateTime value={delivery.next_attempt_at} inline /></span>
+            </ListMeta>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: "attempt_count",
+      sortBy: "attempt_count",
+      label: "尝试次数",
+      align: "right",
+      layout: "number",
+      summaryDefault: false,
+      responsive: { minWidthRem: 40, basis: "container" },
+      cell: (delivery) => <span className="tabular-nums">{delivery.attempt_count}</span>,
+    },
+    {
+      id: "created_at",
+      sortBy: "created_at",
+      label: "创建时间",
+      layout: "datetime",
+      summaryDefault: true,
+      responsive: { minWidthRem: 56, basis: "container" },
+      cell: (delivery) => <ListDateTime value={delivery.created_at} />,
+    },
+    {
+      id: "next_attempt_at",
+      sortBy: "next_attempt_at",
+      label: "下次尝试",
+      layout: "datetime",
+      summaryDefault: false,
+      responsive: { minWidthRem: 56, basis: "container" },
+      cell: (delivery) => <ListDateTime value={delivery.next_attempt_at} />,
+    },
+  ];
   return (
+    <ListColumnsProvider>
     <div
       className="flex w-full min-w-0 flex-col gap-3"
       data-business-list="notifications"
@@ -201,110 +319,22 @@ function DeliveryPage({
               {page.data.length ? (
                 <BusinessTable
                   id="notifications"
+                  aria-label="业务通知列表"
                   items={page.data}
                   rowId={(item) => item.delivery_id}
                   control={listQuery}
-                  columns={[
-                    {
-                      id: "identity",
-                      label: "通知事件",
-                      hideable: false,
-                      className: "min-w-0 max-w-md whitespace-normal py-2",
-                      cell: (delivery, context) => (
-                        <div className="flex flex-col gap-1">
-                          <Link
-                            data-row-link
-                            className="font-medium hover:underline"
-                            to={"/notifications/" + delivery.delivery_id}
-                          >
-                            {delivery.order_summary?.product_name ??
-                              label(delivery.event.event_type)}
-                          </Link>
-                          <span className="break-all text-xs text-muted-foreground">
-                            {delivery.order_summary?.merchant_order_no ??
-                              label(delivery.event.event_type)}
-                            {delivery.order_summary &&
-                              " · " +
-                                money(
-                                  delivery.order_summary.payable_amount_cents,
-                                )}
-                          </span>
-                          {!clientId && <SiteIdentity clientId={delivery.order_summary?.api_client_id} name={delivery.order_summary?.site_name} />}
-                          {context.showInSummary("created_at") && (
-                            <time
-                              className="text-xs text-muted-foreground"
-                              dateTime={delivery.created_at}
-                            >
-                              {dateTime(delivery.created_at)}
-                            </time>
-                          )}
-                          {context.showInSummary("attempt_count") && (
-                            <span className="text-xs text-muted-foreground">
-                              已尝试 {delivery.attempt_count} 次
-                            </span>
-                          )}
-                        </div>
-                      ),
-                    },
-                    {
-                      id: "order",
-                      label: "关联订单",
-                      className: "max-w-sm whitespace-normal",
-                      responsive: { minWidthRem: 64, basis: "container" },
-                      cell: (delivery) => (
-                        <Link
-                          className="break-all underline underline-offset-4"
-                          to={"/orders/" + delivery.event.order_id}
-                        >
-                          {delivery.order_summary?.merchant_order_no ??
-                            "查看订单"}
-                        </Link>
-                      ),
-                    },
-                    {
-                      id: "status",
-                      label: "送达结果",
-                      className: "max-w-xs whitespace-normal",
-                      cell: (delivery, context) => (
-                        <div className="flex flex-col gap-1">
-                          <StatusBadge value={delivery.status} />
-                          {delivery.last_error_code && (
-                            <span className="text-xs text-muted-foreground">
-                              {notificationErrorName(delivery.last_error_code)}
-                            </span>
-                          )}
-                          {delivery.next_attempt_at &&
-                            context.showInSummary("next_attempt_at") && (
-                              <span className="text-xs text-muted-foreground">
-                                下次 {dateTime(delivery.next_attempt_at)}
-                              </span>
-                            )}
-                        </div>
-                      ),
-                    },
-                    {
-                      id: "attempt_count",
-                      sortBy: "attempt_count",
-                      label: "尝试次数",
-                      align: "right",
-                      responsive: { minWidthRem: 40, basis: "container" },
-                      cell: (delivery) => delivery.attempt_count,
-                    },
-                    {
-                      id: "created_at",
-                      sortBy: "created_at",
-                      label: "创建时间",
-                      responsive: { minWidthRem: 48, basis: "container" },
-                      cell: (delivery) => dateTime(delivery.created_at),
-                    },
-                    {
-                      id: "next_attempt_at",
-                      sortBy: "next_attempt_at",
-                      label: "下次尝试",
-                      responsive: { minWidthRem: 48, basis: "container" },
-                      cell: (delivery) => dateTime(delivery.next_attempt_at),
-                    },
-                  ]}
+                  columns={columns}
+                  renderSummary={(delivery, context) => (
+                    <ListSummary identity={columns[0]!.cell(delivery, context)}>
+                      {columns.filter((column) =>
+                        column.id !== "identity" && context.isColumnVisible(column.id),
+                      ).map((column) => (
+                        <ListSummaryField key={column.id} label={column.label}>
+                          {column.cell(delivery, context)}
+                        </ListSummaryField>
+                      ))}
+                    </ListSummary>
+                  )}
                 />
               ) : (
                 <Empty kind="filtered">
@@ -329,6 +359,7 @@ function DeliveryPage({
         )}
       </QueryView>
     </div>
+    </ListColumnsProvider>
   );
 }
 export function NotificationDetail() {

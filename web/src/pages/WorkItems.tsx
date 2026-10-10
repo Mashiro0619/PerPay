@@ -7,6 +7,7 @@ import { DialogBody } from "@/components/admin-dialog";
 import { useListQuery, WORK_ITEM_SORT_FIELDS } from "@/lib/list-query";
 import { ListQueryToolbar } from "@/components/list-query-toolbar";
 import { ListActionsMenu } from "@/components/list-actions-menu";
+import { ListColumnsProvider } from "@/components/list-columns";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { useEffect, useRef, useState } from "react";
 import { onlineManager, useMutation } from '@tanstack/react-query';
@@ -417,7 +418,7 @@ function WorkItemPage({
         !active?.isConnected)
     ) {
       const rows = [
-        ...(list.current?.querySelectorAll<HTMLTableRowElement>("tbody tr") ??
+        ...(list.current?.querySelectorAll<HTMLElement>("[data-business-row]") ??
           []),
       ];
       const same = rows.find(
@@ -484,6 +485,7 @@ function WorkItemPage({
     </ToggleGroup>
   );
   return (
+    <ListColumnsProvider>
     <div className="flex flex-col gap-3">
       <ListQueryToolbar
         control={listQuery}
@@ -597,6 +599,7 @@ function WorkItemPage({
         )}
       </QueryView>
     </div>
+    </ListColumnsProvider>
   );
 }
 function RestoreReminder({

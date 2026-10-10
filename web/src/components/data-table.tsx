@@ -1,15 +1,21 @@
 import { useWorkspace } from "@/workspace";
 import { SiteIdentity } from "@/components/site-identity";
-import { cn } from "cn";
 import type { AdminOrderSummary } from "@/api/client";
 import { Link } from "@/navigation";
-import { dateTime, money } from "@/lib/format";
 import type { ListQueryControl } from "@/lib/list-query";
 import { StatusBadge } from "@/components/business-status";
 import {
   BusinessTable,
   type BusinessColumn,
 } from "@/components/business-table";
+import {
+  ListDateTime,
+  ListIdentity,
+  ListMeta,
+  ListMoney,
+  ListSummary,
+  ListSummaryField,
+} from "@/components/list-primitives";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 const checkoutNames = {
   OPEN: "收银台开放中",
@@ -50,48 +56,48 @@ export function DataTable({
       id: "identity",
       label: "订单 / 商品",
       hideable: false,
-      className: cn(
-        "min-w-0 whitespace-normal",
-        control
-          ? "max-w-md py-2"
-          : "py-3 @lg/orders:w-full @lg/orders:max-w-64",
-      ),
+      layout: "identity",
+      summaryDefault: true,
       cell: (order, context) => (
-        <div className="flex flex-col gap-1">
+        <ListIdentity
+          meta={
+            <ListMeta>
+              <span className="list-code" title={order.merchant_order_no}>
+                {order.merchant_order_no}
+              </span>
+              {!clientId && (
+                <SiteIdentity clientId={order.api_client_id} name={order.site_name} />
+              )}
+            </ListMeta>
+          }
+          description={(
+            context.showInSummary("created_at") ||
+            context.showInSummary("status") ||
+            (!context.isColumnVisible("payable_amount_cents") && context.showInSummary("received_amount_cents"))
+          ) && (
+            <>
+              {context.showInSummary("created_at") && (
+                <ListDateTime value={order.created_at} inline />
+              )}
+              {context.showInSummary("status") && <OrderStatus order={order} />}
+              {!context.isColumnVisible("payable_amount_cents") &&
+                context.showInSummary("received_amount_cents") && (
+                  <ListMeta>
+                    <span>实收 <ListMoney value={order.received_amount_cents} secondary /></span>
+                  </ListMeta>
+                )}
+            </>
+          )}
+        >
           <Link
             to={"/orders/" + order.order_id}
             data-row-link
             title={order.product_name}
-            className="line-clamp-2 font-medium break-all hover:underline"
+            className="list-primary-link"
           >
             {order.product_name}
           </Link>
-          <span
-            className={cn(
-              "text-xs text-muted-foreground",
-              control ? "break-all" : "truncate",
-            )}
-            title={order.merchant_order_no}
-          >
-            {order.merchant_order_no}
-          </span>
-          {!clientId && <SiteIdentity clientId={order.api_client_id} name={order.site_name} />}
-          {context.showInSummary("created_at") && (
-            <time
-              className="text-xs text-muted-foreground"
-              dateTime={order.created_at}
-            >
-              {dateTime(order.created_at)}
-            </time>
-          )}
-          {context.showInSummary("status") && <OrderStatus order={order} />}
-          {!context.isColumnVisible("payable_amount_cents") &&
-            context.showInSummary("received_amount_cents") && (
-              <span className="text-xs text-muted-foreground">
-                实收 {money(order.received_amount_cents)}
-              </span>
-            )}
-        </div>
+        </ListIdentity>
       ),
     },
     {
@@ -99,13 +105,15 @@ export function DataTable({
       sortBy: "payable_amount_cents",
       label: "应付金额",
       align: "right",
+      layout: "amount",
+      summaryDefault: true,
       cell: (order, context) => (
-        <div className="flex min-w-0 flex-col gap-1 overflow-x-auto">
-          <span>{money(order.payable_amount_cents)}</span>
+        <div className="flex flex-col items-end gap-1">
+          <ListMoney value={order.payable_amount_cents} />
           {context.showInSummary("received_amount_cents") && (
-            <span className="text-xs text-muted-foreground">
-              实收 {money(order.received_amount_cents)}
-            </span>
+            <ListMeta>
+              <span>实收 <ListMoney value={order.received_amount_cents} secondary /></span>
+            </ListMeta>
           )}
         </div>
       ),
@@ -115,12 +123,16 @@ export function DataTable({
       sortBy: "received_amount_cents",
       label: "实收金额",
       align: "right",
-      responsive: { minWidthRem: 48, basis: "container" },
-      cell: (order) => money(order.received_amount_cents),
+      layout: "amount",
+      summaryDefault: false,
+      responsive: { minWidthRem: 62, basis: "container" },
+      cell: (order) => <ListMoney value={order.received_amount_cents} />,
     },
     {
       id: "status",
       label: "状态",
+      layout: "status",
+      summaryDefault: true,
       responsive: { minWidthRem: 32, basis: "container" },
       cell: (order) => <OrderStatus order={order} />,
     },
@@ -128,34 +140,50 @@ export function DataTable({
       id: "created_at",
       sortBy: "created_at",
       label: "创建时间",
-      responsive: { minWidthRem: 42, basis: "container" },
-      cell: (order) => (
-        <time dateTime={order.created_at}>{dateTime(order.created_at)}</time>
-      ),
+      layout: "datetime",
+      summaryDefault: true,
+      responsive: { minWidthRem: 46, basis: "container" },
+      cell: (order) => <ListDateTime value={order.created_at} />,
     },
   ];
   if (control) columns.push({
     id: "payment_confirmed_at", label: "付款确认时间",
-    responsive: { minWidthRem: 64, basis: "container" },
-    cell: order => dateTime(order.payment_confirmed_at ?? null),
+    layout: "datetime", summaryDefault: false,
+    responsive: { minWidthRem: 75, basis: "container" },
+    cell: order => <ListDateTime value={order.payment_confirmed_at} />,
   });
   return (
     <div className="@container/orders min-w-0">
       <BusinessTable
         id={control ? "orders" : "recent-orders"}
+        aria-label={control ? "订单列表" : "最近订单"}
         items={data}
         columns={columns}
         rowId={(order) => order.order_id}
         control={control}
-        tableClassName={(context) =>
-          context.visibleColumnCount >= 5
-            ? "min-w-xl table-auto"
-            : context.visibleColumnCount === 4
-              ? "min-w-[30rem] table-auto"
-              : context.visibleColumnCount === 3
-                ? "min-w-sm table-auto"
-                : "table-fixed @lg/orders:table-auto"
-        }
+        density={control ? "default" : "compact"}
+        embedded={!control}
+        renderSummary={(order, context) => (
+          <ListSummary
+            identity={columns[0]!.cell(order, context)}
+            aside={context.isColumnVisible("payable_amount_cents") && (
+              <div className="flex flex-col items-end gap-1">
+                <span className="text-xs text-muted-foreground">应付金额</span>
+                <ListMoney value={order.payable_amount_cents} />
+              </div>
+            )}
+          >
+            {columns.filter((column) =>
+              column.id !== "identity" &&
+              column.id !== "payable_amount_cents" &&
+              context.isColumnVisible(column.id),
+            ).map((column) => (
+              <ListSummaryField key={column.id} label={column.label}>
+                {column.cell(order, context)}
+              </ListSummaryField>
+            ))}
+          </ListSummary>
+        )}
         columnsMenu={!!control}
       />
     </div>

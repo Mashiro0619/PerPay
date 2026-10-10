@@ -1,8 +1,6 @@
 import type { ReactNode } from "react";
-import { cn } from "cn";
 import type { AdminWorkItem } from "@/api/client";
 import { Link } from "@/navigation";
-import { dateTime } from "@/lib/format";
 import type { ListQueryControl } from "@/lib/list-query";
 import { notificationErrorName } from "@/lib/detail-summary";
 import { workItemHref, workItemTitle } from "@/lib/labels";
@@ -11,6 +9,13 @@ import {
   BusinessTable,
   type BusinessColumn,
 } from "@/components/business-table";
+import {
+  ListDateTime,
+  ListIdentity,
+  ListMeta,
+  ListSummary,
+  ListSummaryField,
+} from "@/components/list-primitives";
 import { Badge } from "@/components/ui/badge";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 export function WorkItemsTable({
@@ -39,81 +44,81 @@ export function WorkItemsTable({
       id: "identity",
       label: "事项",
       hideable: false,
-      className: control
-        ? "min-w-0 max-w-md whitespace-normal py-2"
-        : "w-full max-w-md whitespace-normal py-3",
+      layout: "identity",
+      summaryDefault: true,
       cell: (item, context) => (
-        <div
-          className={cn(
-            "flex flex-col gap-1",
-            control && "min-h-7 justify-center",
+        <ListIdentity
+          description={item.type === "NOTIFICATION_FAILURE" && item.last_error_code
+            ? notificationErrorName(item.last_error_code)
+            : undefined}
+          meta={(
+            (item.type === "LEDGER_CONFLICT" && item.external_event_id) ||
+            item.type === "NOTIFICATION_FAILURE" ||
+            context.showInSummary("actionable_at") ||
+            item.ignored_at
+          ) && (
+            <ListMeta>
+              {item.type === "LEDGER_CONFLICT" && item.external_event_id && (
+                <span className="list-code" title={item.external_event_id}>
+                  {item.external_event_id}
+                </span>
+              )}
+              {item.type === "NOTIFICATION_FAILURE" && (
+                <>
+                  <span>已尝试 {item.attempt_count} 次</span>
+                  {item.next_attempt_at && !item.ended && (
+                    <span>下次 <ListDateTime value={item.next_attempt_at} inline /></span>
+                  )}
+                </>
+              )}
+              {context.showInSummary("actionable_at") && (
+                <span>提醒时间 <ListDateTime value={item.actionable_at} inline /></span>
+              )}
+              {item.ignored_at && (
+                <span>
+                  {item.ignored_by ?? "管理员"}已忽略
+                  {(!actions || context.showInSummary("ignored_at")) && (
+                    <> · <ListDateTime value={item.ignored_at} inline /></>
+                  )}
+                </span>
+              )}
+            </ListMeta>
           )}
         >
           <Link
             data-row-link
             data-reminder-id={item.type + ":" + item.resource_id}
-            className="font-medium hover:underline"
+            className="list-primary-link"
             to={workItemHref(item)}
           >
             {workItemTitle(item)}
           </Link>
-          {item.type === "LEDGER_CONFLICT" && item.external_event_id && (
-            <span className="text-sm break-all text-muted-foreground">
-              {item.external_event_id}
-            </span>
-          )}
-          {item.type === "NOTIFICATION_FAILURE" && (
-            <span className="text-sm text-muted-foreground">
-              {item.last_error_code
-                ? notificationErrorName(item.last_error_code) + " · "
-                : ""}
-              已尝试 {item.attempt_count} 次
-              {item.next_attempt_at && !item.ended
-                ? " · 下次 " + dateTime(item.next_attempt_at)
-                : ""}
-            </span>
-          )}
-          {context.showInSummary("actionable_at") && (
-            <time
-              className="text-xs text-muted-foreground"
-              dateTime={item.actionable_at}
-            >
-              提醒时间 {dateTime(item.actionable_at)}
-            </time>
-          )}
-          {item.ignored_at && (
-            <span className="text-xs text-muted-foreground">
-              {item.ignored_by ?? "管理员"}已忽略
-              {(!actions || context.showInSummary("ignored_at")) &&
-                " · " + dateTime(item.ignored_at)}
-            </span>
-          )}
-        </div>
+        </ListIdentity>
       ),
     },
     {
       id: "actionable_at",
       sortBy: "actionable_at",
       label: "提醒时间",
+      layout: "datetime",
+      summaryDefault: true,
       responsive: {
         minWidthRem: 40,
-        basis: control ? ("container" as const) : ("viewport" as const),
+        basis: "container",
       },
-      cell: (item) => (
-        <time dateTime={item.actionable_at}>
-          {dateTime(item.actionable_at)}
-        </time>
-      ),
+      cell: (item) => <ListDateTime value={item.actionable_at} />,
     },
     {
       id: "created_at",
       sortBy: "created_at",
       label: "创建时间",
+      layout: "datetime",
+      summaryDefault: false,
       responsive: {
         minWidthRem: 64,
-        basis: control ? ("container" as const) : ("viewport" as const),
+        basis: "container",
       },
-      cell: (item) => dateTime(item.created_at),
+      cell: (item) => <ListDateTime value={item.created_at} />,
     },
     ...(actions
       ? [
@@ -121,11 +126,13 @@ export function WorkItemsTable({
             id: "ignored_at",
             sortBy: "ignored_at",
             label: "忽略时间",
+            layout: "datetime" as const,
+            summaryDefault: false,
             responsive: {
               minWidthRem: 64,
-              basis: control ? ("container" as const) : ("viewport" as const),
+              basis: "container" as const,
             },
-            cell: (item: AdminWorkItem) => dateTime(item.ignored_at),
+            cell: (item: AdminWorkItem) => <ListDateTime value={item.ignored_at} />,
           },
         ]
       : []),
@@ -134,6 +141,8 @@ export function WorkItemsTable({
       label: actions ? "提醒状态" : "分类",
       hideable: false,
       align: "right",
+      layout: "actions",
+      summaryDefault: true,
       cell: (item) => (
         <div className="flex flex-col items-end gap-2">
           {item.ignored_at ? (
@@ -141,7 +150,13 @@ export function WorkItemsTable({
               {item.ended ? "已结束" : "已忽略"}
             </Badge>
           ) : (
-            <StatusBadge value={item.type} />
+            <StatusBadge
+              value={item.type === "NOTIFICATION_FAILURE" &&
+                ["PENDING", "LEASED", "RETRY_WAIT"].includes(item.status)
+                ? "RETRY_WAIT"
+                : item.type}
+              label={item.type === "NOTIFICATION_FAILURE" ? "通知失败" : undefined}
+            />
           )}{" "}
           {actions?.(item)}
         </div>
@@ -151,11 +166,30 @@ export function WorkItemsTable({
   return (
     <BusinessTable
       id={actions ? "ignored-work-items" : "work-items"}
+      aria-label={actions ? "已忽略提醒列表" : "待处理提醒列表"}
       items={items}
       columns={columns}
       rowId={(item) => item.type + ":" + item.resource_id}
       control={control}
+      density={control ? "default" : "compact"}
+      embedded={!control}
       columnsMenu={!!control}
+      renderSummary={(item, context) => (
+        <ListSummary
+          identity={columns[0]!.cell(item, context)}
+          aside={columns.find((column) => column.id === "actions")!.cell(item, context)}
+        >
+          {columns.filter((column) =>
+            column.id !== "identity" &&
+            column.id !== "actions" &&
+            context.isColumnVisible(column.id),
+          ).map((column) => (
+            <ListSummaryField key={column.id} label={column.label}>
+              {column.cell(item, context)}
+            </ListSummaryField>
+          ))}
+        </ListSummary>
+      )}
     />
   );
 }

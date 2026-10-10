@@ -9,9 +9,18 @@ import {
   type ListFilter,
 } from "@/components/list-query-toolbar";
 import { ListActionsMenu } from "@/components/list-actions-menu";
+import { ListColumnsProvider } from "@/components/list-columns";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { useCompactList } from "@/hooks/use-compact-list";
-import { BusinessTable } from "@/components/business-table";
+import { BusinessTable, type BusinessColumn } from "@/components/business-table";
+import {
+  ListDateTime,
+  ListIdentity,
+  ListMeta,
+  ListMoney,
+  ListSummary,
+  ListSummaryField,
+} from "@/components/list-primitives";
 import { useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCw, Link2, EyeOff } from "lucide-react";
@@ -19,7 +28,7 @@ import { useSearchParams } from "react-router";
 import { Link, useNavigate } from "@/navigation";
 import { api, result } from "@/api/client";
 import { useCursor } from "@/lib/cursor";
-import { dateTime, money, resourceIdPattern } from "@/lib/format";
+import { resourceIdPattern } from "@/lib/format";
 import { label } from "@/lib/labels";
 import { StatusBadge } from "@/components/business-status";
 import { QueryView } from "@/components/request-state";
@@ -39,6 +48,17 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 import { FinancialDialog } from "./FinancialDialog";
 type Section = "matches" | "conflicts" | "exceptions";
+type ReconciliationRow = {
+  id: string;
+  title: string;
+  merchantOrderNo: string | null;
+  externalEventId: string | null;
+  amountCents: number | null;
+  orderId: string | null;
+  reminderIgnored: boolean;
+  status: string;
+  createdAt: string;
+};
 const sections = [
   { value: "matches", label: "支付关联" },
   { value: "exceptions", label: "账务异常" },
@@ -252,6 +272,7 @@ function ReconciliationList({
           items: page.data.map((item) => ({
             id: item.conflict_id,
             title: label(item.conflict_type),
+            merchantOrderNo: null,
             externalEventId: item.external_event_id,
             amountCents: null,
             orderId: null,
@@ -277,6 +298,7 @@ function ReconciliationList({
           items: page.data.map((item) => ({
             id: item.exception_id,
             title: label(item.exception_type),
+            merchantOrderNo: null,
             externalEventId: null,
             amountCents: null,
             orderId: item.order_id,
@@ -301,7 +323,8 @@ function ReconciliationList({
         page: page.page,
         items: page.data.map((item) => ({
           id: item.payment_match_id,
-          title: item.order ? item.order.product_name + " · " + item.order.merchant_order_no : item.evidence_type === "MANUAL" ? "人工关联" : "金额推断关联",
+          title: item.order?.product_name ?? (item.evidence_type === "MANUAL" ? "人工关联" : "金额推断关联"),
+          merchantOrderNo: item.order?.merchant_order_no ?? null,
           externalEventId: item.ledger_entry.external_event_id,
           amountCents: item.ledger_entry.amount_cents,
           orderId: item.order_id,
@@ -312,8 +335,112 @@ function ReconciliationList({
       };
     },
   });
+  const columns: BusinessColumn<ReconciliationRow>[] = [
+    {
+      id: "identity",
+      label: "记录",
+      hideable: false,
+      layout: "identity",
+      summaryDefault: true,
+      cell: (item, context) => (
+        <ListIdentity
+          meta={(item.merchantOrderNo || (section !== "conflicts" && item.externalEventId)) && (
+            <ListMeta>
+              {item.merchantOrderNo && (
+                <span className="list-code" title={item.merchantOrderNo}>{item.merchantOrderNo}</span>
+              )}
+              {section !== "conflicts" && item.externalEventId && (
+                <span className="list-code" title={item.externalEventId}>流水 {item.externalEventId}</span>
+              )}
+            </ListMeta>
+          )}
+          description={(
+            context.showInSummary("created_at") ||
+            (section === "conflicts" && context.showInSummary("external_event_id")) ||
+            (item.amountCents !== null && context.showInSummary("amount_cents"))
+          ) && (
+            <ListMeta>
+              {context.showInSummary("created_at") && <ListDateTime value={item.createdAt} inline />}
+              {section === "conflicts" && context.showInSummary("external_event_id") && (
+                <span className="list-code" title={item.externalEventId ?? undefined}>
+                  流水 {item.externalEventId ?? "—"}
+                </span>
+              )}
+              {item.amountCents !== null && context.showInSummary("amount_cents") && (
+                <span>流水 <ListMoney value={item.amountCents} secondary /></span>
+              )}
+            </ListMeta>
+          )}
+        >
+          <Link
+            data-row-link
+            className="list-primary-link"
+            title={item.title}
+            to={"/reconciliation/" + section + "/" + item.id}
+          >
+            {item.title}
+          </Link>
+        </ListIdentity>
+      ),
+    },
+    {
+      id: "order",
+      label: "关联订单",
+      layout: "text",
+      summaryDefault: false,
+      responsive: { minWidthRem: 70, basis: "container" },
+      cell: (item) => item.orderId ? (
+        <Link className="list-secondary-link" to={"/orders/" + item.orderId}>
+          查看订单
+        </Link>
+      ) : "—",
+    },
+    {
+      id: "status",
+      label: "状态",
+      layout: "status",
+      summaryDefault: true,
+      cell: (item) => (
+        <div className="flex flex-col items-start gap-1.5">
+          <StatusBadge value={item.status} label={item.status === "OPEN" ? "未处理" : undefined} />
+          {item.reminderIgnored && <span className="text-xs text-muted-foreground">提醒已忽略</span>}
+        </div>
+      ),
+    },
+    ...(section === "matches" ? [{
+      id: "amount_cents",
+      sortBy: "amount_cents",
+      label: "流水金额",
+      align: "right" as const,
+      layout: "amount" as const,
+      summaryDefault: true,
+      responsive: { minWidthRem: 40, basis: "container" as const },
+      cell: (item: ReconciliationRow) => <ListMoney value={item.amountCents} />,
+    }] : []),
+    ...(section === "conflicts" ? [{
+      id: "external_event_id",
+      sortBy: "external_event_id",
+      label: "外部流水号",
+      layout: "text" as const,
+      summaryDefault: true,
+      responsive: { minWidthRem: 50, basis: "container" as const },
+      cell: (item: ReconciliationRow) => (
+        <span className="list-code" title={item.externalEventId ?? undefined}>{item.externalEventId ?? "—"}</span>
+      ),
+    }] : []),
+    {
+      id: "created_at",
+      sortBy: "created_at",
+      label: section === "matches" ? "关联时间" : "发现时间",
+      layout: "datetime",
+      summaryDefault: true,
+      responsive: { minWidthRem: 46, basis: "container" },
+      cell: (item) => <ListDateTime value={item.createdAt} />,
+    },
+  ];
 
   return (
+    <ListColumnsProvider>
     <div className="flex flex-col gap-3">
       <ListQueryToolbar
         control={listQuery}
@@ -418,126 +545,32 @@ function ReconciliationList({
               {page.items.length ? (
                 <BusinessTable
                   id={"reconciliation-" + section}
+                  aria-label={sections.find((item) => item.value === section)?.label}
                   items={page.items}
                   rowId={(item) => item.id}
                   control={listQuery}
-                  columns={[
-                    {
-                      id: "identity",
-                      label: "记录",
-                      hideable: false,
-                      className: "min-w-0 max-w-md whitespace-normal py-2",
-                      cell: (item, context) => (
-                        <div className="flex flex-col gap-1">
-                          <Link
-                            data-row-link
-                            className="font-medium hover:underline"
-                            to={"/reconciliation/" + section + "/" + item.id}
-                          >
-                            {item.title}
-                          </Link>
-                          <span className="break-all text-xs text-muted-foreground">
-                            {item.externalEventId ?? "查看记录详情"}
-                          </span>
-                          {context.showInSummary("created_at") && (
-                            <time
-                              className="text-xs text-muted-foreground"
-                              dateTime={item.createdAt}
-                            >
-                              {dateTime(item.createdAt)}
-                            </time>
-                          )}
-                          {item.amountCents !== null &&
-                            context.showInSummary("amount_cents") && (
-                              <span className="text-xs tabular-nums text-muted-foreground">
-                                流水 {money(item.amountCents)}
-                              </span>
-                            )}
+                  columns={columns}
+                  renderSummary={(item, context) => (
+                    <ListSummary
+                      identity={columns[0]!.cell(item, context)}
+                      aside={context.isColumnVisible("amount_cents") && (
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="text-xs text-muted-foreground">流水金额</span>
+                          <ListMoney value={item.amountCents} />
                         </div>
-                      ),
-                    },
-                    {
-                      id: "order",
-                      label: "关联订单",
-                      className: "max-w-sm whitespace-normal",
-                      responsive: {
-                        minWidthRem: 48,
-                        basis: "container" as const,
-                      },
-                      cell: (item) =>
-                        item.orderId ? (
-                          <Link
-                            className="break-all underline underline-offset-4"
-                            to={"/orders/" + item.orderId}
-                          >
-                            查看订单
-                          </Link>
-                        ) : (
-                          "—"
-                        ),
-                    },
-                    {
-                      id: "status",
-                      label: "状态",
-                      cell: (item) => (
-                        <div className="flex flex-col gap-1">
-                          <StatusBadge
-                            value={item.status}
-                            label={
-                              item.status === "OPEN" ? "未处理" : undefined
-                            }
-                          />
-                          {item.reminderIgnored && (
-                            <span className="text-xs text-muted-foreground">
-                              提醒已忽略
-                            </span>
-                          )}
-                        </div>
-                      ),
-                    },
-                    ...(section === "matches"
-                      ? [
-                          {
-                            id: "amount_cents",
-                            sortBy: "amount_cents",
-                            label: "流水金额",
-                            align: "right" as const,
-                            responsive: {
-                              minWidthRem: 40,
-                              basis: "container" as const,
-                            },
-                            cell: (item: (typeof page.items)[number]) =>
-                              money(item.amountCents),
-                          },
-                        ]
-                      : []),
-                    ...(section === "conflicts"
-                      ? [
-                          {
-                            id: "external_event_id",
-                            sortBy: "external_event_id",
-                            label: "外部流水号",
-                            className: "max-w-56 whitespace-normal break-all",
-                            responsive: {
-                              minWidthRem: 48,
-                              basis: "container" as const,
-                            },
-                            cell: (item: (typeof page.items)[number]) =>
-                              item.externalEventId ?? "—",
-                          },
-                        ]
-                      : []),
-                    {
-                      id: "created_at",
-                      sortBy: "created_at",
-                      label: section === "matches" ? "关联时间" : "发现时间",
-                      responsive: {
-                        minWidthRem: 40,
-                        basis: "container" as const,
-                      },
-                      cell: (item) => dateTime(item.createdAt),
-                    },
-                  ]}
+                      )}
+                    >
+                      {columns.filter((column) =>
+                        column.id !== "identity" &&
+                        column.id !== "amount_cents" &&
+                        context.isColumnVisible(column.id),
+                      ).map((column) => (
+                        <ListSummaryField key={column.id} label={column.label}>
+                          {column.cell(item, context)}
+                        </ListSummaryField>
+                      ))}
+                    </ListSummary>
+                  )}
                 />
               ) : (
                 <Empty kind="filtered">
@@ -562,5 +595,6 @@ function ReconciliationList({
         )}
       </QueryView>
     </div>
+    </ListColumnsProvider>
   );
 }

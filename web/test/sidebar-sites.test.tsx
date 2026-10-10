@@ -446,7 +446,8 @@ describe("website selection on shared pages", () => {
     await within(nav).findByRole("link", { name: "网站 A" });
     const user = userEvent.setup();
     await user.click(within(nav).getByRole("link", { name: "共享账本" }));
-    const sharedRow = await screen.findByRole("link", { name: /测试商品 · test-merchant-order/ });
+    const sharedRow = await screen.findByRole("link", { name: "测试商品" });
+    expect(within(sharedRow.closest("[data-business-row]")! as HTMLElement).getAllByText("test-merchant-order").length).toBeGreaterThan(0);
     expect(view.router.state.location.pathname).toBe("/reconciliation");
     expect(new URLSearchParams(view.router.state.location.search).get("selected_site")).toBe("a");
     expect(view.container.querySelector("header")).toHaveTextContent("全局");
@@ -456,7 +457,7 @@ describe("website selection on shared pages", () => {
     await user.click(within(nav).getByRole("link", { name: "网站 B" }));
     await waitFor(() => expect(new URLSearchParams(view.router.state.location.search).get("selected_site")).toBe("b"));
     expect(view.router.state.location.pathname).toBe("/reconciliation");
-    expect(screen.getByRole("link", { name: /测试商品 · test-merchant-order/ })).toBe(sharedRow);
+    expect(screen.getByRole("link", { name: "测试商品" })).toBe(sharedRow);
     expect(sharedReads()).toHaveLength(1);
     expect(within(nav).getByRole("link", { name: "订单" })).toHaveAttribute("href", "/sites/b/orders");
     expect(within(nav).getByRole("link", { name: "设置" })).toHaveAttribute("href", "/sites/b/settings/basic");
@@ -470,7 +471,7 @@ describe("website selection on shared pages", () => {
     await waitFor(() => expect(view.fetchMock.mock.calls.some(([request]) => new URL(request.url).pathname === "/api/admin/v1/sites/b/orders")).toBe(true));
     expect(new URLSearchParams(view.router.state.location.search).has("selected_site")).toBe(false);
     await act(async () => { await view.router.navigate(-1); });
-    await screen.findByRole("link", { name: /测试商品 · test-merchant-order/ });
+    await screen.findByRole("link", { name: "测试商品" });
     expect(new URLSearchParams(view.router.state.location.search).get("selected_site")).toBe("b");
     await act(async () => { await view.router.navigate(-1); });
     await waitFor(() => expect(within(nav).getByRole("link", { name: "网站 A" })).toHaveAttribute("aria-current", "location"));
@@ -483,7 +484,7 @@ describe("website selection on shared pages", () => {
     queryClient.clear();
     const refreshed = mountSidebar({ path: address });
     const restored = await findSidebar();
-    await screen.findByRole("link", { name: /测试商品 · test-merchant-order/ });
+    await screen.findByRole("link", { name: "测试商品" });
     expect(await within(restored).findByRole("link", { name: "网站 B" })).toHaveAttribute("aria-current", "location");
     expect(within(restored).getByRole("link", { name: "订单" })).toHaveAttribute("href", "/sites/b/orders");
     await user.click(within(restored).getByRole("link", { name: "全部网站" }));
@@ -556,7 +557,7 @@ describe("website selection on shared pages", () => {
 
   it("keeps shared records usable when the remembered website cannot be loaded", async () => {
     const view = mountSidebar({ path: "/reconciliation?selected_site=missing" });
-    const row = await screen.findByRole("link", { name: /测试商品 · test-merchant-order/ });
+    const row = await screen.findByRole("link", { name: "测试商品" });
     const nav = sidebar();
     await waitFor(() => expect(view.fetchMock.mock.calls.some(([request]) => new URL(request.url).pathname === "/api/admin/v1/sites/missing")).toBe(true));
     expect(row).toBeVisible();

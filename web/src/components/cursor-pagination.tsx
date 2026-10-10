@@ -25,7 +25,7 @@ export function CursorPagination({
   if (page === 1 && !hasNext) return null;
   return (
     <Pagination
-      className="flex-wrap justify-between gap-4"
+      className="list-pagination flex-wrap justify-between gap-4"
       aria-label="列表分页"
     >
       <p

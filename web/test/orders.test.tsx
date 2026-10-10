@@ -383,22 +383,18 @@ describe("responsive order semantics", () => {
         />
       </MemoryRouter>,
     );
-    const cells = within(screen.getAllByRole("row")[1]!).getAllByRole("cell");
-    const mobileSummary = within(cells[0]!);
+    const mobileSummary = within(screen.getByRole("listitem"));
     expect(mobileSummary.getByText("收款已确认")).toBeInTheDocument();
     expect(mobileSummary.getByText("已标记退款")).toBeInTheDocument();
     expect(mobileSummary.queryByText("可查看收银台")).not.toBeInTheDocument();
-    expect(cells).toHaveLength(2);
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
     expect(
       screen.queryByRole("columnheader", { name: "状态" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("table")).toHaveClass(
-      "table-fixed",
-      "@lg/orders:table-auto",
-    );
-    expect(mobileSummary.getByText(dateTime(order.created_at))).toHaveAttribute(
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(mobileSummary.getByLabelText(dateTime(order.created_at))).toHaveAttribute(
       "datetime",
-      order.created_at,
+      new Date(order.created_at).toISOString(),
     );
   });
   it("retains table semantics, full identities and business timestamps", () => {
@@ -438,8 +434,8 @@ describe("responsive order semantics", () => {
     const cells = within(rows[1]!).getAllByRole("cell");
     expect(within(cells[0]!).queryByText("待付款")).not.toBeInTheDocument();
     expect(within(cells[3]!).getByText("待付款")).toBeInTheDocument();
-    for (const time of within(table).getAllByText(dateTime(order.created_at)))
-      expect(time).toHaveAttribute("datetime", order.created_at);
+    for (const time of within(table).getAllByLabelText(dateTime(order.created_at)))
+      expect(time).toHaveAttribute("datetime", new Date(order.created_at).toISOString());
     expect(
       within(table).getByRole("link", { name: productName }),
     ).toHaveAttribute("href", `/orders/${orderId}`);
@@ -454,17 +450,15 @@ describe("responsive order semantics", () => {
     ).not.toBeInTheDocument();
     expect(within(cells[3]!).getByText("收银台开放中")).toBeInTheDocument();
     media.resize(390);
-    const mobileCells = within(screen.getAllByRole("row")[1]!).getAllByRole(
-      "cell",
-    );
-    expect(mobileCells).toHaveLength(2);
-    expect(within(mobileCells[0]!).getByText("待付款")).toBeInTheDocument();
+    const mobileSummary = within(screen.getByRole("listitem"));
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(mobileSummary.getByText("待付款")).toBeInTheDocument();
     expect(
-      within(mobileCells[0]!).getByText("收银台开放中"),
+      mobileSummary.getByText("收银台开放中"),
     ).toBeInTheDocument();
     expect(
-      within(mobileCells[0]!).getByText(dateTime(order.created_at)),
-    ).toHaveAttribute("datetime", order.created_at);
+      mobileSummary.getByLabelText(dateTime(order.created_at)),
+    ).toHaveAttribute("datetime", new Date(order.created_at).toISOString());
   });
 
   it("announces pagination progress and disables navigation while loading", async () => {

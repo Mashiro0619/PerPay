@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   readColumnOverrides,
   resolveColumnVisibility,
+  resolveSummaryVisibility,
   updateColumnOverrides,
   type ResponsiveColumn,
 } from "../src/lib/table-columns";
@@ -96,5 +97,69 @@ describe("responsive column visibility", () => {
       rem: 16,
     });
     expect(wide.date).toBe(true);
+  });
+});
+
+describe("summary field visibility", () => {
+  const fields: ResponsiveColumn[] = [
+    { id: "identity", hideable: false },
+    { id: "amount", summaryDefault: true },
+    {
+      id: "status",
+      summaryDefault: true,
+      responsive: { minWidthRem: 80, basis: "container" },
+    },
+    { id: "reference", summaryDefault: false },
+    { id: "date", responsive: { minWidthRem: 32 } },
+    { id: "actions", hideable: false },
+  ];
+
+  it("uses each business summary's chosen fields without inheriting desktop breakpoints", () => {
+    expect(resolveSummaryVisibility(fields, {})).toEqual({
+      identity: true,
+      amount: true,
+      status: true,
+      reference: false,
+      date: false,
+      actions: true,
+    });
+  });
+
+  it("honors explicit field choices while keeping identity and actions available", () => {
+    expect(
+      resolveSummaryVisibility(fields, {
+        identity: false,
+        amount: false,
+        status: false,
+        reference: true,
+        date: true,
+        actions: false,
+      }),
+    ).toEqual({
+      identity: true,
+      amount: false,
+      status: false,
+      reference: true,
+      date: true,
+      actions: true,
+    });
+  });
+
+  it("records a hidden summary default even when its desktop column is already collapsed", () => {
+    const visible = resolveSummaryVisibility(fields, {});
+    const overrides = updateColumnOverrides(fields, {}, visible, {
+      ...visible,
+      status: false,
+      reference: true,
+    });
+    expect(overrides).toEqual({ status: false, reference: true });
+    expect(resolveSummaryVisibility(fields, overrides).status).toBe(false);
+    const desktop = resolveColumnVisibility(fields, overrides, {
+      viewport: 1600,
+      container: 1440,
+      rem: 16,
+    });
+    expect(desktop.status).toBe(false);
+    expect(desktop.reference).toBe(true);
   });
 });

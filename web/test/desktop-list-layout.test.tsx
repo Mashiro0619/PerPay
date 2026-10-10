@@ -54,7 +54,7 @@ const lists = [
     path: "/work-items",
     element: <WorkItems />,
     data: [reminder],
-    hiddenColumn: "提醒时间",
+    hiddenColumn: "创建时间",
   },
   {
     path: "/reconciliation",
@@ -115,7 +115,7 @@ describe("desktop business list composition", () => {
   });
 
   it.each(lists)(
-    "keeps search, filters and actions grouped with an in-header column menu on $path",
+    "keeps search, filters, sorting and the unique column menu grouped in the toolbar on $path",
     async ({ path, element, data }) => {
       pageResponse(data);
       const view = mount(path, element);
@@ -140,12 +140,19 @@ describe("desktop business list composition", () => {
         sort.compareDocumentPosition(actions) &
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
-      expect(screen.getByRole("button", { name: "显示列" }).closest("th")).toBe(
-        within(table).getAllByRole("columnheader")[0],
+      const columnMenu = screen.getByRole("button", { name: "显示列" });
+      expect(columnMenu.closest("th")).toBeNull();
+      expect(columnMenu.closest("[data-list-query-toolbar]")).toBe(
+        view.container.querySelector("[data-list-query-toolbar]"),
       );
+      expect(columnMenu.closest("[data-list-columns-slot]")).not.toBeNull();
+      expect(screen.getAllByRole("button", { name: "显示列" })).toHaveLength(1);
       expect(view.container.querySelector("[data-business-list]")).toHaveClass("w-full", "min-w-0");
       expect(view.container.querySelector("[data-business-list]")).not.toHaveClass("max-w-[1600px]", "mx-auto");
-      expect(table.querySelector("tbody td")).toHaveClass("py-2");
+      expect(table.querySelector("tbody td")).toHaveAttribute("data-column-layout", "identity");
+      expect(table).toHaveAttribute("data-density", "default");
+      expect(table).toHaveClass("table-fixed");
+      expect(table.querySelector("tbody td")).not.toHaveClass("py-2");
       expect(table.querySelector("tbody td")).not.toHaveClass("w-full");
     },
   );
@@ -165,10 +172,10 @@ describe("desktop business list composition", () => {
       });
       pageResponse(data);
       mount(path, element);
-      await screen.findByRole("table");
-      expect(screen.getAllByRole("columnheader")).toHaveLength(2);
+      const summary = await screen.findByRole("listitem");
+      expect(screen.queryByRole("table")).not.toBeInTheDocument();
       expect(
-        screen.queryByRole("columnheader", { name: hiddenColumn }),
+        within(summary).queryByText(hiddenColumn),
       ).not.toBeInTheDocument();
       const user = userEvent.setup();
       await user.click(screen.getByRole("button", { name: "显示列" }));
@@ -177,16 +184,19 @@ describe("desktop business list composition", () => {
       );
       await user.keyboard("{Escape}");
       expect(
-        screen.getByRole("columnheader", { name: hiddenColumn }),
-      ).toBeInTheDocument();
+        within(summary).getByText(hiddenColumn),
+      ).toBeVisible();
       width = 1300;
       act(() => window.dispatchEvent(new Event("resize")));
-      expect(screen.getAllByRole("columnheader").length).toBeGreaterThan(3);
+      expect(screen.getByRole("table")).toBeVisible();
+      expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name: hiddenColumn })).toBeVisible();
       width = 400;
       act(() => window.dispatchEvent(new Event("resize")));
       expect(
-        screen.getByRole("columnheader", { name: hiddenColumn }),
-      ).toBeInTheDocument();
+        within(screen.getByRole("listitem")).getByText(hiddenColumn),
+      ).toBeVisible();
+      expect(document.querySelectorAll("[data-business-row]")).toHaveLength(1);
     },
   );
 
@@ -219,26 +229,24 @@ describe("desktop business list composition", () => {
     },
   );
 
-  it("does not truncate merchant numbers or alter the overview table's default density", async () => {
+  it("retains complete merchant numbers in metadata and uses compact embedded overview rows", async () => {
     pageResponse([longOrder]);
     const view = mount("/orders", <Orders />);
     const number = await screen.findByText(longOrder.merchant_order_no, {
       exact: true,
     });
-    expect(number).toHaveClass("break-all");
-    expect(number).not.toHaveClass("truncate");
+    expect(number).toHaveClass("list-code");
+    expect(number).toHaveAttribute("title", longOrder.merchant_order_no);
+    expect(screen.getByRole("table")).toHaveAttribute("data-density", "default");
     view.unmount();
     render(
       <MemoryRouter>
         <DataTable data={[longOrder]} />
       </MemoryRouter>,
     );
-    expect(screen.getByText(longOrder.merchant_order_no)).toHaveClass(
-      "truncate",
-    );
-    expect(screen.getByRole("table").querySelector("tbody td")).toHaveClass(
-      "py-3",
-    );
+    expect(screen.getByText(longOrder.merchant_order_no)).toHaveAttribute("title", longOrder.merchant_order_no);
+    expect(screen.getByRole("table")).toHaveAttribute("data-density", "compact");
+    expect(screen.getByRole("table").closest("[data-business-table]")).toHaveAttribute("data-embedded", "true");
     expect(
       screen.queryByRole("button", { name: "显示列" }),
     ).not.toBeInTheDocument();

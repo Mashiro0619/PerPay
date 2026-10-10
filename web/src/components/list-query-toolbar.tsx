@@ -3,6 +3,7 @@ import { cn } from "cn";
 import { ArrowDown, ArrowUp, ChevronDown, Search, X } from "lucide-react";
 import { normalizeKeyword, type ListQueryControl } from "@/lib/list-query";
 import { useCompactList } from "@/hooks/use-compact-list";
+import { ListColumnsSlot } from "@/components/list-columns";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
@@ -103,9 +104,13 @@ export function ListQueryToolbar({
     ),
   ];
   return (
-    <div className="flex min-w-0 flex-col gap-2" data-list-query-toolbar>
+    <div
+      className="list-query-toolbar min-w-0"
+      data-list-query-toolbar
+      data-compact={compact}
+    >
       <div
-        className="flex min-w-0 flex-wrap items-start gap-x-4 gap-y-3"
+        className="list-toolbar-row flex min-w-0 flex-wrap items-start gap-x-4 gap-y-3"
         data-list-toolbar-row
       >
         {selectedMode && lookup?.context?.(selectedMode.value)}
@@ -310,7 +315,12 @@ export function ListQueryToolbar({
           </>
         )}
       </div>
-      {selectedMode && <ErrorNotice error={lookup?.error} />}
+      <ListColumnsSlot />
+      {selectedMode && (
+        <div className="list-toolbar-detail empty:hidden">
+          <ErrorNotice error={lookup?.error} />
+        </div>
+      )}
       {compact && (
         <>
           <div
@@ -333,7 +343,7 @@ export function ListQueryToolbar({
           </div>
           {summaries.length > 0 && (
             <div
-              className="flex min-w-0 items-center gap-2"
+              className="list-toolbar-detail flex min-w-0 items-center gap-2"
               aria-label="当前查询条件"
             >
               <div
@@ -376,10 +386,12 @@ export function ListQueryToolbar({
         </>
       )}
       {children && (
-        <div className="flex flex-wrap items-center gap-2">{children}</div>
+        <div className="list-toolbar-detail flex flex-wrap items-center gap-2">
+          {children}
+        </div>
       )}
       {!compact && control.query.q && (
-        <p className="text-xs break-all text-muted-foreground">
+        <p className="list-toolbar-detail text-xs break-all text-muted-foreground">
           当前关键词：{control.query.q} · 搜索全部匹配记录，不仅当前页
         </p>
       )}

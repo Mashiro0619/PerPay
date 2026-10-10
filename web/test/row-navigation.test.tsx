@@ -11,6 +11,7 @@ import Orders from "../src/pages/Orders";
 import { TestPaymentProvider } from "../src/components/test-payment-provider";
 import Reconciliation from "../src/pages/Reconciliation";
 import { json, order, orderId } from "./fixtures";
+import { mobileMedia } from "./mobile-media";
 
 function CurrentLocation() {
   const location = useLocation();
@@ -234,6 +235,7 @@ describe("detail navigation from actual list pages", () => {
   it.each(listCases)(
     "opens $name from the row without a separate action column",
     async ({ path, element, target, record, columns }) => {
+      mobileMedia(1440);
       vi.stubGlobal(
         "fetch",
         vi.fn(async () =>

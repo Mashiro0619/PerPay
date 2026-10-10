@@ -11,6 +11,7 @@ import {
   type ListQueryLookup,
 } from "@/components/list-query-toolbar";
 import { ListActionsMenu } from "@/components/list-actions-menu";
+import { ListColumnsProvider } from "@/components/list-columns";
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { useMutation } from '@tanstack/react-query';
 import { useSearchParams } from "react-router";
@@ -272,7 +273,7 @@ function OrderPage({
       ),
   });
   return (
-    <>
+    <ListColumnsProvider>
       <ListQueryToolbar
         control={listQuery}
         label="订单关键词搜索"
@@ -355,7 +356,7 @@ function OrderPage({
           </>
         )}
       </QueryView>
-    </>
+    </ListColumnsProvider>
   );
 }
 export { OrderDetail } from "./OrderDetail";

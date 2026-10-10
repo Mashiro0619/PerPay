@@ -397,8 +397,9 @@ describe("administrator-only refund marks", () => {
           </>,
         ),
       );
-      const cells = within(screen.getAllByRole("row")[1]!).getAllByRole("cell");
-      const statusCell = width < 768 ? cells[0]! : cells[3]!;
+      const statusCell = width < 640
+        ? within(screen.getByRole("list", { name: "最近订单" })).getByRole("listitem")
+        : within(screen.getAllByRole("row")[1]!).getAllByRole("cell")[3]!;
       expect(within(statusCell).getByText("收款已确认")).toBeVisible();
       expect(within(statusCell).getByText("已标记退款")).toBeVisible();
       expect(
@@ -416,7 +417,7 @@ describe("administrator-only refund marks", () => {
       expect(
         screen.getByRole("button", { name: "复制标记操作编号" }),
       ).toBeVisible();
-      expect(screen.getByRole("listitem")).toHaveTextContent("操作编号1");
+      expect(within(screen.getByRole("region", { name: "管理员退款标记" })).getByRole("listitem")).toHaveTextContent("操作编号1");
     },
   );
 

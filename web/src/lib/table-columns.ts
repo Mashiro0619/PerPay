@@ -1,6 +1,8 @@
 export type ResponsiveColumn = {
   id: string;
   hideable?: boolean;
+  /** Whether an untouched field belongs in the compact summary. */
+  summaryDefault?: boolean;
   /** Tailwind-compatible rem breakpoint used only until a user explicitly chooses. */
   responsive?: { minWidthRem: number; basis?: "viewport" | "container" };
 };
@@ -52,6 +54,20 @@ export function resolveColumnVisibility(
           (!column.responsive ||
             size[column.responsive.basis ?? "viewport"] >=
               column.responsive.minWidthRem * size.rem)),
+    ]),
+  );
+}
+
+export function resolveSummaryVisibility(
+  columns: readonly ResponsiveColumn[],
+  overrides: ColumnOverrides,
+): ColumnOverrides {
+  return Object.fromEntries(
+    columns.map((column) => [
+      column.id,
+      column.hideable === false
+        ? true
+        : (overrides[column.id] ?? (column.summaryDefault === true)),
     ]),
   );
 }

@@ -13,6 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 import { queryClient, type AdminWorkItem } from "@/api/client";
 import WorkItems from "@/pages/WorkItems";
 import { apiError, json } from "./fixtures";
+import { mobileMedia } from "./mobile-media";
 
 const makeItem = (index: number, ended = false): AdminWorkItem => ({
   type: "LEDGER_CONFLICT",
@@ -89,7 +90,7 @@ function mount(
   );
   return { ...view, router, writes, gets, removed, rows };
 }
-const row = (index: number) => screen.getByText("流水-" + index).closest("tr")!;
+const row = (index: number) => screen.getByText("流水-" + index).closest<HTMLElement>("[data-business-row]")!;
 
 describe("reminder restore list continuity", () => {
   it("times out each request independently and ignores its late receipt after an explicit retry", async () => {
@@ -514,10 +515,12 @@ describe("reminder restore list continuity", () => {
     },
   );
 
-  it("keeps the same page and moves focus to the next row rather than restarting the list", async () => {
+  it.each([1600, 390])("keeps the page and moves focus to the next row at %ipx", async (width) => {
+    mobileMedia(width);
     const view = mount();
     const user = userEvent.setup();
     await screen.findByText("流水-2");
+    expect(row(2).tagName).toBe(width < 640 ? "DIV" : "TR");
     const before = view.router.state.location.search;
     await user.click(within(row(2)).getByRole("button", { name: "恢复提醒" }));
     await screen.findByText("本次提醒恢复已完成。");
@@ -531,6 +534,7 @@ describe("reminder restore list continuity", () => {
       ).toHaveFocus(),
     );
     expect(view.writes).toHaveLength(1);
+    expect(document.querySelectorAll("[data-business-row]")).toHaveLength(2);
   });
   it("retreats only an emptied page using the visited cursor trail, without adding a history entry", async () => {
     let restored = false;

@@ -1,8 +1,6 @@
 import {
   useEffect,
-  useLayoutEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -29,12 +27,14 @@ import type { ListQueryControl } from "@/lib/list-query";
 import {
   readColumnOverrides,
   resolveColumnVisibility,
+  resolveSummaryVisibility,
   updateColumnOverrides,
   type ResponsiveColumn,
-  type TableSize,
 } from "@/lib/table-columns";
 import { useCompactList } from "@/hooks/use-compact-list";
-import { LinkedTableRow } from "@/components/LinkedTableRow";
+import { useListSize } from "@/hooks/use-list-size";
+import { LinkedSummaryRow, LinkedTableRow } from "@/components/LinkedTableRow";
+import { ListColumnsMenu } from "@/components/list-columns";
 import {
   Table,
   TableHeader,
@@ -44,6 +44,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { ItemContent, ItemGroup } from "@/components/ui/item";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -56,10 +57,19 @@ import {
 } from "@/components/ui/dropdown-menu";
 const features = tableFeatures({ columnVisibilityFeature, rowSortingFeature });
 export type BusinessCellContext = {
+  isSummary: boolean;
   isColumnVisible: (id: string) => boolean;
   showInSummary: (id: string) => boolean;
   visibleColumnCount: number;
 };
+export type BusinessColumnLayout =
+  | "identity"
+  | "text"
+  | "amount"
+  | "status"
+  | "datetime"
+  | "number"
+  | "actions";
 export type BusinessColumn<T> = ResponsiveColumn & {
   label: string;
   cell: (item: T, context: BusinessCellContext) => ReactNode;
@@ -67,6 +77,7 @@ export type BusinessColumn<T> = ResponsiveColumn & {
   className?: string;
   headerClassName?: string;
   align?: "right";
+  layout?: BusinessColumnLayout;
 };
 type BusinessTableProps<T> = {
   id: string;
@@ -76,7 +87,69 @@ type BusinessTableProps<T> = {
   control?: ListQueryControl | undefined;
   columnsMenu?: boolean;
   tableClassName?: string | ((context: BusinessCellContext) => string);
+  renderSummary?: (item: T, context: BusinessCellContext) => ReactNode;
+  density?: "default" | "compact";
+  embedded?: boolean;
+  "aria-label"?: string;
 };
+
+function columnLayout<T>(column: BusinessColumn<T>, index: number) {
+  return column.layout ?? (index === 0 ? "identity" : "text");
+}
+
+function rightAligned<T>(column: BusinessColumn<T>, index: number) {
+  const layout = columnLayout(column, index);
+  return (
+    column.align === "right" ||
+    layout === "amount" ||
+    layout === "number" ||
+    layout === "actions"
+  );
+}
+
+function DefaultBusinessSummary<T>({
+  item,
+  columns,
+  context,
+}: {
+  item: T;
+  columns: BusinessColumn<T>[];
+  context: BusinessCellContext;
+}) {
+  const visible = columns.filter((column) => context.isColumnVisible(column.id));
+  const identity = visible.find(
+    (column) => columnLayout(column, columns.indexOf(column)) === "identity",
+  );
+  const fields = visible.filter((column) => column !== identity);
+  return (
+    <ItemContent className="min-w-0 gap-3">
+      {identity && (
+        <div
+          className="business-summary-identity min-w-0"
+          data-column-layout="identity"
+          data-column-id={identity.id}
+        >
+          {identity.cell(item, context)}
+        </div>
+      )}
+      {fields.length > 0 && (
+        <dl className="business-summary-fields">
+          {fields.map((column) => (
+            <div
+              key={column.id}
+              className="business-summary-field"
+              data-column-layout={columnLayout(column, columns.indexOf(column))}
+              data-column-id={column.id}
+            >
+              <dt>{column.label}</dt>
+              <dd>{column.cell(item, context)}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </ItemContent>
+  );
+}
 // FlexRender must keep the component type stable across refreshes and column changes.
 function renderBusinessCell<T extends RowData>({
   row,
@@ -99,9 +172,13 @@ function BusinessTableView<T extends RowData>({
   control,
   columnsMenu = true,
   tableClassName,
+  renderSummary,
+  density = "default",
+  embedded = false,
+  "aria-label": ariaLabel,
 }: BusinessTableProps<T>) {
   const compact = useCompactList();
-  const container = useRef<HTMLDivElement>(null);
+  const { ref: container, size, isSummary } = useListSize();
   const storageKey = "perpay.table-columns.v2." + id;
   const [overrides, setOverrides] = useState<ColumnVisibilityState>(() => {
     try {
@@ -114,61 +191,35 @@ function BusinessTableView<T extends RowData>({
       return {};
     }
   });
-  const [size, setSize] = useState<TableSize>({
-    viewport: 0,
-    container: 0,
-    rem: 16,
-  });
-  useLayoutEffect(() => {
-    function measure() {
-      const viewport = window.innerWidth;
-      const width =
-        container.current?.getBoundingClientRect().width || viewport;
-      const rem =
-        Number.parseFloat(
-          getComputedStyle(document.documentElement).fontSize,
-        ) || 16;
-      setSize((previous) =>
-        previous.viewport === viewport &&
-        previous.container === width &&
-        previous.rem === rem
-          ? previous
-          : { viewport, container: width, rem },
-      );
-    }
-    measure();
-    const observer =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(measure);
-    if (container.current) observer?.observe(container.current);
-    window.addEventListener("resize", measure);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, []);
   useEffect(() => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(overrides));
     } catch {}
   }, [storageKey, overrides]);
   const visibility = useMemo(
-    () => resolveColumnVisibility(specs, overrides, size),
-    [specs, overrides, size],
+    () =>
+      isSummary
+        ? resolveSummaryVisibility(specs, overrides)
+        : resolveColumnVisibility(specs, overrides, size),
+    [specs, overrides, size, isSummary],
   );
   const context = useMemo<BusinessCellContext>(
     () => ({
+      isSummary,
       isColumnVisible: (key) => visibility[key] === true,
       showInSummary: (key) =>
-        visibility[key] === false && overrides[key] !== false,
+        !isSummary && visibility[key] === false && overrides[key] !== false,
       visibleColumnCount: Object.values(visibility).filter(Boolean).length,
     }),
-    [visibility, overrides],
+    [visibility, overrides, isSummary],
   );
-  const sorting: SortingState = control
-    ? [{ id: control.query.sortBy, desc: control.query.sortOrder === "desc" }]
-    : [];
+  const sortColumn = control
+    ? specs.find((column) => column.sortBy === control.query.sortBy)
+    : undefined;
+  const sorting: SortingState =
+    sortColumn && control
+      ? [{ id: sortColumn.id, desc: control.query.sortOrder === "desc" }]
+      : [];
   const columns = useMemo<ColumnDef<typeof features, T>[]>(
     () =>
       specs.map((spec) => ({
@@ -200,7 +251,8 @@ function BusinessTableView<T extends RowData>({
     onSortingChange: (update) => {
       const next = typeof update === "function" ? update(sorting) : update;
       const sort = next[0];
-      if (sort) control?.setSort(sort.id, sort.desc ? "desc" : "asc");
+      const field = specs.find((column) => column.id === sort?.id)?.sortBy;
+      if (sort && field) control?.setSort(field, sort.desc ? "desc" : "asc");
     },
   });
   const columnMenu = columnsMenu && (
@@ -213,15 +265,19 @@ function BusinessTableView<T extends RowData>({
           />
         }
         aria-label="显示列"
-        title="显示列"
+        title={isSummary ? "显示信息" : "显示列"}
         data-list-columns-trigger
       >
         <Columns3 data-icon="inline-start" />
-        {!compact && "显示列"}
+        {!compact && (isSummary ? "显示信息" : "显示列")}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-48">
         <DropdownMenuGroup>
-          <DropdownMenuLabel>显示列（标识与操作固定）</DropdownMenuLabel>
+          <DropdownMenuLabel>
+            {isSummary
+              ? "显示信息（标识与操作固定）"
+              : "显示列（标识与操作固定）"}
+          </DropdownMenuLabel>
           {table.getAllLeafColumns().map((column) => (
             <DropdownMenuCheckboxItem
               key={column.id}
@@ -251,98 +307,143 @@ function BusinessTableView<T extends RowData>({
       ref={container}
       className="flex min-w-0 flex-col gap-2"
       data-business-table={id}
+      data-list-layout={isSummary ? "summary" : "table"}
+      data-density={density}
+      data-embedded={embedded}
     >
-      <div className="min-w-0 overflow-hidden rounded-lg border">
-        <Table
-          className={
-            typeof tableClassName === "function"
-              ? tableClassName(context)
-              : tableClassName
-          }
-        >
-          <TableHeader>
-            {table.getHeaderGroups().map((group) => (
-              <TableRow key={group.id}>
-                {group.headers.map((header, index) => {
-                  const spec = specs.find(
-                    (column) => column.id === header.column.id,
-                  )!;
-                  const sorted = header.column.getIsSorted();
-                  const label = header.column.getCanSort() ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="-mx-2"
-                      onClick={header.column.getToggleSortingHandler()}
-                    >
-                      {spec.label}
-                      {sorted === "asc" ? (
-                        <ArrowUp data-icon="inline-end" />
-                      ) : sorted === "desc" ? (
-                        <ArrowDown data-icon="inline-end" />
-                      ) : (
-                        <ArrowUpDown data-icon="inline-end" />
-                      )}
-                    </Button>
-                  ) : (
-                    <table.FlexRender header={header} />
-                  );
-                  return (
-                    <TableHead
-                      key={header.id}
-                      className={cn(
-                        spec.headerClassName,
-                        columnsMenu && index === 0 && "py-0",
-                        spec.align === "right" && "text-right",
-                      )}
-                      aria-sort={
-                        sorted
-                          ? sorted === "asc"
-                            ? "ascending"
-                            : "descending"
-                          : undefined
-                      }
-                      aria-label={
-                        columnsMenu && index === 0 ? spec.label : undefined
-                      }
-                    >
-                      {columnsMenu && index === 0 ? (
-                        <div className="flex items-center gap-2">
-                          {label}
-                          {columnMenu}
-                        </div>
-                      ) : (
-                        label
-                      )}
-                    </TableHead>
-                  );
-                })}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
+      {columnMenu && <ListColumnsMenu>{columnMenu}</ListColumnsMenu>}
+      <div
+        className="business-table-surface min-w-0 overflow-hidden"
+        data-density={density}
+        data-embedded={embedded}
+      >
+        {isSummary ? (
+          <ItemGroup
+            className="business-summary-list"
+            aria-label={
+              ariaLabel ?? (specs[0]?.label ? specs[0].label + "列表" : undefined)
+            }
+            data-density={density}
+          >
             {table.getRowModel().rows.map((row) => (
-              <LinkedTableRow key={row.id}>
-                {row.getVisibleCells().map((cell) => {
-                  const spec = specs.find(
-                    (column) => column.id === cell.column.id,
-                  )!;
-                  return (
-                    <TableCell
-                      key={cell.id}
-                      className={cn(
-                        spec.className,
-                        spec.align === "right" && "text-right tabular-nums",
-                      )}
-                    >
-                      <table.FlexRender cell={cell} />
-                    </TableCell>
-                  );
-                })}
-              </LinkedTableRow>
+              <LinkedSummaryRow key={row.id} rowId={row.id}>
+                {renderSummary ? (
+                  renderSummary(row.original, context)
+                ) : (
+                  <DefaultBusinessSummary
+                    item={row.original}
+                    columns={specs}
+                    context={context}
+                  />
+                )}
+              </LinkedSummaryRow>
             ))}
-          </TableBody>
-        </Table>
+          </ItemGroup>
+        ) : (
+          <Table
+            className={cn(
+              typeof tableClassName === "function"
+                ? tableClassName(context)
+                : tableClassName,
+              "business-table table-fixed",
+            )}
+            aria-label={ariaLabel}
+            data-density={density}
+            data-visible-columns={context.visibleColumnCount}
+          >
+            <colgroup>
+              {table.getVisibleLeafColumns().map((column) => {
+                const index = specs.findIndex((spec) => spec.id === column.id);
+                const spec = specs[index]!;
+                return (
+                  <col
+                    key={column.id}
+                    className="business-table-column"
+                    data-column-layout={columnLayout(spec, index)}
+                    data-column-id={spec.id}
+                  />
+                );
+              })}
+            </colgroup>
+            <TableHeader>
+              {table.getHeaderGroups().map((group) => (
+                <TableRow key={group.id}>
+                  {group.headers.map((header) => {
+                    const index = specs.findIndex(
+                      (column) => column.id === header.column.id,
+                    );
+                    const spec = specs[index]!;
+                    const sorted = header.column.getIsSorted();
+                    const label = header.column.getCanSort() ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="-mx-2"
+                        onClick={header.column.getToggleSortingHandler()}
+                      >
+                        {spec.label}
+                        {sorted === "asc" ? (
+                          <ArrowUp data-icon="inline-end" />
+                        ) : sorted === "desc" ? (
+                          <ArrowDown data-icon="inline-end" />
+                        ) : (
+                          <ArrowUpDown data-icon="inline-end" />
+                        )}
+                      </Button>
+                    ) : (
+                      <table.FlexRender header={header} />
+                    );
+                    return (
+                      <TableHead
+                        key={header.id}
+                        className={cn(
+                          spec.headerClassName,
+                          rightAligned(spec, index) && "text-right",
+                        )}
+                        data-column-layout={columnLayout(spec, index)}
+                        data-column-id={spec.id}
+                        aria-sort={
+                          sorted
+                            ? sorted === "asc"
+                              ? "ascending"
+                              : "descending"
+                            : undefined
+                        }
+                      >
+                        {label}
+                      </TableHead>
+                    );
+                  })}
+                </TableRow>
+              ))}
+            </TableHeader>
+            <TableBody>
+              {table.getRowModel().rows.map((row) => (
+                <LinkedTableRow key={row.id} rowId={row.id}>
+                  {row.getVisibleCells().map((cell) => {
+                    const index = specs.findIndex(
+                      (column) => column.id === cell.column.id,
+                    );
+                    const spec = specs[index]!;
+                    return (
+                      <TableCell
+                        key={cell.id}
+                        className={cn(
+                          spec.className,
+                          rightAligned(spec, index) && "text-right tabular-nums",
+                        )}
+                        data-column-layout={columnLayout(spec, index)}
+                        data-column-id={spec.id}
+                      >
+                        <table.FlexRender cell={cell} />
+                      </TableCell>
+                    );
+                  })}
+                </LinkedTableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </div>
     </div>
   );

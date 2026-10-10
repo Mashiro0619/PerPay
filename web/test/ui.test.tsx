@@ -143,6 +143,25 @@ const workItem: AdminWorkItem = {
     "/api/admin/v1/reconciliation/exceptions/00000000-0000-4000-8000-000000000001",
 };
 describe("work item table", () => {
+  it.each([
+    ["RETRY_WAIT", "warning"],
+    ["DEAD_LETTER", "destructive"],
+  ] as const)("distinguishes notification retries from terminal failures (%s)", (status, tone) => {
+    const notification: AdminWorkItem = {
+      ...workItem,
+      type: "NOTIFICATION_FAILURE",
+      status,
+      event_type: "PAYMENT_CONFIRMED",
+      attempt_count: 1,
+      next_attempt_at: status === "RETRY_WAIT" ? workItem.created_at : null,
+      last_error_code: null,
+      dead_lettered_at: status === "DEAD_LETTER" ? workItem.created_at : null,
+      updated_at: workItem.created_at,
+    };
+    render(<MemoryRouter><WorkItemsTable items={[notification]} /></MemoryRouter>);
+    expect(screen.getByText("通知失败")).toHaveAttribute("data-variant", tone);
+    expect(screen.getByRole("link")).toHaveAttribute("href", "/notifications/" + notification.resource_id);
+  });
   it("keeps a real link to the original financial record", () => {
     render(
       <MemoryRouter>
