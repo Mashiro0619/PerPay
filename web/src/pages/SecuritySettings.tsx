@@ -126,7 +126,7 @@ export function SecuritySettings({
             </CardTitle>
             <div className="flex flex-wrap items-center gap-2">
               {settings.site_mode ? <Link to="/sites">业务网站密钥与客户端 ID</Link> : <><span className="text-sm text-muted-foreground">API 客户端 ID</span><CopyValue tooltip value="default" label="复制 API 客户端 ID" /></>}
-              <a href="https://github.com/Mashiro0619/PerPay/blob/main/USAGE.md" target="_blank" rel="noopener noreferrer" className="text-sm underline underline-offset-4">接入文档</a>
+              <a data-external-link href="https://github.com/Mashiro0619/PerPay/blob/main/USAGE.md" target="_blank" rel="noopener noreferrer" className="text-sm underline underline-offset-4">接入文档</a>
             </div>
           </CardHeader>
           <CardContent>

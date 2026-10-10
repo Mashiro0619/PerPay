@@ -319,6 +319,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
               <FieldDescription>
                 请联系服务器管理员停服重设，无需删除数据。
                 <a
+                  data-external-link
                   href="https://github.com/Mashiro0619/PerPay/blob/main/docs/maintenance.md#忘记管理员密码"
                   target="_blank"
                   rel="noreferrer"

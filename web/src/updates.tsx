@@ -85,7 +85,7 @@ export function OfficialUpdateNotice({
       <ArrowUpCircle />
       <AlertTitle>
         有新版本 v{data.latest_version}{isPrereleaseVersion(data.latest_version) ? "（预发布）" : ""} ·{" "}
-        <a href={data.release_url} target="_blank" rel="noopener noreferrer">
+        <a data-external-link href={data.release_url} target="_blank" rel="noopener noreferrer">
           查看更新
         </a>
       </AlertTitle>
@@ -183,6 +183,7 @@ export function OfficialUpdatePanel() {
               )}
               <div className="flex flex-wrap items-center gap-2">
                 <a
+                  data-external-link
                   className={buttonVariants({ variant: "outline", size: "sm" })}
                   href={data.release_url}
                   target="_blank"
@@ -191,6 +192,7 @@ export function OfficialUpdatePanel() {
                   查看发布说明
                 </a>
                 <a
+                  data-external-link
                   className={buttonVariants({ variant: "ghost", size: "sm" })}
                   href={upgradeGuide}
                   target="_blank"

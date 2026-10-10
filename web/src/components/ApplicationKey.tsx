@@ -174,6 +174,7 @@ export function ApplicationKey({
                 </Button>
               )}
               <a
+                data-external-link
                 data-application-key-action={guided ? "" : undefined}
                 className={buttonVariants({ variant: "outline" })}
                 href={alipayApplicationUrl(pending.app_id)}

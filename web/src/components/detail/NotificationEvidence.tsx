@@ -98,6 +98,7 @@ export function DeliveryCard({
                 delivery.last_error_code ?? last?.error_code ?? null,
               )}{" "}
               <a
+                data-external-link
                 className="underline underline-offset-4"
                 href="https://github.com/Mashiro0619/PerPay/blob/main/USAGE.md#5-回调通知"
                 target="_blank"

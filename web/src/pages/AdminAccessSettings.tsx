@@ -158,6 +158,7 @@ export function AdminAccessSettings({
           <FieldDescription>
             IP 变化可能导致无法登录，可通过服务器恢复访问。{" "}
             <a
+              data-external-link
               href="https://github.com/Mashiro0619/PerPay/blob/main/docs/maintenance.md#管理员-ip-白名单与离线恢复"
               target="_blank"
               rel="noopener noreferrer"

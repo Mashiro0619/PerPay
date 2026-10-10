@@ -101,6 +101,7 @@ export default function Onboarding() {
     >
       <PageHeaderActions>
         <a
+          data-external-link
           className={buttonVariants({ variant: "ghost", size: "sm" })}
           href="https://github.com/Mashiro0619/PerPay/blob/main/docs/alipay-setup.md"
           target="_blank"
@@ -324,6 +325,7 @@ function OnboardingFlow({
                   <p>
                     在{" "}
                     <a
+                      data-external-link
                       className="underline underline-offset-4"
                       href={alipayApplicationUrl(
                         pendingApplicationKey?.app_id ??

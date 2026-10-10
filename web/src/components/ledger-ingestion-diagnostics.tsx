@@ -86,6 +86,7 @@ export function LedgerIngestionDiagnostics({
           <p>
             检查网络和支付宝配置；持续失败时保留失败窗口与错误记录，按
             <a
+              data-external-link
               href="https://github.com/Mashiro0619/PerPay/blob/main/docs/maintenance.md#采集持续失败"
               target="_blank"
               rel="noopener noreferrer"

@@ -41,6 +41,7 @@ export function BackupStatus() {
       )}
       <FieldDescription>
         <a
+          data-external-link
           href="https://github.com/Mashiro0619/PerPay/blob/main/docs/maintenance.md#启用与验证备份"
           target="_blank"
           rel="noopener noreferrer"

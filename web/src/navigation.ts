@@ -24,6 +24,16 @@ function destinationAllowsMotion(destination: To) {
 
 type NavigationOptions = { global?: boolean; preserveSelectedSite?: boolean };
 
+function navigationFeedback(to: To) {
+  const path = typeof to === "string" ? to : to.pathname;
+  let internal = !path || !/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(path);
+  if (!internal && typeof window !== "undefined") {
+    try { internal = new URL(path!, window.location.href).origin === window.location.origin; }
+    catch { /* Invalid or non-web destinations do not get internal navigation feedback. */ }
+  }
+  return { "data-internal-link": internal ? "" : undefined };
+}
+
 export function Link({ viewTransition = true, global = false, preserveSelectedSite = true, ...props }: LinkProps & NavigationOptions & { ref?: Ref<HTMLAnchorElement> }) {
   const enabled = useRouteMotion();
   const location = useLocation();
@@ -32,14 +42,14 @@ export function Link({ viewTransition = true, global = false, preserveSelectedSi
     location,
     preserveSelectedSite,
   );
-  return createElement(RouterLink, { ...props, to, state: props.state !== undefined ? props.state : detailNavigationState(to, location), viewTransition: viewTransition && enabled && destinationAllowsMotion(props.to) });
+  return createElement(RouterLink, { ...props, ...navigationFeedback(to), to, state: props.state !== undefined ? props.state : detailNavigationState(to, location), viewTransition: viewTransition && enabled && destinationAllowsMotion(props.to) });
 }
 
 export function NavLink({ viewTransition = true, preserveSelectedSite = true, ...props }: NavLinkProps & Pick<NavigationOptions, "preserveSelectedSite"> & { ref?: Ref<HTMLAnchorElement> }) {
   const enabled = useRouteMotion();
   const location = useLocation();
   const to = withNavigationSelection(props.to, location, preserveSelectedSite);
-  return createElement(RouterNavLink, { ...props, to, viewTransition: viewTransition && enabled && destinationAllowsMotion(props.to) });
+  return createElement(RouterNavLink, { ...props, ...navigationFeedback(to), to, viewTransition: viewTransition && enabled && destinationAllowsMotion(props.to) });
 }
 
 type WorkspaceNavigateFunction = {

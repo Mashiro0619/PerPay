@@ -132,7 +132,7 @@ function DashboardContent() {
                       重试
                     </Button>
                   )}
-                  <Link to="/system" className="underline underline-offset-4">
+                  <Link to="/system">
                     运行状态
                   </Link>
                 </div>
@@ -150,7 +150,6 @@ function DashboardContent() {
                       ? onboardingPath()
                       : "/system"
                   }
-                  className="underline underline-offset-4"
                 >
                   {settings.data && !settings.data.data.completion.complete
                     ? "继续配置"

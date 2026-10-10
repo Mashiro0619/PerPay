@@ -367,6 +367,7 @@ function SystemContent() {
                           data.backup.configuration_mismatch) && (
                           <p>
                             <a
+                              data-external-link
                               className="underline underline-offset-4"
                               href="https://github.com/Mashiro0619/PerPay/blob/main/docs/maintenance.md#启用与验证备份"
                               target="_blank"
