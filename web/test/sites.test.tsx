@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { QueryClientProvider, onlineManager } from "@tanstack/react-query";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { queryClient, type Site, type SitePolicy } from "../src/api/client";
+import { queryClient, type ListSiteOverviewResponse, type Site, type SitePolicy } from "../src/api/client";
 import { DraftProvider } from "../src/drafts";
 import Sites, { SiteDefaultsPage, SiteEditorPage } from "../src/pages/Sites";
 import { json } from "./fixtures";
@@ -37,6 +37,25 @@ function mount(path = "/sites/site_test/settings/basic", failSave = false, field
       return json({ data: saved }, path === "/api/admin/v1/sites" ? 201 : 200);
     }
     if (path.endsWith("/site-defaults")) return json({ data: { revision: 0, policy: defaults } });
+    if (path === "/api/admin/v1/sites/overview") {
+      const days = Number(new URL(request.url).searchParams.get("range") ?? 30);
+      const last = Date.parse("2026-10-10T12:00:00.000Z");
+      return json({
+        period: { from: new Date(last - (days - 1) * 86_400_000).toISOString().slice(0, 10), to: "2026-10-10" },
+        max_confirmed_amount_cents: 12901,
+        data: [{
+          client_id: saved.client_id,
+          name: saved.configuration.name,
+          accepting_orders: saved.configuration.accepting_orders,
+          notifications_enabled: saved.configuration.notifications_enabled,
+          confirmed_count: 3,
+          confirmed_amount_cents: 12901,
+          pending_orders: 2,
+          work_items: 1,
+        }],
+        page: { next_cursor: null },
+      } satisfies ListSiteOverviewResponse);
+    }
     if (path === "/api/admin/v1/sites") return json({ data: [saved], page: { next_cursor: null } });
     if (failRead) throw new TypeError("latest configuration unavailable");
     if (delayedRead) {
@@ -119,7 +138,18 @@ describe("business website management", () => {
     expect(view.writes[0]!.path).toBe("/api/admin/v1/settings/site-defaults");
     expect(view.writes[0]!.body).toMatchObject({ revision: 0, policy: { orders: { order_ttl_seconds: 600 } } });
   });
-  it("uses a compact site list without search or routine client ids",async()=>{mount('/sites');expect(await screen.findByRole('link',{name:'网站 A'})).toHaveAttribute('href','/sites/site_test');expect(screen.queryByRole('textbox')).not.toBeInTheDocument();expect(screen.queryByText('site_test',{exact:true})).not.toBeInTheDocument();expect(screen.getByRole('link',{name:'进入后台'})).toBeVisible();});
+  it("keeps a single website operating card with separate dashboard and settings links", async () => {
+    const view = mount("/sites");
+    expect(await screen.findByRole("link", { name: "网站 A" })).toHaveAttribute("href", "/sites/site_test?range=30");
+    expect(document.querySelectorAll(".site-management-card")).toHaveLength(1);
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.queryByText("site_test", { exact: true })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "进入后台" })).toHaveAttribute("href", "/sites/site_test?range=30");
+    expect(screen.getByRole("link", { name: "网站设置" })).toHaveAttribute("href", "/sites/site_test/settings/basic");
+    expect(screen.getByText("¥129.01", { exact: true })).toBeVisible();
+    expect(screen.getByText("确认笔数", { exact: true })).toBeVisible();
+    expect(view.fetchMock.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual(["/api/admin/v1/sites/overview"]);
+  });
 
 });
 

@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { QueryClientProvider, onlineManager } from "@tanstack/react-query";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { queryClient, type Site, type SiteConfiguration, type SitePolicy } from "../src/api/client";
+import { queryClient, type ListSiteOverviewResponse, type Site, type SiteConfiguration, type SitePolicy } from "../src/api/client";
 import { DraftProvider } from "../src/drafts";
 import Sites, { SiteDefaultsPage, SiteEditorPage } from "../src/pages/Sites";
 import { json } from "./fixtures";
@@ -62,6 +62,25 @@ function mountDefaults() {
         return json({ error: { code: "site_revision_conflict", message: "网站默认模板已变更，请刷新后重试。" } }, 409);
       saved = { revision: saved.revision + 1, policy: structuredClone(body.policy) };
       return json({ data: structuredClone(saved) });
+    }
+    if (path === "/api/admin/v1/sites/overview" && request.method === "GET") {
+      const days = Number(new URL(request.url).searchParams.get("range") ?? 30);
+      const last = Date.parse("2026-10-10T12:00:00.000Z");
+      return json({
+        period: { from: new Date(last - (days - 1) * 86_400_000).toISOString().slice(0, 10), to: "2026-10-10" },
+        max_confirmed_amount_cents: 0,
+        data: sites.map(site => ({
+          client_id: site.client_id,
+          name: site.configuration.name,
+          accepting_orders: site.configuration.accepting_orders,
+          notifications_enabled: site.configuration.notifications_enabled,
+          confirmed_count: 0,
+          confirmed_amount_cents: 0,
+          pending_orders: 0,
+          work_items: 0,
+        })),
+        page: { next_cursor: null },
+      } satisfies ListSiteOverviewResponse);
     }
     if (path === "/api/admin/v1/sites" && request.method === "GET")
       return json({ data: sites, page: { next_cursor: null } });

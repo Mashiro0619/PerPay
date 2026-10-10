@@ -1,17 +1,9 @@
 import CreateSite from "./CreateSite";
-import { siteChoiceLabel } from "@/lib/site-choice-label";
+import { SiteManagementCards } from "@/components/site-management-cards";
 import { CopyValue } from "@/components/copy-value";
-import { Badge } from "@/components/ui/badge";
-import {
-  Item,
-  ItemGroup,
-  ItemContent,
-  ItemTitle,
-  ItemActions,
-} from "@/components/ui/item";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
 import {
   api,
@@ -59,90 +51,7 @@ import {
 } from "@/components/admin-dialog";
 
 export default function Sites() {
-  const query = useInfiniteQuery({
-    queryKey: ["sites", "list"],
-    initialPageParam: null as string | null,
-    queryFn: ({ pageParam, signal }) =>
-      result(
-        api.listSites({
-          query: { limit: 30, ...(pageParam ? { after: pageParam } : {}) },
-          signal,
-        }),
-      ),
-    getNextPageParam: (page) => page.page.next_cursor ?? undefined,
-  });
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap justify-end gap-2">
-        <Link
-          to="/sites/defaults"
-          className={buttonVariants({ variant: "outline" })}
-        >
-          默认模板
-        </Link>
-        <Link to="/sites/new" className={buttonVariants()}>
-          创建网站
-        </Link>
-      </div>
-      <QueryView query={query}>
-        {(data) => (
-          <>
-            <ItemGroup>
-              {data.pages
-                .flatMap((p) => p.data)
-                .map((site) => (
-                  <Item key={site.client_id} variant="outline">
-                    <ItemContent>
-                      <ItemTitle>
-                        <Link to={"/sites/" + site.client_id}>
-                          {siteChoiceLabel(
-                            site,
-                            data.pages.flatMap((p) => p.data),
-                          )}
-                        </Link>
-                      </ItemTitle>
-                      <div className="flex flex-wrap gap-2">
-                        <Badge variant="secondary">
-                          {site.configuration.accepting_orders
-                            ? "接单中"
-                            : "暂停接单"}
-                        </Badge>
-                        <Badge variant="outline">
-                          {site.configuration.notifications_enabled
-                            ? "通知开启"
-                            : "通知关闭"}
-                        </Badge>
-                      </div>
-                    </ItemContent>
-                    <ItemActions>
-                      <Link
-                        to={"/sites/" + site.client_id}
-                        className={buttonVariants({
-                          variant: "outline",
-                          size: "sm",
-                        })}
-                      >
-                        进入后台
-                      </Link>
-                    </ItemActions>
-                  </Item>
-                ))}
-            </ItemGroup>
-            {!data.pages.some((p) => p.data.length) && <p>暂无网站</p>}
-            {query.hasNextPage && (
-              <Button
-                variant="outline"
-                disabled={query.isFetchingNextPage}
-                onClick={() => void query.fetchNextPage()}
-              >
-                加载更多
-              </Button>
-            )}
-          </>
-        )}
-      </QueryView>
-    </div>
-  );
+  return <SiteManagementCards />;
 }
 export function SiteEditorPage() {
   const { clientId } = useParams();
