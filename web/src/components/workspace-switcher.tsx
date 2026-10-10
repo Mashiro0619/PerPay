@@ -9,8 +9,6 @@ import { Link } from "@/navigation";
 import {
   actualPageAddress,
   isGlobalNavigationPage,
-  navigationSection,
-  sidebarHref,
   switchWorkspaceHref,
 } from "@/lib/navigation-selection";
 import { Button } from "@/components/ui/button";
@@ -64,7 +62,6 @@ export function WorkspaceSwitcher({
   const currentNameId = useId();
   const sidebar = useSidebar();
   const visible = sidebar.isMobile ? sidebar.openMobile : sidebar.open;
-  const managingSites = navigationSection(pathname) === "sites";
   const sites = useInfiniteQuery({
     queryKey: ["sites", "switcher"],
     enabled: open && visible,
@@ -243,15 +240,6 @@ export function WorkspaceSwitcher({
               </Button>
             </SidebarMenuSubItem>
           )}
-          <SidebarMenuSubItem>
-            <SidebarMenuSubButton
-              isActive={managingSites}
-              aria-current={managingSites ? pathname === "/sites" ? "page" : "location" : undefined}
-              render={<Link global to={sidebarHref("sites", selection)} />}
-            >
-              <span>管理网站</span>
-            </SidebarMenuSubButton>
-          </SidebarMenuSubItem>
         </SidebarMenuSub>
       </CollapsibleContent>
     </Collapsible>
