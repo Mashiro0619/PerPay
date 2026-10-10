@@ -138,6 +138,9 @@ it('batch overview uses bounded aggregate queries, pagination binding and curren
         f.order(a.clientId);
         f.order(a.clientId);
         f.order(b.clientId);
+        const paid = f.order(a.clientId), entry = f.credit(paid.payableAmountCents);
+        f.reconciliation.settleManually({ financialOperationId: randomUUID(), orderId: paid.orderId, ledgerEntryId: entry.ledgerEntryId, actorId: 'admin' });
+        f.setNow(Date.now());
         let calls = 0;
         const original = f.database.read.bind(f.database);
         t.mock.method(f.database, 'read', ((operation: Parameters<typeof original>[0]) => { calls++; return original(operation); }) as typeof original);
@@ -150,12 +153,31 @@ it('batch overview uses bounded aggregate queries, pagination binding and curren
         const rows = [...overview.data, ...next.data];
         assert.equal(rows.find(s => s.client_id === a.clientId)!.pending_orders, 2);
         assert.equal(rows.find(s => s.client_id === b.clientId)!.pending_orders, 1);
+        assert.equal(rows.find(s => s.client_id === a.clientId)!.confirmed_count, 1);
+        assert.equal(rows.find(s => s.client_id === a.clientId)!.confirmed_amount_cents, paid.payableAmountCents);
+        assert.equal(overview.period.to, new Date(f.now() + 8 * 3600000).toISOString().slice(0, 10));
+        assert.equal(Date.parse(overview.period.to) - Date.parse(overview.period.from), 6 * 86400000);
+        assert.deepEqual(next.period, overview.period);
+        assert.equal(overview.max_confirmed_amount_cents, paid.payableAmountCents);
+        assert.equal(next.max_confirmed_amount_cents, paid.payableAmountCents);
+        assert.ok(rows.every(row => !("daily" in row)));
         assert.throws(() => siteOverview(f.database, new URLSearchParams('range=7&cursor=' + encodeURIComponent(overview.page.next_cursor!)), f.now()), /游标/);
+        assert.throws(() => siteOverview(f.database, new URLSearchParams('q=Batch&range=30&cursor=' + encodeURIComponent(overview.page.next_cursor!)), f.now()), /游标/);
         const response = await f.req('/sites/overview?q=Batch&range=7');
         assert.equal(response.status, 200);
-        assert.equal((await response.json() as {
-            data: unknown[];
-        }).data.length, 2);
+        const payload = await response.json() as ReturnType<typeof siteOverview>;
+        assert.equal(payload.data.length, 2);
+        assert.deepEqual(payload.data, rows.toSorted((left, right) => left.client_id.localeCompare(right.client_id)));
+        assert.deepEqual(payload.period, overview.period);
+        assert.equal(payload.max_confirmed_amount_cents, paid.payableAmountCents);
+        for (const [q, expectedSites] of [['Batch B', 1], ['no matching site', 0]] as const) {
+            const filteredResponse = await f.req('/sites/overview?range=7&q=' + encodeURIComponent(q));
+            assert.equal(filteredResponse.status, 200);
+            const filtered = await filteredResponse.json() as ReturnType<typeof siteOverview>;
+            assert.equal(filtered.data.length, expectedSites);
+            assert.deepEqual(filtered.period, overview.period);
+            assert.equal(filtered.max_confirmed_amount_cents, paid.payableAmountCents);
+        }
     }
     finally {
         f.close();

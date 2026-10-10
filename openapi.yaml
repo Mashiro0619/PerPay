@@ -4827,15 +4827,34 @@ paths:
             type: string
       responses:
         "200":
-          description: 区间确认指标与当前待付款和待办数量；按网站批量聚合
+          description: 区间确认指标、全站实收标尺与当前待付款和待办数量；按网站批量聚合
           content:
             application/json:
               schema:
                 type: object
                 required:
+                  - period
+                  - max_confirmed_amount_cents
                   - data
                   - page
                 properties:
+                  period:
+                    type: object
+                    description: 本次响应采用的 Asia/Shanghai 自然日区间，首尾均包含，包含今天；空页同样返回。金额按付款确认时间统计，不扣除退款或费用。
+                    required:
+                      - from
+                      - to
+                    properties:
+                      from:
+                        type: string
+                        format: date
+                      to:
+                        type: string
+                        format: date
+                  max_confirmed_amount_cents:
+                    type: integer
+                    minimum: 0
+                    description: 相同 period 内所有未删除网站的区间实收最大值，包含暂停接单或关闭通知的网站，不受搜索、游标或分页影响；无实收时为 0，空页同样返回。
                   data:
                     type: array
                     items:

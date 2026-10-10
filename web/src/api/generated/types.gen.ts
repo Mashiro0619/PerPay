@@ -3702,6 +3702,11 @@ export type ListSiteOverviewErrors = {
 export type ListSiteOverviewError = ListSiteOverviewErrors[keyof ListSiteOverviewErrors];
 export type ListSiteOverviewResponses = {
     200: {
+        period: {
+            from: string;
+            to: string;
+        };
+        max_confirmed_amount_cents: number;
         data: Array<{
             client_id: string;
             name: string;
