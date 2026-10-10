@@ -30,7 +30,7 @@
     "demo:preview": "node --experimental-strip-types scripts/preview-demo.ts"
   },
   "dependencies": {
-    "@base-ui/react": "1.8.0",
+    "@base-ui/react": "1.9.0",
     "@hono/node-server": "2.1.0",
     "class-variance-authority": "0.7.1",
     "cn": "0.3.0",

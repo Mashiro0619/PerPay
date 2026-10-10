@@ -47,7 +47,7 @@ describe("official component visibility and motion", () => {
     );
     expect(app).toContain("SidebarInset");
   });
-  it("uses the unmodified shadcn 4.21.1 stylesheet without a CLI CSS import", () => {
+  it("uses the unmodified shadcn 4.21.4 stylesheet without a CLI CSS import", () => {
     const css = readFileSync(resolve(process.cwd(), "web/src/styles.css"), "utf8");
     const upstream = readFileSync(
       resolve(process.cwd(), "web/src/vendor/shadcn-tailwind.css"),
