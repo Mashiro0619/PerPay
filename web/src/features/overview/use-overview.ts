@@ -28,11 +28,17 @@ export function useOverview() {
     queryKey: ["orders", "recent", clientId],
     queryFn: ({ signal }) =>
       result(api.listAdministratorOrders({ query: { limit: 5, ...(clientId ? { api_client_id: clientId } : {}) }, signal })),
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    refetchOnMount: "always",
   });
   const work = useQuery({
-    queryKey: ["work-items", "recent", clientId],
+    queryKey: ["work-items", "recent", clientId, "priority"],
     queryFn: ({ signal }) =>
-      result(api.listAdministratorWorkItems({ query: { limit: 4, ...(clientId ? { api_client_id: clientId } : {}) }, signal })),
+      result(api.listAdministratorWorkItems({ query: { limit: 4, sort_by: "priority", sort_order: "desc", ...(clientId ? { api_client_id: clientId } : {}) }, signal })),
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    refetchOnMount: "always",
   });
   const workSummary = useQuery({
     queryKey: ["work-items", "summary", clientId],

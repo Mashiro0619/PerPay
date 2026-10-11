@@ -881,7 +881,8 @@ a[data-internal-link][data-slot="item"]:active {
 .overview-orders .list-summary-identity { flex-basis: 8rem; }
 .overview-orders .list-summary-aside { max-width: 100%; margin-left: auto; }
 .overview-orders .business-summary-field:has(.overview-order-times) { grid-column: 1 / -1; }
-.overview-orders .list-meta .list-code {
+.overview-orders .list-meta .list-code,
+.overview-work-list .list-meta .list-code {
   max-width: 100%;
   overflow: visible;
   text-overflow: clip;
@@ -896,7 +897,7 @@ a[data-internal-link][data-slot="item"]:active {
   overflow-wrap: anywhere;
 }
 .overview-record-stack { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: 0.25rem; }
-.overview-orders [data-slot="badge"] {
+.overview-orders [data-slot="badge"], .overview-work-list [data-slot="badge"] {
   max-width: 100%;
   height: auto;
   white-space: normal;
@@ -913,6 +914,7 @@ a[data-internal-link][data-slot="item"]:active {
 .overview-order-money dt { white-space: nowrap; text-align: left; }
 .overview-order-money dd { min-width: 0; margin: 0; text-align: right; }
 .overview-order-received .list-money { color: var(--warning-foreground); }
+.overview-order-money-line { display: flex; max-width: 100%; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: 0.25rem 0.5rem; }
 .overview-order-times { display: flex; min-width: 0; flex-direction: column; gap: 0.25rem; }
 .overview-order-time-entry {
   display: grid;
@@ -927,3 +929,30 @@ a[data-internal-link][data-slot="item"]:active {
   margin-inline: auto;
 }
 .overview-orders .list-identity-description .overview-order-times { flex-direction: row; flex-wrap: wrap; gap: 0.25rem 0.75rem; }
+.overview-work-list { min-width: 0; gap: 0; }
+.overview-work-list .overview-work-item { align-items: stretch; padding: 0.75rem 0.5rem; }
+.overview-work-content { min-width: 0; gap: 0.25rem; }
+.overview-work-topline { display: flex; min-width: 0; flex-wrap: wrap; align-items: start; gap: 0.375rem 0.625rem; }
+.overview-work-topline > .list-identity { flex: 1 1 10rem; }
+.overview-work-topline > [data-slot="badge"] { flex: none; }
+.overview-work-order-heading { display: flex; min-width: 0; flex-wrap: wrap; align-items: baseline; gap: 0.375rem 0.75rem; }
+.overview-work-order-heading > .overview-work-product {
+  display: -webkit-box;
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 8rem;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.overview-work-order-heading > .overview-order-money-line { flex: 0 1 auto; margin-left: auto; }
+.overview-work-order-heading:has(.list-money[data-wide="true"]) > .overview-order-money-line { flex-basis: 100%; }
+.overview-work-footer { min-width: 0; }
+.overview-work-order-heading > .overview-work-product:focus-visible { outline-offset: -2px; }
+@media (pointer: coarse) {
+  .overview-work-product { min-height: 44px; align-content: center; }
+  .overview-work-list a.list-code { min-height: 44px; align-content: center; }
+}

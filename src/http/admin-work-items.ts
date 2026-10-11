@@ -127,6 +127,7 @@ interface WorkItemRow {
   readonly ignored_at: number | bigint | null;
   readonly ignored_by: string | null;
   readonly ended: number | bigint;
+  readonly priority: number | bigint;
   readonly sort_at: number | bigint;
 }
 
@@ -172,6 +173,7 @@ export const WORK_ITEMS_CTE = `
     LEFT JOIN collection_profile_provider_accounts AS account ON account.profile_id = profile.profile_id
   ), work_items AS (
     SELECT resources.*, COALESCE(state.ignored, 0) AS ignored,
+      CASE WHEN resources.kind != 'NOTIFICATION_FAILURE' OR resources.status = 'DEAD_LETTER' THEN 1 ELSE 0 END AS priority,
       CASE WHEN state.ignored = 1 THEN state.updated_at ELSE NULL END AS ignored_at,
       CASE WHEN state.ignored = 1 THEN operation.actor_id ELSE NULL END AS ignored_by
     FROM resources
@@ -271,22 +273,22 @@ export function adminWorkItemPage(
   );
   if (query.sortBy === "ignored_at" && visibility !== "IGNORED")
     throw new ListQueryError("忽略时间仅能用于已忽略视图");
+  if (query.sortBy === "priority" && visibility !== "ACTIVE")
+    throw new ListQueryError("优先级排序仅能用于待处理视图");
+  const priority = query.sortBy === "priority";
+  const sort = priority ? "actionable_at" : query.sortBy;
+  const position =
+    input.cursor?.position ??
+    (input.cursor
+      ? {
+          value: input.cursor.actionableAt,
+          keys: [input.cursor.kind, input.cursor.itemId],
+        }
+      : null);
+  const seek = priority
+    ? priorityKeyset(position, query.sortOrder)
+    : listKeyset(sort, ["kind", "item_id"], query.sortOrder, position);
   return database.read((connection) => {
-    const sort = query.sortBy;
-    const position =
-      input.cursor?.position ??
-      (input.cursor
-        ? {
-            value: input.cursor.actionableAt,
-            keys: [input.cursor.kind, input.cursor.itemId],
-          }
-        : null);
-    const seek = listKeyset(
-      sort,
-      ["kind", "item_id"],
-      query.sortOrder,
-      position,
-    );
     const search = workItemSearch(query.q);
     const condition =
       visibility === "IGNORED"
@@ -325,7 +327,9 @@ export function adminWorkItemPage(
                 ? {
                     position: {
                       value: safeInteger(last.sort_at),
-                      keys: [last.kind, last.item_id],
+                      keys: priority
+                        ? [String(safeInteger(last.priority)), last.kind, last.item_id]
+                        : [last.kind, last.item_id],
                     },
                   }
                 : {}),
@@ -333,6 +337,24 @@ export function adminWorkItemPage(
           : null,
     };
   });
+}
+
+function priorityKeyset(position: ListPosition | null, order: "asc" | "desc") {
+  const direction = order === "asc" ? "ASC" : "DESC";
+  const orderBy = ["priority", "actionable_at", "kind", "item_id"]
+    .map((column) => column + " " + direction).join(", ");
+  if (!position) return { orderBy, where: "", parameters: [] as Array<string | number> };
+  const [priority, kind, itemId] = position.keys;
+  if (
+    position.keys.length !== 3 || (priority !== "0" && priority !== "1") ||
+    typeof position.value !== "number" || !Number.isSafeInteger(position.value) || position.value < 0 ||
+    !kindSchema.safeParse(kind).success || !adminOperationIdSchema.safeParse(itemId).success
+  ) throw new ListQueryError("分页游标无效");
+  return {
+    orderBy,
+    where: "(priority, actionable_at, kind, item_id) " + (order === "asc" ? ">" : "<") + " (?, ?, ?, ?)",
+    parameters: [Number(priority), position.value, kind!, itemId!],
+  };
 }
 
 /** Read reminder visibility in one query without changing the underlying resource state. */

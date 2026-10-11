@@ -10,6 +10,7 @@ import { describe, it } from "node:test";
 
 import { AppDatabase } from "../src/database/database.ts";
 import { createApp } from "../src/http/app.ts";
+import { ListQueryError } from "../src/shared/list-query.ts";
 import {
   adminWorkItemPage, adminWorkItemSummary, ignoreAllAdminWorkItems, restoreAdminWorkItem,
   type AdminWorkItem,
@@ -214,6 +215,98 @@ describe("administrator work item projection", () => {
     });
   });
 
+  it("selects manual attention before newer automatic retries across the complete result set", () => {
+    withFixture(({ database, readCount }) => {
+      const page = adminWorkItemPage(database, {
+        type: "ALL", cursor: null, limit: 4,
+        query: { q: "", sortBy: "priority", sortOrder: "desc" },
+      });
+      assert.equal(readCount(), 1);
+      assert.deepEqual(page.items.map(itemIdentity), [
+        `LEDGER_CONFLICT:${IDS.conflict}`,
+        `FINANCIAL_EXCEPTION:${IDS.exceptionHigher}`,
+        `FINANCIAL_EXCEPTION:${IDS.exceptionLower}`,
+        `NOTIFICATION_FAILURE:${IDS.deadLetter}`,
+      ]);
+      assert.deepEqual(page.nextCursor?.position, {
+        value: 251, keys: ["1", "NOTIFICATION_FAILURE", IDS.deadLetter],
+      });
+      const second = adminWorkItemPage(database, {
+        type: "ALL", cursor: page.nextCursor, limit: 4,
+        query: { q: "", sortBy: "priority", sortOrder: "desc" },
+      });
+      assert.deepEqual(second.items.map(itemIdentity), [
+        `NOTIFICATION_FAILURE:${IDS.retryNewest}`,
+        `NOTIFICATION_FAILURE:${IDS.retrySameTime}`,
+      ]);
+      assert.equal(second.nextCursor, null);
+    });
+  });
+
+  it("paginates priority groups and equal timestamps deterministically in both directions", () => {
+    withFixture(({ database, connection }) => {
+      connection.prepare("UPDATE webhook_deliveries SET updated_at = 401 WHERE delivery_id = ?").run(IDS.retrySameTime);
+      const descending = [
+        IDS.conflict, IDS.exceptionHigher, IDS.exceptionLower, IDS.deadLetter,
+        IDS.retrySameTime, IDS.retryNewest,
+      ];
+      for (const sortOrder of ["desc", "asc"] as const) {
+        for (const limit of [1, 3, 5]) {
+          const seen: string[] = [];
+          let cursor: AdminWorkItemCursor | null = null;
+          do {
+            const page = adminWorkItemPage(database, {
+              type: "ALL", cursor, limit, query: { q: "", sortBy: "priority", sortOrder },
+            });
+            seen.push(...page.items.map((item) => item.itemId));
+            cursor = page.nextCursor;
+            assert.ok(seen.length <= descending.length, "Priority paging must make progress");
+          } while (cursor);
+          assert.deepEqual(seen, sortOrder === "desc" ? descending : descending.toReversed());
+          assert.equal(new Set(seen).size, seen.length);
+        }
+      }
+    });
+  });
+
+  it("applies priority after website and reminder-type filters while preserving the active view", () => {
+    withFixture(({ database, connection }) => {
+      connection.exec("ALTER TABLE payment_orders ADD COLUMN api_client_id TEXT NOT NULL DEFAULT 'site_a'");
+      connection.prepare("UPDATE payment_orders SET api_client_id = 'site_b' WHERE order_id = ?").run(IDS.orderFallback);
+      connection.exec("INSERT INTO payment_orders(order_id, collection_profile_id, api_client_id) VALUES ('order-exception-lower', 'profile-linked', 'site_a')");
+      const query = { q: "", sortBy: "priority", sortOrder: "desc" } as const;
+      const a = adminWorkItemPage(database, { type: "ALL", apiClientId: "site_a", query, cursor: null, limit: 1 });
+      assert.equal(a.items[0]?.itemId, IDS.exceptionLower);
+      assert.equal(adminWorkItemPage(database, { type: "ALL", apiClientId: "site_b", query, cursor: null, limit: 1 }).items[0]?.itemId, IDS.deadLetter);
+      assert.equal(adminWorkItemPage(database, { type: "NOTIFICATION_FAILURE", apiClientId: "site_a", query, cursor: null, limit: 1 }).items[0]?.itemId, IDS.retryNewest);
+      ignoreAllAdminWorkItems(database, { operation_id: randomUUID(), type: "FINANCIAL_EXCEPTION", api_client_id: "site_a" }, { actorId: "admin", now: 3000 });
+      assert.equal(adminWorkItemPage(database, { type: "ALL", apiClientId: "site_a", query, cursor: null, limit: 1 }).items[0]?.itemId, IDS.retryNewest);
+    });
+  });
+
+  it("rejects ignored priority views and malformed composite positions before reading", () => {
+    withFixture(({ database, readCount }) => {
+      const query = { q: "", sortBy: "priority", sortOrder: "desc" } as const;
+      assert.throws(() => adminWorkItemPage(database, {
+        type: "ALL", visibility: "IGNORED", query, cursor: null, limit: 1,
+      }), ListQueryError);
+      for (const position of [
+        { value: 300, keys: ["2", "LEDGER_CONFLICT", IDS.conflict] },
+        { value: null, keys: ["1", "LEDGER_CONFLICT", IDS.conflict] },
+        { value: -1, keys: ["1", "LEDGER_CONFLICT", IDS.conflict] },
+        { value: 300, keys: ["LEDGER_CONFLICT", IDS.conflict] },
+        { value: 300, keys: ["1", "UNKNOWN", IDS.conflict] },
+        { value: 300, keys: ["1", "LEDGER_CONFLICT", "not-an-id"] },
+      ]) {
+        assert.throws(() => adminWorkItemPage(database, {
+          type: "ALL", query, limit: 1,
+          cursor: { actionableAt: 300, kind: "LEDGER_CONFLICT", itemId: IDS.conflict, position },
+        }), ListQueryError);
+      }
+      assert.equal(readCount(), 0);
+    });
+  });
+
   it("filters by one decoded work item type", () => {
     withFixture(({ database }) => {
       const expected: Readonly<Record<Exclude<AdminWorkItemType, "ALL">, number>> = {
@@ -359,6 +452,7 @@ describe("administrator work item projection", () => {
     const projectionConnection = new DatabaseSync(":memory:", { readBigInts: true });
     createSchema(projectionConnection);
     seedFixture(projectionConnection);
+    projectionConnection.exec("ALTER TABLE payment_orders ADD COLUMN api_client_id TEXT NOT NULL DEFAULT 'site_a'");
     const projectionDatabase = {
       health: () => services.database.health(),
       instanceId: () => services.database.instanceId(),
@@ -407,7 +501,6 @@ describe("administrator work item projection", () => {
         `/api/admin/v1/webhooks/deliveries/${IDS.retryNewest}`,
       );
       assert.ok(firstBody.page.next_cursor);
-      projectionConnection.exec("ALTER TABLE payment_orders ADD COLUMN api_client_id TEXT NOT NULL DEFAULT 'site_a'");
       const siteSummary = await app.request("/api/admin/v1/work-items/summary?api_client_id=site_a", { headers: { cookie } });
       assert.equal(siteSummary.status, 200);
       assert.deepEqual((await siteSummary.json() as { data: unknown }).data, { total: 3 });
@@ -446,6 +539,59 @@ describe("administrator work item projection", () => {
         IDS.deadLetter,
       ]);
       assert.equal(new Set(seen).size, seen.length);
+
+      type WorkPage = { data: Array<{ resource_id: string }>; page: { next_cursor: string | null } };
+      const priorityPage = async (parameters: string) => {
+        const response = await app.request("/api/admin/v1/work-items?sort_by=priority&" + parameters, { headers: { cookie } });
+        assert.equal(response.status, 200);
+        return await response.json() as WorkPage;
+      };
+      const priorityFirst = await priorityPage("limit=1");
+      assert.equal(priorityFirst.data[0]?.resource_id, IDS.conflict);
+      assert.ok(priorityFirst.page.next_cursor);
+      const prioritySeen = priorityFirst.data.map((item) => item.resource_id);
+      let priorityCursor: string | null = priorityFirst.page.next_cursor;
+      while (priorityCursor !== null) {
+        const page = await priorityPage("limit=1&cursor=" + encodeURIComponent(priorityCursor));
+        prioritySeen.push(...page.data.map((item) => item.resource_id));
+        assert.ok(prioritySeen.length <= 6, "Priority cursor must advance to the next item");
+        priorityCursor = page.page.next_cursor;
+      }
+      assert.deepEqual(prioritySeen, [IDS.conflict, IDS.exceptionHigher, IDS.exceptionLower, IDS.deadLetter, IDS.retryNewest, IDS.retrySameTime]);
+      const sitePriority = await priorityPage("api_client_id=site_a&limit=1");
+      assert.ok(sitePriority.page.next_cursor);
+      assert.equal(sitePriority.data[0]?.resource_id, IDS.deadLetter);
+      for (const parameters of [
+        "sort_by=actionable_at&cursor=" + priorityFirst.page.next_cursor,
+        "sort_by=priority&cursor=" + firstBody.page.next_cursor,
+        "sort_by=priority&sort_order=asc&cursor=" + priorityFirst.page.next_cursor,
+        "sort_by=priority&type=NOTIFICATION_FAILURE&cursor=" + priorityFirst.page.next_cursor,
+        "sort_by=priority&q=transport&cursor=" + priorityFirst.page.next_cursor,
+        "sort_by=priority&api_client_id=site_b&cursor=" + sitePriority.page.next_cursor,
+        "sort_by=priority&cursor=" + sitePriority.page.next_cursor,
+        "sort_by=priority&visibility=IGNORED",
+      ]) {
+        const response = await app.request("/api/admin/v1/work-items?" + parameters, { headers: { cookie } });
+        assert.equal(response.status, 422, parameters);
+        assert.equal(await errorCode(response), "validation_failed");
+      }
+      const malformed = JSON.parse(Buffer.from(priorityFirst.page.next_cursor, "base64url").toString("utf8")) as [string, string, string, number, string[]];
+      malformed[4][0] = "2";
+      const invalidPriority = await app.request("/api/admin/v1/work-items?sort_by=priority&cursor=" + Buffer.from(JSON.stringify(malformed)).toString("base64url"), { headers: { cookie } });
+      assert.equal(invalidPriority.status, 422);
+      assert.equal(await errorCode(invalidPriority), "validation_failed");
+      for (const parts of [
+        ["perpay:admin-work-items:v1", "ALL", "401", "NOTIFICATION_FAILURE", IDS.retryNewest],
+        ["perpay:admin-work-items:v2", "ALL", "ACTIVE", "401", "NOTIFICATION_FAILURE", IDS.retryNewest],
+      ]) {
+        const legacyCursor = Buffer.from(parts.join("\n")).toString("base64url");
+        const response = await app.request("/api/admin/v1/work-items?cursor=" + legacyCursor, { headers: { cookie } });
+        assert.equal(response.status, 200);
+        assert.deepEqual(((await response.json()) as WorkPage).data.map((item) => item.resource_id), seen.slice(1));
+        const unsupported = await app.request("/api/admin/v1/work-items?sort_by=priority&cursor=" + legacyCursor, { headers: { cookie } });
+        assert.equal(unsupported.status, 422);
+        assert.equal(await errorCode(unsupported), "validation_failed");
+      }
 
       const financial = await app.request(
         "/api/admin/v1/work-items?type=FINANCIAL_EXCEPTION",
@@ -578,7 +724,17 @@ function createSchema(connection: DatabaseSync): void {
     );
     CREATE TABLE payment_orders (
       order_id TEXT PRIMARY KEY,
-      collection_profile_id TEXT NOT NULL
+      collection_profile_id TEXT NOT NULL,
+      merchant_order_no TEXT NOT NULL DEFAULT 'fixture-merchant',
+      product_name TEXT NOT NULL DEFAULT 'Fixture order',
+      requested_amount_cents INTEGER NOT NULL DEFAULT 1000,
+      payable_amount_cents INTEGER NOT NULL DEFAULT 1001,
+      received_amount_cents INTEGER
+    );
+    CREATE TABLE order_events (
+      order_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      occurred_at INTEGER NOT NULL
     );
     CREATE TABLE outbox_events (
       outbox_event_id TEXT PRIMARY KEY,

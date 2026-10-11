@@ -165,6 +165,7 @@ export type AdminWorkItemBase = {
     resource_id: ResourceId;
     provider_account_key: string;
     order_id: ResourceId | null;
+    order_summary?: OrderIdentitySummary | null;
     ledger_entry_id: ResourceId | null;
     created_at: string;
     actionable_at: string;
@@ -1468,7 +1469,7 @@ export type ListAdministratorWorkItemsData = {
         type?: AdminWorkItemTypeFilter;
         visibility?: 'ACTIVE' | 'IGNORED';
         q?: string;
-        sort_by?: 'actionable_at' | 'created_at' | 'ignored_at';
+        sort_by?: 'actionable_at' | 'created_at' | 'ignored_at' | 'priority';
         sort_order?: 'asc' | 'desc';
         limit?: number;
         cursor?: string;
@@ -3051,7 +3052,7 @@ export type SiteListAdministratorWorkItemsData = {
         type?: AdminWorkItemTypeFilter;
         visibility?: 'ACTIVE' | 'IGNORED';
         q?: string;
-        sort_by?: 'actionable_at' | 'created_at' | 'ignored_at';
+        sort_by?: 'actionable_at' | 'created_at' | 'ignored_at' | 'priority';
         sort_order?: 'asc' | 'desc';
         limit?: number;
         cursor?: string;

@@ -307,12 +307,14 @@ paths:
       operationId: listAdministratorWorkItems
       summary: Page through active or dismissed administrator reminders
       description: |
-        Searches item and related business IDs, product name, external event ID, notification URL and error/type codes before paging. ignored_at sorting is valid only for IGNORED. New cursors bind keyword, sort, type and visibility; old cursors only with original defaults. Pagination is a live list, not a persistent database snapshot.
+        Searches item and related business IDs, product name, external event ID, notification URL and error/type codes before paging. ignored_at sorting is valid only for IGNORED; priority sorting is valid only for ACTIVE. New cursors bind keyword, sort, type and visibility; old cursors only with original defaults. Pagination is a live list, not a persistent database snapshot.
         ACTIVE combines undismissed open financial exceptions, open ledger conflicts, retry-wait
         notifications and latest dead-letter notifications from every retained provider generation.
         Legacy UNMATCHED_DEBIT and UNLINKED_REFUND warnings are excluded without changing their status.
-        A single SQLite read drives each page and home-page reminders. By default ACTIVE sorts by descending
+        One paged projection and a bounded order-summary lookup drive each page and home-page reminders. By default ACTIVE sorts by descending
         actionable time, type and resource ID; IGNORED sorts by dismissal time, type and resource ID.
+        priority desc puts financial exceptions, ledger conflicts and dead-letter notifications before automatic retries,
+        then sorts by descending actionable time, type and resource ID before paging. priority asc reverses that tuple.
         IGNORED retains resolved or acknowledged records
         with ended=true and keeps ignored notifications visible during subsequent pending/leased retries.
         Each item links to its original detailed resource endpoint. Dismissal changes neither financial
@@ -343,7 +345,7 @@ paths:
         - name: sort_by
           in: query
           required: false
-          schema: { type: string, enum: [actionable_at, created_at, ignored_at] }
+          schema: { type: string, enum: [actionable_at, created_at, ignored_at, priority] }
         - name: sort_order
           in: query
           required: false
@@ -3222,15 +3224,17 @@ paths:
       description: >
         Searches item and related business IDs, product name, external event ID,
         notification URL and error/type codes before paging. ignored_at sorting is
-        valid only for IGNORED. New cursors bind keyword, sort, type and
+        valid only for IGNORED; priority sorting is valid only for ACTIVE. New cursors bind keyword, sort, type and
         visibility; old cursors only with original defaults. Pagination is a live
         list, not a persistent database snapshot. ACTIVE combines undismissed open
         financial exceptions, open ledger conflicts, retry-wait notifications and
         latest dead-letter notifications from every retained provider generation.
         Legacy UNMATCHED_DEBIT and UNLINKED_REFUND warnings are excluded without
-        changing their status. A single SQLite read drives each page and home-page
+        changing their status. One paged projection and a bounded order-summary lookup drive each page and home-page
         reminders. By default ACTIVE sorts by descending actionable time, type and
         resource ID; IGNORED sorts by dismissal time, type and resource ID.
+        priority desc puts financial exceptions, ledger conflicts and dead-letter notifications before automatic retries,
+        then sorts by descending actionable time, type and resource ID before paging. priority asc reverses that tuple.
         IGNORED retains resolved or acknowledged records with ended=true and keeps
         ignored notifications visible during subsequent pending/leased retries.
         Each item links to its original detailed resource endpoint. Dismissal
@@ -3277,6 +3281,7 @@ paths:
               - actionable_at
               - created_at
               - ignored_at
+              - priority
         - name: sort_order
           in: query
           required: false
@@ -5513,6 +5518,11 @@ components:
         order_id:
           oneOf:
             - $ref: '#/components/schemas/ResourceId'
+            - type: 'null'
+        order_summary:
+          description: Readable identity of the associated order, loaded in one batch for the current page; null for unallocated reminders.
+          oneOf:
+            - $ref: '#/components/schemas/OrderIdentitySummary'
             - type: 'null'
         ledger_entry_id:
           oneOf:

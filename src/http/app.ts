@@ -655,8 +655,15 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   app.get("/api/admin/v1/work-items", adminSession, (context) => {
     const query = readAdminWorkItemPageQuery(context);
     const page = adminWorkItemPage(dependencies.database, query);
+    const identities = adminOrderIdentities(
+      dependencies.database,
+      page.items.flatMap(item => item.orderId ? [item.orderId] : []),
+    );
     return context.json({
-      data: page.items.map(serializeAdminWorkItem),
+      data: page.items.map(item => ({
+        ...serializeAdminWorkItem(item),
+        order_summary: item.orderId ? identities.get(item.orderId) ?? null : null,
+      })),
       page: {
         next_cursor: encodeAdminWorkItemCursor(page.nextCursor, query.type, query.visibility, query.query, query.apiClientId),
       },
@@ -2760,6 +2767,7 @@ function readAdminWorkItemPageQuery(context: Context<AppEnvironment>): {
   }
   const query = readListQuery(values, WORK_ITEM_SORT_FIELDS, visibility === "IGNORED" ? "ignored_at" : "actionable_at", "desc");
   if (query.sortBy === "ignored_at" && visibility !== "IGNORED") throw new ListQueryError("忽略时间仅能用于已忽略视图");
+  if (query.sortBy === "priority" && visibility !== "ACTIVE") throw new ListQueryError("优先级排序仅能用于待处理视图");
   return { ...(apiClientId ? { apiClientId } : {}), query, type: type as AdminWorkItemType, visibility: visibility as AdminWorkItemVisibility, limit: Number(limitText),
     cursor: values.has("cursor") ? decodeAdminWorkItemCursor(values.get("cursor")!, type as AdminWorkItemType, visibility as AdminWorkItemVisibility, query, apiClientId ?? undefined) : null };
 }
@@ -2769,11 +2777,14 @@ function encodeAdminWorkItemCursor(cursor: AdminWorkItemCursor | null, type: Adm
 }
 
 function decodeAdminWorkItemCursor(value: string, expectedType: AdminWorkItemType, visibility: AdminWorkItemVisibility, query: ListQuery<WorkItemSort>, apiClientId?: string): AdminWorkItemCursor {
-  const position = decodeListCursor(value, "work-items", [query, expectedType, visibility, apiClientId ?? null], "number", 2);
+  const priority = query.sortBy === "priority";
+  const position = decodeListCursor(value, "work-items", [query, expectedType, visibility, apiClientId ?? null], "number", priority ? 3 : 2);
   if (position) {
-    const kind = position.keys[0] as AdminWorkItemKind;
-    if (position.value === null || !["FINANCIAL_EXCEPTION", "LEDGER_CONFLICT", "NOTIFICATION_FAILURE"].includes(kind) || (expectedType !== "ALL" && expectedType !== kind) || !ORDER_ID_PATTERN.test(position.keys[1]!)) throw new ListQueryError("分页游标无效");
-    return {actionableAt: position.value as number, kind, itemId: position.keys[1]!, position};
+    const offset = priority ? 1 : 0;
+    const kind = position.keys[offset] as AdminWorkItemKind;
+    const itemId = position.keys[offset + 1]!;
+    if (position.value === null || (priority && !["0", "1"].includes(position.keys[0]!)) || !["FINANCIAL_EXCEPTION", "LEDGER_CONFLICT", "NOTIFICATION_FAILURE"].includes(kind) || (expectedType !== "ALL" && expectedType !== kind) || !ORDER_ID_PATTERN.test(itemId)) throw new ListQueryError("分页游标无效");
+    return {actionableAt: position.value as number, kind, itemId, position};
   }
   if (apiClientId || !isDefaultQuery(query, visibility === "IGNORED" ? "ignored_at" : "actionable_at", "desc")) throw new ListQueryError("旧游标仅能用于默认查询");
   const invalid = () => new HttpApiError(422, "validation_failed", "查询参数校验失败");

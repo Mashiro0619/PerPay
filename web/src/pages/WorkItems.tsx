@@ -270,10 +270,10 @@ function WorkItemPage({
   const mounted = useMounted();
   const { clientId } = useWorkspace();
   const pagination = useCursor();
-  const sortFields =
-    visibility === "IGNORED"
-      ? WORK_ITEM_SORT_FIELDS
-      : WORK_ITEM_SORT_FIELDS.filter((field) => field !== "ignored_at");
+  // Priority is an overview preview policy; retain the full list's existing sort choices.
+  const sortFields = WORK_ITEM_SORT_FIELDS
+    .filter((field) => field !== "priority")
+    .filter((field) => visibility === "IGNORED" || field !== "ignored_at");
   const listQuery = useListQuery(
     sortFields,
     visibility === "IGNORED" ? "ignored_at" : "actionable_at",

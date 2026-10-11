@@ -3,8 +3,6 @@ import { SystemStatusBoundary } from "@/features/system-status";
 import {
   AlertCircle,
   ArrowRight,
-  ChevronRight,
-  ListChecks,
 } from "lucide-react";
 import { Navigate, useLocation } from "react-router";
 import { Link } from "@/navigation";
@@ -14,13 +12,13 @@ import {
   isOnboardingDeferred,
   onboardingPath,
 } from "@/lib/onboarding";
-import { ListDateTime } from "@/components/list-primitives";
-import { workItemHref, workItemTitle } from "@/lib/labels";
+import { OverviewWorkItems } from "@/components/overview-work-items";
 import { SectionCards } from "@/components/section-cards";
 import { ChartAreaInteractive } from "@/components/chart-area-interactive";
 import { RecentOrders } from "@/components/recent-orders";
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardHeader,
@@ -30,20 +28,6 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
-import {
-  Item,
-  ItemGroup,
-  ItemContent,
-  ItemTitle,
-  ItemDescription,
-  ItemActions,
-} from "@/components/ui/item";
-import {
-  Empty,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/admin-empty";
 
 export default function Dashboard() {
   return (
@@ -99,6 +83,13 @@ function DashboardContent() {
       ? undefined
       : analytics.data?.data;
   const needsStatus = checking || blocked || settings.error;
+  const workTotal = !checking && !unavailable
+    ? clientId
+      ? !workSummary.isError && !workSummary.isPlaceholderData
+        ? workSummary.data?.data?.total
+        : null
+      : state?.work_items?.total
+    : null;
   return (
     <div
       className="flex w-full min-w-0 flex-col gap-4"
@@ -162,11 +153,7 @@ function DashboardContent() {
       <SectionCards
         analytics={data}
         clientId={clientId}
-        workItems={!checking && !unavailable
-          ? clientId
-            ? !workSummary.isError && !workSummary.isPlaceholderData ? workSummary.data?.data?.total : null
-            : state?.work_items?.total
-          : null}
+        workItems={workTotal}
         pending={analytics.isPending || analytics.isPlaceholderData}
       />
       {clientId && <ErrorNotice error={workSummary.error} retry={() => { void workSummary.refetch(); }} />}
@@ -189,10 +176,13 @@ function DashboardContent() {
       </div>
       {!clientId && <SiteOverviewList range={range} />}
       <div className="overview-records">
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle role="heading" aria-level={2}>
+        <Card size="sm" className="overview-record-panel" role="region" aria-labelledby="overview-work-title">
+          <CardHeader className="overview-records-header">
+            <CardTitle id="overview-work-title" role="heading" aria-level={2} aria-label={clientId ? "本站待办" : "全局待办"} className="flex items-center gap-2">
               {clientId ? "本站待办" : "全局待办"}
+              <Badge variant={workTotal != null && workTotal > 0 ? "warning" : "secondary"} aria-label={workTotal == null ? "待办总数未知" : `共 ${workTotal} 项待办`}>
+                {workTotal ?? "—"}
+              </Badge>
             </CardTitle>
             <CardAction>
               <Link
@@ -204,41 +194,9 @@ function DashboardContent() {
               </Link>
             </CardAction>
           </CardHeader>
-          <CardContent>
+          <CardContent className="overview-records-content">
             <QueryView query={work}>
-              {(page) =>
-                page.data.length ? (
-                  <ItemGroup className="record-list" data-density="compact">
-                    {page.data.map((item) => (
-                        <Item
-                          key={item.type + item.resource_id}
-                          className="record-list-row"
-                          size="sm"
-                          render={<Link to={workItemHref(item)} />}
-                        >
-                          <ItemContent className="min-w-0">
-                            <ItemTitle className="record-list-title">{workItemTitle(item)}</ItemTitle>
-                            <ItemDescription className="record-list-meta">
-                              <ListDateTime value={item.actionable_at} inline />
-                            </ItemDescription>
-                          </ItemContent>
-                          <ItemActions>
-                            <ChevronRight />
-                          </ItemActions>
-                        </Item>
-                    ))}
-                  </ItemGroup>
-                ) : (
-                  <Empty>
-                    <EmptyHeader>
-                      <EmptyMedia variant="icon">
-                        <ListChecks />
-                      </EmptyMedia>
-                      <EmptyTitle>暂无待处理提醒</EmptyTitle>
-                    </EmptyHeader>
-                  </Empty>
-                )
-              }
+              {(page) => <OverviewWorkItems items={page.data} />}
             </QueryView>
           </CardContent>
         </Card>

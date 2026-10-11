@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { it } from "node:test";
 
 import { createApp } from "../src/http/app.ts";
+import type { OrderIdentitySummary } from "../src/http/admin-order-summary.ts";
 import type { AdminOrderNotificationSummary } from "../src/http/admin-order-notification-summary.ts";
 import { LedgerStore } from "../src/ledger/store.ts";
 import { WebhookStore } from "../src/notifications/store.ts";
@@ -21,6 +22,13 @@ type OrderRow = {
   product_name: string;
   payment: { status: string };
   notification_summary: AdminOrderNotificationSummary;
+};
+type WorkRow = {
+  type: string;
+  resource_id: string;
+  order_id: string | null;
+  status: string;
+  order_summary: OrderIdentitySummary | null;
 };
 type Page<T> = { data: T[]; page: { next_cursor: string | null } };
 const PRIVATE_NOTE = "overview-private-order-note-must-not-be-exposed";
@@ -65,6 +73,10 @@ it("projects overview summaries through authenticated global and website HTTP ro
       fixture.setNow(fixture.now() + 2);
       return { order, delivery };
     };
+    const unlinked = reconciliation.reconcileEntry(credit(90_000).ledgerEntryId);
+    assert.equal(unlinked.kind, "unmatched");
+    if (unlinked.kind !== "unmatched") throw new Error("Expected an unallocated financial reminder");
+    fixture.setNow(fixture.now() + 2_002);
     const alphaPaid = paid(alpha.clientId, "Alpha course", 10_000, "RETRYABLE_FAILURE");
     const betaPaid = paid(beta.clientId, "Beta subscription", 20_000, "PERMANENT_FAILURE");
     const unpaid = fixture.orders.forSite(alpha.clientId).create(createOrderRequestSchema.parse({
@@ -80,46 +92,75 @@ it("projects overview summaries through authenticated global and website HTTP ro
       return body;
     };
 
-    await context.test("keeps confirmed payments separate from failed notification summaries", async () => {
+    await context.test("returns readable summaries without conflating confirmed payments and failed notifications", async () => {
       const orders = await page<OrderRow>("/orders");
-      assert.deepEqual(new Set(orders.data.map(row => row.order_id)),
+      assert.deepEqual(new Set(orders.data.map((row) => row.order_id)),
         new Set([alphaPaid.order.orderId, betaPaid.order.orderId, unpaid.orderId]));
-      for (const expected of [alphaPaid, betaPaid]) {
-        const order = orders.data.find(row => row.order_id === expected.order.orderId)!;
+      const reminders = await page<WorkRow>("/work-items?sort_by=priority");
+      assert.deepEqual(new Set(reminders.data.map((row) => row.resource_id)),
+        new Set([alphaPaid.delivery.deliveryId, betaPaid.delivery.deliveryId, unlinked.exceptionId]));
+
+      for (const [site, expected] of [[alpha, alphaPaid], [beta, betaPaid]] as const) {
+        const order = orders.data.find((row) => row.order_id === expected.order.orderId)!;
         assert.ok(order);
         assert.equal(order.payment.status, "CONFIRMED");
         assert.deepEqual(order.notification_summary, {
           status: expected.delivery.status, total_events: 1, acknowledged_events: 0,
         });
+        const reminder = reminders.data.find((row) => row.resource_id === expected.delivery.deliveryId)!;
+        assert.ok(reminder);
+        assert.equal(reminder.type, "NOTIFICATION_FAILURE");
+        assert.equal(reminder.status, expected.delivery.status);
+        const summary = reminder.order_summary;
+        assert.ok(summary);
+        assert.equal(summary.order_id, order.order_id);
+        assert.equal(summary.api_client_id, site.clientId);
+        assert.equal(summary.site_name, site.configuration.name);
+        assert.equal(summary.product_name, expected.order.productName);
+        assert.equal(summary.merchant_order_no, "same-merchant-number");
+        assert.equal(summary.payable_amount_cents, expected.order.payableAmountCents);
+        assert.equal(summary.received_amount_cents, expected.order.payableAmountCents);
+        assert.ok(summary.payment_confirmed_at);
       }
       assert.equal(alphaPaid.delivery.status, "RETRY_WAIT");
       assert.equal(betaPaid.delivery.status, "DEAD_LETTER");
-      assert.deepEqual(orders.data.find(row => row.order_id === unpaid.orderId)?.notification_summary,
+      assert.deepEqual(orders.data.find((row) => row.order_id === unpaid.orderId)?.notification_summary,
         { status: "NOT_CONFIGURED", total_events: 0, acknowledged_events: 0 });
+      const unallocated = reminders.data.find((row) => row.resource_id === unlinked.exceptionId)!;
+      assert.equal(unallocated.type, "FINANCIAL_EXCEPTION");
+      assert.equal(unallocated.order_id, null);
+      assert.equal(unallocated.order_summary, null);
     });
 
-    await context.test("keeps order summaries within the selected website and binds pagination to its path", async () => {
+    await context.test("keeps both summaries within the selected website and binds pagination to its path", async () => {
       for (const [site, own, other] of [[alpha, alphaPaid, betaPaid], [beta, betaPaid, alphaPaid]] as const) {
         const base = "/sites/" + site.clientId;
         const orders = await page<OrderRow>(base + "/orders");
-        assert.deepEqual(new Set(orders.data.map(row => row.order_id)),
+        assert.deepEqual(new Set(orders.data.map((row) => row.order_id)),
           new Set(site.clientId === alpha.clientId ? [own.order.orderId, unpaid.orderId] : [own.order.orderId]));
-        assert.ok(orders.data.every(row => row.api_client_id === site.clientId && row.site_name === site.configuration.name));
-        assert.equal(orders.data.find(row => row.order_id === own.order.orderId)?.notification_summary.status, own.delivery.status);
+        assert.ok(orders.data.every((row) => row.api_client_id === site.clientId && row.site_name === site.configuration.name));
+        assert.equal(orders.data.find((row) => row.order_id === own.order.orderId)?.notification_summary.status, own.delivery.status);
+        const reminders = await page<WorkRow>(base + "/work-items?sort_by=priority");
+        assert.deepEqual(reminders.data.map((row) => row.resource_id), [own.delivery.deliveryId]);
+        assert.equal(reminders.data[0]?.order_summary?.order_id, own.order.orderId);
+        assert.equal(reminders.data[0]?.order_summary?.api_client_id, site.clientId);
+        assert.equal(reminders.data[0]?.order_summary?.product_name, own.order.productName);
         assert.deepEqual((await page<OrderRow>(base + "/orders?q=" + encodeURIComponent(other.order.productName))).data, []);
+        assert.deepEqual((await page<WorkRow>(base + "/work-items?q=" + encodeURIComponent(other.order.productName))).data, []);
         assert.equal((await app.request("/api/admin/v1" + base + "/orders/" + other.order.orderId, { headers })).status, 404);
+        assert.equal((await app.request("/api/admin/v1" + base + "/webhooks/deliveries/" + other.delivery.deliveryId, { headers })).status, 404);
       }
       const first = await page<OrderRow>("/sites/" + alpha.clientId + "/orders?limit=1");
       assert.ok(first.page.next_cursor);
       const second = await page<OrderRow>("/sites/" + alpha.clientId + "/orders?limit=1&cursor=" + encodeURIComponent(first.page.next_cursor));
-      assert.deepEqual(new Set([...first.data, ...second.data].map(row => row.order_id)), new Set([alphaPaid.order.orderId, unpaid.orderId]));
+      assert.deepEqual(new Set([...first.data, ...second.data].map((row) => row.order_id)), new Set([alphaPaid.order.orderId, unpaid.orderId]));
       const crossed = await app.request("/api/admin/v1/sites/" + beta.clientId + "/orders?cursor=" + encodeURIComponent(first.page.next_cursor), { headers });
       assert.equal(crossed.status, 422);
       assert.equal(((await crossed.json()) as { error: { code: string } }).error.code, "validation_failed");
     });
 
-    await context.test("requires an administrator session for global and website order summaries", async () => {
-      for (const path of ["/orders", "/sites/" + alpha.clientId + "/orders"]) {
+    await context.test("requires an administrator session for global and site summary responses", async () => {
+      for (const path of ["/orders", "/work-items", "/sites/" + alpha.clientId + "/orders", "/sites/" + alpha.clientId + "/work-items"]) {
         const response = await app.request("/api/admin/v1" + path);
         assert.equal(response.status, 401);
         const body = await response.json() as { data?: unknown; error: { code: string } };
@@ -146,7 +187,7 @@ function assertNoDetails(value: { data: unknown[] }): void {
   for (const row of value.data) {
     assert.ok(row && typeof row === "object");
     assert.equal(Object.hasOwn(row, "note"), false, "The order's private note belongs only in its detail response");
-    for (const key of ["notification_summary"]) {
+    for (const key of ["order_summary", "notification_summary"]) {
       const summary: unknown = (row as Record<string, unknown>)[key];
       if (summary && typeof summary === "object") assert.equal(Object.hasOwn(summary, "note"), false);
     }

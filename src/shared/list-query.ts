@@ -107,5 +107,6 @@ export const WORK_ITEM_SORT_FIELDS = [
   "actionable_at",
   "created_at",
   "ignored_at",
+  "priority",
 ] as const;
 export type WorkItemSort = (typeof WORK_ITEM_SORT_FIELDS)[number];
