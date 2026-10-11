@@ -567,9 +567,15 @@ export type OrderIdentitySummary = {
     received_amount_cents: number | null;
     payment_confirmed_at: string | null;
 };
+export type AdminOrderNotificationSummary = {
+    status: 'NOT_CONFIGURED' | 'NO_EVENT' | 'UNMATERIALIZED' | 'PENDING' | 'LEASED' | 'RETRY_WAIT' | 'ACKNOWLEDGED' | 'DEAD_LETTER';
+    total_events: number;
+    acknowledged_events: number;
+};
 export type AdminOrderSummary = {
     site_name?: string | null;
     payment_confirmed_at?: string | null;
+    notification_summary?: AdminOrderNotificationSummary;
     order_id: ResourceId;
     api_client_id: string;
     merchant_order_no: MerchantOrderNumber;

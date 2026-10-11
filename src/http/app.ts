@@ -10,6 +10,7 @@ import type { CheckoutVerification } from "../shared/checkout-verification.ts";
 import { adminAccessInputSchema, readAdminAccess, createAdminAccessPolicy } from "../settings/admin-access.ts";
 import { exportOrders, orderExportSchema } from "./order-export.ts";
 import { adminOrderIdentities, type OrderIdentitySummary } from "./admin-order-summary.ts";
+import { adminOrderNotificationSummaries } from "./admin-order-notification-summary.ts";
 import { readManualCandidateQuery } from "./manual-candidates.ts";
 import type { ManualRecommendation } from "../reconciliation/manual-candidates.ts";
 import { MATCH_SORT_FIELDS, CONFLICT_SORT_FIELDS, EXCEPTION_SORT_FIELDS, WORK_ITEM_SORT_FIELDS, type MatchSort, type ConflictSort, type ExceptionSort, type WorkItemSort } from "../shared/list-query.ts";
@@ -715,10 +716,18 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   app.get("/api/admin/v1/orders", adminSession, (context) => {
     const query = readAdminOrderPageQuery(context);
     const page = dependencies.orders.adminPage(query.filters, query.cursor, query.limit, query.query);
-    const marks = adminRefundMarks(dependencies.database, page.orders.map((order) => order.orderId));
-    const identities = adminOrderIdentities(dependencies.database, page.orders.map(order => order.orderId));
+    const orderIds = page.orders.map(order => order.orderId);
+    const marks = adminRefundMarks(dependencies.database, orderIds);
+    const identities = adminOrderIdentities(dependencies.database, orderIds);
+    const notifications = adminOrderNotificationSummaries(dependencies.database, orderIds);
     return context.json({
-      data: page.orders.map((order) => ({ ...serializeAdminOrderSummary(order), site_name: identities.get(order.orderId)?.site_name ?? null, payment_confirmed_at: identities.get(order.orderId)?.payment_confirmed_at ?? null, refund_mark: marks.get(order.orderId)! })),
+      data: page.orders.map(order => ({
+        ...serializeAdminOrderSummary(order),
+        site_name: identities.get(order.orderId)?.site_name ?? null,
+        payment_confirmed_at: identities.get(order.orderId)?.payment_confirmed_at ?? null,
+        refund_mark: marks.get(order.orderId)!,
+        notification_summary: notifications.get(order.orderId)!,
+      })),
       page: {
         next_cursor: encodeAdminOrderCursor(page.nextCursor, query.filters, query.query),
       },

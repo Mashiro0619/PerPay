@@ -6672,6 +6672,24 @@ components:
         payable_amount_cents: { type: integer }
         received_amount_cents: { type: [integer, 'null'] }
         payment_confirmed_at: { type: [string, 'null'], format: date-time }
+    AdminOrderNotificationSummary:
+      type: object
+      additionalProperties: false
+      required: [status, total_events, acknowledged_events]
+      description: >-
+        Read-only summary of every notification event for the order's persisted target.
+        Only the latest delivery generation of each event counts. Events awaiting first
+        materialization count toward total_events. Current website settings do not replace
+        historical order delivery facts. Status priority is DEAD_LETTER, RETRY_WAIT, LEASED,
+        PENDING, UNMATERIALIZED, ACKNOWLEDGED; ACKNOWLEDGED requires a nonzero total with
+        every event acknowledged. NOT_CONFIGURED means this order has no notification target;
+        NO_EVENT means its target exists but no notifiable business event exists yet.
+      properties:
+        status:
+          type: string
+          enum: [NOT_CONFIGURED, NO_EVENT, UNMATERIALIZED, PENDING, LEASED, RETRY_WAIT, ACKNOWLEDGED, DEAD_LETTER]
+        total_events: { type: integer, minimum: 0 }
+        acknowledged_events: { type: integer, minimum: 0 }
     AdminOrderSummary:
       type: object
       additionalProperties: false
@@ -6695,6 +6713,7 @@ components:
       properties:
         site_name: { type: [string, 'null'], description: Current website display name; null only for historical pre-website schema fixtures. }
         payment_confirmed_at: { type: [string, 'null'], format: date-time }
+        notification_summary: { $ref: '#/components/schemas/AdminOrderNotificationSummary' }
         order_id: { $ref: '#/components/schemas/ResourceId' }
         api_client_id:
           type: string

@@ -76,7 +76,7 @@ export type BusinessColumn<T> = ResponsiveColumn & {
   sortBy?: string;
   className?: string;
   headerClassName?: string;
-  align?: "right";
+  align?: "left" | "center" | "right";
   layout?: BusinessColumnLayout;
 };
 type BusinessTableProps<T> = {
@@ -97,14 +97,12 @@ function columnLayout<T>(column: BusinessColumn<T>, index: number) {
   return column.layout ?? (index === 0 ? "identity" : "text");
 }
 
-function rightAligned<T>(column: BusinessColumn<T>, index: number) {
+function columnAlignment<T>(column: BusinessColumn<T>, index: number) {
+  if (column.align) return column.align;
   const layout = columnLayout(column, index);
-  return (
-    column.align === "right" ||
-    layout === "amount" ||
-    layout === "number" ||
-    layout === "actions"
-  );
+  return layout === "amount" || layout === "number" || layout === "actions"
+    ? "right"
+    : "left";
 }
 
 function DefaultBusinessSummary<T>({
@@ -398,10 +396,11 @@ function BusinessTableView<T extends RowData>({
                         key={header.id}
                         className={cn(
                           spec.headerClassName,
-                          rightAligned(spec, index) && "text-right",
+                          columnAlignment(spec, index) === "right" && "text-right",
                         )}
                         data-column-layout={columnLayout(spec, index)}
                         data-column-id={spec.id}
+                        data-column-align={columnAlignment(spec, index)}
                         aria-sort={
                           sorted
                             ? sorted === "asc"
@@ -430,10 +429,11 @@ function BusinessTableView<T extends RowData>({
                         key={cell.id}
                         className={cn(
                           spec.className,
-                          rightAligned(spec, index) && "text-right tabular-nums",
+                          columnAlignment(spec, index) === "right" && "text-right tabular-nums",
                         )}
                         data-column-layout={columnLayout(spec, index)}
                         data-column-id={spec.id}
+                        data-column-align={columnAlignment(spec, index)}
                       >
                         <table.FlexRender cell={cell} />
                       </TableCell>

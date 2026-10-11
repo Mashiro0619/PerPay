@@ -27,6 +27,7 @@ import {
   CardTitle,
   CardContent,
   CardAction,
+  CardDescription,
 } from "@/components/ui/card";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import {
@@ -187,7 +188,7 @@ function DashboardContent() {
         />
       </div>
       {!clientId && <SiteOverviewList range={range} />}
-      <div className="grid min-w-0 items-start gap-4 @5xl/main:grid-cols-[minmax(18rem,1fr)_minmax(0,2fr)]">
+      <div className="overview-records">
         <Card size="sm">
           <CardHeader>
             <CardTitle role="heading" aria-level={2}>
@@ -241,11 +242,12 @@ function DashboardContent() {
             </QueryView>
           </CardContent>
         </Card>
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle role="heading" aria-level={2}>
+        <Card size="sm" className="overview-record-panel" role="region" aria-labelledby="overview-orders-title">
+          <CardHeader className="overview-records-header">
+            <CardTitle id="overview-orders-title" role="heading" aria-level={2}>
               最近订单
             </CardTitle>
+            <CardDescription>最新 5 笔订单的收款与通知进展</CardDescription>
             <CardAction>
               <Link
                 to={"/orders"}
@@ -256,7 +258,7 @@ function DashboardContent() {
               </Link>
             </CardAction>
           </CardHeader>
-          <CardContent>
+          <CardContent className="overview-records-content">
             <QueryView query={orders}>
               {(page) => <RecentOrders orders={page.data} />}
             </QueryView>
