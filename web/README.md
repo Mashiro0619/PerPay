@@ -70,6 +70,7 @@ npx shadcn@latest add <component>
 - 首页在成功确认仅一个网站且没有下一页时隐藏网站概览，读取失败仍保留错误与重试。管理网站入口位于侧栏“全局管理”，页面使用包含实收、确认笔数、当前待付款、当前待办和接单／通知状态的经营卡片；默认近 30 天，可切换 7／30／90 天，每页 30 个网站。首页与管理页共用批量概览查询和金额横条，不逐站读取统计；卡片保留后台及设置入口。
 - 管理卡片、单网站显示规则和侧栏入口的检查结果见[网站经营卡片验收](../docs/development/site-management-cards.md)。
 - 金额卡片的自动检查、浏览器布局和交互结果见[验收记录](../docs/development/site-overview-amount-cards.md)。
+- 首页待办与最近订单的接口口径、响应式布局和完整验证见[概览双列表验收](../docs/development/overview-records.md)。
 - 收银台桌面双栏、手机同一份 DOM 单栏。二维码保留完整留白；放大、下载与主图一致。矮屏自然滚动，不以固定定位裁切内容。
 - 图标从 `web/src/assets/favicon.svg` 构建为同源、带指纹的外部 SVG；不要恢复固定 `/admin/favicon.svg` 或内联 data URL。
 
