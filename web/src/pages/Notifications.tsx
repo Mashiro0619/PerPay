@@ -33,6 +33,7 @@ import { DeliveryCard } from "@/components/detail/NotificationEvidence";
 import { RelatedOrder } from "@/components/detail/DetailPrimitives";
 import { StatusBadge } from "@/components/business-status";
 import { QueryView, ErrorNotice } from "@/components/request-state";
+import { retainListData } from "@/lib/list-placeholder";
 import { CursorPagination } from "@/components/cursor-pagination";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -126,6 +127,7 @@ function DeliveryPage({
     true,
   );
   const deliveries = useQuery({
+    ...retainListData(["notifications", clientId, status], listQuery.query),
     queryKey: ["notifications", status, pagination.cursor, listQuery.scope, clientId],
     queryFn: ({ signal }) =>
       result(
@@ -318,7 +320,7 @@ function DeliveryPage({
       <QueryView query={deliveries}>
         {(page) => (
           <>
-            <div className="min-w-0">
+            <div className="min-w-0" aria-busy={deliveries.isFetching || deliveries.isPlaceholderData}>
               {page.data.length ? (
                 <BusinessTable
                   id="notifications"
@@ -354,7 +356,7 @@ function DeliveryPage({
               page={pagination.page}
               count={page.data.length}
               hasNext={!!page.page.next_cursor}
-              pending={deliveries.isFetching}
+              pending={deliveries.isFetching || deliveries.isPlaceholderData}
               onPrevious={pagination.previous}
               onNext={() => pagination.next(page.page.next_cursor)}
             />

@@ -6,6 +6,7 @@ import { useWorkspaceApi } from "@/workspace";
 import { CreatedDateFilter } from "@/components/created-date-filter";
 import { OrderExport } from "@/components/order-export";
 import { useListQuery, ORDER_SORT_FIELDS } from "@/lib/list-query";
+import { retainListData } from "@/lib/list-placeholder";
 import {
   ListQueryToolbar,
   type ListQueryLookup,
@@ -256,6 +257,7 @@ function OrderPage({
   const pagination = useCursor();
   const listQuery = useListQuery(ORDER_SORT_FIELDS, "created_at", "desc", true);
   const orders = useQuery({
+    ...retainListData(["orders", clientId, payment, checkout], listQuery.query),
     queryKey: ["orders", payment, checkout, pagination.cursor, listQuery.scope, clientId],
     queryFn: ({ signal }) =>
       result(
@@ -309,7 +311,7 @@ function OrderPage({
       <QueryView query={orders}>
         {(page) => (
           <>
-            <div className="min-w-0">
+            <div className="min-w-0" aria-busy={orders.isFetching || orders.isPlaceholderData}>
               {!page.data.length &&
               (pagination.page > 1 ||
                 payment ||
@@ -349,7 +351,7 @@ function OrderPage({
               page={pagination.page}
               count={page.data.length}
               hasNext={!!page.page.next_cursor}
-              pending={orders.isFetching}
+              pending={orders.isFetching || orders.isPlaceholderData}
               onPrevious={pagination.previous}
               onNext={() => pagination.next(page.page.next_cursor)}
             />

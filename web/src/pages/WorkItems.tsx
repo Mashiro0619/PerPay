@@ -5,6 +5,7 @@ import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { RefreshButton } from "@/components/refresh-button";
 import { DialogBody } from "@/components/admin-dialog";
 import { useListQuery, WORK_ITEM_SORT_FIELDS } from "@/lib/list-query";
+import { retainListData } from "@/lib/list-placeholder";
 import { ListQueryToolbar } from "@/components/list-query-toolbar";
 import { ListActionsMenu } from "@/components/list-actions-menu";
 import { ListColumnsProvider } from "@/components/list-columns";
@@ -313,6 +314,7 @@ function WorkItemPage({
     };
   }, []);
   const work = useQuery({
+    ...retainListData(["work-items", clientId, type, visibility], listQuery.query),
     queryKey: [
       "work-items",
       type,
@@ -383,7 +385,7 @@ function WorkItemPage({
     if (readAgain) void completed("refresh");
   }
   useEffect(() => {
-    if (!position || work.isFetching) return;
+    if (!position || work.isFetching || work.isPlaceholderData) return;
     if (latestAction.current?.sequence !== position.sequence) {
       setPosition(null);
       return;
@@ -464,7 +466,7 @@ function WorkItemPage({
       }
     }
     setPosition(null);
-  }, [position, work.data, work.isFetching, work.isError, pagination]);
+  }, [position, work.data, work.isFetching, work.isPlaceholderData, work.isError, pagination]);
   const cannotIgnore =
     busy ||
     work.isPending ||
@@ -560,6 +562,7 @@ function WorkItemPage({
               aria-label={
                 visibility === "IGNORED" ? "已忽略提醒列表" : "待处理提醒列表"
               }
+              aria-busy={work.isFetching || work.isPlaceholderData}
               className="min-w-0 outline-none"
             >
               <WorkItemsTable
@@ -591,7 +594,7 @@ function WorkItemPage({
               page={pagination.page}
               count={page.data.length}
               hasNext={!!page.page.next_cursor}
-              pending={work.isFetching || busy}
+              pending={work.isFetching || work.isPlaceholderData || busy}
               onPrevious={pagination.previous}
               onNext={() => pagination.next(page.page.next_cursor)}
             />

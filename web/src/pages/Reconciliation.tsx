@@ -32,6 +32,7 @@ import { resourceIdPattern } from "@/lib/format";
 import { label } from "@/lib/labels";
 import { StatusBadge } from "@/components/business-status";
 import { QueryView } from "@/components/request-state";
+import { retainListData } from "@/lib/list-placeholder";
 import { CursorPagination } from "@/components/cursor-pagination";
 import { SuccessMessage, useFeedback } from "@/components/Feedback";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -239,6 +240,7 @@ function ReconciliationList({
     external_event_id: "外部流水号",
   };
   const query = useQuery({
+    ...retainListData(["reconciliation", section, status, provider], listQuery.query),
     queryKey: [
       "reconciliation",
       section,
@@ -543,7 +545,7 @@ function ReconciliationList({
       <QueryView query={query}>
         {(page) => (
           <>
-            <div className="min-w-0">
+            <div className="min-w-0" aria-busy={query.isFetching || query.isPlaceholderData}>
               {page.items.length ? (
                 <BusinessTable
                   id={"reconciliation-" + section}
@@ -589,7 +591,7 @@ function ReconciliationList({
               page={pagination.page}
               count={page.items.length}
               hasNext={!!page.page.next_cursor}
-              pending={query.isFetching}
+              pending={query.isFetching || query.isPlaceholderData}
               onPrevious={pagination.previous}
               onNext={() => pagination.next(page.page.next_cursor)}
             />
