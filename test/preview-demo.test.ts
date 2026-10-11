@@ -34,9 +34,22 @@ describe("isolated documentation preview", () => {
       assert.equal(stats.daily.reduce((sum, row) => sum + row.orders_created, 0), stats.orders.created);
       assert.equal(demo.database.integrityCheck().ok, true);
       assert.ok(Number(demo.database.read(db => db.prepare("SELECT count(DISTINCT api_client_id) AS total FROM payment_orders").get()?.total)) >= 6);
-      const names = demo.database.read(connection => connection.prepare("SELECT DISTINCT product_name FROM payment_orders WHERE merchant_order_no LIKE 'MG%'").all());
-      assert.equal(names.length, 8);
-      for (const row of names) assert.match(String(row.product_name), /^演示商品 [A-H] · /u);
+      const scenarioOrderIds = new Set([
+        ...Object.values(demo.scenarios.lifecycle),
+        ...Object.values(demo.scenarios.financial.orders),
+        ...Object.values(demo.scenarios.notifications.orders),
+      ]);
+      const historyOrders = demo.database.read(connection => connection.prepare("SELECT order_id, product_name FROM payment_orders").all())
+        .filter(order => !scenarioOrderIds.has(String(order.order_id)));
+      const names = new Set(historyOrders.map(order => String(order.product_name)));
+      assert.equal(names.size, 8, "Ordinary business history must retain all eight product categories");
+      for (const name of names) assert.doesNotMatch(name, /演示|示例|联调|DEMO-/iu);
+      const payers = demo.database.read(connection => connection.prepare("SELECT DISTINCT other_account FROM ledger_entries WHERE other_account IS NOT NULL").all());
+      assert.ok(payers.length >= 8, "Receipt history must include varied payer identities");
+      for (const payer of payers) {
+        assert.ok(String(payer.other_account).trim().length > 0);
+        assert.doesNotMatch(String(payer.other_account), /演示|示例|付款人\s*\d|DEMO-/iu);
+      }
       assert.equal((await app.request("/api/admin/v1/orders")).status, 401);
       const blockedRequests = [
         ["POST", "/api/v1/orders"],

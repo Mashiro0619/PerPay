@@ -104,6 +104,11 @@ describe("complete local preview scenarios", () => {
       await context.test("website states, lists, and analytics stay consistent across scopes", async () => {
         assert.ok(sites.length >= 6, "Preview must include active, paused, and incomplete website setups");
         assert.equal(ordersById.size, orders.length, "Pagination must not duplicate orders");
+        assert.equal(new Set(orders.map(order => order.merchant_order_no)).size, orders.length, "Preview merchant order numbers must be unique");
+        for (const order of orders) {
+          assert.match(order.merchant_order_no, /^\d{22}$/u, "Merchant order numbers must use numeric business identifiers");
+          assert.doesNotMatch(order.product_name, /演示|示例|联调|DEMO-/iu, "Products must use business names rather than scenario labels");
+        }
         assert.equal(orders[0]?.order_id, preview.featured, "The first order must demonstrate complete payment and notification evidence");
         for (const id of Object.values(preview.scenarios.sites)) assert.ok(siteIds.has(id));
         assert.ok(sites.some(site => !site.configuration.accepting_orders));
@@ -116,6 +121,7 @@ describe("complete local preview scenarios", () => {
         let confirmed = 0;
         let received = 0;
         for (const site of sites) {
+          assert.doesNotMatch(site.configuration.name, /演示|示例|联调|DEMO-/iu, "Websites must use business names rather than scenario labels");
           const base = "/api/admin/v1/sites/" + site.client_id;
           const scoped = await all<AdminOrderSummary>(base + "/orders");
           assert.deepEqual(new Set(scoped.map(order => order.order_id)), new Set(orders.filter(order => order.api_client_id === site.client_id).map(order => order.order_id)));
@@ -307,6 +313,7 @@ describe("complete local preview scenarios", () => {
           const attempts = await data<WebhookAttempt[]>("/api/admin/v1/webhooks/deliveries/" + id + "/attempts");
           const order = ordersById.get(detail.event.order_id);
           assert.ok(order);
+          assert.equal(detail.event.payload.merchant_order_no, order.merchant_order_no);
           assert.equal(detail.target.order_id, order.order_id);
           assert.equal(detail.target.api_client_id, order.api_client_id);
           assert.equal(detail.event.payload.order_id, order.order_id);

@@ -12,6 +12,7 @@ import type { ReconciliationStore } from "../src/reconciliation/store.ts";
 import type { SettingsAuditContext } from "../src/settings/store.ts";
 import type { SiteSnapshot } from "../src/sites/model.ts";
 import type { SiteStore } from "../src/sites/store.ts";
+import { previewLedgerNumber, previewOrderNumber, previewPayer, previewTradeNumber } from "./preview-identities.ts";
 
 export interface NotificationScenarioContext {
   readonly orders: OrderService;
@@ -82,17 +83,17 @@ export function seedNotificationScenarios(context: NotificationScenarioContext):
     } },
   } }, audit, context.getNow());
 
-  function paidOrder(key: string, title: string, explanation: string, notify = true): OrderProjection {
+  function paidOrder(key: string, productName: string, note: string, notify = true): OrderProjection {
     context.beforeScenario?.(key);
     const number = ++sequence;
     const price = ORDER_PRICES_CENTS[number - 1];
     assert.ok(price !== undefined, "Every notification scenario needs an explicit typical product price");
     const order = context.orders.forSite(clientId).create(createOrderRequestSchema.parse({
       idempotency_key: "preview-notification-" + key,
-      merchant_order_no: "DEMO-NOTIFY-" + String(number).padStart(2, "0") + "-" + key.toUpperCase(),
-      product_name: "通知演示 · " + title,
+      merchant_order_no: previewOrderNumber(context.getNow(), number, 30),
+      product_name: productName,
       amount_cents: price,
-      note: explanation + "；仅为本地合成演示，不会进行真实支付或发送通知。",
+      note,
       ...(notify ? { notify_url: origin + "/api/payments/perpay" } : {}),
     })).order;
     scenarioOrders[key] = order.orderId;
@@ -100,15 +101,21 @@ export function seedNotificationScenarios(context: NotificationScenarioContext):
     const now = context.getNow();
     const occurredAt = beijing(now);
     const amount = (order.payableAmountCents / 100).toFixed(2);
-    const id = "DEMO-NOTIFY-CREDIT-" + String(number).padStart(3, "0");
+    const id = previewLedgerNumber(now, number, 30);
+    const tradeNumber = previewTradeNumber(now, number, 30);
+    const payer = previewPayer(number);
     const run = ledger.startIngestRun({ providerAccountKey, start: beijing(now - MINUTE), end: beijing(now + 1_000), pageSize: 1, now });
     const recorded = ledger.recordPage({
       ingestRunId: run.ingestRunId,
       page: { pageNo: 1, pageSize: 1, totalSize: 1, hasMore: false, details: [{
-        raw: { account_log_id: id, amount, direction: "CREDIT", occurred_at: occurredAt, synthetic: true },
+        raw: {
+          account_log_id: id, amount, direction: "CREDIT", occurred_at: occurredAt,
+          alipay_order_no: tradeNumber, merchant_order_no: order.merchantOrderNo,
+          trans_memo: productName, other_account: payer, synthetic: true,
+        },
         accountLogId: id, occurredAt, amount, direction: "CREDIT",
-        alipayOrderNo: id, merchantOrderNo: order.merchantOrderNo,
-        transMemo: "本地通知场景：" + title, otherAccount: "演示付款人 · 通知 " + number,
+        alipayOrderNo: tradeNumber, merchantOrderNo: order.merchantOrderNo,
+        transMemo: productName, otherAccount: payer,
       }] },
       evidence: {
         httpStatus: 200, headers: { "alipay-request-id": id },
@@ -154,7 +161,7 @@ export function seedNotificationScenarios(context: NotificationScenarioContext):
     const body = Buffer.from(JSON.stringify(result.kind === "ack" ? {
       schema: "perpay:webhook-ack:v1", ack: true,
       event_id: claimed.event.eventId, delivery_id: claimed.delivery.deliveryId,
-    } : result.invalidAck ? { success: true, message: "模拟业务方返回了非协议格式" } : { error: "synthetic_receiver_failure" }));
+    } : result.invalidAck ? { success: true, message: "付款状态已更新" } : { error: "synthetic_receiver_failure" }));
     const httpStatus = result.kind === "ack" ? 200 : result.status;
     const ack = assessWebhookAck({
       status: httpStatus, contentType: "application/json; charset=utf-8",
@@ -175,8 +182,8 @@ export function seedNotificationScenarios(context: NotificationScenarioContext):
     return finish(claim(delivery), result);
   }
 
-  function begin(key: string, title: string, explanation: string): WebhookDelivery {
-    return materialize(key, paidOrder(key, title, explanation));
+  function begin(key: string, productName: string, note: string): WebhookDelivery {
+    return materialize(key, paidOrder(key, productName, note));
   }
 
   function replay(key: string, predecessor: WebhookDelivery, reason: string): WebhookDelivery {
@@ -190,62 +197,62 @@ export function seedNotificationScenarios(context: NotificationScenarioContext):
     return replayed.delivery;
   }
 
-  attempt(begin("acknowledged", "首次送达并确认", "首次投递即收到合法 ACK，可查看完整付款依据和通知请求记录"), { kind: "ack" });
+  attempt(begin("acknowledged", "笔记云同步月度会员", "老用户续订一个月，延续原有云同步空间。"), { kind: "ack" });
 
-  let delivery = begin("retrySucceeded", "重试后成功", "先遇到请求超时，再收到 HTTP 503，第三次投递成功确认");
+  let delivery = begin("retrySucceeded", "摄影调色预设包", "摄影工作室购买暖色系调色预设，授权单人使用。");
   delivery = attempt(delivery, { kind: "transport", errorCode: "transport_timeout", outcome: "OUTCOME_UNKNOWN" });
   delivery = attempt(delivery, { kind: "http", status: 503 });
   attempt(delivery, { kind: "ack" });
 
-  delivery = begin("deadLetter", "连续五次失败", "业务接口持续返回 HTTP 503，耗尽五次自动尝试后停止重试");
+  delivery = begin("deadLetter", "个人作品集模板", "个人作品集模板，包含桌面和手机端布局。");
   for (let count = 0; count < MAXIMUM_ATTEMPTS; count++) delivery = attempt(delivery, { kind: "http", status: 503 });
   assert.equal(delivery.status, "DEAD_LETTER");
 
-  delivery = begin("invalidAck", "业务确认格式错误", "接口返回 HTTP 200，但 ACK 格式不符合协议，连续五次失败后停止重试");
+  delivery = begin("invalidAck", "轻量云盘月度会员", "扩容至 100 GB，保留原账号中的文件。");
   for (let count = 0; count < MAXIMUM_ATTEMPTS; count++) delivery = attempt(delivery, { kind: "http", status: 200, invalidAck: true });
   assert.equal(delivery.lastErrorCode, "ack_shape_invalid");
 
-  attempt(begin("httpRejected", "通知地址返回 404", "通知路径配置错误，HTTP 404 属于不可重试错误"), { kind: "http", status: 404, permanent: true });
-  attempt(begin("tlsFailure", "HTTPS 证书验证失败", "接收网站的 TLS 证书验证失败，需要修复证书后人工重投"), { kind: "transport", errorCode: "tls_verification_failed", outcome: "PERMANENT_FAILURE" });
-  attempt(begin("forbiddenTarget", "目标地址不被允许", "模拟通知目标解析到被限制的地址，安全校验拒绝发送"), { kind: "transport", errorCode: "target_address_forbidden", outcome: "PERMANENT_FAILURE" });
+  attempt(begin("httpRejected", "效率工具年度授权", "效率工具个人版授权，绑定当前购买账号。"), { kind: "http", status: 404, permanent: true });
+  attempt(begin("tlsFailure", "设计素材季度会员", "季度会员续费，保留已收藏的设计素材。"), { kind: "transport", errorCode: "tls_verification_failed", outcome: "PERMANENT_FAILURE" });
+  attempt(begin("forbiddenTarget", "网页插画素材合集", "网站改版使用，包含插画源文件与商用授权。"), { kind: "transport", errorCode: "target_address_forbidden", outcome: "PERMANENT_FAILURE" });
 
-  delivery = begin("leaseRecovered", "执行中断后恢复", "投递任务中断，租约到期后记录结果未知，随后重试成功");
+  delivery = begin("leaseRecovered", "项目管理模板包", "项目看板和周计划模板，供个人工作空间使用。");
   const interrupted = claim(delivery, 2_000);
   context.setNow(interrupted.delivery.leaseExpiresAt! + 1);
   assert.equal(webhooks.recoverExpired(context.getNow()), 1);
   delivery = webhooks.delivery(delivery.deliveryId)!.delivery;
   attempt(delivery, { kind: "ack" });
 
-  delivery = begin("manualReplaySucceeded", "人工重投成功", "原投递返回 HTTP 410；修复业务接收端后，由管理员发起第二代通知并确认成功");
+  delivery = begin("manualReplaySucceeded", "团队协作空间月度订阅", "三人协作空间续费，沿用现有团队成员。");
   delivery = attempt(delivery, { kind: "http", status: 410, permanent: true });
   scenarioDeliveries.manualReplayOriginal = delivery.deliveryId;
   advance(1_000);
-  delivery = replay("manualReplaySucceeded", delivery, "本地演示：业务接收端已修复，人工补发付款确认通知。");
+  delivery = replay("manualReplaySucceeded", delivery, "业务接收端的通知路径已修复，补发付款确认通知。");
   attempt(delivery, { kind: "ack" });
 
-  delivery = begin("replayHistory", "多次人工重投历史", "展示三代投递记录、两次失败、密钥轮换和最终确认，历史失败不会覆盖最新结果");
+  delivery = begin("replayHistory", "商业字体授权包", "购买商业字体授权，开票抬头与账户资料一致。");
   delivery = attempt(delivery, { kind: "http", status: 410, permanent: true });
   scenarioDeliveries.replayHistoryOriginal = delivery.deliveryId;
   advance(1_000);
   sites.rotateSecret(clientId, "webhook_secret", sites.get(clientId)!.revision, audit, context.getNow());
-  delivery = replay("replayHistorySecond", delivery, "本地演示：轮换签名密钥后第一次人工补发。");
+  delivery = replay("replayHistorySecond", delivery, "已完成签名密钥轮换，使用新密钥补发付款通知。");
   delivery = attempt(delivery, { kind: "http", status: 200, invalidEncoding: true, permanent: true });
   advance(1_000);
-  delivery = replay("replayHistory", delivery, "本地演示：接收端已修复 ACK 编码，第二次人工补发并确认。");
+  delivery = replay("replayHistory", delivery, "接收端已修复确认响应的压缩编码，重新补发付款通知。");
   attempt(delivery, { kind: "ack" });
 
-  const replayPendingOriginal = attempt(begin("replayPending", "人工补发等待投递", "原通知已成功，管理员为业务数据补偿发起新一代投递，当前等待执行"), { kind: "ack" });
+  const replayPendingOriginal = attempt(begin("replayPending", "云笔记年度会员", "续订一年，沿用原有笔记和共享设置。"), { kind: "ack" });
   scenarioDeliveries.replayPendingOriginal = replayPendingOriginal.deliveryId;
-  paidOrder("disabled", "订单未配置通知", "此订单未填写通知 URL，已有收款依据，但不会产生通知投递", false);
+  paidOrder("disabled", "生活记账模板", "购买年度记账模板，付款后由客服发送下载方式。", false);
 
   // Build every order before the caller creates its latest complete example.
   // Preserve this queue order for finalize; no later materialization is allowed
   // for this site, so the final unmaterialized example keeps its empty history.
-  const retrying = begin("retrying", "超时后等待重试", "业务请求超时，暂未确认接收结果，保留自动重试计划");
-  const dnsRetry = begin("dnsRetry", "域名解析失败待重试", "通知域名解析失败，未建立 HTTP 连接，等待下一次自动尝试");
-  const leased = begin("leased", "通知投递进行中", "已开始一次投递，仍在等待业务端返回 ACK");
-  begin("pending", "等待首次投递", "已生成业务通知，尚未进行第一次尝试");
-  paidOrder("unmaterialized", "已配置但尚无投递记录", "付款已确认且配置了通知，通知尚未出队生成投递记录");
+  const retrying = begin("retrying", "设计资源年度会员", "年度素材会员升级，包含图标和幻灯片模板。");
+  const dnsRetry = begin("dnsRetry", "播客剪辑音效包", "播客后期剪辑使用，包含商用音效授权。");
+  const leased = begin("leased", "剪辑工具个人授权", "剪辑工具个人授权，绑定当前账号。");
+  begin("pending", "团队知识库季度订阅", "团队知识库续费三个月，保留原有空间。");
+  paidOrder("unmaterialized", "设计工具专业版年度订阅", "设计工具年度续费，使用当前专业版账号。");
   assert.ok(context.getNow() <= context.capturedAt - 20 * MINUTE, "Notification history must leave time for the remaining fixtures");
 
   function finalize() {
@@ -267,7 +274,7 @@ export function seedNotificationScenarios(context: NotificationScenarioContext):
 
     const inFlight = claim(leased, 120_000);
     assert.ok(inFlight.delivery.leaseExpiresAt! > context.capturedAt);
-    replay("replayPending", replayPendingOriginal, "本地演示：核对业务数据后补发已确认通知，新一代投递等待执行。");
+    replay("replayPending", replayPendingOriginal, "业务订单尚未同步付款状态，核对后补发已确认的付款通知。");
     assert.ok(context.getNow() - startedAt <= 4_000, "Finalizing notification scenarios should advance less than four seconds");
   }
 

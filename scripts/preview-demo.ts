@@ -26,6 +26,7 @@ import { UpdateCheckUnavailable } from "../src/update/checker.ts";
 import type { SiteSnapshot } from "../src/sites/model.ts";
 import { seedFinancialScenarios } from "./preview-financial-scenarios.ts";
 import { seedNotificationScenarios } from "./preview-notification-scenarios.ts";
+import { previewLedgerNumber, previewOrderNumber, previewPayer, previewTradeNumber } from "./preview-identities.ts";
 
 export const DEMO_QR_TEXT = "PerPay documentation demo - NOT A PAYMENT CODE";
 const DAY = 86_400_000;
@@ -33,14 +34,14 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const HISTORY_DAYS = 90;
 const PRODUCTS = [
-  ["演示商品 A · 月度方案", 1900],
-  ["演示商品 B · 素材包", 2900],
-  ["演示商品 C · 年度方案", 9900],
-  ["演示商品 D · 季度方案", 4900],
-  ["演示商品 E · 支持计划", 3900],
-  ["演示商品 F · 永久授权", 12900],
-  ["演示商品 G · 年度赞助", 19900],
-  ["演示商品 H · 扩展包", 5900],
+  ["云栈笔记专业版 · 月度订阅", 1900],
+  ["简约图标素材包 · 商用授权", 2900],
+  ["云栈笔记专业版 · 年度订阅", 9900],
+  ["云栈笔记专业版 · 季度订阅", 4900],
+  ["星河会员 · 月度订阅", 3900],
+  ["轻账桌面版 · 终身授权", 12900],
+  ["星河会员 · 年度订阅", 19900],
+  ["插画素材扩展包 · 商用授权", 5900],
 ] as const;
 const PRODUCT_MIX = [0, 1, 1, 2, 3, 3, 4, 4, 5, 6, 7, 7];
 const WEEKDAY_VOLUME = [0.84, 1.03, 1.08, 1.01, 1.13, 1.18, 0.92];
@@ -134,13 +135,13 @@ export async function createPreviewDemo(options: { port?: number; now?: number }
       return sites.update(site.clientId, { revision: webhook.site.revision,
         configuration: { ...webhook.site.configuration, notifications_enabled: true } }, audit, now);
     }
-    const demoSites = [createSite("演示商店"), createSite("演示订阅网站")];
-    const financialSite = createSite("演示财务处理", { origin: "https://finance.example.com" });
-    const notificationSite = createSite("演示通知联调", { origin: "https://callbacks.example.com" });
-    const pausedSite = createSite("演示暂停接单", { origin: "https://archive.example.com" });
-    const unconfiguredSite = createSite("演示待接入网站", { credentials: false, acceptingOrders: false, origin: null });
-    const noNotificationSite = createSite("演示通知关闭网站", { notifications: false, origin: null });
-    const limitedSite = createSite("演示待支付限额", { pendingOrderLimit: 2 });
+    const demoSites = [createSite("云栈软件商店"), createSite("星河会员中心")];
+    const financialSite = createSite("青禾生活馆", { origin: "https://finance.example.com" });
+    const notificationSite = createSite("拾光数字商店", { origin: "https://callbacks.example.com" });
+    const pausedSite = createSite("山岚设计素材", { origin: "https://archive.example.com" });
+    const unconfiguredSite = createSite("橙页创意商店", { credentials: false, acceptingOrders: false, origin: null });
+    const noNotificationSite = createSite("松果知识铺", { notifications: false, origin: null });
+    const limitedSite = createSite("白帆数码商城", { pendingOrderLimit: 2 });
     const orders = new OrderService(db, () => settings.instanceSnapshot(), () => liveStarted === null ? now : liveNow(), sites);
     orders.initialize();
     const ledger = new LedgerStore(db);
@@ -155,15 +156,18 @@ export async function createPreviewDemo(options: { port?: number; now?: number }
       const n = ++ledgerSequence;
       const occurredAt = beijing(now);
       const amount = (cents / 100).toFixed(2);
-      const id = "DEMO-LEDGER-" + String(n).padStart(6, "0");
+      const id = previewLedgerNumber(now, n, 10);
+      const tradeNumber = previewTradeNumber(now, n, 10);
+      const payer = previewPayer(n);
       const run = ledger.startIngestRun({ providerAccountKey, start: beijing(now - MINUTE), end: beijing(now + 1000 + n), pageSize: 1, now });
       const result = ledger.recordPage({
         ingestRunId: run.ingestRunId,
         page: { pageNo: 1, pageSize: 1, totalSize: 1, hasMore: false, details: [{
-          raw: { account_log_id: id, amount, direction: "CREDIT", occurred_at: occurredAt },
+          raw: { account_log_id: id, amount, direction: "CREDIT", occurred_at: occurredAt,
+            alipay_order_no: tradeNumber, other_account: payer, trans_memo: product, synthetic: true },
           accountLogId: id, occurredAt, amount, direction: "CREDIT",
-          alipayOrderNo: "DEMO" + beijing(now).slice(0, 10).replaceAll("-", "") + String(n).padStart(10, "0"),
-          merchantOrderNo: null, transMemo: product, otherAccount: "演示付款人 " + String(n % 28 + 1).padStart(2, "0"),
+          alipayOrderNo: tradeNumber,
+          merchantOrderNo: null, transMemo: product, otherAccount: payer,
         }] },
         // Synthetic evidence, not a provider response or a real signature verification.
         evidence: { httpStatus: 200, headers: { "alipay-request-id": id }, body: JSON.stringify({ id, amount, occurredAt, synthetic: true }), traceId: id, signatureVerified: true },
@@ -197,7 +201,7 @@ export async function createPreviewDemo(options: { port?: number; now?: number }
       return true;
     }
     function create(productIndex: number, status: "paid" | "closed" | "expired" | "open" = "paid", notify = true, deliveryOutcome: CompleteWebhookAttemptInput["outcome"] = "ACKNOWLEDGED", options: {
-      site?: SiteSnapshot; productName?: string; amountCents?: number; merchantOrderNo?: string; note?: string; returnUrl?: boolean;
+      site?: SiteSnapshot; productName?: string; amountCents?: number; note?: string; returnUrl?: boolean;
     } = {}) {
       const [defaultProduct, defaultAmount] = PRODUCTS[productIndex % PRODUCTS.length]!;
       const product = options.productName ?? defaultProduct;
@@ -206,8 +210,8 @@ export async function createPreviewDemo(options: { port?: number; now?: number }
       const siteOrders = orders.forSite(site.clientId);
       const order = siteOrders.create(createOrderRequestSchema.parse({
         idempotency_key: "readme-" + ++sequence,
-        merchant_order_no: options.merchantOrderNo ?? "MG" + beijing(now).slice(0, 10).replaceAll("-", "") + "-" + String(sequence).padStart(4, "0"),
-        product_name: product, amount_cents: amount, note: options.note ?? "示例商户 · 文档演示订单（非真实交易）",
+        merchant_order_no: previewOrderNumber(now, sequence, 10),
+        product_name: product, amount_cents: amount, note: options.note ?? "数字商品，授权及下载入口通过订单页提供。",
         ...(notify ? { notify_url: site.configuration.notification_origin + "/api/payments/perpay" } : {}),
         ...(options.returnUrl ? { return_url: site.configuration.return_origin + "/orders/complete" } : {}),
       })).order;
@@ -291,93 +295,82 @@ export async function createPreviewDemo(options: { port?: number; now?: number }
 
     advanceTo(midnight - 9 * DAY + 14 * HOUR);
     lifecycle.pausedSiteHistory = create(4, "paid", true, "ACKNOWLEDGED", {
-      site: pausedSite, productName: "暂停接单网站 · 历史付款仍可查", merchantOrderNo: "DEMO-LIFE-PAUSED-SITE",
+      site: pausedSite, productName: "山岚字体库 · 月度授权",
     }).orderId;
     sites.update(pausedSite.clientId, { revision: pausedSite.revision,
       configuration: { ...pausedSite.configuration, accepting_orders: false } }, audit, now);
     advanceTo(midnight - 8 * DAY + 14 * HOUR);
     lifecycle.notificationsDisabled = create(5, "paid", false, "ACKNOWLEDGED", {
-      site: noNotificationSite, productName: "网站未开启通知 · 已确认收款", merchantOrderNo: "DEMO-LIFE-NOTIFY-DISABLED",
+      site: noNotificationSite, productName: "知识管理手册 · 电子书合辑",
     }).orderId;
     advanceTo(midnight - 7 * DAY + 14 * HOUR);
-    lifecycle.noNotificationRequested = create(2, "paid", false, "ACKNOWLEDGED", {
-      productName: "订单未配置回调 · 业务主动查单", merchantOrderNo: "DEMO-LIFE-NO-CALLBACK",
-    }).orderId;
+    lifecycle.noNotificationRequested = create(2, "paid", false, "ACKNOWLEDGED").orderId;
     advanceTo(midnight - 5 * DAY + 14 * HOUR);
     lifecycle.largeAmount = create(6, "paid", true, "ACKNOWLEDGED", {
-      productName: "大额订单 · 团队年度方案", amountCents: 99_900, merchantOrderNo: "DEMO-LIFE-LARGE",
+      productName: "云栈协作空间 · 团队年度订阅（10 人）", amountCents: 99_900,
     }).orderId;
     advanceTo(midnight - 4 * DAY + 14 * HOUR);
     lifecycle.smallAmount = create(0, "paid", true, "ACKNOWLEDGED", {
-      productName: "小额订单 · 一分钱体验", amountCents: 1, merchantOrderNo: "DEMO-LIFE-SMALL",
+      productName: "云栈笔记 · 新用户试用", amountCents: 1,
     }).orderId;
     advanceTo(midnight - 3 * DAY + 14 * HOUR);
-    const failed = create(4, "paid", true, "PERMANENT_FAILURE", {
-      productName: "收款成功 · 通知停止重试", merchantOrderNo: "DEMO-LIFE-CALLBACK-DEAD",
-    });
+    const failed = create(4, "paid", true, "PERMANENT_FAILURE");
     lifecycle.notificationFailed = failed.orderId;
     // Keep a small set of recent terminal checkouts inside the normal public
     // observation window; older cases remain available in administrator history.
     advanceTo(capturedAt - 98 * MINUTE);
-    lifecycle.expired = create(2, "expired", true, "ACKNOWLEDGED", {
-      productName: "过期未付款 · 收银台已失效", merchantOrderNo: "DEMO-LIFE-EXPIRED",
-    }).orderId;
+    lifecycle.expired = create(2, "expired", true, "ACKNOWLEDGED").orderId;
     setNow(capturedAt - 28 * MINUTE);
-    lifecycle.expiringSoon = create(3, "open", true, "ACKNOWLEDGED", {
-      productName: "即将超时 · 付款倒计时", merchantOrderNo: "DEMO-LIFE-EXPIRING",
-    }).orderId;
+    lifecycle.expiringSoon = create(3, "open", true, "ACKNOWLEDGED").orderId;
     setNow(capturedAt - 20 * MINUTE);
-    lifecycle.closed = create(1, "closed", true, "ACKNOWLEDGED", {
-      productName: "用户取消 · 已关闭未付款", merchantOrderNo: "DEMO-LIFE-CLOSED",
-    }).orderId;
+    lifecycle.closed = create(1, "closed", true, "ACKNOWLEDGED").orderId;
     setNow(capturedAt - 16 * MINUTE);
-    const disputed = create(1, "paid", true, "ACKNOWLEDGED", {
-      productName: "近期争议 · 收款关联已撤销", merchantOrderNo: "DEMO-LIFE-DISPUTED",
-    });
+    const disputed = create(1, "paid", true, "ACKNOWLEDGED");
     const disputedMatch = reconciliation.paymentMatchDetailsForOrder(disputed.orderId)
       .find(item => item.paymentMatch.status === "SETTLED")?.paymentMatch;
     assert.ok(disputedMatch);
     now += 1000;
     reconciliation.reverseSettlement({ financialOperationId: randomUUID(), expectedClientId: disputed.apiClientId,
       paymentMatchId: disputedMatch.paymentMatchId, actorId: audit.actorId,
-      reason: "近期演示：复核发现付款归属有争议，撤销收款关联并保留收银台状态。", now });
+      reason: "付款凭证与订单归属不一致，先撤销原收款关联，待核对付款人后重新确认。", now });
     while (deliver(disputed.apiClientId)) now += 250;
     lifecycle.disputed = disputed.orderId;
     setNow(capturedAt - 10 * MINUTE);
-    const retry = create(7, "paid", true, "RETRYABLE_FAILURE", {
-      productName: "收款成功 · 通知等待重试", merchantOrderNo: "DEMO-LIFE-CALLBACK-RETRY",
-    });
+    const retry = create(7, "paid", true, "RETRYABLE_FAILURE");
     lifecycle.notificationRetry = retry.orderId;
     setNow(capturedAt - 8 * MINUTE);
     const checkout = create(0, "open", true, "ACKNOWLEDGED", {
-      productName: "待支付 · 标准收银台", merchantOrderNo: "DEMO-LIFE-OPEN", returnUrl: true,
+      returnUrl: true,
     });
     lifecycle.open = checkout.orderId;
     setNow(capturedAt - 7 * MINUTE);
     lifecycle.limitedFirst = create(1, "open", true, "ACKNOWLEDGED", {
-      site: limitedSite, productName: "并发待支付限额 · 第一笔", merchantOrderNo: "DEMO-LIFE-LIMIT-1",
+      site: limitedSite, productName: "便携数码收纳包", note: "深灰色；请在订单页确认收件信息。",
     }).orderId;
     setNow(capturedAt - 6 * MINUTE);
     lifecycle.limitedSecond = create(2, "open", true, "ACKNOWLEDGED", {
-      site: limitedSite, productName: "并发待支付限额 · 第二笔", merchantOrderNo: "DEMO-LIFE-LIMIT-2",
+      site: limitedSite, productName: "铝合金笔记本支架", note: "银色；与其他商品一同发出。",
     }).orderId;
     setNow(capturedAt - 5 * MINUTE);
     lifecycle.longDescription = create(3, "open", true, "ACKNOWLEDGED", {
-      productName: "长文本示例 · 团队协作年度订阅（含扩展席位、数据迁移、跨时区协作与专属支持） / Team Annual Plan",
-      merchantOrderNo: "DEMO-LIFE-LONG-TEXT",
-      note: "模拟订单备注：" + "用于检查详情、表格、搜索结果及移动端的长中文与 English 混排。".repeat(5), returnUrl: true,
+      productName: "云栈协作空间 · 团队效率扩展包（含日历同步、项目模板、跨时区协作与自动提醒） / Team Productivity Pack",
+      note: "交付范围：团队日历同步、项目模板与自动提醒扩展。授权适用于当前工作区的现有成员，新成员可由管理员分配访问权限。"
+        + "资料迁移按创建时间保留原文件夹结构，重复文件由管理员确认后再合并。若购买前已有有效订阅，新增权益从当前订阅结束后开始计算。"
+        + "工作区名称与账单联系人可以在设置页更新，变更不会影响已创建的项目或成员权限。导入前请保留原始资料副本，大型附件可分批上传。"
+        + "发票抬头与邮箱可在订单页补充，请保留订单号用于售后查询。Productivity Pack includes calendar sync, project templates and team reminders.",
+      returnUrl: true,
     }).orderId;
     setNow(capturedAt - 2 * MINUTE);
     const featured = create(5, "paid", true, "ACKNOWLEDGED", {
-      site: demoSites[0]!, productName: "完整收款示例 · 已到账且通知成功", merchantOrderNo: "DEMO-LIFE-FULL-EVIDENCE",
-      note: "模拟完整业务链：订单创建 → 支付流水入账 → 自动关联收款 → 业务通知确认。可查看付款人、账本凭据、通知请求与响应证据。", returnUrl: true,
+      site: demoSites[0]!,
+      note: "授权可用于两台个人设备；付款后请在订单页下载 Windows 或 macOS 安装包。", returnUrl: true,
     });
     lifecycle.fullEvidence = featured.orderId;
     setNow(capturedAt - 5000);
     notifications.finalize();
     setNow(capturedAt);
     assert.equal(historyPosition, history.length, "All scheduled history must be seeded");
-    // Exercise the real expiry path, including the explicitly labelled expired order.
+    // Exercise the real expiry path, including the lifecycle.expired order.
     for (const orderId of Object.values(lifecycle)) orders.adminGet(orderId);
     const stats = systemAnalytics(db, 30, now);
     assert.ok(stats.orders.created > 400);
