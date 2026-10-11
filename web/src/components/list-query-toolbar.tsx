@@ -1,9 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "cn";
-import { ArrowDown, ArrowUp, ChevronDown, Search, X } from "lucide-react";
+import { ChevronDown, Search, X } from "lucide-react";
 import { normalizeKeyword, type ListQueryControl } from "@/lib/list-query";
 import { useCompactList } from "@/hooks/use-compact-list";
-import { ListColumnsSlot } from "@/components/list-columns";
+import { ListColumnsSlot, useListSummary } from "@/components/list-columns";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
@@ -15,14 +15,6 @@ import {
   InputGroupAddon,
   InputGroupButton,
 } from "@/components/ui/input-group";
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -79,7 +71,9 @@ export function ListQueryToolbar({
   desktopFilters?: ReactNode;
   desktopActions?: ReactNode;
 }) {
-  const compact = useCompactList();
+  const compactViewport = useCompactList();
+  const summary = useListSummary();
+  const compact = compactViewport || summary;
   const [draft, setDraft] = useState(control.query.q);
   const [lookupDraft, setLookupDraft] = useState("");
   const [mode, setMode] = useState("");
@@ -245,65 +239,16 @@ export function ListQueryToolbar({
                 {desktopFilters}
               </div>
             )}
-            <div
-              className="flex shrink-0 items-center gap-2"
-              data-list-desktop-sort
-            >
-              <Select
-                items={sorts}
-                value={control.query.sortBy}
-                disabled={disabled}
-                onValueChange={(value) => {
-                  if (value) control.setSort(value, control.query.sortOrder);
-                }}
-              >
-                <SelectTrigger aria-label="排序字段">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {sorts.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+            {control.query.q && (
               <Button
                 type="button"
-                variant="outline"
+                variant="ghost"
                 disabled={disabled}
-                aria-label={
-                  control.query.sortOrder === "asc"
-                    ? "当前升序，切换为降序"
-                    : "当前降序，切换为升序"
-                }
-                onClick={() =>
-                  control.setSort(
-                    control.query.sortBy,
-                    control.query.sortOrder === "asc" ? "desc" : "asc",
-                  )
-                }
+                onClick={() => control.setKeyword("")}
               >
-                {control.query.sortOrder === "asc" ? (
-                  <ArrowUp data-icon="inline-start" />
-                ) : (
-                  <ArrowDown data-icon="inline-start" />
-                )}
-                {control.query.sortOrder === "asc" ? "升序" : "降序"}
+                清除搜索
               </Button>
-              {control.query.q && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  disabled={disabled}
-                  onClick={() => control.setKeyword("")}
-                >
-                  清除搜索
-                </Button>
-              )}
-            </div>
+            )}
             {desktopActions && (
               <div
                 className="ml-auto flex shrink-0 items-center gap-2"

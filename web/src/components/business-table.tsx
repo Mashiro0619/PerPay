@@ -309,7 +309,7 @@ function BusinessTableView<T extends RowData>({
       data-density={density}
       data-embedded={embedded}
     >
-      {columnMenu && <ListColumnsMenu>{columnMenu}</ListColumnsMenu>}
+      {columnMenu && <ListColumnsMenu summary={isSummary}>{columnMenu}</ListColumnsMenu>}
       <div
         className="business-table-surface min-w-0 overflow-hidden"
         data-density={density}

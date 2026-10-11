@@ -93,8 +93,10 @@ describe("mobile list query hierarchy", () => {
       ).not.toBeInTheDocument();
       media.resize(1024);
       expect(
-        screen.getByLabelText("排序字段", { exact: true }),
-      ).toBeInTheDocument();
+        screen.queryByLabelText("排序字段", { exact: true }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "筛选与排序" })).not.toBeInTheDocument();
+      expect(screen.getByRole("searchbox")).toBeVisible();
     },
   );
   it("keeps only one search form and hides sort/filter controls until requested", () => {
@@ -245,13 +247,15 @@ describe("mobile list query hierarchy", () => {
     );
     expect(screen.getByRole("searchbox")).toHaveValue("未提交内容");
     expect(
-      screen.getByLabelText("排序字段", { exact: true }),
-    ).toBeInTheDocument();
+      screen.queryByLabelText("排序字段", { exact: true }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "筛选与排序" })).not.toBeInTheDocument();
     media.resize(390);
     expect(screen.getByRole("searchbox")).toHaveValue("未提交内容");
     expect(
       screen.queryByLabelText("排序字段", { exact: true }),
     ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "筛选与排序" })).toBeVisible();
   });
 
   it("keeps protected operations from changing queries while disabled", () => {

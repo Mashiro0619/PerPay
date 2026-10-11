@@ -132,7 +132,7 @@ describe("desktop business list composition", () => {
   });
 
   it.each(lists)(
-    "keeps search, filters, sorting and the unique column menu grouped in the toolbar on $path",
+    "keeps search, filters and the unique column menu grouped without duplicate desktop sorting on $path",
     async ({ path, element, data, centeredColumns }) => {
       pageResponse(data);
       const view = mount(path, element);
@@ -141,22 +141,20 @@ describe("desktop business list composition", () => {
       expect(
         screen.queryByRole("button", { name: "筛选与排序" }),
       ).not.toBeInTheDocument();
+      expect(screen.queryByRole("combobox", { name: "排序字段" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /当前.*序，切换/ })).not.toBeInTheDocument();
       const row = view.container.querySelector("[data-list-toolbar-row]")!;
       expect(row.querySelector("form")).toBe(screen.getByRole("search"));
       const filters = row.querySelector("[data-list-desktop-filters]")!;
-      const sort = row.querySelector("[data-list-desktop-sort]")!;
+      expect(row.querySelector("[data-list-desktop-sort]")).toBeNull();
       const actions = row.querySelector("[data-list-desktop-actions]")!;
       expect(filters.parentElement).toBe(row);
-      expect(sort.parentElement).toBe(row);
       expect(actions.parentElement).toBe(row);
       expect(
-        filters.compareDocumentPosition(sort) &
+        filters.compareDocumentPosition(actions) &
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
-      expect(
-        sort.compareDocumentPosition(actions) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy();
+      expect(within(table).getAllByRole("button").length).toBeGreaterThan(0);
       const columnMenu = screen.getByRole("button", { name: "显示列" });
       expect(columnMenu.closest("th")).toBeNull();
       expect(columnMenu.closest("[data-list-query-toolbar]")).toBe(
@@ -196,6 +194,11 @@ describe("desktop business list composition", () => {
         within(summary).queryByText(hiddenColumn),
       ).not.toBeInTheDocument();
       const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: /^筛选与排序/ }));
+      const sheet = await screen.findByRole("dialog", { name: "筛选与排序" });
+      expect(within(sheet).getByRole("combobox", { name: "排序字段" })).toBeVisible();
+      await user.click(within(sheet).getByRole("button", { name: "取消" }));
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "筛选与排序" })).not.toBeInTheDocument());
       await user.click(screen.getByRole("button", { name: "显示列" }));
       await user.click(
         await screen.findByRole("menuitemcheckbox", { name: hiddenColumn }),
@@ -208,6 +211,8 @@ describe("desktop business list composition", () => {
       act(() => window.dispatchEvent(new Event("resize")));
       const table = screen.getByRole("table");
       expect(table).toBeVisible();
+      expect(screen.queryByRole("button", { name: /^筛选与排序/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("combobox", { name: "排序字段" })).not.toBeInTheDocument();
       expectColumnAlignment(table, centeredColumns);
       expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
       expect(screen.getByRole("columnheader", { name: hiddenColumn })).toBeVisible();
@@ -216,9 +221,61 @@ describe("desktop business list composition", () => {
       expect(
         within(screen.getByRole("listitem")).getByText(hiddenColumn),
       ).toBeVisible();
+      expect(screen.getByRole("button", { name: /^筛选与排序/ })).toBeVisible();
       expect(document.querySelectorAll("[data-business-row]")).toHaveLength(1);
     },
   );
+
+  it("keeps the narrow-container sort sheet through a pending search and an empty result on desktop", async () => {
+    const original = HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute("data-business-table")
+        ? DOMRect.fromRect({ width: 400, height: 200 })
+        : original.call(this);
+    });
+    let finish!: (response: Response) => void;
+    const pending = new Promise<Response>((resolve) => { finish = resolve; });
+    const requests: URL[] = [];
+    vi.stubGlobal("fetch", vi.fn((request: Request) => {
+      const url = new URL(request.url);
+      requests.push(url);
+      return url.searchParams.has("q")
+        ? pending
+        : Promise.resolve(json({ data: [order], page: { next_cursor: null } }));
+    }));
+    const view = mount("/orders", <Orders />);
+    const summary = await screen.findByRole("listitem");
+    const trigger = await screen.findByRole("button", { name: "筛选与排序" });
+    const expectSheetEntry = () => {
+      expect(screen.getByRole("button", { name: "筛选与排序" })).toBe(trigger);
+      expect(trigger).toBeVisible();
+      expect(screen.queryByRole("combobox", { name: "排序字段" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /当前.*序，切换/ })).not.toBeInTheDocument();
+      expect(view.container.querySelector("[data-list-desktop-sort]")).toBeNull();
+    };
+    const user = userEvent.setup();
+    try {
+      expect(summary).toBeVisible();
+      expectSheetEntry();
+      await user.type(screen.getByRole("searchbox", { name: "订单关键词搜索" }), "无匹配订单{Enter}");
+      await waitFor(() => expect(requests.some((url) => url.searchParams.get("q") === "无匹配订单")).toBe(true));
+      expect(summary).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "没有符合条件的订单" })).not.toBeInTheDocument();
+      expectSheetEntry();
+
+      await act(async () => { finish(json({ data: [], page: { next_cursor: null } })); });
+      expect(await screen.findByRole("heading", { name: "没有符合条件的订单" })).toBeVisible();
+      expectSheetEntry();
+      await user.click(trigger);
+      const sheet = await screen.findByRole("dialog", { name: "筛选与排序" });
+      await user.click(within(sheet).getByRole("combobox", { name: "排序字段" }));
+      await user.click(await screen.findByRole("option", { name: "应付金额" }));
+      expect(within(sheet).getByRole("combobox", { name: "排序字段" })).toHaveTextContent("应付金额");
+      await user.click(within(sheet).getByRole("button", { name: "取消" }));
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "筛选与排序" })).not.toBeInTheDocument());
+      expectSheetEntry();
+    } finally { finish(json({ data: [], page: { next_cursor: null } })); }
+  });
 
   it.each([
     {

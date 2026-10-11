@@ -341,6 +341,7 @@ function ReconciliationList({
     {
       id: "identity",
       label: "记录",
+      sortBy: section === "matches" ? "event_sequence" : undefined,
       hideable: false,
       layout: "identity",
       summaryDefault: true,

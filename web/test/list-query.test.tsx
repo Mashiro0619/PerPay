@@ -2,8 +2,8 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router";
-import { describe, expect, it, vi } from "vitest";
-import { queryClient } from "../src/api/client";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { queryClient, type AdminWorkItem, type LedgerConflict } from "../src/api/client";
 import { Link, useDetailBack } from "../src/navigation";
 import { TestPaymentProvider } from "../src/components/test-payment-provider";
 import { BusinessTable } from "../src/components/business-table";
@@ -11,7 +11,9 @@ import Orders from "../src/pages/Orders";
 import Notifications from "../src/pages/Notifications";
 import Reconciliation from "../src/pages/Reconciliation";
 import WorkItems from "../src/pages/WorkItems";
-import { json, order } from "./fixtures";
+import { delivery, financialException, paymentMatch } from "./detail-fixtures";
+import { json, ledgerId, order } from "./fixtures";
+import { mobileMedia } from "./mobile-media";
 function Location() {
   const l = useLocation();
   return <output aria-label="查询地址">{l.pathname + l.search}</output>;
@@ -39,6 +41,43 @@ function mount(path: string, element: React.ReactNode) {
     </QueryClientProvider>,
   );
 }
+const conflict: LedgerConflict = {
+  reminder_ignored: false,
+  conflict_id: ledgerId,
+  provider_account_key: "primary",
+  conflict_type: "DUPLICATE_EXTERNAL_ID",
+  raw_page_id: null,
+  raw_event_id: null,
+  existing_ledger_entry_id: ledgerId,
+  external_event_id: "ledger-sort-example",
+  existing_semantic_fingerprint: "a".repeat(64),
+  incoming_semantic_fingerprint: "b".repeat(64),
+  details: {},
+  status: "OPEN",
+  resolution: null,
+  resolution_action: null,
+  resolution_operation_id: null,
+  resolution_fingerprint: null,
+  conflict_fingerprint: "c".repeat(64),
+  created_at: order.created_at,
+  resolved_at: null,
+};
+const reminder: AdminWorkItem = {
+  type: "FINANCIAL_EXCEPTION",
+  status: "OPEN",
+  exception_type: "UNMATCHED_CREDIT",
+  candidate_id: null,
+  resource_id: ledgerId,
+  provider_account_key: "primary",
+  order_id: null,
+  ledger_entry_id: null,
+  created_at: order.created_at,
+  actionable_at: order.created_at,
+  ignored_at: null,
+  ignored_by: null,
+  ended: false,
+  detail_url: "/api/admin/v1/reconciliation/exceptions/" + ledgerId,
+};
 const cases = [
   {
     path: "/orders",
@@ -47,6 +86,7 @@ const cases = [
     endpoint: "/orders",
     sort: "应付金额",
     field: "payable_amount_cents",
+    data: [order],
   },
   {
     path: "/notifications",
@@ -55,6 +95,7 @@ const cases = [
     endpoint: "/webhooks/deliveries",
     sort: "尝试次数",
     field: "attempt_count",
+    data: [{ ...delivery.delivery, event: delivery.event, target: delivery.target }],
   },
   {
     path: "/reconciliation",
@@ -63,6 +104,16 @@ const cases = [
     endpoint: "/reconciliation/matches",
     sort: "流水金额",
     field: "amount_cents",
+    data: [paymentMatch],
+  },
+  {
+    path: "/reconciliation",
+    element: <Reconciliation />,
+    label: "对账关键词搜索",
+    endpoint: "/reconciliation/matches",
+    sort: "记录",
+    field: "event_sequence",
+    data: [paymentMatch],
   },
   {
     path: "/reconciliation?tab=conflicts",
@@ -71,6 +122,7 @@ const cases = [
     endpoint: "/ledger/conflicts",
     sort: "外部流水号",
     field: "external_event_id",
+    data: [conflict],
   },
   {
     path: "/reconciliation?tab=exceptions",
@@ -79,6 +131,7 @@ const cases = [
     endpoint: "/reconciliation/exceptions",
     sort: "发现时间",
     field: "created_at",
+    data: [financialException],
   },
   {
     path: "/work-items",
@@ -87,14 +140,20 @@ const cases = [
     endpoint: "/work-items",
     sort: "创建时间",
     field: "created_at",
+    data: [reminder],
   },
 ];
 describe("server-driven business queries", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mobileMedia(1600);
+  });
+
   it.each(cases)(
-    "submits $endpoint keywords only on Enter and resets cursors on sorting",
-    async ({ path, element, label, endpoint, sort, field }) => {
+    "submits $endpoint keywords only on Enter and resets cursors from the $sort header",
+    async ({ path, element, label, endpoint, sort, field, data }) => {
       const fetch = vi.fn(async () =>
-        json({ data: [], page: { next_cursor: null } }),
+        json({ data, page: { next_cursor: "next-page" } }),
       );
       vi.stubGlobal("fetch", fetch);
       mount(
@@ -120,18 +179,43 @@ describe("server-driven business queries", () => {
       expect(screen.getByLabelText("查询地址")).toHaveTextContent(
         "source=overview",
       );
-      await user.click(screen.getByRole("combobox", { name: "排序字段" }));
-      await user.click(
-        await screen.findByRole("option", { name: sort }),
-      );
-      await user.click(screen.getByRole("button", { name: /当前.*序，切换/ }));
+      // Search already cleared the original cursor. Visit another page so the
+      // following header click must independently reset pagination.
+      await user.click(await screen.findByRole("button", { name: "下一页" }));
       await waitFor(() => {
         const request = (fetch.mock.calls.at(-1) as unknown as [Request])[0];
-        expect(new URL(request.url).searchParams.get("sort_by")).toBe(field);
-        expect(new URL(request.url).searchParams.get("q")).toBe("中文%_");
+        expect(new URL(request.url).searchParams.get("cursor")).toBe("next-page");
+      });
+      expect(screen.getByLabelText("查询地址")).toHaveTextContent("page=2");
+      const table = await screen.findByRole("table");
+      const header = within(table).getByRole("button", { name: sort });
+      await user.click(header);
+      await waitFor(() => {
+        const request = (fetch.mock.calls.at(-1) as unknown as [Request])[0];
+        const query = new URL(request.url).searchParams;
+        expect(query.get("sort_by")).toBe(field);
+        expect(query.get("q")).toBe("中文%_");
+        expect(query.has("cursor")).toBe(false);
       });
       expect(screen.getByLabelText("查询地址")).not.toHaveTextContent("cursor");
       expect(screen.getByLabelText("查询地址")).not.toHaveTextContent("page=");
+      const firstRequest = (fetch.mock.calls.at(-1) as unknown as [Request])[0];
+      const firstDirection = new URL(firstRequest.url).searchParams.get("sort_order");
+      expect(["asc", "desc"]).toContain(firstDirection);
+      expect(header.closest("th")).toHaveAttribute("aria-sort", firstDirection === "asc" ? "ascending" : "descending");
+      await user.click(header);
+      await waitFor(() => {
+        const query = new URLSearchParams(screen.getByLabelText("查询地址").textContent!.split("?")[1]);
+        expect(query.get("sort_order")).toBe(firstDirection === "asc" ? "desc" : "asc");
+      });
+      expect(header.closest("th")).toHaveAttribute("aria-sort", firstDirection === "asc" ? "descending" : "ascending");
+      expect(screen.getByLabelText("查询地址")).toHaveTextContent("source=overview");
+      await user.click(screen.getByRole("button", { name: "清除搜索" }));
+      await waitFor(() => expect(screen.getByRole("searchbox", { name: label })).toHaveValue(""));
+      const cleared = new URLSearchParams(screen.getByLabelText("查询地址").textContent!.split("?")[1]);
+      expect(cleared.has("q")).toBe(false);
+      expect(cleared.get("sort_by")).toBe(field);
+      expect(cleared.get("source")).toBe("overview");
     },
   );
   it("does not apply TanStack client sorting or hide the required identifier", async () => {
