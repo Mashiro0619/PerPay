@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { ArrowRight, Info, Settings2 } from "lucide-react";
+import { ArrowRight, Bell, BellOff, CircleCheck, CirclePause, Info, Settings2 } from "lucide-react";
 import { useSearchParams } from "react-router";
 import type { ListSiteOverviewResponse } from "@/api/client";
 import { useSiteOverview } from "@/hooks/use-site-overview";
@@ -37,6 +37,8 @@ function SiteManagementCard({ site, label, range, maximum }: {
   const amount = money(site.confirmed_amount_cents);
   const sitePath = "/sites/" + encodeURIComponent(site.client_id);
   const overviewPath = sitePath + "?range=" + range;
+  const OrdersIcon = site.accepting_orders ? CircleCheck : CirclePause;
+  const NotificationsIcon = site.notifications_enabled ? Bell : BellOff;
   return (
     <article aria-labelledby={headingId} className="site-management-card">
       <Card className="site-management-card-surface">
@@ -46,10 +48,14 @@ function SiteManagementCard({ site, label, range, maximum }: {
           </CardTitle>
           {suffix && <CardDescription className="max-w-full break-all">{suffix}</CardDescription>}
           <div className="flex flex-wrap gap-2">
-            <Badge variant={site.accepting_orders ? "secondary" : "outline"}>
+            <Badge variant={site.accepting_orders ? "success" : "warning"}>
+              <OrdersIcon data-icon="inline-start" aria-hidden="true" />
               {site.accepting_orders ? "接单中" : "暂停接单"}
             </Badge>
-            <Badge variant="outline">{site.notifications_enabled ? "通知开启" : "通知关闭"}</Badge>
+            <Badge variant={site.notifications_enabled ? "success" : "secondary"}>
+              <NotificationsIcon data-icon="inline-start" aria-hidden="true" />
+              {site.notifications_enabled ? "通知开启" : "通知关闭"}
+            </Badge>
           </div>
         </CardHeader>
         <CardContent>
