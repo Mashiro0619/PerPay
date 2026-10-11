@@ -185,7 +185,7 @@ export function OrderFacts({
           {order.merchant_order_no} · <ListDateTime value={order.created_at} inline />
         </ItemDescription>
       </ItemContent>
-      <ItemActions className="flex-col items-end self-start">
+      <ItemActions className="flex-col items-end">
         <div className="flex items-baseline gap-2"><span className="record-list-meta">应付</span><ListMoney value={order.payable_amount_cents} label="应付金额" /></div>
         <div className="flex items-baseline gap-2"><span className="record-list-meta">实收</span><ListMoney value={order.received_amount_cents} label="实收金额" secondary /></div>
         <StatusBadge value={payment} />

@@ -204,10 +204,11 @@ function DeliveryPage({
     {
       id: "status",
       label: "送达结果",
+      align: "center",
       layout: "status",
       summaryDefault: true,
       cell: (delivery, context) => (
-        <div className="flex flex-col items-start gap-1.5">
+        <div className="business-cell-stack flex flex-col items-start gap-1.5">
           <StatusBadge value={delivery.status} />
           {delivery.last_error_code && (
             <span className="text-xs text-muted-foreground">
@@ -226,7 +227,7 @@ function DeliveryPage({
       id: "attempt_count",
       sortBy: "attempt_count",
       label: "尝试次数",
-      align: "right",
+      align: "center",
       layout: "number",
       summaryDefault: false,
       responsive: { minWidthRem: 40, basis: "container" },
@@ -236,6 +237,7 @@ function DeliveryPage({
       id: "created_at",
       sortBy: "created_at",
       label: "创建时间",
+      align: "center",
       layout: "datetime",
       summaryDefault: true,
       responsive: { minWidthRem: 56, basis: "container" },
@@ -245,6 +247,7 @@ function DeliveryPage({
       id: "next_attempt_at",
       sortBy: "next_attempt_at",
       label: "下次尝试",
+      align: "center",
       layout: "datetime",
       summaryDefault: false,
       responsive: { minWidthRem: 56, basis: "container" },

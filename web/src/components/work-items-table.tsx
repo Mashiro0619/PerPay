@@ -100,6 +100,7 @@ export function WorkItemsTable({
       id: "actionable_at",
       sortBy: "actionable_at",
       label: "提醒时间",
+      align: "center",
       layout: "datetime",
       summaryDefault: true,
       responsive: {
@@ -112,6 +113,7 @@ export function WorkItemsTable({
       id: "created_at",
       sortBy: "created_at",
       label: "创建时间",
+      align: "center",
       layout: "datetime",
       summaryDefault: false,
       responsive: {
@@ -126,6 +128,7 @@ export function WorkItemsTable({
             id: "ignored_at",
             sortBy: "ignored_at",
             label: "忽略时间",
+            align: "center" as const,
             layout: "datetime" as const,
             summaryDefault: false,
             responsive: {
@@ -140,11 +143,11 @@ export function WorkItemsTable({
       id: "actions",
       label: actions ? "提醒状态" : "分类",
       hideable: false,
-      align: "right",
+      align: "center",
       layout: "actions",
       summaryDefault: true,
       cell: (item) => (
-        <div className="flex flex-col items-end gap-2">
+        <div className="business-cell-stack flex flex-col items-end gap-2">
           {item.ignored_at ? (
             <Badge variant="secondary">
               {item.ended ? "已结束" : "已忽略"}

@@ -241,7 +241,7 @@ export function ManualCandidatePicker({
                         </ItemDescription>
                       )}
                     </ItemContent>
-                    <ItemActions className="flex-col items-end self-start">
+                    <ItemActions className="flex-col items-end">
                       <ListMoney value={choice.amount} />
                       <Button
                         type="button"

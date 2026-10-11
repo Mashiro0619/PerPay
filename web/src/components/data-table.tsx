@@ -24,8 +24,8 @@ const checkoutNames = {
 } as const;
 function OrderStatus({ order }: { order: AdminOrderSummary }) {
   return (
-    <div className="flex flex-col items-start gap-1.5">
-      <div className="flex flex-wrap gap-1">
+    <div className="business-cell-stack flex flex-col items-start gap-1.5">
+      <div className="business-cell-badges flex flex-wrap gap-1">
         <StatusBadge value={order.payment.status} />
         {order.refund_mark.marked && <StatusBadge value="ADMIN_REFUND_MARK" />}
       </div>
@@ -104,11 +104,11 @@ export function DataTable({
       id: "payable_amount_cents",
       sortBy: "payable_amount_cents",
       label: "应付金额",
-      align: "right",
+      align: "center",
       layout: "amount",
       summaryDefault: true,
       cell: (order, context) => (
-        <div className="flex flex-col items-end gap-1">
+        <div className="business-cell-stack flex flex-col items-end gap-1">
           <ListMoney value={order.payable_amount_cents} />
           {context.showInSummary("received_amount_cents") && (
             <ListMeta>
@@ -122,7 +122,7 @@ export function DataTable({
       id: "received_amount_cents",
       sortBy: "received_amount_cents",
       label: "实收金额",
-      align: "right",
+      align: "center",
       layout: "amount",
       summaryDefault: false,
       responsive: { minWidthRem: 62, basis: "container" },
@@ -131,6 +131,7 @@ export function DataTable({
     {
       id: "status",
       label: "状态",
+      align: "center",
       layout: "status",
       summaryDefault: true,
       responsive: { minWidthRem: 32, basis: "container" },
@@ -140,6 +141,7 @@ export function DataTable({
       id: "created_at",
       sortBy: "created_at",
       label: "创建时间",
+      align: "center",
       layout: "datetime",
       summaryDefault: true,
       responsive: { minWidthRem: 46, basis: "container" },
@@ -148,6 +150,7 @@ export function DataTable({
   ];
   if (control) columns.push({
     id: "payment_confirmed_at", label: "付款确认时间",
+    align: "center",
     layout: "datetime", summaryDefault: false,
     responsive: { minWidthRem: 75, basis: "container" },
     cell: order => <ListDateTime value={order.payment_confirmed_at} />,

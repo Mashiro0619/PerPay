@@ -315,7 +315,6 @@
 .business-table tr {
   border-color: color-mix(in oklab, var(--border) 75%, transparent);
 }
-.business-table :is(th, td).align-top { vertical-align: top; }
 .business-table col[data-column-layout="identity"] { width: 40%; }
 .business-table col[data-column-layout="amount"] { width: 9.5rem; }
 .business-table col[data-column-layout="datetime"] { width: 8rem; }
@@ -422,6 +421,7 @@
 }
 .list-time-clock { color: var(--muted-foreground); }
 .list-time-inline { display: inline; color: inherit; }
+.business-table td > .list-time:not(.list-time-inline) { display: flex; }
 .business-table [data-slot="badge"],
 .business-summary-row [data-slot="badge"],
 .record-list [data-slot="badge"] {
@@ -445,7 +445,7 @@
 .business-summary-row:last-child { border-bottom: 0; }
 [data-density="compact"] .business-summary-row { min-height: 3.5rem; padding: 0.75rem 0.5rem; }
 .list-summary { display: flex; min-width: 0; width: 100%; flex-direction: column; gap: 0.875rem; }
-.list-summary-heading { display: flex; min-width: 0; align-items: flex-start; gap: 1rem; }
+.list-summary-heading { display: flex; min-width: 0; align-items: center; gap: 1rem; }
 .list-summary-identity { min-width: 0; flex: 1; }
 .list-summary-aside { display: flex; max-width: 50%; flex: 0 0 auto; flex-direction: column; align-items: flex-end; gap: 0.375rem; }
 .list-summary-heading:has(.list-summary-aside .list-money[data-wide="true"]) { flex-wrap: wrap; }
@@ -877,7 +877,7 @@ a[data-internal-link][data-slot="item"]:active {
 .overview-orders-table:has(.list-money[data-wide="true"]) col[data-column-layout="amount"] { width: 13rem; }
 .overview-orders-table :is(th, td) { padding-inline: 0.625rem; }
 .overview-orders .business-summary-row { padding: 0.875rem 0.625rem; }
-.overview-orders .list-summary-heading { align-items: center; flex-wrap: wrap; gap: 0.625rem 0.75rem; }
+.overview-orders .list-summary-heading { flex-wrap: wrap; gap: 0.625rem 0.75rem; }
 .overview-orders .list-summary-identity { flex-basis: 8rem; }
 .overview-orders .list-summary-aside { max-width: 100%; margin-left: auto; }
 .overview-orders .business-summary-field:has(.overview-order-times) { grid-column: 1 / -1; }

@@ -398,10 +398,11 @@ function ReconciliationList({
     {
       id: "status",
       label: "状态",
+      align: "center",
       layout: "status",
       summaryDefault: true,
       cell: (item) => (
-        <div className="flex flex-col items-start gap-1.5">
+        <div className="business-cell-stack flex flex-col items-start gap-1.5">
           <StatusBadge value={item.status} label={item.status === "OPEN" ? "未处理" : undefined} />
           {item.reminderIgnored && <span className="text-xs text-muted-foreground">提醒已忽略</span>}
         </div>
@@ -411,7 +412,7 @@ function ReconciliationList({
       id: "amount_cents",
       sortBy: "amount_cents",
       label: "流水金额",
-      align: "right" as const,
+      align: "center" as const,
       layout: "amount" as const,
       summaryDefault: true,
       responsive: { minWidthRem: 40, basis: "container" as const },
@@ -432,6 +433,7 @@ function ReconciliationList({
       id: "created_at",
       sortBy: "created_at",
       label: section === "matches" ? "关联时间" : "发现时间",
+      align: "center",
       layout: "datetime",
       summaryDefault: true,
       responsive: { minWidthRem: 46, basis: "container" },

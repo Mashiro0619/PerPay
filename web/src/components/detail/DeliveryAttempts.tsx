@@ -84,15 +84,15 @@ export function DeliveryAttempts({
                 {rows.length ? (
                   rows.map((attempt) => (
                     <TableRow key={attempt.attempt_id}>
-                      <TableCell className="align-top whitespace-normal">
+                      <TableCell className="whitespace-normal">
                         <ListIdentity meta={<ListDateTime value={attempt.started_at} inline />}>
                           第 {attempt.attempt_number} 次
                         </ListIdentity>
                       </TableCell>
-                      <TableCell className="align-top whitespace-normal break-words">
+                      <TableCell className="whitespace-normal break-words">
                         {label(attempt.outcome)}
                       </TableCell>
-                      <TableCell className="align-top whitespace-normal wrap-anywhere">
+                      <TableCell className="whitespace-normal wrap-anywhere">
                         {attemptResult(attempt)}
                       </TableCell>
                     </TableRow>

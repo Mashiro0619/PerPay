@@ -101,18 +101,18 @@ function ComparisonContent({
                 data-different={row.differs || undefined}
                 data-invalid={row.invalid || undefined}
               >
-                <TableHead scope="row" className="align-top whitespace-normal">
+                <TableHead scope="row" className="whitespace-normal">
                   {row.name}
                 </TableHead>
-                <TableCell className="align-top whitespace-pre-wrap wrap-anywhere">
+                <TableCell className="whitespace-pre-wrap wrap-anywhere">
                   {row.incoming ?? "未提供"}
                 </TableCell>
                 {existing && (
-                  <TableCell className="align-top whitespace-pre-wrap wrap-anywhere">
+                  <TableCell className="whitespace-pre-wrap wrap-anywhere">
                     {row.existing ?? "未提供"}
                   </TableCell>
                 )}
-                <TableCell className="align-top" data-comparison-result>
+                <TableCell data-comparison-result>
                   <Difference row={row} />
                 </TableCell>
               </TableRow>
