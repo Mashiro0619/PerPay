@@ -400,6 +400,7 @@ describe("navigation and draft protection", () => {
           data: {
             ...previous.data,
             range_days: 7,
+            from: "2026-08-31T16:00:00.000Z",
             daily: previous.data.daily.slice(-7),
             confirmations: { count: 1, amount_cents: 432100 },
           },
@@ -410,9 +411,13 @@ describe("navigation and draft protection", () => {
       await screen.findByRole("tab", { name: "每日数据" }),
     ).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByText("正在读取近 7 天…")).not.toBeInTheDocument();
-    expect(daily).not.toHaveAttribute("aria-busy", "true");
-
-    expect(within(daily).getAllByRole("row")).toHaveLength(8);
+    const loadedDaily = screen.getByRole("region", { name: "每日数据" });
+    expect(loadedDaily).not.toHaveAttribute("aria-busy", "true");
+    expect(within(loadedDaily).getAllByRole("table", { name: "每日收款数据" })).toHaveLength(2);
+    expect(Array.from(loadedDaily.querySelectorAll<HTMLTimeElement>("time[datetime]"))
+      .map((time) => time.dateTime)).toEqual(previous.data.daily.slice(-7)
+      .map((day) => day.date).reverse());
+    expect(within(loadedDaily).getByRole("status")).toHaveTextContent("共 7 天 · 2 周");
   });
   it("does not replace the selected period with a late response after rapid switching", async () => {
     const { fetchMock } = mount({ path: "/", configured: true });
@@ -814,19 +819,27 @@ describe("shared content width navigation", () => {
     expect(container.querySelector("[data-content-width]")).toHaveAttribute("data-content-width", "full");
   });
 
-  it("does not reset daily-table tab, pagination or analytics observers", async () => {
+  it("does not reset the daily-report tab, expanded weeks or analytics observers", async () => {
     const { fetchMock, container } = mount({ path: "/", configured: true });
     const tab = await screen.findByRole("tab", { name: "每日数据" });
     await userEvent.click(tab);
-    const table = await screen.findByRole("table", { name: "每日收款数据" });
-    await userEvent.click(screen.getByRole("button", { name: "每日数据下一页" }));
-    const firstDate = table.querySelector("time")?.dateTime;
+    const report = await screen.findByRole("region", { name: "每日数据" });
+    await userEvent.click(within(report).getByRole("button", { name: "全部收起" }));
+    const triggers = within(report).getAllByRole("button")
+      .filter((button) => button.getAttribute("data-slot") === "accordion-trigger");
+    await userEvent.click(triggers[2]!);
+    const expanded = triggers.map((trigger) => trigger.getAttribute("aria-expanded"));
+    const table = within(report).getByRole("table", { name: "每日收款数据" });
+    const dates = Array.from(table.querySelectorAll<HTMLTimeElement>("time[datetime]"))
+      .map((time) => time.dateTime);
     const before = fetchMock.mock.calls.length;
     await userEvent.click(screen.getByRole("button", { name: "切换为全屏布局" }));
     expect(tab).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("table", { name: "每日收款数据" })).toBe(table);
-    expect(table.querySelector("time")?.dateTime).toBe(firstDate);
-    expect(screen.getByText("第 2 / 3 页 · 共 30 天")).toBeVisible();
+    expect(triggers.map((trigger) => trigger.getAttribute("aria-expanded"))).toEqual(expanded);
+    expect(Array.from(table.querySelectorAll<HTMLTimeElement>("time[datetime]"))
+      .map((time) => time.dateTime)).toEqual(dates);
+    expect(within(report).getByRole("status")).toHaveTextContent("共 30 天 · 6 周");
     expect(fetchMock).toHaveBeenCalledTimes(before);
     expect(container.querySelector("[data-overview-layout]")).not.toHaveClass("max-w-7xl", "px-4");
   });

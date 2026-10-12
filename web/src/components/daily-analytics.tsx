@@ -1,28 +1,17 @@
 import { useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { SystemAnalytics } from "@/api/client";
-import { count } from "@/lib/format";
+import { count, money } from "@/lib/format";
+import { buildDailyReport, dailyDateLabel, dailyWeekday, type DailyDay } from "@/lib/daily-analytics";
 import { useListSize } from "@/hooks/use-list-size";
 import { ListIdentity, ListMoney, ListSummary, ListSummaryField } from "@/components/list-primitives";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-} from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Item, ItemGroup } from "@/components/ui/item";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-const PAGE_SIZE = 10;
 type DailyAnalyticsProps = {
   analytics: SystemAnalytics | undefined;
   range: number;
@@ -30,174 +19,166 @@ type DailyAnalyticsProps = {
 };
 
 export function DailyAnalytics(props: DailyAnalyticsProps) {
-  // A changed period resets pagination; switching views keeps this panel mounted.
-  return <DailyAnalyticsTable key={props.range} {...props} />;
+  const available = !props.pending ? props.analytics : undefined;
+  const [period, setPeriod] = useState({ range: props.range, from: available?.from, to: available?.to });
+  // Keep the last valid boundary through loading/errors, but reset for a new
+  // selected period or a Beijing midnight. Ordinary refreshes retain expansion.
+  if (period.range !== props.range || (available && (period.from !== available.from || period.to !== available.to))) {
+    setPeriod({ range: props.range, from: available?.from, to: available?.to });
+  }
+  return <DailyReport key={`${period.range}:${period.from ?? ""}:${period.to ?? ""}`} {...props} />;
 }
-function DailyAnalyticsTable({
-  analytics,
-  range,
-  pending,
-}: DailyAnalyticsProps) {
+
+function DailyDate({ day, today, includeYear }: { day: DailyDay; today: string; includeYear: boolean }) {
+  return (
+    <div className="daily-date">
+      <time dateTime={day.date} aria-label={`${day.date} ${dailyWeekday(day.date)}`} title={day.date}>
+        {dailyDateLabel(day.date, includeYear)}
+      </time>
+      <span className="daily-date-weekday" aria-hidden="true">{dailyWeekday(day.date)}</span>
+      {day.date === today && <Badge variant="secondary">今日</Badge>}
+    </div>
+  );
+}
+
+function DailyAmountBar({ day, maximum }: { day: DailyDay; maximum: number }) {
+  const width = maximum > 0 ? Math.max(0, Math.min(100, day.confirmed_amount_cents / maximum * 100)) : 0;
+  return (
+    <svg className="daily-amount-bar" data-date={day.date} viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+      <rect className="daily-amount-track" width="100" height="4" />
+      <rect data-daily-bar-fill width={width} height="4" fill="currentColor" />
+    </svg>
+  );
+}
+
+function DailyReport({ analytics, pending }: DailyAnalyticsProps) {
   const { ref, isSummary } = useListSize();
-  const [requestedPage, setPage] = useState(1);
-  // This is at most 90 aggregated days, not a client-side search of business records.
-  const days =
-    analytics?.daily.toSorted((a, b) => b.date.localeCompare(a.date)) ?? [];
-  const pageCount = Math.max(1, Math.ceil(days.length / PAGE_SIZE));
-  const page = Math.min(requestedPage, pageCount);
-  const rows = days.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const report = analytics && !pending ? buildDailyReport(analytics) : null;
+  const [expanded, setExpanded] = useState<string[] | null>(null);
+  const weeks = report?.weeks ?? [];
+  const openWeeks = (expanded ?? weeks.slice(0, 2).map((week) => week.key)).filter((key) => weeks.some((week) => week.key === key));
+  const hasDays = !!report?.days.length;
+  const includeYear = !!report && report.days[0]?.date.slice(0, 4) !== report.days.at(-1)?.date.slice(0, 4);
 
   return (
-    <div
-      ref={ref}
-      className="flex w-full min-w-0 flex-col gap-3"
-      role="region"
-      aria-label="每日数据"
-      aria-busy={pending}
-    >
-      {isSummary ? (
-        <ItemGroup className="record-list" data-density="compact" aria-label="每日收款数据">
-          {pending ? (
-            Array.from({ length: Math.min(range, PAGE_SIZE) }, (_, index) => (
-              <Item key={index} className="record-list-row" size="sm" aria-hidden="true">
-                <div className="flex w-full flex-col gap-3">
-                  <Skeleton className="h-5 w-28" />
-                  <Skeleton className="h-10 w-full" />
-                </div>
-              </Item>
-            ))
-          ) : rows.length ? (
-            rows.map((day) => (
-              <Item key={day.date} className="record-list-row" size="sm" role="listitem">
-                <ListSummary
-                  identity={<ListIdentity><time dateTime={day.date}>{day.date}</time></ListIdentity>}
-                  aside={
-                    <div className="flex flex-col items-end gap-1">
-                      <span className="record-list-meta">确认金额</span>
-                      <ListMoney value={day.confirmed_amount_cents} />
-                    </div>
-                  }
-                >
-                  <ListSummaryField label="确认次数">{count(day.confirmations)}</ListSummaryField>
-                  <ListSummaryField label="新建订单">{count(day.orders_created)}</ListSummaryField>
-                </ListSummary>
-              </Item>
-            ))
-          ) : (
-            <Empty><EmptyHeader><EmptyTitle>{analytics ? "暂无每日数据" : "统计数据暂不可用"}</EmptyTitle></EmptyHeader></Empty>
-          )}
-        </ItemGroup>
-      ) : (
-      <div className="business-table-surface" data-embedded="true" data-density="compact">
-        <Table className="business-table" aria-label="每日收款数据">
-          <colgroup>
-            <col data-column-layout="datetime" />
-            <col data-column-layout="amount" />
-            <col data-column-layout="number" />
-            <col data-column-layout="number" />
-          </colgroup>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="pl-4">日期</TableHead>
-              <TableHead data-column-layout="amount">确认金额</TableHead>
-              <TableHead data-column-layout="number">确认次数</TableHead>
-              <TableHead data-column-layout="number">新建订单</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {pending ? (
-              Array.from({ length: Math.min(range, PAGE_SIZE) }, (_, index) => (
-                <TableRow key={index} aria-hidden="true">
-                  {Array.from({ length: 4 }, (_, cell) => (
-                    <TableCell key={cell} className="first:pl-4 last:pr-4">
-                      <Skeleton className="h-5 w-full" />
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : rows.length ? (
-              rows.map((day) => (
-                <TableRow key={day.date}>
-                  <TableCell className="pl-4">
-                    <time dateTime={day.date}>{day.date}</time>
-                  </TableCell>
-                  <TableCell data-column-layout="amount">
-                    <ListMoney value={day.confirmed_amount_cents} />
-                  </TableCell>
-                  <TableCell data-column-layout="number">
-                    {count(day.confirmations)}
-                  </TableCell>
-                  <TableCell data-column-layout="number">
-                    {count(day.orders_created)}
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={4}>
-                  <Empty>
-                    <EmptyHeader>
-                      <EmptyTitle>
-                        {analytics ? "暂无每日数据" : "统计数据暂不可用"}
-                      </EmptyTitle>
-                    </EmptyHeader>
-                  </Empty>
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
+    <div ref={ref} className="daily-report" role="region" aria-label="每日数据" aria-busy={pending}>
+      {pending ? (
+        <div className="daily-report-summary" aria-hidden="true">
+          {Array.from({ length: 3 }, (_, index) => (
+            <div className="daily-summary-metric" key={index}>
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-7 w-32" />
+              <Skeleton className="h-4 w-20" />
+            </div>
+          ))}
+        </div>
+      ) : hasDays && report && analytics ? (
+        <dl className="daily-report-summary" aria-label="每日数据汇总">
+          <div className="daily-summary-metric" data-daily-summary="total">
+            <dt>区间确认金额</dt>
+            <dd><ListMoney value={analytics.confirmations.amount_cents} /></dd>
+            <dd className="daily-summary-note">含今日未结束的数据</dd>
+          </div>
+          <div className="daily-summary-metric" data-daily-summary="average">
+            <dt>日均确认金额</dt>
+            <dd><ListMoney value={report.averageCents} /></dd>
+            <dd className="daily-summary-note">不含今日</dd>
+          </div>
+          <div className="daily-summary-metric" data-daily-summary="peak">
+            <dt>单日最高金额</dt>
+            <dd><ListMoney value={report.peak?.confirmed_amount_cents} /></dd>
+            <dd className="daily-summary-note">
+              {report.peak ? `${dailyDateLabel(report.peak.date, includeYear)} · 不含今日` : "不含今日"}
+            </dd>
+          </div>
+        </dl>
+      ) : null}
+
+      <div className="daily-report-tools">
+        <Button size="sm" variant="ghost" disabled={pending || !hasDays || openWeeks.length === weeks.length} onClick={() => setExpanded(weeks.map((week) => week.key))}>
+          全部展开
+        </Button>
+        <Button size="sm" variant="ghost" disabled={pending || !hasDays || !openWeeks.length} onClick={() => setExpanded([])}>
+          全部收起
+        </Button>
       </div>
+
+      {pending ? (
+        <div className="daily-report-loading" aria-hidden="true">
+          {Array.from({ length: 2 }, (_, index) => (
+            <div key={index} className="flex min-w-0 flex-col gap-3">
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-24 w-full" />
+            </div>
+          ))}
+        </div>
+      ) : hasDays && report ? (
+        <Accordion className="daily-weeks" multiple value={openWeeks} onValueChange={(value) => setExpanded(value.map(String))}>
+          {weeks.map((week) => (
+            <AccordionItem key={week.key} value={week.key}>
+              <AccordionTrigger className="daily-week-trigger" aria-label={`${week.from} — ${week.to}，${week.days.length === 7 ? "7 天" : `区间内 ${week.days.length} 天`}，${week.inProgress ? "进行中，" : ""}确认金额 ${money(week.confirmedAmountCents)}，确认次数 ${count(week.confirmations)}，新建订单 ${count(week.ordersCreated)}`}>
+                <span className="daily-week-heading">
+                  <span className="daily-week-period">
+                    <span>{dailyDateLabel(week.from, includeYear)} — {dailyDateLabel(week.to, includeYear)}</span>
+                    <span className="daily-week-note">
+                      {week.days.length === 7 ? "7 天" : `区间内 ${week.days.length} 天`}
+                      {week.inProgress && <Badge variant="secondary">进行中</Badge>}
+                    </span>
+                  </span>
+                  <span className="daily-week-metrics">
+                    <span className="daily-week-metric"><span>确认金额</span><ListMoney value={week.confirmedAmountCents} /></span>
+                    <span className="daily-week-metric"><span>确认次数</span><span>{count(week.confirmations)}</span></span>
+                    <span className="daily-week-metric"><span>新建订单</span><span>{count(week.ordersCreated)}</span></span>
+                  </span>
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="daily-week-content">
+                {isSummary ? (
+                  <ItemGroup className="record-list daily-mobile-list" role="list" aria-label="每日收款数据">
+                    {week.days.map((day) => (
+                      <Item key={day.date} className="record-list-row" size="sm" role="listitem">
+                        <div className="daily-mobile-day">
+                          <ListSummary
+                            identity={<ListIdentity><DailyDate day={day} today={report.today} includeYear={includeYear} /></ListIdentity>}
+                            aside={<ListMoney value={day.confirmed_amount_cents} label="确认金额" />}
+                          >
+                            <ListSummaryField label="确认次数">{count(day.confirmations)}</ListSummaryField>
+                            <ListSummaryField label="新建订单">{count(day.orders_created)}</ListSummaryField>
+                          </ListSummary>
+                          <DailyAmountBar day={day} maximum={report.maximum} />
+                        </div>
+                      </Item>
+                    ))}
+                  </ItemGroup>
+                ) : (
+                  <Table className="daily-week-table" aria-label="每日收款数据">
+                    <colgroup><col className="daily-date-column" /><col /><col className="daily-count-column" /><col className="daily-count-column" /></colgroup>
+                    <TableHeader>
+                      <TableRow><TableHead>日期</TableHead><TableHead>确认金额</TableHead><TableHead>确认次数</TableHead><TableHead>新建订单</TableHead></TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {week.days.map((day) => (
+                        <TableRow key={day.date}>
+                          <TableCell><DailyDate day={day} today={report.today} includeYear={includeYear} /></TableCell>
+                          <TableCell><div className="daily-amount"><DailyAmountBar day={day} maximum={report.maximum} /><ListMoney value={day.confirmed_amount_cents} /></div></TableCell>
+                          <TableCell>{count(day.confirmations)}</TableCell>
+                          <TableCell>{count(day.orders_created)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </AccordionContent>
+            </AccordionItem>
+          ))}
+        </Accordion>
+      ) : (
+        <Empty><EmptyHeader><EmptyTitle>{analytics ? "暂无每日数据" : "统计数据暂不可用"}</EmptyTitle></EmptyHeader></Empty>
       )}
-      <Pagination
-        className="flex-wrap justify-between gap-2"
-        aria-label="每日数据分页"
-      >
-        <p
-          role="status"
-          aria-live="polite"
-          aria-atomic="true"
-          className="text-xs text-muted-foreground"
-        >
-          {pending
-            ? "正在读取每日数据…"
-            : !analytics
-              ? "等待统计数据"
-              : days.length
-                ? "第 " +
-                  page +
-                  " / " +
-                  pageCount +
-                  " 页 · 共 " +
-                  days.length +
-                  " 天"
-                : "共 0 天"}
-        </p>
-        <PaginationContent>
-          <PaginationItem>
-            <Button
-              size="icon-sm"
-              variant="outline"
-              aria-label="每日数据上一页"
-              disabled={pending || page <= 1}
-              onClick={() => setPage(page - 1)}
-            >
-              <ChevronLeft />
-            </Button>
-          </PaginationItem>
-          <PaginationItem>
-            <Button
-              size="icon-sm"
-              variant="outline"
-              aria-label="每日数据下一页"
-              disabled={pending || page >= pageCount}
-              onClick={() => setPage(page + 1)}
-            >
-              <ChevronRight />
-            </Button>
-          </PaginationItem>
-        </PaginationContent>
-      </Pagination>
+
+      <p role="status" aria-live="polite" aria-atomic="true" className="daily-report-status">
+        {pending ? "正在读取每日数据…" : !analytics ? "等待统计数据" : `共 ${report?.days.length ?? 0} 天 · ${weeks.length} 周`}
+      </p>
     </div>
   );
 }

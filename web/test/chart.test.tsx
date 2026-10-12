@@ -1,5 +1,6 @@
 import { MemoryRouter } from "react-router";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -22,8 +23,8 @@ function SectionCards(props: Parameters<typeof SummaryCards>[0]) {
 function analytics(days: 7 | 30 | 90 = 7): SystemAnalytics {
   return {
     range_days: days,
-    from: "2026-06-01",
-    to: "2026-09-01",
+    from: new Date(Date.UTC(2026, 5, 1, -8)).toISOString(),
+    to: new Date(Date.UTC(2026, 5, days + 1, -8)).toISOString(),
     orders: {
       created: 28,
       confirmed: 2,
@@ -517,93 +518,217 @@ describe("official shadcn interactive chart", () => {
   });
 });
 
-describe("daily analytics table", () => {
-  it.each([7, 30, 90] as const)(
-    "shows %i days newest-first, ten per page, without hiding evidence",
-    async (range) => {
+function weeklyTriggers(region = screen.getByRole("region", { name: "每日数据" })) {
+  return within(region)
+    .getAllByRole("button")
+    .filter((button) => button.getAttribute("data-slot") === "accordion-trigger");
+}
+
+function dailyDates(region = screen.getByRole("region", { name: "每日数据" })) {
+  return Array.from(region.querySelectorAll<HTMLTimeElement>("time[datetime]"))
+    .map((time) => time.dateTime);
+}
+
+describe("weekly daily analytics report", () => {
+  it.each([
+    [7, 1],
+    [30, 5],
+    [90, 13],
+  ] as const)(
+    "shows every one of %i days newest-first across %i weeks without pagination",
+    async (range, weekCount) => {
       const data = analytics(range);
-      const dates = data.daily.map((day) => day.date);
+      const original = structuredClone(data);
       render(<DailyAnalytics analytics={data} range={range} pending={false} />);
-      const table = screen.getByRole("table", { name: "每日收款数据" });
-      expect(screen.getByRole("region", { name: "每日数据" })).toBeVisible();
-      expect(within(table).getAllByRole("row")).toHaveLength(
-        Math.min(10, range) + 1,
-      );
-      const first = within(table).getAllByRole("row")[1]!;
-      expect(first).toHaveTextContent(dates.at(-1)!);
-      expect(within(first).getByText("¥100.00")).toBeVisible();
-      expect(within(first).getAllByRole("cell")).toHaveLength(4);
-      expect(
-        screen.getByRole("button", { name: "每日数据上一页" }),
-      ).toBeDisabled();
-      const next = screen.getByRole("button", { name: "每日数据下一页" });
-      const seen: string[] = [];
-      const user = userEvent.setup();
-      for (let page = 1; page <= Math.ceil(range / 10); page++) {
-        const rows = within(table).getAllByRole("row").slice(1);
-        seen.push(
-          ...rows.map(
-            (row) => within(row).getAllByRole("cell")[0]!.textContent!,
-          ),
-        );
-        expect(screen.getByRole("status")).toHaveTextContent(
-          "第 " + page + " / " + Math.ceil(range / 10) + " 页",
-        );
-        if (page < Math.ceil(range / 10)) await user.click(next);
+      const report = screen.getByRole("region", { name: "每日数据" });
+      const triggers = weeklyTriggers(report);
+      expect(triggers).toHaveLength(weekCount);
+      expect(triggers.map((trigger) => trigger.getAttribute("aria-expanded")))
+        .toEqual(triggers.map((_, index) => index < 2 ? "true" : "false"));
+      expect(within(report).getByRole("status"))
+        .toHaveTextContent("共 " + range + " 天 · " + weekCount + " 周");
+      expect(screen.queryByRole("navigation", { name: "每日数据分页" }))
+        .not.toBeInTheDocument();
+      const expand = within(report).getByRole("button", { name: "全部展开" });
+      if (weekCount > 2) await userEvent.click(expand);
+      expect(expand).toBeDisabled();
+      const tables = within(report).getAllByRole("table", { name: "每日收款数据" });
+      expect(tables).toHaveLength(weekCount);
+      const dates = dailyDates(report);
+      expect(dates).toEqual(original.daily.map((day) => day.date).reverse());
+      expect(new Set(dates).size).toBe(range);
+      for (const table of tables) {
+        const headings = within(table).getAllByRole("columnheader");
+        expect(headings.map((heading) => heading.textContent))
+          .toEqual(["日期", "确认金额", "确认次数", "新建订单"]);
+        for (const row of within(table).getAllByRole("row").slice(1)) {
+          expect(within(row).getAllByRole("cell")).toHaveLength(4);
+        }
       }
-      expect(next).toBeDisabled();
-      expect(seen).toEqual([...dates].reverse());
-      expect(data.daily.map((day) => day.date)).toEqual(dates);
-      expect(within(table).getByText("¥0.01")).toBeVisible();
+      expect(within(tables[0]!).getByText("¥100.00")).toBeVisible();
+      const pennyRow = report.querySelector('time[datetime="2026-06-03"]')!.closest("tr")!;
+      expect(within(pennyRow).getByText("¥0.01", { exact: true })).toBeVisible();
+      expect(data).toEqual(original);
     },
   );
 
-  it("resets pagination on period changes, hides stale values while pending and clamps a shortened response", async () => {
-    const user = userEvent.setup();
+  it("announces actual partial-week coverage and keyboard-accessible totals", async () => {
+    render(<DailyAnalytics analytics={analytics(30)} range={30} pending={false} />);
+    const triggers = weeklyTriggers();
+    expect(triggers[0]).toHaveAccessibleName(/2026-06-29.*2026-06-30/);
+    expect(triggers[0]).toHaveAccessibleName(/区间内 2 天/);
+    expect(triggers[0]).toHaveAccessibleName(/¥100\.00/);
+    expect(triggers[0]).toHaveAccessibleName(/确认.*1/);
+    expect(triggers[0]).toHaveAccessibleName(/新建.*57/);
+    expect(triggers[0]).toHaveAccessibleName(/进行中/);
+    expect(triggers[1]).toHaveAccessibleName(/2026-06-22.*2026-06-28/);
+    expect(triggers[1]).toHaveAccessibleName(/7 天/);
+    triggers[1]!.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(triggers[1]).toHaveAttribute("aria-expanded", "false");
+    expect(triggers[1]).toHaveFocus();
+    await userEvent.click(screen.getByRole("button", { name: "全部收起" }));
+    expect(triggers.every((trigger) => trigger.getAttribute("aria-expanded") === "false"))
+      .toBe(true);
+    expect(screen.getByRole("button", { name: "全部收起" })).toBeDisabled();
+    expect(screen.queryByRole("table", { name: "每日收款数据" }))
+      .not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "全部展开" }));
+    expect(triggers.every((trigger) => trigger.getAttribute("aria-expanded") === "true"))
+      .toBe(true);
+  });
+
+  it("uses the authoritative total and includes completed zero days in average and latest peak tie", () => {
+    const data = analytics();
+    data.confirmations.amount_cents = 123456;
+    data.daily = data.daily.map((day, index) => ({
+      ...day,
+      confirmed_amount_cents: [0, 101, 202, 202, 0, 0, 999][index]!,
+    }));
+    const { container } = render(<DailyAnalytics analytics={data} range={7} pending={false} />);
+    expect(screen.getByLabelText("每日数据汇总")).toBeVisible();
+    expect(container.querySelector('[data-daily-summary="total"]'))
+      .toHaveTextContent("¥1,234.56");
+    expect(container.querySelector('[data-daily-summary="average"]'))
+      .toHaveTextContent("¥0.84");
+    expect(container.querySelector('[data-daily-summary="average"]'))
+      .toHaveTextContent("不含今日");
+    expect(container.querySelector('[data-daily-summary="peak"]'))
+      .toHaveTextContent("¥2.02");
+    expect(container.querySelector('[data-daily-summary="peak"]'))
+      .toHaveTextContent("06-04");
+    expect(container.querySelector('[data-daily-summary="peak"]'))
+      .toHaveTextContent("不含今日");
+    const today = container.querySelector('time[datetime="2026-06-07"]')?.closest("tr");
+    expect(today).toHaveTextContent("今日");
+    expect(today).toHaveTextContent("周日");
+  });
+
+  it("shows no completed-day average or peak when the response only contains today", () => {
+    const data = analytics();
+    data.from = "2026-06-06T16:00:00.000Z";
+    data.daily = data.daily.slice(-1);
+    const { container } = render(<DailyAnalytics analytics={data} range={7} pending={false} />);
+    for (const metric of ["average", "peak"]) {
+      expect(container.querySelector('[data-daily-summary="' + metric + '"]'))
+        .toHaveTextContent("—");
+    }
+    expect(container.querySelector('[data-daily-summary="total"]'))
+      .toHaveTextContent("¥100.01");
+    expect(screen.getByRole("status")).toHaveTextContent("共 1 天 · 1 周");
+  });
+
+  it("compares amounts on one interval scale using CSP-compatible SVG attributes, including zero", async () => {
+    const data = analytics(30);
+    data.daily = data.daily.map((day, index) => ({
+      ...day,
+      confirmed_amount_cents: index === 0 ? 20000 : index === 29 ? 10000 : 0,
+    }));
+    const { container } = render(<DailyAnalytics analytics={data} range={30} pending={false} />);
+    await userEvent.click(screen.getByRole("button", { name: "全部展开" }));
+    const width = (date: string) => container.querySelector(
+      'svg[data-date="' + date + '"] rect[data-daily-bar-fill]',
+    )?.getAttribute("width");
+    expect(width("2026-06-01")).toBe("100");
+    expect(width("2026-06-30")).toBe("50");
+    expect(width("2026-06-02")).toBe("0");
+    expect(container.querySelector('svg[data-date] [style]')).toBeNull();
+  });
+
+  it("preserves collapsed weeks on same-period refresh and resize, then resets when date boundaries change", async () => {
+    const data = analytics(30);
+    const { rerender } = render(<DailyAnalytics analytics={data} range={30} pending={false} />);
+    await userEvent.click(screen.getByRole("button", { name: "全部收起" }));
+    const snapshot = () => weeklyTriggers().map((trigger) => trigger.getAttribute("aria-expanded"));
+    rerender(<DailyAnalytics analytics={data} range={30} pending />);
+    const refreshed = structuredClone(data);
+    refreshed.confirmations.amount_cents = 222222;
+    refreshed.daily[29]!.confirmed_amount_cents = 11111;
+    rerender(<DailyAnalytics analytics={refreshed} range={30} pending={false} />);
+    expect(snapshot()).toEqual(["false", "false", "false", "false", "false"]);
+    vi.stubGlobal("innerWidth", 390);
+    act(() => window.dispatchEvent(new Event("resize")));
+    expect(snapshot()).toEqual(["false", "false", "false", "false", "false"]);
+    await userEvent.click(screen.getByRole("button", { name: "全部展开" }));
+    expect(screen.queryByRole("table", { name: "每日收款数据" })).not.toBeInTheDocument();
+    expect(dailyDates()).toEqual(data.daily.map((day) => day.date).reverse());
+    vi.stubGlobal("innerWidth", 1440);
+    act(() => window.dispatchEvent(new Event("resize")));
+    expect(snapshot()).toEqual(["true", "true", "true", "true", "true"]);
+    const nextDay = (timestamp: string) => new Date(Date.parse(timestamp) + 86400000).toISOString();
+    const moved = {
+      ...data,
+      from: nextDay(data.from),
+      to: nextDay(data.to),
+      daily: data.daily.map((day) => ({ ...day, date: nextDay(day.date).slice(0, 10) })),
+    };
+    rerender(<DailyAnalytics analytics={moved} range={30} pending={false} />);
+    expect(snapshot()).toEqual(["true", "true", "false", "false", "false"]);
+    await userEvent.click(screen.getByRole("button", { name: "全部收起" }));
+    rerender(<DailyAnalytics analytics={analytics(90)} range={90} pending={false} />);
+    expect(snapshot().slice(0, 3)).toEqual(["true", "true", "false"]);
+  });
+
+  it("hides stale summaries and rows while another period loads and disables report controls", () => {
     const { rerender, container } = render(
       <DailyAnalytics analytics={analytics(90)} range={90} pending={false} />,
     );
-    await user.click(screen.getByRole("button", { name: "每日数据下一页" }));
-    expect(screen.getByRole("status")).toHaveTextContent("第 2 / 9 页");
     rerender(<DailyAnalytics analytics={analytics(90)} range={30} pending />);
-    expect(screen.getByRole("status")).toHaveTextContent("正在读取每日数据");
-    expect(screen.queryByText("¥100.00")).not.toBeInTheDocument();
+    const report = screen.getByRole("region", { name: "每日数据" });
+    expect(report).toHaveAttribute("aria-busy", "true");
+    expect(within(report).getByRole("status")).toHaveTextContent("正在读取每日数据");
+    expect(within(report).queryByText("¥100.00")).not.toBeInTheDocument();
+    expect(within(report).queryByRole("table", { name: "每日收款数据" })).not.toBeInTheDocument();
+    expect(dailyDates(report)).toHaveLength(0);
     expect(container.querySelector("[data-slot=skeleton]")).not.toBeNull();
-    expect(
-      screen.getByRole("button", { name: "每日数据下一页" }),
-    ).toBeDisabled();
-    rerender(
-      <DailyAnalytics analytics={analytics(30)} range={30} pending={false} />,
-    );
-    expect(screen.getByRole("status")).toHaveTextContent("第 1 / 3 页");
-    await user.click(screen.getByRole("button", { name: "每日数据下一页" }));
-    rerender(
-      <DailyAnalytics
-        analytics={{ ...analytics(30), daily: analytics(7).daily }}
-        range={30}
-        pending={false}
-      />,
-    );
-    expect(screen.getByRole("status")).toHaveTextContent("第 1 / 1 页");
-    rerender(
-      <DailyAnalytics analytics={analytics(90)} range={90} pending={false} />,
-    );
-    expect(screen.getByRole("status")).toHaveTextContent("第 1 / 9 页");
+    for (const label of ["全部展开", "全部收起"]) {
+      expect(within(report).getByRole("button", { name: label })).toBeDisabled();
+    }
+    rerender(<DailyAnalytics analytics={analytics(30)} range={30} pending={false} />);
+    expect(weeklyTriggers().map((trigger) => trigger.getAttribute("aria-expanded")))
+      .toEqual(["true", "true", "false", "false", "false"]);
   });
 
-  it("keeps zero days distinct from a failed read without inventing money", () => {
+  it("keeps empty data, a failed read and valid zero amounts distinct", () => {
     const data = { ...analytics(), daily: [] };
     const { rerender, container } = render(
       <DailyAnalytics analytics={data} range={7} pending={false} />,
     );
     expect(screen.getByText("暂无每日数据")).toBeVisible();
-    expect(screen.getByRole("status")).toHaveTextContent("共 0 天");
+    expect(screen.getByRole("status")).toHaveTextContent("共 0 天 · 0 周");
     expect(screen.queryByText("¥0.00")).not.toBeInTheDocument();
-    rerender(
-      <DailyAnalytics analytics={undefined} range={7} pending={false} />,
-    );
+    rerender(<DailyAnalytics analytics={undefined} range={7} pending={false} />);
     expect(screen.getByText("统计数据暂不可用")).toBeVisible();
     expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
+    const zeros = analytics();
+    zeros.confirmations = { count: 0, amount_cents: 0 };
+    zeros.daily = zeros.daily.map((day) => ({ ...day, confirmed_amount_cents: 0, confirmations: 0 }));
+    rerender(<DailyAnalytics analytics={zeros} range={7} pending={false} />);
+    expect(screen.queryByText("暂无每日数据")).not.toBeInTheDocument();
+    expect(screen.queryByText("统计数据暂不可用")).not.toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "每日收款数据" })).toBeVisible();
+    expect(container.querySelector('[data-daily-summary="average"]')).toHaveTextContent("¥0.00");
+    expect(container.querySelector('[data-daily-summary="peak"]')).toHaveTextContent("06-06");
   });
 
   it("distinguishes loading summary cards from unavailable statistics", () => {
@@ -630,7 +755,7 @@ describe("daily analytics table", () => {
 });
 
 describe("shared trend and daily views", () => {
-  it("keeps daily data in the trend card, retains pagination across views and resets it on period changes", async () => {
+  it("keeps daily data in the trend card, retains expanded weeks across views and resets them on period changes", async () => {
     const user = userEvent.setup();
     const change = vi.fn();
     const { container, rerender } = render(
@@ -649,7 +774,7 @@ describe("shared trend and daily views", () => {
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "新建订单" }));
     await user.click(dailyTab);
-    const table = screen.getByRole("table", { name: "每日收款数据" });
+    const table = screen.getAllByRole("table", { name: "每日收款数据" })[0]!;
     expect(table.closest('[data-slot="card"]')).toBe(
       trend.closest('[data-slot="card"]'),
     );
@@ -658,8 +783,9 @@ describe("shared trend and daily views", () => {
       screen.queryByRole("group", { name: "趋势指标" }),
     ).not.toBeInTheDocument();
     expect(screen.getAllByText("2026-06-01 — 2026-06-30")).toHaveLength(1);
-    await user.click(screen.getByRole("button", { name: "每日数据下一页" }));
-    expect(screen.getByRole("status")).toHaveTextContent("第 2 / 3 页");
+    await user.click(screen.getByRole("button", { name: "全部收起" }));
+    expect(weeklyTriggers().every((trigger) => trigger.getAttribute("aria-expanded") === "false"))
+      .toBe(true);
     await user.click(chartTab);
     expect(
       screen.queryByRole("table", { name: "每日收款数据" }),
@@ -669,7 +795,8 @@ describe("shared trend and daily views", () => {
       "true",
     );
     await user.click(dailyTab);
-    expect(screen.getByRole("status")).toHaveTextContent("第 2 / 3 页");
+    expect(weeklyTriggers().every((trigger) => trigger.getAttribute("aria-expanded") === "false"))
+      .toBe(true);
     await user.click(screen.getByRole("button", { name: "近 7 天" }));
     expect(change).toHaveBeenCalledExactlyOnceWith("7");
     rerender(
@@ -686,7 +813,7 @@ describe("shared trend and daily views", () => {
       "true",
     );
     expect(
-      screen.getByRole("button", { name: "每日数据下一页" }),
+      screen.getByRole("button", { name: "全部展开" }),
     ).toBeDisabled();
     rerender(
       <ChartAreaInteractive
@@ -696,7 +823,8 @@ describe("shared trend and daily views", () => {
         onRangeChange={change}
       />,
     );
-    expect(screen.getByRole("status")).toHaveTextContent("第 1 / 1 页");
+    expect(screen.getByRole("status")).toHaveTextContent("共 7 天 · 1 周");
+    expect(weeklyTriggers()[0]).toHaveAttribute("aria-expanded", "true");
     dailyTab.focus();
     await user.keyboard("{ArrowLeft}{Enter}");
     expect(chartTab).toHaveFocus();

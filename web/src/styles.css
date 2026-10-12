@@ -1041,3 +1041,94 @@ a[data-internal-link][data-slot="item"]:active {
 @media (prefers-reduced-motion: reduce) {
   .runtime-row-actions button > svg { transition: none; }
 }
+
+/* The trend header and weekly report have their own density, independent of business lists. */
+.trend-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "title period" "tabs dates";
+  align-items: center;
+  gap: 0.75rem 1rem;
+}
+.trend-title { grid-area: title; display: flex; min-width: 0; align-items: center; gap: 0.25rem; }
+.trend-tabs { grid-area: tabs; }
+.trend-period { grid-area: period; justify-self: end; }
+.trend-dates { grid-area: dates; min-width: 0; justify-self: end; font-size: 0.75rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+@container card (min-width: 56rem) {
+  .trend-header { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "title tabs period" "title tabs dates"; gap: 0.375rem 1.5rem; }
+  .trend-tabs { justify-self: start; }
+}
+@container card (max-width: 28rem) {
+  .trend-header { grid-template-areas: "title period" "tabs tabs" "dates dates"; gap: 0.5rem 0.75rem; }
+  .trend-dates { justify-self: start; }
+}
+.daily-report {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1rem;
+  container: daily-report / inline-size;
+}
+.daily-report-summary {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  padding-block: 0.25rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.daily-summary-metric { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: 0.375rem; }
+.daily-summary-metric + .daily-summary-metric { padding-left: 1rem; border-left: 1px solid var(--border); }
+.daily-summary-metric dt { color: var(--muted-foreground); font-size: 0.75rem; }
+.daily-summary-metric dd { min-width: 0; max-width: 100%; }
+.daily-report .list-money { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.daily-summary-metric .list-money { font-size: 1.25rem; line-height: 1.4; font-weight: 600; }
+.daily-summary-note { color: var(--muted-foreground); font-size: 0.75rem; }
+.daily-report-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.25rem; margin-block: -0.5rem -0.75rem; }
+.daily-report-loading { display: flex; min-width: 0; flex-direction: column; gap: 1rem; }
+.daily-weeks { min-width: 0; }
+.daily-week-trigger { min-width: 0; align-items: center; gap: 1rem; padding-block: 1rem; }
+.daily-week-heading { display: grid; width: 100%; min-width: 0; grid-template-columns: minmax(10rem, 1fr) minmax(0, 1.6fr); align-items: center; gap: 1rem; }
+.daily-week-period { display: flex; min-width: 0; flex-direction: column; gap: 0.375rem; font-variant-numeric: tabular-nums; }
+.daily-week-note { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; color: var(--muted-foreground); font-size: 0.75rem; font-weight: 400; }
+.daily-week-metrics { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) 5rem 5rem; align-items: start; gap: 1rem; }
+.daily-week-metric { display: flex; min-width: 0; flex-direction: column; align-items: flex-end; gap: 0.375rem; font-variant-numeric: tabular-nums; }
+.daily-week-metric > :first-child { color: var(--muted-foreground); font-size: 0.75rem; font-weight: 400; }
+.daily-week-content { min-width: 0; padding-bottom: 0.75rem; }
+.daily-week-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0.875rem; line-height: 1.4; }
+.daily-week-table .daily-date-column { width: 10rem; }
+.daily-week-table .daily-count-column { width: 6rem; }
+.daily-week-table th { height: 2rem; padding: 0.375rem 0.75rem; color: var(--muted-foreground); background: color-mix(in oklab, var(--muted) 45%, var(--card)); font-size: 0.75rem; font-weight: 400; }
+.daily-week-table td { height: 3rem; padding: 0.5rem 0.75rem; vertical-align: middle; white-space: normal; overflow-wrap: anywhere; }
+.daily-week-table :is(th, td):not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.daily-week-table tr { border-color: color-mix(in oklab, var(--border) 65%, transparent); }
+.daily-date { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 0.375rem; font-variant-numeric: tabular-nums; }
+.daily-date-weekday { color: var(--muted-foreground); font-size: 0.75rem; }
+/* Reserve the same numeric slot in every row so every SVG has the same pixel scale. */
+.daily-amount { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) 9rem; align-items: center; gap: 1rem; }
+.daily-amount > .list-money { text-align: right; }
+.daily-amount-bar { display: block; width: 100%; min-width: 0; height: 4px; color: var(--chart-1); }
+.daily-amount-track { fill: var(--muted); }
+.daily-mobile-day { display: flex; width: 100%; min-width: 0; flex-direction: column; gap: 0.75rem; }
+.daily-mobile-list .record-list-row { padding: 0.875rem 0.25rem; }
+.daily-mobile-list .list-summary { gap: 0.625rem; }
+.daily-mobile-list .list-summary-heading { align-items: flex-start; gap: 0.75rem; }
+.daily-mobile-list .list-summary-aside { min-width: 0; }
+.daily-mobile-list .business-summary-field { flex-direction: row; align-items: baseline; gap: 0.375rem; }
+.daily-report-status { color: var(--muted-foreground); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+@container daily-report (max-width: 39.999rem) {
+  .daily-report-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 0.75rem; }
+  .daily-summary-metric:first-child { grid-column: 1 / -1; }
+  .daily-summary-metric:nth-child(2) { padding-left: 0; border-left: 0; }
+  .daily-summary-metric:nth-child(3) { padding-left: 0.75rem; }
+  .daily-summary-metric .list-money { font-size: 1.125rem; }
+  .daily-week-heading { grid-template-columns: minmax(0, 1fr); gap: 0.625rem; }
+  .daily-week-period { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0.375rem 0.75rem; }
+  .daily-week-metrics { grid-template-columns: minmax(0, 1fr) auto auto; gap: 0.75rem; }
+  .daily-week-metric:first-child { align-items: flex-start; }
+  .daily-week-trigger { gap: 0.5rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .daily-weeks [data-slot="accordion-content"] { animation: none; }
+}

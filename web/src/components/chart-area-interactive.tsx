@@ -110,90 +110,97 @@ export function ChartAreaInteractive({
         }}
         className="gap-4"
       >
-        <CardHeader className="flex flex-col gap-3">
-          <div className="flex w-full items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-1">
-              <CardTitle role="heading" aria-level={2}>
-                收款趋势
-              </CardTitle>
-              <Popover>
-                <PopoverTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="统计口径"
-                    />
-                  }
-                >
-                  <Info />
-                </PopoverTrigger>
-                <PopoverContent align="start" aria-label="统计口径">
-                  <p className="text-sm">
-                    按北京时间统计。付款确认金额不扣除退款或费用，不是净结算收入。订单按创建时间、付款按确认时间统计；待付款为当前开放且未付款的订单。
-                  </p>
-                </PopoverContent>
-              </Popover>
-            </div>
-            <div className="shrink-0">
-              <ToggleGroup
-                value={[String(range)]}
-                onValueChange={(value) => {
-                  if (value[0]) onRangeChange(value[0]);
-                }}
-                variant="outline"
-                spacing={0}
+        <CardHeader className="trend-header">
+          <div className="trend-title">
+            <CardTitle role="heading" aria-level={2}>
+              收款趋势
+            </CardTitle>
+            <Popover>
+              <PopoverTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="统计口径"
+                  />
+                }
+              >
+                <Info />
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                aria-label="统计口径"
+                className="flex flex-col gap-3"
+              >
+                <p className="text-sm">
+                  按北京时间统计。付款确认金额不扣除退款或费用，不是净结算收入。订单按创建时间、付款按确认时间统计；待付款为当前开放且未付款的订单。
+                </p>
+                <p className="text-sm">
+                  每日数据按周一至周日分组，周汇总仅计算所选区间内的日期。日均金额与峰值日排除尚未结束的今日；每日金额横条按所选区间（含今日）的最高金额比较。
+                </p>
+              </PopoverContent>
+            </Popover>
+          </div>
+          <TabsList
+            className="trend-tabs"
+            variant="line"
+            aria-label="收款趋势视图"
+          >
+            <TabsTrigger value="chart">图表</TabsTrigger>
+            <TabsTrigger value="daily">每日数据</TabsTrigger>
+          </TabsList>
+          <div className="trend-period">
+            <ToggleGroup
+              value={[String(range)]}
+              onValueChange={(value) => {
+                if (value[0]) onRangeChange(value[0]);
+              }}
+              variant="outline"
+              spacing={0}
+              size="sm"
+              className="hidden @[650px]/card:flex"
+              aria-label="统计周期"
+            >
+              {periods.map((item) => (
+                <ToggleGroupItem key={item.value} value={item.value}>
+                  {item.label}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+            <Select
+              items={periods}
+              value={String(range)}
+              onValueChange={(value) => {
+                if (value) onRangeChange(value);
+              }}
+            >
+              <SelectTrigger
                 size="sm"
-                className="hidden @[650px]/card:flex"
                 aria-label="统计周期"
+                className="@[650px]/card:hidden"
               >
-                {periods.map((item) => (
-                  <ToggleGroupItem key={item.value} value={item.value}>
-                    {item.label}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
-              <Select
-                items={periods}
-                value={String(range)}
-                onValueChange={(value) => {
-                  if (value) onRangeChange(value);
-                }}
-              >
-                <SelectTrigger
-                  size="sm"
-                  aria-label="统计周期"
-                  className="@[650px]/card:hidden"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {periods.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </div>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {periods.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </div>
-          <div className="flex w-full flex-wrap items-center justify-between gap-2">
-            <TabsList variant="line" aria-label="收款趋势视图">
-              <TabsTrigger value="chart">图表</TabsTrigger>
-              <TabsTrigger value="daily">每日数据</TabsTrigger>
-            </TabsList>
-            <CardDescription aria-live="polite">
-              {pending
-                ? "正在读取近 " + range + " 天…"
-                : analytics?.daily.length
-                  ? analytics.daily[0]!.date +
-                    " — " +
-                    analytics.daily.at(-1)!.date
-                  : "暂无数据"}
-            </CardDescription>
-          </div>
+          <CardDescription className="trend-dates" aria-live="polite">
+            {pending
+              ? "正在读取近 " + range + " 天…"
+              : analytics?.daily.length
+                ? analytics.daily[0]!.date +
+                  " — " +
+                  analytics.daily.at(-1)!.date
+                : "暂无数据"}
+          </CardDescription>
         </CardHeader>
         <TabsContent value="chart">
           <CardContent className="flex min-h-[250px] flex-1 flex-col gap-3">
