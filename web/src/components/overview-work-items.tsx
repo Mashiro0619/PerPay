@@ -86,8 +86,8 @@ export function OverviewWorkItems({ items }: { items: readonly AdminWorkItem[] }
                 <WorkStatus item={item} />
               </div>
               {order ? (
-                <>
-                  <div className="overview-work-order-heading">
+                <div className="overview-work-order-heading">
+                  <div className="overview-work-order-context">
                     <Link
                       className="overview-work-product"
                       aria-label={"查看订单：" + order.product_name}
@@ -96,18 +96,12 @@ export function OverviewWorkItems({ items }: { items: readonly AdminWorkItem[] }
                     >
                       {order.product_name}
                     </Link>
-                    <div className="overview-order-money-line" title="应付金额">
-                      <ListMoney value={order.payable_amount_cents} label="应付金额" />
-                    </div>
+                    {!clientId && <SiteIdentity clientId={order.api_client_id} name={order.site_name} />}
                   </div>
-                  {order.product_name !== order.merchant_order_no && (
-                    <ListMeta>
-                      <span>
-                        商户订单号 <span className="list-code" title={order.merchant_order_no}>{order.merchant_order_no}</span>
-                      </span>
-                    </ListMeta>
-                  )}
-                </>
+                  <div className="overview-order-money-line" title="应付金额">
+                    <ListMoney value={order.payable_amount_cents} label="应付金额" />
+                  </div>
+                </div>
               ) : (
                 <ListMeta>
                   <span>{orderId ? "订单摘要暂不可用" : "未关联订单"}</span>
@@ -126,6 +120,20 @@ export function OverviewWorkItems({ items }: { items: readonly AdminWorkItem[] }
                   )}
                 </ListMeta>
               )}
+              <div className="overview-work-footer">
+                <ListMeta>
+                  {order && order.product_name !== order.merchant_order_no && (
+                    <span className="overview-work-order-reference">
+                      <span>商户订单号</span>{" "}
+                      <span className="list-code" title={order.merchant_order_no}>{order.merchant_order_no}</span>
+                    </span>
+                  )}
+                  <span className="overview-work-time">
+                    <span className="sr-only">提醒时间 </span>
+                    <ListDateTime value={item.actionable_at} inline />
+                  </span>
+                </ListMeta>
+              </div>
               {item.type === "NOTIFICATION_FAILURE" && !item.ended &&
                 ["PENDING", "RETRY_WAIT"].includes(item.status) && item.next_attempt_at && (
                 <div className="overview-record-note">
@@ -133,15 +141,6 @@ export function OverviewWorkItems({ items }: { items: readonly AdminWorkItem[] }
                   <ListDateTime value={item.next_attempt_at} inline />
                 </div>
               )}
-              <div className="overview-work-footer">
-                <ListMeta>
-                  {!clientId && order && <SiteIdentity clientId={order.api_client_id} name={order.site_name} />}
-                  <span>
-                    <span className="sr-only">提醒时间 </span>
-                    <ListDateTime value={item.actionable_at} inline />
-                  </span>
-                </ListMeta>
-              </div>
             </ItemContent>
           </LinkedSummaryRow>
         );
