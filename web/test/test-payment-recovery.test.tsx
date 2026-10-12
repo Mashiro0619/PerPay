@@ -286,23 +286,31 @@ describe("uncertain test-payment creation recovery", () => {
     await screen.findByLabelText("测试金额（元）");
     await selectTestWebsite();
     vi.useFakeTimers();
-    fireEvent.click(screen.getByRole("button", { name: "创建测试订单" }));
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(20_100);
-    });
-    expect(screen.getByText("创建结果待确认")).toBeVisible();
-    expect(view.requests()[0]!.signal.aborted).toBe(true);
-    expect(screen.getByRole("button", { name: "重试原请求" })).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: "重试原请求" }));
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(100);
-    });
-    expect(
-      screen.getByRole("heading", { name: "测试订单已创建" }),
-    ).toBeVisible();
-    expect(await view.requests()[1]!.clone().json()).toEqual(
-      await view.requests()[0]!.clone().json(),
-    );
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "创建测试订单" }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_100);
+      });
+      expect(screen.getByText("创建结果待确认")).toBeVisible();
+      expect(view.requests()[0]!.signal.aborted).toBe(true);
+      expect(screen.getByRole("button", { name: "重试原请求" })).toBeEnabled();
+      fireEvent.click(screen.getByRole("button", { name: "重试原请求" }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      expect(
+        screen.getByRole("heading", { name: "测试订单已创建" }),
+      ).toBeVisible();
+      expect(await view.requests()[1]!.clone().json()).toEqual(
+        await view.requests()[0]!.clone().json(),
+      );
+    } finally {
+      view.unmount();
+      await act(async () => {
+        await vi.runOnlyPendingTimersAsync();
+      });
+      vi.useRealTimers();
+    }
   });
 
   it("removes recovery and unload guards on session expiry", async () => {

@@ -171,18 +171,26 @@ describe("current test-payment state", () => {
     refresh.focus();
     focusManager.setFocused(true);
     vi.useFakeTimers();
-    state = confirmed;
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(5_100);
-    });
-    expect(screen.getByText("收款已确认")).toBeVisible();
-    expect(refresh).toHaveFocus();
-    const readCount = view.reads().length;
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(20_000);
-    });
-    expect(view.reads()).toHaveLength(readCount);
-    expect(view.writes()).toHaveLength(1);
+    try {
+      state = confirmed;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_100);
+      });
+      expect(screen.getByText("收款已确认")).toBeVisible();
+      expect(refresh).toHaveFocus();
+      const readCount = view.reads().length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+      expect(view.reads()).toHaveLength(readCount);
+      expect(view.writes()).toHaveLength(1);
+    } finally {
+      view.unmount();
+      await act(async () => {
+        await vi.runOnlyPendingTimersAsync();
+      });
+      vi.useRealTimers();
+    }
   });
 
   it("aborts an unfinished read when closed and ignores its late response", async () => {
@@ -250,18 +258,26 @@ describe("current test-payment state", () => {
     await screen.findByText("等待付款确认");
     focusManager.setFocused(false);
     vi.useFakeTimers();
-    const reads = view.reads().length;
-    state = confirmed;
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(20_000);
-    });
-    expect(view.reads()).toHaveLength(reads);
-    await act(async () => {
-      focusManager.setFocused(true);
-      await vi.advanceTimersByTimeAsync(100);
-    });
-    expect(screen.getByText("收款已确认")).toBeVisible();
-    expect(view.writes()).toHaveLength(1);
+    try {
+      const reads = view.reads().length;
+      state = confirmed;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+      expect(view.reads()).toHaveLength(reads);
+      await act(async () => {
+        focusManager.setFocused(true);
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      expect(screen.getByText("收款已确认")).toBeVisible();
+      expect(view.writes()).toHaveLength(1);
+    } finally {
+      view.unmount();
+      await act(async () => {
+        await vi.runOnlyPendingTimersAsync();
+      });
+      vi.useRealTimers();
+    }
   });
 
   it("does not keep polling or create a request while the result dialog is closed", async () => {
@@ -274,12 +290,20 @@ describe("current test-payment state", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
     vi.useFakeTimers();
-    const reads = view.reads().length;
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(20_000);
-    });
-    expect(view.reads()).toHaveLength(reads);
-    expect(view.writes()).toHaveLength(1);
+    try {
+      const reads = view.reads().length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+      expect(view.reads()).toHaveLength(reads);
+      expect(view.writes()).toHaveLength(1);
+    } finally {
+      view.unmount();
+      await act(async () => {
+        await vi.runOnlyPendingTimersAsync();
+      });
+      vi.useRealTimers();
+    }
   });
 
   it("keeps the last confirmed amount but labels it historical when refresh fails", async () => {
