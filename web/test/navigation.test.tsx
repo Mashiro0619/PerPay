@@ -675,15 +675,31 @@ describe("page actions in the shared header", () => {
       await act(async () => {
         await router.navigate("/system");
       });
+      const runtime = await screen.findByRole("region", {
+        name: "服务运行状态",
+      });
+      const runtimeRefresh = within(runtime).getByRole("button", {
+        name: "刷新",
+      });
+      const diagnostics = within(runtime).getByRole("button", {
+        name: "运行诊断",
+      });
+      expect(runtimeRefresh).toBeVisible();
+      expect(diagnostics).toBeVisible();
+      expect(runtimeRefresh.closest(".runtime-toolbar")).not.toBeNull();
+      expect(runtimeRefresh.closest(".runtime-toolbar")).toBe(
+        diagnostics.closest(".runtime-toolbar"),
+      );
+      expect(screen.getAllByRole("button", { name: "刷新" })).toHaveLength(1);
       expect(
-        await within(header).findByRole("button", { name: "刷新" }),
-      ).toBeVisible();
+        within(header).queryByRole("button", { name: "刷新" }),
+      ).not.toBeInTheDocument();
       expect(
         within(header).queryByRole("link", { name: "配置向导" }),
       ).not.toBeInTheDocument();
       expect(
-        container.querySelector('#main-content button[title="刷新"]'),
-      ).toBeNull();
+        header.querySelector("[data-page-header-actions]"),
+      ).toBeEmptyDOMElement();
       await act(async () => {
         await router.navigate("/orders");
       });
@@ -720,27 +736,39 @@ describe("page actions in the shared header", () => {
     expect(unloadIsBlocked()).toBe(true);
   });
 
-  it("disables the header refresh while the page's request is in flight", async () => {
-    const { fetchMock } = mount({ path: "/system", configured: true });
-    const refresh = await screen.findByRole("button", { name: "刷新" });
-    expect(refresh.closest("header")).not.toBeNull();
-    await waitFor(() => expect(refresh).toBeEnabled());
-    const original = fetchMock.getMockImplementation()!;
-    let finish!: (value: Response) => void;
-    fetchMock.mockImplementation((request) =>
-      new URL(request.url).pathname === "/api/admin/v1/system/status"
-        ? new Promise((resolve) => {
-            finish = resolve;
-          })
-        : original(request),
-    );
-    await userEvent.click(refresh);
-    await waitFor(() => expect(refresh).toBeDisabled());
-    await act(async () => {
-      finish(json({ data: systemStatus() }));
-    });
-    await waitFor(() => expect(refresh).toBeEnabled());
-  });
+  it.each([
+    ["/settings/collection-policy", "/api/admin/v1/settings", true],
+    ["/system", "/api/admin/v1/system/status", false],
+  ] as const)(
+    "disables the page refresh while its request is in flight (%s)",
+    async (path, endpoint, inHeader) => {
+      const { fetchMock } = mount({ path, configured: true });
+      const refresh = await screen.findByRole("button", { name: "刷新" });
+      if (inHeader) expect(refresh.closest("header")).not.toBeNull();
+      else {
+        expect(refresh.closest("header")).toBeNull();
+        expect(refresh.closest(".runtime-toolbar")).not.toBeNull();
+      }
+      await waitFor(() => expect(refresh).toBeEnabled());
+      const original = fetchMock.getMockImplementation()!;
+      let finish!: (value: Response) => void;
+      let pendingRequest!: Request;
+      fetchMock.mockImplementation((request) =>
+        new URL(request.url).pathname === endpoint
+          ? new Promise((resolve) => {
+              finish = resolve;
+              pendingRequest = request;
+            })
+          : original(request),
+      );
+      await userEvent.click(refresh);
+      await waitFor(() => expect(refresh).toBeDisabled());
+      await act(async () => {
+        finish(await original(pendingRequest));
+      });
+      await waitFor(() => expect(refresh).toBeEnabled());
+    },
+  );
 });
 
 

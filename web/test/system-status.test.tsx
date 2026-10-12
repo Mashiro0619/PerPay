@@ -40,7 +40,7 @@ describe("shared runtime presentation", () => {
       ? json({ data: { ...ready(), work_items: workItems } }) : undefined });
     expect(await screen.findByText("暂时无法确认运行状态")).toBeVisible();
     expect(screen.getByRole("link", { name: "运行状态" })).toHaveAccessibleDescription("状态未知");
-    expect(screen.queryByRole("heading", { name: "可以收款" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "运行环节" })).not.toBeInTheDocument();
   });
 
   it("does not label business backlog as a failed collection or confirmation worker", () => {
@@ -111,9 +111,9 @@ describe("shared runtime presentation", () => {
     data.status = "degraded";
     data.ledger.conflicts!.open = 2;
     mountOnboarding({ stage: 4, path: "/system", status: () => data });
-    expect(await screen.findByText("提醒统计暂不可用，请刷新重试。")).toBeVisible();
-    expect(screen.getByText("冲突提醒 —")).toBeVisible();
-    expect(screen.getByText("待核对订单 0 · 异常提醒 —")).toBeVisible();
+    await screen.findByRole("table", { name: "运行环节" });
+    expect(screen.getByText(/提醒统计暂不可用/)).toBeVisible();
+    expect(screen.queryByText(/暂无待处理事项|业务待办已处理完毕/)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "运行状态" })).toHaveAccessibleDescription("需关注");
     expect(screen.queryByText("有业务事项待处理")).not.toBeInTheDocument();
   });
@@ -128,6 +128,24 @@ describe("shared runtime presentation", () => {
     data.backup.recovery_required = true;
     expect(presentSystemStatus(data).runtimeWarning).toBe(true);
   });
+  it.each([
+    ["recovery_required", /实例需要恢复/],
+    ["configuration_mismatch", /备份配置与运行状态不一致/],
+    ["clock_moved_backwards", /系统时钟发生回退/],
+  ] as const)("shows %s directly even when scheduled backups are disabled", async (flag, message) => {
+    const data = ready();
+    data.backup.enabled = false;
+    data.backup.ok = false;
+    data.backup[flag] = true;
+    expect(presentSystemStatus(data)).toMatchObject({ canReceive: true, runtimeWarning: true });
+    mountOnboarding({ stage: 4, path: "/system", status: () => data });
+    const runtime = within(await screen.findByRole("table", { name: "运行环节" }));
+    expect(screen.getByRole("link", { name: "运行状态" })).toHaveAccessibleDescription("需关注");
+    expect(screen.queryByText("收款已暂停")).not.toBeInTheDocument();
+    const backup = within(runtime.getByRole("rowheader", { name: "自动备份" }).closest("tr")!);
+    expect(runtime.getByText(message)).toBeVisible();
+    expect(backup.getByRole("link", { name: "备份设置" })).toHaveAttribute("href", "/settings/backup");
+  });
   it("keeps the readiness gate regardless of whether workers have recent errors", () => {
     for (const field of ["database", "ledger", "reconciliation"]) {
       const data = ready();
@@ -139,6 +157,32 @@ describe("shared runtime presentation", () => {
         notice: "收款已暂停",
       });
     }
+  });
+  it("shows the missing configuration and its recovery entry in a compact pause alert", async () => {
+    const data = ready();
+    data.status = "not_ready";
+    data.configured = false;
+    mountOnboarding({ stage: 4, path: "/system", status: () => data });
+    await screen.findByRole("table", { name: "运行环节" });
+    const alert = within(screen.getByRole("alert"));
+    expect(alert.getByText("收款已暂停")).toBeVisible();
+    expect(alert.getByText(/收款配置.*未完成/)).toBeVisible();
+    expect(alert.getByRole("link", { name: "继续配置" })).toHaveAttribute("href", "/settings/onboarding");
+  });
+  it("shows an actual confirmation failure directly without adding a payment pause", async () => {
+    const data = ready();
+    data.status = "degraded";
+    data.reconciliation.last_error_code = "reconciliation_storage_error";
+    data.reconciliation.consecutive_failures = 2;
+    mountOnboarding({ stage: 4, path: "/system", status: () => data });
+    const runtime = within(await screen.findByRole("table", { name: "运行环节" }));
+    const reconciliation = within(runtime.getByRole("rowheader", { name: "自动确认" }).closest("tr")!);
+    expect(reconciliation.getByRole("cell", { name: "需关注" })).toBeVisible();
+    expect(runtime.getByText(/最近错误：reconciliation_storage_error/)).toBeVisible();
+    expect(runtime.getByText(/连续失败 2 次/)).toBeVisible();
+    expect(reconciliation.queryByRole("button", { name: "查看自动确认详情" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "运行状态" })).toHaveAccessibleDescription("需关注");
+    expect(screen.queryByText("收款已暂停")).not.toBeInTheDocument();
   });
   it("shows non-blocking backlog only in navigation without adding a homepage banner", async () => {
     const data = ready();
@@ -162,7 +206,7 @@ describe("shared runtime presentation", () => {
     await userEvent
       .setup()
       .click(screen.getByRole("link", { name: "运行状态" }));
-    await screen.findByRole("heading", { name: "运行环节" });
+    await screen.findByRole("table", { name: "运行环节" });
     expect(reads()).toBe(2);
     await userEvent
       .setup()
@@ -170,7 +214,7 @@ describe("shared runtime presentation", () => {
     await screen.findByRole("heading", { name: "收款趋势" });
     await waitFor(() => expect(reads()).toBe(3));
   });
-  it("clears navigation and system reminders after ignoring, and restores them without altering raw evidence", async () => {
+  it("clears and restores the navigation notice without changing runtime health or raw evidence", async () => {
     let ignored = false;
     const item = {
       type: "FINANCIAL_EXCEPTION", status: "OPEN", exception_type: "UNMATCHED_CREDIT",
@@ -216,18 +260,25 @@ describe("shared runtime presentation", () => {
     await screen.findByText("暂无待处理提醒");
     await waitFor(() => expect(document.querySelector("[data-runtime-notice]")).toBeNull());
     await user.click(screen.getByRole("link", { name: "运行状态" }));
-    await screen.findByRole("heading", { name: "运行环节" });
+    const runtime = within(await screen.findByRole("table", { name: "运行环节" }));
     expect(screen.queryByText("有业务事项待处理")).not.toBeInTheDocument();
     expect(screen.queryByText("有运行告警")).not.toBeInTheDocument();
-    expect(screen.getByText("待核对订单 0 · 异常提醒 0")).not.toBeVisible();
-    await user.click(screen.getByRole("button",{name:"查看自动确认详情"}));
-    expect(screen.getByText("待核对订单 0 · 异常提醒 0")).toBeVisible();
-    expect(screen.queryByRole("link", { name: "查看未忽略提醒" })).not.toBeInTheDocument();
+    const reconciliation = within(runtime.getByRole("rowheader", { name: "自动确认" }).closest("tr")!);
+    expect(reconciliation.getByRole("cell", { name: "正常" })).toBeVisible();
+    expect(reconciliation.queryByText("待核对订单 0")).not.toBeInTheDocument();
+    expect(reconciliation.queryByRole("button", { name: "查看自动确认详情" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("link", { name: "待办" }));
     await user.click(screen.getByRole("button", { name: "已忽略" }));
     await screen.findByRole("link", { name: "收入尚未匹配订单" });
     await user.click(screen.getByRole("button", { name: "恢复提醒" }));
     await waitFor(() => expect(screen.getByRole("link", { name: "运行状态" })).toHaveAccessibleDescription("待处理"));
+    await user.click(screen.getByRole("link", { name: "运行状态" }));
+    const restoredRuntime = within(await screen.findByRole("table", { name: "运行环节" }));
+    expect(screen.getByRole("link", { name: "运行状态" })).toHaveAccessibleDescription("待处理");
+    const restoredReconciliation = within(restoredRuntime.getByRole("rowheader", { name: "自动确认" }).closest("tr")!);
+    expect(restoredReconciliation.getByRole("cell", { name: "正常" })).toBeVisible();
+    expect(screen.queryByText("有业务事项待处理")).not.toBeInTheDocument();
+    expect(screen.queryByText("有运行告警")).not.toBeInTheDocument();
     expect(data.reconciliation.exceptions!.open).toBe(1);
     expect(view.writes()).toHaveLength(2);
   });
@@ -243,7 +294,7 @@ describe("shared runtime presentation", () => {
           ? apiError("unavailable", "状态读取失败", 503)
           : undefined,
     });
-    await screen.findByRole("heading", { name: "可以收款" });
+    await screen.findByRole("table", { name: "运行环节" });
     expect(document.querySelector("[data-runtime-notice]")).toBeNull();
     failed = true;
     await act(async () => {
@@ -251,10 +302,7 @@ describe("shared runtime presentation", () => {
     });
     expect(await screen.findByText("暂时无法确认运行状态")).toBeVisible();
     expect(
-      screen.queryByRole("heading", { name: "可以收款" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { name: "运行环节" }),
+      screen.queryByRole("table", { name: "运行环节" }),
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "运行状态" }),

@@ -209,10 +209,40 @@ describe("short feedback and safe settings", () => {
     ).toHaveAccessibleDescription("不含端口或路径。");
     expect(screen.queryByText(/签名密钥在/)).not.toBeInTheDocument();
   });
-  it("does not explain normal operation twice or leave an empty summary paragraph", async () => {
-    mountOnboarding({ stage: 4, path: "/system" });
-    const heading = await screen.findByRole("heading", { name: "可以收款" });
-    expect(heading.parentElement?.querySelector("p")).toBeNull();
+  it("keeps normal runtime status concise without duplicate summaries or explanatory detail controls", async () => {
+    const view = mountOnboarding({ stage: 4, path: "/system" });
+    const table = await screen.findByRole("table", { name: "运行环节" });
+    const runtime = within(table);
+    expect(table).toBeVisible();
+    for (const name of ["服务", "状态", "最近成功", "运行信息"]) {
+      expect(runtime.getByRole("columnheader", { name })).toBeVisible();
+    }
+    expect(screen.queryByRole("heading", { name: /^(可以收款|暂不能收款)$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "待处理事项" })).not.toBeInTheDocument();
+    expect(screen.queryByText("有业务事项待处理")).not.toBeInTheDocument();
+    for (const [title, explanation] of [
+      ["账本采集", "采集支付宝账本，为收款核对提供依据。"],
+      ["自动确认", "核对账本与订单，并确认符合条件的收款。"],
+      ["业务通知", "将收款结果发送到对应的业务网站。"],
+      ["数据库", "订单、账本与运行记录保存在当前实例。"],
+    ] as const) {
+      const service = within(runtime.getByRole("rowheader", { name: title }).closest("tr")!);
+      const status = service.getByRole("cell", { name: "正常" });
+      expect(status).toBeVisible();
+      expect(status.querySelector('[data-slot="badge"]')).toBeNull();
+      expect(service.queryByRole("button", { name: "查看" + title + "详情" })).not.toBeInTheDocument();
+      expect(runtime.queryByText(explanation)).not.toBeInTheDocument();
+    }
+    expect(screen.queryByText("待核对订单 0")).not.toBeInTheDocument();
+    expect(screen.queryByText("待投递 0")).not.toBeInTheDocument();
+    for (const name of ["自动确认", "业务通知"]) {
+      const service = within(runtime.getByRole("rowheader", { name }).closest("tr")!);
+      expect(service.getAllByRole("cell")[2]).toHaveTextContent(/^—$/);
+    }
+    expect(runtime.getByRole("button", { name: "备份详情" })).toBeVisible();
+    const diagnostics = screen.getByRole("button", { name: "运行诊断" });
+    expect(diagnostics).toBeVisible();
+    expect(screen.queryByRole("button", { name: "运行技术信息" })).not.toBeInTheDocument();
     expect(
       screen.queryByText("提醒数仅包含未忽略且仍需处理的事项。"),
     ).not.toBeInTheDocument();
@@ -220,6 +250,14 @@ describe("short feedback and safe settings", () => {
     expect(
       screen.queryByText(/详见下方|可查看结果后|仍保留校验约束/),
     ).not.toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(diagnostics);
+    const dialog = await screen.findByRole("dialog", { name: "技术详情" });
+    expect(within(dialog).getByText("实例编号")).toBeVisible();
+    await user.click(within(dialog).getByRole("button", { name: "关闭" }));
+    await waitFor(() => expect(dialog).not.toBeInTheDocument());
+    expect(diagnostics).toHaveFocus();
+    expect(view.writes()).toHaveLength(0);
   });
   it("shows actual errors without a second generic failure heading", () => {
     render(<ErrorNotice error={new Error("数据状态已变化")} />);
@@ -361,7 +399,7 @@ describe("short feedback and safe settings", () => {
     );
     expect(screen.queryByText(syntheticSecret)).not.toBeInTheDocument();
   });
-  it("shows active reminder counts and links matching those counts instead of raw diagnostic totals", async () => {
+  it("keeps business reminders in navigation and shows actual runtime queues without raw diagnostic totals", async () => {
     mountOnboarding({
       stage: 4,
       path: "/system",
@@ -388,6 +426,7 @@ describe("short feedback and safe settings", () => {
           },
           reconciliation: {
             ...status.reconciliation,
+            pending_orders: 5,
             exceptions: {
               provider_account_key: "test",
               open: 6,
@@ -403,34 +442,23 @@ describe("short feedback and safe settings", () => {
         };
       },
     });
-    expect(await screen.findByText("冲突提醒 2")).toBeVisible();
-    expect(screen.getByText("待核对订单 0 · 异常提醒 1")).toBeVisible();
-    expect(screen.getByText("待投递 2 · 失败提醒 1")).toBeVisible();
+    const runtime = within(await screen.findByRole("table", { name: "运行环节" }));
+    expect(screen.getByRole("link", { name: "运行状态" })).toHaveAccessibleDescription("待处理");
+    expect(screen.getByRole("link", { name: "待办" })).toHaveAttribute("href", "/work-items");
     expect(screen.queryByText("提醒数仅包含未忽略且仍需处理的事项。")).not.toBeInTheDocument();
-    for (const [title, type] of [
-      ["账本采集", "LEDGER_CONFLICT"],
-      ["自动确认", "FINANCIAL_EXCEPTION"],
-      ["业务通知", "NOTIFICATION_FAILURE"],
-    ]) {
-      const row = screen
-        .getByText(title!)
-        .closest("[data-slot=item]")! as HTMLElement;
-      expect(
-        within(row).getByRole("link", { name: "查看未忽略提醒" }),
-      ).toHaveAttribute("href", "/work-items?type=" + type);
-    }
-    expect(screen.queryByText("未处理冲突 8")).not.toBeInTheDocument();
-    expect(
-      screen.queryByText("待核对订单 0 · 未处理异常 6"),
-    ).not.toBeInTheDocument();
-    expect(screen.getByText("有业务事项待处理")).toBeVisible();
+    const reconciliation = within(runtime.getByRole("rowheader", { name: "自动确认" }).closest("tr")!);
+    const notifications = within(runtime.getByRole("rowheader", { name: "业务通知" }).closest("tr")!);
+    expect(reconciliation.getByRole("cell", { name: "待核对订单 5" })).toBeVisible();
+    expect(notifications.getByRole("cell", { name: "待投递 2" })).toBeVisible();
+    expect(reconciliation.queryByText(/异常提醒|未处理异常/)).not.toBeInTheDocument();
+    expect(notifications.queryByText(/失败提醒/)).not.toBeInTheDocument();
+    expect(screen.queryByText("有业务事项待处理")).not.toBeInTheDocument();
     expect(screen.queryByText("有运行告警")).not.toBeInTheDocument();
-    for (const name of ["账本采集", "自动确认"]) {
-      const row = screen
-        .getByText(name)
-        .closest("[data-slot=item]")! as HTMLElement;
-      expect(within(row).getByText("正常")).toBeVisible();
-      expect(within(row).queryByText("需关注")).not.toBeInTheDocument();
+    expect(screen.queryByText("收款已暂停")).not.toBeInTheDocument();
+    for (const name of ["账本采集", "自动确认", "业务通知"]) {
+      const row = within(runtime.getByRole("rowheader", { name }).closest("tr")!);
+      expect(row.getByRole("cell", { name: "正常" })).toBeVisible();
+      expect(row.queryByRole("cell", { name: "需关注" })).not.toBeInTheDocument();
     }
     await waitFor(() =>
       expect(screen.queryByText("收款链路运行正常。")).not.toBeInTheDocument(),

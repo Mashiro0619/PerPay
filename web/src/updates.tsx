@@ -1,23 +1,14 @@
 import { useState } from "react";
 import { isReleaseVersion, isPrereleaseVersion } from "../../src/shared/release-version";
-import { X, ArrowUpCircle } from "lucide-react";
+import { X, ArrowUpCircle, ChevronDown } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError, queryClient, result, sessionKey } from "@/api/client";
 import { dateTime } from "@/lib/format";
-import { DetailFields } from "@/components/detail/DetailPrimitives";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardAction,
-  CardContent,
-} from "@/components/ui/card";
-import {
   Alert,
   AlertTitle,
-  AlertDescription,
   AlertAction,
 } from "@/components/ui/alert";
 import {
@@ -102,94 +93,79 @@ export function OfficialUpdateNotice({
     </Alert>
   );
 }
-export function OfficialUpdatePanel() {
+function retryWait(seconds: number) {
+  if (seconds > 0 && seconds % 3600 === 0) return `${seconds / 3600} 小时`;
+  if (seconds > 0 && seconds % 60 === 0) return `${seconds / 60} 分钟`;
+  return `${seconds} 秒`;
+}
+
+export function OfficialUpdatePanel({ currentVersion }: { currentVersion?: string }) {
   const update = useOfficialUpdate();
-  const data = update.data?.data;
+  const checking = update.isFetching || update.isPending;
+  const data = !checking && !update.isError ? update.data?.data : undefined;
+  const lastKnownVersion = update.data?.data.current_version;
+  const knownVersion = isReleaseVersion(currentVersion)
+    ? currentVersion
+    : isReleaseVersion(lastKnownVersion) ? lastKnownVersion : undefined;
   const prereleaseChannel = isPrereleaseVersion(data?.current_version);
   const latestIsPrerelease = isPrereleaseVersion(data?.latest_version);
+  const latestLabel = latestIsPrerelease ? "官方预发布版" : "官方稳定版";
   const retryAfter =
     update.error instanceof ApiError ? update.error.retryAfter : null;
+  const status = checking
+    ? "正在检查更新…"
+    : update.isError
+      ? "暂时无法检查更新，不影响收款。"
+      : data?.status === "update_available"
+        ? "有可用更新：v" + data.latest_version + (latestIsPrerelease ? "（预发布）" : "")
+        : data?.status === "ahead"
+          ? prereleaseChannel ? "当前版本高于官方已发布版本。" : "当前版本高于官方稳定版。"
+          : prereleaseChannel ? "已是当前通道最新版本。" : "已是最新稳定版。";
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle role="heading" aria-level={2}>
-          官方更新
-        </CardTitle>
-        <CardAction>
-          <Button
-            variant="outline"
-            disabled={update.isFetching}
-            onClick={() => {
-              void update.refetch();
-            }}
-          >
-            {update.isFetching && (
-              <Spinner aria-hidden="true" data-icon="inline-start" />
+    <section className="system-update-strip" aria-label="官方更新">
+      <Collapsible>
+        <div className="system-update-main">
+          <div className="system-update-summary">
+            <h2>官方更新</h2>
+            {knownVersion && (
+              <span className="system-update-current">
+                <span>当前版本</span>{" "}
+                <span className="font-mono">v{knownVersion}</span>
+                {isPrereleaseVersion(knownVersion) && <span>（预发布）</span>}
+              </span>
             )}
-            检查更新
-          </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {update.isFetching || update.isPending ? (
-          <p role="status" className="text-sm text-muted-foreground">
-            正在检查更新…
-          </p>
-        ) : update.isError ? (
-          <Alert>
-            <AlertDescription>
-              暂时无法检查更新，不影响收款。
-              {retryAfter !== null && <p>请至少等待 {retryAfter} 秒后重试。</p>}
-            </AlertDescription>
-          </Alert>
-        ) : (
-          data && (
-            <>
-              <p role="status" className="text-sm">
-                {data.status === "update_available"
-                  ? "有可用更新：v" + data.latest_version + (latestIsPrerelease ? "（预发布）" : "")
-                  : data.status === "ahead"
-                    ? prereleaseChannel ? "当前版本高于官方已发布版本。" : "当前版本高于官方稳定版。"
-                    : prereleaseChannel ? "已是当前通道最新版本。" : "已是最新稳定版。"}
-              </p>
-              {prereleaseChannel && (
-                <p className="text-sm text-muted-foreground">
-                  当前使用预发布版本，同时检查正式版和预发布版。
-                </p>
+            <p role="status" className="system-update-status">
+              <span>{status}</span>
+              {!checking && update.isError && retryAfter !== null && (
+                <span> 请至少等待 {retryWait(retryAfter)}后重试。</span>
               )}
-              <Collapsible>
-                <CollapsibleTrigger
-                  render={<Button variant="ghost" size="sm" />}
-                >
-                  版本信息
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <div className="pt-4">
-                    <DetailFields
-                      items={[
-                        ["当前版本", "v" + data.current_version],
-                        [latestIsPrerelease ? "官方预发布版" : "官方稳定版", "v" + data.latest_version],
-                        ["发布时间", dateTime(data.published_at)],
-                        ["检查时间", dateTime(data.checked_at)],
-                      ]}
-                    />
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-              {data.status === "update_available" && (
-                <p className="text-sm text-muted-foreground">
-                  更新前请备份数据库和主密钥。
-                </p>
+            </p>
+          </div>
+          <div className="system-update-actions">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={update.isFetching}
+              onClick={() => {
+                void update.refetch();
+              }}
+            >
+              {update.isFetching && (
+                <Spinner aria-hidden="true" data-icon="inline-start" />
               )}
-              <div className="flex flex-wrap items-center gap-2">
+              检查更新
+            </Button>
+            {data && (
+              <>
                 <a
                   data-external-link
-                  className={buttonVariants({ variant: "outline", size: "sm" })}
+                  aria-label="查看发布说明"
+                  className={buttonVariants({ variant: "ghost", size: "sm" })}
                   href={data.release_url}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  查看发布说明
+                  发布说明
                 </a>
                 <a
                   data-external-link
@@ -200,11 +176,41 @@ export function OfficialUpdatePanel() {
                 >
                   更新方法
                 </a>
-              </div>
-            </>
-          )
+                <CollapsibleTrigger
+                  render={<Button variant="ghost" size="sm" className="group" />}
+                >
+                  发布信息
+                  <ChevronDown data-icon="inline-end" className="transition-transform group-aria-expanded:rotate-180" />
+                </CollapsibleTrigger>
+              </>
+            )}
+          </div>
+        </div>
+        {data?.status === "update_available" && (
+          <p className="system-update-note">更新前请备份数据库和主密钥。</p>
         )}
-      </CardContent>
-    </Card>
+        {data && (
+          <CollapsibleContent className="system-update-details">
+            <p>
+              <span>{latestLabel}</span>{" "}
+              <span className="font-mono">v{data.latest_version}</span>
+            </p>
+            <p>
+              <span>发布时间</span>{" "}
+              <time dateTime={data.published_at}>{dateTime(data.published_at)}</time>
+            </p>
+            <p>
+              <span>检查时间</span>{" "}
+              <time dateTime={data.checked_at}>{dateTime(data.checked_at)}</time>
+            </p>
+            {prereleaseChannel && (
+              <p>
+                当前使用预发布版本，同时检查正式版和预发布版。
+              </p>
+            )}
+          </CollapsibleContent>
+        )}
+      </Collapsible>
+    </section>
   );
 }
