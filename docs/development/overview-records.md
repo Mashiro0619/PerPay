@@ -76,6 +76,8 @@
 
 ![保留商户订单号的全局待办触屏布局](../screenshots/overview-work-items-realistic-mobile.png)
 
+此前精简阶段的截图保留用于对照：[桌面](../screenshots/overview-work-items-clean-desktop.png)、[触屏](../screenshots/overview-work-items-clean-mobile.png)。
+
 ## 业务模拟数据与预览复核（2026-10-11）
 
 - 概览恢复带“商户订单号”标签的完整编号。演示订单、流水和支付宝交易号分别使用 22／24／28 位数字字符串；付款人、商品、网站及人工处理备注改为合理的虚构业务内容。详情中已实际检查数字商户号、支付宝订单号及“邓*晨”等脱敏交易对方。
