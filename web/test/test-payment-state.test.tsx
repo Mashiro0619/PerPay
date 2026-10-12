@@ -32,7 +32,7 @@ function mount(
 ) {
   const view = mountOnboarding({
     stage: 4,
-    path: standalone ? "/test-payment" : "/orders",
+    path: standalone ? "/test-payment" : "/",
     handle: (request) => {
       const url = new URL(request.url);
       if (url.pathname === target && request.method === "POST")

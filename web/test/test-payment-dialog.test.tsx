@@ -29,7 +29,7 @@ function mount(
 ) {
   return mountOnboarding({
     stage: 4,
-    path: "/orders",
+    path: "/",
     handle: (request) =>
       handle?.(request) ??
       (isCreate(request)
@@ -63,7 +63,7 @@ describe("test-payment dialog lifecycle", () => {
     expect(trigger).toHaveFocus();
     await user.click(trigger);
     expect(await screen.findByLabelText("测试金额（元）")).toHaveValue("1.23");
-    expect(view.router.state.location.pathname).toBe("/orders");
+    expect(view.router.state.location.pathname).toBe("/");
     expect(view.writes()).toHaveLength(0);
   });
 
@@ -175,7 +175,7 @@ describe("test-payment dialog lifecycle", () => {
     expect(view.writes()).toHaveLength(1);
   });
 
-  it("closes the modal when opening the created order and preserves list-return navigation", async () => {
+  it("closes the modal when opening the created order and preserves overview-return navigation", async () => {
     const view = mount((r) =>
       new URL(r.url).pathname === "/api/admin/v1/orders/" + orderId
         ? json({ data: order })
@@ -192,7 +192,7 @@ describe("test-payment dialog lifecycle", () => {
     await user.click(within(dialog).getByRole("link", { name: "查看订单" }));
     await screen.findByRole("heading", { name: "订单信息" });
     expect(view.router.state.location.pathname).toBe("/orders/" + orderId);
-    expect(view.router.state.location.state?.listReturn?.to).toBe("/orders");
+    expect(view.router.state.location.state?.listReturn?.to).toBe("/");
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );

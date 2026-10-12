@@ -348,7 +348,7 @@ describe("order browsing", () => {
     );
   });
 
-  it("keeps the setup action for a genuinely empty first page", async () => {
+  it("keeps the empty state without a test-payment action on the first page", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => json({ data: [], page: { next_cursor: null } })),
@@ -357,10 +357,7 @@ describe("order browsing", () => {
     expect(
       await screen.findByRole("heading", { name: "暂无订单" }),
     ).toBeVisible();
-    expect(screen.getByRole("button", { name: "测试收款" })).toHaveAttribute(
-      "aria-haspopup",
-      "dialog",
-    );
+    expect(screen.queryByRole("button", { name: "测试收款" })).not.toBeInTheDocument();
     expect(
       screen.queryByRole("navigation", { name: "列表分页" }),
     ).not.toBeInTheDocument();

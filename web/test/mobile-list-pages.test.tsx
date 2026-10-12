@@ -9,8 +9,7 @@ import Orders from "../src/pages/Orders";
 import Reconciliation from "../src/pages/Reconciliation";
 import Notifications from "../src/pages/Notifications";
 import WorkItems from "../src/pages/WorkItems";
-import { apiError, json, order, orderId, ledgerId, settings } from "./fixtures";
-import { systemStatus } from "./onboarding-fixture";
+import { apiError, json, order, orderId, ledgerId } from "./fixtures";
 import { mobileMedia } from "./mobile-media";
 function Location() {
   const location = useLocation();
@@ -60,7 +59,7 @@ describe("mobile business list integration", () => {
     mobileMedia();
   });
   it.each([
-    ["/orders", <Orders />, "更多订单操作"],
+    ["/orders", <Orders />, null],
     ["/reconciliation", <Reconciliation />, "更多对账操作"],
     ["/notifications", <Notifications />, "更多通知操作"],
     ["/work-items", <WorkItems />, "更多提醒操作"],
@@ -78,7 +77,12 @@ describe("mobile business list integration", () => {
         screen.queryByLabelText("排序字段", { exact: true }),
       ).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: "筛选与排序" })).toBeVisible();
-      expect(screen.getByRole("button", { name: menu })).toBeVisible();
+      if (menu) {
+        expect(screen.getByRole("button", { name: menu })).toBeVisible();
+      } else {
+        expect(screen.queryByRole("button", { name: "更多订单操作" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "测试收款" })).not.toBeInTheDocument();
+      }
     },
   );
 
@@ -164,31 +168,6 @@ describe("mobile business list integration", () => {
     expect(
       await screen.findByRole("heading", { name: "流水详情" }),
     ).toBeVisible();
-  });
-
-  it("opens test payment from More without creating an order and returns focus to More", async () => {
-    const calls: Request[] = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (request: Request) => {
-        calls.push(request);
-        return new URL(request.url).pathname.endsWith("/system/status")
-          ? json({ data: systemStatus(settings) })
-          : json({ data: [], page: { next_cursor: null } });
-      }),
-    );
-    mount("/orders", <Orders />);
-    const user = userEvent.setup();
-    const trigger = screen.getByRole("button", { name: "更多订单操作" });
-    await user.click(trigger);
-    await user.click(await screen.findByRole("menuitem", { name: "测试收款" }));
-    const dialog = await screen.findByRole("dialog", { name: "测试收款" });
-    await within(dialog).findByLabelText("测试金额（元）");
-    await user.click(
-      within(dialog).getByRole("button", { name: "取消" }),
-    );
-    await waitFor(() => expect(trigger).toHaveFocus());
-    expect(calls.every((request) => request.method === "GET")).toBe(true);
   });
 
   it("preserves the scoped bulk-ignore confirmation and restores focus after cancelling", async () => {

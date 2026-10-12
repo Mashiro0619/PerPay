@@ -44,37 +44,32 @@ describe("context-preserving secondary dialogs", () => {
     await waitFor(() => expect(trigger).toHaveFocus());
   });
 
-  it.each(["/", "/orders"])(
-    "opens test payment from %s without replacing the page",
-    async (path) => {
-      const view = mountOnboarding({ stage: 4, path });
-      const trigger = await screen.findByRole("button", { name: "测试收款" });
-      if (path === "/") {
-        expect(trigger).not.toHaveClass("hidden");
-        expect(within(trigger).getByText("测试收款")).toHaveClass(
-          "sr-only",
-          "sm:not-sr-only",
-        );
-      }
-      const user = userEvent.setup();
-      await user.click(trigger);
-      const dialog = await screen.findByRole("dialog", { name: "测试收款" });
-      expect(within(dialog).getByLabelText("测试金额（元）")).toHaveValue(
-        "0.01",
-      );
-      expect(dialog.querySelector("[data-slot=dialog-footer]")).toHaveClass(
-        "shrink-0",
-        "flex-col-reverse",
-        "sm:flex-row",
-      );
-      expect(view.router.state.location.pathname).toBe(path);
-      expect(view.writes()).toHaveLength(0);
-      await user.click(within(dialog).getByRole("button", { name: "取消" }));
-      await waitFor(() =>
-        expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
-      );
-      expect(trigger).toHaveFocus();
-      expect(view.router.state.location.pathname).toBe(path);
-    },
-  );
+  it("opens test payment from the overview without replacing the page", async () => {
+    const view = mountOnboarding({ stage: 4, path: "/" });
+    const trigger = await screen.findByRole("button", { name: "测试收款" });
+    expect(trigger).not.toHaveClass("hidden");
+    expect(within(trigger).getByText("测试收款")).toHaveClass(
+      "sr-only",
+      "sm:not-sr-only",
+    );
+    const user = userEvent.setup();
+    await user.click(trigger);
+    const dialog = await screen.findByRole("dialog", { name: "测试收款" });
+    expect(within(dialog).getByLabelText("测试金额（元）")).toHaveValue(
+      "0.01",
+    );
+    expect(dialog.querySelector("[data-slot=dialog-footer]")).toHaveClass(
+      "shrink-0",
+      "flex-col-reverse",
+      "sm:flex-row",
+    );
+    expect(view.router.state.location.pathname).toBe("/");
+    expect(view.writes()).toHaveLength(0);
+    await user.click(within(dialog).getByRole("button", { name: "取消" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(trigger).toHaveFocus();
+    expect(view.router.state.location.pathname).toBe("/");
+  });
 });

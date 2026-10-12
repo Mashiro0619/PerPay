@@ -24,7 +24,7 @@ const created = {
 };
 function mount(
   handle: (r: Request, attempt: number) => Response | Promise<Response>,
-  path = "/orders",
+  path = "/",
 ) {
   let attempts = 0;
   let statusError = false;

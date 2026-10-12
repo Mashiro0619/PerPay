@@ -273,7 +273,7 @@ it("fixes a test-payment request to A while switching to B and retries the origi
   const writes: Request[] = [];
   const view = mountOnboarding({
     stage: 4,
-    path: "/sites/a/orders",
+    path: "/sites/a",
     handle: (req) => {
       const p = new URL(req.url).pathname;
       if (/^\/api\/admin\/v1\/sites\/[ab]$/.test(p))
@@ -298,7 +298,7 @@ it("fixes a test-payment request to A while switching to B and retries the origi
   await user.click(create);
   await waitFor(() => expect(writes).toHaveLength(1));
   await act(async () => {
-    await view.router.navigate("/sites/b/orders");
+    await view.router.navigate("/sites/b");
   });
   await act(async () => {
     reject(new TypeError("response lost"));
@@ -442,7 +442,7 @@ it.each([
     };
     const view = mountOnboarding({
       stage: 4,
-      path: "/sites/a/orders",
+      path: "/sites/a",
       handle: (req) => {
         const path = new URL(req.url).pathname;
         if (/^\/api\/admin\/v1\/sites\/[ab]$/.test(path))
@@ -472,7 +472,7 @@ it.each([
     await waitFor(() => expect(create).toBeEnabled());
     await user.click(create);
     await waitFor(() => expect(writes).toHaveLength(1));
-    await act(async () => { await view.router.navigate("/sites/b/orders"); });
+    await act(async () => { await view.router.navigate("/sites/b"); });
     await act(async () => {
       reject(new TypeError("response lost"));
       await pending.catch(() => {});

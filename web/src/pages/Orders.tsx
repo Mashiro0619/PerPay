@@ -11,7 +11,6 @@ import {
   ListQueryToolbar,
   type ListQueryLookup,
 } from "@/components/list-query-toolbar";
-import { ListActionsMenu } from "@/components/list-actions-menu";
 import { ListColumnsProvider } from "@/components/list-columns";
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { useMutation } from '@tanstack/react-query';
@@ -19,10 +18,6 @@ import { useSearchParams } from "react-router";
 import { useNavigate } from "@/navigation";
 import { result, type CheckoutStatus, type PaymentStatus } from "@/api/client";
 import { useCursor } from "@/lib/cursor";
-import {
-  TestPaymentButton,
-  TestPaymentMenuItem,
-} from "@/components/test-payment-provider";
 import { DataTable } from "@/components/data-table";
 import { CursorPagination } from "@/components/cursor-pagination";
 import { QueryView } from "@/components/request-state";
@@ -280,7 +275,6 @@ function OrderPage({
         control={listQuery}
         label="订单关键词搜索"
         desktopFilters={desktopFilters}
-        desktopActions={<TestPaymentButton />}
         lookup={lookup}
         filters={[
           {
@@ -296,11 +290,6 @@ function OrderPage({
             options: checkoutOptions,
           },
         ]}
-        mobileActions={
-          <ListActionsMenu label="更多订单操作">
-            {(trigger) => <TestPaymentMenuItem returnFocus={trigger} />}
-          </ListActionsMenu>
-        }
         sorts={[
           { value: "created_at", label: "创建时间" },
           { value: "payable_amount_cents", label: "应付金额" },

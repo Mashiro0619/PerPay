@@ -147,13 +147,19 @@ describe("desktop business list composition", () => {
       expect(row.querySelector("form")).toBe(screen.getByRole("search"));
       const filters = row.querySelector("[data-list-desktop-filters]")!;
       expect(row.querySelector("[data-list-desktop-sort]")).toBeNull();
-      const actions = row.querySelector("[data-list-desktop-actions]")!;
+      const actions = row.querySelector("[data-list-desktop-actions]");
       expect(filters.parentElement).toBe(row);
-      expect(actions.parentElement).toBe(row);
-      expect(
-        filters.compareDocumentPosition(actions) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy();
+      if (path === "/orders") {
+        expect(actions).toBeNull();
+        expect(screen.queryByRole("button", { name: "测试收款" })).not.toBeInTheDocument();
+      } else {
+        expect(actions).not.toBeNull();
+        expect(actions!.parentElement).toBe(row);
+        expect(
+          filters.compareDocumentPosition(actions!) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      }
       expect(within(table).getAllByRole("button").length).toBeGreaterThan(0);
       const columnMenu = screen.getByRole("button", { name: "显示列" });
       expect(columnMenu.closest("th")).toBeNull();
