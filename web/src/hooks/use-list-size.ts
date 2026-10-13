@@ -41,5 +41,5 @@ export function useListSize<T extends HTMLElement = HTMLDivElement>() {
     };
   }, []);
 
-  return { ref, size, isSummary: size.container < SUMMARY_WIDTH_REM * size.rem };
+  return { ref, size, isSummary: size.container > 0 && size.container < SUMMARY_WIDTH_REM * size.rem };
 }

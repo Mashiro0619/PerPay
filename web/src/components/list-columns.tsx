@@ -41,12 +41,12 @@ export function ListColumnsSlot() {
 }
 
 /** Portals preserve the table's state and clean up with the displayed result. */
-export function ListColumnsMenu({ children, summary = false }: { children: ReactNode; summary?: boolean }) {
+export function ListColumnsMenu({ children, summary }: { children: ReactNode; summary?: boolean }) {
   const host = useContext(ListColumnsContext);
   const setSummary = host?.setSummary;
   useLayoutEffect(() => {
-    // Keep the last measured layout while a query temporarily removes its rows.
-    setSummary?.(summary);
+    // Keep the last measured layout while rows are absent or awaiting measurement.
+    if (summary !== undefined) setSummary?.(summary);
   }, [setSummary, summary]);
   if (!host)
     return (

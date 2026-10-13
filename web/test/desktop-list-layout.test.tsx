@@ -131,6 +131,45 @@ describe("desktop business list composition", () => {
     mobileMedia(1600);
   });
 
+  it("keeps the desktop filter mounted and focused when the first work-item results arrive", async () => {
+    let resolveResponse!: (response: Response) => void;
+    const response = new Promise<Response>((resolve) => { resolveResponse = resolve; });
+    vi.stubGlobal("fetch", vi.fn(() => response));
+    mount("/work-items", <WorkItems />);
+    const filter = screen.getByRole("button", { name: "未忽略" });
+    act(() => filter.focus());
+    expect(filter).toHaveFocus();
+
+    await act(async () => resolveResponse(json({ data: [reminder], page: { next_cursor: null } })));
+    await screen.findByRole("table");
+    expect(screen.getByRole("button", { name: "未忽略" })).toBe(filter);
+    expect(filter).toHaveFocus();
+    await userEvent.click(screen.getByRole("button", { name: "忽略当前筛选结果" }));
+    expect(await screen.findByRole("alertdialog")).toBeVisible();
+  });
+
+  it("keeps the narrow-container toolbar focused when results disappear and return", async () => {
+    const original = HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute("data-business-table")
+        ? DOMRect.fromRect({ width: 400, height: 200 })
+        : original.call(this);
+    });
+    pageResponse([reminder]);
+    const view = mount("/work-items", <WorkItems />);
+    const filter = await screen.findByRole("button", { name: /^筛选与排序/ });
+    act(() => filter.focus());
+    expect(filter).toHaveFocus();
+
+    act(() => queryClient.setQueriesData({ queryKey: ["work-items"] }, { data: [], page: { next_cursor: null } }));
+    await waitFor(() => expect(view.container.querySelector("[data-business-table]")).toBeNull());
+    expect(filter).toHaveFocus();
+    act(() => queryClient.setQueriesData({ queryKey: ["work-items"] }, { data: [reminder], page: { next_cursor: null } }));
+    await screen.findByRole("listitem");
+    expect(screen.getByRole("button", { name: /^筛选与排序/ })).toBe(filter);
+    expect(filter).toHaveFocus();
+  });
+
   it.each(lists)(
     "keeps search, filters and the unique column menu grouped without duplicate desktop sorting on $path",
     async ({ path, element, data, centeredColumns }) => {
