@@ -4,6 +4,8 @@ import { describe, it } from "node:test";
 
 import type { AppDatabase } from "../src/database/database.ts";
 import { siteOverview } from "../src/http/site-overview.ts";
+import { createOrderRequestSchema } from "../src/orders/model.ts";
+import { createSitePaymentFixture } from "./site-payment-fixture.ts";
 
 const DAY_MILLISECONDS = 86_400_000;
 
@@ -39,10 +41,10 @@ describe("website overview period and global amount scale", () => {
         addConfirmation(connection, "deleted", "deleted-today", now, 777777);
         connection.prepare("INSERT INTO order_events VALUES (?, 'CHECKOUT_CLOSED', ?)").run("alpha-0", now);
         connection.prepare(`
-          INSERT INTO payment_orders(order_id, api_client_id, created_at, checkout_status, payment_status)
-          VALUES ('pending-alpha', 'alpha', ?, 'OPEN', 'UNPAID'),
-                 ('expired-alpha', 'alpha', ?, 'EXPIRED', 'UNPAID')
-        `).run(start - DAY_MILLISECONDS, start - DAY_MILLISECONDS);
+          INSERT INTO payment_orders(order_id, api_client_id, created_at, expires_at, checkout_status, payment_status)
+          VALUES ('pending-alpha', 'alpha', ?, ?, 'OPEN', 'UNPAID'),
+                 ('expired-alpha', 'alpha', ?, ?, 'EXPIRED', 'UNPAID')
+        `).run(start - DAY_MILLISECONDS, now + 1, start - DAY_MILLISECONDS, now - 1);
         connection.prepare(`
           INSERT INTO financial_exceptions(exception_id, order_id, created_at, status)
           VALUES ('active-alpha', 'pending-alpha', ?, 'OPEN'),
@@ -223,6 +225,42 @@ describe("website overview period and global amount scale", () => {
   });
 });
 
+it("excludes expired checkouts without an order read while keeping other sites' live payments pending", async () => {
+  const fixture = await createSitePaymentFixture();
+  try {
+    const alpha = fixture.createSite("Alpha");
+    const beta = fixture.createSite("Beta");
+    for (const [site, ttl] of [[alpha, 60], [beta, 600]] as const) {
+      const configuration = structuredClone(site.configuration);
+      configuration.policy.orders.order_ttl_seconds = ttl;
+      fixture.sites.update(site.clientId, { revision: site.revision, configuration }, { actorId: "admin" });
+    }
+    const createOrder = (clientId: string) => fixture.orders.forSite(clientId).create(createOrderRequestSchema.parse({
+      merchant_order_no: "pending-overview", idempotency_key: "pending-overview", product_name: "Overview test", amount_cents: 10000,
+    })).order;
+    const alphaOrder = createOrder(alpha.clientId);
+    const betaOrder = createOrder(beta.clientId);
+    const pending = (clientId: string, range: number) => siteOverview(fixture.database, new URLSearchParams({ q: clientId, range: String(range) }), fixture.now()).data[0]!.pending_orders;
+
+    fixture.setNow(alphaOrder.checkout.expiresAt - 1);
+    assert.equal(pending(alpha.clientId, 7), 1);
+    fixture.setNow(alphaOrder.checkout.expiresAt);
+    for (const range of [7, 30, 90]) {
+      assert.equal(pending(alpha.clientId, range), 0);
+      assert.equal(pending(beta.clientId, range), 1);
+    }
+    fixture.setNow(alphaOrder.checkout.expiresAt + 1);
+    assert.equal(pending(alpha.clientId, 7), 0);
+    assert.equal(fixture.database.read(connection => connection.prepare("SELECT checkout_status FROM payment_orders WHERE order_id = ?").get(alphaOrder.orderId)?.checkout_status), "OPEN");
+    fixture.orders.forSite(alpha.clientId).get(alphaOrder.orderId);
+    assert.equal(pending(alpha.clientId, 7), 0);
+    fixture.setNow(betaOrder.checkout.expiresAt);
+    assert.equal(pending(beta.clientId, 7), 0);
+  } finally {
+    fixture.close();
+  }
+});
+
 function addSite(connection: DatabaseSync, clientId: string, name: string, options: { deletedAt?: number; acceptingOrders?: boolean } = {}): void {
   connection.prepare("INSERT INTO sites(client_id, configuration, deleted_at) VALUES (?, ?, ?)").run(clientId, JSON.stringify({
     name,
@@ -258,7 +296,7 @@ function withFixture(operation: (database: AppDatabase, connection: DatabaseSync
       CREATE TABLE sites (client_id TEXT PRIMARY KEY, configuration TEXT NOT NULL, deleted_at INTEGER);
       CREATE TABLE payment_orders (
         order_id TEXT PRIMARY KEY, api_client_id TEXT NOT NULL, collection_profile_id TEXT,
-        created_at INTEGER NOT NULL, payment_status TEXT NOT NULL, checkout_status TEXT NOT NULL,
+        created_at INTEGER NOT NULL, expires_at INTEGER, payment_status TEXT NOT NULL, checkout_status TEXT NOT NULL,
         received_amount_cents INTEGER
       );
       CREATE TABLE order_events (order_id TEXT NOT NULL, event_type TEXT NOT NULL, occurred_at INTEGER NOT NULL);

@@ -33,7 +33,7 @@ export function siteOverview(database: AppDatabase, values: URLSearchParams, now
             configuration: string;
         }>;
         const selected = rows.slice(0, limit), ids = JSON.stringify(selected.map(row => row.client_id));
-        const pending = db.prepare("SELECT api_client_id, count(*) AS n FROM payment_orders WHERE checkout_status = 'OPEN' AND payment_status = 'UNPAID' AND api_client_id IN (SELECT value FROM json_each(?)) GROUP BY api_client_id").all(ids);
+        const pending = db.prepare("SELECT api_client_id, count(*) AS n FROM payment_orders WHERE checkout_status = 'OPEN' AND payment_status = 'UNPAID' AND expires_at > ? AND api_client_id IN (SELECT value FROM json_each(?)) GROUP BY api_client_id").all(now, ids);
         const confirmed = db.prepare(CONFIRMATION_TOTALS_SQL + " AND o.api_client_id IN (SELECT value FROM json_each(?)) GROUP BY o.api_client_id").all(start, end, ids);
         const work = db.prepare(WORK_ITEMS_CTE + " SELECT o.api_client_id, count(*) AS n FROM work_items w JOIN payment_orders o ON o.order_id = w.order_id WHERE w.ignored = 0 AND w.actionable = 1 AND o.api_client_id IN (SELECT value FROM json_each(?)) GROUP BY o.api_client_id").all(ids);
         const maximum = db.prepare(`
