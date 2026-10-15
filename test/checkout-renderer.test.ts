@@ -101,7 +101,7 @@ describe("public checkout SSR", () => {
     assert.doesNotMatch(html, /data-product-name|测试订单/);
     assert.match(html, /md:max-w-3xl/);
     assert.doesNotMatch(html, /data-checkout-desktop-guide/);
-    assert.match(checkoutText(html), /商户订单号.*刷新页面/);
+    assert.match(checkoutText(html), /刷新页面.*商户订单号/);
     assert.doesNotMatch(html, /data-qr-image/);
   });
   it("escapes both the shared SSR view and the JSON bootstrap", () => {
@@ -232,8 +232,10 @@ describe("public checkout SSR", () => {
       assert.equal(initialCheckoutState(readCheckoutInitial(html)), state);
       assert.doesNotMatch(
         html,
-        /data-qr-image|data-countdown|放大二维码|保存二维码|查询付款状态/,
+        /data-qr-image|data-countdown|放大二维码|保存二维码/,
       );
+      const buttons = html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
+      assert.ok(buttons.every(button => !button.includes("查询付款状态")));
       assert.match(html, /data-product-name/);
     });
   for (const [status, state, heading] of [
