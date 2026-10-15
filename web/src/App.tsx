@@ -167,7 +167,7 @@ function Workspace() {
       />
       <SidebarInset className="min-w-0">
         <SiteHeader title={title} overview={overview} />
-        <PageHeadingProvider key={location.pathname}>
+        <PageHeadingProvider routeKey={location.pathname}>
         <AdminContent>
           <PageHeadingSlot title={title} />
           {(logout.error || session.error) && (
@@ -187,7 +187,7 @@ function Workspace() {
 export const appRoutes = createRoutesFromElements(
   <Route
     errorElement={<AppFailure />}
-    hydrateFallbackElement={<Loading label="正在打开页面…" />}
+    hydrateFallbackElement={<main className="mx-auto flex min-h-svh max-w-md flex-col justify-center gap-6 p-6"><PageHeading title="正在打开页面" /><Loading label="正在打开页面…" /></main>}
     element={
       <AuthBoundary>
         <DraftProvider>

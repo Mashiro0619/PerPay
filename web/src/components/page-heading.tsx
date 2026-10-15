@@ -1,12 +1,14 @@
-import { createContext, useContext, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
 
 type Heading = { title: string; description?: string };
 const HeadingContext = createContext<{ heading: Heading | null; setHeading: (heading: Heading | null) => void } | null>(null);
 
 /** The route owns the title; refreshes update its text without moving focus. */
-export function PageHeadingProvider({ children }: { children: ReactNode }) {
-  const [heading, setHeading] = useState<Heading | null>(null);
-  const value = useMemo(() => ({ heading, setHeading }), [heading]);
+export function PageHeadingProvider({ children, routeKey = "default" }: { children: ReactNode; routeKey?: string }) {
+  const [registered, setRegistered] = useState<{ routeKey: string; heading: Heading | null } | null>(null);
+  const heading = registered?.routeKey === routeKey ? registered.heading : null;
+  const setHeading = useCallback((heading: Heading | null) => setRegistered({ routeKey, heading }), [routeKey]);
+  const value = useMemo(() => ({ heading, setHeading }), [heading, setHeading]);
   return <HeadingContext value={value}>{children}</HeadingContext>;
 }
 function HeadingContent({ title, description }: Heading) {

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { useState } from "react";
-import { describe, expect, it } from "vitest";
+import { useEffect, useState } from "react";
+import { describe, expect, it, vi } from "vitest";
 import { PageHeading, PageHeadingProvider, PageHeadingSlot } from "../src/components/page-heading";
 
 describe("page title ownership", () => {
@@ -25,5 +25,18 @@ describe("page title ownership", () => {
     render(<PageHeading title="网站设置" description="网站范围" />);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("网站设置");
     expect(screen.getByText("网站范围")).toBeVisible();
+  });
+  it("changes the title scope without remounting wizard state and unsaved fields", () => {
+    const mounted = vi.fn();
+    function Wizard({ title }: { title: string }) {
+      useEffect(() => { mounted(); }, []);
+      return <><PageHeading title={title} /><input aria-label="向导草稿" defaultValue="保留" /></>;
+    }
+    const view = render(<PageHeadingProvider routeKey="application"><PageHeadingSlot title="向导" /><Wizard title="应用公钥" /></PageHeadingProvider>);
+    const input = screen.getByRole("textbox"); input.focus();
+    view.rerender(<PageHeadingProvider routeKey="provider"><PageHeadingSlot title="向导" /><Wizard title="支付宝接入" /></PageHeadingProvider>);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("支付宝接入");
+    expect(screen.getByRole("textbox")).toBe(input); expect(input).toHaveFocus();
+    expect(mounted).toHaveBeenCalledTimes(1);
   });
 });

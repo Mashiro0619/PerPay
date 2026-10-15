@@ -11,6 +11,7 @@ import {
 } from "@/api/client";
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { LoginForm } from "@/components/login-form";
+import { PageHeading } from "@/components/page-heading";
 import { clearOnboardingDeferrals } from "@/lib/onboarding";
 const SessionContext = createContext<{
   username: string;
@@ -55,20 +56,22 @@ export function AuthBoundary({ children }: { children: ReactNode }) {
 
   if (session.isPending)
     return (
-      <div className="mx-auto flex min-h-svh max-w-md flex-col justify-center p-6">
+      <main className="mx-auto flex min-h-svh max-w-md flex-col justify-center gap-6 p-6">
+        <PageHeading title="正在验证管理员会话" />
         <Loading label="正在验证管理员会话…" />
-      </div>
+      </main>
     );
   if (session.isError && !session.data && !rejected) {
     return (
-      <div className="mx-auto flex min-h-svh max-w-md flex-col justify-center p-6">
+      <main className="mx-auto flex min-h-svh max-w-md flex-col justify-center gap-6 p-6">
+        <PageHeading title="无法验证管理员会话" />
         <ErrorNotice
           error={session.error}
           retry={() => {
             void session.refetch();
           }}
         />
-      </div>
+      </main>
     );
   }
   if (!session.data || rejected)
