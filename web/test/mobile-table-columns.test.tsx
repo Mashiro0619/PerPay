@@ -34,6 +34,16 @@ describe("mobile column controls", () => {
     localStorage.clear();
     mobileMedia();
   });
+  it.each([null, 0, 99, 101, 102, 9007199254740991])("shows one labelled receipt and distinguishes missing, zero and differing amounts: %s", received => {
+    render(<MemoryRouter><DataTable data={[{ ...order, received_amount_cents: received }]} control={control} /></MemoryRouter>);
+    const aside = orderSummary().querySelector(".list-summary-aside")!;
+    expect(within(aside as HTMLElement).getByText("应付金额")).toBeVisible();
+    expect(within(aside as HTMLElement).getByText("实收金额")).toBeVisible();
+    expect(within(orderSummary()).getAllByLabelText("实收金额 " + money(received))).toHaveLength(1);
+    if (received != null && received !== order.payable_amount_cents) {
+      expect(within(aside as HTMLElement).getByText(received < order.payable_amount_cents ? "少收" : "多收")).toHaveAttribute("data-variant", "warning");
+    } else expect(within(aside as HTMLElement).queryByText(/少收|多收/)).not.toBeInTheDocument();
+  });
   it("uses a single summary row and checks only information that is actually shown after migrating legacy defaults", async () => {
     localStorage.setItem(
       "perpay.table-columns.orders",
@@ -59,7 +69,10 @@ describe("mobile column controls", () => {
     ).toHaveAttribute("aria-disabled", "true");
     expect(
       within(popup).getByRole("menuitemcheckbox", { name: "实收金额" }),
-    ).toHaveAttribute("aria-checked", "false");
+    ).toHaveAttribute("aria-checked", "true");
+    expect(within(orderSummary()).getByText("实收金额")).toBeVisible();
+    await user.click(within(popup).getByRole("menuitemcheckbox", { name: "实收金额" }));
+    expect(within(orderSummary()).queryByText("实收金额")).not.toBeInTheDocument();
     await user.click(
       within(popup).getByRole("menuitemcheckbox", { name: "实收金额" }),
     );
@@ -82,7 +95,6 @@ describe("mobile column controls", () => {
     await menu(user);
     const amount = screen.getByRole("menuitemcheckbox", { name: "实收金额" });
     await user.click(amount);
-    await user.click(amount);
     expect(
       within(orderSummary()).queryByText("实收金额"),
     ).not.toBeInTheDocument();
@@ -96,8 +108,8 @@ describe("mobile column controls", () => {
       within(orderSummary()).getByText("创建时间"),
     ).toBeVisible();
     expect(
-      within(orderSummary()).queryByText("实收金额"),
-    ).not.toBeInTheDocument();
+      within(orderSummary()).getByText("实收金额"),
+    ).toBeVisible();
     expect(
       JSON.parse(localStorage.getItem("perpay.table-columns.v2.orders")!),
     ).toEqual({});
@@ -107,9 +119,8 @@ describe("mobile column controls", () => {
     const view = mountOrders();
     const user = userEvent.setup();
     await menu(user);
-    await user.click(
-      screen.getByRole("menuitemcheckbox", { name: "实收金额" }),
-    );
+    await user.click(screen.getByRole("menuitemcheckbox", { name: "实收金额" }));
+    await user.click(screen.getByRole("menuitemcheckbox", { name: "实收金额" }));
     await user.keyboard("{Escape}");
     media.resize(1280);
     expect(screen.getByRole("columnheader", { name: "实收金额" })).toBeVisible();
@@ -193,9 +204,8 @@ describe("mobile column controls", () => {
       mountOrders();
       const user = userEvent.setup();
       await menu(user);
-      await user.click(
-        screen.getByRole("menuitemcheckbox", { name: "实收金额" }),
-      );
+      await user.click(screen.getByRole("menuitemcheckbox", { name: "实收金额" }));
+      await user.click(screen.getByRole("menuitemcheckbox", { name: "实收金额" }));
       expect(
         within(orderSummary()).getByText("实收金额"),
       ).toBeVisible();
@@ -219,6 +229,7 @@ describe("mobile column controls", () => {
       const user = userEvent.setup();
       expect(screen.queryByRole("table")).not.toBeInTheDocument();
       await menu(user);
+      await user.click(screen.getByRole("menuitemcheckbox", { name: "实收金额" }));
       await user.click(screen.getByRole("menuitemcheckbox", { name: "实收金额" }));
       await user.keyboard("{Escape}");
       expect(within(orderSummary()).getByText("实收金额")).toBeVisible();

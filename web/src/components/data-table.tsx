@@ -17,6 +17,7 @@ import {
   ListSummaryField,
 } from "@/components/list-primitives";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
+import { Badge } from "@/components/ui/badge";
 const checkoutNames = {
   OPEN: "收银台开放中",
   CLOSED: "收银台已关闭",
@@ -32,6 +33,15 @@ function OrderStatus({ order }: { order: AdminOrderSummary }) {
       {order.payment.status !== "CONFIRMED" && <span className="text-xs text-muted-foreground">{checkoutNames[order.checkout.status]}</span>}
     </div>
   );
+}
+function ReceivedAmount({ order }: { order: AdminOrderSummary }) {
+  const received = order.received_amount_cents;
+  return <div className="business-cell-stack flex flex-col items-end gap-1">
+    <ListMoney value={received} label="实收金额" />
+    {received != null && received !== order.payable_amount_cents && <Badge variant="warning">
+      {received < order.payable_amount_cents ? "少收" : "多收"}
+    </Badge>}
+  </div>;
 }
 export function DataTable({
   data,
@@ -124,9 +134,9 @@ export function DataTable({
       label: "实收金额",
       align: "center",
       layout: "amount",
-      summaryDefault: false,
+      summaryDefault: true,
       responsive: { minWidthRem: 62, basis: "container" },
-      cell: (order) => <ListMoney value={order.received_amount_cents} />,
+      cell: (order) => <ReceivedAmount order={order} />,
     },
     {
       id: "status",
@@ -169,16 +179,23 @@ export function DataTable({
         renderSummary={(order, context) => (
           <ListSummary
             identity={columns[0]!.cell(order, context)}
-            aside={context.isColumnVisible("payable_amount_cents") && (
-              <div className="flex flex-col items-end gap-1">
-                <span className="text-xs text-muted-foreground">应付金额</span>
-                <ListMoney value={order.payable_amount_cents} />
-              </div>
+            aside={(context.isColumnVisible("payable_amount_cents") || context.isColumnVisible("received_amount_cents")) && (
+              <dl className="flex flex-col items-end gap-3">
+                {context.isColumnVisible("payable_amount_cents") && <div className="flex flex-col items-end gap-1">
+                  <dt className="text-xs text-muted-foreground">应付金额</dt>
+                  <dd><ListMoney value={order.payable_amount_cents} label="应付金额" /></dd>
+                </div>}
+                {context.isColumnVisible("received_amount_cents") && <div className="flex flex-col items-end gap-1">
+                  <dt className="text-xs text-muted-foreground">实收金额</dt>
+                  <dd><ReceivedAmount order={order} /></dd>
+                </div>}
+              </dl>
             )}
           >
             {columns.filter((column) =>
               column.id !== "identity" &&
               column.id !== "payable_amount_cents" &&
+              column.id !== "received_amount_cents" &&
               context.isColumnVisible(column.id),
             ).map((column) => (
               <ListSummaryField key={column.id} label={column.label}>

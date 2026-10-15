@@ -1,0 +1,23 @@
+import { test, expect, login, record } from "./fixtures";
+test("mobile receipt defaults, explicit hiding and reset survive viewport changes and reloads", async ({ page, manifest }, info) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await login(page, manifest);
+  await page.goto(manifest.origin + "/admin/orders");
+  const aside = page.locator(".list-summary-aside").first();
+  await expect(aside.getByText("应付金额", { exact: true })).toBeVisible();
+  await expect(aside.getByText("实收金额", { exact: true })).toBeVisible();
+  await expect(aside.locator('[aria-label^="实收金额 "]')).toHaveCount(1);
+  await page.getByRole("button", { name: "显示列", exact: true }).click();
+  await page.getByRole("menuitemcheckbox", { name: "实收金额", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await page.reload();
+  await expect(aside.getByText("应付金额", { exact: true })).toBeVisible();
+  await expect(aside.getByText("实收金额", { exact: true })).toHaveCount(0);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(page.getByRole("columnheader", { name: "实收金额" })).toHaveCount(0);
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.getByRole("button", { name: "显示列", exact: true }).click();
+  await page.getByRole("menuitem", { name: "恢复默认列", exact: true }).click();
+  await expect(aside.getByText("实收金额", { exact: true })).toBeVisible();
+  await record(page, info);
+});
