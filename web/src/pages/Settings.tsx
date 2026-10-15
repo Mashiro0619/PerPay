@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useParams } from "react-router";
 import { PageHeading } from "@/components/page-heading";
+import { ScrollingTabs } from "@/components/scrolling-tabs";
 import { Link, useNavigate } from "@/navigation";
 import { SettingsEditor, sections } from "@/components/SettingsForms";
 import {
@@ -115,10 +116,7 @@ export default function Settings() {
               onValueChange={changeSection}
               className="min-w-0 gap-6"
             >
-              <div
-                className="no-scrollbar min-w-0 overflow-x-auto p-1"
-                data-settings-tabs-scroll
-              >
+              <ScrollingTabs>
                 <TabsList
                   ref={tabList}
                   aria-label="设置分类"
@@ -145,7 +143,7 @@ export default function Settings() {
                     );
                   })}
                 </TabsList>
-              </div>
+              </ScrollingTabs>
               <TabsContent value={section}>
                 <div
                   data-settings-content
