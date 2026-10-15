@@ -300,9 +300,9 @@ test("release builds, scans, verifies, and publishes fixed and latest images", (
   assert.doesNotMatch(checkVersionText, /image tag=.*does not match package\.json/u);
 });
 
-test("daily CI is one bounded Linux Node job", () => {
+test("daily CI keeps bounded Linux checks and a separate Chromium regression job", () => {
   const workflow = parse(ciWorkflowText);
-  assert.deepEqual(Object.keys(workflow.jobs), ["check"]);
+  assert.deepEqual(Object.keys(workflow.jobs), ["check", "ui"]);
   assert.equal(workflow.jobs.check["runs-on"], "ubuntu-24.04");
   assert.equal(workflow.jobs.check["timeout-minutes"], 20);
   const commands = workflow.jobs.check.steps.map((step) => step.run).filter(Boolean);
@@ -312,6 +312,14 @@ test("daily CI is one bounded Linux Node job", () => {
     "npm audit --audit-level=high",
   ]);
   assert.doesNotMatch(ciWorkflowText, /windows|docker build|trivy|compose up/iu);
+  assert.equal(workflow.jobs.ui["runs-on"], "ubuntu-24.04");
+  assert.equal(workflow.jobs.ui["timeout-minutes"], 15);
+  assert.deepEqual(workflow.jobs.ui.steps.map(step => step.run).filter(Boolean), [
+    "npm ci --ignore-scripts", "npx playwright install --with-deps chromium", "npm run build", "npm run test:ui -- --project core",
+  ]);
+  const artifact = workflow.jobs.ui.steps.find(step => step.uses?.startsWith("actions/upload-artifact@"));
+  assert.equal(artifact.if, "failure()");
+  assert.equal(artifact.with.path, ".ui-audit/runs/");
 });
 
 test("container validation is manual and exercises the real deployment lifecycle", () => {
