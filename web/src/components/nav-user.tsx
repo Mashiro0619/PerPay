@@ -38,6 +38,7 @@ export function NavUser({
               <SidebarMenuButton
                 size="lg"
                 aria-label="账户菜单"
+                tooltip={`账户菜单 · ${name}`}
                 className="aria-expanded:bg-muted"
               />
             }
@@ -47,13 +48,13 @@ export function NavUser({
                 {name.slice(0, 2).toUpperCase()}
               </AvatarFallback>
             </Avatar>
-            <div className="grid flex-1 text-left text-sm leading-tight">
+            <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
               <span className="truncate font-medium">{name}</span>
               <span className="truncate text-xs text-muted-foreground">
                 管理员
               </span>
             </div>
-            <EllipsisVerticalIcon className="ml-auto size-4" />
+            <EllipsisVerticalIcon className="ml-auto group-data-[collapsible=icon]:hidden" />
           </DropdownMenuTrigger>
           <DropdownMenuContent
             className="min-w-56"

@@ -1,5 +1,5 @@
 import { siteChoiceLabel } from "@/lib/site-choice-label";
-import { useId, useMemo } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { parsePath, useLocation } from "react-router";
 import { Check, ChevronRight, Globe } from "lucide-react";
@@ -11,6 +11,7 @@ import {
   isGlobalNavigationPage,
   switchWorkspaceHref,
 } from "@/lib/navigation-selection";
+import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { InlineEmpty } from "@/components/admin-empty";
@@ -61,10 +62,13 @@ export function WorkspaceSwitcher({
   const { pathname } = location;
   const currentNameId = useId();
   const sidebar = useSidebar();
+  const icon = !sidebar.isMobile && sidebar.state === "collapsed";
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  useEffect(() => { setPopoverOpen(false); }, [location.key, icon]);
   const visible = sidebar.isMobile ? sidebar.openMobile : sidebar.open;
   const sites = useInfiniteQuery({
     queryKey: ["sites", "switcher"],
-    enabled: open && visible,
+    enabled: icon ? popoverOpen : open && visible,
     initialPageParam: null as string | null,
     queryFn: ({ pageParam, signal }) =>
       result(
@@ -99,49 +103,11 @@ export function WorkspaceSwitcher({
   const allSitesHref = switchWorkspaceHref(location, null);
   const metadataError = clientId && isGlobalNavigationPage(pathname) ? site?.error : null;
 
-  return (
-    <Collapsible
-      open={open}
-      onOpenChange={onOpenChange}
-      render={<SidebarMenuItem />}
-      className="group/collapsible"
-    >
-      <CollapsibleTrigger
-        render={
-          <SidebarMenuButton
-            size="lg"
-            tooltip="业务网站"
-            aria-label={open ? "收起业务网站" : "展开业务网站"}
-            aria-describedby={currentNameId}
-          />
-        }
-      >
-        <Globe />
-        <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
-          <span className="w-full truncate">业务网站</span>
-          <span
-            id={currentNameId}
-            data-current-workspace
-            className="w-full min-w-0 truncate text-xs text-muted-foreground"
-            title={selectedName}
-          >
-            {selectedName}
-          </span>
-        </span>
-        <ChevronRight aria-hidden="true" className="ml-auto transition-transform group-data-open/collapsible:rotate-90" />
-      </CollapsibleTrigger>
-      {metadataError && (
-        <div className="px-2 py-1">
-          <ErrorNotice
-            error={metadataError}
-            retry={() => void site?.refetch({ cancelRefetch: false })}
-          />
-        </div>
-      )}
-      <CollapsibleContent>
-        <SidebarMenuSub aria-label="业务网站列表">
+  const menu = (
+        <SidebarMenuSub className={icon ? "mx-0 border-0 px-0" : undefined} aria-label="业务网站列表">
           <SidebarMenuSubItem>
             <SidebarMenuSubButton
+              isActive={!clientId}
               aria-current={!clientId ? "location" : undefined}
               render={
                 <Link
@@ -171,6 +137,7 @@ export function WorkspaceSwitcher({
             return (
               <SidebarMenuSubItem key={value.client_id}>
                 <SidebarMenuSubButton
+                  isActive={selected}
                   aria-label={label}
                   aria-describedby={statusId}
                   aria-current={selected ? "location" : undefined}
@@ -241,6 +208,65 @@ export function WorkspaceSwitcher({
             </SidebarMenuSubItem>
           )}
         </SidebarMenuSub>
+  );
+  const metadata = <>
+{metadataError && (
+        <div className="px-2 py-1">
+          <ErrorNotice
+            error={metadataError}
+            retry={() => void site?.refetch({ cancelRefetch: false })}
+          />
+        </div>
+      )}
+  </>;
+  if (icon) return <SidebarMenuItem>
+    <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+      <PopoverTrigger render={<SidebarMenuButton size="lg" tooltip={`业务网站 · ${selectedName}`} aria-label={`切换业务网站，当前${selectedName}`} />}>
+        <Globe />
+        <span className="sr-only">业务网站</span>
+      </PopoverTrigger>
+      <PopoverContent side="right" align="start" className="max-h-[min(32rem,calc(100dvh-2rem))] overflow-y-auto">
+        <PopoverTitle>业务网站</PopoverTitle>
+        <p className="text-xs text-muted-foreground">当前：{selectedName}</p>
+        {metadata}
+        {menu}
+      </PopoverContent>
+    </Popover>
+  </SidebarMenuItem>;
+  return (
+    <Collapsible
+      open={open}
+      onOpenChange={onOpenChange}
+      render={<SidebarMenuItem />}
+      className="group/collapsible"
+    >
+      <CollapsibleTrigger
+        render={
+          <SidebarMenuButton
+            size="lg"
+            tooltip="业务网站"
+            aria-label={open ? "收起业务网站" : "展开业务网站"}
+            aria-describedby={currentNameId}
+          />
+        }
+      >
+        <Globe />
+        <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+          <span className="w-full truncate">业务网站</span>
+          <span
+            id={currentNameId}
+            data-current-workspace
+            className="w-full min-w-0 truncate text-xs text-muted-foreground"
+            title={selectedName}
+          >
+            {selectedName}
+          </span>
+        </span>
+        <ChevronRight aria-hidden="true" className="ml-auto transition-transform group-data-open/collapsible:rotate-90" />
+      </CollapsibleTrigger>
+      {metadata}
+      <CollapsibleContent>
+        {menu}
       </CollapsibleContent>
     </Collapsible>
   );

@@ -262,6 +262,12 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 
 /* Settings have their own reading width, independent of wide tables/charts. */
 .site-header { height: 3.5rem; }
+[data-slot="sidebar-menu-button"][data-active="true"] {
+  background-image: linear-gradient(var(--sidebar-foreground), var(--sidebar-foreground));
+  background-size: 2px 60%;
+  background-repeat: no-repeat;
+  background-position: left center;
+}
 @media (min-width: 768px) { .site-header { height: 3rem; } }
 .admin-settings-layout { width: 100%; max-width: 56rem; }
 .admin-settings-layout [data-slot="field"] { min-width: 0; }

@@ -130,6 +130,22 @@ async function findSidebar() {
   return sidebar();
 }
 
+it("uses the same scoped website choices in the icon rail and restores trigger focus on Escape", async () => {
+  const view = mountSidebar({ path: "/sites/a/orders" });
+  await findSidebar();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "切换导航" }));
+  expect(sidebar()).toHaveAttribute("data-collapsible", "icon");
+  const trigger = screen.getByRole("button", { name: /切换业务网站，当前网站 A/ });
+  await user.click(trigger);
+  expect(await screen.findByRole("link", { name: "网站 B" })).toBeVisible();
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(trigger).toHaveFocus());
+  await user.click(trigger);
+  await user.click(await screen.findByRole("link", { name: "网站 B" }));
+  await waitFor(() => expect(view.router.state.location.pathname).toBe("/sites/b/orders"));
+});
+
 function primaryLinks(container: HTMLElement) {
   const nav = within(container).getByRole("navigation", { name: "主导航" });
   return within(nav)

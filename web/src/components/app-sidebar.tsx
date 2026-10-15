@@ -97,17 +97,19 @@ export function AppSidebar({
       : "正在检查状态"
     : sharedStatus?.presentation?.notice;
   return (
-    <Sidebar collapsible="offcanvas" {...props}>
+    <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
+              aria-label={systemName}
+              tooltip={systemName}
               className="data-[slot=sidebar-menu-button]:p-1.5!"
               render={<Link global to="/" />}
             >
               <WalletCards className="size-5!" />
               <span
-                className="min-w-0 truncate text-base font-semibold"
+                className="min-w-0 truncate text-base font-semibold group-data-[collapsible=icon]:hidden"
                 title={systemName}
               >
                 {systemName}

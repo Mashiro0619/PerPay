@@ -1,0 +1,24 @@
+import { test, expect, login, record } from "./fixtures";
+test("icon rail keeps navigation, website scope and account actions reachable", async ({ page, manifest }, info) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page, manifest);
+  await page.getByRole("button", { name: "切换导航", exact: true }).click();
+  const rail = page.locator('[data-slot="sidebar"][data-collapsible="icon"]');
+  await expect(rail).toBeVisible();
+  const container = rail.locator('[data-slot="sidebar-container"]');
+  await expect.poll(async () => (await container.boundingBox())!.width).toBeLessThanOrEqual(66);
+  const trigger = page.getByRole("button", { name: /切换业务网站/ });
+  await trigger.click();
+  await expect(page.getByRole("dialog", { name: "业务网站" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
+  await trigger.click();
+  const sitePath = manifest.routes.find(route => /^\/sites\/[^/]+\/orders$/.test(route))!.replace(/\/orders$/, "");
+  const choice = page.locator(`[data-slot="popover-content"] a[href$="${sitePath}"]`);
+  await choice.click();
+  await expect(page).toHaveURL(new RegExp(sitePath + "[?#]?$"));
+  await page.getByRole("button", { name: "账户菜单", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: "账户与安全" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await record(page, info);
+});

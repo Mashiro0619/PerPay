@@ -4,6 +4,7 @@ import {
   type NavigationItem,
 } from "@/components/nav-main";
 import { Link } from "@/navigation";
+import { Badge } from "@/components/ui/badge";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -12,6 +13,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuBadge,
+  useSidebar,
 } from "@/components/ui/sidebar";
 export function NavSecondary({
   items,
@@ -26,6 +28,7 @@ export function NavSecondary({
   label?: string;
 } & ComponentProps<typeof SidebarGroup>) {
   const noticeId = useId();
+  const { state, isMobile } = useSidebar();
   return (
     <SidebarGroup {...props}>
       {label && <SidebarGroupLabel>{label}</SidebarGroupLabel>}
@@ -37,6 +40,8 @@ export function NavSecondary({
             return (
               <SidebarMenuItem key={item.section ?? item.url}>
                 <SidebarMenuButton
+                  tooltip={system && notice ? `${item.title} · ${notice}` : item.title}
+                  aria-label={system && notice && state === "collapsed" && !isMobile ? `${item.title}，${notice}` : item.title}
                   render={<Link global={item.global} to={item.url} />}
                   aria-describedby={
                     system && notice ? noticeId : undefined
@@ -48,7 +53,8 @@ export function NavSecondary({
                   <span>{item.title}</span>
                 </SidebarMenuButton>
                 {system && notice && (
-                  <SidebarMenuBadge id={noticeId} data-runtime-notice>
+                  <SidebarMenuBadge id={noticeId} data-runtime-notice className="p-0">
+                    <Badge variant={notice === "有运行告警" || notice === "状态未知" ? "warning" : "secondary"}>
                     {notice === "有运行告警"
                       ? "需关注"
                       : notice === "有待处理事项"
@@ -56,6 +62,7 @@ export function NavSecondary({
                         : notice === "正在检查状态"
                           ? "检查中"
                           : notice}
+                    </Badge>
                   </SidebarMenuBadge>
                 )}
               </SidebarMenuItem>
