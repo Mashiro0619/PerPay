@@ -92,7 +92,7 @@ function DashboardContent() {
     : null;
   return (
     <div
-      className="flex w-full min-w-0 flex-col gap-4"
+      className="flex w-full min-w-0 flex-col gap-6"
       data-overview-layout
     >
       {needsStatus && (
@@ -157,7 +157,7 @@ function DashboardContent() {
         pending={analytics.isPending || analytics.isPlaceholderData}
       />
       {clientId && <ErrorNotice error={workSummary.error} retry={() => { void workSummary.refetch(); }} />}
-      <div className="flex min-w-0 flex-col gap-4">
+      <div className="flex min-w-0 flex-col gap-6">
         <ErrorNotice
           error={analytics.error}
           retry={() => {

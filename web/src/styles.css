@@ -1002,6 +1002,8 @@ a[data-internal-link][data-slot="item"]:active {
 }
 
 /* Runtime status uses a flat, aligned service table rather than nested surfaces. */
+.trend-plot { height: 12.5rem; min-height: 12.5rem; flex: none; }
+@media (min-width: 768px) { .trend-plot { height: 14rem; min-height: 14rem; } }
 .system-page { display: flex; min-width: 0; flex-direction: column; gap: 1.25rem; container: runtime / inline-size; }
 .runtime-surface { display: flex; min-width: 0; flex-direction: column; gap: 0.875rem; }
 .runtime-toolbar { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 0.75rem; }

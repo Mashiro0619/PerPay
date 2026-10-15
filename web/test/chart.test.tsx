@@ -100,7 +100,7 @@ describe("official shadcn interactive chart", () => {
       expect(container.querySelectorAll(selector)).toHaveLength(1);
       // jsdom's ResizeObserver fixture supplies a synthetic height, so guard
       // the definite parent height as well; real-browser checks verify the SVG.
-      expect(container.querySelector("[data-slot=chart]")).toHaveClass("h-[250px]", "flex-none");
+      expect(container.querySelector("[data-slot=chart]")).toHaveClass("trend-plot", "aspect-auto");
       expect(container.querySelector("[data-slot=chart]")).not.toHaveClass("flex-1");
       expect(
         container.querySelector('svg[role="application"]'),

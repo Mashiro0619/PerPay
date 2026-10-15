@@ -203,7 +203,7 @@ export function ChartAreaInteractive({
           </CardDescription>
         </CardHeader>
         <TabsContent value="chart">
-          <CardContent className="flex min-h-[250px] flex-1 flex-col gap-3">
+          <CardContent className="flex flex-1 flex-col gap-3">
             <div className="flex w-full flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 flex-col gap-1">
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -265,9 +265,9 @@ export function ChartAreaInteractive({
             </div>
 
             {pending ? (
-              <Skeleton className="h-[250px] w-full" />
+              <Skeleton className="trend-plot w-full" data-chart-state="loading" />
             ) : !analytics || !data.length ? (
-              <Empty className="min-h-[250px]">
+              <Empty className="trend-plot" data-chart-state="empty">
                 <EmptyHeader>
                   <EmptyTitle>
                     {analytics ? "暂无每日数据" : "统计数据暂不可用"}
@@ -278,7 +278,7 @@ export function ChartAreaInteractive({
               <ChartContainer
                 config={chartConfig}
                 data-chart-type={chartType}
-                className="aspect-auto h-[250px] w-full flex-none"
+                className="trend-plot aspect-auto w-full"
                 aria-label={
                   metric === "amount"
                     ? "每日付款确认金额，左右方向键查看日期"
