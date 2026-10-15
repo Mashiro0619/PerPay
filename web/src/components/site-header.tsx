@@ -5,7 +5,6 @@ import { Link } from "@/navigation";
 import { RefreshButton } from "@/components/refresh-button";
 import { ContentWidthControl } from "@/components/content-width";
 import { PageHeaderActionsSlot } from "@/components/page-header-actions";
-import { DemoNotice } from "@/components/demo-notice";
 import { useIsFetching } from "@tanstack/react-query";
 import { refreshOperationalData } from "@/api/client";
 import { ThemeControl } from "@/theme";
@@ -72,7 +71,6 @@ export function SiteHeader({
             {title}
           </h1>
         </div>
-        <DemoNotice />
         <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
           {overview && (
             <>
