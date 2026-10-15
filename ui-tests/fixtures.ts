@@ -20,7 +20,7 @@ export const test = base.extend<{ manifest: Manifest }, { harness: Manifest }>({
       let requestId = 0;
       manifest.setTime = time => new Promise<void>((resolve, reject) => {
         const id = ++requestId;
-        const timeout = setTimeout(() => { child.off("message", done); reject(new Error("Fixture clock timeout")); }, 5000);
+        const timeout = setTimeout(() => { child.off("message", done); reject(new Error("Fixture clock timeout: " + log)); }, 5000);
         const done = (message: { type?: string; id?: number }) => { if (message.type === "done" && message.id === id) { clearTimeout(timeout); child.off("message", done); resolve(); } };
         child.on("message", done);
         child.send({ type: "clock", time, id });
