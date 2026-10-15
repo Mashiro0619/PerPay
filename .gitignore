@@ -35,3 +35,6 @@ backups/
 
 # Literal directory created by local tooling
 /%SystemDrive%/
+
+# Local visual-audit evidence and private browser state
+.ui-audit/

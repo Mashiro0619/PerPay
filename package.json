@@ -27,7 +27,9 @@
     "typecheck:admin": "tsc --project web/tsconfig.json",
     "typecheck:server": "tsc --noEmit",
     "build:checkout": "vite build --config web/vite.checkout.config.ts && vite build --config web/vite.checkout.config.ts --mode server",
-    "demo:preview": "node --experimental-strip-types scripts/preview-demo.ts"
+    "demo:preview": "node --experimental-strip-types scripts/preview-demo.ts",
+    "test:ui": "playwright test",
+    "test:ui:full": "playwright test --config playwright.config.ts --project full"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
@@ -41,7 +43,9 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@hey-api/openapi-ts": "0.99.0",
+    "@playwright/test": "1.64.1",
     "@tailwindcss/vite": "4.3.3",
     "@tanstack/react-query": "5.102.8",
     "@tanstack/react-table": "9.2.4",

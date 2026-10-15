@@ -49,7 +49,7 @@ const sample = (day: number, key: string) => createHash("sha256").update("perpay
   .digest().readUInt32BE(0) / 0x1_0000_0000;
 const beijing = (time: number) => new Date(time + 8 * 3_600_000).toISOString().slice(0, 19).replace("T", " ");
 
-export async function createPreviewDemo(options: { port?: number; now?: number } = {}) {
+export async function createPreviewDemo(options: { port?: number; now?: number; clock?: () => number } = {}) {
   const port = options.port ?? 6192;
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("演示端口必须在 1024–65535 之间。");
   const capturedAt = options.now ?? Date.now();
@@ -80,7 +80,7 @@ export async function createPreviewDemo(options: { port?: number; now?: number }
     const db = await AppDatabase.open(config.databasePath);
     database = db;
     let liveStarted: number | null = null;
-    const liveNow = () => capturedAt + (liveStarted === null ? 0 : Math.floor(performance.now() - liveStarted));
+    const liveNow = () => options.clock?.() ?? capturedAt + (liveStarted === null ? 0 : Math.floor(performance.now() - liveStarted));
     const identity = new IdentityService(db, liveNow);
     await identity.initialize();
     // Fixed only for this loopback-only, disposable read-only demo; never used by main.ts.
@@ -430,7 +430,7 @@ async function main() {
   const demo = await createPreviewDemo(args.length ? { port: Number(args[1]) } : {});
   const server = serve({ fetch: demo.app.fetch, hostname: "127.0.0.1", port: Number(new URL(demo.origin).port) }, () => {
     console.log("\nPerPay 只读演示 · 全部为合成数据 · 不向外部服务发请求");
-    console.log(JSON.stringify({ origin: demo.origin, password: demo.password, capturedAt: demo.capturedAt, featured: demo.featured, retry: demo.retry, failed: demo.failed, checkout: demo.checkout, orders: demo.stats.orders, daily: demo.stats.daily, directory: demo.directory, scenarios: demo.scenarios }, null, 2));
+    console.log(JSON.stringify({ origin: demo.origin, password: demo.password, capturedAt: demo.capturedAt, featured: demo.featured, retry: demo.retry, failed: demo.failed, checkout: demo.checkout, checkoutExpiresAt: new Date(demo.capturedAt + 22 * MINUTE).toISOString(), orders: demo.stats.orders, daily: demo.stats.daily, directory: demo.directory, scenarios: demo.scenarios }, null, 2));
     console.log("\n访问 " + demo.origin + "/admin/，按 Ctrl+C 退出并清理临时数据。");
   });
   server.on("error", error => { demo.dispose(); console.error(error.message); process.exitCode = 1; });
