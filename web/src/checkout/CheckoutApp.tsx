@@ -203,12 +203,12 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
   // Balanced tracks center the content; intrinsic height keeps short screens scrollable.
   return (
     <div
-      className="grid h-svh min-h-min grid-rows-[1fr_auto_1fr]"
+      className="grid h-svh min-h-min grid-cols-[minmax(0,1fr)] grid-rows-[1fr_auto_1fr]"
       data-checkout-page
     >
       <header
         className={cn(
-          "mx-auto flex w-full max-w-lg items-center justify-between gap-4 self-start px-4 py-4 sm:py-6",
+          "mx-auto flex min-w-0 w-full max-w-lg items-center justify-between gap-4 self-start px-4 py-4 sm:py-6",
           desktopWidth,
         )}
       >
@@ -222,7 +222,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
       </header>
       <main
         className={cn(
-          "mx-auto flex w-full max-w-lg flex-col gap-4 px-4 py-4 sm:py-8",
+          "mx-auto flex min-w-0 w-full max-w-lg flex-col gap-4 px-4 py-4 sm:py-8",
           desktopWidth,
         )}
         id="checkout-main"
@@ -308,7 +308,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
               <CardContent className="flex min-w-0 flex-col gap-3 md:px-8">
                 {canPay && paymentHeading}
                 <div
-                  className="flex min-w-0 items-baseline justify-center gap-2 text-center"
+                  className="flex min-w-0 flex-wrap items-baseline justify-center gap-2 text-center"
                   data-checkout-amount
                 >
                   <span
