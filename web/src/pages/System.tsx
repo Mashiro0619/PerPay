@@ -483,7 +483,7 @@ function RuntimeService({
           hidden={!attention && !expanded}
         >
           <TableCell role="cell" colSpan={5}>
-            <div className="runtime-detail-content" aria-label={title + "诊断"}>
+            <div className="runtime-detail-content" role="group" aria-label={title + "诊断"}>
               {attention && children}
               {details}
             </div>

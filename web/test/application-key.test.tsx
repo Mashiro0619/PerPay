@@ -104,7 +104,7 @@ describe("application public key generation and replacement", () => {
     expect(within(dialog).getByText(/当前收款继续使用原密钥/)).toBeVisible();
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "取消" })).toHaveFocus());
     expect(within(dialog).queryByRole("button", { name: "关闭" })).not.toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: "生成新公钥" })).toHaveClass("text-destructive");
+    expect(within(dialog).getByRole("button", { name: "生成新公钥" })).toHaveClass("text-danger-foreground");
     expect(view.writes()).toHaveLength(0);
     await user.click(within(dialog).getByRole("button", { name: "取消" }));
     await waitFor(() => expect(trigger).toHaveFocus());

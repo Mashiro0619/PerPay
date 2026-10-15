@@ -15,7 +15,7 @@ export function BackupStatus() {
   const status = shared?.status ?? fallback;
   const backup = status.data?.data.backup;
   return (
-    <div className="flex flex-col gap-2" aria-label="备份任务状态">
+    <div className="flex flex-col gap-2" role="group" aria-label="备份任务状态">
       <FieldDescription>
         {status.isError || !backup
           ? "备份任务状态暂不可用；保存只修改策略。"

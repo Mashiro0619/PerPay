@@ -278,6 +278,7 @@ export function ChartAreaInteractive({
               <ChartContainer
                 config={chartConfig}
                 data-chart-type={chartType}
+                role="group"
                 className="trend-plot aspect-auto w-full"
                 aria-label={
                   metric === "amount"

@@ -389,7 +389,7 @@ describe("responsive order semantics", () => {
       screen.queryByRole("columnheader", { name: "状态" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
-    expect(mobileSummary.getByLabelText(dateTime(order.created_at))).toHaveAttribute(
+    expect(mobileSummary.getByTitle(dateTime(order.created_at) + "（北京时间）")).toHaveAttribute(
       "datetime",
       new Date(order.created_at).toISOString(),
     );
@@ -431,7 +431,7 @@ describe("responsive order semantics", () => {
     const cells = within(rows[1]!).getAllByRole("cell");
     expect(within(cells[0]!).queryByText("待付款")).not.toBeInTheDocument();
     expect(within(cells[3]!).getByText("待付款")).toBeInTheDocument();
-    for (const time of within(table).getAllByLabelText(dateTime(order.created_at)))
+    for (const time of within(table).getAllByTitle(dateTime(order.created_at) + "（北京时间）"))
       expect(time).toHaveAttribute("datetime", new Date(order.created_at).toISOString());
     expect(
       within(table).getByRole("link", { name: productName }),
@@ -454,7 +454,7 @@ describe("responsive order semantics", () => {
       mobileSummary.getByText("收银台开放中"),
     ).toBeInTheDocument();
     expect(
-      mobileSummary.getByLabelText(dateTime(order.created_at)),
+      mobileSummary.getByTitle(dateTime(order.created_at) + "（北京时间）"),
     ).toHaveAttribute("datetime", new Date(order.created_at).toISOString());
   });
 

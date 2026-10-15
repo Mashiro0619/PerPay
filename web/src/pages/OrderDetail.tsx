@@ -139,13 +139,13 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
             </CardHeader>
             <CardContent>
               <ItemGroup className="record-list" data-density="compact">
-                <Item className="record-list-row" size="sm">
+                <Item className="record-list-row" size="sm" role="listitem">
                   <ItemContent>
                     <ItemDescription>应付金额</ItemDescription>
                   </ItemContent>
                   <ListMoney value={order.payable_amount_cents} />
                 </Item>
-                <Item className="record-list-row" size="sm">
+                <Item className="record-list-row" size="sm" role="listitem">
                   <ItemContent>
                     <ItemDescription>原始金额</ItemDescription>
                   </ItemContent>

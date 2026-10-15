@@ -72,6 +72,7 @@ export function CreatedDateFilter({
     <div
       className="flex flex-wrap items-center gap-2"
       aria-label="创建日期筛选"
+      role="group"
     >
       <span className="text-sm text-muted-foreground">创建日期</span>
       <Select

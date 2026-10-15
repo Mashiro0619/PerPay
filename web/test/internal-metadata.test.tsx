@@ -52,7 +52,7 @@ describe("ordinary administrator views", () => {
       .closest<HTMLElement>('[role="listitem"]')!;
     expect(within(row).getByText("已配置")).toBeVisible();
     expect(
-      within(row).getByLabelText(dateTime(updatedAt)),
+      within(row).getByTitle(dateTime(updatedAt) + "（北京时间）"),
     ).toBeVisible();
     expect(row).toHaveTextContent("更新于 " + dateTime(updatedAt));
     expect(row).not.toHaveTextContent(/版本|指纹|777/);

@@ -23,7 +23,7 @@ type ComparisonRow = ReturnType<typeof conflictComparison>[number];
 function Difference({ row }: { row: ComparisonRow }) {
   if (!row.differs && !row.invalid)
     return (
-      <span className="text-muted-foreground" aria-label="未标记差异">
+      <span className="text-muted-foreground" role="img" aria-label="未标记差异">
         —
       </span>
     );

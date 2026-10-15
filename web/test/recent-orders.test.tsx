@@ -72,8 +72,8 @@ describe("overview order progress", () => {
     expect(screen.getByText("收款已确认")).toBeVisible();
     expect(screen.getByText("等待重试")).toHaveAttribute("data-variant", "warning");
     expect(screen.queryByText(/^已确认 \d+\/\d+ 项$/)).not.toBeInTheDocument();
-    expect(screen.getByLabelText("2026/10/11 10:30")).toBeVisible();
-    expect(screen.getByLabelText("2026/10/11 10:32")).toBeVisible();
+    expect(screen.getByTitle("2026/10/11 10:30（北京时间）")).toBeVisible();
+    expect(screen.getByTitle("2026/10/11 10:32（北京时间）")).toBeVisible();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -185,7 +185,7 @@ describe("overview order progress", () => {
     expect(screen.getAllByLabelText(/^(应付|实收)金额 /)).toHaveLength(2);
     expect(screen.queryByLabelText("实收金额 —")).not.toBeInTheDocument();
     expect(screen.getByText("收款已确认")).toBeVisible();
-    expect(screen.getByLabelText("2026/10/11 10:32")).toBeVisible();
+    expect(screen.getByTitle("2026/10/11 10:32（北京时间）")).toBeVisible();
   });
 
   it("keeps refund declarations and a disputed order's historical confirmation separate from payment state", () => {
@@ -196,7 +196,7 @@ describe("overview order progress", () => {
     }]);
     expect(screen.getByText("需核对")).toBeVisible();
     expect(screen.getByText("已标记退款")).toBeVisible();
-    expect(screen.getByLabelText("2026/10/11 10:32")).toBeVisible();
+    expect(screen.getByTitle("2026/10/11 10:32（北京时间）")).toBeVisible();
   });
 
   it.each([false, true])("shows the website only in global views and keeps scoped order links (scoped: %s)", async (scoped) => {

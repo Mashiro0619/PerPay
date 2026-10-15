@@ -40,6 +40,7 @@ function Badge({
     defaultTagName: "span",
     props: mergeProps<"span">(
       {
+        role: !render && props["aria-label"] ? "group" : undefined,
         className: cn(badgeVariants({ variant }), className),
       },
       props

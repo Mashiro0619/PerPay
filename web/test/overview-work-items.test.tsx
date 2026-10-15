@@ -114,9 +114,9 @@ describe("overview work item context", () => {
     for (const row of rows) {
       expect(within(row).getByText("商户订单号")).toBeVisible();
       expect(within(row).getByText("请求超时")).toBeVisible();
-      expect(within(row).getByLabelText("2026/10/11 12:00")).toBeVisible();
-      expect(within(row).getByLabelText("2026/10/11 11:00")).toBeVisible();
-      expect(within(row).getByLabelText("2026/10/11 12:00").parentElement).toHaveTextContent("下次重试");
+      expect(within(row).getByTitle("2026/10/11 12:00（北京时间）")).toBeVisible();
+      expect(within(row).getByTitle("2026/10/11 11:00（北京时间）")).toBeVisible();
+      expect(within(row).getByTitle("2026/10/11 12:00（北京时间）").parentElement).toHaveTextContent("下次重试");
     }
     expect(screen.queryByText("业务通知")).not.toBeInTheDocument();
     expect(screen.queryByText(/已尝试/)).not.toBeInTheDocument();
@@ -134,9 +134,9 @@ describe("overview work item context", () => {
     mount([notification({ status })]);
     expect(screen.getByText(text)).toHaveAttribute("data-variant", tone);
     expect(screen.getByText("请求超时")).toBeVisible();
-    expect(Boolean(screen.queryByLabelText("2026/10/11 12:00"))).toBe(scheduled);
+    expect(Boolean(screen.queryByTitle("2026/10/11 12:00（北京时间）"))).toBe(scheduled);
     if (scheduled) {
-      expect(screen.getByLabelText("2026/10/11 12:00").parentElement).toHaveTextContent(status === "RETRY_WAIT" ? "下次重试" : "计划投递");
+      expect(screen.getByTitle("2026/10/11 12:00（北京时间）").parentElement).toHaveTextContent(status === "RETRY_WAIT" ? "下次重试" : "计划投递");
     }
     expect(screen.queryByText("需人工关注")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^查看通知/ })).toHaveAttribute("href", "/notifications/00000000-0000-4000-8000-000000000002");

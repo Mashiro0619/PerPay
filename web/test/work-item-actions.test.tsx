@@ -160,7 +160,7 @@ describe("reminder dismissal", () => {
       );
       expect(dialog.querySelector('[data-slot="alert-dialog-media"]')).toBeNull();
       expect(dialog).toHaveClass("sm:max-w-lg");
-      expect(within(dialog).getByRole("button", { name: "确认忽略当前筛选结果" })).toHaveClass("text-destructive", "bg-destructive/10");
+      expect(within(dialog).getByRole("button", { name: "确认忽略当前筛选结果" })).toHaveClass("text-danger-foreground", "bg-danger");
       await waitFor(() => expect(within(dialog).getByRole("button", { name: "取消" })).toHaveFocus());
       expect(dialog).toHaveAccessibleDescription(
         /跨分页.*仅关闭提醒.*不停止通知重试/,

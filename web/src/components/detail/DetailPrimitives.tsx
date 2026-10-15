@@ -131,6 +131,7 @@ export function TechnicalDetailsDialog({
           <pre
             tabIndex={0}
             aria-label="技术详情"
+            role="group"
             className="shrink-0 rounded-md bg-muted p-4 text-xs whitespace-pre-wrap break-all"
           >
             {JSON.stringify(data, null, 2)}

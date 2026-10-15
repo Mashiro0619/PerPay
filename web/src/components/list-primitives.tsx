@@ -40,6 +40,7 @@ export function ListMoney({
       className={cn("list-money", secondary && "list-money-secondary")}
       data-empty={value == null || undefined}
       data-wide={formatted.length > 15 || undefined}
+      role={label ? "group" : undefined}
       aria-label={label ? `${label} ${formatted}` : undefined}
     >
       {formatted}
@@ -62,7 +63,6 @@ export function ListDateTime({
     <time
       className={cn("list-time", inline && "list-time-inline")}
       dateTime={date.toISOString()}
-      aria-label={formatted}
       title={formatted + "（北京时间）"}
     >
       {inline || split < 0 ? formatted : (

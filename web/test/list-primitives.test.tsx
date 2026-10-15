@@ -12,7 +12,7 @@ describe("business record formatting", () => {
 
   it("uses Beijing calendar dates at midnight and preserves the machine-readable instant", () => {
     render(<ListDateTime value="2026-10-09T16:01:00Z" />);
-    const time = screen.getByLabelText("2026/10/10 00:01");
+    const time = screen.getByTitle("2026/10/10 00:01（北京时间）");
     expect(time).toHaveAttribute("datetime", "2026-10-09T16:01:00.000Z");
     expect(time).toHaveTextContent("2026/10/10 00:01");
     expect(screen.getByText("00:01")).toBeVisible();
