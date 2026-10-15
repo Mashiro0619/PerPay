@@ -7,6 +7,9 @@ for (const theme of ["light", "dark"] as const) test(`${theme}: keyboard focus i
   await page.keyboard.press("Tab");
   const trigger = page.getByRole("button", { name: "切换导航", exact: true });
   await trigger.focus();
+  // Read the painted ring after its normal transition, not an intermediate
+  // transparent animation frame immediately after focus moves.
+  await expect.poll(() => trigger.evaluate(element => getComputedStyle(element).boxShadow)).toContain("3px");
   const focus = await trigger.evaluate(element => {
     const style = getComputedStyle(element);
     const root = getComputedStyle(document.documentElement);
@@ -21,10 +24,12 @@ for (const theme of ["light", "dark"] as const) test(`${theme}: keyboard focus i
       const surface = luminance(root.getPropertyValue(token));
       return (Math.max(ring, surface) + .05) / (Math.min(ring, surface) + .05);
     });
-    return { visible: element.matches(":focus-visible"), shadow: style.boxShadow, contrasts };
+    return { visible: element.matches(":focus-visible"), shadow: style.boxShadow, ringColor: style.getPropertyValue("--tw-ring-color"), contrasts };
   });
   expect(focus.visible).toBe(true);
   expect(focus.shadow).not.toBe("none");
+  expect(focus.shadow).toContain("3px");
+  expect(focus.shadow).not.toMatch(/\/\s*0\.\d+\)/);
   expect(Math.min(...focus.contrasts)).toBeGreaterThanOrEqual(3);
   await record(page, info, { focus });
 });

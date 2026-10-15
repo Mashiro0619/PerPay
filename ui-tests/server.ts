@@ -2,11 +2,13 @@ import { serve } from "@hono/node-server";
 import { createServer } from "node:net";
 import { createPreviewDemo } from "../scripts/preview-demo.ts";
 import { PublicCheckoutRateLimiter } from "../src/http/public-checkout-rate-limit.ts";
+import { renderCheckoutPage } from "../src/http/web/checkout.ts";
 
 if (!process.send) throw new Error("UI fixture requires an IPC parent");
 const epoch = Date.UTC(2026, 9, 15, 6);
 let now = epoch;
 let generation = 0;
+let checkoutFailure: 429 | 503 | null = null;
 const take = PublicCheckoutRateLimiter.prototype.take;
 const budgets = new WeakMap<PublicCheckoutRateLimiter, { generation: number; limiter: PublicCheckoutRateLimiter }>();
 // Test-process-only clock/reset seam; the production limiter and its policy stay intact.
@@ -45,18 +47,40 @@ const routes = ["/", "/orders", "/work-items", "/notifications", "/reconciliatio
   "/reconciliation/conflicts/" + Object.values(demo.scenarios.financial.conflicts)[0],
   ...["", "/orders", "/notifications", "/work-items", "/settings"].map(path => "/sites/" + demo.scenarios.sites.store + path),
 ];
+const extendedRoutes = [
+  ...["application", "provider", "collection", "optional"].map(step => "/settings/onboarding/" + step),
+  ...["orders", "integration", "display"].map(section => "/sites/" + demo.scenarios.sites.store + "/settings/" + section),
+  "/sites/" + demo.scenarios.sites.store + "/orders/" + demo.featured,
+  "/sites/" + demo.scenarios.sites.notifications + "/notifications/" + Object.values(demo.scenarios.notifications.deliveries)[0],
+  ...([ ["matches", "payment_matches", "payment_match_id"], ["candidates", "match_candidates", "candidate_id"] ] as const).map(([kind, table, key]) => demo.database.read(db => {
+    const row = db.prepare(`SELECT resource.${key} AS id, payment_orders.api_client_id AS client_id FROM ${table} resource JOIN payment_orders ON payment_orders.order_id = resource.order_id LIMIT 1`).get() as { id: string; client_id: string };
+    return "/sites/" + row.client_id + "/reconciliation/" + kind + "/" + row.id;
+  })),
+];
 const checkouts: Record<string, string> = {};
 for (const [name, id] of Object.entries(demo.scenarios.lifecycle)) {
   const response = await demo.app.request("/api/admin/v1/orders/" + id + "/checkout", { headers: { cookie } });
   if (response.headers.has("location")) checkouts[name] = response.headers.get("location")!;
 }
-const server = serve({ fetch: demo.app.fetch, hostname: "127.0.0.1", port: Number(new URL(demo.origin).port) });
+const openCheckout = checkouts.open!;
+const openApi = openCheckout.replace("/checkout/", "/api/public/v1/checkouts/");
+const server = serve({ fetch: async (request, env) => {
+  const path = new URL(request.url).pathname;
+  if (checkoutFailure && path === openApi) return Response.json({ error: { code: "ui_synthetic_unavailable", message: "合成收款服务暂不可用" } }, { status: checkoutFailure, headers: { "retry-after": "2", "date": new Date(now).toUTCString() } });
+  const response = await demo.app.fetch(request, env);
+  if (!checkoutFailure || path !== openCheckout) return response;
+  const headers = new Headers(response.headers); headers.delete("content-length"); headers.set("retry-after", "2");
+  return new Response(renderCheckoutPage({ checkoutToken: openCheckout.split("/").at(-1)!, checkout: null, qrImageUrl: null,
+    serverTime: now, demoMode: true, initialError: { status: checkoutFailure, code: "ui_synthetic_unavailable", message: "合成收款服务暂不可用", retryAfterSeconds: 2 } }), { status: checkoutFailure, headers });
+}, hostname: "127.0.0.1", port: Number(new URL(demo.origin).port) });
 try {
   await new Promise<void>((resolve, reject) => { server.once("listening", resolve); server.once("error", reject); });
 } catch (error) { demo.dispose(); throw error; }
-process.send({ type: "ready", origin: demo.origin, epoch, routes, checkouts, directory: demo.directory });
-process.on("message", (message: { type: string; time?: number; id?: number; reset?: boolean }) => {
-  if (message.reset) generation++;
+process.send({ type: "ready", origin: demo.origin, epoch, routes, extendedRoutes, checkouts, directory: demo.directory,
+  sessionCookies: login.headers.getSetCookie().map(value => { const entry = value.split(";")[0]!; const index = entry.indexOf("="); return { name: entry.slice(0, index), value: entry.slice(index + 1) }; }) });
+process.on("message", (message: { type: string; time?: number; id?: number; reset?: boolean; checkoutFailure?: 429 | 503 | null }) => {
+  if (message.reset) { generation++; checkoutFailure = null; }
+  if (message.type === "scenario") { checkoutFailure = message.checkoutFailure ?? null; process.send?.({ type: "done", id: message.id }); }
   if (message.type === "clock") { now = message.time ?? epoch; process.send?.({ type: "done", id: message.id }); }
 });
 let stopping = false;

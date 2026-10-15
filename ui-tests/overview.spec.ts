@@ -26,3 +26,25 @@ test("overview grids use container widths and preserve complete identifiers and 
   await page.getByRole("button", { name: "切换为全屏布局", exact: true }).click();
   expect(await page.locator(".site-overview-grid").evaluate(e => getComputedStyle(e).gridTemplateColumns.split(" ").length)).toBe(4);
 });
+
+test("overview container breakpoints switch at 68rem and 76rem in both width preferences", async ({ page, manifest }, info) => {
+  await login(page, manifest);
+  for (const mode of ["compact", "full"]) for (const target of [1087, 1088, 1089, 1215, 1216, 1217]) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.evaluate(mode => localStorage.setItem("perpay:content-width", mode), mode);
+    await page.goto(manifest.origin + "/admin/");
+    await expect(page.locator(".overview-records")).toBeVisible();
+    const measured = await page.locator("[data-content-width]").evaluate(element => element.getBoundingClientRect().width);
+    await page.setViewportSize({ width: 1280 + target - measured, height: 900 });
+    await expect.poll(() => page.locator("[data-content-width]").evaluate(element => element.getBoundingClientRect().width)).toBe(target);
+    const columns = await page.evaluate(() => ({
+      records: getComputedStyle(document.querySelector(".overview-records")!).gridTemplateColumns.split(" ").length,
+      sites: getComputedStyle(document.querySelector(".site-overview-grid")!).gridTemplateColumns.split(" ").length,
+      siteWidth: document.querySelector(".site-overview-section")!.getBoundingClientRect().width,
+    }));
+    expect(columns.records).toBe(target >= 1088 ? 2 : 1);
+    expect(columns.siteWidth).toBe(target);
+    expect(columns.sites).toBe(target >= 1216 ? 4 : 3);
+    await record(page, info, { requested: { containerWidth: target, mode }, columns });
+  }
+});
