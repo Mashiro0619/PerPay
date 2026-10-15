@@ -4,6 +4,7 @@ import { ChevronDown, Search, X } from "lucide-react";
 import { normalizeKeyword, type ListQueryControl } from "@/lib/list-query";
 import { useCompactList } from "@/hooks/use-compact-list";
 import { ListColumnsSlot, useListSummary } from "@/components/list-columns";
+import { ListDensityControl } from "@/components/list-density";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
@@ -260,7 +261,7 @@ export function ListQueryToolbar({
           </>
         )}
       </div>
-      <ListColumnsSlot />
+      <ListColumnsSlot><ListDensityControl compact={compact} /></ListColumnsSlot>
       {selectedMode && (
         <div className="list-toolbar-detail empty:hidden">
           <ErrorNotice error={lookup?.error} />

@@ -211,7 +211,7 @@ describe("desktop business list composition", () => {
       expect(view.container.querySelector("[data-business-list]")).not.toHaveClass("max-w-[1600px]", "mx-auto");
       expect(table.querySelector("tbody td")).toHaveAttribute("data-column-layout", "identity");
       expectColumnAlignment(table, centeredColumns);
-      expect(table).toHaveAttribute("data-density", "default");
+      expect(table).toHaveAttribute("data-density", "compact");
       expect(table).toHaveClass("table-fixed");
       expect(table.querySelector("tbody td")).not.toHaveClass("py-2");
       expect(table.querySelector("tbody td")).not.toHaveClass("w-full");
@@ -359,7 +359,7 @@ describe("desktop business list composition", () => {
     });
     expect(number).toHaveClass("list-code");
     expect(number).toHaveAttribute("title", longOrder.merchant_order_no);
-    expect(screen.getByRole("table")).toHaveAttribute("data-density", "default");
+    expect(screen.getByRole("table")).toHaveAttribute("data-density", "compact");
     view.unmount();
     render(
       <MemoryRouter>

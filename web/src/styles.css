@@ -356,7 +356,9 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .business-table td[data-column-layout="amount"] { overflow: visible; }
 .business-table:has(.list-money[data-wide="true"]) col[data-column-layout="amount"] { width: 13rem; }
 [data-density="compact"] .business-table td,
-.business-table[data-density="compact"] td { height: 3.5rem; padding-block: 0.625rem; }
+.business-table[data-density="compact"] td { height: 3.5rem; padding-block: 0.5rem; }
+[data-density="comfortable"] .business-table td,
+.business-table[data-density="comfortable"] td { height: 4rem; padding-block: 0.75rem; }
 
 .list-identity { display: flex; min-width: 0; flex-direction: column; gap: 0.25rem; }
 .list-identity-title,
@@ -458,6 +460,7 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 }
 .business-summary-row:last-child { border-bottom: 0; }
 [data-density="compact"] .business-summary-row { min-height: 3.5rem; padding: 0.75rem 0.5rem; }
+[data-density="comfortable"] .business-summary-row { min-height: 4rem; padding: 1rem 0.5rem; }
 .list-summary { display: flex; min-width: 0; width: 100%; flex-direction: column; gap: 0.875rem; }
 .list-summary-heading { display: flex; min-width: 0; align-items: center; gap: 1rem; }
 .list-summary-identity { min-width: 0; flex: 1; }

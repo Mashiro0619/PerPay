@@ -1,6 +1,7 @@
 import { WorkspaceProvider, WorkspaceOutlet, useWorkspace } from "@/workspace";
 import { AdminContent, ContentWidthProvider } from "@/components/content-width";
 import { PageHeaderActionsProvider } from "@/components/page-header-actions";
+import { ListDensityProvider } from "@/components/list-density";
 import { PageHeading, PageHeadingProvider, PageHeadingSlot } from "@/components/page-heading";
 import { useSystemName } from "@/branding";
 import { SystemStatusBoundary } from "@/features/system-status";
@@ -66,9 +67,11 @@ function AppShell() {
       }
     >
       <ContentWidthProvider>
+        <ListDensityProvider>
         <PageHeaderActionsProvider>
           <Workspace />
         </PageHeaderActionsProvider>
+        </ListDensityProvider>
       </ContentWidthProvider>
     </SidebarProvider>
   );

@@ -29,14 +29,14 @@ export function useListSummary() {
   return useContext(ListColumnsContext)?.summary ?? false;
 }
 
-export function ListColumnsSlot() {
+export function ListColumnsSlot({ children }: { children?: ReactNode }) {
   const host = useContext(ListColumnsContext);
   return (
     <div
       ref={host?.setTarget}
       className="list-columns-slot flex items-center gap-2 empty:hidden"
       data-list-columns-slot
-    />
+    >{children}</div>
   );
 }
 

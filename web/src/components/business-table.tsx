@@ -35,6 +35,7 @@ import { useCompactList } from "@/hooks/use-compact-list";
 import { useListSize } from "@/hooks/use-list-size";
 import { LinkedSummaryRow, LinkedTableRow } from "@/components/LinkedTableRow";
 import { ListColumnsMenu } from "@/components/list-columns";
+import { useListDensity } from "@/components/list-density";
 import {
   Table,
   TableHeader,
@@ -88,7 +89,7 @@ type BusinessTableProps<T> = {
   columnsMenu?: boolean;
   tableClassName?: string | ((context: BusinessCellContext) => string);
   renderSummary?: (item: T, context: BusinessCellContext) => ReactNode;
-  density?: "default" | "compact";
+  density?: "default" | "compact" | "comfortable" | undefined;
   embedded?: boolean;
   "aria-label"?: string;
 };
@@ -171,11 +172,13 @@ function BusinessTableView<T extends RowData>({
   columnsMenu = true,
   tableClassName,
   renderSummary,
-  density = "default",
+  density: requestedDensity,
   embedded = false,
   "aria-label": ariaLabel,
 }: BusinessTableProps<T>) {
   const compact = useCompactList();
+  const preference = useListDensity();
+  const density = !requestedDensity || requestedDensity === "default" ? preference : requestedDensity;
   const { ref: container, size, isSummary } = useListSize();
   const storageKey = "perpay.table-columns.v2." + id;
   const [overrides, setOverrides] = useState<ColumnVisibilityState>(() => {
