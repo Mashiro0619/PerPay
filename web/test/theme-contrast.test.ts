@@ -44,6 +44,14 @@ const pairs = [
   ["danger-foreground", "danger"],
 ];
 describe("official Neutral theme", () => {
+  for (const mode of [":root", ".dark", ":root:not([data-theme])"])
+    it(mode + " gives opaque focus indicators at least 3:1 on adjacent surfaces", () => {
+      const tokens = variables(mode);
+      expect(tokens["sidebar-ring"]).toBe("var(--ring)");
+      for (const surface of ["background", "card", "popover", "secondary", "sidebar", "sidebar-accent"]) {
+        expect(contrast(luminance(tokens.ring!), luminance(tokens[surface]!))).toBeGreaterThanOrEqual(3);
+      }
+    });
   for (const mode of [":root", ".dark"])
     it.each(pairs)(
       mode + " keeps %s readable on %s",
