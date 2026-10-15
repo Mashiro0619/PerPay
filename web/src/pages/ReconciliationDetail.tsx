@@ -7,7 +7,7 @@ import { RefreshButton } from "@/components/refresh-button";
 import { useSystemName } from "@/branding";
 import { useEffect } from "react";
 
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, FileQuestion } from "lucide-react";
 import { useParams } from "react-router";
 import { Link, useDetailBack } from "@/navigation";
 import { refreshOperationalData, result } from "@/api/client";
@@ -36,10 +36,11 @@ import {
   CardContent,
   CardFooter,
 } from "@/components/ui/card";
-import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
+import { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyContent, EmptyMedia } from "@/components/admin-empty";
 export default function EvidenceDetail() {
   const { clientId } = useWorkspace();
   const { kind = "", resourceId = "" } = useParams();
+  const back = useDetailBack("/reconciliation", "返回共享账本");
   if (clientId && kind === "conflicts") return <p>共享账本冲突不属于单个网站，请<Link global to="/work-items">返回一级全局待办</Link>处理。</p>;
   if (kind === "conflicts")
     return <ConflictDetail key={resourceId} resourceId={resourceId} />;
@@ -53,11 +54,19 @@ export default function EvidenceDetail() {
     return <CandidateDetail key={resourceId} resourceId={resourceId} />;
   return (
     <Empty>
+      <PageHeading title="未找到这条对账记录" />
       <EmptyHeader>
+        <EmptyMedia variant="icon"><FileQuestion /></EmptyMedia>
         <EmptyTitle role="heading" aria-level={2}>
           未找到这条对账记录
         </EmptyTitle>
+        <EmptyDescription>链接中的记录类型无效，请返回来源列表重新选择记录。</EmptyDescription>
       </EmptyHeader>
+      <EmptyContent>
+        <Link to={back.to} state={back.state} className={buttonVariants({ variant: "outline" })}>
+          <ArrowLeft data-icon="inline-start" />{back.label}
+        </Link>
+      </EmptyContent>
     </Empty>
   );
 }
