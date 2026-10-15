@@ -105,8 +105,8 @@ describe("website overview card layout", () => {
         if (count) columns.push([Number(match[1]), Number(count[1])]);
       });
     });
-    expect(columns).toEqual([[41, 2], [62, 3], [83, 4]]);
-    for (const [width, expected] of [[20, 1], [40.99, 1], [41, 2], [61.99, 2], [62, 3], [82.99, 3], [83, 4]]) {
+    expect(columns).toEqual([[41, 2], [62, 3], [76, 4]]);
+    for (const [width, expected] of [[20, 1], [40.99, 1], [41, 2], [61.99, 2], [62, 3], [75.99, 3], [76, 4]]) {
       const actual = columns.reduce((count, [minimum, next]) => width! >= minimum ? next : count, 1);
       expect(actual).toBe(expected);
     }

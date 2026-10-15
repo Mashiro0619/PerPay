@@ -121,18 +121,18 @@ export function OverviewWorkItems({ items }: { items: readonly AdminWorkItem[] }
                 </ListMeta>
               )}
               <div className="overview-work-footer">
-                <ListMeta>
+                <dl className="overview-work-fields">
                   {order && order.product_name !== order.merchant_order_no && (
-                    <span className="overview-work-order-reference">
-                      <span>商户订单号</span>{" "}
-                      <span className="list-code" title={order.merchant_order_no}>{order.merchant_order_no}</span>
-                    </span>
+                    <div className="overview-work-order-reference">
+                      <dt>商户订单号</dt>
+                      <dd className="list-code" title={order.merchant_order_no}>{order.merchant_order_no}</dd>
+                    </div>
                   )}
-                  <span className="overview-work-time">
-                    <span className="sr-only">提醒时间 </span>
-                    <ListDateTime value={item.actionable_at} inline />
-                  </span>
-                </ListMeta>
+                  <div className="overview-work-time">
+                    <dt>提醒时间</dt>
+                    <dd><ListDateTime value={item.actionable_at} inline /></dd>
+                  </div>
+                </dl>
               </div>
               {item.type === "NOTIFICATION_FAILURE" && !item.ended &&
                 ["PENDING", "RETRY_WAIT"].includes(item.status) && item.next_attempt_at && (

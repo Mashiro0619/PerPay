@@ -39,7 +39,7 @@ export function SectionCards({
     },
   ];
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4" data-overview-kpis>
       {cards.map((card) => (
         <Card key={card.title} aria-busy={pending}>
           <CardHeader>

@@ -419,9 +419,9 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .list-identity-description { display: flex; flex-direction: column; gap: 0.125rem; }
 .list-identity-description:empty,
 .list-identity-meta:has(> .list-meta:empty) { display: none; }
-.list-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.125rem 0.625rem; }
+.list-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .list-meta > * { min-width: 0; max-width: 100%; }
-.list-meta > :not(:last-child) { padding-right: 0.625rem; border-right: 1px solid var(--border); }
+.list-meta > :not(:last-child) { padding-right: 0.5rem; border-right: 1px solid var(--border); }
 .list-meta:has(> .list-money) { gap: 0.375rem; }
 .list-meta:has(> .list-money) > * { padding-right: 0; border: 0; }
 .list-site-identity { display: inline-block; max-width: 100%; vertical-align: bottom; }
@@ -862,7 +862,7 @@ a[data-internal-link][data-slot="item"]:active {
 @container site-overview (min-width: 62rem) {
   .site-overview-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
-@container site-overview (min-width: 83rem) {
+@container site-overview (min-width: 76rem) {
   .site-overview-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @media (hover: hover) and (pointer: fine) {
@@ -896,7 +896,7 @@ a[data-internal-link][data-slot="item"]:active {
 .overview-records-header [data-slot="card-action"] { align-self: start; }
 .overview-records-content, .overview-orders { min-width: 0; }
 @container main (min-width: 68rem) {
-  .overview-records { grid-template-columns: minmax(20rem, 0.32fr) minmax(0, 0.68fr); }
+  .overview-records { grid-template-columns: clamp(22rem, 36%, 28rem) minmax(0, 1fr); }
 }
 .overview-orders-table { table-layout: auto; }
 .overview-orders-table col[data-column-layout="identity"] { width: auto; }
@@ -960,7 +960,7 @@ a[data-internal-link][data-slot="item"]:active {
 .overview-orders .list-identity-description .overview-order-times { flex-direction: row; flex-wrap: wrap; gap: 0.25rem 0.75rem; }
 .overview-work-list { min-width: 0; width: auto; gap: 0; margin-inline: -0.5rem; }
 .overview-work-list .overview-work-item { align-items: stretch; padding: 0.5rem; }
-.overview-work-content { min-width: 0; gap: 0.125rem; }
+.overview-work-content { min-width: 0; gap: 0.5rem; container: overview-work / inline-size; }
 .overview-work-topline { display: flex; min-width: 0; align-items: start; gap: 0.375rem 0.625rem; }
 .overview-work-topline > .list-identity { flex: 1; }
 .overview-work-topline > [data-slot="badge"] { flex: none; }
@@ -983,12 +983,18 @@ a[data-internal-link][data-slot="item"]:active {
 .overview-work-order-context > .list-site-identity > span { display: -webkit-box; min-width: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .overview-work-order-heading > .overview-order-money-line { flex: 0 1 auto; margin-left: auto; }
 .overview-work-order-heading:has(.list-money[data-wide="true"]) > .overview-order-money-line { flex-basis: 100%; }
+
 .overview-work-footer { min-width: 0; }
-.overview-work-footer > .list-meta { align-items: baseline; justify-content: space-between; gap: 0.125rem 0.625rem; }
-.overview-work-footer > .list-meta > * { padding-right: 0; border: 0; }
-.overview-work-order-reference { display: flex; min-width: 0; flex-wrap: wrap; gap: 0 0.25rem; }
-.overview-work-order-reference > :first-child { flex: none; }
-.overview-work-time { margin-left: auto; }
+.overview-work-fields { display: grid; min-width: 0; margin: 0; gap: 0.5rem; color: var(--muted-foreground); font-size: 0.75rem; }
+.overview-work-order-reference { display: grid; min-width: 0; gap: 0.25rem; }
+.overview-work-fields dt, .overview-work-fields dd { min-width: 0; margin: 0; }
+.overview-work-order-reference .list-code { white-space: normal; overflow-wrap: anywhere; }
+.overview-work-time { display: flex; min-width: 0; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.5rem; }
+.overview-work-time dd { white-space: nowrap; }
+@container overview-work (min-width: 24rem) {
+  .overview-work-fields { grid-template-columns: minmax(0, 1fr) max-content; align-items: start; }
+  .overview-work-time { flex-direction: column; }
+}
 .overview-work-order-context > .overview-work-product:focus-visible { outline-offset: -2px; }
 @media (pointer: coarse) {
   .overview-work-product { min-height: 44px; align-content: center; }
