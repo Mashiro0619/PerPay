@@ -2,6 +2,7 @@ import { useQuery } from '@/lib/workspace-query';
 import { useWorkspace, useWorkspaceApi } from "@/workspace";
 import { InlineEmpty } from "@/components/admin-empty";
 import { PageHeaderActions } from "@/components/page-header-actions";
+import { PageHeading } from "@/components/page-heading";
 import { RefreshButton } from "@/components/refresh-button";
 
 import {
@@ -71,6 +72,7 @@ export function OrderDetail() {
   });
   return (
     <div className="@container/order flex w-full min-w-0 flex-col gap-4">
+      <PageHeading title={order.data?.data.product_name ?? "订单详情"} />
       <div className="flex items-center justify-between gap-4">
         <Link
           to={back.to}
@@ -115,9 +117,6 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-2xl font-semibold tracking-tight">
-          {order.product_name}
-        </h2>
         <StatusBadge value={order.payment.status} />
       </div>
       <div

@@ -14,6 +14,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { useParams } from "react-router";
+import { PageHeading } from "@/components/page-heading";
 import { Link, useNavigate } from "@/navigation";
 import { SettingsEditor, sections } from "@/components/SettingsForms";
 import {
@@ -95,12 +96,7 @@ export default function Settings() {
         </Link>
         <RefreshButton disabled={settings.isFetching} onClick={refresh} busy={settings.isFetching} />
       </PageHeaderActions>
-      <div className="flex flex-col gap-1">
-        <h2 className="text-2xl font-semibold tracking-tight">实例设置</h2>
-        <p className="text-sm text-muted-foreground">
-          分别管理开放平台应用、经营收款码、PerPay 采集策略和实例显示。
-        </p>
-      </div>
+      <PageHeading title="实例设置" description="分别管理开放平台应用、经营收款码、PerPay 采集策略和实例显示。" />
       <QueryView query={settings}>
         {({ data }) => {
           if (data.site_mode && requestedSection === "notifications") return <Alert><AlertTitle>通知设置已迁移</AlertTitle><AlertDescription>每个网站分别配置通知来源、签名密钥和投递策略。<Link to="/sites">前往业务网站</Link></AlertDescription></Alert>;

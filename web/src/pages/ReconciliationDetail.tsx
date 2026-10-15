@@ -2,6 +2,7 @@ import { useWorkspace } from "@/workspace";
 import { useQuery } from '@/lib/workspace-query';
 import { useWorkspaceApi } from "@/workspace";
 import { PageHeaderActions } from "@/components/page-header-actions";
+import { PageHeading } from "@/components/page-heading";
 import { RefreshButton } from "@/components/refresh-button";
 import { useSystemName } from "@/branding";
 import { useEffect } from "react";
@@ -63,12 +64,15 @@ export default function EvidenceDetail() {
 function EvidenceHeading({
   title,
   section,
+  loaded,
 }: {
   title: string;
   section?: string;
+  loaded?: boolean;
 }) {
   const systemName = useSystemName();
   const { clientId, site } = useWorkspace();
+  const { resourceId = "" } = useParams();
   const siteName = clientId ? site?.data?.data.configuration.name ?? clientId : "全部网站";
   const back = useDetailBack(
     "/reconciliation" + (section ? "?tab=" + section : ""),
@@ -79,6 +83,7 @@ function EvidenceHeading({
     document.title = title + ` · ${siteName} · ${systemName}`;
   }, [title, systemName, siteName]);
   return (
+    <><PageHeading title={loaded ? `${title} · ${resourceId}` : title} />
     <div className="flex items-center justify-between gap-4">
       <Link
         to={back.to}
@@ -91,7 +96,7 @@ function EvidenceHeading({
       <PageHeaderActions><RefreshButton disabled={fetching > 0} onClick={() => {
           void refreshOperationalData();
         }} busy={fetching > 0} /></PageHeaderActions>
-    </div>
+    </div></>
   );
 }
 function ConflictDetail({ resourceId }: { resourceId: string }) {
@@ -105,7 +110,7 @@ function ConflictDetail({ resourceId }: { resourceId: string }) {
   });
   return (
     <>
-      <EvidenceHeading title="账本冲突" section="conflicts" />
+      <EvidenceHeading title="账本冲突" section="conflicts" loaded={query.isSuccess} />
       <QueryView query={query}>
         {({ data }) => <ConflictCard detail={data} />}
       </QueryView>
@@ -123,7 +128,7 @@ function MatchDetail({ resourceId }: { resourceId: string }) {
   });
   return (
     <>
-      <EvidenceHeading title="支付关联详情" />
+      <EvidenceHeading title="支付关联详情" loaded={query.isSuccess} />
       <QueryView query={query}>
         {({ data }) => <MatchCard match={data} />}
       </QueryView>
@@ -144,7 +149,7 @@ function ExceptionDetail({ resourceId }: { resourceId: string }) {
   });
   return (
     <>
-      <EvidenceHeading title="账务异常" section="exceptions" />
+      <EvidenceHeading title="账务异常" section="exceptions" loaded={query.isSuccess} />
       <QueryView query={query}>
         {({ data }) => <ExceptionCard exception={data} />}
       </QueryView>
@@ -165,7 +170,7 @@ function CandidateDetail({ resourceId }: { resourceId: string }) {
   });
   return (
     <>
-      <EvidenceHeading title="匹配候选证据" />
+      <EvidenceHeading title="匹配候选证据" loaded={query.isSuccess} />
       <QueryView query={query}>
         {({ data }) => <CandidateCard candidate={data} />}
       </QueryView>
@@ -197,7 +202,7 @@ function LedgerDetail({ resourceId }: { resourceId: string }) {
   });
   return (
     <>
-      <EvidenceHeading title="账本流水" />
+      <EvidenceHeading title="账本流水" loaded={ledger.isSuccess} />
       <QueryView query={ledger}>
         {({ data }) => (
           <>

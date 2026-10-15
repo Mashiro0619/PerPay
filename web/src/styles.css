@@ -261,6 +261,8 @@
 a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 
 /* Settings have their own reading width, independent of wide tables/charts. */
+.site-header { height: 3.5rem; }
+@media (min-width: 768px) { .site-header { height: 3rem; } }
 .admin-settings-layout { width: 100%; max-width: 56rem; }
 .admin-settings-layout [data-slot="field"] { min-width: 0; }
 .admin-settings-layout input[type="number"] { width: 100%; max-width: 12rem; }

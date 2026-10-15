@@ -132,7 +132,7 @@ describe("order detail work surface", () => {
     expect(
       await screen.findByRole("heading", {
         name: order.product_name,
-        level: 2,
+        level: 1,
       }),
     ).toBeVisible();
     expect(

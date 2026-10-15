@@ -24,53 +24,55 @@ export function SiteHeader({
   const workspaceName = scope.clientId
     ? (scope.site?.data?.data.configuration.name ?? scope.clientId)
     : isGlobalNavigationPage(pathname) ? "全局" : "全部网站";
-  const pagePath = `${workspaceName} / ${title}`;
   const fetching = useIsFetching({ queryKey: ["analytics"] }) > 0;
   return (
-    <header className="flex min-h-(--header-height) shrink-0 flex-col gap-1 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
-      <div className="flex min-h-(--header-height) w-full min-w-0 items-center gap-1 px-4 lg:gap-2 lg:px-6">
+    <header className="site-header shrink-0 border-b bg-background">
+      <div className="flex h-full w-full min-w-0 items-center gap-1 px-4 lg:gap-2 lg:px-6">
         <SidebarTrigger className="-ml-1" aria-label="切换导航" />
         <Separator
           orientation="vertical"
           className="mx-2 h-4 data-vertical:self-auto"
         />
-        <div className="flex min-w-0 items-center gap-1">
+        <nav aria-label="页面路径" className="min-w-0 flex-1">
+          <ol className="flex min-w-0 items-center gap-2 text-sm">
           {scope.clientId && (
-            <>
+            <li className="hidden shrink-0 items-center gap-2 md:flex">
               <Link
                 global
                 to="/"
-                className="hidden shrink-0 text-sm text-muted-foreground md:inline"
+                className="text-muted-foreground"
               >
                 全部网站
               </Link>
               <span
                 aria-hidden="true"
-                className="hidden shrink-0 text-muted-foreground md:inline"
+                className="text-muted-foreground"
               >
                 /
               </span>
-            </>
+            </li>
           )}
-          <span
-            className="min-w-0 max-w-40 truncate text-sm text-muted-foreground sm:max-w-64"
+          <li
+            className="min-w-0 max-w-40 truncate text-muted-foreground sm:max-w-64"
             title={workspaceName}
           >
             {workspaceName}
-          </span>
-          <span
+          </li>
+          <li
             aria-hidden="true"
-            className="hidden shrink-0 text-muted-foreground md:inline"
+            className="shrink-0 text-muted-foreground"
           >
             /
-          </span>
-          <h1
-            className="sr-only md:not-sr-only md:min-w-0 md:truncate md:text-sm md:font-medium"
-            title={pagePath}
+          </li>
+          <li
+            aria-current="page"
+            className="min-w-0 truncate font-medium"
+            title={title}
           >
             {title}
-          </h1>
-        </div>
+          </li>
+          </ol>
+        </nav>
         <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
           {overview && (
             <>
@@ -90,13 +92,6 @@ export function SiteHeader({
           <ContentWidthControl />
           <ThemeControl />
         </div>
-      </div>
-      <div
-        aria-hidden="true"
-        className="w-full truncate px-4 pb-2 text-xs text-muted-foreground md:hidden"
-        title={pagePath}
-      >
-        {pagePath}
       </div>
     </header>
   );

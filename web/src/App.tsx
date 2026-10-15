@@ -1,6 +1,7 @@
 import { WorkspaceProvider, WorkspaceOutlet, useWorkspace } from "@/workspace";
 import { AdminContent, ContentWidthProvider } from "@/components/content-width";
 import { PageHeaderActionsProvider } from "@/components/page-header-actions";
+import { PageHeading, PageHeadingProvider, PageHeadingSlot } from "@/components/page-heading";
 import { useSystemName } from "@/branding";
 import { SystemStatusBoundary } from "@/features/system-status";
 import {
@@ -163,7 +164,9 @@ function Workspace() {
       />
       <SidebarInset className="min-w-0">
         <SiteHeader title={title} overview={overview} />
+        <PageHeadingProvider key={location.pathname}>
         <AdminContent>
+          <PageHeadingSlot title={title} />
           {(logout.error || session.error) && (
             <div className="flex flex-col gap-4">
               <ErrorNotice error={logout.error} />
@@ -173,6 +176,7 @@ function Workspace() {
           <OfficialUpdateNotice hidden={location.pathname === "/system"} />
           <WorkspaceOutlet />
         </AdminContent>
+        </PageHeadingProvider>
       </SidebarInset>
     </NavigationContext>
   );
@@ -336,6 +340,7 @@ export const appRoutes = createRoutesFromElements(
       path="*"
       element={
         <Empty>
+          <PageHeading title="找不到这个页面" />
           <EmptyHeader>
             <EmptyTitle role="heading" aria-level={2}>
               找不到这个页面
@@ -358,7 +363,7 @@ function AppFailure() {
     <main className="flex min-h-svh items-center justify-center p-6">
       <Empty>
         <EmptyHeader>
-          <EmptyTitle role="heading" aria-level={2}>
+          <EmptyTitle role="heading" aria-level={1}>
             页面未能正常加载
           </EmptyTitle>
           <EmptyDescription>重新加载会丢失未保存内容。</EmptyDescription>

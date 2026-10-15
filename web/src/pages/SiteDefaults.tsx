@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { PageHeading } from "@/components/page-heading";
 import { onlineManager, useMutation, useQuery } from "@tanstack/react-query";
 import { api, ApiError, queryClient, result, type SitePolicy } from "@/api/client";
 import { useDirtyDraft } from "@/drafts";
@@ -157,7 +158,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
 
   return (
     <div className="admin-settings-layout flex flex-col gap-6">
-      <h2 className="text-2xl font-semibold">网站默认模板</h2>
+      <PageHeading title="网站默认模板" />
       <p className="text-sm text-muted-foreground">仅用于新网站，已有网站不变。</p>
       <Tabs value={section} onValueChange={value => { if (value) setSection(value); }}>
         <TabsList aria-label="模板分组">

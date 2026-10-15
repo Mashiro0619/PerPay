@@ -5,6 +5,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
+import { PageHeading } from "@/components/page-heading";
 import {
   api,
   ApiError,
@@ -369,9 +370,7 @@ function SiteEditor({
   return (
     <div className="admin-settings-layout flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-2xl font-semibold">
-          {sections.find((item) => item.value === section)?.label ?? "网站设置"}
-        </h2>
+        <PageHeading title={sections.find((item) => item.value === section)?.label ?? "网站设置"} />
         <Link to="/sites" className={buttonVariants({ variant: "outline" })}>
           返回网站列表
         </Link>

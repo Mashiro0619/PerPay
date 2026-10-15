@@ -24,6 +24,7 @@ import type { ReactNode } from "react";
 
 import { ArrowLeft, RefreshCw, Settings2 } from "lucide-react";
 import { useParams, useSearchParams } from "react-router";
+import { PageHeading } from "@/components/page-heading";
 import { Link, useDetailBack } from "@/navigation";
 import { refreshOperationalData, result, type WebhookDeliveryStatus, type WebhookDeliverySummary } from "@/api/client";
 import { useCursor } from "@/lib/cursor";
@@ -386,6 +387,7 @@ function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
   });
   return (
     <>
+      <PageHeading title={delivery.data ? `通知详情 · ${deliveryId}` : "通知详情"} />
       <div className="flex items-center justify-between gap-4">
         <Link
           to={back.to}
