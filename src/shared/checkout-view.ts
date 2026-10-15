@@ -77,7 +77,7 @@ export const checkoutCopy: Record<
   EXPIRED: {
     badge: "订单已过期",
     heading: "订单已过期",
-    detail: "付款时间已结束。已付款请勿重复支付，请返回商家核查。",
+    detail: "付款时间已结束。若已付款，请先查询付款状态；仍未确认时，请返回商家核查，勿重复付款。",
   },
   NOT_FOUND: {
     badge: "订单不可用",

@@ -131,7 +131,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
     order &&
     (showProductName === false
       ? "md:max-w-3xl md:px-6"
-      : "md:max-w-4xl md:px-6");
+      : "md:max-w-5xl md:px-6 xl:max-w-6xl");
   const reloadPath = initial.apiUrl.startsWith("/api/public/v1/checkouts/")
     ? "/checkout/" + initial.apiUrl.slice("/api/public/v1/checkouts/".length)
     : "";
@@ -152,7 +152,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
     <CardFooter
       className={cn(
         "flex flex-col items-stretch gap-3",
-        order && "md:contents",
+        order && "md:col-start-3 md:row-start-2 md:self-start md:px-6 md:pb-8",
       )}
       data-checkout-actions
     >
@@ -245,7 +245,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
           <div
             className={cn(
               "flex min-w-0 flex-col gap-4",
-              order && "md:gap-5 md:py-8",
+              order && "md:col-start-1 md:row-start-1 md:row-span-2 md:gap-5 md:py-8",
               order && !canPay && "md:justify-center",
             )}
             data-checkout-payment
@@ -306,27 +306,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
             </CardHeader>
             {order && (
               <CardContent className="flex min-w-0 flex-col gap-3 md:px-8">
-                {canPay && (
-                  <>
-                    {paymentHeading}
-                    <div className="flex justify-center">
-                      <img
-                        ref={qrImage}
-                        src={qrSource}
-                        width={256}
-                        height={256}
-                        className="h-auto max-w-full rounded-lg bg-white md:w-66"
-                        alt="用于支付此订单的支付宝付款二维码"
-                        data-qr-image
-                        onLoad={() => setQrFailed(false)}
-                        onError={() => {
-                          setQrFailed(true);
-                          setExpanded(false);
-                        }}
-                      />
-                    </div>
-                  </>
-                )}
+                {canPay && paymentHeading}
                 <div
                   className="flex min-w-0 items-baseline justify-center gap-2 text-center"
                   data-checkout-amount
@@ -344,6 +324,26 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                     {checkoutMoney(cents)}
                   </strong>
                 </div>
+                {canPay && (
+                  <>
+                    <div className="flex justify-center">
+                      <img
+                        ref={qrImage}
+                        src={qrSource}
+                        width={256}
+                        height={256}
+                        className="h-auto w-60 max-w-full rounded-lg bg-white md:w-66 lg:w-72 xl:w-80"
+                        alt="用于支付此订单的支付宝付款二维码"
+                        data-qr-image
+                        onLoad={() => setQrFailed(false)}
+                        onError={() => {
+                          setQrFailed(true);
+                          setExpanded(false);
+                        }}
+                      />
+                    </div>
+                  </>
+                )}
                 {canPay && (
                   <>
                     {qrFailed ? (
@@ -419,15 +419,16 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
               </CardContent>
             )}
           </div>
-          {order ? (
+          {actions}
+          {order && (
             <>
               <div className="px-4 md:hidden">
                 <Separator />
               </div>
-              <Separator orientation="vertical" className="hidden md:block" />
+              <Separator orientation="vertical" className="hidden md:col-start-2 md:row-start-1 md:row-span-2 md:block" />
               <section
                 aria-label="订单信息"
-                className="flex min-w-0 flex-col gap-5 md:self-center md:px-6 md:py-8"
+                className="flex min-w-0 flex-col gap-5 md:col-start-3 md:row-start-1 md:self-end md:px-6 md:pt-8 md:pb-4"
                 data-checkout-summary
               >
                 <CardHeader className="hidden md:block md:px-0 md:pr-36">
@@ -477,11 +478,8 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                     </p>
                   )}
                 </CardContent>
-                {actions}
               </section>
             </>
-          ) : (
-            actions
           )}
         </Card>
         {helpUrl && (

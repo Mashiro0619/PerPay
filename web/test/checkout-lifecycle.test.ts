@@ -151,7 +151,7 @@ describe("checkout payment layout", () => {
     unsubscribe();
   });
 
-  it("places the brand above the QR and the inline amount below, with a single status countdown", () => {
+  it("places the heading and amount before the QR, with a single status countdown", () => {
     const { container } = render(
       createElement(CheckoutApp, { initial: initial() }),
     );
@@ -164,7 +164,7 @@ describe("checkout payment layout", () => {
       brand.compareDocumentPosition(qr) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      qr.compareDocumentPosition(amount) & Node.DOCUMENT_POSITION_FOLLOWING,
+      amount.compareDocumentPosition(qr) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(container.querySelector("[data-amount-label]")).toHaveTextContent(
       /^应付金额$/,
@@ -276,7 +276,7 @@ describe("checkout desktop composition", () => {
     expect(summary).toContainElement(
       screen.getByRole("button", { name: "复制商户订单号" }),
     );
-    expect(summary).toContainElement(
+    expect(container.querySelector("[data-checkout-actions]")).toContainElement(
       screen.getByRole("button", { name: "查询付款状态" }),
     );
     expect(payment).not.toContainElement(summary);
@@ -324,7 +324,7 @@ describe("checkout desktop composition", () => {
       finish(response(paid));
     });
     const summary = screen.getByRole("region", { name: "订单信息" });
-    expect(summary).toContainElement(
+    expect(container.querySelector("[data-checkout-actions]")).toContainElement(
       screen.getByRole("link", { name: "返回商家" }),
     );
     expect(container.querySelector("[data-checkout-desktop-guide]")).toBeNull();
@@ -409,9 +409,10 @@ describe("checkout compact order summary", () => {
       const guide = summary.querySelector("[data-checkout-desktop-guide]")!;
       expect(guide.tagName).toBe("P");
       expect(guide.closest('[data-slot="alert"]')).toBeNull();
-      const actions = summary.querySelector("[data-checkout-actions]");
+      const actions = container.querySelector("[data-checkout-actions]");
       expect(actions).not.toHaveClass("mt-auto");
-      expect(actions).toHaveClass("md:contents");
+      expect(actions).toHaveClass("md:col-start-3", "md:row-start-2");
+      expect(actions!.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(actions).toContainElement(
         screen.getByRole("button", { name: "查询付款状态" }),
       );
@@ -1025,7 +1026,7 @@ describe("checkout merchant actions", () => {
         screen.queryByText("此订单不再收款，请勿付款。"),
       ).not.toBeInTheDocument();
       if (state === "EXPIRED")
-        expect(screen.getByText(/已付款请勿重复支付/)).toBeVisible();
+        expect(screen.getByText(/若已付款，请先查询付款状态/)).toBeVisible();
     },
   );
 
