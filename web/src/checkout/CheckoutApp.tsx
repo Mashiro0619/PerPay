@@ -265,7 +265,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                 <Badge
                   variant={
                     state.visual === "CONFIRMED"
-                      ? "outline"
+                      ? "success"
                       : ["DISPUTED", "NOT_FOUND"].includes(state.visual)
                         ? "destructive"
                         : "secondary"

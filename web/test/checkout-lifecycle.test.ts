@@ -9,6 +9,7 @@ import {
 import { CheckoutApp } from "../src/checkout/CheckoutApp";
 import {
   checkoutMoney,
+  checkoutCopy,
   parseCheckoutPayload,
   type CheckoutInitial,
   type CheckoutViewOrder,
@@ -788,6 +789,26 @@ function prepareDownload() {
   return { ...view, callbacks, context, create, revoke, click, image };
 }
 describe("checkout shadcn view and PNG lifecycle", () => {
+  it.each([
+    ["UNPAID", "secondary"], ["CONFIRMED", "success"], ["DISPUTED", "destructive"],
+    ["CLOSED", "secondary"], ["EXPIRED", "secondary"], ["NOT_FOUND", "destructive"],
+    ["RATE_LIMITED", "secondary"], ["UNAVAILABLE", "secondary"],
+  ] as const)("gives %s an explicit semantic badge without changing payment actions", (visual, variant) => {
+    const value = initial();
+    if (["NOT_FOUND", "RATE_LIMITED", "UNAVAILABLE"].includes(visual)) {
+      value.checkout = null;
+      value.initialError = { status: visual === "NOT_FOUND" ? 404 : visual === "RATE_LIMITED" ? 429 : 503, code: visual, message: "测试状态", retryAfterSeconds: 60 };
+    } else if (visual === "CONFIRMED" || visual === "DISPUTED") {
+      value.checkout!.payment.status = visual;
+      value.checkout!.payment.received_amount_cents = 1001;
+      value.checkout!.payment_instructions = null;
+    } else if (visual === "CLOSED" || visual === "EXPIRED") value.checkout!.checkout.status = visual;
+    const { container } = render(createElement(CheckoutApp, { initial: value }));
+    const badge = container.querySelector('[data-slot="badge"]');
+    expect(badge).toHaveAttribute("data-variant", variant);
+    expect(badge).toHaveTextContent(checkoutCopy[visual].badge);
+    expect(Boolean(container.querySelector("[data-qr-image]"))).toBe(visual === "UNPAID");
+  });
   it("exports the displayed same-origin QR as a white-backed PNG without another request", () => {
     const view = prepareDownload();
     fireEvent.click(screen.getByRole("button", { name: "保存二维码" }));
