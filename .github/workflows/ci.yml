@@ -58,4 +58,5 @@ jobs:
         with:
           name: ui-evidence
           path: .ui-audit/runs/
+          include-hidden-files: true
           retention-days: 7

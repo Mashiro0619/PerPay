@@ -320,6 +320,7 @@ test("daily CI keeps bounded Linux checks and a separate Chromium regression job
   const artifact = workflow.jobs.ui.steps.find(step => step.uses?.startsWith("actions/upload-artifact@"));
   assert.equal(artifact.if, "failure()");
   assert.equal(artifact.with.path, ".ui-audit/runs/");
+  assert.equal(artifact.with["include-hidden-files"], true);
 });
 
 test("container validation is manual and exercises the real deployment lifecycle", () => {
