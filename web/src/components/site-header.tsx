@@ -11,6 +11,8 @@ import { ThemeControl } from "@/theme";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { TestPaymentButton } from "@/components/test-payment-provider";
+import { useState } from "react";
+import { useMeasuredHeight } from "@/components/list-layout";
 
 export function SiteHeader({
   title,
@@ -20,13 +22,15 @@ export function SiteHeader({
   overview: boolean;
 }) {
   const scope = useWorkspace();
+  const [header, setHeader] = useState<HTMLElement | null>(null);
+  useMeasuredHeight(header, "--admin-header-height");
   const { pathname } = useLocation();
   const workspaceName = scope.clientId
     ? (scope.site?.data?.data.configuration.name ?? scope.clientId)
     : isGlobalNavigationPage(pathname) ? "全局" : "全部网站";
   const fetching = useIsFetching({ queryKey: ["analytics"] }) > 0;
   return (
-    <header className="site-header shrink-0 border-b bg-background">
+    <header ref={setHeader} className="site-header shrink-0 border-b bg-background">
       <div className="flex h-full w-full min-w-0 items-center gap-1 px-4 lg:gap-2 lg:px-6">
         <SidebarTrigger className="-ml-1" aria-label="切换导航" />
         <Separator

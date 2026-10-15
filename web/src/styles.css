@@ -269,6 +269,18 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
   background-position: left center;
 }
 @media (min-width: 768px) { .site-header { height: 3rem; } }
+.list-layout, .list-toolbar, .list-toolbar-part { display: flex; min-width: 0; flex-direction: column; gap: 0.75rem; }
+.list-toolbar { background: var(--background); }
+.list-toolbar-part:empty,
+.list-toolbar:not(:has(.list-toolbar-part:not(:empty))) { display: none; }
+@media (min-width: 768px) {
+  .site-header { position: sticky; top: 0; z-index: 20; }
+  .list-toolbar { position: sticky; top: var(--admin-header-height, 3rem); z-index: 10; padding-block: 0.75rem; border-bottom: 1px solid var(--border); }
+  [data-slot="sidebar-inset"] :is(a, button, input, select, textarea, [tabindex]) {
+    scroll-margin-block-start: calc(var(--admin-header-height, 3rem) + var(--list-toolbar-height, 0px) + 1rem);
+    scroll-margin-block-end: 1rem;
+  }
+}
 .admin-settings-layout { width: 100%; max-width: 56rem; }
 .admin-settings-layout [data-slot="field"] { min-width: 0; }
 .admin-settings-layout input[type="number"] { width: 100%; max-width: 12rem; }

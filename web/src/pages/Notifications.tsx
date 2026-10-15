@@ -1,3 +1,4 @@
+import { ListLayout, ListToolbarPart } from "@/components/list-layout";
 import { useWorkspace } from "@/workspace";
 import { useQuery } from '@/lib/workspace-query';
 import { useWorkspaceApi } from "@/workspace";
@@ -259,10 +260,11 @@ function DeliveryPage({
   ];
   return (
     <ListColumnsProvider>
-    <div
-      className="flex w-full min-w-0 flex-col gap-3"
+    <ListLayout
+      className="w-full"
       data-business-list="notifications"
     >
+      <ListToolbarPart>
       <ListQueryToolbar
         control={listQuery}
         label="通知关键词搜索"
@@ -318,6 +320,7 @@ function DeliveryPage({
         ]}
       />
       <CreatedDateFilter control={listQuery} />
+      </ListToolbarPart>
       <QueryView query={deliveries}>
         {(page) => (
           <>
@@ -364,7 +367,7 @@ function DeliveryPage({
           </>
         )}
       </QueryView>
-    </div>
+    </ListLayout>
     </ListColumnsProvider>
   );
 }

@@ -48,7 +48,7 @@ const lists = [
     path: "/orders",
     element: <Orders />,
     data: [longOrder],
-    hiddenColumn: "实收金额",
+    hiddenColumn: "付款确认时间",
     centeredColumns: ["payable_amount_cents", "received_amount_cents", "status", "created_at", "payment_confirmed_at"],
   },
   {

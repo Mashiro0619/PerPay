@@ -1,3 +1,4 @@
+import { ListLayout, ListToolbarPart } from "@/components/list-layout";
 import { useState } from "react";
 import { SitePicker } from "@/components/site-picker";
 import { useWorkspace } from "@/workspace";
@@ -92,8 +93,8 @@ export default function Orders() {
     setSearch(next, { replace: true });
   }
   return (
-    <div
-      className="flex w-full min-w-0 flex-col gap-3"
+    <ListLayout
+      className="w-full"
       data-business-list="orders"
     >
       <OrderPage
@@ -163,7 +164,7 @@ export default function Orders() {
         checkout={checkout}
         onClearFilters={clearFilters}
       />
-    </div>
+    </ListLayout>
   );
 }
 function useOrderLookup(clientId: string) {
@@ -271,6 +272,7 @@ function OrderPage({
   });
   return (
     <ListColumnsProvider>
+      <ListToolbarPart>
       <ListQueryToolbar
         control={listQuery}
         label="订单关键词搜索"
@@ -297,6 +299,7 @@ function OrderPage({
         ]}
       />
       <CreatedDateFilter control={listQuery}><OrderExport clientId={clientId} query={listQuery.apiQuery} payment={payment} checkout={checkout} /></CreatedDateFilter>
+      </ListToolbarPart>
       <QueryView query={orders}>
         {(page) => (
           <>

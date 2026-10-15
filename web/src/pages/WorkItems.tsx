@@ -1,3 +1,4 @@
+import { ListLayout, ListToolbarPart } from "@/components/list-layout";
 import { useWorkspace } from "@/workspace";
 import { useQuery } from '@/lib/workspace-query';
 import { useWorkspaceApi } from "@/workspace";
@@ -143,6 +144,7 @@ export default function WorkItems() {
   }
   return (
     <>
+      <ListLayout>
       <Tabs
         value={type}
         onValueChange={(value) =>
@@ -151,6 +153,7 @@ export default function WorkItems() {
         className="w-full min-w-0 gap-3"
         data-business-list="work-items"
       >
+        <ListToolbarPart area="leading">
         {/* Keep tab indicators and focus rings inside the horizontal scroller. */}
         <div className="-m-1 min-w-0 scroll-p-1 overflow-x-auto p-1">
           <TabsList aria-label="待处理类型">
@@ -171,6 +174,7 @@ export default function WorkItems() {
             ))}
           </TabsList>
         </div>
+        </ListToolbarPart>
         {workspaceClientId !== null && <Alert><AlertTitle>仅显示网站已归属的提醒</AlertTitle><AlertDescription>账本冲突与无法明确归属订单的异常保留在全局视图，请返回一级全局待办处理。</AlertDescription></Alert>}
         <TabsContent value={type}>
           <WorkItemPage
@@ -198,6 +202,7 @@ export default function WorkItems() {
           />
         </TabsContent>
       </Tabs>
+      </ListLayout>
       <AlertDialog
         open={!!batch}
         onOpenChange={(open, event) => {
@@ -489,6 +494,7 @@ function WorkItemPage({
   return (
     <ListColumnsProvider>
     <div className="flex flex-col gap-3">
+      <ListToolbarPart>
       <ListQueryToolbar
         control={listQuery}
         label="提醒关键词搜索"
@@ -546,6 +552,7 @@ function WorkItemPage({
           }[value],
         }))}
       />
+      </ListToolbarPart>
       <SuccessMessage message={message || restoredMessage} />
       {restores.pendingCount > 0 && (
         <p role="status" className="text-sm text-muted-foreground">

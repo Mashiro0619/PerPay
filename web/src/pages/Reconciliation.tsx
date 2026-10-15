@@ -1,3 +1,4 @@
+import { ListLayout, ListToolbarPart } from "@/components/list-layout";
 import {
   useListQuery,
   MATCH_SORT_FIELDS,
@@ -102,6 +103,7 @@ export default function Reconciliation() {
   }));
   return (
     <>
+      <ListLayout>
       <Tabs
         value={section}
         className="w-full min-w-0 gap-3"
@@ -120,6 +122,7 @@ export default function Reconciliation() {
           )
         }
       >
+        <ListToolbarPart area="leading">
         <div className="flex min-w-0 items-center justify-between gap-4">
           <div className="-m-1 min-w-0 scroll-p-1 overflow-x-auto p-1">
             <TabsList aria-label="对账记录类型">
@@ -136,6 +139,7 @@ export default function Reconciliation() {
             </Button>
           )}
         </div>
+        </ListToolbarPart>
         <TabsContent value={section}>
           <ReconciliationList
             key={section}
@@ -194,6 +198,7 @@ export default function Reconciliation() {
           />
         </TabsContent>
       </Tabs>
+      </ListLayout>
       {operation && (
         <FinancialDialog
           finalFocus={() => operationTrigger.current}
@@ -447,6 +452,7 @@ function ReconciliationList({
   return (
     <ListColumnsProvider>
     <div className="flex flex-col gap-3">
+      <ListToolbarPart>
       <ListQueryToolbar
         control={listQuery}
         label="对账关键词搜索"
@@ -542,6 +548,7 @@ function ReconciliationList({
         }
         sorts={fields.map((value) => ({ value, label: sortNames[value]! }))}
       />
+      </ListToolbarPart>
       <SuccessMessage message={message} />
       <QueryView query={query}>
         {(page) => (
