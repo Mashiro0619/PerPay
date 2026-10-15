@@ -52,7 +52,7 @@ export async function record(page: Page, info: TestInfo, extra = {}) {
   }
   const sequence = (measurements.get(info) ?? 0) + 1; measurements.set(info, sequence);
   const geometry = await page.evaluate(() => ({ viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio },
-    theme: document.documentElement.classList.contains("dark") ? "dark" : "light",
+    theme: document.documentElement.dataset.theme ?? (document.documentElement.classList.contains("dark") || matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"),
     density: document.querySelector("[data-business-table]")?.getAttribute("data-density"), width: document.querySelector("[data-content-width]")?.getAttribute("data-content-width"),
     sidebar: document.querySelector('[data-slot="sidebar"][data-state]')?.getAttribute("data-state"),
     headings: [...document.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"]')].map(e => ({ text: e.textContent, level: e.getAttribute("aria-level") ?? e.tagName.slice(1) })),
@@ -69,4 +69,5 @@ export async function record(page: Page, info: TestInfo, extra = {}) {
     browser: page.context().browser()?.version(), requestedViewport: page.viewportSize(), url: page.url(), ...geometry }, null, 2));
   await info.attach("measurement", { path, contentType: "application/json" });
   expect(geometry.overflow).toBe(false);
+  return geometry;
 }

@@ -9,7 +9,9 @@ test("script-disabled SSR keeps payments guarded and system dark styling usable"
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("请暂勿付款");
     await expect(page.locator("[data-qr-image]")).toHaveCount(0);
     await expect(page.getByRole("link", { name: "刷新页面" })).toBeVisible();
-    await record(page, info, { javascript: false }); await screenshot(page, info, "checkout-no-script");
+    const geometry = await record(page, info, { javascript: false });
+    expect(geometry.theme).toBe("dark");
+    await screenshot(page, info, "checkout-no-script");
   } finally { await context.close(); }
 });
 
