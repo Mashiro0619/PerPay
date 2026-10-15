@@ -470,11 +470,11 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const sourceAddress = remoteAddress(context, dependencies.config.trustedProxy);
     if (!publicCheckoutBudget.take(sourceAddress)) {
       context.header("retry-after", "1");
-      return context.html(renderCheckoutRejection(429), 429);
+      return context.html(renderCheckoutRejection(429, context.get("cspNonce")), 429);
     }
     const token = context.req.param("token");
     if (!isCanonicalCheckoutToken(token)) {
-      return context.html(renderCheckoutRejection(404), 404);
+      return context.html(renderCheckoutRejection(404, context.get("cspNonce")), 404);
     }
 
     let checkout: PublicCheckoutProjection | null = null;

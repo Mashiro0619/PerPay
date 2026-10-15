@@ -1,10 +1,22 @@
 import { serve } from "@hono/node-server";
 import { createServer } from "node:net";
 import { createPreviewDemo } from "../scripts/preview-demo.ts";
+import { PublicCheckoutRateLimiter } from "../src/http/public-checkout-rate-limit.ts";
 
 if (!process.send) throw new Error("UI fixture requires an IPC parent");
 const epoch = Date.UTC(2026, 9, 15, 6);
 let now = epoch;
+let generation = 0;
+const take = PublicCheckoutRateLimiter.prototype.take;
+const budgets = new WeakMap<PublicCheckoutRateLimiter, { generation: number; limiter: PublicCheckoutRateLimiter }>();
+// Test-process-only clock/reset seam; the production limiter and its policy stay intact.
+PublicCheckoutRateLimiter.prototype.take = function (address: string) {
+  let budget = budgets.get(this);
+  if (!budget || budget.generation !== generation) {
+    budget = { generation, limiter: new PublicCheckoutRateLimiter() }; budgets.set(this, budget);
+  }
+  return take.call(budget.limiter, address, Math.max(0, now - epoch));
+};
 // This test process uses only isolated synthetic stores and never external transports.
 globalThis.fetch = async () => { throw new Error("External fetch is forbidden in UI fixtures"); };
 async function freePort() {
@@ -43,7 +55,8 @@ try {
   await new Promise<void>((resolve, reject) => { server.once("listening", resolve); server.once("error", reject); });
 } catch (error) { demo.dispose(); throw error; }
 process.send({ type: "ready", origin: demo.origin, epoch, routes, checkouts, directory: demo.directory });
-process.on("message", (message: { type: string; time?: number; id?: number }) => {
+process.on("message", (message: { type: string; time?: number; id?: number; reset?: boolean }) => {
+  if (message.reset) generation++;
   if (message.type === "clock") { now = message.time ?? epoch; process.send?.({ type: "done", id: message.id }); }
 });
 let stopping = false;

@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-export type Manifest = { origin: string; epoch: number; routes: string[]; checkouts: Record<string, string>; setTime: (time: number) => Promise<void> };
+export type Manifest = { origin: string; epoch: number; routes: string[]; checkouts: Record<string, string>; setTime: (time: number, reset?: boolean) => Promise<void> };
 export const test = base.extend<{ manifest: Manifest }, { harness: Manifest }>({
   harness: [async ({}, use) => {
     const child = fork(fileURLToPath(new URL("./server.ts", import.meta.url)), [], { execArgv: ["--experimental-strip-types"], stdio: ["ignore", "pipe", "pipe", "ipc"] });
@@ -18,17 +18,17 @@ export const test = base.extend<{ manifest: Manifest }, { harness: Manifest }>({
         child.on("message", (message: Manifest & { type: string }) => { if (message.type === "ready") { clearTimeout(timeout); resolve(message); } });
       });
       let requestId = 0;
-      manifest.setTime = time => new Promise<void>((resolve, reject) => {
+      manifest.setTime = (time, reset = false) => new Promise<void>((resolve, reject) => {
         const id = ++requestId;
         const timeout = setTimeout(() => { child.off("message", done); reject(new Error("Fixture clock timeout: " + log)); }, 5000);
         const done = (message: { type?: string; id?: number }) => { if (message.type === "done" && message.id === id) { clearTimeout(timeout); child.off("message", done); resolve(); } };
         child.on("message", done);
-        child.send({ type: "clock", time, id });
+        child.send({ type: "clock", time, id, reset });
       });
       await use(manifest);
     } finally { if (child.connected) child.disconnect(); await new Promise<void>(resolve => { child.once("exit", () => resolve()); setTimeout(() => { child.kill(); resolve(); }, 5000).unref(); }); }
   }, { scope: "worker" }],
-  manifest: async ({ harness }, use) => { await harness.setTime(harness.epoch); await use(harness); },
+  manifest: async ({ harness }, use) => { await harness.setTime(harness.epoch, true); await use(harness); },
   page: async ({ page, manifest }, use) => {
     await page.clock.install({ time: new Date(manifest.epoch) });
     await page.clock.setFixedTime(new Date(manifest.epoch));

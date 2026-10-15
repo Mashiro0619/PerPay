@@ -37,6 +37,11 @@ describe("checkout page admission", () => {
         const missing = await request("invalid-token-do-not-echo");
         assert.equal(missing.status, 404);
         const html = await missing.text();
+        const nonce = /<style nonce="([^"]+)">/.exec(html)?.[1];
+        assert.ok(nonce);
+        assert.ok(missing.headers.get("content-security-policy")?.includes(`'nonce-${nonce}'`));
+        assert.match(html, /请向商家获取新的付款链接/);
+        assert.match(html, /prefers-color-scheme:dark/);
         assert.match(html, /收银台不存在/);
         assert.doesNotMatch(html, /invalid-token-do-not-echo|<script|<link|\/assets\//);
         for (let i = 0; i < 118; i++) assert.equal((await request(`invalid-${i}`)).status, 404);
@@ -47,7 +52,13 @@ describe("checkout page admission", () => {
           assert.equal(denied.headers.get("cache-control"), "no-store");
           assert.equal(denied.headers.get("x-content-type-options"), "nosniff");
           assert.ok(denied.headers.get("content-security-policy"));
-          assert.match(await denied.text(), /请求过于频繁/);
+          const deniedHtml = await denied.text();
+          assert.match(deniedHtml, /请求过于频繁/);
+          assert.match(deniedHtml, /<a href="">重新加载页面<\/a>/);
+          const deniedNonce = /<style nonce="([^"]+)">/.exec(deniedHtml)?.[1];
+          assert.ok(deniedNonce);
+          assert.ok(denied.headers.get("content-security-policy")?.includes(`'nonce-${deniedNonce}'`));
+          assert.notEqual(deniedNonce, nonce);
         }
         assert.equal((await request("bad", "192.0.2.2")).status, 404);
         assert.equal((await request("bad", "192.0.2.1", proxied ? "malformed" : "192.0.2.3")).status, proxied ? 400 : 429);

@@ -177,10 +177,18 @@ function escapeHtml(value: string): string {
 }
 
 /** Reject untrusted traffic without rendering React, reading settings, or echoing input. */
-export function renderCheckoutRejection(status: 404 | 429): string {
+export function renderCheckoutRejection(status: 404 | 429, cspNonce: string): string {
   const message = status === 404 ? "收银台不存在" : "请求过于频繁，请稍后重试";
+  const detail = status === 404 ? "付款链接可能已失效或不完整，请向商家获取新的付款链接。" : "请等待片刻后手动重新加载。若仍受限，请稍后再试。";
   return '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width, initial-scale=1">' +
-    '<title>' + message + '</title></head><body><main><h1>' + status +
-    '</h1><p>' + message + '</p></main></body></html>';
+    '<title>' + message + '</title><style nonce="' + escapeHtml(cspNonce) + '">' +
+    ':root{color-scheme:light dark;font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;background:#fff;color:#171717;--muted:#525252;--border:#d4d4d4;--focus:#525252}' +
+    '*{box-sizing:border-box}body{margin:0;min-width:320px;min-height:100svh;display:grid;place-items:center;padding:24px}' +
+    'main{width:100%;max-width:30rem}h1{margin:8px 0 16px;font-size:1.5rem;line-height:1.4;overflow-wrap:anywhere}p{margin:0 0 16px;line-height:1.7;color:var(--muted)}' +
+    '.code{font-variant-numeric:tabular-nums;font-weight:600}a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:8px 16px;border:1px solid var(--border);border-radius:8px;color:inherit;text-decoration:none}' +
+    'a:focus-visible{outline:2px solid var(--focus);outline-offset:3px}' +
+    '@media(prefers-color-scheme:dark){:root{background:#171717;color:#fafafa;--muted:#a3a3a3;--border:#525252;--focus:#d4d4d4}}' +
+    '</style></head><body><main><p class="code">' + status + '</p><h1>' + message +
+    '</h1><p>' + detail + '</p>' + (status === 429 ? '<a href="">重新加载页面</a>' : '') + '</main></body></html>';
 }
