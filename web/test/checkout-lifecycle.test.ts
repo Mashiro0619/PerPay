@@ -323,7 +323,6 @@ describe("checkout desktop composition", () => {
       fireEvent.click(screen.getByRole("button", { name: "查询付款状态" }));
       finish(response(paid));
     });
-    const summary = screen.getByRole("region", { name: "订单信息" });
     expect(container.querySelector("[data-checkout-actions]")).toContainElement(
       screen.getByRole("link", { name: "返回商家" }),
     );
