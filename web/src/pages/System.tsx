@@ -99,6 +99,7 @@ function SystemSnapshot({
   const state = presentSystemStatus(data);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const diagnosticTrigger = useRef<HTMLButtonElement>(null);
+  const openDiagnostics = (trigger: HTMLButtonElement) => { diagnosticTrigger.current = trigger; setDiagnosticsOpen(true); };
   const explanation = !data.configured
     ? "收款配置未完成，请先完成接入。"
     : !data.database.ok
@@ -196,6 +197,7 @@ function SystemSnapshot({
         </TableHeader>
         <TableBody role="rowgroup">
           <RuntimeService
+            onDiagnose={openDiagnostics}
             title="账本采集"
             enabled={data.ledger.enabled}
             healthy={state.ledgerHealthy}
@@ -227,6 +229,7 @@ function SystemSnapshot({
             <LedgerIngestionDiagnostics diagnostics={data.ledger.diagnostics} />
           </RuntimeService>
           <RuntimeService
+            onDiagnose={openDiagnostics}
             title="自动确认"
             enabled={data.reconciliation.enabled}
             healthy={state.reconciliationHealthy}
@@ -250,6 +253,7 @@ function SystemSnapshot({
             )}
           </RuntimeService>
           <RuntimeService
+            onDiagnose={openDiagnostics}
             title="业务通知"
             enabled={data.webhook.enabled}
             healthy={state.webhookHealthy}
@@ -282,6 +286,7 @@ function SystemSnapshot({
             )}
           </RuntimeService>
           <RuntimeService
+            onDiagnose={openDiagnostics}
             title="数据库"
             enabled
             healthy={data.database.ok}
@@ -290,6 +295,7 @@ function SystemSnapshot({
             {!data.database.ok && <p>{data.database.result}</p>}
           </RuntimeService>
           <RuntimeService
+            onDiagnose={openDiagnostics}
             title="自动备份"
             enabled={data.backup.enabled}
             healthy={state.backupHealthy}
@@ -386,6 +392,7 @@ function RuntimeService({
   action,
   details,
   children,
+  onDiagnose,
 }: {
   title: string;
   enabled: boolean;
@@ -395,11 +402,12 @@ function RuntimeService({
   action?: ReactNode;
   details?: ReactNode;
   children: ReactNode;
+  onDiagnose: (trigger: HTMLButtonElement) => void;
 }) {
   const detailsId = useId();
   const [expanded, setExpanded] = useState(false);
   const attention = !healthy;
-  const hasActions = !!action || !!details;
+  const hasActions = attention || !!action || !!details;
   return (
     <>
       <TableRow
@@ -447,6 +455,9 @@ function RuntimeService({
         >
           {hasActions && (
             <div className="runtime-row-actions">
+              {attention && <Button variant="ghost" size="sm" aria-label={title + "运行诊断"} onClick={event => onDiagnose(event.currentTarget)}>
+                <Code2 data-icon="inline-start" />诊断
+              </Button>}
               {action}
               {healthy && details && (
                 <Button

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { isReleaseVersion, isPrereleaseVersion } from "../../src/shared/release-version";
 import { X, ArrowUpCircle, ChevronDown } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -6,6 +6,7 @@ import { api, ApiError, queryClient, result, sessionKey } from "@/api/client";
 import { dateTime } from "@/lib/format";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { Separator } from "@/components/ui/separator";
 import {
   Alert,
   AlertTitle,
@@ -112,6 +113,18 @@ export function OfficialUpdatePanel({ currentVersion }: { currentVersion?: strin
   const latestLabel = latestIsPrerelease ? "官方预发布版" : "官方稳定版";
   const retryAfter =
     update.error instanceof ApiError ? update.error.retryAfter : null;
+  const [clock, setClock] = useState(Date.now);
+  const retryAt = retryAfter === null ? 0 : update.errorUpdatedAt + retryAfter * 1000;
+  const remaining = Math.max(0, Math.ceil((retryAt - Math.max(clock, update.errorUpdatedAt)) / 1000));
+  useEffect(() => {
+    setClock(Date.now());
+    if (retryAt <= Date.now()) return;
+    const timer = window.setInterval(() => {
+      const now = Date.now(); setClock(now);
+      if (now >= retryAt) window.clearInterval(timer);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [retryAt]);
   const status = checking
     ? "正在检查更新…"
     : update.isError
@@ -122,7 +135,7 @@ export function OfficialUpdatePanel({ currentVersion }: { currentVersion?: strin
           ? prereleaseChannel ? "当前版本高于官方已发布版本。" : "当前版本高于官方稳定版。"
           : prereleaseChannel ? "已是当前通道最新版本。" : "已是最新稳定版。";
   return (
-    <section className="system-update-strip" aria-label="官方更新">
+    <section className="system-update-strip" aria-label="官方更新" data-update-state={checking ? "checking" : update.isError ? "unavailable" : data?.status}>
       <Collapsible>
         <div className="system-update-main">
           <div className="system-update-summary">
@@ -134,10 +147,11 @@ export function OfficialUpdatePanel({ currentVersion }: { currentVersion?: strin
                 {isPrereleaseVersion(knownVersion) && <span>（预发布）</span>}
               </span>
             )}
+            {knownVersion && <Separator orientation="vertical" className="h-4 data-vertical:self-center" />}
             <p role="status" className="system-update-status">
               <span>{status}</span>
-              {!checking && update.isError && retryAfter !== null && (
-                <span> 请至少等待 {retryWait(retryAfter)}后重试。</span>
+              {!checking && update.isError && remaining > 0 && (
+                <span> 请至少等待 {retryWait(remaining)}后重试。</span>
               )}
             </p>
           </div>
@@ -145,8 +159,9 @@ export function OfficialUpdatePanel({ currentVersion }: { currentVersion?: strin
             <Button
               variant="ghost"
               size="sm"
-              disabled={update.isFetching}
+              disabled={update.isFetching || remaining > 0}
               onClick={() => {
+                if (Date.now() < retryAt) return;
                 void update.refetch();
               }}
             >

@@ -221,6 +221,7 @@ describe("automatic official update checks", () => {
       expect(panel.queryByRole("link", { name: "查看发布说明" })).not.toBeInTheDocument();
       if (waitText !== null) {
         expect(panel.getByText(`请至少等待 ${waitText}后重试。`)).toBeVisible();
+        expect(panel.getByRole("button", { name: "检查更新" })).toBeDisabled();
       }
       expect(
         view.fetchMock.mock.calls.filter(([request]) => isUpdate(request)),

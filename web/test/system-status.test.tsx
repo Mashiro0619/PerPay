@@ -180,6 +180,11 @@ describe("shared runtime presentation", () => {
     expect(reconciliation.getByRole("cell", { name: "需关注" })).toBeVisible();
     expect(runtime.getByText(/最近错误：reconciliation_storage_error/)).toBeVisible();
     expect(runtime.getByText(/连续失败 2 次/)).toBeVisible();
+    const diagnosis = reconciliation.getByRole("button", { name: "自动确认运行诊断" });
+    await userEvent.setup().click(diagnosis);
+    expect(await screen.findByRole("dialog")).toBeVisible();
+    await userEvent.setup().keyboard("{Escape}");
+    await waitFor(() => expect(diagnosis).toHaveFocus());
     expect(reconciliation.queryByRole("button", { name: "查看自动确认详情" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "运行状态" })).toHaveAccessibleDescription("需关注");
     expect(screen.queryByText("收款已暂停")).not.toBeInTheDocument();
@@ -191,7 +196,7 @@ describe("shared runtime presentation", () => {
     data.work_items = { total: 2, financial_exceptions: 0, ledger_conflicts: 2, notification_failures: 0 };
     const view = mountOnboarding({ stage: 4, path: "/", status: () => data });
     expect(
-      await screen.findByText("待处理", { selector: "[data-runtime-notice]" }),
+      await screen.findByText("待处理", { selector: "[data-runtime-notice] [data-slot=badge]" }),
     ).toBeVisible();
     expect(
       screen.getByRole("link", { name: "运行状态" }),
