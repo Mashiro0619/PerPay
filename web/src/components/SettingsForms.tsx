@@ -30,7 +30,7 @@ import { Link } from "@/navigation";
 import { cn } from "@/lib/utils";
 import { applicationKeyState } from "@/lib/application-key";
 import { useFormDraft } from "@/drafts";
-import { SuccessMessage, useFeedback } from "@/components/Feedback";
+import { useSuccessToast } from "@/components/Feedback";
 import { CollectionCodeField } from "@/components/CollectionCodeField";
 import { ApplicationKey } from "@/components/ApplicationKey";
 export { ApplicationKey } from "@/components/ApplicationKey";
@@ -289,7 +289,7 @@ export function SettingsEditor({
     if (section === "notifications") draft.onChange();
   }, [notificationEnabled, guided, section]);
   const mounted = useRef(false);
-  const [savedMessage, setSavedMessage] = useFeedback();
+  const setSavedMessage = useSuccessToast();
   const submitting = useRef(false);
   const canSave =
     guided ||
@@ -892,7 +892,6 @@ export function SettingsEditor({
             未保存
           </span>
         )}
-        <SuccessMessage message={savedMessage} />
       </Field>
     </FieldGroup>
   );

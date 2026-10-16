@@ -17,7 +17,7 @@ import {
   canRegenerateApplicationKey,
 } from "@/lib/application-key";
 import { useFixedOperation } from "@/lib/fixed-operation";
-import { SuccessMessage, useFeedback } from "@/components/Feedback";
+import { useSuccessToast } from "@/components/Feedback";
 import { CopyValue } from "@/components/copy-value";
 import { ErrorNotice } from "@/components/request-state";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -99,7 +99,7 @@ export function ApplicationKey({
   const [dialog, setDialog] = useState<ChangeMode | null>(null);
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const dialogOrigin = useRef<HTMLElement | null>(null);
-  const [success, setSuccess] = useFeedback();
+  const setSuccess = useSuccessToast();
   function saved(value: RuntimeSettings, message?: string) {
     setMaintenanceOpen(false);
     setSuccess(message ?? "");
@@ -281,7 +281,6 @@ export function ApplicationKey({
           </p>
         )}
         <ErrorNotice error={generate.error} />
-        <SuccessMessage message={success} multiline />
       </CardContent>
       {dialog && (
         <ApplicationKeyChange

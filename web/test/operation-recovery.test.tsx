@@ -14,6 +14,7 @@ import type { ReactNode } from "react";
 import { ApiError, queryClient } from "../src/api/client";
 import { ReasonDialog } from "../src/components/ReasonDialog";
 import { ReverseMatchAction } from "../src/components/detail/FinancialActions";
+import { Toaster } from "../src/components/ui/toast";
 import { paymentMatch } from "./detail-fixtures";
 import { json } from "./fixtures";
 import { recordAction } from "./menu-helper";
@@ -21,7 +22,7 @@ import { recordAction } from "./menu-helper";
 function mount(children: ReactNode) {
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>{children}</MemoryRouter>
+      <Toaster><MemoryRouter>{children}</MemoryRouter></Toaster>
     </QueryClientProvider>,
   );
 }
@@ -162,7 +163,7 @@ describe("reversal focus after success", () => {
       );
       await screen.findByText("关联已撤销");
       await waitFor(() =>
-        expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+        expect(screen.queryByRole("dialog", { name: "撤销收款关联？" })).not.toBeInTheDocument(),
       );
       await waitFor(() =>
         expect(

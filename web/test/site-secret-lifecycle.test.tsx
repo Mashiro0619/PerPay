@@ -1,3 +1,4 @@
+import { Toaster } from "../src/components/ui/toast";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -33,7 +34,7 @@ function mount(action: "view" | "rotate", purpose: "api_secret" | "webhook_secre
     return json({ data: { secret: "explicit-secret" } });
   }));
   const router = createMemoryRouter([{ path: "/sites/:clientId/settings/:section", element: <DraftProvider><SiteEditorPage /></DraftProvider> }], { initialEntries: ["/sites/site_a/settings/integration"] });
-  render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
+  render(<QueryClientProvider client={queryClient}><Toaster><RouterProvider router={router} /></Toaster></QueryClientProvider>);
   return { router, requests, delay: () => { delayNext = true; }, release };
 }
 

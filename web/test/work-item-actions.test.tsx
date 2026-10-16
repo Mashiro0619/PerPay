@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { queryClient, type AdminWorkItem } from "../src/api/client";
 import WorkItems from "../src/pages/WorkItems";
+import { Toaster } from "../src/components/ui/toast";
 import { apiError, json } from "./fixtures";
 
 const scopes = [
@@ -39,7 +40,7 @@ function renderPage(search = "") {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[search.includes("api_client_id=site_a") ? "/sites/site_a/work-items" : "/work-items" + search]}><WorkspaceProvider>
-        <WorkItems />
+        <Toaster><WorkItems /></Toaster>
         <Location />
       </WorkspaceProvider></MemoryRouter>
     </QueryClientProvider>,

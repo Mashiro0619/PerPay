@@ -1,3 +1,4 @@
+import { Toaster } from "../src/components/ui/toast";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider, onlineManager } from "@tanstack/react-query";
@@ -99,7 +100,7 @@ function mountDefaults() {
     { path: "/sites/new", element: <SiteEditorPage /> },
     { path: "/sites/:clientId", element: <p>新网站已创建</p> },
   ] }], { initialEntries: ["/sites/defaults"] });
-  render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
+  render(<QueryClientProvider client={queryClient}><Toaster><RouterProvider router={router} /></Toaster></QueryClientProvider>);
   return {
     router, puts, creations, attempts,
     snapshot: () => structuredClone(saved),

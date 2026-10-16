@@ -32,6 +32,7 @@ import { TestPaymentProvider } from "@/components/test-payment-provider";
 import TestPayment from "@/pages/TestPayment";
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Toaster } from "@/components/ui/toast";
 import {
   Empty,
   EmptyHeader,
@@ -58,6 +59,7 @@ const globalPageTitles: Record<NavigationSection, string> = {
 
 function AppShell() {
   return (
+    <Toaster timeout={4000}>
     <SidebarProvider
       style={
         {
@@ -74,6 +76,7 @@ function AppShell() {
         </ListDensityProvider>
       </ContentWidthProvider>
     </SidebarProvider>
+    </Toaster>
   );
 }
 function Workspace() {

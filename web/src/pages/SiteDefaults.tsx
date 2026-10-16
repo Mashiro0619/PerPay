@@ -3,7 +3,7 @@ import { PageHeading } from "@/components/page-heading";
 import { onlineManager, useMutation, useQuery } from "@tanstack/react-query";
 import { api, ApiError, queryClient, result, type SitePolicy } from "@/api/client";
 import { useDirtyDraft } from "@/drafts";
-import { SuccessMessage, useFeedback } from "@/components/Feedback";
+import { useSuccessToast } from "@/components/Feedback";
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import { SitePolicyFields } from "@/components/SitePolicyFields";
 import { SiteConfigurationConflicts } from "@/components/site-configuration-conflicts";
@@ -55,7 +55,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
   const [draft, setDraft] = useState(() => structuredClone(initial.policy));
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved.policy);
   const clearDraft = useDirtyDraft(dirty);
-  const [feedback, setFeedback] = useFeedback();
+  const setFeedback = useSuccessToast();
   const [needsReview, setNeedsReview] = useState(false);
   const [review, setReview] = useState<({ snapshot: DefaultsSnapshot } & ReturnType<typeof mergeSitePolicy>) | null>(null);
   const [choices, setChoices] = useState<SiteConflictChoices>({});
@@ -193,7 +193,6 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
           saveLabel="保存默认模板"
         />
       )}
-      <SuccessMessage message={feedback} />
       <form ref={formRef} onSubmit={event => {
         event.preventDefault();
         if (!busy && !requiresReview) save.mutate();

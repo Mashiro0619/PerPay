@@ -1,3 +1,4 @@
+import { Toaster } from "../src/components/ui/toast";
 import { QueryClientProvider, onlineManager } from "@tanstack/react-query";
 import {
   act,
@@ -84,9 +85,9 @@ function mount(
     },
   );
   const view = render(
-    <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={queryClient}><Toaster>
       <RouterProvider router={router} />
-    </QueryClientProvider>,
+    </Toaster></QueryClientProvider>,
   );
   return { ...view, router, writes, gets, removed, rows };
 }

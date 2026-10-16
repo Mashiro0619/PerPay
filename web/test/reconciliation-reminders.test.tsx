@@ -1,3 +1,4 @@
+import { Toaster } from "../src/components/ui/toast";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -121,7 +122,7 @@ describe("reconciliation reminder navigation", () => {
         }),
       );
       render(
-        <QueryClientProvider client={queryClient}>
+        <QueryClientProvider client={queryClient}><Toaster>
           <MemoryRouter
             initialEntries={["/reconciliation?tab=" + scenario.tab]}
           >
@@ -134,7 +135,7 @@ describe("reconciliation reminder navigation", () => {
               <Route path="/work-items" element={<WorkItems />} />
             </Routes>
           </MemoryRouter>
-        </QueryClientProvider>,
+        </Toaster></QueryClientProvider>,
       );
       expect(
         await screen.findByRole("link", { name: scenario.title }),

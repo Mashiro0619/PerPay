@@ -6,7 +6,7 @@ import { ConflictComparison } from "./ConflictComparison";
 import { label } from "@/lib/labels";
 import { ReasonDialog } from "@/components/ReasonDialog";
 import { StatusBadge } from "@/components/business-status";
-import { SuccessMessage, useFeedback } from "@/components/Feedback";
+import { useSuccessToast } from "@/components/Feedback";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -36,7 +36,7 @@ export function ConflictCard({ detail }: { detail: LedgerConflictDetail }) {
   const api = useWorkspaceApi();
   const [confirm, setConfirm] = useState(false);
   const [completed, setCompleted] = useState(false);
-  const [message, setMessage] = useFeedback();
+  const setMessage = useSuccessToast();
   const conflict = detail.conflict;
   const existing = detail.existing_ledger_entry;
   const operation = detail.resolution_operation;
@@ -121,7 +121,6 @@ export function ConflictCard({ detail }: { detail: LedgerConflictDetail }) {
             ]}
           />
         )}
-        <SuccessMessage message={message} />
         <RecordTools
           label="冲突记录操作"
           data={detail}

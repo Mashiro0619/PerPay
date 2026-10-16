@@ -35,7 +35,7 @@ import { StatusBadge } from "@/components/business-status";
 import { QueryView } from "@/components/request-state";
 import { retainListData } from "@/lib/list-placeholder";
 import { CursorPagination } from "@/components/cursor-pagination";
-import { SuccessMessage, useFeedback } from "@/components/Feedback";
+import { useSuccessToast } from "@/components/Feedback";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -83,7 +83,7 @@ export default function Reconciliation() {
   }
   const [search, setSearch] = useSearchParams();
   const [operation, setOperation] = useState(false);
-  const [completed, setCompleted] = useFeedback();
+  const setCompleted = useSuccessToast();
   const section: Section =
     search.get("tab") === "conflicts"
       ? "conflicts"
@@ -159,7 +159,6 @@ export default function Reconciliation() {
             }
             section={section}
             status={status}
-            message={completed}
             filters={
               section === "exceptions" ? null : (
                 <Select
@@ -218,14 +217,12 @@ function ReconciliationList({
   section,
   status,
   filters,
-  message,
 }: {
   onManual: (trigger: HTMLButtonElement | null) => void;
   mobileFilters: readonly ListFilter[];
   section: Section;
   status: string;
   filters: ReactNode;
-  message: string;
 }) {
   const navigate = useNavigate();
   const pagination = useCursor();
@@ -549,7 +546,6 @@ function ReconciliationList({
         sorts={fields.map((value) => ({ value, label: sortNames[value]! }))}
       />
       </ListToolbarPart>
-      <SuccessMessage message={message} />
       <QueryView query={query}>
         {(page) => (
           <>

@@ -17,7 +17,8 @@ import { RecordTools } from "../src/components/detail/RecordTools";
 import { ReasonDialog } from "../src/components/ReasonDialog";
 import { Button } from "../src/components/ui/button";
 import { ErrorNotice } from "../src/components/request-state";
-import { SuccessMessage, useFeedback } from "../src/components/Feedback";
+import { useSuccessToast } from "../src/components/Feedback";
+import { Toaster } from "../src/components/ui/toast";
 import { SettingsEditor } from "../src/components/SettingsForms";
 import { queryClient } from "../src/api/client";
 import {
@@ -266,21 +267,21 @@ describe("short feedback and safe settings", () => {
   });
   it("clears success after four seconds but retains an error and its collapsed request details", async () => {
     function Example() {
-      const [message, setMessage] = useFeedback();
+      const setMessage = useSuccessToast();
       return (
         <>
           <Button onClick={() => setMessage("已保存")}>保存</Button>
-          <SuccessMessage message={message} />
           <ErrorNotice error={new Error("请修正设置")} />
         </>
       );
     }
     vi.useFakeTimers();
-    render(<Example />);
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    render(<Toaster><Example /></Toaster>);
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     expect(screen.getByText("已保存")).toBeVisible();
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(4001);
+      await vi.advanceTimersByTimeAsync(5000);
     });
     expect(screen.queryByText("已保存")).not.toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("请修正设置");
@@ -443,7 +444,7 @@ describe("short feedback and safe settings", () => {
       },
     });
     const runtime = within(await screen.findByRole("table", { name: "运行环节" }));
-    expect(screen.getByRole("link", { name: "运行状态" })).toHaveAccessibleDescription("待处理");
+    expect(within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: "运行状态" })).toHaveAccessibleDescription("待处理");
     expect(screen.getByRole("link", { name: "待办" })).toHaveAttribute("href", "/work-items");
     expect(screen.queryByText("提醒数仅包含未忽略且仍需处理的事项。")).not.toBeInTheDocument();
     const reconciliation = within(runtime.getByRole("rowheader", { name: "自动确认" }).closest("tr")!);

@@ -20,7 +20,7 @@ import { CopyValue } from "@/components/copy-value";
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { CursorPagination } from "@/components/cursor-pagination";
 import { ReasonDialog } from "@/components/ReasonDialog";
-import { SuccessMessage, useFeedback } from "@/components/Feedback";
+import { useSuccessToast } from "@/components/Feedback";
 import {
   Card,
   CardHeader,
@@ -56,7 +56,7 @@ export function DeliveryCard({
   const { clientId } = useWorkspace();
   const [snapshot, setSnapshot] = useState<DeliveryContext | null>(null);
   const [sent, setSent] = useState(false);
-  const [message, setMessage] = useFeedback();
+  const setMessage = useSuccessToast();
   const finalFocus = useRef<HTMLButtonElement | null>(null);
   const delivery = detail.delivery;
   const last = latestAttempt(detail.attempts);
@@ -161,7 +161,6 @@ export function DeliveryCard({
               : []),
           ]}
         />
-        <SuccessMessage message={message} />
         <DeliveryAttempts
           key={delivery.delivery_id}
           attempts={detail.attempts}

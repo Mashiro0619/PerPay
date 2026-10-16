@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 import { refreshOperationalData, result, type PaymentMatchDetail } from "../../api/client";
 import { FinancialDialog } from "../../pages/FinancialDialog";
 import { ReasonDialog } from "../ReasonDialog";
-import { SuccessMessage, useFeedback } from "../Feedback";
+import { useSuccessToast } from "../Feedback";
 import { Button } from "@/components/ui/button";
 import { money } from "../../lib/format";
 import { DetailFields } from "./DetailPrimitives";
@@ -24,7 +24,7 @@ export function AssociateIncomeAction({
   const { clientId } = useWorkspace();
   const [open, setOpen] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [message, setMessage] = useFeedback();
+  const setMessage = useSuccessToast();
   const finalFocus = useRef<HTMLElement | null>(null);
   if (clientId && !orderId) return <Link global to="/reconciliation">共享流水：请从本站订单发起关联，或到一级共享账本处理。</Link>;
   return (
@@ -38,7 +38,6 @@ export function AssociateIncomeAction({
       >
         人工关联收款
       </Button>
-      <SuccessMessage message={message} />
       {open && (
         <FinancialDialog
           initialOrderId={orderId}
@@ -71,10 +70,9 @@ export function ReverseMatchAction({
   const [snapshot, setSnapshot] = useState<PaymentMatchDetail | null>(null);
   const finalFocus = useRef<HTMLElement | null>(null);
   const [saved, setSaved] = useState(false);
-  const [message, setMessage] = useFeedback();
+  const setMessage = useSuccessToast();
   return (
     <>
-      <SuccessMessage message={message} />
       <RecordTools
         label="收款记录操作"
         data={match}

@@ -1,3 +1,4 @@
+import { Toaster } from "../src/components/ui/toast";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider, onlineManager } from "@tanstack/react-query";
@@ -69,7 +70,7 @@ function mount(path = "/sites/site_test/settings/basic", failSave = false, field
   const router = createMemoryRouter([{ element: <DraftProvider><Outlet /></DraftProvider>, children: [
     { path: "/sites", element: <Sites /> }, { path: "/sites/new", element: <SiteEditorPage /> }, { path: "/sites/defaults", element: <SiteDefaultsPage /> }, { path: "/sites/:clientId/settings/:section", element: <SiteEditorPage /> },
   ] }], { initialEntries: [path] });
-  render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
+  render(<QueryClientProvider client={queryClient}><Toaster><RouterProvider router={router} /></Toaster></QueryClientProvider>);
   return {
     router, writes, fetchMock,
     changeRemote(edit: (configuration: Site["configuration"]) => void) {

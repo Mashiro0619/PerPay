@@ -21,7 +21,7 @@ import {
 } from "@/api/client";
 import { ApplicationKey, SettingsEditor } from "@/components/SettingsForms";
 import { ApplicationKeyActivation } from "@/components/ApplicationKey";
-import { SuccessMessage, useFeedback } from "@/components/Feedback";
+import { useSuccessToast } from "@/components/Feedback";
 import { useDraftGuard } from "@/drafts";
 import {
   nextRequiredStep,
@@ -166,7 +166,7 @@ function OnboardingFlow({
   const { step: requested } = useParams();
   const step = resolveOnboardingStep(settings, requested);
   const pendingApplicationKey = settings.pending_application_key;
-  const [success, setSuccess] = useFeedback();
+  const setSuccess = useSuccessToast();
   const index = onboardingSteps.findIndex((item) => item.id === step);
   const firstMissing = onboardingSteps.findIndex(
     (item) => item.id === nextRequiredStep(settings),
@@ -228,7 +228,6 @@ function OnboardingFlow({
               </h2>
             </div>
           </header>
-          <SuccessMessage message={success} multiline />
           {pendingApplicationKey && index > 1 && (
             <Alert role="status" data-onboarding-pending-key-warning>
               <CircleAlert />

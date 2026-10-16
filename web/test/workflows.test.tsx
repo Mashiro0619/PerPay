@@ -1,3 +1,4 @@
+import { Toaster } from "../src/components/ui/toast";
 import { QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
@@ -35,9 +36,9 @@ function renderPage(children: ReactNode, path = "/") {
   queryClient.setQueryData(["admin-access-source"], {data:{revision:settings.revision,...settings.admin_access,current_ip:"192.0.2.1"}});
 
   return render(
-    <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={queryClient}><Toaster>
       <MemoryRouter initialEntries={[path]}>{children}</MemoryRouter>
-    </QueryClientProvider>,
+    </Toaster></QueryClientProvider>,
   );
 }
 
@@ -666,7 +667,7 @@ describe("state-changing workflows", () => {
         screen.getByRole("button", { name: saved ? "确认关联收款" : "取消" }),
       );
       await waitFor(() =>
-        expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+        expect(screen.queryByRole("dialog", { name: "人工关联收款" })).not.toBeInTheDocument(),
       );
       if (saved) {
         expect(trigger).toBeDisabled();

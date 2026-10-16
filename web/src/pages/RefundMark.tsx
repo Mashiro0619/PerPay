@@ -14,7 +14,7 @@ import { CopyValue } from "@/components/copy-value";
 import { ListDateTime, ListMoney } from "@/components/list-primitives";
 import { ErrorNotice } from "@/components/request-state";
 import { RecordTools } from "@/components/detail/RecordTools";
-import { SuccessMessage, useFeedback } from "@/components/Feedback";
+import { useSuccessToast } from "@/components/Feedback";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
@@ -57,7 +57,7 @@ export function RefundMarkPanel({
     version: number;
     marked: boolean;
   } | null>(null);
-  const [message, setMessage] = useFeedback();
+  const setMessage = useSuccessToast();
   const finalFocus = useRef<HTMLButtonElement | null>(null);
   const mark = order.refund_mark;
   const eligible =
@@ -127,7 +127,6 @@ export function RefundMarkPanel({
           )}
         </section>
       )}
-      <SuccessMessage message={message} />
       <RecordTools
         label="订单操作"
         data={order}

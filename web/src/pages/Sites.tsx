@@ -17,7 +17,7 @@ import {
 import { Link, useNavigate } from "@/navigation";
 import { useDirtyDraft } from "@/drafts";
 import { ErrorNotice, QueryView } from "@/components/request-state";
-import { SuccessMessage, useFeedback } from "@/components/Feedback";
+import { useSuccessToast } from "@/components/Feedback";
 import { SitePolicyFields, SiteTextField } from "@/components/SitePolicyFields";
 import { SiteConfigurationConflicts } from "@/components/site-configuration-conflicts";
 import { mergeSiteConfiguration, resolveSiteConflicts, type SiteConflictChoices } from "@/lib/site-configuration";
@@ -187,7 +187,7 @@ function SiteEditor({
     // A newer snapshot can retire a key even while a view/rotation is pending.
     if (initial) observeSecretRevision(initial.revision);
   }, [initial, observeSecretRevision]);
-  const [feedback, setFeedback] = useFeedback();
+  const setFeedback = useSuccessToast();
   const revisionConflict = (error: unknown) => {
     if (!isSiteRevisionConflict(error)) return;
     setNeedsReview(true);
@@ -417,7 +417,6 @@ function SiteEditor({
           }}
         />
       )}
-      <SuccessMessage message={feedback} />
       {saved && visible("integration") && (
         <Card>
           <CardHeader>

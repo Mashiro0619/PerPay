@@ -27,7 +27,7 @@ import {
 } from "@/api/client";
 import { useDraftGuard } from "@/drafts";
 import { QueryView } from "@/components/request-state";
-import { SuccessMessage, useFeedback } from "@/components/Feedback";
+import { useSuccessToast } from "@/components/Feedback";
 import { buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { NotificationKeyActions, SecuritySettings } from "./SecuritySettings";
@@ -47,7 +47,7 @@ export default function Settings() {
   const { section: requestedSection } = useParams();
   const navigate = useNavigate();
   const tabList = useRef<HTMLDivElement>(null);
-  const [success, setSuccess] = useFeedback();
+  const setSuccess = useSuccessToast();
   const [editorVersion, setEditorVersion] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const { requestDiscard } = useDraftGuard();
@@ -63,10 +63,13 @@ export default function Settings() {
       ?.querySelector<HTMLElement>('[aria-selected="true"]')
       ?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [requestedSection, settings.isSuccess]);
-  function saved(data: RuntimeSettings, message = "已保存") {
+  function updated(data: RuntimeSettings) {
     queryClient.setQueryData(["settings"], { data });
-    setSuccess(message);
     void refreshOperationalData();
+  }
+  function saved(data: RuntimeSettings, message = "已保存") {
+    updated(data);
+    setSuccess(message);
   }
   function refresh() {
     requestDiscard(() => {
@@ -170,7 +173,7 @@ export default function Settings() {
                       }
                       section={section}
                       settings={data}
-                      onSaved={saved}
+                      onSaved={updated}
                       secondaryAction={
                         section === "notifications" ? (
                           <NotificationKeyActions
@@ -181,10 +184,6 @@ export default function Settings() {
                       }
                     />
                   )}
-                  <SuccessMessage
-                    message={success}
-                    multiline={section === "provider"}
-                  />
                 </div>
               </TabsContent>
             </Tabs>

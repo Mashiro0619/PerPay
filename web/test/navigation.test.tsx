@@ -548,7 +548,7 @@ describe("navigation and draft protection", () => {
     await waitFor(() => expect(unloadIsBlocked()).toBe(false));
     await user.click(screen.getByRole("tab", { name: "自动备份" }));
     expect(await screen.findByLabelText("备份间隔")).toBeVisible();
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog", { name: "放弃未保存的修改？" })).not.toBeInTheDocument();
   });
 
   it("preserves a conflicted draft and resets it only after an explicit reload", async () => {
@@ -582,7 +582,7 @@ describe("navigation and draft protection", () => {
     expect(
       screen.queryByDisplayValue("unsaved-test-password"),
     ).not.toBeInTheDocument();
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog", { name: "放弃未保存的修改？" })).not.toBeInTheDocument();
     expect(unloadIsBlocked()).toBe(false);
   });
 
@@ -597,7 +597,7 @@ describe("navigation and draft protection", () => {
     ).toBeVisible();
     await user.keyboard("{Escape}");
     await waitFor(() =>
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+      expect(screen.queryByRole("alertdialog", { name: "放弃未保存的修改？" })).not.toBeInTheDocument(),
     );
     expect(trigger).toHaveFocus();
   });

@@ -26,7 +26,7 @@ import { useCursor } from "@/lib/cursor";
 import { WorkItemsTable } from "@/components/work-items-table";
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import { CursorPagination } from "@/components/cursor-pagination";
-import { SuccessMessage, useFeedback } from "@/components/Feedback";
+import { useSuccessToast } from "@/components/Feedback";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -74,7 +74,7 @@ export default function WorkItems() {
   } | null>(null);
   const finalFocus = useRef<HTMLElement | null>(null);
   const cancelIgnore = useRef<HTMLButtonElement | null>(null);
-  const [message, setMessage] = useFeedback();
+  const setMessage = useSuccessToast();
   const ignore = useMutation({
     networkMode: "always",
     retry: false,
@@ -182,7 +182,6 @@ export default function WorkItems() {
             type={type}
             visibility={visibility}
             busy={ignore.isPending}
-            message={message}
             onVisibility={(next) => select(type, next)}
             onIgnore={(trigger) => {
               finalFocus.current =
@@ -261,14 +260,12 @@ function WorkItemPage({
   type,
   visibility,
   busy,
-  message,
   onVisibility,
   onIgnore,
 }: {
   type: AdminWorkItemTypeFilter;
   visibility: Visibility;
   busy: boolean;
-  message: string;
   onVisibility: (value: Visibility) => void;
   onIgnore: (trigger?: HTMLElement | null) => void;
 }) {
@@ -343,7 +340,7 @@ function WorkItemPage({
         }),
       ),
   });
-  const [restoredMessage, setRestoredMessage] = useFeedback();
+  const setRestoredMessage = useSuccessToast();
   function restore(item: AdminWorkItem, trigger: HTMLElement) {
     if (item.ended || restores.get(item)?.status === "pending") return;
     const id = item.type + ":" + item.resource_id;
@@ -553,7 +550,6 @@ function WorkItemPage({
         }))}
       />
       </ListToolbarPart>
-      <SuccessMessage message={message || restoredMessage} />
       {restores.pendingCount > 0 && (
         <p role="status" className="text-sm text-muted-foreground">
           {restores.pendingCount} 条提醒正在恢复…

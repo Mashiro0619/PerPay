@@ -1,6 +1,5 @@
 import {
   fireEvent,
-  render,
   screen,
   waitFor,
   within,
@@ -8,7 +7,6 @@ import {
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryClient } from "../src/api/client";
-import { SuccessMessage } from "../src/components/Feedback";
 import {
   clearOnboardingDeferrals,
   onboardingPath,
@@ -328,7 +326,7 @@ describe.each([
     ["pending", "验证并启用", "验证并启用", "应用公钥已验证并启用。"],
     ["pending", "放弃新公钥", "确认放弃", "已放弃待启用公钥，当前密钥未更换。"],
   ] as const)(
-    "uses a wrapping status callout for %s/%s",
+    "announces completion without replacing key content for %s/%s",
     async (state, trigger, submit, message) => {
       const inline = path === applicationPath && trigger === "验证并启用";
       const view = mountOnboarding({
@@ -357,16 +355,9 @@ describe.each([
         }),
       );
       const feedback = await screen.findByText(message);
-      const status = feedback.closest('[role="status"]');
-      expect(status).toHaveAttribute("data-slot", "alert");
-      expect(status).toHaveClass("min-w-0");
-      expect(feedback.closest('[data-slot="badge"]')).toBeNull();
+      expect(screen.getByRole("region", { name: "通知" })).toContainElement(feedback);
+      expect(feedback).toBeVisible();
       expect(view.writes()).toHaveLength(1);
     },
   );
-});
-
-it("does not change the default compact feedback used elsewhere", () => {
-  render(<SuccessMessage message="已保存" />);
-  expect(screen.getByRole("status")).toHaveAttribute("data-slot", "badge");
 });

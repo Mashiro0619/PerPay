@@ -249,7 +249,7 @@ describe("first collection onboarding", () => {
       .setup()
       .click(screen.getByRole("button", { name: "保存并继续" }));
     await pathIs(view, "collection");
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog", { name: "放弃未保存的修改？" })).not.toBeInTheDocument();
     expect(await view.writes()[0]!.clone().json()).toMatchObject({
       revision: 3,
       app_id: "my-app",
@@ -295,7 +295,7 @@ describe("first collection onboarding", () => {
     expect(view.saved.collection?.code_payload).toBe(
       "https://qr.alipay.com/onboarding",
     );
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog", { name: "放弃未保存的修改？" })).not.toBeInTheDocument();
   });
   it("keeps generated API plaintext until explicit storage confirmation, without persisting it", async () => {
     const view = mountOnboarding({ stage: 3, path: "/settings/security" });
@@ -355,7 +355,7 @@ describe("first collection onboarding", () => {
         }),
       );
     });
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "新的API 密钥" })).not.toBeInTheDocument();
     expect(screen.queryByText(syntheticSecret)).not.toBeInTheDocument();
     expect(view.router.state.location.pathname).toBe("/settings/security");
   });
@@ -371,7 +371,7 @@ describe("first collection onboarding", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(60000);
     });
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "PerPay API 密钥" })).not.toBeInTheDocument();
     expect(screen.queryByText(syntheticSecret)).not.toBeInTheDocument();
     expect(view.router.state.location.pathname).toBe("/settings/security");
   });
