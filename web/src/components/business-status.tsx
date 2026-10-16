@@ -49,7 +49,7 @@ export function StatusBadge({
     "secondary",
   ];
   return (
-    <Badge variant={variant}>
+    <Badge variant={variant} className="h-auto min-h-5 max-w-full whitespace-normal wrap-anywhere">
       {Icon && <Icon data-icon="inline-start" />}
       {label ?? text}
     </Badge>
