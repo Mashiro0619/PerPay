@@ -41,7 +41,7 @@ function SiteManagementCard({ site, label, range, maximum }: {
   const NotificationsIcon = site.notifications_enabled ? Bell : BellOff;
   return (
     <article aria-labelledby={headingId} className="site-management-card">
-      <Card className="site-management-card-surface">
+      <Card size="sm" className="site-management-card-surface">
         <CardHeader>
           <CardTitle id={headingId} role="heading" aria-level={2} className="site-management-card-title">
             <Link to={overviewPath} title={label} aria-label={label}>{site.name}</Link>
@@ -58,7 +58,7 @@ function SiteManagementCard({ site, label, range, maximum }: {
             </Badge>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex min-w-0 flex-col gap-3">
           <div className="flex min-w-0 flex-col gap-1">
             <CardDescription>近 {range} 天实收</CardDescription>
             <div className="site-overview-card-amount" data-wide={amount.length > 14 || undefined}>{amount}</div>
@@ -73,7 +73,7 @@ function SiteManagementCard({ site, label, range, maximum }: {
             </div>
           </dl>
         </CardContent>
-        <CardFooter>
+        <CardFooter className="mt-auto flex-wrap justify-between gap-2">
           <Link to={sitePath + "/settings/basic"} className={buttonVariants({ variant: "ghost", size: "sm" })}>
             <Settings2 data-icon="inline-start" />网站设置
           </Link>
@@ -92,13 +92,13 @@ function SiteManagementSkeletons() {
       <ul className="site-management-grid" aria-hidden="true">
         {Array.from({ length: 4 }, (_, index) => (
           <li key={index}>
-            <Card className="site-management-card-surface">
+            <Card size="sm" className="site-management-card-surface">
               <CardHeader><Skeleton className="h-5 w-2/3" /><Skeleton className="h-5 w-1/2" /></CardHeader>
-              <CardContent>
+              <CardContent className="flex min-w-0 flex-col gap-3">
                 <Skeleton className="h-4 w-24" /><Skeleton className="h-8 w-3/4" />
                 <Skeleton className="h-1 w-full" /><Skeleton className="h-10 w-full" />
               </CardContent>
-              <CardFooter><Skeleton className="h-8 w-24" /><Skeleton className="h-8 w-24" /></CardFooter>
+              <CardFooter className="mt-auto flex-wrap justify-between gap-2"><Skeleton className="h-8 w-24" /><Skeleton className="h-8 w-24" /></CardFooter>
             </Card>
           </li>
         ))}

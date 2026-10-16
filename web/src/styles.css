@@ -652,24 +652,7 @@ a[data-internal-link][data-slot="item"]:active {
   min-width: 0;
   width: 100%;
   height: 100%;
-  gap: 0.75rem;
-  padding: 1rem;
-  border: 1px solid var(--border);
-  background: var(--card);
-  color: var(--card-foreground);
-  box-shadow: none;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
 }
-.site-overview-card-heading {
-  display: flex;
-  min-width: 0;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0;
-}
-.site-overview-card-heading > :first-child { min-width: 0; flex: 1; }
-.site-overview-card-heading > [data-slot="card-action"] { flex: none; }
 .site-overview-card-title {
   display: -webkit-box;
   min-width: 0;
@@ -677,21 +660,9 @@ a[data-internal-link][data-slot="item"]:active {
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  margin: 0;
-  color: var(--card-foreground);
-  font-size: 0.875rem;
-  font-weight: 500;
-  line-height: 1.5;
   white-space: normal;
   word-break: normal;
   overflow-wrap: anywhere;
-}
-.site-overview-card-surface > [data-slot="card-content"] {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding: 0;
 }
 .site-overview-card-amount {
   display: block;
@@ -757,20 +728,6 @@ a[data-internal-link][data-slot="item"]:active {
   min-width: 0;
   width: 100%;
   height: 100%;
-  gap: 0.75rem;
-  padding: 1rem;
-  border: 1px solid var(--border);
-  background: var(--card);
-  color: var(--card-foreground);
-  box-shadow: none;
-}
-.site-management-card-surface > [data-slot="card-header"] {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.5rem;
-  padding: 0;
 }
 .site-management-card-title {
   min-width: 0;
@@ -785,13 +742,6 @@ a[data-internal-link][data-slot="item"]:active {
   -webkit-line-clamp: 2;
   white-space: normal;
   overflow-wrap: anywhere;
-}
-.site-management-card-surface > [data-slot="card-content"] {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding: 0;
 }
 .site-management-metrics {
   display: grid;
@@ -821,16 +771,6 @@ a[data-internal-link][data-slot="item"]:active {
   font-variant-numeric: tabular-nums;
   line-height: 1.5;
   overflow-wrap: anywhere;
-}
-.site-management-card-surface > [data-slot="card-footer"] {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 0.5rem;
-  margin-top: auto;
-  padding: 0;
-  border: 0;
-  background: transparent;
 }
 @container site-management (min-width: 41rem) {
   .site-management-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

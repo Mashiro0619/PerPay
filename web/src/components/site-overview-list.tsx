@@ -41,22 +41,20 @@ function SiteOverviewCard({ site, label, range, maximum }: {
       aria-label={label + "，进入后台"}
       aria-describedby={summaryId}
     >
-      <Card className="site-overview-card-surface">
-        <CardHeader className="site-overview-card-heading">
-          <div className="flex min-w-0 flex-col items-start gap-1">
-            <CardTitle
-              className="site-overview-card-title"
-              role="heading"
-              aria-level={3}
-              title={label}
-            >
-              {site.name}
-            </CardTitle>
-            {nameSuffix && <CardDescription className="max-w-full break-all">{nameSuffix}</CardDescription>}
-          </div>
+      <Card size="sm" className="site-overview-card-surface">
+        <CardHeader className="min-w-0">
+          <CardTitle
+            className="site-overview-card-title"
+            role="heading"
+            aria-level={3}
+            title={label}
+          >
+            {site.name}
+          </CardTitle>
+          {nameSuffix && <CardDescription className="max-w-full break-all">{nameSuffix}</CardDescription>}
           {!site.accepting_orders && <CardAction><Badge variant="secondary">暂停接单</Badge></CardAction>}
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex min-w-0 flex-col gap-3">
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
             <div
               className="site-overview-card-amount"
@@ -84,11 +82,11 @@ function SiteOverviewSkeletons() {
       <ul className="site-overview-grid" aria-hidden="true">
         {Array.from({ length: 4 }, (_, index) => (
           <li key={index} className="min-w-0">
-            <Card className="site-overview-card-surface">
-              <CardHeader className="site-overview-card-heading">
+            <Card size="sm" className="site-overview-card-surface">
+              <CardHeader>
                 <Skeleton className="h-5 w-2/3" />
               </CardHeader>
-              <CardContent>
+              <CardContent className="flex min-w-0 flex-col gap-3">
                 <Skeleton className="h-8 w-3/4" />
                 <Skeleton className="h-1 w-full" />
               </CardContent>

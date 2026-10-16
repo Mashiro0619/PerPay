@@ -139,16 +139,8 @@ describe("website overview card layout", () => {
     });
   });
 
-  it("keeps natural card height with compact spacing and a four-pixel amount bar", () => {
-    expect(base(".site-overview-card-surface")).toMatchObject({
-      padding: "1rem",
-      gap: "0.75rem",
-    });
-    expect(base('.site-overview-card-surface > [data-slot="card-content"]')).toMatchObject({
-      padding: "0",
-      gap: "0.75rem",
-    });
-    for (const selector of [".site-overview-card", ".site-overview-card-surface", ".site-overview-card-heading"]) {
+  it("keeps natural card height and a four-pixel amount bar", () => {
+    for (const selector of [".site-overview-card", ".site-overview-card-surface"]) {
       expect(base(selector)["min-height"]).toBeUndefined();
       expect(base(selector).height ?? "").not.toMatch(/px|rem|vh/);
     }
@@ -198,13 +190,9 @@ describe("website overview card layout", () => {
     "keeps names, amounts, supporting text, warning badges and the amount bar readable in %s",
     (mode) => {
       const tokens = theme(mode);
-      const surface = color(base(".site-overview-card-surface").background!, tokens);
-      for (const selector of [
-        ".site-overview-card-title",
-        ".site-overview-card-amount",
-      ]) {
-        expect(contrast(color(base(selector).color!, tokens), surface)).toBeGreaterThanOrEqual(4.5);
-      }
+      const surface = tokens["--card"]!;
+      expect(contrast(tokens["--card-foreground"]!, surface)).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(color(base(".site-overview-card-amount").color!, tokens), surface)).toBeGreaterThanOrEqual(4.5);
       expect(contrast(tokens["--muted-foreground"]!, surface)).toBeGreaterThanOrEqual(4.5);
       expect(contrast(tokens["--warning-foreground"]!, tokens["--warning"]!)).toBeGreaterThanOrEqual(4.5);
       const bar = color(base(".site-overview-amount-bar").color!, tokens);
