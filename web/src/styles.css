@@ -290,56 +290,10 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .settings-fields > [data-slot="field-legend"], .settings-fields > [data-slot="field-description"] { grid-column: 1 / -1; }
 @container main (min-width: 38rem) { .settings-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
-/* Business records share one visual language, independent of their table,
-   summary, timeline or selectable-item semantics. */
+/* Business tables add column layout and density to the native Table. */
 .business-table-surface {
   min-width: 0;
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  background: var(--card);
-  color: var(--card-foreground);
-}
-.business-table-surface[data-embedded="true"] {
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-.business-table {
-  width: 100%;
-  table-layout: fixed;
-  border-collapse: collapse;
-  font-size: 0.875rem;
-  line-height: 1.4;
-}
-.business-table th {
-  height: 2.5rem;
-  padding: 0.375rem 1rem;
-  color: var(--muted-foreground);
-  background: color-mix(in oklab, var(--muted) 55%, var(--card));
-  font-size: 0.75rem;
-  font-weight: 500;
-  text-align: left;
-  vertical-align: middle;
-  white-space: nowrap;
-}
-.business-table th button {
-  height: 1.75rem;
-  padding-inline: 0.375rem;
-  margin-inline: -0.375rem;
-  color: inherit;
-  font-size: inherit;
-}
-.business-table th[aria-sort] { color: var(--foreground); }
-.business-table th:not([aria-sort]) svg { opacity: 0.5; }
-.business-table tbody th { height: auto; padding-block: 0.625rem; background: transparent; white-space: normal; }
-.business-table td {
-  height: 4rem;
-  padding: 0.75rem 1rem;
-  vertical-align: middle;
-}
-.business-table tr {
-  border-color: color-mix(in oklab, var(--border) 75%, transparent);
 }
 .business-table col[data-column-layout="identity"] { width: 40%; }
 .business-table col[data-column-layout="amount"] { width: 9.5rem; }
@@ -367,10 +321,8 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .business-table td[data-column-align="center"] > .list-time { align-items: center; }
 .business-table td[data-column-layout="amount"] { overflow: visible; }
 .business-table:has(.list-money[data-wide="true"]) col[data-column-layout="amount"] { width: 13rem; }
-[data-density="compact"] .business-table td,
-.business-table[data-density="compact"] td { height: 3.5rem; padding-block: 0.5rem; }
 [data-density="comfortable"] .business-table td,
-.business-table[data-density="comfortable"] td { height: 4rem; padding-block: 0.75rem; }
+.business-table[data-density="comfortable"] td { padding-block: 0.75rem; }
 
 .list-identity { display: flex; min-width: 0; flex-direction: column; gap: 0.25rem; }
 .list-identity-title,
@@ -795,7 +747,6 @@ a[data-internal-link][data-slot="item"]:active {
 .overview-orders-table col[data-column-layout="status"] { width: 7.5rem; }
 .overview-orders-table col[data-column-layout="datetime"] { width: 10rem; }
 .overview-orders-table:has(.list-money[data-wide="true"]) col[data-column-layout="amount"] { width: 13rem; }
-.overview-orders-table :is(th, td) { padding-inline: 0.625rem; }
 .overview-orders-container { min-width: 0; container: recent-orders / inline-size; }
 /* The 40rem measured list has two 0.75rem CardContent gutters. Pass header
    state through the card because CardHeader is also a query container. */
@@ -928,27 +879,19 @@ a[data-internal-link][data-slot="item"]:active {
 .runtime-checked time { margin-left: 0.375rem; }
 .runtime-toolbar-actions, .runtime-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 0.25rem; }
 .runtime-row-actions { flex-wrap: wrap; }
-.runtime-status-table { table-layout: fixed; border-collapse: collapse; }
+.runtime-status-table { table-layout: fixed; }
 .runtime-col-service { width: 21%; }
 .runtime-col-status { width: 14%; }
 .runtime-col-time { width: 24%; }
 .runtime-col-info { width: 23%; }
 .runtime-col-actions { width: 18%; }
-.runtime-status-table > thead > tr { border-block: 1px solid var(--border); }
-.runtime-status-table > thead th { height: 2.5rem; padding: 0.5rem 1rem; color: var(--muted-foreground); font-size: 0.75rem; font-weight: 400; }
-.runtime-status-table > thead th:first-child, .runtime-status-table .runtime-service-name { padding-left: 0; }
-.runtime-status-table .runtime-service-row { height: 3.5rem; border-bottom: 1px solid var(--border); }
-.runtime-status-table .runtime-service-row > th, .runtime-status-table .runtime-service-row > td { padding: 0.875rem 1rem; vertical-align: middle; white-space: normal; overflow-wrap: anywhere; }
-.runtime-status-table .runtime-service-row > .runtime-service-name { padding-left: 0; font-size: 0.875rem; font-weight: 500; }
-.runtime-status-table .runtime-service-row > .runtime-service-actions { padding-right: 0; }
-.runtime-status-table .runtime-service-row:has(+ .runtime-detail-row:not([hidden])) { border-bottom: 0; }
-.runtime-status-table .runtime-service-row:has(+ .runtime-detail-row:last-child[hidden]) { border-bottom: 0; }
-.runtime-service-time, .runtime-service-info { font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.runtime-status-table .runtime-service-row > th, .runtime-status-table .runtime-service-row > td { white-space: normal; overflow-wrap: anywhere; }
+.runtime-service-time, .runtime-service-info { font-variant-numeric: tabular-nums; }
 .runtime-service-time { color: var(--muted-foreground); }
 .runtime-empty { color: var(--muted-foreground); }
 .runtime-mobile-label { display: none; }
-.runtime-status-table .runtime-detail-row > td { padding: 0 0 1rem; white-space: normal; }
-.runtime-detail-content { display: flex; min-width: 0; flex-direction: column; gap: 0.5rem; border-left: 2px solid var(--border); margin-left: 0.125rem; padding: 0.25rem 1rem; font-size: 0.8125rem; overflow-wrap: anywhere; }
+.runtime-status-table .runtime-detail-row > td { white-space: normal; }
+.runtime-detail-content { display: flex; min-width: 0; flex-direction: column; gap: 0.5rem; border-left: 2px solid var(--border); margin-left: 0.125rem; padding: 0.25rem 1rem; overflow-wrap: anywhere; }
 .runtime-service-row[data-attention] + .runtime-detail-row .runtime-detail-content { border-left-color: var(--warning-foreground); }
 .runtime-row-actions button > svg { transition: transform 150ms ease; }
 .runtime-row-actions button[aria-expanded="true"] > svg { transform: rotate(180deg); }
@@ -1044,13 +987,11 @@ a[data-internal-link][data-slot="item"]:active {
 .daily-week-metric { display: flex; min-width: 0; flex-direction: column; align-items: flex-end; gap: 0.375rem; font-variant-numeric: tabular-nums; }
 .daily-week-metric > :first-child { color: var(--muted-foreground); font-size: 0.75rem; font-weight: 400; }
 .daily-week-content { min-width: 0; padding-bottom: 0.75rem; }
-.daily-week-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0.875rem; line-height: 1.4; }
+.daily-week-table { table-layout: fixed; }
 .daily-week-table .daily-date-column { width: 10rem; }
 .daily-week-table .daily-count-column { width: 6rem; }
-.daily-week-table th { height: 2rem; padding: 0.375rem 0.75rem; color: var(--muted-foreground); background: color-mix(in oklab, var(--muted) 45%, var(--card)); font-size: 0.75rem; font-weight: 400; }
-.daily-week-table td { height: 3rem; padding: 0.5rem 0.75rem; vertical-align: middle; white-space: normal; overflow-wrap: anywhere; }
+.daily-week-table td { white-space: normal; overflow-wrap: anywhere; }
 .daily-week-table :is(th, td):not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
-.daily-week-table tr { border-color: color-mix(in oklab, var(--border) 65%, transparent); }
 .daily-date { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 0.375rem; font-variant-numeric: tabular-nums; }
 .daily-date-weekday { color: var(--muted-foreground); font-size: 0.75rem; }
 /* Reserve the same numeric slot in every row so every SVG has the same pixel scale. */
