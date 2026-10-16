@@ -1050,12 +1050,6 @@ a[data-internal-link][data-slot="item"]:active {
 .runtime-status-table .runtime-service-row > .runtime-service-actions { padding-right: 0; }
 .runtime-status-table .runtime-service-row:has(+ .runtime-detail-row:not([hidden])) { border-bottom: 0; }
 .runtime-status-table .runtime-service-row:has(+ .runtime-detail-row:last-child[hidden]) { border-bottom: 0; }
-.runtime-health { display: inline-flex; align-items: center; gap: 0.5rem; white-space: nowrap; font-size: 0.8125rem; }
-.runtime-health-dot { width: 0.375rem; height: 0.375rem; flex: none; border-radius: 50%; background: var(--muted-foreground); }
-.runtime-health[data-state="healthy"] .runtime-health-dot { background: var(--success-foreground); }
-.runtime-health[data-state="warning"] { color: var(--warning-foreground); }
-.runtime-health[data-state="warning"] .runtime-health-dot { background: var(--warning-foreground); }
-.runtime-health[data-state="disabled"] { color: var(--muted-foreground); }
 .runtime-service-time, .runtime-service-info { font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
 .runtime-service-time { color: var(--muted-foreground); }
 .runtime-empty { color: var(--muted-foreground); }

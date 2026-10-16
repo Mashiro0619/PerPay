@@ -20,6 +20,7 @@ import { ErrorNotice, Loading, QueryView } from "@/components/request-state";
 import { TechnicalDetailsDialog } from "@/components/detail/DetailPrimitives";
 import { OfficialUpdatePanel } from "@/updates";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Table,
@@ -423,15 +424,9 @@ function RuntimeService({
           {title}
         </TableHead>
         <TableCell role="cell" className="runtime-service-state">
-          <span
-            className="runtime-health"
-            data-state={
-              attention ? "warning" : enabled ? "healthy" : "disabled"
-            }
-          >
-            <span aria-hidden="true" className="runtime-health-dot" />
+          <Badge variant={attention ? "warning" : enabled ? "success" : "secondary"}>
             {attention ? "需关注" : enabled ? "正常" : "未启用"}
-          </span>
+          </Badge>
         </TableCell>
         <TableCell
           role="cell"

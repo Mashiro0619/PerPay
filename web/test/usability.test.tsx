@@ -230,7 +230,6 @@ describe("short feedback and safe settings", () => {
       const service = within(runtime.getByRole("rowheader", { name: title }).closest("tr")!);
       const status = service.getByRole("cell", { name: "正常" });
       expect(status).toBeVisible();
-      expect(status.querySelector('[data-slot="badge"]')).toBeNull();
       expect(service.queryByRole("button", { name: "查看" + title + "详情" })).not.toBeInTheDocument();
       expect(runtime.queryByText(explanation)).not.toBeInTheDocument();
     }
