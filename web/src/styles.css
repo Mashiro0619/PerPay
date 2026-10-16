@@ -905,11 +905,40 @@ a[data-internal-link][data-slot="item"]:active {
 .overview-orders-table col[data-column-layout="datetime"] { width: 10rem; }
 .overview-orders-table:has(.list-money[data-wide="true"]) col[data-column-layout="amount"] { width: 13rem; }
 .overview-orders-table :is(th, td) { padding-inline: 0.625rem; }
-.overview-orders .business-summary-row { padding: 0.875rem 0.625rem; }
-.overview-orders .list-summary-heading { flex-wrap: wrap; gap: 0.625rem 0.75rem; }
-.overview-orders .list-summary-identity { flex-basis: 8rem; }
-.overview-orders .list-summary-aside { max-width: 100%; margin-left: auto; }
-.overview-orders .business-summary-field:has(.overview-order-times) { grid-column: 1 / -1; }
+.overview-orders-container { min-width: 0; container: recent-orders / inline-size; }
+/* The 40rem measured list has two 0.75rem CardContent gutters. Pass header
+   state through the card because CardHeader is also a query container. */
+@container recent-orders (width < 41.5rem) {
+  .overview-orders-panel {
+    --overview-orders-description-display: none;
+    --overview-orders-action-row: 1;
+    --overview-orders-action-align: center;
+    gap: 0.5rem;
+  }
+  .overview-orders-panel > .overview-records-header {
+    grid-template-rows: auto;
+    align-items: center;
+    row-gap: 0;
+    padding-inline: 1rem;
+  }
+}
+.overview-orders-panel > .overview-records-header > [data-slot="card-description"] { display: var(--overview-orders-description-display, block); }
+.overview-orders-panel > .overview-records-header > [data-slot="card-action"] { grid-row: var(--overview-orders-action-row, 1 / span 2); align-self: var(--overview-orders-action-align, start); }
+.overview-orders [data-list-layout="summary"] > .business-table-surface { overflow: visible; }
+.overview-orders [data-list-layout="summary"] .business-summary-list { width: auto; margin-inline: -0.5rem; }
+.overview-orders [data-list-layout="summary"] .business-summary-row { padding: 0.625rem 0.75rem; border-bottom: 0; }
+.overview-order-summary { position: relative; min-width: 0; gap: 0.25rem; }
+.overview-order-summary-amount { display: flex; min-width: 0; max-width: 100%; flex: 0 1 auto; }
+.overview-order-summary-progress { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.5rem; }
+.overview-order-summary-progress:has(.overview-order-money, .list-money[data-wide="true"]) > .overview-order-summary-amount { flex-basis: 100%; }
+.overview-order-summary-progress > [role="group"] { min-width: 0; max-width: 100%; }
+.overview-order-summary-progress .overview-record-stack { flex-direction: row; flex-wrap: wrap; gap: 0.25rem; }
+.overview-order-summary > .list-meta { gap: 0.125rem 0.5rem; }
+.overview-order-summary .list-site-identity > span { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.overview-order-summary > .overview-order-times { flex-direction: row; flex-wrap: wrap; gap: 0.125rem 0.75rem; color: var(--muted-foreground); }
+.overview-order-summary .overview-order-time-entry { gap: 0.375rem; }
+.overview-order-summary > .overview-order-summary-separator { position: absolute; bottom: -0.625rem; inset-inline: 0; width: auto; margin: 0; }
+.overview-orders .business-summary-row:last-child .overview-order-summary-separator { display: none; }
 .overview-orders .list-meta .list-code,
 .overview-work-list .list-meta .list-code {
   max-width: 100%;

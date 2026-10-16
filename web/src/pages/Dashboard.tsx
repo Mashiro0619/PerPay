@@ -200,28 +200,30 @@ function DashboardContent() {
             </QueryView>
           </CardContent>
         </Card>
-        <Card size="sm" className="overview-record-panel" role="region" aria-labelledby="overview-orders-title">
-          <CardHeader className="overview-records-header">
-            <CardTitle id="overview-orders-title" role="heading" aria-level={2}>
-              最近订单
-            </CardTitle>
-            <CardDescription>最新 5 笔订单的收款与通知进展</CardDescription>
-            <CardAction>
-              <Link
-                to={"/orders"}
-                className={buttonVariants({ variant: "ghost", size: "sm" })}
-              >
-                全部订单
-                <ArrowRight data-icon="inline-end" />
-              </Link>
-            </CardAction>
-          </CardHeader>
-          <CardContent className="overview-records-content">
-            <QueryView query={orders}>
-              {(page) => <RecentOrders orders={page.data} />}
-            </QueryView>
-          </CardContent>
-        </Card>
+        <div className="overview-orders-container">
+          <Card size="sm" className="overview-record-panel overview-orders-panel" role="region" aria-labelledby="overview-orders-title">
+            <CardHeader className="overview-records-header">
+              <CardTitle id="overview-orders-title" role="heading" aria-level={2}>
+                最近订单
+              </CardTitle>
+              <CardDescription>最新 5 笔订单的收款与通知进展</CardDescription>
+              <CardAction>
+                <Link
+                  to={"/orders"}
+                  className={buttonVariants({ variant: "ghost", size: "sm" })}
+                >
+                  全部订单
+                  <ArrowRight data-icon="inline-end" />
+                </Link>
+              </CardAction>
+            </CardHeader>
+            <CardContent className="overview-records-content">
+              <QueryView query={orders}>
+                {(page) => <RecentOrders orders={page.data} />}
+              </QueryView>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

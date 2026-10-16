@@ -75,3 +75,82 @@ test("overview container breakpoints switch at 68rem and 76rem in both width pre
     await record(page, info, { requested: { containerWidth: target, mode }, columns });
   }
 });
+
+test("recent orders keep compact summaries and header geometry across themes and workspaces", async ({ page, manifest }, info) => {
+  await login(page, manifest);
+  const sitePath = manifest.routes.find(path => /^\/sites\/[^/]+$/.test(path) && !["/sites/new", "/sites/defaults"].includes(path))!;
+  const panel = page.getByRole("region", { name: "最近订单", exact: true });
+  for (const width of [320, 390, 560]) for (const theme of ["light", "dark"]) for (const mode of ["compact", "full"]) for (const scoped of [false, true]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.evaluate(({ theme, mode }) => {
+      localStorage.setItem("perpay:theme", theme);
+      localStorage.setItem("perpay:content-width", mode);
+    }, { theme, mode });
+    await page.goto(manifest.origin + "/admin" + (scoped ? sitePath : "/"));
+    await expect(panel.locator(".overview-order-summary")).toHaveCount(5);
+    await expect(panel.locator('[data-slot="card-description"]')).toBeHidden();
+    const geometry = await panel.evaluate(panel => {
+      const bounds = panel.getBoundingClientRect();
+      const header = panel.querySelector('[data-slot="card-header"]')!.getBoundingClientRect();
+      const content = panel.querySelector('[data-slot="card-content"]')!.getBoundingClientRect();
+      const title = panel.querySelector('[data-slot="card-title"]')!.getBoundingClientRect();
+      const action = panel.querySelector('[data-slot="card-action"]')!.getBoundingClientRect();
+      return { width: bounds.width, headerGap: content.top - header.bottom,
+        headerAlignment: Math.abs(title.top + title.height / 2 - action.top - action.height / 2),
+        titleInset: title.left - bounds.left,
+        rows: [...panel.querySelectorAll('[data-business-row]')].map(row => {
+          const body = row.querySelector('.overview-order-summary')!.getBoundingClientRect();
+          const product = row.querySelector('.list-identity')!.getBoundingClientRect();
+          const amount = row.querySelector('.overview-order-summary-amount')!.getBoundingClientRect();
+          const separator = row.querySelector('[data-slot="item-separator"]')!;
+          const divider = separator.getBoundingClientRect();
+          return { inset: body.left - bounds.left, hoverInset: body.left - row.getBoundingClientRect().left,
+            amountInset: amount.left - body.left, amountAfterProduct: amount.top >= product.bottom + 3,
+            productUsesFullWidth: Math.abs(product.width - body.width) < 1,
+            separatorVisible: getComputedStyle(separator).display !== "none", separatorLeft: divider.left - bounds.left,
+            separatorRight: bounds.right - divider.right,
+            fieldsClipped: [...row.querySelectorAll('.list-code, .list-money, time')].some(element => element.scrollWidth > element.clientWidth + 1),
+            payment: row.querySelector('[role="group"][aria-label="收款状态"]')?.textContent,
+            notification: row.querySelector('[role="group"][aria-label="通知状态"]')?.textContent };
+        }),
+      };
+    });
+    expect(geometry.headerGap).toBe(8);
+    expect(geometry.headerAlignment).toBeLessThan(1);
+    expect(geometry.titleInset).toBe(16);
+    expect(geometry.rows.every(row => row.inset === 16 && row.hoverInset === 12 && !row.fieldsClipped && row.payment && row.notification)).toBe(true);
+    expect(geometry.rows.every(row => row.amountInset === 0 && row.amountAfterProduct && row.productUsesFullWidth)).toBe(true);
+    expect(geometry.rows.slice(0, -1).every(row => row.separatorVisible && row.separatorLeft === 16 && row.separatorRight === 16)).toBe(true);
+    expect(geometry.rows.at(-1)!.separatorVisible).toBe(false);
+    expect(await panel.locator(".list-site-identity").count()).toBe(scoped ? 0 : 5);
+    await record(page, info, { width, theme, mode, scoped, recentOrders: geometry });
+  }
+});
+
+test("recent order headers and tables switch at the same measured container boundaries", async ({ page, manifest }, info) => {
+  await login(page, manifest);
+  await page.evaluate(() => localStorage.setItem("perpay:content-width", "full"));
+  const panel = page.getByRole("region", { name: "最近订单", exact: true });
+  const list = panel.locator('[data-business-table="overview-recent-orders"]');
+  await page.setViewportSize({ width: 1920, height: 1000 });
+  await page.goto(manifest.origin + "/admin/");
+  await expect(list.locator('[data-business-row]')).toHaveCount(5);
+  for (const target of [639, 640, 767, 768, 639, 640]) {
+    // Constrain the real card container: resizing the viewport can also switch
+    // the surrounding overview between one and two columns.
+    await page.locator(".overview-orders-container").evaluate((element, target) => {
+      (element as HTMLElement).style.width = `${target + 24}px`;
+    }, target);
+    await expect.poll(() => list.evaluate(element => element.getBoundingClientRect().width)).toBe(target);
+    await expect(list).toHaveAttribute("data-list-layout", target < 640 ? "summary" : "table");
+    if (target < 640) {
+      await expect(panel.locator('[data-slot="card-description"]')).toBeHidden();
+      await expect(panel.getByRole("list", { name: "最近订单", exact: true })).toBeVisible();
+    } else {
+      await expect(panel.locator('[data-slot="card-description"]')).toBeVisible();
+      await expect(panel.getByRole("columnheader")).toHaveCount(target < 768 ? 4 : 5);
+    }
+    await expect(panel.locator('[data-business-row]').first().locator("time")).toHaveCount(2);
+    await record(page, info, { recentOrdersContainer: target });
+  }
+});

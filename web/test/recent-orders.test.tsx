@@ -117,6 +117,11 @@ describe("overview order progress", () => {
     expect(screen.getAllByRole("listitem")).toHaveLength(1);
     expect(screen.getAllByRole("link", { name: recent.product_name })).toHaveLength(1);
     expect(screen.getByLabelText("应付金额 ¥199.01")).toBeVisible();
+    expect(screen.getByRole("group", { name: "收款状态" })).toHaveTextContent("收款已确认");
+    expect(screen.getByRole("group", { name: "通知状态" })).toHaveTextContent("等待重试");
+    expect(screen.queryByText("收款状态", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByText("通知状态", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByText("时间", { exact: true })).not.toBeInTheDocument();
     expect(screen.getAllByLabelText(/^(应付|实收)金额 /)).toHaveLength(1);
     expect(screen.queryByText(/^(应付|实收)$/)).not.toBeInTheDocument();
     expect(screen.getByText("收款已确认")).toBeVisible();

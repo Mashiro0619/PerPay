@@ -8,11 +8,10 @@ import {
   ListIdentity,
   ListMeta,
   ListMoney,
-  ListSummary,
-  ListSummaryField,
 } from "@/components/list-primitives";
 import { SiteIdentity } from "@/components/site-identity";
 import { Badge } from "@/components/ui/badge";
+import { ItemContent, ItemSeparator } from "@/components/ui/item";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 
 function OrderAmounts({ order }: { order: AdminOrderSummary }) {
@@ -84,6 +83,42 @@ function OrderTimes({ order }: { order: AdminOrderSummary }) {
   );
 }
 
+function OrderProductLink({ order }: { order: AdminOrderSummary }) {
+  return (
+    <Link data-row-link className="list-primary-link" title={order.product_name} to={"/orders/" + order.order_id}>
+      {order.product_name}
+    </Link>
+  );
+}
+
+function OrderMeta({ order, showSite }: { order: AdminOrderSummary; showSite: boolean }) {
+  if (order.product_name === order.merchant_order_no && !showSite) return null;
+  return (
+    <ListMeta>
+      {order.product_name !== order.merchant_order_no && (
+        <span className="list-code" title={order.merchant_order_no}>{order.merchant_order_no}</span>
+      )}
+      {showSite && <SiteIdentity clientId={order.api_client_id} name={order.site_name} />}
+    </ListMeta>
+  );
+}
+
+function RecentOrderSummary({ order, showSite }: { order: AdminOrderSummary; showSite: boolean }) {
+  return (
+    <ItemContent className="overview-order-summary">
+      <ListIdentity><OrderProductLink order={order} /></ListIdentity>
+      <div className="overview-order-summary-progress">
+        <div className="overview-order-summary-amount"><OrderAmounts order={order} /></div>
+        <div role="group" aria-label="收款状态"><PaymentResult order={order} /></div>
+        <div role="group" aria-label="通知状态"><NotificationResult order={order} /></div>
+      </div>
+      <OrderMeta order={order} showSite={showSite} />
+      <OrderTimes order={order} />
+      <ItemSeparator className="overview-order-summary-separator" aria-hidden="true" />
+    </ItemContent>
+  );
+}
+
 export function RecentOrders({ orders }: { orders: readonly AdminOrderSummary[] }) {
   const { clientId } = useWorkspace();
   if (!orders.length) {
@@ -107,18 +142,11 @@ export function RecentOrders({ orders }: { orders: readonly AdminOrderSummary[] 
       cell: (order, context) => (
         <ListIdentity
           meta={(order.product_name !== order.merchant_order_no || !clientId) && (
-            <ListMeta>
-              {order.product_name !== order.merchant_order_no && (
-                <span className="list-code" title={order.merchant_order_no}>{order.merchant_order_no}</span>
-              )}
-              {!clientId && <SiteIdentity clientId={order.api_client_id} name={order.site_name} />}
-            </ListMeta>
+            <OrderMeta order={order} showSite={!clientId} />
           )}
           description={context.showInSummary("created_at") && <OrderTimes order={order} />}
         >
-          <Link data-row-link className="list-primary-link" title={order.product_name} to={"/orders/" + order.order_id}>
-            {order.product_name}
-          </Link>
+          <OrderProductLink order={order} />
         </ListIdentity>
       ),
     },
@@ -172,13 +200,7 @@ export function RecentOrders({ orders }: { orders: readonly AdminOrderSummary[] 
         embedded
         columnsMenu={false}
         tableClassName="overview-orders-table"
-        renderSummary={(order, context) => (
-          <ListSummary identity={columns[0]!.cell(order, context)} aside={<OrderAmounts order={order} />}>
-            <ListSummaryField label="收款状态"><PaymentResult order={order} /></ListSummaryField>
-            <ListSummaryField label="通知状态"><NotificationResult order={order} /></ListSummaryField>
-            <ListSummaryField label="时间"><OrderTimes order={order} /></ListSummaryField>
-          </ListSummary>
-        )}
+        renderSummary={(order) => <RecentOrderSummary order={order} showSite={!clientId} />}
       />
     </div>
   );
