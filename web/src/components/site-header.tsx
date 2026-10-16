@@ -10,6 +10,14 @@ import { refreshOperationalData } from "@/api/client";
 import { ThemeControl } from "@/theme";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { TestPaymentButton } from "@/components/test-payment-provider";
 import { useState } from "react";
 import { useMeasuredHeight } from "@/components/list-layout";
@@ -37,46 +45,29 @@ export function SiteHeader({
           orientation="vertical"
           className="mx-2 h-4 data-vertical:self-auto"
         />
-        <nav aria-label="页面路径" className="min-w-0 flex-1">
-          <ol className="flex min-w-0 items-center gap-2 text-sm">
+        <Breadcrumb aria-label="页面路径" className="min-w-0 flex-1">
+          <BreadcrumbList className="min-w-0 flex-nowrap">
           {scope.clientId && (
-            <li className="hidden shrink-0 items-center gap-2 md:flex">
-              <Link
-                global
-                to="/"
-                className="text-muted-foreground"
-              >
-                全部网站
-              </Link>
-              <span
-                aria-hidden="true"
-                className="text-muted-foreground"
-              >
-                /
-              </span>
-            </li>
+            <>
+              <BreadcrumbItem className="hidden shrink-0 md:inline-flex">
+                <BreadcrumbLink render={<Link global to="/" />}>
+                  全部网站
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator className="hidden md:list-item" />
+            </>
           )}
-          <li
-            className="min-w-0 max-w-40 truncate text-muted-foreground sm:max-w-64"
-            title={workspaceName}
-          >
-            {workspaceName}
-          </li>
-          <li
-            aria-hidden="true"
-            className="shrink-0 text-muted-foreground"
-          >
-            /
-          </li>
-          <li
-            aria-current="page"
-            className="min-w-0 truncate font-medium"
-            title={title}
-          >
-            {title}
-          </li>
-          </ol>
-        </nav>
+          <BreadcrumbItem className="min-w-0 max-w-40 sm:max-w-64">
+            <span className="truncate" title={workspaceName}>{workspaceName}</span>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem className="min-w-0">
+            <BreadcrumbPage className="truncate" title={title}>
+              {title}
+            </BreadcrumbPage>
+          </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
         <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
           {overview && (
             <>
