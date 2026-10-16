@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "cn";
 import { dateTime, money } from "@/lib/format";
+import { ItemActions, ItemContent, ItemHeader, ItemTitle } from "@/components/ui/item";
 
 /** Shared typography for tables, overview rows and record summaries. */
 export function ListIdentity({
@@ -14,7 +15,7 @@ export function ListIdentity({
 }) {
   return (
     <div className="list-identity">
-      <div className="list-identity-title">{children}</div>
+      <ItemTitle className="list-identity-title">{children}</ItemTitle>
       {meta && <div className="list-identity-meta">{meta}</div>}
       {description && <div className="list-identity-description">{description}</div>}
     </div>
@@ -85,13 +86,13 @@ export function ListSummary({
   children?: ReactNode;
 }) {
   return (
-    <div className="list-summary">
-      <div className="list-summary-heading">
+    <ItemContent className="min-w-0 w-full">
+      <ItemHeader className="list-summary-heading">
         <div className="list-summary-identity">{identity}</div>
-        {aside && <div className="list-summary-aside">{aside}</div>}
-      </div>
+        {aside && <ItemActions className="list-summary-aside">{aside}</ItemActions>}
+      </ItemHeader>
       {children && <dl className="business-summary-fields">{children}</dl>}
-    </div>
+    </ItemContent>
   );
 }
 

@@ -168,7 +168,7 @@ export function OrderFacts({
   const payment =
     "payment" in order ? order.payment.status : order.payment_status;
   return (
-    <Item className="record-list-row" size="sm">
+    <Item className="record-list-row" size="xs">
       <ItemContent className="min-w-0">
         <ItemTitle className="record-list-title" title={order.product_name}>
           {linked ? (
@@ -179,10 +179,10 @@ export function OrderFacts({
             order.product_name
           )}
         </ItemTitle>
-        <ItemDescription className="record-list-meta line-clamp-none whitespace-normal wrap-anywhere">
+        <ItemDescription className="line-clamp-none whitespace-normal wrap-anywhere">
           所属网站：{order.site_name ?? "名称不可用"} · {order.api_client_id}
         </ItemDescription>
-        <ItemDescription className="record-list-meta wrap-anywhere">
+        <ItemDescription className="wrap-anywhere">
           {order.merchant_order_no} · <ListDateTime value={order.created_at} inline />
         </ItemDescription>
       </ItemContent>

@@ -1,5 +1,6 @@
 import { TableRow } from "./ui/table";
 import { Item } from "./ui/item";
+import { useListDensity, type ListDensity } from "./list-density";
 import { cn } from "cn";
 import {
   useRef,
@@ -128,12 +129,15 @@ export function LinkedSummaryRow({
   children,
   className,
   rowId,
+  density,
   "aria-label": ariaLabel,
-}: LinkedRowProps) {
+}: LinkedRowProps & { density?: ListDensity }) {
+  const preferredDensity = useListDensity();
   const feedback = useRowFeedback();
   return (
     <Item
       {...feedback}
+      size={(density ?? preferredDensity) === "compact" ? "xs" : "default"}
       className={cn(
         "business-summary-row min-w-0",
         linkedRowClassName,

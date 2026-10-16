@@ -121,7 +121,7 @@ function DefaultBusinessSummary<T>({
   );
   const fields = visible.filter((column) => column !== identity);
   return (
-    <ItemContent className="min-w-0 gap-3">
+    <ItemContent className="min-w-0">
       {identity && (
         <div
           className="business-summary-identity min-w-0"
@@ -327,7 +327,7 @@ function BusinessTableView<T extends RowData>({
             data-density={density}
           >
             {table.getRowModel().rows.map((row) => (
-              <LinkedSummaryRow key={row.id} rowId={row.id}>
+              <LinkedSummaryRow key={row.id} rowId={row.id} density={density}>
                 {renderSummary ? (
                   renderSummary(row.original, context)
                 ) : (

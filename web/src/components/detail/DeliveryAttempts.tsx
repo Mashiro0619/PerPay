@@ -7,7 +7,7 @@ import { ListDateTime, ListIdentity, ListSummary, ListSummaryField } from "@/com
 import { attemptResult } from "@/lib/detail-summary";
 import { label } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
-import { Item, ItemGroup } from "@/components/ui/item";
+import { Item, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
 import {
   Pagination,
   PaginationContent,
@@ -51,10 +51,10 @@ export function DeliveryAttempts({
           {isSummary ? (
             <ItemGroup className="record-list" data-density="compact" aria-labelledby={titleId}>
               {rows.length ? rows.map((attempt) => (
-                <Item key={attempt.attempt_id} className="record-list-row" size="sm" role="listitem">
+                <Item key={attempt.attempt_id} className="record-list-row" size="xs" role="listitem">
                   <ListSummary
-                    identity={<ListIdentity meta={<ListDateTime value={attempt.started_at} inline />}>第 {attempt.attempt_number} 次</ListIdentity>}
-                    aside={<span className="record-list-title">{label(attempt.outcome)}</span>}
+                    identity={<><ItemTitle>第 {attempt.attempt_number} 次</ItemTitle><ItemDescription><ListDateTime value={attempt.started_at} inline /></ItemDescription></>}
+                    aside={<ItemTitle className="record-list-title">{label(attempt.outcome)}</ItemTitle>}
                   >
                     <ListSummaryField label="HTTP / ACK">{attemptResult(attempt)}</ListSummaryField>
                   </ListSummary>

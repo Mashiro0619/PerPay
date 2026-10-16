@@ -133,7 +133,7 @@ function ComparisonContent({
             key={row.name}
             role="group"
             aria-label={row.name}
-            size="sm"
+            size="xs"
             className="record-list-row items-stretch"
             data-comparison-field
           >

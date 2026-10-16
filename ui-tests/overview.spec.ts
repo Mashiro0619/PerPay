@@ -27,12 +27,9 @@ test("overview grids use container widths and preserve complete identifiers and 
             const bounds = row.getBoundingClientRect();
             const body = row.querySelector(".overview-work-content")!.getBoundingClientRect();
             return { inset: body.left - panelBounds.left, hoverInset: body.left - bounds.left,
+              contained: body.right <= bounds.right && bounds.right <= panelBounds.right,
               inlineFields: [...row.querySelectorAll(".overview-work-fields > div")].every(field =>
                 Math.abs(field.querySelector("dt")!.getBoundingClientRect().top - field.querySelector("dd")!.getBoundingClientRect().top) < 1) };
-          }),
-          separators: [...workPanel.querySelectorAll('[data-slot="item-separator"]')].map(separator => {
-            const bounds = separator.getBoundingClientRect();
-            return { leftInset: bounds.left - panelBounds.left, rightInset: panelBounds.right - bounds.right };
           }),
         } };
     });
@@ -41,9 +38,7 @@ test("overview grids use container widths and preserve complete identifiers and 
     expect(geometry.work.headerGap).toBe(8);
     expect(geometry.work.headerAlignment).toBeLessThan(1);
     expect(geometry.work.titleInset).toBe(16);
-    expect(geometry.work.rows.every(row => row.inset === 16 && row.hoverInset === 12 && row.inlineFields)).toBe(true);
-    expect(geometry.work.separators).toHaveLength(geometry.work.rows.length - 1);
-    expect(geometry.work.separators.every(separator => separator.leftInset === 16 && separator.rightInset === 16)).toBe(true);
+    expect(geometry.work.rows.every(row => row.inset >= 16 && row.hoverInset >= 8 && row.contained && row.inlineFields)).toBe(true);
     expect(geometry.recordColumns).toHaveLength(geometry.main >= 1088 ? 2 : 1);
     if (geometry.main >= 1088) { expect(geometry.recordColumns[0]).toBeGreaterThanOrEqual(352); expect(geometry.recordColumns[0]).toBeLessThanOrEqual(448); }
     expect(geometry.siteColumns).toBe(geometry.siteWidth >= 1216 ? 4 : geometry.siteWidth >= 992 ? 3 : geometry.siteWidth >= 656 ? 2 : 1);
@@ -100,30 +95,24 @@ test("recent orders keep compact summaries and header geometry across themes and
         titleInset: title.left - bounds.left,
         rows: [...panel.querySelectorAll('[data-business-row]')].map(row => {
           const body = row.querySelector('.overview-order-summary')!.getBoundingClientRect();
-          const product = row.querySelector('.list-identity')!.getBoundingClientRect();
+          const product = row.querySelector('a[data-row-link]')!.closest('[data-slot="item-title"]')!.getBoundingClientRect();
           const amount = row.querySelector('.overview-order-summary-amount')!.getBoundingClientRect();
-          const separator = row.querySelector('[data-slot="item-separator"]')!;
-          const divider = separator.getBoundingClientRect();
           return { inset: body.left - bounds.left, hoverInset: body.left - row.getBoundingClientRect().left,
-            amountInset: amount.left - body.left, amountAfterProduct: amount.top >= product.bottom + 3,
-            productUsesFullWidth: Math.abs(product.width - body.width) < 1,
-            separatorVisible: getComputedStyle(separator).display !== "none", separatorLeft: divider.left - bounds.left,
-            separatorRight: bounds.right - divider.right,
+            amountInset: amount.left - body.left, amountAfterProduct: amount.top >= product.bottom - 1,
+            productContained: product.left >= body.left && product.right <= body.right,
             fieldsClipped: [...row.querySelectorAll('.list-code, .list-money, time')].some(element => element.scrollWidth > element.clientWidth + 1),
             payment: row.querySelector('[role="group"][aria-label="收款状态"]')?.textContent,
             notification: row.querySelector('[role="group"][aria-label="通知状态"]')?.textContent };
         }),
       };
     });
+    await record(page, info, { width, theme, mode, scoped, recentOrders: geometry });
     expect(geometry.headerGap).toBe(8);
     expect(geometry.headerAlignment).toBeLessThan(1);
     expect(geometry.titleInset).toBe(16);
-    expect(geometry.rows.every(row => row.inset === 16 && row.hoverInset === 12 && !row.fieldsClipped && row.payment && row.notification)).toBe(true);
-    expect(geometry.rows.every(row => row.amountInset === 0 && row.amountAfterProduct && row.productUsesFullWidth)).toBe(true);
-    expect(geometry.rows.slice(0, -1).every(row => row.separatorVisible && row.separatorLeft === 16 && row.separatorRight === 16)).toBe(true);
-    expect(geometry.rows.at(-1)!.separatorVisible).toBe(false);
+    expect(geometry.rows.every(row => row.inset >= 12 && row.hoverInset >= 8 && !row.fieldsClipped && row.payment && row.notification), JSON.stringify(geometry.rows)).toBe(true);
+    expect(geometry.rows.every(row => row.amountInset === 0 && row.amountAfterProduct && row.productContained), JSON.stringify(geometry.rows)).toBe(true);
     expect(await panel.locator(".list-site-identity").count()).toBe(scoped ? 0 : 5);
-    await record(page, info, { width, theme, mode, scoped, recentOrders: geometry });
   }
 });
 

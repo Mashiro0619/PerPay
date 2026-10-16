@@ -11,7 +11,7 @@ import {
 } from "@/components/list-primitives";
 import { SiteIdentity } from "@/components/site-identity";
 import { Badge } from "@/components/ui/badge";
-import { ItemContent, ItemSeparator } from "@/components/ui/item";
+import { ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 
 function OrderAmounts({ order }: { order: AdminOrderSummary }) {
@@ -68,18 +68,18 @@ function NotificationResult({ order }: { order: AdminOrderSummary }) {
 
 function OrderTimes({ order }: { order: AdminOrderSummary }) {
   return (
-    <div className="overview-order-times">
-      <div className="overview-order-time-entry">
+    <ItemDescription className="overview-order-times line-clamp-none">
+      <span className="overview-order-time-entry">
         <span className="overview-record-note">创建</span>
         <ListDateTime value={order.created_at} inline />
-      </div>
+      </span>
       {order.payment_confirmed_at && (
-        <div className="overview-order-time-entry">
+        <span className="overview-order-time-entry">
           <span className="overview-record-note">确认</span>
           <ListDateTime value={order.payment_confirmed_at} inline />
-        </div>
+        </span>
       )}
-    </div>
+    </ItemDescription>
   );
 }
 
@@ -91,30 +91,32 @@ function OrderProductLink({ order }: { order: AdminOrderSummary }) {
   );
 }
 
-function OrderMeta({ order, showSite }: { order: AdminOrderSummary; showSite: boolean }) {
+function OrderMeta({ order, showSite, summary = false }: { order: AdminOrderSummary; showSite: boolean; summary?: boolean }) {
   if (order.product_name === order.merchant_order_no && !showSite) return null;
-  return (
-    <ListMeta>
+  const content = (
+    <>
       {order.product_name !== order.merchant_order_no && (
         <span className="list-code" title={order.merchant_order_no}>{order.merchant_order_no}</span>
       )}
       {showSite && <SiteIdentity clientId={order.api_client_id} name={order.site_name} />}
-    </ListMeta>
+    </>
   );
+  return summary
+    ? <ItemDescription className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 line-clamp-none wrap-anywhere">{content}</ItemDescription>
+    : <ListMeta>{content}</ListMeta>;
 }
 
 function RecentOrderSummary({ order, showSite }: { order: AdminOrderSummary; showSite: boolean }) {
   return (
     <ItemContent className="overview-order-summary">
-      <ListIdentity><OrderProductLink order={order} /></ListIdentity>
-      <div className="overview-order-summary-progress">
+      <ItemTitle className="min-w-0 max-w-full line-clamp-2 wrap-anywhere"><OrderProductLink order={order} /></ItemTitle>
+      <ItemActions className="overview-order-summary-progress">
         <div className="overview-order-summary-amount"><OrderAmounts order={order} /></div>
         <div role="group" aria-label="收款状态"><PaymentResult order={order} /></div>
         <div role="group" aria-label="通知状态"><NotificationResult order={order} /></div>
-      </div>
-      <OrderMeta order={order} showSite={showSite} />
+      </ItemActions>
+      <OrderMeta order={order} showSite={showSite} summary />
       <OrderTimes order={order} />
-      <ItemSeparator className="overview-order-summary-separator" aria-hidden="true" />
     </ItemContent>
   );
 }

@@ -216,25 +216,25 @@ export function ManualCandidatePicker({
             {query.data.choices.length ? (
               <ItemGroup className="record-list" data-density="compact">
                 {query.data.choices.map((choice) => (
-                  <Item className="record-list-row" size="sm" key={choice.id} role="listitem">
+                  <Item className="record-list-row" size="xs" key={choice.id} role="listitem">
                     <ItemContent className="min-w-0">
                       <ItemTitle className="record-list-title" title={kind === "orders" ? choice.title : choice.summary}>
                         {kind === "orders" ? choice.title : choice.summary}
                       </ItemTitle>
                       {choice.website && (
-                        <ItemDescription className="record-list-meta line-clamp-none whitespace-normal wrap-anywhere">
+                        <ItemDescription className="line-clamp-none whitespace-normal wrap-anywhere">
                           所属网站：{choice.website}
                         </ItemDescription>
                       )}
-                      <ItemDescription className="record-list-meta">
+                      <ItemDescription>
                         <ListDateTime value={choice.occurredAt} inline />
                         {kind === "orders" && " · " + choice.summary}
                       </ItemDescription>
-                      <ItemDescription className="record-list-meta whitespace-normal wrap-anywhere">
+                      <ItemDescription className="whitespace-normal wrap-anywhere">
                         {choice.identifiers}
                       </ItemDescription>
                       {choice.recommendation?.amount_match && (
-                        <ItemDescription className="record-list-meta">
+                        <ItemDescription>
                           {choice.recommendation.time_window_overlap
                             ? "同金额 · 匹配时间窗口重叠，仍需核对"
                             : "同金额 · 时间不在匹配窗口内，请核对"}
