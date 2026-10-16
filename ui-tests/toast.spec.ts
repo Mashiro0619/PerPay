@@ -6,6 +6,7 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
   await page.setViewportSize({ width, height: 900 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   let settings: RuntimeSettings | undefined;
+  const savedRevisions: number[] = [];
   await page.route("**/api/admin/v1/settings", async route => {
     if (!settings) {
       const initial: RuntimeSettings = (await (await route.fetch()).json()).data;
@@ -18,8 +19,10 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
     await route.fulfill({ json: { data: settings } });
   });
   await page.route("**/api/admin/v1/settings/display", async route => {
-    const { revision: _revision, ...display } = route.request().postDataJSON();
-    settings = { ...settings!, display: { ...settings!.display, ...display }, revision: settings!.revision + 1 };
+    const { revision, ...display } = route.request().postDataJSON();
+    expect(revision).toBe(settings!.revision);
+    settings = { ...settings!, display: { ...settings!.display, ...display }, revision: revision + 1 };
+    savedRevisions.push(settings.revision);
     await route.fulfill({ json: { data: settings } });
   });
   const secret = "synthetic-toast-dialog-secret";
@@ -33,16 +36,36 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
   await page.evaluate(() => delete document.documentElement.dataset.perpayDemo);
   const name = page.getByRole("textbox", { name: "支付系统名称", exact: true });
   const save = page.getByRole("button", { name: "保存", exact: true });
+  const initialRevision = settings!.revision;
   await name.fill("通知验证一");
+  await page.clock.pauseAt(new Date(manifest.epoch + 60_000));
+  const firstEditor = await name.elementHandle();
   await save.click();
+  await expect.poll(async () => {
+    await page.clock.runFor(50);
+    return firstEditor!.evaluate(element => element.isConnected);
+  }).toBe(false);
+  await firstEditor!.dispose();
+  expect(savedRevisions).toEqual([initialRevision + 1]);
   const success = page.getByRole("dialog", { name: "已保存", exact: true });
   await expect(success).toBeVisible();
   await expect(page.getByRole("region", { name: "通知", exact: true })).toHaveCount(1);
-  await page.clock.runFor(3000);
+  await page.clock.runFor(1000);
   await name.fill("通知验证二");
+  await page.clock.runFor(600);
+  expect.soft(await success.count(), "editing the remounted form clears its previous success").toBe(0);
+  const secondEditor = await name.elementHandle();
   await save.click();
-  await expect(success).toHaveCount(1);
-  await page.clock.runFor(1500);
+  await expect.poll(async () => {
+    await page.clock.runFor(50);
+    return secondEditor!.evaluate(element => element.isConnected);
+  }).toBe(false);
+  await secondEditor!.dispose();
+  expect(savedRevisions).toEqual([initialRevision + 1, initialRevision + 2]);
+  // Snapshot while the first notification's deadline is still paused; retrying
+  // the count could hide duplicates by waiting for the older toast to expire.
+  expect(await success.count()).toBe(1);
+  await page.clock.runFor(3000);
   await expect(success).toBeVisible();
   await success.hover();
   await page.clock.runFor(5000);
@@ -51,6 +74,7 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
   await page.clock.runFor(5000);
   await expect(success).toBeHidden();
 
+  await page.clock.resume();
   await page.goto(manifest.origin + "/admin/settings/security");
   await page.evaluate(() => delete document.documentElement.dataset.perpayDemo);
   const trigger = page.getByRole("button", { name: "API 密钥操作", exact: true });

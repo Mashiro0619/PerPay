@@ -174,6 +174,7 @@ export default function Settings() {
                       section={section}
                       settings={data}
                       onSaved={updated}
+                      onFeedback={setSuccess}
                       secondaryAction={
                         section === "notifications" ? (
                           <NotificationKeyActions

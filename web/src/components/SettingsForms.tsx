@@ -238,6 +238,7 @@ export function SettingsEditor({
   section,
   settings,
   onSaved,
+  onFeedback,
   guided = false,
   submitLabel = "保存",
   secondaryAction,
@@ -246,6 +247,7 @@ export function SettingsEditor({
   section: ConfigurationSection;
   settings: RuntimeSettings;
   onSaved: (settings: RuntimeSettings, message?: string) => void;
+  onFeedback?: (message: string) => void;
   guided?: boolean;
   submitLabel?: string;
   secondaryAction?: ReactNode;
@@ -289,7 +291,9 @@ export function SettingsEditor({
     if (section === "notifications") draft.onChange();
   }, [notificationEnabled, guided, section]);
   const mounted = useRef(false);
-  const setSavedMessage = useSuccessToast();
+  const localFeedback = useSuccessToast();
+  // A parent that remounts this editor after saving keeps the same toast owner.
+  const setSavedMessage = onFeedback ?? localFeedback;
   const submitting = useRef(false);
   const canSave =
     guided ||
