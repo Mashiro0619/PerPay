@@ -104,7 +104,7 @@ export function OverviewWorkItems({ items }: { items: readonly AdminWorkItem[] }
                   </ItemActions>
                 </div>
               ) : (
-                <ItemDescription className="flex min-w-0 flex-wrap gap-2 line-clamp-none wrap-anywhere">
+                <ItemDescription className="line-clamp-none flex min-w-0 flex-wrap gap-2 wrap-anywhere">
                   <span>{orderId ? "订单摘要暂不可用" : "未关联订单"}</span>
                   {orderId && (
                     <Link

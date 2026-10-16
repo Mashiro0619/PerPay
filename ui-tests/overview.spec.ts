@@ -1,5 +1,6 @@
 import { test, expect, login, record } from "./fixtures";
-import { audit } from "./audit";
+import { audit, screenshot } from "./audit";
+import type { AdminWorkItem } from "../web/src/api/generated/types.gen";
 
 test.describe("touch overview links", () => {
   test.use({ hasTouch: true, isMobile: true });
@@ -28,6 +29,35 @@ test.describe("touch overview links", () => {
     }
   });
 });
+
+test("missing order summaries keep their reference fields separated", async ({ page, manifest }, info) => {
+  await page.route("**/api/admin/v1/work-items?*", async route => {
+    const body = await (await route.fetch()).json();
+    const item = (body.data as AdminWorkItem[]).find(item => item.order_summary && item.ledger_entry_id);
+    expect(item).toBeDefined();
+    await route.fulfill({ json: { ...body, data: [{ ...item!, order_summary: null }] } });
+  });
+  await login(page, manifest);
+  const list = page.getByRole("list", { name: "概览待办", exact: true });
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(list.getByText("订单摘要暂不可用", { exact: true })).toBeVisible();
+    const fields = list.locator('[data-slot="item-description"]').filter({ hasText: "订单摘要暂不可用" });
+    const spacing = await fields.evaluate(element => {
+      const children = [...element.children].map(child => child.getBoundingClientRect());
+      return children.slice(1).map((second, index) => {
+        const first = children[index]!;
+        const sameLine = Math.min(first.bottom, second.bottom) > Math.max(first.top, second.top);
+        return { sameLine, gap: sameLine ? second.left - first.right : second.top - first.bottom };
+      });
+    });
+    expect(spacing).toHaveLength(2);
+    expect(spacing.every(item => item.gap >= 4), JSON.stringify(spacing)).toBe(true);
+    await record(page, info, { width, missingOrderSummary: true, referenceSpacing: spacing });
+    await screenshot(page, info, "missing-order-summary-" + width);
+  }
+});
+
 test("overview grids use container widths and preserve complete identifiers and time groups", async ({ page, manifest }, info) => {
   await login(page, manifest);
   for (const width of [320, 390, 1024, 1366, 1920, 2560]) {
@@ -126,10 +156,19 @@ test("recent orders keep compact summaries and header geometry across themes and
           const body = row.querySelector('.overview-order-summary')!.getBoundingClientRect();
           const product = row.querySelector('a[data-row-link]')!.closest('[data-slot="item-title"]')!.getBoundingClientRect();
           const amount = row.querySelector('.overview-order-summary-amount')!.getBoundingClientRect();
+          const site = row.querySelector('.list-site-identity');
+          const merchant = site?.parentElement?.querySelector(':scope > .list-code');
+          const metadata = site && merchant ? (() => {
+            const first = merchant.getBoundingClientRect();
+            const second = site.getBoundingClientRect();
+            const sameLine = Math.min(first.bottom, second.bottom) > Math.max(first.top, second.top);
+            return { sameLine, gap: sameLine ? second.left - first.right : second.top - first.bottom };
+          })() : null;
           return { inset: body.left - bounds.left, hoverInset: body.left - row.getBoundingClientRect().left,
             amountInset: amount.left - body.left, amountAfterProduct: amount.top >= product.bottom - 1,
             productContained: product.left >= body.left && product.right <= body.right,
             fieldsClipped: [...row.querySelectorAll('.list-code, .list-money, time')].some(element => element.scrollWidth > element.clientWidth + 1),
+            metadata,
             payment: row.querySelector('[role="group"][aria-label="收款状态"]')?.textContent,
             notification: row.querySelector('[role="group"][aria-label="通知状态"]')?.textContent };
         }),
@@ -141,6 +180,9 @@ test("recent orders keep compact summaries and header geometry across themes and
     expect(geometry.titleInset).toBe(16);
     expect(geometry.rows.every(row => row.inset >= 12 && row.hoverInset >= 8 && !row.fieldsClipped && row.payment && row.notification), JSON.stringify(geometry.rows)).toBe(true);
     expect(geometry.rows.every(row => row.amountInset === 0 && row.amountAfterProduct && row.productContained), JSON.stringify(geometry.rows)).toBe(true);
+    const metadata = geometry.rows.flatMap(row => row.metadata ? [row.metadata] : []);
+    expect(metadata.length).toBe(scoped ? 0 : 5);
+    expect(metadata.every(item => item.gap >= (item.sameLine ? 4 : 1)), JSON.stringify(metadata)).toBe(true);
     expect(await panel.locator(".list-site-identity").count()).toBe(scoped ? 0 : 5);
   }
 });

@@ -102,7 +102,7 @@ function OrderMeta({ order, showSite, summary = false }: { order: AdminOrderSumm
     </>
   );
   return summary
-    ? <ItemDescription className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 line-clamp-none wrap-anywhere">{content}</ItemDescription>
+    ? <ItemDescription className="line-clamp-none flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 wrap-anywhere">{content}</ItemDescription>
     : <ListMeta>{content}</ListMeta>;
 }
 
