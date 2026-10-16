@@ -176,7 +176,7 @@ function DashboardContent() {
       </div>
       {!clientId && <SiteOverviewList range={range} />}
       <div className="overview-records">
-        <Card size="sm" className="overview-record-panel" role="region" aria-labelledby="overview-work-title">
+        <Card size="sm" className="overview-record-panel overview-work-panel" role="region" aria-labelledby="overview-work-title">
           <CardHeader className="overview-records-header">
             <CardTitle id="overview-work-title" role="heading" aria-level={2} aria-label={clientId ? "本站待办" : "全局待办"} className="flex items-center gap-2">
               {clientId ? "本站待办" : "全局待办"}

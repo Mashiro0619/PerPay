@@ -105,6 +105,7 @@ describe("overview work item context", () => {
       }),
     ]);
     const rows = screen.getAllByRole("listitem");
+    expect(screen.queryByRole("separator")).not.toBeInTheDocument();
     expect(within(rows[0]!).getByRole("link", { name: "查看订单：专业版订阅" })).toBeVisible();
     expect(within(rows[0]!).getByText("2026101110300010000001")).toBeVisible();
     expect(within(rows[0]!).getByLabelText("应付金额 ¥199.01")).toBeVisible();
