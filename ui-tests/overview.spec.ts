@@ -1,4 +1,33 @@
 import { test, expect, login, record } from "./fixtures";
+import { audit } from "./audit";
+
+test.describe("touch overview links", () => {
+  test.use({ hasTouch: true, isMobile: true });
+  test("keeps independent reminder links reachable at 320 and 390 pixels", async ({ page, manifest }, info) => {
+    await login(page, manifest);
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(manifest.origin + "/admin/");
+      const list = page.getByRole("list", { name: "概览待办", exact: true });
+      await expect(list.getByRole("link").first()).toBeVisible();
+      const targets = await list.getByRole("link").evaluateAll(links => links.map(link => {
+        const bounds = link.getBoundingClientRect();
+        let top = bounds.top, bottom = bounds.bottom;
+        for (let parent = link.parentElement; parent; parent = parent.parentElement) {
+          if (getComputedStyle(parent).overflowY === "visible") continue;
+          const clip = parent.getBoundingClientRect();
+          top = Math.max(top, clip.top);
+          bottom = Math.min(bottom, clip.bottom);
+        }
+        return { label: link.getAttribute("aria-label") ?? link.textContent, width: bounds.width, height: bottom - top };
+      }));
+      expect(targets.length).toBeGreaterThan(0);
+      expect(targets.filter(target => target.width < 44 || target.height < 44)).toEqual([]);
+      await record(page, info, { width, touchTargets: targets });
+      await audit(page, info, "overview-touch-" + width);
+    }
+  });
+});
 test("overview grids use container widths and preserve complete identifiers and time groups", async ({ page, manifest }, info) => {
   await login(page, manifest);
   for (const width of [320, 390, 1024, 1366, 1920, 2560]) {

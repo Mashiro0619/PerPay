@@ -218,7 +218,6 @@ describe("order detail work surface", () => {
     ).not.toBeInTheDocument();
     const user = userEvent.setup();
     const historyTrigger = screen.getByRole("button", { name: "异常历史（1）" });
-    expect(historyTrigger).not.toHaveClass("hover:underline");
     expect(historyTrigger).toHaveClass("focus-visible:ring-3");
     expect(historyTrigger).toHaveAttribute("aria-expanded", "false");
     await user.click(historyTrigger);

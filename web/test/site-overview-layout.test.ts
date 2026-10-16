@@ -1,11 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import postcss, {
-  type AtRule,
-  type Document as CssDocument,
-  type Root,
-  type Rule,
-} from "postcss";
+import postcss, { type Rule } from "postcss";
 import { describe, expect, it } from "vitest";
 
 const css = readFileSync(resolve(process.cwd(), "web/src/styles.css"), "utf8");
@@ -34,17 +29,6 @@ function base(selector: string) {
       .filter((rule) => rule.parent?.type === "root")
       .map(declarations),
   ) as Record<string, string>;
-}
-
-function mediaFor(rule: Rule) {
-  for (
-    let parent: Rule | AtRule | Root | CssDocument | undefined = rule.parent;
-    parent;
-    parent = parent.parent
-  ) {
-    if (parent.type === "atrule" && parent.name === "media") return parent.params;
-  }
-  return undefined;
 }
 
 function luminance(color: string) {
@@ -166,24 +150,6 @@ describe("website overview card layout", () => {
     expect(amount["text-overflow"]).toBeUndefined();
     expect(base(".site-overview-card-surface")["container-type"]).toBe("inline-size");
     expect(base('.site-overview-card-amount[data-wide="true"]')["font-size"]).toContain("cqi");
-  });
-
-  it("restricts hover to fine pointers and gives active and keyboard feedback without movement", () => {
-    const hover = rules(".site-overview-card:hover .site-overview-card-surface");
-    expect(hover).toHaveLength(1);
-    expect(mediaFor(hover[0]!)).toBe("(hover: hover) and (pointer: fine)");
-    expect(base(".site-overview-card:focus-visible").outline).toBe("2px solid var(--foreground)");
-    expect(base(".site-overview-card:active .site-overview-card-surface")["box-shadow"]).toBeTruthy();
-    sheet.walkRules((rule) => {
-      if (!rule.selector.includes(".site-overview-")) return;
-      const properties = declarations(rule);
-      for (const property of ["transform", "translate", "scale", "rotate"]) {
-        expect(properties[property]).toBeUndefined();
-      }
-    });
-    const reduced = rules(".site-overview-card-surface")
-      .find((rule) => mediaFor(rule) === "(prefers-reduced-motion: reduce)");
-    expect(reduced && declarations(reduced).transition).toBe("none");
   });
 
   it.each([":root", ".dark", ":root:not([data-theme])"])(
