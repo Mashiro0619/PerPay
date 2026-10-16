@@ -34,35 +34,42 @@ for (const theme of ["light", "dark"] as const) test(`${theme}: keyboard focus i
   expect(Math.min(...focus.contrasts)).toBeGreaterThanOrEqual(3);
   await record(page, info, { focus });
 
-  for (const width of [390, 1440]) {
+  for (const width of [320, 390, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(manifest.origin + "/admin/");
-    const link = page.locator(".overview-work-content [data-row-link]").first();
-    await link.focus();
-    await page.keyboard.press("Shift+Tab");
-    await page.keyboard.press("Tab");
-    await expect(link).toBeFocused();
-    const indicator = await link.evaluate(element => {
-      const style = getComputedStyle(element);
-      const bounds = element.getBoundingClientRect();
-      const width = parseFloat(style.outlineWidth);
-      const extent = Math.max(0, width + parseFloat(style.outlineOffset));
-      const ring = { left: bounds.left - extent, top: bounds.top - extent, right: bounds.right + extent, bottom: bounds.bottom + extent };
-      const clippedBy = [];
-      for (let parent = element.parentElement; parent; parent = parent.parentElement) {
-        const clip = parent.getBoundingClientRect();
-        const overflow = getComputedStyle(parent);
-        const clippedX = overflow.overflowX !== "visible" && (ring.left < clip.left - 1 || ring.right > clip.right + 1);
-        const clippedY = overflow.overflowY !== "visible" && (ring.top < clip.top - 1 || ring.bottom > clip.bottom + 1);
-        if (clippedX || clippedY) clippedBy.push({ slot: parent.getAttribute("data-slot"), clippedX, clippedY });
-      }
-      return { visible: element.matches(":focus-visible"), style: style.outlineStyle, width, clippedBy };
-    });
-    expect(indicator.visible).toBe(true);
-    expect(indicator.style).toBe("solid");
-    expect(indicator.width).toBeGreaterThanOrEqual(2);
-    expect(indicator.clippedBy).toEqual([]);
-    await record(page, info, { viewportWidth: width, overviewLinkFocus: indicator });
-    await screenshot(page, info, "overview-keyboard-" + width);
+    const orders = page.getByRole("region", { name: "最近订单", exact: true }).locator("a[data-row-link]");
+    const links = [
+      { name: "work-item", link: page.locator(".overview-work-content [data-row-link]").first() },
+      { name: "recent-order", link: orders.nth(0) },
+      { name: "long-order", link: orders.nth(1) },
+    ];
+    for (const { name, link } of links) {
+      await link.focus();
+      await page.keyboard.press("Shift+Tab");
+      await page.keyboard.press("Tab");
+      await expect(link).toBeFocused();
+      const indicator = await link.evaluate(element => {
+        const style = getComputedStyle(element);
+        const bounds = element.getBoundingClientRect();
+        const width = parseFloat(style.outlineWidth);
+        const extent = Math.max(0, width + parseFloat(style.outlineOffset));
+        const ring = { left: bounds.left - extent, top: bounds.top - extent, right: bounds.right + extent, bottom: bounds.bottom + extent };
+        const clippedBy = [];
+        for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+          const clip = parent.getBoundingClientRect();
+          const overflow = getComputedStyle(parent);
+          const clippedX = overflow.overflowX !== "visible" && (ring.left < clip.left - 1 || ring.right > clip.right + 1);
+          const clippedY = overflow.overflowY !== "visible" && (ring.top < clip.top - 1 || ring.bottom > clip.bottom + 1);
+          if (clippedX || clippedY) clippedBy.push({ slot: parent.getAttribute("data-slot"), clippedX, clippedY });
+        }
+        return { visible: element.matches(":focus-visible"), style: style.outlineStyle, width, clippedBy };
+      });
+      expect(indicator.visible).toBe(true);
+      expect(indicator.style).toBe("solid");
+      expect(indicator.width).toBeGreaterThanOrEqual(2);
+      expect(indicator.clippedBy).toEqual([]);
+      await record(page, info, { viewportWidth: width, target: name, overviewLinkFocus: indicator });
+      await screenshot(page, info, `overview-keyboard-${width}-${name}`);
+    }
   }
 });

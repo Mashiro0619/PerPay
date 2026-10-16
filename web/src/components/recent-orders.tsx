@@ -109,7 +109,7 @@ function OrderMeta({ order, showSite, summary = false }: { order: AdminOrderSumm
 function RecentOrderSummary({ order, showSite }: { order: AdminOrderSummary; showSite: boolean }) {
   return (
     <ItemContent className="overview-order-summary">
-      <ItemTitle className="min-w-0 max-w-full line-clamp-2 wrap-anywhere"><OrderProductLink order={order} /></ItemTitle>
+      <ItemTitle className="list-identity-title"><OrderProductLink order={order} /></ItemTitle>
       <ItemActions className="overview-order-summary-progress">
         <div className="overview-order-summary-amount"><OrderAmounts order={order} /></div>
         <div role="group" aria-label="收款状态"><PaymentResult order={order} /></div>
