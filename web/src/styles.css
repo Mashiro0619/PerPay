@@ -692,6 +692,8 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .overview-orders-panel > .overview-records-header > [data-slot="card-action"] { grid-row: var(--overview-orders-action-row, 1 / span 2); align-self: var(--overview-orders-action-align, start); }
 .overview-orders [data-list-layout="summary"] > .business-table-surface { overflow: visible; }
 .overview-order-summary { min-width: 0; }
+.overview-work-list a[data-internal-link],
+.overview-orders a[data-internal-link] { text-decoration-line: none; }
 .overview-order-summary-amount { display: flex; min-width: 0; max-width: 100%; flex: 0 1 auto; }
 .overview-order-summary-progress { min-width: 0; flex-wrap: wrap; }
 .overview-order-summary-progress:has(.overview-order-money, .list-money[data-wide="true"]) > .overview-order-summary-amount { flex-basis: 100%; }
