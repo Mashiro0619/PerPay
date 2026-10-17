@@ -365,8 +365,8 @@ describe("business websites in the sidebar", () => {
     expect(within(nav).getByRole("link", { name: "同名网站 · bbbbbbbb" })).toHaveAttribute("href", "/sites/site_bbbbbbbb-next/orders");
     const longLink = within(nav).getByRole("link", { name: new RegExp(longName) });
     expect(within(longLink).getByText(longName)).toHaveClass("truncate");
-    expect(within(nav).getByTitle(longName)).toBeInTheDocument();
-    expect(within(longLink).getByText("暂停接单")).toBeVisible();
+    expect(longLink).toHaveAccessibleName(longName);
+    expect(longLink).toHaveAccessibleDescription("暂停接单 · 通知关闭");
   });
 
   it("retries an initial list failure locally while keeping the current workspace usable", async () => {

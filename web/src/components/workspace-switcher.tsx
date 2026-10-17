@@ -2,7 +2,7 @@ import { siteChoiceLabel } from "@/lib/site-choice-label";
 import { useEffect, useId, useMemo, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { parsePath, useLocation } from "react-router";
-import { Check, ChevronRight, Globe } from "lucide-react";
+import { BellOff, Check, ChevronRight, CirclePause, Globe } from "lucide-react";
 import { api, result } from "@/api/client";
 import { useNavigationWorkspace } from "@/workspace";
 import { Link } from "@/navigation";
@@ -13,7 +13,8 @@ import {
 } from "@/lib/navigation-selection";
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { InlineEmpty } from "@/components/admin-empty";
 import { ErrorNotice, Loading } from "@/components/request-state";
 import {
@@ -104,11 +105,12 @@ export function WorkspaceSwitcher({
   const metadataError = clientId && isGlobalNavigationPage(pathname) ? site?.error : null;
 
   const menu = (
-        <SidebarMenuSub className={icon ? "mx-0 border-0 px-0" : undefined} aria-label="业务网站列表">
+        <SidebarMenuSub className="mx-0 translate-x-0 border-0 px-0 py-1" aria-label="业务网站列表">
           <SidebarMenuSubItem>
             <SidebarMenuSubButton
               isActive={!clientId}
               aria-current={!clientId ? "location" : undefined}
+              className="workspace-site-choice h-8 translate-x-0"
               render={
                 <Link
                   global
@@ -121,28 +123,28 @@ export function WorkspaceSwitcher({
                 />
               }
             >
+              <Check aria-hidden="true" className={cn(clientId && "invisible")} />
               <span className="min-w-0 flex-1 truncate">全部网站</span>
-              {!clientId && <Check aria-hidden="true" />}
             </SidebarMenuSubButton>
           </SidebarMenuSubItem>
           {entries.map(value => {
             const label = siteChoiceLabel(value, entries);
             const selected = value.client_id === clientId;
             const href = switchWorkspaceHref(location, value.client_id);
-            const hasStatus = value.configuration.accepting_orders === false ||
-              value.configuration.notifications_enabled === false;
+            const paused = value.configuration.accepting_orders === false;
+            const notificationsOff = value.configuration.notifications_enabled === false;
+            const status = [paused && "暂停接单", notificationsOff && "通知关闭"].filter(Boolean).join(" · ");
+            const hasStatus = Boolean(status);
             const statusId = hasStatus
               ? `${currentNameId}-${encodeURIComponent(value.client_id)}-status`
               : undefined;
-            return (
-              <SidebarMenuSubItem key={value.client_id}>
+            const choice = (
                 <SidebarMenuSubButton
                   isActive={selected}
                   aria-label={label}
                   aria-describedby={statusId}
                   aria-current={selected ? "location" : undefined}
-                  className="h-auto min-h-7 py-1"
-                  title={label}
+                  className="workspace-site-choice h-8 translate-x-0"
                   render={
                     <Link
                       global
@@ -155,21 +157,30 @@ export function WorkspaceSwitcher({
                     />
                   }
                 >
-                  <span className="flex min-w-0 flex-1 flex-col gap-1">
-                    <span className="min-w-0 truncate">{label}</span>
-                    {hasStatus && (
-                      <span id={statusId} className="flex flex-wrap gap-1">
-                        {value.configuration.accepting_orders === false && (
-                          <Badge variant="outline">暂停接单</Badge>
-                        )}
-                        {value.configuration.notifications_enabled === false && (
-                          <Badge variant="outline">通知关闭</Badge>
-                        )}
-                      </span>
-                    )}
-                  </span>
-                  {selected && <Check aria-hidden="true" />}
+                  <Check aria-hidden="true" className={cn(!selected && "invisible")} />
+                  <span className="min-w-0 flex-1 truncate">{label}</span>
+                  {hasStatus && (
+                    <span aria-hidden="true" className="flex shrink-0 items-center gap-1.5 text-muted-foreground [&>svg]:size-3.5">
+                      {paused && <CirclePause />}
+                      {notificationsOff && <BellOff />}
+                    </span>
+                  )}
                 </SidebarMenuSubButton>
+            );
+            return (
+              <SidebarMenuSubItem key={value.client_id}>
+                {hasStatus ? (
+                  <Tooltip>
+                    <TooltipTrigger render={choice} />
+                    <TooltipContent role="tooltip" side="right" align="start">
+                      <span className="flex min-w-0 flex-col gap-1">
+                        <span className="break-words">{label}</span>
+                        <span>{status}</span>
+                      </span>
+                    </TooltipContent>
+                  </Tooltip>
+                ) : choice}
+                {hasStatus && <span id={statusId} className="sr-only">{status}</span>}
               </SidebarMenuSubItem>
             );
           })}
@@ -243,26 +254,24 @@ export function WorkspaceSwitcher({
       <CollapsibleTrigger
         render={
           <SidebarMenuButton
-            size="lg"
             tooltip="业务网站"
+            className="pointer-coarse:min-h-11"
             aria-label={open ? "收起业务网站" : "展开业务网站"}
             aria-describedby={currentNameId}
           />
         }
       >
         <Globe />
-        <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
-          <span className="w-full truncate">业务网站</span>
-          <span
-            id={currentNameId}
-            data-current-workspace
-            className="w-full min-w-0 truncate text-xs text-muted-foreground"
-            title={selectedName}
-          >
-            {selectedName}
-          </span>
+        <span className="shrink-0">业务网站</span>
+        <span
+          id={currentNameId}
+          data-current-workspace
+          className="min-w-0 flex-1 truncate text-right text-xs text-muted-foreground"
+          title={selectedName}
+        >
+          {selectedName}
         </span>
-        <ChevronRight aria-hidden="true" className="ml-auto transition-transform group-data-open/collapsible:rotate-90" />
+        <ChevronRight aria-hidden="true" className="transition-transform group-data-open/collapsible:rotate-90" />
       </CollapsibleTrigger>
       {metadata}
       <CollapsibleContent>

@@ -180,6 +180,7 @@
   [data-slot="toggle-group-item"],
   [data-slot="tabs-trigger"],
   [data-slot="sidebar-menu-button"],
+  .workspace-site-choice,
   [data-slot="dropdown-menu-item"],
   [data-slot="dropdown-menu-checkbox-item"],
   [data-slot="dropdown-menu-radio-item"],
