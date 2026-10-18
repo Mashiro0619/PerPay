@@ -118,7 +118,7 @@ export function TestPaymentResult({
         ? {
             title: "收款需要核查",
             description:
-              "当前收款存在争议，请查看订单与收款关联记录，不要重复付款。",
+              "当前收款有争议，请查看订单与收款关联记录，不要重复付款。",
           }
         : order.checkout.status !== "OPEN"
           ? {

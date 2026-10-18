@@ -4,7 +4,7 @@ import { CircleCheck, CircleDashed, CircleAlert, Clock3 } from "lucide-react";
 const states = {
   CONFIRMED: ["收款已确认", "success", CircleCheck],
   UNPAID: ["待付款", "secondary", CircleDashed],
-  DISPUTED: ["需核对", "destructive", CircleAlert],
+  DISPUTED: ["收款有争议", "destructive", CircleAlert],
   OPEN: ["开放中", "outline"],
   CLOSED: ["已关闭", "secondary"],
   EXPIRED: ["已过期", "secondary"],

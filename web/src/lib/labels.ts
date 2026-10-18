@@ -7,7 +7,7 @@ const labels: Record<string, string> = {
   DUPLICATE_EXTERNAL_ID: "外部流水号重复", MISSING_EXTERNAL_ID: "缺少外部流水号", INVALID_AMOUNT: "流水金额无法解析",
   INVALID_TIMESTAMP: "流水时间无法解析", INVALID_DIRECTION: "收支方向无效", INVALID_SHAPE: "流水结构无效",
   CREATED: "订单已创建", CHECKOUT_CLOSED: "收银台已关闭", CHECKOUT_EXPIRED: "收银台已过期", PAYMENT_CONFIRMED: "付款已确认",
-  PAYMENT_DISPUTED: "付款存在争议", REFUND_UPDATED: "退款记录已更新", ACKNOWLEDGED: "业务方已确认", HTTP_ERROR: "HTTP 错误",
+  PAYMENT_DISPUTED: "收款有争议", REFUND_UPDATED: "退款记录已更新", ACKNOWLEDGED: "业务方已确认", HTTP_ERROR: "HTTP 错误",
   NETWORK_ERROR: "网络连接失败", TIMEOUT: "请求超时", INVALID_ACKNOWLEDGEMENT: "确认响应无效", IN_FLIGHT: "投递中",
   STARTED: "投递已开始", RETRYABLE_FAILURE: "可重试的投递失败", PERMANENT_FAILURE: "不可重试的投递失败", OUTCOME_UNKNOWN: "投递结果未知",
   KEEP_EXISTING: "保留已有流水", ACKNOWLEDGE_ISOLATED: "确认隔离记录", CONFIRM_VARIANT: "原始页变更已确认",

@@ -139,7 +139,7 @@ export function exportOrders(
   const payment: Record<string, string> = {
     UNPAID: "待付款",
     CONFIRMED: "收款已确认",
-    DISPUTED: "需核对",
+    DISPUTED: "收款有争议",
   };
   const lifecycle: Record<string, string> = {
     OPEN: "开放中",

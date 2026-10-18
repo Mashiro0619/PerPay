@@ -199,7 +199,7 @@ describe("overview order progress", () => {
       payment: { ...recent.payment, status: "DISPUTED" },
       refund_mark: { ...recent.refund_mark, marked: true },
     }]);
-    expect(screen.getByText("需核对")).toBeVisible();
+    expect(screen.getByText("收款有争议")).toBeVisible();
     expect(screen.getByText("已标记退款")).toBeVisible();
     expect(screen.getByTitle("2026/10/11 10:32（北京时间）")).toBeVisible();
   });

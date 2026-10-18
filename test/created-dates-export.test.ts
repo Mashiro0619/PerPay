@@ -291,7 +291,7 @@ describe("creation dates and order CSV", () => {
       const csv = exportOrders(owner, input, day + 70000);
       assert.ok(csv.includes("'="));
       assert.ok(csv.includes('"19.99","20.01",""'));
-      assert.ok(csv.includes('"0.00","CNY","需核对","已过期"'));
+      assert.ok(csv.includes('"0.00","CNY","收款有争议","已过期"'));
       assert.ok(csv.includes("2026-10-02 00:00:01"));
       assert.ok(!csv.includes("outside"));
       assert.equal(

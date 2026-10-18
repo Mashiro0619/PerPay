@@ -53,7 +53,7 @@ it("exports one snapshot while another connection commits state changes", async 
         now,
       );
       const confirmed = (csv.match(/收款已确认/g) ?? []).length;
-      const disputed = (csv.match(/需核对/g) ?? []).length;
+      const disputed = (csv.match(/收款有争议/g) ?? []).length;
       assert.equal(confirmed + disputed, 1000);
       assert.ok(
         confirmed === 1000 || disputed === 1000,
