@@ -248,7 +248,7 @@ paths:
         - name: api_client_id
           in: query
           required: false
-          description: Restrict results to this website; pagination is bound to the filter.
+          description: "Restrict results to this site; pagination is bound to the filter."
           schema: { type: string, minLength: 1, maxLength: 64 }
         - $ref: '#/components/parameters/RequestId'
         - name: range
@@ -269,10 +269,10 @@ paths:
     get:
       tags: [System]
       operationId: getAdministratorWorkItemSummary
-      summary: Count current actionable reminders, optionally scoped by website
+      summary: "Count current actionable reminders, optionally scoped by site"
       description: >-
-        Counts the complete ACTIVE work-item view before pagination, without date or keyword
-        filtering. Website scope includes only explicitly owned order reminders; shared conflicts
+        Counts the complete ACTIVE reminder view before pagination, without date or keyword
+        filtering. Site scope includes only explicitly owned order reminders; shared conflicts
         and unallocated exceptions remain global. Read failures return an error, never a zero count.
       security:
         - AdminSessionCookie: []
@@ -281,7 +281,7 @@ paths:
         - name: api_client_id
           in: query
           required: false
-          description: Omit for global totals; otherwise use the same website scope as the work-item list.
+          description: "Omit for global totals; otherwise use the same site scope as the reminder list."
           schema: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$' }
       responses:
         '200':
@@ -305,19 +305,19 @@ paths:
     get:
       tags: [System]
       operationId: listAdministratorWorkItems
-      summary: Page through active or dismissed administrator reminders
+      summary: "Page through active or ignored administrator reminders"
       description: |
         Searches item and related business IDs, product name, external event ID, notification URL and error/type codes before paging. ignored_at sorting is valid only for IGNORED; priority sorting is valid only for ACTIVE. New cursors bind keyword, sort, type and visibility; old cursors only with original defaults. Pagination is a live list, not a persistent database snapshot.
-        ACTIVE combines undismissed open financial exceptions, open ledger conflicts, retry-wait
+        ACTIVE combines not ignored open financial exceptions, open ledger conflicts, retry-wait
         notifications and latest dead-letter notifications from every retained provider generation.
         Legacy UNMATCHED_DEBIT and UNLINKED_REFUND warnings are excluded without changing their status.
         One paged projection and a bounded order-summary lookup drive each page and home-page reminders. By default ACTIVE sorts by descending
-        actionable time, type and resource ID; IGNORED sorts by dismissal time, type and resource ID.
+        actionable time, type and resource ID; IGNORED sorts by ignoring time, type and resource ID.
         priority desc puts financial exceptions, ledger conflicts and dead-letter notifications before automatic retries,
         then sorts by descending actionable time, type and resource ID before paging. priority asc reverses that tuple.
         IGNORED retains resolved or acknowledged records
         with ended=true and keeps ignored notifications visible during subsequent pending/leased retries.
-        Each item links to its original detailed resource endpoint. Dismissal changes neither financial
+        Each item links to its original detailed resource endpoint. Ignoring changes neither financial
         facts nor conflict constraints and never stops notification retries.
       security:
         - AdminSessionCookie: []
@@ -380,8 +380,8 @@ paths:
     post:
       tags: [System]
       operationId: ignoreAllAdministratorWorkItems
-      summary: Dismiss every current reminder in the selected category, across all pages
-      description: Dismisses reminders only. Underlying evidence, conflicts and notification retries are unchanged. The operation UUID replays its original result without dismissing newer items.
+      summary: "Ignore every current reminder in the selected category, across all pages"
+      description: "Ignores reminders only. Underlying evidence, conflicts and notification retries are unchanged. The operation UUID replays its original result without ignoring newer items."
       x-perpay-requires-same-origin: true
       security:
         - AdminSessionCookie: []
@@ -412,7 +412,7 @@ paths:
     post:
       tags: [System]
       operationId: restoreAdministratorWorkItem
-      summary: Restore a dismissed reminder without changing its underlying record
+      summary: "Restore a ignored reminder without changing its underlying record"
       x-perpay-requires-same-origin: true
       security:
         - AdminSessionCookie: []
@@ -1352,7 +1352,7 @@ paths:
         - name: api_client_id
           in: query
           required: false
-          description: Restrict results to this website; pagination is bound to the filter.
+          description: "Restrict results to this site; pagination is bound to the filter."
           schema: { type: string, minLength: 1, maxLength: 64 }
         - $ref: '#/components/parameters/CreatedFrom'
         - $ref: '#/components/parameters/CreatedTo'
@@ -1416,7 +1416,7 @@ paths:
         - name: api_client_id
           in: query
           required: true
-          description: Website owning this merchant order number; no default website fallback.
+          description: "Site owning this merchant order number; no default site fallback."
           schema: { type: string, minLength: 1, maxLength: 64 }
         - $ref: '#/components/parameters/RequestId'
         - name: merchantOrderNo
@@ -1533,7 +1533,7 @@ paths:
       tags: [Ledger Operations]
       operationId: listLedgerConflicts
       summary: Page through retained ledger conflicts
-      description: OPEN (the default) returns only conflicts whose reminders have not been ignored. The reminder filter is applied before pagination; ALL, RESOLVED and IGNORED retain their underlying ledger-status semantics and include ignored reminders. IGNORED is the isolated ledger-conflict status, not reminder visibility. Ignoring a reminder does not resolve the conflict or alter runtime counts. Use the work-items API with type=LEDGER_CONFLICT and visibility=IGNORED to review or restore ignored reminders. Cursors are bound to the selected status and provider account and cannot be reused with another filter.
+      description: "OPEN (the default) returns only conflicts whose reminders have not been ignored. The reminder filter is applied before pagination; ALL, RESOLVED and IGNORED retain their underlying ledger-status semantics and include ignored reminders. IGNORED is the isolated ledger-conflict status, not reminder visibility. Ignoring a reminder does not resolve the conflict or alter runtime counts. Use the reminders API with type=LEDGER_CONFLICT and visibility=IGNORED to review or restore ignored reminders. Cursors are bound to the selected status and provider account and cannot be reused with another filter."
       security:
         - AdminSessionCookie: []
       parameters:
@@ -1802,7 +1802,7 @@ paths:
       tags: [Reconciliation]
       operationId: listOpenFinancialExceptions
       summary: Page through open financial exceptions
-      description: Returns only open exceptions whose reminders have not been ignored for the selected provider account (the active account by default). The reminder filter and exclusion of historical UNMATCHED_DEBIT and UNLINKED_REFUND warnings are applied before pagination. Underlying exception state, detail endpoints and runtime counts are unchanged by reminder dismissal. Use the work-items API with type=FINANCIAL_EXCEPTION and visibility=IGNORED to review or restore ignored reminders.
+      description: "Returns only open exceptions whose reminders have not been ignored for the selected provider account (the active account by default). The reminder filter and exclusion of historical UNMATCHED_DEBIT and UNLINKED_REFUND warnings are applied before pagination. Underlying exception state, detail endpoints and runtime counts are unchanged by reminder ignoring. Use the reminders API with type=FINANCIAL_EXCEPTION and visibility=IGNORED to review or restore ignored reminders."
       security:
         - AdminSessionCookie: []
       parameters:
@@ -2093,7 +2093,7 @@ paths:
         - name: api_client_id
           in: query
           required: false
-          description: Website ownership filter, included in the pagination cursor scope.
+          description: "Site ownership filter, included in the pagination cursor scope."
           schema: { type: string, minLength: 1, maxLength: 64 }
         - $ref: '#/components/parameters/CreatedFrom'
         - $ref: '#/components/parameters/CreatedTo'
@@ -2553,7 +2553,7 @@ paths:
       tags:
         - Admin Settings
       operationId: listSites
-      summary: List business websites
+      summary: "List business sites"
       security:
         - AdminSessionCookie: []
       parameters:
@@ -2577,7 +2577,7 @@ paths:
             maxLength: 128
       responses:
         "200":
-          description: List business websites
+          description: "List business sites"
           headers:
             Cache-Control:
               $ref: "#/components/headers/NoStore"
@@ -2592,7 +2592,7 @@ paths:
         "403": &a3
           $ref: "#/components/responses/FinancialWriteForbidden"
         "404": &a4
-          description: Website not found
+          description: "Site not found."
           content:
             application/json:
               schema:
@@ -2611,7 +2611,7 @@ paths:
       tags:
         - Admin Settings
       operationId: createSite
-      summary: Create a business website
+      summary: "Create a business site"
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -2621,7 +2621,7 @@ paths:
         - $ref: "#/components/parameters/AdminOrigin"
       responses:
         "201":
-          description: Create a business website
+          description: "Create a business site"
           headers:
             Cache-Control:
               $ref: "#/components/headers/NoStore"
@@ -2632,7 +2632,7 @@ paths:
         "400": *a1
         "401": *a2
         "403": *a3
-        "404": *a4
+        "404": {"description":"Site not found.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorEnvelope"}}}}
         "409": *a5
         "413": *a6
         "415": *a7
@@ -2650,7 +2650,7 @@ paths:
       tags:
         - Admin Settings
       operationId: getSite
-      summary: Read a business website
+      summary: "Read a business site"
       security:
         - AdminSessionCookie: []
       parameters:
@@ -2663,7 +2663,7 @@ paths:
             pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
       responses:
         "200":
-          description: Read a business website
+          description: "Read a business site"
           headers:
             Cache-Control:
               $ref: "#/components/headers/NoStore"
@@ -2678,7 +2678,7 @@ paths:
         "403": &a13
           $ref: "#/components/responses/FinancialWriteForbidden"
         "404": &a14
-          description: Website not found
+          description: "Site not found."
           content:
             application/json:
               schema:
@@ -2697,7 +2697,7 @@ paths:
       tags:
         - Admin Settings
       operationId: updateSite
-      summary: Update a business website
+      summary: "Update a business site"
       security: &a20
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -2711,7 +2711,7 @@ paths:
           schema: *a10
       responses:
         "200":
-          description: Update a business website
+          description: "Update a business site"
           headers:
             Cache-Control:
               $ref: "#/components/headers/NoStore"
@@ -2722,7 +2722,7 @@ paths:
         "400": *a11
         "401": *a12
         "403": *a13
-        "404": *a14
+        "404": {"description":"Site not found.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorEnvelope"}}}}
         "409": *a15
         "413": *a16
         "415": *a17
@@ -2739,7 +2739,7 @@ paths:
       tags:
         - Admin Settings
       operationId: deleteSite
-      summary: Delete an empty business website
+      summary: "Delete an empty business site"
       security: *a20
       parameters:
         - $ref: "#/components/parameters/RequestId"
@@ -2750,14 +2750,14 @@ paths:
           schema: *a10
       responses:
         "204":
-          description: Delete an empty business website
+          description: "Delete an empty business site"
           headers:
             Cache-Control:
               $ref: "#/components/headers/NoStore"
         "400": *a11
         "401": *a12
         "403": *a13
-        "404": *a14
+        "404": {"description":"Site not found.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorEnvelope"}}}}
         "409": *a15
         "413": *a16
         "415": *a17
@@ -2775,14 +2775,14 @@ paths:
       tags:
         - Admin Settings
       operationId: getSiteDefaults
-      summary: Read website creation defaults
+      summary: "Read site creation defaults"
       security:
         - AdminSessionCookie: []
       parameters:
         - $ref: "#/components/parameters/RequestId"
       responses:
         "200":
-          description: Read website creation defaults
+          description: "Read site creation defaults"
           headers:
             Cache-Control:
               $ref: "#/components/headers/NoStore"
@@ -2797,7 +2797,7 @@ paths:
         "403": &a23
           $ref: "#/components/responses/FinancialWriteForbidden"
         "404": &a24
-          description: Website not found
+          description: "Site creation defaults not found."
           content:
             application/json:
               schema:
@@ -2816,7 +2816,7 @@ paths:
       tags:
         - Admin Settings
       operationId: updateSiteDefaults
-      summary: Update website creation defaults
+      summary: "Update site creation defaults"
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -2826,7 +2826,7 @@ paths:
         - $ref: "#/components/parameters/AdminOrigin"
       responses:
         "200":
-          description: Update website creation defaults
+          description: "Update site creation defaults"
           headers:
             Cache-Control:
               $ref: "#/components/headers/NoStore"
@@ -2837,7 +2837,7 @@ paths:
         "400": *a21
         "401": *a22
         "403": *a23
-        "404": *a24
+        "404": {"description":"Site creation defaults not found.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorEnvelope"}}}}
         "409": *a25
         "413": *a26
         "415": *a27
@@ -2855,7 +2855,7 @@ paths:
       tags:
         - Admin Settings
       operationId: rotateSiteApiSecret
-      summary: Generate or rotate a website key
+      summary: "Generate or rotate a site key"
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -2871,7 +2871,7 @@ paths:
             pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
       responses:
         "200":
-          description: Generate or rotate a website key
+          description: "Generate or rotate a site key"
           headers:
             Cache-Control:
               $ref: "#/components/headers/NoStore"
@@ -2886,7 +2886,7 @@ paths:
         "403":
           $ref: "#/components/responses/FinancialWriteForbidden"
         "404":
-          description: Website not found
+          description: "Site or API secret not found in this site."
           content:
             application/json:
               schema:
@@ -2913,7 +2913,7 @@ paths:
       tags:
         - Admin Settings
       operationId: viewSiteApiSecret
-      summary: Reveal a website key
+      summary: "Reveal a site key"
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -2929,7 +2929,7 @@ paths:
             pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
       responses:
         "200":
-          description: Reveal a website key
+          description: "Reveal a site key"
           headers:
             Cache-Control:
               $ref: "#/components/headers/NoStore"
@@ -2944,7 +2944,7 @@ paths:
         "403":
           $ref: "#/components/responses/FinancialWriteForbidden"
         "404":
-          description: Website not found
+          description: "Site or API secret not found in this site."
           content:
             application/json:
               schema:
@@ -2971,7 +2971,7 @@ paths:
       tags:
         - Admin Settings
       operationId: rotateSiteWebhookSecret
-      summary: Generate or rotate a website key
+      summary: "Generate or rotate a site key"
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -2987,7 +2987,7 @@ paths:
             pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
       responses:
         "200":
-          description: Generate or rotate a website key
+          description: "Generate or rotate a site key"
           headers:
             Cache-Control:
               $ref: "#/components/headers/NoStore"
@@ -3002,7 +3002,7 @@ paths:
         "403":
           $ref: "#/components/responses/FinancialWriteForbidden"
         "404":
-          description: Website not found
+          description: "Site or notification signing secret not found in this site."
           content:
             application/json:
               schema:
@@ -3029,7 +3029,7 @@ paths:
       tags:
         - Admin Settings
       operationId: viewSiteWebhookSecret
-      summary: Reveal a website key
+      summary: "Reveal a site key"
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
@@ -3045,7 +3045,7 @@ paths:
             pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
       responses:
         "200":
-          description: Reveal a website key
+          description: "Reveal a site key"
           headers:
             Cache-Control:
               $ref: "#/components/headers/NoStore"
@@ -3060,7 +3060,7 @@ paths:
         "403":
           $ref: "#/components/responses/FinancialWriteForbidden"
         "404":
-          description: Website not found
+          description: "Site or notification signing secret not found in this site."
           content:
             application/json:
               schema:
@@ -3109,7 +3109,7 @@ paths:
         "403": &a32
           $ref: "#/components/responses/FinancialWriteForbidden"
         "404": &a33
-          description: Website not found
+          description: "Site not found."
           content:
             application/json:
               schema:
@@ -3149,7 +3149,7 @@ paths:
         "400": *a30
         "401": *a31
         "403": *a32
-        "404": *a33
+        "404": {"description":"Site not found.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorEnvelope"}}}}
         "409": *a34
         "413": *a35
         "415": *a36
@@ -3202,7 +3202,7 @@ paths:
         "401":
           $ref: "#/components/responses/AdminUnauthorized"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "业务网站不存在。"
           content:
             application/json:
               schema:
@@ -3220,24 +3220,24 @@ paths:
       tags:
         - System
       operationId: siteListAdministratorWorkItems
-      summary: 本站：Page through active or dismissed administrator reminders
+      summary: "本站：Page through active or ignored administrator reminders"
       description: >
         Searches item and related business IDs, product name, external event ID,
         notification URL and error/type codes before paging. ignored_at sorting is
         valid only for IGNORED; priority sorting is valid only for ACTIVE. New cursors bind keyword, sort, type and
         visibility; old cursors only with original defaults. Pagination is a live
-        list, not a persistent database snapshot. ACTIVE combines undismissed open
+        list, not a persistent database snapshot. ACTIVE combines not ignored open
         financial exceptions, open ledger conflicts, retry-wait notifications and
         latest dead-letter notifications from every retained provider generation.
         Legacy UNMATCHED_DEBIT and UNLINKED_REFUND warnings are excluded without
         changing their status. One paged projection and a bounded order-summary lookup drive each page and home-page
         reminders. By default ACTIVE sorts by descending actionable time, type and
-        resource ID; IGNORED sorts by dismissal time, type and resource ID.
+        resource ID; IGNORED sorts by ignoring time, type and resource ID.
         priority desc puts financial exceptions, ledger conflicts and dead-letter notifications before automatic retries,
         then sorts by descending actionable time, type and resource ID before paging. priority asc reverses that tuple.
         IGNORED retains resolved or acknowledged records with ended=true and keeps
         ignored notifications visible during subsequent pending/leased retries.
-        Each item links to its original detailed resource endpoint. Dismissal
+        Each item links to its original detailed resource endpoint. Ignoring
         changes neither financial facts nor conflict constraints and never stops
         notification retries.
       security:
@@ -3318,7 +3318,7 @@ paths:
         "401":
           $ref: "#/components/responses/AdminUnauthorized"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "提醒分类不存在，或不属于当前业务网站。"
           content:
             application/json:
               schema:
@@ -3338,11 +3338,8 @@ paths:
       tags:
         - System
       operationId: siteGetAdministratorWorkItemSummary
-      summary: 本站：Count current actionable reminders, optionally scoped by website
-      description: Counts the complete ACTIVE work-item view before pagination,
-        without date or keyword filtering. Website scope includes only explicitly
-        owned order reminders; shared conflicts and unallocated exceptions remain
-        global. Read failures return an error, never a zero count.
+      summary: "本站：Count current actionable reminders, optionally scoped by site"
+      description: "Counts the complete ACTIVE reminder view before pagination, without date or keyword filtering. Site scope includes only explicitly owned order reminders; shared conflicts and unallocated exceptions remain global. Read failures return an error, never a zero count."
       security:
         - AdminSessionCookie: []
       parameters:
@@ -3375,7 +3372,7 @@ paths:
         "401":
           $ref: "#/components/responses/AdminUnauthorized"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "提醒分类不存在，或不属于当前业务网站。"
           content:
             application/json:
               schema:
@@ -3393,11 +3390,8 @@ paths:
       tags:
         - System
       operationId: siteIgnoreAllAdministratorWorkItems
-      summary: 本站：Dismiss every current reminder in the selected category, across all
-        pages
-      description: Dismisses reminders only. Underlying evidence, conflicts and
-        notification retries are unchanged. The operation UUID replays its
-        original result without dismissing newer items.
+      summary: "本站：Ignore every current reminder in the selected category, across all pages"
+      description: "Ignores reminders only. Underlying evidence, conflicts and notification retries are unchanged. The operation UUID replays its original result without ignoring newer items."
       x-perpay-requires-same-origin: true
       security:
         - AdminSessionCookie: []
@@ -3447,7 +3441,7 @@ paths:
         "403":
           $ref: "#/components/responses/FinancialWriteForbidden"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "提醒分类不存在，或不属于当前业务网站。"
           content:
             application/json:
               schema:
@@ -3469,7 +3463,7 @@ paths:
       tags:
         - System
       operationId: siteRestoreAdministratorWorkItem
-      summary: 本站：Restore a dismissed reminder without changing its underlying record
+      summary: "本站：Restore a ignored reminder without changing its underlying record"
       x-perpay-requires-same-origin: true
       security:
         - AdminSessionCookie: []
@@ -3517,7 +3511,7 @@ paths:
         "403":
           $ref: "#/components/responses/FinancialWriteForbidden"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "提醒不存在，或不属于当前业务网站。"
           content:
             application/json:
               schema:
@@ -3624,7 +3618,7 @@ paths:
         "401":
           $ref: "#/components/responses/AdminUnauthorized"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "业务网站不存在。"
           content:
             application/json:
               schema:
@@ -3721,7 +3715,7 @@ paths:
         "403":
           $ref: "#/components/responses/FinancialWriteForbidden"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "业务网站不存在。"
           content:
             application/json:
               schema:
@@ -3815,7 +3809,7 @@ paths:
         "403":
           $ref: "#/components/responses/FinancialWriteForbidden"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "业务网站不存在。"
           content:
             application/json:
               schema:
@@ -3866,7 +3860,7 @@ paths:
         "401":
           $ref: "#/components/responses/AdminUnauthorized"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "订单不存在，或不属于当前业务网站。"
           content:
             application/json:
               schema:
@@ -3907,7 +3901,7 @@ paths:
         "401":
           $ref: "#/components/responses/AdminUnauthorized"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "订单不存在，或不属于当前业务网站。"
           content:
             application/json:
               schema:
@@ -3969,7 +3963,7 @@ paths:
         "401":
           $ref: "#/components/responses/AdminUnauthorized"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "订单不存在，或不属于当前业务网站。"
           content:
             application/json:
               schema:
@@ -4031,7 +4025,7 @@ paths:
         "401":
           $ref: "#/components/responses/AdminUnauthorized"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "订单不存在，或不属于当前业务网站。"
           content:
             application/json:
               schema:
@@ -4094,7 +4088,7 @@ paths:
         "403":
           $ref: "#/components/responses/FinancialWriteForbidden"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "订单不存在，或不属于当前业务网站。"
           content:
             application/json:
               schema:
@@ -4195,7 +4189,7 @@ paths:
         "401":
           $ref: "#/components/responses/AdminUnauthorized"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "业务网站不存在。"
           content:
             application/json:
               schema:
@@ -4236,7 +4230,7 @@ paths:
         "401":
           $ref: "#/components/responses/AdminUnauthorized"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "通知投递记录不存在，或不属于当前业务网站。"
           content:
             application/json:
               schema:
@@ -4278,7 +4272,7 @@ paths:
         "401":
           $ref: "#/components/responses/AdminUnauthorized"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "通知投递记录不存在，或不属于当前业务网站。"
           content:
             application/json:
               schema:
@@ -4356,7 +4350,7 @@ paths:
         "403":
           $ref: "#/components/responses/FinancialWriteForbidden"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "通知投递记录不存在，或不属于当前业务网站。"
           content:
             application/json:
               schema:
@@ -4401,7 +4395,7 @@ paths:
         "401":
           $ref: "#/components/responses/AdminUnauthorized"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "可能匹配的记录不存在，或不属于当前业务网站。"
           content:
             application/json:
               schema:
@@ -4441,7 +4435,7 @@ paths:
         "401":
           $ref: "#/components/responses/AdminUnauthorized"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "收款关联记录不存在，或不属于当前业务网站。"
           content:
             application/json:
               schema:
@@ -4480,7 +4474,7 @@ paths:
         "401":
           $ref: "#/components/responses/AdminUnauthorized"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "账务异常记录不存在，或不属于当前业务网站。"
           content:
             application/json:
               schema:
@@ -4524,7 +4518,7 @@ paths:
         "401":
           $ref: "#/components/responses/AdminUnauthorized"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "支付宝流水不存在，或不属于当前业务网站。"
           content:
             application/json:
               schema:
@@ -4569,7 +4563,7 @@ paths:
         "401":
           $ref: "#/components/responses/AdminUnauthorized"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "支付宝流水不存在，或不属于当前业务网站。"
           content:
             application/json:
               schema:
@@ -4666,7 +4660,7 @@ paths:
         "401":
           $ref: "#/components/responses/AdminUnauthorized"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "用于人工关联的订单或支付宝流水不存在，或不属于当前业务网站。"
           content:
             application/json:
               schema:
@@ -4720,7 +4714,7 @@ paths:
         "403":
           $ref: "#/components/responses/FinancialWriteForbidden"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "用于人工关联的订单或支付宝流水不存在，或不属于当前业务网站。"
           content:
             application/json:
               schema:
@@ -4777,7 +4771,7 @@ paths:
         "403":
           $ref: "#/components/responses/FinancialWriteForbidden"
         "404":
-          description: 请求范围不匹配或资源不存在
+          description: "收款关联记录不存在，或不属于当前业务网站。"
           content:
             application/json:
               schema:
@@ -4832,7 +4826,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 区间确认指标、全站实收标尺与当前待付款和待办数量；按网站批量聚合
+          description: "区间确认指标、全站实收标尺与当前待付款和待处理数量；按网站批量聚合"
           content:
             application/json:
               schema:
@@ -5359,7 +5353,7 @@ components:
           properties:
             orders: { type: integer, minimum: 0 }
             exceptions: { type: integer, minimum: 0 }
-            conflicts: { type: [integer, 'null'], minimum: 0, description: Null for website-scoped analytics because shared ledger conflicts have no website attribution. }
+            conflicts: { type: [integer, 'null'], minimum: 0, description: "Null for site-scoped analytics because shared ledger conflicts have no site attribution." }
             notifications: { type: integer, minimum: 0 }
         daily:
           type: array
@@ -5387,7 +5381,7 @@ components:
       additionalProperties: false
       required: [operation_id, type]
       properties:
-        api_client_id: { type: string, description: Captured website filter; part of operation idempotency. }
+        api_client_id: { type: string, description: "Captured site filter; part of operation idempotency." }
         operation_id: { $ref: '#/components/schemas/ResourceId' }
         type: { $ref: '#/components/schemas/AdminWorkItemTypeFilter' }
         q:
@@ -5404,7 +5398,7 @@ components:
           additionalProperties: false
           required: [operation_id, type, ignored_count]
           properties:
-            api_client_id: { type: string, description: Website captured by this bulk operation. }
+            api_client_id: { type: string, description: "Site captured by this bulk operation." }
             operation_id: { $ref: '#/components/schemas/ResourceId' }
             type: { $ref: '#/components/schemas/AdminWorkItemTypeFilter' }
             ignored_count: { type: integer, minimum: 0 }
@@ -6176,7 +6170,7 @@ components:
           $ref: "#/components/schemas/CollectionPolicyRequest"
         site_mode:
           type: boolean
-          description: True for website-aware instance settings. Website policies and business secret metadata are not returned in this mode.
+          description: "True for site-aware instance settings. Site policies and business secret metadata are not returned in this mode."
     SettingsCompletion:
       type: object
       additionalProperties: false
@@ -6216,7 +6210,7 @@ components:
           description: First incomplete required instance configuration step. GENERATE_API_KEY is retained for compatibility but is no longer emitted. Null means configuration is complete; payment readiness must still be checked through `/readyz` or the administrator system-status endpoint.
         sites:
           type: boolean
-          description: At least one non-deleted website exists. Does not gate the shared payment engine.
+          description: "At least one non-deleted site exists. Does not gate the shared payment engine."
     CollectionSettings:
       type: object
       additionalProperties: false
@@ -6673,7 +6667,7 @@ components:
       additionalProperties: false
       required: [order_id, merchant_order_no, product_name, requested_amount_cents, payable_amount_cents, received_amount_cents, payment_confirmed_at]
       properties:
-        site_name: { type: [string, 'null'], description: Current website display name; null only for historical pre-website schema fixtures. }
+        site_name: { type: [string, 'null'], description: "Current site display name; null only for historical pre-site schema fixtures." }
         api_client_id: { type: string }
         order_id: { $ref: '#/components/schemas/ResourceId' }
         merchant_order_no: { type: string }
@@ -6689,7 +6683,7 @@ components:
       description: >-
         Read-only summary of every notification event for the order's persisted target.
         Only the latest delivery generation of each event counts. Events awaiting first
-        materialization count toward total_events. Current website settings do not replace
+        materialization count toward total_events. Current site settings do not replace
         historical order delivery facts. Status priority is DEAD_LETTER, RETRY_WAIT, LEASED,
         PENDING, UNMATERIALIZED, ACKNOWLEDGED; ACKNOWLEDGED requires a nonzero total with
         every event acknowledged. NOT_CONFIGURED means this order has no notification target;
@@ -6721,7 +6715,7 @@ components:
         - updated_at
         - version
       properties:
-        site_name: { type: [string, 'null'], description: Current website display name; null only for historical pre-website schema fixtures. }
+        site_name: { type: [string, 'null'], description: "Current site display name; null only for historical pre-site schema fixtures." }
         payment_confirmed_at: { type: [string, 'null'], format: date-time }
         notification_summary: { $ref: '#/components/schemas/AdminOrderNotificationSummary' }
         order_id: { $ref: '#/components/schemas/ResourceId' }
@@ -6773,7 +6767,7 @@ components:
         - updated_at
         - version
       properties:
-        site_name: { type: [string, 'null'], description: Current name of the owning website. }
+        site_name: { type: [string, 'null'], description: "Current name of the owning site." }
         order_id: { $ref: '#/components/schemas/ResourceId' }
         api_client_id:
           type: string
@@ -6903,7 +6897,7 @@ components:
       properties:
         api_client_id:
           type: string
-          description: Explicit website ownership. Administrator test payments do not require an API key.
+          description: "Explicit site ownership. Administrator test payments do not require an API key."
         test_payment_id:
           type: string
           format: uuid
@@ -7016,6 +7010,7 @@ components:
       properties:
         status: { $ref: '#/components/schemas/PaymentStatus' }
         basis:
+          description: "INFERRED: PerPay inferred the association from the amount and payment time. MANUAL: an administrator associated the Alipay ledger entry. NONE: no payment association."
           type: string
           enum: [NONE, INFERRED, MANUAL]
         received_amount_cents:
@@ -7062,7 +7057,7 @@ components:
               type: object
               additionalProperties: false
               required: [name, help_url, show_product_name]
-              description: Current display settings of the order's website; never used as payment evidence.
+              description: "Current display settings of the order's site; never used as payment evidence."
               properties:
                 name: { type: string, minLength: 1, maxLength: 128 }
                 help_url: { type: [string, 'null'] }
@@ -7416,11 +7411,12 @@ components:
         amount_cents: { type: integer, minimum: 1 }
         direction: { type: string, enum: [CREDIT, DEBIT] }
         currency: { const: CNY }
-        alipay_order_no: { type: [string, 'null'] }
-        merchant_order_no: { type: [string, 'null'] }
-        trans_memo: { type: [string, 'null'] }
+        alipay_order_no: { description: "Alipay order number. Alias of ReconciliationLedgerEntry.provider_order_no; existing field names are retained for compatibility.", type: [string, 'null'] }
+        merchant_order_no: { description: "Merchant order number reported by Alipay; this is distinct from the business site merchant_order_no.", type: [string, 'null'] }
+        trans_memo: { description: "Alipay transaction memo. Alias of ReconciliationLedgerEntry.memo; existing field names are retained for compatibility.", type: [string, 'null'] }
         other_account: { type: [string, 'null'] }
         state:
+          description: "PerPay processing state for this Alipay ledger entry; not a status supplied by Alipay."
           type: string
           enum: [UNALLOCATED, CANDIDATE, ALLOCATED, CONFLICT, ISOLATED, IGNORED]
         created_at: { type: string, format: date-time }
@@ -7672,11 +7668,12 @@ components:
         amount_cents: { type: integer, minimum: 1, maximum: 999999999999 }
         direction: { type: string, enum: [CREDIT, DEBIT] }
         currency: { const: CNY }
-        provider_order_no: { type: [string, 'null'], maxLength: 128 }
-        merchant_order_no: { type: [string, 'null'], maxLength: 128 }
-        memo: { type: [string, 'null'], maxLength: 1024 }
+        provider_order_no: { description: "Alipay order number. Alias of LedgerConflictExistingEntry.alipay_order_no; existing field names are retained for compatibility.", type: [string, 'null'], maxLength: 128 }
+        merchant_order_no: { description: "Merchant order number reported by Alipay; this is distinct from the business site merchant_order_no.", type: [string, 'null'], maxLength: 128 }
+        memo: { description: "Alipay transaction memo. Alias of LedgerConflictExistingEntry.trans_memo; existing field names are retained for compatibility.", type: [string, 'null'], maxLength: 1024 }
         other_account: { type: [string, 'null'], maxLength: 256 }
         state:
+          description: "PerPay processing state for this Alipay ledger entry; not a status supplied by Alipay."
           type: string
           enum: [UNALLOCATED, CANDIDATE, ALLOCATED, CONFLICT, ISOLATED, IGNORED]
         created_at: { type: string, format: date-time }
@@ -7712,7 +7709,7 @@ components:
           minLength: 3
           maxLength: 64
           pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$'
-        site_name: { type: [string, 'null'], description: Current owning website name; administrator responses only. Null for historical pre-website schema fixtures. }
+        site_name: { type: [string, 'null'], description: "Current owning site name; administrator responses only. Null for historical pre-site schema fixtures." }
         merchant_order_no: { type: string, minLength: 1, maxLength: 128 }
         requested_amount_cents: { type: integer, minimum: 1, maximum: 9999999999 }
         payable_amount_cents: { type: integer, minimum: 2, maximum: 9999999999 }
@@ -8141,7 +8138,7 @@ components:
           minLength: 3
           maxLength: 64
           pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$'
-        site_name: { type: [string, 'null'], description: Current owning website name; administrator responses only. }
+        site_name: { type: [string, 'null'], description: "Current owning site name; administrator responses only." }
         format: { const: NATIVE_JSON_V1 }
         target_url: { $ref: '#/components/schemas/NotifyUrl' }
         allowed_origin:
