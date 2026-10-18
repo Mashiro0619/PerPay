@@ -43,7 +43,7 @@ function numericKey(value: string | undefined): number {
     !/^(0|[1-9][0-9]*)$/.test(value) ||
     !Number.isSafeInteger(Number(value))
   )
-    throw new ListQueryError("候选分页游标无效");
+    throw new ListQueryError("可能匹配的记录分页游标无效");
   return Number(value);
 }
 function keywordAmount(q: string): number | null {
@@ -70,7 +70,7 @@ export function readManualCandidates(
     (query.contextId === null &&
       (kind === "ledger-entries" || query.view === "recommended"))
   ) {
-    throw new ListQueryError("人工关联候选查询无效");
+    throw new ListQueryError("人工关联可能匹配的记录查询无效");
   }
   const paired = query.contextId !== null;
   const orders = kind === "orders";
@@ -177,7 +177,7 @@ export function readManualCandidates(
       !uuid.test(keys[2] ?? "") ||
       (query.view === "all" && (priority !== 0 || value !== 0))
     )
-      throw new ListQueryError("候选分页游标无效");
+      throw new ListQueryError("可能匹配的记录分页游标无效");
     seek =
       "WHERE (priority > ? OR (priority = ? AND sort_distance > ?) OR (priority = ? AND sort_distance = ? AND (record_time < ? OR (record_time = ? AND id < ?))))";
     parameters.push(

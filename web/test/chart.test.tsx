@@ -746,7 +746,7 @@ describe("weekly daily analytics report", () => {
   it("leaves only confirmation count and current unpaid orders in the summary cards", () => {
     const { container } = render(<SectionCards analytics={analytics()} />);
     expect(container.querySelectorAll("[data-slot=card]")).toHaveLength(4);
-    expect(screen.getByText("今日确认笔数")).toBeVisible();
+    expect(screen.getByText("今日收款确认笔数")).toBeVisible();
     expect(screen.getByText("今日确认金额")).toBeVisible();
     expect(screen.getByText("待处理")).toBeVisible();
     expect(screen.getByText("当前待付款")).toBeVisible();

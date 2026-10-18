@@ -252,7 +252,7 @@ describe("order detail work surface", () => {
     });
     expect(
       heading.compareDocumentPosition(
-        screen.getByRole("heading", { name: "收款依据" }),
+        screen.getByRole("heading", { name: "收款关联记录" }),
       ) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
@@ -292,7 +292,7 @@ describe("order detail work surface", () => {
     expect(await screen.findByText("撤销时间")).toBeVisible();
     expect(screen.getByText("平台记录归属不符")).toBeVisible();
     expect(screen.getByText("对照交易号确认")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "收款记录操作" }));
+    fireEvent.click(screen.getByRole("button", { name: "收款关联记录操作" }));
     expect(
       screen.queryByRole("menuitem", { name: "撤销错误关联" }),
     ).not.toBeInTheDocument();
@@ -325,8 +325,8 @@ describe("order detail work surface", () => {
     });
     mount();
     const user = userEvent.setup();
-    await screen.findByRole("button", { name: "收款记录操作" });
-    await user.click(await recordAction("撤销错误关联", "收款记录操作"));
+    await screen.findByRole("button", { name: "收款关联记录操作" });
+    await user.click(await recordAction("撤销错误关联", "收款关联记录操作"));
     await confirmReason(user, "测试撤销原因", "确认撤销关联");
     expect(await screen.findByText("测试撤销原因")).toBeVisible();
     expect(screen.getByLabelText("当前页面")).toHaveTextContent(

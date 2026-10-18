@@ -26,7 +26,7 @@ export function SectionCards({
       title: "今日确认金额",
       value: today ? money(today.confirmed_amount_cents) : "—",
     },
-    { title: "今日确认笔数", value: today ? count(today.confirmations) : "—" },
+    { title: "今日收款确认笔数", value: today ? count(today.confirmations) : "—" },
     {
       title: "当前待付款",
       value: analytics ? count(analytics.pending.orders) : "—",

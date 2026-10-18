@@ -7,7 +7,7 @@ const fields = [
   ["basic", "name", "业务网站名称"],
   ["basic", "accepting_orders", "允许新订单"],
   ["orders", "policy.orders.order_ttl_seconds", "订单有效期（秒）"],
-  ["orders", "policy.orders.amount_offset_maximum_cents", "最大尾差（分）"],
+  ["orders", "policy.orders.amount_offset_maximum_cents", "最大加价金额（分）"],
   ["orders", "policy.orders.amount_reuse_cooldown_seconds", "金额复用冷却（秒）"],
   ["orders", "policy.orders.pending_order_limit", "待付款订单上限"],
   ["integration", "notifications_enabled", "开启通知"],

@@ -464,7 +464,7 @@ describe("administrator-only refund marks", () => {
       screen.queryByRole("button", { name: "人工关联收款" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("heading", { name: "匹配候选" }),
+      screen.queryByRole("heading", { name: "可能匹配的记录" }),
     ).not.toBeInTheDocument();
     expect(requests).toHaveLength(1);
     expect(

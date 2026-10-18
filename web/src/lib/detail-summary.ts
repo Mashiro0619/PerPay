@@ -101,8 +101,8 @@ export function exceptionExplanation(exception: FinancialException): string {
     case "AMBIGUOUS_MATCH": {
       const count = numberField(details, "candidate_count");
       return count !== null && count > 1
-        ? "同一笔收入存在 " + count + " 个匹配候选，无法唯一确认订单。"
-        : "这笔收入存在多个匹配候选，不能仅凭金额确认归属。";
+        ? "同一笔收入存在 " + count + " 条可能匹配的记录，无法唯一确认订单。"
+        : "这笔收入存在多条可能匹配的记录，不能仅凭金额确认归属。";
     }
     case "AMOUNT_MISMATCH": {
       const expected = numberField(details, "expected_amount_cents");
@@ -116,7 +116,7 @@ export function exceptionExplanation(exception: FinancialException): string {
         : "流水金额与可能关联订单的应付金额不同，尚不能确认归属。";
     }
     case "CHECKOUT_ENDED_PAYMENT":
-      return "流水发生在收银台关闭或过期之后，系统未自动确认该订单付款。";
+      return "流水发生在收银台关闭或过期之后，系统未自动确认收款该订单付款。";
     case "DUPLICATE_PAYMENT":
       return "可能对应的订单已存在收款关联，本笔收入未被重复计入。";
     case "RECONCILIATION_CONFLICT":
@@ -132,7 +132,7 @@ export function exceptionResolution(
   const labels: Record<string, string> = {
     auto_settled: "已由系统建立收款关联。",
     manually_settled: "已由管理员建立收款关联。",
-    superseded_by_settlement: "该流水已关联到另一订单，本条候选异常已结束。",
+    superseded_by_settlement: "该流水已关联到另一订单，相关异常已结束。",
   };
   if (resolution && labels[resolution]) return labels[resolution];
   return null;

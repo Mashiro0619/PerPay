@@ -265,7 +265,7 @@ describe("website overview amount cards", () => {
     expect(work).toBeVisible();
     expect(work.closest("[data-slot=badge]")).toHaveAttribute("data-variant", "warning");
     expect(link.querySelector("time, dl, [data-slot=card-footer], .site-overview-sparkline")).toBeNull();
-    expect(link).not.toHaveTextContent(/确认笔数|当前待付款|2025-12-31|本期暂无收款/);
+    expect(link).not.toHaveTextContent(/收款确认笔数|当前待付款|2025-12-31|本期暂无收款/);
     const bar = amountBar(link);
     expect(bar).toHaveAttribute("viewBox", "0 0 100 4");
     expect(bar).toHaveAttribute("aria-hidden", "true");

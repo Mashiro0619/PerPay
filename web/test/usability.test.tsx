@@ -223,7 +223,7 @@ describe("short feedback and safe settings", () => {
     expect(screen.queryByText("有业务提醒待处理")).not.toBeInTheDocument();
     for (const [title, explanation] of [
       ["查账", "查账支付宝账本，为收款核对提供依据。"],
-      ["自动确认", "核对账本与订单，并确认符合条件的收款。"],
+      ["自动确认收款", "核对账本与订单，并确认符合条件的收款。"],
       ["通知", "将收款结果发送到对应的业务网站。"],
       ["数据库", "订单、账本与运行记录保存在当前系统。"],
     ] as const) {
@@ -235,7 +235,7 @@ describe("short feedback and safe settings", () => {
     }
     expect(screen.queryByText("待核对订单 0")).not.toBeInTheDocument();
     expect(screen.queryByText("待投递 0")).not.toBeInTheDocument();
-    for (const name of ["自动确认", "通知"]) {
+    for (const name of ["自动确认收款", "通知"]) {
       const service = within(runtime.getByRole("rowheader", { name }).closest("tr")!);
       expect(service.getAllByRole("cell")[2]).toHaveTextContent(/^—$/);
     }
@@ -446,7 +446,7 @@ describe("short feedback and safe settings", () => {
     expect(within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: "运行状态" })).toHaveAccessibleDescription("待处理");
     expect(screen.getByRole("link", { name: "待处理" })).toHaveAttribute("href", "/work-items");
     expect(screen.queryByText("提醒数仅包含未忽略且仍需处理的提醒。")).not.toBeInTheDocument();
-    const reconciliation = within(runtime.getByRole("rowheader", { name: "自动确认" }).closest("tr")!);
+    const reconciliation = within(runtime.getByRole("rowheader", { name: "自动确认收款" }).closest("tr")!);
     const notifications = within(runtime.getByRole("rowheader", { name: "通知" }).closest("tr")!);
     expect(reconciliation.getByRole("cell", { name: "待核对订单 5" })).toBeVisible();
     expect(notifications.getByRole("cell", { name: "待投递 2" })).toBeVisible();
@@ -455,7 +455,7 @@ describe("short feedback and safe settings", () => {
     expect(screen.queryByText("有业务提醒待处理")).not.toBeInTheDocument();
     expect(screen.queryByText("有运行告警")).not.toBeInTheDocument();
     expect(screen.queryByText("收款已暂停")).not.toBeInTheDocument();
-    for (const name of ["查账", "自动确认", "通知"]) {
+    for (const name of ["查账", "自动确认收款", "通知"]) {
       const row = within(runtime.getByRole("rowheader", { name }).closest("tr")!);
       expect(row.getByRole("cell", { name: "正常" })).toBeVisible();
       expect(row.queryByRole("cell", { name: "需关注" })).not.toBeInTheDocument();

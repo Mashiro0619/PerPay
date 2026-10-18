@@ -250,12 +250,12 @@ describe("manual settlement selection instead of ID entry", () => {
     let failed = true;
     mount({ initialLedgerId: ledgerId, lockContext: true }, (r) =>
       new URL(r.url).pathname.endsWith("/manual/orders") && failed
-        ? apiError("unavailable", "候选读取失败", 503)
+        ? apiError("unavailable", "可能匹配的记录读取失败", 503)
         : undefined,
     );
     const user = userEvent.setup();
-    await screen.findByText("候选读取失败");
-    expect(screen.queryByText("没有推荐候选")).not.toBeInTheDocument();
+    await screen.findByText("可能匹配的记录读取失败");
+    expect(screen.queryByText("暂无可能匹配的订单")).not.toBeInTheDocument();
     failed = false;
     await user.click(screen.getByRole("button", { name: "重试" }));
     expect(await chooseOrder()).toBeVisible();

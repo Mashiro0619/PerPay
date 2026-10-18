@@ -190,7 +190,7 @@ describe("onboarding payment readiness", () => {
   );
   it.each([
     ["ledger", "查账"],
-    ["reconciliation", "自动确认"],
+    ["reconciliation", "自动确认收款"],
     ["webhook", "通知"],
   ] as const)(
     "keeps a real %s warning visible even after all business reminders are ignored",

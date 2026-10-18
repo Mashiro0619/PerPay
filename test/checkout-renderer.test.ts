@@ -67,7 +67,7 @@ describe("public checkout SSR", () => {
     assert.match(html, /data-checkout-payment/);
     assert.match(html, /<section[^>]*aria-label="订单信息"[^>]*data-checkout-summary/);
     assert.match(html, /data-checkout-actions/);
-    assert.doesNotMatch(html, /<footer|金额需完全一致，付款后自动确认/);
+    assert.doesNotMatch(html, /<footer|金额需完全一致，付款后自动确认收款/);
     assert.match(checkoutText(html), /刷新页面/);
     assert.ok(
       html.includes('href="' + CHECKOUT_PAGE_ASSETS.checkoutStylesheet + '"'),

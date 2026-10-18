@@ -438,10 +438,10 @@ function OnboardingFlow({
                     使用本系统共用的支付宝经营收款码。上传图片后先核对识别内容，也可直接粘贴经营码内容。
                   </p>
                   <p>
-                    金额尾差用于区分订单。付款人需要按收银台显示的应付金额付款。
+                    加价金额用于区分订单。付款人需要按收银台显示的应付金额付款。
                   </p>
                   <p>
-                    订单有效期、尾差和金额冷却在各业务网站中配置；查账间隔和查账延迟在查账设置中配置。
+                    订单有效期、加价金额和金额冷却在各业务网站中配置；查账间隔和查账延迟在查账设置中配置。
                   </p>
                 </OnboardingHelp>
               }
@@ -754,10 +754,10 @@ export function ReadinessCheck({
       error: fresh && matches && !ready ? status?.ledger.last_error_code : null,
     },
     {
-      title: "自动确认",
+      title: "自动确认收款",
       status: health(
         status?.reconciliation.confirmation_ready,
-        "等待自动确认就绪",
+        "等待自动确认收款就绪",
       ),
       action: null,
       error:

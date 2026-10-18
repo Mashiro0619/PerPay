@@ -78,7 +78,7 @@ function RelatedOrderLink({ item }: { item: ReconciliationRow }) {
 }
 
 const sections = [
-  { value: "matches", label: "支付关联" },
+  { value: "matches", label: "收款关联" },
   { value: "exceptions", label: "账务异常" },
   { value: "conflicts", label: "账本冲突" },
 ];

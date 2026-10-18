@@ -137,7 +137,7 @@ function MatchDetail({ resourceId }: { resourceId: string }) {
   });
   return (
     <>
-      <EvidenceHeading title="支付关联详情" loaded={query.isSuccess} />
+      <EvidenceHeading title="收款关联详情" loaded={query.isSuccess} />
       <QueryView query={query}>
         {({ data }) => <MatchCard match={data} />}
       </QueryView>
@@ -179,7 +179,7 @@ function CandidateDetail({ resourceId }: { resourceId: string }) {
   });
   return (
     <>
-      <EvidenceHeading title="匹配候选证据" loaded={query.isSuccess} />
+      <EvidenceHeading title="可能匹配的记录详情" loaded={query.isSuccess} />
       <QueryView query={query}>
         {({ data }) => <CandidateCard candidate={data} />}
       </QueryView>
@@ -266,7 +266,7 @@ function LedgerDetail({ resourceId }: { resourceId: string }) {
                     ))
                   ) : (
                     <p className="text-sm text-muted-foreground">
-                      暂无匹配候选。
+                      暂无可能匹配的订单。
                     </p>
                   )
                 }

@@ -24,7 +24,7 @@ const states = {
   NONE: ["无", "secondary"],
   PARTIAL: ["部分退款", "outline"],
   FULL: ["全额退款", "secondary"],
-  MANUAL: ["人工确认", "outline"],
+  MANUAL: ["人工关联", "outline"],
   AMOUNT_INFERRED: ["金额推断", "secondary"],
   INFERRED: ["金额推断", "secondary"],
   FINANCIAL_EXCEPTION: ["账务异常", "destructive", CircleAlert],

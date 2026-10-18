@@ -250,7 +250,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
             <Card size="sm">
               <CardHeader>
                 <CardTitle role="heading" aria-level={2}>
-                  收款依据
+                  收款关联记录
                 </CardTitle>
                 <CardDescription>尚未关联收款。</CardDescription>
               </CardHeader>

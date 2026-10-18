@@ -169,7 +169,7 @@ describe("business website management", () => {
     expect(screen.getByRole("link", { name: "进入后台" })).toHaveAttribute("href", "/sites/site_test?range=30");
     expect(screen.getByRole("link", { name: "网站设置" })).toHaveAttribute("href", "/sites/site_test/settings/basic");
     expect(screen.getByText("¥129.01", { exact: true })).toBeVisible();
-    expect(screen.getByText("确认笔数", { exact: true })).toBeVisible();
+    expect(screen.getByText("收款确认笔数", { exact: true })).toBeVisible();
     expect(view.fetchMock.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual(["/api/admin/v1/sites/overview"]);
   });
 

@@ -14,7 +14,7 @@ export function readManualCandidateQuery(
   const allowed = new Set([contextKey, "q", "view", "cursor", "limit"]);
   for (const key of values.keys())
     if (!allowed.has(key) || values.getAll(key).length !== 1)
-      throw new ListQueryError("候选查询参数无效");
+      throw new ListQueryError("可能匹配的记录查询参数无效");
   const contextId = values.get(contextKey);
   if (
     (contextId !== null && !uuid.test(contextId)) ||
@@ -26,11 +26,11 @@ export function readManualCandidateQuery(
     (view !== "recommended" && view !== "all") ||
     (view === "recommended" && !contextId)
   )
-    throw new ListQueryError("候选视图无效");
+    throw new ListQueryError("可能匹配的记录视图无效");
   const q = normalizeKeyword(values.get("q") ?? "");
   const limitText = values.get("limit") ?? "10";
   if (!/^[1-9][0-9]{0,2}$/.test(limitText) || Number(limitText) > 100)
-    throw new ListQueryError("候选页大小无效");
+    throw new ListQueryError("可能匹配的记录页大小无效");
   const resource = "manual-settlement-" + kind;
   const binding = [contextId, q, view];
   const cursor = values.get("cursor");
@@ -39,7 +39,7 @@ export function readManualCandidateQuery(
       ? null
       : decodeListCursor(cursor, resource, binding, "number", 3);
   if (cursor !== null && position === null)
-    throw new ListQueryError("候选分页游标无效");
+    throw new ListQueryError("可能匹配的记录分页游标无效");
   const query: ManualCandidateQuery = {
     contextId,
     q,

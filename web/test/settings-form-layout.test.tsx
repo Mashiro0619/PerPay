@@ -36,7 +36,7 @@ describe("readable settings form structure", () => {
     expect(view.container.querySelectorAll("label input")).toHaveLength(0);
     for (const label of [
       "订单有效期（秒）",
-      "最大尾差（分）",
+      "最大加价金额（分）",
       "金额复用冷却（秒）",
       "待付款订单上限",
       "收银台名称",

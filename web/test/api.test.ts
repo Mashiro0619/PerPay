@@ -77,7 +77,7 @@ describe("administrator API boundary", () => {
 
   it("localizes server errors without dropping diagnostics", () => {
     const error = new ApiError(new Response(null, { status: 409 }), { error: { code: "candidate_set_changed", message: "candidate set changed", request_id: "evidence-123" } });
-    expect(error.message).toContain("候选证据已变化");
+    expect(error.message).toContain("可能匹配的记录已变化");
     expect(error.requestId).toBe("evidence-123");
     expect(error.code).toBe("candidate_set_changed");
   });

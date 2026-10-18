@@ -55,6 +55,7 @@ export function ManualCandidatePicker({
   const api = useWorkspaceApi();
   const { clientId } = useWorkspace();
   const noun = kind === "orders" ? "订单" : clientId ? "共享收入流水" : "收入流水";
+  const candidateNoun = kind === "orders" ? "订单" : "流水";
   const [draft, setDraft] = useState("");
   const [q, setQ] = useState("");
   const [view, setView] = useState<"recommended" | "all">(
@@ -188,7 +189,7 @@ export function ManualCandidatePicker({
       </div>
       {contextId && (
         <ToggleGroup
-          aria-label="候选范围"
+          aria-label="可能匹配的记录范围"
           value={[view]}
           variant="outline"
           spacing={0}
@@ -199,7 +200,7 @@ export function ManualCandidatePicker({
           }}
         >
           <ToggleGroupItem value="recommended" disabled={disabled}>
-            推荐候选
+            可能匹配的{candidateNoun}
           </ToggleGroupItem>
           <ToggleGroupItem value="all" disabled={disabled}>
             全部可关联
@@ -262,7 +263,7 @@ export function ManualCandidatePicker({
                 <EmptyHeader>
                   <EmptyTitle>
                     {view === "recommended"
-                      ? "没有推荐候选"
+                      ? "暂无可能匹配的" + candidateNoun
                       : "没有符合条件的" + noun}
                   </EmptyTitle>
                   <EmptyDescription>

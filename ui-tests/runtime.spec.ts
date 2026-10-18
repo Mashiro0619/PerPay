@@ -25,7 +25,7 @@ test("runtime keeps healthy diagnostics collapsed and exposes abnormal causes an
   });
   await page.reload();
   await expect(page.getByText(/最近错误：reconciliation_storage_error/)).toBeVisible();
-  const diagnose = page.getByRole("button", { name: "自动确认运行诊断" });
+  const diagnose = page.getByRole("button", { name: "自动确认收款运行诊断" });
   await diagnose.click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.keyboard.press("Escape");

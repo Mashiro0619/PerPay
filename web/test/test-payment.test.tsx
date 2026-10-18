@@ -48,7 +48,7 @@ describe("minimal test payment page", () => {
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     expect(screen.queryByText("创建小额测试订单")).not.toBeInTheDocument();
     expect(
-      screen.queryByText(/这不是模拟支付|随机尾差|我了解这会创建真实收款订单/),
+      screen.queryByText(/这不是模拟支付|随机加价金额|我了解这会创建真实收款订单/),
     ).not.toBeInTheDocument();
     expect(
       view.container.querySelector(".test-payment-page .notice"),

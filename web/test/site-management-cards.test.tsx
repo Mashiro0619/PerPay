@@ -131,7 +131,7 @@ describe("website management operating cards", () => {
     expect(cards()).toHaveLength(1);
     expect(item.closest(".site-management-grid")).not.toBeNull();
     expect(amount(item)).toHaveTextContent("¥129.01");
-    expect(metric(item, "确认笔数")).toHaveTextContent(/^17$/);
+    expect(metric(item, "收款确认笔数")).toHaveTextContent(/^17$/);
     expect(metric(item, "当前待付款")).toHaveTextContent(/^23$/);
     expect(metric(item, "待处理")).toHaveTextContent(/^5$/);
     expect(metric(item, "待处理").querySelector("[data-slot=badge]")).toHaveAttribute("data-variant", "warning");
@@ -170,7 +170,7 @@ describe("website management operating cards", () => {
     expect(within(paused).getByText("暂停接单", { exact: true })).toBeVisible();
     expect(within(paused).getByText("通知开启", { exact: true })).toBeVisible();
     expect(amount(paused)).toHaveTextContent("¥7.00");
-    expect(metric(paused, "确认笔数")).toHaveTextContent(/^9$/);
+    expect(metric(paused, "收款确认笔数")).toHaveTextContent(/^9$/);
     expect(metric(paused, "当前待付款")).toHaveTextContent(/^2$/);
     expect(metric(paused, "待处理")).toHaveTextContent(/^1$/);
     expect(within(paused).getByRole("link", { name: "进入后台" })).not.toHaveAttribute("aria-disabled", "true");
@@ -189,7 +189,7 @@ describe("website management operating cards", () => {
     })], null, { maximum: 0 }));
     const item = await findCard("site_zero");
     expect(amount(item)).toHaveTextContent("¥0.00");
-    for (const label of ["确认笔数", "当前待付款", "待处理"])
+    for (const label of ["收款确认笔数", "当前待付款", "待处理"])
       expect(metric(item, label)).toHaveTextContent(/^0$/);
     expect(metric(item, "待处理").querySelector("[data-slot=badge]")).toBeNull();
     expect(barWidth(item)).toBe(0);

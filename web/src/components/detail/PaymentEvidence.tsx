@@ -152,7 +152,7 @@ export function CandidateEvidence({
         匹配依据
       </h3>
       {facts.length < 3 && (
-        <p className="text-sm text-muted-foreground">匹配依据不完整</p>
+        <p className="text-sm text-muted-foreground">匹配信息不完整</p>
       )}
       <DetailFields wide={["金额占用时间"]} items={shownFacts} />
     </section>
@@ -172,7 +172,7 @@ export function MatchCard({
     <Card size={embedded ? "sm" : "default"} data-density="compact" aria-label="收款关联记录">
       <CardHeader>
         <CardTitle className="record-list-title" role="heading" aria-level={2}>
-          {embedded && match.status === "SETTLED" ? "收款依据" : "收款记录"}
+          收款关联记录
         </CardTitle>
         <CardDescription className="record-list-meta">
           {match.evidence_type === "MANUAL"
@@ -233,18 +233,19 @@ export function CandidateCard({
     candidate.order_id,
     knownOrder,
   );
+  const candidateTitle = knownOrder ? "可能匹配的流水" : ledger ? "可能匹配的订单" : "可能匹配的记录";
   const paymentStatus = order
     ? "payment" in order
       ? order.payment.status
       : order.payment_status
     : null;
   return (
-    <Card size={embedded ? "sm" : "default"} data-density="compact" aria-label="匹配候选证据">
+    <Card size={embedded ? "sm" : "default"} data-density="compact" aria-label={candidateTitle}>
       <CardHeader>
         <CardTitle className="record-list-title" role="heading" aria-level={2}>
-          金额推断候选
+          {candidateTitle}
         </CardTitle>
-        <CardDescription className="record-list-meta">候选不代表付款确认。</CardDescription>
+        <CardDescription className="record-list-meta">系统按金额和付款时间推测，需要你确认；可能匹配的记录不代表收款已确认。</CardDescription>
         <CardAction>
           <StatusBadge value={candidate.status} />
         </CardAction>
@@ -287,8 +288,8 @@ export function CandidateCard({
         />
         <RecordTools
           data={candidate}
-          identifiers={[["候选编号", candidate.candidate_id]]}
-          label="候选记录操作"
+          identifiers={[["可能匹配记录编号", candidate.candidate_id]]}
+          label="可能匹配记录操作"
           to={
             embedded
               ? "/reconciliation/candidates/" + candidate.candidate_id

@@ -76,7 +76,7 @@ function DashboardContent() {
       : !state.ledger.collection_ready
         ? "还没有成功查账，请检查支付宝接入"
         : !state.reconciliation.confirmation_ready
-          ? "自动确认尚未就绪，请检查对账状态"
+          ? "自动确认收款尚未就绪，请检查对账状态"
           : "服务尚未就绪";
   const data =
     analytics.isPlaceholderData || analytics.isError

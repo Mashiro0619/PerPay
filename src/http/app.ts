@@ -1235,10 +1235,10 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const candidateId = requireResourceId(
       context.req.param("candidateId"),
       "candidate_not_found",
-      "匹配候选不存在",
+      "可能匹配的记录不存在",
     );
     const candidate = requireReconciliationStore(dependencies).candidate(candidateId);
-    if (!candidate) throw new HttpApiError(404, "candidate_not_found", "匹配候选不存在");
+    if (!candidate) throw new HttpApiError(404, "candidate_not_found", "可能匹配的记录不存在");
     return context.json({ data: serializeCandidate(candidate) });
   });
 
@@ -1315,10 +1315,10 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const paymentMatchId = requireResourceId(
       context.req.param("paymentMatchId"),
       "match_not_found",
-      "支付关联不存在",
+      "收款关联不存在",
     );
     const match = requireReconciliationStore(dependencies).paymentMatchDetail(paymentMatchId);
-    if (!match) throw new HttpApiError(404, "match_not_found", "支付关联不存在");
+    if (!match) throw new HttpApiError(404, "match_not_found", "收款关联不存在");
     const identity = adminOrderIdentities(dependencies.database, [match.order.orderId]).get(match.order.orderId)!;
     return context.json({ data: serializePaymentMatchDetail(match, identity) });
   });
@@ -1362,7 +1362,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       const paymentMatchId = requireResourceId(
         context.req.param("paymentMatchId"),
         "match_not_found",
-        "支付关联不存在",
+        "收款关联不存在",
       );
       const body = await readJson(context, financialDecisionRequestSchema, MAX_JSON_BODY_BYTES);
       const session = requireCurrentSession(context, dependencies.identity);
@@ -2562,7 +2562,7 @@ function requirePaymentBackgroundReady(dependencies: AppDependencies): void {
     throw new HttpApiError(
       503,
       "reconciliation_not_ready",
-      "查账和自动确认尚未就绪",
+      "查账和自动确认收款尚未就绪",
       retryAfterSeconds,
     );
   }
@@ -2571,7 +2571,7 @@ function requirePaymentBackgroundReady(dependencies: AppDependencies): void {
   throw new HttpApiError(
     503,
     "reconciliation_not_ready",
-    "自动对账没有近期成功运行记录",
+    "自动确认收款没有近期成功运行记录",
     retryAfterSeconds,
   );
 }
@@ -2664,13 +2664,13 @@ function reconciliationStatus(code: ReconciliationErrorCode): 404 | 409 | 503 {
 function reconciliationMessage(code: ReconciliationErrorCode): string {
   switch (code) {
     case "candidate_not_found":
-      return "匹配候选或订单不存在";
+      return "可能匹配的记录或订单不存在";
     case "match_not_found":
-      return "支付关联不存在";
+      return "收款关联不存在";
     case "match_state_conflict":
       return "资金事实或处理状态已经变化";
     case "candidate_set_changed":
-      return "匹配候选集合已经变化，请刷新后重新判断";
+      return "可能匹配的记录集合已经变化，请刷新后重新判断";
     case "operation_conflict":
       return "资金操作编号已用于不同请求";
     case "financial_clock_unavailable":

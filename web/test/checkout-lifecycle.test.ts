@@ -97,7 +97,7 @@ describe("checkout payment layout", () => {
     expect(screen.getByRole("button", { name: "放大二维码" })).toBeVisible();
     expect(screen.getByRole("button", { name: "保存二维码" })).toBeVisible();
     expect(
-      screen.queryByText(/请支付准确金额，勿修改尾数|含订单识别尾差/),
+      screen.queryByText(/请支付准确金额，勿修改尾数|含订单识别加价金额/),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByText("保存二维码 → 支付宝扫一扫 → 相册识别"),

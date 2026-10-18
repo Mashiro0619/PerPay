@@ -83,7 +83,7 @@ export function SitePolicyFields({
             }
           />
           <NumberField
-            label="最大尾差（分）"
+            label="最大加价金额（分）"
             error={error("orders.amount_offset_maximum_cents")}
             value={value.orders.amount_offset_maximum_cents}
             min={1}
@@ -96,7 +96,7 @@ export function SitePolicyFields({
           />
           <NumberField
             label="金额复用冷却（秒）"
-            hint="冷却结束后优先复用最小尾差；历史订单期限不变。"
+            hint="冷却结束后优先复用最小加价金额；历史订单期限不变。"
             error={error("orders.amount_reuse_cooldown_seconds")}
             value={value.orders.amount_reuse_cooldown_seconds}
             min={60}

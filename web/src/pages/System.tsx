@@ -108,7 +108,7 @@ function SystemSnapshot({
       : !data.ledger.collection_ready
         ? "查账尚未就绪，新订单收款入口已暂停。"
         : !data.reconciliation.confirmation_ready
-          ? "自动确认尚未就绪，请检查确认任务。"
+          ? "自动确认收款尚未就绪，请检查确认任务。"
           : "服务尚未就绪，请检查运行环节。";
   const unexplainedWarning =
     state.canReceive &&
@@ -231,7 +231,7 @@ function SystemSnapshot({
           </RuntimeService>
           <RuntimeService
             onDiagnose={openDiagnostics}
-            title="自动确认"
+            title="自动确认收款"
             enabled={data.reconciliation.enabled}
             healthy={state.reconciliationHealthy}
             lastSuccess={data.reconciliation.last_success_at}
@@ -244,7 +244,7 @@ function SystemSnapshot({
             }
           >
             {!data.reconciliation.confirmation_ready && (
-              <p>自动确认尚未就绪。</p>
+              <p>自动确认收款尚未就绪。</p>
             )}
             {data.reconciliation.last_error_code && (
               <p>

@@ -74,12 +74,12 @@ export function ReverseMatchAction({
   return (
     <>
       <RecordTools
-        label="收款记录操作"
+        label="收款关联记录操作"
         data={match}
         identifiers={[
           ["关联编号", match.payment_match_id],
           ["流水编号", match.ledger_entry_id],
-          ["候选编号", match.candidate_id],
+          ["可能匹配记录编号", match.candidate_id],
         ]}
         to={
           embedded

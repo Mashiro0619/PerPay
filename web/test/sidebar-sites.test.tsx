@@ -694,8 +694,8 @@ describe("website selection on shared pages", () => {
       },
     });
     const user = userEvent.setup();
-    await screen.findByRole("heading", { name: "收款记录" });
-    await user.click(await recordAction("撤销错误关联", "收款记录操作"));
+    await screen.findByRole("heading", { name: "收款关联记录" });
+    await user.click(await recordAction("撤销错误关联", "收款关联记录操作"));
     const dialog = await screen.findByRole("dialog", { name: "撤销收款关联？" });
     const reason = within(dialog).getByLabelText("操作理由");
     await user.type(reason, "保留原始核查依据");
