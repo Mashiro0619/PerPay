@@ -98,7 +98,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
     ? "应付金额"
     : order && order.payment.status !== "UNPAID"
       ? "已收金额"
-      : "订单金额";
+      : "下单金额";
   const remaining = order
     ? Math.max(
         0,

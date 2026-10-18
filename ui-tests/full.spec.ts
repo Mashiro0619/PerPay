@@ -28,7 +28,7 @@ for (const theme of ["light", "dark"] as const) for (const viewport of [{ width:
     const cases = [
       { id: "open", heading: "支付宝付款" }, { id: "fullEvidence", heading: "收款已确认" },
       { id: "expired", heading: "订单已过期" }, { id: "closed", heading: "订单已关闭" },
-      { id: "disputed", heading: "需核对" }, { id: "missing", heading: "找不到这个订单" },
+      { id: "disputed", heading: "付款待核实" }, { id: "missing", heading: "找不到这个订单" },
       { id: "limited", heading: "请求过于频繁", error: 429 as const }, { id: "unavailable", heading: "暂时无法确认付款", error: 503 as const },
     ];
     for (const item of cases) {

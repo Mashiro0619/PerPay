@@ -65,9 +65,9 @@ export const checkoutCopy: Record<
     detail: "",
   },
   DISPUTED: {
-    badge: "需核对",
-    heading: "需核对",
-    detail: "请联系商家核实，勿再次付款。",
+    badge: "付款待核实",
+    heading: "付款待核实",
+    detail: "商家撤销了这笔收款确认。请先联系商家核实，不要重复付款。",
   },
   CLOSED: {
     badge: "订单已关闭",
@@ -85,7 +85,7 @@ export const checkoutCopy: Record<
     detail: "链接已失效或不完整，请向商家获取新链接。",
   },
   RATE_LIMITED: {
-    badge: "正在等待刷新",
+    badge: "稍后自动重试",
     heading: "请求过于频繁",
     detail: "请稍等，页面会自动重试。",
   },
