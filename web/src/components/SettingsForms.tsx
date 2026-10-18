@@ -437,10 +437,10 @@ export function SettingsEditor({
               />
               <FieldDescription id="setting-private-key-hint">
                 {settings.provider || settings.provider_generations.length > 0
-                  ? "留空保留当前应用私钥。此导入入口不能替换当前应用的私钥；更换请使用下方“重新生成应用公钥”，上传后再验证启用。"
+                  ? "留空保留当前应用私钥。此导入入口不能替换当前应用的私钥；更换请使用下方“更换应用密钥对”，上传后再验证启用。"
                   : applicationKeyState(settings) === "missing"
-                    ? "首次接入可导入已有应用私钥，并将对应的应用公钥配置到支付宝；不导入则先生成应用公钥。"
-                    : "已有应用私钥，留空即可复用。这里只接受与当前应用公钥匹配的私钥；需要更换时请使用下方“重新生成应用公钥”。"}
+                    ? "首次接入可导入已有应用私钥，并将对应的应用公钥配置到支付宝；不导入则先生成应用密钥对。"
+                    : "已有应用私钥，留空即可复用。这里只接受与当前应用公钥匹配的私钥；需要更换时请使用下方“更换应用密钥对”。"}
               </FieldDescription>
               {fieldErrors.private_key && (
                 <FieldError id="setting-private-key-error">

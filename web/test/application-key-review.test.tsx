@@ -46,10 +46,10 @@ describe("pending key continuity across onboarding steps", () => {
     const view = mountOnboarding({ stage: 4, path: applicationPath });
     await user.click(await screen.findByRole("button", { name: "密钥维护" }));
     await user.click(
-      await screen.findByRole("button", { name: "重新生成应用公钥" }),
+      await screen.findByRole("button", { name: "更换应用密钥对" }),
     );
     await user.click(
-      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "生成新公钥",
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "生成新密钥对",
       }),
     );
     await screen.findByText(pendingKey);
@@ -313,15 +313,15 @@ describe.each([
   it.each([
     [
       "initial",
-      "重新生成应用公钥",
-      "生成新公钥",
-      "应用公钥已重新生成，请使用新的公钥配置支付宝。",
+      "更换应用密钥对",
+      "生成新密钥对",
+      "应用密钥对已重新生成，请使用新的应用公钥配置支付宝。",
     ],
     [
       "active",
-      "重新生成应用公钥",
-      "生成新公钥",
-      "新应用公钥已生成，上传到支付宝后再验证启用。",
+      "更换应用密钥对",
+      "生成新密钥对",
+      "新的应用密钥对已生成。请把新的应用公钥上传到支付宝，再验证启用。",
     ],
     ["pending", "验证并启用", "验证并启用", "应用公钥已验证并启用。"],
     ["pending", "放弃新公钥", "确认放弃", "已放弃待启用公钥，当前密钥未更换。"],
@@ -335,13 +335,13 @@ describe.each([
         path: inline ? providerPath : path,
       });
       const user = userEvent.setup();
-      if (trigger === "重新生成应用公钥")
+      if (trigger === "更换应用密钥对")
         await user.click(
           await screen.findByRole("button", { name: "密钥维护" }),
         );
       if (!inline)
         await user.click(await screen.findByRole("button", { name: trigger }));
-      const dialog = await screen.findByRole(inline ? "form" : trigger === "重新生成应用公钥" ? "alertdialog" : "dialog");
+      const dialog = await screen.findByRole(inline ? "form" : trigger === "更换应用密钥对" ? "alertdialog" : "dialog");
       if (trigger === "验证并启用")
         await user.type(
           within(dialog).getByLabelText("支付宝公钥"),

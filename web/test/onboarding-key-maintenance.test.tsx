@@ -36,21 +36,21 @@ describe("infrequent application-key maintenance", () => {
       const toggle = await screen.findByRole("button", { name: "密钥维护" });
       expect(toggle).toHaveAttribute("aria-expanded", "false");
       expect(
-        screen.queryByRole("button", { name: "重新生成应用公钥" }),
+        screen.queryByRole("button", { name: "更换应用密钥对" }),
       ).not.toBeInTheDocument();
       expect(screen.queryByText(/重新生成会同时/)).not.toBeInTheDocument();
       toggle.focus();
       await user.keyboard("{Enter}");
       expect(toggle).toHaveAttribute("aria-expanded", "true");
       expect(
-        screen.getByRole("button", { name: "重新生成应用公钥" }),
+        screen.getByRole("button", { name: "更换应用密钥对" }),
       ).toBeVisible();
       expect(screen.getByText(/重新生成会同时/)).toBeVisible();
       expect(view.writes()).toHaveLength(0);
       await user.click(toggle);
       await waitFor(() =>
         expect(
-          screen.queryByRole("button", { name: "重新生成应用公钥" }),
+          screen.queryByRole("button", { name: "更换应用密钥对" }),
         ).not.toBeInTheDocument(),
       );
       expect(view.writes()).toHaveLength(0);
@@ -62,16 +62,16 @@ describe("infrequent application-key maintenance", () => {
     const user = userEvent.setup();
     const toggle = await screen.findByRole("button", { name: "密钥维护" });
     await user.click(toggle);
-    await user.click(screen.getByRole("button", { name: "重新生成应用公钥" }));
+    await user.click(screen.getByRole("button", { name: "更换应用密钥对" }));
     await user.click(
-      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "生成新公钥",
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "生成新密钥对",
       }),
     );
     await screen.findByText("synthetic-regenerated-application-public-key");
     await waitFor(() => expect(toggle).toHaveFocus());
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(
-      screen.queryByRole("button", { name: "重新生成应用公钥" }),
+      screen.queryByRole("button", { name: "更换应用密钥对" }),
     ).not.toBeInTheDocument();
     expect(view.writes()).toHaveLength(1);
   });
@@ -82,9 +82,9 @@ describe("non-blocking pending application keys", () => {
     const view = mountOnboarding({ stage: 4, path: applicationPath });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "密钥维护" }));
-    await user.click(screen.getByRole("button", { name: "重新生成应用公钥" }));
+    await user.click(screen.getByRole("button", { name: "更换应用密钥对" }));
     await user.click(
-      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "生成新公钥",
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "生成新密钥对",
       }),
     );
     await screen.findByText("synthetic-pending-application-public-key");

@@ -6,7 +6,7 @@ export const onboardingSteps = [
   {
     id: "application",
     title: "应用公钥",
-    description: "首次使用时生成应用公钥，再复制到支付宝的接口加签设置。",
+    description: "首次使用时生成应用密钥对，再上传应用公钥到支付宝的接口加签设置。",
   },
   {
     id: "provider",
@@ -39,7 +39,7 @@ export function onboardingStepDescription(
 ): string {
   if (step === "application") {
     if (settings.pending_application_key)
-      return "新应用公钥已生成。上传到支付宝后，下一步填写支付宝公钥并验证启用。";
+      return "新的应用密钥对已生成。请把新的应用公钥上传到支付宝，下一步填写支付宝公钥并验证启用。";
     const state = applicationKeyState(settings);
     if (state === "configured")
       return "应用公钥已就绪。复制到支付宝的接口加签设置，已配置则直接下一步。";

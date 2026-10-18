@@ -222,7 +222,7 @@ describe("first collection onboarding", () => {
     const view = mountOnboarding();
     const user = userEvent.setup();
     await user.click(
-      await screen.findByRole("button", { name: "生成应用公钥" }),
+      await screen.findByRole("button", { name: "生成应用密钥对" }),
     );
     expect(
       await screen.findByText("synthetic-application-public-key"),
@@ -230,7 +230,7 @@ describe("first collection onboarding", () => {
     await pathIs(view, "application");
     expect(view.writes()).toHaveLength(1);
     expect(
-      screen.queryByRole("button", { name: "生成应用公钥" }),
+      screen.queryByRole("button", { name: "生成应用密钥对" }),
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "下一步" }));
     await pathIs(view, "provider");

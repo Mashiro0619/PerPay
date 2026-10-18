@@ -19,7 +19,7 @@ const messages: Record<string, string> = {
   provider_application_key_missing:
     "尚未配置应用密钥对，请先在支付宝接入中生成密钥对，或导入已有应用私钥。",
   provider_application_key_rotation_not_supported:
-    "不能直接覆盖当前应用私钥。请使用“重新生成应用公钥”，上传到支付宝后再验证启用。",
+    "不能直接覆盖当前应用私钥。请使用“更换应用密钥对”，上传到支付宝后再验证启用。",
   provider_application_key_change_pending:
     "已有待启用的新公钥，请先验证启用或放弃，再生成另一把公钥或切换支付宝应用。",
   provider_application_key_change_conflict:

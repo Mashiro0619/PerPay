@@ -245,7 +245,7 @@ export function ApplicationKey({
                       }
                     >
                       <RefreshCw data-icon="inline-start" />
-                      重新生成应用公钥
+                      更换应用密钥对
                     </Button>
                   </div>
                 </CollapsibleContent>
@@ -268,7 +268,7 @@ export function ApplicationKey({
               ) : (
                 <KeyRound data-icon="inline-start" />
               )}
-              生成应用公钥
+              生成应用密钥对
             </Button>
             <p className="text-sm text-muted-foreground">
               同时生成配套的应用私钥，由 {systemName}{" "}
@@ -388,8 +388,8 @@ function ApplicationKeyChange({
         return {
           settings: data.settings,
           message: data.settings.pending_application_key
-            ? "新应用公钥已生成，上传到支付宝后再验证启用。"
-            : "应用公钥已重新生成，请使用新的公钥配置支付宝。",
+            ? "新的应用密钥对已生成。请把新的应用公钥上传到支付宝，再验证启用。"
+            : "应用密钥对已重新生成，请使用新的应用公钥配置支付宝。",
         };
       }
       if (command.mode === "activate") {
@@ -459,7 +459,7 @@ function ApplicationKeyChange({
     operation.isPending || Boolean(operation.recovery) || operation.conflict;
   const title =
     mode === "regenerate"
-      ? "重新生成应用公钥？"
+      ? "更换应用密钥对？"
       : mode === "activate"
         ? "验证并启用新应用公钥"
         : "放弃新公钥？";
@@ -553,7 +553,7 @@ function ApplicationKeyChange({
             disabled={locked}
           />
           <FieldLabel htmlFor="application-key-confirmed" className="min-h-11">
-            我尚未上传新公钥，或已恢复原配置并同步支付宝公钥
+            我确认支付宝侧未启用这把新公钥（未上传，或已恢复原配置并同步支付宝公钥）
           </FieldLabel>
         </Field>
       )}
@@ -596,7 +596,7 @@ function ApplicationKeyChange({
       {operation.recovery
         ? "重试同一操作"
         : mode === "regenerate"
-          ? "生成新公钥"
+          ? "生成新密钥对"
           : mode === "activate"
             ? guided
               ? "验证并启用后继续"
