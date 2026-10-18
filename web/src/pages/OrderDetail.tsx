@@ -147,7 +147,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
                 </Item>
                 <Item className="record-list-row" size="sm" role="listitem">
                   <ItemContent>
-                    <ItemDescription>原始金额</ItemDescription>
+                    <ItemDescription>下单金额</ItemDescription>
                   </ItemContent>
                   <ListMoney value={order.requested_amount_cents} secondary />
                 </Item>

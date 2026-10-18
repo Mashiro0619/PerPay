@@ -154,7 +154,7 @@ export function CandidateEvidence({
       {facts.length < 3 && (
         <p className="text-sm text-muted-foreground">匹配依据不完整</p>
       )}
-      <DetailFields wide={["金额占用窗口"]} items={shownFacts} />
+      <DetailFields wide={["金额占用时间"]} items={shownFacts} />
     </section>
   );
 }

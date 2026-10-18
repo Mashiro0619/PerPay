@@ -64,14 +64,14 @@ export function candidateFacts(
     ...(start !== null && start >= 0
       ? [
           [
-            "金额占用窗口",
+            "金额占用时间",
             detailTimestamp(start) +
               " 至 " +
               (end !== null && end >= start
                 ? detailTimestamp(end)
                 : evidence.slot_released_at === null
-                  ? "记录时尚未释放"
-                  : "终点未记录"),
+                  ? "生成这条记录时，金额还没释放"
+                  : "没有记录释放时间"),
           ] as [string, string],
         ]
       : []),

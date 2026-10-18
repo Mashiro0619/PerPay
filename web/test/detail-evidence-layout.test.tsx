@@ -223,7 +223,7 @@ describe("always-visible detail evidence", () => {
   it("exposes matching facts immediately while keeping redundant ledger facts out", () => {
     render(<CandidateEvidence candidate={candidate} ledger={detailLedger} />);
     expect(screen.getByRole("heading", { name: "匹配依据" })).toBeVisible();
-    expect(screen.getByText("金额占用窗口")).toBeVisible();
+    expect(screen.getByText("金额占用时间")).toBeVisible();
     expect(
       screen.queryByRole("button", { name: "匹配依据" }),
     ).not.toBeInTheDocument();

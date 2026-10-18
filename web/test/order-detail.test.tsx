@@ -142,7 +142,7 @@ describe("order detail work surface", () => {
     expect(screen.getByText(detailLedger.provider_order_no!)).toBeVisible();
     expect(screen.getByText("测试买家")).toBeVisible();
     expect(screen.getByText("测试交易备注")).toBeVisible();
-    expect(screen.getByText("金额占用窗口")).toBeVisible();
+    expect(screen.getByText("金额占用时间")).toBeVisible();
     expect(screen.getByRole("heading", { name: "匹配依据" })).toBeVisible();
     expect(
       screen.queryByRole("button", { name: "匹配依据" }),
@@ -150,7 +150,7 @@ describe("order detail work surface", () => {
     expect(
       screen.queryByText(/按金额和付款时间推断，不是平台按订单号确认/),
     ).not.toBeInTheDocument();
-    expect(screen.getByText("金额占用窗口")).toBeVisible();
+    expect(screen.getByText("金额占用时间")).toBeVisible();
     expect(await recordAction("标记已退款")).toBeVisible();
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     expect(screen.queryByText("历史退款（只读）")).not.toBeInTheDocument();

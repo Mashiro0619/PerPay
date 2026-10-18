@@ -214,7 +214,7 @@ export class OrderService {
       case "amount_slots_exhausted":
         throw new OrderError(
           "amount_slots_exhausted",
-          "当前请求金额的可用尾差已经耗尽，请稍后重试",
+          "当前金额暂时没有可用的应付金额，请稍后重试",
           result.retryAfterSeconds,
         );
     }

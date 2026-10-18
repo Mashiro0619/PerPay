@@ -91,7 +91,7 @@ describe("readable evidence without stronger financial claims", () => {
     expect(candidateFacts(candidate).map(([name]) => name)).toEqual([
       "匹配金额",
       "流水发生时间",
-      "金额占用窗口",
+      "金额占用时间",
     ]);
   });
   it("does not mistake HTTP success for business acknowledgement", () => {

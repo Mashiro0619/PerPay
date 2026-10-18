@@ -33,7 +33,7 @@ const messages: Record<string, string> = {
   reconciliation_not_ready: "采集或对账尚未就绪，请等待一次成功运行后重试。",
   reconciliation_unavailable: "对账服务暂时不可用，请查看运行状态。",
   ledger_unavailable: "账本暂时不可用，请查看运行状态。",
-  amount_slots_exhausted: "此金额的可用收款位已用完，请稍后重试或调整金额。",
+  amount_slots_exhausted: "暂时没有可用的应付金额，请稍后重试或调整金额。",
   validation_failed: "输入未通过校验，请检查格式、必填项和数值范围。",
   invalid_json: "请求内容无效，请重新加载页面后再试。",
   request_body_too_large: "提交内容过大，请缩短内容后重试。",
