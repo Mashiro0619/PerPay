@@ -778,9 +778,9 @@ export function ReadinessCheck({
           <TestPaymentButton>小额真实测试</TestPaymentButton>
           <Link
             className={buttonVariants({ variant: "outline" })}
-            to="/settings/security"
+            to={settings.site_mode ? "/sites" : "/settings/security"}
           >
-            获取接入凭证
+            {settings.site_mode ? "前往业务网站获取密钥" : "获取接入凭证"}
           </Link>
         </>
       )}

@@ -76,6 +76,14 @@ function completeStatus() {
 }
 
 describe("onboarding payment readiness", () => {
+  it("hands site-mode credentials off to the business website list", async () => {
+    const settings = configuredThrough(4);
+    settings.site_mode = true;
+    mount(() => json({ data: completeStatus() }), settings);
+    const link = await screen.findByRole("link", { name: "前往业务网站获取密钥" });
+    expect(link).toHaveAttribute("href", "/sites");
+    expect(screen.queryByRole("link", { name: "获取接入凭证" })).not.toBeInTheDocument();
+  });
   it.each([
     "configured",
     "database",
