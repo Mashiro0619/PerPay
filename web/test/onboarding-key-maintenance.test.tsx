@@ -33,7 +33,7 @@ describe("infrequent application-key maintenance", () => {
         path: String(path),
       });
       const user = userEvent.setup();
-      const toggle = await screen.findByRole("button", { name: "密钥维护" });
+      const toggle = await screen.findByRole("button", { name: "更换应用密钥" });
       expect(toggle).toHaveAttribute("aria-expanded", "false");
       expect(
         screen.queryByRole("button", { name: "更换应用密钥对" }),
@@ -60,7 +60,7 @@ describe("infrequent application-key maintenance", () => {
   it("collapses again and restores a visible focus target after replacing an initial key", async () => {
     const view = mountOnboarding({ stage: 1, path: applicationPath });
     const user = userEvent.setup();
-    const toggle = await screen.findByRole("button", { name: "密钥维护" });
+    const toggle = await screen.findByRole("button", { name: "更换应用密钥" });
     await user.click(toggle);
     await user.click(screen.getByRole("button", { name: "更换应用密钥对" }));
     await user.click(
@@ -81,7 +81,7 @@ describe("non-blocking pending application keys", () => {
   it("keeps all later steps usable immediately after regeneration", async () => {
     const view = mountOnboarding({ stage: 4, path: applicationPath });
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "密钥维护" }));
+    await user.click(await screen.findByRole("button", { name: "更换应用密钥" }));
     await user.click(screen.getByRole("button", { name: "更换应用密钥对" }));
     await user.click(
       within(await screen.findByRole("alertdialog")).getByRole("button", { name: "生成新密钥对",
@@ -184,7 +184,7 @@ describe("non-blocking pending application keys", () => {
     const input = await screen.findByLabelText("支付宝公钥");
     await user.type(input, "submitted-platform-key");
     await user.click(screen.getByRole("button", { name: "验证并启用后继续" }));
-    await screen.findByRole("button", { name: "重试同一操作" });
+    await screen.findByRole("button", { name: "重试上一次操作" });
     await user.click(screen.getByRole("link", { name: "暂不启用，继续配置" }));
     let dialog = await screen.findByRole("alertdialog", {
       name: "操作结果尚未确认，仍要离开？",

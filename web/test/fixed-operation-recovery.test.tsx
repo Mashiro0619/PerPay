@@ -128,7 +128,7 @@ describe("fixed command result recovery", () => {
     );
     expect(screen.getByText("原始核对证据")).toBeVisible();
     expect(screen.queryByText("后台刷新后的新证据")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "重试原操作" }));
+    await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
     await waitFor(() => expect(success).toHaveBeenCalledOnce());
     expect(newer).not.toHaveBeenCalled();
     expect(execute).toHaveBeenCalledTimes(2);
@@ -193,12 +193,12 @@ describe("fixed command result recovery", () => {
     fireEvent.change(input, { target: { value: "修正后的理由" } });
     await user.click(screen.getByRole("button", { name: "确认撤销关联" }));
     await screen.findByText("操作结果待确认");
-    await user.click(screen.getByRole("button", { name: "重试原操作" }));
+    await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "重试原操作" })).toBeEnabled(),
+      expect(screen.getByRole("button", { name: "重试上一次操作" })).toBeEnabled(),
     );
     expect(input).toHaveAttribute("readonly");
-    await user.click(screen.getByRole("button", { name: "重试原操作" }));
+    await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
     await waitFor(() => expect(success).toHaveBeenCalledOnce());
     expect(execute.mock.calls[1]!.slice(0, 2)).toEqual(
       execute.mock.calls[2]!.slice(0, 2),
@@ -218,10 +218,10 @@ describe("fixed command result recovery", () => {
     const user = userEvent.setup();
     const input = await submitReason(user);
     await screen.findByText("操作结果待确认");
-    await user.click(screen.getByRole("button", { name: "重试原操作" }));
+    await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
     await waitFor(() =>
       expect(
-        screen.queryByRole("button", { name: "重试原操作" }),
+        screen.queryByRole("button", { name: "重试上一次操作" }),
       ).not.toBeInTheDocument(),
     );
     expect(screen.getByText("操作结果待确认")).toBeVisible();
@@ -277,7 +277,7 @@ describe("fixed command result recovery", () => {
       await Promise.resolve();
     });
     expect(success).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "重试原操作" }));
+    fireEvent.click(screen.getByRole("button", { name: "重试上一次操作" }));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(100);
     });
@@ -340,7 +340,7 @@ describe("manual settlement recovery and evidence reading", () => {
     expect(
       screen.queryByRole("button", { name: "重新核对证据" }),
     ).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "重试原操作" }));
+    await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
     await waitFor(() => expect(view.onSuccess).toHaveBeenCalledOnce());
     expect(await view.writes()[1]!.clone().json()).toEqual(first);
     expect(view.requests.filter((r) => r.method === "GET")).toHaveLength(2);
@@ -392,7 +392,7 @@ describe("manual settlement recovery and evidence reading", () => {
     expect(requests.filter((request) => request.method === "GET")).toHaveLength(
       2,
     );
-    await user.click(screen.getByRole("button", { name: "重试原操作" }));
+    await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
     await waitFor(() => expect(success).toHaveBeenCalledOnce());
     const bodies = await Promise.all(
       requests
@@ -424,10 +424,10 @@ describe("manual settlement recovery and evidence reading", () => {
     const user = userEvent.setup();
     await submitManual(user);
     await screen.findByText("操作结果待确认");
-    await user.click(screen.getByRole("button", { name: "重试原操作" }));
+    await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
     await waitFor(() =>
       expect(
-        screen.queryByRole("button", { name: "重试原操作" }),
+        screen.queryByRole("button", { name: "重试上一次操作" }),
       ).not.toBeInTheDocument(),
     );
     expect(

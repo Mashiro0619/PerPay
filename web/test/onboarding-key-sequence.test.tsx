@@ -212,11 +212,11 @@ describe("sequential application-key onboarding", () => {
     });
     const user = userEvent.setup();
     const { form, input } = await fillAndSubmit(user, "wrong-alipay-key");
-    await within(form).findByRole("button", { name: "重试同一操作" });
+    await within(form).findByRole("button", { name: "重试上一次操作" });
     expect(input).toBeDisabled();
     expect(screen.getByRole("button", { name: "刷新" })).toBeDisabled();
     await user.click(
-      within(form).getByRole("button", { name: "重试同一操作" }),
+      within(form).getByRole("button", { name: "重试上一次操作" }),
     );
     await within(form).findByText(/支付宝验证未通过/);
     expect(input).toBeEnabled();
@@ -268,7 +268,7 @@ describe("sequential application-key onboarding", () => {
       const user = userEvent.setup();
       const { form, input } = await fillAndSubmit(user);
       await user.click(
-        await within(form).findByRole("button", { name: "重试同一操作" }),
+        await within(form).findByRole("button", { name: "重试上一次操作" }),
       );
       await within(form).findByText("不能证明上次未执行");
       expect(input).toBeDisabled();
@@ -284,7 +284,7 @@ describe("sequential application-key onboarding", () => {
       await waitFor(() =>
         expect(
           within(form).getByRole("button", {
-            name: status === 409 ? "刷新配置" : "重试同一操作",
+            name: status === 409 ? "刷新配置" : "重试上一次操作",
           }),
         ).toHaveFocus(),
       );
@@ -302,7 +302,7 @@ describe("sequential application-key onboarding", () => {
     });
     const user = userEvent.setup();
     const { form, input } = await fillAndSubmit(user);
-    await within(form).findByRole("button", { name: "重试同一操作" });
+    await within(form).findByRole("button", { name: "重试上一次操作" });
     await user.click(within(form).getByRole("button", { name: "刷新配置" }));
     let confirm = await screen.findByRole("alertdialog", {
       name: "刷新并核对启用结果？",
@@ -345,7 +345,7 @@ describe("sequential application-key onboarding", () => {
     });
     const user = userEvent.setup();
     const { form, input } = await fillAndSubmit(user);
-    await within(form).findByRole("button", { name: "重试同一操作" });
+    await within(form).findByRole("button", { name: "重试上一次操作" });
     failReads = true;
     await user.click(within(form).getByRole("button", { name: "刷新配置" }));
     const confirm = await screen.findByRole("alertdialog", {
@@ -357,7 +357,7 @@ describe("sequential application-key onboarding", () => {
     expect(input).toBeDisabled();
     failReads = false;
     await user.click(
-      within(form).getByRole("button", { name: "重试同一操作" }),
+      within(form).getByRole("button", { name: "重试上一次操作" }),
     );
     await screen.findByLabelText("支付宝经营码内容");
     expect(await body(view, 1)).toEqual(await body(view, 0));

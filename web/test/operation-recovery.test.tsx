@@ -124,7 +124,7 @@ describe("fixed-evidence operation recovery", () => {
       ).not.toBeInTheDocument();
       await user.click(
         screen.getByRole("button", {
-          name: status === 503 ? "重试原操作" : "确认处理",
+          name: status === 503 ? "重试上一次操作" : "确认处理",
         }),
       );
       await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce());

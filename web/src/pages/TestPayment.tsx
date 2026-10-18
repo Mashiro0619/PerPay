@@ -211,7 +211,7 @@ function TestPaymentForm({ dialog }: { dialog?: TestPaymentDialogProps }) {
       {create.isPending && (
         <Spinner aria-hidden="true" data-icon="inline-start" />
       )}
-      {recovery ? "重试原请求" : "创建测试订单"}
+      {recovery ? "重试上一次操作" : "创建测试订单"}
     </Button>
   );
 

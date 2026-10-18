@@ -157,7 +157,7 @@ describe("financial operation navigation protection", () => {
     await waitFor(() =>
       expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument(),
     );
-    await user.click(screen.getByRole("button", { name: "重试原操作" }));
+    await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
     await waitFor(() => expect(view.success).toHaveBeenCalledOnce());
     expect(execute.mock.calls[1]!.slice(0, 2)).toEqual(
       execute.mock.calls[0]!.slice(0, 2),

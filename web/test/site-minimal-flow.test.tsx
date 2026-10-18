@@ -84,7 +84,7 @@ describe("minimal website workflows", () => {
     await user.click(screen.getByRole("button", { name: "创建业务网站" }));
     await screen.findByText("创建结果待确认");
     expect(screen.getByLabelText("业务网站名称")).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "重试原请求" }));
+    await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
     await waitFor(() => expect(writes).toHaveLength(2));
     const first = await writes[0]!.json();
     expect(await writes[1]!.json()).toEqual(first);

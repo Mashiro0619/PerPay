@@ -25,7 +25,7 @@ const body = async (view: ReturnType<typeof mountOnboarding>, index = 0) =>
   view.writes()[index]!.clone().json();
 
 async function regenerationButton(user: ReturnType<typeof userEvent.setup>) {
-  const maintenance = await screen.findByRole("button", { name: "密钥维护" });
+  const maintenance = await screen.findByRole("button", { name: "更换应用密钥" });
   if (maintenance.getAttribute("aria-expanded") !== "true")
     await user.click(maintenance);
   return screen.findByRole("button", { name: "更换应用密钥对" });
@@ -50,7 +50,7 @@ describe("application public key generation and replacement", () => {
     expect(await screen.findByRole("button", { name: "复制应用公钥" })).toBeVisible();
     expect(screen.getByText("synthetic-application-public-key")).toBeVisible();
     expect(screen.getByRole("button", { name: "下一步" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "密钥维护" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "更换应用密钥" })).toHaveAttribute(
       "aria-expanded",
       "false",
     );
@@ -85,7 +85,7 @@ describe("application public key generation and replacement", () => {
       await screen.findByLabelText("应用 ID（App ID）");
       await user.click(screen.getByRole("link", { name: /应用公钥/ }));
       expect(
-        await screen.findByRole("button", { name: "密钥维护" }),
+        await screen.findByRole("button", { name: "更换应用密钥" }),
       ).toHaveAttribute("aria-expanded", "false");
       expect(
         screen.queryByRole("button", { name: "更换应用密钥对" }),
@@ -375,7 +375,7 @@ describe("application public key generation and replacement", () => {
       within(dialog).getByRole("button", { name: "生成新密钥对" }),
     );
     await user.click(
-      await within(dialog).findByRole("button", { name: "重试同一操作" }),
+      await within(dialog).findByRole("button", { name: "重试上一次操作" }),
     );
     expect(
       await screen.findByText("synthetic-pending-application-public-key"),
@@ -403,7 +403,7 @@ describe("application public key generation and replacement", () => {
       within(dialog).getByRole("button", { name: "验证并启用" }),
     );
     const retry = await within(dialog).findByRole("button", {
-      name: "重试同一操作",
+      name: "重试上一次操作",
     });
     expect(input).toBeDisabled();
     await user.click(retry);
@@ -437,7 +437,7 @@ describe("application public key generation and replacement", () => {
       finish(apiError("internal_error", "test failure", 503));
     });
     expect(
-      await within(dialog).findByRole("button", { name: "重试同一操作" }),
+      await within(dialog).findByRole("button", { name: "重试上一次操作" }),
     ).toBeEnabled();
   });
 

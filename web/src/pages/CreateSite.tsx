@@ -136,7 +136,7 @@ function CreateSiteForm({ policy }: { policy: SiteConfiguration["policy"] }) {
               {create.isPending
                 ? "正在创建…"
                 : create.recovery
-                  ? "重试原请求"
+                  ? "重试上一次操作"
                   : "创建业务网站"}
             </Button>
             <Link to="/sites" className={buttonVariants({ variant: "ghost" })}>

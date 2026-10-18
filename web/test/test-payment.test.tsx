@@ -164,7 +164,7 @@ describe("minimal test payment page", () => {
     await screen.findByRole("alert");
     expect(screen.getByLabelText("测试金额（元）")).toHaveValue("1.23");
     expect(view.writes()).toHaveLength(1);
-    await user.click(screen.getByRole("button", { name: "重试原请求" }));
+    await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
     await screen.findByRole("heading", { name: "测试订单已创建" });
     const first = await view.writes()[0]!.clone().json();
     const retry = await view.writes()[1]!.clone().json();

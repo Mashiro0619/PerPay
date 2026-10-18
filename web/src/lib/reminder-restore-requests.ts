@@ -60,7 +60,7 @@ export function useReminderRestores() {
         () =>
           controller.abort(
             new DOMException(
-              "等待恢复结果超时，请重试原请求或刷新列表核查。",
+              "等待恢复结果超时，请重试上一次操作或刷新列表核查。",
               "TimeoutError",
             ),
           ),

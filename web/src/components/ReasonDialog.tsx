@@ -193,7 +193,7 @@ export function ReasonDialog({
                 {mutation.isPending && (
                   <Spinner aria-hidden="true" data-icon="inline-start" />
                 )}
-                {mutation.recovery ? "重试原操作" : snapshot.action}
+                {mutation.recovery ? "重试上一次操作" : snapshot.action}
               </Button>
             )}
           </DialogFooter>

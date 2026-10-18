@@ -431,7 +431,7 @@ export function FinancialDialog({
                 {stale
                   ? "重新核对证据"
                   : save.recovery
-                    ? "重试原操作"
+                    ? "重试上一次操作"
                     : preview.data
                       ? "确认关联收款"
                       : "查看关联信息"}

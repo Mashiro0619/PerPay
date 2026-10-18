@@ -283,7 +283,7 @@ describe("manual settlement selection instead of ID entry", () => {
     fireEvent.change(reason, { target: { value: "不能替换" } });
     expect(reason).toHaveValue("核对所选记录");
     const reads = view.requests.filter((r) => r.method === "GET").length;
-    await user.click(screen.getByRole("button", { name: "重试原操作" }));
+    await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
     await waitFor(() => expect(view.success).toHaveBeenCalledOnce());
     const writes = view.requests.filter((r) => r.method === "POST");
     expect(await writes[0]!.clone().json()).toEqual(
@@ -344,7 +344,7 @@ describe("manual settlement selection instead of ID entry", () => {
     expect(screen.queryByRole("button", { name: "返回选择" })).not.toBeInTheDocument();
     await user.type(note, "不能修改原请求");
     expect(note).toHaveValue("");
-    await user.click(screen.getByRole("button", { name: "重试原操作" }));
+    await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
     await waitFor(() => expect(view.success).toHaveBeenCalledOnce());
     const writes = view.requests.filter(r => r.method === "POST");
     expect(writes).toHaveLength(2);

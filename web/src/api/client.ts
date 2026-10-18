@@ -109,7 +109,7 @@ export async function result<Data>(request: Promise<{
   if (response.error !== undefined || (response.response.status !== 204 && response.data === undefined)) {
     throw new ApiError(response.response, { error: {
       code: "invalid_response",
-      message: "服务响应未完整读取或无法解析，暂时无法确认结果。请刷新核查，或重试原操作。",
+      message: "服务响应未完整读取或无法解析，暂时无法确认结果。请刷新核查，或重试上一次操作。",
     } });
   }
   if (response.response.status !== 204 && !response.response.headers.get("content-type")?.includes("application/json")) {

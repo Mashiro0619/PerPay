@@ -130,7 +130,7 @@ describe("test-payment dialog lifecycle", () => {
     await user.click(trigger);
     await user.click(
       within(await screen.findByRole("dialog")).getByRole("button", {
-        name: "重试原请求",
+        name: "重试上一次操作",
       }),
     );
     await screen.findByRole("heading", { name: "测试订单已创建" });

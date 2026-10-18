@@ -115,7 +115,7 @@ export function ApplicationKey({
     onSuccess: ({ data }) =>
       saved(
         data.settings,
-        data.created ? "应用公钥已生成" : "已复用现有应用公钥",
+        data.created ? "应用密钥对已生成" : "已使用现有应用密钥，没有重新生成",
       ),
   });
   function open(mode: ChangeMode, origin: HTMLElement) {
@@ -229,7 +229,7 @@ export function ApplicationKey({
                   render={<Button variant="ghost" size="sm" />}
                 >
                   <ChevronDown data-icon="inline-start" />
-                  密钥维护
+                  更换应用密钥
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                   <div className="flex min-w-0 flex-col items-start gap-3 pt-3">
@@ -271,13 +271,13 @@ export function ApplicationKey({
               生成应用密钥对
             </Button>
             <p className="text-sm text-muted-foreground">
-              同时生成配套的应用私钥，由 {systemName}{" "}
+              还没有生成应用密钥对。生成后，应用私钥由 {systemName}{" "}
               加密保存；只需将公钥上传到支付宝。
             </p>
           </>
         ) : (
           <p className="text-sm text-muted-foreground">
-            当前未能读取应用公钥，请在常规设置中检查支付宝接入配置。
+            暂时无法读取应用公钥，请刷新配置；仍不可用时检查支付宝接入设置。
           </p>
         )}
         <ErrorNotice error={generate.error} />
@@ -528,7 +528,7 @@ function ApplicationKeyChange({
             maxLength={16384}
             autoComplete="off"
             spellCheck={false}
-            placeholder="粘贴本次上传后获取的支付宝公钥"
+            placeholder="粘贴刚才上传新公钥后，支付宝页面显示的支付宝公钥"
             aria-invalid={Boolean(fieldError)}
             aria-describedby={
               fieldError
@@ -565,7 +565,7 @@ function ApplicationKeyChange({
       {operation.recovery && (
         <p className="text-sm text-muted-foreground">
           {guided
-            ? "上次启用结果尚未确认。重试会保留同一操作和原公钥；也可刷新配置核对启用状态。"
+            ? "上次启用结果尚未确认。重试会沿用同一个操作编号和同一把待启用密钥；也可刷新配置核对启用状态。"
             : "上次操作结果尚未确认。重试会使用同一个操作，不会再生成另一把密钥；也可关闭后刷新状态。"}
         </p>
       )}
@@ -594,7 +594,7 @@ function ApplicationKeyChange({
         <Spinner aria-hidden="true" data-icon="inline-start" />
       )}
       {operation.recovery
-        ? "重试同一操作"
+        ? "重试上一次操作"
         : mode === "regenerate"
           ? "生成新密钥对"
           : mode === "activate"

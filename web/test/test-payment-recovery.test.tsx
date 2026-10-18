@@ -106,7 +106,7 @@ describe("uncertain test-payment creation recovery", () => {
     expect(unloadBlocked()).toBe(true);
     await user.click(trigger!);
     expect(screen.getByLabelText("测试金额（元）")).toHaveValue("1.23");
-    await user.click(screen.getByRole("button", { name: "重试原请求" }));
+    await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
     await screen.findByRole("heading", { name: "测试订单已创建" });
     expect(await view.requests()[1]!.clone().json()).toEqual(body);
     expect(unloadBlocked()).toBe(false);
@@ -137,7 +137,7 @@ describe("uncertain test-payment creation recovery", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
     await user.click(trigger!);
-    const retry = screen.getByRole("button", { name: "重试原请求" });
+    const retry = screen.getByRole("button", { name: "重试上一次操作" });
     expect(retry).toBeEnabled();
     await user.click(retry);
     await screen.findByRole("heading", { name: "测试订单已创建" });
@@ -163,16 +163,16 @@ describe("uncertain test-payment creation recovery", () => {
       const user = userEvent.setup();
       await open(user);
       await screen.findByText("创建结果待确认");
-      await user.click(screen.getByRole("button", { name: "重试原请求" }));
+      await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
       await waitFor(() =>
         expect(
-          screen.getByRole("button", { name: "重试原请求" }),
+          screen.getByRole("button", { name: "重试上一次操作" }),
         ).toBeEnabled(),
       );
       expect(screen.getByLabelText("测试金额（元）")).toHaveAttribute(
         "readonly",
       );
-      await user.click(screen.getByRole("button", { name: "重试原请求" }));
+      await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
       await screen.findByRole("heading", { name: "测试订单已创建" });
       const body = await view.requests()[0]!.clone().json();
       expect(await view.requests()[1]!.clone().json()).toEqual(body);
@@ -236,7 +236,7 @@ describe("uncertain test-payment creation recovery", () => {
     await user.click(trigger);
     await screen.findByText("创建结果待确认");
     expect(screen.getByLabelText("测试金额（元）")).toHaveValue("1.23");
-    await user.click(screen.getByRole("button", { name: "重试原请求" }));
+    await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
     await screen.findByRole("heading", { name: "测试订单已创建" });
     expect(await view.requests()[1]!.clone().json()).toEqual(
       await view.requests()[0]!.clone().json(),
@@ -255,10 +255,10 @@ describe("uncertain test-payment creation recovery", () => {
     await open(user);
     await screen.findByText("创建结果待确认");
     onlineManager.setOnline(false);
-    await user.click(screen.getByRole("button", { name: "重试原请求" }));
+    await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
     await waitFor(() => expect(view.requests()).toHaveLength(2));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "重试原请求" })).toBeEnabled(),
+      expect(screen.getByRole("button", { name: "重试上一次操作" })).toBeEnabled(),
     );
     await act(async () => {
       onlineManager.setOnline(true);
@@ -293,8 +293,8 @@ describe("uncertain test-payment creation recovery", () => {
       });
       expect(screen.getByText("创建结果待确认")).toBeVisible();
       expect(view.requests()[0]!.signal.aborted).toBe(true);
-      expect(screen.getByRole("button", { name: "重试原请求" })).toBeEnabled();
-      fireEvent.click(screen.getByRole("button", { name: "重试原请求" }));
+      expect(screen.getByRole("button", { name: "重试上一次操作" })).toBeEnabled();
+      fireEvent.click(screen.getByRole("button", { name: "重试上一次操作" }));
       await act(async () => {
         await vi.advanceTimersByTimeAsync(100);
       });
@@ -347,7 +347,7 @@ describe("uncertain test-payment creation recovery", () => {
       expect(screen.getByLabelText("测试金额（元）")).toHaveAttribute(
         "readonly",
       );
-      await user.click(screen.getByRole("button", { name: "重试原请求" }));
+      await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
       await screen.findByRole("heading", { name: "测试订单已创建" });
       expect(await view.requests()[1]!.clone().json()).toEqual(
         await view.requests()[0]!.clone().json(),

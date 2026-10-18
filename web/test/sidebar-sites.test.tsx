@@ -708,7 +708,7 @@ describe("website selection on shared pages", () => {
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     expect(screen.getByRole("dialog", { name: "撤销收款关联？" })).toBe(dialog);
     expect(reason).toHaveValue("保留原始核查依据");
-    await user.click(within(dialog).getByRole("button", { name: "重试原操作" }));
+    await user.click(within(dialog).getByRole("button", { name: "重试上一次操作" }));
     await waitFor(() => expect(writes).toHaveLength(2));
     expect(await writes[1]!.json()).toEqual(original);
     expect(writes.map((request) => new URL(request.url).pathname)).toEqual([

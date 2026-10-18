@@ -44,7 +44,7 @@ describe("pending key continuity across onboarding steps", () => {
     const user = userEvent.setup();
     const clipboard = vi.spyOn(navigator.clipboard, "writeText");
     const view = mountOnboarding({ stage: 4, path: applicationPath });
-    await user.click(await screen.findByRole("button", { name: "密钥维护" }));
+    await user.click(await screen.findByRole("button", { name: "更换应用密钥" }));
     await user.click(
       await screen.findByRole("button", { name: "更换应用密钥对" }),
     );
@@ -218,7 +218,7 @@ describe("authoritative verification failure after an unknown response", () => {
     const user = userEvent.setup();
     const { dialog, input } = await openActivation(user);
     const retry = await within(dialog).findByRole("button", {
-      name: "重试同一操作",
+      name: "重试上一次操作",
     });
     expect(input).toBeDisabled();
     expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
@@ -230,7 +230,7 @@ describe("authoritative verification failure after an unknown response", () => {
       within(dialog).queryByText(/上次操作结果尚未确认/),
     ).not.toBeInTheDocument();
     expect(
-      within(dialog).queryByRole("button", { name: "重试同一操作" }),
+      within(dialog).queryByRole("button", { name: "重试上一次操作" }),
     ).not.toBeInTheDocument();
     await waitFor(() => expect(unloadBlocked()).toBe(false));
     expect(queryClient.getQueryData(["settings"])).toMatchObject({
@@ -294,7 +294,7 @@ describe("authoritative verification failure after an unknown response", () => {
       const user = userEvent.setup();
       const { dialog, input } = await openActivation(user);
       await user.click(
-        await within(dialog).findByRole("button", { name: "重试同一操作" }),
+        await within(dialog).findByRole("button", { name: "重试上一次操作" }),
       );
       await within(dialog).findByText("此响应不证明先前操作未执行");
       expect(input).toBeDisabled();
@@ -337,7 +337,7 @@ describe.each([
       const user = userEvent.setup();
       if (trigger === "更换应用密钥对")
         await user.click(
-          await screen.findByRole("button", { name: "密钥维护" }),
+          await screen.findByRole("button", { name: "更换应用密钥" }),
         );
       if (!inline)
         await user.click(await screen.findByRole("button", { name: trigger }));

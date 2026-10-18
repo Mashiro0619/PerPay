@@ -307,7 +307,7 @@ it("fixes a test-payment request to A while switching to B and retries the origi
   await user.click(await screen.findByRole("button", { name: "测试收款" }));
   await screen.findByText("创建结果待确认");
   expect(screen.getByText(/a（已固定/)).toBeVisible();
-  await user.click(screen.getByRole("button", { name: "重试原请求" }));
+  await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
   await waitFor(() => expect(writes).toHaveLength(2));
   expect(writes.map((r) => new URL(r.url).pathname)).toEqual([
     "/api/admin/v1/sites/a/test-payments",
@@ -315,7 +315,7 @@ it("fixes a test-payment request to A while switching to B and retries the origi
   ]);
   expect(await writes[1]!.json()).toEqual(await writes[0]!.json());
   await waitFor(() =>
-    expect(screen.getByRole("button", { name: "重试原请求" })).toBeEnabled(),
+    expect(screen.getByRole("button", { name: "重试上一次操作" })).toBeEnabled(),
   );
   expect(screen.getByText("创建结果待确认")).toBeVisible();
 });
@@ -363,7 +363,7 @@ it("keeps a global test-payment dialog and its original request through selectio
   expect(screen.getByRole("dialog", { name: "测试收款" })).toBe(dialog);
   expect(picker).toHaveTextContent("网站 A");
   expect(picker).toBeDisabled();
-  await user.click(within(dialog).getByRole("button", { name: "重试原请求" }));
+  await user.click(within(dialog).getByRole("button", { name: "重试上一次操作" }));
   await waitFor(() => expect(writes).toHaveLength(2));
   expect(await writes[1]!.clone().json()).toEqual(original);
 
@@ -375,7 +375,7 @@ it("keeps a global test-payment dialog and its original request through selectio
   await user.click(screen.getByRole("button", { name: "测试收款" }));
   const reopened = await screen.findByRole("dialog", { name: "测试收款" });
   expect(within(reopened).getByRole("combobox", { name: "业务网站" })).toHaveTextContent("网站 A");
-  const retry = within(reopened).getByRole("button", { name: "重试原请求" });
+  const retry = within(reopened).getByRole("button", { name: "重试上一次操作" });
   await waitFor(() => expect(retry).toBeEnabled());
   await user.click(retry);
   await waitFor(() => expect(writes).toHaveLength(3));
@@ -478,7 +478,7 @@ it.each([
       await pending.catch(() => {});
     });
     await user.click(await screen.findByRole("button", { name: "测试收款" }));
-    await user.click(await screen.findByRole("button", { name: "重试原请求" }));
+    await user.click(await screen.findByRole("button", { name: "重试上一次操作" }));
     await screen.findByText(notice);
     expect(writes.map((request) => new URL(request.url).pathname)).toEqual([
       "/api/admin/v1/sites/a/test-payments",

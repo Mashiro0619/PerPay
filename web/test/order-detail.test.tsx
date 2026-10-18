@@ -363,7 +363,7 @@ describe("order detail work surface", () => {
     await screen.findByText("操作结果待确认");
     await user.click(screen.getByRole("button", { name: "响应详情" }));
     await screen.findByText(/服务处理失败/);
-    await user.click(screen.getByRole("button", { name: "重试原操作" }));
+    await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
     expect(await screen.findByText(/已创建新投递，等待发送/)).toBeVisible();
     expect(bodies).toHaveLength(2);
     expect(bodies[1]).toEqual(bodies[0]);
