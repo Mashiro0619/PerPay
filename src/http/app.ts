@@ -925,7 +925,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         idempotency_key: `admin-test-payment:${body.test_payment_id}`,
         merchant_order_no: `test-${body.test_payment_id}`,
         amount_cents: body.amount_cents,
-        product_name: "配置测试支付（真实收款）",
+        product_name: "测试订单",
         note: null,
       }, () => requirePaymentBackgroundReady(dependencies));
       try {
