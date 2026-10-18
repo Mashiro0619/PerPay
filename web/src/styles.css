@@ -754,6 +754,10 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .overview-work-panel > .overview-records-header > [data-slot="card-action"] { grid-row: 1; align-self: center; }
 .overview-work-panel > .overview-records-content { padding-inline: 1rem; }
 .overview-work-list, .overview-work-content { min-width: 0; }
+.overview-work-item:has(a:focus-visible) { background-color: var(--muted); }
+@media (hover: hover) {
+  .overview-work-item:hover { background-color: var(--muted); }
+}
 .overview-work-content [data-row-link] { display: inline-block; min-height: 24px; align-content: center; }
 .overview-work-order-heading { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 0.125rem 0.625rem; }
 .overview-work-order-context { display: flex; min-width: 0; flex: 1 1 9rem; align-items: center; gap: 0.5rem; }
