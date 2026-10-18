@@ -129,7 +129,7 @@ export function AdminAccessSettings({
               placeholder={"192.0.2.10\n2001:db8::/64"}
             />
             <FieldDescription id="admin-access-help">
-              每行一个 IPv4、IPv6 或 CIDR，最多 100 条、8 KiB，不允许
+              每行一个 IPv4、IPv6 或 CIDR，最多 100 条、8192 字节（8 KiB），不允许
               /0。启用时必须允许当前 IP；关闭后保留已保存规则。
             </FieldDescription>
             {fieldError && <FieldError>{fieldError}</FieldError>}

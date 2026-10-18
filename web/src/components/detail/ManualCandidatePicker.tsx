@@ -139,7 +139,7 @@ export function ManualCandidatePicker({
       if (normalized === q && nextView === view && trail.length === 1)
         void query.refetch();
     } catch {
-      setError("关键词最多100个Unicode字符。");
+      setError("关键词最多 100 个字符。");
     }
   }
   return (

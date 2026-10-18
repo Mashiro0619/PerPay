@@ -34,7 +34,7 @@ describe("saved Alipay public key editing", () => {
     const view = mountOnboarding({ stage: 4, path: providerPath });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "保存并继续" }));
-    await screen.findByRole("heading", { name: "经营码", level: 2 });
+    await screen.findByRole("heading", { name: "支付宝经营码", level: 2 });
     const body = await view.writes()[0]!.clone().json();
     expect(body.platform_public_key).toBe(savedKey);
     expect(body).not.toHaveProperty("private_key");
@@ -63,7 +63,7 @@ describe("saved Alipay public key editing", () => {
       target: { value: "  replacement-platform-key  " },
     });
     await user.click(screen.getByRole("button", { name: "保存并继续" }));
-    await screen.findByRole("heading", { name: "经营码", level: 2 });
+    await screen.findByRole("heading", { name: "支付宝经营码", level: 2 });
     await user.click(screen.getByRole("link", { name: /支付宝接入/ }));
     expect(await screen.findByLabelText("支付宝公钥")).toHaveValue(
       "replacement-platform-key",
@@ -107,7 +107,7 @@ describe("saved Alipay public key editing", () => {
     reject = false;
     fireEvent.change(input, { target: { value: "corrected-key" } });
     await user.click(screen.getByRole("button", { name: "保存并继续" }));
-    await screen.findByRole("heading", { name: "经营码", level: 2 });
+    await screen.findByRole("heading", { name: "支付宝经营码", level: 2 });
     expect(view.saved.provider!.platform_public_key).toBe("corrected-key");
     expect(view.writes()).toHaveLength(2);
   });

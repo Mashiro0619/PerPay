@@ -364,7 +364,7 @@ describe("server-driven business queries", () => {
     await user.paste("😀".repeat(101));
     await user.keyboard("{Enter}");
     expect(
-      await screen.findByText("关键词最多100个Unicode字符。"),
+      await screen.findByText("关键词最多 100 个字符。"),
     ).toBeVisible();
     expect(input).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByLabelText("查询地址")).not.toHaveTextContent("q=");

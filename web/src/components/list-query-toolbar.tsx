@@ -132,7 +132,7 @@ export function ListQueryToolbar({
               setDraft(q);
               control.setKeyword(q);
             } catch {
-              setError("关键词最多100个Unicode字符。");
+              setError("关键词最多 100 个字符。");
             }
           }}
         >

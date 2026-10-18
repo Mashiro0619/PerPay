@@ -33,7 +33,7 @@ export function normalizeKeyword(value: string): string {
       q,
     )
   )
-    throw new ListQueryError("关键词须为不超过100个Unicode字符的普通文本");
+    throw new ListQueryError("关键词须为不超过 100 个字符的普通文本");
   return q;
 }
 export function normalizeListQuery<S extends string>(

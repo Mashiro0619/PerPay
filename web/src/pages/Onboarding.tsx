@@ -433,9 +433,9 @@ function OnboardingFlow({
           {step === "collection" && (
             <OnboardingStepLayout
               help={
-                <OnboardingHelp title="确认经营收款码">
+                <OnboardingHelp title="确认经营码">
                   <p>
-                    使用本系统共用的支付宝经营收款码。上传图片后先核对识别内容，也可直接粘贴经营码内容。
+                    使用本系统共用的支付宝经营码。上传图片后先核对识别内容，也可直接粘贴经营码内容。
                   </p>
                   <p>
                     加价金额用于区分订单。付款人需要按收银台显示的应付金额付款。

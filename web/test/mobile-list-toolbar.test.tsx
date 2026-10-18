@@ -224,7 +224,7 @@ describe("mobile list query hierarchy", () => {
     await user.type(input, "😀".repeat(101));
     await user.click(screen.getByRole("button", { name: "搜索" }));
     expect(
-      screen.getByText("关键词最多100个Unicode字符。"),
+      screen.getByText("关键词最多 100 个字符。"),
     ).toBeInTheDocument();
     expect(address().get("q")).toBe("kept");
     await user.click(screen.getByRole("button", { name: "清除搜索和筛选" }));

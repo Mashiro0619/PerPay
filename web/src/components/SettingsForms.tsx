@@ -88,7 +88,7 @@ export type ConfigurationSection =
   | "display";
 export const sections = [
   ["provider", "支付宝接入"],
-  ["collection", "经营收款码"],
+  ["collection", "经营码"],
   ["collection-policy", "查账设置"],
   ["notifications", "通知"],
   ["security", "密钥与安全"],
@@ -865,7 +865,7 @@ export function SettingsEditor({
 
   const panels: Array<{ title: string; description?: string; fields: ReactNode }> =
     section === "provider" ? [{ title: "开放平台应用", description: "应用身份、密钥与支付宝环境；查账策略在查账设置中单独调整。", fields: <FieldGroup>{providerIdentity}{providerEnvironment}</FieldGroup> }]
-    : section === "collection" ? [{ title: "经营收款码", description: "只管理二维码；订单规则在各业务网站中设置。", fields: collectionIdentity }]
+    : section === "collection" ? [{ title: "经营码", description: "只管理二维码；订单规则在各业务网站中设置。", fields: collectionIdentity }]
     : section === "collection-policy" ? [{ title: "PerPay 查账设置", description: "控制 PerPay 的查询频率与安全窗口，不属于支付宝官方应用配置。", fields: providerCollection }]
     : section === "display" ? [{ title: "界面显示", fields: displayFields }]
     : [{ title: sections.find(([value]) => value === section)?.[1] ?? "设置", ...(section === "backup" ? { description: "恢复需要数据库备份和主密钥。" } : {}), fields: section === "notifications" ? notificationFields : section === "backup" ? backupFields : advancedFields }];

@@ -12,7 +12,7 @@ export const adminAccessSchema = z
       context.addIssue({
         code: "custom",
         path: ["cidrs"],
-        message: "白名单不能超过 8 KiB",
+        message: "白名单不能超过 8192 字节（8 KiB）",
       });
     try {
       createAdminAccessPolicy(value.cidrs);
