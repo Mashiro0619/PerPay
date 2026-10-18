@@ -3,9 +3,16 @@ import { resolve } from "node:path";
 import { disableAdministratorAllowlist } from "./allowlist-recovery.ts";
 export async function runAllowlistRecovery(args: string[]): Promise<void> {
   if (args.length === 1 && args[0] === "--help") {
-    console.log(
-      "先停止 app 和 backup，运行 node dist/identity/disable-admin-allowlist.js --confirm-disable-admin-allowlist。数据目录由 PERPAY_DATA_DIR 指定；保留规则、密码和支付数据。",
-    );
+    console.log([
+      "用途：离线关闭管理员 IP 白名单，保留原规则、密码和支付数据。",
+      "先执行 docker compose stop app backup 停止写入服务；数据目录由 PERPAY_DATA_DIR 指定。",
+      "",
+      "用法：node dist/identity/disable-admin-allowlist.js --confirm-disable-admin-allowlist",
+      "",
+      "示例：",
+      "docker compose stop app backup",
+      "node dist/identity/disable-admin-allowlist.js --confirm-disable-admin-allowlist",
+    ].join("\n"));
     return;
   }
   if (args.length !== 1 || args[0] !== "--confirm-disable-admin-allowlist")

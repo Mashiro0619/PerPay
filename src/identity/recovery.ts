@@ -79,7 +79,7 @@ export function assertRecoverable(database: DatabaseSync): void {
   const hasLease = database.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'app_lease'").get();
   if (!hasLease) throw new AdminRecoveryError("数据库不是可恢复的 PerPay 实例，未作修改。");
   const lease = database.prepare("SELECT expires_at FROM app_lease WHERE lease_key = 1").get() as { expires_at: bigint } | undefined;
-  if (lease && Number(lease.expires_at) > Date.now()) throw new AdminRecoveryError("应用仍持有数据库租约。请先停止 app 和 backup；异常退出后等待 30 秒再试。");
+  if (lease && Number(lease.expires_at) > Date.now()) throw new AdminRecoveryError("应用仍占用数据库。请先执行 docker compose stop app backup；异常退出后等 30 秒让数据库释放占用再试。");
   if (!inspectDatabaseIntegrity(database).ok) throw new AdminRecoveryError("数据库版本不匹配或完整性检查失败。请使用与实例一致的镜像版本，未作修改。");
   const admin = new IdentityReadTransaction(database).adminIdentity();
   if (!admin || admin.username !== ADMIN_USERNAME) throw new AdminRecoveryError("管理员尚未初始化，请从首次初始化页面设置密码。");

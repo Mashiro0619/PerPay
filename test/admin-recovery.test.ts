@@ -61,7 +61,7 @@ describe("offline administrator recovery", () => {
 
   it("refuses a live instance and does not invalidate its session or lease", async (context) => {
     const app = await fixture(context); const login = await app.identity.login(HTTP_TEST_ADMIN_PASSWORD);
-    await assert.rejects(recoverAdministratorPassword({ dataDirectory: app.config.dataDir, password: "abcdef", confirmed: true }), /租约/);
+    await assert.rejects(recoverAdministratorPassword({ dataDirectory: app.config.dataDir, password: "abcdef", confirmed: true }), /占用数据库/);
     assert.ok(app.database.health().ok); assert.ok(app.identity.authenticate(login.sessionToken));
     assert.equal(hasDatabaseMaintenanceLock(app.config.databasePath), false);
   });

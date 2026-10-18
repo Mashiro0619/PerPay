@@ -9,7 +9,17 @@ const confirmation = "--confirm-reset-admin-password";
 
 export async function runRecovery(arguments_: string[]): Promise<void> {
   if (arguments_.length === 1 && arguments_[0] === "--help") {
-    console.log("离线重设管理员密码：先停止 app 和 backup，再运行 node dist/identity/recover.js " + confirmation + "。\n默认隐藏输入并确认两次；自动化可加 --password-stdin，从标准输入读取一行密码。数据目录由 PERPAY_DATA_DIR 指定。");
+    console.log([
+      "用途：离线重设管理员密码并注销旧会话，保留订单和密钥。",
+      "先执行 docker compose stop app backup 停止写入服务；数据目录由 PERPAY_DATA_DIR 指定。",
+      "",
+      "用法：node dist/identity/recover.js " + confirmation + " [--password-stdin]",
+      "默认隐藏输入并确认两次；自动化可加 --password-stdin，从标准输入读取一行密码。",
+      "",
+      "示例：",
+      "docker compose stop app backup",
+      "node dist/identity/recover.js " + confirmation,
+    ].join("\n"));
     return;
   }
   if (!arguments_.includes(confirmation) || new Set(arguments_).size !== arguments_.length ||

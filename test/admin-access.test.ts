@@ -263,7 +263,7 @@ describe("administrator IP allowlist", () => {
             dataDirectory: join(directory, "data"),
             confirmed: true,
           }),
-          /租约/,
+          /占用数据库/,
         );
         await assert.rejects(
           disableAdministratorAllowlist({
