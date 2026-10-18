@@ -25,9 +25,9 @@ export function SiteConfigurationConflicts({ conflicts, choices, onChoose, onApp
           {conflicts.map(conflict => (
             <Field key={conflict.path} data-disabled={disabled}>
               <FieldTitle id={id + conflict.path}>{conflict.label}</FieldTitle>
-              <FieldDescription className="break-all">原值：{siteFieldValue(conflict.before)}</FieldDescription>
-              <FieldDescription className="break-all">服务器值：{siteFieldValue(conflict.remote)}</FieldDescription>
-              <FieldDescription className="break-all">我的值：{siteFieldValue(conflict.local)}</FieldDescription>
+              <FieldDescription className="break-all">原值：{(conflict.format ?? siteFieldValue)(conflict.before)}</FieldDescription>
+              <FieldDescription className="break-all">服务器值：{(conflict.format ?? siteFieldValue)(conflict.remote)}</FieldDescription>
+              <FieldDescription className="break-all">我的值：{(conflict.format ?? siteFieldValue)(conflict.local)}</FieldDescription>
               <ToggleGroup
                 aria-labelledby={id + conflict.path}
                 variant="outline"

@@ -19,6 +19,7 @@ import { useDirtyDraft } from "@/drafts";
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import { useSuccessToast } from "@/components/Feedback";
 import { SitePolicyFields, SiteTextField } from "@/components/SitePolicyFields";
+import { siteTimeoutError, siteTimeoutSeconds } from "@/lib/site-timeout";
 import { SiteConfigurationConflicts } from "@/components/site-configuration-conflicts";
 import { mergeSiteConfiguration, resolveSiteConflicts, type SiteConflictChoices } from "@/lib/site-configuration";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -138,7 +139,10 @@ function SiteEditor({
   const visible = (value: string) => section === "all" || section === value;
   const [saved, setSaved] = useState(initial);
   const [draft, setDraft] = useState(() => structuredClone(configuration));
-  const dirty = JSON.stringify(draft) !== JSON.stringify(saved?.configuration ?? configuration);
+  const [timeoutRaw, setTimeoutRaw] = useState(() => siteTimeoutSeconds(configuration.policy.notification_delivery.timeout_milliseconds));
+  const timeoutError = siteTimeoutError(timeoutRaw);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved?.configuration ?? configuration) ||
+    timeoutRaw !== siteTimeoutSeconds((saved?.configuration ?? configuration).policy.notification_delivery.timeout_milliseconds);
   const clearDraft = useDirtyDraft(dirty);
   const [needsReview, setNeedsReview] = useState(false);
   const [review, setReview] = useState<({ site: Site } & ReturnType<typeof mergeSiteConfiguration>) | null>(null);
@@ -198,7 +202,9 @@ function SiteEditor({
   const save = useMutation({
     networkMode: "always",
     retry: false,
-    mutationFn: async () =>
+    mutationFn: async () => {
+      if (timeoutError) throw new Error(timeoutError);
+      return (
       saved
         ? result(
             api.updateSite({
@@ -206,13 +212,15 @@ function SiteEditor({
               body: { revision: saved.revision, configuration: draft },
             }),
           )
-        : Promise.reject(new Error("缺少网站身份")),
+        : Promise.reject(new Error("缺少网站身份")));
+    },
     onError: revisionConflict,
     onSuccess: async (response) => {
       const latest = await cacheSite(response.data);
       observeSecretRevision(latest.revision);
       setSaved(response.data);
       setDraft(structuredClone(response.data.configuration));
+      setTimeoutRaw(siteTimeoutSeconds(response.data.configuration.policy.notification_delivery.timeout_milliseconds));
       setNeedsReview(false);
       setReview(null);
       clearDraft();
@@ -301,6 +309,7 @@ function SiteEditor({
     observeSecretRevision(site.revision);
     setSaved(site);
     setDraft(configuration);
+    setTimeoutRaw(siteTimeoutSeconds(configuration.policy.notification_delivery.timeout_milliseconds));
     setReview(null);
     setChoices({});
     setNeedsReview(false);
@@ -344,6 +353,7 @@ function SiteEditor({
     }
     setSaved(initial);
     setDraft(structuredClone(initial.configuration));
+    setTimeoutRaw(siteTimeoutSeconds(initial.configuration.policy.notification_delivery.timeout_milliseconds));
   }, [initial, saved, dirty, needsReview, review, busy]);
   const change = (edit: (next: SiteConfiguration) => void) => {
     const next = structuredClone(draft);
@@ -443,7 +453,7 @@ function SiteEditor({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          if (busy || requiresReview) return;
+          if (busy || requiresReview || timeoutError) return;
           if (impact) setConfirmation("save");
           else save.mutate();
         }}
@@ -535,6 +545,8 @@ function SiteEditor({
                   section={section === "all" ? undefined : section}
                   disabled={busy || requiresReview}
                   value={draft.policy}
+                  secondsDraft={timeoutRaw}
+                  onSecondsDraftChange={setTimeoutRaw}
                   errors={errors}
                   onChange={(policy) =>
                     change((p) => {
@@ -545,7 +557,7 @@ function SiteEditor({
               </FieldGroup>
             </CardContent>
             <CardFooter>
-              <Button type="submit" disabled={busy || requiresReview}>
+              <Button type="submit" disabled={busy || requiresReview || !!timeoutError}>
                 {save.isPending ? "正在保存…" : "保存网站"}
               </Button>
             </CardFooter>
@@ -664,9 +676,9 @@ function SiteEditor({
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
-              disabled={busy || requiresReview}
+              disabled={busy || requiresReview || (confirmation === "save" && !!timeoutError)}
               onClick={() => {
-                if (busy || requiresReview) return;
+                if (busy || requiresReview || (confirmation === "save" && timeoutError)) return;
                 const selected = confirmation;
                 setConfirmation(null);
                 if (selected === "save") save.mutate();

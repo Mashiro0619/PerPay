@@ -6,6 +6,7 @@ import { useDirtyDraft } from "@/drafts";
 import { useSuccessToast } from "@/components/Feedback";
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import { SitePolicyFields } from "@/components/SitePolicyFields";
+import { siteTimeoutError, siteTimeoutSeconds } from "@/lib/site-timeout";
 import { SiteConfigurationConflicts } from "@/components/site-configuration-conflicts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -53,7 +54,10 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [saved, setSaved] = useState(initial);
   const [draft, setDraft] = useState(() => structuredClone(initial.policy));
-  const dirty = JSON.stringify(draft) !== JSON.stringify(saved.policy);
+  const [timeoutRaw, setTimeoutRaw] = useState(() => siteTimeoutSeconds(initial.policy.notification_delivery.timeout_milliseconds));
+  const timeoutError = siteTimeoutError(timeoutRaw);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved.policy) ||
+    timeoutRaw !== siteTimeoutSeconds(saved.policy.notification_delivery.timeout_milliseconds);
   const clearDraft = useDirtyDraft(dirty);
   const setFeedback = useSuccessToast();
   const [needsReview, setNeedsReview] = useState(false);
@@ -73,6 +77,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
     networkMode: "always",
     retry: false,
     mutationFn: () => {
+      if (timeoutError) throw new Error(timeoutError);
       if (!onlineManager.isOnline() || !navigator.onLine)
         throw new Error("网络已断开，模板未提交。恢复连接后请重新提交。");
       return result(api.updateSiteDefaults({ body: { revision: saved.revision, policy: draft } }));
@@ -83,6 +88,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
       if (!mounted.current) return;
       setSaved(latest);
       setDraft(structuredClone(latest.policy));
+      setTimeoutRaw(siteTimeoutSeconds(latest.policy.notification_delivery.timeout_milliseconds));
       setNeedsReview(false);
       setReview(null);
       setChoices({});
@@ -103,6 +109,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
   function applyReview(snapshot: DefaultsSnapshot, policy: SitePolicy) {
     setSaved(snapshot);
     setDraft(policy);
+    setTimeoutRaw(siteTimeoutSeconds(policy.notification_delivery.timeout_milliseconds));
     setNeedsReview(false);
     setReview(null);
     setChoices({});
@@ -145,6 +152,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
     }
     setSaved(initial);
     setDraft(structuredClone(initial.policy));
+    setTimeoutRaw(siteTimeoutSeconds(initial.policy.notification_delivery.timeout_milliseconds));
   }, [initial, saved.revision, dirty, needsReview, review, busy]);
 
   useEffect(() => {
@@ -195,13 +203,15 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
       )}
       <form ref={formRef} onSubmit={event => {
         event.preventDefault();
-        if (!busy && !requiresReview) save.mutate();
+        if (!busy && !requiresReview && !timeoutError) save.mutate();
       }}>
         <FieldSet disabled={busy || requiresReview}>
           <SitePolicyFields
             section={section}
             disabled={busy || requiresReview}
             value={draft}
+            secondsDraft={timeoutRaw}
+            onSecondsDraftChange={setTimeoutRaw}
             errors={save.error instanceof ApiError ? save.error.fields : {}}
             onChange={policy => {
               setDraft(policy);
@@ -209,7 +219,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
               save.reset();
             }}
           />
-          <Button type="submit" className="w-fit" disabled={busy || requiresReview}>保存默认模板</Button>
+          <Button type="submit" className="w-fit" disabled={busy || requiresReview || !!timeoutError}>保存默认模板</Button>
         </FieldSet>
       </form>
     </div>

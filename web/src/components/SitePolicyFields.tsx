@@ -7,6 +7,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useId } from "react";
 import type { SitePolicy } from "@/api/client";
+import { integerUnits, siteTimeoutError, siteTimeoutSeconds } from "@/lib/site-timeout";
 import {
   Field,
   FieldDescription,
@@ -25,14 +26,23 @@ export function SitePolicyFields({
   errors = {},
   section,
   disabled = false,
+  secondsDraft,
+  onSecondsDraftChange,
 }: {
   section?: string | undefined;
   disabled?: boolean;
   value: SitePolicy;
   onChange: (value: SitePolicy) => void;
   errors?: Readonly<Record<string, string>>;
+  secondsDraft?: string;
+  onSecondsDraftChange?: (raw: string) => void;
 }) {
   const limitId = useId();
+  const timeoutId = useId();
+  const timeoutRaw = secondsDraft ?? siteTimeoutSeconds(value.notification_delivery.timeout_milliseconds);
+  const timeoutError = siteTimeoutError(timeoutRaw) ??
+    errors["configuration.policy.notification_delivery.timeout_milliseconds"] ??
+    errors["policy.notification_delivery.timeout_milliseconds"];
   const [advanced, setAdvanced] = useState(false);
   const content = useRef<HTMLDivElement>(null);
   const failedAdvanced = Object.keys(errors).some((key) =>
@@ -188,18 +198,33 @@ export function SitePolicyFields({
           <CollapsibleContent ref={content} keepMounted>
             <FieldSet className="settings-fields pt-4" disabled={disabled}>
               <FieldLegend className="sr-only">通知投递策略</FieldLegend>
-              <NumberField
-                label="通知超时（毫秒）"
-                error={error("notification_delivery.timeout_milliseconds")}
-                value={value.notification_delivery.timeout_milliseconds}
-                min={1000}
-                max={30000}
-                onChange={(n) =>
-                  change((p) => {
-                    p.notification_delivery.timeout_milliseconds = n;
-                  })
-                }
-              />
+              <Field data-invalid={!!timeoutError}>
+                <FieldLabel htmlFor={timeoutId}>通知超时（秒）</FieldLabel>
+                <Input
+                  id={timeoutId}
+                  aria-label="通知超时（秒）"
+                  aria-invalid={!!timeoutError}
+                  aria-describedby={timeoutError ? timeoutId + "-error" : undefined}
+                  type="number"
+                  inputMode="decimal"
+                  min={1}
+                  max={30}
+                  step={0.001}
+                  required
+                  value={timeoutRaw}
+                  onChange={(event) => {
+                    if (disabled) return;
+                    const raw = event.target.value;
+                    onSecondsDraftChange?.(raw);
+                    if (siteTimeoutError(raw)) return;
+                    const milliseconds = integerUnits(raw, 1000)!;
+                    change((p) => {
+                      p.notification_delivery.timeout_milliseconds = milliseconds;
+                    });
+                  }}
+                />
+                {timeoutError && <FieldError id={timeoutId + "-error"}>{timeoutError}</FieldError>}
+              </Field>
               <NumberField
                 label="最大投递次数"
                 error={error("notification_delivery.maximum_attempts")}

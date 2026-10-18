@@ -1,4 +1,5 @@
 import type { SiteConfiguration, SitePolicy } from "@/api/client";
+import { siteTimeoutSeconds } from "./site-timeout";
 
 // These are the fields editable in each website settings group. Merge only local
 // changes in that group; every other value must come from the latest snapshot.
@@ -12,7 +13,7 @@ const fields = [
   ["integration", "notifications_enabled", "开启通知"],
   ["integration", "notification_origin", "通知来源"],
   ["integration", "return_origin", "返回来源"],
-  ["integration", "policy.notification_delivery.timeout_milliseconds", "通知超时（毫秒）"],
+  ["integration", "policy.notification_delivery.timeout_milliseconds", "通知超时（秒）"],
   ["integration", "policy.notification_delivery.maximum_attempts", "最大投递次数"],
   ["integration", "policy.notification_delivery.retry_base_seconds", "基础重试间隔（秒）"],
   ["integration", "policy.notification_delivery.retry_maximum_seconds", "最大重试间隔（秒）"],
@@ -29,6 +30,7 @@ export type SiteFieldConflict = {
   before: FieldValue;
   local: FieldValue;
   remote: FieldValue;
+  format?: (value: FieldValue) => string;
 };
 export type SiteConflictChoices = Partial<Record<FieldPath, "local" | "remote">>;
 
@@ -57,7 +59,11 @@ function mergeFields<Configuration extends object>(
     const before = read(base, path), local = read(draft, path), latest = read(remote, path);
     if (Object.is(local, before)) continue;
     if (!Object.is(latest, before) && !Object.is(latest, local)) {
-      conflicts.push({ path, label, before, local, remote: latest });
+      conflicts.push({ path, label, before, local, remote: latest,
+        ...(path === "policy.notification_delivery.timeout_milliseconds"
+          ? { format: (value: FieldValue) => typeof value === "number" ? siteTimeoutSeconds(value) : siteFieldValue(value) }
+          : {}),
+      });
       continue;
     }
     const { target, key } = fieldLocation(configuration, path);

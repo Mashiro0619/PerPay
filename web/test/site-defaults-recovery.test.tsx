@@ -148,6 +148,46 @@ async function network(value: boolean) {
 }
 
 describe("website default template conflict recovery", () => {
+  it("retains invalid seconds across tabs and unrelated edits, blocks submission and protects leaving", async () => {
+    const view = mountDefaults(), user = userEvent.setup();
+    await group(user, "通知策略");
+    edit("通知超时（秒）", "5.0004");
+    expect(screen.getByText("通知超时最多 3 位小数。")).toBeVisible();
+    expect(save()).toBeDisabled();
+    edit("最大投递次数", "15");
+    expect(screen.getByLabelText("通知超时（秒）")).toHaveValue(5.0004);
+    await group(user, "订单设置");
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(save()).toBeDisabled();
+    fireEvent.submit(save().closest("form")!);
+    expect(view.puts).toHaveLength(0);
+    await group(user, "通知策略");
+    expect(screen.getByLabelText("通知超时（秒）")).toHaveValue(5.0004);
+    await act(async () => { void view.router.navigate("/sites"); });
+    expect(await screen.findByRole("alertdialog")).toBeVisible();
+    expect(view.router.state.location.pathname).toBe("/sites/defaults");
+  });
+  it("saves exact milliseconds and formats timeout conflicts in seconds before adopting the server value", async () => {
+    const view = mountDefaults(), user = userEvent.setup();
+    await group(user, "通知策略");
+    edit("通知超时（秒）", "5.123");
+    await user.click(save());
+    await waitFor(() => expect(view.puts).toHaveLength(1));
+    expect(view.puts[0]!.policy.notification_delivery.timeout_milliseconds).toBe(5123);
+    await screen.findByText("模板已保存，已有网站不受影响。");
+    edit("通知超时（秒）", "6.234");
+    view.changeRemote(policy => { policy.notification_delivery.timeout_milliseconds = 5000; });
+    await user.click(save());
+    await user.click(await reload());
+    expect(await screen.findByText("服务器值：5")).toBeVisible();
+    expect(screen.getByText("我的值：6.234")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "采用服务器值" }));
+    await user.click(screen.getByRole("button", { name: "应用核对结果" }));
+    expect(screen.getByLabelText("通知超时（秒）")).toHaveValue(5);
+    await user.click(save());
+    await waitFor(() => expect(view.puts).toHaveLength(3));
+    expect(view.puts[2]!.policy.notification_delivery.timeout_milliseconds).toBe(5000);
+  });
   it("preserves every edited group, explicitly saves the merged template and uses it for new sites", async () => {
     const view = mountDefaults(), user = userEvent.setup();
     await screen.findByLabelText("订单有效期（秒）");

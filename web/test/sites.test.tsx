@@ -93,6 +93,27 @@ function mount(path = "/sites/site_test/settings/basic", failSave = false, field
 afterEach(() => onlineManager.setOnline(true));
 
 describe("business website management", () => {
+  it("blocks submission and protects an invalid seconds draft when leaving", async () => {
+    const view = mount("/sites/site_test/settings/integration"), user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "高级设置" }));
+    fireEvent.change(screen.getByLabelText("通知超时（秒）"), { target: { value: "5.0004" } });
+    const save = screen.getByRole("button", { name: "保存网站" });
+    expect(save).toBeDisabled();
+    fireEvent.submit(save.closest("form")!);
+    expect(view.writes).toHaveLength(0);
+    await user.click(screen.getByRole("tab", { name: "订单设置" }));
+    expect(await screen.findByRole("alertdialog")).toBeVisible();
+    expect(view.router.state.location.pathname).toBe("/sites/site_test/settings/integration");
+  });
+  it("saves a seconds timeout as integer milliseconds without a precision mismatch", async () => {
+    const view = mount("/sites/site_test/settings/integration"), user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "高级设置" }));
+    fireEvent.change(screen.getByLabelText("通知超时（秒）"), { target: { value: "5.123" } });
+    expect(screen.getByLabelText("通知超时（秒）")).toBeValid();
+    await user.click(screen.getByRole("button", { name: "保存网站" }));
+    await waitFor(() => expect(view.writes).toHaveLength(1));
+    expect(view.writes[0]!.body).toMatchObject({ configuration: { policy: { notification_delivery: { timeout_milliseconds: 5123 } } } });
+  });
   it("creates from the latest detached template using only a name, without credentials", async () => {
     const view=mount('/sites/defaults'),user=userEvent.setup();
     fireEvent.change(await screen.findByLabelText('订单有效期（秒）'),{target:{value:'600'}});await user.click(screen.getByRole('button',{name:'保存默认模板'}));await waitFor(()=>expect(view.writes).toHaveLength(1));
