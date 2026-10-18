@@ -122,7 +122,7 @@ describe("order detail work surface", () => {
       .getByRole("heading", { name: "订单动态" })
       .closest<HTMLElement>("[data-slot=card]")!;
     expect(within(timeline).getByText("订单已创建")).toBeVisible();
-    expect(within(timeline).getByText("按金额与付款时间推断")).toBeVisible();
+    expect(within(timeline).getByText("PerPay 按金额和付款时间推断")).toBeVisible();
     expect(
       within(timeline).queryByText("已生成订单及付款窗口。"),
     ).not.toBeInTheDocument();
@@ -137,7 +137,7 @@ describe("order detail work surface", () => {
       }),
     ).toBeVisible();
     expect(
-      await screen.findByText(/HTTP 200 · 业务确认响应无效/),
+      await screen.findByText(/HTTP 200 · 对方的确认回执无效/),
     ).toBeVisible();
     expect(screen.getByText(detailLedger.provider_order_no!)).toBeVisible();
     expect(screen.getByText("测试买家")).toBeVisible();
@@ -256,7 +256,7 @@ describe("order detail work surface", () => {
       ) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      screen.getByText(/流水金额 ¥1.02 与可能关联订单的应付 ¥1.01 不一致/),
+      screen.getByText(/支付宝交易金额 ¥1.02 与可能关联订单的应付 ¥1.01 不一致/),
     ).toBeVisible();
   });
 
@@ -612,5 +612,27 @@ describe("order detail work surface", () => {
         request.url.includes("/notifications/deliveries"),
       ),
     ).toHaveLength(2);
+  });
+});
+
+
+describe("payment provenance", () => {
+  it.each(["INFERRED", "MANUAL", "NONE"] as const)("explains %s without attributing administrator decisions to Alipay", async (basis) => {
+    const match = { ...paymentMatch, evidence_type: basis === "MANUAL" ? "MANUAL" as const : "AMOUNT_INFERRED" as const,
+      candidate: basis === "MANUAL" ? null : paymentMatch.candidate };
+    mockData({ ...paidOrder, note: "业务网站传入的备注",
+      payment: { ...paidOrder.payment, status: basis === "NONE" ? "UNPAID" : "CONFIRMED", basis },
+      reconciliation: { ...paidOrder.reconciliation, matches: basis === "NONE" ? [] : [match] },
+    });
+    mount();
+    await screen.findByRole("button", { name: "订单操作" });
+    const currentPayment = within(screen.getByRole("group", { name: "PerPay 收款状态" }));
+    const inferred = currentPayment.queryAllByText(/PerPay 按金额和付款时间推断/);
+    const manual = currentPayment.queryAllByText(/管理员人工关联/);
+    expect(inferred.length > 0).toBe(basis === "INFERRED");
+    expect(manual.length > 0).toBe(basis === "MANUAL");
+    expect(within(screen.getByRole("region", { name: "PerPay 计算的金额" })).getByText(/0\.01/)).toBeVisible();
+    expect(within(screen.getByRole("region", { name: "业务网站传入的订单信息" })).getByText("业务网站传入的备注")).toBeVisible();
+    expect(screen.queryByText(/数据截至/)).not.toBeInTheDocument();
   });
 });

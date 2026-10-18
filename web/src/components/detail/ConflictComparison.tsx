@@ -89,8 +89,8 @@ function ComparisonContent({
           <TableHeader>
             <TableRow>
               <TableHead>字段</TableHead>
-              <TableHead>传入记录</TableHead>
-              {existing && <TableHead>已有流水</TableHead>}
+              <TableHead>本次收到的记录</TableHead>
+              {existing && <TableHead>已保存的支付宝流水</TableHead>}
               <TableHead>{existing ? "差异" : "校验结果"}</TableHead>
             </TableRow>
           </TableHeader>
@@ -146,14 +146,14 @@ function ComparisonContent({
             <ItemContent className="min-w-0">
               <dl className="flex min-w-0 flex-col gap-3">
                 <div className="flex min-w-0 flex-col gap-1">
-                  <dt className="text-xs text-muted-foreground">传入记录</dt>
+                  <dt className="text-xs text-muted-foreground">本次收到的记录</dt>
                   <dd className="whitespace-pre-wrap wrap-anywhere">
                     {row.incoming ?? "未提供"}
                   </dd>
                 </div>
                 {existing && (
                   <div className="flex min-w-0 flex-col gap-1">
-                    <dt className="text-xs text-muted-foreground">已有流水</dt>
+                    <dt className="text-xs text-muted-foreground">已保存的支付宝流水</dt>
                     <dd className="whitespace-pre-wrap wrap-anywhere">
                       {row.existing ?? "未提供"}
                     </dd>

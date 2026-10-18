@@ -254,8 +254,8 @@ function ReconciliationList({
   const sortNames: Record<string, string> = {
     event_sequence: "关联事件顺序",
     created_at: section === "matches" ? "关联时间" : "发现时间",
-    amount_cents: "流水金额",
-    external_event_id: "外部流水号",
+    amount_cents: "支付宝交易金额",
+    external_event_id: "支付宝流水号",
   };
   const query = useQuery({
     ...retainListData(["reconciliation", section, status, provider], listQuery.query),
@@ -372,7 +372,7 @@ function ReconciliationList({
                 <RelatedOrderLink item={item} />
               )}
               {section !== "conflicts" && item.externalEventId && (
-                <span className="list-code" title={item.externalEventId}>流水 {item.externalEventId}</span>
+                <span className="list-code" title={item.externalEventId}>支付宝流水号 {item.externalEventId}</span>
               )}
             </ListMeta>
           )}
@@ -385,7 +385,7 @@ function ReconciliationList({
               {context.showInSummary("created_at") && <ListDateTime value={item.createdAt} inline />}
               {section === "conflicts" && context.showInSummary("external_event_id") && (
                 <span className="list-code" title={item.externalEventId ?? undefined}>
-                  流水 {item.externalEventId ?? "—"}
+                  支付宝流水号 {item.externalEventId ?? "—"}
                 </span>
               )}
               {item.amountCents !== null && context.showInSummary("amount_cents") && (
@@ -415,7 +415,7 @@ function ReconciliationList({
     },
     {
       id: "status",
-      label: "状态",
+      label: "PerPay 处理状态",
       align: "center",
       layout: "status",
       summaryDefault: true,
@@ -429,7 +429,7 @@ function ReconciliationList({
     ...(section === "matches" ? [{
       id: "amount_cents",
       sortBy: "amount_cents",
-      label: "流水金额",
+      label: "支付宝交易金额",
       align: "center" as const,
       layout: "amount" as const,
       summaryDefault: true,
@@ -439,7 +439,7 @@ function ReconciliationList({
     ...(section === "conflicts" ? [{
       id: "external_event_id",
       sortBy: "external_event_id",
-      label: "外部流水号",
+      label: "支付宝流水号",
       layout: "text" as const,
       summaryDefault: true,
       responsive: { minWidthRem: 50, basis: "container" as const },
@@ -510,7 +510,7 @@ function ReconciliationList({
               pattern: resourceIdPattern.source,
             },
           ],
-          inputLabel: "账本流水编号",
+          inputLabel: "支付宝流水编号",
           inputName: "ledger-lookup",
           onSubmit: (_mode, value) => {
             if (resourceIdPattern.test(value))
@@ -576,7 +576,7 @@ function ReconciliationList({
                       identity={columns[0]!.cell(item, context)}
                       aside={context.isColumnVisible("amount_cents") && (
                         <div className="flex flex-col items-end gap-1">
-                          <span className="text-xs text-muted-foreground">流水金额</span>
+                          <span className="text-xs text-muted-foreground">支付宝交易金额</span>
                           <ListMoney value={item.amountCents} />
                         </div>
                       )}

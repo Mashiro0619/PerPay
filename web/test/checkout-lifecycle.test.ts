@@ -274,7 +274,7 @@ describe("checkout desktop composition", () => {
     );
     expect(summary).toContainElement(screen.getByText("测试商品"));
     expect(summary).toContainElement(
-      screen.getByRole("button", { name: "复制商户订单号" }),
+      screen.getByRole("button", { name: "复制商家订单号" }),
     );
     expect(container.querySelector("[data-checkout-actions]")).toContainElement(
       screen.getByRole("button", { name: "查询付款状态" }),

@@ -50,7 +50,7 @@ const lists = [
     })),
   },
   {
-    name: "reconciliation", path: "/reconciliation", endpoint: "/reconciliation/matches", field: "amount_cents", heading: "流水金额",
+    name: "reconciliation", path: "/reconciliation", endpoint: "/reconciliation/matches", field: "amount_cents", heading: "支付宝交易金额",
     data: orders.map((item) => ({
       ...paymentMatch, payment_match_id: item.order_id,
       ledger_entry: { ...paymentMatch.ledger_entry, amount_cents: item.payable_amount_cents },

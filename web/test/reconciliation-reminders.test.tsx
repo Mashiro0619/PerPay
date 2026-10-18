@@ -23,7 +23,7 @@ const cases = [
     type: "LEDGER_CONFLICT",
     endpoint: "/api/admin/v1/ledger/conflicts",
     idKey: "conflict_id",
-    title: "流水金额无法解析",
+    title: "支付宝交易金额无法解析",
   },
 ] as const;
 

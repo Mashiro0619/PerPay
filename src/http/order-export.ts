@@ -123,17 +123,17 @@ export function exportOrders(
   if (rows.length > MAX_EXPORT_ORDERS)
     throw new ListQueryError("导出结果超过 10,000 条，请缩小筛选范围");
   const header = [
-    "商户订单号",
-    "内部订单号",
+    "商户订单号（业务网站）",
+    "内部订单编号（PerPay）",
     "商品",
-    "原始金额",
+    "下单金额",
     "应付金额",
     "实收金额",
     "币种",
     "付款状态",
     "收银台状态",
     "创建时间",
-    "付款确认时间",
+    "PerPay 确认时间",
     ...(includeWebsite ? ["业务网站 ID", "业务网站名称"] : []),
   ];
   const payment: Record<string, string> = {

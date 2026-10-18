@@ -87,8 +87,8 @@ describe("mobile business list integration", () => {
   );
 
   it.each([
-    ["商户订单号", order.merchant_order_no],
-    ["内部订单编号", orderId],
+    ["商户订单号（业务网站）", order.merchant_order_no],
+    ["内部订单编号（PerPay）", orderId],
   ])("preserves direct order lookup for %s", async (mode, value) => {
     const calls: Request[] = [];
     vi.stubGlobal(
@@ -136,7 +136,7 @@ describe("mobile business list integration", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "查询方式：关键词" }));
     await user.click(
-      await screen.findByRole("menuitemradio", { name: "商户订单号" }),
+      await screen.findByRole("menuitemradio", { name: "商户订单号（业务网站）" }),
     );
     const input = screen.getByRole("searchbox", { name: "订单号" });
     await user.type(input, "missing{Enter}");
@@ -157,7 +157,7 @@ describe("mobile business list integration", () => {
     await user.click(
       await screen.findByRole("menuitemradio", { name: "流水编号" }),
     );
-    const input = screen.getByRole("searchbox", { name: "账本流水编号" });
+    const input = screen.getByRole("searchbox", { name: "支付宝流水编号" });
     await user.type(input, "invalid");
     await user.click(screen.getByRole("button", { name: "查找" }));
     expect(

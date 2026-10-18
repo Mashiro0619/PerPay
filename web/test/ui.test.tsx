@@ -185,7 +185,7 @@ describe("work item table", () => {
 });
 const attemptLabels: Record<WebhookAttemptOutcome, string> = {
   STARTED: "投递已开始",
-  ACKNOWLEDGED: "业务方已确认",
+  ACKNOWLEDGED: "通知已确认",
   RETRYABLE_FAILURE: "可重试的投递失败",
   PERMANENT_FAILURE: "不可重试的投递失败",
   OUTCOME_UNKNOWN: "投递结果未知",

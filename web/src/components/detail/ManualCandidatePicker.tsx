@@ -110,7 +110,7 @@ export function ManualCandidatePicker({
             id: entry.ledger_entry_id,
             title:
               money(entry.amount_cents) + " · " + dateTime(entry.occurred_at),
-            summary: entry.other_account || "未提供交易对方",
+            summary: entry.other_account || "未提供支付宝交易对方",
             amount: entry.amount_cents,
             occurredAt: entry.occurred_at,
             identifiers: [
@@ -159,7 +159,7 @@ export function ManualCandidatePicker({
                 placeholder={
                   kind === "orders"
                     ? "商品名、商户订单号或金额"
-                    : "外部流水号、交易对方或金额"
+                    : "支付宝流水号、支付宝交易对方或金额"
                 }
                 value={draft}
                 disabled={disabled}

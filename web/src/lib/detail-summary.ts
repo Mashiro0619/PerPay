@@ -59,7 +59,7 @@ export function candidateFacts(
       ? [["匹配金额", money(amount)] as [string, string]]
       : []),
     ...(occurred !== null && occurred >= 0
-      ? [["流水发生时间", detailTimestamp(occurred)] as [string, string]]
+      ? [["支付宝交易时间", detailTimestamp(occurred)] as [string, string]]
       : []),
     ...(start !== null && start >= 0
       ? [
@@ -108,15 +108,15 @@ export function exceptionExplanation(exception: FinancialException): string {
       const expected = numberField(details, "expected_amount_cents");
       const actual = numberField(details, "actual_amount_cents");
       return expected !== null && actual !== null
-        ? "流水金额 " +
+        ? "支付宝交易金额 " +
             money(actual) +
             " 与可能关联订单的应付 " +
             money(expected) +
             " 不一致；此关联仅为推断。"
-        : "流水金额与可能关联订单的应付金额不同，尚不能确认归属。";
+        : "支付宝交易金额与可能关联订单的应付金额不同，尚不能确认归属。";
     }
     case "CHECKOUT_ENDED_PAYMENT":
-      return "流水发生在收银台关闭或过期之后，系统未自动确认收款该订单付款。";
+      return "流水发生在收银台关闭或过期之后，系统未自动确认这笔订单的收款。";
     case "DUPLICATE_PAYMENT":
       return "可能对应的订单已存在收款关联，本笔收入未被重复计入。";
     case "RECONCILIATION_CONFLICT":
@@ -139,9 +139,9 @@ export function exceptionResolution(
 }
 export function eventExplanation(event: AdminOrderEvent): string | null {
   if (event.event_type === "PAYMENT_CONFIRMED") {
-    if (event.details.evidence_type === "MANUAL") return "人工关联确认";
+    if (event.details.evidence_type === "MANUAL") return "管理员人工关联";
     if (event.details.evidence_type === "AMOUNT_INFERRED")
-      return "按金额与付款时间推断";
+      return "PerPay 按金额和付款时间推断";
   }
   return null;
 }
@@ -157,14 +157,14 @@ export function latestAttempt(
   );
 }
 const notificationErrorNames: Record<string, string> = {
-  INVALID_ACKNOWLEDGEMENT: "业务确认响应无效",
+  INVALID_ACKNOWLEDGEMENT: "对方的确认回执无效",
   TIMEOUT: "请求超时",
   NETWORK_ERROR: "网络连接失败",
   http_status_not_ack: "HTTP 状态不符合确认要求",
-  ack_content_type_invalid: "确认响应类型不正确",
-  ack_content_encoding_invalid: "确认响应编码不正确",
-  ack_json_invalid: "确认响应不是有效 JSON",
-  ack_shape_invalid: "业务确认响应格式不正确",
+  ack_content_type_invalid: "对方的确认回执类型不正确",
+  ack_content_encoding_invalid: "对方的确认回执编码不正确",
+  ack_json_invalid: "对方的确认回执不是有效 JSON",
+  ack_shape_invalid: "对方的确认回执格式不正确",
   ack_event_mismatch: "确认的事件编号不匹配",
   ack_delivery_mismatch: "确认的投递编号不匹配",
   transport_timeout: "请求超时",
@@ -191,7 +191,7 @@ export function attemptResult(attempt: WebhookAttempt | undefined): string {
     attempt.http_status === null
       ? "未收到 HTTP 响应"
       : "HTTP " + attempt.http_status;
-  if (attempt.outcome === "ACKNOWLEDGED") return http + " · ACK 已确认";
+  if (attempt.outcome === "ACKNOWLEDGED") return http + " · 通知已确认（ACK）";
   if (attempt.outcome === "STARTED") return "投递进行中，尚未确认结果";
   const result = attempt.error_code ?? attempt.ack_code;
   return (

@@ -20,7 +20,7 @@ const notificationTitles = {
   PENDING: "通知等待投递",
   LEASED: "通知正在投递",
   RETRY_WAIT: "通知等待重试",
-  ACKNOWLEDGED: "通知已确认送达",
+  ACKNOWLEDGED: "通知已确认",
   DEAD_LETTER: "通知已停止重试",
 } as const;
 

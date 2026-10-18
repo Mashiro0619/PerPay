@@ -8,7 +8,7 @@ const states = {
   OPEN: ["开放中", "outline"],
   CLOSED: ["已关闭", "secondary"],
   EXPIRED: ["已过期", "secondary"],
-  ACKNOWLEDGED: ["已确认送达", "success", CircleCheck],
+  ACKNOWLEDGED: ["通知已确认", "success", CircleCheck],
   PENDING: ["等待投递", "secondary", Clock3],
   LEASED: ["投递中", "warning", Clock3],
   RETRY_WAIT: ["等待重试", "warning", Clock3],
@@ -54,4 +54,10 @@ export function StatusBadge({
       {label ?? text}
     </Badge>
   );
+}
+
+export function paymentBasisDescription(basis: string): string | null {
+  if (basis === "INFERRED") return "PerPay 按金额和付款时间推断";
+  if (basis === "MANUAL") return "管理员人工关联";
+  return null;
 }

@@ -125,7 +125,7 @@ describe("mobile column controls", () => {
     media.resize(1280);
     expect(screen.getByRole("columnheader", { name: "实收金额" })).toBeVisible();
     expect(screen.getByRole("columnheader", { name: "创建时间" })).toBeVisible();
-    expect(screen.getByRole("columnheader", { name: "付款确认时间" })).toBeVisible();
+    expect(screen.getByRole("columnheader", { name: "PerPay 确认时间" })).toBeVisible();
     await menu(user);
     await user.click(screen.getByRole("menuitemcheckbox", { name: "状态" }));
     await user.keyboard("{Escape}");

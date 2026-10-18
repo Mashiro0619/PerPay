@@ -188,7 +188,7 @@ export function ListQueryToolbar({
                         )}
                         <ChevronDown data-icon="inline-end" />
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start">
+                      <DropdownMenuContent align="start" className="w-max max-w-[calc(100vw-2rem)]">
                         <DropdownMenuGroup>
                           <DropdownMenuRadioGroup
                             value={mode}

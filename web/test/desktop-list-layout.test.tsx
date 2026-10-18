@@ -48,7 +48,7 @@ const lists = [
     path: "/orders",
     element: <Orders />,
     data: [longOrder],
-    hiddenColumn: "付款确认时间",
+    hiddenColumn: "PerPay 确认时间",
     centeredColumns: ["payable_amount_cents", "received_amount_cents", "status", "created_at", "payment_confirmed_at"],
   },
   {
@@ -412,11 +412,11 @@ describe("desktop business list composition", () => {
     const keyword = screen.getByRole("searchbox");
     await user.clear(keyword);
     await user.type(keyword, "尚未提交的关键词");
-    await chooseMode(user, "内部订单编号");
+    await chooseMode(user, "内部订单编号（PerPay）");
     await user.type(screen.getByRole("searchbox", { name: "订单号" }), orderId);
     expect(
-      screen.getByRole("button", { name: "查询方式：内部订单编号" }),
-    ).toHaveTextContent("内部订单编号");
+      screen.getByRole("button", { name: "查询方式：内部订单编号（PerPay）" }),
+    ).toHaveTextContent("内部订单编号（PerPay）");
     media.resize(390);
     expect(screen.getByRole("searchbox", { name: "订单号" })).toHaveValue(
       orderId,
@@ -439,7 +439,7 @@ describe("desktop business list composition", () => {
 
   it.each([
     {
-      mode: "商户订单号",
+      mode: "商户订单号（业务网站）",
       value: order.merchant_order_no,
       path: "/orders",
       element: <Orders />,
@@ -447,7 +447,7 @@ describe("desktop business list composition", () => {
       title: "订单详情",
     },
     {
-      mode: "内部订单编号",
+      mode: "内部订单编号（PerPay）",
       value: orderId,
       path: "/orders",
       element: <Orders />,

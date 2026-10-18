@@ -41,7 +41,7 @@ export function conflictComparison(detail: LedgerConflictDetail) {
     precision === 1000 ? "1 秒" : precision + " 毫秒";
   return [
     {
-      name: "交易金额",
+      name: "支付宝交易金额",
       incoming: incoming?.amount_text,
       existing: existing ? money(existing.amount_cents) : null,
       differs: existing
@@ -66,7 +66,7 @@ export function conflictComparison(detail: LedgerConflictDetail) {
         : detail.conflict.conflict_type === "INVALID_DIRECTION",
     },
     {
-      name: "交易时间",
+      name: "支付宝交易时间",
       incoming: incoming?.occurred_at_text,
       existing: existing ? detailTimestamp(existing.occurred_at) : null,
       differs: existing
@@ -87,7 +87,7 @@ export function conflictComparison(detail: LedgerConflictDetail) {
         ]
       : []),
     {
-      name: "外部流水号",
+      name: "支付宝流水号",
       incoming: incoming?.external_event_id,
       existing: existing?.external_event_id,
       differs: existing
@@ -102,7 +102,7 @@ export function conflictComparison(detail: LedgerConflictDetail) {
         !!existing && incoming?.alipay_order_no !== existing.alipay_order_no,
     },
     {
-      name: "商户订单号",
+      name: "支付宝商户单号",
       incoming: incoming?.merchant_order_no,
       existing: existing?.merchant_order_no,
       differs:
@@ -110,13 +110,13 @@ export function conflictComparison(detail: LedgerConflictDetail) {
         incoming?.merchant_order_no !== existing.merchant_order_no,
     },
     {
-      name: "交易对方",
+      name: "支付宝交易对方",
       incoming: incoming?.other_account,
       existing: existing?.other_account,
       differs: !!existing && incoming?.other_account !== existing.other_account,
     },
     {
-      name: "交易备注",
+      name: "支付宝交易备注",
       incoming: incoming?.trans_memo,
       existing: existing?.trans_memo,
       differs: !!existing && incoming?.trans_memo !== existing.trans_memo,
@@ -124,17 +124,17 @@ export function conflictComparison(detail: LedgerConflictDetail) {
   ].map((row) => ({
     ...row,
     invalid:
-      (row.name === "交易金额" &&
+      (row.name === "支付宝交易金额" &&
         (detail.conflict.conflict_type === "INVALID_AMOUNT" ||
           (incoming?.amount_text != null &&
             comparisonAmount(incoming.amount_text) === null))) ||
       (row.name === "收支方向" &&
         (detail.conflict.conflict_type === "INVALID_DIRECTION" ||
           (incoming?.direction_text != null && direction === null))) ||
-      (row.name === "交易时间" &&
+      (row.name === "支付宝交易时间" &&
         (detail.conflict.conflict_type === "INVALID_TIMESTAMP" ||
           (incoming?.occurred_at_text != null && time === null))) ||
-      (row.name === "外部流水号" &&
+      (row.name === "支付宝流水号" &&
         detail.conflict.conflict_type === "MISSING_EXTERNAL_ID"),
   }));
 }

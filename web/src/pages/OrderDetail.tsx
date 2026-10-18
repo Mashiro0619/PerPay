@@ -20,7 +20,9 @@ import { eventExplanation, isHistoricalException } from "@/lib/detail-summary";
 import { dateTime, money } from "@/lib/format";
 import { label } from "@/lib/labels";
 import { cn } from "@/lib/utils";
-import { StatusBadge } from "@/components/business-status";
+import { useOptionalSystemStatus } from "@/features/system-status";
+import { LedgerFreshness } from "@/components/ledger-freshness";
+import { StatusBadge, paymentBasisDescription } from "@/components/business-status";
 import { ListDateTime, ListMoney } from "@/components/list-primitives";
 import { CopyValue } from "@/components/copy-value";
 import { QueryView } from "@/components/request-state";
@@ -94,6 +96,9 @@ export function OrderDetail() {
 }
 function OrderDesk({ order }: { order: AdminOrderDetail }) {
   const { clientId } = useWorkspace();
+  const system = useOptionalSystemStatus();
+  const lastSuccess = system && !system.checking && !system.unavailable ? system.status.data?.data.ledger.last_success_at : undefined;
+  const basis = paymentBasisDescription(order.payment.basis);
   const matches = order.reconciliation.matches;
   const active = matches.filter((match) => match.status === "SETTLED");
   const reversed = matches.filter((match) => match.status === "REVERSED");
@@ -116,8 +121,9 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
     .find((event) => event.event_type === "PAYMENT_CONFIRMED");
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3" role="group" aria-label="PerPay 收款状态">
         <StatusBadge value={order.payment.status} />
+        {basis && <p className="text-sm text-muted-foreground">{basis}</p>}
       </div>
       <div
         className={cn(
@@ -132,26 +138,27 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
         >
           <Card>
             <CardHeader>
-              <CardDescription>实收金额</CardDescription>
-              <p className="text-3xl font-semibold tabular-nums">
-                {money(order.received_amount_cents)}
-              </p>
+              <CardTitle role="heading" aria-level={2}>金额</CardTitle>
+              <CardDescription>应付金额 = 下单金额 + 加价金额；实收金额来自支付宝流水。</CardDescription>
             </CardHeader>
-            <CardContent>
-              <ItemGroup className="record-list" data-density="compact">
-                <Item className="record-list-row" size="sm" role="listitem">
-                  <ItemContent>
-                    <ItemDescription>应付金额</ItemDescription>
-                  </ItemContent>
-                  <ListMoney value={order.payable_amount_cents} />
-                </Item>
-                <Item className="record-list-row" size="sm" role="listitem">
-                  <ItemContent>
-                    <ItemDescription>下单金额</ItemDescription>
-                  </ItemContent>
-                  <ListMoney value={order.requested_amount_cents} secondary />
-                </Item>
-              </ItemGroup>
+            <CardContent className="flex min-w-0 flex-col gap-4">
+              <section aria-label="业务网站传入的金额" className="flex min-w-0 flex-col gap-3">
+                <h3 className="text-sm font-medium">业务网站传入</h3>
+                <DetailFields compact items={[["下单金额", <ListMoney value={order.requested_amount_cents} secondary />]]} />
+              </section>
+              <section aria-label="PerPay 计算的金额" className="flex min-w-0 flex-col gap-3">
+                <h3 className="text-sm font-medium">PerPay 计算</h3>
+                <DetailFields compact items={[
+                  ["加价金额", <ListMoney value={order.payable_amount_cents - order.requested_amount_cents} secondary />],
+                  ["应付金额", <ListMoney value={order.payable_amount_cents} />],
+                ]} />
+              </section>
+              <section aria-label="支付宝流水中的实收金额" className="flex min-w-0 flex-col gap-3">
+                <h3 className="text-sm font-medium">支付宝流水</h3>
+                <DetailFields items={[["实收金额", <span className="text-3xl font-semibold tabular-nums">{money(order.received_amount_cents)}</span>]]} />
+                <p className="text-xs text-muted-foreground">来自支付宝流水</p>
+                <LedgerFreshness value={lastSuccess} />
+              </section>
             </CardContent>
             <CardFooter className="flex-wrap justify-between gap-2">
               <CardDescription>
@@ -185,35 +192,23 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
               </CardTitle>
             </CardHeader>
             <CardContent className="flex min-w-0 flex-col gap-3">
-              <DetailFields
-                className="@sm/detail-fields:grid-cols-1"
-                items={[
-                  [
-                    "商户订单号",
-                    <CopyValue
-                      value={order.merchant_order_no}
-                      label="复制商户订单号"
-                    />,
-                  ],
-                ]}
-              />
-              <DetailFields
-                compact
-                className="@sm/detail-fields:grid-cols-1"
-                items={[
+              <section aria-label="业务网站传入的订单信息" className="flex min-w-0 flex-col gap-3">
+                <h3 className="text-sm font-medium">业务网站传入</h3>
+                <DetailFields className="@sm/detail-fields:grid-cols-1" items={[
+                  ["商户订单号", <CopyValue value={order.merchant_order_no} label="复制商户订单号" />],
+                  ["商品名称", order.product_name],
+                  ...(order.note ? [["订单备注", order.note] as const] : []),
+                ]} />
+              </section>
+              <section aria-label="PerPay 记录的订单信息" className="flex min-w-0 flex-col gap-3">
+                <h3 className="text-sm font-medium">PerPay 记录</h3>
+                <DetailFields compact className="@sm/detail-fields:grid-cols-1" items={[
                   ...(!clientId ? [["业务网站", <Link to={"/sites/" + encodeURIComponent(order.api_client_id)}>{order.site_name ?? "业务网站名称暂不可用"}</Link>] as const] : []),
                   ["创建时间", dateTime(order.created_at)],
-                  ...(confirmed
-                    ? [
-                        [
-                          "付款确认时间",
-                          dateTime(confirmed.occurred_at),
-                        ] as const,
-                      ]
-                    : []),
-                  ["付款截止", dateTime(order.checkout.expires_at)],
-                ]}
-              />
+                  ...(confirmed ? [["PerPay 确认时间", dateTime(confirmed.occurred_at)] as const] : []),
+                  ["收银台有效期至", dateTime(order.checkout.expires_at)],
+                ]} />
+              </section>
             </CardContent>
             <CardFooter className="block">
               <RefundMarkPanel

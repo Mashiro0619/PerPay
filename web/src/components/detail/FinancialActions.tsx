@@ -133,7 +133,7 @@ export function ReverseMatchAction({
             items={[
               ["商品", snapshot.order.product_name],
               ["商户订单号", snapshot.order.merchant_order_no],
-              ["流水金额", money(snapshot.ledger_entry.amount_cents)],
+              ["支付宝交易金额", money(snapshot.ledger_entry.amount_cents)],
               ["支付宝订单号", snapshot.ledger_entry.provider_order_no],
             ]}
           />

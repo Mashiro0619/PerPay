@@ -20,14 +20,14 @@ import {
 import { DetailFields } from "./DetailPrimitives";
 import { RecordTools } from "./RecordTools";
 const explanations: Record<string, string> = {
-  DUPLICATE_EXTERNAL_ID: "同一外部流水号对应不同交易内容，已有流水未被覆盖。",
+  DUPLICATE_EXTERNAL_ID: "同一支付宝流水号对应不同交易内容，已有流水未被覆盖。",
   RAW_PAGE_VARIANT: "同一查账窗口返回了不同内容。",
   MISSING_EXTERNAL_ID:
-    "这笔记录缺少可识别的外部流水号，已被隔离，不能参与收款分配。",
+    "这笔记录缺少可识别的支付宝流水号，已被隔离，不能参与收款分配。",
   INVALID_AMOUNT:
-    "流水金额格式无法安全解析，已被隔离；不会把无效金额计入收款。",
+    "支付宝交易金额格式无法安全解析，已被隔离；不会把无效金额计入收款。",
   INVALID_TIMESTAMP:
-    "交易时间无法安全解析，已被隔离；不会用于订单时间窗口匹配。",
+    "支付宝交易时间无法安全解析，已被隔离；不会用于订单时间窗口匹配。",
   INVALID_DIRECTION: "收支方向无法确认，已被隔离，不会用于自动收款匹配。",
   INVALID_SHAPE: "原始记录结构不符合账本要求，已被隔离。",
 };
@@ -92,8 +92,8 @@ export function ConflictCard({ detail }: { detail: LedgerConflictDetail }) {
               items={[
                 ["查账时间", dateTime(detail.raw_page.received_at)],
                 [
-                  "接口验签",
-                  detail.raw_page.signature_verified ? "已通过" : "未通过",
+                  "支付宝响应验签",
+                  detail.raw_page.signature_verified ? "验签通过" : "验签未通过",
                 ],
                 [
                   "查账窗口",
@@ -173,7 +173,7 @@ export function ConflictCard({ detail }: { detail: LedgerConflictDetail }) {
         >
           <p className="text-sm break-all">
             {label(conflict.conflict_type)} ·{" "}
-            {conflict.external_event_id ?? "无外部流水号"}
+            {conflict.external_event_id ?? "无支付宝流水号"}
           </p>
         </ReasonDialog>
       )}

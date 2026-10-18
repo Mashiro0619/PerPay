@@ -52,7 +52,7 @@ function NotificationBadge({ summary }: { summary: NonNullable<AdminOrderSummary
       return <Badge variant="warning">等待生成投递</Badge>;
     case "ACKNOWLEDGED":
       return summary.total_events > 0 && summary.acknowledged_events === summary.total_events
-        ? <StatusBadge value="ACKNOWLEDGED" label="全部已确认" />
+        ? <StatusBadge value="ACKNOWLEDGED" label="通知已确认" />
         : <Badge variant="warning">尚未全部送达</Badge>;
     default:
       return <StatusBadge value={summary.status} />;

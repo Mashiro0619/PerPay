@@ -185,11 +185,11 @@ describe("always-visible detail evidence", () => {
         existing ? 0 : 1,
       );
       const amount = within(table)
-        .getByRole("rowheader", { name: /交易金额/ })
+        .getByRole("rowheader", { name: /支付宝交易金额/ })
         .closest("tr")!;
       expect(amount).toHaveAttribute("data-different", "true");
       expect(within(amount).getByRole("rowheader")).toHaveTextContent(
-        /^交易金额$/,
+        /^支付宝交易金额$/,
       );
       expect(within(amount).getByText("异常").closest("td")).toHaveAttribute(
         "data-comparison-result",
@@ -201,7 +201,7 @@ describe("always-visible detail evidence", () => {
       ).toBeVisible();
       expect(within(amount).getByText("异常")).toBeVisible();
       expect(screen.getByRole("heading", { name: "查账摘要" })).toBeVisible();
-      expect(screen.getByText("已通过")).toBeVisible();
+      expect(screen.getByText("验签通过")).toBeVisible();
       expect(
         screen.queryByRole("button", { name: "查账信息" }),
       ).not.toBeInTheDocument();
@@ -234,9 +234,9 @@ describe("always-visible detail evidence", () => {
     render(<ConflictComparison detail={detail} />);
     const table = screen.getByRole("table", { name: "交易对照" });
     const row = within(table)
-      .getByRole("rowheader", { name: "交易金额" })
+      .getByRole("rowheader", { name: "支付宝交易金额" })
       .closest("tr")!;
-    expect(within(row).getByRole("rowheader")).toHaveTextContent(/^交易金额$/);
+    expect(within(row).getByRole("rowheader")).toHaveTextContent(/^支付宝交易金额$/);
     expect(within(row).getByText("不同").closest("td")).toHaveAttribute(
       "data-comparison-result",
     );
@@ -244,7 +244,7 @@ describe("always-visible detail evidence", () => {
     expect(within(row).getByText("2.50")).toBeVisible();
     expect(within(row).getByText("¥1.00")).toBeVisible();
     expect(
-      within(table).getByRole("rowheader", { name: "商户订单号" }),
+      within(table).getByRole("rowheader", { name: "支付宝商户单号" }),
     ).toBeVisible();
   });
   it.each([false, true])(
@@ -258,7 +258,7 @@ describe("always-visible detail evidence", () => {
         "[data-comparison-mobile]",
       )! as HTMLElement;
       expect(screen.queryByRole("table")).not.toBeInTheDocument();
-      const amount = within(mobile).getByRole("group", { name: "交易金额" });
+      const amount = within(mobile).getByRole("group", { name: "支付宝交易金额" });
       expect(mobile).toHaveAttribute("role", "group");
       expect(mobile).toHaveAccessibleName("逐字段交易对照");
       // ItemHeader fills a row; flex-col would instead make it fill the column.
@@ -269,19 +269,19 @@ describe("always-visible detail evidence", () => {
       expect(header).toHaveClass("basis-full");
       expect(header.nextElementSibling).toBe(content);
       expect(header.querySelector('[data-slot="item-title"]')).toHaveTextContent(
-        /^交易金额$/,
+        /^支付宝交易金额$/,
       );
       expect(within(header as HTMLElement).getByText("异常")).toBeInTheDocument();
       expect(
         [...amount.querySelectorAll("dt")].map((e) => e.textContent),
-      ).toEqual(existing ? ["传入记录", "已有流水"] : ["传入记录"]);
+      ).toEqual(existing ? ["本次收到的记录", "已保存的支付宝流水"] : ["本次收到的记录"]);
       expect(
         [...amount.querySelectorAll("dd")].map((e) => e.textContent),
       ).toEqual(existing ? ["1.001", "¥1.00"] : ["1.001"]);
       expect(
         within(amount).getByText("异常").closest("[data-comparison-result]"),
       ).not.toBeNull();
-      const memo = within(mobile).getByRole("group", { name: "交易备注" });
+      const memo = within(mobile).getByRole("group", { name: "支付宝交易备注" });
       expect(memo.querySelector("dd")?.textContent).toBe(
         detail.incoming_event!.trans_memo,
       );

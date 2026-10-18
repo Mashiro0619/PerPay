@@ -137,7 +137,7 @@ describe("overview order progress", () => {
     ["LEASED", "投递中", 1, 0, "warning"],
     ["RETRY_WAIT", "等待重试", 2, 1, "warning"],
     ["DEAD_LETTER", "已停止重试", 2, 1, "destructive"],
-    ["ACKNOWLEDGED", "全部已确认", 2, 2, "success"],
+    ["ACKNOWLEDGED", "通知已确认", 2, 2, "success"],
   ] as const)("renders %s without confusing delivery with payment", (status, text, total, acknowledged, variant) => {
     mount([{ ...recent, notification_summary: { status, total_events: total, acknowledged_events: acknowledged } }]);
     expect(screen.getByText(text)).toHaveAttribute("data-variant", variant);
@@ -147,7 +147,7 @@ describe("overview order progress", () => {
 
   it.each([[3, 1], [0, 0]])("does not call an incomplete acknowledged aggregate successful (%i/%i)", (total, acknowledged) => {
     mount([{ ...recent, notification_summary: { status: "ACKNOWLEDGED", total_events: total, acknowledged_events: acknowledged } }]);
-    expect(screen.queryByText("全部已确认")).not.toBeInTheDocument();
+    expect(screen.queryByText("通知已确认")).not.toBeInTheDocument();
     expect(screen.getByText("尚未全部送达")).toHaveAttribute("data-variant", "warning");
     expect(screen.queryByText(/^已确认 \d+\/\d+ 项$/)).not.toBeInTheDocument();
   });
@@ -157,7 +157,7 @@ describe("overview order progress", () => {
     expect(screen.getByText("等待生成投递")).toHaveAttribute("data-variant", "warning");
     expect(screen.queryByText(/^已确认 \d+\/\d+ 项$/)).not.toBeInTheDocument();
     expect(screen.queryByText("尚无投递记录")).not.toBeInTheDocument();
-    expect(screen.queryByText("全部已确认")).not.toBeInTheDocument();
+    expect(screen.queryByText("通知已确认")).not.toBeInTheDocument();
   });
 
   it.each([

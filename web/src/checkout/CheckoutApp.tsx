@@ -447,11 +447,11 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                       </div>
                     )}
                     <div className="flex flex-col gap-1">
-                      <dt className="text-muted-foreground">商户订单号</dt>
+                      <dt className="text-muted-foreground">商家订单号</dt>
                       <dd className="min-w-0" data-merchant-order-no>
                         <CopyValue
                           value={order.merchant_order_no}
-                          label="复制商户订单号"
+                          label="复制商家订单号"
                         />
                       </dd>
                     </div>
@@ -474,7 +474,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                       className="hidden text-sm leading-relaxed text-muted-foreground md:block"
                       data-checkout-desktop-guide
                     >
-                      用支付宝扫描二维码，付款后可在此核对结果。
+                      用支付宝扫描二维码。请在支付宝中核对收款方，按显示的准确金额付款；付款后可在此核对结果。
                     </p>
                   )}
                 </CardContent>

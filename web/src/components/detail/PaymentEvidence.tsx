@@ -38,22 +38,25 @@ export function LedgerFacts({
   entry: ReconciliationLedgerEntry;
   compact?: boolean;
 }) {
+  const titleId = useId();
   return (
+    <section className="flex min-w-0 flex-col gap-3" aria-labelledby={titleId}>
+      <h3 id={titleId} className="text-sm font-medium">支付宝流水（来自支付宝账单）</h3>
     <DetailFields
       compact={compact}
       className={cn(
         compact && "@sm/detail-fields:grid-cols-1 @4xl/detail-fields:grid-cols-2",
       )}
-      wide={["支付宝订单号", "流水商户单号", "流水备注"]}
+      wide={["支付宝订单号", "支付宝商户单号", "支付宝交易备注"]}
       items={[
         [
-          "流水金额",
+          "支付宝交易金额",
           <span className="flex flex-wrap items-center gap-2">
             <ListMoney value={entry.amount_cents} />
             <StatusBadge value={entry.direction} />
           </span>,
         ],
-        ["交易时间", detailTimestamp(entry.occurred_at)],
+        ["支付宝交易时间", detailTimestamp(entry.occurred_at)],
         [
           "支付宝订单号",
           entry.provider_order_no ? (
@@ -65,21 +68,22 @@ export function LedgerFacts({
             "未提供"
           ),
         ],
-        ["交易对方", entry.other_account ?? "未提供"],
+        ["支付宝交易对方", entry.other_account ?? "未提供"],
         ...(entry.merchant_order_no
           ? [
               [
-                "流水商户单号",
+                "支付宝商户单号",
                 <CopyValue
                   value={entry.merchant_order_no}
-                  label="复制流水商户单号"
+                  label="复制支付宝商户单号"
                 />,
               ] as const,
             ]
           : []),
-        ...(entry.memo ? [["流水备注", entry.memo] as const] : []),
+        ...(entry.memo ? [["支付宝交易备注", entry.memo] as const] : []),
       ]}
     />
+    </section>
   );
 }
 export function useRelatedLedger(
@@ -141,7 +145,7 @@ export function CandidateEvidence({
       (name === "匹配金额"
         ? numberField(candidate.evidence, "amount_cents") !==
           ledger.amount_cents
-        : name === "流水发生时间"
+        : name === "支付宝交易时间"
           ? numberField(candidate.evidence, "occurred_at") !==
             Date.parse(ledger.occurred_at)
           : true),
@@ -176,8 +180,8 @@ export function MatchCard({
         </CardTitle>
         <CardDescription className="record-list-meta">
           {match.evidence_type === "MANUAL"
-            ? "人工关联 · " + (operation?.actor_id ?? "未记录")
-            : "按金额与付款时间推断"}{" "}
+            ? "管理员人工关联 · " + (operation?.actor_id ?? "未记录")
+            : "PerPay 按金额和付款时间推断"}{" "}
           · <ListDateTime value={operation?.created_at ?? match.created_at} inline />
         </CardDescription>
         <CardAction>
@@ -245,7 +249,7 @@ export function CandidateCard({
         <CardTitle className="record-list-title" role="heading" aria-level={2}>
           {candidateTitle}
         </CardTitle>
-        <CardDescription className="record-list-meta">系统按金额和付款时间推测，需要你确认；可能匹配的记录不代表收款已确认。</CardDescription>
+        <CardDescription className="record-list-meta">PerPay 按金额和付款时间推测，需要你确认；可能匹配的记录不代表收款已确认。</CardDescription>
         <CardAction>
           <StatusBadge value={candidate.status} />
         </CardAction>

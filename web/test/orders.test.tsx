@@ -63,7 +63,7 @@ describe("order browsing", () => {
     renderOrders();
     await user.click(screen.getByRole("button", { name: "查询方式：关键词" }));
     await user.click(
-      await screen.findByRole("menuitemradio", { name: "商户订单号" }),
+      await screen.findByRole("menuitemradio", { name: "商户订单号（业务网站）" }),
     );
     await user.type(
       screen.getByRole("searchbox", { name: "订单号" }),
@@ -90,7 +90,7 @@ describe("order browsing", () => {
     }
   });
 
-  it.each(["商户订单号", "内部订单编号"])(
+  it.each(["商户订单号（业务网站）", "内部订单编号（PerPay）"])(
     "aborts a %s lookup when leaving and ignores a late response",
     async (mode) => {
       let finish!: (response: Response) => void;
@@ -119,7 +119,7 @@ describe("order browsing", () => {
       );
       await user.type(
         screen.getByRole("searchbox", { name: "订单号" }),
-        mode === "商户订单号" ? order.merchant_order_no : orderId,
+        mode === "商户订单号（业务网站）" ? order.merchant_order_no : orderId,
       );
       await user.click(screen.getByRole("button", { name: "查找" }));
       await waitFor(() => expect(lookupRequest).toBeDefined());
@@ -160,7 +160,7 @@ describe("order browsing", () => {
         screen.getByRole("button", { name: "查询方式：关键词" }),
       );
       await user.click(
-        await screen.findByRole("menuitemradio", { name: "商户订单号" }),
+        await screen.findByRole("menuitemradio", { name: "商户订单号（业务网站）" }),
       );
       await user.type(screen.getByRole("searchbox", { name: "订单号" }), value);
       await user.click(screen.getByRole("button", { name: "查找" }));
@@ -327,7 +327,7 @@ describe("order browsing", () => {
     renderOrders();
     await user.click(screen.getByRole("button", { name: "查询方式：关键词" }));
     await user.click(
-      await screen.findByRole("menuitemradio", { name: "商户订单号" }),
+      await screen.findByRole("menuitemradio", { name: "商户订单号（业务网站）" }),
     );
     const search = screen.getByRole("searchbox", { name: "订单号" });
     await user.type(search, "missing-order");

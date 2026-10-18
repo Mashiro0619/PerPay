@@ -101,7 +101,7 @@ describe("public checkout SSR", () => {
     assert.doesNotMatch(html, /data-product-name|测试订单/);
     assert.match(html, /md:max-w-3xl/);
     assert.doesNotMatch(html, /data-checkout-desktop-guide/);
-    assert.match(checkoutText(html), /刷新页面.*商户订单号/);
+    assert.match(checkoutText(html), /刷新页面.*商家订单号/);
     assert.doesNotMatch(html, /data-qr-image/);
   });
   it("escapes both the shared SSR view and the JSON bootstrap", () => {

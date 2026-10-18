@@ -43,13 +43,13 @@ describe("readable evidence without stronger financial claims", () => {
     };
     expect(
       eventExplanation({ ...event, details: { evidence_type: "MANUAL" } }),
-    ).toBe("人工关联确认");
+    ).toBe("管理员人工关联");
     expect(
       eventExplanation({
         ...event,
         details: { evidence_type: "AMOUNT_INFERRED" },
       }),
-    ).toBe("按金额与付款时间推断");
+    ).toBe("PerPay 按金额和付款时间推断");
     expect(eventExplanation({ ...event, details: {} })).toBeNull();
   });
   it("states both reminder visibility and financial status without a separate disclaimer", () => {
@@ -90,19 +90,19 @@ describe("readable evidence without stronger financial claims", () => {
     ).toEqual([]);
     expect(candidateFacts(candidate).map(([name]) => name)).toEqual([
       "匹配金额",
-      "流水发生时间",
+      "支付宝交易时间",
       "金额占用时间",
     ]);
   });
   it("does not mistake HTTP success for business acknowledgement", () => {
-    expect(attemptResult(failedAttempt)).toBe("HTTP 200 · 业务确认响应无效");
+    expect(attemptResult(failedAttempt)).toBe("HTTP 200 · 对方的确认回执无效");
     expect(
       attemptResult({
         ...failedAttempt,
         outcome: "ACKNOWLEDGED",
         error_code: null,
       }),
-    ).toBe("HTTP 200 · ACK 已确认");
+    ).toBe("HTTP 200 · 通知已确认（ACK）");
   });
   it("separates ignored, retired, ended and active exceptions", () => {
     expect(isHistoricalException(financialException)).toBe(false);

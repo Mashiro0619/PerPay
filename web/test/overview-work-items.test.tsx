@@ -151,7 +151,7 @@ describe("overview work item context", () => {
     expect(screen.queryByText("需人工关注")).not.toBeInTheDocument();
     expect(screen.getByText("已停止重试")).toHaveAttribute("data-variant", "destructive");
     expect(screen.getByText("实收金额不符")).toBeVisible();
-    expect(screen.getByText("外部流水号重复")).toBeVisible();
+    expect(screen.getByText("支付宝流水号重复")).toBeVisible();
     expect(screen.queryByText("账务异常")).not.toBeInTheDocument();
     expect(screen.queryByText("账本冲突")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^核对异常/ })).toHaveAttribute("href", "/reconciliation/exceptions/" + exception.resource_id);
@@ -239,6 +239,6 @@ describe("overview work item context", () => {
     mount([]);
     expect(screen.getByText("暂无待处理提醒")).toBeVisible();
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
-    expect(screen.queryByText(/收款已确认|全部已确认|¥/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/收款已确认|通知已确认|¥/)).not.toBeInTheDocument();
   });
 });

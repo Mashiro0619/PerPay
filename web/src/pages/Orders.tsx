@@ -50,8 +50,8 @@ const checkoutOptions = [
   { value: "EXPIRED", label: "已过期" },
 ];
 const searchOptions = [
-  { value: "merchant", label: "商户订单号" },
-  { value: "internal", label: "内部订单编号" },
+  { value: "merchant", label: "商户订单号（业务网站）" },
+  { value: "internal", label: "内部订单编号（PerPay）" },
 ];
 export default function Orders() {
   const { clientId } = useWorkspace();

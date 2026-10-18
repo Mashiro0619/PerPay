@@ -193,7 +193,7 @@ describe("creation dates and order CSV", () => {
       const bytes = Buffer.from(await response.arrayBuffer());
       assert.equal(bytes.subarray(0, 3).toString("hex"), "efbbbf");
       const csv = bytes.toString("utf8");
-      assert.match(csv, /付款确认时间/);
+      assert.match(csv, /PerPay 确认时间/);
       assert.match(csv, /19\.99/);
       assert.match(csv, /30\.01/);
       assert.ok(csv.includes(paid.orderId));

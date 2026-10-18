@@ -324,7 +324,7 @@ export function FinancialDialog({
                   <Alert>
                     <AlertCircle />
                     <AlertDescription>
-                      流水金额与订单应付不同，请核对后确认。
+                      支付宝交易金额与订单应付不同，请核对后确认。
                     </AlertDescription>
                   </Alert>
                 )}

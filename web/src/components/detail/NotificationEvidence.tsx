@@ -76,7 +76,7 @@ export function DeliveryCard({
               : delivery.status === "RETRY_WAIT"
                 ? "等待自动重试"
                 : delivery.status === "ACKNOWLEDGED"
-                  ? "通知已送达"
+                  ? "通知已确认（ACK）"
                   : "等待投递结果"}
         </CardDescription>
         <CardDescription className="record-list-meta">

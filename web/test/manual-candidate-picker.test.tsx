@@ -299,7 +299,7 @@ describe("manual settlement selection instead of ID entry", () => {
     const user = userEvent.setup();
     const note = await screen.findByLabelText("操作理由（可选）");
     expect(note).not.toBeRequired();
-    expect(screen.getByText("流水金额与订单应付不同，请核对后确认。")).toBeVisible();
+    expect(screen.getByText("支付宝交易金额与订单应付不同，请核对后确认。")).toBeVisible();
     expect(screen.queryByText(/请在理由中说明/)).not.toBeInTheDocument();
     if (reason) await user.type(note, reason);
     expect(view.requests.filter(r => r.method === "POST")).toHaveLength(0);

@@ -52,7 +52,7 @@ const statuses = [
   { value: "PENDING", label: "等待投递" },
   { value: "LEASED", label: "投递中" },
   { value: "RETRY_WAIT", label: "等待重试" },
-  { value: "ACKNOWLEDGED", label: "已确认送达" },
+  { value: "ACKNOWLEDGED", label: "通知已确认" },
   { value: "DEAD_LETTER", label: "投递失败" },
 ] as const;
 export default function Notifications() {

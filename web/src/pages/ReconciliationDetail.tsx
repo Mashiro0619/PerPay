@@ -211,27 +211,27 @@ function LedgerDetail({ resourceId }: { resourceId: string }) {
   });
   return (
     <>
-      <EvidenceHeading title="账本流水" loaded={ledger.isSuccess} />
+      <EvidenceHeading title="支付宝流水" loaded={ledger.isSuccess} />
       <QueryView query={ledger}>
         {({ data }) => (
           <>
             <Card>
               <CardHeader>
                 <CardTitle role="heading" aria-level={2}>
-                  账本流水
+                  支付宝流水
                 </CardTitle>
                 <CardDescription>{label(data.state)}</CardDescription>
               </CardHeader>
               <CardContent className="flex min-w-0 flex-col gap-4">
                 <LedgerFacts entry={data} />
                 <DetailFields
-                  items={[["查账入库时间", dateTime(data.created_at)]]}
+                  items={[["写入时间", dateTime(data.created_at)]]}
                 />
                 <RecordTools
                   data={data}
                   identifiers={[
                     ["流水编号", resourceId],
-                    ["外部事件编号", data.external_event_id],
+                    ["支付宝流水号", data.external_event_id],
                   ]}
                   label="流水记录操作"
                 />

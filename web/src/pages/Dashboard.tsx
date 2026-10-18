@@ -1,3 +1,4 @@
+import { LedgerFreshness } from "@/components/ledger-freshness";
 import { SiteOverviewList } from "@/components/site-overview-list";
 import { SystemStatusBoundary } from "@/features/system-status";
 import {
@@ -150,6 +151,7 @@ function DashboardContent() {
           ) : null}
         </div>
       )}
+      <LedgerFreshness value={!checking && !unavailable ? state?.ledger.last_success_at : undefined} />
       <SectionCards
         analytics={data}
         clientId={clientId}
