@@ -187,7 +187,7 @@ describe("website notification processing", () => {
       const claimed = webhooks.claimNext({ clientId: a.clientId, siteRevision: a.revision, now: f.now(), leaseMilliseconds: 30000, maximumAttempts: 1 });
       assert.ok(claimed);
       webhooks.completeAttempt({ deliveryId: claimed.delivery.deliveryId, attemptId: claimed.attempt.attemptId, leaseToken: claimed.attempt.leaseToken, outcome: "PERMANENT_FAILURE", now: f.now(), maximumAttempts: 1, retryBaseMilliseconds: 1000, retryMaximumMilliseconds: 1000, errorCode: "transport_network" });
-      const request = { redeliveryId: randomUUID(), deliveryId: claimed.delivery.deliveryId, actorId: "admin", reason: "重新投递", activeAllowedOrigin: b.configuration.notification_origin, now: f.now() };
+      const request = { redeliveryId: randomUUID(), deliveryId: claimed.delivery.deliveryId, actorId: "admin", reason: "重新发送", activeAllowedOrigin: b.configuration.notification_origin, now: f.now() };
       const disabled = f.sites.update(a.clientId, { revision: a.revision, configuration: { ...a.configuration, notifications_enabled: false } }, audit, f.now());
       assert.throws(() => webhooks.replay(request), { code: "webhook_disabled" });
       const moved = f.sites.update(a.clientId, { revision: disabled.revision, configuration: { ...disabled.configuration, notifications_enabled: true, notification_origin: "https://new.example.com" } }, audit, f.now());

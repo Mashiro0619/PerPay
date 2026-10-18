@@ -56,7 +56,7 @@ describe("notification signing key rotation", () => {
     async (path) => {
       const view = mountOnboarding({ stage: 4, notificationKey: true, path });
       const button = await screen.findByRole("button", {
-        name: "查看签名密钥",
+        name: "查看通知密钥",
       });
       expect(button).toHaveClass("border-border", "h-8");
       expect(button.querySelector("svg")).toBeNull();
@@ -170,7 +170,7 @@ describe("notification signing key rotation", () => {
       });
       const user = userEvent.setup();
       await user.click(
-        await screen.findByRole("button", { name: "查看签名密钥" }),
+        await screen.findByRole("button", { name: "查看通知密钥" }),
       );
       const dialog = await screen.findByRole("dialog", {
         name: "通知签名密钥",

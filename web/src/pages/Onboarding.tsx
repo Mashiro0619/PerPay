@@ -599,7 +599,7 @@ function OptionalSettings({
           aria-labelledby="onboarding-notifications-title"
         >
           <h3 id="onboarding-notifications-title" className="font-medium">
-            业务通知（可选）
+            通知（可选）
           </h3>
           <SettingsEditor
             key="notifications"
@@ -874,7 +874,7 @@ export function ReadinessCheck({
       )}
       {!settings.site_mode && !settings.notifications?.enabled && (
         <p className="text-sm text-muted-foreground">
-          业务通知未启用（可选），不影响收款；业务系统后端需主动向 {systemName}{" "}
+          通知未启用（可选），不影响收款；业务系统后端需主动向 {systemName}{" "}
           查询订单状态。
         </p>
       )}

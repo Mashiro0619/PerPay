@@ -186,7 +186,7 @@ describe("order detail work surface", () => {
     async (status) => {
       mockData({ ...order, checkout: { ...order.checkout, status } }, []);
       mount();
-      expect(await screen.findByText("未配置业务通知")).toBeVisible();
+      expect(await screen.findByText("未配置通知")).toBeVisible();
       fireEvent.click(screen.getByRole("button", { name: "订单操作" }));
       expect(
         screen.queryByRole("menuitem", { name: "标记已退款" }),
@@ -358,8 +358,8 @@ describe("order detail work surface", () => {
     mount();
     const user = userEvent.setup();
     await screen.findByRole("button", { name: "通知记录操作" });
-    await user.click(await screen.findByRole("button", { name: "重新投递" }));
-    await confirmReason(user, "业务已修复", "确认重新投递");
+    await user.click(await screen.findByRole("button", { name: "重新发送" }));
+    await confirmReason(user, "业务已修复", "确认重新发送");
     await screen.findByText("操作结果待确认");
     await user.click(screen.getByRole("button", { name: "响应详情" }));
     await screen.findByText(/服务处理失败/);
@@ -396,7 +396,7 @@ describe("order detail work surface", () => {
       );
       fireEvent.click(screen.getByRole("button", { name: "通知记录操作" }));
       expect(
-        screen.queryByRole("menuitem", { name: "重新投递" }),
+        screen.queryByRole("menuitem", { name: "重新发送" }),
       ).not.toBeInTheDocument();
     },
   );
@@ -420,7 +420,7 @@ describe("order detail work surface", () => {
     const before = attempts;
     await userEvent.setup().click(screen.getByRole("button", { name: "重试" }));
     await waitFor(() => expect(attempts).toBeGreaterThan(before));
-    expect(screen.queryByText("未配置业务通知")).not.toBeInTheDocument();
+    expect(screen.queryByText("未配置通知")).not.toBeInTheDocument();
   });
 
   it("opens a candidate in place with readable order and ledger facts and locks known association IDs", async () => {
@@ -502,7 +502,7 @@ describe("order detail work surface", () => {
     expect(await screen.findByText(/历史投递/)).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "通知记录操作" }));
     expect(
-      screen.queryByRole("menuitem", { name: "重新投递" }),
+      screen.queryByRole("menuitem", { name: "重新发送" }),
     ).not.toBeInTheDocument();
     expect(requests).toHaveLength(3);
     expect(new URL(requests[2]!.url).searchParams.get("cursor")).toBe(

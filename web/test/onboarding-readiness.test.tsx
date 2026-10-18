@@ -144,7 +144,7 @@ describe("onboarding payment readiness", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/项业务待处理/)).not.toBeInTheDocument();
     expect(
-      screen.getByText(/业务通知未启用（可选），不影响收款/),
+      screen.getByText(/通知未启用（可选），不影响收款/),
     ).toBeVisible();
     expect(screen.getByRole("link", { name: "进入控制台" })).toBeVisible();
   });
@@ -191,7 +191,7 @@ describe("onboarding payment readiness", () => {
   it.each([
     ["ledger", "查账"],
     ["reconciliation", "自动确认"],
-    ["webhook", "业务通知"],
+    ["webhook", "通知"],
   ] as const)(
     "keeps a real %s warning visible even after all business reminders are ignored",
     async (key, label) => {

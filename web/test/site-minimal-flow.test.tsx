@@ -142,7 +142,7 @@ describe("minimal website workflows", () => {
         onChange={vi.fn()}
       />,
     );
-    expect(screen.getByLabelText("最大投递次数")).not.toBeVisible();
+    expect(screen.getByLabelText("最多发送次数")).not.toBeVisible();
     await act(async () => {
       view.rerender(
         <SitePolicyFields
@@ -157,8 +157,8 @@ describe("minimal website workflows", () => {
       );
     });
     await waitFor(() =>
-      expect(screen.getByLabelText("最大投递次数")).toBeVisible(),
+      expect(screen.getByLabelText("最多发送次数")).toBeVisible(),
     );
-    expect(screen.getByLabelText("最大投递次数")).toHaveFocus();
+    expect(screen.getByLabelText("最多发送次数")).toHaveFocus();
   });
 });

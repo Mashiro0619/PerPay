@@ -201,13 +201,13 @@ describe("short feedback and safe settings", () => {
       </QueryClientProvider>,
     );
     expect(screen.getByText("通知未启用，网站需主动查单。")).toBeVisible();
-    fireEvent.click(screen.getByRole("switch", { name: "启用业务通知" }));
+    fireEvent.click(screen.getByRole("switch", { name: "启用通知" }));
     expect(
       screen.queryByText("通知未启用，网站需主动查单。"),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByLabelText("通知网站（HTTPS 域名）"),
-    ).toHaveAccessibleDescription("不含端口或路径。");
+      screen.getByLabelText("通知地址前缀"),
+    ).toHaveAccessibleDescription("例如 https://shop.example.com，只填域名部分，不含端口或路径。");
     expect(screen.queryByText(/签名密钥在/)).not.toBeInTheDocument();
   });
   it("keeps normal runtime status concise without duplicate summaries or explanatory detail controls", async () => {
@@ -224,7 +224,7 @@ describe("short feedback and safe settings", () => {
     for (const [title, explanation] of [
       ["查账", "查账支付宝账本，为收款核对提供依据。"],
       ["自动确认", "核对账本与订单，并确认符合条件的收款。"],
-      ["业务通知", "将收款结果发送到对应的业务网站。"],
+      ["通知", "将收款结果发送到对应的业务网站。"],
       ["数据库", "订单、账本与运行记录保存在当前系统。"],
     ] as const) {
       const service = within(runtime.getByRole("rowheader", { name: title }).closest("tr")!);
@@ -235,7 +235,7 @@ describe("short feedback and safe settings", () => {
     }
     expect(screen.queryByText("待核对订单 0")).not.toBeInTheDocument();
     expect(screen.queryByText("待投递 0")).not.toBeInTheDocument();
-    for (const name of ["自动确认", "业务通知"]) {
+    for (const name of ["自动确认", "通知"]) {
       const service = within(runtime.getByRole("rowheader", { name }).closest("tr")!);
       expect(service.getAllByRole("cell")[2]).toHaveTextContent(/^—$/);
     }
@@ -447,7 +447,7 @@ describe("short feedback and safe settings", () => {
     expect(screen.getByRole("link", { name: "待处理" })).toHaveAttribute("href", "/work-items");
     expect(screen.queryByText("提醒数仅包含未忽略且仍需处理的提醒。")).not.toBeInTheDocument();
     const reconciliation = within(runtime.getByRole("rowheader", { name: "自动确认" }).closest("tr")!);
-    const notifications = within(runtime.getByRole("rowheader", { name: "业务通知" }).closest("tr")!);
+    const notifications = within(runtime.getByRole("rowheader", { name: "通知" }).closest("tr")!);
     expect(reconciliation.getByRole("cell", { name: "待核对订单 5" })).toBeVisible();
     expect(notifications.getByRole("cell", { name: "待投递 2" })).toBeVisible();
     expect(reconciliation.queryByText(/异常提醒|未处理异常/)).not.toBeInTheDocument();
@@ -455,7 +455,7 @@ describe("short feedback and safe settings", () => {
     expect(screen.queryByText("有业务提醒待处理")).not.toBeInTheDocument();
     expect(screen.queryByText("有运行告警")).not.toBeInTheDocument();
     expect(screen.queryByText("收款已暂停")).not.toBeInTheDocument();
-    for (const name of ["查账", "自动确认", "业务通知"]) {
+    for (const name of ["查账", "自动确认", "通知"]) {
       const row = within(runtime.getByRole("rowheader", { name }).closest("tr")!);
       expect(row.getByRole("cell", { name: "正常" })).toBeVisible();
       expect(row.queryByRole("cell", { name: "需关注" })).not.toBeInTheDocument();

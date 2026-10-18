@@ -15,7 +15,7 @@ test("template seconds drafts survive tabs, reject excess precision and save exa
     await timeout.fill("5.0004");
     await expect(page.getByText("通知超时最多 3 位小数。", { exact: true })).toBeVisible();
     await expect(save).toBeDisabled();
-    await page.getByLabel("最大投递次数", { exact: true }).fill("15");
+    await page.getByLabel("最多发送次数", { exact: true }).fill("15");
     await expect(timeout).toHaveValue("5.0004");
     await page.getByRole("tab", { name: "订单设置" }).click();
     await expect(page.getByRole("alertdialog")).toHaveCount(0);

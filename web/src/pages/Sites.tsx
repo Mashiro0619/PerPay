@@ -510,10 +510,10 @@ function SiteEditor({
                       />
                     </Field>
                     <FieldDescription>
-                      开启前需生成通知密钥并填写通知来源。
+                      开启前需生成通知密钥并填写通知地址前缀。
                     </FieldDescription>
                     <SiteTextField
-                      label="通知来源"
+                      label="通知地址前缀"
                       type="url"
                       placeholder="https://notify.example.com"
                       value={draft.notification_origin ?? ""}
@@ -525,7 +525,7 @@ function SiteEditor({
                       }
                     />
                     <SiteTextField
-                      label="返回来源"
+                      label="返回地址前缀"
                       type="url"
                       placeholder="https://shop.example.com"
                       value={draft.return_origin ?? ""}
@@ -537,7 +537,7 @@ function SiteEditor({
                       }
                     />
                     <FieldDescription>
-                      填写 HTTPS 来源，不包含路径。
+                      填 https://shop.example.com；不要带路径、端口或通配符。
                     </FieldDescription>
                   </>
                 )}

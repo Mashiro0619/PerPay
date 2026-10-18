@@ -40,7 +40,7 @@ describe("website-aware instance settings", () => {
     expect(screen.queryByRole("button", { name: "生成 API 密钥" })).not.toBeInTheDocument();
     expect(screen.queryByText("default", { exact: true })).not.toBeInTheDocument();
     expect(screen.queryByText("通知签名密钥", { exact: true })).not.toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: "业务通知" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "通知" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查看应用私钥" })).toBeVisible();
   });
 

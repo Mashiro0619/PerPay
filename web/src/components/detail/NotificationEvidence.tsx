@@ -63,7 +63,7 @@ export function DeliveryCard({
   const terminal =
     delivery.status === "ACKNOWLEDGED" || delivery.status === "DEAD_LETTER";
   return (
-    <Card size={embedded ? "sm" : "default"} data-density="compact" aria-label="业务通知记录">
+    <Card size={embedded ? "sm" : "default"} data-density="compact" aria-label="通知记录">
       <CardHeader>
         <CardTitle className="record-list-title" role="heading" aria-level={2}>
           {sectionTitle ?? label(detail.event.event_type)}
@@ -119,7 +119,7 @@ export function DeliveryCard({
               setSnapshot(detail);
             }}
           >
-            重新投递
+            重新发送
           </Button>
         )}
         <DetailFields
@@ -179,7 +179,7 @@ export function DeliveryCard({
             delivery.status === "ACKNOWLEDGED" && detail.is_latest
               ? [
                   {
-                    label: "重新投递",
+                    label: "重新发送",
                     disabled: sent,
                     onSelect: (trigger) => {
                       finalFocus.current = trigger;
@@ -194,9 +194,9 @@ export function DeliveryCard({
       {snapshot && (
         <ReasonDialog
           finalFocus={() => finalFocus.current}
-          title="重新投递业务通知"
+          title="重新发送通知"
           description="再次发送同一事件，业务方需避免重复处理。"
-          action="确认重新投递"
+          action="确认重新发送"
           onClose={() => setSnapshot(null)}
           execute={(reason, operationId, signal) =>
             result(
@@ -266,7 +266,7 @@ export function OrderNotifications({
                 <DeliveryCard
                   detail={query.data.data[0]!}
                   embedded
-                  sectionTitle="业务通知"
+                  sectionTitle="通知"
                 />
                 {query.data.data.length > 1 && (
                   <Accordion className="record-list" data-density="compact">
@@ -298,14 +298,14 @@ export function OrderNotifications({
               <Card size="sm">
                 <CardHeader>
                   <CardTitle role="heading" aria-level={2}>
-                    业务通知
+                    通知
                   </CardTitle>
                   <CardDescription>
                     {pagination.page > 1
                       ? "此页暂无投递记录"
                       : notifyUrl
                         ? "已配置通知，暂无投递记录"
-                        : "未配置业务通知"}
+                        : "未配置通知"}
                   </CardDescription>
                 </CardHeader>
               </Card>

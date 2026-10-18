@@ -299,7 +299,7 @@ describe("navigation and draft protection", () => {
     const selected = screen.getByRole("tab", { name: "查账设置" });
     selected.focus();
     await user.keyboard("{ArrowRight}");
-    const notifications = screen.getByRole("tab", { name: "业务通知" });
+    const notifications = screen.getByRole("tab", { name: "通知" });
     expect(notifications).toHaveFocus();
     expect(selected).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();

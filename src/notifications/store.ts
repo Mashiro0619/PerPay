@@ -619,7 +619,7 @@ export class WebhookStore {
         ) {
           throw new WebhookStoreError(
             "webhook_operation_conflict",
-            "补发编号已经用于不同的通知请求",
+            "重新发送的操作编号已经用于不同的通知请求",
           );
         }
         return { delivery: mapDelivery(existing), replayed: true };
@@ -660,7 +660,7 @@ export class WebhookStore {
       ) {
         throw new WebhookStoreError(
           "webhook_delivery_state_conflict",
-          "只有最新的已确认或死信通知才能人工补发",
+          "只有最新且已结束的通知才能重新发送",
         );
       }
       const generation = toSafeInteger(latest.generation, "webhook generation") + 1;

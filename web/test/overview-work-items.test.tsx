@@ -119,7 +119,7 @@ describe("overview work item context", () => {
       expect(within(row).getByTitle("2026/10/11 11:00（北京时间）")).toBeVisible();
       expect(within(row).getByTitle("2026/10/11 12:00（北京时间）").parentElement).toHaveTextContent("下次重试");
     }
-    expect(screen.queryByText("业务通知")).not.toBeInTheDocument();
+    expect(screen.queryByText("通知")).not.toBeInTheDocument();
     expect(screen.queryByText(/已尝试/)).not.toBeInTheDocument();
     expect(screen.queryByText("查看订单")).not.toBeInTheDocument();
     expect(fetch).not.toHaveBeenCalled();

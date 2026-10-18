@@ -141,7 +141,7 @@ describe("business website management", () => {
   });
   it("rotates only the selected website key without replacing an unsaved configuration draft", async () => {
     const view = mount("/sites/site_test/settings/integration"); const user = userEvent.setup();
-    const name = await screen.findByLabelText("返回来源"); await user.clear(name); await user.type(name, "https://draft.example.com");
+    const name = await screen.findByLabelText("返回地址前缀"); await user.clear(name); await user.type(name, "https://draft.example.com");
     await user.click(screen.getByRole("button", { name: "生成／轮换 API 密钥" }));
     await user.click(await screen.findByRole("button", { name: "确认" }));
     expect(await screen.findByDisplayValue("synthetic-site-key")).toBeVisible();
@@ -154,7 +154,7 @@ describe("business website management", () => {
     const view = mount("/sites/defaults"); const user = userEvent.setup();
     expect(await screen.findByRole("button", { name: "保存默认模板" })).toHaveClass("w-fit");
     const ttl = await screen.findByLabelText("订单有效期（秒）"); fireEvent.change(ttl, { target: { value: "600" } });
-    expect(screen.queryByLabelText("通知来源")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("通知地址前缀")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "保存默认模板" }));
     await waitFor(() => expect(view.writes).toHaveLength(1));
     expect(view.writes[0]!.path).toBe("/api/admin/v1/settings/site-defaults");
@@ -308,9 +308,9 @@ describe("website configuration recovery", () => {
   it("requires explicit retry after a rotation conflict and retains integration drafts through rotation", async () => {
     const view = mount(), user = userEvent.setup();
     await user.click(await screen.findByRole("tab", { name: "接入与通知" }));
-    fireEvent.change(await screen.findByLabelText("返回来源"), { target: { value: "https://draft.example.com" } });
+    fireEvent.change(await screen.findByLabelText("返回地址前缀"), { target: { value: "https://draft.example.com" } });
     await user.click(screen.getByRole("button", { name: "高级设置" }));
-    fireEvent.change(await screen.findByLabelText("最大投递次数"), { target: { value: "15" } });
+    fireEvent.change(await screen.findByLabelText("最多发送次数"), { target: { value: "15" } });
     view.changeRemote(configuration => {
       configuration.policy.orders.order_ttl_seconds = 600;
       configuration.policy.notification_delivery.timeout_milliseconds = 7000;
@@ -323,8 +323,8 @@ describe("website configuration recovery", () => {
     await user.click(screen.getByRole("button", { name: "生成／轮换通知密钥" }));
     await user.click(await screen.findByRole("button", { name: "确认" }));
     await screen.findByDisplayValue("synthetic-site-key");
-    expect(screen.getByLabelText("返回来源")).toHaveValue("https://draft.example.com");
-    expect(screen.getByLabelText("最大投递次数")).toHaveValue(15);
+    expect(screen.getByLabelText("返回地址前缀")).toHaveValue("https://draft.example.com");
+    expect(screen.getByLabelText("最多发送次数")).toHaveValue(15);
     expect(queryClient.getQueryData<{ site: Site }>(["site-editor", "site_test"])?.site.configuration.return_origin).toBeNull();
     await user.click(screen.getByRole("tab", { name: "基本信息" }));
     await screen.findByRole("button", { name: "放弃修改并继续" });
@@ -364,7 +364,7 @@ describe("website field feedback", () => {
     const cases: Record<string, [string, string, string][]> = {
       basic: [["业务网站名称", "configuration.name", "新的网站名"]],
       orders: [["订单有效期（秒）", "configuration.policy.orders.order_ttl_seconds", "600"], ["待付款订单上限", "configuration.policy.orders.pending_order_limit", "10"]],
-      integration: [["通知来源", "configuration.notification_origin", "https://notify.example.com"], ["返回来源", "configuration.return_origin", "https://shop.example.com"]],
+      integration: [["通知地址前缀", "configuration.notification_origin", "https://notify.example.com"], ["返回地址前缀", "configuration.return_origin", "https://shop.example.com"]],
       display: [["收银台名称", "configuration.policy.display.checkout_name", "草稿名称"], ["帮助链接", "configuration.policy.display.checkout_help_url", "https://help.example.com"]],
       defaults: [["收银台名称", "policy.display.checkout_name", "模板草稿"], ["订单有效期（秒）", "policy.orders.order_ttl_seconds", "600"]],
     };

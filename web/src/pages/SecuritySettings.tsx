@@ -471,7 +471,7 @@ export function NotificationKeyActions({
         }}
       >
         {table && <Eye data-icon="inline-start" />}
-        {table ? "查看" : "查看签名密钥"}
+        {table ? "查看" : "查看通知密钥"}
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger

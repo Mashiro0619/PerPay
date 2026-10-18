@@ -90,7 +90,7 @@ export const sections = [
   ["provider", "支付宝接入"],
   ["collection", "经营收款码"],
   ["collection-policy", "查账设置"],
-  ["notifications", "业务通知"],
+  ["notifications", "通知"],
   ["security", "密钥与安全"],
   ["backup", "自动备份"],
   ["display", "界面显示"],
@@ -627,7 +627,7 @@ export function SettingsEditor({
           checked={notificationEnabled}
           onCheckedChange={setNotificationEnabled}
         />
-        <FieldLabel htmlFor="setting-enabled">启用业务通知</FieldLabel>
+        <FieldLabel htmlFor="setting-enabled">启用通知</FieldLabel>
       </Field>
       {!notificationEnabled && (
         <FieldDescription>通知未启用，网站需主动查单。</FieldDescription>
@@ -636,7 +636,7 @@ export function SettingsEditor({
         <FieldGroup>
           <Field data-invalid={!!fieldErrors.allowed_origin}>
             <FieldLabel htmlFor="setting-origin">
-              通知网站（HTTPS 域名）
+              通知地址前缀
             </FieldLabel>
             <Input
               id="setting-origin"
@@ -653,7 +653,7 @@ export function SettingsEditor({
               }
             />
             <FieldDescription id="setting-origin-hint">
-              不含端口或路径。
+              例如 https://shop.example.com，只填域名部分，不含端口或路径。
             </FieldDescription>
             {fieldErrors.allowed_origin && (
               <FieldError id="setting-origin-error">
@@ -674,7 +674,7 @@ export function SettingsEditor({
             <NumberField
               name="maximum_attempts"
               error={fieldErrors.maximum_attempts}
-              label="最大尝试次数"
+              label="最多发送次数"
               value={(initialSettings.notifications?.maximum_attempts ?? 12)}
               min={1}
               max={100}

@@ -102,7 +102,7 @@ describe("website secret display after configuration recovery", () => {
     const view = mount(), user = userEvent.setup(), oldSecret = view.secret("api_secret");
     await user.click(await screen.findByRole("button", { name: viewLabel("api_secret") }));
     await screen.findByDisplayValue(oldSecret);
-    fireEvent.change(screen.getByLabelText("返回来源"), { target: { value: "https://draft.example.com" } });
+    fireEvent.change(screen.getByLabelText("返回地址前缀"), { target: { value: "https://draft.example.com" } });
     view.rotateRemote("api_secret");
     if (sameField) view.changeRemote(configuration => { configuration.return_origin = "https://remote.example.com"; });
     const remoteRevision = view.revision();
@@ -116,7 +116,7 @@ describe("website secret display after configuration recovery", () => {
       await user.click(screen.getByRole("button", { name: "应用核对结果" }));
     }
     await screen.findByText("最新配置已合并，尚未保存");
-    expect(screen.getByLabelText("返回来源")).toHaveValue("https://draft.example.com");
+    expect(screen.getByLabelText("返回地址前缀")).toHaveValue("https://draft.example.com");
     await user.click(screen.getByRole("button", { name: "保存业务网站" }));
     await confirm(user);
     await screen.findByText("业务网站配置已保存");
@@ -144,18 +144,18 @@ describe("website secret display after configuration recovery", () => {
     const view = mount(), user = userEvent.setup(), oldSecret = view.secret("api_secret");
     await user.click(await screen.findByRole("button", { name: viewLabel("api_secret") }));
     await screen.findByDisplayValue(oldSecret);
-    fireEvent.change(screen.getByLabelText("返回来源"), { target: { value: "https://draft.example.com" } });
+    fireEvent.change(screen.getByLabelText("返回地址前缀"), { target: { value: "https://draft.example.com" } });
     view.rotateRemote("api_secret");
     await refreshSnapshot();
     await screen.findByRole("button", { name: "读取最新配置并核对" });
     expect(screen.queryByDisplayValue(oldSecret)).not.toBeInTheDocument();
-    expect(screen.getByLabelText("返回来源")).toHaveValue("https://draft.example.com");
+    expect(screen.getByLabelText("返回地址前缀")).toHaveValue("https://draft.example.com");
     await user.click(screen.getByRole("button", { name: viewLabel("api_secret") }));
     const current = await screen.findByDisplayValue(view.secret("api_secret"));
     await user.click(screen.getByRole("button", { name: "读取最新配置并核对" }));
     await screen.findByText("最新配置已合并，尚未保存");
     expect(current).toBeVisible();
-    expect(screen.getByLabelText("返回来源")).toHaveValue("https://draft.example.com");
+    expect(screen.getByLabelText("返回地址前缀")).toHaveValue("https://draft.example.com");
   });
 
   it.each(["api_secret", "webhook_secret"] as const)("does not reveal a late %s read after a newer snapshot arrives", async purpose => {
@@ -176,7 +176,7 @@ describe("website secret display after configuration recovery", () => {
 
   it.each(["api_secret", "webhook_secret"] as const)("preserves newer state without revealing the old result of a late %s rotation", async purpose => {
     const view = mount(), user = userEvent.setup();
-    fireEvent.change(await screen.findByLabelText("返回来源"), { target: { value: "https://draft.example.com" } });
+    fireEvent.change(await screen.findByLabelText("返回地址前缀"), { target: { value: "https://draft.example.com" } });
     const pending = view.holdNext("rotate", purpose);
     await user.click(screen.getByRole("button", { name: rotateLabel(purpose) }));
     await confirm(user);
@@ -189,7 +189,7 @@ describe("website secret display after configuration recovery", () => {
     expect(screen.queryByDisplayValue(retiredResult)).not.toBeInTheDocument();
     expect(queryClient.getQueryData(editorKey)).toMatchObject({ site: { revision: 2 } });
     expect(view.writes.filter(write => write.path.endsWith("/actions/rotate"))).toHaveLength(1);
-    expect(screen.getByLabelText("返回来源")).toHaveValue("https://draft.example.com");
+    expect(screen.getByLabelText("返回地址前缀")).toHaveValue("https://draft.example.com");
     await user.click(screen.getByRole("button", { name: viewLabel(purpose) }));
     expect(await screen.findByDisplayValue(view.secret(purpose))).toBeVisible();
     expectNoCachedSecret(retiredResult);

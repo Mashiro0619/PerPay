@@ -19,9 +19,9 @@ const sections = [
   {
     section: "notifications",
     fields: [
-      "通知网站（HTTPS 域名）",
+      "通知地址前缀",
       "通知超时（秒）",
-      "最大尝试次数",
+      "最多发送次数",
       "首次重试间隔（秒）",
       "最大重试间隔（秒）",
     ],
@@ -70,7 +70,7 @@ describe.each([false, true])("directly visible settings (guided: %s)", (guided) 
     expect(container.querySelector("[data-settings-advanced], [data-settings-backup]")).toBeNull();
     expect(container.querySelectorAll("form")).toHaveLength(1);
     if (!guided && ["notifications", "backup", "advanced"].includes(section)) {
-      const title = section === "notifications" ? "业务通知" : section === "backup" ? "自动备份" : "高级设置";
+      const title = section === "notifications" ? "通知" : section === "backup" ? "自动备份" : "高级设置";
       expect(screen.getByRole("heading", { name: title })).toBeVisible();
       const group = screen.getByRole("group", { name: title });
       expect(within(group).getByText(title)).toHaveClass("sr-only");

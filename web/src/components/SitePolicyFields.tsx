@@ -226,7 +226,7 @@ export function SitePolicyFields({
                 {timeoutError && <FieldError id={timeoutId + "-error"}>{timeoutError}</FieldError>}
               </Field>
               <NumberField
-                label="最大投递次数"
+                label="最多发送次数"
                 error={error("notification_delivery.maximum_attempts")}
                 value={value.notification_delivery.maximum_attempts}
                 min={1}
@@ -238,7 +238,7 @@ export function SitePolicyFields({
                 }
               />
               <NumberField
-                label="基础重试间隔（秒）"
+                label="首次重试间隔（秒）"
                 error={error("notification_delivery.retry_base_seconds")}
                 value={value.notification_delivery.retry_base_seconds}
                 min={1}

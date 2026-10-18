@@ -121,26 +121,26 @@ describe("minimal onboarding", () => {
       path: onboardingPath("optional"),
     });
     expect(
-      await screen.findByRole("switch", { name: "启用业务通知" }),
+      await screen.findByRole("switch", { name: "启用通知" }),
     ).not.toBeChecked();
-    expect(screen.getByLabelText("通知网站（HTTPS 域名）")).not.toBeVisible();
-    expect(screen.getByLabelText("通知网站（HTTPS 域名）")).toBeDisabled();
-    expect(screen.getByLabelText("最大尝试次数")).not.toBeVisible();
+    expect(screen.getByLabelText("通知地址前缀")).not.toBeVisible();
+    expect(screen.getByLabelText("通知地址前缀")).toBeDisabled();
+    expect(screen.getByLabelText("最多发送次数")).not.toBeVisible();
     expect(screen.getByLabelText("备份间隔")).toBeVisible();
     expect(screen.getByLabelText("保留备份数量")).toBeVisible();
     expect(
       screen.queryByRole("button", { name: "调整备份策略" }),
     ).not.toBeInTheDocument();
     expect(screen.getByText("每天备份，保留 7 份。")).toBeVisible();
-    expect(screen.getAllByText("业务通知（可选）", { exact: true })).toHaveLength(1);
+    expect(screen.getAllByText("通知（可选）", { exact: true })).toHaveLength(1);
     expect(screen.getAllByText("自动备份（可选）", { exact: true })).toHaveLength(1);
-    const notifications = screen.getByRole("region", { name: "业务通知（可选）" });
+    const notifications = screen.getByRole("region", { name: "通知（可选）" });
     const backup = screen.getByRole("region", { name: "自动备份（可选）" });
-    expect(within(notifications).queryByText("业务通知", { exact: true })).not.toBeInTheDocument();
+    expect(within(notifications).queryByText("通知", { exact: true })).not.toBeInTheDocument();
     expect(within(backup).queryByText("自动备份", { exact: true })).not.toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "继续" })).toHaveLength(1);
     expect(
-      screen.queryByRole("button", { name: "查看签名密钥" }),
+      screen.queryByRole("button", { name: "查看通知密钥" }),
     ).not.toBeInTheDocument();
     expect(
       view.container.querySelector(".onboarding-content .notice"),
@@ -154,18 +154,18 @@ describe("minimal onboarding", () => {
       path: onboardingPath("optional"),
     });
     const user = userEvent.setup();
-    const enabled = await screen.findByRole("switch", { name: "启用业务通知" });
+    const enabled = await screen.findByRole("switch", { name: "启用通知" });
     await user.click(enabled);
     await user.click(enabled);
     expect(screen.queryByText("未保存")).not.toBeInTheDocument();
     await user.click(enabled);
     await user.type(
-      screen.getByLabelText("通知网站（HTTPS 域名）"),
+      screen.getByLabelText("通知地址前缀"),
       "https://draft.example.com",
     );
     await user.click(enabled);
     await user.click(enabled);
-    expect(screen.getByLabelText("通知网站（HTTPS 域名）")).toHaveValue(
+    expect(screen.getByLabelText("通知地址前缀")).toHaveValue(
       "https://draft.example.com",
     );
     expect(screen.getByText("未保存")).toBeVisible();
@@ -178,14 +178,14 @@ describe("minimal onboarding", () => {
       path: onboardingPath("optional"),
     });
     const user = userEvent.setup();
-    const enabled = await screen.findByRole("switch", { name: "启用业务通知" });
+    const enabled = await screen.findByRole("switch", { name: "启用通知" });
     await user.click(enabled);
     await user.type(
-      screen.getByLabelText("通知网站（HTTPS 域名）"),
+      screen.getByLabelText("通知地址前缀"),
       "invalid-origin",
     );
-    expect(screen.getByLabelText("最大尝试次数")).toBeVisible();
-    fireEvent.change(screen.getByLabelText("最大尝试次数"), {
+    expect(screen.getByLabelText("最多发送次数")).toBeVisible();
+    fireEvent.change(screen.getByLabelText("最多发送次数"), {
       target: { value: "0" },
     });
     await user.click(enabled);
@@ -199,10 +199,10 @@ describe("minimal onboarding", () => {
       retry_maximum_seconds: 600,
     });
     await user.click(enabled);
-    expect(screen.getByLabelText("通知网站（HTTPS 域名）")).toHaveValue(
+    expect(screen.getByLabelText("通知地址前缀")).toHaveValue(
       "invalid-origin",
     );
-    expect(screen.getByLabelText("最大尝试次数")).toHaveValue(0);
+    expect(screen.getByLabelText("最多发送次数")).toHaveValue(0);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -214,9 +214,9 @@ describe("minimal onboarding", () => {
     });
     const user = userEvent.setup();
     await user.click(
-      await screen.findByRole("switch", { name: "启用业务通知" }),
+      await screen.findByRole("switch", { name: "启用通知" }),
     );
-    const origin = screen.getByLabelText("通知网站（HTTPS 域名）");
+    const origin = screen.getByLabelText("通知地址前缀");
     await user.type(origin, "https://draft.example.com");
     expect(screen.getByLabelText("备份间隔")).toBeVisible();
     fireEvent.change(screen.getByLabelText("备份间隔"), {
@@ -224,9 +224,9 @@ describe("minimal onboarding", () => {
     });
     await user.click(screen.getByRole("button", { name: "保存备份" }));
     expect(await screen.findByText("每 2 天备份，保留 7 份。")).toBeVisible();
-    expect(screen.getByLabelText("通知网站（HTTPS 域名）")).toBe(origin);
+    expect(screen.getByLabelText("通知地址前缀")).toBe(origin);
     expect(origin).toHaveValue("https://draft.example.com");
-    expect(screen.getByRole("switch", { name: "启用业务通知" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "启用通知" })).toBeChecked();
     expect(screen.getAllByText("未保存")).toHaveLength(1);
     expect(view.writes()).toHaveLength(1);
     expect(new URL(view.writes()[0]!.url).pathname).toBe(
@@ -237,7 +237,7 @@ describe("minimal onboarding", () => {
 
     await user.click(screen.getByRole("button", { name: "保存通知" }));
     expect(
-      await screen.findByRole("button", { name: "查看签名密钥" }),
+      await screen.findByRole("button", { name: "查看通知密钥" }),
     ).toBeVisible();
     expect(view.writes()).toHaveLength(2);
     expect(await view.writes()[1]!.clone().json()).toMatchObject({
@@ -245,7 +245,7 @@ describe("minimal onboarding", () => {
       enabled: true,
       allowed_origin: "https://draft.example.com",
     });
-    expect(screen.getByLabelText("通知网站（HTTPS 域名）")).toBe(origin);
+    expect(screen.getByLabelText("通知地址前缀")).toBe(origin);
     expect(origin).toHaveValue("https://draft.example.com");
     expect(screen.getByLabelText("备份间隔")).toHaveValue(2);
     await waitFor(() =>
@@ -276,7 +276,7 @@ describe("minimal onboarding", () => {
           : undefined,
     });
     const user = userEvent.setup();
-    const viewKey = await screen.findByRole("button", { name: "查看签名密钥" });
+    const viewKey = await screen.findByRole("button", { name: "查看通知密钥" });
     expect(view.writes()).toHaveLength(0);
     await user.click(viewKey);
     const dialog = await screen.findByRole("dialog", { name: "通知签名密钥" });

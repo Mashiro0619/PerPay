@@ -255,7 +255,7 @@ function SystemSnapshot({
           </RuntimeService>
           <RuntimeService
             onDiagnose={openDiagnostics}
-            title="业务通知"
+            title="通知"
             enabled={data.webhook.enabled}
             healthy={state.webhookHealthy}
             lastSuccess={data.webhook.last_success_at}

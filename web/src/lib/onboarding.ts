@@ -125,7 +125,7 @@ export function onboardingRuntimeWarnings(data: SystemStatus): string[] {
   for (const [name, worker, healthy] of [
     ["查账", data.ledger, health.ledgerHealthy],
     ["自动确认", data.reconciliation, health.reconciliationHealthy],
-    ["业务通知", data.webhook, health.webhookHealthy],
+    ["通知", data.webhook, health.webhookHealthy],
   ] as const) {
     if (healthy) continue;
     if (worker.last_error_code)

@@ -382,11 +382,11 @@ describe("first collection onboarding", () => {
     });
     await screen.findByLabelText("备份间隔");
     edit("备份间隔", "2");
-    fireEvent.click(screen.getByRole("switch", { name: "启用业务通知" }));
-    edit("通知网站（HTTPS 域名）", "https://shop.example.com");
+    fireEvent.click(screen.getByRole("switch", { name: "启用通知" }));
+    edit("通知地址前缀", "https://shop.example.com");
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "保存通知" }));
-    await screen.findByRole("button", { name: "查看签名密钥" });
+    await screen.findByRole("button", { name: "查看通知密钥" });
     expect(screen.getByLabelText("备份间隔")).toHaveValue(2);
     expect(screen.getAllByText("未保存")).toHaveLength(1);
     await user.click(screen.getByRole("button", { name: "保存备份" }));
@@ -415,7 +415,7 @@ describe("first collection onboarding", () => {
     await pathIs(view, "check");
     expect(
       await screen.findByText(
-        "业务通知未启用（可选），不影响收款；业务系统后端需主动向 PerPay 查询订单状态。",
+        "通知未启用（可选），不影响收款；业务系统后端需主动向 PerPay 查询订单状态。",
       ),
     ).toBeVisible();
     expect(view.writes()).toHaveLength(0);

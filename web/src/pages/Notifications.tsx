@@ -328,7 +328,7 @@ function DeliveryPage({
               {page.data.length ? (
                 <BusinessTable
                   id="notifications"
-                  aria-label="业务通知列表"
+                  aria-label="通知列表"
                   items={page.data}
                   rowId={(item) => item.delivery_id}
                   control={listQuery}
@@ -377,7 +377,7 @@ export function NotificationDetail() {
 }
 function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
   const api = useWorkspaceApi();
-  const back = useDetailBack("/notifications", "业务通知");
+  const back = useDetailBack("/notifications", "通知");
   const delivery = useQuery({
     queryKey: ["notification", deliveryId],
     queryFn: ({ signal }) =>

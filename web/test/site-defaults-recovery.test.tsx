@@ -57,7 +57,7 @@ function mountDefaults() {
       puts.push(structuredClone(body));
       if (body.policy.notification_delivery.retry_maximum_seconds < body.policy.notification_delivery.retry_base_seconds)
         return json({ error: { code: "validation_failed", message: "请修正模板字段。", fields: {
-          "policy.notification_delivery.retry_maximum_seconds": "最大重试间隔不能小于基础重试间隔。",
+          "policy.notification_delivery.retry_maximum_seconds": "最大重试间隔不能小于首次重试间隔。",
         } } }, 422);
       if (body.revision !== saved.revision)
         return json({ error: { code: "site_revision_conflict", message: "网站默认模板已变更，请刷新后重试。" } }, 409);
@@ -154,7 +154,7 @@ describe("website default template conflict recovery", () => {
     edit("通知超时（秒）", "5.0004");
     expect(screen.getByText("通知超时最多 3 位小数。")).toBeVisible();
     expect(save()).toBeDisabled();
-    edit("最大投递次数", "15");
+    edit("最多发送次数", "15");
     expect(screen.getByLabelText("通知超时（秒）")).toHaveValue(5.0004);
     await group(user, "订单设置");
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
@@ -195,7 +195,7 @@ describe("website default template conflict recovery", () => {
     await group(user, "收银台展示");
     edit("收银台名称", "我的模板");
     await group(user, "通知策略");
-    edit("最大投递次数", "15");
+    edit("最多发送次数", "15");
     view.changeRemote(policy => {
       policy.orders.amount_reuse_cooldown_seconds = 1200;
       policy.display.checkout_help_url = "https://help.example.com";
@@ -209,7 +209,7 @@ describe("website default template conflict recovery", () => {
     fireEvent.submit(save().closest("form")!);
     await act(async () => { await Promise.resolve(); });
     expect(view.puts).toHaveLength(1);
-    expect(screen.getByLabelText("最大投递次数")).toHaveValue(15);
+    expect(screen.getByLabelText("最多发送次数")).toHaveValue(15);
     await group(user, "收银台展示");
     expect(screen.getByLabelText("收银台名称")).toHaveValue("我的模板");
     await group(user, "订单设置");
@@ -242,7 +242,7 @@ describe("website default template conflict recovery", () => {
     await screen.findByLabelText("订单有效期（秒）");
     edit("订单有效期（秒）", "600");
     await group(user, "通知策略");
-    edit("最大投递次数", "15");
+    edit("最多发送次数", "15");
     view.changeRemote(policy => {
       policy.orders.order_ttl_seconds = 900;
       policy.display.checkout_name = "服务器收银台";
@@ -512,7 +512,7 @@ describe("website default template conflict recovery", () => {
   it("opens and focuses the failing group when a merged policy violates a cross-field constraint", async () => {
     const view = mountDefaults(), user = userEvent.setup();
     await group(user, "通知策略");
-    edit("基础重试间隔（秒）", "600");
+    edit("首次重试间隔（秒）", "600");
     await group(user, "收银台展示");
     edit("收银台名称", "校验失败也保留");
     view.changeRemote(policy => { policy.notification_delivery.retry_maximum_seconds = 300; });
@@ -520,13 +520,13 @@ describe("website default template conflict recovery", () => {
     await mergeLatest(user);
     expect(screen.getByRole("tab", { name: "收银台展示" })).toHaveAttribute("aria-selected", "true");
     await user.click(save());
-    await screen.findByText("最大重试间隔不能小于基础重试间隔。");
+    await screen.findByText("最大重试间隔不能小于首次重试间隔。");
     expect(screen.getByRole("tab", { name: "通知策略" })).toHaveAttribute("aria-selected", "true");
     const maximum = screen.getByLabelText("最大重试间隔（秒）");
     expect(maximum).toBeVisible();
     expect(maximum).toHaveAttribute("aria-invalid", "true");
     await waitFor(() => expect(maximum).toHaveFocus());
-    expect(screen.getByLabelText("基础重试间隔（秒）")).toHaveValue(600);
+    expect(screen.getByLabelText("首次重试间隔（秒）")).toHaveValue(600);
     expect(maximum).toHaveValue(300);
     expect(view.puts).toHaveLength(2);
     edit("最大重试间隔（秒）", "1200");

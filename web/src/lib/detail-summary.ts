@@ -210,7 +210,7 @@ export function notificationRecoveryHint(code: string | null): string {
   if (/tls|certificate/i.test(code)) return "检查业务网站 HTTPS 证书、有效期和证书链。";
   if (/dns|network|timeout|transport/i.test(code)) return "检查通知域名解析、服务器网络及业务接口响应时间。";
   if (/ack_/i.test(code)) return "业务接口已响应，但确认格式不正确；核对通知验签与 ACK 格式。";
-  if (/http_/i.test(code)) return "检查业务接口的 HTTP 状态及服务日志；修复后再重新投递。";
+  if (/http_/i.test(code)) return "检查业务接口的 HTTP 状态及服务日志；修复后再重新发送。";
   if (/forbidden|target|address/i.test(code)) return "核对通知业务网站配置及目标地址是否符合公网安全要求。";
   return "错误：" + code + "。请结合投递记录检查业务网站日志。";
 }
