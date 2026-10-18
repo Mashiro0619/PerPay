@@ -41,7 +41,7 @@ export default function EvidenceDetail() {
   const { clientId } = useWorkspace();
   const { kind = "", resourceId = "" } = useParams();
   const back = useDetailBack("/reconciliation", "返回共享账本");
-  if (clientId && kind === "conflicts") return <p>共享账本冲突不属于单个网站，请<Link global to="/work-items">返回一级全局待办</Link>处理。</p>;
+  if (clientId && kind === "conflicts") return <p>账本冲突不属于单个网站，请回到<Link global to="/work-items">「待处理（全部网站）」</Link>查看。</p>;
   if (kind === "conflicts")
     return <ConflictDetail key={resourceId} resourceId={resourceId} />;
   if (kind === "matches")
