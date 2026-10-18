@@ -46,7 +46,7 @@ describe("success toast ownership", () => {
     view.rerender(<Toaster><p>记录已移入历史</p></Toaster>);
     expect(screen.getByText("设置已保存")).toBeVisible();
     fireEvent.focus(screen.getByRole("dialog", { name: "设置已保存" }));
-    fireEvent.click(screen.getByRole("button", { name: "关闭通知" }));
+    fireEvent.click(screen.getByRole("button", { name: "关闭提示" }));
     await act(() => vi.advanceTimersByTimeAsync(1000));
     expect(screen.queryByText("设置已保存")).not.toBeInTheDocument();
     expect(screen.getByText("记录已移入历史")).toBeVisible();
@@ -55,7 +55,7 @@ describe("success toast ownership", () => {
   it("pauses expiry while the notification region is hovered", async () => {
     render(<Toaster><Demo /></Toaster>);
     fireEvent.click(screen.getByRole("button", { name: "保存设置" }));
-    const region = screen.getByRole("region", { name: "通知" });
+    const region = screen.getByRole("region", { name: "提示" });
     await act(() => vi.advanceTimersByTimeAsync(1000));
     fireEvent.mouseEnter(region);
     await act(() => vi.advanceTimersByTimeAsync(6000));

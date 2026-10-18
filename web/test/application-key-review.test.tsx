@@ -355,7 +355,7 @@ describe.each([
         }),
       );
       const feedback = await screen.findByText(message);
-      expect(screen.getByRole("region", { name: "通知" })).toContainElement(feedback);
+      expect(screen.getByRole("region", { name: "提示" })).toContainElement(feedback);
       expect(feedback).toBeVisible();
       expect(view.writes()).toHaveLength(1);
     },

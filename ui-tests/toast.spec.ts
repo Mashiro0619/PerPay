@@ -49,7 +49,7 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
   expect(savedRevisions).toEqual([initialRevision + 1]);
   const success = page.getByRole("dialog", { name: "已保存", exact: true });
   await expect(success).toBeVisible();
-  await expect(page.getByRole("region", { name: "通知", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("region", { name: "提示", exact: true })).toHaveCount(1);
   await page.clock.runFor(1000);
   await name.fill("通知验证二");
   await page.clock.runFor(600);
@@ -92,7 +92,7 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
   });
   expect(topmost).toBe(true);
   await page.keyboard.press("F6");
-  await expect(page.getByRole("region", { name: "通知", exact: true })).toBeFocused();
+  await expect(page.getByRole("region", { name: "提示", exact: true })).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(notification).toBeFocused();
   await page.clock.runFor(5000);
@@ -101,7 +101,7 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
   await screenshot(page, info, "toast-with-key-dialog");
   await audit(page, info, "toast-with-key-dialog");
   await page.keyboard.press("Tab");
-  await expect(notification.getByRole("button", { name: "关闭通知", exact: true })).toBeFocused();
+  await expect(notification.getByRole("button", { name: "关闭提示", exact: true })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(notification).toBeHidden();
   await expect(keyDialog.getByText(secret, { exact: true })).toBeVisible();
