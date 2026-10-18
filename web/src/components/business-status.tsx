@@ -12,7 +12,7 @@ const states = {
   PENDING: ["等待投递", "secondary", Clock3],
   LEASED: ["投递中", "warning", Clock3],
   RETRY_WAIT: ["等待重试", "warning", Clock3],
-  DEAD_LETTER: ["投递失败", "destructive", CircleAlert],
+  DEAD_LETTER: ["已停止重试", "destructive", CircleAlert],
   SETTLED: ["已关联", "success", CircleCheck],
   REVERSED: ["已撤销", "secondary"],
   RESOLVED: ["已处理", "success", CircleCheck],

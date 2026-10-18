@@ -155,7 +155,7 @@ describe("reconciliation reminder navigation", () => {
       if (scenario.tab === "conflicts") {
         expect(
           screen.getByRole("combobox", { name: "对账状态筛选" }),
-        ).toHaveTextContent("未忽略");
+        ).toHaveTextContent("待处理");
         await user.click(screen.getByLabelText("对账状态筛选"));
         await user.click(
           await screen.findByRole("option", { name: "全部记录" }),
@@ -167,7 +167,7 @@ describe("reconciliation reminder navigation", () => {
           screen.getByRole("combobox", { name: "对账状态筛选" }),
         ).toHaveTextContent("全部记录");
         await user.click(screen.getByLabelText("对账状态筛选"));
-        await user.click(await screen.findByRole("option", { name: "未忽略" }));
+        await user.click(await screen.findByRole("option", { name: "待处理" }));
         await screen.findByText("暂无符合条件的记录");
       }
       const historyLink = screen.getByRole("link", { name: "查看已忽略" });

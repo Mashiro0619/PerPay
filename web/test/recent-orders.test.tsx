@@ -136,7 +136,7 @@ describe("overview order progress", () => {
     ["PENDING", "等待投递", 1, 0, "secondary"],
     ["LEASED", "投递中", 1, 0, "warning"],
     ["RETRY_WAIT", "等待重试", 2, 1, "warning"],
-    ["DEAD_LETTER", "投递失败", 2, 1, "destructive"],
+    ["DEAD_LETTER", "已停止重试", 2, 1, "destructive"],
     ["ACKNOWLEDGED", "全部已确认", 2, 2, "success"],
   ] as const)("renders %s without confusing delivery with payment", (status, text, total, acknowledged, variant) => {
     mount([{ ...recent, notification_summary: { status, total_events: total, acknowledged_events: acknowledged } }]);

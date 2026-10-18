@@ -85,7 +85,7 @@ const sections = [
 const statusNames: Record<string, string> = {
   SETTLED: "已关联",
   REVERSED: "已撤销",
-  OPEN: "未忽略",
+  OPEN: "待处理",
   RESOLVED: "已处理",
   IGNORED: "已隔离",
   ALL: "全部记录",
@@ -421,7 +421,7 @@ function ReconciliationList({
       summaryDefault: true,
       cell: (item) => (
         <div className="business-cell-stack flex flex-col items-start gap-1.5">
-          <StatusBadge value={item.status} label={item.status === "OPEN" ? "未处理" : undefined} />
+          <StatusBadge value={item.status} label={item.status === "OPEN" ? "待处理" : undefined} />
           {item.reminderIgnored && <span className="text-xs text-muted-foreground">提醒已忽略</span>}
         </div>
       ),

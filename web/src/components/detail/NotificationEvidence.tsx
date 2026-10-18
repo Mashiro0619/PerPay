@@ -72,7 +72,7 @@ export function DeliveryCard({
           {!detail.is_latest
             ? "历史投递"
             : delivery.status === "DEAD_LETTER"
-              ? "已停止，需要处理"
+              ? "已停止重试，需要处理"
               : delivery.status === "RETRY_WAIT"
                 ? "等待自动重试"
                 : delivery.status === "ACKNOWLEDGED"

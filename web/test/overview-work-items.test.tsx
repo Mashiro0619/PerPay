@@ -130,7 +130,7 @@ describe("overview work item context", () => {
     ["PENDING", "等待投递", "secondary", true],
     ["LEASED", "投递中", "warning", false],
     ["RETRY_WAIT", "等待重试", "warning", true],
-    ["DEAD_LETTER", "投递失败", "destructive", false],
+    ["DEAD_LETTER", "已停止重试", "destructive", false],
   ] as const)("shows actual %s progress and only meaningful retry times", (status, text, tone, scheduled) => {
     mount([notification({ status })]);
     expect(screen.getByText(text)).toHaveAttribute("data-variant", tone);
@@ -149,7 +149,7 @@ describe("overview work item context", () => {
     const rows = screen.getAllByRole("listitem");
     expect(rows.map((row) => row.getAttribute("data-business-row"))).toEqual(items.map((item) => item.type + ":" + item.resource_id));
     expect(screen.queryByText("需人工关注")).not.toBeInTheDocument();
-    expect(screen.getByText("投递失败")).toHaveAttribute("data-variant", "destructive");
+    expect(screen.getByText("已停止重试")).toHaveAttribute("data-variant", "destructive");
     expect(screen.getByText("实收金额不符")).toBeVisible();
     expect(screen.getByText("外部流水号重复")).toBeVisible();
     expect(screen.queryByText("账务异常")).not.toBeInTheDocument();
