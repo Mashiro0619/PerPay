@@ -51,7 +51,7 @@ const globalPageTitles: Record<NavigationSection, string> = {
   orders: "全部订单",
   "work-items": "全部待处理",
   notifications: "全部通知",
-  settings: "实例设置",
+  settings: "系统设置",
   reconciliation: "对账",
   system: "运行状态",
   sites: "业务网站",

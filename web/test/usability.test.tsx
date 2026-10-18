@@ -225,7 +225,7 @@ describe("short feedback and safe settings", () => {
       ["查账", "查账支付宝账本，为收款核对提供依据。"],
       ["自动确认", "核对账本与订单，并确认符合条件的收款。"],
       ["业务通知", "将收款结果发送到对应的业务网站。"],
-      ["数据库", "订单、账本与运行记录保存在当前实例。"],
+      ["数据库", "订单、账本与运行记录保存在当前系统。"],
     ] as const) {
       const service = within(runtime.getByRole("rowheader", { name: title }).closest("tr")!);
       const status = service.getByRole("cell", { name: "正常" });

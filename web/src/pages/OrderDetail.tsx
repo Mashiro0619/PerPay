@@ -201,7 +201,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
                 compact
                 className="@sm/detail-fields:grid-cols-1"
                 items={[
-                  ...(!clientId ? [["业务网站", <Link to={"/sites/" + encodeURIComponent(order.api_client_id)}>{order.site_name ?? "网站名称暂不可用"}</Link>] as const] : []),
+                  ...(!clientId ? [["业务网站", <Link to={"/sites/" + encodeURIComponent(order.api_client_id)}>{order.site_name ?? "业务网站名称暂不可用"}</Link>] as const] : []),
                   ["创建时间", dateTime(order.created_at)],
                   ...(confirmed
                     ? [

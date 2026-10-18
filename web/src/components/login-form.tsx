@@ -49,7 +49,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
   const setup = initialized === false;
   const title =
     initialized === null
-      ? "无法确认实例状态"
+      ? "无法确认系统状态"
       : setup
         ? `初始化 ${systemName}`
         : "登录管理后台";
@@ -191,7 +191,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                       <AlertDescription>
                         {configured
                           ? "管理员已创建"
-                          : "此实例已完成初始化，请使用现有管理员密码登录。"}
+                          : "此系统已完成初始化，请使用现有管理员密码登录。"}
                       </AlertDescription>
                     </Alert>
                   )}

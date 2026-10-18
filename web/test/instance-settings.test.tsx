@@ -96,8 +96,8 @@ describe("website-aware instance settings", () => {
     } });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("link", { name: "创建业务网站" }));
-    await user.type(await screen.findByRole("textbox", { name: "网站名称" }), "测试网站");
-    await user.click(screen.getByRole("button", { name: "创建网站" }));
+    await user.type(await screen.findByRole("textbox", { name: "业务网站名称" }), "测试网站");
+    await user.click(screen.getByRole("button", { name: "创建业务网站" }));
     await waitFor(() => expect(view.router.state.location.pathname).toBe("/sites/site_created"));
     await waitFor(() => expect(queryClient.getQueryState(["workspace-site", "site_created"])?.status).toBe("success"));
     await act(async () => { await view.router.navigate("/settings/onboarding/check"); });

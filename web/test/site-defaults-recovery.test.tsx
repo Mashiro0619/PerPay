@@ -227,8 +227,8 @@ describe("website default template conflict recovery", () => {
     expect(view.puts[1]).toEqual({ revision: 1, policy: expected });
     expect(view.snapshot()).toEqual({ revision: 2, policy: expected });
     await act(async () => { await view.router.navigate("/sites/new"); });
-    await user.type(await screen.findByLabelText("网站名称"), "使用恢复后模板的网站");
-    await user.click(screen.getByRole("button", { name: "创建网站" }));
+    await user.type(await screen.findByLabelText("业务网站名称"), "使用恢复后模板的网站");
+    await user.click(screen.getByRole("button", { name: "创建业务网站" }));
     await screen.findByText("新网站已创建");
     expect(view.creations).toHaveLength(1);
     expect(view.creations[0]).toMatchObject({

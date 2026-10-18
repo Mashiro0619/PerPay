@@ -167,7 +167,7 @@ describe("first collection onboarding", () => {
     async (path) => {
       const view = mountOnboarding({ path });
       await screen.findByRole("heading", {
-        name: path === "/orders" ? "全部订单" : "实例设置",
+        name: path === "/orders" ? "全部订单" : "系统设置",
         level: 1,
       });
       expect(view.router.state.location.pathname).toBe(path);

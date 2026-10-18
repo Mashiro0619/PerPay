@@ -398,7 +398,7 @@ export class OrderService {
     ) {
       throw new OrderError(
         "system_not_configured",
-        "收款系统尚未完成配置",
+        "收款配置未完成",
       );
     }
     const policy = site?.configuration.policy;

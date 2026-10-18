@@ -233,7 +233,7 @@ export function FinancialDialog({
         <DialogHeader className="shrink-0 pr-8">
           <DialogTitle>人工关联收款</DialogTitle>
           <DialogDescription>
-            {clientId ? "固定本站订单，从实例共享流水中选择收款。涉及其他网站或共享冲突时，请到一级后台处理。" : "将这笔收入关联到订单并确认付款。"}
+            {clientId ? "在这里把一笔支付宝流水关联到本站订单。如果这笔流水涉及其他网站或账本冲突，请到「对账（全部网站）」处理。" : "将这笔收入关联到订单并确认付款。"}
           </DialogDescription>
         </DialogHeader>
         <form className="contents" onSubmit={submit}>

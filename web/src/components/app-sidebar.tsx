@@ -51,7 +51,7 @@ export const navigation = [
   { section: "work-items", url: "/work-items", title: "待处理", icon: ListChecks },
   { section: "notifications", url: "/notifications", title: "通知", icon: Bell },
   { section: "settings", url: "/settings", title: "设置", icon: Settings2 },
-  { section: "sites", url: "/sites", title: "管理网站", icon: Globe },
+  { section: "sites", url: "/sites", title: "业务网站", icon: Globe },
   { section: "reconciliation", url: "/reconciliation", title: "对账", icon: WalletCards },
   { section: "system", url: "/system", title: "运行状态", icon: Activity },
 ] satisfies (NavigationItem & { section: NavigationSection })[];

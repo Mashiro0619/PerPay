@@ -60,7 +60,7 @@ describe("administrator authentication", () => {
       const user = userEvent.setup();
       renderPage(<AuthPage onLogin={onLogin} />, "/setup");
       expect(
-        screen.queryByText("设置此实例的管理员密码。"),
+        screen.queryByText("设置此系统的管理员密码。"),
       ).not.toBeInTheDocument();
       expect(screen.getByText("至少 6 个字符。")).toBeVisible();
       await user.type(screen.getByLabelText(/设置管理员密码/), "short");
@@ -179,12 +179,12 @@ describe("administrator authentication", () => {
     expect(
       screen.queryByText(/经营码收款，账本自动核对/),
     ).not.toBeInTheDocument();
-    expect(screen.queryByText("你的实例，你的数据。")).not.toBeInTheDocument();
+    expect(screen.queryByText("你的系统，你的数据。")).not.toBeInTheDocument();
     expect(
-      screen.queryByText("使用管理员密码，查看收款与实例状态。"),
+      screen.queryByText("使用管理员密码，查看收款与系统状态。"),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByText("此实例只有一个管理员账户，无需输入用户名。"),
+      screen.queryByText("此系统只有一个管理员账户，无需输入用户名。"),
     ).not.toBeInTheDocument();
   });
 

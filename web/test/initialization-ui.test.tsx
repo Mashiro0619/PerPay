@@ -97,7 +97,7 @@ describe("first-deployment authentication presentation", () => {
       vi.stubGlobal("fetch", fetchMock);
       const { container } = mount(state, "/setup");
       expect(
-        screen.getByRole("heading", { name: "无法确认实例状态" }),
+        screen.getByRole("heading", { name: "无法确认系统状态" }),
       ).toBeVisible();
       expect(screen.getByRole("button", { name: "重试" })).toBeEnabled();
       expect(container.querySelector("form")).toBeNull();
@@ -136,7 +136,7 @@ describe("first-deployment authentication presentation", () => {
     await user.click(screen.getByRole("button", { name: "创建管理员" }));
     await screen.findByRole("heading", { name: "登录管理后台" });
     expect(
-      screen.getByText("此实例已完成初始化，请使用现有管理员密码登录。"),
+      screen.getByText("此系统已完成初始化，请使用现有管理员密码登录。"),
     ).toBeVisible();
     expect(screen.getByLabelText("管理员密码")).toHaveValue("");
     expect(screen.queryByLabelText("再次输入密码")).not.toBeInTheDocument();

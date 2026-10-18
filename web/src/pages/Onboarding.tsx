@@ -435,7 +435,7 @@ function OnboardingFlow({
               help={
                 <OnboardingHelp title="确认经营收款码">
                   <p>
-                    使用本实例共用的支付宝经营收款码。上传图片后先核对识别内容，也可直接粘贴经营码内容。
+                    使用本系统共用的支付宝经营收款码。上传图片后先核对识别内容，也可直接粘贴经营码内容。
                   </p>
                   <p>
                     金额尾差用于区分订单。付款人需要按收银台显示的应付金额付款。
@@ -593,7 +593,7 @@ function OptionalSettings({
         className="grid min-w-0 items-start gap-5 @3xl/onboarding:grid-cols-2"
         data-onboarding-optional
       >
-        {settings.site_mode ? <section className="flex flex-col gap-3"><h3 className="font-medium">业务网站</h3><p>创建自有业务网站，为它配置独立的订单策略、展示、API 与通知密钥。实例共用经营码与查账对账，不需要为测试收款先签发 API 密钥。</p><div className="flex flex-wrap gap-2"><Link to="/sites/new" className={buttonVariants()}>创建业务网站</Link><Link to="/sites" className={buttonVariants({ variant: "outline" })}>管理业务网站</Link></div></section> : <>
+        {settings.site_mode ? <section className="flex flex-col gap-3"><h3 className="font-medium">业务网站</h3><p>创建自有业务网站，为它配置独立的订单策略、展示、API 与通知密钥。系统共用经营码与查账对账，不需要为测试收款先签发 API 密钥。</p><div className="flex flex-wrap gap-2"><Link to="/sites/new" className={buttonVariants()}>创建业务网站</Link><Link to="/sites" className={buttonVariants({ variant: "outline" })}>管理业务网站</Link></div></section> : <>
         <section
           className="flex min-w-0 flex-col gap-3"
           aria-labelledby="onboarding-notifications-title"

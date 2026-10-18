@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Field, FieldDescription, FieldGroup, FieldTitle } from "@/components/ui/field";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
-export function SiteConfigurationConflicts({ conflicts, choices, onChoose, onApply, disabled, saveLabel = "保存网站" }: {
+export function SiteConfigurationConflicts({ conflicts, choices, onChoose, onApply, disabled, saveLabel = "保存业务网站" }: {
   conflicts: SiteFieldConflict[];
   choices: SiteConflictChoices;
   onChoose: (choices: SiteConflictChoices) => void;

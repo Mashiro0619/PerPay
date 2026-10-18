@@ -2,20 +2,20 @@ import { getSystemName } from "../branding";
 const messages: Record<string, string> = {
   site_scope_conflict: "该收款证据涉及其他网站或账本冲突，请到「对账（全部网站）」处理。",
   invalid_credentials: "管理员密码不正确，请检查后重试。",
-  identity_already_initialized: "实例已经初始化，请前往登录。",
-  identity_not_initialized: "实例尚未初始化，请先创建管理员。",
+  identity_already_initialized: "系统已经初始化，请前往登录。",
+  identity_not_initialized: "系统尚未初始化，请先创建管理员。",
   auth_rate_limited: "尝试过于频繁，请等待后再试。",
   password_work_busy: "密码处理繁忙，请稍后再试。",
   password_unchanged: "新密码不能与当前密码相同。",
   session_invalid: "登录已过期，请重新登录。",
   csrf_invalid: "安全校验失败，请重新登录后再操作。",
-  origin_not_allowed: "访问来源不匹配，请使用配置的实例地址并检查反向代理。",
+  origin_not_allowed: "访问来源不匹配，请使用配置的系统地址并检查反向代理。",
   settings_revision_conflict:
     "配置已在其他会话中更新。你的修改仍保留，请核对后重新读取配置。",
   settings_validation_failed:
     "配置未通过校验，请检查必填项、数值范围和密钥格式。",
-  settings_unavailable: "无法读取实例配置，请查看运行状态后重试。",
-  settings_not_configured: "请先完成实例配置，再执行此操作。",
+  settings_unavailable: "无法读取系统配置，请查看运行状态后重试。",
+  settings_not_configured: "请先完成系统配置，再执行此操作。",
   provider_application_key_missing:
     "尚未配置应用密钥对，请先在支付宝接入中生成密钥对，或导入已有应用私钥。",
   provider_application_key_rotation_not_supported:
@@ -28,8 +28,8 @@ const messages: Record<string, string> = {
     "支付宝验证未通过，当前密钥未更换。请确认新应用公钥已上传，并核对支付宝公钥后重试。",
   provider_switch_blocked: "仍有未完成的收款业务，暂时不能切换支付宝应用。",
   secret_not_found: "此密钥尚未配置，请先完成对应设置。",
-  system_not_configured: "实例配置尚未完成，请前往实例设置。",
-  system_not_ready: "实例暂时不能接受新收款，请查看运行状态。",
+  system_not_configured: "收款配置未完成，请前往系统设置。",
+  system_not_ready: "已暂停接收新订单，请查看运行状态。",
   reconciliation_not_ready: "查账或对账尚未就绪，请等待一次成功运行后重试。",
   reconciliation_unavailable: "对账服务暂时不可用，请查看运行状态。",
   ledger_unavailable: "账本暂时不可用，请查看运行状态。",

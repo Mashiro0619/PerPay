@@ -37,7 +37,7 @@ describe("homepage collection health", () => {
           return status;
         },
       });
-      expect(await screen.findByText("当前暂停新收款")).toBeVisible();
+      expect(await screen.findByText("已暂停接收新订单")).toBeVisible();
       expect(view.router.state.location.pathname).toBe("/");
       expect(
         screen.getByRole("link", {
@@ -59,7 +59,7 @@ describe("homepage collection health", () => {
     });
     expect(await screen.findByText("需关注")).toBeVisible();
     expect(screen.queryByText("可以收款，有运行告警")).not.toBeInTheDocument();
-    expect(screen.queryByText("当前暂停新收款")).not.toBeInTheDocument();
+    expect(screen.queryByText("已暂停接收新订单")).not.toBeInTheDocument();
     fail = true;
     await act(async () => {
       await queryClient.invalidateQueries({

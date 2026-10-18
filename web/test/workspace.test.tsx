@@ -241,7 +241,7 @@ describe("two-level workspace boundaries", () => {
     expect(
       screen.queryByRole("button", { name: "切换后台" }),
     ).not.toBeInTheDocument();
-    expect(within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: "管理网站" })).toHaveAttribute(
+    expect(within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: "业务网站" })).toHaveAttribute(
       "href",
       "/sites?selected_site=a",
     );

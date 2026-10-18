@@ -93,7 +93,7 @@ function CreateSiteForm({ policy }: { policy: SiteConfiguration["policy"] }) {
       >
         <Card>
           <CardHeader>
-            <CardTitle>创建网站</CardTitle>
+            <CardTitle>创建业务网站</CardTitle>
             <CardDescription>
               其余设置使用默认模板，可在创建后调整。
             </CardDescription>
@@ -103,7 +103,7 @@ function CreateSiteForm({ policy }: { policy: SiteConfiguration["policy"] }) {
               <ErrorNotice error={create.error} />
               <FieldSet disabled={create.isPending || !!create.recovery}>
                 <SiteTextField
-                  label="网站名称"
+                  label="业务网站名称"
                   value={name}
                   required
                   maxLength={40}
@@ -137,7 +137,7 @@ function CreateSiteForm({ policy }: { policy: SiteConfiguration["policy"] }) {
                 ? "正在创建…"
                 : create.recovery
                   ? "重试原请求"
-                  : "创建网站"}
+                  : "创建业务网站"}
             </Button>
             <Link to="/sites" className={buttonVariants({ variant: "ghost" })}>
               取消

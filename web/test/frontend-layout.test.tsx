@@ -43,7 +43,7 @@ describe("official block composition", () => {
             />
             <NavSecondary
               pathname={pathname}
-              items={[{ title: "实例设置", url: "/settings", icon: Settings }]}
+              items={[{ title: "系统设置", url: "/settings", icon: Settings }]}
             />
           </SidebarProvider>
         </MemoryRouter>,

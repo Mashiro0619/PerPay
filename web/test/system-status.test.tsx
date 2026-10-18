@@ -202,7 +202,7 @@ describe("shared runtime presentation", () => {
       within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: "运行状态" }),
     ).toHaveAccessibleDescription("待处理");
     expect(screen.queryByText("可以收款，有运行告警")).not.toBeInTheDocument();
-    expect(screen.queryByText("当前暂停新收款")).not.toBeInTheDocument();
+    expect(screen.queryByText("已暂停接收新订单")).not.toBeInTheDocument();
     const reads = () =>
       view.fetchMock.mock.calls.filter(([r]) =>
         r.url.endsWith("/system/status"),

@@ -141,7 +141,7 @@ export function SiteManagementCards() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Link to="/sites/defaults" className={buttonVariants({ variant: "outline" })}>默认模板</Link>
-          <Link to="/sites/new" className={buttonVariants()}>创建网站</Link>
+          <Link to="/sites/new" className={buttonVariants()}>创建业务网站</Link>
         </div>
       </div>
       {pending ? <SiteManagementSkeletons /> : query.data === undefined ? (
@@ -162,7 +162,7 @@ export function SiteManagementCards() {
             </ul>
           ) : (
             <Empty>
-              <EmptyHeader><EmptyTitle>暂无网站</EmptyTitle><EmptyDescription>创建网站后，在这里查看经营概况和管理设置。</EmptyDescription></EmptyHeader>
+              <EmptyHeader><EmptyTitle>暂无网站</EmptyTitle><EmptyDescription>创建业务网站后，在这里查看经营概况和管理设置。</EmptyDescription></EmptyHeader>
             </Empty>
           )}
           {query.isFetchNextPageError ? <ErrorNotice error={query.error} retry={loadMore} /> : query.hasNextPage && (

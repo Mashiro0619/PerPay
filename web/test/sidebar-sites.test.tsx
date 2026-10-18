@@ -162,8 +162,8 @@ describe("business websites in the sidebar", () => {
     expect(primaryLinks(nav)).toEqual(["总览", "订单", "待处理", "通知"]);
     const settings = within(nav).getByRole("navigation", { name: "设置导航" });
     const shared = within(nav).getByRole("navigation", { name: "全局管理" });
-    expect(within(shared).getAllByRole("link").map(link => link.textContent?.trim())).toEqual(["管理网站", "对账", "运行状态"]);
-    const manage = within(shared).getByRole("link", { name: "管理网站" });
+    expect(within(shared).getAllByRole("link").map(link => link.textContent?.trim())).toEqual(["业务网站", "对账", "运行状态"]);
+    const manage = within(shared).getByRole("link", { name: "业务网站" });
     expect(manage).toHaveAttribute("href", "/sites");
     expect(within(settings).getByRole("link", { name: "设置" })).toHaveAttribute("href", "/settings");
     expect(settings.closest("[data-slot=sidebar-footer]")).toContainElement(shared);
@@ -171,8 +171,8 @@ describe("business websites in the sidebar", () => {
     const selector = within(nav).getByRole("navigation", { name: "网站选择" });
     expect(within(nav).getByRole("navigation", { name: "主导航" }).compareDocumentPosition(selector) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(selector).queryByRole("link", { name: "业务网站" })).not.toBeInTheDocument();
-    expect(within(selector).queryByRole("link", { name: "管理网站" })).not.toBeInTheDocument();
-    expect(within(nav).getAllByRole("link", { name: "管理网站" })).toHaveLength(1);
+    expect(within(selector).queryByRole("link", { name: "业务网站" })).not.toBeInTheDocument();
+    expect(within(nav).getAllByRole("link", { name: "业务网站" })).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "切换后台" })).not.toBeInTheDocument();
     expect(view.listReads).toHaveLength(0);
 
@@ -203,7 +203,7 @@ describe("business websites in the sidebar", () => {
     expect(view.router.state.location).toBe(location);
     await user.click(manage);
     await waitFor(() => expect(view.router.state.location.pathname).toBe("/sites"));
-    await screen.findByRole("link", { name: "创建网站" });
+    await screen.findByRole("link", { name: "创建业务网站" });
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     expect(await within(nav).findByRole("link", { name: "网站 B" })).toBeVisible();
   });
@@ -214,7 +214,7 @@ describe("business websites in the sidebar", () => {
     expect(within(nav).getByRole("button", { name: "收起业务网站" })).toHaveAttribute("aria-expanded", "true");
     expect(await within(nav).findByRole("link", { name: "网站 A" })).toHaveAttribute("href", path + "?selected_site=a");
     const shared = within(nav).getByRole("navigation", { name: "全局管理" });
-    const manage = within(shared).getByRole("link", { name: "管理网站" });
+    const manage = within(shared).getByRole("link", { name: "业务网站" });
     expect(manage).toHaveAttribute("href", "/sites");
     expect(manage).toHaveAttribute("aria-current", "page");
     expect(manage).toHaveAttribute("data-active");
@@ -232,7 +232,7 @@ describe("business websites in the sidebar", () => {
     const selector = within(nav).getByRole("navigation", { name: "网站选择" });
     const shared = within(nav).getByRole("navigation", { name: "全局管理" });
     expect(within(selector).queryByRole("link", { name: "网站 A" })).not.toBeInTheDocument();
-    const manage = within(shared).getByRole("link", { name: "管理网站" });
+    const manage = within(shared).getByRole("link", { name: "业务网站" });
     expect(manage).toHaveAttribute("href", "/sites?selected_site=a");
     expect(manage).not.toHaveAttribute("aria-current");
     if (mobile) await user.click(manage);
@@ -252,7 +252,7 @@ describe("business websites in the sidebar", () => {
     }
     const current = sidebar();
     expect(within(current).getByRole("button", { name: "展开业务网站" })).toHaveAttribute("aria-expanded", "false");
-    expect(within(current).getByRole("link", { name: "管理网站" })).toHaveAttribute("aria-current", "page");
+    expect(within(current).getByRole("link", { name: "业务网站" })).toHaveAttribute("aria-current", "page");
     expect(within(current).getByRole("link", { name: "订单" })).toHaveAttribute("href", "/sites/a/orders");
   });
 
@@ -265,7 +265,7 @@ describe("business websites in the sidebar", () => {
     expect(within(settings).getByRole("link", { name: "设置" })).toHaveAttribute("href", "/sites/a/settings/basic");
     expect(within(nav).getByRole("link", { name: "对账" })).toHaveAttribute("href", "/reconciliation?selected_site=a");
     expect(within(nav).getByRole("link", { name: "运行状态" })).toHaveAttribute("href", "/system?selected_site=a");
-    expect(within(nav).getByRole("link", { name: "管理网站" })).toHaveAttribute("href", "/sites?selected_site=a");
+    expect(within(nav).getByRole("link", { name: "业务网站" })).toHaveAttribute("href", "/sites?selected_site=a");
     expect(await within(nav).findByRole("link", { name: "网站 A" })).toHaveAttribute("aria-current", "location");
     const user = userEvent.setup();
     await user.click(within(nav).getByRole("link", { name: "网站 B" }));
@@ -343,7 +343,7 @@ describe("business websites in the sidebar", () => {
     await within(nav).findByRole("link", { name: "最后一个网站" });
     expect(within(submenu).getAllByRole("link")).toHaveLength(33);
     expect(within(submenu).getAllByRole("link").at(-1)).toHaveAccessibleName("最后一个网站");
-    expect(within(submenu).queryByRole("link", { name: "管理网站" })).not.toBeInTheDocument();
+    expect(within(submenu).queryByRole("link", { name: "业务网站" })).not.toBeInTheDocument();
     expect(within(nav).getAllByRole("link", { name: "当前网站" })).toHaveLength(1);
     expect(within(nav).getAllByRole("link", { name: "分页网站 1" })).toHaveLength(1);
     expect(within(nav).queryByRole("button", { name: "加载更多网站" })).not.toBeInTheDocument();
@@ -456,7 +456,7 @@ describe("business websites in the sidebar", () => {
     await userEvent.click(within(nav).getByRole("button", { name: "展开业务网站" }));
     expect(await within(nav).findByText("暂无网站")).toBeVisible();
     expect(within(nav).getByRole("link", { name: "全部网站" })).toHaveAttribute("href", "/orders");
-    expect(within(nav).getByRole("link", { name: "管理网站" })).toHaveAttribute("href", "/sites");
+    expect(within(nav).getByRole("link", { name: "业务网站" })).toHaveAttribute("href", "/sites");
     expect(within(nav).queryByRole("button", { name: "加载更多网站" })).not.toBeInTheDocument();
   });
 
@@ -487,8 +487,8 @@ describe("business websites in the sidebar", () => {
 
   it.each([false, true])("keeps dirty edits until a confirmed site change and closes mobile navigation only afterwards (mobile: %s)", async (mobile) => {
     const view = mountSidebar({ path: "/sites/a/settings/basic", mobile });
-    const field = await screen.findByLabelText("网站名称");
-    fireEvent.change(field, { target: { value: "尚未保存的网站名称" } });
+    const field = await screen.findByLabelText("业务网站名称");
+    fireEvent.change(field, { target: { value: "尚未保存的业务网站名称" } });
     const user = userEvent.setup();
     if (mobile) await user.click(screen.getByRole("button", { name: "切换导航" }));
     const sheet = mobile ? await screen.findByRole("dialog", { name: "导航菜单" }) : null;
@@ -504,14 +504,14 @@ describe("business websites in the sidebar", () => {
     if (sheet) expect(sheet).toBeInTheDocument();
     await user.click(within(confirmation).getByRole("button", { name: "继续编辑" }));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
-    expect(field).toHaveValue("尚未保存的网站名称");
+    expect(field).toHaveValue("尚未保存的业务网站名称");
     expect(within(nav).getByRole("link", { name: "网站 A" })).toHaveAttribute("aria-current", "location");
     if (sheet) expect(screen.getByRole("dialog", { name: "导航菜单" })).toBe(sheet);
 
     await user.click(within(nav).getByRole("link", { name: "网站 B" }));
     await user.click(await screen.findByRole("button", { name: "放弃修改并继续" }));
     await waitFor(() => expect(view.router.state.location.pathname).toBe("/sites/b/settings/basic"));
-    await waitFor(() => expect(screen.getByLabelText("网站名称")).toHaveValue("网站 B"));
+    await waitFor(() => expect(screen.getByLabelText("业务网站名称")).toHaveValue("网站 B"));
     if (mobile) await waitFor(() => expect(screen.queryByRole("dialog", { name: "导航菜单" })).not.toBeInTheDocument());
     expect(field).not.toBeInTheDocument();
     expect(view.writes()).toHaveLength(0);

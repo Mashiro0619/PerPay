@@ -334,7 +334,7 @@ describe("navigation and draft protection", () => {
         ".topbar, .instance-label, .sidebar-version, .workspace-footer",
       ),
     ).toBeNull();
-    expect(screen.queryByText("个人收款实例")).not.toBeInTheDocument();
+    expect(screen.queryByText("个人收款系统")).not.toBeInTheDocument();
     const account = screen.getByRole("button", { name: "账户菜单" });
     await user.click(account);
     expect(
@@ -355,7 +355,7 @@ describe("navigation and draft protection", () => {
       container.querySelector(".payment-pipeline, .daily-chart"),
     ).toBeNull();
     expect(screen.getByRole("heading", { name: "全部待处理" })).toBeVisible();
-    expect(await screen.findByText("当前暂停新收款")).toBeVisible();
+    expect(await screen.findByText("已暂停接收新订单")).toBeVisible();
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "统计口径" }));

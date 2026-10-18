@@ -4,7 +4,7 @@ import { siteTimeoutSeconds } from "./site-timeout";
 // These are the fields editable in each website settings group. Merge only local
 // changes in that group; every other value must come from the latest snapshot.
 const fields = [
-  ["basic", "name", "网站名称"],
+  ["basic", "name", "业务网站名称"],
   ["basic", "accepting_orders", "允许新订单"],
   ["orders", "policy.orders.order_ttl_seconds", "订单有效期（秒）"],
   ["orders", "policy.orders.amount_offset_maximum_cents", "最大尾差（分）"],

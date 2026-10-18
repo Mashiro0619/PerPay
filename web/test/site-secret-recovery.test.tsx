@@ -45,7 +45,7 @@ function mount() {
     if (match) {
       const purpose = match[1] as Purpose, action = match[2] as SecretAction;
       if (action === "rotate" && body.revision !== site.revision)
-        return json({ error: { code: "site_revision_conflict", message: "网站配置已变更，请刷新后重试。" } }, 409);
+        return json({ error: { code: "site_revision_conflict", message: "业务网站配置已变更，请刷新后重试。" } }, 409);
       if (action === "rotate") rotate(purpose);
       // Capture the response at dispatch, before a later rotation can retire it.
       const response = json({ data: action === "rotate" ? { site, secret: secrets[purpose] } : { secret: secrets[purpose] } });
@@ -55,7 +55,7 @@ function mount() {
     }
     if (request.method === "PUT") {
       if (body.revision !== site.revision)
-        return json({ error: { code: "site_revision_conflict", message: "网站配置已变更，请刷新后重试。" } }, 409);
+        return json({ error: { code: "site_revision_conflict", message: "业务网站配置已变更，请刷新后重试。" } }, 409);
       site = { ...site, revision: site.revision + 1, configuration: body.configuration as Site["configuration"] };
       return json({ data: site });
     }
@@ -106,7 +106,7 @@ describe("website secret display after configuration recovery", () => {
     view.rotateRemote("api_secret");
     if (sameField) view.changeRemote(configuration => { configuration.return_origin = "https://remote.example.com"; });
     const remoteRevision = view.revision();
-    await user.click(screen.getByRole("button", { name: "保存网站" }));
+    await user.click(screen.getByRole("button", { name: "保存业务网站" }));
     await confirm(user);
     await user.click(await screen.findByRole("button", { name: "读取最新配置并核对" }));
     if (sameField) {
@@ -117,9 +117,9 @@ describe("website secret display after configuration recovery", () => {
     }
     await screen.findByText("最新配置已合并，尚未保存");
     expect(screen.getByLabelText("返回来源")).toHaveValue("https://draft.example.com");
-    await user.click(screen.getByRole("button", { name: "保存网站" }));
+    await user.click(screen.getByRole("button", { name: "保存业务网站" }));
     await confirm(user);
-    await screen.findByText("网站配置已保存");
+    await screen.findByText("业务网站配置已保存");
     expect(view.writes.filter(write => write.method === "PUT").map(write => write.body.revision)).toEqual([0, remoteRevision]);
     expect(queryClient.getQueryData(editorKey)).toMatchObject({ site: { revision: remoteRevision + 1 } });
     expect(screen.queryByDisplayValue(oldSecret)).not.toBeInTheDocument();

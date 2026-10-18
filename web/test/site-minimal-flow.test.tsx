@@ -63,9 +63,9 @@ describe("minimal website workflows", () => {
     createPage();
     await screen.findByText("模板读取失败");
     expect(
-      screen.queryByRole("button", { name: "创建网站" }),
+      screen.queryByRole("button", { name: "创建业务网站" }),
     ).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("网站名称")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("业务网站名称")).not.toBeInTheDocument();
   });
   it("keeps the captured template and exact command after an uncertain creation", async () => {
     const writes: Request[] = [];
@@ -80,10 +80,10 @@ describe("minimal website workflows", () => {
     );
     createPage();
     const user = userEvent.setup();
-    await user.type(await screen.findByLabelText("网站名称"), "我的网站");
-    await user.click(screen.getByRole("button", { name: "创建网站" }));
+    await user.type(await screen.findByLabelText("业务网站名称"), "我的网站");
+    await user.click(screen.getByRole("button", { name: "创建业务网站" }));
     await screen.findByText("创建结果待确认");
-    expect(screen.getByLabelText("网站名称")).toBeDisabled();
+    expect(screen.getByLabelText("业务网站名称")).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "重试原请求" }));
     await waitFor(() => expect(writes).toHaveLength(2));
     const first = await writes[0]!.json();

@@ -16,7 +16,7 @@ export const onboardingSteps = [
   {
     id: "collection",
     title: "经营码",
-    description: "导入本实例共用的经营收款码，网站订单策略单独设置。",
+    description: "导入本系统共用的经营收款码，网站订单策略单独设置。",
   },
   {
     id: "optional",
@@ -44,7 +44,7 @@ export function onboardingStepDescription(
     if (state === "configured")
       return "应用公钥已就绪。复制到支付宝的接口加签设置，已配置则直接下一步。";
     if (state === "unavailable")
-      return "此实例已有密钥或支付宝接入记录，不能按首次接入重新生成。";
+      return "此系统已有密钥或支付宝接入记录，不能按首次接入重新生成。";
   }
   if (step === "provider" && settings.pending_application_key)
     return "填写上传后获取的支付宝公钥，验证并启用新密钥。";
@@ -138,7 +138,7 @@ export function onboardingRuntimeWarnings(data: SystemStatus): string[] {
   }
   const backup = data.backup;
   if (backup.recovery_required)
-    warnings.push("备份状态提示实例需要恢复，请先查看运行状态和维护说明。");
+    warnings.push("备份状态提示系统需要恢复，请先查看运行状态和维护说明。");
   if (backup.configuration_mismatch)
     warnings.push("自动备份配置与运行状态不一致。");
   if (backup.clock_moved_backwards)

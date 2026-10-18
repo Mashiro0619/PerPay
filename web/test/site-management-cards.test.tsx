@@ -59,7 +59,7 @@ function card(clientId: string) {
   const destination = "/sites/" + encodeURIComponent(clientId);
   const result = cards().find(item => [...item.querySelectorAll<HTMLAnchorElement>("a[href]")]
     .some(link => new URL(link.href).pathname === destination));
-  if (!result) throw new Error("找不到管理网站卡片：" + clientId);
+  if (!result) throw new Error("找不到业务网站卡片：" + clientId);
   return result;
 }
 
@@ -99,7 +99,7 @@ function mount(handler: RequestHandler, path = "/sites", onCommit?: () => void) 
   }));
   const router = createMemoryRouter([
     { path: "/sites", element: <Profiler id="site-management" onRender={() => onCommit?.()}><Sites /></Profiler> },
-    { path: "/sites/new", element: <h1>创建网站页面</h1> },
+    { path: "/sites/new", element: <h1>创建业务网站页面</h1> },
     { path: "/sites/defaults", element: <h1>默认模板页面</h1> },
     { path: "/sites/:clientId", element: <h1>网站后台页面</h1> },
     { path: "/sites/:clientId/settings/basic", element: <h1>网站设置页面</h1> },
@@ -112,7 +112,7 @@ describe("website management operating cards", () => {
   it("keeps creation and template entries while loading without inventing receipts or a clickable website", async () => {
     const pending = deferredResponse();
     mount(() => pending.promise);
-    expect(screen.getByRole("link", { name: "创建网站" })).toHaveAttribute("href", "/sites/new");
+    expect(screen.getByRole("link", { name: "创建业务网站" })).toHaveAttribute("href", "/sites/new");
     expect(screen.getByRole("link", { name: "默认模板" })).toHaveAttribute("href", "/sites/defaults");
     expect(screen.getByRole("status")).toHaveAccessibleName(/读取|加载/);
     expect(document.querySelectorAll("[data-slot=skeleton]").length).toBeGreaterThan(0);
@@ -442,7 +442,7 @@ describe("website management operating cards", () => {
     expect(await screen.findByText("暂无网站", { exact: true })).toBeVisible();
     expect(cards()).toHaveLength(0);
     expect(screen.queryByText("¥0.00", { exact: true })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "创建网站" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "创建业务网站" })).toBeVisible();
     expect(screen.getByRole("link", { name: "默认模板" })).toBeVisible();
   });
 

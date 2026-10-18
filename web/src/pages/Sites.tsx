@@ -99,7 +99,7 @@ function ExistingSiteEditor() {
         );
         return latestEditorSnapshot(response.data);
       }
-      throw new Error("缺少网站身份");
+      throw new Error("缺少业务网站身份");
     },
   });
   if (
@@ -212,7 +212,7 @@ function SiteEditor({
               body: { revision: saved.revision, configuration: draft },
             }),
           )
-        : Promise.reject(new Error("缺少网站身份")));
+        : Promise.reject(new Error("缺少业务网站身份")));
     },
     onError: revisionConflict,
     onSuccess: async (response) => {
@@ -224,7 +224,7 @@ function SiteEditor({
       setNeedsReview(false);
       setReview(null);
       clearDraft();
-      setFeedback("网站配置已保存");
+      setFeedback("业务网站配置已保存");
       void queryClient.invalidateQueries({ queryKey: ["sites"] });
       if (!saved) {
         void queryClient.invalidateQueries({ queryKey: ["settings"] });
@@ -300,7 +300,7 @@ function SiteEditor({
           value: response.data.secret,
         });
       setFeedback(superseded
-        ? "密钥操作已完成，网站配置已有更新，请重新查看当前密钥。"
+        ? "密钥操作已完成，业务网站配置已有更新，请重新查看当前密钥。"
         : "密钥已生成或轮换，请更新业务网站配置。");
     },
     onError: revisionConflict,
@@ -321,7 +321,7 @@ function SiteEditor({
     networkMode: "always",
     retry: false,
     mutationFn: async () => {
-      if (!saved) throw new Error("缺少网站身份");
+      if (!saved) throw new Error("缺少业务网站身份");
       const controller = new AbortController();
       reloadController.current = controller;
       const response = await result(api.getSite({ path: { clientId: saved.client_id }, signal: controller.signal }));
@@ -406,7 +406,7 @@ function SiteEditor({
       <ErrorNotice error={reload.error} />
       {requiresReview && (
         <Alert>
-          <AlertTitle>网站配置已变更</AlertTitle>
+          <AlertTitle>业务网站配置已变更</AlertTitle>
           <AlertDescription>
             <p>你的修改仍保留。读取最新配置后会合并无冲突的字段；同一字段的不同修改需要核对选择。核对不会自动保存或重试密钥操作。</p>
             <Button variant="outline" disabled={busy} onClick={() => reload.mutate()}>
@@ -465,7 +465,7 @@ function SiteEditor({
                 {visible("basic") && (
                   <>
                     <SiteTextField
-                      label="网站名称"
+                      label="业务网站名称"
                       required
                       maxLength={40}
                       value={draft.name}
@@ -558,7 +558,7 @@ function SiteEditor({
             </CardContent>
             <CardFooter>
               <Button type="submit" disabled={busy || requiresReview || !!timeoutError}>
-                {save.isPending ? "正在保存…" : "保存网站"}
+                {save.isPending ? "正在保存…" : "保存业务网站"}
               </Button>
             </CardFooter>
           </Card>
@@ -567,7 +567,7 @@ function SiteEditor({
       {saved && visible("integration") && (
         <Card>
           <CardHeader>
-            <CardTitle>网站密钥</CardTitle>
+            <CardTitle>业务网站密钥</CardTitle>
             <CardDescription>
               API 密钥轮换后旧密钥立即退役。通知密钥轮换时，已在途的通知仍可能使用旧签名，下一次投递尝试使用新密钥；接收端过渡期间应兼容新旧签名，密钥疑似泄露时应停止信任旧密钥。
             </CardDescription>
@@ -607,7 +607,7 @@ function SiteEditor({
       {saved && visible("basic") && (
         <Card>
           <CardHeader>
-            <CardTitle>删除空网站</CardTitle>
+            <CardTitle>删除空业务网站</CardTitle>
             <CardDescription>
               有历史订单的网站只能暂停接单；删除后客户端 ID 不可复用。
             </CardDescription>
@@ -618,7 +618,7 @@ function SiteEditor({
               disabled={busy || requiresReview}
               onClick={() => setConfirmation("delete")}
             >
-              删除空网站
+              删除空业务网站
             </Button>
           </CardContent>
         </Card>
@@ -657,7 +657,7 @@ function SiteEditor({
             <AlertDialogTitle>
               确认
               {confirmation === "delete"
-                ? "删除网站"
+                ? "删除业务网站"
                 : confirmation === "save"
                   ? "保存配置"
                   : "生成或轮换密钥"}

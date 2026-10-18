@@ -32,7 +32,7 @@ function workspaceSiteQuery(clientId: string | null) {
         response.data.client_id !== clientId ||
         response.data.deleted_at
       )
-        throw new Error("网站身份与当前后台不一致，请重新加载。");
+        throw new Error("业务网站身份与当前后台不一致，请重新加载。");
       return response;
     },
     enabled: !!clientId,

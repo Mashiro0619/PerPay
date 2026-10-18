@@ -72,7 +72,7 @@ client.interceptors.request.use((request) => {
   request.signal.throwIfAborted();
   requestGenerations.set(request, sessionGeneration);
   if (new URL(request.url).origin !== window.location.origin) {
-    throw new Error("管理请求不能发送到其他站点。");
+    throw new Error("管理请求不能发送到其他业务网站。");
   }
   if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
     const path = new URL(request.url).pathname;

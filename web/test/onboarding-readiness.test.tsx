@@ -240,7 +240,7 @@ describe("onboarding payment readiness", () => {
   it.each([
     [
       "recovery_required",
-      "备份状态提示实例需要恢复，请先查看运行状态和维护说明。",
+      "备份状态提示系统需要恢复，请先查看运行状态和维护说明。",
     ],
     ["configuration_mismatch", "自动备份配置与运行状态不一致。"],
     ["clock_moved_backwards", "备份检测到服务器时间回拨，请检查系统时间。"],
