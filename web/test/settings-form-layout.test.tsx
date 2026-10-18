@@ -35,7 +35,7 @@ describe("readable settings form structure", () => {
     );
     expect(view.container.querySelectorAll("label input")).toHaveLength(0);
     for (const label of [
-      "订单有效期（秒）",
+      "收银台有效期（秒）",
       "最大加价金额（分）",
       "金额复用冷却（秒）",
       "待付款订单上限",
@@ -48,7 +48,7 @@ describe("readable settings form structure", () => {
       ).not.toBeNull();
     }
     expect(
-      screen.getByLabelText("订单有效期（秒）"),
+      screen.getByLabelText("收银台有效期（秒）"),
     ).toHaveAccessibleDescription("有效期错误");
     expect(screen.getByLabelText("待付款订单上限")).toHaveAccessibleDescription(
       "容量错误",

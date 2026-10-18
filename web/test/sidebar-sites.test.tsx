@@ -650,7 +650,7 @@ describe("website selection on shared pages", () => {
 
   it.each([false, true])("preserves an unsaved shared draft on a pure selection change, and still protects a real departure (mobile: %s)", async (mobile) => {
     const view = mountSidebar({ path: "/sites/defaults?selected_site=a", mobile });
-    const field = await screen.findByLabelText("订单有效期（秒）");
+    const field = await screen.findByLabelText("收银台有效期（秒）");
     fireEvent.change(field, { target: { value: "600" } });
     const user = userEvent.setup();
     if (mobile) await user.click(screen.getByRole("button", { name: "切换导航" }));
@@ -658,7 +658,7 @@ describe("website selection on shared pages", () => {
     await waitFor(() => expect(new URLSearchParams(view.router.state.location.search).get("selected_site")).toBe("b"));
     expect(view.router.state.location.pathname).toBe("/sites/defaults");
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("订单有效期（秒）")).toBe(field);
+    expect(screen.getByLabelText("收银台有效期（秒）")).toBe(field);
     expect(field).toHaveValue(600);
     if (mobile) await waitFor(() => expect(screen.queryByRole("dialog", { name: "导航菜单" })).not.toBeInTheDocument());
     await act(async () => { await view.router.navigate(-1); });

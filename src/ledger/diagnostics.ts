@@ -85,6 +85,6 @@ function diagnosticReason(code: string, reason: unknown): string {
     case "remote_authorization_failed": return "支付宝查询权限不足，请检查应用授权";
     case "remote_rate_limited": return "支付宝限制了查询频率，系统会遵守退避时间";
     case "transport_network": case "transport_timeout": return "支付宝查询连接失败或超时，请检查网络";
-    default: return "采集失败，请根据错误码检查网络、支付宝配置或上游响应";
+    default: return "查账失败，请根据错误码检查网络、支付宝配置或上游响应";
   }
 }

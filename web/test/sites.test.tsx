@@ -116,8 +116,8 @@ describe("business website management", () => {
   });
   it("creates from the latest detached template using only a name, without credentials", async () => {
     const view=mount('/sites/defaults'),user=userEvent.setup();
-    fireEvent.change(await screen.findByLabelText('订单有效期（秒）'),{target:{value:'600'}});await user.click(screen.getByRole('button',{name:'保存默认模板'}));await waitFor(()=>expect(view.writes).toHaveLength(1));
-    await act(async()=>{await view.router.navigate('/sites/new');});await user.type(await screen.findByLabelText('业务网站名称'),'新网站');expect(screen.queryByLabelText('订单有效期（秒）')).not.toBeInTheDocument();expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    fireEvent.change(await screen.findByLabelText('收银台有效期（秒）'),{target:{value:'600'}});await user.click(screen.getByRole('button',{name:'保存默认模板'}));await waitFor(()=>expect(view.writes).toHaveLength(1));
+    await act(async()=>{await view.router.navigate('/sites/new');});await user.type(await screen.findByLabelText('业务网站名称'),'新网站');expect(screen.queryByLabelText('收银台有效期（秒）')).not.toBeInTheDocument();expect(screen.queryByRole('switch')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button',{name:'创建业务网站'}));await waitFor(()=>expect(view.writes).toHaveLength(2));expect(view.writes[1]!.body).toMatchObject({operation_id:expect.any(String),configuration:{name:'新网站',accepting_orders:true,notifications_enabled:false,notification_origin:null,return_origin:null,policy:{...policy,orders:{...policy.orders,order_ttl_seconds:600}}}});
     expect(view.writes.every(w=>!w.path.includes('secrets'))).toBe(true);
   });
@@ -153,7 +153,7 @@ describe("business website management", () => {
   it("edits only the creation template without modifying any existing website", async () => {
     const view = mount("/sites/defaults"); const user = userEvent.setup();
     expect(await screen.findByRole("button", { name: "保存默认模板" })).toHaveClass("w-fit");
-    const ttl = await screen.findByLabelText("订单有效期（秒）"); fireEvent.change(ttl, { target: { value: "600" } });
+    const ttl = await screen.findByLabelText("收银台有效期（秒）"); fireEvent.change(ttl, { target: { value: "600" } });
     expect(screen.queryByLabelText("通知地址前缀")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "保存默认模板" }));
     await waitFor(() => expect(view.writes).toHaveLength(1));
@@ -182,7 +182,7 @@ describe("website configuration recovery", () => {
     await user.click(screen.getByRole("button", { name: "保存业务网站" }));
     await screen.findByText("业务网站配置已保存");
     await user.click(screen.getByRole("tab", { name: "订单设置" }));
-    fireEvent.change(await screen.findByLabelText("订单有效期（秒）"), { target: { value: "600" } });
+    fireEvent.change(await screen.findByLabelText("收银台有效期（秒）"), { target: { value: "600" } });
     await user.click(screen.getByRole("button", { name: "保存业务网站" }));
     await screen.findByText("业务网站配置已保存");
     await user.click(screen.getByRole("tab", { name: "基本信息" }));
@@ -273,7 +273,7 @@ describe("website configuration recovery", () => {
 
   it("merges separate nested fields in the same group while resolving only the overlapping field", async () => {
     const view = mount("/sites/site_test/settings/orders"), user = userEvent.setup();
-    fireEvent.change(await screen.findByLabelText("订单有效期（秒）"), { target: { value: "600" } });
+    fireEvent.change(await screen.findByLabelText("收银台有效期（秒）"), { target: { value: "600" } });
     fireEvent.change(screen.getByLabelText("待付款订单上限"), { target: { value: "10" } });
     view.changeRemote(configuration => {
       configuration.name = "远端名称";
@@ -363,10 +363,10 @@ describe("website field feedback", () => {
     const path = section === "defaults" ? "/sites/defaults" : "/sites/site_test/settings/" + section;
     const cases: Record<string, [string, string, string][]> = {
       basic: [["业务网站名称", "configuration.name", "新的网站名"]],
-      orders: [["订单有效期（秒）", "configuration.policy.orders.order_ttl_seconds", "600"], ["待付款订单上限", "configuration.policy.orders.pending_order_limit", "10"]],
+      orders: [["收银台有效期（秒）", "configuration.policy.orders.order_ttl_seconds", "600"], ["待付款订单上限", "configuration.policy.orders.pending_order_limit", "10"]],
       integration: [["通知地址前缀", "configuration.notification_origin", "https://notify.example.com"], ["返回地址前缀", "configuration.return_origin", "https://shop.example.com"]],
       display: [["收银台名称", "configuration.policy.display.checkout_name", "草稿名称"], ["帮助链接", "configuration.policy.display.checkout_help_url", "https://help.example.com"]],
-      defaults: [["收银台名称", "policy.display.checkout_name", "模板草稿"], ["订单有效期（秒）", "policy.orders.order_ttl_seconds", "600"]],
+      defaults: [["收银台名称", "policy.display.checkout_name", "模板草稿"], ["收银台有效期（秒）", "policy.orders.order_ttl_seconds", "600"]],
     };
     const fields = Object.fromEntries(cases[section]!.map(([label, field]) => [field, label + "错误"]));
     const view = mount(path, false, fields), user = userEvent.setup();

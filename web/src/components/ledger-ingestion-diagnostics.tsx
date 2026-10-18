@@ -51,7 +51,7 @@ export function LedgerIngestionDiagnostics({
           {latest && (
             <>
               <p>
-                {latest.scan_kind === "NORMAL" ? "正常查账" : "历史补采"}：
+                {latest.scan_kind === "NORMAL" ? "正常查账" : "历史查账"}：
                 {latest.reason}（{latest.error_code}）
               </p>
               <Collapsible>
@@ -65,7 +65,7 @@ export function LedgerIngestionDiagnostics({
                   <p>
                     {latest.scan_kind === "NORMAL"
                       ? "最近失败属于正常查账，该查询窗口尚未完成；收款是否暂停以当前就绪状态为准。"
-                      : "最近失败属于历史补采，不代表正常查账也已停止；历史流水核对可能延迟。"}
+                      : "最近失败属于历史查账，不代表正常查账也已停止；历史流水核对可能延迟。"}
                   </p>
                   <p>
                     失败窗口：{timestamp(latest.window_start)} 至{" "}

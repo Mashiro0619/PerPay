@@ -71,7 +71,7 @@ export function SitePolicyFields({
         <FieldSet className="settings-fields" disabled={disabled}>
           <FieldLegend className={section ? "sr-only" : undefined}>订单设置</FieldLegend>
           <NumberField
-            label="订单有效期（秒）"
+            label="收银台有效期（秒）"
             error={error("orders.order_ttl_seconds")}
             value={value.orders.order_ttl_seconds}
             min={60}

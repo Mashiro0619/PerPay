@@ -853,7 +853,7 @@ export function SettingsEditor({
         <NumberField
           name="checkout_terminal_observation_seconds"
           error={fieldErrors.checkout_terminal_observation_seconds}
-          label="收银台结束后查询期（秒）"
+          label="结束后可查询时长（秒）"
           value={initialSettings.advanced.checkout_terminal_observation_seconds}
           min={60}
           max={604800}

@@ -271,12 +271,12 @@ export class RuntimeController {
       };
     });
     if (counts.openOrders > 0) {
-      throw providerSwitchBlocked("当前采集账户仍有未支付订单");
+      throw providerSwitchBlocked("当前查账账户仍有未支付订单");
     }
     const ledger = this.#pausedLedgerHealth ?? this.ledgerHealth();
     const reconciliation = this.#pausedReconciliationHealth ?? this.reconciliationHealth();
     if (counts.runningScans > 0 || ledger.inFlight || reconciliation.inFlight) {
-      throw providerSwitchBlocked("当前采集或自动确认任务尚未结束");
+      throw providerSwitchBlocked("当前查账或自动确认收款任务尚未结束");
     }
     // No recorded income does not prove that the last order has no late-visible payment.
     // Only an unused account can skip the final collection/confirmation checks.
@@ -290,7 +290,7 @@ export class RuntimeController {
       ledger.paymentRevision !== current.paymentRevision ||
       reconciliation.paymentRevision !== current.paymentRevision
     ) {
-      throw providerSwitchBlocked("切换前需要当前采集账户完成近期采集和自动确认");
+      throw providerSwitchBlocked("切换前需要当前查账账户完成近期查账和自动确认收款");
     }
     if (
       counts.latestEndedOrderAt !== null &&
@@ -301,7 +301,7 @@ export class RuntimeController {
         reconciliation.lastSuccessAt < counts.latestEndedOrderAt
       )
     ) {
-      throw providerSwitchBlocked("最近结束的未支付订单尚未经过采集和自动确认复核");
+      throw providerSwitchBlocked("最近结束的未支付订单尚未经过查账和自动确认收款复核");
     }
   }
 

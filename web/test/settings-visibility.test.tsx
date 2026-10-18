@@ -28,7 +28,7 @@ const sections = [
   },
   {
     section: "advanced",
-    fields: ["收银台链接密钥轮换周期（天）", "收银台结束后查询期（秒）"],
+    fields: ["收银台链接密钥轮换周期（天）", "结束后可查询时长（秒）"],
   },
   {
     section: "backup",

@@ -28,7 +28,7 @@ describe("ingestion failure presentation", () => {
     const data = diagnostic(); data.latest_failure!.scan_kind = "COMPENSATION_1H";
     render(<LedgerIngestionDiagnostics diagnostics={data} />);
     fireEvent.click(screen.getByRole("button",{name:"失败详情"}));
-    expect(screen.getByText(/历史补采，不代表正常查账也已停止/)).toBeVisible();
+    expect(screen.getByText(/历史查账，不代表正常查账也已停止/)).toBeVisible();
     expect(screen.queryByText(/最近失败属于正常查账/)).not.toBeInTheDocument();
   });
   it("does not show a scheduled time while running, or invent one when unknown", () => {

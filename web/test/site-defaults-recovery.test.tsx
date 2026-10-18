@@ -190,8 +190,8 @@ describe("website default template conflict recovery", () => {
   });
   it("preserves every edited group, explicitly saves the merged template and uses it for new sites", async () => {
     const view = mountDefaults(), user = userEvent.setup();
-    await screen.findByLabelText("订单有效期（秒）");
-    edit("订单有效期（秒）", "600");
+    await screen.findByLabelText("收银台有效期（秒）");
+    edit("收银台有效期（秒）", "600");
     await group(user, "收银台展示");
     edit("收银台名称", "我的模板");
     await group(user, "通知策略");
@@ -213,7 +213,7 @@ describe("website default template conflict recovery", () => {
     await group(user, "收银台展示");
     expect(screen.getByLabelText("收银台名称")).toHaveValue("我的模板");
     await group(user, "订单设置");
-    expect(screen.getByLabelText("订单有效期（秒）")).toHaveValue(600);
+    expect(screen.getByLabelText("收银台有效期（秒）")).toHaveValue(600);
     await mergeLatest(user);
     expect(view.puts).toHaveLength(1);
     await user.click(save());
@@ -239,8 +239,8 @@ describe("website default template conflict recovery", () => {
 
   it.each(["保留我的修改", "采用服务器值"])("requires an explicit same-field choice and a separate save: %s", async choice => {
     const view = mountDefaults(), user = userEvent.setup();
-    await screen.findByLabelText("订单有效期（秒）");
-    edit("订单有效期（秒）", "600");
+    await screen.findByLabelText("收银台有效期（秒）");
+    edit("收银台有效期（秒）", "600");
     await group(user, "通知策略");
     edit("最多发送次数", "15");
     view.changeRemote(policy => {
@@ -262,7 +262,7 @@ describe("website default template conflict recovery", () => {
     expect(view.puts).toHaveLength(1);
     const ttl = choice === "保留我的修改" ? 600 : 900;
     await group(user, "订单设置");
-    expect(screen.getByLabelText("订单有效期（秒）")).toHaveValue(ttl);
+    expect(screen.getByLabelText("收银台有效期（秒）")).toHaveValue(ttl);
     await user.click(save());
     await screen.findByText("模板已保存，已有网站不受影响。");
     expect(view.puts).toHaveLength(2);
@@ -333,8 +333,8 @@ describe("website default template conflict recovery", () => {
 
   it("can repeat recovery after another administrator changes the template again", async () => {
     const view = mountDefaults(), user = userEvent.setup();
-    await screen.findByLabelText("订单有效期（秒）");
-    edit("订单有效期（秒）", "600");
+    await screen.findByLabelText("收银台有效期（秒）");
+    edit("收银台有效期（秒）", "600");
     view.changeRemote(policy => { policy.display.checkout_name = "第一次远端修改"; });
     await user.click(save());
     await mergeLatest(user);
@@ -343,7 +343,7 @@ describe("website default template conflict recovery", () => {
     await user.click(save());
     await mergeLatest(user);
     expect(view.puts).toHaveLength(2);
-    expect(screen.getByLabelText("订单有效期（秒）")).toHaveValue(600);
+    expect(screen.getByLabelText("收银台有效期（秒）")).toHaveValue(600);
     expect(screen.getByLabelText("待付款订单上限")).toHaveValue(7);
     await user.click(save());
     await screen.findByText("模板已保存，已有网站不受影响。");
@@ -357,13 +357,13 @@ describe("website default template conflict recovery", () => {
 
   it("refreshes the template on reentry instead of repeatedly saving a cached revision", async () => {
     const view = mountDefaults(), user = userEvent.setup();
-    expect(await screen.findByLabelText("订单有效期（秒）")).toHaveValue(300);
+    expect(await screen.findByLabelText("收银台有效期（秒）")).toHaveValue(300);
     await act(async () => { await view.router.navigate("/sites"); });
     await screen.findByText("暂无网站");
     view.changeRemote(policy => { policy.orders.order_ttl_seconds = 900; });
     await act(async () => { await view.router.navigate("/sites/defaults"); });
-    await waitFor(() => expect(screen.getByLabelText("订单有效期（秒）")).toHaveValue(900));
-    edit("订单有效期（秒）", "1200");
+    await waitFor(() => expect(screen.getByLabelText("收银台有效期（秒）")).toHaveValue(900));
+    edit("收银台有效期（秒）", "1200");
     await user.click(save());
     await screen.findByText("模板已保存，已有网站不受影响。");
     expect(view.puts).toHaveLength(1);
@@ -372,8 +372,8 @@ describe("website default template conflict recovery", () => {
 
   it("keeps a successful save when an older background GET completes afterwards", async () => {
     const view = mountDefaults(), user = userEvent.setup();
-    await screen.findByLabelText("订单有效期（秒）");
-    edit("订单有效期（秒）", "600");
+    await screen.findByLabelText("收银台有效期（秒）");
+    edit("收银台有效期（秒）", "600");
     const delayed = view.delayNextRead();
     let refresh!: Promise<void>;
     await act(async () => { refresh = queryClient.invalidateQueries({ queryKey: ["site-defaults"] }); });
@@ -381,9 +381,9 @@ describe("website default template conflict recovery", () => {
     await user.click(save());
     await screen.findByText("模板已保存，已有网站不受影响。");
     await act(async () => { delayed.release(); await refresh; });
-    expect(screen.getByLabelText("订单有效期（秒）")).toHaveValue(600);
+    expect(screen.getByLabelText("收银台有效期（秒）")).toHaveValue(600);
     expect(queryClient.getQueryData<{ data: TemplateSnapshot }>(["site-defaults"])?.data).toEqual(view.snapshot());
-    edit("订单有效期（秒）", "900");
+    edit("收银台有效期（秒）", "900");
     await user.click(save());
     await waitFor(() => expect(view.puts).toHaveLength(2));
     await screen.findByText("模板已保存，已有网站不受影响。");
@@ -393,8 +393,8 @@ describe("website default template conflict recovery", () => {
 
   it("keeps a merged draft behind the navigation guard until the administrator saves or discards it", async () => {
     const view = mountDefaults(), user = userEvent.setup();
-    await screen.findByLabelText("订单有效期（秒）");
-    edit("订单有效期（秒）", "600");
+    await screen.findByLabelText("收银台有效期（秒）");
+    edit("收银台有效期（秒）", "600");
     view.changeRemote(policy => { policy.display.checkout_name = "服务器模板"; });
     await user.click(save());
     await mergeLatest(user);
@@ -402,7 +402,7 @@ describe("website default template conflict recovery", () => {
     const guard = await screen.findByRole("alertdialog");
     expect(view.router.state.location.pathname).toBe("/sites/defaults");
     await user.click(within(guard).getByRole("button", { name: "继续编辑" }));
-    expect(screen.getByLabelText("订单有效期（秒）")).toHaveValue(600);
+    expect(screen.getByLabelText("收银台有效期（秒）")).toHaveValue(600);
     expect(view.puts).toHaveLength(1);
     await user.click(save());
     await screen.findByText("模板已保存，已有网站不受影响。");
@@ -413,13 +413,13 @@ describe("website default template conflict recovery", () => {
 
   it("does not queue an offline save or resubmit it after discarding and reconnecting", async () => {
     const view = mountDefaults(), user = userEvent.setup();
-    await screen.findByLabelText("订单有效期（秒）");
-    edit("订单有效期（秒）", "600");
+    await screen.findByLabelText("收银台有效期（秒）");
+    edit("收银台有效期（秒）", "600");
     await network(false);
     await user.click(save());
     await screen.findByRole("alert");
-    expect(screen.getByLabelText("订单有效期（秒）")).toHaveValue(600);
-    expect(screen.getByLabelText("订单有效期（秒）")).toBeEnabled();
+    expect(screen.getByLabelText("收银台有效期（秒）")).toHaveValue(600);
+    expect(screen.getByLabelText("收银台有效期（秒）")).toBeEnabled();
     expect(queryClient.getMutationCache().getAll().some(mutation => mutation.state.isPaused)).toBe(false);
     const beforeReconnect = view.attempts.filter(request => request.method === "PUT").length;
     await act(async () => { await view.router.navigate("/sites"); });
@@ -435,15 +435,15 @@ describe("website default template conflict recovery", () => {
 
   it("retains an offline draft and waits for an explicit save after the network returns", async () => {
     const view = mountDefaults(), user = userEvent.setup();
-    await screen.findByLabelText("订单有效期（秒）");
-    edit("订单有效期（秒）", "600");
+    await screen.findByLabelText("收银台有效期（秒）");
+    edit("收银台有效期（秒）", "600");
     await network(false);
     await user.click(save());
     await screen.findByRole("alert");
     await network(true);
     await act(async () => { await queryClient.resumePausedMutations(); });
     expect(view.puts).toHaveLength(0);
-    expect(screen.getByLabelText("订单有效期（秒）")).toHaveValue(600);
+    expect(screen.getByLabelText("收银台有效期（秒）")).toHaveValue(600);
     await user.click(save());
     await screen.findByText("模板已保存，已有网站不受影响。");
     expect(view.puts).toHaveLength(1);
@@ -452,12 +452,12 @@ describe("website default template conflict recovery", () => {
 
   it("preserves a dirty draft when a newer background snapshot arrives and requires comparison", async () => {
     const view = mountDefaults(), user = userEvent.setup();
-    await screen.findByLabelText("订单有效期（秒）");
-    edit("订单有效期（秒）", "600");
+    await screen.findByLabelText("收银台有效期（秒）");
+    edit("收银台有效期（秒）", "600");
     view.changeRemote(policy => { policy.display.checkout_name = "后台更新的模板"; });
     await act(async () => { await queryClient.invalidateQueries({ queryKey: ["site-defaults"] }); });
     await reload();
-    expect(screen.getByLabelText("订单有效期（秒）")).toHaveValue(600);
+    expect(screen.getByLabelText("收银台有效期（秒）")).toHaveValue(600);
     expect(save()).toBeDisabled();
     expect(view.puts).toHaveLength(0);
     await mergeLatest(user);
@@ -472,8 +472,8 @@ describe("website default template conflict recovery", () => {
 
   it("invalidates earlier conflict choices when a newer background snapshot arrives during comparison", async () => {
     const view = mountDefaults(), user = userEvent.setup();
-    await screen.findByLabelText("订单有效期（秒）");
-    edit("订单有效期（秒）", "600");
+    await screen.findByLabelText("收银台有效期（秒）");
+    edit("收银台有效期（秒）", "600");
     await group(user, "收银台展示");
     edit("收银台名称", "本地收银台");
     view.changeRemote(policy => {
