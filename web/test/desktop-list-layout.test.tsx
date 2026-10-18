@@ -328,26 +328,53 @@ describe("desktop business list composition", () => {
       element: <Reconciliation />,
       data: [paymentMatch],
       id: matchId,
+      relatedName: "查看订单：" + order.merchant_order_no,
     },
     {
       path: "/notifications",
       element: <Notifications />,
       data: [notification],
       id: deliveryId,
+      relatedName: "查看订单",
     },
   ])(
     "keeps technical identifiers out of primary content and retains related order navigation on $path",
-    async ({ path, element, data, id }) => {
+    async ({ path, element, data, id, relatedName }) => {
       pageResponse(data);
       mount(path, element);
       await screen.findByRole("table");
       expect(screen.queryByText(id, { exact: true })).not.toBeInTheDocument();
-      const related = screen.getByRole("link", { name: "查看订单" });
+      const related = screen.getByRole("link", { name: relatedName });
       expect(related).toHaveAttribute("href", "/orders/" + orderId);
       expect(screen.getAllByRole("columnheader")[1]).toHaveTextContent(
         "关联订单",
       );
       expect(related).not.toHaveTextContent("…");
+      if (path === "/reconciliation") {
+        expect(related).toHaveTextContent(order.merchant_order_no);
+        expect(screen.getAllByText(order.merchant_order_no, { exact: true })).toHaveLength(1);
+        expect(related.closest('[data-column-id="order"]')).not.toBeNull();
+      }
+    },
+  );
+
+  it.each(["hidden column", "mobile summary"])(
+    "keeps the related order number and its navigation in the record metadata with %s",
+    async (mode) => {
+      if (mode === "hidden column") {
+        localStorage.setItem("perpay.table-columns.v2.reconciliation-matches", JSON.stringify({ order: false }));
+      } else {
+        mobileMedia(390);
+      }
+      pageResponse([paymentMatch]);
+      mount("/reconciliation", <Reconciliation />);
+      const related = await screen.findByRole("link", { name: "查看订单：" + order.merchant_order_no });
+      expect(related.closest(".list-identity-meta")).not.toBeNull();
+      expect(screen.queryByRole("columnheader", { name: "关联订单" })).not.toBeInTheDocument();
+      expect(screen.getAllByText(order.merchant_order_no, { exact: true })).toHaveLength(1);
+      await userEvent.click(related);
+      expect(await screen.findByRole("heading", { name: "订单详情" })).toBeVisible();
+      expect(screen.getByLabelText("当前地址")).toHaveTextContent("/orders/" + orderId);
     },
   );
 

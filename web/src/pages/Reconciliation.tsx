@@ -61,6 +61,22 @@ type ReconciliationRow = {
   status: string;
   createdAt: string;
 };
+
+function RelatedOrderLink({ item }: { item: ReconciliationRow }) {
+  if (!item.orderId) return item.merchantOrderNo ?? "—";
+  const text = item.merchantOrderNo ?? "查看订单";
+  return (
+    <Link
+      className="list-code"
+      title={item.merchantOrderNo ?? undefined}
+      aria-label={item.merchantOrderNo ? "查看订单：" + item.merchantOrderNo : "查看订单"}
+      to={"/orders/" + item.orderId}
+    >
+      {text}
+    </Link>
+  );
+}
+
 const sections = [
   { value: "matches", label: "支付关联" },
   { value: "exceptions", label: "账务异常" },
@@ -349,10 +365,11 @@ function ReconciliationList({
       summaryDefault: true,
       cell: (item, context) => (
         <ListIdentity
-          meta={(item.merchantOrderNo || (section !== "conflicts" && item.externalEventId)) && (
+          meta={((!context.isColumnVisible("order") && (item.merchantOrderNo || item.orderId)) ||
+            (section !== "conflicts" && item.externalEventId)) && (
             <ListMeta>
-              {item.merchantOrderNo && (
-                <span className="list-code" title={item.merchantOrderNo}>{item.merchantOrderNo}</span>
+              {!context.isColumnVisible("order") && (item.merchantOrderNo || item.orderId) && (
+                <RelatedOrderLink item={item} />
               )}
               {section !== "conflicts" && item.externalEventId && (
                 <span className="list-code" title={item.externalEventId}>流水 {item.externalEventId}</span>
@@ -394,11 +411,7 @@ function ReconciliationList({
       layout: "text",
       summaryDefault: false,
       responsive: { minWidthRem: 70, basis: "container" },
-      cell: (item) => item.orderId ? (
-        <Link className="list-secondary-link" to={"/orders/" + item.orderId}>
-          查看订单
-        </Link>
-      ) : "—",
+      cell: (item) => <RelatedOrderLink item={item} />,
     },
     {
       id: "status",
