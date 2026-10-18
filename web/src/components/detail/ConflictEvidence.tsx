@@ -21,7 +21,7 @@ import { DetailFields } from "./DetailPrimitives";
 import { RecordTools } from "./RecordTools";
 const explanations: Record<string, string> = {
   DUPLICATE_EXTERNAL_ID: "同一外部流水号对应不同交易内容，已有流水未被覆盖。",
-  RAW_PAGE_VARIANT: "同一采集窗口返回了不同内容。",
+  RAW_PAGE_VARIANT: "同一查账窗口返回了不同内容。",
   MISSING_EXTERNAL_ID:
     "这笔记录缺少可识别的外部流水号，已被隔离，不能参与收款分配。",
   INVALID_AMOUNT:
@@ -85,18 +85,18 @@ export function ConflictCard({ detail }: { detail: LedgerConflictDetail }) {
             aria-labelledby={collectionId}
           >
             <h3 id={collectionId} className="text-sm font-medium">
-              采集摘要
+              查账摘要
             </h3>
             <DetailFields
-              wide={["采集窗口"]}
+              wide={["查账窗口"]}
               items={[
-                ["采集时间", dateTime(detail.raw_page.received_at)],
+                ["查账时间", dateTime(detail.raw_page.received_at)],
                 [
                   "接口验签",
                   detail.raw_page.signature_verified ? "已通过" : "未通过",
                 ],
                 [
-                  "采集窗口",
+                  "查账窗口",
                   detail.raw_page.window_start +
                     " 至 " +
                     detail.raw_page.window_end,

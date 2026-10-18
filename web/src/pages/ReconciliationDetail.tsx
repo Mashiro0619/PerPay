@@ -225,7 +225,7 @@ function LedgerDetail({ resourceId }: { resourceId: string }) {
               <CardContent className="flex min-w-0 flex-col gap-4">
                 <LedgerFacts entry={data} />
                 <DetailFields
-                  items={[["采集入库时间", dateTime(data.created_at)]]}
+                  items={[["查账入库时间", dateTime(data.created_at)]]}
                 />
                 <RecordTools
                   data={data}

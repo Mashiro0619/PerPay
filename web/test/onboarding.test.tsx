@@ -244,7 +244,7 @@ describe("first collection onboarding", () => {
     expect(
       screen.queryByRole("button", { name: "高级设置" }),
     ).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("常规采集间隔（秒）")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("常规查账间隔（秒）")).not.toBeInTheDocument();
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "保存并继续" }));

@@ -622,7 +622,7 @@ describe("runtime settings", () => {
           safety_lag_seconds: 61,
           maximum_success_age_seconds: 60,
         }, audit("provider-safety-lag-age")),
-        /must not exceed the maximum success age/u,
+        /查账延迟不能超过查账有效时限。/u,
       );
 
       await assert.rejects(

@@ -30,9 +30,9 @@ export function LedgerIngestionDiagnostics({
     return (
       <Alert>
         <CircleAlert />
-        <AlertTitle>采集诊断暂不可用</AlertTitle>
+        <AlertTitle>查账诊断暂不可用</AlertTitle>
         <AlertDescription>
-          暂时无法读取失败记录，请稍后刷新运行状态；这不表示采集已恢复。
+          暂时无法读取失败记录，请稍后刷新运行状态；这不表示查账已恢复。
         </AlertDescription>
       </Alert>
     );
@@ -43,7 +43,7 @@ export function LedgerIngestionDiagnostics({
     <Alert variant={failures >= 3 ? "destructive" : "default"}>
       <CircleAlert />
       <AlertTitle>
-        {failures >= 3 ? "采集持续失败" : "采集失败，等待恢复"}
+        {failures >= 3 ? "查账持续失败" : "查账失败，等待恢复"}
       </AlertTitle>
       <AlertDescription>
         <div className="flex flex-col gap-2">
@@ -51,7 +51,7 @@ export function LedgerIngestionDiagnostics({
           {latest && (
             <>
               <p>
-                {latest.scan_kind === "NORMAL" ? "正常采集" : "历史补采"}：
+                {latest.scan_kind === "NORMAL" ? "正常查账" : "历史补采"}：
                 {latest.reason}（{latest.error_code}）
               </p>
               <Collapsible>
@@ -64,8 +64,8 @@ export function LedgerIngestionDiagnostics({
                   <p>次数为账户级统计，不代表同一账单页重复失败的次数。</p>
                   <p>
                     {latest.scan_kind === "NORMAL"
-                      ? "最近失败属于正常采集，该查询窗口尚未完成；收款是否暂停以当前就绪状态为准。"
-                      : "最近失败属于历史补采，不代表正常采集也已停止；历史流水核对可能延迟。"}
+                      ? "最近失败属于正常查账，该查询窗口尚未完成；收款是否暂停以当前就绪状态为准。"
+                      : "最近失败属于历史补采，不代表正常查账也已停止；历史流水核对可能延迟。"}
                   </p>
                   <p>
                     失败窗口：{timestamp(latest.window_start)} 至{" "}
@@ -78,10 +78,10 @@ export function LedgerIngestionDiagnostics({
           )}
           <p>
             {diagnostics.in_flight
-              ? "正在采集，请等待本轮结果。"
+              ? "正在查账，请等待本轮结果。"
               : diagnostics.next_retry_at
                 ? `计划下次尝试：${timestamp(diagnostics.next_retry_at)}`
-                : "下次尝试时间尚未确定，请检查采集任务运行状态。"}
+                : "下次尝试时间尚未确定，请检查查账任务运行状态。"}
           </p>
           <p>
             检查网络和支付宝配置；持续失败时保留失败窗口与错误记录，按

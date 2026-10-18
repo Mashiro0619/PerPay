@@ -89,7 +89,7 @@ export type ConfigurationSection =
 export const sections = [
   ["provider", "支付宝接入"],
   ["collection", "经营收款码"],
-  ["collection-policy", "采集设置"],
+  ["collection-policy", "查账设置"],
   ["notifications", "业务通知"],
   ["security", "密钥与安全"],
   ["backup", "自动备份"],
@@ -546,19 +546,19 @@ export function SettingsEditor({
       <NumberField
         name="scan_interval_seconds"
         error={fieldErrors.scan_interval_seconds}
-        label="常规采集间隔（秒）"
+        label="常规查账间隔（秒）"
         value={
           initialSettings.collection_policy?.scan_interval_seconds ?? initialSettings.provider?.scan_interval_seconds ??
           PROVIDER_TIMING_DEFAULTS.scanIntervalSeconds
         }
         min={5}
         max={3600}
-        hint="空闲时使用；有效时限至少为此间隔的两倍。"
+        hint="没有待付款订单时，隔多久查一次账。"
       />
       <NumberField
         name="active_scan_interval_seconds"
         error={fieldErrors.active_scan_interval_seconds}
-        label="活跃采集间隔（秒）"
+        label="活跃查账间隔（秒）"
         value={
           initialSettings.collection_policy?.active_scan_interval_seconds ?? initialSettings.provider?.active_scan_interval_seconds ??
           initialSettings.collection_policy?.scan_interval_seconds ?? initialSettings.provider?.scan_interval_seconds ??
@@ -566,40 +566,40 @@ export function SettingsEditor({
         }
         min={5}
         max={3600}
-        hint="待支付及收尾时使用，不得大于常规间隔。"
+        hint="有待付款订单时，隔多久查一次账；不能大于常规间隔。"
       />
       <NumberField
         name="minimum_scan_interval_seconds"
         error={fieldErrors.minimum_scan_interval_seconds}
-        label="采集最小间隔（秒）"
+        label="查账最小间隔（秒）"
         value={initialSettings.collection_policy?.minimum_scan_interval_seconds ?? initialSettings.provider?.minimum_scan_interval_seconds ?? initialSettings.collection_policy?.active_scan_interval_seconds ?? initialSettings.provider?.active_scan_interval_seconds ?? PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds}
         min={5}
         max={3600}
-        hint="每轮结束后的最短等待，手动核实同样受限；不得大于活跃间隔。"
+        hint="两轮查账之间至少等多久；手动核实也不能更早；不能大于活跃间隔。"
       />
       <NumberField
         name="safety_lag_seconds"
         error={fieldErrors.safety_lag_seconds}
-        label="安全延迟（秒）"
+        label="查账延迟（秒）"
         value={
           initialSettings.collection_policy?.safety_lag_seconds ?? initialSettings.provider?.safety_lag_seconds ??
           PROVIDER_TIMING_DEFAULTS.safetyLagSeconds
         }
         min={5}
         max={300}
-        hint="避开支付宝尚未稳定返回的最新账单。"
+        hint="只查到 N 秒前的账单，等支付宝记录稳定，避免刚发生的交易被漏掉。"
       />
       <NumberField
         name="maximum_success_age_seconds"
         error={fieldErrors.maximum_success_age_seconds}
-        label="采集有效时限（秒）"
+        label="查账有效时限（秒）"
         value={
           initialSettings.collection_policy?.maximum_success_age_seconds ?? initialSettings.provider?.maximum_success_age_seconds ??
           PROVIDER_TIMING_DEFAULTS.maximumSuccessAgeSeconds
         }
         min={10}
         max={86400}
-        hint="超过此时限未成功采集，会暂停新订单收款入口。"
+        hint="超过这个时间没有成功查账，所有网站都会暂停新订单，未付款的收银台也会暂不可用。"
       />
     </FieldGroup>
   );
@@ -864,9 +864,9 @@ export function SettingsEditor({
   );
 
   const panels: Array<{ title: string; description?: string; fields: ReactNode }> =
-    section === "provider" ? [{ title: "开放平台应用", description: "应用身份、密钥与支付宝环境；采集策略在采集设置中单独调整。", fields: <FieldGroup>{providerIdentity}{providerEnvironment}</FieldGroup> }]
+    section === "provider" ? [{ title: "开放平台应用", description: "应用身份、密钥与支付宝环境；查账策略在查账设置中单独调整。", fields: <FieldGroup>{providerIdentity}{providerEnvironment}</FieldGroup> }]
     : section === "collection" ? [{ title: "经营收款码", description: "只管理二维码；订单规则在各业务网站中设置。", fields: collectionIdentity }]
-    : section === "collection-policy" ? [{ title: "PerPay 采集设置", description: "控制 PerPay 的查询频率与安全窗口，不属于支付宝官方应用配置。", fields: providerCollection }]
+    : section === "collection-policy" ? [{ title: "PerPay 查账设置", description: "控制 PerPay 的查询频率与安全窗口，不属于支付宝官方应用配置。", fields: providerCollection }]
     : section === "display" ? [{ title: "界面显示", fields: displayFields }]
     : [{ title: sections.find(([value]) => value === section)?.[1] ?? "设置", ...(section === "backup" ? { description: "恢复需要数据库备份和主密钥。" } : {}), fields: section === "notifications" ? notificationFields : section === "backup" ? backupFields : advancedFields }];
 
@@ -1071,9 +1071,9 @@ async function saveSettings(
   }
   if (section === "collection-policy") {
     const normal = integer("scan_interval_seconds"), active = integer("active_scan_interval_seconds"), minimum = integer("minimum_scan_interval_seconds"), maximumAge = integer("maximum_success_age_seconds");
-    if (minimum > active) throw new SettingsInputError("minimum_scan_interval_seconds", "最小采集间隔不能大于活跃采集间隔。");
-    if (active > normal) throw new SettingsInputError("active_scan_interval_seconds", "活跃采集间隔不能大于常规采集间隔。");
-    if (maximumAge < normal * 2) throw new SettingsInputError("maximum_success_age_seconds", "采集有效时限须至少为常规采集间隔的两倍。");
+    if (minimum > active) throw new SettingsInputError("minimum_scan_interval_seconds", "最小查账间隔不能大于活跃查账间隔。");
+    if (active > normal) throw new SettingsInputError("active_scan_interval_seconds", "活跃查账间隔不能大于常规查账间隔。");
+    if (maximumAge < normal * 2) throw new SettingsInputError("maximum_success_age_seconds", "查账有效时限至少要是常规查账间隔的两倍。");
     return (await result(api.updateCollectionPolicy({ body: {
       revision, timeout_milliseconds: integer("timeout_milliseconds"), scan_interval_seconds: normal,
       active_scan_interval_seconds: active, minimum_scan_interval_seconds: minimum,

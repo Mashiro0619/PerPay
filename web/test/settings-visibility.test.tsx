@@ -14,7 +14,7 @@ const sections = [
     section: "provider",
     fields: ["应用 ID（App ID）", "支付宝公钥", "支付宝环境"],
   },
-  { section: "collection-policy", fields: ["请求超时（秒）", "常规采集间隔（秒）", "活跃采集间隔（秒）", "采集最小间隔（秒）", "安全延迟（秒）", "采集有效时限（秒）"] },
+  { section: "collection-policy", fields: ["请求超时（秒）", "常规查账间隔（秒）", "活跃查账间隔（秒）", "查账最小间隔（秒）", "查账延迟（秒）", "查账有效时限（秒）"] },
   { section: "collection", fields: ["支付宝经营码内容"] },
   {
     section: "notifications",
@@ -78,7 +78,7 @@ describe.each([false, true])("directly visible settings (guided: %s)", (guided) 
     if (!guided && section === "provider") {
       expect(screen.getAllByText("支付宝接入", { exact: true })).toHaveLength(1);
       expect(screen.getByRole("group", { name: "开放平台应用" })).toBeVisible();
-      expect(screen.queryByLabelText("常规采集间隔（秒）")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("常规查账间隔（秒）")).not.toBeInTheDocument();
     }
     if (guided) expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
     else expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
@@ -174,7 +174,7 @@ describe("exact duration drafts", () => {
     fetchMock.mockClear();
     await user.click(screen.getByRole("button", { name: "采用推荐值" }));
     expect(screen.getByLabelText("请求超时（秒）")).toHaveValue(8);
-    expect(screen.getByLabelText("常规采集间隔（秒）")).toHaveValue(60);
+    expect(screen.getByLabelText("常规查账间隔（秒）")).toHaveValue(60);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
   });

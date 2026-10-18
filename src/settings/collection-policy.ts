@@ -18,10 +18,10 @@ export function validateCollectionPolicy(input: {
   maximum_success_age_seconds: number;
 }, context: z.RefinementCtx): void {
   const active = input.active_scan_interval_seconds ?? input.scan_interval_seconds;
-  if (active > input.scan_interval_seconds) context.addIssue({ code: "custom", path: ["active_scan_interval_seconds"], message: "must not exceed the normal scan interval" });
-  if (input.minimum_scan_interval_seconds !== undefined && input.minimum_scan_interval_seconds > active) context.addIssue({ code: "custom", path: ["minimum_scan_interval_seconds"], message: "最小采集间隔不能大于活跃采集间隔，请明确调整最小间隔。" });
-  if (input.maximum_success_age_seconds < input.scan_interval_seconds * 2) context.addIssue({ code: "custom", path: ["maximum_success_age_seconds"], message: "must be at least twice the scan interval" });
-  if (input.safety_lag_seconds > input.maximum_success_age_seconds) context.addIssue({ code: "custom", path: ["safety_lag_seconds"], message: "must not exceed the maximum success age" });
+  if (active > input.scan_interval_seconds) context.addIssue({ code: "custom", path: ["active_scan_interval_seconds"], message: "活跃查账间隔不能大于常规查账间隔。" });
+  if (input.minimum_scan_interval_seconds !== undefined && input.minimum_scan_interval_seconds > active) context.addIssue({ code: "custom", path: ["minimum_scan_interval_seconds"], message: "最小查账间隔不能大于活跃查账间隔。" });
+  if (input.maximum_success_age_seconds < input.scan_interval_seconds * 2) context.addIssue({ code: "custom", path: ["maximum_success_age_seconds"], message: "查账有效时限至少要是常规查账间隔的两倍。" });
+  if (input.safety_lag_seconds > input.maximum_success_age_seconds) context.addIssue({ code: "custom", path: ["safety_lag_seconds"], message: "查账延迟不能超过查账有效时限。" });
 }
 
 export const collectionPolicyInputSchema = z.object({

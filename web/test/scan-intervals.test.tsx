@@ -27,17 +27,17 @@ function renderEditor(settings: RuntimeSettings, onSaved = vi.fn(), guided = fal
 describe("adaptive ledger scan settings", () => {
   it("defaults new provider setup to 60s normal, 8s active and 120s freshness", () => {
     renderEditor(configuredThrough(1));
-    const normal = screen.getByLabelText("常规采集间隔（秒）");
-    const active = screen.getByLabelText("活跃采集间隔（秒）");
+    const normal = screen.getByLabelText("常规查账间隔（秒）");
+    const active = screen.getByLabelText("活跃查账间隔（秒）");
     expect(normal).toHaveValue(60);
     expect(active).toHaveValue(8);
-    expect(screen.getByLabelText("采集最小间隔（秒）")).toHaveValue(8);
-    expect(screen.getByLabelText("采集有效时限（秒）")).toHaveValue(120);
+    expect(screen.getByLabelText("查账最小间隔（秒）")).toHaveValue(8);
+    expect(screen.getByLabelText("查账有效时限（秒）")).toHaveValue(120);
     expect(active).toHaveAttribute("min", "5");
     expect(active).toHaveAttribute("max", "3600");
     expect(active).toHaveAttribute("step", "1");
     expect(active).toHaveAccessibleDescription(
-      /待支付及收尾时使用，不得大于常规间隔/,
+      /有待付款订单时，隔多久查一次账；不能大于常规间隔/,
     );
     expect(screen.queryByLabelText(/收尾.*秒/)).not.toBeInTheDocument();
     fireEvent.change(active, { target: { value: "4" } });
@@ -54,9 +54,9 @@ describe("adaptive ledger scan settings", () => {
     expect(screen.queryByLabelText("应用 ID（App ID）")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("支付宝公钥")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "高级设置" })).not.toBeInTheDocument();
-    expect(screen.getByLabelText("常规采集间隔（秒）")).toBeVisible();
-    expect(screen.getByLabelText("活跃采集间隔（秒）")).toBeVisible();
-    expect(screen.getByLabelText("采集有效时限（秒）")).toBeVisible();
+    expect(screen.getByLabelText("常规查账间隔（秒）")).toBeVisible();
+    expect(screen.getByLabelText("活跃查账间隔（秒）")).toBeVisible();
+    expect(screen.getByLabelText("查账有效时限（秒）")).toBeVisible();
     await userEvent.setup().click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -71,9 +71,9 @@ describe("adaptive ledger scan settings", () => {
 
   it("preserves the migrated fixed frequency instead of silently adopting new defaults", () => {
     renderEditor(configuredThrough(2));
-    expect(screen.getByLabelText("常规采集间隔（秒）")).toHaveValue(10);
-    expect(screen.getByLabelText("活跃采集间隔（秒）")).toHaveValue(10);
-    expect(screen.getByLabelText("采集有效时限（秒）")).toHaveValue(60);
+    expect(screen.getByLabelText("常规查账间隔（秒）")).toHaveValue(10);
+    expect(screen.getByLabelText("活跃查账间隔（秒）")).toHaveValue(10);
+    expect(screen.getByLabelText("查账有效时限（秒）")).toHaveValue(60);
   });
 
   it("submits both custom intervals and keeps the existing configuration revision", async () => {
@@ -92,13 +92,13 @@ describe("adaptive ledger scan settings", () => {
     vi.stubGlobal("fetch", fetchMock);
     const onSaved = vi.fn();
     renderEditor(settings, onSaved);
-    fireEvent.change(screen.getByLabelText("常规采集间隔（秒）"), {
+    fireEvent.change(screen.getByLabelText("常规查账间隔（秒）"), {
       target: { value: "30" },
     });
-    fireEvent.change(screen.getByLabelText("活跃采集间隔（秒）"), {
+    fireEvent.change(screen.getByLabelText("活跃查账间隔（秒）"), {
       target: { value: "5" },
     });
-    fireEvent.change(screen.getByLabelText("采集最小间隔（秒）"), {target:{value:"5"}});
+    fireEvent.change(screen.getByLabelText("查账最小间隔（秒）"), {target:{value:"5"}});
     await userEvent.setup().click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -121,7 +121,7 @@ describe("adaptive ledger scan settings", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     renderEditor(configuredThrough(2));
-    const active = screen.getByLabelText("活跃采集间隔（秒）");
+    const active = screen.getByLabelText("活跃查账间隔（秒）");
     const originalFocus = active.focus.bind(active);
     const focusWhileDisabled: boolean[] = [];
     vi.spyOn(active, "focus").mockImplementation((options) => {
@@ -132,7 +132,7 @@ describe("adaptive ledger scan settings", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(active).toHaveFocus());
     expect(active).toHaveAccessibleDescription(
-      /活跃采集间隔不能大于常规采集间隔/,
+      /活跃查账间隔不能大于常规查账间隔/,
     );
     expect(active).toHaveValue(30);
     expect(active).toBeEnabled();
@@ -145,17 +145,17 @@ describe("adaptive ledger scan settings", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     renderEditor(configuredThrough(2));
-    fireEvent.change(screen.getByLabelText("常规采集间隔（秒）"), {
+    fireEvent.change(screen.getByLabelText("常规查账间隔（秒）"), {
       target: { value: "60" },
     });
-    fireEvent.change(screen.getByLabelText("活跃采集间隔（秒）"), {
+    fireEvent.change(screen.getByLabelText("活跃查账间隔（秒）"), {
       target: { value: "5" },
     });
-    fireEvent.change(screen.getByLabelText("采集最小间隔（秒）"), {target:{value:"5"}});
+    fireEvent.change(screen.getByLabelText("查账最小间隔（秒）"), {target:{value:"5"}});
     await userEvent.setup().click(screen.getByRole("button", { name: "保存" }));
-    const freshness = screen.getByLabelText("采集有效时限（秒）");
+    const freshness = screen.getByLabelText("查账有效时限（秒）");
     await waitFor(() => expect(freshness).toHaveFocus());
-    expect(freshness).toHaveAccessibleDescription(/至少为常规采集间隔的两倍/);
+    expect(freshness).toHaveAccessibleDescription(/至少要是常规查账间隔的两倍/);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

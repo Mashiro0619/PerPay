@@ -215,7 +215,7 @@ describe("non-blocking pending application keys", () => {
         return status;
       },
     });
-    await screen.findByText("等待成功采集");
+    await screen.findByText("等待成功查账");
     expect(screen.getByText("新应用公钥尚未启用")).toBeVisible();
     expect(
       screen.queryByRole("link", { name: "进入控制台" }),

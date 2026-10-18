@@ -861,7 +861,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   app.get("/api/admin/v1/settings/collection-policy", adminSession, context => context.json({ data: requireSettingsService(dependencies).collectionPolicy() }));
   app.put("/api/admin/v1/settings/collection-policy", adminSession, financialWrite, async context => {
     const body = await readJson(context, collectionPolicyInputSchema, MAX_JSON_BODY_BYTES);
-    if (dependencies.demoMode) throw new HttpApiError(403, "demo_read_only", "只读演示不允许修改采集设置。");
+    if (dependencies.demoMode) throw new HttpApiError(403, "demo_read_only", "只读演示不允许修改查账设置。");
     requireCurrentSession(context, dependencies.identity);
     const data = await settingsOperation(() => requireSettingsService(dependencies).saveCollectionPolicy(body, settingsAuditContext(context, dependencies)));
     return context.json({ data: data });
@@ -1581,7 +1581,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
 
   app.post("/api/public/v1/checkouts/:token/check", async (context) => {
     requireSameOrigin(context, dependencies.config.publicOrigin);
-    if (dependencies.demoMode) throw new HttpApiError(403, "origin_not_allowed", "只读演示不能发起支付宝采集");
+    if (dependencies.demoMode) throw new HttpApiError(403, "origin_not_allowed", "只读演示不能发起支付宝查账");
     if (!manualCheckoutBudget.take(remoteAddress(context, dependencies.config.trustedProxy))) {
       throw new HttpApiError(429, "public_checkout_rate_limited", "手动核实过于频繁，请稍后重试", 5);
     }
@@ -2074,11 +2074,11 @@ function parseJsonBytes<T>(bytes: Uint8Array, schema: z.ZodType<T>): T {
     }
     if ((schema as z.ZodType) === providerSettingsInputSchema || (schema as z.ZodType) === collectionPolicyInputSchema) {
       const timingHints = {
-        scan_interval_seconds: "常规采集间隔须为 5～3600 秒的整数。",
-        active_scan_interval_seconds: "活跃采集间隔须为 5～3600 秒的整数，且不能大于常规采集间隔。",
-        minimum_scan_interval_seconds: "最小采集间隔须为 5～3600 秒且不能大于活跃采集间隔。",
-        safety_lag_seconds: "安全延迟须为 5～300 秒的整数，且不能超过采集有效时限。",
-        maximum_success_age_seconds: "采集有效时限须为 10～86400 秒的整数，且至少为常规采集间隔的两倍。",
+        scan_interval_seconds: "常规查账间隔须为 5～3600 秒的整数。",
+        active_scan_interval_seconds: "活跃查账间隔须为 5～3600 秒的整数，且不能大于常规查账间隔。",
+        minimum_scan_interval_seconds: "最小查账间隔须为 5～3600 秒且不能大于活跃查账间隔。",
+        safety_lag_seconds: "查账延迟须为 5～300 秒的整数，且不能超过查账有效时限。",
+        maximum_success_age_seconds: "查账有效时限须为 10～86400 秒的整数，且至少要是常规查账间隔的两倍。",
       };
       for (const [field, hint] of Object.entries(timingHints)) {
         if (parsed.error.issues.some((issue) => issue.path[0] === field)) throw new SettingsFieldError(field, hint);
@@ -2562,7 +2562,7 @@ function requirePaymentBackgroundReady(dependencies: AppDependencies): void {
     throw new HttpApiError(
       503,
       "reconciliation_not_ready",
-      "账务采集和自动确认尚未就绪",
+      "查账和自动确认尚未就绪",
       retryAfterSeconds,
     );
   }

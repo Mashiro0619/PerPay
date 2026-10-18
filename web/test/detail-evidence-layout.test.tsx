@@ -200,10 +200,10 @@ describe("always-visible detail evidence", () => {
         }),
       ).toBeVisible();
       expect(within(amount).getByText("异常")).toBeVisible();
-      expect(screen.getByRole("heading", { name: "采集摘要" })).toBeVisible();
+      expect(screen.getByRole("heading", { name: "查账摘要" })).toBeVisible();
       expect(screen.getByText("已通过")).toBeVisible();
       expect(
-        screen.queryByRole("button", { name: "采集信息" }),
+        screen.queryByRole("button", { name: "查账信息" }),
       ).not.toBeInTheDocument();
       expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     },

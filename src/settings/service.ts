@@ -497,7 +497,7 @@ export class RuntimeSettingsService {
           throw new SettingsFieldError(!privateKeyPem ? "private_key" : "platform_public_key", !privateKeyPem ? "请先生成或导入应用私钥。" : "切换应用后需要重新填写支付宝公钥。", "both provider keys are required for a new collection application");
         }
         const minimumInterval = parsed.minimum_scan_interval_seconds ?? (current.provider ? (current.provider.minimumScanIntervalMilliseconds ?? current.provider.activeScanIntervalMilliseconds) / 1000 : (parsed.active_scan_interval_seconds ?? parsed.scan_interval_seconds));
-        if (minimumInterval > (parsed.active_scan_interval_seconds ?? parsed.scan_interval_seconds)) throw new SettingsFieldError("minimum_scan_interval_seconds", "最小采集间隔不能大于活跃采集间隔，请明确调整最小间隔。");
+        if (minimumInterval > (parsed.active_scan_interval_seconds ?? parsed.scan_interval_seconds)) throw new SettingsFieldError("minimum_scan_interval_seconds", "最小查账间隔不能大于活跃查账间隔。");
         const provider = parseProviderKeys({
           environment: parsed.environment,
           appId: parsed.app_id,

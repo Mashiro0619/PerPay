@@ -100,7 +100,7 @@ export default function Settings() {
         </Link>
         <RefreshButton disabled={settings.isFetching} onClick={refresh} busy={settings.isFetching} />
       </PageHeaderActions>
-      <PageHeading title="实例设置" description="分别管理开放平台应用、经营收款码、PerPay 采集策略和实例显示。" />
+      <PageHeading title="实例设置" description="分别管理开放平台应用、经营收款码、PerPay 查账策略和实例显示。" />
       <QueryView query={settings}>
         {({ data }) => {
           if (data.site_mode && requestedSection === "notifications") return <Alert><AlertTitle>通知设置已迁移</AlertTitle><AlertDescription>每个网站分别配置通知来源、签名密钥和投递策略。<Link to="/sites">前往业务网站</Link></AlertDescription></Alert>;

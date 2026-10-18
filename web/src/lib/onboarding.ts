@@ -123,7 +123,7 @@ export function onboardingRuntimeWarnings(data: SystemStatus): string[] {
   if (!health.runtimeWarning) return [];
   const warnings: string[] = [];
   for (const [name, worker, healthy] of [
-    ["账本采集", data.ledger, health.ledgerHealthy],
+    ["查账", data.ledger, health.ledgerHealthy],
     ["自动确认", data.reconciliation, health.reconciliationHealthy],
     ["业务通知", data.webhook, health.webhookHealthy],
   ] as const) {

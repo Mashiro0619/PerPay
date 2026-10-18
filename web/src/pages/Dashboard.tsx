@@ -74,7 +74,7 @@ function DashboardContent() {
     : !state.database.ok
       ? "数据库暂不可用"
       : !state.ledger.collection_ready
-        ? "账本采集尚未就绪，请检查支付宝接入"
+        ? "查账尚未就绪，请检查支付宝接入"
         : !state.reconciliation.confirmation_ready
           ? "自动确认尚未就绪，请检查对账状态"
           : "服务尚未就绪";

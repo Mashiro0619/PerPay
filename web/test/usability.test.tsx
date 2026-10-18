@@ -222,7 +222,7 @@ describe("short feedback and safe settings", () => {
     expect(screen.queryByRole("region", { name: "待处理事项" })).not.toBeInTheDocument();
     expect(screen.queryByText("有业务事项待处理")).not.toBeInTheDocument();
     for (const [title, explanation] of [
-      ["账本采集", "采集支付宝账本，为收款核对提供依据。"],
+      ["查账", "查账支付宝账本，为收款核对提供依据。"],
       ["自动确认", "核对账本与订单，并确认符合条件的收款。"],
       ["业务通知", "将收款结果发送到对应的业务网站。"],
       ["数据库", "订单、账本与运行记录保存在当前实例。"],
@@ -312,12 +312,12 @@ describe("short feedback and safe settings", () => {
   it("preserves a settings draft across brightness changes without issuing a write", async () => {
     const control = theme();
     const view = mountOnboarding({ stage: 4, path: "/settings/collection-policy" });
-    const field = await screen.findByLabelText("采集有效时限（秒）");
+    const field = await screen.findByLabelText("查账有效时限（秒）");
     fireEvent.change(field, { target: { value: "450" } });
     act(() => {
       control.setPreference("dark");
     });
-    expect(screen.getByLabelText("采集有效时限（秒）")).toBe(field);
+    expect(screen.getByLabelText("查账有效时限（秒）")).toBe(field);
     expect(field).toHaveValue(450);
     expect(screen.getByText("未保存")).toBeVisible();
     expect(view.writes()).toHaveLength(0);
@@ -335,12 +335,12 @@ describe("short feedback and safe settings", () => {
             })
           : undefined,
     });
-    await screen.findByLabelText("采集有效时限（秒）");
+    await screen.findByLabelText("查账有效时限（秒）");
     loading = true;
     await userEvent.setup().click(screen.getByRole("button", { name: "刷新" }));
     expect(
       screen
-        .getByLabelText("采集有效时限（秒）")
+        .getByLabelText("查账有效时限（秒）")
         .closest("[data-settings-content]"),
     ).toHaveAttribute("inert");
     await act(async () => {
@@ -354,11 +354,11 @@ describe("short feedback and safe settings", () => {
     await waitFor(() =>
       expect(
         screen
-          .getByLabelText("采集有效时限（秒）")
+          .getByLabelText("查账有效时限（秒）")
           .closest("[data-settings-content]"),
       ).not.toHaveAttribute("inert"),
     );
-    const field = screen.getByLabelText("采集有效时限（秒）");
+    const field = screen.getByLabelText("查账有效时限（秒）");
     fireEvent.change(field, { target: { value: "450" } });
     expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
     fireEvent.change(field, { target: { value: String(configuredThrough(4).collection_policy!.maximum_success_age_seconds) } });
@@ -455,7 +455,7 @@ describe("short feedback and safe settings", () => {
     expect(screen.queryByText("有业务事项待处理")).not.toBeInTheDocument();
     expect(screen.queryByText("有运行告警")).not.toBeInTheDocument();
     expect(screen.queryByText("收款已暂停")).not.toBeInTheDocument();
-    for (const name of ["账本采集", "自动确认", "业务通知"]) {
+    for (const name of ["查账", "自动确认", "业务通知"]) {
       const row = within(runtime.getByRole("rowheader", { name }).closest("tr")!);
       expect(row.getByRole("cell", { name: "正常" })).toBeVisible();
       expect(row.queryByRole("cell", { name: "需关注" })).not.toBeInTheDocument();

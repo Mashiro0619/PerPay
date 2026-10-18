@@ -659,7 +659,7 @@ function ApplicationKeyChange({
                 {fields}
               </FieldGroup>
               <p className="text-sm text-muted-foreground">
-                本次只更新上述应用的密钥，保留当前账本采集参数。
+                本次只更新上述应用的密钥，保留当前查账参数。
               </p>
               {feedback}
             </CardContent>

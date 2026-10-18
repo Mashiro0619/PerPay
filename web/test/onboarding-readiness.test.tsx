@@ -189,7 +189,7 @@ describe("onboarding payment readiness", () => {
     },
   );
   it.each([
-    ["ledger", "账本采集"],
+    ["ledger", "查账"],
     ["reconciliation", "自动确认"],
     ["webhook", "业务通知"],
   ] as const)(
@@ -212,9 +212,9 @@ describe("onboarding payment readiness", () => {
     },
   );
   it.each([
-    ["catching_up", "账本采集正在补处理历史数据。"],
-    ["stopped", "账本采集任务已停止，请检查运行状态。"],
-    ["degraded", "账本采集任务尚未恢复正常，请检查运行状态。"],
+    ["catching_up", "查账正在补处理历史数据。"],
+    ["stopped", "查账任务已停止，请检查运行状态。"],
+    ["degraded", "查账任务尚未恢复正常，请检查运行状态。"],
   ] as const)(
     "names a %s worker state rather than an unspecified outstanding task",
     async (state, message) => {

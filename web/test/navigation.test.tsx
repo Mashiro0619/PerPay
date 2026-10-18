@@ -127,7 +127,7 @@ function mount(
 
 async function edit() {
   const user = userEvent.setup();
-  const field = await screen.findByLabelText("采集有效时限（秒）");
+  const field = await screen.findByLabelText("查账有效时限（秒）");
   await user.clear(field);
   await user.type(field, "450");
   return { user, field };
@@ -256,10 +256,10 @@ describe("navigation and draft protection", () => {
       screen.queryByRole("combobox", { name: "设置分类" }),
     ).not.toBeInTheDocument();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "采集设置" }));
-    await screen.findByLabelText("采集有效时限（秒）");
+    await user.click(screen.getByRole("tab", { name: "查账设置" }));
+    await screen.findByLabelText("查账有效时限（秒）");
     expect(view.router.state.location.pathname).toBe("/settings/collection-policy");
-    expect(screen.getByRole("tab", { name: "采集设置" })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: "查账设置" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
@@ -283,7 +283,7 @@ describe("navigation and draft protection", () => {
     await user.click(screen.getByRole("button", { name: "继续编辑" }));
     expect(view.router.state.location.pathname).toBe("/settings/collection-policy");
     expect(field).toHaveValue(450);
-    expect(screen.getByRole("tab", { name: "采集设置" })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: "查账设置" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
@@ -296,7 +296,7 @@ describe("navigation and draft protection", () => {
   it("moves tab focus with arrows without discarding drafts until Enter activates", async () => {
     const view = mount({ mobile: true });
     const { user, field } = await edit();
-    const selected = screen.getByRole("tab", { name: "采集设置" });
+    const selected = screen.getByRole("tab", { name: "查账设置" });
     selected.focus();
     await user.keyboard("{ArrowRight}");
     const notifications = screen.getByRole("tab", { name: "业务通知" });
@@ -326,7 +326,7 @@ describe("navigation and draft protection", () => {
   });
   it("uses the official account menu without duplicate branding or palette controls", async () => {
     const { container, fetchMock } = mount();
-    await screen.findByLabelText("采集有效时限（秒）");
+    await screen.findByLabelText("查账有效时限（秒）");
     const user = userEvent.setup();
     expect(screen.getByRole("link", { name: "PerPay" })).toBeVisible();
     expect(
@@ -560,7 +560,7 @@ describe("navigation and draft protection", () => {
     await user.click(screen.getByRole("button", { name: "刷新" }));
     await user.click(screen.getByRole("button", { name: "放弃修改并继续" }));
     await waitFor(() =>
-      expect(screen.getByLabelText("采集有效时限（秒）")).toHaveValue(300),
+      expect(screen.getByLabelText("查账有效时限（秒）")).toHaveValue(300),
     );
     expect(unloadIsBlocked()).toBe(false);
   });
@@ -588,7 +588,7 @@ describe("navigation and draft protection", () => {
 
   it("uses the official mobile sidebar and restores its trigger on Escape", async () => {
     mount({ mobile: true });
-    await screen.findByLabelText("采集有效时限（秒）");
+    await screen.findByLabelText("查账有效时限（秒）");
     const user = userEvent.setup();
     const trigger = screen.getByRole("button", { name: "切换导航" });
     await user.click(trigger);
@@ -636,7 +636,7 @@ describe("page actions in the shared header", () => {
     "places settings actions before appearance without duplicates (mobile: %s)",
     async (mobile) => {
       const { container, router } = mount({ mobile, configured: true });
-      await screen.findByLabelText("采集有效时限（秒）");
+      await screen.findByLabelText("查账有效时限（秒）");
       const header = container.querySelector("header")!;
       const wizard = within(header).getByRole("link", { name: "配置向导" });
       const refresh = within(header).getByRole("button", { name: "刷新" });
@@ -768,7 +768,7 @@ describe("shared content width navigation", () => {
     expect(control.compareDocumentPosition(appearance) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await user.click(control);
     expect(container.querySelector("[data-content-width]")).toHaveAttribute("data-content-width", "full");
-    expect(screen.getByLabelText("采集有效时限（秒）")).toBe(field);
+    expect(screen.getByLabelText("查账有效时限（秒）")).toBe(field);
     expect(field).toHaveValue(450);
     expect(unloadIsBlocked()).toBe(true);
     expect(router.state.location).toBe(location);

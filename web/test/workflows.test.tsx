@@ -328,7 +328,7 @@ describe("concise settings copy", () => {
       </Routes>,
       "/settings/collection-policy",
     );
-    const field = await screen.findByLabelText("采集有效时限（秒）");
+    const field = await screen.findByLabelText("查账有效时限（秒）");
     const user = userEvent.setup();
     expect(screen.queryByText("未保存")).not.toBeInTheDocument();
     await user.clear(field);
@@ -444,7 +444,7 @@ describe("state-changing workflows", () => {
       </Routes>,
       "/settings/collection-policy",
     );
-    const ttl = await screen.findByLabelText("采集有效时限（秒）");
+    const ttl = await screen.findByLabelText("查账有效时限（秒）");
     await user.clear(ttl);
     await user.type(ttl, "450");
     await user.click(screen.getByRole("button", { name: "保存" }));

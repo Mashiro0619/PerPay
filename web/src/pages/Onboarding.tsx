@@ -234,7 +234,7 @@ function OnboardingFlow({
               <AlertTitle>新应用公钥尚未启用</AlertTitle>
               <AlertDescription className="min-w-0">
                 {systemName}{" "}
-                当前仍使用原密钥，其他配置可以继续修改。若已在支付宝上传新公钥，请尽快完成验证启用，避免影响账本采集。
+                当前仍使用原密钥，其他配置可以继续修改。若已在支付宝上传新公钥，请尽快完成验证启用，避免影响查账。
               </AlertDescription>
               <div className="col-start-2 flex flex-wrap gap-2 pt-2">
                 <Link
@@ -360,7 +360,7 @@ function OnboardingFlow({
                   ) : (
                     <p>
                       将同一应用的 App ID
-                      和支付宝公钥填入表单。生产收款使用生产环境；采集参数可保留当前值。
+                      和支付宝公钥填入表单。生产收款使用生产环境；查账参数可保留当前值。
                     </p>
                   )}
                   {(pendingApplicationKey?.public_key ||
@@ -441,7 +441,7 @@ function OnboardingFlow({
                     金额尾差用于区分订单。付款人需要按收银台显示的应付金额付款。
                   </p>
                   <p>
-                    订单有效期、尾差和金额冷却在各业务网站中配置；采集间隔和安全延迟在采集设置中配置。
+                    订单有效期、尾差和金额冷却在各业务网站中配置；查账间隔和查账延迟在查账设置中配置。
                   </p>
                 </OnboardingHelp>
               }
@@ -593,7 +593,7 @@ function OptionalSettings({
         className="grid min-w-0 items-start gap-5 @3xl/onboarding:grid-cols-2"
         data-onboarding-optional
       >
-        {settings.site_mode ? <section className="flex flex-col gap-3"><h3 className="font-medium">业务网站</h3><p>创建自有业务网站，为它配置独立的订单策略、展示、API 与通知密钥。实例共用经营码与采集对账，不需要为测试收款先签发 API 密钥。</p><div className="flex flex-wrap gap-2"><Link to="/sites/new" className={buttonVariants()}>创建业务网站</Link><Link to="/sites" className={buttonVariants({ variant: "outline" })}>管理业务网站</Link></div></section> : <>
+        {settings.site_mode ? <section className="flex flex-col gap-3"><h3 className="font-medium">业务网站</h3><p>创建自有业务网站，为它配置独立的订单策略、展示、API 与通知密钥。实例共用经营码与查账对账，不需要为测试收款先签发 API 密钥。</p><div className="flex flex-wrap gap-2"><Link to="/sites/new" className={buttonVariants()}>创建业务网站</Link><Link to="/sites" className={buttonVariants({ variant: "outline" })}>管理业务网站</Link></div></section> : <>
         <section
           className="flex min-w-0 flex-col gap-3"
           aria-labelledby="onboarding-notifications-title"
@@ -740,8 +740,8 @@ export function ReadinessCheck({
       error: null,
     },
     {
-      title: "账本采集",
-      status: health(status?.ledger.collection_ready, "等待成功采集"),
+      title: "查账",
+      status: health(status?.ledger.collection_ready, "等待成功查账"),
       action:
         fresh && matches && !status?.ledger.collection_ready ? (
           <Link

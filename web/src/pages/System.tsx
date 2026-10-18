@@ -106,7 +106,7 @@ function SystemSnapshot({
     : !data.database.ok
       ? "数据库不可用，请检查服务器。"
       : !data.ledger.collection_ready
-        ? "账本采集尚未就绪，新订单收款入口已暂停。"
+        ? "查账尚未就绪，新订单收款入口已暂停。"
         : !data.reconciliation.confirmation_ready
           ? "自动确认尚未就绪，请检查确认任务。"
           : "服务尚未就绪，请检查运行环节。";
@@ -199,11 +199,11 @@ function SystemSnapshot({
         <TableBody role="rowgroup">
           <RuntimeService
             onDiagnose={openDiagnostics}
-            title="账本采集"
+            title="查账"
             enabled={data.ledger.enabled}
             healthy={state.ledgerHealthy}
             lastSuccess={data.ledger.last_success_at}
-            metric={data.ledger.in_flight ? "正在采集" : undefined}
+            metric={data.ledger.in_flight ? "正在查账" : undefined}
             action={
               (!data.ledger.collection_ready ||
                 data.ledger.consecutive_failures > 0) && (
@@ -217,7 +217,7 @@ function SystemSnapshot({
             }
           >
             {!data.ledger.collection_ready && (
-              <p>采集尚未就绪或已中断，新订单收款入口暂不可用。</p>
+              <p>查账尚未就绪或已中断，新订单收款入口暂不可用。</p>
             )}
             {data.ledger.last_error_code &&
               data.ledger.diagnostics?.latest_failure?.error_code !==
@@ -375,7 +375,7 @@ function SystemSnapshot({
         data={data}
         identifiers={[
           ["实例编号", data.instance_id],
-          ["采集来源标识", data.provider_account_key],
+          ["查账来源标识", data.provider_account_key],
           ["备份文件", data.backup.backup_name],
           ["备份 SHA-256", data.backup.backup_sha256],
         ]}

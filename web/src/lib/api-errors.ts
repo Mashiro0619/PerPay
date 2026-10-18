@@ -30,7 +30,7 @@ const messages: Record<string, string> = {
   secret_not_found: "此密钥尚未配置，请先完成对应设置。",
   system_not_configured: "实例配置尚未完成，请前往实例设置。",
   system_not_ready: "实例暂时不能接受新收款，请查看运行状态。",
-  reconciliation_not_ready: "采集或对账尚未就绪，请等待一次成功运行后重试。",
+  reconciliation_not_ready: "查账或对账尚未就绪，请等待一次成功运行后重试。",
   reconciliation_unavailable: "对账服务暂时不可用，请查看运行状态。",
   ledger_unavailable: "账本暂时不可用，请查看运行状态。",
   amount_slots_exhausted: "暂时没有可用的应付金额，请稍后重试或调整金额。",
