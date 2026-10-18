@@ -237,7 +237,7 @@ describe("overview work item context", () => {
 
   it("uses the empty state without implying a successful payment or notification", () => {
     mount([]);
-    expect(screen.getByText("暂无待办")).toBeVisible();
+    expect(screen.getByText("暂无待处理提醒")).toBeVisible();
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
     expect(screen.queryByText(/收款已确认|全部已确认|¥/)).not.toBeInTheDocument();
   });

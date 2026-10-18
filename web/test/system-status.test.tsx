@@ -57,7 +57,7 @@ describe("shared runtime presentation", () => {
       ledgerHealthy: true,
       reconciliationHealthy: true,
       webhookHealthy: true,
-      notice: "有待处理事项",
+      notice: "有待处理提醒",
     });
   });
   it.each(["ledger", "reconciliation", "webhook"] as const)(
@@ -93,7 +93,7 @@ describe("shared runtime presentation", () => {
   it("includes actionable retry and older-account reminders even when current raw totals are zero", () => {
     const data = ready();
     data.work_items = { total: 2, financial_exceptions: 1, ledger_conflicts: 0, notification_failures: 1 };
-    expect(presentSystemStatus(data)).toMatchObject({ businessPending: true, runtimeWarning: false, notice: "有待处理事项" });
+    expect(presentSystemStatus(data)).toMatchObject({ businessPending: true, runtimeWarning: false, notice: "有待处理提醒" });
   });
   it.each(["ledger", "reconciliation", "webhook"] as const)("does not hide an actual %s failure after all reminders are ignored", kind => {
     const data = ready();
@@ -113,9 +113,9 @@ describe("shared runtime presentation", () => {
     mountOnboarding({ stage: 4, path: "/system", status: () => data });
     await screen.findByRole("table", { name: "运行环节" });
     expect(screen.getByText(/提醒统计暂不可用/)).toBeVisible();
-    expect(screen.queryByText(/暂无待处理事项|业务待办已处理完毕/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/暂无待处理提醒|业务待处理已处理完毕/)).not.toBeInTheDocument();
     expect(within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: "运行状态" })).toHaveAccessibleDescription("需关注");
-    expect(screen.queryByText("有业务事项待处理")).not.toBeInTheDocument();
+    expect(screen.queryByText("有业务提醒待处理")).not.toBeInTheDocument();
   });
 
   it("keeps unknown degraded causes and backup recovery visible, but adds no normal decoration", () => {
@@ -260,19 +260,19 @@ describe("shared runtime presentation", () => {
     const user = userEvent.setup();
     await screen.findByRole("link", { name: "收入尚未匹配订单" });
     await waitFor(() => expect(within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: "运行状态" })).toHaveAccessibleDescription("待处理"));
-    await user.click(screen.getByRole("button", { name: "忽略当前筛选结果" }));
-    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "确认忽略当前筛选结果" }));
+    await user.click(screen.getByRole("button", { name: "忽略全部筛选结果（跨页）" }));
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "确认忽略" }));
     await screen.findByText("暂无待处理提醒");
     await waitFor(() => expect(document.querySelector("[data-runtime-notice]")).toBeNull());
     await user.click(within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: "运行状态" }));
     const runtime = within(await screen.findByRole("table", { name: "运行环节" }));
-    expect(screen.queryByText("有业务事项待处理")).not.toBeInTheDocument();
+    expect(screen.queryByText("有业务提醒待处理")).not.toBeInTheDocument();
     expect(screen.queryByText("有运行告警")).not.toBeInTheDocument();
     const reconciliation = within(runtime.getByRole("rowheader", { name: "自动确认" }).closest("tr")!);
     expect(reconciliation.getByRole("cell", { name: "正常" })).toBeVisible();
     expect(reconciliation.queryByText("待核对订单 0")).not.toBeInTheDocument();
     expect(reconciliation.queryByRole("button", { name: "查看自动确认详情" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("link", { name: "待办" }));
+    await user.click(screen.getByRole("link", { name: "待处理" }));
     await user.click(screen.getByRole("button", { name: "已忽略" }));
     await screen.findByRole("link", { name: "收入尚未匹配订单" });
     await user.click(screen.getByRole("button", { name: "恢复提醒" }));
@@ -282,7 +282,7 @@ describe("shared runtime presentation", () => {
     expect(within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: "运行状态" })).toHaveAccessibleDescription("待处理");
     const restoredReconciliation = within(restoredRuntime.getByRole("rowheader", { name: "自动确认" }).closest("tr")!);
     expect(restoredReconciliation.getByRole("cell", { name: "正常" })).toBeVisible();
-    expect(screen.queryByText("有业务事项待处理")).not.toBeInTheDocument();
+    expect(screen.queryByText("有业务提醒待处理")).not.toBeInTheDocument();
     expect(screen.queryByText("有运行告警")).not.toBeInTheDocument();
     expect(data.reconciliation.exceptions!.open).toBe(1);
     expect(view.writes()).toHaveLength(2);

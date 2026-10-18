@@ -38,7 +38,7 @@ function OverviewProbe() {
     <>
       <output aria-label="网站范围">{clientId}</output>
       <output aria-label="通知汇总">{orders.data?.data[0]?.notification_summary?.status ?? "读取中"}</output>
-      <output aria-label="当前待办">{work.data?.data.length ?? "读取中"}</output>
+      <output aria-label="待处理">{work.data?.data.length ?? "读取中"}</output>
     </>
   );
 }
@@ -99,12 +99,12 @@ async function advance(milliseconds: number) {
 function expectPending() {
   expect(screen.getByLabelText("网站范围")).toHaveTextContent("site_a");
   expect(screen.getByLabelText("通知汇总")).toHaveTextContent("RETRY_WAIT");
-  expect(screen.getByLabelText("当前待办")).toHaveTextContent(/^2$/);
+  expect(screen.getByLabelText("待处理")).toHaveTextContent(/^2$/);
 }
 
 function expectAcknowledged() {
   expect(screen.getByLabelText("通知汇总")).toHaveTextContent("ACKNOWLEDGED");
-  expect(screen.getByLabelText("当前待办")).toHaveTextContent(/^0$/);
+  expect(screen.getByLabelText("待处理")).toHaveTextContent(/^0$/);
 }
 
 beforeEach(() => {

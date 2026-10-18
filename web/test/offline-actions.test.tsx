@@ -118,10 +118,10 @@ it("never queues bulk ignore offline and preserves its operation ID across expli
     return undefined;
   } });
   const user = userEvent.setup();
-  const trigger = await screen.findByRole("button", { name: "忽略当前筛选结果" });
+  const trigger = await screen.findByRole("button", { name: "忽略全部筛选结果（跨页）" });
   await waitFor(() => expect(trigger).toBeEnabled());
   await user.click(trigger);
-  const submit = within(screen.getByRole("alertdialog")).getByRole("button", { name: "确认忽略当前筛选结果" });
+  const submit = within(screen.getByRole("alertdialog")).getByRole("button", { name: "确认忽略" });
   await network(false);
   await user.click(submit);
   expect(await screen.findByText(/网络已断开，忽略操作未提交/)).toBeVisible();

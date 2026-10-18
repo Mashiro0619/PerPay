@@ -68,7 +68,7 @@ function SiteManagementCard({ site, label, range, maximum }: {
             <div><dt>确认笔数</dt><dd>{count(site.confirmed_count)}</dd></div>
             <div><dt>当前待付款</dt><dd>{count(site.pending_orders)}</dd></div>
             <div>
-              <dt>当前待办</dt>
+              <dt>待处理</dt>
               <dd>{site.work_items > 0 ? <Badge variant="warning">{count(site.work_items)}</Badge> : "0"}</dd>
             </div>
           </dl>
@@ -135,7 +135,7 @@ export function SiteManagementCards() {
             <PopoverContent align="start" className="flex flex-col gap-2">
               <p>实收与确认笔数按北京时间内的付款确认时间统计，不扣除退款或费用；今天尚未结束。</p>
               {latest && <p>统计区间：<time dateTime={latest.period.from}>{latest.period.from}</time> 至 <time dateTime={latest.period.to}>{latest.period.to}</time>。</p>}
-              <p>横条以全部网站中本期实收最高者为满格，包含暂停接单的网站，不受分页影响。待付款与待办为当前数量。</p>
+              <p>横条以全部网站中本期实收最高者为满格，包含暂停接单的网站，不受分页影响。待付款与待处理为当前数量。</p>
             </PopoverContent>
           </Popover>
         </div>

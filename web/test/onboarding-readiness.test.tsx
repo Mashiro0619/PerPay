@@ -120,7 +120,7 @@ describe("onboarding payment readiness", () => {
       "/system",
     );
     expect(
-      screen.queryByText("可以收款，仍有事项待处理。"),
+      screen.queryByText("可以收款，仍有提醒待处理。"),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "进入控制台" })).toBeVisible();
     expect(
@@ -263,7 +263,7 @@ describe("onboarding payment readiness", () => {
     mount(() => json({ data: status }));
     await screen.findByText("收款服务就绪");
     expect(
-      screen.getByText("待处理事项统计暂不可用，暂时无法确认业务待办数量。"),
+      screen.getByText("待处理提醒统计暂不可用，暂时无法确认业务待处理数量。"),
     ).toBeVisible();
     expect(screen.queryByText(/项业务待处理/)).not.toBeInTheDocument();
   });

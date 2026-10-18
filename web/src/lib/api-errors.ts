@@ -53,7 +53,7 @@ const messages: Record<string, string> = {
   operation_conflict: "操作编号与已执行请求不一致，请先核对已有处理结果。",
   admin_operation_conflict: "操作编号已用于其他内容，请刷新后重新发起操作。",
   work_item_not_found: "找不到提醒对应的记录，请刷新列表。",
-  work_item_ended: "事项已结束，无需恢复提醒。请刷新列表查看最新状态。",
+  work_item_ended: "提醒已结束，无需恢复提醒。请刷新列表查看最新状态。",
   refund_mark_version_conflict:
     "退款标记已在其他请求中修改。请关闭窗口并刷新订单后重试，当前修改未覆盖已有记录。",
   refund_mark_not_allowed: "只有存在实收金额的已确认或争议订单可以标记退款。",

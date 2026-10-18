@@ -9,7 +9,7 @@ test.describe("touch overview links", () => {
     for (const width of [320, 390]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(manifest.origin + "/admin/");
-      const list = page.getByRole("list", { name: "概览待办", exact: true });
+      const list = page.getByRole("list", { name: "概览待处理", exact: true });
       await expect(list.getByRole("link").first()).toBeVisible();
       const targets = await list.getByRole("link").evaluateAll(links => links.map(link => {
         const bounds = link.getBoundingClientRect();
@@ -38,7 +38,7 @@ test("missing order summaries keep their reference fields separated", async ({ p
     await route.fulfill({ json: { ...body, data: [{ ...item!, order_summary: null }] } });
   });
   await login(page, manifest);
-  const list = page.getByRole("list", { name: "概览待办", exact: true });
+  const list = page.getByRole("list", { name: "概览待处理", exact: true });
   for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(list.getByText("订单摘要暂不可用", { exact: true })).toBeVisible();

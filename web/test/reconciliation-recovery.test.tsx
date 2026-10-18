@@ -8,9 +8,9 @@ import { queryClient } from "../src/api/client";
 describe("invalid reconciliation link recovery", () => {
   it.each([
     ["/reconciliation/unknown/record", undefined, "/reconciliation", "返回对账"],
-    ["/sites/a/reconciliation/unknown/record", undefined, "/sites/a/work-items", "本站待办"],
+    ["/sites/a/reconciliation/unknown/record", undefined, "/sites/a/work-items", "本站待处理"],
     ["/reconciliation/unknown/record", { listReturn: { to: "/reconciliation?tab=exceptions&status=OPEN&cursor=next&page=3", state: { pagination: { previous: ["before"] } } } }, "/reconciliation?tab=exceptions&status=OPEN&cursor=next&page=3", "对账"],
-    ["/sites/a/reconciliation/unknown/record", { listReturn: { to: "/sites/b/work-items" } }, "/sites/a/work-items", "本站待办"],
+    ["/sites/a/reconciliation/unknown/record", { listReturn: { to: "/sites/b/work-items" } }, "/sites/a/work-items", "本站待处理"],
   ] as const)("restores only a compatible source or the scoped fallback: %s", (pathname, state, href, label) => {
     const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
     render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={[{ pathname, state }]}><Routes>

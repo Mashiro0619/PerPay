@@ -354,7 +354,7 @@ describe("navigation and draft protection", () => {
     expect(
       container.querySelector(".payment-pipeline, .daily-chart"),
     ).toBeNull();
-    expect(screen.getByRole("heading", { name: "全局待办" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "全部待处理" })).toBeVisible();
     expect(await screen.findByText("当前暂停新收款")).toBeVisible();
     await userEvent
       .setup()
@@ -608,7 +608,7 @@ describe("overview layout", () => {
     mount({ path: "/", configured: true });
     const trend = await screen.findByRole("heading", { name: "收款趋势" });
     const metrics = screen.getByText("今日确认金额", { exact: true });
-    const work = screen.getByRole("heading", { name: "全局待办" });
+    const work = screen.getByRole("heading", { name: "全部待处理" });
     const recent = screen.getByRole("heading", {
       name: "最近订单",
     });

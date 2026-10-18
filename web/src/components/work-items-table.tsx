@@ -42,7 +42,7 @@ export function WorkItemsTable({
   const columns: BusinessColumn<AdminWorkItem>[] = [
     {
       id: "identity",
-      label: "事项",
+      label: "提醒",
       hideable: false,
       layout: "identity",
       summaryDefault: true,

@@ -178,9 +178,9 @@ function DashboardContent() {
       <div className="overview-records">
         <Card size="sm" className="overview-record-panel overview-work-panel" role="region" aria-labelledby="overview-work-title">
           <CardHeader className="overview-records-header">
-            <CardTitle id="overview-work-title" role="heading" aria-level={2} aria-label={clientId ? "本站待办" : "全局待办"} className="flex items-center gap-2">
-              {clientId ? "本站待办" : "全局待办"}
-              <Badge variant={workTotal != null && workTotal > 0 ? "warning" : "secondary"} aria-label={workTotal == null ? "待办总数未知" : `共 ${workTotal} 项待办`}>
+            <CardTitle id="overview-work-title" role="heading" aria-level={2} aria-label={clientId ? "本站待处理" : "全部待处理"} className="flex items-center gap-2">
+              {clientId ? "本站待处理" : "全部待处理"}
+              <Badge variant={workTotal != null && workTotal > 0 ? "warning" : "secondary"} aria-label={workTotal == null ? "待处理总数未知" : `共 ${workTotal} 条提醒待处理`}>
                 {workTotal ?? "—"}
               </Badge>
             </CardTitle>

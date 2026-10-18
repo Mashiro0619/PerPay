@@ -47,14 +47,14 @@ export function OverviewWorkItems({ items }: { items: readonly AdminWorkItem[] }
     return (
       <Empty>
         <EmptyHeader>
-          <EmptyTitle>暂无待办</EmptyTitle>
-          <EmptyDescription>当前没有需要处理的事项。</EmptyDescription>
+          <EmptyTitle>暂无待处理提醒</EmptyTitle>
+          <EmptyDescription>当前没有需要处理的提醒。</EmptyDescription>
         </EmptyHeader>
       </Empty>
     );
   }
   return (
-    <ItemGroup className="overview-work-list" aria-label="概览待办" data-density="compact">
+    <ItemGroup className="overview-work-list" aria-label="概览待处理" data-density="compact">
       {items.map((item) => {
         const order = item.order_summary;
         const orderId = order?.order_id ?? item.order_id;

@@ -48,7 +48,7 @@ function readSiteMenuDisclosure(context: string): SiteMenuDisclosure {
 export const navigation = [
   { section: "overview", url: "/", title: "总览", icon: LayoutDashboard },
   { section: "orders", url: "/orders", title: "订单", icon: ClipboardList },
-  { section: "work-items", url: "/work-items", title: "待办", icon: ListChecks },
+  { section: "work-items", url: "/work-items", title: "待处理", icon: ListChecks },
   { section: "notifications", url: "/notifications", title: "通知", icon: Bell },
   { section: "settings", url: "/settings", title: "设置", icon: Settings2 },
   { section: "sites", url: "/sites", title: "管理网站", icon: Globe },

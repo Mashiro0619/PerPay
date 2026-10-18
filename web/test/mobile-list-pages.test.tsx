@@ -185,12 +185,12 @@ describe("mobile business list integration", () => {
     const trigger = screen.getByRole("button", { name: "更多提醒操作" });
     await user.click(trigger);
     await user.click(
-      await screen.findByRole("menuitem", { name: "忽略当前筛选结果" }),
+      await screen.findByRole("menuitem", { name: "忽略全部筛选结果（跨页）" }),
     );
     const dialog = await screen.findByRole("alertdialog");
     expect(dialog).toHaveTextContent("kept");
     expect(dialog).toHaveTextContent("跨分页");
-    expect(dialog).toHaveTextContent("不删除记录");
+    expect(dialog).toHaveTextContent("不会删除记录");
     await user.click(
       within(dialog).getByRole("button", { name: "取消" }),
     );

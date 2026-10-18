@@ -33,7 +33,7 @@ export function SectionCards({
       href: (clientId ? "/sites/" + encodeURIComponent(clientId) : "") + "/orders?payment=UNPAID&checkout=OPEN",
     },
     {
-      title: "需处理事项",
+      title: "待处理",
       value: workItems == null ? "—" : count(workItems),
       href: (clientId ? "/sites/" + encodeURIComponent(clientId) : "") + "/work-items",
     },

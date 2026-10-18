@@ -219,8 +219,8 @@ describe("short feedback and safe settings", () => {
       expect(runtime.getByRole("columnheader", { name })).toBeVisible();
     }
     expect(screen.queryByRole("heading", { name: /^(可以收款|暂不能收款)$/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "待处理事项" })).not.toBeInTheDocument();
-    expect(screen.queryByText("有业务事项待处理")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "待处理提醒" })).not.toBeInTheDocument();
+    expect(screen.queryByText("有业务提醒待处理")).not.toBeInTheDocument();
     for (const [title, explanation] of [
       ["查账", "查账支付宝账本，为收款核对提供依据。"],
       ["自动确认", "核对账本与订单，并确认符合条件的收款。"],
@@ -244,7 +244,7 @@ describe("short feedback and safe settings", () => {
     expect(diagnostics).toBeVisible();
     expect(screen.queryByRole("button", { name: "运行技术信息" })).not.toBeInTheDocument();
     expect(
-      screen.queryByText("提醒数仅包含未忽略且仍需处理的事项。"),
+      screen.queryByText("提醒数仅包含未忽略且仍需处理的提醒。"),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("收款链路运行正常。")).not.toBeInTheDocument();
     expect(
@@ -444,15 +444,15 @@ describe("short feedback and safe settings", () => {
     });
     const runtime = within(await screen.findByRole("table", { name: "运行环节" }));
     expect(within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: "运行状态" })).toHaveAccessibleDescription("待处理");
-    expect(screen.getByRole("link", { name: "待办" })).toHaveAttribute("href", "/work-items");
-    expect(screen.queryByText("提醒数仅包含未忽略且仍需处理的事项。")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "待处理" })).toHaveAttribute("href", "/work-items");
+    expect(screen.queryByText("提醒数仅包含未忽略且仍需处理的提醒。")).not.toBeInTheDocument();
     const reconciliation = within(runtime.getByRole("rowheader", { name: "自动确认" }).closest("tr")!);
     const notifications = within(runtime.getByRole("rowheader", { name: "业务通知" }).closest("tr")!);
     expect(reconciliation.getByRole("cell", { name: "待核对订单 5" })).toBeVisible();
     expect(notifications.getByRole("cell", { name: "待投递 2" })).toBeVisible();
     expect(reconciliation.queryByText(/异常提醒|未处理异常/)).not.toBeInTheDocument();
     expect(notifications.queryByText(/失败提醒/)).not.toBeInTheDocument();
-    expect(screen.queryByText("有业务事项待处理")).not.toBeInTheDocument();
+    expect(screen.queryByText("有业务提醒待处理")).not.toBeInTheDocument();
     expect(screen.queryByText("有运行告警")).not.toBeInTheDocument();
     expect(screen.queryByText("收款已暂停")).not.toBeInTheDocument();
     for (const name of ["查账", "自动确认", "业务通知"]) {

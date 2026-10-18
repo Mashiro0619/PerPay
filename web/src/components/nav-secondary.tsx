@@ -57,7 +57,7 @@ export function NavSecondary({
                     <Badge variant={notice === "有运行告警" || notice === "状态未知" ? "warning" : "secondary"}>
                     {notice === "有运行告警"
                       ? "需关注"
-                      : notice === "有待处理事项"
+                      : notice === "有待处理提醒"
                         ? "待处理"
                         : notice === "正在检查状态"
                           ? "检查中"

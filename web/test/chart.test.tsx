@@ -748,7 +748,7 @@ describe("weekly daily analytics report", () => {
     expect(container.querySelectorAll("[data-slot=card]")).toHaveLength(4);
     expect(screen.getByText("今日确认笔数")).toBeVisible();
     expect(screen.getByText("今日确认金额")).toBeVisible();
-    expect(screen.getByText("需处理事项")).toBeVisible();
+    expect(screen.getByText("待处理")).toBeVisible();
     expect(screen.getByText("当前待付款")).toBeVisible();
     expect(screen.queryByText("付款确认金额")).not.toBeInTheDocument();
     expect(screen.queryByText("新建订单")).not.toBeInTheDocument();

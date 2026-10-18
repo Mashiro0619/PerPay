@@ -470,7 +470,7 @@ export function restoreAdminWorkItem(
   });
   return database.write((connection) => {
     if (context.expectedClientId) {
-      if (input.type === "LEDGER_CONFLICT") throw new AdminOperationError(404, "work_item_not_found", "共享冲突请在一级后台处理");
+      if (input.type === "LEDGER_CONFLICT") throw new AdminOperationError(404, "work_item_not_found", "账本冲突请到「待处理（全部网站）」处理");
       assertSiteResource(connection, context.expectedClientId, input.type === "NOTIFICATION_FAILURE" ? "delivery" : "exception", input.resource_id);
     }
     const replay = replayAdminOperation<RestoreWorkItemResult>(
@@ -497,7 +497,7 @@ export function restoreAdminWorkItem(
       throw new AdminOperationError(
         409,
         "work_item_ended",
-        "事项已结束，无需恢复提醒",
+        "提醒已结束，无需恢复提醒",
       );
     const now = adminOperationTime(connection, context.now);
     const result = {

@@ -50,6 +50,6 @@ export async function restoreReminder(
 export const restoreMessages: Record<RestoreOutcome, string> = {
   restored: "本次提醒恢复已完成。",
   already: "这条提醒已恢复，无需重复操作。",
-  ended: "事项已结束，无需恢复提醒。",
+  ended: "提醒已结束，无需恢复提醒。",
   missing: "提醒对应的记录已不存在。",
 };

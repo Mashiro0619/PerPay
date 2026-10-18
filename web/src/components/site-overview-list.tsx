@@ -62,14 +62,14 @@ function SiteOverviewCard({ site, label, range, maximum }: {
             >
               {amount}
             </div>
-            {site.work_items > 0 && <Badge variant="warning">当前待办 {count(site.work_items)}</Badge>}
+            {site.work_items > 0 && <Badge variant="warning">待处理 {count(site.work_items)}</Badge>}
           </div>
           <SiteAmountBar amount={site.confirmed_amount_cents} maximum={maximum} />
         </CardContent>
         <span id={summaryId} className="sr-only">
           {site.accepting_orders ? "" : "暂停接单。"}
           近 {range} 天实收 {amount}。
-          {site.work_items > 0 ? "当前待办 " + count(site.work_items) + " 项。" : ""}
+          {site.work_items > 0 ? "待处理 " + count(site.work_items) + " 项。" : ""}
         </span>
       </Card>
     </Link>
@@ -127,7 +127,7 @@ export function SiteOverviewList({ range }: { range: 7 | 30 | 90 }) {
             <p>实收按北京时间内的付款确认时间统计，不扣除退款或费用。区间包含今天，今天尚未结束。</p>
             {latest && <p>统计区间：<time dateTime={latest.period.from}>{latest.period.from}</time> 至 <time dateTime={latest.period.to}>{latest.period.to}</time>。</p>}
             <p>横条以全部网站中本期实收最高者为满格，包含暂停接单的网站，不受这里分页影响。</p>
-            <p>待办仅在非零时提示，表示当前需要处理的事项。</p>
+            <p>待处理仅在非零时提示，表示当前需要处理的提醒。</p>
           </PopoverContent>
         </Popover>
       </div>

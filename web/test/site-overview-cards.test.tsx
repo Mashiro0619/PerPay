@@ -258,10 +258,10 @@ describe("website overview amount cards", () => {
     expect(link).toHaveAttribute("href", "/sites/site_amount?range=" + range);
     expect(link).toHaveAccessibleName("金额网站，进入后台");
     expect(link).toHaveAccessibleDescription(new RegExp("近 " + range + " 天实收 ¥98,765\\.43"));
-    expect(link).toHaveAccessibleDescription(/当前待办 5 项/);
+    expect(link).toHaveAccessibleDescription(/待处理 5 项/);
     expect(link.querySelector(".site-overview-card-title")).toHaveTextContent(current.name);
     expect(link.querySelector(".site-overview-card-amount")).toHaveTextContent("¥98,765.43");
-    const work = within(link).getByText("当前待办 5", { exact: true });
+    const work = within(link).getByText("待处理 5", { exact: true });
     expect(work).toBeVisible();
     expect(work.closest("[data-slot=badge]")).toHaveAttribute("data-variant", "warning");
     expect(link.querySelector("time, dl, [data-slot=card-footer], .site-overview-sparkline")).toBeNull();
@@ -322,7 +322,7 @@ describe("website overview amount cards", () => {
     expect(link.querySelector(".site-overview-card-amount")).toHaveTextContent("¥0.00");
     expect(barWidth(link)).toBe(0);
     expect(amountBar(link).outerHTML).not.toMatch(/NaN|Infinity/);
-    expect(within(link).queryByText(/当前待办/)).not.toBeInTheDocument();
+    expect(within(link).queryByText(/待处理/)).not.toBeInTheDocument();
     expect(link.querySelector("[data-slot=badge]")).toBeNull();
     expect(link).toHaveAttribute("href", "/sites/site_all_zero?range=7");
   });
@@ -499,7 +499,7 @@ describe("website overview amount cards", () => {
       expect(view.requests).toHaveLength(2);
       expect(card("site_staying_a").querySelector(".site-overview-card-amount")).toHaveTextContent("¥448.08");
       expect(card("site_staying_b").querySelector(".site-overview-card-amount")).toHaveTextContent("¥330.09");
-      expect(within(card("site_staying_a")).queryByText(/当前待办/)).not.toBeInTheDocument();
+      expect(within(card("site_staying_a")).queryByText(/待处理/)).not.toBeInTheDocument();
       expect(barWidth(card("site_staying_a"))).toBe(100);
       expect(snapshots.filter((values) => values.length).every((values) =>
         JSON.stringify(values) === JSON.stringify(["¥129.01", "¥209.00"]) ||
@@ -568,14 +568,14 @@ describe("website overview amount cards", () => {
     expect(largeCard.querySelector(".site-overview-card-title")).toHaveAttribute("title", longName);
     expect(largeCard).toHaveAccessibleName(longName + "，进入后台");
     expect(largeCard.querySelector(".site-overview-card-amount")).toHaveTextContent("¥9,876,543,210.12");
-    expect(within(largeCard).getByText("当前待办 8", { exact: true })).toBeVisible();
+    expect(within(largeCard).getByText("待处理 8", { exact: true })).toBeVisible();
     expect(barWidth(largeCard)).toBe(100);
     const zeroCard = card(zero.client_id);
     expect(within(zeroCard).getByText("暂停接单")).toBeVisible();
     expect(zeroCard).toHaveAccessibleDescription(/暂停接单/);
     expect(zeroCard.querySelector(".site-overview-card-amount")).toHaveTextContent("¥0.00");
     expect(barWidth(zeroCard)).toBe(0);
-    expect(within(zeroCard).queryByText(/当前待办|本期暂无收款/)).not.toBeInTheDocument();
+    expect(within(zeroCard).queryByText(/待处理|本期暂无收款/)).not.toBeInTheDocument();
     expect(zeroCard).not.toHaveAttribute("aria-disabled", "true");
     expect(zeroCard).toHaveAttribute("href", "/sites/site_zero?range=7");
     expect(screen.queryByRole("button", { name: "进入后台" })).not.toBeInTheDocument();

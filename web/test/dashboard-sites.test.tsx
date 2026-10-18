@@ -48,20 +48,20 @@ function href(title: string) { return new URL(card(title).getByRole("link").getA
 describe("website-scoped dashboard cards", () => {
   it("uses full website counts and preserves website scope in both drilldowns", async () => {
     const view = mount();
-    await waitFor(() => expect(card("需处理事项").getByRole("link")).toHaveTextContent("6"));
-    expect(screen.getByLabelText("共 6 项待办")).toHaveTextContent("6");
+    await waitFor(() => expect(card("待处理").getByRole("link")).toHaveTextContent("6"));
+    expect(screen.getByLabelText("共 6 条提醒待处理")).toHaveTextContent("6");
     expect(card("当前待付款").getByRole("link")).toHaveTextContent("3");
     expect(href("当前待付款").pathname).toContain("/sites/site_a/");
     expect(href("当前待付款").searchParams.get("payment")).toBe("UNPAID");
     expect(href("当前待付款").searchParams.get("checkout")).toBe("OPEN");
-    expect(href("需处理事项").pathname).toContain("/sites/site_a/");
+    expect(href("待处理").pathname).toContain("/sites/site_a/");
     await act(async () => { await view.router.navigate("/sites/site_b"); });
-    await waitFor(() => expect(card("需处理事项").getByRole("link")).toHaveTextContent("0"));
-    expect(screen.getByLabelText("共 0 项待办")).toHaveTextContent("0");
-    expect(href("需处理事项").pathname).toContain("/sites/site_b/");
+    await waitFor(() => expect(card("待处理").getByRole("link")).toHaveTextContent("0"));
+    expect(screen.getByLabelText("共 0 条提醒待处理")).toHaveTextContent("0");
+    expect(href("待处理").pathname).toContain("/sites/site_b/");
     await act(async () => { await view.router.navigate("/"); });
-    await waitFor(() => expect(card("需处理事项").getByRole("link")).toHaveTextContent("77"));
-    expect(href("需处理事项").search).toBe("");
+    await waitFor(() => expect(card("待处理").getByRole("link")).toHaveTextContent("77"));
+    expect(href("待处理").search).toBe("");
     expect(href("当前待付款").searchParams.has("api_client_id")).toBe(false);
     expect(view.summaryReads).toEqual(["site_a", "site_b"]);
   });
@@ -71,32 +71,32 @@ describe("website-scoped dashboard cards", () => {
     const pending = new Promise<Response>(resolve => { release = resolve; });
     const view = mount(clientId => clientId === "site_a" ? pending : Promise.resolve(json({ data: { total: 2 } })));
     await waitFor(() => expect(view.summaryReads).toEqual(["site_a"]));
-    await waitFor(() => expect(card("需处理事项").getByRole("link")).toHaveTextContent("—"));
+    await waitFor(() => expect(card("待处理").getByRole("link")).toHaveTextContent("—"));
     await act(async () => { await view.router.navigate("/sites/site_b"); });
-    await waitFor(() => expect(card("需处理事项").getByRole("link")).toHaveTextContent("2"));
+    await waitFor(() => expect(card("待处理").getByRole("link")).toHaveTextContent("2"));
     await act(async () => { release(json({ data: { total: 9 } })); await pending; });
-    expect(card("需处理事项").getByRole("link")).toHaveTextContent("2");
-    expect(href("需处理事项").pathname).toContain("/sites/site_b/");
+    expect(card("待处理").getByRole("link")).toHaveTextContent("2");
+    expect(href("待处理").pathname).toContain("/sites/site_b/");
   });
 
   it("reports a failed site summary instead of showing global totals or zero", async () => {
     mount(async () => json({ error: { code: "internal_error", message: "汇总读取失败" } }, 500));
     await screen.findByText("汇总读取失败");
-    expect(card("需处理事项").getByRole("link")).toHaveTextContent("—");
-    expect(screen.getByLabelText("待办总数未知")).toHaveTextContent("—");
+    expect(card("待处理").getByRole("link")).toHaveTextContent("—");
+    expect(screen.getByLabelText("待处理总数未知")).toHaveTextContent("—");
     expect(card("当前待付款").getByRole("link")).toHaveTextContent("3");
-    expect(href("需处理事项").pathname).toContain("/sites/site_a/");
+    expect(href("待处理").pathname).toContain("/sites/site_a/");
   });
 
   it("does not keep a cached successful count after a failed refresh", async () => {
     let fail = false;
     mount(async () => fail ? json({ error: { code: "internal_error", message: "刷新失败" } }, 500) : json({ data: { total: 6 } }));
-    await waitFor(() => expect(card("需处理事项").getByRole("link")).toHaveTextContent("6"));
+    await waitFor(() => expect(card("待处理").getByRole("link")).toHaveTextContent("6"));
     fail = true;
     await act(async () => { await queryClient.invalidateQueries({ queryKey: ["work-items", "summary", "site_a"] }); });
     await screen.findByText("刷新失败");
-    expect(card("需处理事项").getByRole("link")).toHaveTextContent("—");
-    expect(screen.getByLabelText("待办总数未知")).toHaveTextContent("—");
+    expect(card("待处理").getByRole("link")).toHaveTextContent("—");
+    expect(screen.getByLabelText("待处理总数未知")).toHaveTextContent("—");
   });
 
   it("requests prioritized reminders and keeps order and notification progress visible after a failed refresh", async () => {

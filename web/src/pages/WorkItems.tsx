@@ -50,7 +50,7 @@ import {
   AlertDialogAction,
 } from "@/components/admin-dialog";
 const filters = [
-  ["ALL", "全部事项"],
+  ["ALL", "全部提醒"],
   ["FINANCIAL_EXCEPTION", "账务异常"],
   ["LEDGER_CONFLICT", "账本冲突"],
   ["NOTIFICATION_FAILURE", "通知失败"],
@@ -175,7 +175,7 @@ export default function WorkItems() {
           </TabsList>
         </div>
         </ListToolbarPart>
-        {workspaceClientId !== null && <Alert><AlertTitle>仅显示网站已归属的提醒</AlertTitle><AlertDescription>账本冲突与无法明确归属订单的异常保留在全局视图，请返回一级全局待办处理。</AlertDescription></Alert>}
+        {workspaceClientId !== null && <Alert><AlertTitle>这里只显示能确定属于本站的提醒</AlertTitle><AlertDescription>账本冲突和无法判断归属的异常，请回到「待处理（全部网站）」处理。</AlertDescription></Alert>}
         <TabsContent value={type}>
           <WorkItemPage
             key={type + ":" + visibility}
@@ -218,7 +218,7 @@ export default function WorkItems() {
         >
           <AlertDialogHeader>
             <AlertDialogTitle>
-              忽略当前筛选结果 · {batch?.name}
+              忽略全部筛选结果（跨页） · {batch?.name}
             </AlertDialogTitle>
           </AlertDialogHeader>
           <DialogBody><AlertDialogDescription>
@@ -231,7 +231,7 @@ export default function WorkItems() {
               ) : (
                 <>此分类的全部匹配项（跨分页）。</>
               )}
-              仅关闭提醒，不删除记录、不解决冲突，也不停止通知重试。重试不会追加忽略新增事项。
+              只会关闭提醒，不会删除记录、处理冲突或停止通知重试。之后新产生的提醒不会被一并忽略。
             </AlertDialogDescription></DialogBody>
           <ErrorNotice error={ignore.error} />
           <AlertDialogFooter>
@@ -248,7 +248,7 @@ export default function WorkItems() {
               {ignore.isPending && (
                 <Spinner aria-hidden="true" data-icon="inline-start" />
               )}
-              确认忽略当前筛选结果
+              确认忽略
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -482,9 +482,9 @@ function WorkItemPage({
       onValueChange={(value) => {
         if (value[0]) onVisibility(value[0] as Visibility);
       }}
-      aria-label="提醒可见性"
+      aria-label="显示范围"
     >
-      <ToggleGroupItem value="ACTIVE">未忽略</ToggleGroupItem>
+      <ToggleGroupItem value="ACTIVE">待处理</ToggleGroupItem>
       <ToggleGroupItem value="IGNORED">已忽略</ToggleGroupItem>
     </ToggleGroup>
   );
@@ -504,7 +504,7 @@ function WorkItemPage({
                 disabled={cannotIgnore}
                 onClick={(event) => onIgnore(event.currentTarget)}
               >
-                忽略当前筛选结果
+                忽略全部筛选结果（跨页）
               </Button>
             )}
             <RefreshButton disabled={busy || work.isFetching} onClick={() => {
@@ -523,7 +523,7 @@ function WorkItemPage({
                     onClick={() => onIgnore(trigger.current)}
                   >
                     <EyeOff />
-                    忽略当前筛选结果
+                    忽略全部筛选结果（跨页）
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem
@@ -573,7 +573,7 @@ function WorkItemPage({
                 control={listQuery}
                 emptyTitle={
                   listQuery.query.q
-                    ? "没有符合条件的提醒"
+                    ? "暂无符合条件的提醒"
                     : visibility === "IGNORED"
                       ? "暂无已忽略提醒"
                       : undefined
@@ -635,7 +635,7 @@ function RestoreReminder({
           : readAgain
             ? "刷新列表"
             : state?.error
-              ? "重试恢复"
+              ? "恢复提醒"
               : "恢复提醒"}
       </Button>
       {!!state?.error && (
@@ -654,7 +654,7 @@ function RestoreReminder({
               <PopoverHeader>
                 <PopoverTitle>恢复提醒的响应</PopoverTitle>
                 <PopoverDescription>
-                  只调整提醒，不改变事项处理状态。
+                  只调整提醒，不改变异常、冲突或通知的处理状态。
                 </PopoverDescription>
               </PopoverHeader>
               <ErrorNotice error={state.error} />

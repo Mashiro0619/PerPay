@@ -49,7 +49,7 @@ import {
 const globalPageTitles: Record<NavigationSection, string> = {
   overview: "总览",
   orders: "全部订单",
-  "work-items": "全局待办",
+  "work-items": "全部待处理",
   notifications: "全部通知",
   settings: "实例设置",
   reconciliation: "对账",
@@ -132,7 +132,7 @@ function Workspace() {
             "/": "网站概览",
             "/orders": "本站订单",
             "/notifications": "本站通知",
-            "/work-items": "本站待办",
+            "/work-items": "本站待处理",
             "/settings": "网站设置",
             "/reconciliation": "本站对账",
           }["/" + (localPath.split("/")[1] ?? "")] ?? "网站后台")

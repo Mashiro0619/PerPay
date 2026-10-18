@@ -133,8 +133,8 @@ describe("website management operating cards", () => {
     expect(amount(item)).toHaveTextContent("¥129.01");
     expect(metric(item, "确认笔数")).toHaveTextContent(/^17$/);
     expect(metric(item, "当前待付款")).toHaveTextContent(/^23$/);
-    expect(metric(item, "当前待办")).toHaveTextContent(/^5$/);
-    expect(metric(item, "当前待办").querySelector("[data-slot=badge]")).toHaveAttribute("data-variant", "warning");
+    expect(metric(item, "待处理")).toHaveTextContent(/^5$/);
+    expect(metric(item, "待处理").querySelector("[data-slot=badge]")).toHaveAttribute("data-variant", "warning");
     expect(within(item).getByText("接单中", { exact: true })).toBeVisible();
     expect(within(item).getByText("通知开启", { exact: true })).toBeVisible();
     expect(barWidth(item)).toBe(50);
@@ -166,13 +166,13 @@ describe("website management operating cards", () => {
     expect(within(active).getByText("接单中", { exact: true })).toBeVisible();
     expect(within(active).getByText("通知关闭", { exact: true })).toBeVisible();
     expect(metric(active, "当前待付款")).toHaveTextContent(/^4$/);
-    expect(metric(active, "当前待办")).toHaveTextContent(/^6$/);
+    expect(metric(active, "待处理")).toHaveTextContent(/^6$/);
     expect(within(paused).getByText("暂停接单", { exact: true })).toBeVisible();
     expect(within(paused).getByText("通知开启", { exact: true })).toBeVisible();
     expect(amount(paused)).toHaveTextContent("¥7.00");
     expect(metric(paused, "确认笔数")).toHaveTextContent(/^9$/);
     expect(metric(paused, "当前待付款")).toHaveTextContent(/^2$/);
-    expect(metric(paused, "当前待办")).toHaveTextContent(/^1$/);
+    expect(metric(paused, "待处理")).toHaveTextContent(/^1$/);
     expect(within(paused).getByRole("link", { name: "进入后台" })).not.toHaveAttribute("aria-disabled", "true");
     expect(new URL(view.requests[0]!.url).searchParams.get("range")).toBe("30");
     expect(rangeButton(30)).toHaveAttribute("aria-pressed", "true");
@@ -189,9 +189,9 @@ describe("website management operating cards", () => {
     })], null, { maximum: 0 }));
     const item = await findCard("site_zero");
     expect(amount(item)).toHaveTextContent("¥0.00");
-    for (const label of ["确认笔数", "当前待付款", "当前待办"])
+    for (const label of ["确认笔数", "当前待付款", "待处理"])
       expect(metric(item, label)).toHaveTextContent(/^0$/);
-    expect(metric(item, "当前待办").querySelector("[data-slot=badge]")).toBeNull();
+    expect(metric(item, "待处理").querySelector("[data-slot=badge]")).toBeNull();
     expect(barWidth(item)).toBe(0);
     expect(item.innerHTML).not.toMatch(/NaN|Infinity/);
     expect(within(item).getByText("暂停接单", { exact: true })).toBeVisible();

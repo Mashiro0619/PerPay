@@ -284,7 +284,7 @@ describe("reconciliation and reminder global queries", () => {
     await withHttpFixture(async (f) => {
       for (let i = 0; i < 5; i++)
         exception(f, "范围中文%_" + i, 70000 + i * 100);
-      exception(f, "不可忽略的其他事项", 80000);
+      exception(f, "不可忽略的其他提醒", 80000);
       const c = await client(f);
       const q = encodeURIComponent("范围中文%_");
       const plan = f.database.read((db) =>

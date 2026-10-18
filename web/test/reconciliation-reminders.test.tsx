@@ -142,10 +142,10 @@ describe("reconciliation reminder navigation", () => {
       ).toBeVisible();
       await user.click(screen.getByRole("link", { name: "管理提醒" }));
       await waitFor(() =>
-        expect(screen.getByRole("button", { name: "忽略当前筛选结果" })).toBeEnabled(),
+        expect(screen.getByRole("button", { name: "忽略全部筛选结果（跨页）" })).toBeEnabled(),
       );
-      await user.click(screen.getByRole("button", { name: "忽略当前筛选结果" }));
-      await user.click(screen.getByRole("button", { name: "确认忽略当前筛选结果" }));
+      await user.click(screen.getByRole("button", { name: "忽略全部筛选结果（跨页）" }));
+      await user.click(screen.getByRole("button", { name: "确认忽略" }));
       await screen.findByText(/已忽略“.+”中的 1 条提醒/);
       await user.click(screen.getByRole("link", { name: "账本记录" }));
       expect(await screen.findByText("暂无符合条件的记录")).toBeVisible();

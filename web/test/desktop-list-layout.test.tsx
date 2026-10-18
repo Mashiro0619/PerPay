@@ -136,15 +136,15 @@ describe("desktop business list composition", () => {
     const response = new Promise<Response>((resolve) => { resolveResponse = resolve; });
     vi.stubGlobal("fetch", vi.fn(() => response));
     mount("/work-items", <WorkItems />);
-    const filter = screen.getByRole("button", { name: "未忽略" });
+    const filter = screen.getByRole("button", { name: "待处理" });
     act(() => filter.focus());
     expect(filter).toHaveFocus();
 
     await act(async () => resolveResponse(json({ data: [reminder], page: { next_cursor: null } })));
     await screen.findByRole("table");
-    expect(screen.getByRole("button", { name: "未忽略" })).toBe(filter);
+    expect(screen.getByRole("button", { name: "待处理" })).toBe(filter);
     expect(filter).toHaveFocus();
-    await userEvent.click(screen.getByRole("button", { name: "忽略当前筛选结果" }));
+    await userEvent.click(screen.getByRole("button", { name: "忽略全部筛选结果（跨页）" }));
     expect(await screen.findByRole("alertdialog")).toBeVisible();
   });
 
@@ -493,7 +493,7 @@ describe("desktop business list composition", () => {
     const search = screen.getByRole("searchbox");
     await user.clear(search);
     await user.type(search, "not-submitted");
-    const trigger = screen.getByRole("button", { name: "忽略当前筛选结果" });
+    const trigger = screen.getByRole("button", { name: "忽略全部筛选结果（跨页）" });
     await user.click(trigger);
     const dialog = screen.getByRole("alertdialog");
     expect(dialog).toHaveTextContent("applied");

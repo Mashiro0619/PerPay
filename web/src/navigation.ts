@@ -99,5 +99,5 @@ function detailNavigationState(destination: To, location: ReturnType<typeof useL
 export function useDetailBack(to: string, label: string): ListReturn {
   const location = useLocation(), scope = workspaceScope(location.pathname);
   const saved = readListReturn(location.state?.listReturn);
-  return saved && workspaceScope(saved.to.split(/[?#]/)[0]!).clientId === scope.clientId ? saved : { to: workspaceHref(scope, to) as string, label: scope.clientId && to.startsWith("/reconciliation") ? "本站待办" : label };
+  return saved && workspaceScope(saved.to.split(/[?#]/)[0]!).clientId === scope.clientId ? saved : { to: workspaceHref(scope, to) as string, label: scope.clientId && to.startsWith("/reconciliation") ? "本站待处理" : label };
 }

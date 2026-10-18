@@ -152,7 +152,7 @@ export function onboardingRuntimeWarnings(data: SystemStatus): string[] {
   )
     warnings.push("自动备份尚未就绪，请检查备份任务及最近结果。");
   if (data.work_items === null)
-    warnings.push("待处理事项统计暂不可用，暂时无法确认业务待办数量。");
+    warnings.push("待处理提醒统计暂不可用，暂时无法确认业务待处理数量。");
   if (
     data.status === "degraded" &&
     (data.ledger.conflicts === null || data.reconciliation.exceptions === null)

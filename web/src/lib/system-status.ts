@@ -65,7 +65,7 @@ export function presentSystemStatus(data: SystemStatus) {
       : runtimeWarning
         ? "有运行告警"
         : businessPending
-          ? "有待处理事项"
+          ? "有待处理提醒"
           : null,
   };
 }
