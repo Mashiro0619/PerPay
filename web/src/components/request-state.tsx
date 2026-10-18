@@ -27,7 +27,7 @@ export function ErrorNotice({
         <p>
           {error instanceof Error ? error.message : "请求失败，请稍后重试。"}
         </p>
-        {error instanceof ApiError && error.code === "site_scope_conflict" && <Link global to="/reconciliation">前往一级共享账本</Link>}
+        {error instanceof ApiError && error.code === "site_scope_conflict" && <Link global to="/reconciliation">前往对账（全部网站）</Link>}
         {error instanceof ApiError && (
           <>
             {error.retryAfter !== null && (

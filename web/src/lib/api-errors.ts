@@ -1,6 +1,6 @@
 import { getSystemName } from "../branding";
 const messages: Record<string, string> = {
-  site_scope_conflict: "该收款证据涉及其他网站或共享账本冲突，请到一级后台处理。",
+  site_scope_conflict: "该收款证据涉及其他网站或账本冲突，请到「对账（全部网站）」处理。",
   invalid_credentials: "管理员密码不正确，请检查后重试。",
   identity_already_initialized: "实例已经初始化，请前往登录。",
   identity_not_initialized: "实例尚未初始化，请先创建管理员。",

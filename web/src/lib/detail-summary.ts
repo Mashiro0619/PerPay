@@ -122,7 +122,7 @@ export function exceptionExplanation(exception: FinancialException): string {
     case "RECONCILIATION_CONFLICT":
       return details.reason === "settlement_reversed"
         ? "收款关联已撤销，订单进入争议状态。"
-        : "当前对账证据存在冲突，不能直接视为有效收款。";
+        : "当前对账记录存在冲突，不能直接视为有效收款。";
   }
 }
 export function exceptionResolution(

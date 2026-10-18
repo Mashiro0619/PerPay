@@ -26,7 +26,7 @@ export function AssociateIncomeAction({
   const [saved, setSaved] = useState(false);
   const setMessage = useSuccessToast();
   const finalFocus = useRef<HTMLElement | null>(null);
-  if (clientId && !orderId) return <Link global to="/reconciliation">共享流水：请从本站订单发起关联，或到一级共享账本处理。</Link>;
+  if (clientId && !orderId) return <Link global to="/reconciliation">请从本站订单发起关联，或到「对账（全部网站）」处理。</Link>;
   return (
     <>
       <Button

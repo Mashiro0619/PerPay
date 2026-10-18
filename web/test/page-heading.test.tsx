@@ -17,9 +17,9 @@ describe("page title ownership", () => {
     fireEvent.click(screen.getByText("刷新"));
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("订单 A");
     expect(draft).toHaveFocus();
-    view.rerender(<PageHeadingProvider><PageHeadingSlot title="共享账本" /></PageHeadingProvider>);
+    view.rerender(<PageHeadingProvider><PageHeadingSlot title="对账" /></PageHeadingProvider>);
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("共享账本");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("对账");
   });
   it("also renders a title outside the application shell", () => {
     render(<PageHeading title="网站设置" description="网站范围" />);

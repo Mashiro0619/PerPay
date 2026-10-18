@@ -162,7 +162,7 @@ describe("business websites in the sidebar", () => {
     expect(primaryLinks(nav)).toEqual(["总览", "订单", "待办", "通知"]);
     const settings = within(nav).getByRole("navigation", { name: "设置导航" });
     const shared = within(nav).getByRole("navigation", { name: "全局管理" });
-    expect(within(shared).getAllByRole("link").map(link => link.textContent?.trim())).toEqual(["管理网站", "共享账本", "运行状态"]);
+    expect(within(shared).getAllByRole("link").map(link => link.textContent?.trim())).toEqual(["管理网站", "对账", "运行状态"]);
     const manage = within(shared).getByRole("link", { name: "管理网站" });
     expect(manage).toHaveAttribute("href", "/sites");
     expect(within(settings).getByRole("link", { name: "设置" })).toHaveAttribute("href", "/settings");
@@ -218,7 +218,7 @@ describe("business websites in the sidebar", () => {
     expect(manage).toHaveAttribute("href", "/sites");
     expect(manage).toHaveAttribute("aria-current", "page");
     expect(manage).toHaveAttribute("data-active");
-    expect(within(shared).getByRole("link", { name: "共享账本" })).not.toHaveAttribute("aria-current");
+    expect(within(shared).getByRole("link", { name: "对账" })).not.toHaveAttribute("aria-current");
     expect(within(shared).getByRole("link", { name: "运行状态" })).not.toHaveAttribute("aria-current");
   });
 
@@ -263,7 +263,7 @@ describe("business websites in the sidebar", () => {
     expect(primaryLinks(nav)).toEqual(["总览", "订单", "待办", "通知"]);
     const settings = within(nav).getByRole("navigation", { name: "设置导航" });
     expect(within(settings).getByRole("link", { name: "设置" })).toHaveAttribute("href", "/sites/a/settings/basic");
-    expect(within(nav).getByRole("link", { name: "共享账本" })).toHaveAttribute("href", "/reconciliation?selected_site=a");
+    expect(within(nav).getByRole("link", { name: "对账" })).toHaveAttribute("href", "/reconciliation?selected_site=a");
     expect(within(nav).getByRole("link", { name: "运行状态" })).toHaveAttribute("href", "/system?selected_site=a");
     expect(within(nav).getByRole("link", { name: "管理网站" })).toHaveAttribute("href", "/sites?selected_site=a");
     expect(await within(nav).findByRole("link", { name: "网站 A" })).toHaveAttribute("aria-current", "location");
@@ -524,7 +524,7 @@ describe("website selection on shared pages", () => {
     const nav = await findSidebar();
     await within(nav).findByRole("link", { name: "网站 A" });
     const user = userEvent.setup();
-    await user.click(within(nav).getByRole("link", { name: "共享账本" }));
+    await user.click(within(nav).getByRole("link", { name: "对账" }));
     const sharedRow = await screen.findByRole("link", { name: "测试商品" });
     expect(within(sharedRow.closest("[data-business-row]")! as HTMLElement).getAllByText("test-merchant-order").length).toBeGreaterThan(0);
     expect(view.router.state.location.pathname).toBe("/reconciliation");

@@ -52,7 +52,7 @@ export const navigation = [
   { section: "notifications", url: "/notifications", title: "通知", icon: Bell },
   { section: "settings", url: "/settings", title: "设置", icon: Settings2 },
   { section: "sites", url: "/sites", title: "管理网站", icon: Globe },
-  { section: "reconciliation", url: "/reconciliation", title: "共享账本", icon: WalletCards },
+  { section: "reconciliation", url: "/reconciliation", title: "对账", icon: WalletCards },
   { section: "system", url: "/system", title: "运行状态", icon: Activity },
 ] satisfies (NavigationItem & { section: NavigationSection })[];
 export function AppSidebar({

@@ -78,7 +78,7 @@ export function useNavigate(): WorkspaceNavigateFunction {
 }
 
 function localPath(path: string) { const scope = workspaceScope(path); return scope.clientId ? path.slice(scope.base.length) || "/" : path; }
-const listLabels: Record<string, string> = { "/": "收款概览", "/orders": "订单列表", "/notifications": "业务通知", "/work-items": "待处理", "/reconciliation": "对账记录" };
+const listLabels: Record<string, string> = { "/": "收款概览", "/orders": "订单列表", "/notifications": "业务通知", "/work-items": "待处理", "/reconciliation": "对账" };
 type ListReturn = { to: string; label: string; state?: unknown };
 function readListReturn(value: unknown): ListReturn | null {
   if (!value || typeof value !== "object") return null;

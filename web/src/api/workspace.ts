@@ -16,7 +16,7 @@ export function workspaceApi(clientId: string | null): typeof api {
           ].includes(String(name))
         )
           return () => {
-            throw new Error("该共享账本操作只能在一级后台执行。");
+            throw new Error("请到「对账（全部网站）」执行此操作。");
           };
         return target[name];
       }

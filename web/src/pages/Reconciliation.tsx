@@ -141,7 +141,7 @@ export default function Reconciliation() {
         <ListToolbarPart area="leading">
         <div className="flex min-w-0 items-center justify-between gap-4">
           <div className="-m-1 min-w-0 scroll-p-1 overflow-x-auto p-1">
-            <TabsList aria-label="对账记录类型">
+            <TabsList aria-label="对账分类">
               {sections.map((item) => (
                 <TabsTrigger key={item.value} value={item.value}>
                   {item.label}

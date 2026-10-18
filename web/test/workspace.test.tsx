@@ -125,7 +125,7 @@ describe("two-level workspace boundaries", () => {
     ).toThrow("网站范围不一致");
     expect(() =>
       a.getLedgerConflict({ path: { conflictId: orderId } }),
-    ).toThrow("一级后台");
+    ).toThrow("请到「对账（全部网站）」执行此操作。");
   });
   it("keeps late A responses out of B caches and preserves scoped detail returns", async () => {
     let release!: (r: Response) => void;
@@ -234,7 +234,7 @@ describe("two-level workspace boundaries", () => {
       "href",
       "/sites/a/notifications",
     );
-    expect(screen.getByRole("link", { name: "共享账本" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "对账" })).toHaveAttribute(
       "href",
       "/reconciliation?selected_site=a",
     );

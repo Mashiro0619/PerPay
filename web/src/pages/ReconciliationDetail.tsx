@@ -40,7 +40,7 @@ import { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyContent, EmptyMe
 export default function EvidenceDetail() {
   const { clientId } = useWorkspace();
   const { kind = "", resourceId = "" } = useParams();
-  const back = useDetailBack("/reconciliation", "返回共享账本");
+  const back = useDetailBack("/reconciliation", "返回对账");
   if (clientId && kind === "conflicts") return <p>账本冲突不属于单个网站，请回到<Link global to="/work-items">「待处理（全部网站）」</Link>查看。</p>;
   if (kind === "conflicts")
     return <ConflictDetail key={resourceId} resourceId={resourceId} />;
@@ -85,7 +85,7 @@ function EvidenceHeading({
   const siteName = clientId ? site?.data?.data.configuration.name ?? clientId : "全部网站";
   const back = useDetailBack(
     "/reconciliation" + (section ? "?tab=" + section : ""),
-    "账本与对账",
+    "返回对账",
   );
   const fetching = useDetailFetching();
   useEffect(() => {

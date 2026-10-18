@@ -36,7 +36,7 @@ export function assertSiteLedger(db: DatabaseSync, clientId: string | undefined,
     UNION SELECT order_id FROM financial_exceptions WHERE ledger_entry_id = ? AND order_id IS NOT NULL
   ) AS evidence JOIN payment_orders AS o ON o.order_id = evidence.order_id WHERE o.api_client_id != ? LIMIT 1`).get(ledgerId, ledgerId, ledgerId, clientId);
     if (conflict || other)
-        throw new AdminOperationError(409, "site_scope_conflict", "该流水涉及共享冲突或其他网站，请到一级共享账本处理。");
+        throw new AdminOperationError(409, "site_scope_conflict", "该流水涉及账本冲突或其他网站，请到「对账（全部网站）」处理。");
 }
 // Register the same controllers at explicit website paths; never dispatch internal HTTP.
 export const SITE_ADMIN_ROUTES = [

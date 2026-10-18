@@ -52,7 +52,7 @@ const globalPageTitles: Record<NavigationSection, string> = {
   "work-items": "全局待办",
   notifications: "全部通知",
   settings: "实例设置",
-  reconciliation: "共享账本",
+  reconciliation: "对账",
   system: "运行状态",
   sites: "业务网站",
 };
@@ -134,7 +134,7 @@ function Workspace() {
             "/notifications": "本站通知",
             "/work-items": "本站待办",
             "/settings": "网站设置",
-            "/reconciliation": "本站对账证据",
+            "/reconciliation": "本站对账",
           }["/" + (localPath.split("/")[1] ?? "")] ?? "网站后台")
         : (section ? globalPageTitles[section] : systemName);
   const overview = localPath === "/";
