@@ -1,14 +1,16 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { describe, it, type TestContext } from "node:test";
 import { AppDatabase } from "../src/database/database.ts";
 import { acquireDatabaseMaintenanceLock, hasDatabaseMaintenanceLock } from "../src/database/maintenance-lock.ts";
 import { IdentityService } from "../src/identity/service.ts";
 import { PasswordInputError } from "../src/identity/crypto.ts";
-import { recoverAdministratorPassword } from "../src/identity/recovery.ts";
+import { AdminRecoveryError, recoverAdministratorPassword } from "../src/identity/recovery.ts";
+import { disableAdministratorAllowlist } from "../src/identity/allowlist-recovery.ts";
 import { createOrderRequestSchema } from "../src/orders/model.ts";
 import { RuntimeSettingsStore } from "../src/settings/index.ts";
 import { createConfiguredHttpServices, HTTP_TEST_ADMIN_PASSWORD } from "./http-fixture.ts";
@@ -65,6 +67,70 @@ describe("offline administrator recovery", () => {
     assert.ok(app.database.health().ok); assert.ok(app.identity.authenticate(login.sessionToken));
     assert.equal(hasDatabaseMaintenanceLock(app.config.databasePath), false);
   });
+
+  for (const action of ["password", "allowlist"] as const) {
+    it(`refuses a live maintenance lease during ${action} recovery without changing state`, async (context) => {
+      const app = await fixture(context);
+      await app.identity.login(HTTP_TEST_ADMIN_PASSWORD);
+      await app.settings.saveAdminAccess({
+        revision: app.settings.instanceSnapshot().revision,
+        enabled: true,
+        cidrs: ["192.0.2.0/24"],
+      }, "192.0.2.1", {
+        actorId: "admin", requestId: "recovery-maintenance-lease", remoteAddressHash: "0".repeat(64),
+      });
+      app.database.close();
+      const now = Date.now();
+      const lock = acquireDatabaseMaintenanceLock(app.config.databasePath, "interrupted-restore", now);
+      try {
+        const expiresAt = now + 24 * 60 * 60 * 1000;
+        const raw = new DatabaseSync(app.config.databasePath);
+        try {
+          raw.prepare(`INSERT INTO app_lease(
+            lease_key, owner_token, owner_pid, owner_host, acquired_at, expires_at
+          ) VALUES (1, ?, ?, 'maintenance', ?, ?)`).run(`maintenance:${lock.token}`, process.pid, now, expiresAt);
+        } finally { raw.close(); }
+        const snapshot = () => {
+          const database = new DatabaseSync(app.config.databasePath, { readOnly: true, readBigInts: true });
+          try {
+            return ["app_lease", "admin_identity", "admin_sessions", "runtime_configuration", "runtime_secrets", "audit_events"]
+              .map((table) => database.prepare("SELECT * FROM " + table).all());
+          } finally { database.close(); }
+        };
+        const before = snapshot();
+        const originalLock = readFileSync(lock.path);
+        const password = "maintenance-lease-must-not-change-password";
+        const request = { dataDirectory: app.config.dataDir, confirmed: true };
+        await assert.rejects(action === "password"
+          ? recoverAdministratorPassword({ ...request, password })
+          : disableAdministratorAllowlist(request), (error: unknown) => {
+          assert.ok(error instanceof AdminRecoveryError);
+          assert.match(error.message, /未到期的维护租约/);
+          assert.match(error.message, /inspect-maintenance-lock/);
+          assert.doesNotMatch(error.message, /30 秒/);
+          return true;
+        });
+        const args = action === "password"
+          ? ["src/identity/recover.ts", "--confirm-reset-admin-password", "--password-stdin"]
+          : ["src/identity/disable-admin-allowlist.ts", "--confirm-disable-admin-allowlist"];
+        const result = spawnSync(process.execPath, args, {
+          cwd: resolve(import.meta.dirname, ".."),
+          env: { ...process.env, PERPAY_DATA_DIR: app.config.dataDir },
+          input: action === "password" ? password + "\n" : undefined,
+          encoding: "utf8", windowsHide: true,
+        });
+        assert.equal(result.status, 1, result.stderr);
+        assert.match(result.stderr, /未到期的维护租约/);
+        assert.match(result.stderr, /inspect-maintenance-lock/);
+        assert.doesNotMatch(result.stderr, /30 秒/);
+        assert.equal((result.stdout + result.stderr).includes(password), false);
+        assert.ok(expiresAt > Date.now() + 30_000);
+        assert.deepEqual(snapshot(), before);
+        assert.equal(hasDatabaseMaintenanceLock(app.config.databasePath), true);
+        assert.deepEqual(readFileSync(lock.path), originalLock);
+      } finally { lock.release(); }
+    });
+  }
 
   it("requires confirmation and the existing password rules", async (context) => {
     const app = await fixture(context);
