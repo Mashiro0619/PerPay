@@ -106,10 +106,13 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
     },
   });
 
-  function applyReview(snapshot: DefaultsSnapshot, policy: SitePolicy) {
+  function applyReview(snapshot: DefaultsSnapshot, policy: SitePolicy, timeoutResolved = false) {
     setSaved(snapshot);
     setDraft(policy);
-    setTimeoutRaw(siteTimeoutSeconds(policy.notification_delivery.timeout_milliseconds));
+    // The numeric policy omits rejected input; an unrelated merge must retain it.
+    setTimeoutRaw(raw => timeoutResolved || !siteTimeoutError(raw)
+      ? siteTimeoutSeconds(policy.notification_delivery.timeout_milliseconds)
+      : raw);
     setNeedsReview(false);
     setReview(null);
     setChoices({});
@@ -195,7 +198,8 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
           onChoose={setChoices}
           onApply={() => {
             const policy = resolveSitePolicyConflicts(review.policy, review.conflicts, choices);
-            if (policy) applyReview(review.snapshot, policy);
+            if (policy) applyReview(review.snapshot, policy,
+              review.conflicts.some(conflict => conflict.path === "policy.notification_delivery.timeout_milliseconds"));
           }}
           disabled={busy}
           saveLabel="保存默认模板"

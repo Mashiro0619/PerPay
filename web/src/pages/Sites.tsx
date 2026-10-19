@@ -305,11 +305,14 @@ function SiteEditor({
     },
     onError: revisionConflict,
   });
-  function applyReview(site: Site, configuration: SiteConfiguration) {
+  function applyReview(site: Site, configuration: SiteConfiguration, timeoutResolved = false) {
     observeSecretRevision(site.revision);
     setSaved(site);
     setDraft(configuration);
-    setTimeoutRaw(siteTimeoutSeconds(configuration.policy.notification_delivery.timeout_milliseconds));
+    // The numeric policy omits rejected input; an unrelated merge must retain it.
+    setTimeoutRaw(raw => timeoutResolved || !siteTimeoutError(raw)
+      ? siteTimeoutSeconds(configuration.policy.notification_delivery.timeout_milliseconds)
+      : raw);
     setReview(null);
     setChoices({});
     setNeedsReview(false);
@@ -423,7 +426,8 @@ function SiteEditor({
           disabled={busy}
           onApply={() => {
             const configuration = resolveSiteConflicts(review.configuration, review.conflicts, choices);
-            if (configuration) applyReview(review.site, configuration);
+            if (configuration) applyReview(review.site, configuration,
+              review.conflicts.some(conflict => conflict.path === "policy.notification_delivery.timeout_milliseconds"));
           }}
         />
       )}

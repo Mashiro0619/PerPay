@@ -176,6 +176,91 @@ describe("business website management", () => {
 });
 
 describe("website configuration recovery", () => {
+  it("preserves invalid timeout through an automatic merge after a key revision conflict", async () => {
+    const view = mount("/sites/site_test/settings/integration"), user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "高级设置" }));
+    const timeout = screen.getByLabelText("通知超时（秒）");
+    fireEvent.change(timeout, { target: { value: "5.123" } });
+    fireEvent.change(timeout, { target: { value: "5.1234" } });
+    view.changeRemote(configuration => { configuration.policy.orders.order_ttl_seconds = 600; });
+    await user.click(screen.getByRole("button", { name: "生成／轮换 API 密钥" }));
+    await user.click(await screen.findByRole("button", { name: "确认" }));
+    await user.click(await screen.findByRole("button", { name: "读取最新配置并核对" }));
+    await screen.findByText("最新配置已合并，尚未保存");
+    expect(screen.queryByRole("button", { name: "应用核对结果" })).not.toBeInTheDocument();
+    expect(timeout).toHaveValue(5.1234);
+    expect(timeout).toBeEnabled();
+    expect(screen.getByText("通知超时最多 3 位小数。")).toBeVisible();
+    const save = screen.getByRole("button", { name: "保存业务网站" });
+    expect(save).toBeDisabled();
+    fireEvent.submit(save.closest("form")!);
+    expect(view.writes).toHaveLength(1);
+    await user.click(screen.getByRole("tab", { name: "订单设置" }));
+    expect(await screen.findByRole("alertdialog")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "继续编辑" }));
+    fireEvent.change(timeout, { target: { value: "5.124" } });
+    await user.click(save);
+    await screen.findByText("业务网站配置已保存");
+    expect(view.writes).toHaveLength(2);
+    expect(view.writes[1]!.body).toMatchObject({ revision: 1, configuration: { policy: {
+      orders: { order_ttl_seconds: 600 }, notification_delivery: { timeout_milliseconds: 5124 },
+    } } });
+  });
+
+  it.each(["保留我的修改", "采用服务器值"])("preserves invalid timeout while resolving an unrelated conflict: %s", async choice => {
+    const view = mount("/sites/site_test/settings/integration"), user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "高级设置" }));
+    const timeout = screen.getByLabelText("通知超时（秒）");
+    fireEvent.change(timeout, { target: { value: "5.123" } });
+    fireEvent.change(timeout, { target: { value: "5.1234" } });
+    fireEvent.change(screen.getByLabelText("最多发送次数"), { target: { value: "15" } });
+    view.changeRemote(configuration => { configuration.policy.notification_delivery.maximum_attempts = 18; });
+    await user.click(screen.getByRole("button", { name: "生成／轮换 API 密钥" }));
+    await user.click(await screen.findByRole("button", { name: "确认" }));
+    await user.click(await screen.findByRole("button", { name: "读取最新配置并核对" }));
+    await screen.findByText("服务器值：18");
+    await user.click(screen.getByRole("button", { name: choice }));
+    await user.click(screen.getByRole("button", { name: "应用核对结果" }));
+    expect(timeout).toHaveValue(5.1234);
+    expect(timeout).toBeEnabled();
+    expect(screen.getByLabelText("最多发送次数")).toHaveValue(choice === "保留我的修改" ? 15 : 18);
+    expect(screen.getByText("通知超时最多 3 位小数。")).toBeVisible();
+    const save = screen.getByRole("button", { name: "保存业务网站" });
+    expect(save).toBeDisabled();
+    fireEvent.submit(save.closest("form")!);
+    expect(view.writes).toHaveLength(1);
+  });
+
+  it.each([
+    { choice: "保留我的修改", seconds: 5.123, milliseconds: 5123 },
+    { choice: "采用服务器值", seconds: 7.555, milliseconds: 7555 },
+  ])("resolves an invalid timeout draft only after choosing its conflict value: $choice", async ({ choice, seconds, milliseconds }) => {
+    const view = mount("/sites/site_test/settings/integration"), user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "高级设置" }));
+    const timeout = screen.getByLabelText("通知超时（秒）");
+    fireEvent.change(timeout, { target: { value: "5.123" } });
+    fireEvent.change(timeout, { target: { value: "5.1234" } });
+    view.changeRemote(configuration => { configuration.policy.notification_delivery.timeout_milliseconds = 7555; });
+    await user.click(screen.getByRole("button", { name: "生成／轮换 API 密钥" }));
+    await user.click(await screen.findByRole("button", { name: "确认" }));
+    await user.click(await screen.findByRole("button", { name: "读取最新配置并核对" }));
+    expect(await screen.findByText("服务器值：7.555")).toBeVisible();
+    expect(screen.getByText("我的值：5.123")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: choice }));
+    expect(timeout).toHaveValue(5.1234);
+    await user.click(screen.getByRole("button", { name: "应用核对结果" }));
+    expect(timeout).toHaveValue(seconds);
+    expect(timeout).toBeValid();
+    const save = screen.getByRole("button", { name: "保存业务网站" });
+    expect(save).toBeEnabled();
+    await user.click(save);
+    await screen.findByText("业务网站配置已保存");
+    expect(view.writes).toHaveLength(2);
+    expect(view.writes[1]!.body).toMatchObject({ revision: 1, configuration: { policy: {
+      notification_delivery: { timeout_milliseconds: milliseconds },
+    } } });
+  });
+
   it("saves across basic, orders, and basic again with the latest complete configuration", async () => {
     const view = mount(), user = userEvent.setup();
     fireEvent.change(await screen.findByLabelText("业务网站名称"), { target: { value: "第一次改名" } });

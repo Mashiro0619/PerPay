@@ -148,6 +148,88 @@ async function network(value: boolean) {
 }
 
 describe("website default template conflict recovery", () => {
+  it("preserves invalid timeout through an automatic merge of another group", async () => {
+    const view = mountDefaults(), user = userEvent.setup();
+    await group(user, "通知策略");
+    edit("通知超时（秒）", "5.123");
+    edit("通知超时（秒）", "5.1234");
+    view.changeRemote(policy => { policy.display.checkout_name = "服务器收银台"; });
+    await act(async () => { await queryClient.invalidateQueries({ queryKey: ["site-defaults"] }); });
+    await user.click(await reload());
+    await screen.findByText("最新模板已合并，尚未保存");
+    expect(screen.queryByRole("button", { name: "应用核对结果" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("通知超时（秒）")).toHaveValue(5.1234);
+    expect(screen.getByLabelText("通知超时（秒）")).toBeEnabled();
+    expect(screen.getByText("通知超时最多 3 位小数。")).toBeVisible();
+    expect(save()).toBeDisabled();
+    fireEvent.submit(save().closest("form")!);
+    expect(view.puts).toHaveLength(0);
+    await group(user, "收银台展示");
+    expect(screen.getByLabelText("收银台名称")).toHaveValue("服务器收银台");
+    expect(save()).toBeDisabled();
+    await group(user, "通知策略");
+    expect(screen.getByLabelText("通知超时（秒）")).toHaveValue(5.1234);
+    edit("通知超时（秒）", "5.124");
+    await user.click(save());
+    await screen.findByText("模板已保存，已有网站不受影响。");
+    expect(view.puts).toHaveLength(1);
+    expect(view.puts[0]).toMatchObject({ revision: 1, policy: {
+      display: { checkout_name: "服务器收银台" }, notification_delivery: { timeout_milliseconds: 5124 },
+    } });
+  });
+
+  it("preserves invalid timeout while resolving a conflict in another group", async () => {
+    const view = mountDefaults(), user = userEvent.setup();
+    await screen.findByLabelText("收银台有效期（秒）");
+    edit("收银台有效期（秒）", "600");
+    await group(user, "通知策略");
+    edit("通知超时（秒）", "5.123");
+    edit("通知超时（秒）", "5.1234");
+    view.changeRemote(policy => { policy.orders.order_ttl_seconds = 900; });
+    await act(async () => { await queryClient.invalidateQueries({ queryKey: ["site-defaults"] }); });
+    await user.click(await reload());
+    await screen.findByText("服务器值：900");
+    await user.click(screen.getByRole("button", { name: "采用服务器值" }));
+    await user.click(screen.getByRole("button", { name: "应用核对结果" }));
+    expect(screen.getByLabelText("通知超时（秒）")).toHaveValue(5.1234);
+    expect(screen.getByLabelText("通知超时（秒）")).toBeEnabled();
+    expect(screen.getByText("通知超时最多 3 位小数。")).toBeVisible();
+    expect(save()).toBeDisabled();
+    fireEvent.submit(save().closest("form")!);
+    expect(view.puts).toHaveLength(0);
+    await group(user, "订单设置");
+    expect(screen.getByLabelText("收银台有效期（秒）")).toHaveValue(900);
+    expect(save()).toBeDisabled();
+  });
+
+  it.each([
+    { choice: "保留我的修改", seconds: 5.123, milliseconds: 5123 },
+    { choice: "采用服务器值", seconds: 7.555, milliseconds: 7555 },
+  ])("resolves an invalid timeout draft only after choosing its conflict value: $choice", async ({ choice, seconds, milliseconds }) => {
+    const view = mountDefaults(), user = userEvent.setup();
+    await group(user, "通知策略");
+    const timeout = screen.getByRole("spinbutton", { name: "通知超时（秒）" });
+    edit("通知超时（秒）", "5.123");
+    edit("通知超时（秒）", "5.1234");
+    view.changeRemote(policy => { policy.notification_delivery.timeout_milliseconds = 7555; });
+    await act(async () => { await queryClient.invalidateQueries({ queryKey: ["site-defaults"] }); });
+    await user.click(await reload());
+    expect(await screen.findByText("服务器值：7.555")).toBeVisible();
+    expect(screen.getByText("我的值：5.123")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: choice }));
+    expect(timeout).toHaveValue(5.1234);
+    await user.click(screen.getByRole("button", { name: "应用核对结果" }));
+    expect(timeout).toHaveValue(seconds);
+    expect(timeout).toBeValid();
+    expect(save()).toBeEnabled();
+    await user.click(save());
+    await screen.findByText("模板已保存，已有网站不受影响。");
+    expect(view.puts).toHaveLength(1);
+    expect(view.puts[0]).toMatchObject({ revision: 1, policy: {
+      notification_delivery: { timeout_milliseconds: milliseconds },
+    } });
+  });
+
   it("retains invalid seconds across tabs and unrelated edits, blocks submission and protects leaving", async () => {
     const view = mountDefaults(), user = userEvent.setup();
     await group(user, "通知策略");
