@@ -149,6 +149,54 @@ describe("server-driven business queries", () => {
     mobileMedia(1600);
   });
 
+  it.each([1600, 390])("keeps stopped-notification filters and queries aligned at %i pixels", async (width) => {
+    mobileMedia(width);
+    const requests: Request[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+      requests.push(request);
+      const stopped = new URL(request.url).searchParams.get("status") === "DEAD_LETTER";
+      return json({ data: [{
+        ...delivery.delivery,
+        status: stopped ? "DEAD_LETTER" : "RETRY_WAIT",
+        next_attempt_at: stopped ? null : delivery.delivery.next_attempt_at,
+        dead_lettered_at: stopped ? delivery.delivery.updated_at : null,
+        event: delivery.event,
+        target: delivery.target,
+      }], page: { next_cursor: null } });
+    }));
+    mount("/notifications?status=RETRY_WAIT&cursor=old-page&page=3&source=overview", <Notifications />);
+    const user = userEvent.setup();
+    await screen.findByRole("searchbox", { name: "通知关键词搜索" });
+    if (width < 1024) {
+      await user.click(screen.getByRole("button", { name: /^筛选与排序/ }));
+      const sheet = await screen.findByRole("dialog", { name: "筛选与排序" });
+      await user.click(within(sheet).getByRole("combobox", { name: "通知状态" }));
+      await user.click(await screen.findByRole("option", { name: "已停止重试" }));
+      expect(within(sheet).getByRole("combobox", { name: "通知状态" })).toHaveTextContent("已停止重试");
+      await user.click(within(sheet).getByRole("button", { name: "应用" }));
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "筛选与排序" })).not.toBeInTheDocument());
+    } else {
+      await user.click(screen.getByRole("combobox", { name: "通知状态筛选" }));
+      await user.click(await screen.findByRole("option", { name: "已停止重试" }));
+      expect(screen.getByRole("combobox", { name: "通知状态筛选" })).toHaveTextContent("已停止重试");
+    }
+    await waitFor(() => {
+      const query = new URL(requests.at(-1)!.url).searchParams;
+      expect(query.get("status")).toBe("DEAD_LETTER");
+      expect(query.has("cursor")).toBe(false);
+    });
+    expect(screen.getByRole("button", { name: "已停止重试" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("查询地址")).toHaveTextContent("source=overview");
+    expect(screen.getByLabelText("查询地址")).not.toHaveTextContent("page=");
+    if (width < 1024) {
+      expect(screen.getByLabelText("当前查询条件")).toHaveTextContent("通知状态：已停止重试");
+    }
+    await user.click(screen.getByRole("button", { name: "等待重试" }));
+    await waitFor(() => expect(new URL(requests.at(-1)!.url).searchParams.get("status")).toBe("RETRY_WAIT"));
+    expect(screen.getByRole("button", { name: "已停止重试" })).toHaveAttribute("aria-pressed", "false");
+    expect(requests.every((request) => request.method === "GET")).toBe(true);
+  });
+
   it.each(cases)(
     "submits $endpoint keywords only on Enter and resets cursors from the $sort header",
     async ({ path, element, label, endpoint, sort, field, data }) => {

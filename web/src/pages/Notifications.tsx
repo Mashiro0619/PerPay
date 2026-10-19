@@ -53,7 +53,7 @@ const statuses = [
   { value: "LEASED", label: "投递中" },
   { value: "RETRY_WAIT", label: "等待重试" },
   { value: "ACKNOWLEDGED", label: "通知已确认" },
-  { value: "DEAD_LETTER", label: "投递失败" },
+  { value: "DEAD_LETTER", label: "已停止重试" },
 ] as const;
 export default function Notifications() {
   const [search, setSearch] = useSearchParams();
