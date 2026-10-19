@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,6 +7,7 @@ import { describe, it } from "node:test";
 
 import type { AppDatabase } from "../src/database/database.ts";
 import { createApp } from "../src/http/app.ts";
+import { OrderError } from "../src/orders/service.ts";
 import {
   createConfiguredHttpServices,
   HTTP_TEST_ADMIN_PASSWORD,
@@ -15,6 +17,7 @@ const ORIGIN = "http://localhost:6190";
 const API_SECRET = Buffer.alloc(32, 19).toString("base64url");
 const COLLECTION_CODE = "https://qr.alipay.com/fkx-test-payment-http";
 const TEST_PAYMENT_ID = "12345678-1234-4123-8123-123456789abc";
+const LEGACY_TEST_PRODUCT_NAME = "配置测试支付（真实收款）";
 
 describe("administrator test payment HTTP contract", () => {
   for (const invalidation of ["logout", "revoke-all", "expire"] as const) {
@@ -118,6 +121,96 @@ describe("administrator test payment HTTP contract", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  for (const scope of ["global", "site"] as const) {
+    it(`preserves test-payment replay across product-label changes on the ${scope} route`, async () => {
+      const directory = mkdtempSync(join(tmpdir(), "perpay-test-payment-label-"));
+      const services = await createConfiguredHttpServices({
+        directory, apiSecret: null, collectionCodePayload: COLLECTION_CODE, publicUrl: ORIGIN,
+      });
+      try {
+        const now = Date.now();
+        const ready = createApp({ ...services, startedAt: new Date(0), clock: () => now, ...readyPaymentRuntime(now) });
+        const unready = createApp({ ...services, startedAt: new Date(0), clock: () => now });
+        const login = await administratorLogin(ready);
+        const target = scope === "global" ? "/api/admin/v1/test-payments" : "/api/admin/v1/sites/default/test-payments";
+        const post = (id: string, amount = 100, app = ready) => app.request(target, {
+          method: "POST", headers: login.headers,
+          body: JSON.stringify({
+            ...(scope === "global" ? { api_client_id: "default" } : {}),
+            test_payment_id: id, amount_cents: amount,
+          }),
+        });
+
+        // Recreate the immutable request used by the previous administrator endpoint.
+        const legacyRequest = {
+          idempotency_key: `admin-test-payment:${TEST_PAYMENT_ID}`,
+          merchant_order_no: `test-${TEST_PAYMENT_ID}`,
+          amount_cents: 100, product_name: LEGACY_TEST_PRODUCT_NAME, note: null,
+        };
+        const legacyOrder = services.orders.forSite("default").create(legacyRequest).order;
+        const legacySnapshot = () => services.database.read((db) => db.prepare(
+          "SELECT product_name, request_fingerprint, request_fingerprint_version FROM payment_orders WHERE order_id = ?",
+        ).get(legacyOrder.orderId));
+        const beforeReplay = legacySnapshot();
+        for (const app of [ready, unready]) {
+          const replay = await post(TEST_PAYMENT_ID, 100, app);
+          assert.equal(replay.status, 200);
+          const body = await replay.json() as { data: TestPaymentResponse };
+          assert.equal(body.data.order_id, legacyOrder.orderId);
+          assert.equal(body.data.product_name, LEGACY_TEST_PRODUCT_NAME);
+          assert.equal(body.data.checkout.checkout_url, `${ORIGIN}/checkout/${encodeURIComponent(legacyOrder.checkoutToken)}`);
+        }
+        assert.deepEqual(legacySnapshot(), beforeReplay);
+        assert.equal(orderCount(services.database), 1);
+
+        const changedLegacyAmount = await post(TEST_PAYMENT_ID, 101);
+        assert.equal(changedLegacyAmount.status, 409);
+        assert.equal(await errorCode(changedLegacyAmount), "idempotency_conflict");
+        // The compatibility rule belongs to the administrator endpoint, not general order creation.
+        assert.throws(() => services.orders.forSite("default").create({
+          ...legacyRequest, product_name: "测试订单",
+        }), (error: unknown) => error instanceof OrderError && error.code === "idempotency_conflict");
+
+        const newId = randomUUID();
+        const created = await post(newId);
+        assert.equal(created.status, 201);
+        const createdBody = await created.json() as { data: TestPaymentResponse };
+        assert.equal(createdBody.data.product_name, "测试订单");
+        const currentReplay = await post(newId);
+        assert.equal(currentReplay.status, 200);
+        assert.equal(((await currentReplay.json()) as { data: TestPaymentResponse }).data.order_id, createdBody.data.order_id);
+        const changedCurrentAmount = await post(newId, 101);
+        assert.equal(changedCurrentAmount.status, 409);
+        assert.equal(await errorCode(changedCurrentAmount), "idempotency_conflict");
+
+        const conflictingRequests = [
+          { product_name: "普通业务商品", note: null, merchantPrefix: "test-" },
+          { product_name: LEGACY_TEST_PRODUCT_NAME, note: "业务订单备注", merchantPrefix: "test-" },
+          { product_name: LEGACY_TEST_PRODUCT_NAME, note: null, merchantPrefix: "business-" },
+        ];
+        for (const conflict of conflictingRequests) {
+          const id = randomUUID();
+          services.orders.forSite("default").create({
+            ...legacyRequest,
+            idempotency_key: `admin-test-payment:${id}`,
+            merchant_order_no: conflict.merchantPrefix + id,
+            product_name: conflict.product_name,
+            note: conflict.note,
+          });
+          const rejected = await post(id);
+          assert.equal(rejected.status, 409);
+          assert.equal(await errorCode(rejected), "idempotency_conflict");
+        }
+        assert.equal(orderCount(services.database), 2 + conflictingRequests.length);
+        assert.deepEqual(legacySnapshot(), beforeReplay);
+      } finally {
+        services.database.close();
+        assert.ok(directory.startsWith(join(tmpdir(), "perpay-test-payment-label-")));
+        rmSync(directory, { recursive: true, force: true });
+      }
+    });
+  }
 
   it("uses the real order path with readiness, session, and idempotency protection", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-test-payment-http-"));

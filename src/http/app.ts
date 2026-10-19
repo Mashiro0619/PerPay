@@ -58,7 +58,7 @@ import {
   type PublicCheckoutProjection,
 } from "../orders/model.ts";
 import { isCanonicalCheckoutToken } from "../orders/checkout-token.ts";
-import { OrderError, type OrderErrorCode, type OrderService } from "../orders/service.ts";
+import { OrderError, type CreateOrderResult, type OrderErrorCode, type OrderService } from "../orders/service.ts";
 import {
   financialDecisionRequestSchema,
   linkedFinancialDecisionRequestSchema,
@@ -921,13 +921,22 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       requireCurrentSession(context, dependencies.identity);
       if (dependencies.sites && !body.api_client_id) throw new HttpApiError(422, "validation_failed", "请选择测试收款所属的业务网站");
       const testOrders = dependencies.sites ? dependencies.orders.forSite(body.api_client_id!) : dependencies.orders;
-      const result = testOrders.create({
+      const createTestOrder = (productName: string) => testOrders.create({
         idempotency_key: `admin-test-payment:${body.test_payment_id}`,
         merchant_order_no: `test-${body.test_payment_id}`,
         amount_cents: body.amount_cents,
-        product_name: "测试订单",
+        product_name: productName,
         note: null,
       }, () => requirePaymentBackgroundReady(dependencies));
+      let result: CreateOrderResult;
+      try {
+        result = createTestOrder("测试订单");
+      } catch (error) {
+        if (!(error instanceof OrderError) || error.code !== "idempotency_conflict") throw error;
+        // The prior server label is part of persisted request fingerprints. Keep its
+        // exact replays valid without relaxing checks on any other request field.
+        result = createTestOrder("配置测试支付（真实收款）");
+      }
       try {
         dependencies.onOrderAvailable?.(result.order.orderId);
       } catch (error) {
