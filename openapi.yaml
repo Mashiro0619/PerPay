@@ -3318,7 +3318,7 @@ paths:
         "401":
           $ref: "#/components/responses/AdminUnauthorized"
         "404":
-          description: "提醒分类不存在，或不属于当前业务网站。"
+          description: "业务网站不存在。"
           content:
             application/json:
               schema:
@@ -3372,7 +3372,7 @@ paths:
         "401":
           $ref: "#/components/responses/AdminUnauthorized"
         "404":
-          description: "提醒分类不存在，或不属于当前业务网站。"
+          description: "业务网站不存在。"
           content:
             application/json:
               schema:
@@ -3441,7 +3441,7 @@ paths:
         "403":
           $ref: "#/components/responses/FinancialWriteForbidden"
         "404":
-          description: "提醒分类不存在，或不属于当前业务网站。"
+          description: "业务网站不存在。"
           content:
             application/json:
               schema:
