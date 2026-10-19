@@ -747,49 +747,50 @@ export function parseOccurredAtWithPrecision(value: string | null): ParsedOccurr
   const local = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/.exec(
     trimmed,
   );
-  let milliseconds: number;
-  let precisionMilliseconds: ParsedOccurredAt["precisionMilliseconds"];
-  if (local) {
-    const [, yearText, monthText, dayText, hourText, minuteText, secondText, fractionText] =
-      local;
-    const year = Number(yearText);
-    const month = Number(monthText);
-    const day = Number(dayText);
-    const hour = Number(hourText);
-    const minute = Number(minuteText);
-    const second = Number(secondText);
-    const fraction = Number((fractionText ?? "").padEnd(3, "0"));
-    const calendar = new Date(Date.UTC(year, month - 1, day, hour, minute, second, fraction));
-    if (
-      year < 2000 ||
-      month < 1 ||
-      month > 12 ||
-      hour > 23 ||
-      minute > 59 ||
-      second > 59 ||
-      calendar.getUTCFullYear() !== year ||
-      calendar.getUTCMonth() !== month - 1 ||
-      calendar.getUTCDate() !== day
-    ) {
-      throw new LedgerNormalizationError("INVALID_TIMESTAMP", "occurred time is invalid");
-    }
-    // Account-log timestamps without an offset are documented in China Standard Time.
-    milliseconds = calendar.getTime() - 8 * 60 * 60 * 1000;
-    precisionMilliseconds = precisionFromFraction(fractionText);
-  } else if (/T.*(?:Z|[+-]\d{2}:\d{2})$/.test(trimmed)) {
-    const fraction = /\.(\d+)(?:Z|[+-]\d{2}:\d{2})$/.exec(trimmed)?.[1];
-    if (fraction !== undefined && (fraction.length < 1 || fraction.length > 3)) {
-      throw new LedgerNormalizationError(
-        "INVALID_TIMESTAMP",
-        "occurred time precision exceeds milliseconds",
-      );
-    }
-    milliseconds = Date.parse(trimmed);
-    precisionMilliseconds = precisionFromFraction(fraction);
-  } else {
-    milliseconds = Number.NaN;
-    precisionMilliseconds = 1_000;
+  const zoned = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|[+-]\d{2}:\d{2})$/.exec(
+    trimmed,
+  );
+  const parts = local ?? zoned;
+  if (!parts) {
+    throw new LedgerNormalizationError("INVALID_TIMESTAMP", "occurred time is invalid");
   }
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, fractionText, offsetText] = parts;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  const fraction = Number((fractionText ?? "").padEnd(3, "0"));
+  const calendar = new Date(Date.UTC(year, month - 1, day, hour, minute, second, fraction));
+  if (
+    (local !== null && year < 2000) ||
+    month < 1 ||
+    month > 12 ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59 ||
+    calendar.getUTCFullYear() !== year ||
+    calendar.getUTCMonth() !== month - 1 ||
+    calendar.getUTCDate() !== day
+  ) {
+    throw new LedgerNormalizationError("INVALID_TIMESTAMP", "occurred time is invalid");
+  }
+
+  // Account-log timestamps without an offset are documented in China Standard Time.
+  let offsetMinutes = 8 * 60;
+  if (offsetText === "Z") {
+    offsetMinutes = 0;
+  } else if (offsetText !== undefined) {
+    const offsetHour = Number(offsetText.slice(1, 3));
+    const offsetMinute = Number(offsetText.slice(4, 6));
+    if (offsetHour > 23 || offsetMinute > 59) {
+      throw new LedgerNormalizationError("INVALID_TIMESTAMP", "occurred time offset is invalid");
+    }
+    offsetMinutes = (offsetText.startsWith("-") ? -1 : 1) * (offsetHour * 60 + offsetMinute);
+  }
+  const milliseconds = calendar.getTime() - offsetMinutes * 60_000;
+  const precisionMilliseconds = precisionFromFraction(fractionText);
   if (
     !Number.isSafeInteger(milliseconds) ||
     milliseconds < 0 ||

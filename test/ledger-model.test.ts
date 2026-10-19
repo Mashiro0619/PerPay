@@ -79,6 +79,47 @@ describe("ledger normalization model", () => {
     );
   });
 
+  it("rejects invalid calendar fields, times and offsets in zoned timestamps", () => {
+    for (const value of [
+      "2030-02-30T12:34:56+08:00",
+      "2025-02-29T12:34:56Z",
+      "2026-04-31T12:34:56-05:00",
+      "2026-00-14T12:34:56Z",
+      "2026-13-14T12:34:56Z",
+      "2026-08-00T12:34:56Z",
+      "2026-08-14T24:00:00+08:00",
+      "2026-08-14T12:60:00Z",
+      "2026-08-14T12:34:60Z",
+      "2026-08-14T12:34:56+24:00",
+      "2026-08-14T12:34:56+08:60",
+      "2026-08-14T12:34+08:00",
+      "2026-08-14T12:34:56.1234Z",
+    ]) {
+      assert.throws(
+        () => parseOccurredAtWithPrecision(value),
+        (error: unknown) =>
+          error instanceof LedgerNormalizationError && error.code === "INVALID_TIMESTAMP",
+        value,
+      );
+    }
+  });
+
+  it("preserves valid leap dates, timezone boundaries and declared millisecond precision", () => {
+    for (const [value, expectedUtc, precisionMilliseconds] of [
+      ["2024-02-29T23:59:59.123Z", "2024-02-29T23:59:59.123Z", 1],
+      ["2024-03-01T00:30:00.1+01:00", "2024-02-29T23:30:00.100Z", 100],
+      ["2024-02-29T23:30:00.12-02:30", "2024-03-01T02:00:00.120Z", 10],
+      ["1970-01-01T00:00:00Z", "1970-01-01T00:00:00.000Z", 1_000],
+      ["2026-08-14 12:34:56.001", "2026-08-14T04:34:56.001Z", 1],
+      ["2026-08-14T12:34:56", "2026-08-14T04:34:56.000Z", 1_000],
+    ] as const) {
+      assert.deepEqual(parseOccurredAtWithPrecision(value), {
+        milliseconds: Date.parse(expectedUtc),
+        precisionMilliseconds,
+      }, value);
+    }
+  });
+
   it("scopes request identity to the account and semantic identity to normalized facts", () => {
     const first = requestFingerprint("primary", "2026-08-14 00:00:00", "2026-08-14 01:00:00", 1, 2000);
     assert.equal(first, requestFingerprint("primary", "2026-08-14 00:00:00", "2026-08-14 01:00:00", 1, 2000));
