@@ -455,7 +455,7 @@ describe("desktop business list composition", () => {
       title: "订单详情",
     },
     {
-      mode: "流水编号",
+      mode: "内部流水编号（PerPay）",
       value: ledgerId,
       path: "/reconciliation",
       element: <Reconciliation />,

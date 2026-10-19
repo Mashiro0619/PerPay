@@ -505,12 +505,12 @@ function ReconciliationList({
           modes: [
             {
               value: "ledger",
-              label: "流水编号",
-              placeholder: "输入完整流水编号",
+              label: "内部流水编号（PerPay）",
+              placeholder: "输入完整的 PerPay 内部流水编号",
               pattern: resourceIdPattern.source,
             },
           ],
-          inputLabel: "支付宝流水编号",
+          inputLabel: "内部流水编号（PerPay）",
           inputName: "ledger-lookup",
           onSubmit: (_mode, value) => {
             if (resourceIdPattern.test(value))

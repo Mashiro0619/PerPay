@@ -155,9 +155,9 @@ describe("mobile business list integration", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "查询方式：关键词" }));
     await user.click(
-      await screen.findByRole("menuitemradio", { name: "流水编号" }),
+      await screen.findByRole("menuitemradio", { name: "内部流水编号（PerPay）" }),
     );
-    const input = screen.getByRole("searchbox", { name: "支付宝流水编号" });
+    const input = screen.getByRole("searchbox", { name: "内部流水编号（PerPay）" });
     await user.type(input, "invalid");
     await user.click(screen.getByRole("button", { name: "查找" }));
     expect(
