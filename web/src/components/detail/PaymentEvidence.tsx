@@ -243,13 +243,36 @@ export function CandidateCard({
       ? order.payment.status
       : order.payment_status
     : null;
+  const canAssociate =
+    candidate.status === "ELIGIBLE" &&
+    entry?.direction === "CREDIT" &&
+    ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(entry.state) &&
+    paymentStatus === "UNPAID";
+  let guidance = "当前订单或流水状态不支持人工关联，请查看详情。";
+  if (candidate.status === "SELECTED") {
+    guidance = paymentStatus === "CONFIRMED"
+      ? "这条匹配记录已被选用，关联订单的收款已确认。"
+      : paymentStatus === "DISPUTED"
+        ? "这条匹配记录曾被选用；关联订单的收款有争议，请查看收款关联记录。"
+        : "这条匹配记录已被选用，请以关联订单当前的收款状态为准。";
+  } else if (candidate.status === "SUPERSEDED") {
+    guidance = "这条匹配记录已被替代，仅供查看历史。";
+  } else if (canAssociate) {
+    guidance = "请核对订单与流水，确认归属后可人工关联收款；可能匹配的记录不代表收款已确认。";
+  } else if (!entry || !order) {
+    guidance = "订单或流水状态暂不可用，暂不能人工关联收款。";
+  } else if (paymentStatus === "CONFIRMED") {
+    guidance = "关联订单的收款已确认，当前不能使用这条记录再次关联。";
+  } else if (paymentStatus === "DISPUTED") {
+    guidance = "关联订单的收款有争议，请查看收款关联记录。";
+  }
   return (
     <Card size={embedded ? "sm" : "default"} data-density="compact" aria-label={candidateTitle}>
       <CardHeader>
         <CardTitle className="record-list-title" role="heading" aria-level={2}>
           {candidateTitle}
         </CardTitle>
-        <CardDescription className="record-list-meta">PerPay 按金额和付款时间推测，需要你确认；可能匹配的记录不代表收款已确认。</CardDescription>
+        <CardDescription className="record-list-meta">PerPay 按金额和付款时间推测。{guidance}</CardDescription>
         <CardAction>
           <StatusBadge value={candidate.status} />
         </CardAction>
@@ -301,10 +324,7 @@ export function CandidateCard({
           }
         />
       </CardContent>
-      {candidate.status === "ELIGIBLE" &&
-        entry?.direction === "CREDIT" &&
-        ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(entry.state) &&
-        paymentStatus === "UNPAID" && (
+      {canAssociate && (
           <CardFooter>
             <AssociateIncomeAction
               orderId={candidate.order_id}
