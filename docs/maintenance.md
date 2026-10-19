@@ -44,7 +44,7 @@ docker compose --profile maintenance run --rm --no-deps --entrypoint node mainte
 
 按提示输入新密码两次（不回显）。密码至少 6 个字符；成功后再执行 `docker compose up -d`。
 
-只修改管理员密码、注销旧会话并记录审计，订单、配置和各类密钥不变。不要删除数据卷。若提示数据库仍被占用，确认停服；异常退出后等待 30 秒再试。不会自动迁移数据库或重新生成主密钥。
+只修改管理员密码、注销旧会话并记录审计，订单、配置和各类密钥不变。不要删除数据卷。若提示数据库被占用或维护锁未释放，先确认相关进程已停止，再按[清理遗留维护锁](#清理遗留维护锁)区分占用类型并处理。不会自动迁移数据库或重新生成主密钥。
 
 源码部署：停掉服务后，将 `PERPAY_DATA_DIR` 指向原数据目录，运行 `node dist/identity/recover.js --confirm-reset-admin-password`。自动化可加 `--password-stdin`，从标准输入传一行 UTF-8 密码；不要把密码写在命令参数、环境变量或 shell 历史中。
 
@@ -179,22 +179,56 @@ node dist/backup/runner.js health
 
 ## 清理遗留维护锁
 
-仅在备份或恢复异常中断、提示维护锁未释放时使用。先停止服务，并确认没有其他维护容器或进程运行：
+仅在维护操作异常中断、数据库持续被占用或提示锁未释放时使用。先停止应用和备份，并确认所有维护容器及进程已结束；`docker compose stop` 不会停止另行启动的维护容器：
 
 ```sh
 docker compose stop app backup
+```
+
+普通应用停止续期后，数据库租约通常在 30 秒内到期；维护恢复的租约可能长达 24 小时。租约到期不会自动删除锁文件。下面两类锁的位置和清理条件不同，应按错误指向的路径分别检查。
+
+### 数据库维护锁
+
+锁文件位于数据目录的 `perpay.sqlite3.maintenance-lock`，由 `PERPAY_DATA_DIR` 定位；它会阻止应用启动和离线恢复。Compose 的 maintenance 服务默认运行备份工具，因此本节显式指定数据库维护脚本：
+
+```sh
+docker compose --profile maintenance run --rm --no-deps --entrypoint node maintenance dist/database/maintenance.js inspect-maintenance-lock
+```
+
+检查成功会直接返回锁记录的 `token`、`operation` 和 `createdAt`。核对操作已结束后，用返回的 `token` 执行常规清理：
+
+```sh
+# 用 inspect-maintenance-lock 返回的 token 替换 DATABASE_LOCK_TOKEN。
+docker compose --profile maintenance run --rm --no-deps --entrypoint node maintenance dist/database/maintenance.js clear-stale-maintenance-lock DATABASE_LOCK_TOKEN --confirm-no-maintenance-process
+```
+
+数据库维护锁的常规清理要求精确 token，并检查当前租约；7 小时只用于显示过期提示。命令会核对锁身份，拒绝未到期的应用租约；匹配的维护租约尚未到期时，常规清理同样会拒绝。根据具体错误处理特殊情况：
+
+- 提示 `maintenance lease is still live` 时，先确认对应维护进程确已退出，核对中断操作、备份与数据库状态。只有明确决定放弃该已中断进程的数据库占用时，才在上述数据库锁清理命令中显式增加 `--force-abandon-maintenance-lease`；它不能绕过仍有效的应用租约。
+- 在新数据目录首次恢复中断、活动数据库仍与临时恢复文件保持硬链接时，保留原备份及临时文件。对应的 `--finalize-interrupted-fresh-restore` 只用于该状态，工具会核对恢复记录、文件关联、摘要和数据库完整性；不能与其他强制选项合用。
+- 锁记录不可读时，先检查路径、权限和文件内容。仅在确认操作进程已经结束、普通锁文件确实损坏后，才考虑以 `--force-unreadable-lock` 替代 token；该路径仍拒绝有效数据库租约。不要手动删除锁或改写租约。
+
+### 备份发布锁
+
+锁文件位于备份目录的 `.perpay-source-publication.maintenance-lock`，由 `PERPAY_BACKUP_DIR` 定位。它与数据库维护锁独立，检查结果为 `missing` 只说明未找到这一类锁。
+
+```sh
 docker compose --profile maintenance run --rm maintenance inspect-publication-lock
 ```
 
-只有维护锁超过 7 小时且检查结果允许清理时，才执行下面的命令：
+本节使用 Compose 默认的 `dist/backup/runner.js` 入口，检查结果中的资格字段为 `cleanup_eligible`。内部 `inspectPublicationLock()` 返回 `cleanupEligible`，由该 CLI 转换为上述字段。
+
+只有发布锁超过 7 小时、检查结果为 `status: "stale"` 且 `cleanup_eligible: true`，并已确认没有维护进程运行时，才执行：
 
 ```sh
 # 仅在检查结果 cleanup_eligible 为 true 时清理。
-# 用返回的 record.token 替换 LOCK_TOKEN。
-docker compose --profile maintenance run --rm maintenance clear-stale-publication-lock LOCK_TOKEN --confirm-no-maintenance-process
+# 用返回的 record.token 替换 PUBLICATION_LOCK_TOKEN。
+docker compose --profile maintenance run --rm maintenance clear-stale-publication-lock PUBLICATION_LOCK_TOKEN --confirm-no-maintenance-process
 ```
 
-清理后重新执行原先失败的维护操作，成功后再启动服务。
+发布锁不可读时不会返回清理资格；`--force-unreadable-lock` 仅用于已确认进程退出且普通锁文件损坏的情况，工具仍要求该文件超过 7 小时。
+
+清理成功只表示对应锁已释放。按原维护流程重新执行失败的操作，或核验已完成的恢复；确认数据库和备份状态正常后再启动服务。
 
 ## 管理员 IP 白名单与离线恢复
 
@@ -209,10 +243,13 @@ docker compose --profile maintenance run --rm maintenance clear-stale-publicatio
 ```sh
 docker compose stop app backup
 docker compose --profile maintenance run --rm --no-deps --entrypoint node maintenance dist/identity/disable-admin-allowlist.js --confirm-disable-admin-allowlist
-docker compose up -d app backup
 ```
 
-异常退出后，等 30 秒让数据库释放占用再试。源码部署先停止服务，再将 `PERPAY_DATA_DIR` 指向原数据目录，执行 `node dist/identity/disable-admin-allowlist.js --confirm-disable-admin-allowlist`。命令只关闭白名单、保留规则并记录审计，不修改密码、会话或支付数据；不会自动迁移数据库。不要用旧版本维护镜像操作升级后的数据库。
+命令成功后，再执行 `docker compose up -d app backup` 启动服务。
+
+若恢复命令提示数据库被占用或维护锁未释放，保持停服并按[清理遗留维护锁](#清理遗留维护锁)判断占用类型；维护租约不能按普通应用的 30 秒时长推断。
+
+源码部署先停止服务，再将 `PERPAY_DATA_DIR` 指向原数据目录，执行 `node dist/identity/disable-admin-allowlist.js --confirm-disable-admin-allowlist`。命令只关闭白名单、保留规则并记录审计，不修改密码、会话或支付数据；不会自动迁移数据库。不要用旧版本维护镜像操作升级后的数据库。
 
 <a id="采集最小间隔"></a>
 

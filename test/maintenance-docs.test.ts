@@ -1,11 +1,84 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { describe, it } from "node:test";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { describe, it, type TestContext } from "node:test";
+import { parse } from "yaml";
+import { acquireDatabaseMaintenanceLock } from "../src/database/maintenance-lock.ts";
 import { migrations } from "../src/database/migrations.ts";
 import { APP_VERSION, DATABASE_COMPATIBILITY } from "../src/version.ts";
 
 const maintenance = readFileSync(new URL("../docs/maintenance.md", import.meta.url), "utf8");
 const usage = readFileSync(new URL("../USAGE.md", import.meta.url), "utf8");
+const repositoryRoot = resolve(import.meta.dirname, "..");
+const compose = parse(readFileSync(new URL("../docker-compose.yml", import.meta.url), "utf8")) as {
+  services: Record<string, { entrypoint: string[] }>;
+};
+
+function documentedCommand(action: string) {
+  const commands = [...maintenance.matchAll(/^docker compose[^\r\n]+/gm)]
+    .map(([line]) => line.split(/\s+/))
+    .filter((tokens) => tokens.includes(action));
+  assert.equal(commands.length, 1, `expected one documented ${action} command`);
+  const tokens = commands[0]!;
+  const run = tokens.indexOf("run");
+  assert.ok(run > 1, "maintenance examples must use docker compose run");
+  let index = run + 1;
+  let entrypoint: string[] | undefined;
+  while (tokens[index]?.startsWith("--")) {
+    const option = tokens[index++];
+    if (option === "--entrypoint") {
+      const executable = tokens[index++];
+      assert.ok(executable);
+      entrypoint = [executable];
+    } else {
+      assert.ok(option === "--rm" || option === "--no-deps", `unsupported example option: ${option}`);
+    }
+  }
+  const serviceName = tokens[index++];
+  assert.ok(serviceName);
+  const service = compose.services[serviceName];
+  assert.ok(service, `unknown compose service: ${serviceName}`);
+  entrypoint ??= service.entrypoint;
+  assert.ok(Array.isArray(entrypoint));
+  assert.equal(entrypoint[0], "node");
+  const [script, ...args] = [...entrypoint.slice(1), ...tokens.slice(index)];
+  assert.ok(script);
+  assert.match(script, /^dist\/(?:backup\/runner|database\/maintenance)\.js$/);
+  // Execute the source counterpart of the resolved build entrypoint, without requiring a stale server build.
+  return { script: resolve(repositoryRoot, script.replace(/^dist\//, "src/").replace(/\.js$/, ".ts")), args };
+}
+
+function lockDirectories(context: TestContext) {
+  const directory = mkdtempSync(join(tmpdir(), "perpay-maintenance-docs-"));
+  context.after(() => {
+    assert.equal(dirname(resolve(directory)), resolve(tmpdir()));
+    assert.ok(directory.includes("perpay-maintenance-docs-"));
+    rmSync(directory, { recursive: true, force: true });
+  });
+  const data = join(directory, "data"), backups = join(directory, "backups");
+  mkdirSync(data); mkdirSync(backups);
+  return { data, backups, secrets: join(directory, "secrets") };
+}
+
+function inspectFromDocumentation(action: string, directories: ReturnType<typeof lockDirectories>) {
+  const command = documentedCommand(action);
+  assert.deepEqual(command.args, [action]);
+  const result = spawnSync(process.execPath, [command.script, ...command.args], {
+    cwd: repositoryRoot,
+    env: {
+      ...process.env,
+      PERPAY_DATA_DIR: directories.data,
+      PERPAY_BACKUP_DIR: directories.backups,
+      PERPAY_SECRETS_DIR: directories.secrets,
+      PERPAY_MASTER_KEY: "invalid-for-lock-inspection-test",
+    },
+    encoding: "utf8", windowsHide: true, timeout: 10_000,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  return JSON.parse(result.stdout) as Record<string, unknown>;
+}
 
 describe("maintenance documentation version contract", () => {
   it("keeps the current release notes and maintenance version aligned with the build", () => {
@@ -47,5 +120,40 @@ describe("maintenance documentation version contract", () => {
     assert.ok(usage.includes("最小间隔 ≤ 活跃间隔 ≤ 常规间隔"));
     assert.equal(usage.includes("PUT /api/admin/v1/settings/notifications"), false);
     assert.equal(usage.includes("实例设置 → 支付宝接入 → 账单采集"), false);
+  });
+
+  it("runs the documented database lock inspection through the configured entrypoint", (context) => {
+    const directories = lockDirectories(context);
+    const lock = acquireDatabaseMaintenanceLock(join(directories.data, "perpay.sqlite3"), "interrupted-admin-recovery", Date.now());
+    try {
+      const before = readFileSync(lock.path);
+      const output = inspectFromDocumentation("inspect-maintenance-lock", directories);
+      assert.equal(output.token, lock.token);
+      assert.equal(output.operation, "interrupted-admin-recovery");
+      assert.equal(typeof output.createdAt, "string");
+      assert.deepEqual(readFileSync(lock.path), before);
+      assert.equal(documentedCommand("clear-stale-maintenance-lock").script,
+        documentedCommand("inspect-maintenance-lock").script);
+    } finally { lock.release(); }
+  });
+
+  it("matches the documented publication eligibility field to the configured CLI output", (context) => {
+    const directories = lockDirectories(context);
+    const lock = acquireDatabaseMaintenanceLock(join(directories.backups, ".perpay-source-publication"), "interrupted-backup", Date.now() - 8 * 60 * 60 * 1000);
+    try {
+      const before = readFileSync(lock.path);
+      const output = inspectFromDocumentation("inspect-publication-lock", directories);
+      assert.equal(output.status, "stale");
+      assert.equal((output.record as Record<string, unknown>).token, lock.token);
+      assert.equal(output.cleanup_eligible, true);
+      const publicationSection = maintenance.split("### 备份发布锁")[1]?.split(/^## /m)[0];
+      assert.ok(publicationSection);
+      const field = /`(cleanup(?:_[a-z]+|[A-Z][A-Za-z]*)): true`/.exec(publicationSection)?.[1];
+      assert.ok(field, "publication cleanup must name its required CLI eligibility field");
+      assert.equal(output[field], true, `documented eligibility field ${field} is missing from the CLI output`);
+      assert.deepEqual(readFileSync(lock.path), before);
+      assert.equal(documentedCommand("clear-stale-publication-lock").script,
+        documentedCommand("inspect-publication-lock").script);
+    } finally { lock.release(); }
   });
 });
