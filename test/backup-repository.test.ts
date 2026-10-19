@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs, {
   copyFileSync,
   existsSync,
@@ -26,10 +27,17 @@ import {
   pruneLocalBackups,
   recoverInterruptedBackupFiles,
   restoreLocalBackup,
+  type LocalBackup,
 } from "../src/backup/repository.ts";
-import { AppDatabase } from "../src/database/database.ts";
+import {
+  AppDatabase,
+  createVerifiedDatabaseBackup,
+  inspectDatabaseIntegrity,
+} from "../src/database/database.ts";
+import { migrationChecksum, migrations } from "../src/database/migrations.ts";
 import { DATABASE_COMPATIBILITY } from "../src/version.ts";
 import { RuntimeSettingsStore } from "../src/settings/store.ts";
+import { createLegacySettingsDatabase } from "./legacy-settings-fixture.ts";
 
 const RESTORE_MASTER_KEY = Buffer.alloc(32, 0x41);
 
@@ -472,6 +480,125 @@ describe("local SQLite backup repository", () => {
       /another application instance/u,
     );
     assert.equal(existsSync(path), true);
+  });
+
+  it("restores a compatible older schema without migrating it", { timeout: 30_000 }, async () => {
+    const config = { ...configuration(), masterKey: RESTORE_MASTER_KEY };
+    const path = join(config.dataDirectory, "perpay.sqlite3");
+    const backupName = "perpay.sqlite3.backup-2026-08-17T09-00-00.000Z-12345678-1234-4123-8123-123456789abc.sqlite3";
+    const backupPath = join(config.backupDirectory, backupName);
+    const legacy = createLegacySettingsDatabase(path);
+    let backup: LocalBackup;
+    try {
+      new RuntimeSettingsStore(legacy.owner, RESTORE_MASTER_KEY).initialize();
+      await createVerifiedDatabaseBackup(legacy.connection, path, backupPath);
+      backup = inspectLocalBackup(config.backupDirectory, backupName);
+    } finally {
+      legacy.owner.close();
+    }
+    assert.equal(backup.schemaVersion, 33);
+    assert.ok(backup.schemaVersion >= DATABASE_COMPATIBILITY.minimum);
+    assert.ok(backup.schemaVersion < DATABASE_COMPATIBILITY.maximum);
+
+    const current = await AppDatabase.open(path, { masterKey: RESTORE_MASTER_KEY });
+    try {
+      current.write(connection => connection.prepare(
+        "INSERT INTO system_metadata(key, value, updated_at) VALUES ('restore_marker', 'after-upgrade', ?)",
+      ).run(new Date().toISOString()));
+    } finally {
+      current.close();
+    }
+
+    const restored = restoreLocalBackup(config, backup.name, backup.sha256, backup.instanceId);
+    assert.equal(restored.restoredSchemaVersion, backup.schemaVersion);
+    assert.equal(restored.sha256, backup.sha256);
+    assert.notEqual(restored.quarantinedDatabaseName, null);
+    assert.deepEqual(readFileSync(path), readFileSync(backupPath));
+    const quarantine = new DatabaseSync(join(config.dataDirectory, restored.quarantinedDatabaseName!), {
+      readOnly: true,
+    });
+    try {
+      assert.equal(quarantine.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()!.version,
+        DATABASE_COMPATIBILITY.maximum);
+      assert.equal(quarantine.prepare("SELECT value FROM system_metadata WHERE key = 'restore_marker'").get()!.value,
+        "after-upgrade");
+    } finally {
+      quarantine.close();
+    }
+    assert.equal(existsSync(`${path}.maintenance-lock`), false);
+  });
+
+  it("rejects a schema below compatibility before changing the active database", async () => {
+    const config = { ...configuration(), masterKey: RESTORE_MASTER_KEY };
+    const path = join(config.dataDirectory, "perpay.sqlite3");
+    const current = await AppDatabase.open(path, { masterKey: RESTORE_MASTER_KEY });
+    const leaseSchema = current.read(connection =>
+      String(connection.prepare("SELECT sql FROM sqlite_schema WHERE name = 'app_lease'").get()!.sql));
+    current.close();
+    const before = readFileSync(path);
+    const dataFiles = readdirSync(config.dataDirectory);
+    const backupName = "perpay.sqlite3.backup-2026-08-17T09-00-00.000Z-12345678-1234-4123-8123-123456789abc.sqlite3";
+    const backupPath = join(config.backupDirectory, backupName);
+    const schemaVersion = DATABASE_COMPATIBILITY.minimum - 1;
+    const source = new DatabaseSync(backupPath, { enableForeignKeyConstraints: true, readBigInts: true });
+    try {
+      source.exec(leaseSchema);
+      source.exec("CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, checksum TEXT, applied_at TEXT NOT NULL) STRICT;");
+      for (const migration of migrations.filter(item => item.version <= schemaVersion)) {
+        source.exec(migration.sql);
+        source.prepare("INSERT INTO schema_migrations VALUES (?, ?, ?, ?)").run(
+          migration.version, migration.name, migrationChecksum(migration), new Date().toISOString(),
+        );
+      }
+      source.prepare("INSERT INTO checkout_token_keys(key_version, key_material, activated_at, retired_at) VALUES (1, ?, ?, NULL)")
+        .run(Buffer.alloc(32, 0x73), Date.now());
+      const integrity = inspectDatabaseIntegrity(source);
+      assert.equal(integrity.ok, true, JSON.stringify(integrity));
+    } finally {
+      source.close();
+    }
+    const sourceBytes = readFileSync(backupPath);
+    const digest = createHash("sha256").update(sourceBytes).digest("hex");
+    assert.throws(
+      () => restoreLocalBackup(config, backupName, digest),
+      new RegExp(`backup schema ${schemaVersion} is outside application compatibility`, "u"),
+    );
+    assert.deepEqual(readFileSync(path), before);
+    assert.deepEqual(readdirSync(config.dataDirectory), dataFiles);
+    assert.deepEqual(readFileSync(backupPath), sourceBytes);
+  });
+
+  it("rejects future schema metadata before changing the active database", async () => {
+    const config = { ...configuration(), masterKey: RESTORE_MASTER_KEY };
+    const path = join(config.dataDirectory, "perpay.sqlite3");
+    const current = await AppDatabase.open(path, { masterKey: RESTORE_MASTER_KEY });
+    let backup: LocalBackup;
+    try {
+      new RuntimeSettingsStore(current, RESTORE_MASTER_KEY).initialize();
+      backup = await createLocalBackup(config);
+    } finally {
+      current.close();
+    }
+    const before = readFileSync(path);
+    const dataFiles = readdirSync(config.dataDirectory);
+    const backupPath = join(config.backupDirectory, backup.name);
+    const source = new DatabaseSync(backupPath);
+    try {
+      source.prepare("INSERT INTO schema_migrations(version, name, checksum, applied_at) VALUES (?, ?, ?, ?)").run(
+        DATABASE_COMPATIBILITY.maximum + 1, "future_schema", "0".repeat(64), new Date().toISOString(),
+      );
+    } finally {
+      source.close();
+    }
+    const sourceBytes = readFileSync(backupPath);
+    const digest = createHash("sha256").update(sourceBytes).digest("hex");
+    assert.throws(
+      () => restoreLocalBackup(config, backup.name, digest, backup.instanceId),
+      /backup failed application integrity checks:.*schema=invalid/u,
+    );
+    assert.deepEqual(readFileSync(path), before);
+    assert.deepEqual(readdirSync(config.dataDirectory), dataFiles);
+    assert.deepEqual(readFileSync(backupPath), sourceBytes);
   });
 
   it("cleans only exact interrupted temporary backup files", () => {

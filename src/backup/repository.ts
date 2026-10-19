@@ -422,7 +422,9 @@ export function restoreLocalBackup(
   if (config.masterKey === undefined) {
     throw new Error("deployment master key is required to restore a backup");
   }
-  const result = restoreOperationalBackup({
+  // Compatibility is checked before replacement; application startup owns any
+  // migration of a compatible older backup.
+  return restoreOperationalBackup({
     dataDirectory: config.dataDirectory,
     backupDirectory: config.backupDirectory,
     backupName,
@@ -431,10 +433,6 @@ export function restoreLocalBackup(
     masterKey: config.masterKey,
     now: clock,
   });
-  if (result.restoredSchemaVersion !== DATABASE_COMPATIBILITY.maximum) {
-    throw new Error("restored database schema is outside this release's compatibility range");
-  }
-  return result;
 }
 
 export function recoverInterruptedBackupFiles(backupDirectory: string): readonly string[] {

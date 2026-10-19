@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs, {
   existsSync,
   linkSync,
@@ -13,7 +14,8 @@ import fs, {
 } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "node:test";
 
 import type { BackupConfig } from "../src/backup/config.ts";
@@ -38,13 +40,14 @@ import {
   runTrackedCycle,
   type BackupOperations,
 } from "../src/backup/runner.ts";
-import { AppDatabase } from "../src/database/database.ts";
+import { AppDatabase, createVerifiedDatabaseBackup } from "../src/database/database.ts";
 import {
   publicationLockPath,
 } from "../src/database/maintenance.ts";
 import { acquireDatabaseMaintenanceLock } from "../src/database/maintenance-lock.ts";
 import { DATABASE_COMPATIBILITY } from "../src/version.ts";
 import { RuntimeSettingsStore } from "../src/settings/store.ts";
+import { createLegacySettingsDatabase } from "./legacy-settings-fixture.ts";
 
 const instanceId = "c".repeat(32);
 const sha256 = "d236906afac4baaba89924427135f1f0f5d22fbb1c46a0e176e276aabb215add";
@@ -767,6 +770,99 @@ describe("local backup state and scheduling", () => {
     assert.equal(rebuilt.backupName, backup.name);
     assert.equal(rebuilt.backupRequired, true);
   });
+
+  for (const rebuildState of [false, true]) {
+    it(`reports CLI success for a compatible older schema with ${rebuildState ? "rebuilt" : "existing"} backup state`, {
+      timeout: 30_000,
+    }, async () => {
+      const config = configuration();
+      const path = join(config.dataDirectory, "perpay.sqlite3");
+      const backupPath = join(config.backupDirectory, backupName);
+      const legacy = createLegacySettingsDatabase(path);
+      let backup: LocalBackup;
+      try {
+        new RuntimeSettingsStore(legacy.owner, RESTORE_MASTER_KEY).initialize();
+        await createVerifiedDatabaseBackup(legacy.connection, path, backupPath);
+        backup = inspectLocalBackup(config.backupDirectory, backupName);
+      } finally {
+        legacy.owner.close();
+      }
+      assert.equal(backup.schemaVersion, 33);
+      assert.ok(backup.schemaVersion >= DATABASE_COMPATIBILITY.minimum);
+      assert.ok(backup.schemaVersion < DATABASE_COMPATIBILITY.maximum);
+
+      const current = await AppDatabase.open(path, { masterKey: RESTORE_MASTER_KEY });
+      try {
+        current.write(connection => connection.prepare(
+          "INSERT INTO system_metadata(key, value, updated_at) VALUES ('restore_marker', 'after-upgrade', ?)",
+        ).run(new Date().toISOString()));
+      } finally {
+        current.close();
+      }
+      const environment = {
+        ...process.env,
+        PERPAY_DATA_DIR: config.dataDirectory,
+        PERPAY_BACKUP_DIR: config.backupDirectory,
+        PERPAY_BACKUP_INTERVAL_SECONDS: "86400",
+        PERPAY_BACKUP_KEEP_COUNT: "7",
+        PERPAY_MASTER_KEY: RESTORE_MASTER_KEY_HEX,
+        PERPAY_SECRETS_DIR: join(config.dataDirectory, "secrets"),
+      };
+      if (!rebuildState) {
+        await captureStandardOutput(() => runBackupCommand(["run-once"], environment));
+      }
+      const child = spawnSync(process.execPath, [
+        "--experimental-strip-types",
+        resolve("src/backup/runner.ts"),
+        "restore",
+        backup.name,
+        backup.sha256,
+        "--confirm-replace-current-database",
+        ...(rebuildState ? ["--rebuild-state"] : []),
+      ], { env: environment, encoding: "utf8", windowsHide: true, timeout: 10_000 });
+      assert.equal(child.error, undefined);
+      assert.equal(child.status, 0, child.stderr);
+      const restored = JSON.parse(child.stdout) as {
+        backupName: string;
+        restoredSchemaVersion: number;
+        sha256: string;
+        quarantinedDatabaseName: string | null;
+      };
+      assert.equal(restored.backupName, backup.name);
+      assert.equal(restored.restoredSchemaVersion, backup.schemaVersion);
+      assert.equal(restored.sha256, backup.sha256);
+      assert.notEqual(restored.quarantinedDatabaseName, null);
+      assert.equal(existsSync(join(config.dataDirectory, restored.quarantinedDatabaseName!)), true);
+      assert.deepEqual(readFileSync(path), readFileSync(backupPath));
+      const raw = new DatabaseSync(path, { readOnly: true });
+      try {
+        assert.equal(raw.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()!.version,
+          backup.schemaVersion);
+        assert.equal(raw.prepare("SELECT 1 FROM system_metadata WHERE key = 'restore_marker'").get(), undefined);
+      } finally {
+        raw.close();
+      }
+      const state = JSON.parse(readFileSync(join(config.backupDirectory, "perpay-local-backup-state.json"), "utf8")) as {
+        backupName: string;
+        backupSha256: string;
+        backupRequired: boolean;
+        schemaVersion: number;
+        lastSuccessAt: number | null;
+        lastErrorAt: number | null;
+        lastErrorStage: string | null;
+      };
+      assert.equal(state.backupName, backup.name);
+      assert.equal(state.backupSha256, backup.sha256);
+      assert.equal(state.schemaVersion, backup.schemaVersion);
+      assert.equal(state.backupRequired, true);
+      assert.notEqual(state.lastSuccessAt, null);
+      assert.equal(state.lastErrorAt, null);
+      assert.equal(state.lastErrorStage, null);
+      assert.equal(existsSync(backupLockPath(config)), false);
+      assert.equal(existsSync(publicationLockPath(config.backupDirectory)), false);
+      assert.equal(existsSync(`${path}.maintenance-lock`), false);
+    });
+  }
 
   it("requires an explicit state rebuild when state metadata is missing", async () => {
     const config = configuration();
