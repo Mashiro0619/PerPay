@@ -8,6 +8,7 @@ import {
 import { Navigate, useLocation } from "react-router";
 import { Link } from "@/navigation";
 import { useOverview } from "@/features/overview/use-overview";
+import type { SystemStatus } from "@/api/client";
 import {
   deferredInstance,
   isOnboardingDeferred,
@@ -29,6 +30,18 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+
+function collectionReadinessReason(ledger: SystemStatus["ledger"]) {
+  if (!ledger.enabled || ledger.state === "stopped")
+    return "查账任务未运行，请查看运行状态";
+  if (ledger.last_success_at === null)
+    return "还没有成功查账，请检查支付宝接入";
+  const age = ledger.last_success_age_milliseconds;
+  const maximumAge = ledger.maximum_success_age_milliseconds;
+  if (typeof age === "number" && typeof maximumAge === "number" && age > maximumAge)
+    return "最近查账成功已超过有效时限，请查看运行状态";
+  return "查账暂未就绪，请查看运行状态";
+}
 
 export default function Dashboard() {
   return (
@@ -75,7 +88,7 @@ function DashboardContent() {
     : !state.database.ok
       ? "数据库暂不可用"
       : !state.ledger.collection_ready
-        ? "还没有成功查账，请检查支付宝接入"
+        ? collectionReadinessReason(state.ledger)
         : !state.reconciliation.confirmation_ready
           ? "自动确认收款尚未就绪，请检查对账状态"
           : "服务尚未就绪";
