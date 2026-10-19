@@ -1191,11 +1191,11 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const conflictId = requireResourceId(
       context.req.param("conflictId"),
       "ledger_conflict_not_found",
-      "账务冲突不存在",
+      "账本冲突不存在",
     );
     const detail = requireLedgerStore(dependencies).conflict(conflictId);
     if (!detail) {
-      throw new HttpApiError(404, "ledger_conflict_not_found", "账务冲突不存在");
+      throw new HttpApiError(404, "ledger_conflict_not_found", "账本冲突不存在");
     }
     return context.json({ data: serializeLedgerConflictDetail(detail, dependencies.database) });
   });
@@ -1208,7 +1208,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       const conflictId = requireResourceId(
         context.req.param("conflictId"),
         "ledger_conflict_not_found",
-        "账务冲突不存在",
+        "账本冲突不存在",
       );
       const body = await readJson(context, ledgerConflictResolutionSchema, MAX_JSON_BODY_BYTES);
       const session = requireCurrentSession(context, dependencies.identity);
@@ -1258,11 +1258,11 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       const ledgerEntryId = requireResourceId(
         context.req.param("ledgerEntryId"),
         "ledger_entry_not_found",
-        "账务流水不存在",
+        "流水不存在",
       );
       const ledgerEntry = requireReconciliationStore(dependencies).ledgerEntry(ledgerEntryId);
       if (!ledgerEntry) {
-        throw new HttpApiError(404, "ledger_entry_not_found", "账务流水不存在");
+        throw new HttpApiError(404, "ledger_entry_not_found", "流水不存在");
       }
       return context.json({ data: serializeReconciliationLedger(ledgerEntry) });
     },
@@ -1275,11 +1275,11 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       const ledgerEntryId = requireResourceId(
         context.req.param("ledgerEntryId"),
         "ledger_entry_not_found",
-        "账务流水不存在",
+        "流水不存在",
       );
       const reconciliation = requireReconciliationStore(dependencies);
       if (!reconciliation.ledgerEntry(ledgerEntryId)) {
-        throw new HttpApiError(404, "ledger_entry_not_found", "账务流水不存在");
+        throw new HttpApiError(404, "ledger_entry_not_found", "流水不存在");
       }
       const candidates = reconciliation
         .listCandidates(ledgerEntryId)
@@ -1292,7 +1292,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   app.get("/api/admin/v1/reconciliation/settlements/manual/orders", adminSession, context => {
     const {query, encode} = readManualCandidateQuery(new URL(context.req.url).searchParams, "orders");
     const page = requireReconciliationStore(dependencies).manualOrderPage(query);
-    if (!page) throw new HttpApiError(404, "ledger_entry_not_found", "账务流水不存在");
+    if (!page) throw new HttpApiError(404, "ledger_entry_not_found", "流水不存在");
     const identities = adminOrderIdentities(dependencies.database, page.items.map(item => item.record.orderId));
     return context.json({data: page.items.map(item => ({order: serializeReconciliationOrder(item.record, identities.get(item.record.orderId)!), recommendation: serializeManualRecommendation(item.recommendation)})), page: {next_cursor: encode(page.nextPosition)}});
   });
@@ -1354,11 +1354,11 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const exceptionId = requireResourceId(
       context.req.param("exceptionId"),
       "financial_exception_not_found",
-      "资金异常不存在",
+      "账务异常不存在",
     );
     const exception = requireReconciliationStore(dependencies).exception(exceptionId);
     if (!exception) {
-      throw new HttpApiError(404, "financial_exception_not_found", "资金异常不存在");
+      throw new HttpApiError(404, "financial_exception_not_found", "账务异常不存在");
     }
     return context.json({ data: serializeFinancialExceptions([exception], dependencies.database)[0]! });
   });
@@ -2701,13 +2701,13 @@ function ledgerConflictStatus(code: LedgerConflictError["code"]): 404 | 409 {
 function ledgerConflictMessage(code: LedgerConflictError["code"]): string {
   switch (code) {
     case "ledger_conflict_not_found":
-      return "账务冲突不存在";
+      return "账本冲突不存在";
     case "ledger_conflict_state_conflict":
-      return "账务冲突处理状态已经变化";
+      return "账本冲突处理状态已经变化";
     case "ledger_conflict_action_not_allowed":
-      return "该账务冲突不允许执行此处理动作";
+      return "该账本冲突不允许执行此处理动作";
     case "ledger_conflict_operation_conflict":
-      return "账务冲突处理编号已用于不同请求";
+      return "账本冲突处理编号已用于不同请求";
   }
 }
 
@@ -2736,7 +2736,7 @@ function webhookStoreMessage(code: WebhookStoreError["code"]): string {
     case "webhook_event_not_found":
       return "通知事件不存在";
     case "webhook_operation_conflict":
-      return "补发编号已经用于不同的通知请求";
+      return "重新发送的操作编号已用于不同的通知请求";
     case "webhook_delivery_state_conflict":
       return "通知投递状态已经变化";
     case "webhook_disabled":
