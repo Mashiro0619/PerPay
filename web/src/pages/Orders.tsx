@@ -144,7 +144,16 @@ export default function Orders() {
           </>
         }
         lookup={{
-          context: mode => !clientId && mode === "merchant" ? <SitePicker value={lookupSite} onChange={setLookupSite} /> : null,
+          context: mode => !clientId && mode === "merchant" ? (
+            <SitePicker
+              value={lookupSite}
+              onChange={(next) => {
+                // Invalidate the old request before changing its search context.
+                lookup.reset();
+                setLookupSite(next);
+              }}
+            />
+          ) : null,
           modes: searchOptions.map((option) => ({
             ...option,
             placeholder:
