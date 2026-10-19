@@ -67,7 +67,7 @@ function RelatedOrderLink({ item }: { item: ReconciliationRow }) {
   const text = item.merchantOrderNo ?? "查看订单";
   return (
     <Link
-      className="list-code"
+      className="list-code reconciliation-order-link"
       title={item.merchantOrderNo ?? undefined}
       aria-label={item.merchantOrderNo ? "查看订单：" + item.merchantOrderNo : "查看订单"}
       to={"/orders/" + item.orderId}

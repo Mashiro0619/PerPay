@@ -433,6 +433,7 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .list-secondary-link { font-size: 0.75rem; color: var(--muted-foreground); }
 .list-code { font-size: 0.75rem; font-variant-numeric: tabular-nums; color: var(--muted-foreground); overflow-wrap: anywhere; }
 .list-meta .list-code { display: inline-block; max-width: min(100%, 36ch); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reconciliation-order-link { display: inline-block; min-height: 24px; padding-block: 3px; }
 .list-query-toolbar {
   display: grid;
   min-width: 0;
