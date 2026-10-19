@@ -131,6 +131,198 @@ describe("ReconciliationScheduler", () => {
     await observerFailure.stop();
   });
 
+  it("yields to timers when pending ledger pages keep failing", async () => {
+    let pageAttempts = 0;
+    let stoppedForSafety = false;
+    const fake = {
+      ...createFakeStore([], []),
+      pendingLedgerPage() {
+        pageAttempts += 1;
+        throw new Error("forced persistent page failure");
+      },
+    } as unknown as ReconciliationStore;
+    const scheduler = new ReconciliationScheduler({
+      store: fake,
+      intervalMilliseconds: 60_000,
+      onResult: () => {
+        // Bound the old microtask loop so a regression cannot hang the test process.
+        if (pageAttempts >= 25) {
+          stoppedForSafety = true;
+          void scheduler.stop();
+        }
+      },
+    });
+    const timerTurn = new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    try {
+      const first = await scheduler.start();
+      await timerTurn;
+
+      assert.equal(stoppedForSafety, false, "page retries must let timers run before the safety cap");
+      assert.equal(pageAttempts, 1);
+      assert.equal(first.failures, 1);
+      assert.equal(first.continuationPending, true);
+      assert.equal(scheduler.health().state, "degraded");
+      assert.equal(scheduler.health().inFlight, false);
+      assert.equal(scheduler.health().lastErrorCode, "pending_page_failed");
+      assert.equal(scheduler.health().continuationPending, true);
+    } finally {
+      await scheduler.stop();
+    }
+  });
+
+  it("delays repeated page failures while coalescing sweep triggers and verifying orders", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+    const orderIds = [randomUUID(), randomUUID()].sort();
+    const reconciledOrders: string[] = [];
+    let pageAttempts = 0;
+    const fake = {
+      ...createFakeStore([], [], { reconciledOrders }),
+      pendingLedgerPage() {
+        pageAttempts += 1;
+        throw new Error("forced persistent page failure");
+      },
+    } as unknown as ReconciliationStore;
+    const scheduler = new ReconciliationScheduler({
+      store: fake,
+      intervalMilliseconds: 60_000,
+      onResult: () => {
+        if (pageAttempts >= 25) void scheduler.stop();
+      },
+    });
+
+    try {
+      await scheduler.start();
+      await Promise.all([
+        scheduler.triggerSweep("ledger_scan"),
+        scheduler.verifyOrder(orderIds[0]!),
+        scheduler.verifyOrder(orderIds[1]!),
+      ]);
+
+      assert.deepEqual(reconciledOrders, orderIds);
+      assert.equal(pageAttempts, 1);
+      assert.equal(scheduler.health().state, "degraded");
+      assert.equal(scheduler.health().lastErrorCode, "pending_page_failed");
+      assert.equal(scheduler.health().lastSuccessAt, null);
+      assert.equal(scheduler.health().consecutiveFailures, 1);
+      assert.equal(scheduler.health().continuationPending, true);
+      assert.equal(scheduler.health().pendingOrders, 0);
+
+      for (let attempt = 2; attempt <= 3; attempt += 1) {
+        t.mock.timers.tick(59_999);
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.equal(pageAttempts, attempt - 1);
+        t.mock.timers.tick(1);
+        await waitUntil(() => pageAttempts === attempt && !scheduler.health().inFlight);
+        assert.equal(scheduler.health().consecutiveFailures, attempt);
+      }
+
+      await scheduler.stop();
+      t.mock.timers.tick(120_000);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal(pageAttempts, 3);
+      assert.equal(scheduler.health().state, "stopped");
+      assert.equal(scheduler.health().continuationPending, false);
+    } finally {
+      await scheduler.stop();
+      t.mock.timers.reset();
+    }
+  });
+
+  it("resumes a failed sweep at its saved cursor after the delay", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const ids = Array.from({ length: 5 }, () => randomUUID()).sort();
+    const processed: string[] = [];
+    const pageCursors: Array<string | null> = [];
+    const fake = createFakeStore(ids, processed);
+    let failed = false;
+    const store = {
+      ...fake,
+      pendingLedgerPage(cursor: ReconciliationSweepCursor | null, limit: number) {
+        pageCursors.push(cursor?.ledgerEntryId ?? null);
+        if (cursor !== null && !failed) {
+          failed = true;
+          throw new Error("forced page failure after the first batch");
+        }
+        return fake.pendingLedgerPage(cursor, limit);
+      },
+    } as unknown as ReconciliationStore;
+    const scheduler = new ReconciliationScheduler({
+      store,
+      intervalMilliseconds: 60_000,
+      batchSize: 2,
+      maximumEntriesPerRun: 2,
+    });
+
+    try {
+      await scheduler.triggerSweep("cursor_retry");
+      await waitUntil(() => failed && !scheduler.health().inFlight);
+      assert.deepEqual(processed, ids.slice(0, 2));
+      assert.equal(scheduler.health().lastErrorCode, "pending_page_failed");
+      assert.equal(scheduler.health().continuationPending, true);
+
+      t.mock.timers.tick(59_999);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.deepEqual(processed, ids.slice(0, 2));
+      t.mock.timers.tick(1);
+      await waitUntil(() => processed.length === ids.length && !scheduler.health().inFlight);
+
+      assert.deepEqual(pageCursors, [null, ids[1], ids[1], ids[3]]);
+      assert.deepEqual(processed, ids);
+      assert.equal(scheduler.health().state, "healthy");
+      assert.equal(scheduler.health().lastErrorCode, null);
+      assert.equal(scheduler.health().consecutiveFailures, 0);
+      assert.equal(scheduler.health().continuationPending, false);
+    } finally {
+      await scheduler.stop();
+      t.mock.timers.reset();
+    }
+  });
+
+  it("cancels the delayed sweep and saved cursor when stopped", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const ids = [randomUUID(), randomUUID()].sort();
+    const processed: string[] = [];
+    const fake = createFakeStore(ids, processed);
+    let pageAttempts = 0;
+    const store = {
+      ...fake,
+      pendingLedgerPage(cursor: ReconciliationSweepCursor | null, limit: number) {
+        pageAttempts += 1;
+        if (cursor !== null) throw new Error("forced page failure before shutdown");
+        return fake.pendingLedgerPage(cursor, limit);
+      },
+    } as unknown as ReconciliationStore;
+    const scheduler = new ReconciliationScheduler({
+      store,
+      intervalMilliseconds: 60_000,
+      batchSize: 1,
+      maximumEntriesPerRun: 1,
+      onResult: () => {
+        if (pageAttempts >= 25) void scheduler.stop();
+      },
+    });
+
+    try {
+      await scheduler.triggerSweep("cancel_page_retry");
+      await waitUntil(() => pageAttempts >= 2 && !scheduler.health().inFlight);
+      assert.equal(pageAttempts, 2);
+      assert.equal(scheduler.health().continuationPending, true);
+      await scheduler.stop();
+      t.mock.timers.tick(120_000);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      assert.equal(pageAttempts, 2);
+      assert.deepEqual(processed, ids.slice(0, 1));
+      assert.equal(scheduler.health().state, "stopped");
+      assert.equal(scheduler.health().continuationPending, false);
+      await assert.rejects(scheduler.triggerSweep("after_stop"), /scheduler is stopped/);
+    } finally {
+      await scheduler.stop();
+      t.mock.timers.reset();
+    }
+  });
+
   it("retries a transient targeted-order failure without waiting for the periodic sweep", async () => {
     const orderId = randomUUID();
     const reasons: string[] = [];
@@ -297,7 +489,8 @@ describe("ReconciliationScheduler", () => {
     await scheduler.stop();
   });
 
-  it("reports the current run error code after a failed page is retried", async () => {
+  it("reports the current run error code after a failed page is retried", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
     const ledgerEntryId = randomUUID();
     const reportedCodes: Array<string | null> = [];
     let pageAttempts = 0;
@@ -329,6 +522,7 @@ describe("ReconciliationScheduler", () => {
 
     const first = await scheduler.start();
     assert.equal(first.failures, 1);
+    t.mock.timers.tick(60_000);
     await waitUntil(() => reportedCodes.length === 2 && !scheduler.health().inFlight);
 
     assert.deepEqual(reportedCodes, ["pending_page_failed", "reconciliation_item_failed"]);

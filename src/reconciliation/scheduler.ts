@@ -81,6 +81,7 @@ export class ReconciliationScheduler {
     { readonly retryNumber: number; readonly timer: NodeJS.Timeout }
   >();
   #timer: NodeJS.Timeout | null = null;
+  #sweepRetryTimer: NodeJS.Timeout | null = null;
   #inFlight: Promise<ReconciliationRunResult> | null = null;
   #sweepRequested = false;
   #cursor: ReconciliationSweepCursor | null = null;
@@ -212,11 +213,15 @@ export class ReconciliationScheduler {
     this.#stopped = true;
     if (this.#timer) clearInterval(this.#timer);
     this.#timer = null;
+    if (this.#sweepRetryTimer) clearTimeout(this.#sweepRetryTimer);
+    this.#sweepRetryTimer = null;
     for (const retry of this.#scheduledOrderRetries.values()) clearTimeout(retry.timer);
     this.#scheduledOrderRetries.clear();
     this.#pendingOrders.clear();
     this.#sweepRequested = false;
     await this.#inFlight;
+    this.#sweepRequested = false;
+    this.#cursor = null;
     this.#state = "stopped";
   }
 
@@ -225,9 +230,12 @@ export class ReconciliationScheduler {
     const operation = Promise.resolve().then(() => this.#run(reason));
     this.#inFlight = operation.finally(() => {
       this.#inFlight = null;
-      if (!this.#stopped && (this.#sweepRequested || this.#pendingOrders.size > 0)) {
+      if (
+        !this.#stopped &&
+        ((this.#sweepRequested && this.#sweepRetryTimer === null) || this.#pendingOrders.size > 0)
+      ) {
         queueMicrotask(() => {
-          if (!this.#stopped) void this.#ensureRun("coalesced");
+          if (!this.#stopped) void this.#ensureRun("coalesced").catch(() => undefined);
         });
       }
     });
@@ -260,9 +268,9 @@ export class ReconciliationScheduler {
       }
     }
 
-    const runSweep = this.#sweepRequested;
-    this.#sweepRequested = false;
+    const runSweep = this.#sweepRequested && this.#sweepRetryTimer === null;
     if (runSweep) {
+      this.#sweepRequested = false;
       while (processedEntries < this.#maximumEntriesPerRun) {
         const limit = Math.min(
           this.#batchSize,
@@ -275,6 +283,7 @@ export class ReconciliationScheduler {
           failures += 1;
           runErrorCode = "pending_page_failed";
           this.#sweepRequested = true;
+          this.#scheduleSweepRetry();
           break;
         }
         for (const ledgerEntryId of page.ledgerEntryIds) {
@@ -304,15 +313,18 @@ export class ReconciliationScheduler {
       }
     }
 
-    if (failures === 0) {
+    if (failures > 0) {
+      this.#state = "degraded";
+      this.#lastErrorCode = runErrorCode ?? "reconciliation_item_failed";
+      this.#consecutiveFailures += 1;
+    } else if (this.#sweepRetryTimer !== null) {
+      // A successful order-only run cannot clear an outstanding sweep failure.
+      this.#state = "degraded";
+    } else {
       this.#state = "healthy";
       this.#lastSuccessAt = safeNow(this.#clock());
       this.#lastErrorCode = null;
       this.#consecutiveFailures = 0;
-    } else {
-      this.#state = "degraded";
-      this.#lastErrorCode = runErrorCode ?? "reconciliation_item_failed";
-      this.#consecutiveFailures += 1;
     }
     const result = Object.freeze({
       reason,
@@ -327,6 +339,18 @@ export class ReconciliationScheduler {
     });
     notifyObserver(this.#onResult, result, this.health());
     return result;
+  }
+
+  #scheduleSweepRetry(): void {
+    if (this.#stopped || this.#sweepRetryTimer !== null) return;
+    // Retry failed reads at the configured sweep cadence, preserving the cursor.
+    const timer = setTimeout(() => {
+      if (this.#sweepRetryTimer !== timer) return;
+      this.#sweepRetryTimer = null;
+      if (!this.#stopped) void this.#ensureRun("sweep_retry").catch(() => undefined);
+    }, this.#intervalMilliseconds);
+    timer.unref();
+    this.#sweepRetryTimer = timer;
   }
 
   #scheduleOrderRetry(orderId: string, retryNumber: number): void {
