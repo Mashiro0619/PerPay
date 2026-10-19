@@ -91,6 +91,8 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
     return element.contains(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2));
   });
   expect(topmost).toBe(true);
+  // Test F6 after the dialog's initial autofocus has completed.
+  await expect(keyDialog.getByRole("button", { name: "复制新的API 密钥", exact: true })).toBeFocused();
   await page.keyboard.press("F6");
   await expect(page.getByRole("region", { name: "提示", exact: true })).toBeFocused();
   await page.keyboard.press("Tab");
