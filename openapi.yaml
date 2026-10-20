@@ -1675,6 +1675,108 @@ paths:
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
         '404': { $ref: '#/components/responses/ReconciliationNotFound' }
         '503': { $ref: '#/components/responses/ReconciliationUnavailable' }
+  /api/admin/v1/ledger/entries:
+    get:
+      tags: [Ledger Operations]
+      operationId: listAdministratorLedgerEntries
+      summary: Read grouped ledger events across retained provider generations
+      description: |
+        Read-only inspection of the single configured Alipay account. Groups source records by
+        resolved environment and external event ID, including historical provider-account keys.
+        The environment comes from current provider settings, then the latest recorded activation
+        or binding. With neither settings nor bindings, returns an empty page and null environment.
+        Filters select matching event groups before paging; all source copies still contribute to
+        each returned group's facts. Conflicting facts are null rather than chosen from one copy.
+        Dates are paired inclusive Beijing days, evaluated as a half-open interval. Amount bounds
+        may be supplied independently and must be ordered. Sort defaults to occurred_at descending,
+        with external event ID as the tie-breaker. Each group's internal sort anchor is the original
+        occurrence time of its earliest activated source generation, so a newer source with a
+        disputed timestamp cannot move that group between pages. Legacy bindings without an
+        activation precede activated sources, ordered by binding time and provider-account key.
+        This internal anchor never replaces disputed transaction facts. Source details and the
+        representative navigation ID use that same stable generation order.
+        Opaque cursors bind every normalized filter,
+        sort, page size and resolved environment. Unknown or repeated parameters are rejected.
+        Does not accept site/account/environment selection or initiate collection or financial writes.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 100 }
+          description: Trimmed literal keyword over provider event, source facts and real associated order identities.
+        - name: direction
+          in: query
+          schema: { type: string, enum: [CREDIT, DEBIT] }
+        - name: state
+          in: query
+          schema: { $ref: '#/components/schemas/AdminLedgerEntryState' }
+        - name: occurred_from
+          in: query
+          schema: { type: string, format: date }
+          description: Inclusive Asia/Shanghai date, YYYY-MM-DD; requires occurred_to.
+        - name: occurred_to
+          in: query
+          schema: { type: string, format: date }
+          description: Inclusive Asia/Shanghai date, YYYY-MM-DD; requires occurred_from.
+        - name: min_amount_cents
+          in: query
+          schema: { type: integer, minimum: 0, maximum: 999999999999 }
+        - name: max_amount_cents
+          in: query
+          schema: { type: integer, minimum: 0, maximum: 999999999999 }
+        - name: sort_by
+          in: query
+          schema: { type: string, enum: [occurred_at], default: occurred_at }
+        - name: sort_order
+          in: query
+          schema: { type: string, enum: [asc, desc], default: desc }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: cursor
+          in: query
+          description: Opaque canonical base64url cursor bound to the normalized filters, sort, limit and resolved environment.
+          schema: { type: string, minLength: 1, maxLength: 4096, pattern: '^[A-Za-z0-9_-]+$' }
+      responses:
+        '200':
+          description: Grouped normalized ledger events in the resolved environment
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminLedgerPageEnvelope' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+  /api/admin/v1/ledger/entries/{ledgerEntryId}:
+    get:
+      tags: [Ledger Operations]
+      operationId: getAdministratorLedgerEntry
+      summary: Read one ledger event group and its original source records
+      description: |
+        The real ledger entry ID selects its original environment, even when current provider
+        settings use another environment. Production and sandbox copies are never combined.
+        Returns all original source IDs, real payment associations including reversals, and
+        retained conflicts. The representative ledger_entry_id is a navigation identity only;
+        it must not be substituted for the actual source ID of a financial association.
+        Administrator-session read only. Does not accept any query parameters or initiate writes.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/LedgerEntryId'
+      responses:
+        '200':
+          description: Full event group with its original source and association identities
+          headers:
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminLedgerDetailEnvelope' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '404': { $ref: '#/components/responses/ReconciliationNotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
   /api/admin/v1/reconciliation/ledger-entries/{ledgerEntryId}:
     get:
       tags: [Reconciliation]
@@ -7624,6 +7726,152 @@ components:
             - type: 'null'
         ledger_entry: { $ref: '#/components/schemas/ReconciliationLedgerEntry' }
         order: { $ref: '#/components/schemas/ReconciliationOrder' }
+    AdminLedgerEntryState:
+      type: string
+      enum: [UNALLOCATED, CANDIDATE, ALLOCATED, CONFLICT, ISOLATED, IGNORED]
+      description: PerPay processing state of an original source entry, not a provider payment status.
+    AdminLedgerFacts:
+      type: object
+      required: [amount_cents, occurred_at, occurred_at_precision_milliseconds, occurred_at_interval_end_exclusive, direction, currency, provider_order_no, merchant_order_no, other_account, memo]
+      properties:
+        amount_cents: { type: [integer, 'null'], minimum: 1, maximum: 999999999999 }
+        occurred_at: { type: [string, 'null'], format: date-time }
+        occurred_at_precision_milliseconds: { type: [integer, 'null'], enum: [1, 10, 100, 1000, null] }
+        occurred_at_interval_end_exclusive: { type: [string, 'null'], format: date-time }
+        direction: { type: [string, 'null'], enum: [CREDIT, DEBIT, null] }
+        currency: { type: [string, 'null'], enum: [CNY, null] }
+        provider_order_no: { type: [string, 'null'], maxLength: 128 }
+        merchant_order_no: { type: [string, 'null'], maxLength: 128 }
+        other_account: { type: [string, 'null'], maxLength: 256 }
+        memo: { type: [string, 'null'], maxLength: 1024 }
+      description: A field is null when source copies disagree; inspect sources for original values.
+    AdminLedgerGroupFields:
+      type: object
+      required: [ledger_entry_id, external_event_id, environment, states, source_record_count, content_consistent, has_conflicts, active_match_count, active_match, created_at, updated_at]
+      properties:
+        ledger_entry_id:
+          allOf: [{ $ref: '#/components/schemas/ResourceId' }]
+          description: Real representative source ID for reading this group; never a settlement input.
+        external_event_id: { type: string, minLength: 1, maxLength: 256 }
+        environment: { type: string, enum: [PRODUCTION, SANDBOX] }
+        states:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/AdminLedgerEntryState' }
+        source_record_count: { type: integer, minimum: 1 }
+        content_consistent: { type: boolean }
+        has_conflicts: { type: boolean }
+        active_match_count: { type: integer, minimum: 0 }
+        active_match:
+          oneOf:
+            - allOf:
+                - $ref: '#/components/schemas/AdminLedgerMatch'
+                - type: object
+                  properties:
+                    status: { const: SETTLED }
+            - type: 'null'
+          description: Present only when exactly one real active association exists across the group.
+        created_at: { type: string, format: date-time, description: First source observation time. }
+        updated_at: { type: string, format: date-time, description: Latest source update time. }
+    AdminLedgerSummary:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/AdminLedgerFacts'
+        - $ref: '#/components/schemas/AdminLedgerGroupFields'
+      unevaluatedProperties: false
+    AdminLedgerMatch:
+      type: object
+      additionalProperties: false
+      required: [payment_match_id, ledger_entry_id, order_id, merchant_order_no, product_name, api_client_id, site_name, evidence_type, status, created_at, resolved_at]
+      properties:
+        payment_match_id: { $ref: '#/components/schemas/ResourceId' }
+        ledger_entry_id: { $ref: '#/components/schemas/ResourceId' }
+        order_id: { $ref: '#/components/schemas/ResourceId' }
+        merchant_order_no: { type: string }
+        product_name: { type: string }
+        api_client_id: { type: string }
+        site_name: { type: [string, 'null'] }
+        evidence_type: { type: string, enum: [AMOUNT_INFERRED, MANUAL] }
+        status: { type: string, enum: [SETTLED, REVERSED] }
+        created_at: { type: string, format: date-time }
+        resolved_at: { type: [string, 'null'], format: date-time }
+    AdminLedgerSource:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/AdminLedgerFacts'
+        - type: object
+          required: [ledger_entry_id, external_event_id, provider_account_key, app_id, environment, raw_event_id, semantic_fingerprint, state, created_at, updated_at]
+          properties:
+            ledger_entry_id: { $ref: '#/components/schemas/ResourceId' }
+            external_event_id: { type: string, minLength: 1, maxLength: 256 }
+            provider_account_key: { type: string, minLength: 1, maxLength: 128 }
+            app_id: { type: string, minLength: 1, maxLength: 128 }
+            environment: { type: string, enum: [PRODUCTION, SANDBOX] }
+            raw_event_id: { $ref: '#/components/schemas/ResourceId' }
+            semantic_fingerprint: { $ref: '#/components/schemas/Sha256Fingerprint' }
+            state: { $ref: '#/components/schemas/AdminLedgerEntryState' }
+            amount_cents: { type: integer, minimum: 1, maximum: 999999999999 }
+            occurred_at: { type: string, format: date-time }
+            occurred_at_precision_milliseconds: { type: integer, enum: [1, 10, 100, 1000] }
+            occurred_at_interval_end_exclusive: { type: string, format: date-time }
+            direction: { type: string, enum: [CREDIT, DEBIT] }
+            currency: { const: CNY }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
+      unevaluatedProperties: false
+    AdminLedgerConflict:
+      type: object
+      additionalProperties: false
+      required: [conflict_id, conflict_type, status, existing_ledger_entry_id, created_at, resolved_at]
+      properties:
+        conflict_id: { $ref: '#/components/schemas/ResourceId' }
+        conflict_type: { $ref: '#/components/schemas/LedgerConflictType' }
+        status: { type: string, enum: [OPEN, RESOLVED, IGNORED] }
+        existing_ledger_entry_id:
+          oneOf: [{ $ref: '#/components/schemas/ResourceId' }, { type: 'null' }]
+        created_at: { type: string, format: date-time }
+        resolved_at: { type: [string, 'null'], format: date-time }
+    AdminLedgerDetail:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/AdminLedgerFacts'
+        - $ref: '#/components/schemas/AdminLedgerGroupFields'
+        - type: object
+          required: [sources, matches, conflicts]
+          properties:
+            sources:
+              type: array
+              minItems: 1
+              items: { $ref: '#/components/schemas/AdminLedgerSource' }
+            matches:
+              type: array
+              items: { $ref: '#/components/schemas/AdminLedgerMatch' }
+            conflicts:
+              type: array
+              items: { $ref: '#/components/schemas/AdminLedgerConflict' }
+      unevaluatedProperties: false
+    AdminLedgerPageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, page, environment]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/AdminLedgerSummary' }
+        page:
+          type: object
+          additionalProperties: false
+          required: [next_cursor]
+          properties:
+            next_cursor: { type: [string, 'null'] }
+        environment: { type: [string, 'null'], enum: [PRODUCTION, SANDBOX, null] }
+    AdminLedgerDetailEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/AdminLedgerDetail' }
     ReconciliationLedgerEntryEnvelope:
       type: object
       additionalProperties: false

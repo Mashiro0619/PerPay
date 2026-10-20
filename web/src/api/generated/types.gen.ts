@@ -927,6 +927,89 @@ export type PaymentMatchDetail = {
     ledger_entry: ReconciliationLedgerEntry;
     order: ReconciliationOrder;
 };
+export type AdminLedgerEntryState = 'UNALLOCATED' | 'CANDIDATE' | 'ALLOCATED' | 'CONFLICT' | 'ISOLATED' | 'IGNORED';
+export type AdminLedgerFacts = {
+    amount_cents: number | null;
+    occurred_at: string | null;
+    occurred_at_precision_milliseconds: 1 | 10 | 100 | 1000 | null;
+    occurred_at_interval_end_exclusive: string | null;
+    direction: 'CREDIT' | 'DEBIT' | null;
+    currency: 'CNY' | null;
+    provider_order_no: string | null;
+    merchant_order_no: string | null;
+    other_account: string | null;
+    memo: string | null;
+};
+export type AdminLedgerGroupFields = {
+    ledger_entry_id: ResourceId;
+    external_event_id: string;
+    environment: 'PRODUCTION' | 'SANDBOX';
+    states: Array<AdminLedgerEntryState>;
+    source_record_count: number;
+    content_consistent: boolean;
+    has_conflicts: boolean;
+    active_match_count: number;
+    active_match: (AdminLedgerMatch & {
+        status?: 'SETTLED';
+    }) | null;
+    created_at: string;
+    updated_at: string;
+};
+export type AdminLedgerSummary = AdminLedgerFacts & AdminLedgerGroupFields;
+export type AdminLedgerMatch = {
+    payment_match_id: ResourceId;
+    ledger_entry_id: ResourceId;
+    order_id: ResourceId;
+    merchant_order_no: string;
+    product_name: string;
+    api_client_id: string;
+    site_name: string | null;
+    evidence_type: 'AMOUNT_INFERRED' | 'MANUAL';
+    status: 'SETTLED' | 'REVERSED';
+    created_at: string;
+    resolved_at: string | null;
+};
+export type AdminLedgerSource = AdminLedgerFacts & {
+    ledger_entry_id: ResourceId;
+    external_event_id: string;
+    provider_account_key: string;
+    app_id: string;
+    environment: 'PRODUCTION' | 'SANDBOX';
+    raw_event_id: ResourceId;
+    semantic_fingerprint: Sha256Fingerprint;
+    state: AdminLedgerEntryState;
+    amount_cents?: number;
+    occurred_at?: string;
+    occurred_at_precision_milliseconds?: 1 | 10 | 100 | 1000;
+    occurred_at_interval_end_exclusive?: string;
+    direction?: 'CREDIT' | 'DEBIT';
+    currency?: 'CNY';
+    created_at: string;
+    updated_at: string;
+};
+export type AdminLedgerConflict = {
+    conflict_id: ResourceId;
+    conflict_type: LedgerConflictType;
+    status: 'OPEN' | 'RESOLVED' | 'IGNORED';
+    existing_ledger_entry_id: ResourceId | null;
+    created_at: string;
+    resolved_at: string | null;
+};
+export type AdminLedgerDetail = AdminLedgerFacts & AdminLedgerGroupFields & {
+    sources: Array<AdminLedgerSource>;
+    matches: Array<AdminLedgerMatch>;
+    conflicts: Array<AdminLedgerConflict>;
+};
+export type AdminLedgerPageEnvelope = {
+    data: Array<AdminLedgerSummary>;
+    page: {
+        next_cursor: string | null;
+    };
+    environment: 'PRODUCTION' | 'SANDBOX' | null;
+};
+export type AdminLedgerDetailEnvelope = {
+    data: AdminLedgerDetail;
+};
 export type ReconciliationLedgerEntryEnvelope = {
     data: ReconciliationLedgerEntry;
 };
@@ -2297,6 +2380,57 @@ export type GetReconciliationCandidateResponses = {
     200: MatchCandidateEnvelope;
 };
 export type GetReconciliationCandidateResponse = GetReconciliationCandidateResponses[keyof GetReconciliationCandidateResponses];
+export type ListAdministratorLedgerEntriesData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path?: never;
+    query?: {
+        q?: string;
+        direction?: 'CREDIT' | 'DEBIT';
+        state?: AdminLedgerEntryState;
+        occurred_from?: string;
+        occurred_to?: string;
+        min_amount_cents?: number;
+        max_amount_cents?: number;
+        sort_by?: 'occurred_at';
+        sort_order?: 'asc' | 'desc';
+        limit?: number;
+        cursor?: string;
+    };
+    url: '/api/admin/v1/ledger/entries';
+};
+export type ListAdministratorLedgerEntriesErrors = {
+    401: ErrorEnvelope;
+    422: ErrorEnvelope;
+};
+export type ListAdministratorLedgerEntriesError = ListAdministratorLedgerEntriesErrors[keyof ListAdministratorLedgerEntriesErrors];
+export type ListAdministratorLedgerEntriesResponses = {
+    200: AdminLedgerPageEnvelope;
+};
+export type ListAdministratorLedgerEntriesResponse = ListAdministratorLedgerEntriesResponses[keyof ListAdministratorLedgerEntriesResponses];
+export type GetAdministratorLedgerEntryData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path: {
+        ledgerEntryId: ResourceId;
+    };
+    query?: never;
+    url: '/api/admin/v1/ledger/entries/{ledgerEntryId}';
+};
+export type GetAdministratorLedgerEntryErrors = {
+    401: ErrorEnvelope;
+    404: ErrorEnvelope;
+    422: ErrorEnvelope;
+};
+export type GetAdministratorLedgerEntryError = GetAdministratorLedgerEntryErrors[keyof GetAdministratorLedgerEntryErrors];
+export type GetAdministratorLedgerEntryResponses = {
+    200: AdminLedgerDetailEnvelope;
+};
+export type GetAdministratorLedgerEntryResponse = GetAdministratorLedgerEntryResponses[keyof GetAdministratorLedgerEntryResponses];
 export type GetReconciliationLedgerEntryData = {
     body?: never;
     headers?: {

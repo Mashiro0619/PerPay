@@ -16,6 +16,8 @@ import type { ManualRecommendation } from "../reconciliation/manual-candidates.t
 import { MATCH_SORT_FIELDS, CONFLICT_SORT_FIELDS, EXCEPTION_SORT_FIELDS, WORK_ITEM_SORT_FIELDS, type MatchSort, type ConflictSort, type ExceptionSort, type WorkItemSort } from "../shared/list-query.ts";
 import { ListQueryError, readListQuery, isDefaultQuery, ORDER_SORT_FIELDS, DELIVERY_SORT_FIELDS, type ListQuery, type OrderSort, type DeliverySort } from "../shared/list-query.ts";
 import { encodeListCursor, decodeListCursor } from "./list-cursor.ts";
+import { readAdminLedgerPage, readAdminLedgerDetail } from "../ledger/admin-query.ts";
+import { adminLedgerEntryEnvironment, resolveAdminLedgerEnvironment, readAdminLedgerPageQuery, encodeAdminLedgerCursor } from "./admin-ledger-query.ts";
 import { randomBytes, randomUUID } from "node:crypto";
 
 import type { HttpBindings } from "@hono/node-server";
@@ -1162,6 +1164,24 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       return context.json({ data: { name, value } });
     },
   );
+
+  app.get("/api/admin/v1/ledger/entries", adminSession, (context) => {
+    const environment = resolveAdminLedgerEnvironment(dependencies.database,
+      () => dependencies.settings?.instanceSnapshot().provider?.environment);
+    const query = readAdminLedgerPageQuery(new URL(context.req.url).searchParams, environment);
+    if (environment === null) return context.json({ data: [], page: { next_cursor: null }, environment });
+    const page = readAdminLedgerPage(dependencies.database, { ...query, environment });
+    return context.json({ data: page.items, page: { next_cursor: encodeAdminLedgerCursor(page.next_cursor, query) }, environment });
+  });
+
+  app.get("/api/admin/v1/ledger/entries/:ledgerEntryId", adminSession, (context) => {
+    if (new URL(context.req.url).searchParams.size !== 0) throw new ListQueryError("流水详情不接受查询参数");
+    const id = requireResourceId(context.req.param("ledgerEntryId"), "ledger_entry_not_found", "支付宝流水不存在");
+    const environment = adminLedgerEntryEnvironment(dependencies.database, id);
+    const detail = environment === null ? null : readAdminLedgerDetail(dependencies.database, environment, id);
+    if (!detail) throw new HttpApiError(404, "ledger_entry_not_found", "支付宝流水不存在");
+    return context.json({ data: detail });
+  });
 
   app.get("/api/admin/v1/ledger/conflicts", adminSession, (context) => {
     const query = readLedgerConflictPageQuery(
