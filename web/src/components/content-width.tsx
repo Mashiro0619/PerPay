@@ -52,12 +52,14 @@ function useContentWidth() {
   return value;
 }
 
-export function AdminContent({ children }: { children: ReactNode }) {
+export function AdminContent({ children, busy = false }: { children: ReactNode; busy?: boolean }) {
   const { mode } = useContentWidth();
   return (
     <div
       id="main-content"
       tabIndex={-1}
+      inert={busy}
+      aria-busy={busy}
       className="flex min-w-0 flex-1 flex-col px-4 outline-none lg:px-6"
     >
       <div

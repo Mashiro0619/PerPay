@@ -25,9 +25,11 @@ import { useMeasuredHeight } from "@/components/list-layout";
 export function SiteHeader({
   title,
   overview,
+  busy = false,
 }: {
   title: string;
   overview: boolean;
+  busy?: boolean;
 }) {
   const scope = useWorkspace();
   const [header, setHeader] = useState<HTMLElement | null>(null);
@@ -68,7 +70,7 @@ export function SiteHeader({
           </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
-        <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2" inert={busy}>
           {overview && (
             <>
               <RefreshButton

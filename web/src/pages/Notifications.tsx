@@ -35,7 +35,7 @@ import { DeliveryCard } from "@/components/detail/NotificationEvidence";
 import { RelatedOrder } from "@/components/detail/DetailPrimitives";
 import { StatusBadge } from "@/components/business-status";
 import { QueryView, ErrorNotice } from "@/components/request-state";
-import { retainListData } from "@/lib/list-placeholder";
+import { notificationStatus, notificationsQuery } from "@/api/workspace-queries";
 import { CursorPagination } from "@/components/cursor-pagination";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -57,8 +57,7 @@ const statuses = [
 ] as const;
 export default function Notifications() {
   const [search, setSearch] = useSearchParams();
-  const status =
-    statuses.find((item) => item.value === search.get("status"))?.value ?? "";
+  const status = notificationStatus(search) ?? "";
   function changeStatus(value: string | null) {
     const next = new URLSearchParams(search);
     if (value) next.set("status", value);
@@ -119,7 +118,6 @@ function DeliveryPage({
   status: WebhookDeliveryStatus | undefined;
   filters: ReactNode;
 }) {
-  const api = useWorkspaceApi();
   const { clientId } = useWorkspace();
   const pagination = useCursor();
   const listQuery = useListQuery(
@@ -128,23 +126,7 @@ function DeliveryPage({
     "desc",
     true,
   );
-  const deliveries = useQuery({
-    ...retainListData(["notifications", clientId, status], listQuery.query),
-    queryKey: ["notifications", status, pagination.cursor, listQuery.scope, clientId],
-    queryFn: ({ signal }) =>
-      result(
-        api.listWebhookDeliveries({
-          signal,
-          query: {
-            limit: 20,
-            ...listQuery.apiQuery,
-            ...(clientId ? { api_client_id: clientId } : {}),
-            ...(status ? { status } : {}),
-            ...(pagination.cursor ? { cursor: pagination.cursor } : {}),
-          },
-        }),
-      ),
-  });
+  const deliveries = useQuery(notificationsQuery(clientId, listQuery, pagination.cursor, status));
   const columns: BusinessColumn<WebhookDeliverySummary>[] = [
     {
       id: "identity",

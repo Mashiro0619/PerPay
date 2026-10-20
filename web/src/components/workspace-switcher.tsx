@@ -4,7 +4,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { parsePath, useLocation } from "react-router";
 import { BellOff, Check, ChevronRight, CirclePause, Globe } from "lucide-react";
 import { api, result } from "@/api/client";
-import { useNavigationWorkspace } from "@/workspace";
+import { useNavigationWorkspace, useWorkspaceNavigation } from "@/workspace";
 import { Link } from "@/navigation";
 import {
   actualPageAddress,
@@ -13,6 +13,7 @@ import {
 } from "@/lib/navigation-selection";
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { InlineEmpty } from "@/components/admin-empty";
@@ -58,6 +59,7 @@ export function WorkspaceSwitcher({
   onOpenChange: (open: boolean) => void;
 }) {
   const selection = useNavigationWorkspace();
+  const pending = useWorkspaceNavigation();
   const { clientId, site } = selection;
   const location = useLocation();
   const { pathname } = location;
@@ -100,6 +102,9 @@ export function WorkspaceSwitcher({
   }, [sites.data, clientId, currentSite]);
   const selectedEntry = entries.find(value => value.client_id === clientId);
   const selectedName = selectedEntry ? siteChoiceLabel(selectedEntry, entries) : "全部网站";
+  const switching = pending.switching && pending.selectedClientId !== clientId;
+  const pendingEntry = entries.find(value => value.client_id === pending.selectedClientId);
+  const pendingName = pendingEntry ? siteChoiceLabel(pendingEntry, entries) : pending.selectedClientId ?? "全部网站";
   const currentHref = location.pathname + location.search + location.hash;
   const allSitesHref = switchWorkspaceHref(location, null);
   const metadataError = clientId && isGlobalNavigationPage(pathname) ? site?.error : null;
@@ -109,6 +114,7 @@ export function WorkspaceSwitcher({
           <SidebarMenuSubItem>
             <SidebarMenuSubButton
               isActive={!clientId}
+              aria-busy={switching && pending.selectedClientId === null}
               aria-current={!clientId ? "location" : undefined}
               className="workspace-site-choice h-8 translate-x-0"
               render={
@@ -118,18 +124,21 @@ export function WorkspaceSwitcher({
                   state={workspaceSwitchState(location, allSitesHref)}
                   to={allSitesHref ?? currentHref}
                   onClick={event => {
-                    if (allSitesHref === null) event.preventDefault();
+                    if (allSitesHref === null && !pending.switching) event.preventDefault();
                   }}
                 />
               }
             >
-              <Check aria-hidden="true" className={cn(clientId && "invisible")} />
+              {switching && pending.selectedClientId === null
+                ? <Spinner aria-hidden="true" />
+                : <Check aria-hidden="true" className={cn(clientId && "invisible")} />}
               <span className="min-w-0 flex-1 truncate">全部网站</span>
             </SidebarMenuSubButton>
           </SidebarMenuSubItem>
           {entries.map(value => {
             const label = siteChoiceLabel(value, entries);
             const selected = value.client_id === clientId;
+            const loading = switching && value.client_id === pending.selectedClientId;
             const href = switchWorkspaceHref(location, value.client_id);
             const paused = value.configuration.accepting_orders === false;
             const notificationsOff = value.configuration.notifications_enabled === false;
@@ -141,6 +150,7 @@ export function WorkspaceSwitcher({
             const choice = (
                 <SidebarMenuSubButton
                   isActive={selected}
+                  aria-busy={loading}
                   aria-label={label}
                   aria-describedby={statusId}
                   aria-current={selected ? "location" : undefined}
@@ -152,12 +162,14 @@ export function WorkspaceSwitcher({
                       state={workspaceSwitchState(location, href)}
                       to={href ?? currentHref}
                       onClick={event => {
-                        if (href === null) event.preventDefault();
+                        if (href === null && !pending.switching) event.preventDefault();
                       }}
                     />
                   }
                 >
-                  <Check aria-hidden="true" className={cn(!selected && "invisible")} />
+                  {loading
+                    ? <Spinner aria-hidden="true" />
+                    : <Check aria-hidden="true" className={cn(!selected && "invisible")} />}
                   <span className="min-w-0 flex-1 truncate">{label}</span>
                   {hasStatus && (
                     <span aria-hidden="true" className="flex shrink-0 items-center gap-1.5 text-muted-foreground [&>svg]:size-3.5">
@@ -221,6 +233,7 @@ export function WorkspaceSwitcher({
         </SidebarMenuSub>
   );
   const metadata = <>
+      <span role="status" className="sr-only">{switching ? `正在切换到${pendingName}…` : ""}</span>
 {metadataError && (
         <div className="px-2 py-1">
           <ErrorNotice

@@ -1,51 +1,19 @@
 import { useWorkspace } from "@/workspace";
 import { useQuery } from '@/lib/workspace-query';
-import { useWorkspaceApi } from "@/workspace";
-import { keepPreviousData } from '@tanstack/react-query';
 import { useSearchParams } from "react-router";
-import { result } from "@/api/client";
+import { overviewQueries, overviewRange } from "@/api/workspace-queries";
 import { useSystemStatus } from "@/features/system-status";
 export function useOverview() {
-  const api = useWorkspaceApi();
   const [search, setSearch] = useSearchParams();
   const { clientId } = useWorkspace();
-  const selected = Number(search.get("range"));
-  const range: 7 | 30 | 90 = selected === 7 || selected === 90 ? selected : 30;
+  const range = overviewRange(search);
   const { status, unavailable, checking } = useSystemStatus();
-  const analytics = useQuery({
-    queryKey: ["analytics", range, clientId],
-    queryFn: ({ signal }) =>
-      result(api.getAdministratorSystemAnalytics({ query: { range, ...(clientId ? { api_client_id: clientId } : {}) }, signal })),
-    placeholderData: keepPreviousData,
-    refetchInterval: 60_000,
-  });
-  const settings = useQuery({
-    queryKey: ["settings"],
-    queryFn: ({ signal }) => result(api.getRuntimeSettings({ signal })),
-    refetchOnWindowFocus: false,
-  });
-  const orders = useQuery({
-    queryKey: ["orders", "recent", clientId],
-    queryFn: ({ signal }) =>
-      result(api.listAdministratorOrders({ query: { limit: 5, ...(clientId ? { api_client_id: clientId } : {}) }, signal })),
-    refetchInterval: 60_000,
-    refetchIntervalInBackground: false,
-    refetchOnMount: "always",
-  });
-  const work = useQuery({
-    queryKey: ["work-items", "recent", clientId, "priority"],
-    queryFn: ({ signal }) =>
-      result(api.listAdministratorWorkItems({ query: { limit: 4, sort_by: "priority", sort_order: "desc", ...(clientId ? { api_client_id: clientId } : {}) }, signal })),
-    refetchInterval: 60_000,
-    refetchIntervalInBackground: false,
-    refetchOnMount: "always",
-  });
-  const workSummary = useQuery({
-    queryKey: ["work-items", "summary", clientId],
-    queryFn: ({ signal }) => result(api.getAdministratorWorkItemSummary({ query: { api_client_id: clientId! }, signal })),
-    enabled: !!clientId,
-    refetchInterval: 60_000,
-  });
+  const options = overviewQueries(clientId, range);
+  const analytics = useQuery(options.analytics);
+  const settings = useQuery(options.settings);
+  const orders = useQuery(options.orders);
+  const work = useQuery(options.work);
+  const workSummary = useQuery(options.workSummary);
   return {
     clientId,
     range,

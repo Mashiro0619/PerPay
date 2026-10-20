@@ -15,6 +15,10 @@ let sessionController = new AbortController();
 const requestGenerations = new WeakMap<Request, number>();
 const mutationGenerations = new WeakMap<object, number>();
 
+export function getSessionRequestGeneration(): number {
+  return sessionGeneration;
+}
+
 export function invalidateSessionRequests(): void {
   sessionGeneration += 1;
   const previous = sessionController;

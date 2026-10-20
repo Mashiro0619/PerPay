@@ -10,13 +10,13 @@ export {
   normalizeKeyword,
 } from "../../../src/shared/list-query";
 export type { ListQuery, SortOrder } from "../../../src/shared/list-query";
-export function useListQuery<S extends string>(
+export function readListQuery<S extends string>(
+  search: URLSearchParams,
   fields: readonly S[],
   defaultSort: S,
   defaultOrder: SortOrder,
   dates = false,
 ) {
-  const [search, setSearch] = useSearchParams();
   const sortBy = fields.includes(search.get("sort_by") as S)
     ? (search.get("sort_by") as S)
     : defaultSort;
@@ -31,6 +31,26 @@ export function useListQuery<S extends string>(
     ...(dates && search.has("created_from") ? { createdFrom: search.get("created_from")! } : {}),
     ...(dates && search.has("created_to") ? { createdTo: search.get("created_to")! } : {}),
   };
+  return {
+    query,
+    apiQuery: {
+      ...(query.q ? { q: query.q } : {}),
+      ...(query.createdFrom !== undefined ? { created_from: query.createdFrom } : {}),
+      ...(query.createdTo !== undefined ? { created_to: query.createdTo } : {}),
+      sort_by: query.sortBy,
+      sort_order: query.sortOrder,
+    },
+    scope: JSON.stringify(query),
+  };
+}
+export function useListQuery<S extends string>(
+  fields: readonly S[],
+  defaultSort: S,
+  defaultOrder: SortOrder,
+  dates = false,
+) {
+  const [search, setSearch] = useSearchParams();
+  const parsed = readListQuery(search, fields, defaultSort, defaultOrder, dates);
   function update(values: Record<string, string | null>) {
     setSearch(
       (current) => {
@@ -47,15 +67,7 @@ export function useListQuery<S extends string>(
     );
   }
   return {
-    query,
-    apiQuery: {
-      ...(query.q ? { q: query.q } : {}),
-      ...(query.createdFrom !== undefined ? { created_from: query.createdFrom } : {}),
-      ...(query.createdTo !== undefined ? { created_to: query.createdTo } : {}),
-      sort_by: query.sortBy,
-      sort_order: query.sortOrder,
-    },
-    scope: JSON.stringify(query),
+    ...parsed,
     update,
     setKeyword: (q: string) => update({ q }),
     setSort: (sortBy: string, sortOrder: SortOrder) =>

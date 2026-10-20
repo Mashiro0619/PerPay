@@ -5,8 +5,8 @@ import { useWorkspaceApi } from "@/workspace";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { RefreshButton } from "@/components/refresh-button";
 import { DialogBody } from "@/components/admin-dialog";
-import { useListQuery, WORK_ITEM_SORT_FIELDS } from "@/lib/list-query";
-import { retainListData } from "@/lib/list-placeholder";
+import { useListQuery } from "@/lib/list-query";
+import { workItemFilters, workItemSortFields, workItemsQuery, type WorkItemVisibility } from "@/api/workspace-queries";
 import { ListQueryToolbar } from "@/components/list-query-toolbar";
 import { ListActionsMenu } from "@/components/list-actions-menu";
 import { ListColumnsProvider } from "@/components/list-columns";
@@ -55,16 +55,13 @@ const filters = [
   ["LEDGER_CONFLICT", "账本冲突"],
   ["NOTIFICATION_FAILURE", "通知失败"],
 ] as const;
-type Visibility = "ACTIVE" | "IGNORED";
+type Visibility = WorkItemVisibility;
 export default function WorkItems() {
   const api = useWorkspaceApi();
   const { clientId: workspaceClientId } = useWorkspace();
   const mounted = useMounted();
   const [search, setSearch] = useSearchParams();
-  const type =
-    filters.find(([value]) => value === search.get("type") && (!workspaceClientId || value !== "LEDGER_CONFLICT"))?.[0] ?? "ALL";
-  const visibility: Visibility =
-    search.get("visibility") === "IGNORED" ? "IGNORED" : "ACTIVE";
+  const { type, visibility } = workItemFilters(search, workspaceClientId);
   const [batch, setBatch] = useState<{
     type: AdminWorkItemTypeFilter;
     name: string;
@@ -269,14 +266,11 @@ function WorkItemPage({
   onVisibility: (value: Visibility) => void;
   onIgnore: (trigger?: HTMLElement | null) => void;
 }) {
-  const api = useWorkspaceApi();
   const mounted = useMounted();
   const { clientId } = useWorkspace();
   const pagination = useCursor();
   // Priority is an overview preview policy; retain the full list's existing sort choices.
-  const sortFields = WORK_ITEM_SORT_FIELDS
-    .filter((field) => field !== "priority")
-    .filter((field) => visibility === "IGNORED" || field !== "ignored_at");
+  const sortFields = workItemSortFields(visibility);
   const listQuery = useListQuery(
     sortFields,
     visibility === "IGNORED" ? "ignored_at" : "actionable_at",
@@ -315,31 +309,7 @@ function WorkItemPage({
       document.removeEventListener("pointerdown", moved);
     };
   }, []);
-  const work = useQuery({
-    ...retainListData(["work-items", clientId, type, visibility], listQuery.query),
-    queryKey: [
-      "work-items",
-      type,
-      visibility,
-      pagination.cursor,
-      listQuery.scope,
-      clientId,
-    ],
-    queryFn: ({ signal }) =>
-      result(
-        api.listAdministratorWorkItems({
-          signal,
-          query: {
-            type,
-            visibility,
-            limit: 20,
-            ...listQuery.apiQuery,
-            ...(clientId ? { api_client_id: clientId } : {}),
-            ...(pagination.cursor ? { cursor: pagination.cursor } : {}),
-          },
-        }),
-      ),
-  });
+  const work = useQuery(workItemsQuery(clientId, listQuery, pagination.cursor, type, visibility));
   const setRestoredMessage = useSuccessToast();
   function restore(item: AdminWorkItem, trigger: HTMLElement) {
     if (item.ended || restores.get(item)?.status === "pending") return;

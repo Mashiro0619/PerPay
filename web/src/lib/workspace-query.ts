@@ -3,6 +3,7 @@ import {
   useInfiniteQuery as infiniteQuery,
 } from "@tanstack/react-query";
 import { useWorkspace } from "@/workspace";
+import { workspaceQueryKey } from "@/lib/workspace-query-key";
 // Keep the domain prefix for invalidation; never share a resource cache across workspaces.
 export const useQuery: typeof query = ((
   options: Parameters<typeof query>[0],
@@ -12,9 +13,7 @@ export const useQuery: typeof query = ((
   return query(
     {
       ...options,
-      queryKey: clientId
-        ? [...options.queryKey, { workspace: clientId }]
-        : options.queryKey,
+      queryKey: workspaceQueryKey(options.queryKey, clientId),
     },
     client,
   );
@@ -27,9 +26,7 @@ export const useInfiniteQuery: typeof infiniteQuery = ((
   return infiniteQuery(
     {
       ...options,
-      queryKey: clientId
-        ? [...options.queryKey, { workspace: clientId }]
-        : options.queryKey,
+      queryKey: workspaceQueryKey(options.queryKey, clientId),
     },
     client,
   );

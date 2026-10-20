@@ -41,12 +41,14 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  portalProps,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
+  portalProps?: Pick<DialogPrimitive.Portal.Props, "keepMounted" | "hidden" | "inert">
 }) {
   return (
-    <DialogPortal>
+    <DialogPortal {...portalProps}>
       <DialogOverlay />
       <DialogPrimitive.Popup
         data-slot="dialog-content"

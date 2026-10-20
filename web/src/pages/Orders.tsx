@@ -7,7 +7,7 @@ import { useWorkspaceApi } from "@/workspace";
 import { CreatedDateFilter } from "@/components/created-date-filter";
 import { OrderExport } from "@/components/order-export";
 import { useListQuery, ORDER_SORT_FIELDS } from "@/lib/list-query";
-import { retainListData } from "@/lib/list-placeholder";
+import { orderFilters, ordersQuery } from "@/api/workspace-queries";
 import {
   ListQueryToolbar,
   type ListQueryLookup,
@@ -58,16 +58,7 @@ export default function Orders() {
   const [lookupSite, setLookupSite] = useState("");
   const lookup = useOrderLookup(clientId ?? lookupSite);
   const [search, setSearch] = useSearchParams();
-  const paymentValue = search.get("payment");
-  const checkoutValue = search.get("checkout");
-  const payment = ["UNPAID", "CONFIRMED", "DISPUTED"].includes(
-    paymentValue ?? "",
-  )
-    ? (paymentValue as PaymentStatus)
-    : undefined;
-  const checkout = ["OPEN", "CLOSED", "EXPIRED"].includes(checkoutValue ?? "")
-    ? (checkoutValue as CheckoutStatus)
-    : undefined;
+  const { payment, checkout } = orderFilters(search);
   function filter(key: string, value: string | null) {
     const next = new URLSearchParams(search);
     if (value) next.set(key, value);
@@ -257,28 +248,10 @@ function OrderPage({
   checkout: CheckoutStatus | undefined;
   onClearFilters: () => void;
 }) {
-  const api = useWorkspaceApi();
   const { clientId } = useWorkspace();
   const pagination = useCursor();
   const listQuery = useListQuery(ORDER_SORT_FIELDS, "created_at", "desc", true);
-  const orders = useQuery({
-    ...retainListData(["orders", clientId, payment, checkout], listQuery.query),
-    queryKey: ["orders", payment, checkout, pagination.cursor, listQuery.scope, clientId],
-    queryFn: ({ signal }) =>
-      result(
-        api.listAdministratorOrders({
-          signal,
-          query: {
-            limit: 20,
-            ...listQuery.apiQuery,
-            ...(clientId ? { api_client_id: clientId } : {}),
-            ...(payment ? { payment_status: payment } : {}),
-            ...(checkout ? { checkout_status: checkout } : {}),
-            ...(pagination.cursor ? { cursor: pagination.cursor } : {}),
-          },
-        }),
-      ),
-  });
+  const orders = useQuery(ordersQuery(clientId, listQuery, pagination.cursor, payment, checkout));
   return (
     <ListColumnsProvider>
       <ListToolbarPart>

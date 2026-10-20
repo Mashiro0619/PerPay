@@ -1,4 +1,6 @@
-import { WorkspaceProvider, WorkspaceOutlet, useWorkspace } from "@/workspace";
+import { WorkspaceProvider, WorkspaceNavigationProvider, WorkspaceOutlet, useWorkspace, adminRoutePathname, useWorkspaceNavigation } from "@/workspace";
+import { workspaceScope } from "@/lib/workspace-scope";
+import { prepareWorkspaceNavigation } from "@/lib/workspace-navigation";
 import { AdminContent, ContentWidthProvider } from "@/components/content-width";
 import { PageHeaderActionsProvider } from "@/components/page-header-actions";
 import { ListDensityProvider } from "@/components/list-density";
@@ -82,6 +84,7 @@ function AppShell() {
 function Workspace() {
   const systemName = useSystemName();
   const scope = useWorkspace();
+  const { switching } = useWorkspaceNavigation();
   const { setOpenMobile, toggleSidebar } = useSidebar();
   const session = useSession();
   const location = useLocation();
@@ -168,10 +171,10 @@ function Workspace() {
         logoutPending={logout.isPending}
         onLogout={() => requestDiscard(() => logout.mutate())}
       />
-      <SidebarInset className="min-w-0">
-        <SiteHeader title={title} overview={overview} />
+      <SidebarInset className="min-w-0" aria-busy={switching}>
+        <SiteHeader title={title} overview={overview} busy={switching} />
         <PageHeadingProvider routeKey={location.pathname}>
-        <AdminContent>
+        <AdminContent busy={switching}>
           <PageHeadingSlot title={title} />
           {(logout.error || session.error) && (
             <div className="flex flex-col gap-4">
@@ -190,16 +193,25 @@ function Workspace() {
 export const appRoutes = createRoutesFromElements(
   <Route
     errorElement={<AppFailure />}
+    loader={({ request }) => {
+      const pathname = adminRoutePathname(new URL(request.url).pathname);
+      const scope = workspaceScope(pathname);
+      const localPath = scope.clientId ? pathname.slice(scope.base.length) || "/" : pathname;
+      return prepareWorkspaceNavigation(request, scope.clientId, localPath);
+    }}
+    shouldRevalidate={({ currentParams, nextParams }) => currentParams.clientId !== nextParams.clientId}
     hydrateFallbackElement={<main className="mx-auto flex min-h-svh max-w-md flex-col justify-center gap-6 p-6"><PageHeading title="正在打开页面" /><Loading label="正在打开页面…" /></main>}
     element={
       <AuthBoundary>
         <DraftProvider>
           <WorkspaceProvider>
+            <WorkspaceNavigationProvider>
             <TestPaymentProvider>
               <SystemStatusBoundary>
                 <AppShell />
               </SystemStatusBoundary>
             </TestPaymentProvider>
+            </WorkspaceNavigationProvider>
           </WorkspaceProvider>
         </DraftProvider>
       </AuthBoundary>

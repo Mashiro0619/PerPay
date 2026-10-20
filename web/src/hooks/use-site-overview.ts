@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
-import { api, result, type ListSiteOverviewResponse } from "@/api/client";
+import type { ListSiteOverviewResponse } from "@/api/client";
+import { siteOverviewQueryOptions } from "@/api/workspace-queries";
 
 function hasMixedPeriods(pages: readonly ListSiteOverviewResponse[]) {
   const first = pages[0]?.period;
@@ -9,18 +10,7 @@ function hasMixedPeriods(pages: readonly ListSiteOverviewResponse[]) {
 
 export function useSiteOverview(range: 7 | 30 | 90, pageSize: 10 | 30 = 10) {
   const queryClient = useQueryClient();
-  const query = useInfiniteQuery({
-    queryKey: ["site-overview", range, pageSize],
-    initialPageParam: null as string | null,
-    queryFn: ({ pageParam, signal }) =>
-      result(api.listSiteOverview({
-        query: { range, limit: pageSize, ...(pageParam ? { cursor: pageParam } : {}) },
-        signal,
-      })),
-    getNextPageParam: (page) => page.page.next_cursor ?? undefined,
-    staleTime: 0,
-    refetchInterval: 60_000,
-  });
+  const query = useInfiniteQuery(siteOverviewQueryOptions(range, pageSize));
   const pages = query.data?.pages ?? [];
   const sites = pages.flatMap((page) => page.data);
   const mixedPeriods = hasMixedPeriods(pages);

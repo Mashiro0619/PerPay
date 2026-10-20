@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
-import { Navigate, Outlet, useLocation } from "react-router";
+import { Navigate, Outlet, useLocation, useNavigation } from "react-router";
 import { queryOptions, useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { api, result, type Site } from "@/api/client";
 import { workspaceApi } from "@/api/workspace";
@@ -10,6 +10,7 @@ import {
 } from "@/lib/workspace-scope";
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import { navigationSelection } from "@/lib/navigation-selection";
+import { WorkspaceSwitchingContext } from "@/lib/workspace-navigation-state";
 
 type Workspace = WorkspaceScope & { site?: UseQueryResult<{ data: Site }> };
 const WorkspaceContext = createContext<Workspace>({ clientId: null, base: "" });
@@ -17,11 +18,35 @@ const NavigationWorkspaceContext = createContext<Workspace>({ clientId: null, ba
 export const useWorkspace = () => useContext(WorkspaceContext);
 // Navigation can remember a site on shared pages without changing their API scope.
 export const useNavigationWorkspace = () => useContext(NavigationWorkspaceContext);
+export function adminRoutePathname(pathname: string) {
+  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+  return base && (pathname === base || pathname.startsWith(base + "/"))
+    ? pathname.slice(base.length) || "/"
+    : pathname;
+}
+export function useWorkspaceNavigation() {
+  const { clientId } = useWorkspace();
+  const navigation = useNavigation();
+  const nextLocation = navigation.location && {
+    ...navigation.location,
+    pathname: adminRoutePathname(navigation.location.pathname),
+  };
+  const next = nextLocation ? workspaceScope(nextLocation.pathname) : null;
+  return {
+    switching: navigation.state === "loading" && next !== null && next.clientId !== clientId,
+    clientId: next?.clientId ?? null,
+    selectedClientId: nextLocation ? navigationSelection(nextLocation).clientId : null,
+  };
+}
+export function WorkspaceNavigationProvider({ children }: { children: ReactNode }) {
+  const { switching } = useWorkspaceNavigation();
+  return <WorkspaceSwitchingContext value={switching}>{children}</WorkspaceSwitchingContext>;
+}
 export function useWorkspaceApi() {
   const { clientId } = useWorkspace();
   return useMemo(() => workspaceApi(clientId), [clientId]);
 }
-function workspaceSiteQuery(clientId: string | null) {
+export function workspaceSiteQuery(clientId: string | null) {
   return queryOptions({
     queryKey: ["workspace-site", clientId],
     queryFn: async ({ signal }) => {

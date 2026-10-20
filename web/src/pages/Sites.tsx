@@ -22,6 +22,7 @@ import { SitePolicyFields, SiteTextField } from "@/components/SitePolicyFields";
 import { siteTimeoutError, siteTimeoutSeconds } from "@/lib/site-timeout";
 import { SiteConfigurationConflicts } from "@/components/site-configuration-conflicts";
 import { mergeSiteConfiguration, resolveSiteConflicts, type SiteConflictChoices } from "@/lib/site-configuration";
+import { latestEditorSnapshot, siteEditorKey, siteEditorQueryOptions } from "@/lib/site-editor-query";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,14 +60,6 @@ export function SiteEditorPage() {
   const { clientId } = useParams();
   return clientId ? <ExistingSiteEditor /> : <CreateSite />;
 }
-type SiteEditorSnapshot = { site: Site; configuration: SiteConfiguration };
-const siteEditorKey = (clientId: string) => ["site-editor", clientId] as const;
-function latestEditorSnapshot(site: Site): SiteEditorSnapshot {
-  const cached = queryClient.getQueryData<SiteEditorSnapshot>(siteEditorKey(site.client_id));
-  return cached && cached.site.revision > site.revision
-    ? cached
-    : { site, configuration: site.configuration };
-}
 async function cacheSite(site: Site): Promise<Site> {
   // A GET begun before this write must not replace the committed snapshot later.
   await queryClient.cancelQueries({ queryKey: siteEditorKey(site.client_id) });
@@ -84,24 +77,7 @@ function isSiteRevisionConflict(error: unknown) {
 }
 function ExistingSiteEditor() {
   const { clientId, section = "basic" } = useParams();
-  const query = useQuery({
-    queryKey: siteEditorKey(clientId ?? "new"),
-    staleTime: Infinity,
-    gcTime: clientId ? 5 * 60_000 : 0,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-    queryFn: async ({
-      signal,
-    }): Promise<SiteEditorSnapshot> => {
-      if (clientId) {
-        const response = await result(
-          api.getSite({ path: { clientId }, signal }),
-        );
-        return latestEditorSnapshot(response.data);
-      }
-      throw new Error("缺少业务网站身份");
-    },
-  });
+  const query = useQuery(siteEditorQueryOptions(clientId));
   if (
     clientId &&
     !["basic", "orders", "integration", "display"].includes(section)

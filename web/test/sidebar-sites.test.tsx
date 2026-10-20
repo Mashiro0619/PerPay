@@ -130,6 +130,140 @@ async function findSidebar() {
   return sidebar();
 }
 
+describe("website switch preparation", () => {
+  it("keeps the current page until target identity and rows are ready, then switches without a loading frame", async () => {
+    let releaseSite!: (response: Response) => void;
+    let releaseOrders!: (response: Response) => void;
+    const siteResponse = new Promise<Response>(resolve => { releaseSite = resolve; });
+    const ordersResponse = new Promise<Response>(resolve => { releaseOrders = resolve; });
+    const reads: string[] = [];
+    const view = mountSidebar({
+      path: "/sites/a/orders",
+      handle(request) {
+        const path = new URL(request.url).pathname;
+        reads.push(path);
+        if (path === "/api/admin/v1/sites/b") return siteResponse.then(response => response.clone());
+        if (path === "/api/admin/v1/sites/b/orders") return ordersResponse.then(response => response.clone());
+        if (path === "/api/admin/v1/sites/a/orders")
+          return json({ data: [{ ...order, api_client_id: "a", product_name: "A 当前订单" }], page: { next_cursor: null } });
+        return undefined;
+      },
+    });
+    const nav = await findSidebar();
+    const currentRow = await screen.findByRole("link", { name: "A 当前订单" });
+    const main = screen.getByRole("main");
+    const frames: { site: string | null; loading: boolean }[] = [];
+    const observer = new MutationObserver(() => frames.push({
+      site: nav.querySelector("[data-current-workspace]")?.textContent ?? null,
+      loading: !!main.querySelector('[data-slot="skeleton"]'),
+    }));
+    observer.observe(main, { subtree: true, childList: true, attributes: true });
+    const user = userEvent.setup();
+    try {
+      const target = await within(nav).findByRole("link", { name: "网站 B" });
+      await user.click(target);
+      await waitFor(() => expect(reads).toContain("/api/admin/v1/sites/b"));
+      expect(reads).not.toContain("/api/admin/v1/sites/b/orders");
+      expect(view.router.state.location.pathname).toBe("/sites/a/orders");
+      expect(currentRow).toBeInTheDocument();
+      expect(target).toHaveAttribute("aria-busy", "true");
+      expect(main.querySelector("#main-content")).toHaveAttribute("inert");
+      expect(nav).toHaveTextContent("正在切换到网站 B…");
+      expect(document.title).toContain("网站 A");
+
+      await act(async () => { releaseSite(json({ data: siteB })); });
+      await waitFor(() => expect(reads).toContain("/api/admin/v1/sites/b/orders"));
+      expect(view.router.state.location.pathname).toBe("/sites/a/orders");
+      expect(currentRow).toBeInTheDocument();
+      expect(main.querySelector('[data-slot="skeleton"]')).toBeNull();
+
+      await act(async () => {
+        releaseOrders(json({ data: [{ ...order, api_client_id: "b", product_name: "B 目标订单" }], page: { next_cursor: null } }));
+      });
+      await screen.findByRole("link", { name: "B 目标订单" });
+      await waitFor(() => expect(view.router.state.navigation.state).toBe("idle"));
+      expect(view.router.state.location.pathname).toBe("/sites/b/orders");
+      expect(currentRow).not.toBeInTheDocument();
+      expect(main.querySelector("#main-content")).not.toHaveAttribute("inert");
+      expect(target).toHaveAttribute("aria-current", "location");
+      expect(target).toHaveAttribute("aria-busy", "false");
+      expect(frames.some(frame => frame.site === "网站 B")).toBe(true);
+      expect(frames.some(frame => frame.loading)).toBe(false);
+    } finally {
+      observer.disconnect();
+    }
+  });
+
+  it.each(["current", "another"] as const)("cancels a pending website switch when choosing the %s site", async choice => {
+    const siteC = site("c", "网站 C");
+    let releaseSite!: (response: Response) => void;
+    const siteResponse = new Promise<Response>(resolve => { releaseSite = resolve; });
+    const reads: string[] = [];
+    const view = mountSidebar({
+      path: "/sites/a/orders",
+      sites: [siteA, siteB, siteC],
+      handle(request) {
+        const path = new URL(request.url).pathname;
+        reads.push(path);
+        if (path === "/api/admin/v1/sites/b") return siteResponse;
+        const scoped = /^\/api\/admin\/v1\/sites\/([abc])\/orders$/.exec(path);
+        if (scoped) return json({
+          data: [{ ...order, api_client_id: scoped[1], product_name: scoped[1]!.toUpperCase() + " 站点订单" }],
+          page: { next_cursor: null },
+        });
+        return undefined;
+      },
+    });
+    const nav = await findSidebar();
+    await screen.findByRole("link", { name: "A 站点订单" });
+    const user = userEvent.setup();
+    await user.click(await within(nav).findByRole("link", { name: "网站 B" }));
+    await waitFor(() => expect(reads).toContain("/api/admin/v1/sites/b"));
+    const destination = choice === "current" ? "a" : "c";
+    await user.click(within(nav).getByRole("link", { name: choice === "current" ? "网站 A" : "网站 C" }));
+    await waitFor(() => expect(view.router.state.navigation.state).toBe("idle"));
+    await screen.findByRole("link", { name: destination.toUpperCase() + " 站点订单" });
+    await act(async () => { releaseSite(json({ data: siteB })); await siteResponse; });
+    expect(view.router.state.location.pathname).toBe(`/sites/${destination}/orders`);
+    expect(reads).not.toContain("/api/admin/v1/sites/b/orders");
+    expect(screen.queryByRole("link", { name: "B 站点订单" })).not.toBeInTheDocument();
+    expect(screen.getByRole("main")).not.toHaveAttribute("inert");
+  });
+
+  it("can reopen mobile navigation and cancel a pending switch after closing its sheet", async () => {
+    let releaseSite!: (response: Response) => void;
+    const siteResponse = new Promise<Response>(resolve => { releaseSite = resolve; });
+    const view = mountSidebar({
+      path: "/sites/a/orders",
+      mobile: true,
+      handle(request) {
+        if (new URL(request.url).pathname === "/api/admin/v1/sites/b")
+          return siteResponse.then(response => response.clone());
+        return undefined;
+      },
+    });
+    await screen.findByRole("heading", { name: "本站订单" });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "切换导航" }));
+    const sheet = await screen.findByRole("dialog", { name: "导航菜单" });
+    await user.click(await within(sheet).findByRole("link", { name: "网站 B" }));
+    await waitFor(() => expect(view.router.state.navigation.state).toBe("loading"));
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "导航菜单" })).not.toBeInTheDocument());
+    const trigger = screen.getByRole("button", { name: "切换导航" });
+    expect(trigger.closest("[inert]")).toBeNull();
+    expect(view.container.querySelector("#main-content")).toHaveAttribute("inert");
+    await user.click(trigger);
+    const reopened = await screen.findByRole("dialog", { name: "导航菜单" });
+    await user.click(await within(reopened).findByRole("link", { name: "网站 A" }));
+    await waitFor(() => expect(view.router.state.navigation.state).toBe("idle"));
+    expect(view.router.state.location.pathname).toBe("/sites/a/orders");
+    expect(view.container.querySelector("#main-content")).not.toHaveAttribute("inert");
+    await act(async () => { releaseSite(json({ data: siteB })); await siteResponse; });
+    expect(view.writes()).toHaveLength(0);
+  });
+});
+
 it("uses the same scoped website choices in the icon rail and restores trigger focus on Escape", async () => {
   const view = mountSidebar({ path: "/sites/a/orders" });
   await findSidebar();
