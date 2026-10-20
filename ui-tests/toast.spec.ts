@@ -40,6 +40,7 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
   await name.fill("通知验证一");
   await page.clock.pauseAt(new Date(manifest.epoch + 60_000));
   const firstEditor = await name.elementHandle();
+  const firstSaveTick = await page.evaluate(() => performance.now());
   await save.click();
   await expect.poll(async () => {
     await page.clock.runFor(50);
@@ -53,7 +54,13 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
   await page.clock.runFor(1000);
   await name.fill("通知验证二");
   await page.clock.runFor(600);
-  expect.soft(await success.count(), "editing the remounted form clears its previous success").toBe(0);
+  // JS clock ticks do not finish the browser's CSS exit animation. Keep the
+  // auto-dismiss deadline paused while waiting for the toast to leave the DOM.
+  const exitWaitTick = await page.evaluate(() => performance.now());
+  expect(exitWaitTick - firstSaveTick, "editing clears the toast before its 4-second auto-dismiss").toBeLessThan(4000);
+  await expect(success, "editing the remounted form clears its previous success").toHaveCount(0);
+  const exitCompleteTick = await page.evaluate(() => performance.now());
+  expect(exitCompleteTick, "waiting for CSS completion must not advance the auto-dismiss clock").toBe(exitWaitTick);
   const secondEditor = await name.elementHandle();
   await save.click();
   await expect.poll(async () => {
@@ -86,11 +93,11 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
   const notification = page.getByRole("dialog", { name: "API 密钥已更新，请同步业务服务端。", exact: true });
   await expect(notification).toBeVisible();
   await expect(notification).toHaveAttribute("aria-modal", "false");
-  const topmost = await notification.evaluate(element => {
+  // Visibility can precede the entrance animation's final position.
+  await expect.poll(() => notification.evaluate(element => {
     const bounds = element.getBoundingClientRect();
     return element.contains(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2));
-  });
-  expect(topmost).toBe(true);
+  }), { message: "the notification lands above the key dialog" }).toBe(true);
   // Test F6 after the dialog's initial autofocus has completed.
   await expect(keyDialog.getByRole("button", { name: "复制新的API 密钥", exact: true })).toBeFocused();
   await page.keyboard.press("F6");
@@ -99,7 +106,10 @@ for (const width of [390, 1440]) test(`${width}: success notifications remain ac
   await expect(notification).toBeFocused();
   await page.clock.runFor(5000);
   await expect(notification).toBeVisible();
-  await record(page, info, { width, syntheticSettingsWrites: true, toastAlongsideKey: true });
+  await record(page, info, {
+    width, syntheticSettingsWrites: true, toastAlongsideKey: true,
+    toastExitClock: { firstSaveTick, exitWaitTick, exitCompleteTick },
+  });
   await screenshot(page, info, "toast-with-key-dialog");
   await audit(page, info, "toast-with-key-dialog");
   await page.keyboard.press("Tab");
