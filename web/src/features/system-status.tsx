@@ -1,14 +1,17 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "react-router";
 import { api, result } from "@/api/client";
 import { useVisibleCheck } from "@/lib/use-visible-check";
 import { presentSystemStatus } from "@/lib/system-status";
+import { actualPageAddress } from "@/lib/navigation-selection";
 function useStatusObservation() {
   const view = useVisibleCheck();
   const location = useLocation();
+  const address = actualPageAddress(location);
+  const observation = useRef({ address, epoch: view.epoch });
   const status = useQuery({
-    queryKey: ["status", "shared", location.key, view.epoch],
+    queryKey: ["status", "shared", view.epoch],
     queryFn: async ({ signal }) => {
       const response = await result(api.getAdministratorSystemStatus({ signal }));
       const data = response.data;
@@ -36,6 +39,16 @@ function useStatusObservation() {
     refetchInterval: view.active ? 30000 : false,
     refetchIntervalInBackground: false,
   });
+  const { refetch } = status;
+  useEffect(() => {
+    const previous = observation.current;
+    observation.current = { address, epoch: view.epoch };
+    // Runtime health is global. Navigation refreshes its current snapshot in
+    // place; a visibility/network epoch still starts a fresh observation.
+    if (view.active && previous.epoch === view.epoch && previous.address !== address) {
+      void refetch();
+    }
+  }, [address, view.active, view.epoch, refetch]);
   const unavailable = !view.active || status.isError || status.isPaused;
   const checking =
     unavailable || status.isPending || !status.isFetchedAfterMount;

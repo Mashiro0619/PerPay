@@ -1,6 +1,7 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { onlineManager } from "@tanstack/react-query";
+import { describe, expect, it, vi } from "vitest";
 import { queryClient } from "../src/api/client";
 import { presentSystemStatus } from "../src/lib/system-status";
 import { mountOnboarding, systemStatus } from "./onboarding-fixture";
@@ -24,6 +25,97 @@ function ready() {
   return data;
 }
 describe("shared runtime presentation", () => {
+  it("keeps the current snapshot during a navigation refresh and removes it if that refresh fails", async () => {
+    let defer = false;
+    let finish!: (response: Response) => void;
+    const pending = new Promise<Response>(resolve => { finish = resolve; });
+    const view = mountOnboarding({
+      stage: 4,
+      path: "/system",
+      status: () => ready(),
+      handle: request => defer && request.url.endsWith("/system/status") ? pending : undefined,
+    });
+    const table = await screen.findByRole("table", { name: "运行环节" });
+    const reads = () => view.fetchMock.mock.calls.filter(([request]) => request.url.endsWith("/system/status")).length;
+    expect(reads()).toBe(1);
+
+    defer = true;
+    await act(async () => { await view.router.navigate("/system?inspection=1"); });
+    await waitFor(() => expect(reads()).toBe(2));
+    expect(screen.getByRole("table", { name: "运行环节" })).toBe(table);
+    expect(screen.queryByText("正在读取运行状态…")).not.toBeInTheDocument();
+    await act(async () => { finish(apiError("unavailable", "状态读取失败", 503)); });
+    expect(await screen.findByText("暂时无法确认运行状态")).toBeVisible();
+    expect(screen.queryByRole("table", { name: "运行环节" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the global snapshot and its DOM through selection-only navigation, hash changes and history", async () => {
+    const view = mountOnboarding({
+      stage: 4,
+      path: "/system?selected_site=a#health",
+      status: () => ready(),
+      handle: request => {
+        const match = /\/sites\/([ab])$/.exec(new URL(request.url).pathname);
+        return match ? json({ data: { client_id: match[1], configuration: { name: "网站 " + match[1] }, deleted_at: null } }) : undefined;
+      },
+    });
+    const table = await screen.findByRole("table", { name: "运行环节" });
+    const reads = () => view.fetchMock.mock.calls.filter(([request]) => request.url.endsWith("/system/status")).length;
+    expect(reads()).toBe(1);
+    for (const destination of ["/system?selected_site=b#health", "/system?selected_site=b#backup", -1, -1, "/system#health"] as const) {
+      await act(async () => {
+        if (typeof destination === "number") await view.router.navigate(destination);
+        else await view.router.navigate(destination);
+      });
+      expect(screen.getByRole("table", { name: "运行环节" })).toBe(table);
+      expect(reads()).toBe(1);
+    }
+  });
+
+  it.each(["visibility", "network"] as const)("requires a fresh snapshot after a %s epoch and ignores the previous epoch's late response", async kind => {
+    const available = kind === "visibility"
+      ? vi.spyOn(document, "hidden", "get").mockReturnValue(false)
+      : vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
+    const changeAvailability = (value: boolean) => {
+      available.mockReturnValue(kind === "visibility" ? !value : value);
+      if (kind === "visibility") fireEvent(document, new Event("visibilitychange"));
+      else fireEvent(window, new Event(value ? "online" : "offline"));
+    };
+    let defer = false;
+    const pending: Array<(response: Response) => void> = [];
+    const view = mountOnboarding({
+      stage: 4,
+      path: "/system",
+      status: () => ready(),
+      handle: request => defer && request.url.endsWith("/system/status")
+        ? new Promise<Response>(resolve => pending.push(resolve))
+        : undefined,
+    });
+    try {
+      await screen.findByRole("table", { name: "运行环节" });
+      defer = true;
+      await act(async () => { await view.router.navigate("/system?inspection=1"); });
+      await waitFor(() => expect(pending).toHaveLength(1));
+      act(() => changeAvailability(false));
+      expect(screen.queryByRole("table", { name: "运行环节" })).not.toBeInTheDocument();
+      expect(await screen.findByText("暂时无法确认运行状态")).toBeVisible();
+      await act(async () => { await view.router.navigate("/system?inspection=2"); });
+      expect(pending).toHaveLength(1);
+
+      act(() => changeAvailability(true));
+      await waitFor(() => expect(pending).toHaveLength(2));
+      expect(screen.queryByRole("table", { name: "运行环节" })).not.toBeInTheDocument();
+      await act(async () => { pending[0]!(json({ data: ready() })); });
+      expect(screen.queryByRole("table", { name: "运行环节" })).not.toBeInTheDocument();
+      expect(screen.getByText("正在读取运行状态…")).toBeInTheDocument();
+      await act(async () => { pending[1]!(json({ data: ready() })); });
+      expect(await screen.findByRole("table", { name: "运行环节" })).toBeVisible();
+    } finally {
+      available.mockRestore();
+      onlineManager.setOnline(true);
+    }
+  });
+
   it("treats incomplete successful status responses as unavailable without crashing protected forms", async () => {
     mountOnboarding({stage:4,path:"/settings/collection-policy",handle:r=>r.url.endsWith("/system/status") ? json({data:{status:"ready",configured:true,database:{ok:true}}}) : undefined});
     expect(await screen.findByLabelText("查账有效时限（秒）")).toBeVisible();

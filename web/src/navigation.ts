@@ -1,7 +1,7 @@
 import { workspaceScope, workspaceHref } from "./lib/workspace-scope";
-import { withNavigationSelection } from "./lib/navigation-selection";
+import { actualPageAddress, withNavigationSelection } from "./lib/navigation-selection";
 import { createContext, createElement, useCallback, useContext, type Ref } from "react";
-import { Link as RouterLink, NavLink as RouterNavLink, useLocation, useNavigate as useRouterNavigate, type LinkProps, type NavLinkProps, type NavigateFunction, type NavigateOptions, type To } from "react-router";
+import { Link as RouterLink, NavLink as RouterNavLink, parsePath, useLocation, useNavigate as useRouterNavigate, type LinkProps, type NavLinkProps, type NavigateFunction, type NavigateOptions, type To } from "react-router";
 
 import { useReducedMotion } from "./lib/motion";
 
@@ -20,6 +20,14 @@ function useRouteMotion() {
 
 function destinationAllowsMotion(destination: To) {
   return !isPrivateRoute(typeof destination === "string" ? destination.split(/[?#]/)[0]! : destination.pathname ?? "");
+}
+
+function selectionOnlyNavigation(destination: To, location: ReturnType<typeof useLocation>) {
+  const target = typeof destination === "string" ? parsePath(destination) : destination;
+  const next = { pathname: target.pathname || location.pathname, search: target.search ?? "" };
+  return location.search !== next.search &&
+    location.hash === (target.hash ?? "") &&
+    actualPageAddress(location) === actualPageAddress(next);
 }
 
 type NavigationOptions = { global?: boolean; preserveSelectedSite?: boolean };
@@ -42,14 +50,14 @@ export function Link({ viewTransition = true, global = false, preserveSelectedSi
     location,
     preserveSelectedSite,
   );
-  return createElement(RouterLink, { ...props, ...navigationFeedback(to), to, state: props.state !== undefined ? props.state : detailNavigationState(to, location), viewTransition: viewTransition && enabled && destinationAllowsMotion(props.to) });
+  return createElement(RouterLink, { ...props, ...navigationFeedback(to), to, state: props.state !== undefined ? props.state : detailNavigationState(to, location), viewTransition: viewTransition && enabled && destinationAllowsMotion(props.to) && !selectionOnlyNavigation(to, location) });
 }
 
 export function NavLink({ viewTransition = true, preserveSelectedSite = true, ...props }: NavLinkProps & Pick<NavigationOptions, "preserveSelectedSite"> & { ref?: Ref<HTMLAnchorElement> }) {
   const enabled = useRouteMotion();
   const location = useLocation();
   const to = withNavigationSelection(props.to, location, preserveSelectedSite);
-  return createElement(RouterNavLink, { ...props, ...navigationFeedback(to), to, viewTransition: viewTransition && enabled && destinationAllowsMotion(props.to) });
+  return createElement(RouterNavLink, { ...props, ...navigationFeedback(to), to, viewTransition: viewTransition && enabled && destinationAllowsMotion(props.to) && !selectionOnlyNavigation(to, location) });
 }
 
 type WorkspaceNavigateFunction = {
@@ -72,7 +80,7 @@ export function useNavigate(): WorkspaceNavigateFunction {
     return navigate(to, {
       ...routerOptions,
       state: routerOptions.state !== undefined ? routerOptions.state : detailNavigationState(to, location),
-      viewTransition: routerOptions.viewTransition !== false && enabled && destinationAllowsMotion(destination),
+      viewTransition: routerOptions.viewTransition !== false && enabled && destinationAllowsMotion(destination) && !selectionOnlyNavigation(to, location),
     });
   }) as WorkspaceNavigateFunction, [navigate, enabled, location]);
 }
