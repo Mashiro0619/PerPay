@@ -5,7 +5,7 @@ import {
   createdDatePreset,
   createdDateRange,
 } from "../../../src/shared/created-dates";
-import type { ListQueryControl } from "@/lib/list-query";
+import { CREATED_DATE_FIELDS, type ListDateFields, type ListQueryControl } from "@/lib/list-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -41,9 +41,13 @@ const presets = [
 export function CreatedDateFilter({
   control,
   children,
+  label = "创建日期",
+  fields = CREATED_DATE_FIELDS,
 }: {
   control: ListQueryControl;
   children?: ReactNode;
+  label?: string;
+  fields?: ListDateFields;
 }) {
   const [open, setOpen] = useState(false),
     [from, setFrom] = useState(""),
@@ -71,10 +75,10 @@ export function CreatedDateFilter({
   return (
     <div
       className="flex flex-wrap items-center gap-2"
-      aria-label="创建日期筛选"
+      aria-label={label + "筛选"}
       role="group"
     >
-      <span className="text-sm text-muted-foreground">创建日期</span>
+      <span className="text-sm text-muted-foreground">{label}</span>
       <Select
         items={presets}
         value={selected}
@@ -92,12 +96,12 @@ export function CreatedDateFilter({
                   value === "yesterday",
                 );
           control.update({
-            created_from: dates?.from ?? null,
-            created_to: dates?.to ?? null,
+            [fields.from]: dates?.from ?? null,
+            [fields.to]: dates?.to ?? null,
           });
         }}
       >
-        <SelectTrigger ref={trigger} aria-label="创建日期范围">
+        <SelectTrigger ref={trigger} aria-label={label + "范围"}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -125,7 +129,7 @@ export function CreatedDateFilter({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent finalFocus={trigger}>
           <DialogHeader>
-            <DialogTitle>自定义创建日期</DialogTitle>
+            <DialogTitle>自定义{label}</DialogTitle>
             <DialogDescription>
               按北京时间，包含开始和结束两天。
             </DialogDescription>
@@ -136,7 +140,7 @@ export function CreatedDateFilter({
               event.preventDefault();
               try {
                 createdDateRange(from, to);
-                control.update({ created_from: from, created_to: to });
+                control.update({ [fields.from]: from, [fields.to]: to });
                 setOpen(false);
               } catch (error) {
                 setError(error instanceof Error ? error.message : "日期无效");

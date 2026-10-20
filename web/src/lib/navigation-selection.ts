@@ -8,6 +8,7 @@ export type NavigationSection =
   | "notifications"
   | "settings"
   | "reconciliation"
+  | "ledger"
   | "system"
   | "sites";
 
@@ -28,6 +29,7 @@ const SECTION_QUERY_PARAMETERS: Record<NavigationSection, readonly string[]> = {
   notifications: ["status", ...LIST_QUERY_PARAMETERS, ...DATE_QUERY_PARAMETERS],
   "work-items": ["type", "visibility", ...LIST_QUERY_PARAMETERS],
   reconciliation: ["tab", "status", "provider_account_key", ...LIST_QUERY_PARAMETERS],
+  ledger: ["direction", "state", "occurred_from", "occurred_to", "min_amount_cents", "max_amount_cents", ...LIST_QUERY_PARAMETERS],
   settings: [],
   system: [],
   sites: [],
@@ -41,7 +43,7 @@ function selectionScope(clientId: string | null): WorkspaceScope {
 
 /** Only these pages may remember a site without changing their global API scope. */
 export function isGlobalNavigationPage(pathname: string): boolean {
-  return /^\/(?:reconciliation(?:\/[^/]+\/[^/]+)?|system|sites(?:\/(?:new|defaults))?)\/?$/.test(pathname);
+  return /^\/(?:reconciliation(?:\/[^/]+\/[^/]+)?|ledger(?:\/[^/]+)?|system|sites(?:\/(?:new|defaults))?)\/?$/.test(pathname);
 }
 
 export function navigationSelection(location: NavigationLocation): WorkspaceScope {
@@ -68,6 +70,7 @@ export function navigationSection(pathname: string): NavigationSection | null {
   }
   if (!isGlobalNavigationPage(pathname)) return null;
   if (path === "/system") return "system";
+  if (/^\/ledger(?:\/|$)/.test(path)) return "ledger";
   return path.startsWith("/reconciliation") ? "reconciliation" : "sites";
 }
 
@@ -98,7 +101,7 @@ function selectionSearch(search: string, clientId: string | null): string {
 }
 
 export function sidebarHref(section: NavigationSection, selection: WorkspaceScope): string {
-  if (section === "reconciliation" || section === "system" || section === "sites") {
+  if (section === "reconciliation" || section === "ledger" || section === "system" || section === "sites") {
     return "/" + section + selectionSearch("", selection.clientId);
   }
   if (section === "overview") return selection.base || "/";

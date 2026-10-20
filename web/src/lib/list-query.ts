@@ -10,13 +10,19 @@ export {
   normalizeKeyword,
 } from "../../../src/shared/list-query";
 export type { ListQuery, SortOrder } from "../../../src/shared/list-query";
+export type ListDateFields = Readonly<{ from: string; to: string }>;
+export const CREATED_DATE_FIELDS: ListDateFields = { from: "created_from", to: "created_to" };
+function dateFields(dates: boolean | ListDateFields): ListDateFields | null {
+  return dates === true ? CREATED_DATE_FIELDS : dates || null;
+}
 export function readListQuery<S extends string>(
   search: URLSearchParams,
   fields: readonly S[],
   defaultSort: S,
   defaultOrder: SortOrder,
-  dates = false,
+  dates: boolean | ListDateFields = false,
 ) {
+  const fieldsForDates = dateFields(dates);
   const sortBy = fields.includes(search.get("sort_by") as S)
     ? (search.get("sort_by") as S)
     : defaultSort;
@@ -28,15 +34,18 @@ export function readListQuery<S extends string>(
     q: (search.get("q") ?? "").trim(),
     sortBy,
     sortOrder,
-    ...(dates && search.has("created_from") ? { createdFrom: search.get("created_from")! } : {}),
-    ...(dates && search.has("created_to") ? { createdTo: search.get("created_to")! } : {}),
+    ...(fieldsForDates && search.has(fieldsForDates.from) ? { createdFrom: search.get(fieldsForDates.from)! } : {}),
+    ...(fieldsForDates && search.has(fieldsForDates.to) ? { createdTo: search.get(fieldsForDates.to)! } : {}),
   };
   return {
     query,
     apiQuery: {
+      // Keep the existing order-export contract while supporting custom date keys.
+      ...(fieldsForDates?.from === CREATED_DATE_FIELDS.from && query.createdFrom !== undefined ? { created_from: query.createdFrom } : {}),
+      ...(fieldsForDates?.to === CREATED_DATE_FIELDS.to && query.createdTo !== undefined ? { created_to: query.createdTo } : {}),
       ...(query.q ? { q: query.q } : {}),
-      ...(query.createdFrom !== undefined ? { created_from: query.createdFrom } : {}),
-      ...(query.createdTo !== undefined ? { created_to: query.createdTo } : {}),
+      ...(fieldsForDates && query.createdFrom !== undefined ? { [fieldsForDates.from]: query.createdFrom } : {}),
+      ...(fieldsForDates && query.createdTo !== undefined ? { [fieldsForDates.to]: query.createdTo } : {}),
       sort_by: query.sortBy,
       sort_order: query.sortOrder,
     },
@@ -47,10 +56,11 @@ export function useListQuery<S extends string>(
   fields: readonly S[],
   defaultSort: S,
   defaultOrder: SortOrder,
-  dates = false,
+  dates: boolean | ListDateFields = false,
 ) {
   const [search, setSearch] = useSearchParams();
   const parsed = readListQuery(search, fields, defaultSort, defaultOrder, dates);
+  const fieldsForDates = dateFields(dates);
   function update(values: Record<string, string | null>) {
     setSearch(
       (current) => {
@@ -72,7 +82,7 @@ export function useListQuery<S extends string>(
     setKeyword: (q: string) => update({ q }),
     setSort: (sortBy: string, sortOrder: SortOrder) =>
       update({ sort_by: sortBy, sort_order: sortOrder }),
-    clear: () => update({ q: null, sort_by: null, sort_order: null, ...(dates ? { created_from: null, created_to: null } : {}) }),
+    clear: () => update({ q: null, sort_by: null, sort_order: null, ...(fieldsForDates ? { [fieldsForDates.from]: null, [fieldsForDates.to]: null } : {}) }),
   };
 }
 export type ListQueryControl = Pick<

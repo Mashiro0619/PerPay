@@ -55,6 +55,7 @@ const globalPageTitles: Record<NavigationSection, string> = {
   notifications: "全部通知",
   settings: "系统设置",
   reconciliation: "对账",
+  ledger: "支付宝流水",
   system: "运行状态",
   sites: "业务网站",
 };
@@ -257,6 +258,18 @@ export const appRoutes = createRoutesFromElements(
       path="notifications"
       lazy={async () => ({
         Component: (await import("./pages/Notifications")).default,
+      })}
+    />
+    <Route
+      path="ledger"
+      lazy={async () => ({
+        Component: (await import("./pages/Ledger")).default,
+      })}
+    />
+    <Route
+      path="ledger/:ledgerEntryId"
+      lazy={async () => ({
+        Component: (await import("./pages/LedgerDetail")).default,
       })}
     />
     <Route

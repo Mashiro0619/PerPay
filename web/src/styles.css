@@ -322,6 +322,20 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .business-table td[data-column-align="center"] > .list-time { align-items: center; }
 .business-table td[data-column-layout="amount"] { overflow: visible; }
 .business-table:has(.list-money[data-wide="true"]) col[data-column-layout="amount"] { width: 13rem; }
+
+/* Ledger identifiers need room before secondary columns share the remainder. */
+.ledger-table { table-layout: auto; }
+.ledger-table col[data-column-id="identity"] { width: 14rem; }
+.ledger-table :is(th, td)[data-column-id="identity"] { min-width: 14rem; }
+.ledger-table col[data-column-id="direction"] { width: 4.5rem; }
+.ledger-table col[data-column-id="state"] { width: 8rem; }
+.ledger-table col[data-column-id="amount_cents"] { width: 8.5rem; }
+.ledger-table:has(.list-money[data-wide="true"]) col[data-column-id="amount_cents"] { width: 10rem; }
+.ledger-table col[data-column-id="occurred_at"] { width: 8rem; }
+.ledger-table col[data-column-id="other_account"] { width: 8rem; }
+.ledger-table col[data-column-id="order"] { width: 10rem; }
+.ledger-table col[data-column-id="memo"] { width: 12rem; }
+
 [data-density="comfortable"] .business-table td,
 .business-table[data-density="comfortable"] td { padding-block: 0.75rem; }
 

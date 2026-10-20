@@ -296,7 +296,7 @@ describe("business websites in the sidebar", () => {
     expect(primaryLinks(nav)).toEqual(["总览", "订单", "待处理", "通知"]);
     const settings = within(nav).getByRole("navigation", { name: "设置导航" });
     const shared = within(nav).getByRole("navigation", { name: "全局管理" });
-    expect(within(shared).getAllByRole("link").map(link => link.textContent?.trim())).toEqual(["业务网站", "对账", "运行状态"]);
+    expect(within(shared).getAllByRole("link").map(link => link.textContent?.trim())).toEqual(["业务网站", "对账", "支付宝流水", "运行状态"]);
     const manage = within(shared).getByRole("link", { name: "业务网站" });
     expect(manage).toHaveAttribute("href", "/sites");
     expect(within(settings).getByRole("link", { name: "设置" })).toHaveAttribute("href", "/settings");
@@ -406,8 +406,10 @@ describe("business websites in the sidebar", () => {
     await waitFor(() => expect(view.router.state.location.pathname).toBe("/sites/b/orders"));
     await screen.findByRole("heading", { name: "本站订单", level: 1 });
     expect(new URLSearchParams(view.router.state.location.search).get("q")).toBe("original");
-    expect(within(nav).getByRole("link", { name: "网站 B" })).toHaveAttribute("aria-current", "location");
-    expect(within(nav).getByRole("link", { name: "网站 A" })).not.toHaveAttribute("aria-current");
+    await waitFor(() => {
+      expect(within(nav).getByRole("link", { name: "网站 B" })).toHaveAttribute("aria-current", "location");
+      expect(within(nav).getByRole("link", { name: "网站 A" })).not.toHaveAttribute("aria-current");
+    });
 
     await user.click(within(nav).getByRole("link", { name: "通知" }));
     await screen.findByRole("heading", { name: "本站通知", level: 1 });
