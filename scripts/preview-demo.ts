@@ -26,6 +26,7 @@ import { UpdateCheckUnavailable } from "../src/update/checker.ts";
 import type { SiteSnapshot } from "../src/sites/model.ts";
 import { seedFinancialScenarios } from "./preview-financial-scenarios.ts";
 import { seedNotificationScenarios } from "./preview-notification-scenarios.ts";
+import { seedCurrentLedgerSourceCopies, seedHistoricalLedgerSource } from "./preview-ledger-scenarios.ts";
 import { previewLedgerNumber, previewOrderNumber, previewPayer, previewTradeNumber } from "./preview-identities.ts";
 
 export const DEMO_QR_TEXT = "PerPay documentation demo - NOT A PAYMENT CODE";
@@ -89,6 +90,8 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
     const settingsStore = new RuntimeSettingsStore(db, config.masterKey);
     const settings = new RuntimeSettingsService({ store: settingsStore });
     settings.initialize();
+    const ledger = new LedgerStore(db);
+    const historicalLedger = seedHistoricalLedgerSource(ledger, capturedAt);
     const audit = { actorId: "admin", requestId: "documentation-fixture", remoteAddressHash: "0".repeat(64) };
     const application = generateKeyPairSync("rsa", { modulusLength: 2048 });
     const platform = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -144,7 +147,6 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
     const limitedSite = createSite("白帆数码商城", { pendingOrderLimit: 2 });
     const orders = new OrderService(db, () => settings.instanceSnapshot(), () => liveStarted === null ? now : liveNow(), sites);
     orders.initialize();
-    const ledger = new LedgerStore(db);
     const reconciliation = new ReconciliationStore(db);
     const webhooks = new WebhookStore(db);
     const snapshot = settings.instanceSnapshot();
@@ -368,6 +370,7 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
     lifecycle.fullEvidence = featured.orderId;
     setNow(capturedAt - 5000);
     notifications.finalize();
+    const ledgerQueries = seedCurrentLedgerSourceCopies(ledger, providerAccountKey, historicalLedger, now);
     setNow(capturedAt);
     assert.equal(historyPosition, history.length, "All scheduled history must be seeded");
     // Exercise the real expiry path, including the lifecycle.expired order.
@@ -376,7 +379,7 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
     assert.ok(stats.orders.created > 400);
     assert.ok(stats.pending.orders >= 4);
     assertIntegrity("all scenarios");
-    const scenarios = { lifecycle, financial, notifications: { orders: notifications.orders, deliveries: notifications.deliveries },
+    const scenarios = { lifecycle, financial, ledger: ledgerQueries, notifications: { orders: notifications.orders, deliveries: notifications.deliveries },
       sites: { store: demoSites[0]!.clientId, subscriptions: demoSites[1]!.clientId,
         financial: financialSite.clientId, notifications: notificationSite.clientId, paused: pausedSite.clientId,
         unconfigured: unconfiguredSite.clientId, no_notifications: noNotificationSite.clientId, limited: limitedSite.clientId } };

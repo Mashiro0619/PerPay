@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Fictional display identities for the disposable, read-only preview only.
 
-// Source namespaces: ordinary/lifecycle orders, financial cases, notification cases.
-export type PreviewIdentitySeries = 10 | 20 | 30;
+// Source namespaces: ordinary/lifecycle, financial, notification, ledger-query cases.
+export type PreviewIdentitySeries = 10 | 20 | 30 | 40;
 
 const BEIJING_OFFSET = 8 * 3_600_000;
 const PAYERS = [
@@ -21,7 +21,7 @@ function sequenceDigits(sequence: number, width: number): string {
 
 function identityParts(now: number, series: PreviewIdentitySeries) {
   if (!Number.isSafeInteger(now) || now < 0) throw new RangeError("Preview identity time is invalid");
-  if (![10, 20, 30].includes(series)) throw new RangeError("Preview identity series is invalid");
+  if (![10, 20, 30, 40].includes(series)) throw new RangeError("Preview identity series is invalid");
   const stamp = new Date(now + BEIJING_OFFSET).toISOString().slice(0, 19).replace(/\D/g, "");
   if (stamp.length !== 14) throw new RangeError("Preview identity time must have a four-digit year");
   return { stamp, series: String(series) };

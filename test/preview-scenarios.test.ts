@@ -5,6 +5,8 @@ import { describe, it } from "node:test";
 
 import { createPreviewDemo } from "../scripts/preview-demo.ts";
 import type {
+  AdminLedgerDetail,
+  AdminLedgerSummary,
   AdminOrderDetail,
   AdminOrderSummary,
   AdminWorkItem,
@@ -369,6 +371,53 @@ describe("complete local preview scenarios", () => {
         assert.deepEqual(await all<OrderWebhookDeliveryDetail>("/api/admin/v1/orders/" + unmaterializedId + "/notifications/deliveries"), [], "A configured callback awaiting materialization must retain the real empty state");
         const global = await all<WebhookDeliverySummary>("/api/admin/v1/webhooks/deliveries");
         for (const item of deliveries) assert.ok(global.some(row => row.delivery_id === item.delivery.delivery_id));
+      });
+
+      await context.test("global ledger browsing groups historical sources and preserves real payment evidence", async () => {
+        const changes = () => Number(preview.database.read(connection => connection.prepare("SELECT total_changes() AS n").get()!.n));
+        const before = changes();
+        const entries = await all<AdminLedgerSummary>("/api/admin/v1/ledger/entries");
+        const identities = entries.map(entry => entry.external_event_id);
+        assert.equal(new Set(identities).size, entries.length, "A provider event must occur once across all pages");
+        const expected = preview.database.read(connection => connection.prepare(
+          "SELECT DISTINCT entry.external_event_id FROM ledger_entries entry JOIN provider_account_bindings binding USING (provider_account_key) WHERE binding.provider_endpoint = ?",
+        ).all("https://openapi-sandbox.dl.alipaydev.com"));
+        assert.deepEqual(new Set(identities), new Set(expected.map(row => String(row.external_event_id))));
+        covers(entries.flatMap(entry => entry.states), ["UNALLOCATED", "ALLOCATED", "CONFLICT"], "Global ledger states");
+        covers(entries.map(entry => entry.direction ?? "DISPUTED"), ["CREDIT", "DEBIT"], "Global ledger directions");
+        assert.ok(entries.every(entry => entry.environment === "SANDBOX"));
+
+        const duplicate = await data<AdminLedgerDetail>("/api/admin/v1/ledger/entries/" + preview.scenarios.ledger.identical);
+        assert.equal(duplicate.content_consistent, true);
+        assert.equal(duplicate.source_record_count, 2);
+        assert.equal(duplicate.active_match_count, 0);
+        assert.equal(duplicate.active_match, null);
+        assert.deepEqual(new Set(duplicate.sources.map(source => source.ledger_entry_id)),
+          new Set([preview.scenarios.ledger.identical, preview.scenarios.ledger.identicalCopy]));
+        assert.equal(new Set(duplicate.sources.map(source => source.semantic_fingerprint)).size, 1);
+        const alias = await data<AdminLedgerDetail>("/api/admin/v1/ledger/entries/" + preview.scenarios.ledger.identicalCopy);
+        assert.deepEqual(alias, duplicate, "An original source ID must open the complete event group");
+        const paid = entries.find(entry => entry.active_match?.order_id === preview.featured);
+        assert.ok(paid?.active_match, "The actual featured receipt must keep its order association");
+        const paidDetail = await data<AdminLedgerDetail>("/api/admin/v1/ledger/entries/" + paid.ledger_entry_id);
+        assert.ok(paidDetail.sources.some(source => source.ledger_entry_id === paid.active_match!.ledger_entry_id));
+        assert.ok(paidDetail.matches.some(match => match.payment_match_id === paid.active_match!.payment_match_id));
+
+        const inconsistent = await data<AdminLedgerDetail>("/api/admin/v1/ledger/entries/" + preview.scenarios.ledger.inconsistent);
+        assert.equal(inconsistent.content_consistent, false);
+        assert.equal(inconsistent.has_conflicts, true);
+        assert.equal(inconsistent.amount_cents, null, "Conflicting amounts are never selected or added");
+        assert.equal(inconsistent.source_record_count, 2);
+        assert.equal(new Set(inconsistent.sources.map(source => source.amount_cents)).size, 2);
+        assert.equal(inconsistent.active_match_count, 0);
+        const query = await all<AdminLedgerSummary>("/api/admin/v1/ledger/entries?q=" + encodeURIComponent(inconsistent.external_event_id));
+        assert.equal(query.length, 1);
+        assert.equal(query[0]!.source_record_count, 2);
+        for (const entryId of [preview.scenarios.financial.entries.disputedInferred!, preview.scenarios.financial.entries.disputedManual!]) {
+          const detail = await data<AdminLedgerDetail>("/api/admin/v1/ledger/entries/" + entryId);
+          assert.ok(detail.matches.some(match => match.status === "REVERSED"), "Reversed payment evidence must stay visible");
+        }
+        assert.equal(changes(), before, "Ledger reads must not mutate financial or collection data");
       });
 
       await context.test("financial exceptions, ledger conflicts, and reminder history have durable evidence", async () => {

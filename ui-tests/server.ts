@@ -36,9 +36,11 @@ const login = await demo.app.request(demo.origin + "/api/admin/v1/session/login"
 const cookie = login.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
 const firstId = (table: string, column: string) => demo.database.read(db =>
   (db.prepare(`SELECT ${column} AS id FROM ${table} LIMIT 1`).get() as { id: string }).id);
-const routes = ["/", "/orders", "/work-items", "/notifications", "/reconciliation", "/sites", "/sites/new", "/sites/defaults", "/system", "/test-payment",
+const routes = ["/", "/orders", "/work-items", "/notifications", "/reconciliation", "/ledger", "/sites", "/sites/new", "/sites/defaults", "/system", "/test-payment",
   ...["provider", "collection", "collection-policy", "security", "backup", "display", "advanced"].map(value => "/settings/" + value),
   "/settings/onboarding/check", "/orders/" + demo.featured,
+  "/ledger/" + demo.scenarios.ledger.identical,
+  "/ledger/" + demo.scenarios.ledger.inconsistent,
   "/notifications/" + Object.values(demo.scenarios.notifications.deliveries)[0],
   "/reconciliation/matches/" + firstId("payment_matches", "payment_match_id"),
   "/reconciliation/candidates/" + firstId("match_candidates", "candidate_id"),
