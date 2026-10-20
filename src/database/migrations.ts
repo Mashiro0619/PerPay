@@ -4996,4 +4996,19 @@ export const migrations: readonly Migration[] = [
     `,
   },
   { version: 34, name: "multi_business_websites", sql: MULTI_SITE_SCHEMA_SQL, postApply: "migrate_websites_v1" },
+  {
+    version: 35,
+    name: "administrator_ledger_event_query_indexes",
+    sql: `
+      CREATE INDEX ledger_entries_provider_occurrence_list_idx
+        ON ledger_entries(provider_account_key, occurred_at, external_event_id);
+      CREATE INDEX ledger_entries_external_group_idx
+        ON ledger_entries(external_event_id, provider_account_key, ledger_entry_id);
+      CREATE INDEX payment_matches_ledger_history_idx
+        ON payment_matches(ledger_entry_id, created_at, payment_match_id);
+      CREATE INDEX ledger_conflicts_entry_history_idx
+        ON ledger_conflicts(existing_ledger_entry_id, created_at, conflict_id)
+        WHERE existing_ledger_entry_id IS NOT NULL;
+    `,
+  },
 ] as const;

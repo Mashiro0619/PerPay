@@ -8,6 +8,7 @@ import { describe, it } from "node:test";
 
 import { AppDatabase, inspectDatabaseIntegrity } from "../src/database/database.ts";
 import { migrationChecksum, migrations } from "../src/database/migrations.ts";
+import { DATABASE_COMPATIBILITY } from "../src/version.ts";
 import {
   ReconciliationStore,
   financialDecisionRequestSchema,
@@ -141,7 +142,7 @@ describe("optional manual settlement reasons", () => {
         ).run(randomUUID(), "invalid-reverse-" + randomUUID(), input.financialOperationId)), /financial operation reason is required/);
       } finally { restored.close(); }
       // A missing reason must not be accepted as old v26 evidence by backup verification.
-      const damaged = new DatabaseSync(databasePath + ".pre-migration-v26-to-v34.sqlite3", { readBigInts: true });
+      const damaged = new DatabaseSync(databasePath + `.pre-migration-v26-to-v${DATABASE_COMPATIBILITY.maximum}.sqlite3`, { readBigInts: true });
       try {
         assert.equal(inspectDatabaseIntegrity(damaged).ok, true);
         const owner = {
