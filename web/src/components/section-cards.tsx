@@ -45,7 +45,12 @@ export function SectionCards({
         <Card key={card.title} aria-busy={pending}>
           <CardHeader>
             <CardDescription title={card.description}>{card.title}</CardDescription>
-            <CardTitle className="overflow-x-auto text-xl font-semibold whitespace-nowrap tabular-nums">
+            <CardTitle
+              tabIndex={pending || card.href || card.value === "—" ? undefined : 0}
+              role={card.href ? undefined : "group"}
+              aria-label={pending || card.href ? undefined : `${card.title}：${card.value}`}
+              className="overflow-x-auto text-xl font-semibold whitespace-nowrap tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
               {pending ? (
                 <Skeleton className="h-7 w-3/4" />
               ) : card.href ? (
