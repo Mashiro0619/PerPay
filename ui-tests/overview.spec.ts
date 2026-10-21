@@ -223,7 +223,11 @@ test("recent order headers and tables switch at the same measured container boun
   await page.setViewportSize({ width: 1920, height: 1000 });
   await page.goto(manifest.origin + "/admin/");
   await expect(list.locator('[data-business-row]')).toHaveCount(5);
-  for (const target of [639, 640, 685, 767, 768, 1023, 1024, 639, 640]) {
+  const cases = [639, 640, 685, 767, 768, 1023, 1024, 639, 640]
+    .map(target => ({ target, stacked: false }));
+  // Confirm the same-line check also rejects a genuinely stacked layout.
+  cases.push({ target: 768, stacked: true });
+  for (const { target, stacked } of cases) {
     // Constrain the real card container: resizing the viewport can also switch
     // the surrounding overview between one and two columns.
     await page.locator(".overview-orders-container").evaluate((element, target) => {
@@ -242,6 +246,11 @@ test("recent order headers and tables switch at the same measured container boun
       }
     }
     await expect(panel.locator('[data-business-row]').first().locator("time")).toHaveCount(2);
+    if (stacked) {
+      await panel.locator(".overview-order-time-entry").evaluateAll(entries => {
+        for (const entry of entries) (entry as HTMLElement).style.display = "block";
+      });
+    }
     const geometry = await list.evaluate(list => {
       const bounds = list.getBoundingClientRect();
       return {
@@ -269,8 +278,11 @@ test("recent order headers and tables switch at the same measured container boun
             const timeBounds = time.getBoundingClientRect();
             const valueBounds = value.getBoundingClientRect();
             const labelBounds = label.getBoundingClientRect();
+            // Inline glyph bounds vary with OS fonts; compare the dt/dd line boxes.
+            const lineOverlap = Math.min(valueBounds.bottom, labelBounds.bottom) - Math.max(valueBounds.top, labelBounds.top);
             return { label: label.textContent, left: timeBounds.left,
-              sameLine: Math.abs(timeBounds.top - labelBounds.top) < 2,
+              sameLine: valueBounds.left >= labelBounds.right && lineOverlap > 0,
+              labelTop: labelBounds.top, valueTop: valueBounds.top, textTop: timeBounds.top, lineOverlap,
               lines: [...timeRange.getClientRects()].filter(rect => rect.width > 0 && rect.height > 0).length,
               contained: timeBounds.left >= valueBounds.left - 1 && timeBounds.right <= valueBounds.right + 1 &&
                 timeBounds.left >= bounds.left - 1 && timeBounds.right <= bounds.right + 1,
@@ -308,12 +320,12 @@ test("recent order headers and tables switch at the same measured container boun
       if (target < 1024) expect(row.payment && row.notification, JSON.stringify(row)).toBeTruthy();
       if (target >= 768) {
         expect(row.timesAligned, JSON.stringify(row.times)).toBe(true);
-        expect(row.times.every(time => time.sameLine), JSON.stringify(row.times)).toBe(true);
+        expect(row.times.every(time => time.sameLine === !stacked), JSON.stringify(row.times)).toBe(true);
       }
       if (target >= 1024) expect(row.referenceInline, JSON.stringify(row)).toBe(true);
       if (target === 685) expect(row.height, JSON.stringify(row)).toBeLessThanOrEqual(row.productLines > 1 ? 100 : 80);
       if (target === 1024 && row.productLines === 1) expect(row.height, JSON.stringify(row)).toBeLessThanOrEqual(60);
     }
-    await record(page, info, { recentOrdersContainer: target, geometry });
+    await record(page, info, { recentOrdersContainer: target, stackedControl: stacked, geometry });
   }
 });
