@@ -57,6 +57,14 @@ describe("readable payment match detail", () => {
       for (const group of [card, screen.getByRole("group", { name: "支付宝交易" }), screen.getByRole("group", { name: "匹配依据与处理记录" })]) {
         expect(group).toHaveAttribute("data-size", "default");
         expect(group.querySelector('[data-slot="card-header"] .record-list-meta')).toBeNull();
+        const facts = group.querySelectorAll('[data-detail-fields]');
+        expect(facts.length).toBeGreaterThan(0);
+        for (const factGroup of facts) {
+          expect(factGroup).toHaveAttribute("data-layout", "flow");
+          const terms = factGroup.querySelectorAll("dl > div > dt");
+          expect(terms.length).toBeGreaterThan(0);
+          for (const term of terms) expect(term.nextElementSibling?.tagName).toBe("DD");
+        }
       }
       expect(screen.queryByRole("button", { name: "复制关联编号" })).not.toBeInTheDocument();
       expect(screen.queryByText(matchId)).not.toBeInTheDocument();
@@ -121,6 +129,15 @@ describe("readable payment match detail", () => {
     expect(screen.getByRole("region", { name: "撤销记录" })).toBeVisible();
     expect(screen.getByRole("group", { name: "匹配依据与处理记录" }).querySelectorAll('[data-slot="separator"]')).toHaveLength(2);
     expect(screen.queryByRole("button", { name: "匹配依据" })).not.toBeInTheDocument();
+    for (const label of ["商户订单号", "支付宝订单号", "支付宝商户单号", "支付宝交易备注", "金额占用时间", "关联理由", "撤销理由"]) {
+      const field = screen.getByText(label, { selector: "dt" }).parentElement;
+      expect(field).toHaveAttribute("data-field-wide", "true");
+      expect(field?.closest('[data-detail-fields]')).toHaveAttribute("data-layout", "flow");
+      expect(field?.querySelector("dd")).not.toBeEmptyDOMElement();
+    }
+    expect(screen.getByText("关联理由", { selector: "dt" }).nextElementSibling?.textContent).toBe(match.creation_operation!.reason);
+    expect(screen.getByText("撤销理由", { selector: "dt" }).nextElementSibling?.textContent).toBe(match.resolution_operation!.reason);
+    expect(screen.getByText("支付宝交易备注", { selector: "dt" }).nextElementSibling?.textContent).toBe(match.ledger_entry.memo);
     await user.click(screen.getByRole("button", { name: "复制支付宝订单号" }));
     expect(copy).toHaveBeenCalledWith(match.ledger_entry.provider_order_no);
     await recordAction("技术详情", "收款关联记录操作");
@@ -171,6 +188,12 @@ describe("readable payment match detail", () => {
     expect(trigger.closest('[data-slot="card-content"]')).not.toBeNull();
     expect(container.querySelectorAll('[data-slot="card"]')).toHaveLength(1);
     expect(screen.queryByRole("heading", { name: "关联摘要与订单" })).not.toBeInTheDocument();
+    const facts = container.querySelectorAll('[data-detail-fields]');
+    expect(facts.length).toBeGreaterThan(0);
+    for (const factGroup of facts) {
+      expect(factGroup).toHaveAttribute("data-density", "default");
+      expect(factGroup).toHaveAttribute("data-layout", "columns");
+    }
     expect(await recordAction("单独打开", "收款关联记录操作")).toHaveAttribute("href", "/reconciliation/matches/" + matchId);
   });
 

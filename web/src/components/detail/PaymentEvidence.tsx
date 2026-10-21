@@ -29,18 +29,20 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 import { AssociateIncomeAction, ReverseMatchAction } from "./FinancialActions";
-import { DetailFields, OrderFacts, useRelatedOrder, type DetailDensity } from "./DetailPrimitives";
+import { DetailFields, OrderFacts, useRelatedOrder, type DetailDensity, type DetailFieldLayout } from "./DetailPrimitives";
 import { RecordTools } from "./RecordTools";
 type DetailOrder = ReconciliationOrder | AdminOrderDetail;
 export function LedgerFacts({
   entry,
   compact = false,
   density = "default",
+  layout = "columns",
   showHeading = true,
 }: {
   entry: ReconciliationLedgerEntry;
   compact?: boolean;
   density?: DetailDensity;
+  layout?: DetailFieldLayout;
   showHeading?: boolean;
 }) {
   const titleId = useId();
@@ -50,6 +52,7 @@ export function LedgerFacts({
     <DetailFields
       compact={compact}
       density={density}
+      layout={layout}
       className={cn(
         compact && !comfortable && "@sm/detail-fields:grid-cols-1 @4xl/detail-fields:grid-cols-2",
       )}
@@ -147,10 +150,12 @@ export function CandidateEvidence({
   candidate,
   ledger,
   density = "default",
+  layout = "columns",
 }: {
   candidate: MatchCandidate;
   ledger?: ReconciliationLedgerEntry | undefined;
   density?: DetailDensity;
+  layout?: DetailFieldLayout;
 }) {
   const titleId = useId();
   const facts = candidateFacts(candidate);
@@ -173,7 +178,7 @@ export function CandidateEvidence({
       {facts.length < 3 && (
         <p className="text-sm text-muted-foreground">匹配信息不完整</p>
       )}
-      <DetailFields density={density} wide={["金额占用时间"]} items={shownFacts} />
+      <DetailFields density={density} layout={layout} wide={["金额占用时间"]} items={shownFacts} />
     </section>
   );
 }
@@ -204,14 +209,14 @@ export function MatchCard({
               <ReverseMatchAction match={match} inline includeOrderIdentifiers />
             </CardAction>
           </CardHeader>
-          <CardContent><OrderFacts order={match.order} density="comfortable" /></CardContent>
+          <CardContent><OrderFacts order={match.order} density="comfortable" layout="flow" /></CardContent>
         </Card>
         <Card aria-label="支付宝交易" data-match-ledger>
           <CardHeader>
             <CardTitle role="heading" aria-level={2}>支付宝交易</CardTitle>
             <CardDescription>来自支付宝账单的交易信息。</CardDescription>
           </CardHeader>
-          <CardContent><LedgerFacts entry={match.ledger_entry} density="comfortable" showHeading={false} /></CardContent>
+          <CardContent><LedgerFacts entry={match.ledger_entry} density="comfortable" layout="flow" showHeading={false} /></CardContent>
         </Card>
         <Card aria-label="匹配依据与处理记录" data-match-evidence>
           <CardHeader>
@@ -220,13 +225,13 @@ export function MatchCard({
           <CardContent className="flex min-w-0 flex-col gap-6">
             {match.candidate && (
               <>
-                <CandidateEvidence candidate={match.candidate} ledger={match.ledger_entry} density="comfortable" />
+                <CandidateEvidence candidate={match.candidate} ledger={match.ledger_entry} density="comfortable" layout="flow" />
                 <Separator />
               </>
             )}
             <section aria-label={manual ? "人工关联记录" : "关联记录"} className="flex min-w-0 flex-col gap-4">
               <h3 className="text-sm font-medium">{manual ? "人工关联记录" : "关联记录"}</h3>
-              <DetailFields density="comfortable" wide={["关联理由"]} items={[
+              <DetailFields density="comfortable" layout="flow" wide={["关联理由"]} items={[
                 ["关联方式", manual ? "管理员人工关联" : "按金额和付款时间推断"],
                 ["关联时间", dateTime(operation?.created_at ?? match.created_at)],
                 ...(manual ? [["关联操作人", operation?.actor_id ?? "未记录"] as const] : []),
@@ -238,7 +243,7 @@ export function MatchCard({
                 <Separator />
                 <section aria-label="撤销记录" className="flex min-w-0 flex-col gap-4">
                   <h3 className="text-sm font-medium">撤销记录</h3>
-                  <DetailFields density="comfortable" wide={["撤销理由"]} items={[
+                  <DetailFields density="comfortable" layout="flow" wide={["撤销理由"]} items={[
                     ["撤销时间", dateTime(reversal?.created_at ?? match.resolved_at)],
                     ["撤销操作人", reversal?.actor_id ?? "未记录"],
                     ["撤销理由", reversal?.reason ?? "未记录"],
