@@ -46,6 +46,7 @@ export function useDetailFetching() {
   });
 }
 export type DetailDensity = "default" | "comfortable";
+export type DetailFieldLayout = "columns" | "flow";
 export function DetailPage({ children }: { children: ReactNode }) {
   return <div className="flex min-w-0 flex-col gap-6" data-detail-page data-detail-layout="readable">{children}</div>;
 }
@@ -72,21 +73,24 @@ export function DetailFields({
   wide = [],
   compact = false,
   density = "default",
+  layout = "columns",
 }: {
   items: ReadonlyArray<readonly [string, ReactNode]>;
   className?: string;
   wide?: readonly string[];
   compact?: boolean;
   density?: DetailDensity;
+  layout?: DetailFieldLayout;
 }) {
   if (!items.length) return null;
   return (
-    <div className="@container/detail-fields min-w-0" data-detail-fields data-density={density}>
+    <div className="@container/detail-fields min-w-0" data-detail-fields data-density={density} data-layout={layout}>
     <dl
       className={cn(
-        "grid min-w-0 gap-4",
-        density === "default" && "@sm/detail-fields:grid-cols-2",
-        compact && density === "default" && "gap-x-4 gap-y-2",
+        "min-w-0",
+        layout === "flow" ? "detail-fields-flow" : "grid gap-4",
+        layout === "columns" && density === "default" && "@sm/detail-fields:grid-cols-2",
+        layout === "columns" && compact && density === "default" && "gap-x-4 gap-y-2",
         className,
         density === "comfortable" && "detail-fields-comfortable",
       )}
@@ -94,12 +98,14 @@ export function DetailFields({
       {items.map(([name, value]) => (
         <div
           key={name}
+          data-field-wide={wide.includes(name) || undefined}
           className={cn(
-            compact && density === "default"
+            layout === "columns" && compact && density === "default"
               ? "grid min-w-0 grid-cols-[6rem_minmax(0,1fr)] items-baseline gap-x-2 gap-y-1"
               : "flex min-w-0 flex-col gap-1",
-            wide.includes(name) && "col-span-full",
+            layout === "columns" && wide.includes(name) && "col-span-full",
             density === "comfortable" && "detail-field-comfortable",
+            layout === "flow" && "detail-field-flow",
           )}
         >
           <dt className={density === "comfortable" ? "text-sm text-muted-foreground" : "record-list-meta"}>{name}</dt>
@@ -189,22 +195,24 @@ export function OrderFacts({
   order,
   linked = true,
   density = "default",
+  layout = "columns",
 }: {
   order: ReconciliationOrder | AdminOrderDetail;
   linked?: boolean;
   density?: DetailDensity;
+  layout?: DetailFieldLayout;
 }) {
   const payment =
     "payment" in order ? order.payment.status : order.payment_status;
   if (density === "comfortable") return <Item className="items-start" data-detail-order-summary>
     <ItemContent className="min-w-0 gap-4">
-      <ItemHeader className="flex-wrap items-start gap-3">
+      <ItemHeader className={cn("flex-wrap items-start gap-3", layout === "flow" && "justify-start")}>
         <ItemTitle className="line-clamp-none whitespace-normal wrap-anywhere" title={order.product_name}>
           {linked ? <Link to={"/orders/" + order.order_id}>{order.product_name}</Link> : order.product_name}
         </ItemTitle>
         <ItemActions><StatusBadge value={payment} /></ItemActions>
       </ItemHeader>
-      <DetailFields density="comfortable" wide={["商户订单号"]} items={[
+      <DetailFields density="comfortable" layout={layout} wide={["商户订单号"]} items={[
         ["应付金额", <ListMoney value={order.payable_amount_cents} label="应付金额" />],
         ["实收金额", <ListMoney value={order.received_amount_cents} label="实收金额" />],
         ["所属网站", <Link to={"/sites/" + encodeURIComponent(order.api_client_id)}>{order.site_name ?? "名称不可用"}</Link>],
@@ -255,14 +263,14 @@ export function useRelatedOrder(
   });
   return { order: known ?? query.data?.data, query };
 }
-export function RelatedOrder({ orderId, density = "default" }: { orderId: string; density?: DetailDensity }) {
+export function RelatedOrder({ orderId, density = "default", layout = "columns" }: { orderId: string; density?: DetailDensity; layout?: DetailFieldLayout }) {
   const { query } = useRelatedOrder(orderId);
   return (
     <div className="flex min-w-0 flex-col gap-4">
       {query.isPending ? (
         <Loading label="正在读取关联订单…" />
       ) : query.data ? (
-        <OrderFacts order={query.data.data} density={density} />
+        <OrderFacts order={query.data.data} density={density} layout={layout} />
       ) : null}
       <ErrorNotice
         error={query.error}

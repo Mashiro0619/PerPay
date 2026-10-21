@@ -21,7 +21,7 @@ describe("independent readable detail scope", () => {
 
   it("keeps complete field values and definition-list semantics in the opt-in layout", () => {
     const identifier = "202610212200101235120001187";
-    const { container } = render(<DetailFields density="comfortable" wide={["支付宝订单号", "备注"]} items={[
+    const { container } = render(<DetailFields density="comfortable" layout="flow" wide={["支付宝订单号", "备注"]} items={[
       ["交易金额", "¥49.01"], ["支付宝订单号", identifier], ["备注", "第一行\n第二行"], ["撤销时间", null],
     ]} />);
     const list = container.querySelector("dl")!;
@@ -31,10 +31,11 @@ describe("independent readable detail scope", () => {
     expect(list.textContent).toContain("第一行\n第二行");
     expect(within(list).getByText("—")).toBeVisible();
     expect(within(list).getByText("交易金额")).not.toHaveClass("record-list-meta");
+    expect(within(list).getByText(identifier).closest("dd")?.parentElement).toHaveAttribute("data-field-wide", "true");
   });
 
   it("separates the order's labelled business facts from internal client identity", () => {
-    const router = createMemoryRouter([{ path: "/", element: <OrderFacts order={paidOrder} density="comfortable" /> }]);
+    const router = createMemoryRouter([{ path: "/", element: <OrderFacts order={paidOrder} density="comfortable" layout="flow" /> }]);
     render(<RouterProvider router={router} />);
     expect(screen.getByRole("link", { name: paidOrder.product_name })).toBeVisible();
     for (const name of ["应付金额", "实收金额", "所属网站", "创建时间", "商户订单号"]) {
@@ -42,6 +43,18 @@ describe("independent readable detail scope", () => {
     }
     expect(screen.getByRole("button", { name: "复制商户订单号" })).toBeVisible();
     expect(screen.queryByText(paidOrder.api_client_id, { exact: false })).not.toBeInTheDocument();
+  });
+
+  it("keeps existing fields and embedded order summaries on their default layout", () => {
+    const router = createMemoryRouter([{ path: "/", element: <>
+      <DetailFields compact items={[["金额", "¥49.01"], ["备注", "完整备注"]]} />
+      <OrderFacts order={paidOrder} />
+    </> }]);
+    const { container } = render(<RouterProvider router={router} />);
+    expect(container.querySelector('[data-detail-fields]')).toHaveAttribute("data-layout", "columns");
+    expect(container.querySelector('[data-layout="flow"]')).toBeNull();
+    expect(screen.getByText("完整备注")).toBeVisible();
+    expect(screen.getByRole("link", { name: paidOrder.product_name })).toBeVisible();
   });
 
   it("copies the complete navigation ID and preserves the saved return query and state", async () => {

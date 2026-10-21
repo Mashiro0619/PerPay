@@ -291,6 +291,17 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .detail-fields-comfortable .list-time { white-space: normal; }
 [data-delivery-attempts][data-density="comfortable"] .list-time { font-size: 0.875rem; line-height: 1.5; white-space: normal; }
 
+.detail-fields-flow { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 1rem 1.5rem; }
+.detail-fields-flow > .detail-field-flow { display: flex; flex-direction: column; flex: 0 1 100%; min-inline-size: 0; inline-size: 100%; gap: 0.5rem; }
+@container detail-fields (min-width: 40rem) {
+  .detail-fields-flow > .detail-field-flow:not([data-field-wide]) {
+    flex-basis: auto;
+    inline-size: max-content;
+    min-inline-size: clamp(12rem, calc((100cqi - 4.5rem) / 4), 16rem);
+    max-inline-size: 16rem;
+  }
+}
+
 .detail-card-grid { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 1rem; }
 .detail-card-grid > [data-detail-grid-item] { min-width: 0; align-self: start; }
 .detail-card-grid [data-detail-grid-content] { display: flow-root; min-width: 0; }
