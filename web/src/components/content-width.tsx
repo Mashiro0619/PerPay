@@ -52,7 +52,7 @@ function useContentWidth() {
   return value;
 }
 
-export function AdminContent({ children, busy = false, density = "default" }: { children: ReactNode; busy?: boolean; density?: "default" | "dense" }) {
+export function AdminContent({ children, busy = false, layout = "default" }: { children: ReactNode; busy?: boolean; layout?: "default" | "detail" }) {
   const { mode } = useContentWidth();
   return (
     <div
@@ -65,11 +65,14 @@ export function AdminContent({ children, busy = false, density = "default" }: { 
       <div
         className={cn(
           "@container/main mx-auto w-full min-w-0",
-          mode === "compact" ? "max-w-7xl" : "max-w-none",
+          layout === "detail"
+            ? mode === "compact" ? "max-w-5xl" : "max-w-7xl"
+            : mode === "compact" ? "max-w-7xl" : "max-w-none",
         )}
         data-content-width={mode}
+        data-content-layout={layout}
       >
-        <div className={cn("flex min-w-0 flex-col py-4 md:py-6", density === "dense" ? "gap-4" : "gap-6")} data-detail-density={density}>
+        <div className="flex min-w-0 flex-col gap-6 py-4 md:py-6">
           {children}
         </div>
       </div>

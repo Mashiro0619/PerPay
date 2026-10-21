@@ -296,6 +296,15 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .detail-order-title { min-width: 0; max-width: 100%; white-space: normal; overflow: visible; overflow-wrap: anywhere; }
 .detail-order-title > a { overflow-wrap: anywhere; }
 
+.detail-fields-comfortable { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+.detail-fields-comfortable > .detail-field-comfortable { display: flex; min-width: 0; flex-direction: column; gap: 0.5rem; }
+@container detail-fields (min-width: 40rem) {
+  .detail-fields-comfortable { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.detail-fields-comfortable :is(.list-time, .list-money-secondary, .list-site-identity, .list-code) { font-size: 0.875rem; line-height: 1.5; }
+.detail-fields-comfortable .list-time { white-space: normal; }
+[data-delivery-attempts][data-density="comfortable"] .list-time { font-size: 0.875rem; line-height: 1.5; white-space: normal; }
+
 .detail-card-grid { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 1rem; }
 .detail-card-grid > [data-detail-grid-item] { min-width: 0; align-self: start; }
 .detail-card-grid [data-detail-grid-content] { display: flow-root; min-width: 0; }

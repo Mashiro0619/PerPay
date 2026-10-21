@@ -4,8 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminContent, CONTENT_WIDTH_KEY, ContentWidthControl, ContentWidthProvider } from "../src/components/content-width";
 
-function mount(child = <input aria-label="草稿" defaultValue="未保存" />) {
-  return render(<ContentWidthProvider><ContentWidthControl /><AdminContent>{child}</AdminContent></ContentWidthProvider>);
+function mount(child = <input aria-label="草稿" defaultValue="未保存" />, layout: "default" | "detail" = "default") {
+  return render(<ContentWidthProvider><ContentWidthControl /><AdminContent layout={layout}>{child}</AdminContent></ContentWidthProvider>);
 }
 const content = () => document.querySelector("[data-content-width]")!;
 function storage(key: string | null, newValue: string | null, storageArea = localStorage) {
@@ -15,6 +15,21 @@ beforeEach(() => localStorage.removeItem(CONTENT_WIDTH_KEY));
 afterEach(() => { vi.restoreAllMocks(); localStorage.removeItem(CONTENT_WIDTH_KEY); });
 
 describe("administrator content width", () => {
+  it("caps only the opt-in detail width without remounting its content", async () => {
+    mount(undefined, "detail");
+    const draft = screen.getByRole("textbox");
+    const user = userEvent.setup();
+    await user.type(draft, "详情草稿");
+    expect(content()).toHaveClass("max-w-5xl");
+    expect(content()).toHaveAttribute("data-content-layout", "detail");
+    await user.click(screen.getByRole("button", { name: "切换为全屏布局" }));
+    expect(content()).toHaveClass("max-w-7xl");
+    expect(content()).not.toHaveClass("max-w-none");
+    expect(screen.getByRole("textbox")).toBe(draft);
+    expect(draft).toHaveValue("未保存详情草稿");
+    await user.click(screen.getByRole("button", { name: "切换为收缩布局" }));
+    expect(content()).toHaveClass("max-w-5xl");
+  });
   it.each([null, "", "invalid", "compact"])("defaults to compact for %s", (value) => {
     if (value !== null) localStorage.setItem(CONTENT_WIDTH_KEY, value);
     mount();

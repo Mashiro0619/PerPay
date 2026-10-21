@@ -45,9 +45,9 @@ export function useDetailFetching() {
     predicate: (query) => detailQueryScopes.has(String(query.queryKey[0])),
   });
 }
-export type DetailDensity = "default" | "dense";
+export type DetailDensity = "default" | "comfortable" | "dense";
 export function DetailPage({ children }: { children: ReactNode }) {
-  return <div className="flex min-w-0 flex-col gap-4" data-detail-page>{children}</div>;
+  return <div className="flex min-w-0 flex-col gap-6" data-detail-page data-detail-layout="readable">{children}</div>;
 }
 export function DetailNavigation({ back, identifier, identifierLabel = "记录编号", global = false, children }: {
   back: { to: string; label: string; state?: unknown };
@@ -84,9 +84,11 @@ export function DetailFields({
     <div className="@container/detail-fields min-w-0" data-detail-fields data-density={density}>
     <dl
       className={cn(
-        "grid min-w-0 gap-4 @sm/detail-fields:grid-cols-2",
-        compact && "gap-x-4 gap-y-2",
+        "grid min-w-0 gap-4",
+        density === "default" && "@sm/detail-fields:grid-cols-2",
+        compact && density !== "comfortable" && "gap-x-4 gap-y-2",
         className,
+        density === "comfortable" && "detail-fields-comfortable",
         density === "dense" && "detail-fields-dense",
       )}
     >
@@ -94,14 +96,15 @@ export function DetailFields({
         <div
           key={name}
           className={cn(
-            compact
+            compact && density !== "comfortable"
               ? "grid min-w-0 grid-cols-[6rem_minmax(0,1fr)] items-baseline gap-x-2 gap-y-1"
               : "flex min-w-0 flex-col gap-1",
             wide.includes(name) && "col-span-full",
+            density === "comfortable" && "detail-field-comfortable",
             density === "dense" && "detail-field-dense",
           )}
         >
-          <dt className="record-list-meta">{name}</dt>
+          <dt className={density === "comfortable" ? "text-sm text-muted-foreground" : "record-list-meta"}>{name}</dt>
           <dd className="min-w-0 text-sm whitespace-pre-wrap wrap-anywhere">
             {value === "" || value == null ? "—" : value}
           </dd>
@@ -212,6 +215,23 @@ export function OrderFacts({
         <span className="wrap-anywhere">{order.merchant_order_no}</span>
         <ListDateTime value={order.created_at} inline />
       </div>
+    </ItemContent>
+  </Item>;
+  if (density === "comfortable") return <Item className="items-start" data-detail-order-summary>
+    <ItemContent className="min-w-0 gap-4">
+      <ItemHeader className="flex-wrap items-start gap-3">
+        <ItemTitle className="line-clamp-none whitespace-normal wrap-anywhere" title={order.product_name}>
+          {linked ? <Link to={"/orders/" + order.order_id}>{order.product_name}</Link> : order.product_name}
+        </ItemTitle>
+        <ItemActions><StatusBadge value={payment} /></ItemActions>
+      </ItemHeader>
+      <DetailFields density="comfortable" wide={["商户订单号"]} items={[
+        ["应付金额", <ListMoney value={order.payable_amount_cents} label="应付金额" />],
+        ["实收金额", <ListMoney value={order.received_amount_cents} label="实收金额" />],
+        ["所属网站", <Link to={"/sites/" + encodeURIComponent(order.api_client_id)}>{order.site_name ?? "名称不可用"}</Link>],
+        ["创建时间", <ListDateTime value={order.created_at} inline />],
+        ["商户订单号", <CopyValue value={order.merchant_order_no} label="复制商户订单号" />],
+      ]} />
     </ItemContent>
   </Item>;
   return (

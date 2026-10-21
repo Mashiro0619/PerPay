@@ -1,6 +1,6 @@
 import { WorkspaceProvider, WorkspaceNavigationProvider, WorkspaceOutlet, useWorkspace, adminRoutePathname, useWorkspaceNavigation } from "@/workspace";
 import { workspaceScope } from "@/lib/workspace-scope";
-import { isDenseDetailPage } from "@/lib/detail-layout";
+import { isReadableDetailPage } from "@/lib/detail-layout";
 import { prepareWorkspaceNavigation } from "@/lib/workspace-navigation";
 import { AdminContent, ContentWidthProvider } from "@/components/content-width";
 import { PageHeaderActionsProvider } from "@/components/page-header-actions";
@@ -176,7 +176,7 @@ function Workspace() {
       <SidebarInset className="min-w-0" aria-busy={switching}>
         <SiteHeader title={title} overview={overview} busy={switching} />
         <PageHeadingProvider routeKey={location.pathname}>
-        <AdminContent busy={switching} density={isDenseDetailPage(location.pathname) ? "dense" : "default"}>
+        <AdminContent busy={switching} layout={isReadableDetailPage(location.pathname) ? "detail" : "default"}>
           <PageHeadingSlot title={title} />
           {(logout.error || session.error) && (
             <div className="flex flex-col gap-4">
