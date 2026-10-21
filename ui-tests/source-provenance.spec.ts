@@ -27,10 +27,21 @@ test("order and ledger sources remain distinct at desktop and 320 pixels", async
     await info.attach(`order-sources-${width}`, { path: orderPath, contentType: "image/png" });
 
     await page.goto(manifest.origin + "/admin" + ledgerRoute);
-    const ledger = page.getByRole("region", { name: "支付宝流水（来自支付宝账单）" });
-    for (const label of ["支付宝交易金额", "支付宝交易时间", "支付宝订单号", "支付宝交易对方"]) {
+    await expect(page).toHaveURL(/\/admin\/reconciliation\/transactions\//);
+    const ledger = page.locator("[data-ledger-summary]");
+    await expect(ledger.getByRole("heading", { name: "支付宝交易", exact: true })).toBeVisible();
+    for (const label of ["交易金额", "交易时间", "支付宝订单号", "对方"]) {
       await expect(ledger.getByText(label, { exact: true })).toBeVisible();
     }
+    await expect(ledger.getByText("内部流水编号（PerPay）", { exact: true })).toHaveCount(0);
+    await expect(page.locator("#ledger-sources-heading")).toContainText("查账记录");
+    const source = page.locator("[data-ledger-source]").first();
+    const sourceId = await source.getAttribute("data-ledger-source");
+    expect(sourceId).toBeTruthy();
+    await expect(source.getByText("PerPay 记录状态", { exact: true })).toBeVisible();
+    await expect(source.getByText("内部流水编号（PerPay）", { exact: true })).toBeVisible();
+    await expect(source.getByText(sourceId!, { exact: true })).toBeVisible();
+    await expect(source.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true })).toBeVisible();
     await record(page, info, { feature: "ledger-provenance", width });
     const ledgerPath = info.outputPath(`ledger-sources-${width}.png`);
     await ledger.screenshot({ path: ledgerPath });
