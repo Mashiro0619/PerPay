@@ -34,7 +34,7 @@ import { label } from "@/lib/labels";
 import { DeliveryCard } from "@/components/detail/NotificationEvidence";
 import { DetailNavigation, DetailPage, RelatedOrder } from "@/components/detail/DetailPrimitives";
 import { StatusBadge } from "@/components/business-status";
-import { QueryView, ErrorNotice } from "@/components/request-state";
+import { QueryView } from "@/components/request-state";
 import { notificationStatus, notificationsQuery } from "@/api/workspace-queries";
 import { CursorPagination } from "@/components/cursor-pagination";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -47,6 +47,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 const statuses = [
   { value: "", label: "全部状态" },
   { value: "PENDING", label: "等待投递" },
@@ -373,11 +374,7 @@ function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
   return (
     <DetailPage>
       <PageHeading title="通知详情" />
-      <DetailNavigation
-        back={back}
-        identifier={delivery.data ? deliveryId : undefined}
-        identifierLabel="投递编号"
-      >
+      <DetailNavigation back={back}>
         <PageHeaderActions><RefreshButton disabled={delivery.isFetching || attempts.isFetching} onClick={() => {
             void refreshOperationalData();
           }} busy={delivery.isFetching || attempts.isFetching} /></PageHeaderActions>
@@ -385,17 +382,20 @@ function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
       <QueryView query={delivery}>
         {({ data }) => (
           <>
-            <ErrorNotice
-              error={attempts.error}
-              retry={() => {
-                void attempts.refetch();
-              }}
-            />
+            <Card aria-label="关联订单">
+              <CardHeader>
+                <CardTitle role="heading" aria-level={2}>关联订单</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <RelatedOrder orderId={data.event.order_id} density="comfortable" />
+              </CardContent>
+            </Card>
             <DeliveryCard
               detail={{ ...data, attempts: attempts.data?.data ?? [] }}
               attemptsAvailable={!!attempts.data}
-              density="dense"
-              orderSummary={<RelatedOrder orderId={data.event.order_id} density="dense" />}
+              attemptsError={attempts.error}
+              retryAttempts={() => { void attempts.refetch(); }}
+              density="comfortable"
             />
           </>
         )}
