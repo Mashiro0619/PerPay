@@ -52,7 +52,7 @@ function useContentWidth() {
   return value;
 }
 
-export function AdminContent({ children, busy = false }: { children: ReactNode; busy?: boolean }) {
+export function AdminContent({ children, busy = false, density = "default" }: { children: ReactNode; busy?: boolean; density?: "default" | "dense" }) {
   const { mode } = useContentWidth();
   return (
     <div
@@ -69,7 +69,7 @@ export function AdminContent({ children, busy = false }: { children: ReactNode; 
         )}
         data-content-width={mode}
       >
-        <div className="flex min-w-0 flex-col gap-6 py-4 md:py-6">
+        <div className={cn("flex min-w-0 flex-col py-4 md:py-6", density === "dense" ? "gap-4" : "gap-6")} data-detail-density={density}>
           {children}
         </div>
       </div>

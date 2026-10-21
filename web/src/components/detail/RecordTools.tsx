@@ -2,6 +2,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useRef, useState } from "react";
 import { MoreHorizontal, Code, ExternalLink } from "lucide-react";
 import { Link } from "@/navigation";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -25,18 +26,20 @@ export function RecordTools({
   actions = [],
   to,
   label = "记录操作",
+  inline = false,
 }: {
   data: unknown;
   identifiers?: ReadonlyArray<readonly [string, string | null]>;
   actions?: readonly RecordAction[];
   to?: string | undefined;
   label?: string;
+  inline?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement | null>(null);
   return (
     <>
-      <div className="flex justify-end">
+      <div className={cn("flex justify-end", inline && "inline-flex shrink-0")}>
         <DropdownMenu>
           <Tooltip><TooltipTrigger render={<DropdownMenuTrigger
             render={

@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-export type Manifest = { origin: string; epoch: number; routes: string[]; extendedRoutes: string[]; checkouts: Record<string, string>; sessionCookies: { name: string; value: string }[]; setTime: (time: number, reset?: boolean) => Promise<void>; setCheckoutFailure: (status: 429 | 503 | null) => Promise<void> };
+export type Manifest = { origin: string; epoch: number; routes: string[]; extendedRoutes: string[]; details: Record<string, string>; checkouts: Record<string, string>; sessionCookies: { name: string; value: string }[]; setTime: (time: number, reset?: boolean) => Promise<void>; setCheckoutFailure: (status: 429 | 503 | null) => Promise<void> };
 export const test = base.extend<{ manifest: Manifest }, { harness: Manifest }>({
   harness: [async ({}, use) => {
     const child = fork(fileURLToPath(new URL("./server.ts", import.meta.url)), [], { execArgv: ["--experimental-strip-types"], stdio: ["ignore", "pipe", "pipe", "ipc"] });

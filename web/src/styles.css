@@ -282,6 +282,20 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
     scroll-margin-block-end: 1rem;
   }
 }
+.detail-fields-dense { grid-template-columns: minmax(0, 1fr); gap: 0.5rem 1rem; }
+.detail-fields-dense > .detail-field-dense { display: flex; min-width: 0; flex-direction: column; gap: 0.25rem; }
+@container detail-fields (min-width: 40rem) {
+  .detail-fields-dense { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .detail-fields-dense > .detail-field-dense { display: grid; grid-template-columns: 7rem minmax(0, 1fr); align-items: baseline; gap: 0.25rem 0.5rem; }
+}
+@container detail-fields (min-width: 64rem) {
+  .detail-fields-dense { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+.detail-order-summary { padding: 0; }
+.detail-order-heading { flex-wrap: wrap; justify-content: flex-start; gap: 0.5rem 1rem; }
+.detail-order-title { min-width: 0; max-width: 100%; white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+.detail-order-title > a { overflow-wrap: anywhere; }
+
 .admin-settings-layout { width: 100%; max-width: 56rem; }
 .admin-settings-layout [data-slot="field"] { min-width: 0; }
 .admin-settings-layout input[type="number"] { width: 100%; max-width: 12rem; }

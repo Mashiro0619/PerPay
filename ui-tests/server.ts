@@ -59,6 +59,35 @@ const extendedRoutes = [
     return "/sites/" + row.client_id + "/reconciliation/" + kind + "/" + row.id;
   })),
 ];
+// Named real-domain scenarios keep dense-detail checks independent of row order.
+const matchScenario = (where: string) => demo.database.read(db => db.prepare(`
+  SELECT match.payment_match_id AS id, match.ledger_entry_id AS ledger_id,
+         orders.api_client_id AS client_id
+    FROM payment_matches AS match JOIN payment_orders AS orders USING (order_id)
+   WHERE ${where} ORDER BY match.created_at, match.payment_match_id LIMIT 1
+`).get()) as { id: string; ledger_id: string; client_id: string };
+const inferredMatch = matchScenario("match.status = 'SETTLED' AND match.evidence_type = 'AMOUNT_INFERRED'");
+const manualMatch = matchScenario("match.status = 'SETTLED' AND match.evidence_type = 'MANUAL'");
+const reversedMatch = matchScenario("match.status = 'REVERSED'");
+const retryHttp = demo.database.read(db => db.prepare(`SELECT delivery.delivery_id AS id
+  FROM webhook_deliveries AS delivery JOIN webhook_attempts AS attempt USING (delivery_id)
+  WHERE delivery.status = 'RETRY_WAIT' AND attempt.http_status = 503
+  ORDER BY delivery.created_at DESC LIMIT 1`).get()) as { id: string };
+const details = {
+  notificationDns: "/notifications/" + demo.scenarios.notifications.deliveries.dnsRetry,
+  notificationHttp: "/notifications/" + retryHttp.id,
+  notificationPending: "/notifications/" + demo.scenarios.notifications.deliveries.pending,
+  notificationDead: "/notifications/" + demo.scenarios.notifications.deliveries.deadLetter,
+  notificationHistory: "/notifications/" + demo.scenarios.notifications.deliveries.replayHistoryOriginal,
+  notificationSite: "/sites/" + demo.scenarios.sites.notifications + "/notifications/" + demo.scenarios.notifications.deliveries.dnsRetry,
+  matchInferred: "/reconciliation/matches/" + inferredMatch.id,
+  matchSite: "/sites/" + inferredMatch.client_id + "/reconciliation/matches/" + inferredMatch.id,
+  matchManual: "/reconciliation/matches/" + manualMatch.id,
+  matchReversed: "/reconciliation/matches/" + reversedMatch.id,
+  ledgerAssociated: "/ledger/" + inferredMatch.ledger_id,
+  ledgerIdentical: "/ledger/" + demo.scenarios.ledger.identical,
+  ledgerDisputed: "/ledger/" + demo.scenarios.ledger.inconsistent,
+};
 const checkouts: Record<string, string> = {};
 for (const [name, id] of Object.entries(demo.scenarios.lifecycle)) {
   const response = await demo.app.request("/api/admin/v1/orders/" + id + "/checkout", { headers: { cookie } });
@@ -78,7 +107,7 @@ const server = serve({ fetch: async (request, env) => {
 try {
   await new Promise<void>((resolve, reject) => { server.once("listening", resolve); server.once("error", reject); });
 } catch (error) { demo.dispose(); throw error; }
-process.send({ type: "ready", origin: demo.origin, epoch, routes, extendedRoutes, checkouts, directory: demo.directory,
+process.send({ type: "ready", origin: demo.origin, epoch, routes, extendedRoutes, details, checkouts, directory: demo.directory,
   sessionCookies: login.headers.getSetCookie().map(value => { const entry = value.split(";")[0]!; const index = entry.indexOf("="); return { name: entry.slice(0, index), value: entry.slice(index + 1) }; }) });
 process.on("message", (message: { type: string; time?: number; id?: number; reset?: boolean; checkoutFailure?: 429 | 503 | null }) => {
   if (message.reset) { generation++; checkoutFailure = null; }
