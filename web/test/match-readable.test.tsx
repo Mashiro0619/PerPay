@@ -21,10 +21,11 @@ function mount(children: ReactNode) {
   );
 }
 
-describe("compact payment match detail", () => {
+describe("readable payment match detail", () => {
   it.each(["", "/sites/shop"])(
-    "keeps a short heading, copyable identity and scoped navigation at %s",
+    "separates readable facts into standard cards and keeps scoped navigation at %s",
     async (scope) => {
+      const user = userEvent.setup();
       const fetchMock = vi.fn(async (request: Request) => {
         const pathname = new URL(request.url).pathname;
         if (pathname === "/api/admin/v1/sites/shop")
@@ -52,13 +53,28 @@ describe("compact payment match detail", () => {
       );
       const card = await screen.findByRole("group", { name: "收款关联记录" });
       expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/^收款关联详情$/);
-      expect(screen.getByRole("button", { name: "复制关联编号" })).toBeVisible();
+      expect(screen.getAllByRole("heading", { level: 2 }).map(heading => heading.textContent)).toEqual(["关联摘要与订单", "支付宝交易", "匹配依据与处理记录"]);
+      for (const group of [card, screen.getByRole("group", { name: "支付宝交易" }), screen.getByRole("group", { name: "匹配依据与处理记录" })]) {
+        expect(group).toHaveAttribute("data-size", "default");
+        expect(group.querySelector('[data-slot="card-header"] .record-list-meta')).toBeNull();
+      }
+      expect(screen.queryByRole("button", { name: "复制关联编号" })).not.toBeInTheDocument();
+      expect(screen.queryByText(matchId)).not.toBeInTheDocument();
       expect(screen.getByRole("link", { name: "对账" })).toHaveAttribute("href", scope + "/reconciliation?tab=matches&q=book&cursor=next&page=2");
       expect(within(card).getByRole("link", { name: paymentMatch.order.product_name })).toHaveAttribute("href", scope + "/orders/" + orderId);
-      expect(within(card).getByRole("heading", { name: "匹配依据" })).toBeVisible();
-      expect(within(card).queryByText("撤销时间")).not.toBeInTheDocument();
+      expect(within(screen.getByRole("group", { name: "匹配依据与处理记录" })).getByRole("heading", { name: "匹配依据" })).toBeVisible();
+      expect(screen.queryByText("撤销时间")).not.toBeInTheDocument();
       expect(within(card).getByRole("button", { name: "收款关联记录操作" }).closest('[data-slot="card-action"]')).not.toBeNull();
+      await user.click(await recordAction("技术详情", "收款关联记录操作"));
+      const technical = await screen.findByRole("dialog", { name: "技术详情" });
+      await user.click(within(technical).getByRole("button", { name: "复制关联编号" }));
+      expect(await navigator.clipboard.readText()).toBe(matchId);
+      await user.click(within(technical).getByRole("button", { name: "复制内部订单编号" }));
+      expect(await navigator.clipboard.readText()).toBe(paymentMatch.order.order_id);
+      await user.click(within(technical).getByRole("button", { name: "复制客户端 ID" }));
+      expect(await navigator.clipboard.readText()).toBe(paymentMatch.order.api_client_id);
       expect(fetchMock.mock.calls.every(([request]) => request.method === "GET")).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(scope ? 2 : 1);
     },
   );
 
@@ -90,7 +106,7 @@ describe("compact payment match detail", () => {
         memo: "多行交易备注第一行\n第二行",
       },
     };
-    mount(<MatchCard match={match} density="dense" />);
+    mount(<MatchCard match={match} density="comfortable" />);
     expect(screen.getByText(match.ledger_entry.provider_order_no!)).toBeVisible();
     expect(screen.getByText(match.ledger_entry.merchant_order_no!)).toBeVisible();
     expect(screen.getByText("多行交易备注第一行 第二行")).toBeVisible();
@@ -99,7 +115,11 @@ describe("compact payment match detail", () => {
     expect(screen.getByText("完整关联理由第一行 第二行，已核对原始凭据")).toBeVisible();
     expect(screen.getByText("完整撤销理由第一行 第二行，归属有误")).toBeVisible();
     expect(screen.getByText("撤销管理员")).toBeVisible();
+    expect(screen.getByText("关联管理员")).toBeVisible();
     expect(screen.getByText("撤销时间")).toBeVisible();
+    expect(screen.getByRole("region", { name: "人工关联记录" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "撤销记录" })).toBeVisible();
+    expect(screen.getByRole("group", { name: "匹配依据与处理记录" }).querySelectorAll('[data-slot="separator"]')).toHaveLength(2);
     expect(screen.queryByRole("button", { name: "匹配依据" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "复制支付宝订单号" }));
     expect(copy).toHaveBeenCalledWith(match.ledger_entry.provider_order_no);
@@ -108,7 +128,7 @@ describe("compact payment match detail", () => {
   });
 
   it("restores the inline menu trigger after cancelling a reversal with Escape", async () => {
-    mount(<MatchCard match={paymentMatch} density="dense" />);
+    mount(<MatchCard match={paymentMatch} density="comfortable" />);
     const user = userEvent.setup();
     const trigger = screen.getByRole("button", { name: "收款关联记录操作" });
     trigger.focus();
@@ -132,7 +152,7 @@ describe("compact payment match detail", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue(undefined);
-    mount(<MatchCard match={paymentMatch} density="dense" />);
+    mount(<MatchCard match={paymentMatch} density="comfortable" />);
     const user = userEvent.setup();
     await user.click(await recordAction("撤销错误关联", "收款关联记录操作"));
     const dialog = screen.getByRole("dialog", { name: "撤销收款关联？" });
@@ -144,12 +164,25 @@ describe("compact payment match detail", () => {
     expect(bodies[1]).toEqual(bodies[0]);
   });
 
-  it("preserves the default embedded layout and independent detail action", async () => {
-    const { container } = mount(<MatchCard match={paymentMatch} embedded />);
+  it.each([undefined, "comfortable"] as const)("preserves the embedded layout and independent detail action (density=%s)", async (density) => {
+    const { container } = mount(<MatchCard match={paymentMatch} embedded {...(density ? { density } : {})} />);
     expect(screen.queryByRole("link", { name: paymentMatch.order.product_name })).not.toBeInTheDocument();
     const trigger = screen.getByRole("button", { name: "收款关联记录操作" });
     expect(trigger.closest('[data-slot="card-content"]')).not.toBeNull();
-    expect(container.querySelector('[data-detail-density="dense"]')).toBeNull();
+    expect(container.querySelectorAll('[data-slot="card"]')).toHaveLength(1);
+    expect(screen.queryByRole("heading", { name: "关联摘要与订单" })).not.toBeInTheDocument();
     expect(await recordAction("单独打开", "收款关联记录操作")).toHaveAttribute("href", "/reconciliation/matches/" + matchId);
+  });
+
+  it("does not introduce separators or invented evidence when no candidate or reasons exist", () => {
+    const match: PaymentMatchDetail = { ...paymentMatch, candidate: null };
+    mount(<MatchCard match={match} density="comfortable" />);
+    const card = screen.getByRole("group", { name: "匹配依据与处理记录" });
+    expect(card.querySelectorAll('[data-slot="separator"]')).toHaveLength(0);
+    expect(within(card).getByRole("region", { name: "关联记录" })).toBeVisible();
+    expect(within(card).getByText("关联时间")).toBeVisible();
+    expect(within(card).queryByText("金额占用时间")).not.toBeInTheDocument();
+    expect(within(card).queryByText("关联理由")).not.toBeInTheDocument();
+    expect(within(card).queryByText("撤销时间")).not.toBeInTheDocument();
   });
 });

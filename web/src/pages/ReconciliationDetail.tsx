@@ -25,6 +25,7 @@ import {
   DetailFields,
   DetailNavigation,
   DetailPage,
+  type DetailDensity,
   useDetailFetching,
 } from "@/components/detail/DetailPrimitives";
 import { RecordTools } from "@/components/detail/RecordTools";
@@ -81,7 +82,7 @@ function EvidenceHeading({
   title: string;
   section?: string;
   loaded?: boolean;
-  density?: "default" | "dense";
+  density?: DetailDensity;
 }) {
   const systemName = useSystemName();
   const { clientId, site } = useWorkspace();
@@ -96,9 +97,9 @@ function EvidenceHeading({
     document.title = title + ` · ${siteName} · ${systemName}`;
   }, [title, systemName, siteName]);
   return (
-    <><PageHeading title={loaded && density !== "dense" ? `${title} · ${resourceId}` : title} />
-    {density === "dense" ? (
-      <DetailNavigation back={back} identifier={loaded ? resourceId : undefined} identifierLabel="关联编号">
+    <><PageHeading title={loaded && density !== "comfortable" ? `${title} · ${resourceId}` : title} />
+    {density === "comfortable" ? (
+      <DetailNavigation back={back}>
         <PageHeaderActions><RefreshButton disabled={fetching > 0} onClick={() => {
           void refreshOperationalData();
         }} busy={fetching > 0} /></PageHeaderActions>
@@ -149,9 +150,9 @@ function MatchDetail({ resourceId }: { resourceId: string }) {
   });
   return (
     <DetailPage>
-      <EvidenceHeading title="收款关联详情" loaded={query.isSuccess} density="dense" />
+      <EvidenceHeading title="收款关联详情" loaded={query.isSuccess} density="comfortable" />
       <QueryView query={query}>
-        {({ data }) => <MatchCard match={data} density="dense" />}
+        {({ data }) => <MatchCard match={data} density="comfortable" />}
       </QueryView>
     </DetailPage>
   );

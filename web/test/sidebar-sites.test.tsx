@@ -830,7 +830,7 @@ describe("website selection on shared pages", () => {
       },
     });
     const user = userEvent.setup();
-    await screen.findByRole("heading", { name: "收款关联记录" });
+    await screen.findByRole("group", { name: "收款关联记录" });
     await user.click(await recordAction("撤销错误关联", "收款关联记录操作"));
     const dialog = await screen.findByRole("dialog", { name: "撤销收款关联？" });
     const reason = within(dialog).getByLabelText("操作理由");

@@ -63,10 +63,12 @@ export function ReverseMatchAction({
   match,
   embedded = false,
   inline = false,
+  includeOrderIdentifiers = false,
 }: {
   match: PaymentMatchDetail;
   embedded?: boolean;
   inline?: boolean;
+  includeOrderIdentifiers?: boolean;
 }) {
   const api = useWorkspaceApi();
   const [snapshot, setSnapshot] = useState<PaymentMatchDetail | null>(null);
@@ -83,6 +85,10 @@ export function ReverseMatchAction({
           ["关联编号", match.payment_match_id],
           ["流水编号", match.ledger_entry_id],
           ["可能匹配记录编号", match.candidate_id],
+          ...(includeOrderIdentifiers ? [
+            ["内部订单编号", match.order.order_id],
+            ["客户端 ID", match.order.api_client_id],
+          ] as const : []),
         ]}
         to={
           embedded
