@@ -157,7 +157,19 @@ test("recent orders keep compact summaries and header geometry across themes and
           const product = row.querySelector('a[data-row-link]')!.closest('[data-slot="item-title"]')!.getBoundingClientRect();
           const amount = row.querySelector('.overview-order-summary-amount')!.getBoundingClientRect();
           const site = row.querySelector('.list-site-identity');
-          const merchant = site?.parentElement?.querySelector(':scope > .list-code');
+          // The merchant number now has an explicit business-source label.
+          const merchantCode = row.querySelector('.list-code')!;
+          const merchant = site?.parentElement?.querySelector('.list-code')?.parentElement;
+          const codeRange = document.createRange();
+          codeRange.selectNodeContents(merchantCode);
+          const codeStyle = getComputedStyle(merchantCode);
+          const bodyBounds = body;
+          const merchantIdentity = {
+            text: merchantCode.textContent,
+            full: merchantCode.getAttribute('title'),
+            painted: codeStyle.visibility === 'visible' && Number(codeStyle.opacity) > 0 && [...codeRange.getClientRects()].every(bounds =>
+              bounds.width > 0 && bounds.left >= bodyBounds.left - 1 && bounds.right <= bodyBounds.right + 1),
+          };
           const metadata = site && merchant ? (() => {
             const first = merchant.getBoundingClientRect();
             const second = site.getBoundingClientRect();
@@ -168,7 +180,7 @@ test("recent orders keep compact summaries and header geometry across themes and
             amountInset: amount.left - body.left, amountAfterProduct: amount.top >= product.bottom - 1,
             productContained: product.left >= body.left && product.right <= body.right,
             fieldsClipped: [...row.querySelectorAll('.list-code, .list-money, time')].some(element => element.scrollWidth > element.clientWidth + 1),
-            metadata,
+            metadata, merchantIdentity,
             payment: row.querySelector('[role="group"][aria-label="收款状态"]')?.textContent,
             notification: row.querySelector('[role="group"][aria-label="通知状态"]')?.textContent };
         }),
@@ -180,6 +192,7 @@ test("recent orders keep compact summaries and header geometry across themes and
     expect(geometry.titleInset).toBe(16);
     expect(geometry.rows.every(row => row.inset >= 12 && row.hoverInset >= 8 && !row.fieldsClipped && row.payment && row.notification), JSON.stringify(geometry.rows)).toBe(true);
     expect(geometry.rows.every(row => row.amountInset === 0 && row.amountAfterProduct && row.productContained), JSON.stringify(geometry.rows)).toBe(true);
+    expect(geometry.rows.every(row => row.merchantIdentity.text && row.merchantIdentity.text === row.merchantIdentity.full && row.merchantIdentity.painted), JSON.stringify(geometry.rows)).toBe(true);
     const metadata = geometry.rows.flatMap(row => row.metadata ? [row.metadata] : []);
     expect(metadata.length).toBe(scoped ? 0 : 5);
     expect(metadata.every(item => item.gap >= (item.sameLine ? 4 : 1)), JSON.stringify(metadata)).toBe(true);

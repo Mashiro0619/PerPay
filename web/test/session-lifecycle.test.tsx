@@ -23,6 +23,13 @@ const session = {
   },
 };
 
+function readResponse(request: Request) {
+  if (new URL(request.url).pathname === "/api/admin/v1/sites") {
+    return json({ data: [], page: { next_cursor: null } });
+  }
+  return json({ data: settings });
+}
+
 function mount() {
   if (!document.querySelector('meta[name="perpay-initialized"]')) {
     const metadata = document.createElement("meta");
@@ -65,7 +72,7 @@ describe("administrator session lifecycle", () => {
               ? apiError("temporary_unavailable", "temporary outage", 503)
               : json(session);
           }
-          return json({ data: settings });
+          return readResponse(request);
         }),
       );
       mount();
@@ -104,7 +111,7 @@ describe("administrator session lifecycle", () => {
         vi.fn(async (request: Request) =>
           new URL(request.url).pathname.endsWith("/session")
             ? apiError("session_invalid", "会话失效", status)
-            : json({ data: settings }),
+            : readResponse(request),
         ),
       );
       mount();
@@ -130,7 +137,7 @@ describe("administrator session lifecycle", () => {
         ? new Promise<Response>((resolve) => {
             finish = resolve;
           })
-        : Promise.resolve(json({ data: settings })),
+        : Promise.resolve(readResponse(request)),
     );
     vi.stubGlobal("fetch", fetchMock);
     mount();
