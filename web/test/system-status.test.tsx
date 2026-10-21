@@ -233,7 +233,7 @@ describe("shared runtime presentation", () => {
     mountOnboarding({ stage: 4, path: "/system", status: () => data });
     const runtime = within(await screen.findByRole("table", { name: "运行环节" }));
     expect(within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: "运行状态" })).toHaveAccessibleDescription("需关注");
-    expect(screen.queryByText("收款已暂停")).not.toBeInTheDocument();
+    expect(screen.queryByText("已暂停接收新订单")).not.toBeInTheDocument();
     const backup = within(runtime.getByRole("rowheader", { name: "自动备份" }).closest("tr")!);
     expect(runtime.getByText(message)).toBeVisible();
     expect(backup.getByRole("link", { name: "备份设置" })).toHaveAttribute("href", "/settings/backup");
@@ -246,7 +246,7 @@ describe("shared runtime presentation", () => {
       else data.reconciliation.confirmation_ready = false;
       expect(presentSystemStatus(data)).toMatchObject({
         canReceive: false,
-        notice: "收款已暂停",
+        notice: "已暂停接收新订单",
       });
     }
   });
@@ -257,7 +257,7 @@ describe("shared runtime presentation", () => {
     mountOnboarding({ stage: 4, path: "/system", status: () => data });
     await screen.findByRole("table", { name: "运行环节" });
     const alert = within(screen.getByRole("alert"));
-    expect(alert.getByText("收款已暂停")).toBeVisible();
+    expect(alert.getByText("已暂停接收新订单")).toBeVisible();
     expect(alert.getByText(/收款配置.*未完成/)).toBeVisible();
     expect(alert.getByRole("link", { name: "继续配置" })).toHaveAttribute("href", "/settings/onboarding");
   });
@@ -270,16 +270,18 @@ describe("shared runtime presentation", () => {
     const runtime = within(await screen.findByRole("table", { name: "运行环节" }));
     const reconciliation = within(runtime.getByRole("rowheader", { name: "自动确认收款" }).closest("tr")!);
     expect(reconciliation.getByRole("cell", { name: "需关注" })).toBeVisible();
-    expect(runtime.getByText(/最近错误：reconciliation_storage_error/)).toBeVisible();
+    expect(runtime.getByText(/自动确认收款记录暂时无法读取或保存/)).toBeVisible();
+    expect(runtime.queryByText(/reconciliation_storage_error/)).not.toBeInTheDocument();
     expect(runtime.getByText(/连续失败 2 次/)).toBeVisible();
     const diagnosis = reconciliation.getByRole("button", { name: "自动确认收款运行诊断" });
     await userEvent.setup().click(diagnosis);
     expect(await screen.findByRole("dialog")).toBeVisible();
+    expect(within(screen.getByRole("dialog")).getByText(/reconciliation_storage_error/)).toBeVisible();
     await userEvent.setup().keyboard("{Escape}");
     await waitFor(() => expect(diagnosis).toHaveFocus());
     expect(reconciliation.queryByRole("button", { name: "查看自动确认收款详情" })).not.toBeInTheDocument();
     expect(within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: "运行状态" })).toHaveAccessibleDescription("需关注");
-    expect(screen.queryByText("收款已暂停")).not.toBeInTheDocument();
+    expect(screen.queryByText("已暂停接收新订单")).not.toBeInTheDocument();
   });
   it("shows non-blocking backlog only in navigation without adding a homepage banner", async () => {
     const data = ready();

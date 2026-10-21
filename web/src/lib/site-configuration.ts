@@ -8,7 +8,7 @@ const fields = [
   ["basic", "accepting_orders", "允许新订单"],
   ["orders", "policy.orders.order_ttl_seconds", "收银台有效期（秒）"],
   ["orders", "policy.orders.amount_offset_maximum_cents", "最大加价金额（分）"],
-  ["orders", "policy.orders.amount_reuse_cooldown_seconds", "金额复用冷却（秒）"],
+  ["orders", "policy.orders.amount_reuse_cooldown_seconds", "应付金额复用等待（秒）"],
   ["orders", "policy.orders.pending_order_limit", "待付款订单上限"],
   ["integration", "notifications_enabled", "开启通知"],
   ["integration", "notification_origin", "通知地址前缀"],

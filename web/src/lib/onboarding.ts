@@ -1,6 +1,7 @@
 import type { RuntimeSettings, SystemStatus } from "../api/client";
 import { presentSystemStatus } from "./system-status";
 import { applicationKeyState } from "./application-key";
+import { runtimeErrorMessage } from "./runtime-copy";
 
 export const onboardingSteps = [
   {
@@ -48,7 +49,7 @@ export function onboardingStepDescription(
   }
   if (step === "provider" && settings.pending_application_key)
     return "填写上传后获取的支付宝公钥，验证并启用新密钥。";
-  if (step === "optional" && settings.site_mode) return "创建业务网站，按需设置自动备份。网站各自配置通知，不使用全局业务密钥。";
+  if (step === "optional" && settings.site_mode) return "先创建至少一个业务网站，再按需设置自动备份。网站各自配置通知，不使用全局业务密钥。";
   return onboardingSteps.find((item) => item.id === step)!.description;
 }
 
@@ -129,7 +130,7 @@ export function onboardingRuntimeWarnings(data: SystemStatus): string[] {
   ] as const) {
     if (healthy) continue;
     if (worker.last_error_code)
-      warnings.push(name + "最近运行异常：" + worker.last_error_code + "。");
+      warnings.push(runtimeErrorMessage(name, worker.last_error_code));
     else if (worker.state === "catching_up")
       warnings.push(name + "正在补处理历史数据。");
     else if (worker.state === "stopped")

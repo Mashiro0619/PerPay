@@ -7,13 +7,13 @@ import {
   useSystemStatus,
 } from "@/features/system-status";
 import { presentSystemStatus } from "@/lib/system-status";
+import { backupFailureStageName, runtimeErrorMessage } from "@/lib/runtime-copy";
 import {
   BUSINESS_TIME_ZONE,
   count,
   dateTime,
   backupIntervalLabel,
 } from "@/lib/format";
-import { notificationErrorName } from "@/lib/detail-summary";
 import { LedgerIngestionDiagnostics } from "@/components/ledger-ingestion-diagnostics";
 import { RefreshButton } from "@/components/refresh-button";
 import { ErrorNotice, Loading, QueryView } from "@/components/request-state";
@@ -141,7 +141,7 @@ function SystemSnapshot({
       {!state.canReceive && (
         <Alert variant="destructive">
           <CircleAlert />
-          <AlertTitle>收款已暂停</AlertTitle>
+          <AlertTitle>已暂停接收新订单</AlertTitle>
           <AlertDescription>
             <p>{explanation}</p>
             {!data.configured && (
@@ -182,7 +182,7 @@ function SystemSnapshot({
               状态
             </TableHead>
             <TableHead scope="col" role="columnheader">
-              最近成功
+              任务最近成功
             </TableHead>
             <TableHead scope="col" role="columnheader">
               运行信息
@@ -223,7 +223,7 @@ function SystemSnapshot({
               data.ledger.diagnostics?.latest_failure?.error_code !==
                 data.ledger.last_error_code && (
                 <p>
-                  最近错误：{data.ledger.last_error_code} · 连续失败{" "}
+                  {runtimeErrorMessage("查账", data.ledger.last_error_code)} · 连续失败{" "}
                   {data.ledger.consecutive_failures} 次
                 </p>
               )}
@@ -248,7 +248,7 @@ function SystemSnapshot({
             )}
             {data.reconciliation.last_error_code && (
               <p>
-                最近错误：{data.reconciliation.last_error_code} · 连续失败{" "}
+                {runtimeErrorMessage("自动确认收款", data.reconciliation.last_error_code)} · 连续失败{" "}
                 {data.reconciliation.consecutive_failures} 次
               </p>
             )}
@@ -281,7 +281,7 @@ function SystemSnapshot({
           >
             {data.webhook.last_error_code && (
               <p>
-                {notificationErrorName(data.webhook.last_error_code)} · 连续失败{" "}
+                {runtimeErrorMessage("通知", data.webhook.last_error_code)} · 连续失败{" "}
                 {data.webhook.consecutive_failures} 次
               </p>
             )}
@@ -347,7 +347,7 @@ function SystemSnapshot({
                     </p>
                   )}
                   {data.backup.last_error_stage && (
-                    <p>最近失败阶段：{data.backup.last_error_stage}</p>
+                    <p>最近失败阶段：{backupFailureStageName(data.backup.last_error_stage)}</p>
                   )}
                 </>
               ) : undefined
@@ -433,7 +433,7 @@ function RuntimeService({
           className="runtime-service-time"
           data-empty={lastSuccess == null || undefined}
         >
-          <span className="runtime-mobile-label">最近成功</span>
+          <span className="runtime-mobile-label">任务最近成功</span>
           <RuntimeTimestamp value={lastSuccess} />
         </TableCell>
         <TableCell

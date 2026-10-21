@@ -346,12 +346,14 @@ function SiteEditor({
       ? "暂停新订单，旧订单继续处理。"
       : "",
     saved?.configuration.notifications_enabled && !draft.notifications_enabled
-      ? "停止领取新的通知投递，在途请求可能继续完成。"
+      ? "暂停后续通知发送；正在发送的通知可能继续完成。"
       : "",
     saved &&
-    (saved.configuration.notification_origin !== draft.notification_origin ||
-      saved.configuration.return_origin !== draft.return_origin)
-      ? "来源变更将限制后续请求；旧通知目标可能不再允许投递。"
+    saved.configuration.notification_origin !== draft.notification_origin
+      ? "通知地址前缀变更后，后续发送将按新前缀检查；旧通知地址可能不再允许发送。"
+      : "",
+    saved && saved.configuration.return_origin !== draft.return_origin
+      ? "返回地址前缀变更后，新订单的返回地址将按新前缀检查。"
       : "",
   ]
     .filter(Boolean)
@@ -549,7 +551,7 @@ function SiteEditor({
           <CardHeader>
             <CardTitle>业务网站密钥</CardTitle>
             <CardDescription>
-              API 密钥轮换后旧密钥立即退役。通知密钥轮换时，已在途的通知仍可能使用旧签名，下一次投递尝试使用新密钥；接收端过渡期间应兼容新旧签名，密钥疑似泄露时应停止信任旧密钥。
+              API 密钥轮换后旧密钥立即失效。通知密钥轮换时，正在发送的通知仍可能使用旧签名，下一次投递尝试使用新密钥；接收端过渡期间应兼容新旧签名，密钥疑似泄露时应停止信任旧密钥。
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
@@ -649,8 +651,8 @@ function SiteEditor({
                 : confirmation === "save"
                   ? impact
                   : confirmation === "webhook"
-                    ? "下一次通知投递尝试将使用新密钥，已在途的请求仍可能使用旧签名。请在接收端过渡期间兼容新旧签名，密钥疑似泄露时应停止信任旧密钥。失败时不要盲目再次轮换，应先查看当前密钥。"
-                    : "如果已有 API 密钥，本次会使其立即退役。请同步更新对应业务网站，失败时不要盲目再次轮换，应先查看当前密钥。"}
+                    ? "下一次通知发送尝试将使用新密钥，正在发送的通知仍可能使用旧签名。请在接收端过渡期间兼容新旧签名，密钥疑似泄露时应停止信任旧密钥。失败时不要盲目再次轮换，应先查看当前密钥。"
+                    : "如果已有 API 密钥，本次会使其立即失效。请同步更新对应业务网站，失败时不要盲目再次轮换，应先查看当前密钥。"}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

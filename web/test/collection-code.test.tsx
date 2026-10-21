@@ -141,7 +141,7 @@ describe("collection QR image upload", () => {
       const field = await screen.findByLabelText("支付宝经营码内容");
       const user = userEvent.setup();
       expect(screen.queryByLabelText("收银台有效期（秒）")).not.toBeInTheDocument();
-      expect(screen.queryByLabelText("金额复用冷却（秒）")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("应付金额复用等待（秒）")).not.toBeInTheDocument();
       if (source === "picker")
         await user.upload(
           screen.getByLabelText("选择经营码二维码图片"),

@@ -24,7 +24,7 @@ test("runtime keeps healthy diagnostics collapsed and exposes abnormal causes an
     await route.fulfill({ response, json: data });
   });
   await page.reload();
-  await expect(page.getByText(/最近错误：reconciliation_storage_error/)).toBeVisible();
+  await expect(page.getByText(/自动确认收款记录暂时无法读取或保存，请检查数据库和运行诊断。/)).toBeVisible();
   const diagnose = page.getByRole("button", { name: "自动确认收款运行诊断" });
   await diagnose.click();
   await expect(page.getByRole("dialog")).toBeVisible();

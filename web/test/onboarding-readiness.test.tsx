@@ -189,12 +189,12 @@ describe("onboarding payment readiness", () => {
     },
   );
   it.each([
-    ["ledger", "查账"],
-    ["reconciliation", "自动确认收款"],
-    ["webhook", "通知"],
+    ["ledger", "支付宝查询连接失败或超时，请检查网络并等待下次查账。"],
+    ["reconciliation", "自动确认收款任务超时，请查看运行状态。"],
+    ["webhook", "通知发送连接失败或超时，请查看通知投递记录。"],
   ] as const)(
     "keeps a real %s warning visible even after all business reminders are ignored",
-    async (key, label) => {
+    async (key, message) => {
       const status = completeStatus();
       status.status = "degraded";
       status.ledger.conflicts!.open = 2;
@@ -203,8 +203,11 @@ describe("onboarding payment readiness", () => {
       mount(() => json({ data: status }));
       await screen.findByText("收款服务就绪");
       expect(
-        screen.getByText(label + "最近运行异常：transport_timeout。"),
+        screen.getByText(message),
       ).toBeVisible();
+      expect(screen.queryByText("transport_timeout")).not.toBeInTheDocument();
+      await userEvent.setup().click(screen.getByRole("button", { name: "运行错误诊断" }));
+      expect(screen.getByText("transport_timeout")).toBeVisible();
       expect(screen.queryByText(/项业务待处理/)).not.toBeInTheDocument();
       expect(
         screen.getByRole("link", { name: "查看运行状态" }),
@@ -481,8 +484,11 @@ describe("onboarding payment readiness", () => {
     status.status = "not_ready";
     mount(() => json({ data: status }));
     expect(
-      await screen.findByText("最近错误：provider_authentication_failed"),
+      await screen.findByText("支付宝身份验证失败，请检查应用和密钥配置。"),
     ).toBeVisible();
+    expect(screen.queryByText("provider_authentication_failed")).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "查账错误诊断" }));
+    expect(screen.getByText("provider_authentication_failed")).toBeVisible();
     expect(
       screen.getByRole("link", { name: "检查支付宝接入" }),
     ).toHaveAttribute("href", "/settings/onboarding/provider");

@@ -58,7 +58,7 @@ const filters = [
 type Visibility = WorkItemVisibility;
 export default function WorkItems() {
   const api = useWorkspaceApi();
-  const { clientId: workspaceClientId } = useWorkspace();
+  const { clientId: workspaceClientId, site } = useWorkspace();
   const mounted = useMounted();
   const [search, setSearch] = useSearchParams();
   const { type, visibility } = workItemFilters(search, workspaceClientId);
@@ -68,6 +68,7 @@ export default function WorkItems() {
     q: string;
     operation_id: string;
     clientId: string | null;
+    siteName: string | null;
   } | null>(null);
   const finalFocus = useRef<HTMLElement | null>(null);
   const cancelIgnore = useRef<HTMLButtonElement | null>(null);
@@ -190,6 +191,7 @@ export default function WorkItems() {
               setBatch({
                 type,
                 clientId: workspaceClientId,
+                siteName: site?.data?.data.configuration?.name ?? null,
                 q: (search.get("q") ?? "").trim(),
                 name: filters.find(([value]) => value === type)![1],
                 operation_id: crypto.randomUUID(),
@@ -219,7 +221,11 @@ export default function WorkItems() {
             </AlertDialogTitle>
           </AlertDialogHeader>
           <DialogBody><AlertDialogDescription>
-              {batch?.clientId && <>仅限业务网站 {batch.clientId}，不涉及其他网站及未归属提醒。</>}
+              {batch?.clientId && <>
+                {batch.siteName ? <>仅限业务网站“{batch.siteName}”</> : <>仅限当前业务网站</>}。
+                客户端 ID（PerPay）：<span className="font-mono wrap-anywhere">{batch.clientId}</span>。
+                不涉及其他网站及未归属提醒。
+              </>}
               {batch?.q ? (
                 <>
                   关键词“{batch.q}
@@ -611,18 +617,18 @@ function RestoreReminder({
       {!!state?.error && (
         <>
           <span role="status" className="sr-only">
-            恢复结果暂未确认，请重试或查看响应详情。
+            恢复结果暂未确认，请重试或查看错误说明。
           </span>
           <Popover>
             <PopoverTrigger render={<Button variant="ghost" size="sm" />}>
-              响应详情
+              错误说明
             </PopoverTrigger>
             <PopoverContent
               align="end"
               className="max-h-[calc(100dvh-2rem)] max-w-[calc(100vw-2rem)] overflow-y-auto"
             >
               <PopoverHeader>
-                <PopoverTitle>恢复提醒的响应</PopoverTitle>
+                <PopoverTitle>恢复提醒错误说明</PopoverTitle>
                 <PopoverDescription>
                   只调整提醒，不改变异常、冲突或通知的处理状态。
                 </PopoverDescription>

@@ -3,6 +3,8 @@ import { api, result } from "@/api/client";
 import { dateTime } from "@/lib/format";
 import { FieldDescription } from "@/components/ui/field";
 import { useOptionalSystemStatus } from "@/features/system-status";
+import { backupFailureStageName } from "@/lib/runtime-copy";
+import { RuntimeErrorDetails } from "@/components/runtime-error-details";
 export function BackupStatus() {
   const shared = useOptionalSystemStatus();
   const fallback = useQuery({
@@ -25,7 +27,7 @@ export function BackupStatus() {
               ? "备份配置与任务不一致，请检查服务器备份任务。"
               : backup.last_error_stage
                 ? "最近备份失败（" +
-                  backup.last_error_stage +
+                  backupFailureStageName(backup.last_error_stage) +
                   "），请查看备份日志。"
                 : !backup.backup_available
                   ? "尚无可用备份，请先完成一次备份验证。"
@@ -33,6 +35,7 @@ export function BackupStatus() {
                     ? "正在备份"
                     : "备份任务已启用"}
       </FieldDescription>
+      <RuntimeErrorDetails title="备份错误诊断" items={[["原始失败阶段", backup?.last_error_stage]]} />
       {backup && (
         <FieldDescription>
           最近成功 {dateTime(backup.last_success_at)} · 可用备份{" "}

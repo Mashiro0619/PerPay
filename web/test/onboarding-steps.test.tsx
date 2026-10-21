@@ -7,6 +7,18 @@ import { onboardingPath, onboardingSteps } from "../src/lib/onboarding";
 import { mountOnboarding } from "./onboarding-fixture";
 
 describe("ordered onboarding navigation", () => {
+  it("distinguishes the required website from optional backups without unlocking later steps", () => {
+    render(
+      <MemoryRouter>
+        <OnboardingSteps current="optional" completed={[true, true, true, false]} firstMissing={3} siteMode />
+      </MemoryRouter>,
+    );
+    const nav = screen.getByRole("navigation", { name: "配置步骤" });
+    expect(within(nav).getByRole("link", { name: /第 4 步.*业务网站必需，备份可选/ })).toHaveAttribute("aria-current", "step");
+    expect(within(nav).getByText("网站必需")).toBeVisible();
+    expect(within(nav).getByRole("link", { name: /收款检查/ })).toHaveAttribute("aria-disabled", "true");
+  });
+
   it("keeps all five numbers, connectors, completion and the current step distinct", () => {
     render(
       <MemoryRouter>

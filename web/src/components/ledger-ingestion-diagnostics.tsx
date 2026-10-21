@@ -47,12 +47,12 @@ export function LedgerIngestionDiagnostics({
       </AlertTitle>
       <AlertDescription>
         <div className="flex flex-col gap-2">
-          <p>账户级连续失败 {failures} 次。</p>
+          <p>当前查账来源连续失败 {failures} 次。</p>
           {latest && (
             <>
               <p>
                 {latest.scan_kind === "NORMAL" ? "正常查账" : "历史查账"}：
-                {latest.reason}（{latest.error_code}）
+                {latest.reason}
               </p>
               <Collapsible>
                 <CollapsibleTrigger
@@ -61,10 +61,11 @@ export function LedgerIngestionDiagnostics({
                   失败详情
                 </CollapsibleTrigger>
                 <CollapsibleContent keepMounted className="flex flex-col gap-2">
-                  <p>次数为账户级统计，不代表同一账单页重复失败的次数。</p>
+                  <p>次数合计当前来源的正常与历史查账失败，不代表同一账单页重复失败的次数。</p>
+                  <p>原始错误码：<code className="wrap-anywhere">{latest.error_code}</code></p>
                   <p>
                     {latest.scan_kind === "NORMAL"
-                      ? "最近失败属于正常查账，该查询窗口尚未完成；收款是否暂停以当前就绪状态为准。"
+                      ? "最近失败属于正常查账，该查询窗口尚未完成；新订单入口是否暂停以当前就绪状态为准。"
                       : "最近失败属于历史查账，不代表正常查账也已停止；历史流水核对可能延迟。"}
                   </p>
                   <p>
@@ -93,7 +94,7 @@ export function LedgerIngestionDiagnostics({
             >
               安全恢复指引
             </a>
-            处理。不要删除游标或跳过账单。
+            处理，避免遗漏账单。
           </p>
         </div>
       </AlertDescription>

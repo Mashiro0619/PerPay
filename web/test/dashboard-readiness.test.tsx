@@ -27,7 +27,7 @@ function mount(ledger: Partial<SystemStatus["ledger"]>) {
 }
 
 async function pausedAlert() {
-  const title = await screen.findByText("已暂停接收新订单");
+  const title = await screen.findByText("已暂停接收新订单", { selector: '[data-slot="alert-title"]' });
   const alert = within(title.closest<HTMLElement>('[role="alert"]')!);
   expect(alert.getByRole("link", { name: "查看运行状态" })).toHaveAttribute("href", "/system");
   return alert;

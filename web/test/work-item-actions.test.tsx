@@ -103,10 +103,12 @@ describe("reminder type tab layout", () => {
 });
 
 describe("reminder dismissal", () => {
-  it("captures the website in bulk ignore and keeps it in list refreshes", async () => {
+  it.each([false, true])("captures the website name and ID in bulk ignore and keeps its scope (name available: %s)", async (hasName) => {
     const requests: Request[] = [];
     vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
       requests.push(request.clone());
+      if (request.method === "GET" && new URL(request.url).pathname === "/api/admin/v1/sites/site_a")
+        return json({ data: { client_id: "site_a", deleted_at: null, configuration: { name: hasName ? "主营业务网站" : "" } } });
       return request.method === "POST" ? json({ data: { ...(await request.json()), ignored_count: 1 } }) : page();
     }));
     renderPage("?api_client_id=site_a");
@@ -114,7 +116,8 @@ describe("reminder dismissal", () => {
     const button = await screen.findByRole("button", { name: "忽略全部筛选结果（跨页）" });
     await waitFor(() => expect(button).toBeEnabled());
     await user.click(button);
-    expect(await screen.findByText(/仅限业务网站 site_a/)).toBeVisible();
+    expect(await screen.findByText(hasName ? /仅限业务网站“主营业务网站”/ : /仅限当前业务网站/)).toBeVisible();
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("客户端 ID（PerPay）：site_a");
     await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /确认忽略/ }));
     await waitFor(() => expect(requests.some(request => request.method === "POST")).toBe(true));
     expect(await requests.find(request => request.method === "POST")!.json()).not.toHaveProperty("api_client_id");

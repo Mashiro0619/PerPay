@@ -215,7 +215,7 @@ describe("short feedback and safe settings", () => {
     const table = await screen.findByRole("table", { name: "运行环节" });
     const runtime = within(table);
     expect(table).toBeVisible();
-    for (const name of ["服务", "状态", "最近成功", "运行信息"]) {
+    for (const name of ["服务", "状态", "任务最近成功", "运行信息"]) {
       expect(runtime.getByRole("columnheader", { name })).toBeVisible();
     }
     expect(screen.queryByRole("heading", { name: /^(可以收款|暂不能收款)$/ })).not.toBeInTheDocument();
@@ -454,7 +454,7 @@ describe("short feedback and safe settings", () => {
     expect(notifications.queryByText(/失败提醒/)).not.toBeInTheDocument();
     expect(screen.queryByText("有业务提醒待处理")).not.toBeInTheDocument();
     expect(screen.queryByText("有运行告警")).not.toBeInTheDocument();
-    expect(screen.queryByText("收款已暂停")).not.toBeInTheDocument();
+    expect(screen.queryByText("已暂停接收新订单")).not.toBeInTheDocument();
     for (const name of ["查账", "自动确认收款", "通知"]) {
       const row = within(runtime.getByRole("rowheader", { name }).closest("tr")!);
       expect(row.getByRole("cell", { name: "正常" })).toBeVisible();

@@ -61,6 +61,9 @@ export function OverviewWorkItems({ items }: { items: readonly AdminWorkItem[] }
         const ledgerIdentity = item.type === "LEDGER_CONFLICT"
           ? item.external_event_id ?? item.ledger_entry_id
           : item.ledger_entry_id;
+        const ledgerLabel = item.type === "LEDGER_CONFLICT" && item.external_event_id
+          ? "支付宝流水号"
+          : "内部流水编号（PerPay）";
         const reason = itemReason(item);
         const action = workActions[item.type];
         return (
@@ -100,6 +103,7 @@ export function OverviewWorkItems({ items }: { items: readonly AdminWorkItem[] }
                     {!clientId && <SiteIdentity clientId={order.api_client_id} name={order.site_name} />}
                   </ItemDescription>
                   <ItemActions className="overview-order-money-line" title="应付金额">
+                    <span className="record-list-meta">应付</span>
                     <ListMoney value={order.payable_amount_cents} label="应付金额" />
                   </ItemActions>
                 </div>
@@ -110,14 +114,14 @@ export function OverviewWorkItems({ items }: { items: readonly AdminWorkItem[] }
                     <Link
                       className="list-code"
                       title={orderId}
-                      aria-label={"查看订单：" + orderId}
+                      aria-label={"查看订单，内部订单编号（PerPay）：" + orderId}
                       to={"/orders/" + orderId}
                     >
-                      订单号 {orderId}
+                      内部订单编号（PerPay） {orderId}
                     </Link>
                   )}
                   {ledgerIdentity && (
-                    <span className="list-code" title={ledgerIdentity}>流水 {ledgerIdentity}</span>
+                    <span className="list-code" title={ledgerIdentity}>{ledgerLabel} {ledgerIdentity}</span>
                   )}
                 </ItemDescription>
               )}

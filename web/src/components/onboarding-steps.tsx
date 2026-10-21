@@ -13,10 +13,12 @@ export function OnboardingSteps({
   current,
   completed,
   firstMissing,
+  siteMode = false,
 }: {
   current: OnboardingStep;
   completed: readonly boolean[];
   firstMissing: number;
+  siteMode?: boolean;
 }) {
   function moveFocus(event: KeyboardEvent<HTMLElement>) {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
@@ -46,7 +48,7 @@ export function OnboardingSteps({
           const disabled = position > firstMissing;
           const status =
             item.id === "optional"
-              ? "可选"
+              ? siteMode ? "业务网站必需，备份可选" : "可选"
               : done
                 ? "已配置"
                 : item.id === "check"
@@ -84,7 +86,7 @@ export function OnboardingSteps({
               >
                 {item.title}
                 {item.id === "optional" && (
-                  <span className="block text-xs font-normal">可选</span>
+                  <span className="block text-xs font-normal">{siteMode ? "网站必需" : "可选"}</span>
                 )}
               </span>
             </>

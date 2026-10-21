@@ -37,7 +37,7 @@ describe("readable settings form structure", () => {
     for (const label of [
       "收银台有效期（秒）",
       "最大加价金额（分）",
-      "金额复用冷却（秒）",
+      "应付金额复用等待（秒）",
       "待付款订单上限",
       "收银台名称",
     ]) {

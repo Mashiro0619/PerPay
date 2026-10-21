@@ -37,7 +37,7 @@ describe("homepage collection health", () => {
           return status;
         },
       });
-      expect(await screen.findByText("已暂停接收新订单")).toBeVisible();
+      expect(await screen.findByText("已暂停接收新订单", { selector: '[data-slot="alert-title"]' })).toBeVisible();
       expect(view.router.state.location.pathname).toBe("/");
       expect(
         screen.getByRole("link", {
@@ -66,7 +66,7 @@ describe("homepage collection health", () => {
         queryKey: ["status", "shared"],
       });
     });
-    expect(await screen.findByText("暂时无法确认收款状态")).toBeVisible();
+    expect(await screen.findByText("暂时无法读取收款服务状态")).toBeVisible();
     expect(screen.getByText("状态未知")).toBeVisible();
     expect(screen.queryByText("可以收款，有运行告警")).not.toBeInTheDocument();
   });
@@ -80,7 +80,7 @@ describe("homepage collection health", () => {
     await screen.findByText("需关注");
     online.mockReturnValue(false);
     fireEvent(window, new Event("offline"));
-    expect(screen.getByText("暂时无法确认收款状态")).toBeVisible();
+    expect(screen.getByText("暂时无法读取收款服务状态")).toBeVisible();
     expect(screen.getByText("状态未知")).toBeVisible();
     expect(screen.queryByText("可以收款，有运行告警")).not.toBeInTheDocument();
   });

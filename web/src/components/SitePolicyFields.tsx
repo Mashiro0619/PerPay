@@ -95,8 +95,8 @@ export function SitePolicyFields({
             }
           />
           <NumberField
-            label="金额复用冷却（秒）"
-            hint="冷却结束后优先复用最小加价金额；历史订单期限不变。"
+            label="应付金额复用等待（秒）"
+            hint="同一应付金额再次用于新订单前的最短等待时间。从收银台关闭时间起算，过期订单从原到期时间起算；修改仅影响之后创建的订单。"
             error={error("orders.amount_reuse_cooldown_seconds")}
             value={value.orders.amount_reuse_cooldown_seconds}
             min={60}

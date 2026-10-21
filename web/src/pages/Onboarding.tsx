@@ -59,6 +59,8 @@ import {
   ItemGroup,
 } from "@/components/ui/item";
 import { NotificationKeyActions } from "./SecuritySettings";
+import { runtimeErrorMessage, type RuntimeTask } from "@/lib/runtime-copy";
+import { RuntimeErrorDetails } from "@/components/runtime-error-details";
 export default function Onboarding() {
   const [editorVersion, setEditorVersion] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -194,6 +196,7 @@ function OnboardingFlow({
     settings.completion.application_key,
     settings.completion.provider && !pendingApplicationKey,
     settings.completion.collection,
+    settings.site_mode === true && settings.completion.sites === true,
   ];
   const renderActions = (actions: ReactNode) => (
     <OnboardingFooter
@@ -210,6 +213,7 @@ function OnboardingFlow({
         current={step}
         completed={completed}
         firstMissing={firstMissing}
+        siteMode={settings.site_mode}
       />
       <section
         aria-labelledby="onboarding-step-heading"
@@ -441,7 +445,7 @@ function OnboardingFlow({
                     加价金额用于区分订单。付款人需要按收银台显示的应付金额付款。
                   </p>
                   <p>
-                    收银台有效期、加价金额和金额冷却在各业务网站中配置；查账间隔和查账延迟在查账设置中配置。
+                    收银台有效期、加价金额和应付金额复用等待时间在各业务网站中配置；查账间隔和查账延迟在查账设置中配置。
                   </p>
                 </OnboardingHelp>
               }
@@ -593,7 +597,7 @@ function OptionalSettings({
         className="grid min-w-0 items-start gap-5 @3xl/onboarding:grid-cols-2"
         data-onboarding-optional
       >
-        {settings.site_mode ? <section className="flex flex-col gap-3"><h3 className="font-medium">业务网站</h3><p>创建自有业务网站，为它配置独立的订单策略、展示、API 与通知密钥。系统共用经营码与查账对账，不需要为测试收款先签发 API 密钥。</p><div className="flex flex-wrap gap-2"><Link to="/sites/new" className={buttonVariants()}>创建业务网站</Link><Link to="/sites" className={buttonVariants({ variant: "outline" })}>管理业务网站</Link></div></section> : <>
+        {settings.site_mode ? <section className="flex flex-col gap-3"><h3 className="font-medium">业务网站（必需）</h3><p>先创建至少一个业务网站，为它配置独立的订单策略、展示、API 与通知密钥。系统共用经营码与查账对账，不需要为测试收款先签发 API 密钥。</p><div className="flex flex-wrap gap-2"><Link to="/sites/new" className={buttonVariants()}>创建业务网站</Link><Link to="/sites" className={buttonVariants({ variant: "outline" })}>管理业务网站</Link></div></section> : <>
         <section
           className="flex min-w-0 flex-col gap-3"
           aria-labelledby="onboarding-notifications-title"
@@ -709,7 +713,13 @@ export function ReadinessCheck({
     return fresh && matches ? (value ? "已通过" : pending) : "待检查";
   }
 
-  const checks = [
+  const checks: Array<{
+    title: string;
+    task?: RuntimeTask;
+    status: string;
+    action: ReactNode;
+    error: string | null | undefined;
+  }> = [
     {
       title: "核心配置",
       status: health(
@@ -741,6 +751,7 @@ export function ReadinessCheck({
     },
     {
       title: "查账",
+      task: "查账",
       status: health(status?.ledger.collection_ready, "等待成功查账"),
       action:
         fresh && matches && !status?.ledger.collection_ready ? (
@@ -755,6 +766,7 @@ export function ReadinessCheck({
     },
     {
       title: "自动确认收款",
+      task: "自动确认收款",
       status: health(
         status?.reconciliation.confirmation_ready,
         "等待自动确认收款就绪",
@@ -833,11 +845,12 @@ export function ReadinessCheck({
               {check.status !== "已通过" && (
                 <ItemDescription className="record-list-meta" role="status">{check.status}</ItemDescription>
               )}
-              {check.error && (
+              {check.error && check.task && (
                 <p className="break-words text-sm text-destructive">
-                  最近错误：{check.error}
+                  {runtimeErrorMessage(check.task, check.error)}
                 </p>
               )}
+              {check.error && <RuntimeErrorDetails title={check.title + "错误诊断"} items={[["原始错误码", check.error]]} />}
             </ItemContent>
             <ItemActions>
               {check.status === "已通过" && (
@@ -861,6 +874,15 @@ export function ReadinessCheck({
                 <li key={warning}>{warning}</li>
               ))}
             </ul>
+            <RuntimeErrorDetails
+              title="运行错误诊断"
+              items={[
+                ["查账错误码", status?.ledger.last_error_code],
+                ["自动确认收款错误码", status?.reconciliation.last_error_code],
+                ["通知错误码", status?.webhook.last_error_code],
+                ["备份失败阶段", status?.backup.last_error_stage],
+              ]}
+            />
           </AlertDescription>
           <div className="col-start-2 flex pt-2">
             <Link

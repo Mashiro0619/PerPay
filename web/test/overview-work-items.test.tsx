@@ -113,6 +113,7 @@ describe("overview work item context", () => {
     expect(within(rows[1]!).getByText("2026101110350010000002")).toBeVisible();
     expect(within(rows[1]!).getByLabelText("应付金额 ¥599.01")).toBeVisible();
     for (const row of rows) {
+      expect(within(row).getByText("应付", { exact: true })).toBeVisible();
       expect(within(row).getByText("商户订单号")).toBeVisible();
       expect(within(row).getByText("请求超时")).toBeVisible();
       expect(within(row).getByTitle("2026/10/11 12:00（北京时间）")).toBeVisible();
@@ -165,15 +166,15 @@ describe("overview work item context", () => {
   ])("retains ledger identity when a $type reminder has no related order", (item) => {
     mount([item]);
     expect(screen.getByText("未关联订单")).toBeVisible();
-    expect(screen.getByText("流水 " + item.ledger_entry_id)).toHaveAttribute("title", item.ledger_entry_id);
+    expect(screen.getByText("内部流水编号（PerPay） " + item.ledger_entry_id)).toHaveAttribute("title", item.ledger_entry_id);
     expect(screen.queryByRole("link", { name: /^查看订单/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/¥/)).not.toBeInTheDocument();
   });
 
   it("prefers the external ledger reference for shared conflicts", () => {
     mount([conflict]);
-    expect(screen.getByText("流水 ALI-SHARED-CONFLICT-001")).toBeVisible();
-    expect(screen.queryByText("流水 " + conflict.ledger_entry_id)).not.toBeInTheDocument();
+    expect(screen.getByText("支付宝流水号 ALI-SHARED-CONFLICT-001")).toBeVisible();
+    expect(screen.queryByText("内部流水编号（PerPay） " + conflict.ledger_entry_id)).not.toBeInTheDocument();
   });
 
   it("labels the order identifier link when its readable summary is unavailable", () => {
@@ -181,7 +182,7 @@ describe("overview work item context", () => {
     expect(screen.getByText("订单摘要暂不可用")).toBeVisible();
     expect(screen.getByTitle(order.order_id)).toBeVisible();
     const orderLink = screen.getByRole("link", { name: /^查看订单/ });
-    expect(orderLink).toHaveTextContent("订单号");
+    expect(orderLink).toHaveTextContent("内部订单编号（PerPay）");
     expect(orderLink).toHaveTextContent(order.order_id);
     expect(orderLink).toHaveAttribute("href", "/orders/" + order.order_id);
     expect(screen.queryByText("¥0.00")).not.toBeInTheDocument();

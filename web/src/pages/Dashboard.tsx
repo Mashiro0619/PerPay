@@ -121,7 +121,7 @@ function DashboardContent() {
             <Alert>
               <AlertCircle />
               <AlertTitle>
-                {unavailable ? "暂时无法确认收款状态" : "正在检查收款状态…"}
+                {unavailable ? "暂时无法读取收款服务状态" : "正在检查收款服务状态…"}
               </AlertTitle>
               <AlertDescription>
                 <div className="flex items-center gap-2">
@@ -227,7 +227,7 @@ function DashboardContent() {
                   to={"/orders"}
                   className={buttonVariants({ variant: "ghost", size: "sm" })}
                 >
-                  全部订单
+                  {clientId ? "本站订单" : "全部订单"}
                   <ArrowRight data-icon="inline-end" />
                 </Link>
               </CardAction>

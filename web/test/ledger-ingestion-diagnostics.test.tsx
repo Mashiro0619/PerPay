@@ -13,11 +13,15 @@ function diagnostic(): LedgerDiagnostics {
 }
 
 describe("ingestion failure presentation", () => {
-  it("shows the persisted account count, controlled reason, window and real schedule without action buttons", () => {
+  it("shows the current source count, controlled reason, window and real schedule without action buttons", () => {
     render(<LedgerIngestionDiagnostics diagnostics={diagnostic()} />);
     expect(screen.getByText("查账持续失败")).toBeVisible();
+    expect(screen.getByText("pagination_invalid")).not.toBeVisible();
+    expect(screen.getByText(/账单流水时间超出/)).toBeVisible();
     fireEvent.click(screen.getByRole("button",{name:"失败详情"}));
-    expect(screen.getByText(/账户级连续失败 3 次/)).toBeVisible();
+    expect(screen.getByText(/当前查账来源连续失败 3 次/)).toBeVisible();
+    expect(screen.getByText("pagination_invalid")).toBeVisible();
+    expect(screen.getByText(/当前来源的正常与历史查账失败/)).toBeVisible();
     expect(screen.getByText(/账单流水时间超出/)).toBeVisible();
     expect(screen.getByText(/^失败窗口：/)).toBeVisible();
     expect(screen.getByText(/计划下次尝试：.*12:00:08/)).toBeVisible();
@@ -58,7 +62,7 @@ describe("ingestion failure presentation", () => {
     status.ledger.consecutive_failures = 0; status.ledger.last_error_code = null;
     mountOnboarding({ stage: 4, path: "/system", status: () => status });
     expect(await screen.findByText("查账持续失败")).toBeVisible();
-    expect(screen.getByText(/账户级连续失败 3 次/)).toBeVisible();
+    expect(screen.getByText(/当前查账来源连续失败 3 次/)).toBeVisible();
   });
   it("retains runtime storage errors even when no provider failure was persisted", async () => {
     const status = systemStatus();
@@ -66,7 +70,8 @@ describe("ingestion failure presentation", () => {
     status.ledger.last_error_code = "ledger_schedule_storage_error";
     status.ledger.consecutive_failures = 1;
     mountOnboarding({ stage: 4, path: "/system", status: () => status });
-    expect(await screen.findByText(/最近错误：ledger_schedule_storage_error/)).toBeVisible();
+    expect(await screen.findByText(/查账进度暂时无法读取或保存/)).toBeVisible();
+    expect(screen.queryByText(/最近错误：ledger_schedule_storage_error/)).not.toBeInTheDocument();
     expect(screen.queryByText("查账持续失败")).not.toBeInTheDocument();
   });
 

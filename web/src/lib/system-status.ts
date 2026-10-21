@@ -61,7 +61,7 @@ export function presentSystemStatus(data: SystemStatus) {
     businessPending,
     runtimeWarning,
     notice: !canReceive
-      ? "收款已暂停"
+      ? "已暂停接收新订单"
       : runtimeWarning
         ? "有运行告警"
         : businessPending

@@ -93,6 +93,21 @@ function mount(path = "/sites/site_test/settings/basic", failSave = false, field
 afterEach(() => onlineManager.setOnline(true));
 
 describe("business website management", () => {
+  it("explains notification and return prefix changes separately before saving", async () => {
+    const view = mount("/sites/site_test/settings/integration");
+    const user = userEvent.setup();
+    fireEvent.change(await screen.findByLabelText("通知地址前缀"), { target: { value: "https://notify.example.com" } });
+    fireEvent.change(screen.getByLabelText("返回地址前缀"), { target: { value: "https://shop.example.com" } });
+    await user.click(screen.getByRole("button", { name: "保存业务网站" }));
+    const confirmation = await screen.findByRole("alertdialog");
+    expect(confirmation).toHaveTextContent("通知地址前缀变更后，后续发送将按新前缀检查；旧通知地址可能不再允许发送。");
+    expect(confirmation).toHaveTextContent("返回地址前缀变更后，新订单的返回地址将按新前缀检查。");
+    expect(view.writes).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "确认" }));
+    await waitFor(() => expect(view.writes).toHaveLength(1));
+    expect(view.writes[0]!.body).toMatchObject({ configuration: { notification_origin: "https://notify.example.com", return_origin: "https://shop.example.com", notifications_enabled: false } });
+  });
+
   it("blocks submission and protects an invalid seconds draft when leaving", async () => {
     const view = mount("/sites/site_test/settings/integration"), user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "高级设置" }));
@@ -369,7 +384,7 @@ describe("website configuration recovery", () => {
     await user.click(await screen.findByRole("button", { name: "读取最新配置并核对" }));
     await user.click(await screen.findByRole("button", { name: "保留我的修改" }));
     await user.click(screen.getByRole("button", { name: "应用核对结果" }));
-    expect(screen.getByLabelText("金额复用冷却（秒）")).toHaveValue(1200);
+    expect(screen.getByLabelText("应付金额复用等待（秒）")).toHaveValue(1200);
     expect(screen.getByLabelText("待付款订单上限")).toHaveValue(10);
     await user.click(screen.getByRole("button", { name: "保存业务网站" }));
     await waitFor(() => expect(view.writes).toHaveLength(2));

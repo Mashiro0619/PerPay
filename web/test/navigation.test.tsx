@@ -355,7 +355,7 @@ describe("navigation and draft protection", () => {
       container.querySelector(".payment-pipeline, .daily-chart"),
     ).toBeNull();
     expect(screen.getByRole("heading", { name: "全部待处理" })).toBeVisible();
-    expect(await screen.findByText("已暂停接收新订单")).toBeVisible();
+    expect(await screen.findByText("已暂停接收新订单", { selector: '[data-slot="alert-title"]' })).toBeVisible();
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "统计口径" }));
