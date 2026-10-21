@@ -122,7 +122,7 @@ export function AppSidebar({
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className="group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:py-2 group-data-[collapsible=icon]:[&_[data-slot=sidebar-group]]:py-0">
         <nav aria-label="主导航">
           <NavMain items={items.slice(0, 4)} pathname={pathname} />
         </nav>
