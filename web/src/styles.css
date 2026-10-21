@@ -505,8 +505,8 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
   }
 }
 
-/* Plain text links share the native link variant's hover feedback. */
-a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^="menuitem"], [role="tab"], [data-slot="item"], [data-slot="site-overview-card"], [aria-disabled="true"], [data-disabled], [data-external-link])) {
+/* Row titles use row hover feedback; ordinary text links underline on hover. */
+a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^="menuitem"], [role="tab"], [data-slot="item"], [data-slot="site-overview-card"], [data-row-link], [aria-disabled="true"], [data-disabled], [data-external-link])) {
   text-underline-offset: 0.25rem;
   &:hover { text-decoration-line: underline; }
 }
