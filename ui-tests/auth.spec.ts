@@ -19,7 +19,7 @@ test("login, failed credentials, session loading and recovery have a unique titl
   await expect(page.locator("[data-content-width]")).toBeVisible();
   await page.route("**/api/admin/v1/session", route => route.fulfill({ status: 503, json: { error: { code: "ui_synthetic_read_failure", message: "合成会话读取失败" } } }));
   await page.reload();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("无法验证管理员会话");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("无法检查登录状态");
   await expect(page.getByRole("button", { name: "重试", exact: true })).toBeVisible();
   await record(page, info, { state: "session read failure" });
   await page.unroute("**/api/admin/v1/session");

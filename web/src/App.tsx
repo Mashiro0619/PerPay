@@ -381,7 +381,7 @@ export const appRoutes = createRoutesFromElements(
           </EmptyHeader>
           <EmptyContent>
             <Link to="/" className={buttonVariants()}>
-              返回收款概览
+              返回总览
             </Link>
           </EmptyContent>
         </Empty>

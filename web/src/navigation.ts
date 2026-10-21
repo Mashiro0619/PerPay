@@ -100,7 +100,7 @@ export function useNavigate(): WorkspaceNavigateFunction {
 }
 
 function localPath(path: string) { const scope = workspaceScope(path); return scope.clientId ? path.slice(scope.base.length) || "/" : path; }
-const listLabels: Record<string, string> = { "/": "收款概览", "/orders": "订单列表", "/notifications": "通知", "/work-items": "待处理", "/reconciliation": "对账", "/ledger": "支付宝流水" };
+const listLabels: Record<string, string> = { "/": "总览", "/orders": "订单列表", "/notifications": "通知", "/work-items": "待处理", "/reconciliation": "对账", "/ledger": "支付宝流水" };
 type ListReturn = { to: string; label: string; state?: unknown };
 function readListReturn(value: unknown): ListReturn | null {
   if (!value || typeof value !== "object") return null;
@@ -162,5 +162,5 @@ export function useDetailBack(to: string, label: string): ListReturn {
     }
     return saved;
   }
-  return { to: workspaceHref(scope, to) as string, label: scope.clientId && to.startsWith("/reconciliation") ? "本站待处理" : label };
+  return { to: workspaceHref(scope, to) as string, label: scope.clientId && to.startsWith("/reconciliation") ? "本站待处理" : scope.clientId && to === "/orders" ? "本站订单" : label };
 }

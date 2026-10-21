@@ -57,14 +57,14 @@ export function AuthBoundary({ children }: { children: ReactNode }) {
   if (session.isPending)
     return (
       <main className="mx-auto flex min-h-svh max-w-md flex-col justify-center gap-6 p-6">
-        <PageHeading title="正在验证管理员会话" />
-        <Loading label="正在验证管理员会话…" />
+        <PageHeading title="正在检查登录状态" />
+        <Loading label="正在检查登录状态…" />
       </main>
     );
   if (session.isError && !session.data && !rejected) {
     return (
       <main className="mx-auto flex min-h-svh max-w-md flex-col justify-center gap-6 p-6">
-        <PageHeading title="无法验证管理员会话" />
+        <PageHeading title="无法检查登录状态" />
         <ErrorNotice
           error={session.error}
           retry={() => {
