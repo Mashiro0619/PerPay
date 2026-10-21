@@ -938,63 +938,46 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   gap: 1rem;
   container: daily-report / inline-size;
 }
+.daily-report-overview { display: flex; min-width: 0; flex-direction: column; gap: 0.75rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
 .daily-report-summary {
   display: grid;
   min-width: 0;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
-  padding-block: 0.25rem 1rem;
-  border-bottom: 1px solid var(--border);
 }
 .daily-summary-metric { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: 0.375rem; }
 .daily-summary-metric + .daily-summary-metric { padding-left: 1rem; border-left: 1px solid var(--border); }
-.daily-summary-metric dt { color: var(--muted-foreground); font-size: 0.75rem; }
+.daily-summary-metric dt { color: var(--muted-foreground); font-size: 0.875rem; }
 .daily-summary-metric dd { min-width: 0; max-width: 100%; }
 .daily-report .list-money { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .daily-summary-metric .list-money { font-size: 1.25rem; line-height: 1.4; font-weight: 600; }
-.daily-summary-note { color: var(--muted-foreground); font-size: 0.75rem; }
-.daily-report-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.25rem; margin-block: -0.5rem -0.75rem; }
-.daily-report-loading { display: flex; min-width: 0; flex-direction: column; gap: 1rem; }
-.daily-weeks { min-width: 0; }
-.daily-week-trigger { min-width: 0; align-items: center; gap: 1rem; padding-block: 1rem; }
-.daily-week-heading { display: grid; width: 100%; min-width: 0; grid-template-columns: minmax(10rem, 1fr) minmax(0, 1.6fr); align-items: center; gap: 1rem; }
-.daily-week-period { display: flex; min-width: 0; flex-direction: column; gap: 0.375rem; font-variant-numeric: tabular-nums; }
-.daily-week-note { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; color: var(--muted-foreground); font-size: 0.75rem; font-weight: 400; }
-.daily-week-metrics { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) 5rem 5rem; align-items: start; gap: 1rem; }
-.daily-week-metric { display: flex; min-width: 0; flex-direction: column; align-items: flex-end; gap: 0.375rem; font-variant-numeric: tabular-nums; }
-.daily-week-metric > :first-child { color: var(--muted-foreground); font-size: 0.75rem; font-weight: 400; }
-.daily-week-content { min-width: 0; padding-bottom: 0.75rem; }
-.daily-week-table { table-layout: fixed; }
-.daily-week-table .daily-date-column { width: 10rem; }
-.daily-week-table .daily-count-column { width: 6rem; }
-.daily-week-table td { white-space: normal; overflow-wrap: anywhere; }
-.daily-week-table :is(th, td):not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.daily-summary-note { color: var(--muted-foreground); font-size: 0.875rem; }
+.daily-report-loading { display: flex; min-width: 0; flex-direction: column; gap: 0.5rem; }
+.daily-report-table { table-layout: fixed; }
+.daily-report-table .daily-date-column { width: 26%; }
+.daily-report-table .daily-amount-column { width: 38%; }
+.daily-report-table .daily-count-column { width: 18%; }
+.daily-report-table td { white-space: normal; overflow-wrap: anywhere; }
+.daily-report-table :is(th, td):not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.daily-report-table .list-money { font-size: inherit; }
 .daily-date { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 0.375rem; font-variant-numeric: tabular-nums; }
-.daily-date-weekday { color: var(--muted-foreground); font-size: 0.75rem; }
-/* Reserve the same numeric slot in every row so every SVG has the same pixel scale. */
-.daily-amount { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) 9rem; align-items: center; gap: 1rem; }
+.daily-date-weekday { color: var(--muted-foreground); font-size: 0.875rem; }
+/* A fixed short track and independent numeric slot keep every page comparable. */
+.daily-amount { display: grid; min-width: 0; grid-template-columns: 64px minmax(0, 10ch); justify-content: end; align-items: center; gap: 0.75rem; }
 .daily-amount > .list-money { text-align: right; }
-.daily-amount-bar { display: block; width: 100%; min-width: 0; height: 4px; color: var(--chart-1); }
+.daily-amount-bar { display: block; width: 64px; height: 4px; color: var(--chart-1); }
 .daily-amount-track { fill: var(--muted); }
-.daily-mobile-day { display: flex; width: 100%; min-width: 0; flex-direction: column; gap: 0.75rem; }
 .daily-mobile-list .record-list-row { padding: 0.875rem 0.25rem; }
-.daily-mobile-list .list-summary { gap: 0.625rem; }
 .daily-mobile-list .list-summary-heading { align-items: flex-start; gap: 0.75rem; }
 .daily-mobile-list .list-summary-aside { min-width: 0; }
 .daily-mobile-list .business-summary-field { flex-direction: row; align-items: baseline; gap: 0.375rem; }
-.daily-report-status { color: var(--muted-foreground); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+.daily-mobile-list :is(.list-money, .list-identity-title, .business-summary-field dt, .business-summary-field dd) { font-size: 0.875rem; }
+.daily-report-footer { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.daily-report-status { color: var(--muted-foreground); font-size: 0.875rem; font-variant-numeric: tabular-nums; }
 @container daily-report (max-width: 39.999rem) {
   .daily-report-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 0.75rem; }
   .daily-summary-metric:first-child { grid-column: 1 / -1; }
   .daily-summary-metric:nth-child(2) { padding-left: 0; border-left: 0; }
   .daily-summary-metric:nth-child(3) { padding-left: 0.75rem; }
   .daily-summary-metric .list-money { font-size: 1.125rem; }
-  .daily-week-heading { grid-template-columns: minmax(0, 1fr); gap: 0.625rem; }
-  .daily-week-period { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0.375rem 0.75rem; }
-  .daily-week-metrics { grid-template-columns: minmax(0, 1fr) auto auto; gap: 0.75rem; }
-  .daily-week-metric:first-child { align-items: flex-start; }
-  .daily-week-trigger { gap: 0.5rem; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .daily-weeks [data-slot="accordion-content"] { animation: none; }
 }

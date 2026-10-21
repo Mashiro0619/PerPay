@@ -46,7 +46,7 @@ try {
       notifications: { acknowledged: 0, failed: 0, pending: 0 },
       pending: { orders: 0, exceptions: 0, conflicts: 0, notifications: 0 },
     };
-    const markup = renderToString(createElement(DailyAnalytics, { analytics, range: 30, pending: false }));
+    const markup = renderToString(createElement(DailyAnalytics, { analytics, range: 30, pending: false, scopeKey: "amount-layout-fixture" }));
     for (const width of [640, 1048]) cases.push({
       id: `${large ? "large" : "normal"}-${width}`, width, markup,
       amounts: Object.fromEntries(daily.map((day) => [day.date, day.confirmed_amount_cents])),
@@ -67,8 +67,14 @@ async function checkLayout(fixtures) {
       const section = document.getElementById(fixture.id);
       const bars = [...section.querySelectorAll("svg[data-date]")];
       const track = bars[0].getBoundingClientRect().width;
-      assert(section.querySelectorAll("table").length === 2, `${fixture.id}: expected two open weeks`);
-      assert(track > 0, `${fixture.id}: bars must have visible tracks`);
+      assert(section.querySelectorAll("table.daily-report-table").length === 1, `${fixture.id}: expected one daily table`);
+      assert(section.querySelectorAll("thead").length === 1, `${fixture.id}: expected one table header`);
+      assert(section.querySelectorAll("tbody tr").length === 10, `${fixture.id}: expected ten days on the first page`);
+      assert(bars.length === 10, `${fixture.id}: expected one bar per day`);
+      assert(Math.abs(track - 64) < 0.05, `${fixture.id}: bar tracks must remain 64px wide`);
+      assert(section.querySelector('[aria-label="每日数据分页"]'), `${fixture.id}: missing local pagination`);
+      assert(section.querySelector('[role="status"]').textContent === "第 1/3 页 · 共 30 天", `${fixture.id}: wrong initial page`);
+      assert(!section.querySelector(".daily-weeks"), `${fixture.id}: obsolete weekly grouping`);
       const measured = bars.map((bar) => {
         const amount = fixture.amounts[bar.dataset.date];
         const actualTrack = bar.getBoundingClientRect().width;
@@ -76,16 +82,21 @@ async function checkLayout(fixtures) {
         assert(Math.abs(actualTrack - track) < 0.05, `${fixture.id}: unequal track at ${bar.dataset.date}`);
         assert(Math.abs(fill - track * amount / fixture.maximum) < 0.05, `${fixture.id}: incorrect fill at ${bar.dataset.date}`);
         if (amount === 0) assert(fill === 0, `${fixture.id}: zero amount has a visible fill`);
-        return { amount, fill };
+        const value = document.createRange();
+        value.selectNodeContents(bar.parentElement.querySelector(".list-money"));
+        return { amount, fill, textGap: value.getBoundingClientRect().left - bar.getBoundingClientRect().right };
       });
       const smaller = measured.find((row) => row.amount === 99900);
       const larger = measured.find((row) => row.amount === 100000);
       assert(smaller && larger && smaller.fill <= larger.fill + 0.001, `${fixture.id}: ¥999 bar is longer than ¥1,000`);
+      assert(smaller.textGap >= 8 && smaller.textGap <= 48, `${fixture.id}: amount text is too far from its bar`);
+      const numericBounds = [...section.querySelectorAll(".daily-amount > .list-money")].map(element => element.getBoundingClientRect());
+      assert(numericBounds.every(bounds => Math.abs(bounds.right - numericBounds[0].right) < 0.05), `${fixture.id}: amount values must align right`);
       for (const element of section.querySelectorAll(".daily-amount, .daily-amount > .list-money, table, [data-slot=table-container]")) {
         assert(element.scrollWidth <= element.clientWidth + 1, `${fixture.id}: ${element.className} overflows`);
         assert(element.scrollHeight <= element.clientHeight + 1, `${fixture.id}: ${element.className} clips vertically`);
       }
-      results.push({ id: fixture.id, rows: bars.length, track, smallerFill: smaller.fill, largerFill: larger.fill });
+      results.push({ id: fixture.id, rows: bars.length, track, smallerFill: smaller.fill, largerFill: larger.fill, smallerTextGap: smaller.textGap });
     }
     document.body.dataset.layoutResult = "passed";
   } catch (error) {

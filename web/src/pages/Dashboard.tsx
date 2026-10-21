@@ -180,6 +180,7 @@ function DashboardContent() {
           }}
         />
         <ChartAreaInteractive
+          scopeKey={clientId ?? "all"}
           analytics={data}
           chartType={
             settings.data?.data.display?.dashboard_chart_type ?? "AREA"

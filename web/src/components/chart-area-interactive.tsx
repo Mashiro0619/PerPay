@@ -74,12 +74,14 @@ export function ChartAreaInteractive({
   range,
   onRangeChange,
   pending,
+  scopeKey = "all",
 }: {
   analytics: SystemAnalytics | undefined;
   chartType?: DashboardChartType;
   range: number;
   onRangeChange: (value: string) => void;
   pending: boolean;
+  scopeKey?: string;
 }) {
   const [metric, setMetric] = useState("amount");
   const [view, setView] = useState("chart");
@@ -142,7 +144,7 @@ export function ChartAreaInteractive({
                   按北京时间统计；订单按创建时间，收款按 PerPay 确认时间。待付款为当前开放且待付款的订单。
                 </p>
                 <p className="text-sm">
-                  每日数据按周一至周日分组，周汇总仅计算所选区间内的日期。日均和单日最高只统计已结束的日期，不含今天；每日金额横条按所选区间（含今日）的最高金额比较。
+                  每日数据按日期倒序展示，每页 10 天。日均和单日最高只统计已结束的日期，不含今天；金额横条按整个所选区间（含今日）的最高金额比较，翻页不改变比例。
                 </p>
               </PopoverContent>
             </Popover>
@@ -404,6 +406,7 @@ export function ChartAreaInteractive({
           <TabsContent value="daily" keepMounted>
             <CardContent>
               <DailyAnalytics
+                scopeKey={scopeKey}
                 analytics={analytics}
                 range={range}
                 pending={pending}

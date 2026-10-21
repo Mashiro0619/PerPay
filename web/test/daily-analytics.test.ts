@@ -32,7 +32,7 @@ function analytics(daily: DailyDay[], to: string): SystemAnalytics {
 }
 
 describe("daily report calendar and comparisons", () => {
-  it("groups Monday through Sunday together and clips week dates to the response", () => {
+  it("keeps every returned date newest-first without adding grouping rows or missing days", () => {
     const report = buildDailyReport(analytics([
       day("2026-10-06", 100, 1, 2),
       day("2026-10-07", 200, 2, 3),
@@ -44,35 +44,26 @@ describe("daily report calendar and comparisons", () => {
     ], "2026-10-12T16:00:00.000Z"));
 
     expect(report.today).toBe("2026-10-12");
-    expect(report.weeks.map((week) => week.key)).toEqual(["2026-10-12", "2026-10-05"]);
-    expect(report.weeks[0]).toMatchObject({
-      from: "2026-10-12", to: "2026-10-12", confirmedAmountCents: 500,
-      confirmations: 5, ordersCreated: 6, inProgress: true,
-    });
-    expect(report.weeks[1]).toMatchObject({
-      from: "2026-10-06", to: "2026-10-11", confirmedAmountCents: 1000,
-      confirmations: 10, ordersCreated: 15, inProgress: false,
-    });
-    expect(report.weeks[1]!.days.map((value) => value.date)).toEqual([
-      "2026-10-11", "2026-10-10", "2026-10-09", "2026-10-08", "2026-10-07", "2026-10-06",
+    expect(report.days.map((value) => value.date)).toEqual([
+      "2026-10-12", "2026-10-11", "2026-10-10", "2026-10-09", "2026-10-08", "2026-10-07", "2026-10-06",
     ]);
+    expect(report.days[0]).toMatchObject({ confirmed_amount_cents: 500, confirmations: 5, orders_created: 6 });
+    expect(report.days.at(-1)).toMatchObject({ confirmed_amount_cents: 100, confirmations: 1, orders_created: 2 });
   });
 
   it.each([
     {
       dates: ["2025-12-28", "2025-12-29", "2025-12-30", "2025-12-31", "2026-01-01", "2026-01-02", "2026-01-03"],
       to: "2026-01-03T16:00:00Z",
-      keys: ["2025-12-29", "2025-12-22"],
     },
     {
       dates: ["2028-02-26", "2028-02-27", "2028-02-28", "2028-02-29", "2028-03-01", "2028-03-02", "2028-03-03"],
       to: "2028-03-03T16:00:00Z",
-      keys: ["2028-02-28", "2028-02-21"],
     },
-  ])("keeps calendar weeks continuous across year and leap-day boundaries", ({ dates, to, keys }) => {
+  ])("keeps dates continuous across year and leap-day boundaries", ({ dates, to }) => {
     const report = buildDailyReport(analytics(dates.map((date) => day(date)), to));
-    expect(report.weeks.map((week) => week.key)).toEqual(keys);
-    expect(report.weeks.flatMap((week) => week.days).map((value) => value.date)).toEqual([...dates].reverse());
+    expect(report.days.map((value) => value.date)).toEqual([...dates].reverse());
+    expect(new Set(report.days.map((value) => value.date)).size).toBe(dates.length);
   });
 
   it("uses the response's exclusive Beijing boundary for today, independently of the device date", () => {
@@ -117,7 +108,7 @@ describe("daily report calendar and comparisons", () => {
     expect(todayOnly.maximum).toBe(125);
 
     const empty = buildDailyReport(analytics([], "2026-10-12T16:00:00Z"));
-    expect(empty).toMatchObject({ days: [], weeks: [], maximum: 0, averageCents: null, peak: null });
+    expect(empty).toMatchObject({ days: [], maximum: 0, averageCents: null, peak: null });
   });
 
   it("sorts shuffled dates without mutating the response or its day records", () => {
@@ -132,7 +123,6 @@ describe("daily report calendar and comparisons", () => {
     const report = buildDailyReport(input);
     expect(input).toEqual(before);
     expect(report.days.map((value) => value.date)).toEqual(["2026-10-12", "2026-10-11", "2026-10-10"]);
-    expect(report.weeks.flatMap((week) => week.days)).toEqual(report.days);
   });
 
   it("formats short calendar dates and Chinese weekdays without local time conversion", () => {
