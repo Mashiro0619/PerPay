@@ -245,7 +245,7 @@ export function WorkspaceSwitcher({
   </>;
   if (icon) return <SidebarMenuItem>
     <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-      <PopoverTrigger render={<SidebarMenuButton size="lg" tooltip={`业务网站 · ${selectedName}`} aria-label={`切换业务网站，当前${selectedName}`} />}>
+      <PopoverTrigger render={<SidebarMenuButton tooltip={`业务网站 · ${selectedName}`} aria-label={`切换业务网站，当前${selectedName}`} />}>
         <Globe />
         <span className="sr-only">业务网站</span>
       </PopoverTrigger>
