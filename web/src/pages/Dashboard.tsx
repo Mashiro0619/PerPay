@@ -27,7 +27,6 @@ import {
   CardTitle,
   CardContent,
   CardAction,
-  CardDescription,
 } from "@/components/ui/card";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
@@ -222,7 +221,6 @@ function DashboardContent() {
               <CardTitle id="overview-orders-title" role="heading" aria-level={2}>
                 最近订单
               </CardTitle>
-              <CardDescription>最新 5 笔订单的收款与通知进展</CardDescription>
               <CardAction>
                 <Link
                   to={"/orders"}

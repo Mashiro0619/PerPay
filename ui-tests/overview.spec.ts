@@ -142,7 +142,7 @@ test("recent orders keep compact summaries and header geometry across themes and
     }, { theme, mode });
     await page.goto(manifest.origin + "/admin" + (scoped ? sitePath : "/"));
     await expect(panel.locator(".overview-order-summary")).toHaveCount(5);
-    await expect(panel.locator('[data-slot="card-description"]')).toBeHidden();
+    await expect(panel.locator('[data-slot="card-description"]')).toHaveCount(0);
     const geometry = await panel.evaluate(panel => {
       const bounds = panel.getBoundingClientRect();
       const header = panel.querySelector('[data-slot="card-header"]')!.getBoundingClientRect();
@@ -216,11 +216,10 @@ test("recent order headers and tables switch at the same measured container boun
     }, target);
     await expect.poll(() => list.evaluate(element => element.getBoundingClientRect().width)).toBe(target);
     await expect(list).toHaveAttribute("data-list-layout", target < 640 ? "summary" : "table");
+    await expect(panel.locator('[data-slot="card-description"]')).toHaveCount(0);
     if (target < 640) {
-      await expect(panel.locator('[data-slot="card-description"]')).toBeHidden();
       await expect(panel.getByRole("list", { name: "最近订单", exact: true })).toBeVisible();
     } else {
-      await expect(panel.locator('[data-slot="card-description"]')).toBeVisible();
       await expect(panel.getByRole("columnheader")).toHaveCount(target < 768 ? 4 : 5);
     }
     await expect(panel.locator('[data-business-row]').first().locator("time")).toHaveCount(2);

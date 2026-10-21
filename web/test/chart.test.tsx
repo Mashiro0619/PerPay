@@ -610,8 +610,8 @@ describe("paginated daily analytics report", () => {
       .toHaveTextContent("¥2.02");
     expect(container.querySelector('[data-daily-summary="peak"]'))
       .toHaveTextContent("06-04");
-    expect(screen.getAllByText("区间金额含今日；日均与最高不含今日。"))
-      .toHaveLength(1);
+    expect(screen.queryByText("区间金额含今日；日均与最高不含今日。"))
+      .not.toBeInTheDocument();
     const today = container.querySelector('time[datetime="2026-06-07"]')?.closest("tr");
     expect(today).toHaveTextContent("今日");
     expect(today).toHaveTextContent("周日");

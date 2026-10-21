@@ -80,24 +80,21 @@ function DailyReport({ analytics, pending }: DailyAnalyticsProps) {
           ))}
         </div>
       ) : hasDays && report && analytics ? (
-        <div className="daily-report-overview">
-          <dl className="daily-report-summary" aria-label="每日数据汇总">
-            <div className="daily-summary-metric" data-daily-summary="total">
-              <dt>区间确认金额</dt>
-              <dd><ListMoney value={analytics.confirmations.amount_cents} /></dd>
-            </div>
-            <div className="daily-summary-metric" data-daily-summary="average">
-              <dt>日均确认金额</dt>
-              <dd><ListMoney value={report.averageCents} /></dd>
-            </div>
-            <div className="daily-summary-metric" data-daily-summary="peak">
-              <dt>单日最高金额</dt>
-              <dd><ListMoney value={report.peak?.confirmed_amount_cents} /></dd>
-              {report.peak && <dd className="daily-summary-note"><time dateTime={report.peak.date}>{dailyDateLabel(report.peak.date, includeYear)}</time></dd>}
-            </div>
-          </dl>
-          <p className="daily-summary-note">区间金额含今日；日均与最高不含今日。</p>
-        </div>
+        <dl className="daily-report-summary" aria-label="每日数据汇总">
+          <div className="daily-summary-metric" data-daily-summary="total">
+            <dt>区间确认金额</dt>
+            <dd><ListMoney value={analytics.confirmations.amount_cents} /></dd>
+          </div>
+          <div className="daily-summary-metric" data-daily-summary="average">
+            <dt>日均确认金额</dt>
+            <dd><ListMoney value={report.averageCents} /></dd>
+          </div>
+          <div className="daily-summary-metric" data-daily-summary="peak">
+            <dt>单日最高金额</dt>
+            <dd><ListMoney value={report.peak?.confirmed_amount_cents} /></dd>
+            {report.peak && <dd className="daily-summary-note"><time dateTime={report.peak.date}>{dailyDateLabel(report.peak.date, includeYear)}</time></dd>}
+          </div>
+        </dl>
       ) : null}
 
       <div id={daysId}>
