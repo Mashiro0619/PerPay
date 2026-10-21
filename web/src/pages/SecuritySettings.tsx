@@ -28,6 +28,7 @@ import { useDirtyDraft, useDraftGuard } from "@/drafts";
 import { CopyValue } from "@/components/copy-value";
 import { StatusBadge } from "@/components/business-status";
 import { ListDateTime } from "@/components/list-primitives";
+import { DetailCardGrid } from "@/components/detail/DetailCardGrid";
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -117,9 +118,9 @@ export function SecuritySettings({
   });
   return (
     <>
-      <div className="grid min-w-0 items-start gap-4 @3xl/settings:grid-cols-2">
-        <AdminAccessSettings settings={settings} onSaved={onSaved} />
-        <Card>
+      <DetailCardGrid className="security-settings-card-grid">
+        <AdminAccessSettings key="admin-access" settings={settings} onSaved={onSaved} />
+        <Card key="secrets">
           <CardHeader>
             <CardTitle role="heading" aria-level={2}>
               密钥
@@ -229,9 +230,8 @@ export function SecuritySettings({
             </ItemGroup>
           </CardContent>
         </Card>
-        <FieldGroup className="min-w-0 gap-4">
-          <PasswordForm />
-          <Card>
+        <PasswordForm key="password" />
+          <Card key="sessions">
             <CardHeader>
               <CardTitle role="heading" aria-level={2}>
                 登录会话
@@ -265,8 +265,7 @@ export function SecuritySettings({
               </CardAction>
             </CardHeader>
           </Card>
-        </FieldGroup>
-      </div>
+      </DetailCardGrid>
       {reveal && (
         <SecretDialog
           finalFocus={() => dialogOrigin.current}

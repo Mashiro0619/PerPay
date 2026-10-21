@@ -121,7 +121,7 @@ describe("official block composition", () => {
     },
   );
 
-  it("keeps password submission in the card footer and in the same form as its fields", () => {
+  it("keeps security cards independent and password submission in the same form as its fields", () => {
     const { container } = render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter>
@@ -133,6 +133,10 @@ describe("official block composition", () => {
       .getByRole("heading", { name: "修改密码" })
       .closest("[data-slot=card]");
     const submit = screen.getByRole("button", { name: "修改并重新登录" });
+    const grid = container.querySelector(".security-settings-card-grid")!;
+    expect([...grid.children].map(item => item.querySelector("[data-slot=card-title]")?.textContent)).toEqual([
+      "管理员 IP 白名单", "密钥", "修改密码", "登录会话",
+    ]);
     expect(submit.closest("[data-slot=card-footer]")).not.toBeNull();
     expect(submit.closest("[data-slot=card]")).toBe(card);
     expect(submit.closest("form")).toBe(
