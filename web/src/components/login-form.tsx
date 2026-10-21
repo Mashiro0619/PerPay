@@ -65,6 +65,11 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
   >(null);
   const [configured, setConfigured] = useState(false);
   const [alreadyInitialized, setAlreadyInitialized] = useState(false);
+  const passwordError =
+    !setup && error instanceof ApiError && error.code === "invalid_credentials"
+      ? "管理员密码不正确，请检查后重试。"
+      : null;
+  const passwordInvalid = invalidField === "password" || passwordError !== null;
 
   useEffect(() => {
     document.title = `${title} · ${systemName}`;
@@ -195,7 +200,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                       </AlertDescription>
                     </Alert>
                   )}
-                  <Field data-invalid={invalidField === "password"}>
+                  <Field data-invalid={passwordInvalid}>
                     <FieldLabel htmlFor="password">
                       {setup ? "设置管理员密码" : "管理员密码"}
                     </FieldLabel>
@@ -210,9 +215,9 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                         required
                         value={password}
                         disabled={pending}
-                        aria-invalid={invalidField === "password"}
+                        aria-invalid={passwordInvalid}
                         aria-describedby={
-                          invalidField === "password"
+                          passwordInvalid
                             ? "password-error"
                             : setup
                               ? "password-hint"
@@ -240,9 +245,9 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                         至少 {MIN_ADMIN_PASSWORD_CHARACTERS} 个字符。
                       </FieldDescription>
                     )}
-                    {invalidField === "password" && (
+                    {passwordInvalid && (
                       <FieldError id="password-error">
-                        {error instanceof Error ? error.message : null}
+                        {passwordError ?? (error instanceof Error ? error.message : null)}
                       </FieldError>
                     )}
                   </Field>
@@ -292,7 +297,13 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                       </FieldLabel>
                     </Field>
                   )}
-                  <ErrorNotice error={invalidField ? null : error} />
+                  <ErrorNotice
+                    error={invalidField || passwordError ? null : error}
+                    showDiagnostics={
+                      !(error instanceof ApiError &&
+                        ["auth_rate_limited", "password_work_busy"].includes(error.code))
+                    }
+                  />
                   <Field>
                     <Button
                       type="submit"

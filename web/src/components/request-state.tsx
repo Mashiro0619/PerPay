@@ -15,9 +15,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 export function ErrorNotice({
   error,
   retry,
+  showDiagnostics = true,
 }: {
   error: unknown;
   retry?: (() => void) | undefined;
+  showDiagnostics?: boolean;
 }) {
   if (!error) return null;
   return (
@@ -33,7 +35,7 @@ export function ErrorNotice({
             {error.retryAfter !== null && (
               <p>{error.retryAfter} 秒后可重试。</p>
             )}
-            {error.requestId && (
+            {showDiagnostics && error.requestId && (
               <Collapsible>
                 <CollapsibleTrigger
                   render={<Button variant="link" size="sm" />}

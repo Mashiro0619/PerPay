@@ -208,7 +208,7 @@ describe("administrator authentication", () => {
         "remember-choice-test-password",
       );
       await user.click(screen.getByRole("button", { name: "登录" }));
-      await screen.findByText("管理员密码错误");
+      await screen.findByText("管理员密码不正确，请检查后重试。");
       expect(await fetchMock.mock.calls[0]![0].json()).toEqual(
         remember
           ? { password: "remember-choice-test-password", remember_me: true }
@@ -232,10 +232,13 @@ describe("administrator authentication", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("preserves an unsuccessful login and never sends a username field", async () => {
+  it("associates rejected credentials with the password field and recovers after editing", async () => {
     initialization("true");
+    let rejectLogin = true;
     const fetchMock = vi.fn(async () =>
-      apiError("invalid_credentials", "管理员密码错误", 401),
+      rejectLogin
+        ? apiError("invalid_credentials", "用户名或密码错误", 401)
+        : json({ data: {} }),
     );
     vi.stubGlobal("fetch", fetchMock);
     const onLogin = vi.fn();
@@ -246,13 +249,89 @@ describe("administrator authentication", () => {
       "incorrect-test-password",
     );
     await user.click(screen.getByRole("button", { name: "登录" }));
-    expect(await screen.findByText("管理员密码错误")).toBeVisible();
+    const password = screen.getByLabelText("管理员密码");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "管理员密码不正确，请检查后重试。",
+    );
+    expect(password).toHaveValue("incorrect-test-password");
+    expect(password).toHaveAttribute("aria-invalid", "true");
+    expect(password).toHaveAttribute("aria-describedby", "password-error");
+    expect(password).toHaveAccessibleDescription(
+      "管理员密码不正确，请检查后重试。",
+    );
+    expect(screen.queryByRole("button", { name: "错误详情" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/test-request-id|用户名或密码错误/)).not.toBeInTheDocument();
     const request = (
       fetchMock.mock.calls as unknown as Array<[Request]>
     )[0]![0];
     expect(await request.json()).toEqual({
       password: "incorrect-test-password",
     });
+    expect(onLogin).not.toHaveBeenCalled();
+
+    rejectLogin = false;
+    await user.clear(password);
+    await user.type(password, "correct-test-password");
+    expect(password).not.toHaveAttribute("aria-invalid", "true");
+    expect(password).not.toHaveAttribute("aria-describedby");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "登录" }));
+    await waitFor(() => expect(onLogin).toHaveBeenCalledOnce());
+    expect(password).toHaveValue("");
+  });
+
+  it.each([
+    ["auth_rate_limited", 429, 60, "尝试过于频繁，请等待后再试。"],
+    ["password_work_busy", 503, 1, "密码验证服务当前繁忙，请稍后重试。"],
+  ] as const)("keeps retry guidance without diagnostics for expected login error %s", async (code, status, retryAfter, message) => {
+    initialization("true");
+    vi.stubGlobal("fetch", vi.fn(async () => json(
+      { error: { code, message, request_id: "test-request-id" } },
+      status,
+      { "Retry-After": String(retryAfter) },
+    )));
+    const user = userEvent.setup();
+    renderPage(<AuthPage onLogin={vi.fn()} />, "/login");
+    await user.type(screen.getByLabelText("管理员密码"), "test-password");
+    await user.click(screen.getByRole("button", { name: "登录" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(message);
+    expect(alert).toHaveTextContent(`${retryAfter} 秒后可重试。`);
+    expect(screen.queryByRole("button", { name: "错误详情" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/test-request-id/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("管理员密码")).not.toHaveAttribute("aria-invalid", "true");
+  });
+
+  it.each([
+    ["internal_error", 500, "服务处理失败，请稍后重试。"],
+    ["origin_not_allowed", 403, "请求来源不受信任"],
+  ] as const)("retains log correlation for unexpected login error %s", async (code, status, message) => {
+    initialization("true");
+    vi.stubGlobal("fetch", vi.fn(async () => apiError(code, message, status)));
+    const user = userEvent.setup();
+    renderPage(<AuthPage onLogin={vi.fn()} />, "/login");
+    await user.type(screen.getByLabelText("管理员密码"), "test-password");
+    await user.click(screen.getByRole("button", { name: "登录" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    expect(screen.queryByText(/请求编号：test-request-id/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "错误详情" }));
+    expect(await screen.findByText("请求编号：test-request-id")).toBeVisible();
+    expect(screen.getByLabelText("管理员密码")).not.toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("explains a disconnected login without blaming the password or adding empty diagnostics", async () => {
+    initialization("true");
+    const onLogin = vi.fn();
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("Failed to fetch"); }));
+    const user = userEvent.setup();
+    renderPage(<AuthPage onLogin={onLogin} />, "/login");
+    const password = screen.getByLabelText("管理员密码");
+    await user.type(password, "test-password");
+    await user.click(screen.getByRole("button", { name: "登录" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("无法连接服务，请检查网络后重试。");
+    expect(password).not.toHaveAttribute("aria-invalid", "true");
+    expect(password).toHaveValue("test-password");
+    expect(screen.queryByRole("button", { name: "错误详情" })).not.toBeInTheDocument();
     expect(onLogin).not.toHaveBeenCalled();
   });
 

@@ -61,7 +61,7 @@ describe("automatic official update checks", () => {
     ).toHaveLength(0);
     await user.type(screen.getByLabelText("管理员密码"), "password");
     await user.click(screen.getByRole("button", { name: "登录" }));
-    await screen.findByText("密码错误");
+    await screen.findByText("管理员密码不正确，请检查后重试。");
     expect(
       view.fetchMock.mock.calls.filter(([request]) => isUpdate(request)),
     ).toHaveLength(0);
