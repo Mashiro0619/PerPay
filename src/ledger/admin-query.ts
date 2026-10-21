@@ -1,3 +1,5 @@
+import type { DatabaseSync } from "node:sqlite";
+
 import type { AppDatabase } from "../database/database.ts";
 import { listCreatedDates, listKeyset, listSearch } from "../database/list-query.ts";
 import { providerEndpoint, type ProviderEnvironment } from "../settings/model.ts";
@@ -129,6 +131,7 @@ const FACT_KEYS = [
   "occurred_at_interval_end_exclusive", "direction", "currency",
   "provider_order_no", "merchant_order_no", "other_account", "memo",
 ] as const satisfies readonly (keyof AdminLedgerFacts)[];
+const duplicateFactConnections = new WeakSet<DatabaseSync>();
 
 interface SourceRow {
   ledger_entry_id: string;
@@ -179,9 +182,12 @@ export function readAdminLedgerPage(
   database: AdminLedgerDatabase,
   query: AdminLedgerQuery,
 ): AdminLedgerPage {
-  const { endpoint, where, parameters, limit, order, cursor } = normalizeQuery(query);
-  const statement = groupedQuery(endpoint, where, parameters, order, cursor, limit + 1);
-  const rows = database.read(db => db.prepare(statement.sql).all(...statement.parameters)) as unknown as GroupRow[];
+  const { endpoint, where, parameters, limit, order, cursor, includeDuplicateVariants } = normalizeQuery(query);
+  const statement = groupedQuery(endpoint, where, parameters, order, cursor, limit + 1, includeDuplicateVariants);
+  const rows = database.read(db => {
+    if (includeDuplicateVariants) registerDuplicateFacts(db);
+    return db.prepare(statement.sql).all(...statement.parameters);
+  }) as unknown as GroupRow[];
   const selected = rows.slice(0, limit);
   const last = selected.at(-1);
   return {
@@ -269,7 +275,25 @@ function normalizeQuery(query: AdminLedgerQuery) {
     !cursor.external_event_id.isWellFormed())) {
     throw new ListQueryError("流水分页游标无效");
   }
-  return { endpoint, where, parameters, limit, order, cursor };
+  const includeDuplicateVariants = !!keyword || query.direction !== undefined ||
+    query.occurredFrom !== undefined || query.minAmountCents !== undefined || query.maxAmountCents !== undefined;
+  return { endpoint, where, parameters, limit, order, cursor, includeDuplicateVariants };
+}
+
+/** Connection-local scalar functions do not change persisted data or the read snapshot. */
+function registerDuplicateFacts(database: DatabaseSync) {
+  if (duplicateFactConnections.has(database)) return;
+  database.function("perpay_admin_ledger_duplicate_facts", { deterministic: true, directOnly: true }, (amount, occurredAt, direction) => {
+    if (typeof amount !== "string" || typeof occurredAt !== "string" || typeof direction !== "string") return null;
+    try {
+      return JSON.stringify({
+        amount_cents: parseAmountCents(amount),
+        occurred_at: parseOccurredAtWithPrecision(occurredAt).milliseconds,
+        direction: parseDirection(direction),
+      });
+    } catch { return null; }
+  });
+  duplicateFactConnections.add(database);
 }
 
 function groupedQuery(
@@ -279,18 +303,56 @@ function groupedQuery(
   order: "asc" | "desc",
   cursor: AdminLedgerCursor | null,
   limit: number,
+  includeDuplicateVariants = false,
 ) {
   const seek = listKeyset("sort_at", ["external_event_id"], order, cursor ? {
     value: cursor.occurred_at_ms, keys: [cursor.external_event_id],
   } : null);
   // Eligibility selects event identities only. Hydration always includes every
   // source member, even when just one variant matched a date, amount or state.
-  const sql = `WITH eligible_ids AS MATERIALIZED (
+  const duplicateCandidates = includeDuplicateVariants ? `duplicate_sources AS MATERIALIZED (
+    SELECT source.ledger_entry_id, source.provider_account_key, source.external_event_id, source.state
+      FROM provider_account_bindings AS binding
+      CROSS JOIN ledger_entries AS source
+     WHERE source.provider_account_key = binding.provider_account_key
+       AND binding.provider_endpoint = ?
+  ), duplicate_links AS MATERIALIZED (
+    SELECT source.*, conflict.raw_event_id
+      FROM duplicate_sources AS source CROSS JOIN ledger_conflicts AS conflict
+     WHERE conflict.existing_ledger_entry_id = source.ledger_entry_id
+       AND conflict.conflict_type = 'DUPLICATE_EXTERNAL_ID'
+    UNION
+    SELECT source.*, conflict.raw_event_id
+      FROM duplicate_sources AS source CROSS JOIN ledger_conflicts AS conflict
+     WHERE conflict.provider_account_key = source.provider_account_key
+       AND conflict.external_event_id = source.external_event_id
+       AND conflict.conflict_type = 'DUPLICATE_EXTERNAL_ID'
+  ), duplicate_inputs AS MATERIALIZED (
+    SELECT source.ledger_entry_id, source.provider_account_key, source.external_event_id, source.state,
+           raw.alipay_order_no, raw.merchant_order_no, raw.other_account, raw.trans_memo,
+           perpay_admin_ledger_duplicate_facts(raw.amount_text, raw.occurred_at_text, raw.direction_text) AS facts
+      FROM duplicate_links AS source
+      CROSS JOIN provider_raw_events AS raw
+     WHERE raw.raw_event_id = source.raw_event_id
+  ), duplicate_variants AS (
+    SELECT *, json_extract(facts, '$.amount_cents') AS amount_cents,
+           json_extract(facts, '$.occurred_at') AS occurred_at,
+           json_extract(facts, '$.direction') AS direction
+      FROM duplicate_inputs WHERE facts IS NOT NULL
+  ), ` : "";
+  const duplicateEligibility = includeDuplicateVariants ? `
+    UNION
+    SELECT DISTINCT entry.external_event_id
+      FROM provider_account_bindings AS binding
+      CROSS JOIN duplicate_variants AS entry
+     WHERE entry.provider_account_key = binding.provider_account_key
+       AND binding.provider_endpoint = ?${predicates.length ? " AND " + predicates.join(" AND ") : ""}` : "";
+  const sql = `WITH ${duplicateCandidates}eligible_ids AS MATERIALIZED (
     SELECT DISTINCT entry.external_event_id
       FROM provider_account_bindings AS binding
       CROSS JOIN ledger_entries AS entry
      WHERE entry.provider_account_key = binding.provider_account_key
-       AND binding.provider_endpoint = ?${predicates.length ? " AND " + predicates.join(" AND ") : ""}
+       AND binding.provider_endpoint = ?${predicates.length ? " AND " + predicates.join(" AND ") : ""}${duplicateEligibility}
   ), members AS MATERIALIZED (
     SELECT entry.*, binding.external_account_id AS app_id,
            ROW_NUMBER() OVER (
@@ -382,7 +444,11 @@ function groupedQuery(
     LEFT JOIN match_payloads AS matches ON matches.external_event_id = selected.external_event_id
     LEFT JOIN conflict_payloads AS conflicts ON conflicts.external_event_id = selected.external_event_id
    ORDER BY selected.sort_at ${order === "asc" ? "ASC" : "DESC"}, selected.external_event_id ${order === "asc" ? "ASC" : "DESC"}`;
-  return { sql, parameters: [endpoint, ...filterParameters, endpoint, ...seek.parameters, limit] };
+  return { sql, parameters: [
+    ...(includeDuplicateVariants ? [endpoint] : []), endpoint, ...filterParameters,
+    ...(includeDuplicateVariants ? [endpoint, ...filterParameters] : []),
+    endpoint, ...seek.parameters, limit,
+  ] };
 }
 
 function summarize(row: GroupRow, environment: ProviderEnvironment) {

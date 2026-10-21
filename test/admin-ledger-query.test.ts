@@ -35,6 +35,8 @@ interface RecordInput {
   otherAccount?: string | null;
   merchantOrderNo?: string | null;
   occurredText?: string;
+  amountText?: string;
+  directionText?: string;
 }
 
 function recorder(ledger: LedgerStore, key: () => string, tick: () => number) {
@@ -44,16 +46,16 @@ function recorder(ledger: LedgerStore, key: () => string, tick: () => number) {
     const detail: AccountLogDetail = {
       accountLogId: input.id,
       occurredAt: input.occurredText ?? providerTimestamp(at, true),
-      amount: (amount / 100).toFixed(2),
-      direction: input.direction ?? "CREDIT",
+      amount: input.amountText ?? (amount / 100).toFixed(2),
+      direction: input.directionText ?? input.direction ?? "CREDIT",
       alipayOrderNo: PROVIDER_ORDER,
       merchantOrderNo: input.merchantOrderNo ?? null,
       transMemo: input.memo ?? null,
       otherAccount: input.otherAccount ?? null,
       raw: {
         account_log_id: input.id,
-        trans_amount: (amount / 100).toFixed(2),
-        direction: input.direction ?? "CREDIT",
+        trans_amount: input.amountText ?? (amount / 100).toFixed(2),
+        direction: input.directionText ?? input.direction ?? "CREDIT",
         trans_dt: input.occurredText ?? providerTimestamp(at, true),
         trans_memo: input.memo ?? null,
       },
@@ -240,6 +242,92 @@ describe("administrator grouped ledger queries", () => {
       assert.equal(after.conflicts[0]!.status, "RESOLVED");
       assert.equal(after.content_consistent, false);
       assert.equal(after.amount_cents, null);
+    } finally { f.close(); }
+  });
+
+  it("filters same-source duplicate facts before pagination using the ledger normalization rules", () => {
+    const f = fixture();
+    try {
+      f.activate();
+      const first = f.entry({ id: "same-source-filtered", at: BASE - 86_400_000, memo: "原始备注" });
+      const incoming = f.record({
+        id: "same-source-filtered", amount: 4321, amountText: " -43.21 ", directionText: " 转出 ", at: BASE,
+        occurredText: "2026-10-19T16:00:00.000Z", memo: "差异%_'备注", otherAccount: "差异对方", merchantOrderNo: "差异订单",
+      });
+      assert.equal(incoming.kind, "conflict");
+      if (incoming.kind !== "conflict") throw new Error("expected duplicate conflict");
+      f.entry({ id: "another-match", amount: 4321, direction: "DEBIT" });
+      f.ledger.resolveConflict({
+        conflictOperationId: randomUUID(), conflictId: incoming.conflict.conflictId,
+        action: "KEEP_EXISTING", actorId: "admin", reason: "保留差异版本供查询", now: f.tick(),
+      });
+      f.activate("SANDBOX");
+      f.entry({ id: "same-source-filtered" });
+      f.record({ id: "same-source-filtered", amount: 9876, memo: "沙箱差异备注" });
+      const filters = {
+        environment: ENVIRONMENT, direction: "DEBIT", state: "UNALLOCATED",
+        occurredFrom: "2026-10-20", occurredTo: "2026-10-20", minAmountCents: 4321, maxAmountCents: 4321,
+      } as const;
+      const before = financialSnapshot(f.connection);
+      f.connection.exec("PRAGMA query_only = ON");
+      for (const q of ["%_'", "差异对方", "差异订单", first.ledgerEntryId]) {
+        const page = readAdminLedgerPage(f.owner, { ...filters, q });
+        assert.equal(page.items.length, 1, q);
+        const group = page.items[0]!;
+        assert.equal(group.external_event_id, first.externalEventId);
+        assert.equal(group.ledger_entry_id, first.ledgerEntryId);
+        assert.equal(group.source_record_count, 1);
+        assert.equal(group.content_consistent, false);
+        assert.equal(group.amount_cents, null);
+        assert.equal(group.direction, null);
+        const detail = readAdminLedgerDetail(f.owner, ENVIRONMENT, group.ledger_entry_id)!;
+        assert.equal(detail.sources[0]!.amount_cents, 1234);
+        assert.equal(detail.conflicts[0]!.status, "RESOLVED");
+      }
+      const firstPage = readAdminLedgerPage(f.owner, { ...filters, limit: 1 });
+      assert.deepEqual(firstPage.items.map(item => item.external_event_id), ["another-match"]);
+      assert.equal(firstPage.next_cursor?.occurred_at_ms, BASE);
+      const nextPage = readAdminLedgerPage(f.owner, { ...filters, limit: 1, cursor: firstPage.next_cursor });
+      assert.deepEqual(nextPage.items.map(item => item.external_event_id), [first.externalEventId]);
+      assert.equal(nextPage.next_cursor, null);
+      assert.equal(readAdminLedgerPage(f.owner, { environment: ENVIRONMENT, q: "沙箱差异备注" }).items.length, 0);
+      assert.equal(readAdminLedgerPage(f.owner, { environment: "SANDBOX", q: "沙箱差异备注", minAmountCents: 9876, maxAmountCents: 9876 }).items.length, 1);
+      assert.deepEqual(financialSnapshot(f.connection), before);
+    } finally { f.close(); }
+  });
+
+  it("requires one valid duplicate variant and its own source to satisfy every filter", () => {
+    const f = fixture();
+    try {
+      f.activate();
+      const first = f.entry({ id: "no-combined-variants", at: BASE - 86_400_000 });
+      f.record({ id: "no-combined-variants", amount: 4321, direction: "DEBIT", at: BASE, memo: "差异甲" });
+      f.record({ id: "no-combined-variants", amount: 7654, direction: "CREDIT", at: BASE + 86_400_000, memo: "差异乙" });
+      const invalid = f.record({ id: "no-combined-variants", amountText: "invalid", memo: "无效金额备注" });
+      assert.equal(invalid.kind, "isolated");
+      f.owner.write(db => db.prepare("UPDATE ledger_entries SET state='IGNORED', updated_at=updated_at+1 WHERE ledger_entry_id=?").run(first.ledgerEntryId));
+      f.activate();
+      const second = f.entry({ id: "no-combined-variants" });
+      const order = f.order("another-source-real-order");
+      f.settle(order.orderId, second.ledgerEntryId);
+      const misses: Partial<AdminLedgerQuery>[] = [
+        { q: "差异甲", direction: "CREDIT" },
+        { q: "差异甲", minAmountCents: 7654, maxAmountCents: 7654 },
+        { q: "差异甲", occurredFrom: "2026-10-21", occurredTo: "2026-10-21" },
+        { q: "差异甲", state: "ALLOCATED" },
+        { q: order.orderId, minAmountCents: 4321, maxAmountCents: 4321 },
+        { q: "无效金额备注" },
+      ];
+      for (const filters of misses) {
+        assert.equal(readAdminLedgerPage(f.owner, { environment: ENVIRONMENT, ...filters }).items.length, 0, JSON.stringify(filters));
+      }
+      const found = readAdminLedgerPage(f.owner, {
+        environment: ENVIRONMENT, q: "差异甲", direction: "DEBIT", state: "IGNORED",
+        occurredFrom: "2026-10-20", occurredTo: "2026-10-20", minAmountCents: 4321, maxAmountCents: 4321,
+      });
+      assert.equal(found.items.length, 1);
+      assert.equal(found.items[0]!.source_record_count, 2);
+      assert.equal(found.items[0]!.active_match?.ledger_entry_id, second.ledgerEntryId);
     } finally { f.close(); }
   });
 
@@ -490,7 +578,10 @@ describe("administrator grouped ledger queries", () => {
       let sql = "", prepares = 0;
       const watched: AdminLedgerDatabase = {
         read(operation) {
-          return operation({ prepare(statement: string) { sql = statement; prepares += 1; return f.connection.prepare(statement); } } as unknown as DatabaseSync);
+          return operation({
+            function: f.connection.function.bind(f.connection),
+            prepare(statement: string) { sql = statement; prepares += 1; return f.connection.prepare(statement); },
+          } as unknown as DatabaseSync);
         },
       };
       const before = financialSnapshot(f.connection);
@@ -501,18 +592,29 @@ describe("administrator grouped ledger queries", () => {
       assert.ok(page.next_cursor);
       const range = createdDateRange("2026-10-20", "2026-10-20")!;
       const plan = f.connection.prepare("EXPLAIN QUERY PLAN " + sql)
-        .all(providerEndpoint(ENVIRONMENT), range.start, range.end, providerEndpoint(ENVIRONMENT), 21);
+        .all(providerEndpoint(ENVIRONMENT), providerEndpoint(ENVIRONMENT), range.start, range.end,
+          providerEndpoint(ENVIRONMENT), range.start, range.end, providerEndpoint(ENVIRONMENT), 21);
       const explanation = plan.map(row => String(row.detail)).join("\n");
       for (const index of ["ledger_entries_provider_occurrence_list_idx", "ledger_entries_external_group_idx", "payment_matches_ledger_history_idx", "ledger_conflicts_entry_history_idx"]) {
         assert.ok(explanation.includes(index), index + "\n" + explanation);
       }
+      const duplicateRoot = plan.find(row => row.detail === "MATERIALIZE duplicate_inputs");
+      assert.ok(duplicateRoot);
+      const duplicatePlanIds = new Set([String(duplicateRoot.id)]);
+      for (const row of plan) if (duplicatePlanIds.has(String(row.parent))) duplicatePlanIds.add(String(row.id));
+      const duplicatePlan = plan.filter(row => duplicatePlanIds.has(String(row.id))).map(row => String(row.detail)).join("\n");
+      for (const index of ["ledger_conflicts_entry_history_idx", "ledger_conflicts_external_list_idx", "sqlite_autoindex_provider_raw_events_1"]) {
+        assert.ok(duplicatePlan.includes(index), index + "\n" + duplicatePlan);
+      }
+      assert.doesNotMatch(duplicatePlan, /SCAN (?:conflict|raw)\b/);
       readAdminLedgerDetail(watched, ENVIRONMENT, entry.ledgerEntryId);
       assert.equal(prepares, 2);
       const linkedPage = readAdminLedgerPage(watched, { environment: ENVIRONMENT, q: order.orderId });
       assert.equal(prepares, 3);
       assert.equal(linkedPage.items[0]!.external_event_id, entry.externalEventId);
       const linkedPlan = f.connection.prepare("EXPLAIN QUERY PLAN " + sql)
-        .all(providerEndpoint(ENVIRONMENT), ...Array.from({ length: 10 }, () => order.orderId), providerEndpoint(ENVIRONMENT), 21);
+        .all(providerEndpoint(ENVIRONMENT), providerEndpoint(ENVIRONMENT), ...Array.from({ length: 10 }, () => order.orderId),
+          providerEndpoint(ENVIRONMENT), ...Array.from({ length: 10 }, () => order.orderId), providerEndpoint(ENVIRONMENT), 21);
       const linkedExplanation = linkedPlan.map(row => String(row.detail)).join("\n");
       assert.ok(linkedExplanation.includes("payment_matches_ledger_history_idx"), linkedExplanation);
       assert.ok(linkedExplanation.includes("sqlite_autoindex_payment_orders_1"), linkedExplanation);
