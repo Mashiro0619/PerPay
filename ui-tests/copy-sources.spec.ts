@@ -89,7 +89,7 @@ test("ledger credentials keep genuine Alipay, website and PerPay identities dist
       await page.goto(manifest.origin + "/admin" + scenario.path);
       const summary = page.locator("[data-ledger-summary]");
       await expect(summary).toBeVisible();
-      await expect(summary.getByText("PerPay 处理状态", { exact: true })).toBeVisible();
+      await expect(summary.getByText("PerPay 处理状态", { exact: true })).toHaveCount(0);
       const credentials = summary.locator("[data-detail-credentials]");
       await copyField(page, credentials, "支付宝流水号", entry.external_event_id);
       await optionalCopyField(page, credentials, "支付宝订单号", entry.provider_order_no, "复制支付宝订单号");
@@ -98,25 +98,37 @@ test("ledger credentials keep genuine Alipay, website and PerPay identities dist
       await expect(page.locator("[data-ledger-match]")).toHaveCount(entry.matches.length);
       for (const source of entry.sources) {
         const card = page.locator('[data-ledger-source="' + source.ledger_entry_id + '"]');
-        await expect(card.getByText("PerPay 处理状态", { exact: true })).toBeVisible();
+        await expect(card.getByText("PerPay 记录状态", { exact: true })).toBeVisible();
         await copyField(page, card, "内部流水编号（PerPay）", source.ledger_entry_id);
-        await optionalCopyField(page, card, "支付宝订单号", source.provider_order_no, "复制来源支付宝订单号");
-        await optionalCopyField(page, card, "支付宝商户单号", source.merchant_order_no, "复制来源支付宝商户单号");
-        await expect(card.getByRole("link", { name: "查看原始凭据与处理", exact: true })).toHaveAttribute("href", "/admin/reconciliation/ledger/" + source.ledger_entry_id);
+        if (!entry.content_consistent) {
+          await optionalCopyField(page, card, "支付宝订单号", source.provider_order_no, "复制来源支付宝订单号");
+          await optionalCopyField(page, card, "支付宝商户单号", source.merchant_order_no, "复制来源支付宝商户单号");
+        } else {
+          await expect(card.locator("dt")).toHaveText(["内部流水编号（PerPay）", "保存时间"]);
+        }
+        await expect(card.getByRole("link", { name: "查看记录与处理", exact: true })).toHaveAttribute("href", "/admin/reconciliation/ledger/" + source.ledger_entry_id);
       }
       for (const match of entry.matches) {
         const card = page.locator('[data-ledger-match="' + match.payment_match_id + '"]');
-        await expect(card.locator('[data-slot="card-description"]')).toContainText(match.evidence_type === "MANUAL" ? "管理员人工关联" : "PerPay 按金额和付款时间推断");
-        const orderField = card.getByText("关联商户订单号（业务网站）", { exact: true }).locator("..");
-        await expect(orderField.getByRole("link", { name: "查看订单：" + match.merchant_order_no, exact: true })).toHaveText(match.merchant_order_no);
-        await expect(orderField.getByRole("link")).toHaveAttribute("href", "/admin/orders/" + match.order_id);
-        await copyField(page, card, "内部流水编号（PerPay）", match.ledger_entry_id, "复制关联内部流水编号（PerPay）");
+        await expect(card.locator('[data-slot="card-description"]')).toContainText(match.evidence_type === "MANUAL" ? "管理员根据支付宝流水人工关联" : "PerPay 按金额和付款时间推断");
+        await copyField(page, card, "商户订单号（业务网站）", match.merchant_order_no);
+        await expect(card.getByRole("link", { name: "查看订单：" + match.merchant_order_no, exact: true })).toHaveAttribute("href", "/admin/orders/" + match.order_id);
+        await expect(card.getByRole("link", { name: "核对使用的查账记录", exact: true })).toHaveAttribute("href", "/admin/reconciliation/ledger/" + match.ledger_entry_id);
+        const trigger = card.getByRole("button", { name: /^关联记录 \d+ 记录操作$/ });
+        await trigger.click();
+        await page.getByRole("menuitem", { name: "技术详情", exact: true }).click();
+        const technical = page.getByRole("dialog", { name: "技术详情", exact: true });
+        await technical.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true }).click();
+        await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(match.ledger_entry_id);
+        await technical.getByRole("button", { name: "关闭", exact: true }).click();
+        await expect(technical).toHaveCount(0);
+        await expect(trigger).toBeFocused();
       }
       await record(page, info, { feature: "copy-source-ledger", evidence: "isolated-local-domain-api", width, theme, scenario: scenario.name, sources: entry.sources.length, matches: entry.matches.length });
       if (scenario.name === "inferred") await screenshot(page, info, "copy-source-ledger-" + width + "-" + theme);
       if (entry.active_match) {
         const active = entry.active_match;
-        await summary.getByRole("link", { name: "查看订单：" + active.merchant_order_no, exact: true }).click();
+        await page.locator('[data-ledger-match="' + active.payment_match_id + '"]').getByRole("link", { name: "查看订单：" + active.merchant_order_no, exact: true }).click();
         await expect(page).toHaveURL(manifest.origin + "/admin/orders/" + active.order_id);
         const websiteOrder = page.getByRole("region", { name: "业务网站传入的订单信息", exact: true });
         await copyField(page, websiteOrder, "商户订单号", active.merchant_order_no);

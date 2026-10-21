@@ -138,7 +138,7 @@ describe("administrator ledger pages", () => {
     const link = await screen.findByRole("link", { name: entry.external_event_id });
     vi.stubGlobal("scrollY", 725);
     await user.click(link);
-    await screen.findByRole("heading", { name: "采集来源（2）" });
+    await screen.findByRole("heading", { name: "查账记录（2）" });
     refreshFails = true;
     vi.stubGlobal("scrollY", 0);
     await user.click(screen.getByRole("link", { name: /^(?:返回)?支付宝流水$/ }));
@@ -149,26 +149,36 @@ describe("administrator ledger pages", () => {
 
   it("displays every source and reversed match with links to real evidence IDs", async () => {
     mount("/ledger/" + ledgerId);
-    expect(await screen.findByRole("heading", { name: "采集来源（2）" })).toBeVisible();
-    const sourceLinks = screen.getAllByRole("link", { name: "查看原始凭据与处理" });
+    expect(await screen.findByRole("heading", { name: "查账记录（2）" })).toBeVisible();
+    const sourceLinks = screen.getAllByRole("link", { name: "查看记录与处理" });
     expect(sourceLinks.map(link => link.getAttribute("href"))).toEqual(["/reconciliation/ledger/" + ledgerId, "/reconciliation/ledger/" + secondSourceId]);
     expect(screen.getByText("已撤销")).toBeVisible();
-    expect(screen.getAllByRole("link", { name: "查看关联凭据" }).every(link => link.getAttribute("href") === "/reconciliation/ledger/" + secondSourceId)).toBe(true);
+    expect(screen.getAllByRole("link", { name: "核对使用的查账记录" }).every(link => link.getAttribute("href") === "/reconciliation/ledger/" + secondSourceId)).toBe(true);
     expect(screen.queryByRole("button", { name: /人工关联收款|确认收款/ })).not.toBeInTheDocument();
-    expect(screen.getByText("当前实际关联")).toBeVisible();
-    const settledCard = screen.getByText("当前实际关联").closest<HTMLElement>('[data-slot="card"]')!;
-    const reversalField = within(settledCard).getByText("撤销时间").parentElement!;
-    expect(within(reversalField).getByText("—")).toBeVisible();
-    expect(reversalField.querySelector("time")).toBeNull();
+    expect(screen.getByText("已关联订单", { exact: true })).toBeVisible();
+    expect(screen.queryByText("当前实际关联")).not.toBeInTheDocument();
+    const settledCard = document.querySelector<HTMLElement>('[data-ledger-match="' + match.payment_match_id + '"]')!;
+    expect(within(settledCard).queryByText("撤销时间")).not.toBeInTheDocument();
+    const reversedCard = document.querySelector<HTMLElement>('[data-ledger-match="55555555-5555-4555-8555-555555555555"]')!;
+    expect(within(reversedCard).getByText("撤销时间").parentElement!.querySelector("time")).toHaveAttribute("datetime", ledger.updated_at);
+    for (const card of [settledCard, reversedCard]) {
+      expect(within(card).getByRole("link", { name: "查看订单：real-order" })).toHaveAttribute("href", "/orders/" + orderId);
+      expect(within(card).getByText("real-order", { exact: true })).toBeVisible();
+    }
+    expect(document.querySelector("[data-ledger-summary]")).not.toHaveTextContent("real-order");
+    expect(screen.queryByText(/账本冲突记录（/)).not.toBeInTheDocument();
   });
 
   it("renders disputed facts without inventing zero or selecting a settled match", async () => {
-    const variant: AdminLedgerDetail = { ...detail, amount_cents: null, direction: null, occurred_at: null, content_consistent: false, has_conflicts: true, active_match_count: 2, active_match: null, conflicts: [{ conflict_id: "66666666-6666-4666-8666-666666666666", conflict_type: "DUPLICATE_EXTERNAL_ID", status: "OPEN", existing_ledger_entry_id: secondSourceId, created_at: ledger.created_at, resolved_at: null }] };
+    const secondMatch: AdminLedgerMatch & { status: "SETTLED" } = { ...match, payment_match_id: "44444444-4444-4444-8444-444444444445", order_id: "11111111-1111-4111-8111-111111111112", merchant_order_no: "another-real-order" };
+    const variant: AdminLedgerDetail = { ...detail, amount_cents: null, direction: null, occurred_at: null, content_consistent: false, has_conflicts: true, active_match_count: 2, active_match: null, matches: [...detail.matches, secondMatch], conflicts: [{ conflict_id: "66666666-6666-4666-8666-666666666666", conflict_type: "DUPLICATE_EXTERNAL_ID", status: "OPEN", existing_ledger_entry_id: secondSourceId, created_at: ledger.created_at, resolved_at: null }] };
     fetchMock.mockImplementation(async () => json({ data: variant }));
     mount("/ledger/" + ledgerId);
-    expect(await screen.findByText("流水需要核查")).toBeVisible();
+    expect(await screen.findByText("同一笔流水关联了多个订单")).toBeVisible();
     expect(screen.getAllByText("有争议").length).toBeGreaterThanOrEqual(3);
-    expect(screen.getByText("多条生效关联 · 请核查")).toBeVisible();
+    expect(screen.getByText("有 2 条收款关联仍生效，无法确定唯一对应的订单。下面列出全部关联，请核对后处理。")).toBeVisible();
+    expect(screen.getAllByText("仍生效 · 请核对", { exact: true })).toHaveLength(2);
+    expect(screen.queryByText("已关联订单", { exact: true })).not.toBeInTheDocument();
     expect(screen.queryByText("当前实际关联")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "查看冲突记录" })).toHaveAttribute("href", "/reconciliation/conflicts/66666666-6666-4666-8666-666666666666");
     expect(screen.queryByText("¥0.00")).not.toBeInTheDocument();
@@ -178,11 +188,17 @@ describe("administrator ledger pages", () => {
     const variant: AdminLedgerDetail = { ...detail, amount_cents: null, other_account: null, memo: null, provider_order_no: null, merchant_order_no: null, content_consistent: false, has_conflicts: true, sources: [{ ...source(ledgerId), amount_cents: 101 }, { ...source(secondSourceId), amount_cents: 102 }] };
     fetchMock.mockImplementation(async () => json({ data: variant }));
     mount("/ledger/" + ledgerId);
-    const card = (await screen.findByRole("heading", { name: "交易摘要" })).closest<HTMLElement>('[data-slot="card"]')!;
-    for (const title of ["对方", "备注", "支付宝订单号", "支付宝商户单号"]) {
+    const card = (await screen.findByRole("heading", { name: "支付宝交易" })).closest<HTMLElement>('[data-slot="card"]')!;
+    for (const title of ["对方", "支付宝备注", "支付宝订单号", "支付宝商户单号"]) {
       expect(within(within(card).getByText(title).parentElement!).getByText("—")).toBeVisible();
     }
     expect(within(card).getAllByText("有争议")).toHaveLength(1);
-    expect(screen.queryByText("这笔流水存在账本冲突，请从冲突记录查看处理情况。")).not.toBeInTheDocument();
+    expect(screen.getByText("账单信息存在不同版本", { exact: true })).toBeVisible();
+    expect(screen.getByText("账单信息存在差异，下面逐份列出保存的不同版本。")).toBeVisible();
+    expect(screen.queryByText(/冲突详情/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "查看冲突记录" })).not.toBeInTheDocument();
+    expect(document.querySelectorAll("[data-ledger-source]")).toHaveLength(2);
+    expect(document.querySelectorAll("[data-ledger-conflict]")).toHaveLength(0);
+    expect(screen.queryByText(/账本冲突待处理/)).not.toBeInTheDocument();
   });
 });

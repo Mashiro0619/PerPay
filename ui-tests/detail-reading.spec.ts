@@ -244,10 +244,12 @@ test("detail pages separate standard cards into a readable business sequence", a
       await expect(page.getByRole("group", { name: "收款关联记录", exact: true }).locator("[data-detail-order-summary]")).toBeVisible();
       await expect(page.getByRole("group", { name: "匹配依据与处理记录", exact: true }).getByRole("heading", { name: "匹配依据", exact: true })).toBeVisible();
     } else {
-      await expect(headings).toHaveText(["交易摘要", /^采集来源（\d+）$/, /^关联记录（\d+）$/, /^账本冲突（\d+）$/]);
+      await expect(headings).toHaveText(["支付宝交易", "对应订单", /^查账记录（\d+）$/]);
       await expect(page.locator('[data-detail-page] dt').filter({ hasText: /^支付宝 App ID$/ })).toHaveCount(0);
-      await expect(page.locator('[data-ledger-summary] [data-layout="flow"] dt')).toHaveText(["交易金额", "收支方向", "交易时间", "对方", "备注"]);
-      await expect(page.locator('[data-ledger-summary] [data-detail-credentials] dt')).toHaveText(["支付宝流水号", "支付宝订单号", "支付宝商户单号", "关联商户订单号（业务网站）"]);
+      await expect(page.locator('[data-ledger-summary] [data-layout="flow"] dt')).toHaveText(["交易金额", "收支方向", "交易时间", "对方", "支付宝备注"]);
+      await expect(page.locator('[data-ledger-summary] [data-detail-credentials] dt')).toHaveText(["支付宝流水号", "支付宝订单号", "支付宝商户单号"]);
+      await expect(page.locator('[data-ledger-summary] dt').filter({ hasText: /业务网站|PerPay/ })).toHaveCount(0);
+      await expect(page.locator("#ledger-conflicts-heading")).toHaveCount(0);
     }
     const geometry = await readingLayout(page, "compact");
     const flows = await readingFlowGeometry(page);
@@ -338,7 +340,8 @@ test("three detail types retain expanded facts across widths, themes and content
       } else {
         await fields(page, ["支付宝流水号", "交易金额", "收支方向", "交易时间", "内部流水编号（PerPay）"]);
         await expect(page.locator('#main-content dt').filter({ hasText: /^支付宝 App ID$/ })).toHaveCount(0);
-        for (const id of ["ledger-sources-heading", "ledger-matches-heading", "ledger-conflicts-heading"]) await expect(page.locator("#" + id)).toBeVisible();
+        for (const id of ["ledger-sources-heading", "ledger-matches-heading"]) await expect(page.locator("#" + id)).toBeVisible();
+        await expect(page.locator("#ledger-conflicts-heading")).toHaveCount(0);
         await expect(page.locator("[data-ledger-source]").first()).toBeVisible();
         await expect(page.locator("[data-ledger-match]").first()).toBeVisible();
         await expect(page.locator('[data-ledger-summary] [data-detail-credentials]')).toBeVisible();
@@ -566,13 +569,25 @@ test("all genuine ledger versions and synthetic simultaneous associations remain
     await expect(page.locator("[data-ledger-source]")).toHaveCount(entry.sources.length);
     await expect(page.locator("[data-ledger-match]")).toHaveCount(entry.matches.length);
     await expect(page.locator("[data-ledger-conflict]")).toHaveCount(entry.conflicts.length);
-    await expect(page.locator("[data-detail-credentials]")).toHaveCount(1 + entry.sources.length + entry.matches.length + entry.conflicts.length);
+    await expect(page.locator("[data-detail-credentials]")).toHaveCount(1 + (entry.content_consistent ? 0 : entry.sources.length) + entry.conflicts.length);
     for (const source of entry.sources) await expect(page.locator(`[data-ledger-source="${source.ledger_entry_id}"]`).getByText(source.ledger_entry_id, { exact: true })).toBeVisible();
     if (key === "ledgerIdentical") { expect(entry.content_consistent).toBe(true); expect(entry.sources.length).toBeGreaterThan(1); }
     if (key === "ledgerDisputed") {
       expect(entry.content_consistent).toBe(false);
-      await expect(page.getByRole("alert")).toContainText("采集来源的交易信息有差异");
+      await expect(page.locator("[data-ledger-warning]")).toContainText("保存的账单信息出现过差异");
       await expect(page.locator("[data-ledger-summary]")).toContainText("有争议");
+      for (const source of entry.sources) {
+        const card = page.locator(`[data-ledger-source="${source.ledger_entry_id}"]`);
+        await expect(card.locator('[data-layout="flow"] dt')).toHaveText(["交易金额", "收支方向", "交易时间", "对方", "保存时间", "支付宝备注"]);
+        if (source.memo) await expect(card.getByText(source.memo, { exact: true })).toBeVisible();
+        if (source.provider_order_no) await expect(card.getByText(source.provider_order_no, { exact: true })).toBeVisible();
+      }
+    } else {
+      for (const source of entry.sources) {
+        const card = page.locator(`[data-ledger-source="${source.ledger_entry_id}"]`);
+        await expect(card.locator("dt")).toHaveText(["内部流水编号（PerPay）", "保存时间"]);
+        await expect(card.getByRole("link", { name: "查看记录与处理", exact: true })).toHaveAttribute("href", "/admin/reconciliation/ledger/" + source.ledger_entry_id);
+      }
     }
     await record(page, info, { feature: "ledger-domain-scenarios", key, sources: entry.sources.length, matches: entry.matches.length, conflicts: entry.conflicts.length });
     await screenshot(page, info, "reading-" + key);
@@ -587,11 +602,15 @@ test("all genuine ledger versions and synthetic simultaneous associations remain
   entry.active_match = null;
   await page.route(manifest.origin + path, route => route.fulfill({ status: 200, json: { data: entry } }));
   await openDetail(page, manifest, "ledgerAssociated");
-  await expect(page.getByRole("alert")).toContainText(`存在 ${entry.active_match_count} 条生效关联`);
-  await expect(page.locator("[data-ledger-summary]")).toContainText("多条生效关联 · 请核查");
+  await expect(page.locator("[data-ledger-warning]")).toContainText(`有 ${entry.active_match_count} 条收款关联仍生效`);
+  await expect(page.locator("[data-ledger-warning]")).toContainText("无法确定唯一对应的订单");
   await expect(page.locator("[data-ledger-match]")).toHaveCount(entry.matches.length);
   await expect(page.getByText("当前实际关联", { exact: true })).toHaveCount(0);
-  for (const match of [settled!, second]) await expect(page.locator(`[data-ledger-match="${match.payment_match_id}"]`).getByRole("link", { name: "查看订单：" + match.merchant_order_no, exact: true })).toHaveAttribute("href", "/admin/orders/" + match.order_id);
+  for (const match of [settled!, second]) {
+    const card = page.locator(`[data-ledger-match="${match.payment_match_id}"]`);
+    await expect(card.getByRole("link", { name: "查看订单：" + match.merchant_order_no, exact: true })).toHaveAttribute("href", "/admin/orders/" + match.order_id);
+    await expect(card.getByText("仍生效 · 请核对", { exact: true })).toBeVisible();
+  }
   await record(page, info, { feature: "ledger-multiple-associations", evidence: "synthetic-detail-response-only", activeMatchCount: entry.active_match_count });
   await screenshot(page, info, "reading-ledger-multiple-active-associations");
 });
@@ -609,7 +628,7 @@ test("technical record identifiers remain copyable without crowding the business
     { key: "notificationDns", tools: "通知记录操作", values: [["投递编号", notification.delivery.delivery_id], ["事件编号", notification.event.event_id]] },
     { key: "matchInferred", tools: "收款关联记录操作", values: [["关联编号", match.payment_match_id], ["流水编号", match.ledger_entry_id]] },
     { key: "ledgerAssociated", tools: "支付宝流水记录操作", values: [["内部流水编号（PerPay）", ledger.ledger_entry_id]] },
-    { key: "ledgerAssociated", tools: "采集来源 1 记录操作", values: [["支付宝 App ID", source.app_id], ["采集来源标识", source.provider_account_key]] },
+    { key: "ledgerAssociated", tools: "查账记录 1 操作", values: [["支付宝 App ID", source.app_id], ["采集来源标识", source.provider_account_key]] },
   ];
   for (const scenario of cases) {
     await openDetail(page, manifest, scenario.key);
