@@ -170,12 +170,12 @@ function ExceptionDetail({ resourceId }: { resourceId: string }) {
       ),
   });
   return (
-    <>
-      <EvidenceHeading title="账务异常" section="exceptions" loaded={query.isSuccess} />
+    <DetailPage>
+      <EvidenceHeading title="账务异常详情" section="exceptions" loaded={query.isSuccess} density="comfortable" />
       <QueryView query={query}>
-        {({ data }) => <ExceptionCard exception={data} />}
+        {({ data }) => <ExceptionCard exception={data} density="comfortable" />}
       </QueryView>
-    </>
+    </DetailPage>
   );
 }
 function CandidateDetail({ resourceId }: { resourceId: string }) {

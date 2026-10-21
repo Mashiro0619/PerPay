@@ -1,5 +1,5 @@
 import { useQuery } from '@/lib/workspace-query';
-import { useWorkspaceApi } from "@/workspace";
+import { useWorkspace, useWorkspaceApi } from "@/workspace";
 import { useId } from "react";
 
 import { result, type AdminOrderDetail, type FinancialException, type MatchCandidate, type PaymentMatchDetail, type ReconciliationLedgerEntry, type ReconciliationOrder } from "@/api/client";
@@ -29,7 +29,7 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 import { AssociateIncomeAction, ReverseMatchAction } from "./FinancialActions";
-import { DetailFields, OrderFacts, useRelatedOrder, type DetailDensity, type DetailFieldLayout } from "./DetailPrimitives";
+import { DetailCredentials, DetailFields, OrderFacts, useRelatedOrder, type DetailDensity, type DetailFieldLayout } from "./DetailPrimitives";
 import { RecordTools } from "./RecordTools";
 type DetailOrder = ReconciliationOrder | AdminOrderDetail;
 export function LedgerFacts({
@@ -38,16 +38,37 @@ export function LedgerFacts({
   density = "default",
   layout = "columns",
   showHeading = true,
+  groupIdentifiers = false,
 }: {
   entry: ReconciliationLedgerEntry;
   compact?: boolean;
   density?: DetailDensity;
   layout?: DetailFieldLayout;
   showHeading?: boolean;
+  groupIdentifiers?: boolean;
 }) {
   const titleId = useId();
   const counterparty = ["支付宝交易对方", entry.other_account ?? "未提供"] as const;
   const comfortable = density === "comfortable";
+  if (groupIdentifiers && comfortable) {
+    const grouped = <>
+      <DetailFields density="comfortable" layout={layout} wide={["支付宝交易备注"]} items={[
+        ["支付宝交易金额", <span className="flex flex-wrap items-center gap-2"><ListMoney value={entry.amount_cents} /><StatusBadge value={entry.direction} /></span>],
+        ["支付宝交易时间", detailTimestamp(entry.occurred_at)],
+        counterparty,
+        ...(entry.memo ? [["支付宝交易备注", entry.memo] as const] : []),
+      ]} />
+      <DetailCredentials title="交易凭据" headingLevel={4} items={[
+        ["支付宝订单号", entry.provider_order_no ? <CopyValue value={entry.provider_order_no} label="复制支付宝订单号" /> : "未提供"],
+        ...(entry.merchant_order_no ? [["支付宝商户单号", <CopyValue value={entry.merchant_order_no} label="复制支付宝商户单号" />] as const] : []),
+        ["原始流水编号", <CopyValue value={entry.ledger_entry_id} label="复制原始流水编号" />],
+      ]} />
+    </>;
+    return showHeading ? <section className="flex min-w-0 flex-col gap-4" aria-labelledby={titleId}>
+      <h3 id={titleId} className="text-sm font-medium">支付宝流水（来自支付宝账单）</h3>
+      {grouped}
+    </section> : grouped;
+  }
   const facts = (
     <DetailFields
       compact={compact}
@@ -422,14 +443,17 @@ export function ExceptionCard({
   order: knownOrder,
   candidate: knownCandidate,
   embedded = false,
+  density = "default",
 }: {
   exception: FinancialException;
   ledger?: ReconciliationLedgerEntry | undefined;
   order?: DetailOrder | undefined;
   candidate?: MatchCandidate | undefined;
   embedded?: boolean;
+  density?: DetailDensity;
 }) {
   const api = useWorkspaceApi();
+  const { clientId } = useWorkspace();
   const { entry, query } = useRelatedLedger(exception.ledger_entry_id, ledger);
   const { order, query: orderQuery } = useRelatedOrder(
     exception.order_id,
@@ -463,6 +487,53 @@ export function ExceptionCard({
     (!exception.ledger_entry_id ||
       (entry?.direction === "CREDIT" &&
         ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(entry.state)));
+  if (density === "comfortable" && !embedded) return (
+    <Card aria-label="账务异常记录" data-financial-exception>
+      <CardHeader className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex min-w-0 flex-1 basis-48 flex-col gap-1">
+          <CardTitle role="heading" aria-level={2}>{label(exception.exception_type)}</CardTitle>
+          <CardDescription>{exceptionExplanation(exception)}</CardDescription>
+        </div>
+        <CardAction className="flex max-w-full flex-wrap items-center justify-end gap-2">
+          <StatusBadge value={exception.reminder_ignored ? "NONE" : exception.status} label={exceptionStateLabel(exception)} />
+          {canAssociate && <AssociateIncomeAction
+            orderId={order?.order_id ?? exception.order_id ?? ""}
+            ledgerId={exception.ledger_entry_id ?? ""}
+            orderLabel={order?.product_name}
+            ledgerLabel={entry ? money(entry.amount_cents) + " · " + dateTime(entry.occurred_at) : undefined}
+          />}
+          <RecordTools
+            inline
+            data={exception}
+            identifiers={[
+              ["异常编号", exception.exception_id],
+              ["客户端 ID", order?.api_client_id ?? clientId],
+              ["原始流水编号", entry?.ledger_entry_id ?? exception.ledger_entry_id],
+              ["内部订单编号", order?.order_id ?? exception.order_id],
+              ["可能匹配记录编号", candidate?.candidate_id ?? exception.candidate_id],
+            ]}
+            label="异常记录操作"
+          />
+        </CardAction>
+      </CardHeader>
+      <CardContent className="flex min-w-0 flex-col gap-6">
+        {order ? <OrderFacts order={order} density="comfortable" layout="flow" />
+          : exception.order_id && orderQuery.isPending ? <Loading label="正在读取关联订单…" />
+          : !exception.order_id ? <p className="text-sm text-muted-foreground">尚未关联订单</p> : null}
+        {!knownOrder && exception.order_id && <ErrorNotice error={orderQuery.error} retry={() => { void orderQuery.refetch(); }} />}
+        {entry ? <LedgerFacts entry={entry} density="comfortable" layout="flow" groupIdentifiers />
+          : exception.ledger_entry_id && query.isPending ? <Loading label="正在读取关联流水…" /> : null}
+        {!ledger && exception.ledger_entry_id && <ErrorNotice error={query.error} retry={() => { void query.refetch(); }} />}
+        <DetailFields density="comfortable" layout="flow" wide={["处理结果"]} items={[
+          ["发现时间", dateTime(exception.created_at)],
+          ...(exception.resolved_at ? [["处理时间", dateTime(exception.resolved_at)] as const] : []),
+          ...(resolution ? [["处理结果", resolution] as const] : []),
+        ]} />
+        {candidate && <CandidateEvidence candidate={candidate} ledger={entry} density="comfortable" layout="flow" />}
+        {!knownCandidate && exception.candidate_id && <ErrorNotice error={candidateQuery.error} retry={() => { void candidateQuery.refetch(); }} />}
+      </CardContent>
+    </Card>
+  );
   return (
     <Card size={embedded ? "sm" : "default"} data-density="compact" aria-label="账务异常记录">
       <CardHeader>
