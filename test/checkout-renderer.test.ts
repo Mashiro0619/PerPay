@@ -164,7 +164,8 @@ describe("public checkout SSR", () => {
     assert.equal(deriveCheckoutVisualState(confirmed), "CONFIRMED");
     assert.equal(readCheckoutInitial(html).checkout?.refund.status, "PARTIAL");
     assert.match(checkoutText(html), /收款已确认/);
-    assert.match(checkoutText(html), /款项已部分退款/);
+    assert.match(checkoutText(html), /历史退款记录：部分/);
+    assert.match(checkoutText(html), /PerPay 按支付宝流水的金额和付款时间推断/);
     assert.doesNotMatch(html, /data-qr-image/);
   });
   it("hides return during active payment and renders a safe confirmed return target", () => {

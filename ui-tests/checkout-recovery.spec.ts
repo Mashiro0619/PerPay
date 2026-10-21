@@ -45,7 +45,7 @@ test("QR and download failures recover, and an expired checkout can still confir
     payment_instructions: null, payment: { status: "CONFIRMED", basis: "MANUAL", received_amount_cents: publicOrder.requested_amount_cents }, refund: { status: "PARTIAL" } } } }));
   await page.getByRole("button", { name: "查询付款状态", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("收款已确认");
-  await expect(page.getByText("款项已部分退款", { exact: true })).toBeVisible();
+  await expect(page.getByText("历史退款记录：部分", { exact: true })).toBeVisible();
   await expect(page.locator("[data-qr-image]")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "查询付款状态", exact: true })).toHaveCount(0);
   await record(page, info, { transition: "expired -> confirmed", refund: "partial", syntheticResponse: true });

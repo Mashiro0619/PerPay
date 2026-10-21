@@ -95,6 +95,14 @@ export const checkoutCopy: Record<
     detail: "收款服务暂不可用，请勿付款。页面会自动重试。",
   },
 };
+export function checkoutPaymentBasisDescription(
+  basis: CheckoutViewOrder["payment"]["basis"],
+  systemName: string,
+): string | null {
+  if (basis === "INFERRED") return `${systemName} 按支付宝流水的金额和付款时间推断，已确认这笔收款。`;
+  if (basis === "MANUAL") return "商家管理员已根据支付宝流水人工确认这笔收款。";
+  return null;
+}
 export function checkoutState(order: CheckoutViewOrder): CheckoutViewState {
   if (order.payment.status !== "UNPAID") return order.payment.status;
   if (order.checkout.status !== "OPEN") return order.checkout.status;

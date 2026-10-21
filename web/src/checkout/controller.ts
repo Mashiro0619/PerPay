@@ -320,7 +320,7 @@ export function createCheckoutController(initial: CheckoutInitial) {
                 progress.state === "WAITING"
                   ? `等待核实，预计至少 ${progress.retry_after_seconds} 秒后开始。`
                   : progress.state === "SCANNING"
-                    ? "正在查账付款流水…"
+                    ? "正在查询支付宝付款记录…"
                     : "正在核对付款结果…",
             });
         } else {
@@ -330,7 +330,7 @@ export function createCheckoutController(initial: CheckoutInitial) {
             busy: false,
             feedback:
               progress?.state === "COMPLETED"
-                ? "当前可用流水中暂未确认付款，页面会继续自动更新。"
+                ? "目前还没有确认这笔付款，页面会继续更新。"
                 : progress?.state === "FAILED"
                   ? "本次核实未完成或查账暂有延迟，页面会继续自动更新。"
                   : "核实进度暂不可用，页面会继续自动更新。",

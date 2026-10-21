@@ -1123,7 +1123,7 @@ describe("manual verification versus background refresh", () => {
     );
     await complete;
     expect(view.getSnapshot().busy).toBe(false);
-    expect(view.getSnapshot().feedback).toContain("当前可用流水");
+    expect(view.getSnapshot().feedback).toContain("目前还没有确认这笔付款");
   });
   it("ends the manual spinner after 30 seconds without resubmitting the operation", async () => {
     const value = {

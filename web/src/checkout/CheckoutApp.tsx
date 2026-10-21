@@ -36,6 +36,7 @@ import { CopyValue } from "../components/copy-value";
 import {
   checkoutCopy,
   checkoutMoney,
+  checkoutPaymentBasisDescription,
   merchantReturnUrl,
   type CheckoutInitial,
 } from "../../../src/shared/checkout-view";
@@ -59,6 +60,10 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
   const order = state.order,
     copy = checkoutCopy[state.visual];
   const systemName = order?.display?.name ?? initial.systemName ?? "PerPay";
+  const paymentExplanation = state.visual === "CONFIRMED" && order
+    ? checkoutPaymentBasisDescription(order.payment.basis, systemName)
+    : null;
+  const detail = paymentExplanation ?? copy.detail;
   const showProductName = order?.display?.show_product_name ?? initial.showProductName;
   const awaitingStartup = state.visual === "UNPAID" && !state.initialized;
   const canPay =
@@ -294,13 +299,13 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                 </Badge>
               </CardAction>
               {!canPay && paymentHeading}
-              {(awaitingStartup || state.suspended || copy.detail) && (
+              {(awaitingStartup || state.suspended || detail) && (
                 <CardDescription className="text-center">
                   {awaitingStartup
                     ? "付款组件尚未就绪，暂不显示二维码。若一直停留在此，请启用 JavaScript 或刷新页面。"
                     : state.suspended
                       ? "付款期限已到，请重新检查订单状态。"
-                      : copy.detail}
+                      : detail}
                 </CardDescription>
               )}
             </CardHeader>
@@ -461,8 +466,8 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                       <AlertCircle />
                       <AlertTitle>
                         {order.refund.status === "FULL"
-                          ? "款项已全额退款"
-                          : "款项已部分退款"}
+                          ? "历史退款记录：全额"
+                          : "历史退款记录：部分"}
                       </AlertTitle>
                       <AlertDescription>
                         此为历史退款记录，具体金额请联系商家。
