@@ -11,7 +11,12 @@ test("ledger pagination and keyboard links restore filters, page and scroll posi
   await page.getByRole("button", { name: "下一页", exact: true }).click();
   await expect(page.getByRole("navigation", { name: "列表分页" })).toContainText("第 2 页");
   await expect(rows).toHaveCount(20);
+  // Shared links may use equivalent percent encodings that must survive returns.
+  const sharedListUrl = page.url().replace("direction=CREDIT", "direction=%43REDIT");
+  await page.goto(sharedListUrl);
+  await expect(rows).toHaveCount(20);
   const listUrl = page.url();
+  expect(listUrl).toBe(sharedListUrl);
   const identity = await rows.first().locator("a[data-row-link]").getAttribute("href");
   const recordLink = rows.nth(12).locator("a[data-row-link]");
   await recordLink.focus();

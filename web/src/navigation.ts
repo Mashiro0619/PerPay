@@ -1,5 +1,5 @@
 import { workspaceScope, workspaceHref } from "./lib/workspace-scope";
-import { actualPageAddress, isGlobalNavigationPage, navigationSelection, withNavigationSelection } from "./lib/navigation-selection";
+import { actualPageAddress, isGlobalNavigationPage, navigationSelection, switchWorkspaceHref, withNavigationSelection } from "./lib/navigation-selection";
 import { createContext, createElement, useCallback, useContext, useLayoutEffect, useRef, type Ref } from "react";
 import { Link as RouterLink, NavLink as RouterNavLink, parsePath, useLocation, useNavigate as useRouterNavigate, type LinkProps, type NavLinkProps, type NavigateFunction, type NavigateOptions, type To } from "react-router";
 
@@ -158,11 +158,7 @@ export function useDetailBack(to: string, label: string): ListReturn {
   if (saved && workspaceScope(saved.to.split(/[?#]/)[0]!).clientId === scope.clientId) {
     if (saved.to.split(/[?#]/)[0] === "/ledger" && isGlobalNavigationPage(location.pathname)) {
       const target = parsePath(saved.to);
-      const search = new URLSearchParams(target.search);
-      const selected = navigationSelection(location).clientId;
-      if (selected) search.set("selected_site", selected);
-      else search.delete("selected_site");
-      return { ...saved, to: target.pathname + (search.size ? "?" + search.toString() : "") + (target.hash ?? "") };
+      return { ...saved, to: switchWorkspaceHref({ ...target, pathname: "/ledger" }, navigationSelection(location).clientId) ?? saved.to };
     }
     return saved;
   }

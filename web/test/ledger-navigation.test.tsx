@@ -27,12 +27,12 @@ function Detail() {
     <Link to="/ledger/entry-1?selected_site=shop-b" state={location.state}>详情切换网站记忆</Link>
   </>;
 }
-function setup(key: string) {
+function setup(key: string, search = "?q=book&cursor=cursor-2&page=2") {
   const router = createMemoryRouter([
     { path: "/ledger", element: <LedgerList /> },
     { path: "/ledger/:id", element: <Detail /> },
     { path: "/orders/:id", element: <Detail /> },
-  ], { initialEntries: [{ pathname: "/ledger", search: "?q=book&cursor=cursor-2&page=2", key,
+  ], { initialEntries: [{ pathname: "/ledger", search, key,
     state: { pagination: { cursor: { scope: "ledger", cursors: [null, "cursor-2"] } } } }] });
   const scroll = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
   render(<RouterProvider router={router} />);
@@ -92,5 +92,20 @@ describe("ledger return position", () => {
     expect(router.state.location.search).toBe("?q=book&cursor=cursor-2&page=2&selected_site=shop-b");
     await user.click(screen.getByRole("button", { name: "页面数据已就绪" }));
     expect(scroll).toHaveBeenCalledWith({ top: 720, left: 0, behavior: "instant" });
+  });
+
+  it.each([false, true])("preserves encoded list queries and position when returning after a website change: %s", async changeWebsite => {
+    const query = "?q=blue%20book%2b%2F~&selected_site=shop-a&cursor=cursor-2&page=2";
+    const { router, scroll, user } = setup("encoded-ledger-return-" + changeWebsite, query);
+    vi.stubGlobal("scrollY", 850);
+    await user.click(screen.getByRole("link", { name: "流水详情" }));
+    if (changeWebsite) await user.click(screen.getByRole("link", { name: "详情切换网站记忆" }));
+    await user.click(screen.getByRole("link", { name: "返回支付宝流水" }));
+    expect(router.state.location.search).toBe(changeWebsite
+      ? "?q=blue%20book%2b%2F~&cursor=cursor-2&page=2&selected_site=shop-b"
+      : query);
+    expect(router.state.location.state.pagination.cursor.cursors).toEqual([null, "cursor-2"]);
+    await user.click(screen.getByRole("button", { name: "页面数据已就绪" }));
+    expect(scroll).toHaveBeenCalledWith({ top: 850, left: 0, behavior: "instant" });
   });
 });
