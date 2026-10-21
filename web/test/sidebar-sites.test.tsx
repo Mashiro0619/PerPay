@@ -289,7 +289,8 @@ function primaryLinks(container: HTMLElement) {
 }
 
 describe("business websites in the sidebar", () => {
-  it("toggles the whole website row once per mouse or keyboard action and keeps management reachable", async () => {
+  it("opens legacy default-collapsed websites and toggles the whole row once per mouse or keyboard action", async () => {
+    sessionStorage.setItem("perpay:sidebar-sites", JSON.stringify({ version: 1, context: "global", open: false }));
     const view = mountSidebar();
     await screen.findByRole("heading", { name: "全部订单", level: 1 });
     const nav = sidebar();
@@ -308,13 +309,17 @@ describe("business websites in the sidebar", () => {
     expect(within(selector).queryByRole("link", { name: "业务网站" })).not.toBeInTheDocument();
     expect(within(nav).getAllByRole("link", { name: "业务网站" })).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "切换后台" })).not.toBeInTheDocument();
-    expect(view.listReads).toHaveLength(0);
-
     const user = userEvent.setup();
-    const toggle = within(selector).getByRole("button", { name: "展开业务网站" });
+    const toggle = within(selector).getByRole("button", { name: "收起业务网站" });
     expect(within(selector).getAllByRole("button", { name: /业务网站/ })).toHaveLength(1);
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await within(nav).findByRole("link", { name: "网站 B" });
+    expect(JSON.parse(sessionStorage.getItem("perpay:sidebar-sites")!)).toEqual({ version: 2, context: "global", open: true });
+    expect(view.listReads.map((url) => url.searchParams.get("limit"))).toEqual(["30"]);
     const location = view.router.state.location;
+    await user.click(within(toggle).getByText("业务网站"));
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await waitFor(() => expect(within(nav).queryByRole("link", { name: "网站 B" })).not.toBeInTheDocument());
     await user.click(within(toggle).getByText("业务网站"));
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     await within(nav).findByRole("link", { name: "网站 B" });
@@ -444,6 +449,7 @@ describe("business websites in the sidebar", () => {
     await act(async () => { await view.router.navigate("/sites/b/orders"); });
     expect(await within(nav).findByRole("link", { name: "网站 B" })).toHaveAttribute("aria-current", "location");
     await user.click(within(nav).getByRole("button", { name: "收起业务网站" }));
+    expect(JSON.parse(sessionStorage.getItem("perpay:sidebar-sites")!)).toEqual({ version: 2, context: "site:b", open: false });
     view.unmount();
 
     mountSidebar({ path: "/sites/b/orders" });
@@ -496,7 +502,7 @@ describe("business websites in the sidebar", () => {
       sites: [site("site_aaaaaaaa-first", "同名网站"), site("site_bbbbbbbb-next", "同名网站"), paused],
     });
     const nav = await findSidebar();
-    await userEvent.click(within(nav).getByRole("button", { name: "展开业务网站" }));
+    expect(within(nav).getByRole("button", { name: "收起业务网站" })).toHaveAttribute("aria-expanded", "true");
     expect(await within(nav).findByRole("link", { name: "同名网站 · aaaaaaaa" })).toHaveAttribute("href", "/sites/site_aaaaaaaa-first/orders");
     expect(within(nav).getByRole("link", { name: "同名网站 · bbbbbbbb" })).toHaveAttribute("href", "/sites/site_bbbbbbbb-next/orders");
     const longLink = within(nav).getByRole("link", { name: new RegExp(longName) });
@@ -536,7 +542,7 @@ describe("business websites in the sidebar", () => {
           : json({ data: [siteB], page: { next_cursor: null } }),
     });
     const nav = await findSidebar();
-    await userEvent.click(within(nav).getByRole("button", { name: "展开业务网站" }));
+    expect(within(nav).getByRole("button", { name: "收起业务网站" })).toHaveAttribute("aria-expanded", "true");
     await within(nav).findByRole("link", { name: "网站 A" });
     await userEvent.click(within(nav).getByRole("button", { name: "加载更多网站" }));
     const failure = await within(nav).findByRole("alert");
@@ -560,7 +566,7 @@ describe("business websites in the sidebar", () => {
     });
     const nav = await findSidebar();
     const user = userEvent.setup();
-    await user.click(within(nav).getByRole("button", { name: "展开业务网站" }));
+    expect(within(nav).getByRole("button", { name: "收起业务网站" })).toHaveAttribute("aria-expanded", "true");
     await within(nav).findByRole("link", { name: "网站 A" });
     expect(within(nav).getByRole("button", { name: "加载更多网站" })).toBeEnabled();
 
@@ -589,7 +595,7 @@ describe("business websites in the sidebar", () => {
   it("keeps global and management navigation available when there are no sites", async () => {
     mountSidebar({ sites: [] });
     const nav = await findSidebar();
-    await userEvent.click(within(nav).getByRole("button", { name: "展开业务网站" }));
+    expect(within(nav).getByRole("button", { name: "收起业务网站" })).toHaveAttribute("aria-expanded", "true");
     expect(await within(nav).findByText("暂无网站")).toBeVisible();
     expect(within(nav).getByRole("link", { name: "全部网站" })).toHaveAttribute("href", "/orders");
     expect(within(nav).getByRole("link", { name: "业务网站" })).toHaveAttribute("href", "/sites");
@@ -602,7 +608,7 @@ describe("business websites in the sidebar", () => {
     const user = userEvent.setup();
     await user.click(trigger);
     const sheet = await screen.findByRole("dialog", { name: "导航菜单" });
-    await user.click(within(sheet).getByRole("button", { name: "展开业务网站" }));
+    expect(within(sheet).getByRole("button", { name: "收起业务网站" })).toHaveAttribute("aria-expanded", "true");
     await within(sheet).findByRole("link", { name: "网站 B" });
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "导航菜单" })).not.toBeInTheDocument());

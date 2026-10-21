@@ -31,19 +31,21 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 const SITE_MENU_STORAGE_KEY = "perpay:sidebar-sites";
+const SITE_MENU_STORAGE_VERSION = 2;
 type SiteMenuDisclosure = { context: string; open: boolean };
 
 function readSiteMenuDisclosure(context: string): SiteMenuDisclosure {
   try {
     const saved: unknown = JSON.parse(window.sessionStorage.getItem(SITE_MENU_STORAGE_KEY) ?? "null");
-    if (saved && typeof saved === "object" && "version" in saved && saved.version === 1 &&
+    if (saved && typeof saved === "object" && "version" in saved && saved.version === SITE_MENU_STORAGE_VERSION &&
       "context" in saved && typeof saved.context === "string" && "open" in saved && typeof saved.open === "boolean") {
       return { context, open: saved.context === context || context === "global" ? saved.open : true };
     }
   } catch {
     // Navigation remains usable when browser storage is unavailable.
   }
-  return { context, open: context !== "global" };
+  // The previous version also persisted its collapsed global default.
+  return { context, open: true };
 }
 
 export const navigation = [
@@ -81,7 +83,7 @@ export function AppSidebar({
   }
   useEffect(() => {
     try {
-      window.sessionStorage.setItem(SITE_MENU_STORAGE_KEY, JSON.stringify({ version: 1, ...siteMenu }));
+      window.sessionStorage.setItem(SITE_MENU_STORAGE_KEY, JSON.stringify({ version: SITE_MENU_STORAGE_VERSION, ...siteMenu }));
     } catch {
       // Session persistence is optional; the in-memory disclosure still works.
     }
