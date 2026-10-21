@@ -64,7 +64,10 @@ async function keyboardTools(page: Page, label: string) {
   await expect(trigger).toBeFocused();
 }
 async function readingFlowGeometry(page: Page, longContent = false) {
-  const groups = await page.locator('#main-content [data-detail-fields][data-density="comfortable"]').evaluateAll(containers => containers.map(container => {
+  const layouts = await page.locator('#main-content [data-detail-fields][data-density="comfortable"]').evaluateAll(containers => containers.map(container => ({ layout: container.getAttribute("data-layout"), credentials: !!container.closest("[data-detail-credentials]"), fields: container.querySelector("dl")?.textContent })));
+  for (const group of layouts) expect(group.layout === "flow" || (group.layout === "columns" && group.credentials), "comfortable facts must use flow or a credential section: " + group.fields).toBe(true);
+  await readingCredentialsGeometry(page);
+  const groups = await page.locator('#main-content [data-detail-fields][data-density="comfortable"][data-layout="flow"]').evaluateAll(containers => containers.map(container => {
     const dl = container.querySelector("dl")!;
     const bounds = container.getBoundingClientRect();
     const style = getComputedStyle(dl);
@@ -138,6 +141,60 @@ async function readingFlowGeometry(page: Page, longContent = false) {
   });
 }
 
+async function readingCredentialsGeometry(page: Page) {
+  const sections = page.locator("#main-content [data-detail-credentials]");
+  for (const section of await sections.all()) {
+    await expect(section).toBeVisible();
+    await expect(section.getByRole("heading")).toBeVisible();
+    await expect(section.locator("button[aria-expanded]")).toHaveCount(0);
+  }
+  const groups = await sections.evaluateAll(sections => sections.map(section => {
+    const container = section.querySelector("[data-detail-fields]")!;
+    const dl = container.querySelector("dl")!, bounds = container.getBoundingClientRect(), style = getComputedStyle(dl);
+    return { width: bounds.width, left: bounds.left, right: bounds.right, layout: container.getAttribute("data-layout"), display: style.display,
+      columns: style.gridTemplateColumns.trim().split(/\s+/).length, columnGap: Number.parseFloat(style.columnGap), rowGap: Number.parseFloat(style.rowGap),
+      fields: Array.from(dl.children).map(field => {
+        const box = field.getBoundingClientRect(), term = field.querySelector("dt")!, value = field.querySelector("dd")!;
+        const labelBounds = term.getBoundingClientRect(), valueBounds = value.getBoundingClientRect();
+        const textElement = value.querySelector("span.break-all");
+        let textBounds = null;
+        if (textElement) {
+          const range = document.createRange(); range.selectNodeContents(textElement);
+          const text = range.getBoundingClientRect(), span = textElement.getBoundingClientRect();
+          textBounds = { textHeight: text.height, boxHeight: span.height, textRight: text.right, boxRight: span.right };
+        }
+        return { name: term.textContent, width: box.width, left: box.left, right: box.right, top: box.top, bottom: box.bottom,
+          actualGap: valueBounds.top - labelBounds.bottom, scrollWidth: value.scrollWidth, valueWidth: value.clientWidth, textBounds };
+      }),
+    };
+  }));
+  for (const group of groups) {
+    expect(group.layout).toBe("columns");
+    expect(group.display).toBe("grid");
+    expect(group.columns).toBe(group.width >= 640 ? 2 : 1);
+    expect(group.columnGap).toBe(16);
+    expect(group.rowGap).toBe(16);
+    const expectedWidth = (group.width - (group.columns - 1) * 16) / group.columns;
+    for (const [index, field] of group.fields.entries()) {
+      expect(Math.abs(field.width - expectedWidth), field.name ?? "credential").toBeLessThanOrEqual(1);
+      expect(Math.abs(field.left - group.left - (index % group.columns) * (expectedWidth + 16))).toBeLessThanOrEqual(1);
+      expect(field.right).toBeLessThanOrEqual(group.right + 1);
+      expect(Math.abs(field.actualGap - 8)).toBeLessThanOrEqual(0.5);
+      expect(field.scrollWidth, field.name ?? "credential").toBeLessThanOrEqual(field.valueWidth + 1);
+      if (field.textBounds) {
+        expect(field.textBounds.textHeight).toBeLessThanOrEqual(field.textBounds.boxHeight + 1);
+        expect(field.textBounds.textRight).toBeLessThanOrEqual(field.textBounds.boxRight + 1);
+      }
+      const previous = group.fields[index - 1];
+      if (previous) {
+        expect(field.top).toBeGreaterThanOrEqual(previous.top - 1);
+        if (index % group.columns !== 0) expect(Math.abs(field.top - previous.top)).toBeLessThanOrEqual(1);
+      }
+    }
+  }
+  return groups;
+}
+
 async function readingLayout(page: Page, mode: "compact" | "full") {
   const geometry = await page.locator("#main-content").evaluate(main => {
     const container = main.querySelector<HTMLElement>("[data-content-width]")!;
@@ -189,6 +246,8 @@ test("detail pages separate standard cards into a readable business sequence", a
     } else {
       await expect(headings).toHaveText(["交易摘要", /^采集来源（\d+）$/, /^关联记录（\d+）$/, /^账本冲突（\d+）$/]);
       await expect(page.locator('[data-detail-page] dt').filter({ hasText: /^支付宝 App ID$/ })).toHaveCount(0);
+      await expect(page.locator('[data-ledger-summary] [data-layout="flow"] dt')).toHaveText(["交易金额", "收支方向", "交易时间", "对方", "备注"]);
+      await expect(page.locator('[data-ledger-summary] [data-detail-credentials] dt')).toHaveText(["支付宝流水号", "支付宝订单号", "流水商户订单号", "实际关联订单"]);
     }
     const geometry = await readingLayout(page, "compact");
     const flows = await readingFlowGeometry(page);
@@ -235,6 +294,22 @@ test("flow summaries wrap at container boundaries without stretching two facts a
   expect(twoFacts!.right - twoFacts!.fields.at(-1)!.right).toBeGreaterThan(200);
   await record(page, info, { feature: "detail-flow-two-facts", evidence: "local-synthetic-domain", geometry: twoFacts });
   await screenshot(page, info, "reading-flow-two-facts");
+
+  await openDetail(page, manifest, "ledgerAssociated");
+  const credentials = page.locator('[data-ledger-summary] [data-detail-credentials] [data-detail-fields]');
+  const originalCredentialsWidth = await credentials.evaluate(element => (element as HTMLElement).style.width);
+  const credentialBoundaries = [];
+  try {
+    for (const requestedWidth of [639, 640, 1024, 1280]) {
+      await credentials.evaluate((element, width) => { (element as HTMLElement).style.width = width + "px"; }, requestedWidth);
+      const geometry = (await readingCredentialsGeometry(page))[0]!;
+      expect(geometry.width).toBe(requestedWidth);
+      credentialBoundaries.push({ requestedWidth, columns: geometry.columns, fieldWidths: geometry.fields.map(field => field.width) });
+    }
+  } finally {
+    await credentials.evaluate((element, width) => { (element as HTMLElement).style.width = width; }, originalCredentialsWidth);
+  }
+  await record(page, info, { feature: "detail-credential-container-breakpoints", credentialBoundaries, restoredInlineWidth: originalCredentialsWidth });
 });
 
 test("three detail types retain expanded facts across widths, themes and content modes", async ({ page, manifest }, info) => {
@@ -266,12 +341,14 @@ test("three detail types retain expanded facts across widths, themes and content
         for (const id of ["ledger-sources-heading", "ledger-matches-heading", "ledger-conflicts-heading"]) await expect(page.locator("#" + id)).toBeVisible();
         await expect(page.locator("[data-ledger-source]").first()).toBeVisible();
         await expect(page.locator("[data-ledger-match]").first()).toBeVisible();
+        await expect(page.locator('[data-ledger-summary] [data-detail-credentials]')).toBeVisible();
       }
       const flows = await readingFlowGeometry(page);
       const geometry = await readingLayout(page, mode);
       if (width === 1440) await keyboardTools(page, scenario.tools);
       const id = `reading-${scenario.key}-${width}-${theme}-${mode}`;
-      await record(page, info, { feature: "detail-reading-matrix", width, theme, mode, scenario: scenario.key, flows, geometry, evidence: "local-synthetic-domain" });
+      const credentials = await readingCredentialsGeometry(page);
+      await record(page, info, { feature: "detail-reading-matrix", width, theme, mode, scenario: scenario.key, flows, credentials, geometry, evidence: "local-synthetic-domain" });
       await screenshot(page, info, id);
       if (width === 320 && mode === "compact") await audit(page, info, id);
     }
@@ -488,6 +565,7 @@ test("all genuine ledger versions and synthetic simultaneous associations remain
     await expect(page.locator("[data-ledger-source]")).toHaveCount(entry.sources.length);
     await expect(page.locator("[data-ledger-match]")).toHaveCount(entry.matches.length);
     await expect(page.locator("[data-ledger-conflict]")).toHaveCount(entry.conflicts.length);
+    await expect(page.locator("[data-detail-credentials]")).toHaveCount(1 + entry.sources.length + entry.matches.length + entry.conflicts.length);
     for (const source of entry.sources) await expect(page.locator(`[data-ledger-source="${source.ledger_entry_id}"]`).getByText(source.ledger_entry_id, { exact: true })).toBeVisible();
     if (key === "ledgerIdentical") { expect(entry.content_consistent).toBe(true); expect(entry.sources.length).toBeGreaterThan(1); }
     if (key === "ledgerDisputed") {
@@ -573,7 +651,9 @@ test("long products, complete identifiers and multiline details wrap without cli
   const siteName = "完整业务网站名称与所属经营主体 · ".repeat(16) + "网站末尾标记";
   const counterparty = "完整交易对方与付款账户 · ".repeat(16) + "payer@example.test 对方末尾标记";
   const memo = "第一行：保留详细业务说明和特殊字符 <>&\n第二行：保留原始换行及完整备注\n第三行：可见末尾标记";
-  const identifier = "2026102122001010255800001184" + "0123456789".repeat(8);
+  const identifier = "2026102122001010255800001184" + "0123456789".repeat(22);
+  const externalIdentifier = "流水完整编号_" + "0123456789".repeat(22);
+  const merchantIdentifier = "MERCHANT-".repeat(30) + "商户单末尾";
   const target = new URL(notification.target.target_url);
   target.searchParams.set("description", "完整通知上下文".repeat(40));
   const targetUrl = target.href;
@@ -591,9 +671,11 @@ test("long products, complete identifiers and multiline details wrap without cli
   match.ledger_entry.other_account = counterparty;
   match.ledger_entry.memo = memo;
   ledger.memo = memo;
+  ledger.external_event_id = externalIdentifier;
   ledger.provider_order_no = identifier;
+  ledger.merchant_order_no = merchantIdentifier;
   ledger.other_account = counterparty;
-  for (const source of ledger.sources) { source.memo = memo; source.provider_order_no = identifier; source.other_account = counterparty; }
+  for (const source of ledger.sources) { source.memo = memo; source.provider_order_no = identifier; source.merchant_order_no = merchantIdentifier; source.other_account = counterparty; }
   for (const item of ledger.matches) item.product_name = product;
   for (const [path, value] of [[notificationPath, notification], [orderPath, order], [matchPath, match], [ledgerPath, ledger]] as const) await page.route(manifest.origin + path, route => route.fulfill({ status: 200, json: { data: value } }));
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: manifest.origin });
@@ -616,7 +698,17 @@ test("long products, complete identifiers and multiline details wrap without cli
         await expect(page.getByText(targetUrl, { exact: true })).toBeVisible();
         await page.getByRole("button", { name: "复制通知地址", exact: true }).click();
         await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(targetUrl);
-      } else await expect(page.getByText(identifier, { exact: true }).first()).toBeVisible();
+      } else {
+        await expect(page.getByText(identifier, { exact: true }).first()).toBeVisible();
+        if (scenario.kind === "ledger") {
+          for (const [name, value] of [["支付宝流水号", externalIdentifier], ["支付宝订单号", identifier], ["流水商户订单号", merchantIdentifier]]) {
+            const credential = page.locator('[data-ledger-summary] [data-detail-credentials]');
+            await expect(credential.getByText(value!, { exact: true })).toBeVisible();
+            await credential.getByRole("button", { name: "复制" + name, exact: true }).click();
+            await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(value);
+          }
+        }
+      }
       const longFacts = scenario.kind === "notification" ? [["所属网站", siteName]] : scenario.kind === "match" ? [["所属网站", siteName], ["支付宝交易对方", counterparty]] : [["对方", counterparty]];
       const wrappedFacts = [];
       for (const [name, value] of longFacts) {
@@ -640,7 +732,8 @@ test("long products, complete identifiers and multiline details wrap without cli
         wrappedFacts.push(wrapped);
       }
       const flows = await readingFlowGeometry(page, true);
-      await record(page, info, { feature: "detail-long-content", evidence: "synthetic-response-variants", width, theme, scenario: scenario.key, bounds, wrappedFacts, flows, notificationUrlLength: targetUrl.length });
+      const credentials = await readingCredentialsGeometry(page);
+      await record(page, info, { feature: "detail-long-content", evidence: "synthetic-response-variants", width, theme, scenario: scenario.key, bounds, wrappedFacts, flows, credentials, notificationUrlLength: targetUrl.length });
       await screenshot(page, info, `reading-long-${scenario.key}-${width}-${theme}`);
     }
   }

@@ -12,7 +12,7 @@ import { QueryView } from "@/components/request-state";
 import { LedgerFreshness } from "@/components/ledger-freshness";
 import { LedgerActiveOrder, LedgerDirection, LedgerMoney, LedgerOrderLink, LedgerStates, ledgerFact, ledgerHasAnomaly } from "@/components/ledger-record";
 import { ListDateTime } from "@/components/list-primitives";
-import { DetailFields, DetailNavigation, DetailPage } from "@/components/detail/DetailPrimitives";
+import { DetailCredentials, DetailFields, DetailNavigation, DetailPage } from "@/components/detail/DetailPrimitives";
 import { RecordTools } from "@/components/detail/RecordTools";
 import { CopyValue } from "@/components/copy-value";
 import { StatusBadge } from "@/components/business-status";
@@ -50,14 +50,16 @@ export default function LedgerDetail() {
             <RecordTools inline data={data} identifiers={[["归组流水编号", data.ledger_entry_id], ["支付宝流水号", data.external_event_id]]} label="支付宝流水记录操作" />
           </CardAction>
         </CardHeader>
-        <CardContent className="flex min-w-0 flex-col gap-4">
-          <DetailFields density="comfortable" layout="flow" wide={["支付宝流水号", "备注", "支付宝订单号", "流水商户订单号", "实际关联订单"]} items={[
-            ["支付宝流水号", <CopyValue value={data.external_event_id} label="复制支付宝流水号" />],
+        <CardContent className="flex min-w-0 flex-col gap-6">
+          <DetailFields density="comfortable" layout="flow" wide={["备注"]} items={[
             ["交易金额", <LedgerMoney entry={data} />],
             ["收支方向", <LedgerDirection value={data.direction} disputed={!data.content_consistent} />],
             ["交易时间", data.occurred_at ? <ListDateTime value={data.occurred_at} inline /> : data.content_consistent ? "—" : "有争议"],
             ["对方", ledgerFact(data.other_account)],
             ["备注", ledgerFact(data.memo)],
+          ]} />
+          <DetailCredentials items={[
+            ["支付宝流水号", <CopyValue value={data.external_event_id} label="复制支付宝流水号" />],
             ["支付宝订单号", <LedgerIdentifier value={data.provider_order_no} name="支付宝订单号" />],
             ["流水商户订单号", <LedgerIdentifier value={data.merchant_order_no} name="流水商户订单号" />],
             ["实际关联订单", <LedgerActiveOrder entry={data} />],
@@ -85,11 +87,15 @@ export default function LedgerDetail() {
               <RecordTools inline data={conflict} identifiers={[["账本冲突编号", conflict.conflict_id], ["关联原始流水编号", conflict.existing_ledger_entry_id]]} label="账本冲突记录操作" />
             </CardAction>
           </CardHeader>
-          <CardContent><DetailFields density="comfortable" layout="flow" wide={["关联原始流水编号"]} items={[
-            ["发现时间", <ListDateTime value={conflict.created_at} inline />],
-            ["处理时间", <ListDateTime value={conflict.resolved_at} inline />],
-            ["关联原始流水编号", <LedgerIdentifier value={conflict.existing_ledger_entry_id} name="冲突关联原始流水编号" />],
-          ]} /></CardContent>
+          <CardContent className="flex min-w-0 flex-col gap-6">
+            <DetailFields density="comfortable" layout="flow" items={[
+              ["发现时间", <ListDateTime value={conflict.created_at} inline />],
+              ["处理时间", <ListDateTime value={conflict.resolved_at} inline />],
+            ]} />
+            <DetailCredentials headingLevel={4} items={[
+              ["关联原始流水编号", <LedgerIdentifier value={conflict.existing_ledger_entry_id} name="冲突关联原始流水编号" />],
+            ]} />
+          </CardContent>
         </Card>) : <p className="text-sm text-muted-foreground">暂无账本冲突。</p>}
       </section>
     </>}</QueryView>
@@ -107,17 +113,21 @@ function LedgerSource({ source, index }: { source: AdminLedgerSource; index: num
         <RecordTools inline data={source} identifiers={[["原始流水编号", source.ledger_entry_id], ["原始事件编号", source.raw_event_id], ["支付宝 App ID", source.app_id], ["采集来源标识", source.provider_account_key], ["语义指纹", source.semantic_fingerprint]]} label={"采集来源 " + (index + 1) + " 记录操作"} />
       </CardAction>
     </CardHeader>
-    <CardContent><DetailFields density="comfortable" layout="flow" wide={["原始流水编号", "备注", "支付宝订单号", "流水商户订单号"]} items={[
-      ["交易金额", <LedgerMoney entry={{ ...source, content_consistent: true }} />],
-      ["收支方向", <LedgerDirection value={source.direction} />],
-      ["交易时间", <ListDateTime value={source.occurred_at} inline />],
-      ["对方", source.other_account],
-      ["采集时间", <ListDateTime value={source.created_at} inline />],
-      ["原始流水编号", <CopyValue value={source.ledger_entry_id} label="复制原始流水编号" />],
-      ["备注", source.memo],
-      ["支付宝订单号", <LedgerIdentifier value={source.provider_order_no} name="来源支付宝订单号" />],
-      ["流水商户订单号", <LedgerIdentifier value={source.merchant_order_no} name="来源流水商户订单号" />],
-    ]} /></CardContent>
+    <CardContent className="flex min-w-0 flex-col gap-6">
+      <DetailFields density="comfortable" layout="flow" wide={["备注"]} items={[
+        ["交易金额", <LedgerMoney entry={{ ...source, content_consistent: true }} />],
+        ["收支方向", <LedgerDirection value={source.direction} />],
+        ["交易时间", <ListDateTime value={source.occurred_at} inline />],
+        ["对方", source.other_account],
+        ["采集时间", <ListDateTime value={source.created_at} inline />],
+        ["备注", source.memo],
+      ]} />
+      <DetailCredentials headingLevel={4} items={[
+        ["原始流水编号", <CopyValue value={source.ledger_entry_id} label="复制原始流水编号" />],
+        ["支付宝订单号", <LedgerIdentifier value={source.provider_order_no} name="来源支付宝订单号" />],
+        ["流水商户订单号", <LedgerIdentifier value={source.merchant_order_no} name="来源流水商户订单号" />],
+      ]} />
+    </CardContent>
   </Card>;
 }
 
@@ -136,13 +146,17 @@ function LedgerMatches({ entry }: { entry: AdminLedgerDetail }) {
           <RecordTools inline data={match} identifiers={[["收款关联编号", match.payment_match_id], ["原始流水编号", match.ledger_entry_id], ["订单编号", match.order_id], ["客户端 ID", match.api_client_id]]} label={"关联记录 " + (index + 1) + " 记录操作"} />
         </CardAction>
       </CardHeader>
-      <CardContent><DetailFields density="comfortable" layout="flow" wide={["关联订单", "原始流水编号"]} items={[
-        ["业务网站", match.site_name ?? "名称不可用"],
-        ["关联时间", <ListDateTime value={match.created_at} inline />],
-        ["撤销时间", match.status === "REVERSED" ? <ListDateTime value={match.resolved_at} inline /> : "—"],
-        ["关联订单", <LedgerOrderLink match={match} />],
-        ["原始流水编号", <CopyValue value={match.ledger_entry_id} label="复制关联原始流水编号" />],
-      ]} /></CardContent>
+      <CardContent className="flex min-w-0 flex-col gap-6">
+        <DetailFields density="comfortable" layout="flow" items={[
+          ["业务网站", match.site_name ?? "名称不可用"],
+          ["关联时间", <ListDateTime value={match.created_at} inline />],
+          ["撤销时间", match.status === "REVERSED" ? <ListDateTime value={match.resolved_at} inline /> : "—"],
+        ]} />
+        <DetailCredentials headingLevel={4} items={[
+          ["关联订单", <LedgerOrderLink match={match} />],
+          ["原始流水编号", <CopyValue value={match.ledger_entry_id} label="复制关联原始流水编号" />],
+        ]} />
+      </CardContent>
     </Card>) : <p className="text-sm text-muted-foreground">暂无关联记录。</p>}
   </section>;
 }
