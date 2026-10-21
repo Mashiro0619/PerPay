@@ -387,7 +387,7 @@ function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
                 <CardTitle role="heading" aria-level={2}>关联订单</CardTitle>
               </CardHeader>
               <CardContent>
-                <RelatedOrder orderId={data.event.order_id} density="comfortable" />
+                <RelatedOrder orderId={data.event.order_id} density="comfortable" layout="flow" />
               </CardContent>
             </Card>
             <DeliveryCard

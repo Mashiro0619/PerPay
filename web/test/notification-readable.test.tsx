@@ -68,6 +68,8 @@ describe("readable standalone notification detail", () => {
     expect([...document.querySelectorAll("[data-detail-page] > [data-slot=card]")].map(card => card.getAttribute("aria-label"))).toEqual(["关联订单", "通知信息", "投递历史"]);
     expect([orderCard, information, history].every(card => card.getAttribute("data-size") === "default")).toBe(true);
     expect(information.querySelector(".record-list-meta,.record-list-title")).toBeNull();
+    expect(information.querySelectorAll('[data-detail-fields][data-layout="flow"]')).toHaveLength(1);
+    expect(history.querySelector('[data-detail-fields][data-layout="flow"]')).toBeNull();
     expect(screen.getAllByRole("button", { name: "通知记录操作" })).toHaveLength(1);
     expect(requests.filter((request) => new URL(request.url).pathname.includes("/orders/"))).toHaveLength(1);
     expect(requests.every((request) => request.method === "GET")).toBe(true);
@@ -114,8 +116,14 @@ describe("readable standalone notification detail", () => {
         </MemoryRouter>
       </QueryClientProvider>,
     );
-    expect(screen.getByText(targetUrl)).toBeVisible();
-    expect(screen.getByText("第一行理由 第二行理由")).toBeVisible();
+    const information = screen.getByRole("group", { name: "通知信息" });
+    const address = within(information).getByText(targetUrl);
+    const reason = within(information).getByText("第一行理由 第二行理由");
+    expect(address).toBeVisible();
+    expect(reason).toBeVisible();
+    expect(address.closest("dd")?.parentElement).toHaveAttribute("data-field-wide", "true");
+    expect(reason.closest("dd")?.parentElement).toHaveAttribute("data-field-wide", "true");
+    expect(reason.textContent).toBe("第一行理由\n第二行理由");
     await user.click(screen.getByRole("button", { name: "复制通知地址" }));
     expect(await navigator.clipboard.readText()).toBe(targetUrl);
   });
@@ -154,6 +162,30 @@ describe("readable standalone notification detail", () => {
       await user.click(within(dialog).getByRole("button", { name: "复制" + name }));
       expect(await navigator.clipboard.readText()).toBe(value);
     }
+  });
+
+  it.each([
+    { embedded: false, density: undefined },
+    { embedded: true, density: undefined },
+    { embedded: true, density: "comfortable" },
+  ] as const)("keeps the existing evidence surface when flow is not opted in (embedded=$embedded, density=$density)", async ({ embedded, density }) => {
+    const { container } = render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <DeliveryCard detail={delivery} embedded={embedded} {...(density ? { density } : {})} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const card = screen.getByRole("group", { name: "通知记录" });
+    expect(container.querySelectorAll('[data-slot="card"]')).toHaveLength(1);
+    expect(container.querySelector('[data-detail-fields][data-layout="flow"]')).toBeNull();
+    expect(within(card).getByRole("table", { name: "投递尝试（1）" })).toBeVisible();
+    expect(within(card).getByText(delivery.target.target_url)).toBeVisible();
+    expect(within(card).getByRole("button", { name: "通知记录操作" }).closest('[data-slot="card-content"]')).not.toBeNull();
+    await userEvent.setup().click(await recordAction("技术详情", "通知记录操作"));
+    const dialog = await screen.findByRole("dialog", { name: "技术详情" });
+    expect(within(dialog).getByText(delivery.delivery.delivery_id, { exact: true })).toBeVisible();
+    expect(within(dialog).queryByRole("button", { name: "复制内部订单编号" })).not.toBeInTheDocument();
   });
 });
 
@@ -211,13 +243,20 @@ describe("readable delivery history", () => {
 
   it("uses normal Item fields on mobile without hiding the HTTP result", () => {
     mobileMedia(390);
-    render(<DeliveryAttempts attempts={[failedAttempt]} available density="comfortable" />);
+    const { rerender } = render(<DeliveryAttempts attempts={[failedAttempt]} available density="comfortable" />);
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     const item = screen.getByRole("listitem");
     expect(item).toHaveAttribute("data-size", "default");
     expect(within(item).getByText("开始时间", { exact: true })).toBeVisible();
     expect(within(item).getByText("HTTP / ACK", { exact: true })).toBeVisible();
+    expect(item.querySelector("[data-detail-fields]")).toHaveAttribute("data-layout", "flow");
+    expect(within(item).getByText("HTTP / ACK", { exact: true }).closest("[data-field-wide]")).toHaveAttribute("data-field-wide", "true");
     expect(within(item).getByText(/HTTP 200 · 对方的确认回执无效/)).toBeVisible();
     expect(item.querySelector(".record-list-meta,.record-list-title,.business-summary-fields")).toBeNull();
+    rerender(<DeliveryAttempts attempts={[failedAttempt]} available />);
+    const existingSummary = screen.getByRole("listitem");
+    expect(existingSummary).toHaveAttribute("data-size", "xs");
+    expect(existingSummary.querySelector('[data-layout="flow"]')).toBeNull();
+    expect(within(existingSummary).getByText(/HTTP 200 · 对方的确认回执无效/)).toBeVisible();
   });
 });

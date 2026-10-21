@@ -219,6 +219,7 @@ export function DeliveryCard({
         {recovery && <Alert><Info /><AlertTitle>通知投递建议</AlertTitle><AlertDescription>{recovery}</AlertDescription></Alert>}
         <DetailFields
           density="comfortable"
+          layout="flow"
           wide={["通知地址", "重发理由"]}
           items={[
             ["通知事件", label(detail.event.event_type)],

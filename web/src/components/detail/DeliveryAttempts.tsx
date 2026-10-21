@@ -62,7 +62,7 @@ export function DeliveryAttempts({
                     <ItemTitle>{label(attempt.outcome)}</ItemTitle>
                   </ItemHeader>
                   <ItemContent className="min-w-0 basis-full">
-                    <DetailFields density="comfortable" wide={["HTTP / ACK"]} items={[
+                    <DetailFields density="comfortable" layout="flow" wide={["HTTP / ACK"]} items={[
                       ["开始时间", <ListDateTime value={attempt.started_at} inline />],
                       ["HTTP / ACK", attemptResult(attempt)],
                     ]} />
