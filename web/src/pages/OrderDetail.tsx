@@ -33,6 +33,7 @@ import {
 import { AssociateIncomeAction } from "@/components/detail/FinancialActions";
 import { ExceptionCard, MatchCard } from "@/components/detail/PaymentEvidence";
 import { OrderNotifications } from "@/components/detail/NotificationEvidence";
+import { DetailCardGrid } from "@/components/detail/DetailCardGrid";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
@@ -125,18 +126,13 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
         <StatusBadge value={order.payment.status} />
         {basis && <p className="text-sm text-muted-foreground">{basis}</p>}
       </div>
-      <div
+      <DetailCardGrid
         className={cn(
-          "grid min-w-0 items-start gap-4 @3xl/order:grid-cols-[minmax(0,1fr)_16rem] @7xl/order:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_16rem]",
           "[&_[data-slot=card][data-size]]:[--card-spacing:--spacing(4)] @3xl/order:[&_[data-slot=card][data-size]]:[--card-spacing:--spacing(5)]",
           "[&_[data-slot=card]]:gap-4 [&_[data-slot=card-content]]:gap-4",
         )}
       >
-        <section
-          aria-label="金额与订单信息"
-          className="grid min-w-0 items-start gap-4 @3xl/order:col-span-2 @3xl/order:grid-cols-2 @7xl/order:col-span-1 @7xl/order:grid-cols-1"
-        >
-          <Card>
+          <Card key="amount" data-order-card="amount">
             <CardHeader>
               <CardTitle role="heading" aria-level={2}>金额</CardTitle>
               <CardDescription>应付金额 = 下单金额 + 加价金额；实收金额来自支付宝流水。</CardDescription>
@@ -185,7 +181,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
               </a>
             </CardFooter>
           </Card>
-          <Card>
+          <Card key="order" data-order-card="order">
             <CardHeader>
               <CardTitle role="heading" aria-level={2}>
                 订单信息
@@ -218,11 +214,9 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
               />
             </CardFooter>
           </Card>
-        </section>
-        <div className="flex min-w-0 flex-col gap-4">
           {exceptions.map((exception) => (
             <ExceptionCard
-              key={exception.exception_id}
+              key={"exception:" + exception.exception_id}
               exception={exception}
               candidate={
                 exception.candidate_id
@@ -239,10 +233,10 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
             />
           ))}
           {active.map((match) => (
-            <MatchCard key={match.payment_match_id} match={match} embedded />
+            <MatchCard key={"match:" + match.payment_match_id} match={match} embedded />
           ))}
           {!active.length && !reversed.length && (
-            <Card size="sm">
+            <Card key="unassociated" size="sm" data-order-card="association">
               <CardHeader>
                 <CardTitle role="heading" aria-level={2}>
                   收款关联记录
@@ -260,7 +254,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
             </Card>
           )}
           {reversed.length > 0 && (
-            <Accordion defaultValue={active.length === 0 ? ["reversed"] : []}>
+            <Accordion key="reversed" defaultValue={active.length === 0 ? ["reversed"] : []}>
               <AccordionItem value="reversed">
                 <AccordionTrigger>
                   已撤销的收款关联（{reversed.length}）
@@ -291,7 +285,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
             notifyUrl={order.notification.notify_url}
           />
           {history.length > 0 && (
-            <Accordion>
+            <Accordion key="history">
               <AccordionItem value="history">
                 <AccordionTrigger>
                   异常历史（{history.length}）
@@ -321,12 +315,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
               </AccordionItem>
             </Accordion>
           )}
-        </div>
-        <aside
-          className="flex min-w-0 flex-col gap-4"
-          aria-label="订单动态与辅助信息"
-        >
-          <Card>
+          <Card key="timeline" data-order-card="timeline">
             <CardHeader>
               <CardTitle role="heading" aria-level={2}>
                 订单动态
@@ -337,7 +326,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
             </CardContent>
           </Card>
           {(order.note || order.refund.status !== "NONE") && (
-            <Card size="sm">
+            <Card key="additional" size="sm" data-order-card="additional">
               <CardHeader>
                 <CardTitle role="heading" aria-level={2}>
                   补充信息
@@ -361,8 +350,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
               </CardContent>
             </Card>
           )}
-        </aside>
-      </div>
+      </DetailCardGrid>
     </>
   );
 }

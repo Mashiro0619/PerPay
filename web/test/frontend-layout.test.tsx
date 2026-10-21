@@ -147,7 +147,7 @@ describe("official block composition", () => {
     expect(screen.getByRole("button", { name: "生成 API 密钥" })).toBeEnabled();
   });
 
-  it("does not stretch the amount card to the height of the adjacent order information", async () => {
+  it("keeps amount and order cards independent in the original reading order", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (request: Request) => {
@@ -156,7 +156,7 @@ describe("official block composition", () => {
           return Response.json({ data: order });
         if (
           pathname ===
-          "/api/admin/v1/orders/" + orderId + "/webhook-deliveries"
+          "/api/admin/v1/orders/" + orderId + "/notifications/deliveries"
         )
           return Response.json({ data: [], page: { next_cursor: null } });
         throw new Error("Unexpected request: " + pathname);
@@ -172,9 +172,13 @@ describe("official block composition", () => {
       </QueryClientProvider>,
     );
     await screen.findByRole("heading", { name: "订单信息" });
-    const summary = screen.getByRole("region", { name: "金额与订单信息" });
-    expect(summary).toHaveClass("items-start");
-    expect(summary.querySelectorAll("[data-slot=card]")).toHaveLength(2);
+    const amount = screen.getByRole("heading", { name: "金额" }).closest("[data-detail-grid-item]");
+    const information = screen.getByRole("heading", { name: "订单信息" }).closest("[data-detail-grid-item]");
+    expect(amount).not.toBeNull();
+    expect(information).not.toBeNull();
+    expect(amount).not.toBe(information);
+    expect(amount?.parentElement).toBe(information?.parentElement);
+    expect(amount!.compareDocumentPosition(information!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(
       screen.getByRole("heading", { name: order.product_name }),
     ).toBeVisible();

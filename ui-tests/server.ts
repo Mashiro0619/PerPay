@@ -74,6 +74,8 @@ const retryHttp = demo.database.read(db => db.prepare(`SELECT delivery.delivery_
   WHERE delivery.status = 'RETRY_WAIT' AND attempt.http_status = 503
   ORDER BY delivery.created_at DESC LIMIT 1`).get()) as { id: string };
 const details = {
+  orderLong: "/orders/" + demo.scenarios.lifecycle.longDescription,
+  orderPaid: "/orders/" + demo.scenarios.lifecycle.fullEvidence,
   notificationDns: "/notifications/" + demo.scenarios.notifications.deliveries.dnsRetry,
   notificationHttp: "/notifications/" + retryHttp.id,
   notificationPending: "/notifications/" + demo.scenarios.notifications.deliveries.pending,

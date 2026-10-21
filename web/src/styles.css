@@ -296,6 +296,17 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .detail-order-title { min-width: 0; max-width: 100%; white-space: normal; overflow: visible; overflow-wrap: anywhere; }
 .detail-order-title > a { overflow-wrap: anywhere; }
 
+.detail-card-grid { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 1rem; }
+.detail-card-grid > [data-detail-grid-item] { min-width: 0; align-self: start; }
+.detail-card-grid [data-detail-grid-content] { display: flow-root; min-width: 0; }
+.detail-card-grid[data-measured] { grid-auto-rows: 1px; row-gap: 0; }
+@container order (min-width: 48rem) {
+  .detail-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container order (min-width: 80rem) {
+  .detail-card-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
 .admin-settings-layout { width: 100%; max-width: 56rem; }
 .admin-settings-layout [data-slot="field"] { min-width: 0; }
 .admin-settings-layout input[type="number"] { width: 100%; max-width: 12rem; }
