@@ -157,9 +157,9 @@ test("recent orders keep compact summaries and header geometry across themes and
           const product = row.querySelector('a[data-row-link]')!.closest('[data-slot="item-title"]')!.getBoundingClientRect();
           const amount = row.querySelector('.overview-order-summary-amount')!.getBoundingClientRect();
           const site = row.querySelector('.list-site-identity');
-          // The merchant number now has an explicit business-source label.
+          // Website order numbers keep their source label and complete text.
           const merchantCode = row.querySelector('.list-code')!;
-          const merchant = site?.parentElement?.querySelector('.list-code')?.parentElement;
+          const merchant = row.querySelector('.overview-order-reference');
           const codeRange = document.createRange();
           codeRange.selectNodeContents(merchantCode);
           const codeStyle = getComputedStyle(merchantCode);
@@ -208,7 +208,7 @@ test("recent order headers and tables switch at the same measured container boun
   await page.setViewportSize({ width: 1920, height: 1000 });
   await page.goto(manifest.origin + "/admin/");
   await expect(list.locator('[data-business-row]')).toHaveCount(5);
-  for (const target of [639, 640, 767, 768, 639, 640]) {
+  for (const target of [639, 640, 767, 768, 1024, 639, 640]) {
     // Constrain the real card container: resizing the viewport can also switch
     // the surrounding overview between one and two columns.
     await page.locator(".overview-orders-container").evaluate((element, target) => {
@@ -223,6 +223,67 @@ test("recent order headers and tables switch at the same measured container boun
       await expect(panel.getByRole("columnheader")).toHaveCount(target < 768 ? 4 : 5);
     }
     await expect(panel.locator('[data-business-row]').first().locator("time")).toHaveCount(2);
-    await record(page, info, { recentOrdersContainer: target });
+    const geometry = await list.evaluate(list => {
+      const bounds = list.getBoundingClientRect();
+      return {
+        clipped: [list, ...list.querySelectorAll('.business-table-surface, [data-slot="table-container"], table')]
+          .some(element => element.scrollWidth > element.clientWidth + 1),
+        rows: [...list.querySelectorAll('[data-business-row]')].map(row => {
+          const reference = row.querySelector('.overview-order-reference')!;
+          const meta = row.querySelector('.overview-order-meta')!;
+          const code = reference.querySelector('.list-code')!;
+          const label = reference.firstElementChild!;
+          const labelBounds = label.getBoundingClientRect();
+          const codeBounds = code.getBoundingClientRect();
+          const codeRange = document.createRange();
+          codeRange.selectNodeContents(code);
+          const codeRects = [...codeRange.getClientRects()].filter(rect => rect.width > 0 && rect.height > 0);
+          const identity = row.querySelector('[data-column-id="identity"], .overview-order-summary')!.getBoundingClientRect();
+          const times = [...row.querySelectorAll('.overview-order-time-entry')].map(entry => {
+            const label = entry.querySelector('dt')!;
+            const value = entry.querySelector('dd')!;
+            const time = value.querySelector('time')!;
+            const timeRange = document.createRange();
+            timeRange.selectNodeContents(time);
+            const timeBounds = time.getBoundingClientRect();
+            const valueBounds = value.getBoundingClientRect();
+            const labelBounds = label.getBoundingClientRect();
+            return { label: label.textContent, left: timeBounds.left,
+              sameLine: Math.abs(timeBounds.top - labelBounds.top) < 2,
+              lines: [...timeRange.getClientRects()].filter(rect => rect.width > 0 && rect.height > 0).length,
+              contained: timeBounds.left >= valueBounds.left - 1 && timeBounds.right <= valueBounds.right + 1 &&
+                timeBounds.left >= bounds.left - 1 && timeBounds.right <= bounds.right + 1,
+              complete: time.textContent === time.getAttribute('title')?.replace('（北京时间）', ''),
+            };
+          });
+          const amount = row.querySelector('[data-column-id="amounts"]');
+          return { sourceLabel: label.textContent,
+            numberComplete: code.textContent === code.getAttribute('title'),
+            numberPainted: codeRects.length > 0 && codeRects.every(rect =>
+              rect.left >= identity.left - 1 && rect.right <= identity.right + 1),
+            referenceInline: Math.abs(labelBounds.top - codeBounds.top) < 2,
+            referenceBorder: getComputedStyle(reference).borderRightWidth,
+            metaBorder: getComputedStyle(meta).borderRightWidth,
+            amountAlignment: amount ? getComputedStyle(amount).textAlign : null,
+            times, timesAligned: times.length < 2 || Math.abs(times[0]!.left - times[1]!.left) < 1,
+          };
+        }),
+      };
+    });
+    expect(geometry.clipped, JSON.stringify(geometry)).toBe(false);
+    for (const row of geometry.rows) {
+      expect(row.sourceLabel).toBe("网站订单号");
+      expect(row.numberComplete && row.numberPainted, JSON.stringify(row)).toBe(true);
+      expect(row.referenceBorder).toBe("0px");
+      expect(row.metaBorder).toBe("0px");
+      if (target >= 640) expect(row.amountAlignment).toBe("right");
+      if (target >= 768) {
+        expect(row.times.length).toBeGreaterThan(0);
+        expect(row.timesAligned, JSON.stringify(row.times)).toBe(true);
+        expect(row.times.every(time => time.sameLine && time.lines === 1 && time.contained && time.complete), JSON.stringify(row.times)).toBe(true);
+      }
+      if (target >= 1024) expect(row.referenceInline, JSON.stringify(row)).toBe(true);
+    }
+    await record(page, info, { recentOrdersContainer: target, geometry });
   }
 });

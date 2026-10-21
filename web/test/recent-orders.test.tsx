@@ -56,10 +56,10 @@ describe("overview order progress", () => {
     ]);
     for (const [columnId, alignment] of [
       ["identity", "left"],
-      ["amounts", "center"],
+      ["amounts", "right"],
       ["payment", "center"],
       ["notification", "center"],
-      ["created_at", "center"],
+      ["created_at", "left"],
     ] as const) {
       expect(table.querySelector(`thead [data-column-id="${columnId}"]`)).toHaveAttribute("data-column-align", alignment);
       expect(table.querySelector(`tbody [data-column-id="${columnId}"]`)).toHaveAttribute("data-column-align", alignment);
@@ -70,7 +70,7 @@ describe("overview order progress", () => {
     expect(screen.getAllByLabelText(/^(应付|实收)金额 /)).toHaveLength(1);
     expect(screen.getByText("应付", { exact: true })).toBeVisible();
     expect(screen.queryByText("实收", { exact: true })).not.toBeInTheDocument();
-    expect(screen.getByText("商户订单号（业务网站）：")).toBeVisible();
+    expect(screen.getByText("网站订单号")).toBeVisible();
     expect(screen.getByText("收款已确认")).toBeVisible();
     expect(screen.getByText("等待重试")).toHaveAttribute("data-variant", "warning");
     expect(screen.queryByText(/^已确认 \d+\/\d+ 项$/)).not.toBeInTheDocument();
@@ -108,7 +108,7 @@ describe("overview order progress", () => {
 
     resize(768);
     expect(screen.getAllByRole("columnheader")).toHaveLength(5);
-    expect(screen.getByRole("table").querySelector('tbody [data-column-id="created_at"]')).toContainElement(screen.getByText("PerPay 确认时间"));
+    expect(screen.getByRole("table").querySelector('tbody [data-column-id="created_at"]')).toContainElement(screen.getByText("PerPay 确认"));
     expect(view.container.querySelectorAll("time")).toHaveLength(2);
 
     resize(640);
@@ -238,7 +238,7 @@ describe("overview order progress", () => {
     mount([{ ...recent, product_name: "same", merchant_order_no: "same" }]);
     expect(screen.getByRole("link", { name: "same" })).toBeVisible();
     expect(screen.getByText("same", { selector: ".list-code" })).toHaveAttribute("title", "same");
-    expect(screen.getByText("商户订单号（业务网站）：")).toBeVisible();
+    expect(screen.getByText("网站订单号")).toBeVisible();
   });
 
   it("keeps the primary row and website link independent and preserves keyboard access", async () => {

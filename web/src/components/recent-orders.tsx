@@ -6,12 +6,11 @@ import { StatusBadge } from "@/components/business-status";
 import {
   ListDateTime,
   ListIdentity,
-  ListMeta,
   ListMoney,
 } from "@/components/list-primitives";
 import { SiteIdentity } from "@/components/site-identity";
 import { Badge } from "@/components/ui/badge";
-import { ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
+import { ItemActions, ItemContent, ItemTitle } from "@/components/ui/item";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 
 function OrderAmounts({ order }: { order: AdminOrderSummary }) {
@@ -71,18 +70,18 @@ function NotificationResult({ order }: { order: AdminOrderSummary }) {
 
 function OrderTimes({ order }: { order: AdminOrderSummary }) {
   return (
-    <ItemDescription className="overview-order-times line-clamp-none">
-      <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
-        <span className="overview-record-note">创建</span>
-        <ListDateTime value={order.created_at} inline />
-      </span>
+    <dl className="overview-order-times">
+      <div className="overview-order-time-entry">
+        <dt>创建</dt>
+        <dd><ListDateTime value={order.created_at} inline /></dd>
+      </div>
       {order.payment_confirmed_at && (
-        <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
-          <span className="overview-record-note">PerPay 确认时间</span>
-          <ListDateTime value={order.payment_confirmed_at} inline />
-        </span>
+        <div className="overview-order-time-entry">
+          <dt>PerPay 确认</dt>
+          <dd><ListDateTime value={order.payment_confirmed_at} inline /></dd>
+        </div>
       )}
-    </ItemDescription>
+    </dl>
   );
 }
 
@@ -94,19 +93,16 @@ function OrderProductLink({ order }: { order: AdminOrderSummary }) {
   );
 }
 
-function OrderMeta({ order, showSite, summary = false }: { order: AdminOrderSummary; showSite: boolean; summary?: boolean }) {
-  const content = (
-    <>
-      <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
-        <span>商户订单号（业务网站）：</span>
+function OrderMeta({ order, showSite }: { order: AdminOrderSummary; showSite: boolean }) {
+  return (
+    <div className="overview-order-meta">
+      <span className="overview-order-reference">
+        <span>网站订单号</span>
         <span className="list-code" title={order.merchant_order_no}>{order.merchant_order_no}</span>
       </span>
       {showSite && <SiteIdentity clientId={order.api_client_id} name={order.site_name} />}
-    </>
+    </div>
   );
-  return summary
-    ? <ItemDescription className="line-clamp-none flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 wrap-anywhere">{content}</ItemDescription>
-    : <ListMeta>{content}</ListMeta>;
 }
 
 function RecentOrderSummary({ order, showSite }: { order: AdminOrderSummary; showSite: boolean }) {
@@ -118,7 +114,7 @@ function RecentOrderSummary({ order, showSite }: { order: AdminOrderSummary; sho
         <div role="group" aria-label="收款状态"><PaymentResult order={order} /></div>
         <div role="group" aria-label="通知状态"><NotificationResult order={order} /></div>
       </ItemActions>
-      <OrderMeta order={order} showSite={showSite} summary />
+      <OrderMeta order={order} showSite={showSite} />
       <OrderTimes order={order} />
     </ItemContent>
   );
@@ -156,7 +152,7 @@ export function RecentOrders({ orders }: { orders: readonly AdminOrderSummary[] 
     {
       id: "amounts",
       label: "金额",
-      align: "center",
+      align: "right",
       hideable: false,
       layout: "amount",
       summaryDefault: true,
@@ -183,7 +179,7 @@ export function RecentOrders({ orders }: { orders: readonly AdminOrderSummary[] 
     {
       id: "created_at",
       label: "时间",
-      align: "center",
+      align: "left",
       layout: "datetime",
       summaryDefault: true,
       responsive: { minWidthRem: 48, basis: "container" },
