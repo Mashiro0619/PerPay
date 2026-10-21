@@ -34,18 +34,22 @@ type DetailOrder = ReconciliationOrder | AdminOrderDetail;
 export function LedgerFacts({
   entry,
   compact = false,
+  density = "default",
 }: {
   entry: ReconciliationLedgerEntry;
   compact?: boolean;
+  density?: "default" | "dense";
 }) {
   const titleId = useId();
+  const counterparty = ["支付宝交易对方", entry.other_account ?? "未提供"] as const;
   return (
-    <section className="flex min-w-0 flex-col gap-3" aria-labelledby={titleId}>
+    <section className={cn("flex min-w-0 flex-col", density === "dense" ? "gap-2" : "gap-3")} aria-labelledby={titleId}>
       <h3 id={titleId} className="text-sm font-medium">支付宝流水（来自支付宝账单）</h3>
     <DetailFields
       compact={compact}
+      density={density}
       className={cn(
-        compact && "@sm/detail-fields:grid-cols-1 @4xl/detail-fields:grid-cols-2",
+        compact && density !== "dense" && "@sm/detail-fields:grid-cols-1 @4xl/detail-fields:grid-cols-2",
       )}
       wide={["支付宝订单号", "支付宝商户单号", "支付宝交易备注"]}
       items={[
@@ -57,6 +61,7 @@ export function LedgerFacts({
           </span>,
         ],
         ["支付宝交易时间", detailTimestamp(entry.occurred_at)],
+        ...(density === "dense" ? [counterparty] : []),
         [
           "支付宝订单号",
           entry.provider_order_no ? (
@@ -68,7 +73,7 @@ export function LedgerFacts({
             "未提供"
           ),
         ],
-        ["支付宝交易对方", entry.other_account ?? "未提供"],
+        ...(density === "dense" ? [] : [counterparty]),
         ...(entry.merchant_order_no
           ? [
               [
@@ -133,9 +138,11 @@ export function RelatedLedger({
 export function CandidateEvidence({
   candidate,
   ledger,
+  density = "default",
 }: {
   candidate: MatchCandidate;
   ledger?: ReconciliationLedgerEntry | undefined;
+  density?: "default" | "dense";
 }) {
   const titleId = useId();
   const facts = candidateFacts(candidate);
@@ -151,48 +158,66 @@ export function CandidateEvidence({
           : true),
   );
   return (
-    <section className="flex min-w-0 flex-col gap-4" aria-labelledby={titleId}>
+    <section className={cn("flex min-w-0 flex-col", density === "dense" ? "gap-2" : "gap-4")} aria-labelledby={titleId}>
       <h3 id={titleId} className="text-sm font-medium">
         匹配依据
       </h3>
       {facts.length < 3 && (
         <p className="text-sm text-muted-foreground">匹配信息不完整</p>
       )}
-      <DetailFields wide={["金额占用时间"]} items={shownFacts} />
+      <DetailFields density={density} wide={["金额占用时间"]} items={shownFacts} />
     </section>
   );
 }
 export function MatchCard({
   match,
   embedded = false,
+  density = "default",
 }: {
   match: PaymentMatchDetail;
   embedded?: boolean;
+  density?: "default" | "dense";
 }) {
+  const dense = density === "dense";
   const operation = match.creation_operation;
   const reversal =
     match.status === "REVERSED" ? match.resolution_operation : null;
+  const heading = (
+    <>
+      <CardTitle className="record-list-title" role="heading" aria-level={2}>
+        收款关联记录
+      </CardTitle>
+      <CardDescription className="record-list-meta">
+        {match.evidence_type === "MANUAL"
+          ? "管理员人工关联 · " + (operation?.actor_id ?? "未记录")
+          : "PerPay 按金额和付款时间推断"}{" "}
+        · <ListDateTime value={operation?.created_at ?? match.created_at} inline />
+      </CardDescription>
+    </>
+  );
+  const candidate = match.candidate && (
+    <CandidateEvidence
+      candidate={match.candidate}
+      ledger={match.ledger_entry}
+      density={density}
+    />
+  );
   return (
-    <Card size={embedded ? "sm" : "default"} data-density="compact" aria-label="收款关联记录">
-      <CardHeader>
-        <CardTitle className="record-list-title" role="heading" aria-level={2}>
-          收款关联记录
-        </CardTitle>
-        <CardDescription className="record-list-meta">
-          {match.evidence_type === "MANUAL"
-            ? "管理员人工关联 · " + (operation?.actor_id ?? "未记录")
-            : "PerPay 按金额和付款时间推断"}{" "}
-          · <ListDateTime value={operation?.created_at ?? match.created_at} inline />
-        </CardDescription>
-        <CardAction>
+    <Card size={embedded || dense ? "sm" : "default"} data-density="compact" data-detail-density={density} aria-label="收款关联记录">
+      <CardHeader className={cn(dense && "flex flex-wrap items-start justify-between gap-2")}>
+        {dense ? <div className="flex min-w-0 flex-1 basis-48 flex-col gap-1">{heading}</div> : heading}
+        <CardAction className={cn(dense && "flex flex-wrap items-center justify-end gap-2")}>
           <StatusBadge value={match.status} />
+          {dense && <ReverseMatchAction match={match} embedded={embedded} inline />}
         </CardAction>
       </CardHeader>
       <CardContent className="flex min-w-0 flex-col gap-3">
-        {!embedded && <OrderFacts order={match.order} />}
-        <LedgerFacts entry={match.ledger_entry} compact={embedded} />
+        {!embedded && <OrderFacts order={match.order} density={density} />}
+        <LedgerFacts entry={match.ledger_entry} compact={embedded} density={density} />
+        {dense && candidate}
         <DetailFields
           compact={embedded}
+          density={density}
           wide={["关联理由", "撤销理由"]}
           items={[
             ...(operation?.reason
@@ -210,13 +235,8 @@ export function MatchCard({
               : []),
           ]}
         />
-        {match.candidate && (
-          <CandidateEvidence
-            candidate={match.candidate}
-            ledger={match.ledger_entry}
-          />
-        )}
-        <ReverseMatchAction match={match} embedded={embedded} />
+        {!dense && candidate}
+        {!dense && <ReverseMatchAction match={match} embedded={embedded} />}
       </CardContent>
     </Card>
   );

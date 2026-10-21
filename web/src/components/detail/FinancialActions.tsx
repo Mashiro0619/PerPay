@@ -62,9 +62,11 @@ export function AssociateIncomeAction({
 export function ReverseMatchAction({
   match,
   embedded = false,
+  inline = false,
 }: {
   match: PaymentMatchDetail;
   embedded?: boolean;
+  inline?: boolean;
 }) {
   const api = useWorkspaceApi();
   const [snapshot, setSnapshot] = useState<PaymentMatchDetail | null>(null);
@@ -74,6 +76,7 @@ export function ReverseMatchAction({
   return (
     <>
       <RecordTools
+        inline={inline}
         label="收款关联记录操作"
         data={match}
         identifiers={[

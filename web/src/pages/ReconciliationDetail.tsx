@@ -23,6 +23,8 @@ import {
 import { ConflictCard } from "@/components/detail/ConflictEvidence";
 import {
   DetailFields,
+  DetailNavigation,
+  DetailPage,
   useDetailFetching,
 } from "@/components/detail/DetailPrimitives";
 import { RecordTools } from "@/components/detail/RecordTools";
@@ -74,10 +76,12 @@ function EvidenceHeading({
   title,
   section,
   loaded,
+  density = "default",
 }: {
   title: string;
   section?: string;
   loaded?: boolean;
+  density?: "default" | "dense";
 }) {
   const systemName = useSystemName();
   const { clientId, site } = useWorkspace();
@@ -92,7 +96,14 @@ function EvidenceHeading({
     document.title = title + ` · ${siteName} · ${systemName}`;
   }, [title, systemName, siteName]);
   return (
-    <><PageHeading title={loaded ? `${title} · ${resourceId}` : title} />
+    <><PageHeading title={loaded && density !== "dense" ? `${title} · ${resourceId}` : title} />
+    {density === "dense" ? (
+      <DetailNavigation back={back} identifier={loaded ? resourceId : undefined} identifierLabel="关联编号">
+        <PageHeaderActions><RefreshButton disabled={fetching > 0} onClick={() => {
+          void refreshOperationalData();
+        }} busy={fetching > 0} /></PageHeaderActions>
+      </DetailNavigation>
+    ) : (
     <div className="flex items-center justify-between gap-4">
       <Link
         to={back.to}
@@ -105,7 +116,8 @@ function EvidenceHeading({
       <PageHeaderActions><RefreshButton disabled={fetching > 0} onClick={() => {
           void refreshOperationalData();
         }} busy={fetching > 0} /></PageHeaderActions>
-    </div></>
+    </div>)}
+    </>
   );
 }
 function ConflictDetail({ resourceId }: { resourceId: string }) {
@@ -136,12 +148,12 @@ function MatchDetail({ resourceId }: { resourceId: string }) {
       ),
   });
   return (
-    <>
-      <EvidenceHeading title="收款关联详情" loaded={query.isSuccess} />
+    <DetailPage>
+      <EvidenceHeading title="收款关联详情" loaded={query.isSuccess} density="dense" />
       <QueryView query={query}>
-        {({ data }) => <MatchCard match={data} />}
+        {({ data }) => <MatchCard match={data} density="dense" />}
       </QueryView>
-    </>
+    </DetailPage>
   );
 }
 function ExceptionDetail({ resourceId }: { resourceId: string }) {
