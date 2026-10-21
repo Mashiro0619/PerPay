@@ -26,7 +26,7 @@ function mount(path: string, element: React.ReactNode) {
             <Route path={path.split("?")[0]} element={element} />
             <Route path="/orders/:id" element={<h1>订单详情</h1>} />
             <Route
-              path="/reconciliation/ledger/:id"
+              path="/reconciliation/transactions/:id"
               element={<h1>流水详情</h1>}
             />
           </Routes>

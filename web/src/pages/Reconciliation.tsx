@@ -1,7 +1,6 @@
 import { ListLayout, ListToolbarPart } from "@/components/list-layout";
 import {
   useListQuery,
-  MATCH_SORT_FIELDS,
   CONFLICT_SORT_FIELDS,
   EXCEPTION_SORT_FIELDS,
 } from "@/lib/list-query";
@@ -18,14 +17,13 @@ import {
   ListDateTime,
   ListIdentity,
   ListMeta,
-  ListMoney,
   ListSummary,
   ListSummaryField,
 } from "@/components/list-primitives";
 import { useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCw, Link2, EyeOff } from "lucide-react";
-import { useSearchParams } from "react-router";
+import { Navigate, useLocation, useSearchParams } from "react-router";
 import { Link, useNavigate } from "@/navigation";
 import { api, result } from "@/api/client";
 import { useCursor } from "@/lib/cursor";
@@ -34,6 +32,7 @@ import { label } from "@/lib/labels";
 import { StatusBadge } from "@/components/business-status";
 import { QueryView } from "@/components/request-state";
 import { retainListData } from "@/lib/list-placeholder";
+import { migrateMatchListSearch } from "@/lib/ledger-filters";
 import { CursorPagination } from "@/components/cursor-pagination";
 import { useSuccessToast } from "@/components/Feedback";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -49,13 +48,14 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 import { FinancialDialog } from "./FinancialDialog";
-type Section = "matches" | "conflicts" | "exceptions";
+import { LedgerList } from "./Ledger";
+type Section = "transactions" | "conflicts" | "exceptions";
+type IssueSection = Exclude<Section, "transactions">;
 type ReconciliationRow = {
   id: string;
   title: string;
   merchantOrderNo: string | null;
   externalEventId: string | null;
-  amountCents: number | null;
   orderId: string | null;
   reminderIgnored: boolean;
   status: string;
@@ -78,19 +78,25 @@ function RelatedOrderLink({ item }: { item: ReconciliationRow }) {
 }
 
 const sections = [
-  { value: "matches", label: "收款关联" },
+  { value: "transactions", label: "支付宝流水" },
   { value: "exceptions", label: "账务异常" },
   { value: "conflicts", label: "账本冲突" },
 ];
 const statusNames: Record<string, string> = {
-  SETTLED: "已关联",
-  REVERSED: "已撤销",
   OPEN: "待处理",
   RESOLVED: "已处理",
   IGNORED: "已隔离",
   ALL: "全部记录",
 };
 export default function Reconciliation() {
+  const [search] = useSearchParams();
+  const location = useLocation();
+  const migrated = migrateMatchListSearch(search);
+  return migrated
+    ? <Navigate replace to={{ pathname: location.pathname, search: "?" + migrated.toString() }} state={location.state} />
+    : <ReconciliationPage />;
+}
+function ReconciliationPage() {
   const compact = useCompactList();
   const operationTrigger = useRef<HTMLButtonElement | null>(null);
   function showOperation(trigger: HTMLButtonElement | null) {
@@ -105,11 +111,8 @@ export default function Reconciliation() {
       ? "conflicts"
       : search.get("tab") === "exceptions"
         ? "exceptions"
-        : "matches";
-  const allowed =
-    section === "matches"
-      ? ["SETTLED", "REVERSED"]
-      : ["OPEN", "RESOLVED", "IGNORED", "ALL"];
+        : "transactions";
+  const allowed = ["OPEN", "RESOLVED", "IGNORED", "ALL"];
   const status = allowed.includes(search.get("status") ?? "")
     ? search.get("status")!
     : allowed[0]!;
@@ -129,7 +132,7 @@ export default function Reconciliation() {
             (current) => {
               const next = new URLSearchParams(current);
               next.set("tab", String(value));
-              ["status", "cursor", "page", "sort_by", "sort_order"].forEach(
+              ["status", "cursor", "page", "sort_by", "sort_order", "direction", "state", "association_status", "has_reversals", "occurred_from", "occurred_to", "associated_from", "associated_to", "min_amount_cents", "max_amount_cents"].forEach(
                 (key) => next.delete(key),
               );
               return next;
@@ -157,7 +160,7 @@ export default function Reconciliation() {
         </div>
         </ListToolbarPart>
         <TabsContent value={section}>
-          <ReconciliationList
+          {section === "transactions" ? <LedgerList onManual={showOperation} /> : <ReconciliationList
             key={section}
             onManual={showOperation}
             mobileFilters={
@@ -210,7 +213,7 @@ export default function Reconciliation() {
                 </Select>
               )
             }
-          />
+          />}
         </TabsContent>
       </Tabs>
       </ListLayout>
@@ -236,7 +239,7 @@ function ReconciliationList({
 }: {
   onManual: (trigger: HTMLButtonElement | null) => void;
   mobileFilters: readonly ListFilter[];
-  section: Section;
+  section: IssueSection;
   status: string;
   filters: ReactNode;
 }) {
@@ -245,16 +248,12 @@ function ReconciliationList({
   const [search] = useSearchParams();
   const provider = search.get("provider_account_key") || undefined;
   const fields =
-    section === "matches"
-      ? MATCH_SORT_FIELDS
-      : section === "conflicts"
-        ? CONFLICT_SORT_FIELDS
-        : EXCEPTION_SORT_FIELDS;
+    section === "conflicts"
+      ? CONFLICT_SORT_FIELDS
+      : EXCEPTION_SORT_FIELDS;
   const listQuery = useListQuery<string>(fields, "created_at", "desc");
   const sortNames: Record<string, string> = {
-    event_sequence: "关联事件顺序",
-    created_at: section === "matches" ? "关联时间" : "发现时间",
-    amount_cents: "支付宝交易金额",
+    created_at: "发现时间",
     external_event_id: "支付宝流水号",
   };
   const query = useQuery({
@@ -294,7 +293,6 @@ function ReconciliationList({
             title: label(item.conflict_type),
             merchantOrderNo: null,
             externalEventId: item.external_event_id,
-            amountCents: null,
             orderId: null,
             reminderIgnored: item.reminder_ignored,
             status: item.status,
@@ -320,7 +318,6 @@ function ReconciliationList({
             title: label(item.exception_type),
             merchantOrderNo: null,
             externalEventId: null,
-            amountCents: null,
             orderId: item.order_id,
             reminderIgnored: item.reminder_ignored,
             status: item.status,
@@ -328,38 +325,13 @@ function ReconciliationList({
           })),
         };
       }
-      const page = await result(
-        api.listPaymentMatches({
-          signal,
-          query: {
-            ...pageQuery,
-            sort_by: listQuery.query
-              .sortBy as (typeof MATCH_SORT_FIELDS)[number],
-            status: status as "SETTLED" | "REVERSED",
-          },
-        }),
-      );
-      return {
-        page: page.page,
-        items: page.data.map((item) => ({
-          id: item.payment_match_id,
-          title: item.order?.product_name ?? (item.evidence_type === "MANUAL" ? "人工关联" : "金额推断关联"),
-          merchantOrderNo: item.order?.merchant_order_no ?? null,
-          externalEventId: item.ledger_entry.external_event_id,
-          amountCents: item.ledger_entry.amount_cents,
-          orderId: item.order_id,
-          reminderIgnored: false,
-          status: item.status,
-          createdAt: item.created_at,
-        })),
-      };
+      throw new Error("对账分类无效。");
     },
   });
   const columns: BusinessColumn<ReconciliationRow>[] = [
     {
       id: "identity",
       label: "记录",
-      sortBy: section === "matches" ? "event_sequence" : undefined,
       hideable: false,
       layout: "identity",
       summaryDefault: true,
@@ -378,8 +350,7 @@ function ReconciliationList({
           )}
           description={(
             context.showInSummary("created_at") ||
-            (section === "conflicts" && context.showInSummary("external_event_id")) ||
-            (item.amountCents !== null && context.showInSummary("amount_cents"))
+            (section === "conflicts" && context.showInSummary("external_event_id"))
           ) && (
             <ListMeta>
               {context.showInSummary("created_at") && <ListDateTime value={item.createdAt} inline />}
@@ -387,9 +358,6 @@ function ReconciliationList({
                 <span className="list-code" title={item.externalEventId ?? undefined}>
                   支付宝流水号 {item.externalEventId ?? "—"}
                 </span>
-              )}
-              {item.amountCents !== null && context.showInSummary("amount_cents") && (
-                <span>流水 <ListMoney value={item.amountCents} secondary /></span>
               )}
             </ListMeta>
           )}
@@ -426,16 +394,6 @@ function ReconciliationList({
         </div>
       ),
     },
-    ...(section === "matches" ? [{
-      id: "amount_cents",
-      sortBy: "amount_cents",
-      label: "支付宝交易金额",
-      align: "center" as const,
-      layout: "amount" as const,
-      summaryDefault: true,
-      responsive: { minWidthRem: 40, basis: "container" as const },
-      cell: (item: ReconciliationRow) => <ListMoney value={item.amountCents} />,
-    }] : []),
     ...(section === "conflicts" ? [{
       id: "external_event_id",
       sortBy: "external_event_id",
@@ -450,7 +408,7 @@ function ReconciliationList({
     {
       id: "created_at",
       sortBy: "created_at",
-      label: section === "matches" ? "关联时间" : "发现时间",
+      label: "发现时间",
       align: "center",
       layout: "datetime",
       summaryDefault: true,
@@ -469,8 +427,7 @@ function ReconciliationList({
         desktopFilters={filters}
         desktopActions={
           <>
-            {section !== "matches" && (
-              <Link
+            <Link
                 className={buttonVariants({ variant: "ghost", size: "sm" })}
                 to={
                   "/work-items?type=" +
@@ -481,8 +438,7 @@ function ReconciliationList({
                 }
               >
                 查看已忽略
-              </Link>
-            )}
+            </Link>
             <Button
               variant="ghost"
               size="icon"
@@ -525,8 +481,7 @@ function ReconciliationList({
                   <Link2 />
                   人工关联收款
                 </DropdownMenuItem>
-                {section !== "matches" && (
-                  <DropdownMenuItem
+                <DropdownMenuItem
                     render={
                       <Link
                         to={
@@ -541,8 +496,7 @@ function ReconciliationList({
                   >
                     <EyeOff />
                     查看已忽略
-                  </DropdownMenuItem>
-                )}
+                </DropdownMenuItem>
                 <DropdownMenuItem
                   disabled={query.isFetching}
                   onClick={() => {
@@ -574,16 +528,9 @@ function ReconciliationList({
                   renderSummary={(item, context) => (
                     <ListSummary
                       identity={columns[0]!.cell(item, context)}
-                      aside={context.isColumnVisible("amount_cents") && (
-                        <div className="flex flex-col items-end gap-1">
-                          <span className="text-xs text-muted-foreground">支付宝交易金额</span>
-                          <ListMoney value={item.amountCents} />
-                        </div>
-                      )}
                     >
                       {columns.filter((column) =>
                         column.id !== "identity" &&
-                        column.id !== "amount_cents" &&
                         context.isColumnVisible(column.id),
                       ).map((column) => (
                         <ListSummaryField key={column.id} label={column.label}>

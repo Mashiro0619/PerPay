@@ -11,7 +11,8 @@ import Orders from "../src/pages/Orders";
 import Notifications from "../src/pages/Notifications";
 import Reconciliation from "../src/pages/Reconciliation";
 import WorkItems from "../src/pages/WorkItems";
-import { delivery, financialException, paymentMatch } from "./detail-fixtures";
+import { delivery, financialException } from "./detail-fixtures";
+import { groupedLedger } from "./ledger-fixtures";
 import { json, ledgerId, order } from "./fixtures";
 import { mobileMedia } from "./mobile-media";
 function Location() {
@@ -100,20 +101,20 @@ const cases = [
   {
     path: "/reconciliation",
     element: <Reconciliation />,
-    label: "对账关键词搜索",
-    endpoint: "/reconciliation/matches",
-    sort: "支付宝交易金额",
+    label: "支付宝流水关键词搜索",
+    endpoint: "/ledger/entries",
+    sort: "交易金额",
     field: "amount_cents",
-    data: [paymentMatch],
+    data: [groupedLedger],
   },
   {
     path: "/reconciliation",
     element: <Reconciliation />,
-    label: "对账关键词搜索",
-    endpoint: "/reconciliation/matches",
-    sort: "记录",
-    field: "event_sequence",
-    data: [paymentMatch],
+    label: "支付宝流水关键词搜索",
+    endpoint: "/ledger/entries",
+    sort: "交易时间",
+    field: "occurred_at",
+    data: [groupedLedger],
   },
   {
     path: "/reconciliation?tab=conflicts",

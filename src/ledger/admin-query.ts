@@ -16,20 +16,29 @@ import {
 } from "./model.ts";
 
 /** The cursor belongs to a grouped provider event, never to one source copy. */
-export interface AdminLedgerCursor {
-  readonly occurred_at_ms: number;
-  readonly external_event_id: string;
-}
+export type AdminLedgerCursor = { readonly external_event_id: string } & (
+  | { readonly occurred_at_ms: number; readonly sort_value?: never }
+  | { readonly sort_value: number | null; readonly occurred_at_ms?: never }
+);
+
+export const ADMIN_LEDGER_SORT_FIELDS = ["occurred_at", "associated_at", "handled_at", "amount_cents", "event_sequence"] as const;
+export type AdminLedgerSort = (typeof ADMIN_LEDGER_SORT_FIELDS)[number];
+export type AdminLedgerAssociationStatus = "UNMATCHED" | "MATCHED" | "MULTIPLE";
 
 export interface AdminLedgerQuery {
   readonly environment: ProviderEnvironment;
   readonly q?: string;
   readonly direction?: LedgerDirection;
   readonly state?: LedgerEntryState;
+  readonly associationStatus?: AdminLedgerAssociationStatus;
+  readonly hasReversals?: boolean;
+  readonly associatedFrom?: string;
+  readonly associatedTo?: string;
   readonly occurredFrom?: string;
   readonly occurredTo?: string;
   readonly minAmountCents?: number;
   readonly maxAmountCents?: number;
+  readonly sortBy?: AdminLedgerSort;
   readonly sortOrder?: "asc" | "desc";
   readonly limit?: number;
   readonly cursor?: AdminLedgerCursor | null;
@@ -75,6 +84,9 @@ export interface AdminLedgerSummary extends AdminLedgerFacts {
   readonly has_conflicts: boolean;
   readonly active_match_count: number;
   readonly active_match: (AdminLedgerMatch & { readonly status: "SETTLED" }) | null;
+  readonly reversed_match_count: number;
+  readonly last_associated_at: string | null;
+  readonly last_handled_at: string | null;
   /** First source observation and latest source update, respectively. */
   readonly created_at: string;
   readonly updated_at: string;
@@ -171,7 +183,7 @@ interface ConflictRow extends Omit<AdminLedgerConflict, "created_at" | "resolved
 }
 interface GroupRow {
   external_event_id: string;
-  sort_at: bigint | number;
+  sort_at: bigint | number | null;
   sources_json: string;
   matches_json: string;
   conflicts_json: string;
@@ -182,8 +194,9 @@ export function readAdminLedgerPage(
   database: AdminLedgerDatabase,
   query: AdminLedgerQuery,
 ): AdminLedgerPage {
-  const { endpoint, where, parameters, limit, order, cursor, includeDuplicateVariants } = normalizeQuery(query);
-  const statement = groupedQuery(endpoint, where, parameters, order, cursor, limit + 1, includeDuplicateVariants);
+  const normalized = normalizeQuery(query);
+  const { limit, sortBy, includeDuplicateVariants } = normalized;
+  const statement = groupedQuery(normalized, limit + 1);
   const rows = database.read(db => {
     if (includeDuplicateVariants) registerDuplicateFacts(db);
     return db.prepare(statement.sql).all(...statement.parameters);
@@ -192,9 +205,10 @@ export function readAdminLedgerPage(
   const last = selected.at(-1);
   return {
     items: selected.map(row => summarize(row, query.environment).summary),
-    next_cursor: rows.length > limit && last ? {
-      occurred_at_ms: safeInteger(last.sort_at),
-      external_event_id: last.external_event_id,
+    next_cursor: rows.length > limit && last ? sortBy === "occurred_at" ? {
+      occurred_at_ms: safeInteger(last.sort_at!), external_event_id: last.external_event_id,
+    } : {
+      sort_value: last.sort_at === null ? null : safeInteger(last.sort_at), external_event_id: last.external_event_id,
     } : null,
   };
 }
@@ -207,7 +221,11 @@ export function readAdminLedgerDetail(
 ): AdminLedgerDetail | null {
   const endpoint = environmentEndpoint(environment);
   if (!UUID.test(ledgerEntryId)) return null;
-  const statement = groupedQuery(endpoint, ["entry.ledger_entry_id = ?"], [ledgerEntryId], "desc", null, 1);
+  const statement = groupedQuery({
+    endpoint, where: ["entry.ledger_entry_id = ?"], parameters: [ledgerEntryId], order: "desc",
+    sortBy: "occurred_at", cursor: null, includeDuplicateVariants: false, groupWhere: [], groupParameters: [],
+    includeMatchMetrics: false,
+  }, 1);
   const row = database.read(db => db.prepare(statement.sql).get(...statement.parameters)) as unknown as GroupRow | undefined;
   if (!row) return null;
   const { summary, sources, matches, conflicts } = summarize(row, environment);
@@ -225,17 +243,21 @@ function normalizeQuery(query: AdminLedgerQuery) {
   const endpoint = environmentEndpoint(query.environment);
   const limit = query.limit ?? 20;
   const order = query.sortOrder ?? "desc";
+  const sortBy = query.sortBy ?? "occurred_at";
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
     throw new ListQueryError("流水每页条数须为 1 至 100");
   }
   if (order !== "asc" && order !== "desc") throw new ListQueryError("流水排序方向无效");
+  if (!ADMIN_LEDGER_SORT_FIELDS.includes(sortBy)) throw new ListQueryError("流水排序方式无效");
   const keyword = normalizeKeyword(query.q ?? "");
   const search = listSearch([
     "entry.ledger_entry_id", "entry.external_event_id", "entry.alipay_order_no",
     "entry.merchant_order_no", "entry.other_account", "entry.trans_memo",
     "entry.provider_account_key", "binding.external_account_id",
   ], keyword);
-  const orderSearch = listSearch(["linked_order.order_id", "linked_order.merchant_order_no"], keyword);
+  const orderSearch = listSearch([
+    "linked_match.payment_match_id", "linked_order.order_id", "linked_order.merchant_order_no", "linked_order.product_name",
+  ], keyword);
   const where: string[] = search.where ? [`(${search.where} OR EXISTS (
     SELECT 1 FROM payment_matches AS linked_match
     JOIN payment_orders AS linked_order ON linked_order.order_id = linked_match.order_id
@@ -268,16 +290,44 @@ function normalizeQuery(query: AdminLedgerQuery) {
   if (query.minAmountCents !== undefined && query.maxAmountCents !== undefined && query.minAmountCents > query.maxAmountCents) {
     throw new ListQueryError("流水最小金额不能大于最大金额");
   }
+  const groupWhere: string[] = [], groupParameters: Array<string | number> = [];
+  if (query.associationStatus !== undefined) {
+    const counts = { UNMATCHED: "= 0", MATCHED: ">= 1", MULTIPLE: "> 1" } as const;
+    if (!Object.hasOwn(counts, query.associationStatus)) throw new ListQueryError("收款关联状态无效");
+    groupWhere.push("COALESCE(match_metrics.active_match_count, 0) " + counts[query.associationStatus]);
+  }
+  if (query.hasReversals !== undefined) {
+    if (typeof query.hasReversals !== "boolean") throw new ListQueryError("关联撤销历史筛选无效");
+    groupWhere.push("COALESCE(match_metrics.reversed_match_count, 0) " + (query.hasReversals ? "> 0" : "= 0"));
+  }
+  try {
+    const dates = listCreatedDates("associated_match.created_at", query.associatedFrom, query.associatedTo);
+    if (dates.where) {
+      groupWhere.push(`EXISTS (SELECT 1 FROM members AS associated_member
+        CROSS JOIN payment_matches AS associated_match
+        WHERE associated_member.external_event_id = anchor.external_event_id
+          AND associated_match.ledger_entry_id = associated_member.ledger_entry_id AND ${dates.where})`);
+      groupParameters.push(...dates.parameters);
+    }
+  } catch (error) {
+    if (error instanceof CreatedDateError) throw new ListQueryError(error.message);
+    throw error;
+  }
   const cursor = query.cursor ?? null;
-  if (cursor && (!Number.isSafeInteger(cursor.occurred_at_ms) || cursor.occurred_at_ms < 0 ||
+  const cursorValue = cursor && ("sort_value" in cursor ? cursor.sort_value : cursor.occurred_at_ms);
+  if (cursor && ((cursorValue !== null && (!Number.isSafeInteger(cursorValue) || cursorValue === undefined || cursorValue < 0)) ||
+    (sortBy === "occurred_at" && cursorValue === null) ||
+    (sortBy !== "occurred_at" && !("sort_value" in cursor)) ||
     typeof cursor.external_event_id !== "string" || cursor.external_event_id.length < 1 ||
     cursor.external_event_id.length > 256 || cursor.external_event_id.includes("\0") ||
     !cursor.external_event_id.isWellFormed())) {
     throw new ListQueryError("流水分页游标无效");
   }
-  const includeDuplicateVariants = !!keyword || query.direction !== undefined ||
+  const includeDuplicateVariants = !!keyword || query.direction !== undefined || sortBy === "amount_cents" ||
     query.occurredFrom !== undefined || query.minAmountCents !== undefined || query.maxAmountCents !== undefined;
-  return { endpoint, where, parameters, limit, order, cursor, includeDuplicateVariants };
+  const includeMatchMetrics = query.associationStatus !== undefined || query.hasReversals !== undefined ||
+    sortBy === "associated_at" || sortBy === "handled_at" || sortBy === "event_sequence";
+  return { endpoint, where, parameters, limit, order, sortBy, cursor, includeDuplicateVariants, groupWhere, groupParameters, includeMatchMetrics };
 }
 
 /** Connection-local scalar functions do not change persisted data or the read snapshot. */
@@ -297,17 +347,46 @@ function registerDuplicateFacts(database: DatabaseSync) {
 }
 
 function groupedQuery(
-  endpoint: string,
-  predicates: readonly string[],
-  filterParameters: readonly (string | number)[],
-  order: "asc" | "desc",
-  cursor: AdminLedgerCursor | null,
+  options: Omit<ReturnType<typeof normalizeQuery>, "limit">,
   limit: number,
-  includeDuplicateVariants = false,
 ) {
+  const { endpoint, where: predicates, parameters: filterParameters, order, sortBy, cursor,
+    includeDuplicateVariants, groupWhere, groupParameters, includeMatchMetrics } = options;
   const seek = listKeyset("sort_at", ["external_event_id"], order, cursor ? {
-    value: cursor.occurred_at_ms, keys: [cursor.external_event_id],
-  } : null);
+    value: "sort_value" in cursor ? cursor.sort_value! : cursor.occurred_at_ms!, keys: [cursor.external_event_id],
+  } : null, sortBy !== "occurred_at");
+  const matchMetrics = includeMatchMetrics ? `match_metrics AS MATERIALIZED (
+    SELECT member.external_event_id,
+           SUM(match.status = 'SETTLED') AS active_match_count,
+           SUM(match.status = 'REVERSED') AS reversed_match_count,
+           MAX(match.created_at) AS last_associated_at,
+           MAX(COALESCE(match.resolved_at, match.created_at)) AS last_handled_at,
+           MAX(match_event.event_sequence) AS event_sequence
+      FROM members AS member CROSS JOIN payment_matches AS match
+      LEFT JOIN payment_match_events AS match_event
+        ON match_event.payment_match_id = match.payment_match_id AND match_event.status = match.status
+     WHERE match.ledger_entry_id = member.ledger_entry_id
+     GROUP BY member.external_event_id
+  ), ` : "";
+  // A numerical sort must use the same agreed fact exposed in the response.
+  // Invalid or disagreeing duplicate versions belong in the explicit null bucket.
+  const amountMetrics = sortBy === "amount_cents" ? `amount_metrics AS MATERIALIZED (
+    SELECT external_event_id,
+           CASE WHEN COUNT(amount_cents) = COUNT(*) AND MIN(amount_cents) = MAX(amount_cents)
+                THEN MIN(amount_cents) ELSE NULL END AS amount_cents
+      FROM (
+        SELECT external_event_id, amount_cents FROM members
+        UNION ALL
+        SELECT duplicate.external_event_id, json_extract(duplicate.facts, '$.amount_cents') AS amount_cents
+          FROM duplicate_inputs AS duplicate
+         WHERE EXISTS (SELECT 1 FROM members WHERE members.external_event_id = duplicate.external_event_id)
+      ) GROUP BY external_event_id
+  ), ` : "";
+  const sortExpression = {
+    occurred_at: "anchor.occurred_at", associated_at: "match_metrics.last_associated_at",
+    handled_at: "match_metrics.last_handled_at", amount_cents: "amount_metrics.amount_cents",
+    event_sequence: "match_metrics.event_sequence",
+  }[sortBy];
   // Eligibility selects event identities only. Hydration always includes every
   // source member, even when just one variant matched a date, amount or state.
   const duplicateCandidates = includeDuplicateVariants ? `duplicate_sources AS MATERIALIZED (
@@ -365,11 +444,14 @@ function groupedQuery(
       JOIN provider_account_bindings AS binding ON binding.provider_account_key = entry.provider_account_key
       LEFT JOIN provider_account_activations AS activation ON activation.provider_account_key = binding.provider_account_key
      WHERE binding.provider_endpoint = ?
-  ), event_groups AS (
+  ), ${matchMetrics}${amountMetrics}event_groups AS (
     -- Unactivated legacy bindings precede recorded generations. Generations
     -- activate once in append-only sequence order. A later source
     -- may dispute transaction facts but cannot move an existing group's anchor.
-    SELECT external_event_id, occurred_at AS sort_at FROM members WHERE source_rank = 1
+    SELECT anchor.external_event_id, ${sortExpression} AS sort_at FROM members AS anchor
+      ${includeMatchMetrics ? "LEFT JOIN match_metrics ON match_metrics.external_event_id = anchor.external_event_id" : ""}
+      ${sortBy === "amount_cents" ? "LEFT JOIN amount_metrics ON amount_metrics.external_event_id = anchor.external_event_id" : ""}
+     WHERE anchor.source_rank = 1${groupWhere.length ? " AND " + groupWhere.join(" AND ") : ""}
   ), selected_groups AS MATERIALIZED (
     SELECT * FROM event_groups ${seek.where ? "WHERE " + seek.where : ""}
      ORDER BY ${seek.orderBy} LIMIT ?
@@ -443,11 +525,11 @@ function groupedQuery(
     JOIN source_payloads AS sources ON sources.external_event_id = selected.external_event_id
     LEFT JOIN match_payloads AS matches ON matches.external_event_id = selected.external_event_id
     LEFT JOIN conflict_payloads AS conflicts ON conflicts.external_event_id = selected.external_event_id
-   ORDER BY selected.sort_at ${order === "asc" ? "ASC" : "DESC"}, selected.external_event_id ${order === "asc" ? "ASC" : "DESC"}`;
+   ORDER BY selected.sort_at ${order === "asc" ? "ASC" : "DESC"} NULLS LAST, selected.external_event_id ${order === "asc" ? "ASC" : "DESC"}`;
   return { sql, parameters: [
     ...(includeDuplicateVariants ? [endpoint] : []), endpoint, ...filterParameters,
     ...(includeDuplicateVariants ? [endpoint, ...filterParameters] : []),
-    endpoint, ...seek.parameters, limit,
+    endpoint, ...groupParameters, ...seek.parameters, limit,
   ] };
 }
 
@@ -496,6 +578,7 @@ function summarize(row: GroupRow, environment: ProviderEnvironment) {
     !incompleteVariant && variants.every(variant => variant[key] === variants[0]![key]) ? variants[0]![key] : null,
   ])) as unknown as AdminLedgerFacts;
   const active = matches.filter((match): match is AdminLedgerMatch & { status: "SETTLED" } => match.status === "SETTLED");
+  const latest = (values: readonly string[]) => values.reduce<string | null>((last, value) => last === null || value > last ? value : last, null);
   const contentConsistent = duplicateConflicts.length === 0 && new Set(sources.map(source => source.semantic_fingerprint)).size === 1;
   const summary: AdminLedgerSummary = {
     ...facts, ledger_entry_id: sources[0]!.ledger_entry_id, external_event_id: row.external_event_id,
@@ -503,6 +586,9 @@ function summarize(row: GroupRow, environment: ProviderEnvironment) {
     source_record_count: sources.length, content_consistent: contentConsistent,
     has_conflicts: !contentConsistent || conflicts.length > 0 || active.length > 1,
     active_match_count: active.length, active_match: active.length === 1 ? active[0]! : null,
+    reversed_match_count: matches.filter(match => match.status === "REVERSED").length,
+    last_associated_at: latest(matches.map(match => match.created_at)),
+    last_handled_at: latest(matches.map(match => match.resolved_at ?? match.created_at)),
     created_at: iso(sourceRows.reduce((value, source) => Math.min(value, source.created_at), sourceRows[0]!.created_at)),
     updated_at: iso(sourceRows.reduce((value, source) => Math.max(value, source.updated_at), sourceRows[0]!.updated_at)),
   };

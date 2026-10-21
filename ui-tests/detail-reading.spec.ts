@@ -5,13 +5,15 @@ import type { AdminLedgerDetail, AdminOrderDetail, PaymentMatchDetail, WebhookAt
 
 const scenarios = [
   { key: "notificationDns", kind: "notification", heading: "通知详情", tools: "通知记录操作" },
-  { key: "matchInferred", kind: "match", heading: "收款关联详情", tools: "收款关联记录操作" },
-  { key: "ledgerAssociated", kind: "ledger", heading: "支付宝流水详情", tools: "支付宝流水记录操作" },
+  { key: "matchSite", kind: "match", heading: "收款关联详情", tools: "收款关联记录操作" },
+  { key: "ledgerAssociated", kind: "ledger", heading: "流水与对账详情", tools: "支付宝流水记录操作" },
 ] as const;
 const layoutScenarios = [
   ...scenarios,
   { ...scenarios[0], key: "notificationSite" },
-  { ...scenarios[1], key: "matchSite" },
+  // The former global match detail now resolves to its unified transaction;
+  // the legitimate site detail above still exercises the standalone layout.
+  { ...scenarios[2], key: "matchInferred" },
 ] as const;
 
 function detailPath(manifest: Manifest, key: string) {
@@ -286,7 +288,7 @@ test("flow summaries wrap at container boundaries without stretching two facts a
   await record(page, info, { feature: "detail-flow-container-breakpoints", boundaries, restoredInlineWidth: originalWidth });
   await screenshot(page, info, "reading-flow-boundaries-restored");
 
-  await openDetail(page, manifest, "matchInferred");
+  await openDetail(page, manifest, "matchSite");
   const flows = await readingFlowGeometry(page);
   const twoFacts = flows.find(group => group.fields.length === 2 && group.fields.map(field => field.name).join("/") === "关联方式/关联时间");
   expect(twoFacts, "the genuine inferred match has two short processing facts").toBeTruthy();
@@ -514,15 +516,21 @@ test("failed attempt reads retain an accurate unknown history and recover on exp
   await screenshot(page, info, "reading-notification-attempt-read-recovered");
 });
 
-test("automatic, manual, reversed and site match details retain their visible evidence", async ({ page, manifest }, info) => {
+test("automatic, manual and reversed matches keep full evidence in unified and site details", async ({ page, manifest }, info) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, manifest);
   for (const key of ["matchInferred", "matchManual", "matchReversed", "matchSite"]) {
     await openDetail(page, manifest, key);
     const match = await data<PaymentMatchDetail>(page, manifest, apiPath(detailPath(manifest, key)));
     const card = page.getByRole("group", { name: "收款关联记录", exact: true });
-    const transaction = page.getByRole("group", { name: "支付宝交易", exact: true });
-    const evidence = page.getByRole("group", { name: "匹配依据与处理记录", exact: true });
+    const scoped = key === "matchSite";
+    const transaction = scoped ? page.getByRole("group", { name: "支付宝交易", exact: true }) : page.locator("[data-ledger-summary]");
+    const evidence = scoped ? page.getByRole("group", { name: "匹配依据与处理记录", exact: true }) : card.locator("[data-match-evidence]");
+    if (!scoped) {
+      await expect(page).toHaveURL(manifest.origin + "/admin/reconciliation/transactions/" + match.ledger_entry_id + "#match-" + match.payment_match_id);
+      await expect(card.getByText("支付宝交易金额", { exact: true })).toHaveCount(0);
+      await expect(card.getByRole("link", { name: "核对这份记录", exact: true })).toHaveAttribute("href", /#source-/);
+    }
     await expect(transaction.getByText(match.ledger_entry.provider_order_no!, { exact: true })).toBeVisible();
     await expect(card.locator("[data-detail-order-summary]")).toContainText(match.order.merchant_order_no);
     if (match.candidate) {
@@ -554,7 +562,8 @@ test("automatic, manual, reversed and site match details retain their visible ev
       await expect(dialog).toHaveCount(0);
       await expect(trigger).toBeFocused();
     }
-    if (key === "matchSite") await expect(card.locator('[data-detail-order-summary] a[href*="/orders/"]')).toHaveAttribute("href", new RegExp("^/admin/sites/" + match.order.api_client_id + "/orders/"));
+    const orderPrefix = scoped ? "/admin/sites/" + match.order.api_client_id : "/admin";
+    await expect(card.locator('[data-detail-order-summary] a[href*="/orders/"]')).toHaveAttribute("href", orderPrefix + "/orders/" + match.order_id);
     await record(page, info, { feature: "match-domain-scenarios", key, evidenceType: match.evidence_type, status: match.status });
     await screenshot(page, info, "reading-" + key);
   }
@@ -585,8 +594,11 @@ test("all genuine ledger versions and synthetic simultaneous associations remain
     } else {
       for (const source of entry.sources) {
         const card = page.locator(`[data-ledger-source="${source.ledger_entry_id}"]`);
-        await expect(card.locator("dt")).toHaveText(["内部流水编号（PerPay）", "保存时间"]);
-        await expect(card.getByRole("link", { name: "查看记录与处理", exact: true })).toHaveAttribute("href", "/admin/reconciliation/ledger/" + source.ledger_entry_id);
+        await expect(card.locator("[data-detail-fields]").first().locator("dt")).toHaveText(["内部流水编号（PerPay）", "保存时间"]);
+        await expect(card.getByRole("link", { name: "查看记录与处理", exact: true })).toHaveCount(0);
+        const eligible = source.direction === "CREDIT" && ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(source.state);
+        const actions = card.locator('[data-slot="item-actions"], [data-slot="card-action"]').first();
+        await expect(actions.getByRole("button", { name: "人工关联收款", exact: true })).toHaveCount(eligible ? 1 : 0);
       }
     }
     await record(page, info, { feature: "ledger-domain-scenarios", key, sources: entry.sources.length, matches: entry.matches.length, conflicts: entry.conflicts.length });
@@ -597,10 +609,14 @@ test("all genuine ledger versions and synthetic simultaneous associations remain
   const settled = entry.matches.find(match => match.status === "SETTLED");
   expect(settled).toBeTruthy();
   const second = { ...structuredClone(settled!), payment_match_id: "b0000000-0000-4000-8000-000000000002", order_id: "b0000000-0000-4000-8000-000000000003", merchant_order_no: "SYNTHETIC-SECOND-ACTIVE-ORDER", product_name: "合成的第二条生效关联" };
+  const full = await data<PaymentMatchDetail>(page, manifest, "/api/admin/v1/reconciliation/matches/" + settled!.payment_match_id);
+  const secondDetail: PaymentMatchDetail = { ...structuredClone(full), payment_match_id: second.payment_match_id, order_id: second.order_id,
+    order: { ...structuredClone(full.order), order_id: second.order_id, merchant_order_no: second.merchant_order_no, product_name: second.product_name } };
   entry.matches.push(second);
   entry.active_match_count = entry.matches.filter(match => match.status === "SETTLED").length;
   entry.active_match = null;
   await page.route(manifest.origin + path, route => route.fulfill({ status: 200, json: { data: entry } }));
+  await page.route(manifest.origin + "/api/admin/v1/reconciliation/matches/" + second.payment_match_id, route => route.fulfill({ status: 200, json: { data: secondDetail } }));
   await openDetail(page, manifest, "ledgerAssociated");
   await expect(page.locator("[data-ledger-warning]")).toContainText(`有 ${entry.active_match_count} 条收款关联仍生效`);
   await expect(page.locator("[data-ledger-warning]")).toContainText("无法确定唯一对应的订单");
@@ -608,8 +624,8 @@ test("all genuine ledger versions and synthetic simultaneous associations remain
   await expect(page.getByText("当前实际关联", { exact: true })).toHaveCount(0);
   for (const match of [settled!, second]) {
     const card = page.locator(`[data-ledger-match="${match.payment_match_id}"]`);
-    await expect(card.getByRole("link", { name: "查看订单：" + match.merchant_order_no, exact: true })).toHaveAttribute("href", "/admin/orders/" + match.order_id);
-    await expect(card.getByText("仍生效 · 请核对", { exact: true })).toBeVisible();
+    await expect(card.locator('[data-detail-order-summary] a[href*="/orders/"]')).toHaveAttribute("href", "/admin/orders/" + match.order_id);
+    await expect(card.getByText("仍生效 · 存在多条关联", { exact: true })).toBeVisible();
   }
   await record(page, info, { feature: "ledger-multiple-associations", evidence: "synthetic-detail-response-only", activeMatchCount: entry.active_match_count });
   await screenshot(page, info, "reading-ledger-multiple-active-associations");
@@ -663,7 +679,7 @@ test("long products, complete identifiers and multiline details wrap without cli
   const notification = structuredClone(await data<WebhookDeliveryDetail>(page, manifest, notificationPath));
   const orderPath = "/api/admin/v1/orders/" + notification.event.order_id;
   const order = structuredClone(await data<AdminOrderDetail>(page, manifest, orderPath));
-  const matchPath = apiPath(detailPath(manifest, "matchInferred"));
+  const matchPath = apiPath(detailPath(manifest, "matchSite"));
   const match = structuredClone(await data<PaymentMatchDetail>(page, manifest, matchPath));
   const ledgerPath = apiPath(detailPath(manifest, "ledgerAssociated"));
   const ledger = structuredClone(await data<AdminLedgerDetail>(page, manifest, ledgerPath));
@@ -698,13 +714,20 @@ test("long products, complete identifiers and multiline details wrap without cli
   for (const source of ledger.sources) { source.memo = memo; source.provider_order_no = identifier; source.merchant_order_no = merchantIdentifier; source.other_account = counterparty; }
   for (const item of ledger.matches) item.product_name = product;
   for (const [path, value] of [[notificationPath, notification], [orderPath, order], [matchPath, match], [ledgerPath, ledger]] as const) await page.route(manifest.origin + path, route => route.fulfill({ status: 200, json: { data: value } }));
+  for (const item of ledger.matches) {
+    const path = "/api/admin/v1/reconciliation/matches/" + item.payment_match_id;
+    const full = item.payment_match_id === match.payment_match_id ? match : structuredClone(await data<PaymentMatchDetail>(page, manifest, path));
+    full.order.product_name = product;
+    full.order.site_name = siteName;
+    await page.route(manifest.origin + path, route => route.fulfill({ status: 200, json: { data: full } }));
+  }
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: manifest.origin });
   for (const width of [320, 1440]) for (const theme of ["light", "dark"] as const) {
     await page.setViewportSize({ width, height: 900 });
     await layout(page, theme, "compact");
     for (const scenario of scenarios) {
       await openDetail(page, manifest, scenario.key);
-      const title = scenario.kind === "ledger" ? page.locator("[data-ledger-match] [data-slot=card-title]").first() : page.locator('[data-detail-order-summary] [data-slot="item-title"]');
+      const title = page.locator('[data-detail-order-summary] [data-slot="item-title"]').first();
       await expect(title).toHaveText(product);
       const bounds = await title.evaluate(element => {
         const range = document.createRange(); range.selectNodeContents(element);

@@ -250,6 +250,12 @@ export const appRoutes = createRoutesFromElements(
       })}
     />
     <Route
+      path="reconciliation/transactions/:ledgerEntryId"
+      lazy={async () => ({
+        Component: (await import("./pages/LedgerDetail")).default,
+      })}
+    />
+    <Route
       path="reconciliation/:kind/:resourceId"
       lazy={async () => ({
         Component: (await import("./pages/ReconciliationDetail")).default,
@@ -264,13 +270,13 @@ export const appRoutes = createRoutesFromElements(
     <Route
       path="ledger"
       lazy={async () => ({
-        Component: (await import("./pages/Ledger")).default,
+        Component: (await import("./pages/ReconciliationRedirect")).LedgerListRedirect,
       })}
     />
     <Route
       path="ledger/:ledgerEntryId"
       lazy={async () => ({
-        Component: (await import("./pages/LedgerDetail")).default,
+        Component: (await import("./pages/ReconciliationRedirect")).LedgerDetailRedirect,
       })}
     />
     <Route

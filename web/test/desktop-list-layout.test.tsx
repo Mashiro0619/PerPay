@@ -15,7 +15,8 @@ import WorkItems from "../src/pages/WorkItems";
 import Reconciliation from "../src/pages/Reconciliation";
 import Notifications from "../src/pages/Notifications";
 import { json, order, orderId, ledgerId } from "./fixtures";
-import { delivery, paymentMatch, matchId, deliveryId } from "./detail-fixtures";
+import { delivery, deliveryId } from "./detail-fixtures";
+import { groupedLedger } from "./ledger-fixtures";
 import { mobileMedia } from "./mobile-media";
 
 const longOrder = {
@@ -61,9 +62,10 @@ const lists = [
   {
     path: "/reconciliation",
     element: <Reconciliation />,
-    data: [paymentMatch],
-    hiddenColumn: "关联商户订单号（业务网站）",
-    centeredColumns: ["status", "amount_cents", "created_at"],
+    data: [groupedLedger],
+    hiddenColumn: "最近关联时间",
+    centeredColumns: ["association", "direction", "amount_cents", "occurred_at", "state"],
+    optionalCenteredColumns: ["associated_at", "handled_at"],
   },
   {
     path: "/notifications",
@@ -88,7 +90,7 @@ function mount(path: string, element: React.ReactNode) {
             <Route path={path.split("?")[0]} element={element} />
             <Route path="/orders/:id" element={<h1>订单详情</h1>} />
             <Route
-              path="/reconciliation/ledger/:id"
+              path="/reconciliation/transactions/:id"
               element={<h1>流水详情</h1>}
             />
           </Routes>
@@ -112,14 +114,14 @@ async function chooseMode(
   await user.click(await screen.findByRole("menuitemradio", { name }));
 }
 
-function expectColumnAlignment(table: HTMLElement, centeredColumns: readonly string[]) {
+function expectColumnAlignment(table: HTMLElement, centeredColumns: readonly string[], optionalCenteredColumns: readonly string[] = []) {
   const headers = within(table).getAllByRole("columnheader");
   expect(headers.map((header) => header.getAttribute("data-column-id"))).toEqual(
     expect.arrayContaining(["identity", ...centeredColumns]),
   );
   for (const header of headers) {
     const columnId = header.getAttribute("data-column-id")!;
-    const alignment = centeredColumns.includes(columnId) ? "center" : "left";
+    const alignment = [...centeredColumns, ...optionalCenteredColumns].includes(columnId) ? "center" : "left";
     expect(header).toHaveAttribute("data-column-align", alignment);
     expect(table.querySelector(`tbody [data-column-id="${columnId}"]`)).toHaveAttribute("data-column-align", alignment);
   }
@@ -172,7 +174,7 @@ describe("desktop business list composition", () => {
 
   it.each(lists)(
     "keeps search, filters and the unique column menu grouped without duplicate desktop sorting on $path",
-    async ({ path, element, data, centeredColumns }) => {
+    async ({ path, element, data, centeredColumns, optionalCenteredColumns }) => {
       pageResponse(data);
       const view = mount(path, element);
       const table = await screen.findByRole("table");
@@ -210,7 +212,7 @@ describe("desktop business list composition", () => {
       expect(view.container.querySelector("[data-business-list]")).toHaveClass("w-full", "min-w-0");
       expect(view.container.querySelector("[data-business-list]")).not.toHaveClass("max-w-[1600px]", "mx-auto");
       expect(table.querySelector("tbody td")).toHaveAttribute("data-column-layout", "identity");
-      expectColumnAlignment(table, centeredColumns);
+      expectColumnAlignment(table, centeredColumns, optionalCenteredColumns);
       expect(table).toHaveAttribute("data-density", "compact");
       expect(table).toHaveClass("table-fixed");
       expect(table.querySelector("tbody td")).not.toHaveClass("py-2");
@@ -220,7 +222,7 @@ describe("desktop business list composition", () => {
 
   it.each(lists)(
     "uses the measured container and honors explicitly shown columns on $path",
-    async ({ path, element, data, hiddenColumn, centeredColumns }) => {
+    async ({ path, element, data, hiddenColumn, centeredColumns, optionalCenteredColumns }) => {
       let width = 400;
       const original = HTMLElement.prototype.getBoundingClientRect;
       vi.spyOn(
@@ -258,7 +260,7 @@ describe("desktop business list composition", () => {
       expect(table).toBeVisible();
       expect(screen.queryByRole("button", { name: /^筛选与排序/ })).not.toBeInTheDocument();
       expect(screen.queryByRole("combobox", { name: "排序字段" })).not.toBeInTheDocument();
-      expectColumnAlignment(table, centeredColumns);
+      expectColumnAlignment(table, centeredColumns, optionalCenteredColumns);
       expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
       expect(screen.getByRole("columnheader", { name: hiddenColumn })).toBeVisible();
       width = 400;
@@ -326,8 +328,8 @@ describe("desktop business list composition", () => {
     {
       path: "/reconciliation",
       element: <Reconciliation />,
-      data: [paymentMatch],
-      id: matchId,
+      data: [groupedLedger],
+      id: ledgerId,
       relatedName: "查看订单：" + order.merchant_order_no,
     },
     {
@@ -346,9 +348,7 @@ describe("desktop business list composition", () => {
       expect(screen.queryByText(id, { exact: true })).not.toBeInTheDocument();
       const related = screen.getByRole("link", { name: relatedName });
       expect(related).toHaveAttribute("href", "/orders/" + orderId);
-      expect(screen.getAllByRole("columnheader")[1]).toHaveTextContent(
-        "关联商户订单号（业务网站）",
-      );
+      expect(screen.getByRole("columnheader", { name: path === "/reconciliation" ? "当前关联订单" : "关联商户订单号（业务网站）" })).toBeVisible();
       expect(related).not.toHaveTextContent("…");
       if (path === "/reconciliation") {
         expect(related).toHaveTextContent(order.merchant_order_no);
@@ -362,15 +362,16 @@ describe("desktop business list composition", () => {
     "keeps the related order number and its navigation in the record metadata with %s",
     async (mode) => {
       if (mode === "hidden column") {
-        localStorage.setItem("perpay.table-columns.v2.reconciliation-matches", JSON.stringify({ order: false }));
+        localStorage.setItem("perpay.table-columns.v2.administrator-ledger", JSON.stringify({ order: false }));
       } else {
         mobileMedia(390);
       }
-      pageResponse([paymentMatch]);
+      pageResponse([groupedLedger]);
       mount("/reconciliation", <Reconciliation />);
       const related = await screen.findByRole("link", { name: "查看订单：" + order.merchant_order_no });
-      expect(related.closest(".list-identity-meta")).not.toBeNull();
-      expect(screen.queryByRole("columnheader", { name: "关联商户订单号（业务网站）" })).not.toBeInTheDocument();
+      if (mode === "hidden column") expect(related.closest(".list-identity-meta")).not.toBeNull();
+      else expect(related.closest('.business-summary-field')).toHaveTextContent("当前关联订单");
+      expect(screen.queryByRole("columnheader", { name: "当前关联订单" })).not.toBeInTheDocument();
       expect(screen.getAllByText(order.merchant_order_no, { exact: true })).toHaveLength(1);
       await userEvent.click(related);
       expect(await screen.findByRole("heading", { name: "订单详情" })).toBeVisible();
@@ -459,7 +460,7 @@ describe("desktop business list composition", () => {
       value: ledgerId,
       path: "/reconciliation",
       element: <Reconciliation />,
-      data: [paymentMatch],
+      data: [groupedLedger],
       title: "流水详情",
     },
   ])(
@@ -470,7 +471,7 @@ describe("desktop business list composition", () => {
         "fetch",
         vi.fn(async (request: Request) => {
           requests.push(request);
-          return /\/(?:orders|matches)$/.test(new URL(request.url).pathname)
+          return /\/(?:orders|entries)$/.test(new URL(request.url).pathname)
             ? json({ data, page: { next_cursor: null } })
             : json({ data: order });
         }),

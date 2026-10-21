@@ -8,7 +8,7 @@ import { paidOrder } from "./detail-fixtures";
 
 describe("independent readable detail scope", () => {
   it.each([
-    "/notifications/delivery", "/notifications/delivery/", "/reconciliation/matches/match", "/ledger/entry",
+    "/notifications/delivery", "/notifications/delivery/", "/reconciliation/matches/match", "/ledger/entry", "/reconciliation/transactions/entry",
     "/sites/site-a/notifications/delivery", "/sites/site-a/reconciliation/matches/match",
     "/reconciliation/exceptions/exception", "/sites/site-a/reconciliation/exceptions/exception",
   ])("enables the selected detail %s", path => expect(isReadableDetailPage(path)).toBe(true));

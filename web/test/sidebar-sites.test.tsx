@@ -3,7 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { queryClient, type ListSiteOverviewResponse, type Site } from "../src/api/client";
-import { json, order, orderId } from "./fixtures";
+import { json, ledger, ledgerId, order, orderId } from "./fixtures";
+import { groupedLedger } from "./ledger-fixtures";
 import { matchId, paymentMatch } from "./detail-fixtures";
 import { recordAction } from "./menu-helper";
 import { mountOnboarding } from "./onboarding-fixture";
@@ -106,8 +107,12 @@ function mountSidebar({
         return json({ data: [], page: { next_cursor: null } });
       if (url.pathname.endsWith("/orders/" + orderId))
         return json({ data: { ...order, api_client_id: /\/sites\/([^/]+)/.exec(url.pathname)?.[1] ?? "a" } });
-      if (url.pathname === "/api/admin/v1/reconciliation/matches")
-        return json({ data: [paymentMatch], page: { next_cursor: null } });
+      if (url.pathname === "/api/admin/v1/ledger/entries")
+        return json({ data: [groupedLedger], environment: "PRODUCTION", page: { next_cursor: null } });
+      if (url.pathname === "/api/admin/v1/ledger/entries/" + ledgerId)
+        return json({ data: { ...groupedLedger, sources: [{ ...ledger, state: "ALLOCATED", app_id: "app", environment: "PRODUCTION", raw_event_id: ledgerId }], matches: [groupedLedger.active_match], conflicts: [] } });
+      if (url.pathname.endsWith("/ledger-entries/" + ledgerId + "/candidates"))
+        return json({ data: [] });
       if (url.pathname === "/api/admin/v1/reconciliation/matches/" + matchId)
         return json({ data: paymentMatch });
       if (url.pathname === "/api/admin/v1/settings/site-defaults")
@@ -297,7 +302,8 @@ describe("business websites in the sidebar", () => {
     expect(primaryLinks(nav)).toEqual(["总览", "订单", "待处理", "通知"]);
     const settings = within(nav).getByRole("navigation", { name: "设置导航" });
     const shared = within(nav).getByRole("navigation", { name: "全局管理" });
-    expect(within(shared).getAllByRole("link").map(link => link.textContent?.trim())).toEqual(["业务网站", "对账", "支付宝流水", "运行状态"]);
+    expect(within(shared).getAllByRole("link").map(link => link.textContent?.trim())).toEqual(["业务网站", "对账", "运行状态"]);
+    expect(within(shared).queryByRole("link", { name: "支付宝流水" })).not.toBeInTheDocument();
     const manage = within(shared).getByRole("link", { name: "业务网站" });
     expect(manage).toHaveAttribute("href", "/sites");
     expect(within(settings).getByRole("link", { name: "设置" })).toHaveAttribute("href", "/settings");
@@ -667,18 +673,18 @@ describe("website selection on shared pages", () => {
     await within(nav).findByRole("link", { name: "网站 A" });
     const user = userEvent.setup();
     await user.click(within(nav).getByRole("link", { name: "对账" }));
-    const sharedRow = await screen.findByRole("link", { name: "测试商品" });
+    const sharedRow = await screen.findByRole("link", { name: groupedLedger.external_event_id });
     expect(within(sharedRow.closest("[data-business-row]")! as HTMLElement).getAllByText("test-merchant-order").length).toBeGreaterThan(0);
     expect(view.router.state.location.pathname).toBe("/reconciliation");
     expect(new URLSearchParams(view.router.state.location.search).get("selected_site")).toBe("a");
     expect(view.container.querySelector("header")).toHaveTextContent("全局");
-    const sharedReads = () => view.fetchMock.mock.calls.filter(([request]) => new URL(request.url).pathname === "/api/admin/v1/reconciliation/matches");
+    const sharedReads = () => view.fetchMock.mock.calls.filter(([request]) => new URL(request.url).pathname === "/api/admin/v1/ledger/entries");
     expect(sharedReads()).toHaveLength(1);
 
     await user.click(within(nav).getByRole("link", { name: "网站 B" }));
     await waitFor(() => expect(new URLSearchParams(view.router.state.location.search).get("selected_site")).toBe("b"));
     expect(view.router.state.location.pathname).toBe("/reconciliation");
-    expect(screen.getByRole("link", { name: "测试商品" })).toBe(sharedRow);
+    expect(screen.getByRole("link", { name: groupedLedger.external_event_id })).toBe(sharedRow);
     expect(sharedReads()).toHaveLength(1);
     expect(within(nav).getByRole("link", { name: "订单" })).toHaveAttribute("href", "/sites/b/orders");
     expect(within(nav).getByRole("link", { name: "设置" })).toHaveAttribute("href", "/sites/b/settings/basic");
@@ -692,7 +698,7 @@ describe("website selection on shared pages", () => {
     await waitFor(() => expect(view.fetchMock.mock.calls.some(([request]) => new URL(request.url).pathname === "/api/admin/v1/sites/b/orders")).toBe(true));
     expect(new URLSearchParams(view.router.state.location.search).has("selected_site")).toBe(false);
     await act(async () => { await view.router.navigate(-1); });
-    await screen.findByRole("link", { name: "测试商品" });
+    await screen.findByRole("link", { name: groupedLedger.external_event_id });
     expect(new URLSearchParams(view.router.state.location.search).get("selected_site")).toBe("b");
     await act(async () => { await view.router.navigate(-1); });
     await waitFor(() => expect(within(nav).getByRole("link", { name: "网站 A" })).toHaveAttribute("aria-current", "location"));
@@ -705,7 +711,7 @@ describe("website selection on shared pages", () => {
     queryClient.clear();
     const refreshed = mountSidebar({ path: address });
     const restored = await findSidebar();
-    await screen.findByRole("link", { name: "测试商品" });
+    await screen.findByRole("link", { name: groupedLedger.external_event_id });
     expect(await within(restored).findByRole("link", { name: "网站 B" })).toHaveAttribute("aria-current", "location");
     expect(within(restored).getByRole("link", { name: "订单" })).toHaveAttribute("href", "/sites/b/orders");
     await user.click(within(restored).getByRole("link", { name: "全部网站" }));
@@ -720,13 +726,15 @@ describe("website selection on shared pages", () => {
       path: "/reconciliation?selected_site=a&tab=matches&q=shared",
       handle: (request) => {
         const url = new URL(request.url);
-        if (url.pathname !== "/api/admin/v1/reconciliation/matches") return undefined;
+        if (url.pathname !== "/api/admin/v1/ledger/entries") return undefined;
         const cursor = url.searchParams.get("cursor");
-        return json({ data: [paymentMatch], page: { next_cursor: cursor === "page-three" ? null : cursor === "page-two" ? "page-three" : "page-two" } });
+        return json({ data: [groupedLedger], environment: "PRODUCTION", page: { next_cursor: cursor === "page-three" ? null : cursor === "page-two" ? "page-three" : "page-two" } });
       },
     });
     const user = userEvent.setup();
     await screen.findByText("第 1 页 · 本页 1 条");
+    expect(new URLSearchParams(view.router.state.location.search).get("tab")).toBe("transactions");
+    expect(new URLSearchParams(view.router.state.location.search).get("association_status")).toBe("MATCHED");
     await user.click(screen.getByRole("button", { name: "下一页" }));
     await screen.findByText("第 2 页 · 本页 1 条");
     await user.click(screen.getByRole("button", { name: "下一页" }));
@@ -778,7 +786,7 @@ describe("website selection on shared pages", () => {
 
   it("keeps shared records usable when the remembered website cannot be loaded", async () => {
     const view = mountSidebar({ path: "/reconciliation?selected_site=missing" });
-    const row = await screen.findByRole("link", { name: "测试商品" });
+    const row = await screen.findByRole("link", { name: groupedLedger.external_event_id });
     const nav = sidebar();
     await waitFor(() => expect(view.fetchMock.mock.calls.some(([request]) => new URL(request.url).pathname === "/api/admin/v1/sites/missing")).toBe(true));
     expect(row).toBeVisible();
@@ -823,10 +831,10 @@ describe("website selection on shared pages", () => {
   });
 
   it("preserves an uncertain shared financial command through selection changes and retries its original global request", async () => {
-    const detailPath = "/reconciliation/matches/" + matchId;
+    const detailPath = "/reconciliation/transactions/" + ledgerId;
     const writes: Request[] = [];
     const view = mountSidebar({
-      path: detailPath + "?selected_site=a",
+      path: "/reconciliation/matches/" + matchId + "?selected_site=a",
       handle: (request) => {
         if (request.method === "POST" && new URL(request.url).pathname.endsWith("/actions/reverse")) {
           writes.push(request.clone());
@@ -837,6 +845,8 @@ describe("website selection on shared pages", () => {
     });
     const user = userEvent.setup();
     await screen.findByRole("group", { name: "收款关联记录" });
+    expect(view.router.state.location.pathname).toBe(detailPath);
+    expect(view.router.state.location.hash).toBe("#match-" + matchId);
     await user.click(await recordAction("撤销错误关联", "收款关联记录操作"));
     const dialog = await screen.findByRole("dialog", { name: "撤销收款关联？" });
     const reason = within(dialog).getByLabelText("操作理由");

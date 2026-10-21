@@ -10,6 +10,7 @@ import { SecuritySettings } from "../src/pages/SecuritySettings";
 import { recordAction } from "./menu-helper";
 import { json, ledger, ledgerId, order, orderId, settings } from "./fixtures";
 import { mountOnboarding } from "./onboarding-fixture";
+import { groupedLedger } from "./ledger-fixtures";
 
 const candidateId = "33333333-3333-4333-8333-333333333333";
 const candidate = {
@@ -111,21 +112,25 @@ describe("ordinary administrator views", () => {
   });
 
   it("does not repeat rule versions in the ledger candidate list", async () => {
-    mountOnboarding({
+    const view = mountOnboarding({
       stage: 4,
       path: "/reconciliation/ledger/" + ledgerId,
       handle: (request) => {
-        if (request.url.endsWith("/ledger-entries/" + ledgerId))
-          return json({ data: ledger });
+        if (request.url.endsWith("/ledger/entries/" + ledgerId))
+          return json({ data: { ...groupedLedger, active_match_count: 0, active_match: null, states: ["UNALLOCATED"], sources: [{ ...ledger, environment: "PRODUCTION", app_id: "app", raw_event_id: ledgerId }], matches: [], conflicts: [] } });
         if (request.url.endsWith("/ledger-entries/" + ledgerId + "/candidates"))
           return json({ data: [candidate] });
+        if (request.url.endsWith("/orders/" + orderId))
+          return json({ data: order });
         return undefined;
       },
     });
     expect(
       await screen.findByRole("heading", { name: "可能匹配的订单" }),
     ).toBeVisible();
-    expect(screen.getByText("PerPay 处理状态：未分配")).toBeVisible();
+    expect(view.router.state.location.pathname).toBe("/reconciliation/transactions/" + ledgerId);
+    expect(screen.getByText("PerPay 记录状态")).toBeVisible();
+    expect(screen.getByText("未分配", { exact: true })).toBeVisible();
     expect(screen.queryByText(/规则版本/)).not.toBeInTheDocument();
   });
 

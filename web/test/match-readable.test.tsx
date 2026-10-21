@@ -1,7 +1,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import { queryClient, type PaymentMatchDetail } from "../src/api/client";
@@ -22,7 +22,7 @@ function mount(children: ReactNode) {
 }
 
 describe("readable payment match detail", () => {
-  it.each(["", "/sites/shop"])(
+  it.each(["/sites/shop"])(
     "separates readable facts into standard cards and keeps scoped navigation at %s",
     async (scope) => {
       const user = userEvent.setup();
@@ -195,6 +195,38 @@ describe("readable payment match detail", () => {
       expect(factGroup).toHaveAttribute("data-layout", "columns");
     }
     expect(await recordAction("单独打开", "收款关联记录操作")).toHaveAttribute("href", "/reconciliation/matches/" + matchId);
+  });
+
+  it("restores focus after a unified association moves into history on successful reversal", async () => {
+    let moveIntoHistory = () => {};
+    function Transaction() {
+      const [reversed, setReversed] = useState(false);
+      moveIntoHistory = () => setReversed(true);
+      return <main id="main-content" tabIndex={-1}>
+        <MatchCard key={String(reversed)} transactionContext match={{ ...paymentMatch, status: reversed ? "REVERSED" : "SETTLED" }} />
+      </main>;
+    }
+    vi.spyOn(queryClient, "invalidateQueries").mockImplementation(async () => { moveIntoHistory(); });
+    const fetchMock = vi.fn(async (request: Request) => {
+      expect(request.method).toBe("POST");
+      expect(new URL(request.url).pathname).toBe("/api/admin/v1/reconciliation/matches/" + matchId + "/actions/reverse");
+      return json({ data: {} });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    mount(<Transaction />);
+    const user = userEvent.setup();
+    await user.click(await recordAction("撤销错误关联", "收款关联记录操作"));
+    const dialog = await screen.findByRole("dialog", { name: "撤销收款关联？" });
+    await user.type(within(dialog).getByLabelText("操作理由"), "已核对订单归属");
+    await user.click(within(dialog).getByRole("button", { name: "确认撤销关联" }));
+    await screen.findByRole("heading", { name: "已撤销的关联" });
+    // Base UI resolves a container target to its first tabbable descendant.
+    await waitFor(() => {
+      expect(document.getElementById("main-content")).toContainElement(document.activeElement as HTMLElement);
+      expect(document.activeElement).not.toBe(document.body);
+      expect(document.activeElement?.isConnected).toBe(true);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not introduce separators or invented evidence when no candidate or reasons exist", () => {

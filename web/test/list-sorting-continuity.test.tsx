@@ -11,7 +11,8 @@ import Orders from "../src/pages/Orders";
 import Notifications from "../src/pages/Notifications";
 import Reconciliation from "../src/pages/Reconciliation";
 import WorkItems from "../src/pages/WorkItems";
-import { delivery, paymentMatch } from "./detail-fixtures";
+import { delivery } from "./detail-fixtures";
+import { groupedLedger } from "./ledger-fixtures";
 import { json, order } from "./fixtures";
 import { mobileMedia } from "./mobile-media";
 
@@ -50,11 +51,10 @@ const lists = [
     })),
   },
   {
-    name: "reconciliation", path: "/reconciliation", endpoint: "/reconciliation/matches", field: "amount_cents", heading: "支付宝交易金额",
+    name: "reconciliation", path: "/reconciliation", endpoint: "/ledger/entries", field: "amount_cents", heading: "交易金额",
     data: orders.map((item) => ({
-      ...paymentMatch, payment_match_id: item.order_id,
-      ledger_entry: { ...paymentMatch.ledger_entry, amount_cents: item.payable_amount_cents },
-      order: { ...paymentMatch.order, order_id: item.order_id, product_name: item.product_name },
+      ...groupedLedger, ledger_entry_id: item.order_id, external_event_id: "alipay-" + item.order_id, amount_cents: item.payable_amount_cents,
+      active_match: { ...groupedLedger.active_match!, order_id: item.order_id, product_name: item.product_name },
     })),
   },
   { name: "work-items", path: "/work-items", endpoint: "/work-items", field: "created_at", heading: "创建时间", data: reminders },

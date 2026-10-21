@@ -64,11 +64,14 @@ export function ReverseMatchAction({
   embedded = false,
   inline = false,
   includeOrderIdentifiers = false,
+  movesOnSuccess = false,
 }: {
   match: PaymentMatchDetail;
   embedded?: boolean;
   inline?: boolean;
   includeOrderIdentifiers?: boolean;
+  /** The surrounding list moves a reversed record into its history section. */
+  movesOnSuccess?: boolean;
 }) {
   const api = useWorkspaceApi();
   const [snapshot, setSnapshot] = useState<PaymentMatchDetail | null>(null);
@@ -130,7 +133,7 @@ export function ReverseMatchAction({
           }
           onSuccess={() => {
             // Embedded matches can move into history after reversal.
-            if (embedded)
+            if (embedded || movesOnSuccess)
               finalFocus.current = document.getElementById("main-content");
             setSnapshot(null);
             setSaved(true);

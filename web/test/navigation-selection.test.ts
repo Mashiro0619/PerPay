@@ -60,6 +60,7 @@ describe("fixed navigation sections and destinations", () => {
     ["/sites/site_a/notifications/delivery-id", "notifications"],
     ["/sites/site_a/reconciliation/exceptions/exception-id", "work-items"],
     ["/reconciliation/exceptions/exception-id", "reconciliation"],
+    ["/reconciliation/transactions/entry-id", "reconciliation"], ["/ledger/entry-id", "reconciliation"],
     ["/settings/security", "settings"], ["/sites/site_a/settings/integration", "settings"],
     ["/sites/new", "sites"], ["/sites/defaults", "sites"], ["/system/", "system"],
     ["/orders-old", null], ["/test-payment", null], ["/sites/site_a/unknown", null],
@@ -147,6 +148,11 @@ describe("switching a navigation selection", () => {
 
   it("does not carry an evidence ID out of a global ledger detail", () => {
     expect(switchWorkspaceHref({ pathname: "/reconciliation/ledger/ledger-id", search: "?selected_site=site_a&order_id=order-id" }, null)).toBe("/reconciliation");
+  });
+
+  it("keeps a unified transaction and its source anchor when changing navigation memory", () => {
+    expect(switchWorkspaceHref({ pathname: "/reconciliation/transactions/entry-id", search: "?association_status=MATCHED&has_reversals=true&selected_site=site_a", hash: "#source-entry-id" }, "site_b"))
+      .toBe("/reconciliation/transactions/entry-id?association_status=MATCHED&has_reversals=true&selected_site=site_b#source-entry-id");
   });
 
   it("falls back to the new overview from an unrelated page", () => {

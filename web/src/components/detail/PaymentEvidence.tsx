@@ -1,5 +1,6 @@
 import { useQuery } from '@/lib/workspace-query';
 import { useWorkspace, useWorkspaceApi } from "@/workspace";
+import { Link } from "@/navigation";
 import { useId } from "react";
 
 import { result, type AdminOrderDetail, type FinancialException, type MatchCandidate, type PaymentMatchDetail, type ReconciliationLedgerEntry, type ReconciliationOrder } from "@/api/client";
@@ -207,14 +208,35 @@ export function MatchCard({
   match,
   embedded = false,
   density = "default",
+  transactionContext = false,
 }: {
   match: PaymentMatchDetail;
   embedded?: boolean;
   density?: DetailDensity;
+  /** The enclosing transaction already displays the complete Alipay facts. */
+  transactionContext?: boolean;
 }) {
   const operation = match.creation_operation;
   const reversal =
     match.status === "REVERSED" ? match.resolution_operation : null;
+  if (transactionContext) return (
+    <Card aria-label="收款关联记录" data-match-summary>
+      <CardHeader>
+        <CardTitle role="heading" aria-level={3}>{match.status === "REVERSED" ? "已撤销的关联" : "当前关联订单"}</CardTitle>
+        <CardAction className="flex max-w-full flex-wrap items-center gap-2">
+          <StatusBadge value={match.status} />
+          <ReverseMatchAction match={match} inline includeOrderIdentifiers movesOnSuccess />
+        </CardAction>
+      </CardHeader>
+      <CardContent className="flex min-w-0 flex-col gap-6">
+        <OrderFacts order={match.order} density="comfortable" layout="flow" />
+        <MatchProcessingHistory match={match} />
+        <DetailFields density="comfortable" layout="flow" wide={["使用的查账记录"]} items={[
+          ["使用的查账记录", <div className="flex flex-wrap items-center gap-3"><CopyValue value={match.ledger_entry_id} label="复制使用的查账记录编号" /><Link to={"#source-" + match.ledger_entry_id} onClick={() => document.getElementById("source-" + match.ledger_entry_id)?.scrollIntoView({ block: "start" })}>核对这份记录</Link></div>],
+        ]} />
+      </CardContent>
+    </Card>
+  );
   if (density === "comfortable" && !embedded) {
     const manual = match.evidence_type === "MANUAL";
     return (
@@ -319,16 +341,45 @@ export function MatchCard({
     </Card>
   );
 }
+/** Shared evidence; a transaction detail does not repeat its Alipay facts here. */
+function MatchProcessingHistory({ match }: { match: PaymentMatchDetail }) {
+  const manual = match.evidence_type === "MANUAL";
+  const operation = match.creation_operation;
+  const reversal = match.status === "REVERSED" ? match.resolution_operation : null;
+  return <div className="flex min-w-0 flex-col gap-6" data-match-evidence>
+    {match.candidate && <CandidateEvidence candidate={match.candidate} ledger={match.ledger_entry} density="comfortable" layout="flow" />}
+    <section aria-label={manual ? "人工关联记录" : "关联记录"} className="flex min-w-0 flex-col gap-4">
+      <h4 className="text-sm font-medium">{manual ? "人工关联记录" : "关联记录"}</h4>
+      <DetailFields density="comfortable" layout="flow" wide={["关联理由"]} items={[
+        ["关联方式", manual ? "管理员人工关联" : "PerPay 按金额和付款时间推断"],
+        ["关联时间", dateTime(operation?.created_at ?? match.created_at)],
+        ...(manual ? [["关联操作人", operation?.actor_id ?? "未记录"] as const] : []),
+        ...(operation?.reason ? [["关联理由", operation.reason] as const] : []),
+      ]} />
+    </section>
+    {match.status === "REVERSED" && <section aria-label="撤销记录" className="flex min-w-0 flex-col gap-4">
+      <h4 className="text-sm font-medium">撤销记录</h4>
+      <DetailFields density="comfortable" layout="flow" wide={["撤销理由"]} items={[
+        ["撤销时间", dateTime(reversal?.created_at ?? match.resolved_at)],
+        ["撤销操作人", reversal?.actor_id ?? "未记录"],
+        ["撤销理由", reversal?.reason ?? "未记录"],
+      ]} />
+    </section>}
+  </div>;
+}
+
 export function CandidateCard({
   candidate,
   ledger,
   order: knownOrder,
   embedded = false,
+  transactionContext = false,
 }: {
   candidate: MatchCandidate;
   ledger?: ReconciliationLedgerEntry | undefined;
   order?: DetailOrder | undefined;
   embedded?: boolean;
+  transactionContext?: boolean;
 }) {
   const { entry, query } = useRelatedLedger(candidate.ledger_entry_id, ledger);
   const { order, query: orderQuery } = useRelatedOrder(
@@ -389,9 +440,9 @@ export function CandidateCard({
             }}
           />
         )}
-        {entry ? (
+        {!transactionContext && entry ? (
           <LedgerFacts entry={entry} />
-        ) : query.isPending ? (
+        ) : !transactionContext && query.isPending ? (
           <Loading label="正在读取流水…" />
         ) : null}
         {!ledger && (

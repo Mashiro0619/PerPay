@@ -18,7 +18,7 @@ import { fingerprintCollectionCodeProfile } from "../src/orders/collection-profi
 import { createOrderRequestSchema, digestIdempotencyKey, fingerprintCreateOrderRequest } from "../src/orders/model.ts";
 import { ReconciliationStore } from "../src/reconciliation/store.ts";
 import { providerEndpoint, type ProviderEnvironment } from "../src/settings/model.ts";
-import { createdDateRange } from "../src/shared/created-dates.ts";
+import { beijingDate, createdDateRange } from "../src/shared/created-dates.ts";
 import { ListQueryError } from "../src/shared/list-query.ts";
 import { createSiteFixture } from "./site-fixture.ts";
 
@@ -85,12 +85,12 @@ function recorder(ledger: LedgerStore, key: () => string, tick: () => number) {
   };
 }
 
-function fixture(indexes = true) {
+function fixture(indexes = true, initialTime = Date.now()) {
   const f = createSiteFixture();
   f.migrate();
   if (indexes) f.connection.exec(migrations.find(migration => migration.version === 35)!.sql);
   const ledger = new LedgerStore(f.owner);
-  let clock = Date.now(), key = "";
+  let clock = initialTime, key = "";
   const tick = () => ++clock;
   f.owner.write(db => db.prepare("INSERT INTO checkout_token_keys(key_version, key_material, activated_at, retired_at) VALUES (1, ?, ?, NULL)").run(randomBytes(32), tick()));
   const orders = new OrderStore(f.owner, tick);
@@ -108,7 +108,7 @@ function fixture(indexes = true) {
     assert.ok(result.kind === "created" || result.kind === "duplicate", result.kind);
     return result.entry;
   };
-  const order = (merchantOrderNo: string, siteName = "账本关联网站") => {
+  const order = (merchantOrderNo: string, siteName = "账本关联网站", productName = "关联订单商品") => {
     const sites = f.store();
     const site = sites.create({
       operation_id: randomUUID(), configuration: {
@@ -120,7 +120,7 @@ function fixture(indexes = true) {
     orders.syncCollectionProfile({ providerAccountKey: key, codePayload, ...fingerprintCollectionCodeProfile(codePayload, key) });
     const request = createOrderRequestSchema.parse({
       merchant_order_no: merchantOrderNo, idempotency_key: merchantOrderNo,
-      amount_cents: 1233, product_name: "关联订单商品",
+      amount_cents: 1233, product_name: productName,
     });
     const result = orders.createOrder({
       apiClientId: site.clientId, request, idempotencyKeyDigest: digestIdempotencyKey(site.clientId, request.idempotency_key),
@@ -130,10 +130,10 @@ function fixture(indexes = true) {
     if (result.kind !== "created") throw new Error("expected real order creation");
     return { ...result.aggregate.order, site };
   };
-  const settle = (orderId: string, ledgerEntryId: string) => reconciliation.settleManually({
-    financialOperationId: randomUUID(), orderId, ledgerEntryId, actorId: "admin", now: tick(),
+  const settle = (orderId: string, ledgerEntryId: string, now = tick()) => reconciliation.settleManually({
+    financialOperationId: randomUUID(), orderId, ledgerEntryId, actorId: "admin", now,
   });
-  return { ...f, ledger, reconciliation, activate, record, entry, tick, order, settle };
+  return { ...f, ledger, reconciliation, activate, record, entry, tick, order, settle, advance: (now: number) => { clock = now; } };
 }
 
 function providerTimestamp(milliseconds: number, fractional = false) {
@@ -613,11 +613,200 @@ describe("administrator grouped ledger queries", () => {
       assert.equal(prepares, 3);
       assert.equal(linkedPage.items[0]!.external_event_id, entry.externalEventId);
       const linkedPlan = f.connection.prepare("EXPLAIN QUERY PLAN " + sql)
-        .all(providerEndpoint(ENVIRONMENT), providerEndpoint(ENVIRONMENT), ...Array.from({ length: 10 }, () => order.orderId),
-          providerEndpoint(ENVIRONMENT), ...Array.from({ length: 10 }, () => order.orderId), providerEndpoint(ENVIRONMENT), 21);
+        .all(providerEndpoint(ENVIRONMENT), providerEndpoint(ENVIRONMENT), ...Array.from({ length: 12 }, () => order.orderId),
+          providerEndpoint(ENVIRONMENT), ...Array.from({ length: 12 }, () => order.orderId), providerEndpoint(ENVIRONMENT), 21);
       const linkedExplanation = linkedPlan.map(row => String(row.detail)).join("\n");
       assert.ok(linkedExplanation.includes("payment_matches_ledger_history_idx"), linkedExplanation);
       assert.ok(linkedExplanation.includes("sqlite_autoindex_payment_orders_1"), linkedExplanation);
+      assert.deepEqual(financialSnapshot(f.connection), before);
+    } finally { f.close(); }
+  });
+
+  it("filters effective associations and reversed history over the complete event group before paging", () => {
+    const f = fixture();
+    try {
+      f.activate();
+      f.entry({ id: "unmatched" });
+      const records = new Map(["single", "reversed", "mixed", "multiple"].map(id => {
+        const entry = f.entry({ id });
+        const order = f.order("search-" + id, "账本关联网站", "关联订单商品 %_'" + id);
+        return [id, { entry, order, match: f.settle(order.orderId, entry.ledgerEntryId).paymentMatch! }] as const;
+      }));
+      for (const id of ["reversed", "mixed"]) f.reconciliation.reverseSettlement({
+        financialOperationId: randomUUID(), paymentMatchId: records.get(id)!.match.paymentMatchId,
+        actorId: "admin", reason: "保留关联撤销历史", now: f.tick(),
+      });
+      f.activate(ENVIRONMENT, "2026000000000002");
+      for (const id of ["mixed", "multiple"]) {
+        const copy = f.entry({ id });
+        const order = f.order("new-" + id);
+        f.settle(order.orderId, copy.ledgerEntryId);
+      }
+      f.activate("SANDBOX");
+      const sandbox = f.entry({ id: "multiple" });
+      const sandboxOrder = f.order("sandbox-only-match");
+      const sandboxMatch = f.settle(sandboxOrder.orderId, sandbox.ledgerEntryId).paymentMatch!;
+      const before = financialSnapshot(f.connection);
+      f.connection.exec("PRAGMA query_only = ON");
+      const ids = (query: Partial<AdminLedgerQuery>) => readAdminLedgerPage(f.owner, { environment: ENVIRONMENT, sortOrder: "asc", ...query }).items.map(item => item.external_event_id);
+      assert.deepEqual(ids({ associationStatus: "UNMATCHED" }), ["reversed", "unmatched"]);
+      assert.deepEqual(ids({ associationStatus: "MATCHED" }), ["mixed", "multiple", "single"]);
+      assert.deepEqual(ids({ associationStatus: "MULTIPLE" }), ["multiple"]);
+      assert.deepEqual(ids({ hasReversals: true }), ["mixed", "reversed"]);
+      assert.deepEqual(ids({ hasReversals: false }), ["multiple", "single", "unmatched"]);
+      assert.deepEqual(ids({ associationStatus: "MATCHED", hasReversals: true }), ["mixed"]);
+      assert.deepEqual(ids({ associationStatus: "MULTIPLE", hasReversals: true }), []);
+      for (const q of [records.get("mixed")!.match.paymentMatchId, "%_'mixed"]) {
+        const result = readAdminLedgerPage(f.owner, { environment: ENVIRONMENT, q, associationStatus: "MATCHED", hasReversals: true, limit: 1 });
+        assert.equal(result.items[0]!.external_event_id, "mixed");
+        assert.equal(result.items[0]!.source_record_count, 2);
+        assert.equal(result.items[0]!.active_match_count, 1);
+        assert.equal(result.items[0]!.reversed_match_count, 1);
+        assert.notEqual(result.items[0]!.active_match!.payment_match_id, records.get("mixed")!.match.paymentMatchId);
+      }
+      assert.deepEqual(ids({ q: "关联订单商品" }), ["mixed", "multiple", "reversed", "single"]);
+      assert.deepEqual(ids({ q: sandboxMatch.paymentMatchId }), []);
+      let cursor: AdminLedgerQuery["cursor"] = null;
+      const paged: string[] = [];
+      do {
+        const page = readAdminLedgerPage(f.owner, { environment: ENVIRONMENT, hasReversals: true, limit: 1, cursor });
+        paged.push(...page.items.map(item => item.external_event_id)); cursor = page.next_cursor;
+      } while (cursor);
+      assert.deepEqual(paged, ["reversed", "mixed"]);
+      assert.deepEqual(financialSnapshot(f.connection), before);
+    } finally { f.close(); }
+  });
+
+  it("uses real association creation times for inclusive Beijing dates independently of transaction dates", () => {
+    const day = beijingDate(Date.now() + 2 * 86_400_000);
+    const start = createdDateRange(day, day)!.start;
+    const f = fixture(true, start - 60_000);
+    try {
+      f.activate();
+      const associated = ["before", "first", "last", "after"].map(id => {
+        const entry = f.entry({ id, at: BASE - 7 * 86_400_000 });
+        const order = f.order("association-date-" + id);
+        return { entry, order };
+      });
+      const times = [start - 1, start, start + 86_399_999, start + 86_400_000];
+      const matches = associated.map(({ entry, order }, index) => f.settle(order.orderId, entry.ledgerEntryId, times[index]!).paymentMatch!);
+      f.reconciliation.reverseSettlement({ financialOperationId: randomUUID(), paymentMatchId: matches[1]!.paymentMatchId,
+        actorId: "admin", reason: "日期筛选仍包含已撤销关联", now: start + 86_400_001 });
+      const query = { environment: ENVIRONMENT, associatedFrom: day, associatedTo: day, sortBy: "associated_at", sortOrder: "asc" } as const;
+      const page = readAdminLedgerPage(f.owner, query);
+      assert.deepEqual(page.items.map(item => item.external_event_id), ["first", "last"]);
+      assert.equal(page.items[0]!.active_match_count, 0);
+      assert.equal(page.items[0]!.reversed_match_count, 1);
+      assert.equal(page.items[0]!.last_associated_at, new Date(start).toISOString());
+      assert.equal(page.items[0]!.last_handled_at, new Date(start + 86_400_001).toISOString());
+      assert.equal(page.items[1]!.last_handled_at, new Date(start + 86_399_999).toISOString());
+      assert.deepEqual(readAdminLedgerPage(f.owner, { ...query, occurredFrom: day, occurredTo: day }).items, []);
+      assert.deepEqual(readAdminLedgerPage(f.owner, { ...query, hasReversals: true }).items.map(item => item.external_event_id), ["first"]);
+      // A later association outside the date range must not hide an earlier
+      // real association inside it, even when that earlier match was reversed.
+      f.advance(start + 86_400_100);
+      f.activate(ENVIRONMENT, "2026000000000002");
+      const copy = f.entry({ id: "first", at: BASE - 7 * 86_400_000 });
+      const laterOrder = f.order("association-date-first-later");
+      const laterMatch = f.settle(laterOrder.orderId, copy.ledgerEntryId).paymentMatch!;
+      const stillFound = readAdminLedgerPage(f.owner, { ...query, associationStatus: "MATCHED", hasReversals: true });
+      assert.deepEqual(stillFound.items.map(item => item.external_event_id), ["first"]);
+      assert.equal(stillFound.items[0]!.source_record_count, 2);
+      assert.equal(stillFound.items[0]!.last_associated_at, new Date(laterMatch.createdAt).toISOString());
+      assert.equal(stillFound.items[0]!.last_handled_at, new Date(laterMatch.createdAt).toISOString());
+    } finally { f.close(); }
+  });
+
+  it("uses indexed association and duplicate-version reads for the new grouped query paths", () => {
+    const f = fixture();
+    try {
+      f.activate();
+      const source = f.entry({ id: "indexed-association" });
+      const order = f.order("indexed-association");
+      f.settle(order.orderId, source.ledgerEntryId);
+      f.record({ id: "indexed-association", amount: 4321 });
+      for (let index = 0; index < 24; index++) f.entry({ id: "indexed-extra-" + index });
+      let captured = { sql: "", parameters: [] as Array<string | number> };
+      const watched: AdminLedgerDatabase = { read(operation) {
+        return operation({
+          function: f.connection.function.bind(f.connection),
+          prepare(sql: string) {
+            const statement = f.connection.prepare(sql);
+            return { all(...parameters: Array<string | number>) {
+              captured = { sql, parameters }; return statement.all(...parameters);
+            } };
+          },
+        } as unknown as DatabaseSync);
+      } };
+      const before = financialSnapshot(f.connection);
+      f.connection.exec("PRAGMA query_only = ON");
+      for (const query of [
+        { associationStatus: "MATCHED" }, { hasReversals: false },
+        { associatedFrom: "2026-10-20", associatedTo: "2026-10-20" },
+        { sortBy: "event_sequence" }, { sortBy: "amount_cents" },
+      ] satisfies Partial<AdminLedgerQuery>[]) {
+        readAdminLedgerPage(watched, { environment: ENVIRONMENT, ...query });
+        const explanation = f.connection.prepare("EXPLAIN QUERY PLAN " + captured.sql).all(...captured.parameters)
+          .map(row => String(row.detail)).join("\n");
+        for (const index of ["ledger_entries_external_group_idx", "payment_matches_ledger_history_idx"]) {
+          assert.ok(explanation.includes(index), JSON.stringify(query) + " " + index + "\n" + explanation);
+        }
+        assert.doesNotMatch(explanation, /SCAN (?:match|associated_match|match_event|raw)\b/);
+        if (query.sortBy === "amount_cents") assert.ok(explanation.includes("ledger_conflicts_entry_history_idx"), explanation);
+      }
+      assert.deepEqual(financialSnapshot(f.connection), before);
+    } finally { f.close(); }
+  });
+
+  it("paginates every association and amount sort with deterministic ties and null values last", () => {
+    const sortBase = Date.now() + 3_600_000;
+    const f = fixture(true, sortBase - 60_000);
+    try {
+      f.activate();
+      const linked = ["a-linked", "b-linked", "c-linked"].map((id, index) => {
+        const entry = f.entry({ id, amount: (index + 1) * 1000 });
+        return { entry, order: f.order("sort-" + id) };
+      });
+      f.entry({ id: "a-unlinked", amount: 1500 });
+      f.entry({ id: "z-unlinked", amount: 2500 });
+      f.entry({ id: "conflict-copy", amount: 50_000 });
+      f.entry({ id: "conflict-raw", amount: 60_000 });
+      f.record({ id: "conflict-raw", amount: 70_000 });
+      const matches = linked.map(({ entry, order }, index) => f.settle(order.orderId, entry.ledgerEntryId, sortBase + (index === 2 ? 1 : 0)).paymentMatch!);
+      f.reconciliation.reverseSettlement({ financialOperationId: randomUUID(), paymentMatchId: matches[0]!.paymentMatchId,
+        actorId: "admin", reason: "处理时间包含撤销", now: sortBase + 2 });
+      f.activate(ENVIRONMENT, "2026000000000002");
+      f.entry({ id: "conflict-copy", amount: 40_000 });
+      f.entry({ id: "b-linked", amount: 2000 });
+      const expected = {
+        associated_at: ["a-linked", "b-linked", "c-linked"],
+        handled_at: ["b-linked", "c-linked", "a-linked"],
+        event_sequence: ["b-linked", "c-linked", "a-linked"],
+        amount_cents: ["a-linked", "a-unlinked", "b-linked", "z-unlinked", "c-linked"],
+      } as const;
+      const before = financialSnapshot(f.connection);
+      f.connection.exec("PRAGMA query_only = ON");
+      for (const sortBy of ["associated_at", "handled_at", "event_sequence", "amount_cents"] as const) {
+        for (const sortOrder of ["asc", "desc"] as const) {
+          const actual: string[] = [];
+          let cursor: AdminLedgerQuery["cursor"] = null;
+          do {
+            const page = readAdminLedgerPage(f.owner, { environment: ENVIRONMENT, sortBy, sortOrder, limit: 1, cursor });
+            actual.push(...page.items.map(item => item.external_event_id)); cursor = page.next_cursor;
+            assert.ok(actual.length <= 7);
+            if (page.items[0]!.external_event_id.startsWith("conflict")) assert.equal(page.items[0]!.amount_cents, null);
+          } while (cursor);
+          const valued = [...expected[sortBy]];
+          if (sortOrder === "desc") valued.reverse();
+          // Reversing the direction also reverses the association-time tie.
+          const absent = sortBy === "amount_cents" ? ["conflict-copy", "conflict-raw"] : ["a-unlinked", "conflict-copy", "conflict-raw", "z-unlinked"];
+          if (sortOrder === "desc") absent.reverse();
+          assert.deepEqual(actual, [...valued, ...absent], sortBy + " " + sortOrder);
+        }
+      }
+      const unlinked = readAdminLedgerDetail(f.owner, ENVIRONMENT, readAdminLedgerPage(f.owner, { environment: ENVIRONMENT, q: "a-unlinked" }).items[0]!.ledger_entry_id)!;
+      assert.equal(unlinked.last_associated_at, null);
+      assert.equal(unlinked.last_handled_at, null);
       assert.deepEqual(financialSnapshot(f.connection), before);
     } finally { f.close(); }
   });
@@ -627,6 +816,13 @@ describe("administrator grouped ledger queries", () => {
     const queries: Partial<AdminLedgerQuery>[] = [
       { limit: 0 }, { limit: 101 }, { limit: 1.5 }, { direction: "unknown" as never }, { state: "ALL" as never },
       { environment: "unknown" as never }, { sortOrder: "unknown" as never },
+      { sortBy: "unknown" as never }, { associationStatus: "REVERSED" as never }, { hasReversals: "true" as never },
+      { associatedFrom: "2026-10-20" }, { associatedTo: "2026-10-20" },
+      { associatedFrom: "2026-02-29", associatedTo: "2026-03-01" },
+      { associatedFrom: "2026-10-21", associatedTo: "2026-10-20" },
+      { sortBy: "associated_at", cursor: { occurred_at_ms: 0, external_event_id: "id" } },
+      { cursor: { sort_value: null, external_event_id: "id" } },
+      { sortBy: "associated_at", cursor: { sort_value: -1, external_event_id: "id" } },
       { occurredFrom: "2026-10-20" }, { occurredTo: "2026-10-20" },
       { occurredFrom: "2026-02-29", occurredTo: "2026-03-01" },
       { occurredFrom: "2026-10-21", occurredTo: "2026-10-20" },

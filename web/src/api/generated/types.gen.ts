@@ -949,6 +949,9 @@ export type AdminLedgerGroupFields = {
     content_consistent: boolean;
     has_conflicts: boolean;
     active_match_count: number;
+    reversed_match_count: number;
+    last_associated_at: string | null;
+    last_handled_at: string | null;
     active_match: (AdminLedgerMatch & {
         status?: 'SETTLED';
     }) | null;
@@ -2390,11 +2393,15 @@ export type ListAdministratorLedgerEntriesData = {
         q?: string;
         direction?: 'CREDIT' | 'DEBIT';
         state?: AdminLedgerEntryState;
+        association_status?: 'UNMATCHED' | 'MATCHED' | 'MULTIPLE';
+        has_reversals?: boolean;
+        associated_from?: string;
+        associated_to?: string;
         occurred_from?: string;
         occurred_to?: string;
         min_amount_cents?: number;
         max_amount_cents?: number;
-        sort_by?: 'occurred_at';
+        sort_by?: 'occurred_at' | 'associated_at' | 'handled_at' | 'amount_cents' | 'event_sequence';
         sort_order?: 'asc' | 'desc';
         limit?: number;
         cursor?: string;

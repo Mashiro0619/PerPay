@@ -12,6 +12,7 @@ import { TestPaymentProvider } from "../src/components/test-payment-provider";
 import Reconciliation from "../src/pages/Reconciliation";
 import { json, order, orderId } from "./fixtures";
 import { mobileMedia } from "./mobile-media";
+import { groupedLedger } from "./ledger-fixtures";
 
 function CurrentLocation() {
   const location = useLocation();
@@ -184,22 +185,15 @@ const listCases = [
     columns: 6,
   },
   {
-    name: "payment matches",
+    name: "grouped Alipay transactions",
     path: "/reconciliation",
     element: <Reconciliation />,
-    target: `/reconciliation/matches/${recordId}`,
+    target: `/reconciliation/transactions/${recordId}`,
     record: {
-      payment_match_id: recordId,
-      ledger_entry: {
-        external_event_id: "ledger-example",
-        amount_cents: 10000,
-      },
-      evidence_type: "MANUAL",
-      order_id: orderId,
-      status: "SETTLED",
-      created_at: timestamp,
+      ...groupedLedger,
+      ledger_entry_id: recordId,
     },
-    columns: 5,
+    columns: 10,
   },
   {
     name: "ledger conflicts",

@@ -8,7 +8,8 @@ import { useSystemName } from "@/branding";
 import { useEffect } from "react";
 
 import { ArrowLeft, FileQuestion } from "lucide-react";
-import { useParams } from "react-router";
+import { Navigate, useLocation, useParams } from "react-router";
+import { LedgerDetailRedirect } from "./ReconciliationRedirect";
 import { Link, useDetailBack } from "@/navigation";
 import { refreshOperationalData, result } from "@/api/client";
 import { dateTime, money } from "@/lib/format";
@@ -52,7 +53,7 @@ export default function EvidenceDetail() {
   if (kind === "exceptions")
     return <ExceptionDetail key={resourceId} resourceId={resourceId} />;
   if (kind === "ledger")
-    return <LedgerDetail key={resourceId} resourceId={resourceId} />;
+    return clientId ? <LedgerDetail key={resourceId} resourceId={resourceId} /> : <LedgerDetailRedirect />;
   if (kind === "candidates")
     return <CandidateDetail key={resourceId} resourceId={resourceId} />;
   return (
@@ -140,6 +141,8 @@ function ConflictDetail({ resourceId }: { resourceId: string }) {
   );
 }
 function MatchDetail({ resourceId }: { resourceId: string }) {
+  const { clientId } = useWorkspace();
+  const location = useLocation();
   const api = useWorkspaceApi();
   const query = useQuery({
     queryKey: ["match", resourceId],
@@ -152,7 +155,7 @@ function MatchDetail({ resourceId }: { resourceId: string }) {
     <DetailPage>
       <EvidenceHeading title="收款关联详情" loaded={query.isSuccess} density="comfortable" />
       <QueryView query={query}>
-        {({ data }) => <MatchCard match={data} density="comfortable" />}
+        {({ data }) => clientId ? <MatchCard match={data} density="comfortable" /> : <Navigate replace to={{ pathname: "/reconciliation/transactions/" + data.ledger_entry_id, search: location.search, hash: "#match-" + data.payment_match_id }} state={location.state} />}
       </QueryView>
     </DetailPage>
   );

@@ -28,7 +28,7 @@ const SECTION_QUERY_PARAMETERS: Record<NavigationSection, readonly string[]> = {
   orders: ["payment", "checkout", ...LIST_QUERY_PARAMETERS, ...DATE_QUERY_PARAMETERS],
   notifications: ["status", ...LIST_QUERY_PARAMETERS, ...DATE_QUERY_PARAMETERS],
   "work-items": ["type", "visibility", ...LIST_QUERY_PARAMETERS],
-  reconciliation: ["tab", "status", "provider_account_key", ...LIST_QUERY_PARAMETERS],
+  reconciliation: ["tab", "status", "provider_account_key", "direction", "state", "association_status", "has_reversals", "associated_from", "associated_to", "occurred_from", "occurred_to", "min_amount_cents", "max_amount_cents", ...LIST_QUERY_PARAMETERS],
   ledger: ["direction", "state", "occurred_from", "occurred_to", "min_amount_cents", "max_amount_cents", ...LIST_QUERY_PARAMETERS],
   settings: [],
   system: [],
@@ -70,7 +70,7 @@ export function navigationSection(pathname: string): NavigationSection | null {
   }
   if (!isGlobalNavigationPage(pathname)) return null;
   if (path === "/system") return "system";
-  if (/^\/ledger(?:\/|$)/.test(path)) return "ledger";
+  if (/^\/ledger(?:\/|$)/.test(path)) return "reconciliation";
   return path.startsWith("/reconciliation") ? "reconciliation" : "sites";
 }
 
@@ -134,7 +134,7 @@ export function switchWorkspaceHref(
   const search = location.search ?? "";
   if (isGlobalNavigationPage(location.pathname)) {
     const detail = /^\/reconciliation\/([^/]+)\/[^/]+\/?$/.exec(location.pathname);
-    if (detail) {
+    if (detail && detail[1] !== "transactions") {
       const query = compatibleSearch(search, "reconciliation");
       if (RECONCILIATION_SECTIONS.includes(detail[1]!)) query.set("tab", detail[1]!);
       else if (!RECONCILIATION_SECTIONS.includes(query.get("tab") ?? "")) query.delete("tab");

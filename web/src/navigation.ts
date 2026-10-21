@@ -57,7 +57,7 @@ export function Link({ viewTransition = true, global = false, preserveSelectedSi
     onClick(event) {
       props.onClick?.(event);
       if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.altKey || event.ctrlKey || event.shiftKey ||
-        props.reloadDocument || props.download || (props.target && props.target !== "_self") || props.state !== undefined || location.pathname !== "/ledger") return;
+        props.reloadDocument || props.download || (props.target && props.target !== "_self") || props.state !== undefined || !isTransactionList(location.pathname, location.search)) return;
       const state = detailNavigationState(to, location, true);
       if (!state) return;
       event.preventDefault();
@@ -100,6 +100,9 @@ export function useNavigate(): WorkspaceNavigateFunction {
 }
 
 function localPath(path: string) { const scope = workspaceScope(path); return scope.clientId ? path.slice(scope.base.length) || "/" : path; }
+function isTransactionList(pathname: string, search: string) {
+  return pathname === "/ledger" || (pathname === "/reconciliation" && !["conflicts", "exceptions"].includes(new URLSearchParams(search).get("tab") ?? ""));
+}
 const listLabels: Record<string, string> = { "/": "总览", "/orders": "订单列表", "/notifications": "通知", "/work-items": "待处理", "/reconciliation": "对账", "/ledger": "支付宝流水" };
 type ListReturn = { to: string; label: string; state?: unknown };
 function readListReturn(value: unknown): ListReturn | null {
@@ -110,12 +113,14 @@ function readListReturn(value: unknown): ListReturn | null {
   return Object.hasOwn(listLabels, localPath(pathname)) ? { to: item.to, label: listLabels[localPath(pathname)]!, state: item.state } : null;
 }
 function detailNavigationState(destination: To, location: ReturnType<typeof useLocation>, capturePosition = false) {
+  const parts = typeof destination === "string" ? parsePath(destination) : destination;
+  if (!parts.pathname && parts.hash) return location.state;
   const pathname = typeof destination === "string" ? destination.split(/[?#]/)[0]! : destination.pathname ?? "";
   if (!["orders", "notifications", "reconciliation", "ledger"].includes(localPath(pathname).split("/")[1] ?? "") || !localPath(pathname).split("/")[2]) return undefined;
   if (workspaceScope(pathname).clientId !== workspaceScope(location.pathname).clientId) return undefined;
   const inherited = readListReturn(location.state?.listReturn);
   const label = listLabels[localPath(location.pathname)];
-  const position = capturePosition && location.pathname === "/ledger" ? rememberLedgerPosition(location) : undefined;
+  const position = capturePosition && isTransactionList(location.pathname, location.search) ? rememberLedgerPosition(location) : undefined;
   const listReturn = label ? { to: location.pathname + location.search, label,
     state: { pagination: location.state?.pagination, ...(position ? { ledgerPosition: position } : {}) } } : inherited;
   return listReturn ? { listReturn } : undefined;
@@ -156,9 +161,9 @@ export function useDetailBack(to: string, label: string): ListReturn {
   const location = useLocation(), scope = workspaceScope(location.pathname);
   const saved = readListReturn(location.state?.listReturn);
   if (saved && workspaceScope(saved.to.split(/[?#]/)[0]!).clientId === scope.clientId) {
-    if (saved.to.split(/[?#]/)[0] === "/ledger" && isGlobalNavigationPage(location.pathname)) {
+    if (isTransactionList(saved.to.split(/[?#]/)[0]!, parsePath(saved.to).search ?? "") && isGlobalNavigationPage(location.pathname)) {
       const target = parsePath(saved.to);
-      return { ...saved, to: switchWorkspaceHref({ ...target, pathname: "/ledger" }, navigationSelection(location).clientId) ?? saved.to };
+      return { ...saved, to: switchWorkspaceHref({ ...target, pathname: target.pathname! }, navigationSelection(location).clientId) ?? saved.to };
     }
     return saved;
   }

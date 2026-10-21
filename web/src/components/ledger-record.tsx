@@ -32,7 +32,23 @@ export function LedgerOrderLink({ match }: { match: AdminLedgerMatch | null }) {
 
 export function LedgerActiveOrder({ entry }: { entry: Pick<AdminLedgerSummary, "active_match" | "active_match_count"> }) {
   if (entry.active_match_count > 1) return <span className="text-destructive">多条生效关联 · 请核查</span>;
-  return <LedgerOrderLink match={entry.active_match} />;
+  if (!entry.active_match) return <LedgerOrderLink match={null} />;
+  return <div className="business-cell-stack flex min-w-0 flex-col gap-1">
+    <span className="wrap-anywhere">{entry.active_match.product_name}</span>
+    <LedgerOrderLink match={entry.active_match} />
+    <span className="text-xs text-muted-foreground wrap-anywhere">{entry.active_match.site_name ?? "网站名称未保存"}</span>
+  </div>;
+}
+
+export function LedgerAssociationStatus({ entry }: { entry: Pick<AdminLedgerSummary, "active_match_count" | "reversed_match_count" | "content_consistent" | "has_conflicts"> }) {
+  const multiple = entry.active_match_count > 1;
+  return <div className="business-cell-stack flex flex-col items-start gap-1.5">
+    <div className="business-cell-badges flex flex-wrap items-center gap-1.5">
+      <Badge variant={multiple ? "destructive" : entry.active_match_count === 1 ? "success" : "secondary"}>{multiple ? "多笔关联" : entry.active_match_count === 1 ? "已关联" : "未关联"}</Badge>
+      {(!entry.content_consistent || entry.has_conflicts) && <Badge variant="destructive">需要核查</Badge>}
+    </div>
+    {entry.reversed_match_count > 0 && <span className="text-xs text-muted-foreground">{entry.reversed_match_count} 条已撤销关联</span>}
+  </div>;
 }
 
 export function ledgerFact(value: string | null) {

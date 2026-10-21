@@ -9,7 +9,6 @@ import {
   Globe,
   LayoutDashboard,
   ListChecks,
-  ReceiptText,
   Settings2,
   WalletCards,
 } from "lucide-react";
@@ -56,7 +55,6 @@ export const navigation = [
   { section: "settings", url: "/settings", title: "设置", icon: Settings2 },
   { section: "sites", url: "/sites", title: "业务网站", icon: Globe },
   { section: "reconciliation", url: "/reconciliation", title: "对账", icon: WalletCards },
-  { section: "ledger", url: "/ledger", title: "支付宝流水", icon: ReceiptText },
   { section: "system", url: "/system", title: "运行状态", icon: Activity },
 ] satisfies (NavigationItem & { section: NavigationSection })[];
 export function AppSidebar({

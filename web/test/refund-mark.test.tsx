@@ -20,7 +20,8 @@ import { DataTable } from "../src/components/data-table";
 import { mobileMedia } from "./mobile-media";
 import { RefundMarkDialog, RefundMarkPanel } from "../src/pages/RefundMark";
 import Reconciliation from "../src/pages/Reconciliation";
-import EvidenceDetail from "../src/pages/ReconciliationDetail";
+import LedgerDetail from "../src/pages/LedgerDetail";
+import { groupedLedger } from "./ledger-fixtures";
 import { recordAction } from "./menu-helper";
 import { apiError, json, ledger, order, orderId } from "./fixtures";
 
@@ -431,7 +432,7 @@ describe("administrator-only refund marks", () => {
     expect(
       screen.queryByRole("button", { name: /退款/ }),
     ).not.toBeInTheDocument();
-    await screen.findByText("暂无符合条件的记录");
+    await screen.findByText("暂无支付宝流水");
   });
 
   it("does not suggest collection matching or offer refund recording for debit ledger details", async () => {
@@ -440,24 +441,24 @@ describe("administrator-only refund marks", () => {
       "fetch",
       vi.fn(async (request: Request) => {
         requests.push(request);
-        return json({ data: { ...ledger, direction: "DEBIT" } });
+        return json({ data: { ...groupedLedger, direction: "DEBIT", active_match_count: 0, active_match: null, states: ["UNALLOCATED"], sources: [{ ...ledger, direction: "DEBIT", environment: "PRODUCTION", app_id: "app", raw_event_id: ledger.ledger_entry_id }], matches: [], conflicts: [] } });
       }),
     );
     render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter
-          initialEntries={["/reconciliation/ledger/" + ledger.ledger_entry_id]}
+          initialEntries={["/reconciliation/transactions/" + ledger.ledger_entry_id]}
         >
           <Routes>
             <Route
-              path="/reconciliation/:kind/:resourceId"
-              element={<EvidenceDetail />}
+              path="/reconciliation/transactions/:ledgerEntryId"
+              element={<LedgerDetail />}
             />
           </Routes>
         </MemoryRouter>
       </QueryClientProvider>,
     );
-    expect(await screen.findByText("PerPay 处理状态：未分配")).toBeVisible();
+    expect(await screen.findByText("PerPay 记录状态")).toBeVisible();
     expect(screen.getAllByText("支出").length).toBeGreaterThan(0);
     expect(screen.queryByText(/支出仅作流水留存/)).not.toBeInTheDocument();
     expect(

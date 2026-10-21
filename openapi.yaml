@@ -1695,6 +1695,14 @@ paths:
         activation precede activated sources, ordered by binding time and provider-account key.
         This internal anchor never replaces disputed transaction facts. Source details and the
         representative navigation ID use that same stable generation order.
+        Association status counts real currently settled associations across all source copies;
+        has_reversals selects groups with or without retained reversed associations. Association
+        date bounds match any real association creation time, including reversed history, and
+        are independent of transaction dates. associated_at sorts by latest association creation;
+        handled_at sorts by latest association creation or reversal; event_sequence sorts by the
+        latest recorded association event. Amount sorting uses the agreed amount across all
+        sources and retained duplicate versions. Disputed amounts and absent association sort
+        values always sort last, in either direction, with external event ID as the tie-breaker.
         Opaque cursors bind every normalized filter,
         sort, page size and resolved environment. Unknown or repeated parameters are rejected.
         Does not accept site/account/environment selection or initiate collection or financial writes.
@@ -1705,13 +1713,29 @@ paths:
         - name: q
           in: query
           schema: { type: string, maxLength: 100 }
-          description: Trimmed literal keyword over provider event, source facts and real associated order identities.
+          description: Trimmed literal keyword over provider event, source facts, real association IDs, associated order identities and product names, including reversed history.
         - name: direction
           in: query
           schema: { type: string, enum: [CREDIT, DEBIT] }
         - name: state
           in: query
           schema: { $ref: '#/components/schemas/AdminLedgerEntryState' }
+        - name: association_status
+          in: query
+          schema: { type: string, enum: [UNMATCHED, MATCHED, MULTIPLE] }
+          description: UNMATCHED has no effective associations; MATCHED has at least one, including anomalies; MULTIPLE has more than one across all copies.
+        - name: has_reversals
+          in: query
+          schema: { type: boolean }
+          description: Whether the group has at least one retained reversed association; independent of its current association status.
+        - name: associated_from
+          in: query
+          schema: { type: string, format: date }
+          description: Inclusive Asia/Shanghai association creation date, YYYY-MM-DD; requires associated_to and includes reversed history.
+        - name: associated_to
+          in: query
+          schema: { type: string, format: date }
+          description: Inclusive Asia/Shanghai association creation date, YYYY-MM-DD; requires associated_from and includes reversed history.
         - name: occurred_from
           in: query
           schema: { type: string, format: date }
@@ -1728,7 +1752,7 @@ paths:
           schema: { type: integer, minimum: 0, maximum: 999999999999 }
         - name: sort_by
           in: query
-          schema: { type: string, enum: [occurred_at], default: occurred_at }
+          schema: { type: string, enum: [occurred_at, associated_at, handled_at, amount_cents, event_sequence], default: occurred_at }
         - name: sort_order
           in: query
           schema: { type: string, enum: [asc, desc], default: desc }
@@ -7747,7 +7771,7 @@ components:
       description: A field is null when source copies disagree; inspect sources for original values.
     AdminLedgerGroupFields:
       type: object
-      required: [ledger_entry_id, external_event_id, environment, states, source_record_count, content_consistent, has_conflicts, active_match_count, active_match, created_at, updated_at]
+      required: [ledger_entry_id, external_event_id, environment, states, source_record_count, content_consistent, has_conflicts, active_match_count, active_match, reversed_match_count, last_associated_at, last_handled_at, created_at, updated_at]
       properties:
         ledger_entry_id:
           allOf: [{ $ref: '#/components/schemas/ResourceId' }]
@@ -7763,6 +7787,9 @@ components:
         content_consistent: { type: boolean }
         has_conflicts: { type: boolean }
         active_match_count: { type: integer, minimum: 0 }
+        reversed_match_count: { type: integer, minimum: 0, description: Number of retained reversed associations across all source copies. }
+        last_associated_at: { type: [string, 'null'], format: date-time, description: Latest real association creation time including reversed history; null when never associated. }
+        last_handled_at: { type: [string, 'null'], format: date-time, description: Latest real association creation or reversal time; null when never associated. }
         active_match:
           oneOf:
             - allOf:
