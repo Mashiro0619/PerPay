@@ -183,7 +183,7 @@ const notificationErrorNames: Record<string, string> = {
   lease_expired_outcome_unknown: "投递执行超时，结果未知",
 };
 export function notificationErrorName(code: string): string {
-  return notificationErrorNames[code] ?? code;
+  return notificationErrorNames[code] ?? "通知发送结果需核查";
 }
 export function attemptResult(attempt: WebhookAttempt | undefined): string {
   if (!attempt) return "尚未开始投递";
@@ -201,16 +201,18 @@ export function attemptResult(attempt: WebhookAttempt | undefined): string {
       ? notificationErrorName(result)
       : attempt.outcome === "OUTCOME_UNKNOWN"
         ? "结果未知"
-        : "未获得有效 ACK")
+        : "未收到对方的有效确认回执")
   );
 }
 
 export function notificationRecoveryHint(code: string | null): string {
   if (!code) return "检查业务网站的接收日志，确认可用后再操作。";
+  if (code === "lease_expired_outcome_unknown") return "发送结果暂时无法确定，请先核对业务网站的接收记录，避免重复处理。";
+  if (code === "ack_event_mismatch" || code === "ack_delivery_mismatch") return "对方返回的确认回执与本次通知不符，请检查通知接收程序。";
   if (/tls|certificate/i.test(code)) return "检查业务网站 HTTPS 证书、有效期和证书链。";
   if (/dns|network|timeout|transport/i.test(code)) return "检查通知域名解析、服务器网络及业务接口响应时间。";
-  if (/ack_/i.test(code)) return "业务接口已响应，但确认格式不正确；核对通知验签与 ACK 格式。";
+  if (/ack_/i.test(code) || code === "INVALID_ACKNOWLEDGEMENT") return "业务网站已响应，但确认回执格式不正确；请核对通知接收程序返回的确认回执。";
   if (/http_/i.test(code)) return "检查业务接口的 HTTP 状态及服务日志；修复后再重新发送。";
   if (/forbidden|target|address/i.test(code)) return "核对通知业务网站配置及目标地址是否符合公网安全要求。";
-  return "错误：" + code + "。请结合投递记录检查业务网站日志。";
+  return "请查看发送记录，核对业务网站的接收日志和通知配置；确认处理结果后再操作。";
 }

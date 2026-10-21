@@ -86,9 +86,10 @@ describe("manual settlement selection instead of ID entry", () => {
     const identity = await screen.findByText(/网站 A · site-a/);
     expect(screen.getByText(new RegExp(otherName + " · site-b"))).toBeVisible();
     const candidate = identity.closest('[data-slot="item"]')!;
+    expect(within(candidate as HTMLElement).getByText("商户订单号（业务网站）：shared-number")).toBeVisible();
     await userEvent.click(within(candidate as HTMLElement).getByRole("button", { name: /选择订单：.*网站 A · site-a/ }));
     expect(await screen.findByRole("button", { name: "确认关联收款" })).toBeEnabled();
-    expect(screen.getByText(/网站 A · site-a/)).toBeVisible();
+    expect(screen.getByText("所属网站：网站 A · 客户端 ID（PerPay）：site-a")).toBeVisible();
     expect(screen.queryByText(/site-b/)).not.toBeInTheDocument();
     expect(view.requests.every((request) => request.method === "GET")).toBe(true);
   });
@@ -108,9 +109,26 @@ describe("manual settlement selection instead of ID entry", () => {
     const choice = await chooseLedger();
     expect(choice).toBeEnabled();
     expect(screen.queryByText("金额不同，请核对实际收款")).not.toBeInTheDocument();
-    expect(choice.closest('[data-slot="item"]')?.querySelectorAll('[data-slot="item-description"]')).toHaveLength(2);
+    const row = choice.closest<HTMLElement>('[data-slot="item"]')!;
+    expect(within(row).getByText("支付宝订单号：" + ledger.provider_order_no)).toBeVisible();
+    expect(within(row).getByText("支付宝流水号：" + ledger.external_event_id)).toBeVisible();
+    expect(within(row).queryByText(/^支付宝商户单号：/)).not.toBeInTheDocument();
     await userEvent.click(choice);
     expect(await screen.findByRole("button", { name: "确认关联收款" })).toBeEnabled();
+    expect(view.requests.every(request => request.method === "GET")).toBe(true);
+  });
+  it("labels each Alipay identifier separately even when two identifiers have the same value", async () => {
+    const providerOrderNo = "202610212200101235120001187".repeat(4);
+    const externalEventId = "流水号-<完整&原样>";
+    const view = mount({ initialOrderId: orderId, lockContext: true }, (request) => {
+      if (!new URL(request.url).pathname.endsWith("/manual/ledger-entries")) return;
+      return json({ data: [{ ...ledgerChoice, ledger_entry: { ...ledger, provider_order_no: providerOrderNo, merchant_order_no: providerOrderNo, external_event_id: externalEventId } }], page: { next_cursor: null } });
+    });
+    const choice = await chooseLedger();
+    const row = choice.closest<HTMLElement>('[data-slot="item"]')!;
+    for (const [label, value] of [["支付宝订单号", providerOrderNo], ["支付宝商户单号", providerOrderNo], ["支付宝流水号", externalEventId]]) {
+      expect(within(row).getByText(label + "：" + value)).toBeVisible();
+    }
     expect(view.requests.every(request => request.method === "GET")).toBe(true);
   });
   it.each(["order", "ledger", "none", "both"])(

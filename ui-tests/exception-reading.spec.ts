@@ -108,7 +108,7 @@ test("exception global and site details retain standard cards across the complet
     const card = await open(page, manifest, key);
     await expect(card.getByRole("heading", { level: 2 })).toHaveText("收银台结束后收到付款");
     await expect(card.locator("[data-detail-order-summary]")).toBeVisible();
-    await expect(card.getByRole("region", { name: "交易凭据", exact: true })).toBeVisible();
+    await expect(card.getByRole("region", { name: "核对凭据", exact: true })).toBeVisible();
     await expect(card.locator('[data-slot="card-action"]').getByRole("button", { name: "人工关联收款", exact: true })).toBeVisible();
     await expect(page.locator("[data-content-width]")).toHaveAttribute("data-content-width", mode);
     await expect(page.locator("html")).toHaveClass(theme === "dark" ? /dark/ : /^(?!.*\bdark\b)/);
@@ -149,7 +149,7 @@ test("genuine ignored, resolved, candidate and unlinked exceptions keep their ev
       await expect(card.getByText("尚未关联订单", { exact: true })).toBeVisible();
       await expect(card.locator("[data-detail-order-summary]")).toHaveCount(0);
     }
-    if (exception.ledger_entry_id) await expect(card.getByRole("region", { name: "交易凭据", exact: true }).getByText(exception.ledger_entry_id, { exact: true })).toBeVisible();
+    if (exception.ledger_entry_id) await expect(card.getByRole("region", { name: "核对凭据", exact: true }).getByText(exception.ledger_entry_id, { exact: true })).toBeVisible();
     await record(page, info, { feature: "exception-domain-scenarios", key, exceptionType: exception.exception_type, status: exception.status, measured: await geometry(page, "compact") });
     await screenshot(page, info, "exception-" + key);
   }
@@ -164,7 +164,7 @@ test("retired and context-free synthetic exceptions remain readable without inve
     await page.route(manifest.origin + endpoint(manifest, "exceptionUnmatched"), route => route.fulfill({ status: 200, json: { data: exception } }));
     const card = await open(page, manifest, "exceptionUnmatched");
     await expect(card.getByText("尚未关联订单", { exact: true })).toBeVisible();
-    await expect(card.getByRole("region", { name: "交易凭据", exact: true })).toHaveCount(0);
+    await expect(card.getByRole("region", { name: "核对凭据", exact: true })).toHaveCount(0);
     await expect(card.getByRole("heading", { name: "匹配依据", exact: true })).toHaveCount(0);
     if (retired) {
       await expect(card.locator('[data-slot="card-action"]')).toContainText("历史记录");
@@ -194,12 +194,12 @@ test("exception and source read failures stay explicit and recover only after re
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("账务异常详情");
     const alert = main.getByRole("alert").filter({ hasText: "合成的异常凭据读取失败" });
     await expect(alert).toBeVisible();
-    await expect(main.getByRole("region", { name: "交易凭据", exact: true })).toHaveCount(0);
+    await expect(main.getByRole("region", { name: "核对凭据", exact: true })).toHaveCount(0);
     if (failedPath !== exceptionPath) await expect(main.locator("[data-detail-order-summary]")).toBeVisible();
     const before = reads;
     unavailable = false;
     await alert.getByRole("button", { name: "重试", exact: true }).click();
-    await expect(main.getByRole("region", { name: "交易凭据", exact: true })).toBeVisible();
+    await expect(main.getByRole("region", { name: "核对凭据", exact: true })).toBeVisible();
     await expect(alert).toHaveCount(0);
     expect(reads).toBeGreaterThan(before);
     await record(page, info, { feature: "exception-read-recovery", failedPath, before, after: reads, evidence: "synthetic-503-then-real-fixture-read" });
@@ -227,8 +227,8 @@ test("exception inline tools and manual confirmation preserve copy, scope and ke
     await page.keyboard.press("Escape");
     await expect(technical).toHaveCount(0);
     await expect(tools).toBeFocused();
-    const credentials = card.getByRole("region", { name: "交易凭据", exact: true });
-    await credentials.getByRole("button", { name: "复制原始流水编号", exact: true }).click();
+    const credentials = card.getByRole("region", { name: "核对凭据", exact: true });
+    await credentials.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true }).click();
     await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(exception.ledger_entry_id);
     const action = card.getByRole("button", { name: "人工关联收款", exact: true });
     await action.focus();

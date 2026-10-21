@@ -457,7 +457,7 @@ describe("administrator-only refund marks", () => {
         </MemoryRouter>
       </QueryClientProvider>,
     );
-    expect(await screen.findByText("未分配")).toBeVisible();
+    expect(await screen.findByText("PerPay 处理状态：未分配")).toBeVisible();
     expect(screen.getAllByText("支出").length).toBeGreaterThan(0);
     expect(screen.queryByText(/支出仅作流水留存/)).not.toBeInTheDocument();
     expect(

@@ -8,7 +8,7 @@ import { Link } from "@/navigation";
 import { ListDateTime, ListMoney } from "@/components/list-primitives";
 import { cn } from "@/lib/utils";
 import { CopyValue } from "@/components/copy-value";
-import { StatusBadge } from "@/components/business-status";
+import { StatusBadge, paymentBasisDescription } from "@/components/business-status";
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -219,6 +219,7 @@ export function OrderFacts({
 }) {
   const payment =
     "payment" in order ? order.payment.status : order.payment_status;
+  const basis = paymentBasisDescription("payment" in order ? order.payment.basis : order.payment_basis);
   if (density === "comfortable") return <Item className="items-start" data-detail-order-summary>
     <ItemContent className="min-w-0 gap-4">
       <ItemHeader className={cn("flex-wrap items-start gap-3", layout === "flow" && "justify-start")}>
@@ -227,12 +228,13 @@ export function OrderFacts({
         </ItemTitle>
         <ItemActions><StatusBadge value={payment} /></ItemActions>
       </ItemHeader>
-      <DetailFields density="comfortable" layout={layout} wide={["商户订单号"]} items={[
+      {basis && <p className="text-sm text-muted-foreground">{basis}</p>}
+      <DetailFields density="comfortable" layout={layout} wide={["商户订单号（业务网站）"]} items={[
         ["应付金额", <ListMoney value={order.payable_amount_cents} label="应付金额" />],
         ["实收金额", <ListMoney value={order.received_amount_cents} label="实收金额" />],
         ["所属网站", <Link to={"/sites/" + encodeURIComponent(order.api_client_id)}>{order.site_name ?? "名称不可用"}</Link>],
         ["创建时间", <ListDateTime value={order.created_at} inline />],
-        ["商户订单号", <CopyValue value={order.merchant_order_no} label="复制商户订单号" />],
+        ["商户订单号（业务网站）", <CopyValue value={order.merchant_order_no} label="复制商户订单号" />],
       ]} />
     </ItemContent>
   </Item>;
@@ -249,11 +251,12 @@ export function OrderFacts({
           )}
         </ItemTitle>
         <ItemDescription className="line-clamp-none whitespace-normal wrap-anywhere">
-          所属网站：{order.site_name ?? "名称不可用"} · {order.api_client_id}
+          所属网站：{order.site_name ?? "名称不可用"} · 客户端 ID（PerPay）：{order.api_client_id}
         </ItemDescription>
-        <ItemDescription className="wrap-anywhere">
-          {order.merchant_order_no} · <ListDateTime value={order.created_at} inline />
+        <ItemDescription className="line-clamp-none whitespace-normal wrap-anywhere">
+          商户订单号（业务网站）：{order.merchant_order_no} · 创建时间：<ListDateTime value={order.created_at} inline />
         </ItemDescription>
+        {basis && <ItemDescription className="record-list-meta">{basis}</ItemDescription>}
       </ItemContent>
       <ItemActions className="flex-col items-end">
         <div className="flex items-baseline gap-2"><span className="record-list-meta">应付</span><ListMoney value={order.payable_amount_cents} label="应付金额" /></div>

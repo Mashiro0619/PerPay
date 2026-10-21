@@ -125,6 +125,7 @@ describe("ordinary administrator views", () => {
     expect(
       await screen.findByRole("heading", { name: "可能匹配的订单" }),
     ).toBeVisible();
+    expect(screen.getByText("PerPay 处理状态：未分配")).toBeVisible();
     expect(screen.queryByText(/规则版本/)).not.toBeInTheDocument();
   });
 

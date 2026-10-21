@@ -369,7 +369,7 @@ function ReconciliationList({
             (section !== "conflicts" && item.externalEventId)) && (
             <ListMeta>
               {!context.isColumnVisible("order") && (item.merchantOrderNo || item.orderId) && (
-                <RelatedOrderLink item={item} />
+                <span>{item.merchantOrderNo && "关联商户订单号（业务网站） "}<RelatedOrderLink item={item} /></span>
               )}
               {section !== "conflicts" && item.externalEventId && (
                 <span className="list-code" title={item.externalEventId}>支付宝流水号 {item.externalEventId}</span>
@@ -407,7 +407,7 @@ function ReconciliationList({
     },
     {
       id: "order",
-      label: "关联订单",
+      label: "关联商户订单号（业务网站）",
       layout: "text",
       summaryDefault: false,
       responsive: { minWidthRem: 70, basis: "container" },

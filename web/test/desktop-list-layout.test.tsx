@@ -62,14 +62,14 @@ const lists = [
     path: "/reconciliation",
     element: <Reconciliation />,
     data: [paymentMatch],
-    hiddenColumn: "关联订单",
+    hiddenColumn: "关联商户订单号（业务网站）",
     centeredColumns: ["status", "amount_cents", "created_at"],
   },
   {
     path: "/notifications",
     element: <Notifications />,
     data: [notification],
-    hiddenColumn: "关联订单",
+    hiddenColumn: "关联商户订单号（业务网站）",
     centeredColumns: ["status", "attempt_count", "created_at", "next_attempt_at"],
   },
 ];
@@ -236,7 +236,7 @@ describe("desktop business list composition", () => {
       const summary = await screen.findByRole("listitem");
       expect(screen.queryByRole("table")).not.toBeInTheDocument();
       expect(
-        within(summary).queryByText(hiddenColumn),
+        within(summary).queryByText(hiddenColumn, { selector: "dt" }),
       ).not.toBeInTheDocument();
       const user = userEvent.setup();
       await user.click(await screen.findByRole("button", { name: /^筛选与排序/ }));
@@ -250,7 +250,7 @@ describe("desktop business list composition", () => {
       );
       await user.keyboard("{Escape}");
       expect(
-        within(summary).getByText(hiddenColumn),
+        within(summary).getByText(hiddenColumn, { selector: "dt" }),
       ).toBeVisible();
       width = 1300;
       act(() => window.dispatchEvent(new Event("resize")));
@@ -264,7 +264,7 @@ describe("desktop business list composition", () => {
       width = 400;
       act(() => window.dispatchEvent(new Event("resize")));
       expect(
-        within(screen.getByRole("listitem")).getByText(hiddenColumn),
+        within(screen.getByRole("listitem")).getByText(hiddenColumn, { selector: "dt" }),
       ).toBeVisible();
       expect(screen.getByRole("button", { name: /^筛选与排序/ })).toBeVisible();
       expect(document.querySelectorAll("[data-business-row]")).toHaveLength(1);
@@ -347,7 +347,7 @@ describe("desktop business list composition", () => {
       const related = screen.getByRole("link", { name: relatedName });
       expect(related).toHaveAttribute("href", "/orders/" + orderId);
       expect(screen.getAllByRole("columnheader")[1]).toHaveTextContent(
-        "关联订单",
+        "关联商户订单号（业务网站）",
       );
       expect(related).not.toHaveTextContent("…");
       if (path === "/reconciliation") {
@@ -370,7 +370,7 @@ describe("desktop business list composition", () => {
       mount("/reconciliation", <Reconciliation />);
       const related = await screen.findByRole("link", { name: "查看订单：" + order.merchant_order_no });
       expect(related.closest(".list-identity-meta")).not.toBeNull();
-      expect(screen.queryByRole("columnheader", { name: "关联订单" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("columnheader", { name: "关联商户订单号（业务网站）" })).not.toBeInTheDocument();
       expect(screen.getAllByText(order.merchant_order_no, { exact: true })).toHaveLength(1);
       await userEvent.click(related);
       expect(await screen.findByRole("heading", { name: "订单详情" })).toBeVisible();

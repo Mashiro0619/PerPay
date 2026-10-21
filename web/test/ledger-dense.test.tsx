@@ -60,18 +60,20 @@ describe("readable administrator ledger detail", () => {
     expect(within(businessFields).getByText("备注", { selector: "dt" }).parentElement).toHaveAttribute("data-field-wide", "true");
     const summaryCredentials = credentialsIn(summary, 3);
     expect(within(summaryCredentials).getAllByRole("term").map(term => term.textContent)).toEqual([
-      "支付宝流水号", "支付宝订单号", "流水商户订单号", "实际关联订单",
+      "支付宝流水号", "支付宝订单号", "支付宝商户单号", "关联商户订单号（业务网站）",
     ]);
     expect(within(summaryCredentials).getByText(providerOrder)).toBeVisible();
     expect(within(summaryCredentials).getByText(merchantOrder)).toBeVisible();
     expect(screen.queryByRole("heading", { name: externalEventId })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "复制归组流水编号" })).not.toBeInTheDocument();
+    expect(within(summary).queryByRole("button", { name: "复制内部流水编号（PerPay）" })).not.toBeInTheDocument();
+    expect(within(summary).getByText("PerPay 处理状态")).toBeVisible();
     expect(screen.queryByText(appId)).not.toBeInTheDocument();
     expect(screen.queryByText("historical-account")).not.toBeInTheDocument();
     const sourceCard = screen.getByRole("heading", { name: "采集来源 1" }).closest<HTMLElement>("[data-ledger-source]")!;
     expect(sourceCard.querySelector("[data-detail-fields]")).toHaveAttribute("data-layout", "flow");
     const sourceCredentials = credentialsIn(sourceCard, 4);
-    expect(within(sourceCredentials).getAllByRole("term").map(term => term.textContent)).toEqual(["原始流水编号", "支付宝订单号", "流水商户订单号"]);
+    expect(within(sourceCredentials).getAllByRole("term").map(term => term.textContent)).toEqual(["内部流水编号（PerPay）", "支付宝订单号", "支付宝商户单号"]);
+    expect(within(sourceCard).getByText("PerPay 处理状态")).toBeVisible();
     expect(within(sourceCredentials).getByText(providerOrder)).toBeVisible();
     expect(within(sourceCredentials).getByText(merchantOrder)).toBeVisible();
     expect(within(sourceCard).getByText(memo, { normalizer: value => value })).toBeVisible();
@@ -84,11 +86,11 @@ describe("readable administrator ledger detail", () => {
     expect(writeText).toHaveBeenLastCalledWith(providerOrder);
     await user.click(within(summaryCredentials).getByRole("button", { name: "复制支付宝订单号" }));
     expect(writeText).toHaveBeenLastCalledWith(providerOrder);
-    await user.click(within(sourceCard).getByRole("button", { name: "复制原始流水编号" }));
+    await user.click(within(sourceCard).getByRole("button", { name: "复制内部流水编号（PerPay）" }));
     expect(writeText).toHaveBeenLastCalledWith(ledgerId);
-    await user.click(within(sourceCredentials).getByRole("button", { name: "复制来源流水商户订单号" }));
+    await user.click(within(sourceCredentials).getByRole("button", { name: "复制来源支付宝商户单号" }));
     expect(writeText).toHaveBeenLastCalledWith(merchantOrder);
-    await user.click(within(summaryCredentials).getByRole("button", { name: "复制流水商户订单号" }));
+    await user.click(within(summaryCredentials).getByRole("button", { name: "复制支付宝商户单号" }));
     expect(writeText).toHaveBeenLastCalledWith(merchantOrder);
     await user.click(screen.getByRole("button", { name: "复制支付宝流水号" }));
     expect(writeText).toHaveBeenLastCalledWith(externalEventId);
@@ -97,7 +99,7 @@ describe("readable administrator ledger detail", () => {
     const dialog = await screen.findByRole("dialog", { name: "技术详情" });
     expect(dialog.querySelector("[data-detail-fields]")).toHaveAttribute("data-layout", "columns");
     expect(dialog.querySelector('[data-detail-fields][data-layout="flow"]')).toBeNull();
-    await user.click(within(dialog).getByRole("button", { name: "复制归组流水编号" }));
+    await user.click(within(dialog).getByRole("button", { name: "复制内部流水编号（PerPay）" }));
     expect(writeText).toHaveBeenLastCalledWith(ledgerId);
     await user.click(within(dialog).getByRole("button", { name: "关闭" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
@@ -219,7 +221,8 @@ describe("readable administrator ledger detail", () => {
       expect(card).toBeVisible();
       expect(card.querySelector("[data-detail-fields]")).toHaveAttribute("data-layout", "flow");
       const credentials = credentialsIn(card, 4);
-      expect(within(credentials).getAllByRole("term").map(term => term.textContent)).toEqual(["关联订单", "原始流水编号"]);
+      expect(within(credentials).getAllByRole("term").map(term => term.textContent)).toEqual(["关联商户订单号（业务网站）", "内部流水编号（PerPay）"]);
+      expect(card).toHaveTextContent(match.evidence_type === "MANUAL" ? "管理员人工关联" : "PerPay 按金额和付款时间推断");
       expect(within(card).getByText(match.status === "SETTLED" ? "已关联" : "已撤销")).toBeVisible();
       expect(within(card).getByRole("link", { name: "查看订单：" + match.merchant_order_no })).toHaveAttribute("href", "/orders/" + match.order_id);
       expect(within(card).getByRole("link", { name: "查看关联记录" })).toHaveAttribute("href", "/reconciliation/matches/" + match.payment_match_id + "?selected_site=remembered-site");
@@ -235,6 +238,7 @@ describe("readable administrator ledger detail", () => {
       const card = link!.closest<HTMLElement>("[data-ledger-conflict]")!;
       expect(card.querySelector("[data-detail-fields]")).toHaveAttribute("data-layout", "flow");
       const credentials = credentialsIn(card, 4);
+      expect(within(credentials).getByText("关联内部流水编号（PerPay）", { selector: "dt" })).toBeVisible();
       expect(within(credentials).getByText(conflict.existing_ledger_entry_id!)).toBeVisible();
       expect(within(card).getByText(conflict.status === "OPEN" ? "待处理" : "已处理")).toBeVisible();
     }

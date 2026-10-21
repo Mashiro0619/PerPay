@@ -72,8 +72,9 @@ export function DataTable({
         <ListIdentity
           meta={
             <ListMeta>
-              <span className="list-code" title={order.merchant_order_no}>
-                {order.merchant_order_no}
+              <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
+                <span>商户订单号（业务网站）：</span>
+                <span className="list-code" title={order.merchant_order_no}>{order.merchant_order_no}</span>
               </span>
               {!clientId && (
                 <SiteIdentity clientId={order.api_client_id} name={order.site_name} />

@@ -414,7 +414,7 @@ describe("operation dialog layout", () => {
       expect(dialog).toHaveAccessibleDescription(
         kind === "reason"
           ? "仅撤销账务关联，不会转出资金。"
-          : "将这笔收入关联到订单并确认付款。",
+          : "将这笔支付宝收入关联到订单，并确认订单收款。",
       );
       const user = userEvent.setup();
       await user.type(reason, "核对长文本证据");

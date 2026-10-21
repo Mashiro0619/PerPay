@@ -37,7 +37,7 @@ interface Choice {
   summary: string;
   amount: number;
   occurredAt: string;
-  identifiers: string;
+  identifiers: ReadonlyArray<readonly [label: string, value: string]>;
   website?: string;
   recommendation: ManualSettlementRecommendation | null;
 }
@@ -85,13 +85,13 @@ export function ManualCandidatePicker({
         );
         return {
           next: response.page.next_cursor,
-          choices: response.data.map(({ order, recommendation }) => ({
+          choices: response.data.map(({ order, recommendation }): Choice => ({
             id: order.order_id,
             title: order.product_name,
             summary: {OPEN: "收银台开放中", CLOSED: "收银台已关闭", EXPIRED: "收银台已过期"}[order.checkout_status],
             amount: order.payable_amount_cents,
             occurredAt: order.created_at,
-            identifiers: order.merchant_order_no,
+            identifiers: [["商户订单号（业务网站）", order.merchant_order_no]],
             website: `${order.site_name ?? "名称不可用"} · ${order.api_client_id}`,
             recommendation,
           })),
@@ -106,7 +106,7 @@ export function ManualCandidatePicker({
       return {
         next: response.page.next_cursor,
         choices: response.data.map(
-          ({ ledger_entry: entry, recommendation }) => ({
+          ({ ledger_entry: entry, recommendation }): Choice => ({
             id: entry.ledger_entry_id,
             title:
               money(entry.amount_cents) + " · " + dateTime(entry.occurred_at),
@@ -114,12 +114,10 @@ export function ManualCandidatePicker({
             amount: entry.amount_cents,
             occurredAt: entry.occurred_at,
             identifiers: [
-              entry.provider_order_no,
-              entry.merchant_order_no,
-              entry.external_event_id,
-            ]
-              .filter(Boolean)
-              .join(" · "),
+              ...(entry.provider_order_no ? [["支付宝订单号", entry.provider_order_no] as const] : []),
+              ...(entry.merchant_order_no ? [["支付宝商户单号", entry.merchant_order_no] as const] : []),
+              ["支付宝流水号", entry.external_event_id],
+            ],
             recommendation,
           }),
         ),
@@ -231,9 +229,9 @@ export function ManualCandidatePicker({
                         <ListDateTime value={choice.occurredAt} inline />
                         {kind === "orders" && " · " + choice.summary}
                       </ItemDescription>
-                      <ItemDescription className="whitespace-normal wrap-anywhere">
-                        {choice.identifiers}
-                      </ItemDescription>
+                      {choice.identifiers.map(([label, value]) => <ItemDescription key={label} className="whitespace-normal wrap-anywhere">
+                        {label}：{value}
+                      </ItemDescription>)}
                       {choice.recommendation?.amount_match && (
                         <ItemDescription>
                           {choice.recommendation.time_window_overlap

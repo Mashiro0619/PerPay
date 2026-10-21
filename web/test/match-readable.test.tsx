@@ -129,7 +129,7 @@ describe("readable payment match detail", () => {
     expect(screen.getByRole("region", { name: "撤销记录" })).toBeVisible();
     expect(screen.getByRole("group", { name: "匹配依据与处理记录" }).querySelectorAll('[data-slot="separator"]')).toHaveLength(2);
     expect(screen.queryByRole("button", { name: "匹配依据" })).not.toBeInTheDocument();
-    for (const label of ["商户订单号", "支付宝订单号", "支付宝商户单号", "支付宝交易备注", "金额占用时间", "关联理由", "撤销理由"]) {
+    for (const label of ["商户订单号（业务网站）", "支付宝订单号", "支付宝商户单号", "支付宝交易备注", "金额占用时间", "关联理由", "撤销理由"]) {
       const field = screen.getByText(label, { selector: "dt" }).parentElement;
       expect(field).toHaveAttribute("data-field-wide", "true");
       expect(field?.closest('[data-detail-fields]')).toHaveAttribute("data-layout", "flow");

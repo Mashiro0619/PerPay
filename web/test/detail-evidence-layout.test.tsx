@@ -166,7 +166,7 @@ describe("always-visible detail evidence", () => {
     );
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.queryByText("暂无尝试明细")).not.toBeInTheDocument();
-    expect(screen.getByText(/不能据此判断未曾投递/)).toBeVisible();
+    expect(screen.getByText("发送记录尚未读取；这不代表没有发送过。")).toBeVisible();
     rerender(<DeliveryAttempts attempts={[]} available />);
     expect(screen.getByRole("table", { name: "投递尝试（0）" })).toBeVisible();
     expect(screen.getByText("暂无尝试明细")).toBeVisible();

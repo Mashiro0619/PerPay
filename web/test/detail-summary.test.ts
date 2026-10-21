@@ -8,6 +8,8 @@ import {
   exceptionStateLabel,
   eventExplanation,
   isHistoricalException,
+  notificationErrorName,
+  notificationRecoveryHint,
 } from "../src/lib/detail-summary";
 import {
   comparisonAmount,
@@ -165,7 +167,7 @@ describe("display-only conflict comparison", () => {
     expect(comparisonTime("2026-09-06 08:01:02.000")?.precision).toBe(1);
     expect(comparisonTime("2026-09-06 08:01:02")?.precision).toBe(1000);
   });
-  it("uses Chinese ACK failures while preserving unknown errors", () => {
+  it("uses readable ACK failures and does not expose unknown codes in ordinary text", () => {
     expect(
       attemptResult({ ...failedAttempt, error_code: "ack_event_mismatch" }),
     ).toContain("确认的事件编号不匹配");
@@ -174,6 +176,18 @@ describe("display-only conflict comparison", () => {
         ...failedAttempt,
         error_code: "future_transport_failure",
       }),
-    ).toContain("future_transport_failure");
+    ).toBe("HTTP 200 · 通知发送结果需核查");
+    expect(notificationErrorName("future_transport_failure")).not.toContain("future_transport_failure");
+  });
+  it.each(["ack_event_mismatch", "ack_delivery_mismatch"])("distinguishes a valid-shaped but mismatched %s receipt from malformed JSON", code => {
+    const mismatch = notificationRecoveryHint(code);
+    expect(mismatch).toContain("确认回执与本次通知不符");
+    expect(mismatch).not.toContain("格式不正确");
+    expect(notificationRecoveryHint("ack_json_invalid")).toContain("确认回执格式不正确");
+  });
+  it("keeps interrupted and unknown delivery results cautious without leaking internal codes", () => {
+    expect(notificationRecoveryHint("lease_expired_outcome_unknown")).toBe("发送结果暂时无法确定，请先核对业务网站的接收记录，避免重复处理。");
+    expect(notificationRecoveryHint("future_transport_failure")).not.toContain("future_transport_failure");
+    expect(notificationRecoveryHint("future_processing_issue")).toContain("确认处理结果后再操作");
   });
 });

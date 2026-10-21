@@ -17,7 +17,10 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/a
 function OrderAmounts({ order }: { order: AdminOrderSummary }) {
   const received = order.received_amount_cents;
   if (received == null || received === order.payable_amount_cents) {
-    return <ListMoney value={order.payable_amount_cents} label="应付金额" />;
+    return <span className="inline-flex min-w-0 flex-wrap items-baseline justify-end gap-1">
+      <span className="overview-record-note">应付</span>
+      <ListMoney value={order.payable_amount_cents} label="应付金额" />
+    </span>;
   }
   return (
     <dl className="overview-order-money">
@@ -45,7 +48,7 @@ function PaymentResult({ order }: { order: AdminOrderSummary }) {
 function NotificationBadge({ summary }: { summary: NonNullable<AdminOrderSummary["notification_summary"]> }) {
   switch (summary.status) {
     case "NOT_CONFIGURED":
-      return <Badge variant="secondary">未配置通知</Badge>;
+      return <Badge variant="secondary">此订单未设置通知地址</Badge>;
     case "NO_EVENT":
       return <Badge variant="secondary">暂无通知事件</Badge>;
     case "UNMATERIALIZED":
@@ -69,13 +72,13 @@ function NotificationResult({ order }: { order: AdminOrderSummary }) {
 function OrderTimes({ order }: { order: AdminOrderSummary }) {
   return (
     <ItemDescription className="overview-order-times line-clamp-none">
-      <span className="overview-order-time-entry">
+      <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
         <span className="overview-record-note">创建</span>
         <ListDateTime value={order.created_at} inline />
       </span>
       {order.payment_confirmed_at && (
-        <span className="overview-order-time-entry">
-          <span className="overview-record-note">确认</span>
+        <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
+          <span className="overview-record-note">PerPay 确认时间</span>
           <ListDateTime value={order.payment_confirmed_at} inline />
         </span>
       )}
@@ -92,12 +95,12 @@ function OrderProductLink({ order }: { order: AdminOrderSummary }) {
 }
 
 function OrderMeta({ order, showSite, summary = false }: { order: AdminOrderSummary; showSite: boolean; summary?: boolean }) {
-  if (order.product_name === order.merchant_order_no && !showSite) return null;
   const content = (
     <>
-      {order.product_name !== order.merchant_order_no && (
+      <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
+        <span>商户订单号（业务网站）：</span>
         <span className="list-code" title={order.merchant_order_no}>{order.merchant_order_no}</span>
-      )}
+      </span>
       {showSite && <SiteIdentity clientId={order.api_client_id} name={order.site_name} />}
     </>
   );
@@ -143,9 +146,7 @@ export function RecentOrders({ orders }: { orders: readonly AdminOrderSummary[] 
       summaryDefault: true,
       cell: (order, context) => (
         <ListIdentity
-          meta={(order.product_name !== order.merchant_order_no || !clientId) && (
-            <OrderMeta order={order} showSite={!clientId} />
-          )}
+          meta={<OrderMeta order={order} showSite={!clientId} />}
           description={context.showInSummary("created_at") && <OrderTimes order={order} />}
         >
           <OrderProductLink order={order} />

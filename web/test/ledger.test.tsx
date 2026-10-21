@@ -75,6 +75,7 @@ describe("administrator ledger pages", () => {
     mount();
     const table = await screen.findByRole("table", { name: "支付宝流水" });
     expect(table).toHaveClass("ledger-table");
+    expect(within(table).getByRole("columnheader", { name: "PerPay 处理状态" })).toBeVisible();
     expect(within(table).getByRole("link", { name: externalEventId })).toHaveTextContent(externalEventId);
     expect(screen.getByRole("link", { name: "账本冲突" })).toHaveAttribute("href", "/reconciliation?tab=conflicts");
     expect(table.querySelector('thead [data-column-id="memo"]')).toBeNull();
@@ -86,6 +87,7 @@ describe("administrator ledger pages", () => {
     act(() => { width = 600; window.dispatchEvent(new Event("resize")); });
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     const summary = await screen.findByRole("listitem");
+    expect(within(summary).getByText("PerPay 处理状态")).toBeVisible();
     expect(within(summary).getByRole("link", { name: externalEventId })).toHaveTextContent(externalEventId);
     expect(within(summary).getByRole("link", { name: "查看订单：real-order" })).toHaveAttribute("href", "/orders/" + orderId);
     expect(within(summary).getByText("本地流水备注")).toBeVisible();
@@ -115,7 +117,7 @@ describe("administrator ledger pages", () => {
 
   it("blocks invalid URL filters before making requests and allows clearing them", async () => {
     mount("/ledger?min_amount_cents=1.01");
-    expect(await screen.findByText("金额筛选参数须为非负整数分。")).toBeVisible();
+    expect(await screen.findByText("金额筛选无效，请重新设置金额范围。")).toBeVisible();
     expect(fetchMock).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
     await screen.findByRole("link", { name: entry.external_event_id });
@@ -177,7 +179,7 @@ describe("administrator ledger pages", () => {
     fetchMock.mockImplementation(async () => json({ data: variant }));
     mount("/ledger/" + ledgerId);
     const card = (await screen.findByRole("heading", { name: "交易摘要" })).closest<HTMLElement>('[data-slot="card"]')!;
-    for (const title of ["对方", "备注", "支付宝订单号", "流水商户订单号"]) {
+    for (const title of ["对方", "备注", "支付宝订单号", "支付宝商户单号"]) {
       expect(within(within(card).getByText(title).parentElement!).getByText("—")).toBeVisible();
     }
     expect(within(card).getAllByText("有争议")).toHaveLength(1);

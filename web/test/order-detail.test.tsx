@@ -186,7 +186,7 @@ describe("order detail work surface", () => {
     async (status) => {
       mockData({ ...order, checkout: { ...order.checkout, status } }, []);
       mount();
-      expect(await screen.findByText("未配置通知")).toBeVisible();
+      expect(await screen.findByText("此订单未设置通知地址")).toBeVisible();
       fireEvent.click(screen.getByRole("button", { name: "订单操作" }));
       expect(
         screen.queryByRole("menuitem", { name: "标记已退款" }),
@@ -420,7 +420,7 @@ describe("order detail work surface", () => {
     const before = attempts;
     await userEvent.setup().click(screen.getByRole("button", { name: "重试" }));
     await waitFor(() => expect(attempts).toBeGreaterThan(before));
-    expect(screen.queryByText("未配置通知")).not.toBeInTheDocument();
+    expect(screen.queryByText("此订单未设置通知地址")).not.toBeInTheDocument();
   });
 
   it("opens a candidate in place with readable order and ledger facts and locks known association IDs", async () => {

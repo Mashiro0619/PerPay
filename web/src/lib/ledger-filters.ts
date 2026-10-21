@@ -21,7 +21,7 @@ export function parseLedgerAmount(value: string): number | undefined {
 
 function centsBoundary(value: string | null): number | undefined {
   if (value === null) return undefined;
-  if (!/^\d+$/.test(value)) throw new Error("金额筛选参数须为非负整数分。");
+  if (!/^\d+$/.test(value)) throw new Error("金额筛选无效，请重新设置金额范围。");
   const cents = Number(value);
   if (!Number.isSafeInteger(cents) || cents > MAX_LEDGER_AMOUNT_CENTS) throw new Error("金额不能超过 " + money(MAX_LEDGER_AMOUNT_CENTS) + "。");
   return cents;
@@ -49,7 +49,7 @@ export function readLedgerFilters(search: URLSearchParams) {
   const direction = search.get("direction") || undefined;
   const state = search.get("state") || undefined;
   if (direction && !LEDGER_DIRECTIONS.includes(direction as typeof LEDGER_DIRECTIONS[number])) throw new Error("收支方向无效，请重新选择筛选条件。");
-  if (state && !LEDGER_STATES.includes(state as typeof LEDGER_STATES[number])) throw new Error("流水处理状态无效，请重新选择筛选条件。");
+  if (state && !LEDGER_STATES.includes(state as typeof LEDGER_STATES[number])) throw new Error("PerPay 处理状态无效，请重新选择筛选条件。");
   createdDateRange(list.query.createdFrom, list.query.createdTo);
   const minimum = centsBoundary(search.get("min_amount_cents"));
   const maximum = centsBoundary(search.get("max_amount_cents"));

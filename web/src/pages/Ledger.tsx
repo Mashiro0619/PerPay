@@ -25,7 +25,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 
 const directionOptions = [{ value: "", label: "全部收支" }, { value: "CREDIT", label: "收入" }, { value: "DEBIT", label: "支出" }];
-const stateOptions = [{ value: "", label: "全部处理状态" }, ...LEDGER_STATES.map(value => ({ value, label: label(value) }))];
+const stateOptions = [{ value: "", label: "全部状态（PerPay）" }, ...LEDGER_STATES.map(value => ({ value, label: label(value) }))];
 
 export default function Ledger() {
   const [search] = useSearchParams();
@@ -45,12 +45,12 @@ export default function Ledger() {
   useLedgerListPosition(!!query.data && !query.isPlaceholderData && !query.isFetching);
   const listFilters: ListFilter[] = [
     { key: "direction", label: "收支方向", value: search.get("direction") ?? "", options: directionOptions },
-    { key: "state", label: "处理状态", value: search.get("state") ?? "", options: stateOptions },
+    { key: "state", label: "PerPay 处理状态", value: search.get("state") ?? "", options: stateOptions },
   ];
   const columns: BusinessColumn<AdminLedgerSummary>[] = [
     { id: "identity", label: "支付宝流水号", hideable: false, layout: "identity", summaryDefault: true,
       cell: (entry, context) => <ListIdentity
-        meta={!context.isColumnVisible("order") && <LedgerActiveOrder entry={entry} />}
+        meta={!context.isColumnVisible("order") && <span>关联商户订单号（业务网站） <LedgerActiveOrder entry={entry} /></span>}
         description={<ListMeta>
           {context.showInSummary("occurred_at") && (entry.occurred_at ? <ListDateTime value={entry.occurred_at} inline /> : <span>{entry.content_consistent ? "—" : "有争议"}</span>)}
           {context.showInSummary("other_account") && entry.other_account && <span>{entry.other_account}</span>}
@@ -64,8 +64,8 @@ export default function Ledger() {
     { id: "amount_cents", label: "交易金额", layout: "amount", align: "center", summaryDefault: true, cell: entry => <LedgerMoney entry={entry} /> },
     { id: "other_account", label: "对方", layout: "text", summaryDefault: true, responsive: { minWidthRem: 58, basis: "container" }, cell: entry => <span className="wrap-anywhere">{ledgerFact(entry.other_account)}</span> },
     { id: "memo", label: "备注", layout: "text", summaryDefault: true, responsive: { minWidthRem: 78, basis: "container" }, cell: entry => <span className="wrap-anywhere">{ledgerFact(entry.memo)}</span> },
-    { id: "state", label: "处理状态", layout: "status", align: "center", summaryDefault: true, cell: entry => <LedgerStates entry={entry} /> },
-    { id: "order", label: "实际关联订单", layout: "text", summaryDefault: true, responsive: { minWidthRem: 64, basis: "container" }, cell: entry => <LedgerActiveOrder entry={entry} /> },
+    { id: "state", label: "PerPay 处理状态", layout: "status", align: "center", summaryDefault: true, cell: entry => <LedgerStates entry={entry} /> },
+    { id: "order", label: "关联商户订单号（业务网站）", layout: "text", summaryDefault: true, responsive: { minWidthRem: 64, basis: "container" }, cell: entry => <LedgerActiveOrder entry={entry} /> },
   ];
   const hasAmounts = search.has("min_amount_cents") || search.has("max_amount_cents");
   const activeFilters = !!(control.query.q || control.query.createdFrom || control.query.createdTo || search.get("direction") || search.get("state") || hasAmounts);

@@ -63,7 +63,7 @@ export default function EvidenceDetail() {
         <EmptyTitle role="heading" aria-level={2}>
           未找到这条对账记录
         </EmptyTitle>
-        <EmptyDescription>链接中的记录类型无效，请返回地址前缀列表重新选择记录。</EmptyDescription>
+        <EmptyDescription>链接中的记录类型无效，请点击「{back.label}」重新选择记录。</EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
         <Link to={back.to} state={back.state} className={buttonVariants({ variant: "outline" })}>
@@ -233,7 +233,7 @@ function LedgerDetail({ resourceId }: { resourceId: string }) {
                 <CardTitle role="heading" aria-level={2}>
                   支付宝流水
                 </CardTitle>
-                <CardDescription>{label(data.state)}</CardDescription>
+                <CardDescription>PerPay 处理状态：{label(data.state)}</CardDescription>
               </CardHeader>
               <CardContent className="flex min-w-0 flex-col gap-4">
                 <LedgerFacts entry={data} />
@@ -243,7 +243,7 @@ function LedgerDetail({ resourceId }: { resourceId: string }) {
                 <RecordTools
                   data={data}
                   identifiers={[
-                    ["流水编号", resourceId],
+                    ["内部流水编号（PerPay）", resourceId],
                     ["支付宝流水号", data.external_event_id],
                   ]}
                   label="流水记录操作"

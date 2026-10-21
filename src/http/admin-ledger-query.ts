@@ -64,18 +64,18 @@ export function adminLedgerEntryEnvironment(database: ReadDatabase, ledgerEntryI
 export function readAdminLedgerPageQuery(values: URLSearchParams, environment: ProviderEnvironment | null): AdminLedgerPageQuery {
   for (const key of values.keys()) {
     if (!QUERY_KEYS.has(key) || values.getAll(key).length !== 1) {
-      throw new ListQueryError("流水查询参数未知或重复");
+      throw new ListQueryError("流水筛选条件无效或重复，请重新设置筛选条件");
     }
   }
-  if ((values.get("sort_by") ?? "occurred_at") !== "occurred_at") throw new ListQueryError("流水排序字段无效");
+  if ((values.get("sort_by") ?? "occurred_at") !== "occurred_at") throw new ListQueryError("流水排序方式无效，请按交易时间排序");
   const sortOrder = values.get("sort_order") ?? "desc";
-  if (sortOrder !== "asc" && sortOrder !== "desc") throw new ListQueryError("流水排序方向无效");
+  if (sortOrder !== "asc" && sortOrder !== "desc") throw new ListQueryError("请选择按交易时间从新到旧或从旧到新排序");
   const limitText = values.get("limit") ?? "20";
   if (!/^[1-9][0-9]{0,2}$/.test(limitText) || Number(limitText) > 100) throw new ListQueryError("流水每页条数须为 1 至 100");
   const direction = values.get("direction");
-  if (direction !== null && direction !== "CREDIT" && direction !== "DEBIT") throw new ListQueryError("流水收支方向无效");
+  if (direction !== null && direction !== "CREDIT" && direction !== "DEBIT") throw new ListQueryError("请选择收入或支出，或清除收支筛选");
   const state = values.get("state");
-  if (state !== null && !STATES.includes(state as LedgerEntryState)) throw new ListQueryError("流水状态无效");
+  if (state !== null && !STATES.includes(state as LedgerEntryState)) throw new ListQueryError("PerPay 处理状态筛选无效，请重新选择");
   const occurredFrom = values.get("occurred_from") ?? undefined;
   const occurredTo = values.get("occurred_to") ?? undefined;
   try { createdDateRange(occurredFrom, occurredTo); } catch (error) {
@@ -85,7 +85,7 @@ export function readAdminLedgerPageQuery(values: URLSearchParams, environment: P
   const amount = (key: string) => {
     const value = values.get(key);
     if (value === null) return undefined;
-    if (!/^(0|[1-9][0-9]{0,11})$/.test(value) || Number(value) > 999_999_999_999) throw new ListQueryError("流水金额须为有效的整数分");
+    if (!/^(0|[1-9][0-9]{0,11})$/.test(value) || Number(value) > 999_999_999_999) throw new ListQueryError("流水金额范围无效，请重新设置金额筛选");
     return Number(value);
   };
   const minAmountCents = amount("min_amount_cents"), maxAmountCents = amount("max_amount_cents");
@@ -117,7 +117,7 @@ export function encodeAdminLedgerCursor(position: AdminLedgerCursor | null, quer
 }
 
 function decodeAdminLedgerCursor(value: string, query: AdminLedgerPageQuery): AdminLedgerCursor {
-  const invalid = () => new ListQueryError("流水分页游标无效或不属于当前查询");
+  const invalid = () => new ListQueryError("翻页信息无效或与当前筛选不符，请返回第一页重新查询");
   if (!/^[A-Za-z0-9_-]{1,4096}$/.test(value)) throw invalid();
   const bytes = Buffer.from(value, "base64url");
   if (bytes.toString("base64url") !== value) throw invalid();

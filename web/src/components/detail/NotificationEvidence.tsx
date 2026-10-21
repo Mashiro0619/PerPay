@@ -73,19 +73,20 @@ export function DeliveryCard({
     delivery.status === "ACKNOWLEDGED" || delivery.status === "DEAD_LETTER";
   const comfortable = density === "comfortable" && !embedded;
   const statusDescription = !detail.is_latest
-    ? "历史投递"
+    ? delivery.status === "ACKNOWLEDGED" ? "历史投递 · 对方已返回有效确认回执" : "历史投递"
     : delivery.status === "DEAD_LETTER"
       ? "已停止重试，需要处理"
       : delivery.status === "RETRY_WAIT"
         ? "等待自动重试"
         : delivery.status === "ACKNOWLEDGED"
-          ? "通知已确认（ACK）"
+          ? "对方已返回有效确认回执"
           : "等待投递结果";
   const attemptDescription = attemptsAvailable
     ? delivery.attempt_count === 0
       ? attemptResult(undefined)
       : "投递尝试按时间倒序显示"
-    : "投递尝试尚未读取";
+    : attemptsError ? "发送记录读取失败" : "正在读取发送记录";
+  const attemptsReadState = attemptsError ? "failed" : "loading";
   const resend = detail.is_latest && delivery.status === "DEAD_LETTER" && (
     <Button
       variant="outline"
@@ -145,7 +146,7 @@ export function DeliveryCard({
       ? [["下次重试", dateTime(delivery.next_attempt_at)] as const]
       : []),
     ...(delivery.acknowledged_at
-      ? [["业务确认时间", dateTime(delivery.acknowledged_at)] as const]
+      ? [["通知确认时间（PerPay 记录）", dateTime(delivery.acknowledged_at)] as const]
       : []),
     ...(delivery.last_error_code && delivery.last_error_code !== last?.error_code
       ? [["最近错误", notificationErrorName(delivery.last_error_code)] as const]
@@ -239,7 +240,7 @@ export function DeliveryCard({
       </CardHeader>
       <CardContent className="flex min-w-0 flex-col gap-4">
         <ErrorNotice error={attemptsError} retry={retryAttempts} />
-        <DeliveryAttempts key={delivery.delivery_id} attempts={detail.attempts} available={attemptsAvailable} density="comfortable" />
+        <DeliveryAttempts key={delivery.delivery_id} attempts={detail.attempts} available={attemptsAvailable} readState={attemptsReadState} density="comfortable" />
       </CardContent>
     </Card>
     {confirmation}
@@ -258,7 +259,7 @@ export function DeliveryCard({
         {recovery && <p className="text-sm text-muted-foreground">{recovery}</p>}
         {resend}
         <DetailFields wide={["所属网站", "通知地址", "重发理由"]} items={[...siteFields, targetField, ...deliveryFields, ...reasonFields]} />
-        <DeliveryAttempts key={delivery.delivery_id} attempts={detail.attempts} available={attemptsAvailable} />
+        <DeliveryAttempts key={delivery.delivery_id} attempts={detail.attempts} available={attemptsAvailable} readState={attemptsReadState} />
         {tools}
       </CardContent>
       {confirmation}
@@ -344,8 +345,8 @@ export function OrderNotifications({
                     {pagination.page > 1
                       ? "此页暂无投递记录"
                       : notifyUrl
-                        ? "已配置通知，暂无投递记录"
-                        : "未配置通知"}
+                        ? "此订单已设置通知地址，暂无发送记录"
+                        : "此订单未设置通知地址"}
                   </CardDescription>
                 </CardHeader>
               </Card>

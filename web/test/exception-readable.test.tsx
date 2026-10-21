@@ -61,8 +61,10 @@ describe("readable financial exception detail", () => {
     const orderLink = await within(card).findByRole("link", { name: order.product_name });
     expect(orderLink).toHaveAttribute("href", scope + "/orders/" + orderId);
     expect(screen.getByRole("link", { name: /对账/ })).toHaveAttribute("href", scope + "/reconciliation?tab=exceptions&q=book&cursor=next&page=2");
-    const credentials = await within(card).findByRole("region", { name: "交易凭据" });
-    expect(within(credentials).getByRole("heading", { name: "交易凭据", level: 4 })).toBeVisible();
+    const credentials = await within(card).findByRole("region", { name: "核对凭据" });
+    expect(within(card).getByRole("heading", { name: "支付宝流水与 PerPay 记录" })).toBeVisible();
+    expect(within(credentials).getByRole("heading", { name: "核对凭据", level: 4 })).toBeVisible();
+    expect(within(credentials).getAllByRole("term").map(term => term.textContent)).toEqual(["支付宝订单号", "支付宝商户单号", "内部流水编号（PerPay）"]);
     expect(credentials.querySelector("[data-detail-fields]")).toHaveAttribute("data-layout", "columns");
     for (const value of [availableLedger.provider_order_no, availableLedger.merchant_order_no, ledgerId]) expect(within(credentials).getByText(value, { exact: true })).toBeVisible();
     expect(within(card).getByText("保留原始交易备注 第二行完整内容").closest("[data-field-wide]")).toHaveAttribute("data-field-wide", "true");
@@ -77,7 +79,7 @@ describe("readable financial exception detail", () => {
     const user = userEvent.setup();
     await user.click(await recordAction("技术详情", "异常记录操作"));
     const dialog = await screen.findByRole("dialog", { name: "技术详情" });
-    for (const [label, value] of [["异常编号", exceptionId], ["客户端 ID", scope ? "shop" : order.api_client_id], ["原始流水编号", ledgerId], ["内部订单编号", orderId], ["可能匹配记录编号", candidateId]]) {
+    for (const [label, value] of [["异常编号", exceptionId], ["客户端 ID", scope ? "shop" : order.api_client_id], ["内部流水编号（PerPay）", ledgerId], ["内部订单编号", orderId], ["可能匹配记录编号", candidateId]]) {
       await user.click(within(dialog).getByRole("button", { name: "复制" + label }));
       expect(await navigator.clipboard.readText()).toBe(value);
     }
@@ -93,7 +95,7 @@ describe("readable financial exception detail", () => {
     mount(<ExceptionCard exception={{ ...financialException, exception_type: "UNMATCHED_CREDIT", order_id: null, candidate_id: null }} ledger={availableLedger} density="comfortable" />);
     const card = screen.getByRole("group", { name: "账务异常记录" });
     expect(within(card).getByText("尚未关联订单")).toBeVisible();
-    expect(within(card).getByRole("region", { name: "交易凭据" })).toBeVisible();
+    expect(within(card).getByRole("region", { name: "核对凭据" })).toBeVisible();
     expect(within(card).getByRole("button", { name: "人工关联收款" })).toBeVisible();
     expect(screen.queryByRole("heading", { name: "匹配依据" })).not.toBeInTheDocument();
     expect(fetch).not.toHaveBeenCalled();
@@ -133,7 +135,7 @@ describe("readable financial exception detail", () => {
     state.failure = undefined;
     await userEvent.setup().click(within(failure).getByRole("button", { name: "重试" }));
     if (resource === "order") expect(await within(card).findByRole("link", { name: order.product_name })).toBeVisible();
-    if (resource === "ledger") expect(await within(card).findByRole("region", { name: "交易凭据" })).toBeVisible();
+    if (resource === "ledger") expect(await within(card).findByRole("region", { name: "核对凭据" })).toBeVisible();
     if (resource === "candidate") expect(await within(card).findByRole("heading", { name: "匹配依据" })).toBeVisible();
     await waitFor(() => expect(within(card).queryByRole("alert")).not.toBeInTheDocument());
     const suffixes = { order: "/orders/" + orderId, ledger: "/ledger-entries/" + ledgerId, candidate: "/candidates/" + candidateId };
@@ -171,7 +173,7 @@ describe("readable financial exception detail", () => {
     const { container } = mount(<ExceptionCard exception={financialException} ledger={availableLedger} order={order} candidate={candidate} embedded={embedded} {...(density ? { density } : {})} />);
     const card = screen.getByRole("group", { name: "账务异常记录" });
     expect(container.querySelector("[data-financial-exception]")).toBeNull();
-    expect(screen.queryByRole("region", { name: "交易凭据" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "核对凭据" })).not.toBeInTheDocument();
     expect(container.querySelector('[data-layout="flow"]')).toBeNull();
     expect(within(card).getByRole("button", { name: "人工关联收款" }).closest('[data-slot="card-footer"]')).not.toBeNull();
     expect(within(card).getByRole("button", { name: "异常记录操作" }).closest('[data-slot="card-content"]')).not.toBeNull();
@@ -180,9 +182,9 @@ describe("readable financial exception detail", () => {
 
   it("does not group the identifiers in unrelated LedgerFacts callers", () => {
     const { rerender } = mount(<LedgerFacts entry={availableLedger} density="comfortable" layout="flow" />);
-    expect(screen.queryByRole("region", { name: "交易凭据" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "核对凭据" })).not.toBeInTheDocument();
     expect(screen.getByText(availableLedger.provider_order_no)).toBeVisible();
     rerender(<LedgerFacts entry={availableLedger} groupIdentifiers />);
-    expect(screen.queryByRole("region", { name: "交易凭据" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "核对凭据" })).not.toBeInTheDocument();
   });
 });

@@ -39,7 +39,7 @@ describe("independent readable detail scope", () => {
     const router = createMemoryRouter([{ path: "/", element: <OrderFacts order={paidOrder} density="comfortable" layout="flow" /> }]);
     render(<RouterProvider router={router} />);
     expect(screen.getByRole("link", { name: paidOrder.product_name })).toBeVisible();
-    for (const name of ["应付金额", "实收金额", "所属网站", "创建时间", "商户订单号"]) {
+    for (const name of ["应付金额", "实收金额", "所属网站", "创建时间", "商户订单号（业务网站）"]) {
       expect(screen.getByText(name, { selector: "dt" })).toBeVisible();
     }
     expect(screen.getByRole("button", { name: "复制商户订单号" })).toBeVisible();

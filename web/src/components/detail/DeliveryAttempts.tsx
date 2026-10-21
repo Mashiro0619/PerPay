@@ -27,10 +27,12 @@ const PAGE_SIZE = 10;
 export function DeliveryAttempts({
   attempts,
   available,
+  readState,
   density = "default",
 }: {
   attempts: readonly WebhookAttempt[];
   available: boolean;
+  readState?: "loading" | "failed";
   density?: "default" | "comfortable";
 }) {
   const titleId = useId();
@@ -174,7 +176,9 @@ export function DeliveryAttempts({
         </>
       ) : (
         <p className="text-sm text-muted-foreground">
-          尚未获得尝试明细，不能据此判断未曾投递。
+          {readState === "loading" ? "正在读取发送记录…"
+            : readState === "failed" ? "发送记录读取失败，请重试；这不代表没有发送过。"
+            : "发送记录尚未读取；这不代表没有发送过。"}
         </p>
       )}
     </section>

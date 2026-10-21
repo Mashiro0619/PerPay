@@ -68,7 +68,9 @@ describe("overview order progress", () => {
     expect(screen.getByText(recent.merchant_order_no)).toHaveAttribute("title", recent.merchant_order_no);
     expect(screen.getByLabelText("应付金额 ¥199.01")).toBeVisible();
     expect(screen.getAllByLabelText(/^(应付|实收)金额 /)).toHaveLength(1);
-    expect(screen.queryByText(/^(应付|实收)$/)).not.toBeInTheDocument();
+    expect(screen.getByText("应付", { exact: true })).toBeVisible();
+    expect(screen.queryByText("实收", { exact: true })).not.toBeInTheDocument();
+    expect(screen.getByText("商户订单号（业务网站）：")).toBeVisible();
     expect(screen.getByText("收款已确认")).toBeVisible();
     expect(screen.getByText("等待重试")).toHaveAttribute("data-variant", "warning");
     expect(screen.queryByText(/^已确认 \d+\/\d+ 项$/)).not.toBeInTheDocument();
@@ -106,7 +108,7 @@ describe("overview order progress", () => {
 
     resize(768);
     expect(screen.getAllByRole("columnheader")).toHaveLength(5);
-    expect(screen.getByRole("table").querySelector('tbody [data-column-id="created_at"]')).toContainElement(screen.getByText("确认"));
+    expect(screen.getByRole("table").querySelector('tbody [data-column-id="created_at"]')).toContainElement(screen.getByText("PerPay 确认时间"));
     expect(view.container.querySelectorAll("time")).toHaveLength(2);
 
     resize(640);
@@ -123,14 +125,15 @@ describe("overview order progress", () => {
     expect(screen.queryByText("通知状态", { exact: true })).not.toBeInTheDocument();
     expect(screen.queryByText("时间", { exact: true })).not.toBeInTheDocument();
     expect(screen.getAllByLabelText(/^(应付|实收)金额 /)).toHaveLength(1);
-    expect(screen.queryByText(/^(应付|实收)$/)).not.toBeInTheDocument();
+    expect(screen.getByText("应付", { exact: true })).toBeVisible();
+    expect(screen.queryByText("实收", { exact: true })).not.toBeInTheDocument();
     expect(screen.getByText("收款已确认")).toBeVisible();
     expect(screen.getByText("等待重试")).toBeVisible();
     expect(view.container.querySelectorAll("time")).toHaveLength(2);
   });
 
   it.each([
-    ["NOT_CONFIGURED", "未配置通知", 0, 0, "secondary"],
+    ["NOT_CONFIGURED", "此订单未设置通知地址", 0, 0, "secondary"],
     ["NO_EVENT", "暂无通知事件", 0, 0, "secondary"],
     ["UNMATERIALIZED", "等待生成投递", 1, 0, "warning"],
     ["PENDING", "等待投递", 1, 0, "secondary"],
@@ -174,7 +177,8 @@ describe("overview order progress", () => {
     expect(screen.getByLabelText("应付金额 ¥1.01")).toBeVisible();
     expect(screen.getAllByLabelText(/^(应付|实收)金额 /)).toHaveLength(1);
     expect(screen.queryByLabelText(/^实收金额 /)).not.toBeInTheDocument();
-    expect(screen.queryByText(/^(应付|实收)$/)).not.toBeInTheDocument();
+    expect(screen.getByText("应付", { exact: true })).toBeVisible();
+    expect(screen.queryByText("实收", { exact: true })).not.toBeInTheDocument();
     expect(screen.queryByText("¥0.00")).not.toBeInTheDocument();
   });
 
@@ -230,9 +234,11 @@ describe("overview order progress", () => {
     expect(screen.getAllByLabelText(/^(应付|实收)金额 /)).toHaveLength(2);
   });
 
-  it("does not repeat the merchant number when product and merchant reference are identical", () => {
+  it("keeps the merchant number explicitly labelled even when it equals the product name", () => {
     mount([{ ...recent, product_name: "same", merchant_order_no: "same" }]);
-    expect(screen.getAllByText("same")).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "same" })).toBeVisible();
+    expect(screen.getByText("same", { selector: ".list-code" })).toHaveAttribute("title", "same");
+    expect(screen.getByText("商户订单号（业务网站）：")).toBeVisible();
   });
 
   it("keeps the primary row and website link independent and preserves keyboard access", async () => {

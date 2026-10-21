@@ -18,7 +18,7 @@ describe("invalid reconciliation link recovery", () => {
       <Route path="/sites/:clientId/reconciliation/:kind/:resourceId" element={<EvidenceDetail />} />
     </Routes></MemoryRouter></QueryClientProvider>);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("未找到这条对账记录");
-    expect(screen.getByText(/记录类型无效/)).toBeVisible();
+    expect(screen.getByText("链接中的记录类型无效，请点击「" + label + "」重新选择记录。")).toBeVisible();
     expect(screen.getByRole("link", { name: label })).toHaveAttribute("href", href);
     expect(fetch).not.toHaveBeenCalled();
   });

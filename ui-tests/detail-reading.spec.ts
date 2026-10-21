@@ -247,7 +247,7 @@ test("detail pages separate standard cards into a readable business sequence", a
       await expect(headings).toHaveText(["交易摘要", /^采集来源（\d+）$/, /^关联记录（\d+）$/, /^账本冲突（\d+）$/]);
       await expect(page.locator('[data-detail-page] dt').filter({ hasText: /^支付宝 App ID$/ })).toHaveCount(0);
       await expect(page.locator('[data-ledger-summary] [data-layout="flow"] dt')).toHaveText(["交易金额", "收支方向", "交易时间", "对方", "备注"]);
-      await expect(page.locator('[data-ledger-summary] [data-detail-credentials] dt')).toHaveText(["支付宝流水号", "支付宝订单号", "流水商户订单号", "实际关联订单"]);
+      await expect(page.locator('[data-ledger-summary] [data-detail-credentials] dt')).toHaveText(["支付宝流水号", "支付宝订单号", "支付宝商户单号", "关联商户订单号（业务网站）"]);
     }
     const geometry = await readingLayout(page, "compact");
     const flows = await readingFlowGeometry(page);
@@ -336,7 +336,7 @@ test("three detail types retain expanded facts across widths, themes and content
         await expect(page.getByRole("heading", { name: "匹配依据", exact: true })).toBeVisible();
         await expect(page.getByRole("button", { name: "匹配依据", exact: true })).toHaveCount(0);
       } else {
-        await fields(page, ["支付宝流水号", "交易金额", "收支方向", "交易时间", "原始流水编号"]);
+        await fields(page, ["支付宝流水号", "交易金额", "收支方向", "交易时间", "内部流水编号（PerPay）"]);
         await expect(page.locator('#main-content dt').filter({ hasText: /^支付宝 App ID$/ })).toHaveCount(0);
         for (const id of ["ledger-sources-heading", "ledger-matches-heading", "ledger-conflicts-heading"]) await expect(page.locator("#" + id)).toBeVisible();
         await expect(page.locator("[data-ledger-source]").first()).toBeVisible();
@@ -493,8 +493,8 @@ test("failed attempt reads retain an accurate unknown history and recover on exp
   await openDetail(page, manifest, "notificationHttp");
   const main = page.locator("#main-content");
   const history = page.getByRole("group", { name: "投递历史", exact: true });
-  await expect(main.getByText("尚未获得尝试明细，不能据此判断未曾投递。", { exact: true })).toBeVisible();
-  await expect(main.getByText("投递尝试尚未读取", { exact: false })).toBeVisible();
+  await expect(history.getByText("发送记录读取失败，请重试；这不代表没有发送过。", { exact: true })).toBeVisible();
+  await expect(history.locator('[data-slot="card-description"]')).toHaveText("发送记录读取失败");
   await expect(main.getByText("暂无尝试明细", { exact: true })).toHaveCount(0);
   await expect(main.getByRole("table", { name: /^投递尝试/ })).toHaveCount(0);
   await expect(history.getByRole("alert")).toContainText("合成的投递尝试读取失败");
@@ -503,7 +503,8 @@ test("failed attempt reads retain an accurate unknown history and recover on exp
   await history.getByRole("button", { name: "重试", exact: true }).click();
   await expect(main.getByRole("table", { name: "投递尝试（1）", exact: true })).toBeVisible();
   await expect(main.getByText(/HTTP 503/)).toBeVisible();
-  await expect(main.getByText(/不能据此判断未曾投递/)).toHaveCount(0);
+  await expect(history.getByText("发送记录读取失败，请重试；这不代表没有发送过。", { exact: true })).toHaveCount(0);
+  await expect(history.locator('[data-slot="card-description"]')).toHaveText("投递尝试按时间倒序显示 · 每页 10 条");
   await expect(history.getByRole("alert")).toHaveCount(0);
   expect(reads).toBeGreaterThan(beforeRetry);
   await record(page, info, { feature: "notification-attempt-read-recovery", evidence: "synthetic-unavailable-response-then-original-attempts", beforeRetry, afterRetry: reads });
@@ -607,7 +608,7 @@ test("technical record identifiers remain copyable without crowding the business
   const cases = [
     { key: "notificationDns", tools: "通知记录操作", values: [["投递编号", notification.delivery.delivery_id], ["事件编号", notification.event.event_id]] },
     { key: "matchInferred", tools: "收款关联记录操作", values: [["关联编号", match.payment_match_id], ["流水编号", match.ledger_entry_id]] },
-    { key: "ledgerAssociated", tools: "支付宝流水记录操作", values: [["归组流水编号", ledger.ledger_entry_id]] },
+    { key: "ledgerAssociated", tools: "支付宝流水记录操作", values: [["内部流水编号（PerPay）", ledger.ledger_entry_id]] },
     { key: "ledgerAssociated", tools: "采集来源 1 记录操作", values: [["支付宝 App ID", source.app_id], ["采集来源标识", source.provider_account_key]] },
   ];
   for (const scenario of cases) {
@@ -701,7 +702,7 @@ test("long products, complete identifiers and multiline details wrap without cli
       } else {
         await expect(page.getByText(identifier, { exact: true }).first()).toBeVisible();
         if (scenario.kind === "ledger") {
-          for (const [name, value] of [["支付宝流水号", externalIdentifier], ["支付宝订单号", identifier], ["流水商户订单号", merchantIdentifier]]) {
+          for (const [name, value] of [["支付宝流水号", externalIdentifier], ["支付宝订单号", identifier], ["支付宝商户单号", merchantIdentifier]]) {
             const credential = page.locator('[data-ledger-summary] [data-detail-credentials]');
             await expect(credential.getByText(value!, { exact: true })).toBeVisible();
             await credential.getByRole("button", { name: "复制" + name, exact: true }).click();

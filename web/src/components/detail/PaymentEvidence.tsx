@@ -58,14 +58,14 @@ export function LedgerFacts({
         counterparty,
         ...(entry.memo ? [["支付宝交易备注", entry.memo] as const] : []),
       ]} />
-      <DetailCredentials title="交易凭据" headingLevel={4} items={[
+      <DetailCredentials title="核对凭据" headingLevel={4} items={[
         ["支付宝订单号", entry.provider_order_no ? <CopyValue value={entry.provider_order_no} label="复制支付宝订单号" /> : "未提供"],
         ...(entry.merchant_order_no ? [["支付宝商户单号", <CopyValue value={entry.merchant_order_no} label="复制支付宝商户单号" />] as const] : []),
-        ["原始流水编号", <CopyValue value={entry.ledger_entry_id} label="复制原始流水编号" />],
+        ["内部流水编号（PerPay）", <CopyValue value={entry.ledger_entry_id} label="复制内部流水编号（PerPay）" />],
       ]} />
     </>;
     return showHeading ? <section className="flex min-w-0 flex-col gap-4" aria-labelledby={titleId}>
-      <h3 id={titleId} className="text-sm font-medium">支付宝流水（来自支付宝账单）</h3>
+      <h3 id={titleId} className="text-sm font-medium">支付宝流水与 PerPay 记录</h3>
       {grouped}
     </section> : grouped;
   }
@@ -508,7 +508,7 @@ export function ExceptionCard({
             identifiers={[
               ["异常编号", exception.exception_id],
               ["客户端 ID", order?.api_client_id ?? clientId],
-              ["原始流水编号", entry?.ledger_entry_id ?? exception.ledger_entry_id],
+              ["内部流水编号（PerPay）", entry?.ledger_entry_id ?? exception.ledger_entry_id],
               ["内部订单编号", order?.order_id ?? exception.order_id],
               ["可能匹配记录编号", candidate?.candidate_id ?? exception.candidate_id],
             ]}

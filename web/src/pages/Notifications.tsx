@@ -131,7 +131,7 @@ function DeliveryPage({
   const columns: BusinessColumn<WebhookDeliverySummary>[] = [
     {
       id: "identity",
-      label: "通知事件",
+      label: "商品 / 通知",
       hideable: false,
       layout: "identity",
       summaryDefault: true,
@@ -139,12 +139,13 @@ function DeliveryPage({
         <ListIdentity
           meta={
             <ListMeta>
-              <span className="list-code" title={delivery.order_summary?.merchant_order_no}>
-                {delivery.order_summary?.merchant_order_no ?? label(delivery.event.event_type)}
-              </span>
+              {delivery.order_summary && <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
+                <span>商户订单号（业务网站）：</span>
+                <span className="list-code" title={delivery.order_summary.merchant_order_no}>{delivery.order_summary.merchant_order_no}</span>
+              </span>}
               {delivery.order_summary && (
                 <span className="whitespace-nowrap tabular-nums">
-                  {money(delivery.order_summary.payable_amount_cents)}
+                  应付 {money(delivery.order_summary.payable_amount_cents)}
                 </span>
               )}
               {!clientId && (
@@ -155,12 +156,13 @@ function DeliveryPage({
               )}
             </ListMeta>
           }
-          description={(context.showInSummary("created_at") || context.showInSummary("attempt_count")) && (
-            <ListMeta>
+          description={<>
+            <ListMeta><span>通知类型：{label(delivery.event.event_type)}</span></ListMeta>
+            {(context.showInSummary("created_at") || context.showInSummary("attempt_count")) && <ListMeta>
               {context.showInSummary("created_at") && <ListDateTime value={delivery.created_at} inline />}
               {context.showInSummary("attempt_count") && <span>已尝试 {delivery.attempt_count} 次</span>}
-            </ListMeta>
-          )}
+            </ListMeta>}
+          </>}
         >
           <Link
             data-row-link
@@ -175,7 +177,7 @@ function DeliveryPage({
     },
     {
       id: "order",
-      label: "关联订单",
+      label: "关联商户订单号（业务网站）",
       layout: "text",
       summaryDefault: false,
       responsive: { minWidthRem: 75, basis: "container" },
