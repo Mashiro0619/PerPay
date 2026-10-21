@@ -32,13 +32,18 @@ function mount(detail = detailFixture()) {
   return fetchMock;
 }
 
-describe("compact administrator ledger detail", () => {
+describe("readable administrator ledger detail", () => {
   it("keeps complete source evidence directly readable and copies the full identifiers", async () => {
     const fetchMock = mount();
     const writeText = vi.fn(async () => undefined);
     const user = userEvent.setup();
     vi.spyOn(navigator.clipboard, "writeText").mockImplementation(writeText);
     await screen.findByRole("heading", { name: "采集来源（2）" });
+    expect(screen.getByRole("heading", { name: "交易摘要" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: ledger.external_event_id })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "复制归组流水编号" })).not.toBeInTheDocument();
+    expect(screen.queryByText(appId)).not.toBeInTheDocument();
+    expect(screen.queryByText("historical-account")).not.toBeInTheDocument();
     const sourceCard = screen.getByRole("heading", { name: "采集来源 1" }).closest<HTMLElement>("[data-ledger-source]")!;
     expect(within(sourceCard).getByText(providerOrder)).toBeVisible();
     expect(within(sourceCard).getByText(memo, { normalizer: value => value })).toBeVisible();
@@ -48,17 +53,27 @@ describe("compact administrator ledger detail", () => {
     expect(screen.getByText("暂无账本冲突。")).toBeVisible();
     await user.click(within(sourceCard).getByRole("button", { name: "复制来源支付宝订单号" }));
     expect(writeText).toHaveBeenLastCalledWith(providerOrder);
-    await user.click(within(sourceCard).getByRole("button", { name: "复制支付宝 App ID" }));
-    expect(writeText).toHaveBeenLastCalledWith(appId);
-    await user.click(screen.getByRole("button", { name: "复制归组流水编号" }));
+    await user.click(within(sourceCard).getByRole("button", { name: "复制原始流水编号" }));
     expect(writeText).toHaveBeenLastCalledWith(ledgerId);
+    await user.click(screen.getByRole("button", { name: "复制支付宝流水号" }));
+    expect(writeText).toHaveBeenLastCalledWith(ledger.external_event_id);
+    await user.click(screen.getByRole("button", { name: "支付宝流水记录操作" }));
+    await user.click(await screen.findByRole("menuitem", { name: "技术详情" }));
+    const dialog = await screen.findByRole("dialog", { name: "技术详情" });
+    await user.click(within(dialog).getByRole("button", { name: "复制归组流水编号" }));
+    expect(writeText).toHaveBeenLastCalledWith(ledgerId);
+    await user.click(within(dialog).getByRole("button", { name: "关闭" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("opens the source technical evidence from inline actions and restores keyboard focus without changing business state", async () => {
+  it("keeps source identifiers in copyable technical evidence and restores keyboard focus without changing business state", async () => {
     const fetchMock = mount();
     const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, "writeText");
     await screen.findByRole("heading", { name: "采集来源（2）" });
+    expect(screen.queryByText("raw-" + secondSourceId)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "复制支付宝 App ID" })).not.toBeInTheDocument();
     const trigger = screen.getByRole("button", { name: "采集来源 2 记录操作" });
     trigger.focus();
     await user.keyboard("{Enter}");
@@ -66,6 +81,15 @@ describe("compact administrator ledger detail", () => {
     const dialog = await screen.findByRole("dialog", { name: "技术详情" });
     expect(within(dialog).getByRole("group", { name: "技术详情" })).toHaveTextContent("raw-" + secondSourceId);
     expect(within(dialog).getByRole("group", { name: "技术详情" })).toHaveTextContent("historical-account");
+    for (const [field, value] of [
+      ["原始事件编号", "raw-" + secondSourceId],
+      ["支付宝 App ID", appId],
+      ["采集来源标识", "historical-account"],
+      ["语义指纹", ledger.semantic_fingerprint],
+    ]) {
+      await user.click(within(dialog).getByRole("button", { name: "复制" + field }));
+      expect(writeText).toHaveBeenLastCalledWith(value);
+    }
     await user.click(within(dialog).getByRole("button", { name: "关闭" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "技术详情" })).not.toBeInTheDocument());
     await waitFor(() => expect(trigger).toHaveFocus());

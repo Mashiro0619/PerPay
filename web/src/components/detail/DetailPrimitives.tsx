@@ -45,7 +45,7 @@ export function useDetailFetching() {
     predicate: (query) => detailQueryScopes.has(String(query.queryKey[0])),
   });
 }
-export type DetailDensity = "default" | "comfortable" | "dense";
+export type DetailDensity = "default" | "comfortable";
 export function DetailPage({ children }: { children: ReactNode }) {
   return <div className="flex min-w-0 flex-col gap-6" data-detail-page data-detail-layout="readable">{children}</div>;
 }
@@ -86,22 +86,20 @@ export function DetailFields({
       className={cn(
         "grid min-w-0 gap-4",
         density === "default" && "@sm/detail-fields:grid-cols-2",
-        compact && density !== "comfortable" && "gap-x-4 gap-y-2",
+        compact && density === "default" && "gap-x-4 gap-y-2",
         className,
         density === "comfortable" && "detail-fields-comfortable",
-        density === "dense" && "detail-fields-dense",
       )}
     >
       {items.map(([name, value]) => (
         <div
           key={name}
           className={cn(
-            compact && density !== "comfortable"
+            compact && density === "default"
               ? "grid min-w-0 grid-cols-[6rem_minmax(0,1fr)] items-baseline gap-x-2 gap-y-1"
               : "flex min-w-0 flex-col gap-1",
             wide.includes(name) && "col-span-full",
             density === "comfortable" && "detail-field-comfortable",
-            density === "dense" && "detail-field-dense",
           )}
         >
           <dt className={density === "comfortable" ? "text-sm text-muted-foreground" : "record-list-meta"}>{name}</dt>
@@ -198,25 +196,6 @@ export function OrderFacts({
 }) {
   const payment =
     "payment" in order ? order.payment.status : order.payment_status;
-  if (density === "dense") return <Item size="xs" className="detail-order-summary" data-detail-order-summary>
-    <ItemContent className="min-w-0">
-      <ItemHeader className="detail-order-heading">
-        <ItemTitle className="detail-order-title" title={order.product_name}>
-          {linked ? <Link to={"/orders/" + order.order_id}>{order.product_name}</Link> : order.product_name}
-        </ItemTitle>
-        <ItemActions className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <div className="flex items-baseline gap-1"><span className="record-list-meta">应付</span><ListMoney value={order.payable_amount_cents} label="应付金额" /></div>
-          <div className="flex items-baseline gap-1"><span className="record-list-meta">实收</span><ListMoney value={order.received_amount_cents} label="实收金额" secondary /></div>
-          <StatusBadge value={payment} />
-        </ItemActions>
-      </ItemHeader>
-      <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 record-list-meta">
-        <span className="wrap-anywhere">所属网站：{order.site_name ?? "名称不可用"} · {order.api_client_id}</span>
-        <span className="wrap-anywhere">{order.merchant_order_no}</span>
-        <ListDateTime value={order.created_at} inline />
-      </div>
-    </ItemContent>
-  </Item>;
   if (density === "comfortable") return <Item className="items-start" data-detail-order-summary>
     <ItemContent className="min-w-0 gap-4">
       <ItemHeader className="flex-wrap items-start gap-3">

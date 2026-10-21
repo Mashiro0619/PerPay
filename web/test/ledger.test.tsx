@@ -176,7 +176,7 @@ describe("administrator ledger pages", () => {
     const variant: AdminLedgerDetail = { ...detail, amount_cents: null, other_account: null, memo: null, provider_order_no: null, merchant_order_no: null, content_consistent: false, has_conflicts: true, sources: [{ ...source(ledgerId), amount_cents: 101 }, { ...source(secondSourceId), amount_cents: 102 }] };
     fetchMock.mockImplementation(async () => json({ data: variant }));
     mount("/ledger/" + ledgerId);
-    const card = (await screen.findByRole("heading", { name: entry.external_event_id })).closest<HTMLElement>('[data-slot="card"]')!;
+    const card = (await screen.findByRole("heading", { name: "交易摘要" })).closest<HTMLElement>('[data-slot="card"]')!;
     for (const title of ["对方", "备注", "支付宝订单号", "流水商户订单号"]) {
       expect(within(within(card).getByText(title).parentElement!).getByText("—")).toBeVisible();
     }
