@@ -23,7 +23,7 @@ import {
 } from "@/components/list-primitives";
 import type { ReactNode } from "react";
 
-import { ArrowLeft, RefreshCw, Settings2 } from "lucide-react";
+import { RefreshCw, Settings2 } from "lucide-react";
 import { useParams, useSearchParams } from "react-router";
 import { PageHeading } from "@/components/page-heading";
 import { Link, useDetailBack } from "@/navigation";
@@ -32,7 +32,7 @@ import { useCursor } from "@/lib/cursor";
 import { notificationErrorName } from "@/lib/detail-summary";
 import { label } from "@/lib/labels";
 import { DeliveryCard } from "@/components/detail/NotificationEvidence";
-import { RelatedOrder } from "@/components/detail/DetailPrimitives";
+import { DetailNavigation, DetailPage, RelatedOrder } from "@/components/detail/DetailPrimitives";
 import { StatusBadge } from "@/components/business-status";
 import { QueryView, ErrorNotice } from "@/components/request-state";
 import { notificationStatus, notificationsQuery } from "@/api/workspace-queries";
@@ -371,25 +371,20 @@ function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
       result(api.listWebhookDeliveryAttempts({ path: { deliveryId }, signal })),
   });
   return (
-    <>
-      <PageHeading title={delivery.data ? `通知详情 · ${deliveryId}` : "通知详情"} />
-      <div className="flex items-center justify-between gap-4">
-        <Link
-          to={back.to}
-          state={back.state}
-          className={buttonVariants({ variant: "ghost", size: "sm" })}
-        >
-          <ArrowLeft data-icon="inline-start" />
-          {back.label}
-        </Link>
+    <DetailPage>
+      <PageHeading title="通知详情" />
+      <DetailNavigation
+        back={back}
+        identifier={delivery.data ? deliveryId : undefined}
+        identifierLabel="投递编号"
+      >
         <PageHeaderActions><RefreshButton disabled={delivery.isFetching || attempts.isFetching} onClick={() => {
             void refreshOperationalData();
           }} busy={delivery.isFetching || attempts.isFetching} /></PageHeaderActions>
-      </div>
+      </DetailNavigation>
       <QueryView query={delivery}>
         {({ data }) => (
           <>
-            <RelatedOrder orderId={data.event.order_id} />
             <ErrorNotice
               error={attempts.error}
               retry={() => {
@@ -399,10 +394,12 @@ function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
             <DeliveryCard
               detail={{ ...data, attempts: attempts.data?.data ?? [] }}
               attemptsAvailable={!!attempts.data}
+              density="dense"
+              orderSummary={<RelatedOrder orderId={data.event.order_id} density="dense" />}
             />
           </>
         )}
       </QueryView>
-    </>
+    </DetailPage>
   );
 }
