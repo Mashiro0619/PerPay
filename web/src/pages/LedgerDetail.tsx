@@ -51,7 +51,7 @@ export default function LedgerDetail() {
           </CardAction>
         </CardHeader>
         <CardContent className="flex min-w-0 flex-col gap-4">
-          <DetailFields density="comfortable" wide={["支付宝流水号", "备注", "支付宝订单号", "流水商户订单号", "实际关联订单"]} items={[
+          <DetailFields density="comfortable" layout="flow" wide={["支付宝流水号", "备注", "支付宝订单号", "流水商户订单号", "实际关联订单"]} items={[
             ["支付宝流水号", <CopyValue value={data.external_event_id} label="复制支付宝流水号" />],
             ["交易金额", <LedgerMoney entry={data} />],
             ["收支方向", <LedgerDirection value={data.direction} disputed={!data.content_consistent} />],
@@ -85,7 +85,7 @@ export default function LedgerDetail() {
               <RecordTools inline data={conflict} identifiers={[["账本冲突编号", conflict.conflict_id], ["关联原始流水编号", conflict.existing_ledger_entry_id]]} label="账本冲突记录操作" />
             </CardAction>
           </CardHeader>
-          <CardContent><DetailFields density="comfortable" wide={["关联原始流水编号"]} items={[
+          <CardContent><DetailFields density="comfortable" layout="flow" wide={["关联原始流水编号"]} items={[
             ["发现时间", <ListDateTime value={conflict.created_at} inline />],
             ["处理时间", <ListDateTime value={conflict.resolved_at} inline />],
             ["关联原始流水编号", <LedgerIdentifier value={conflict.existing_ledger_entry_id} name="冲突关联原始流水编号" />],
@@ -107,7 +107,7 @@ function LedgerSource({ source, index }: { source: AdminLedgerSource; index: num
         <RecordTools inline data={source} identifiers={[["原始流水编号", source.ledger_entry_id], ["原始事件编号", source.raw_event_id], ["支付宝 App ID", source.app_id], ["采集来源标识", source.provider_account_key], ["语义指纹", source.semantic_fingerprint]]} label={"采集来源 " + (index + 1) + " 记录操作"} />
       </CardAction>
     </CardHeader>
-    <CardContent><DetailFields density="comfortable" wide={["原始流水编号", "备注", "支付宝订单号", "流水商户订单号"]} items={[
+    <CardContent><DetailFields density="comfortable" layout="flow" wide={["原始流水编号", "备注", "支付宝订单号", "流水商户订单号"]} items={[
       ["交易金额", <LedgerMoney entry={{ ...source, content_consistent: true }} />],
       ["收支方向", <LedgerDirection value={source.direction} />],
       ["交易时间", <ListDateTime value={source.occurred_at} inline />],
@@ -136,7 +136,7 @@ function LedgerMatches({ entry }: { entry: AdminLedgerDetail }) {
           <RecordTools inline data={match} identifiers={[["收款关联编号", match.payment_match_id], ["原始流水编号", match.ledger_entry_id], ["订单编号", match.order_id], ["客户端 ID", match.api_client_id]]} label={"关联记录 " + (index + 1) + " 记录操作"} />
         </CardAction>
       </CardHeader>
-      <CardContent><DetailFields density="comfortable" wide={["关联订单", "原始流水编号"]} items={[
+      <CardContent><DetailFields density="comfortable" layout="flow" wide={["关联订单", "原始流水编号"]} items={[
         ["业务网站", match.site_name ?? "名称不可用"],
         ["关联时间", <ListDateTime value={match.created_at} inline />],
         ["撤销时间", match.status === "REVERSED" ? <ListDateTime value={match.resolved_at} inline /> : "—"],

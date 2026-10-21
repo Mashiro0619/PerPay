@@ -63,33 +63,79 @@ async function keyboardTools(page: Page, label: string) {
   await expect(menu).toHaveCount(0);
   await expect(trigger).toBeFocused();
 }
-async function readingGridGeometry(page: Page) {
-  const grids = await page.locator('#main-content [data-detail-fields][data-density="comfortable"]').evaluateAll(containers => containers.map(container => {
+async function readingFlowGeometry(page: Page, longContent = false) {
+  const groups = await page.locator('#main-content [data-detail-fields][data-density="comfortable"]').evaluateAll(containers => containers.map(container => {
     const dl = container.querySelector("dl")!;
-    const width = container.getBoundingClientRect().width;
+    const bounds = container.getBoundingClientRect();
     const style = getComputedStyle(dl);
-    const fields = Array.from(dl.children).map(field => {
+    const fields = Array.from(dl.children).map((field, index) => {
       const term = field.querySelector("dt")!, definition = field.querySelector("dd")!;
-      const label = term.getBoundingClientRect(), value = definition.getBoundingClientRect();
-      return { name: term.textContent, labelTop: label.top, valueTop: value.top, actualGap: value.top - label.bottom,
+      const box = field.getBoundingClientRect(), label = term.getBoundingClientRect(), value = definition.getBoundingClientRect();
+      return { index, name: term.textContent, wide: field.getAttribute("data-field-wide") === "true", left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width,
+        labelTop: label.top, valueTop: value.top, actualGap: value.top - label.bottom,
         gap: Number.parseFloat(getComputedStyle(field).rowGap), labelFont: Number.parseFloat(getComputedStyle(term).fontSize), valueFont: Number.parseFloat(getComputedStyle(definition).fontSize) };
     });
-    return { width, columns: style.gridTemplateColumns.trim().split(/\s+/).length, rowGap: Number.parseFloat(style.rowGap), columnGap: Number.parseFloat(style.columnGap), fields };
+    const summary = container.closest("[data-detail-order-summary]");
+    const header = summary?.querySelector('[data-slot="item-header"]');
+    const title = header?.querySelector('[data-slot="item-title"]')?.getBoundingClientRect();
+    const badge = header?.querySelector('[data-slot="item-actions"] [data-slot="badge"]')?.getBoundingClientRect();
+    return { width: bounds.width, left: bounds.left, right: bounds.right, layout: container.getAttribute("data-layout"), display: style.display, wrap: style.flexWrap, direction: style.flexDirection,
+      rowGap: Number.parseFloat(style.rowGap), columnGap: Number.parseFloat(style.columnGap), fields,
+      orderSummary: !!summary, orderHeader: title && badge ? { titleTop: title.top, titleRight: title.right, badgeTop: badge.top, badgeLeft: badge.left } : null };
   }));
-  expect(grids.length).toBeGreaterThan(0);
-  for (const grid of grids) {
-    expect(grid.columns, JSON.stringify(grid)).toBe(grid.width >= 640 ? 2 : 1);
-    expect(grid.rowGap).toBe(16);
-    expect(grid.columnGap).toBe(16);
-    for (const field of grid.fields) {
+  expect(groups.length).toBeGreaterThan(0);
+  return groups.map(group => {
+    expect(group.layout, "flow facts: " + group.fields.map(field => field.name).join(" / ")).toBe("flow");
+    expect(group.display).toBe("flex");
+    expect(group.wrap).toBe("wrap");
+    expect(group.direction).toBe("row");
+    expect(group.rowGap).toBe(16);
+    expect(group.columnGap).toBe(24);
+    const rows: Array<typeof group.fields> = [];
+    for (const field of group.fields) {
       expect(field.labelTop, field.name ?? "field").toBeLessThan(field.valueTop);
       expect(field.gap, field.name ?? "field").toBe(8);
       expect(Math.abs(field.actualGap - 8), field.name ?? "field").toBeLessThanOrEqual(0.5);
       expect(field.labelFont, field.name ?? "field").toBeGreaterThanOrEqual(14);
       expect(field.valueFont, field.name ?? "field").toBeGreaterThanOrEqual(14);
+      expect(field.left, field.name ?? "field").toBeGreaterThanOrEqual(group.left - 1);
+      expect(field.right, field.name ?? "field").toBeLessThanOrEqual(group.right + 1);
+      if (field.wide || group.width < 640) expect(Math.abs(field.width - group.width), field.name ?? "field").toBeLessThanOrEqual(1);
+      else {
+        expect(field.width, field.name ?? "field").toBeGreaterThanOrEqual(191);
+        expect(field.width, field.name ?? "field").toBeLessThanOrEqual(257);
+      }
+      const previous = group.fields[field.index - 1];
+      if (previous) {
+        expect(field.top, "DOM reading order: " + field.name).toBeGreaterThanOrEqual(previous.top - 1);
+        if (Math.abs(field.top - previous.top) <= 1) expect(field.left).toBeGreaterThan(previous.left);
+      }
+      const lastRow = rows.at(-1);
+      if (lastRow && Math.abs(lastRow[0]!.top - field.top) <= 1) lastRow.push(field);
+      else rows.push([field]);
     }
-  }
-  return grids;
+    for (const [index, row] of rows.entries()) {
+      expect(row.length).toBeLessThanOrEqual(4);
+      expect(Math.abs(row[0]!.left - group.left), "flow rows start at the left edge").toBeLessThanOrEqual(1);
+      if (group.width < 640 || row.some(field => field.wide)) expect(row).toHaveLength(1);
+      for (let item = 1; item < row.length; item++) expect(Math.abs(row[item]!.left - row[item - 1]!.right - 24)).toBeLessThanOrEqual(1);
+      const previous = rows[index - 1];
+      if (previous) expect(Math.abs(row[0]!.top - Math.max(...previous.map(field => field.bottom)) - 16), "flow row gap").toBeLessThanOrEqual(1);
+    }
+    if (group.orderSummary && !longContent) {
+      if (group.width >= 640) {
+        expect(group.orderHeader).not.toBeNull();
+        expect(Math.abs(group.orderHeader!.titleTop - group.orderHeader!.badgeTop)).toBeLessThanOrEqual(1);
+        expect(Math.abs(group.orderHeader!.badgeLeft - group.orderHeader!.titleRight - 12)).toBeLessThanOrEqual(1);
+      }
+      if (group.width >= 840) {
+        const facts = group.fields.filter(field => !field.wide);
+        expect(facts.map(field => field.name)).toEqual(["应付金额", "实收金额", "所属网站", "创建时间"]);
+        expect(facts.every(field => Math.abs(field.top - facts[0]!.top) <= 1)).toBe(true);
+      }
+    }
+    return { ...group, rows: rows.map(row => row.map(field => field.name)) };
+  });
 }
 
 async function readingLayout(page: Page, mode: "compact" | "full") {
@@ -145,10 +191,50 @@ test("detail pages separate standard cards into a readable business sequence", a
       await expect(page.locator('[data-detail-page] dt').filter({ hasText: /^支付宝 App ID$/ })).toHaveCount(0);
     }
     const geometry = await readingLayout(page, "compact");
-    const grids = await readingGridGeometry(page);
-    await record(page, info, { feature: "detail-reading-sections", key: scenario.key, geometry, grids, evidence: "local-synthetic-domain" });
+    const flows = await readingFlowGeometry(page);
+    await record(page, info, { feature: "detail-reading-sections", key: scenario.key, geometry, flows, evidence: "local-synthetic-domain" });
     await screenshot(page, info, "reading-sections-" + scenario.key);
   }
+});
+
+test("flow summaries wrap at container boundaries without stretching two facts across a card", async ({ page, manifest }, info) => {
+  await page.setViewportSize({ width: 2190, height: 900 });
+  await login(page, manifest);
+  await layout(page, "dark", "full");
+  await openDetail(page, manifest, "notificationDns");
+  const container = page.locator('[data-detail-order-summary] [data-detail-fields]');
+  const originalWidth = await container.evaluate(element => (element as HTMLElement).style.width);
+  const boundaries = [];
+  try {
+    for (const requestedWidth of [639, 640, 840, 1024, 1280]) {
+      await container.evaluate((element, width) => { (element as HTMLElement).style.width = width + "px"; }, requestedWidth);
+      const summary = (await readingFlowGeometry(page)).find(group => group.orderSummary)!;
+      expect(summary.width).toBe(requestedWidth);
+      if (requestedWidth < 640) expect(summary.rows.every(row => row.length === 1)).toBe(true);
+      else if (requestedWidth === 640) {
+        expect(summary.rows[0]!.length).toBeGreaterThan(1);
+        expect(summary.rows[0]!.length).toBeLessThan(4);
+        const short = summary.fields.filter(field => !field.wide);
+        expect(short.at(-1)!.top).toBeGreaterThan(short[0]!.top);
+      } else expect(summary.rows[0]).toEqual(["应付金额", "实收金额", "所属网站", "创建时间"]);
+      boundaries.push({ requestedWidth, actualWidth: summary.width, rows: summary.rows, fieldWidths: summary.fields.map(field => field.width) });
+    }
+  } finally {
+    await container.evaluate((element, width) => { (element as HTMLElement).style.width = width; }, originalWidth);
+  }
+  await record(page, info, { feature: "detail-flow-container-breakpoints", boundaries, restoredInlineWidth: originalWidth });
+  await screenshot(page, info, "reading-flow-boundaries-restored");
+
+  await openDetail(page, manifest, "matchInferred");
+  const flows = await readingFlowGeometry(page);
+  const twoFacts = flows.find(group => group.fields.length === 2 && group.fields.map(field => field.name).join("/") === "关联方式/关联时间");
+  expect(twoFacts, "the genuine inferred match has two short processing facts").toBeTruthy();
+  expect(twoFacts!.width).toBeGreaterThanOrEqual(840);
+  expect(twoFacts!.rows).toEqual([["关联方式", "关联时间"]]);
+  for (const field of twoFacts!.fields) expect(field.width).toBeLessThan(twoFacts!.width / 3);
+  expect(twoFacts!.right - twoFacts!.fields.at(-1)!.right).toBeGreaterThan(200);
+  await record(page, info, { feature: "detail-flow-two-facts", evidence: "local-synthetic-domain", geometry: twoFacts });
+  await screenshot(page, info, "reading-flow-two-facts");
 });
 
 test("three detail types retain expanded facts across widths, themes and content modes", async ({ page, manifest }, info) => {
@@ -181,39 +267,24 @@ test("three detail types retain expanded facts across widths, themes and content
         await expect(page.locator("[data-ledger-source]").first()).toBeVisible();
         await expect(page.locator("[data-ledger-match]").first()).toBeVisible();
       }
-      const grids = await readingGridGeometry(page);
+      const flows = await readingFlowGeometry(page);
       const geometry = await readingLayout(page, mode);
       if (width === 1440) await keyboardTools(page, scenario.tools);
       const id = `reading-${scenario.key}-${width}-${theme}-${mode}`;
-      await record(page, info, { feature: "detail-reading-matrix", width, theme, mode, scenario: scenario.key, grids, geometry, evidence: "local-synthetic-domain" });
+      await record(page, info, { feature: "detail-reading-matrix", width, theme, mode, scenario: scenario.key, flows, geometry, evidence: "local-synthetic-domain" });
       await screenshot(page, info, id);
       if (width === 320 && mode === "compact") await audit(page, info, id);
     }
   }
-  // The requested screen matrix jumps from phone to wide desktop. Exercise the
-  // intermediate container width explicitly, so two columns are proven too.
+  // Exercise the intermediate viewport as well as the explicit container
+  // boundaries above; each real fact group chooses its own natural wrapping.
   await page.setViewportSize({ width: 1100, height: 900 });
   await layout(page, "dark", "full");
   await openDetail(page, manifest, "ledgerAssociated");
-  expect((await readingGridGeometry(page)).some(grid => grid.columns === 2)).toBe(true);
+  await readingFlowGeometry(page);
   await page.setViewportSize({ width: 2190, height: 900 });
   await openDetail(page, manifest, "ledgerAssociated");
-  expect((await readingGridGeometry(page)).every(grid => grid.columns === 2)).toBe(true);
-  const container = page.locator('[data-detail-fields][data-density="comfortable"]').first();
-  const originalWidth = await container.evaluate(element => (element as HTMLElement).style.width);
-  const boundaries: Array<{ requestedWidth: number; actualWidth: number; columns: number }> = [];
-  try {
-    for (const [requestedWidth, columns] of [[639, 1], [640, 2], [1023, 2], [1024, 2]] as const) {
-      await container.evaluate((element, width) => { (element as HTMLElement).style.width = width + "px"; }, requestedWidth);
-      const actual = await container.evaluate(element => ({ actualWidth: element.getBoundingClientRect().width, columns: getComputedStyle(element.querySelector("dl")!).gridTemplateColumns.trim().split(/\s+/).length }));
-      expect(actual.actualWidth).toBe(requestedWidth);
-      expect(actual.columns).toBe(columns);
-      boundaries.push({ requestedWidth, ...actual });
-    }
-  } finally {
-    await container.evaluate((element, width) => { (element as HTMLElement).style.width = width; }, originalWidth);
-  }
-  await record(page, info, { feature: "detail-container-breakpoints", boundaries, restoredInlineWidth: originalWidth });
+  await readingFlowGeometry(page);
   expect(errors).toEqual([]);
 });
 
@@ -499,6 +570,8 @@ test("long products, complete identifiers and multiline details wrap without cli
   const ledgerPath = apiPath(detailPath(manifest, "ledgerAssociated"));
   const ledger = structuredClone(await data<AdminLedgerDetail>(page, manifest, ledgerPath));
   const product = "长商品名称与完整授权范围 · ".repeat(18) + "商品末尾标记";
+  const siteName = "完整业务网站名称与所属经营主体 · ".repeat(16) + "网站末尾标记";
+  const counterparty = "完整交易对方与付款账户 · ".repeat(16) + "payer@example.test 对方末尾标记";
   const memo = "第一行：保留详细业务说明和特殊字符 <>&\n第二行：保留原始换行及完整备注\n第三行：可见末尾标记";
   const identifier = "2026102122001010255800001184" + "0123456789".repeat(8);
   const target = new URL(notification.target.target_url);
@@ -506,16 +579,21 @@ test("long products, complete identifiers and multiline details wrap without cli
   const targetUrl = target.href;
   expect(targetUrl.length).toBeGreaterThan(200);
   order.product_name = product;
+  order.site_name = siteName;
   notification.target.target_url = targetUrl;
+  notification.target.site_name = siteName;
   notification.delivery.requested_by_type = "ADMIN";
   notification.delivery.requested_by_actor_id = "synthetic-layout-admin";
   notification.delivery.reason = memo;
   match.order.product_name = product;
+  match.order.site_name = siteName;
   match.ledger_entry.provider_order_no = identifier;
+  match.ledger_entry.other_account = counterparty;
   match.ledger_entry.memo = memo;
   ledger.memo = memo;
   ledger.provider_order_no = identifier;
-  for (const source of ledger.sources) { source.memo = memo; source.provider_order_no = identifier; }
+  ledger.other_account = counterparty;
+  for (const source of ledger.sources) { source.memo = memo; source.provider_order_no = identifier; source.other_account = counterparty; }
   for (const item of ledger.matches) item.product_name = product;
   for (const [path, value] of [[notificationPath, notification], [orderPath, order], [matchPath, match], [ledgerPath, ledger]] as const) await page.route(manifest.origin + path, route => route.fulfill({ status: 200, json: { data: value } }));
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: manifest.origin });
@@ -539,7 +617,30 @@ test("long products, complete identifiers and multiline details wrap without cli
         await page.getByRole("button", { name: "复制通知地址", exact: true }).click();
         await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(targetUrl);
       } else await expect(page.getByText(identifier, { exact: true }).first()).toBeVisible();
-      await record(page, info, { feature: "detail-long-content", evidence: "synthetic-response-variants", width, theme, scenario: scenario.key, bounds, notificationUrlLength: targetUrl.length });
+      const longFacts = scenario.kind === "notification" ? [["所属网站", siteName]] : scenario.kind === "match" ? [["所属网站", siteName], ["支付宝交易对方", counterparty]] : [["对方", counterparty]];
+      const wrappedFacts = [];
+      for (const [name, value] of longFacts) {
+        const field = page.locator("#main-content dt").filter({ hasText: new RegExp("^" + name + "$") }).first().locator("..");
+        await expect(field).not.toHaveAttribute("data-field-wide", "true");
+        await expect(field.locator("dd")).toHaveText(value!);
+        const wrapped = await field.evaluate(element => {
+          const definition = element.querySelector("dd")!;
+          const range = document.createRange(); range.selectNodeContents(definition);
+          const text = range.getBoundingClientRect(), box = definition.getBoundingClientRect();
+          return { name: element.querySelector("dt")!.textContent, fieldWidth: element.getBoundingClientRect().width,
+            valueHeight: box.height, lineHeight: Number.parseFloat(getComputedStyle(definition).lineHeight), textRight: text.right, boxRight: box.right, textBottom: text.bottom, boxBottom: box.bottom };
+        });
+        if (width === 1440) {
+          expect(wrapped.fieldWidth).toBeGreaterThanOrEqual(191);
+          expect(wrapped.fieldWidth).toBeLessThanOrEqual(257);
+        }
+        expect(wrapped.valueHeight).toBeGreaterThan(wrapped.lineHeight * 2);
+        expect(wrapped.textRight).toBeLessThanOrEqual(wrapped.boxRight + 1);
+        expect(wrapped.textBottom).toBeLessThanOrEqual(wrapped.boxBottom + 1);
+        wrappedFacts.push(wrapped);
+      }
+      const flows = await readingFlowGeometry(page, true);
+      await record(page, info, { feature: "detail-long-content", evidence: "synthetic-response-variants", width, theme, scenario: scenario.key, bounds, wrappedFacts, flows, notificationUrlLength: targetUrl.length });
       await screenshot(page, info, `reading-long-${scenario.key}-${width}-${theme}`);
     }
   }

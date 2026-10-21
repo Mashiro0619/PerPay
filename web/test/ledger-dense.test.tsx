@@ -40,11 +40,20 @@ describe("readable administrator ledger detail", () => {
     vi.spyOn(navigator.clipboard, "writeText").mockImplementation(writeText);
     await screen.findByRole("heading", { name: "采集来源（2）" });
     expect(screen.getByRole("heading", { name: "交易摘要" })).toBeVisible();
+    const summary = screen.getByRole("heading", { name: "交易摘要" }).closest<HTMLElement>("[data-ledger-summary]")!;
+    expect(summary.querySelector("[data-detail-fields]")).toHaveAttribute("data-layout", "flow");
+    expect(within(summary).getAllByRole("term").map(term => term.textContent)).toEqual([
+      "支付宝流水号", "交易金额", "收支方向", "交易时间", "对方", "备注", "支付宝订单号", "流水商户订单号", "实际关联订单",
+    ]);
+    for (const name of ["支付宝流水号", "备注", "支付宝订单号", "流水商户订单号", "实际关联订单"]) {
+      expect(within(summary).getByText(name, { selector: "dt" }).parentElement).toHaveAttribute("data-field-wide", "true");
+    }
     expect(screen.queryByRole("heading", { name: ledger.external_event_id })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "复制归组流水编号" })).not.toBeInTheDocument();
     expect(screen.queryByText(appId)).not.toBeInTheDocument();
     expect(screen.queryByText("historical-account")).not.toBeInTheDocument();
     const sourceCard = screen.getByRole("heading", { name: "采集来源 1" }).closest<HTMLElement>("[data-ledger-source]")!;
+    expect(sourceCard.querySelector("[data-detail-fields]")).toHaveAttribute("data-layout", "flow");
     expect(within(sourceCard).getByText(providerOrder)).toBeVisible();
     expect(within(sourceCard).getByText(memo, { normalizer: value => value })).toBeVisible();
     expect(within(sourceCard).getByRole("link", { name: "查看原始凭据与处理" })).toHaveAttribute("href", "/reconciliation/ledger/" + ledgerId + "?selected_site=remembered-site");
@@ -60,6 +69,8 @@ describe("readable administrator ledger detail", () => {
     await user.click(screen.getByRole("button", { name: "支付宝流水记录操作" }));
     await user.click(await screen.findByRole("menuitem", { name: "技术详情" }));
     const dialog = await screen.findByRole("dialog", { name: "技术详情" });
+    expect(dialog.querySelector("[data-detail-fields]")).toHaveAttribute("data-layout", "columns");
+    expect(dialog.querySelector('[data-detail-fields][data-layout="flow"]')).toBeNull();
     await user.click(within(dialog).getByRole("button", { name: "复制归组流水编号" }));
     expect(writeText).toHaveBeenLastCalledWith(ledgerId);
     await user.click(within(dialog).getByRole("button", { name: "关闭" }));
@@ -172,12 +183,14 @@ describe("readable administrator ledger detail", () => {
     for (const [index, item] of sources.entries()) {
       const card = screen.getByRole("heading", { name: "采集来源 " + (index + 1) }).closest<HTMLElement>("[data-ledger-source]")!;
       expect(card).toBeVisible();
+      expect(card.querySelector("[data-detail-fields]")).toHaveAttribute("data-layout", "flow");
       expect(within(card).getByText(item.ledger_entry_id)).toBeVisible();
       expect(within(card).getByRole("link", { name: "查看原始凭据与处理" })).toHaveAttribute("href", "/reconciliation/ledger/" + item.ledger_entry_id + "?selected_site=remembered-site");
     }
     for (const match of variant.matches) {
       const card = screen.getByRole("heading", { name: match.product_name }).closest<HTMLElement>("[data-ledger-match]")!;
       expect(card).toBeVisible();
+      expect(card.querySelector("[data-detail-fields]")).toHaveAttribute("data-layout", "flow");
       expect(within(card).getByText(match.status === "SETTLED" ? "已关联" : "已撤销")).toBeVisible();
       expect(within(card).getByRole("link", { name: "查看订单：" + match.merchant_order_no })).toHaveAttribute("href", "/orders/" + match.order_id);
       expect(within(card).getByRole("link", { name: "查看关联记录" })).toHaveAttribute("href", "/reconciliation/matches/" + match.payment_match_id + "?selected_site=remembered-site");
@@ -191,6 +204,7 @@ describe("readable administrator ledger detail", () => {
       const link = conflictLinks.find(item => item.getAttribute("href") === "/reconciliation/conflicts/" + conflict.conflict_id + "?selected_site=remembered-site");
       expect(link).toBeVisible();
       const card = link!.closest<HTMLElement>("[data-ledger-conflict]")!;
+      expect(card.querySelector("[data-detail-fields]")).toHaveAttribute("data-layout", "flow");
       expect(within(card).getByText(conflict.existing_ledger_entry_id!)).toBeVisible();
       expect(within(card).getByText(conflict.status === "OPEN" ? "待处理" : "已处理")).toBeVisible();
     }
