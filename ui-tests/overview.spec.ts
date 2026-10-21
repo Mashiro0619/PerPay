@@ -152,6 +152,7 @@ test("recent orders keep compact summaries and header geometry across themes and
       return { width: bounds.width, headerGap: content.top - header.bottom,
         headerAlignment: Math.abs(title.top + title.height / 2 - action.top - action.height / 2),
         titleInset: title.left - bounds.left,
+        listGap: parseFloat(getComputedStyle(panel.querySelector('.business-summary-list')!).gap),
         rows: [...panel.querySelectorAll('[data-business-row]')].map(row => {
           const body = row.querySelector('.overview-order-summary')!.getBoundingClientRect();
           const product = row.querySelector('a[data-row-link]')!.closest('[data-slot="item-title"]')!.getBoundingClientRect();
@@ -176,11 +177,18 @@ test("recent orders keep compact summaries and header geometry across themes and
             const sameLine = Math.min(first.bottom, second.bottom) > Math.max(first.top, second.top);
             return { sameLine, gap: sameLine ? second.left - first.right : second.top - first.bottom };
           })() : null;
-          return { inset: body.left - bounds.left, hoverInset: body.left - row.getBoundingClientRect().left,
+          return { height: row.getBoundingClientRect().height,
+            inset: body.left - bounds.left, hoverInset: body.left - row.getBoundingClientRect().left,
             amountInset: amount.left - body.left, amountAfterProduct: amount.top >= product.bottom - 1,
             productContained: product.left >= body.left && product.right <= body.right,
             fieldsClipped: [...row.querySelectorAll('.list-code, .list-money, time')].some(element => element.scrollWidth > element.clientWidth + 1),
             metadata, merchantIdentity,
+            primaryHref: row.querySelector('a[data-row-link]')!.getAttribute('href'),
+            siteHref: site?.getAttribute('href'),
+            times: [...row.querySelectorAll('time')].map(time => ({
+              complete: time.textContent === time.getAttribute('title')?.replace('（北京时间）', ''),
+              title: time.getAttribute('title'),
+            })),
             payment: row.querySelector('[role="group"][aria-label="收款状态"]')?.textContent,
             notification: row.querySelector('[role="group"][aria-label="通知状态"]')?.textContent };
         }),
@@ -190,6 +198,7 @@ test("recent orders keep compact summaries and header geometry across themes and
     expect(geometry.headerGap).toBe(8);
     expect(geometry.headerAlignment).toBeLessThan(1);
     expect(geometry.titleInset).toBe(16);
+    expect(geometry.listGap).toBe(4);
     expect(geometry.rows.every(row => row.inset >= 12 && row.hoverInset >= 8 && !row.fieldsClipped && row.payment && row.notification), JSON.stringify(geometry.rows)).toBe(true);
     expect(geometry.rows.every(row => row.amountInset === 0 && row.amountAfterProduct && row.productContained), JSON.stringify(geometry.rows)).toBe(true);
     expect(geometry.rows.every(row => row.merchantIdentity.text && row.merchantIdentity.text === row.merchantIdentity.full && row.merchantIdentity.painted), JSON.stringify(geometry.rows)).toBe(true);
@@ -197,6 +206,12 @@ test("recent orders keep compact summaries and header geometry across themes and
     expect(metadata.length).toBe(scoped ? 0 : 5);
     expect(metadata.every(item => item.gap >= (item.sameLine ? 4 : 1)), JSON.stringify(metadata)).toBe(true);
     expect(await panel.locator(".list-site-identity").count()).toBe(scoped ? 0 : 5);
+    for (const row of geometry.rows) {
+      expect(row.primaryHref?.startsWith("/admin" + (scoped ? sitePath : "") + "/orders/")).toBe(true);
+      if (!scoped) expect(row.siteHref).toMatch(/^\/admin\/sites\//);
+      expect(row.times.length).toBeGreaterThan(0);
+      expect(row.times.every(time => time.complete && time.title?.endsWith("（北京时间）")), JSON.stringify(row.times)).toBe(true);
+    }
   }
 });
 
@@ -208,7 +223,7 @@ test("recent order headers and tables switch at the same measured container boun
   await page.setViewportSize({ width: 1920, height: 1000 });
   await page.goto(manifest.origin + "/admin/");
   await expect(list.locator('[data-business-row]')).toHaveCount(5);
-  for (const target of [639, 640, 767, 768, 1024, 639, 640]) {
+  for (const target of [639, 640, 685, 767, 768, 1023, 1024, 639, 640]) {
     // Constrain the real card container: resizing the viewport can also switch
     // the surrounding overview between one and two columns.
     await page.locator(".overview-orders-container").evaluate((element, target) => {
@@ -220,7 +235,11 @@ test("recent order headers and tables switch at the same measured container boun
     if (target < 640) {
       await expect(panel.getByRole("list", { name: "最近订单", exact: true })).toBeVisible();
     } else {
-      await expect(panel.getByRole("columnheader")).toHaveCount(target < 768 ? 4 : 5);
+      await expect(panel.getByRole("columnheader")).toHaveCount(target < 768 ? 3 : target < 1024 ? 4 : 5);
+      await expect(panel.getByRole("columnheader", { name: "收款 / 通知", exact: true })).toHaveCount(target < 1024 ? 1 : 0);
+      for (const name of ["收款状态", "通知状态"]) {
+        await expect(panel.getByRole("columnheader", { name, exact: true })).toHaveCount(target >= 1024 ? 1 : 0);
+      }
     }
     await expect(panel.locator('[data-business-row]').first().locator("time")).toHaveCount(2);
     const geometry = await list.evaluate(list => {
@@ -229,6 +248,8 @@ test("recent order headers and tables switch at the same measured container boun
         clipped: [list, ...list.querySelectorAll('.business-table-surface, [data-slot="table-container"], table')]
           .some(element => element.scrollWidth > element.clientWidth + 1),
         rows: [...list.querySelectorAll('[data-business-row]')].map(row => {
+          const product = row.querySelector('a[data-row-link]')!.closest('[data-slot="item-title"]')!;
+          const productLines = Math.round(product.getBoundingClientRect().height / parseFloat(getComputedStyle(product).lineHeight));
           const reference = row.querySelector('.overview-order-reference')!;
           const meta = row.querySelector('.overview-order-meta')!;
           const code = reference.querySelector('.list-code')!;
@@ -257,7 +278,8 @@ test("recent order headers and tables switch at the same measured container boun
             };
           });
           const amount = row.querySelector('[data-column-id="amounts"]');
-          return { sourceLabel: label.textContent,
+          return { height: row.getBoundingClientRect().height, productLines,
+            sourceLabel: label.textContent,
             numberComplete: code.textContent === code.getAttribute('title'),
             numberPainted: codeRects.length > 0 && codeRects.every(rect =>
               rect.left >= identity.left - 1 && rect.right <= identity.right + 1),
@@ -265,6 +287,9 @@ test("recent order headers and tables switch at the same measured container boun
             referenceBorder: getComputedStyle(reference).borderRightWidth,
             metaBorder: getComputedStyle(meta).borderRightWidth,
             amountAlignment: amount ? getComputedStyle(amount).textAlign : null,
+            primaryHref: row.querySelector('a[data-row-link]')!.getAttribute('href'),
+            payment: row.querySelector('[role="group"][aria-label="收款状态"]')?.textContent,
+            notification: row.querySelector('[role="group"][aria-label="通知状态"]')?.textContent,
             times, timesAligned: times.length < 2 || Math.abs(times[0]!.left - times[1]!.left) < 1,
           };
         }),
@@ -276,13 +301,18 @@ test("recent order headers and tables switch at the same measured container boun
       expect(row.numberComplete && row.numberPainted, JSON.stringify(row)).toBe(true);
       expect(row.referenceBorder).toBe("0px");
       expect(row.metaBorder).toBe("0px");
+      expect(row.primaryHref).toMatch(/^\/admin\/orders\//);
+      expect(row.times.length).toBeGreaterThan(0);
+      expect(row.times.every(time => time.lines === 1 && time.contained && time.complete), JSON.stringify(row.times)).toBe(true);
       if (target >= 640) expect(row.amountAlignment).toBe("right");
+      if (target < 1024) expect(row.payment && row.notification, JSON.stringify(row)).toBeTruthy();
       if (target >= 768) {
-        expect(row.times.length).toBeGreaterThan(0);
         expect(row.timesAligned, JSON.stringify(row.times)).toBe(true);
-        expect(row.times.every(time => time.sameLine && time.lines === 1 && time.contained && time.complete), JSON.stringify(row.times)).toBe(true);
+        expect(row.times.every(time => time.sameLine), JSON.stringify(row.times)).toBe(true);
       }
       if (target >= 1024) expect(row.referenceInline, JSON.stringify(row)).toBe(true);
+      if (target === 685) expect(row.height, JSON.stringify(row)).toBeLessThanOrEqual(row.productLines > 1 ? 100 : 80);
+      if (target === 1024 && row.productLines === 1) expect(row.height, JSON.stringify(row)).toBeLessThanOrEqual(60);
     }
     await record(page, info, { recentOrdersContainer: target, geometry });
   }

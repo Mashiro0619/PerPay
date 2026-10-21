@@ -89,11 +89,11 @@ describe("overview order progress", () => {
     expect(screen.getByText("收款已确认")).toBeVisible();
   });
 
-  it("moves both times into identity between 40 and 48rem and retains one matching amount in the mobile summary", () => {
+  it("groups statuses below 64rem, moves times below 48rem and retains the complete summary below 40rem", () => {
     let width = 767;
     const original = HTMLElement.prototype.getBoundingClientRect;
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-      return this.getAttribute("data-business-table") === "overview-recent-orders"
+      return this.classList.contains("overview-orders") || this.getAttribute("data-business-table") === "overview-recent-orders"
         ? DOMRect.fromRect({ width, height: 300 })
         : original.call(this);
     });
@@ -102,17 +102,26 @@ describe("overview order progress", () => {
       width = next;
       act(() => window.dispatchEvent(new Event("resize")));
     };
-    expect(screen.getAllByRole("columnheader")).toHaveLength(4);
+    expect(screen.getAllByRole("columnheader")).toHaveLength(3);
+    expect(screen.getByRole("columnheader", { name: "收款 / 通知" })).toBeVisible();
+    expect(screen.getByRole("group", { name: "收款状态" })).toHaveTextContent("收款已确认");
+    expect(screen.getByRole("group", { name: "通知状态" })).toHaveTextContent("等待重试");
     expect(screen.getByRole("table").querySelector('tbody [data-column-id="identity"]')).toContainElement(screen.getByText("创建"));
     expect(view.container.querySelectorAll("time")).toHaveLength(2);
 
     resize(768);
-    expect(screen.getAllByRole("columnheader")).toHaveLength(5);
+    expect(screen.getAllByRole("columnheader")).toHaveLength(4);
     expect(screen.getByRole("table").querySelector('tbody [data-column-id="created_at"]')).toContainElement(screen.getByText("PerPay 确认"));
     expect(view.container.querySelectorAll("time")).toHaveLength(2);
 
-    resize(640);
+    resize(1024);
+    expect(screen.getAllByRole("columnheader")).toHaveLength(5);
+    expect(screen.getByRole("columnheader", { name: "收款状态" })).toBeVisible();
+    expect(screen.getByRole("columnheader", { name: "通知状态" })).toBeVisible();
+    resize(1023);
     expect(screen.getAllByRole("columnheader")).toHaveLength(4);
+    resize(640);
+    expect(screen.getAllByRole("columnheader")).toHaveLength(3);
     resize(639);
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.getByRole("list", { name: "最近订单" })).toBeVisible();

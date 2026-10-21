@@ -1,6 +1,7 @@
 import type { AdminOrderSummary } from "@/api/client";
 import { Link } from "@/navigation";
 import { useWorkspace } from "@/workspace";
+import { useListSize } from "@/hooks/use-list-size";
 import { BusinessTable, type BusinessColumn } from "@/components/business-table";
 import { StatusBadge } from "@/components/business-status";
 import {
@@ -93,7 +94,7 @@ function OrderProductLink({ order }: { order: AdminOrderSummary }) {
   );
 }
 
-function OrderMeta({ order, showSite }: { order: AdminOrderSummary; showSite: boolean }) {
+function OrderMeta({ order, showSite, showTimes = false }: { order: AdminOrderSummary; showSite: boolean; showTimes?: boolean }) {
   return (
     <div className="overview-order-meta">
       <span className="overview-order-reference">
@@ -101,6 +102,7 @@ function OrderMeta({ order, showSite }: { order: AdminOrderSummary; showSite: bo
         <span className="list-code" title={order.merchant_order_no}>{order.merchant_order_no}</span>
       </span>
       {showSite && <SiteIdentity clientId={order.api_client_id} name={order.site_name} />}
+      {showTimes && <OrderTimes order={order} />}
     </div>
   );
 }
@@ -114,22 +116,23 @@ function RecentOrderSummary({ order, showSite }: { order: AdminOrderSummary; sho
         <div role="group" aria-label="收款状态"><PaymentResult order={order} /></div>
         <div role="group" aria-label="通知状态"><NotificationResult order={order} /></div>
       </ItemActions>
-      <OrderMeta order={order} showSite={showSite} />
-      <OrderTimes order={order} />
+      <OrderMeta order={order} showSite={showSite} showTimes />
     </ItemContent>
   );
 }
 
 export function RecentOrders({ orders }: { orders: readonly AdminOrderSummary[] }) {
   const { clientId } = useWorkspace();
+  const { ref, size } = useListSize();
+  const separateStatuses = size.container >= 64 * size.rem;
   if (!orders.length) {
     return (
-      <Empty>
+      <div ref={ref} className="overview-orders"><Empty>
         <EmptyHeader>
           <EmptyTitle>暂无订单</EmptyTitle>
           <EmptyDescription>新订单会显示在这里。</EmptyDescription>
         </EmptyHeader>
-      </Empty>
+      </Empty></div>
     );
   }
 
@@ -142,8 +145,7 @@ export function RecentOrders({ orders }: { orders: readonly AdminOrderSummary[] 
       summaryDefault: true,
       cell: (order, context) => (
         <ListIdentity
-          meta={<OrderMeta order={order} showSite={!clientId} />}
-          description={context.showInSummary("created_at") && <OrderTimes order={order} />}
+          meta={<OrderMeta order={order} showSite={!clientId} showTimes={context.showInSummary("created_at")} />}
         >
           <OrderProductLink order={order} />
         </ListIdentity>
@@ -160,14 +162,19 @@ export function RecentOrders({ orders }: { orders: readonly AdminOrderSummary[] 
     },
     {
       id: "payment",
-      label: "收款状态",
+      label: separateStatuses ? "收款状态" : "收款 / 通知",
       align: "center",
       hideable: false,
       layout: "status",
       summaryDefault: true,
-      cell: (order) => <PaymentResult order={order} />,
+      cell: (order) => separateStatuses ? <PaymentResult order={order} /> : (
+        <div className="overview-order-progress">
+          <div role="group" aria-label="收款状态"><PaymentResult order={order} /></div>
+          <div role="group" aria-label="通知状态"><NotificationResult order={order} /></div>
+        </div>
+      ),
     },
-    {
+    ...(separateStatuses ? [{
       id: "notification",
       label: "通知状态",
       align: "center",
@@ -175,7 +182,7 @@ export function RecentOrders({ orders }: { orders: readonly AdminOrderSummary[] 
       layout: "status",
       summaryDefault: true,
       cell: (order) => <NotificationResult order={order} />,
-    },
+    } satisfies BusinessColumn<AdminOrderSummary>] : []),
     {
       id: "created_at",
       label: "时间",
@@ -188,7 +195,7 @@ export function RecentOrders({ orders }: { orders: readonly AdminOrderSummary[] 
   ];
 
   return (
-    <div className="overview-orders">
+    <div ref={ref} className="overview-orders">
       <BusinessTable
         id="overview-recent-orders"
         aria-label="最近订单"

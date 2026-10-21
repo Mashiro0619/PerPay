@@ -708,6 +708,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   .overview-records { grid-template-columns: clamp(22rem, 36%, 28rem) minmax(0, 1fr); }
 }
 .overview-orders-table { table-layout: auto; }
+.overview-orders-table td { padding-block: 0.375rem; }
 .overview-orders-table col[data-column-layout="identity"] { width: auto; }
 .overview-orders-table col[data-column-layout="amount"] { width: 7rem; }
 .overview-orders-table col[data-column-layout="status"] { width: 7.5rem; }
@@ -730,7 +731,9 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .overview-orders-panel > .overview-records-header { grid-template-rows: auto; align-items: center; }
 .overview-orders-panel > .overview-records-header > [data-slot="card-action"] { grid-row: 1; align-self: center; }
 .overview-orders [data-list-layout="summary"] > .business-table-surface { overflow: visible; }
-.overview-order-summary { min-width: 0; }
+.overview-orders .business-summary-list { gap: 0.25rem; }
+.overview-orders .business-summary-row { padding-block: 0.375rem; }
+.overview-order-summary { min-width: 0; gap: 0.125rem; }
 .overview-work-list a[data-internal-link],
 .overview-orders a[data-internal-link] { text-decoration-line: none; }
 .overview-order-summary-amount { display: flex; min-width: 0; max-width: 100%; flex: 0 1 auto; }
@@ -739,8 +742,9 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .overview-order-summary-progress > [role="group"] { min-width: 0; max-width: 100%; }
 .overview-order-summary-progress .overview-record-stack { flex-direction: row; flex-wrap: wrap; gap: 0.25rem; }
 .overview-order-summary .list-site-identity > span { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.overview-order-summary > .overview-order-times { flex-direction: row; flex-wrap: wrap; gap: 0.125rem 0.75rem; }
+.overview-order-progress { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
 .overview-order-meta { display: flex; min-width: 0; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.75rem; font-size: 0.75rem; line-height: 1.5; color: var(--muted-foreground); }
+.overview-order-meta > .overview-order-times { display: contents; }
 .overview-order-reference { display: flex; min-width: 0; max-width: 100%; flex-wrap: wrap; align-items: baseline; gap: 0.125rem 0.5rem; }
 .overview-order-reference > :first-child { flex-shrink: 0; }
 .overview-order-reference .list-code,
@@ -785,7 +789,6 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   display: grid;
   grid-template-columns: 4.75rem max-content;
 }
-.overview-orders .list-identity-description .overview-order-times { flex-direction: row; flex-wrap: wrap; gap: 0.25rem 0.75rem; }
 .overview-work-panel { gap: 0.5rem; }
 .overview-work-panel > .overview-records-header {
   grid-template-rows: auto;
