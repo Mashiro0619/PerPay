@@ -1,6 +1,6 @@
 import { useQuery } from '@/lib/workspace-query';
 import { useWorkspaceApi } from "@/workspace";
-import { useRef, type ReactNode } from "react";
+import { useId, useRef, type ReactNode } from "react";
 import { useIsFetching } from '@tanstack/react-query';
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { result, type AdminOrderDetail, type ReconciliationOrder } from "@/api/client";
@@ -11,6 +11,7 @@ import { CopyValue } from "@/components/copy-value";
 import { StatusBadge } from "@/components/business-status";
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import {
   Dialog,
   DialogContent,
@@ -117,6 +118,20 @@ export function DetailFields({
     </dl>
     </div>
   );
+}
+export function DetailCredentials({ items, title = "凭据编号", headingLevel = 3 }: {
+  items: ReadonlyArray<readonly [string, ReactNode]>;
+  title?: string;
+  headingLevel?: 3 | 4;
+}) {
+  const titleId = useId();
+  if (!items.length) return null;
+  const Heading = headingLevel === 3 ? "h3" : "h4";
+  return <section className="flex min-w-0 flex-col gap-4" aria-labelledby={titleId} data-detail-credentials>
+    <Separator />
+    <Heading id={titleId} className="text-sm font-medium">{title}</Heading>
+    <DetailFields density="comfortable" items={items} />
+  </section>;
 }
 export function TechnicalDetailsDialog({
   open,

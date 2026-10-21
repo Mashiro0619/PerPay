@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import { describe, expect, it } from "vitest";
-import { DetailFields, DetailNavigation, OrderFacts } from "../src/components/detail/DetailPrimitives";
+import { DetailCredentials, DetailFields, DetailNavigation, OrderFacts } from "../src/components/detail/DetailPrimitives";
 import { isReadableDetailPage } from "../src/lib/detail-layout";
 import { paidOrder } from "./detail-fixtures";
 
@@ -10,12 +10,13 @@ describe("independent readable detail scope", () => {
   it.each([
     "/notifications/delivery", "/notifications/delivery/", "/reconciliation/matches/match", "/ledger/entry",
     "/sites/site-a/notifications/delivery", "/sites/site-a/reconciliation/matches/match",
+    "/reconciliation/exceptions/exception", "/sites/site-a/reconciliation/exceptions/exception",
   ])("enables the selected detail %s", path => expect(isReadableDetailPage(path)).toBe(true));
 
   it.each([
     "/", "/orders/order", "/notifications", "/reconciliation", "/ledger", "/settings/security",
     "/reconciliation/candidates/candidate", "/reconciliation/ledger/source", "/reconciliation/conflicts/conflict",
-    "/reconciliation/exceptions/exception", "/sites/site-a/orders/order", "/sites/site-a/ledger/entry",
+    "/sites/site-a/orders/order", "/sites/site-a/ledger/entry",
     "/sites/site-a/notifications", "/sites/new/notifications/delivery", "/notifications/delivery/extra",
   ])("preserves the existing layout of %s", path => expect(isReadableDetailPage(path)).toBe(false));
 
@@ -55,6 +56,17 @@ describe("independent readable detail scope", () => {
     expect(container.querySelector('[data-layout="flow"]')).toBeNull();
     expect(screen.getByText("完整备注")).toBeVisible();
     expect(screen.getByRole("link", { name: paidOrder.product_name })).toBeVisible();
+  });
+
+  it("groups complete credential values in a labelled definition list without hiding empty values", () => {
+    const identifier = "202610212200101235120001187".repeat(4);
+    render(<DetailCredentials items={[["支付宝订单号", identifier], ["商户订单号", null]]} headingLevel={4} />);
+    const credentials = screen.getByRole("region", { name: "凭据编号" });
+    expect(within(credentials).getByRole("heading", { level: 4 })).toBeVisible();
+    expect(within(credentials).getByText(identifier)).toBeVisible();
+    expect(within(credentials).getAllByRole("term").map(term => term.textContent)).toEqual(["支付宝订单号", "商户订单号"]);
+    expect(within(credentials).getByText("—")).toBeVisible();
+    expect(credentials.querySelector("[data-detail-fields]")).toHaveAttribute("data-layout", "columns");
   });
 
   it("copies the complete navigation ID and preserves the saved return query and state", async () => {
