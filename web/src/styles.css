@@ -255,10 +255,6 @@
   }
 }
 
-/* Error borders remain semantic; keyboard focus uses one opaque indicator. */
-[aria-invalid="true"]:focus-visible,
-[data-slot="input-group"]:has([data-slot="input-group-control"]:focus-visible),
-[data-slot="field-label"]:has(:focus-visible) { --tw-ring-color: var(--ring); }
 a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 
 /* Settings have their own reading width, independent of wide tables/charts. */

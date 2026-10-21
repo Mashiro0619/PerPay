@@ -1,5 +1,77 @@
+import type { Locator } from "@playwright/test";
 import { test, expect, login, record } from "./fixtures";
 import { screenshot } from "./audit";
+
+async function expectInputRing(control: Locator, indicator = control, alpha = 128) {
+  await expect(control).toBeFocused();
+  expect(await control.evaluate(element => element.matches(":focus-visible"))).toBe(true);
+  await expect.poll(() => indicator.evaluate(element => {
+    const style = getComputedStyle(element);
+    const context = document.createElement("canvas").getContext("2d")!;
+    context.fillStyle = style.getPropertyValue("--tw-ring-color");
+    context.fillRect(0, 0, 1, 1);
+    return context.getImageData(0, 0, 1, 1).data[3];
+  })).toBe(alpha);
+  await expect.poll(() => indicator.evaluate(element => getComputedStyle(element).boxShadow)).toMatch(/\s3px(?:,|$)/);
+}
+
+for (const theme of ["light", "dark"] as const) test(`${theme}: form controls retain the official translucent focus and invalid states`, async ({ page, manifest }, info) => {
+  await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
+  await page.addInitScript(theme => localStorage.setItem("perpay:theme", theme), theme);
+  const writes: string[] = [];
+  page.on("request", request => {
+    if (!["GET", "HEAD"].includes(request.method())) writes.push(request.url());
+  });
+  await page.route("**/admin/", async route => {
+    const response = await route.fetch();
+    const body = (await response.text()).replace(/(name="perpay-initialized" content=")true/, "$1false");
+    await route.fulfill({ response, body });
+  });
+  await page.goto(manifest.origin + "/admin/");
+  const password = page.getByLabel("设置管理员密码", { exact: true });
+  const confirmation = page.getByLabel("再次输入密码", { exact: true });
+  const group = page.locator('[data-slot="input-group"]');
+  for (const width of [320, 390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await password.click();
+    await expectInputRing(password, group);
+    expect(await password.evaluate(element => getComputedStyle(element).boxShadow)).not.toMatch(/\s3px(?:,|$)/);
+    await page.keyboard.press("Tab");
+    const visibility = page.getByRole("button", { name: "显示密码", exact: true });
+    await expect(visibility).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(password).toHaveAttribute("type", "text");
+    await page.keyboard.press("Tab");
+    await expectInputRing(confirmation);
+    await page.getByRole("button", { name: "隐藏密码", exact: true }).click();
+    await confirmation.click();
+    await expectInputRing(confirmation);
+    await record(page, info, { state: "synthetic initialization focus", viewportWidth: width, focusAlpha: 0.5 });
+  }
+  await password.fill("123456");
+  await confirmation.fill("different");
+  await page.getByRole("button", { name: "创建管理员", exact: true }).click();
+  await expect(confirmation).toHaveAttribute("aria-invalid", "true");
+  await expectInputRing(confirmation, confirmation, theme === "dark" ? 102 : 51);
+  await screenshot(page, info, "input-invalid-" + theme);
+  await password.fill("12345");
+  await page.getByRole("button", { name: "创建管理员", exact: true }).click();
+  await expect(password).toHaveAttribute("aria-invalid", "true");
+  await expectInputRing(password, group, theme === "dark" ? 102 : 51);
+  await screenshot(page, info, "input-group-invalid-" + theme);
+  await page.unroute("**/admin/");
+  await login(page, manifest);
+  await page.goto(manifest.origin + "/admin/settings/security");
+  const textarea = page.getByLabel("允许的 IP / 网段", { exact: true });
+  await textarea.click();
+  await expectInputRing(textarea);
+  await textarea.press("Tab");
+  await page.keyboard.press("Shift+Tab");
+  await expectInputRing(textarea);
+  await screenshot(page, info, "textarea-focus-" + theme);
+  await record(page, info, { state: "textarea keyboard focus", focusAlpha: 0.5, writes });
+  expect(writes).toEqual([]);
+});
 
 for (const theme of ["light", "dark"] as const) test(`${theme}: keyboard focus is opaque and distinct from adjacent surfaces`, async ({ page, manifest }, info) => {
   await page.emulateMedia({ colorScheme: theme });
