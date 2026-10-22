@@ -91,7 +91,7 @@ export function systemAnalytics(
   const days = rangeDays(requestedRange);
   const end = chinaDayStart(now) + DAY_MILLISECONDS;
   const start = end - days * DAY_MILLISECONDS;
-  return database.read((connection) => readAnalytics(connection, days, start, end, clientId));
+  return database.read((connection) => readAnalytics(connection, days, start, end, clientId, now));
 }
 
 function readAnalytics(
@@ -100,6 +100,7 @@ function readAnalytics(
   start: number,
   end: number,
   clientId: string | null,
+  now: number,
 ): SystemAnalytics {
   const orders = connection.prepare(`
     SELECT
@@ -137,7 +138,9 @@ function readAnalytics(
   const pending = connection.prepare(`
     SELECT
       (SELECT COUNT(*) FROM payment_orders
-        WHERE checkout_status = 'OPEN' AND payment_status = 'UNPAID' AND (? IS NULL OR api_client_id = ?)) AS orders,
+        WHERE checkout_status = 'OPEN' AND payment_status = 'UNPAID'
+          AND expires_at > ?
+          AND (? IS NULL OR api_client_id = ?)) AS orders,
       (SELECT COUNT(*) FROM financial_exceptions
          WHERE status = 'OPEN' AND exception_type NOT IN ('UNMATCHED_DEBIT', 'UNLINKED_REFUND')
            AND (? IS NULL OR order_id IN (SELECT order_id FROM payment_orders WHERE api_client_id = ?))) AS exceptions,
@@ -145,7 +148,7 @@ function readAnalytics(
       (SELECT COUNT(*) FROM webhook_deliveries
         WHERE status IN ('PENDING', 'LEASED', 'RETRY_WAIT')
            AND (? IS NULL OR target_id IN (SELECT target_id FROM webhook_targets WHERE api_client_id = ?))) AS notifications
-  `).get(clientId, clientId, clientId, clientId, clientId, clientId, clientId) as Record<string, number | bigint | null>;
+  `).get(now, clientId, clientId, clientId, clientId, clientId, clientId, clientId) as Record<string, number | bigint | null>;
 
   const dailyRows = connection.prepare(`
     WITH order_daily AS (

@@ -61,6 +61,28 @@ describe("system analytics", () => {
     });
   });
 
+  it("excludes expired unpaid orders from pending counts without materializing checkout state", () => {
+    withFixture((database, connection) => {
+      const now = Date.parse("2026-01-15T12:00:00.000Z");
+      const insert = connection.prepare(`INSERT INTO payment_orders(order_id,api_client_id,created_at,expires_at,payment_status,checkout_status) VALUES (?, ?, ?, ?, 'UNPAID', 'OPEN')`);
+      insert.run("alpha-expiring", "alpha", now - 1_000, now);
+      insert.run("alpha-live", "alpha", now - 1_000, now + 10_000);
+      insert.run("beta-live", "beta", now - 1_000, now + 20_000);
+      for (const [timestamp, alphaPending, totalPending] of [[now - 1, 2, 3], [now, 1, 2], [now + 1, 1, 2]] as const) {
+        for (const [clientId, pending, unpaid] of [[null, totalPending, 3], ["alpha", alphaPending, 2], ["beta", 1, 1]] as const) {
+          const result = systemAnalytics(database, 7, timestamp, clientId);
+          assert.equal(result.pending.orders, pending);
+          assert.equal(result.orders.unpaid, unpaid);
+        }
+      }
+      assert.deepEqual(connection.prepare("SELECT order_id, checkout_status FROM payment_orders ORDER BY order_id").all().map((row) => ({ ...row })), [
+        { order_id: "alpha-expiring", checkout_status: "OPEN" },
+        { order_id: "alpha-live", checkout_status: "OPEN" },
+        { order_id: "beta-live", checkout_status: "OPEN" },
+      ]);
+    });
+  });
+
   it("excludes only retired debit warnings from pending exception counts", () => {
     withFixture((database, connection) => {
       connection.exec("INSERT INTO financial_exceptions(status,exception_type) VALUES ('OPEN', 'UNMATCHED_DEBIT'), ('OPEN', 'UNLINKED_REFUND'), ('OPEN', 'UNMATCHED_CREDIT'), ('RESOLVED', 'UNMATCHED_CREDIT')");
@@ -131,7 +153,7 @@ function withFixture(operation: (database: AppDatabase, connection: DatabaseSync
     connection.exec(`
       CREATE TABLE payment_orders (
         api_client_id TEXT NOT NULL DEFAULT 'default',
-        order_id TEXT PRIMARY KEY, created_at INTEGER NOT NULL,
+        order_id TEXT PRIMARY KEY, created_at INTEGER NOT NULL, expires_at INTEGER,
         payment_status TEXT NOT NULL, checkout_status TEXT NOT NULL,
         received_amount_cents INTEGER
       );
