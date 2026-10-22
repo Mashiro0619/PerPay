@@ -1317,14 +1317,10 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     return context.json({data: page.items.map(item => ({order: serializeReconciliationOrder(item.record, identities.get(item.record.orderId)!), recommendation: serializeManualRecommendation(item.recommendation)})), page: {next_cursor: encode(page.nextPosition)}});
   });
   app.get("/api/admin/v1/reconciliation/settlements/manual/ledger-entries", adminSession, context => {
-    const {query, encode} = readManualCandidateQuery(new URL(context.req.url).searchParams, "ledger-entries");
+    const {query, encode} = readManualCandidateQuery(new URL(context.req.url).searchParams, "ledger-entries", context.get("adminSiteId"));
     const page = requireReconciliationStore(dependencies).manualLedgerPage(query);
     if (!page) throw new HttpApiError(404, "order_not_found", "订单不存在");
-    const safeItems = context.get("adminSiteId") ? dependencies.database.read(db => page.items.filter(item => {
-      try { assertSiteLedger(db, context.get("adminSiteId"), item.record.ledgerEntryId); return true; }
-      catch (error) { if (error instanceof AdminOperationError && error.code === "site_scope_conflict") return false; throw error; }
-    })) : page.items;
-    return context.json({data: safeItems.map(item => ({ledger_entry: serializeReconciliationLedger(item.record), recommendation: serializeManualRecommendation(item.recommendation)})), page: {next_cursor: encode(page.nextPosition)}});
+    return context.json({data: page.items.map(item => ({ledger_entry: serializeReconciliationLedger(item.record), recommendation: serializeManualRecommendation(item.recommendation)})), page: {next_cursor: encode(page.nextPosition)}});
   });
 
   app.get("/api/admin/v1/reconciliation/matches", adminSession, (context) => {

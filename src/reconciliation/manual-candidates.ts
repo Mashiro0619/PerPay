@@ -1,5 +1,6 @@
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { listSearch } from "../database/list-query.ts";
+import { siteClientIdSchema } from "../sites/model.ts";
 import {
   ListQueryError,
   normalizeKeyword,
@@ -13,6 +14,8 @@ export interface ManualCandidateQuery {
   readonly view: "recommended" | "all";
   readonly limit: number;
   readonly position: ListPosition | null;
+  /** Optional website scope used to filter ledger evidence before pagination. */
+  readonly siteClientId?: string;
 }
 export interface ManualRecommendation {
   readonly amountMatch: boolean;
@@ -72,8 +75,12 @@ export function readManualCandidates(
   ) {
     throw new ListQueryError("人工关联可能匹配的记录查询无效");
   }
-  const paired = query.contextId !== null;
   const orders = kind === "orders";
+  const siteClientId = query.siteClientId;
+  if (siteClientId !== undefined && (!siteClientIdSchema.safeParse(siteClientId).success || orders)) {
+    throw new ListQueryError("人工关联可能匹配的记录查询无效");
+  }
+  const paired = query.contextId !== null;
   if (paired) {
     const source = orders ? "ledger_entries" : "payment_orders";
     const key = orders ? "ledger_entry_id" : "order_id";
@@ -106,6 +113,24 @@ export function readManualCandidates(
     );
     if (query.view === "recommended")
       predicates.push("l.amount_cents = o.payable_amount_cents");
+    if (siteClientId !== undefined) {
+      // Site-scoped discovery must apply the same evidence boundary as
+      // assertSiteLedger before keyset pagination, otherwise a page can be
+      // filled by hidden records and return no usable candidates.
+      predicates.push(
+        "NOT EXISTS (SELECT 1 FROM ledger_conflicts c " +
+          "WHERE c.existing_ledger_entry_id = l.ledger_entry_id AND c.status = 'OPEN')",
+      );
+      predicates.push(
+        "NOT EXISTS (SELECT 1 FROM (" +
+          "SELECT m.order_id FROM payment_matches m WHERE m.ledger_entry_id = l.ledger_entry_id " +
+          "UNION SELECT c.order_id FROM match_candidates c WHERE c.ledger_entry_id = l.ledger_entry_id " +
+          "UNION SELECT e.order_id FROM financial_exceptions e WHERE e.ledger_entry_id = l.ledger_entry_id AND e.order_id IS NOT NULL" +
+          ") evidence JOIN payment_orders other_order ON other_order.order_id = evidence.order_id " +
+          "WHERE other_order.api_client_id != ?)",
+      );
+      parameters.push(siteClientId);
+    }
   }
   const search = listSearch(
     orders

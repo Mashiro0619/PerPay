@@ -95,6 +95,138 @@ it('scopes list, lookup, pagination, export, and detail without changing global 
         f.close();
     }
 });
+it('filters site-conflicting manual ledger candidates before pagination', async () => {
+    const f = await fixture();
+    try {
+        const a = f.createSite('Manual scope A'), b = f.createSite('Manual scope B');
+        const target = f.order(a.clientId, 'manual-scope-target');
+        const now = f.now();
+        const window = {
+            start: new Date(now - 60_000 + 8 * 3600000).toISOString().slice(0, 19).replace('T', ' '),
+            end: new Date(now + 60 * 60_000 + 8 * 3600000).toISOString().slice(0, 19).replace('T', ' '),
+        };
+        let ingestSequence = 0;
+        const scopedCredit = (externalEventId: string, amountCents: number, occurredAt: number) => recordLedgerEntry(
+            f.ledger,
+            window,
+            externalEventId,
+            amountCents,
+            occurredAt,
+            now + 1_000 + ingestSequence++ * 1_000,
+            'CREDIT',
+            f.snapshot.activeProviderAccountKey!,
+        );
+        const reverse = (orderId: string, ledgerEntryId: string) => {
+            const settledAt = Math.max(Date.now(), f.reconciliation.ledgerEntry(ledgerEntryId)!.updatedAt) + 1;
+            const settled = f.reconciliation.settleManually({
+                financialOperationId: randomUUID(), orderId, ledgerEntryId,
+                actorId: 'admin', reason: 'site scope pagination setup', now: settledAt,
+            });
+            f.reconciliation.reverseSettlement({
+                financialOperationId: randomUUID(), paymentMatchId: settled.paymentMatch.paymentMatchId,
+                actorId: 'admin', reason: 'site scope pagination regression', now: settledAt + 1,
+            });
+        };
+        // Foreign records sort first but retain reversed B-site matches, so
+        // site-scoped pagination must remove them before taking a page.
+        const foreignEntries = Array.from({ length: 10 }, (_, index) => {
+            const foreign = f.order(b.clientId, 'manual-scope-foreign-' + index);
+            const entry = scopedCredit('manual-scope-foreign-entry-' + index, target.payableAmountCents, now + 3_000 + index * 1_000);
+            reverse(foreign.orderId, entry.ledgerEntryId);
+            return entry;
+        });
+        const localEntry = scopedCredit('manual-scope-local-entry', target.payableAmountCents, now + 2_000);
+        const sameSiteOrder = f.order(a.clientId, 'manual-scope-same-site-history');
+        const sameSiteEntry = scopedCredit('manual-scope-same-site-entry', target.payableAmountCents, now + 1_000);
+        reverse(sameSiteOrder.orderId, sameSiteEntry.ledgerEntryId);
+        const differentAmount = scopedCredit('manual-scope-different-amount', target.payableAmountCents + 777, now);
+        const conflictedEntry = scopedCredit('manual-scope-open-conflict', target.payableAmountCents, now + 20_000);
+        const conflictAmount = ((target.payableAmountCents + 1) / 100).toFixed(2);
+        const conflictDetail = {
+            accountLogId: conflictedEntry.externalEventId,
+            occurredAt: new Date(now + 20_000 + 8 * 3600000).toISOString().slice(0, 19).replace('T', ' '),
+            amount: conflictAmount,
+            direction: 'CREDIT',
+            alipayOrderNo: 'platform-' + conflictedEntry.externalEventId,
+            merchantOrderNo: null, transMemo: null, otherAccount: null,
+            raw: { account_log_id: conflictedEntry.externalEventId, amount: conflictAmount },
+        };
+        const recordConflict = () => {
+            const startedAt = now + 1_000 + ingestSequence++ * 1_000;
+            const run = f.ledger.startIngestRun({ ...window, pageSize: 1, providerAccountKey: f.snapshot.activeProviderAccountKey!, now: startedAt });
+            return f.ledger.recordPage({
+                ingestRunId: run.ingestRunId,
+                page: { pageNo: 1, pageSize: 1, totalSize: 1, hasMore: false, details: [conflictDetail] },
+                evidence: { httpStatus: 200, headers: {}, body: JSON.stringify(conflictDetail), traceId: 'manual-scope-conflict', signatureVerified: true },
+                now: startedAt + 1,
+            });
+        };
+        let conflict = recordConflict();
+        if (conflict.kind === 'variant') conflict = recordConflict();
+        assert.equal(conflict.normalized[0]?.kind, 'conflict');
+        assert.ok(f.ledger.listOpenConflicts(f.snapshot.activeProviderAccountKey!).some(item => item.existingLedgerEntryId === conflictedEntry.ledgerEntryId));
+
+        const snapshot = () => f.database.read(db => JSON.stringify([
+            'payment_orders', 'amount_slots', 'ledger_entries', 'match_candidates', 'payment_matches',
+            'financial_operations', 'order_events', 'payment_match_events', 'ledger_transactions',
+            'ledger_postings', 'financial_exceptions', 'ledger_conflicts', 'ledger_conflict_operations',
+            'outbox_events', 'provider_raw_pages', 'provider_raw_events', 'ingest_runs',
+            'ingest_segments', 'ingest_run_page_observations', 'ledger_cursors',
+        ].map(table => db.prepare('SELECT * FROM ' + table).all()), (_, value) => typeof value === 'bigint' ? String(value) : value));
+        type CandidatePage = {
+            data: Array<{ ledger_entry: { ledger_entry_id: string } }>;
+            page: { next_cursor: string | null };
+        };
+        const page = async (path: string): Promise<CandidatePage> => {
+            const response = await f.req(path);
+            assert.equal(response.status, 200, await response.clone().text());
+            return await response.json() as CandidatePage;
+        };
+        const ids = (body: CandidatePage) => body.data.map(item => item.ledger_entry.ledger_entry_id);
+        const otherTarget = f.order(b.clientId, 'manual-scope-other-target');
+        const beforeQueries = snapshot();
+        for (const view of ['recommended', 'all'] as const) {
+            const query = '/reconciliation/settlements/manual/ledger-entries?order_id=' + target.orderId + '&view=' + view;
+            const sitePath = '/sites/' + a.clientId + query;
+            const expected = [localEntry.ledgerEntryId, sameSiteEntry.ledgerEntryId, ...(view === 'all' ? [differentAmount.ledgerEntryId] : [])];
+            const scoped = await page(sitePath);
+            assert.deepEqual(ids(scoped), expected);
+            assert.equal(scoped.page.next_cursor, null);
+            const scopedFirst = await page(sitePath + '&limit=1');
+            assert.deepEqual(ids(scopedFirst), expected.slice(0, 1));
+            assert.ok(scopedFirst.page.next_cursor);
+            const discovered = ids(scopedFirst);
+            let cursor: string | null = scopedFirst.page.next_cursor;
+            while (cursor !== null) {
+                const next = await page(sitePath + '&limit=1&cursor=' + encodeURIComponent(cursor));
+                assert.equal(next.data.length, 1);
+                discovered.push(...ids(next));
+                assert.ok(discovered.length <= expected.length);
+                cursor = next.page.next_cursor;
+            }
+            assert.deepEqual(discovered, expected);
+            assert.equal(new Set(discovered).size, expected.length);
+
+            const globalFirst = await page(query);
+            assert.equal(globalFirst.data.length, 10);
+            assert.ok(globalFirst.page.next_cursor);
+            const globalNext = await page(query + '&cursor=' + encodeURIComponent(globalFirst.page.next_cursor));
+            assert.equal(globalNext.page.next_cursor, null);
+            const globalIds = [...ids(globalFirst), ...ids(globalNext)];
+            const expectedGlobal = [...foreignEntries.map(entry => entry.ledgerEntryId), conflictedEntry.ledgerEntryId, ...expected];
+            assert.equal(globalIds.length, expectedGlobal.length);
+            assert.deepEqual(new Set(globalIds), new Set(expectedGlobal));
+            assert.equal((await f.req(sitePath + '&cursor=' + encodeURIComponent(globalFirst.page.next_cursor))).status, 422);
+            assert.equal((await f.req(query + '&limit=1&cursor=' + encodeURIComponent(scopedFirst.page.next_cursor))).status, 422);
+            const otherPath = '/sites/' + b.clientId + '/reconciliation/settlements/manual/ledger-entries?order_id=' + otherTarget.orderId + '&view=' + view;
+            assert.equal((await f.req(otherPath + '&limit=1&cursor=' + encodeURIComponent(scopedFirst.page.next_cursor))).status, 422);
+        }
+        assert.equal(snapshot(), beforeQueries);
+    }
+    finally {
+        f.close();
+    }
+});
 it('validates ownership inside financial writes and idempotent replay, preserving global replay', async () => {
     const f = await fixture();
     try {

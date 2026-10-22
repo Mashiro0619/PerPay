@@ -9,6 +9,7 @@ const uuid =
 export function readManualCandidateQuery(
   values: URLSearchParams,
   kind: ManualCandidateKind,
+  siteClientId?: string,
 ) {
   const contextKey = kind === "orders" ? "ledger_entry_id" : "order_id";
   const allowed = new Set([contextKey, "q", "view", "cursor", "limit"]);
@@ -32,7 +33,9 @@ export function readManualCandidateQuery(
   if (!/^[1-9][0-9]{0,2}$/.test(limitText) || Number(limitText) > 100)
     throw new ListQueryError("可能匹配的记录页大小无效");
   const resource = "manual-settlement-" + kind;
-  const binding = [contextId, q, view];
+  const binding = siteClientId === undefined
+    ? [contextId, q, view]
+    : [contextId, q, view, siteClientId];
   const cursor = values.get("cursor");
   const position =
     cursor === null
@@ -46,6 +49,7 @@ export function readManualCandidateQuery(
     view,
     limit: Number(limitText),
     position,
+    ...(siteClientId === undefined ? {} : { siteClientId }),
   };
   return {
     query,
