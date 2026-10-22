@@ -27,16 +27,17 @@ export function LedgerMoney({ entry }: { entry: Pick<AdminLedgerSummary, "amount
 }
 
 export function LedgerOrderLink({ match }: { match: AdminLedgerMatch | null }) {
-  return match ? <Link global className="list-code reconciliation-order-link" to={"/orders/" + match.order_id} aria-label={"查看订单：" + match.merchant_order_no} title={match.merchant_order_no}>{match.merchant_order_no}</Link> : <span className="text-muted-foreground">未关联</span>;
+  return match ? <Link global className="list-code reconciliation-order-link ledger-order-line" to={"/orders/" + match.order_id} aria-label={"查看订单：" + match.merchant_order_no} title={match.merchant_order_no}>{match.merchant_order_no}</Link> : <span className="text-muted-foreground">未关联</span>;
 }
 
 export function LedgerActiveOrder({ entry }: { entry: Pick<AdminLedgerSummary, "active_match" | "active_match_count"> }) {
   if (entry.active_match_count > 1) return <span className="text-destructive">多条生效关联 · 请核查</span>;
   if (!entry.active_match) return <LedgerOrderLink match={null} />;
+  const siteName = entry.active_match.site_name ?? "网站名称未保存";
   return <div className="business-cell-stack flex min-w-0 flex-col gap-1">
-    <span className="wrap-anywhere">{entry.active_match.product_name}</span>
+    <span className="ledger-order-line" title={entry.active_match.product_name}>{entry.active_match.product_name}</span>
     <LedgerOrderLink match={entry.active_match} />
-    <span className="text-xs text-muted-foreground wrap-anywhere">{entry.active_match.site_name ?? "网站名称未保存"}</span>
+    <span className="ledger-order-line text-xs text-muted-foreground" title={siteName}>{siteName}</span>
   </div>;
 }
 

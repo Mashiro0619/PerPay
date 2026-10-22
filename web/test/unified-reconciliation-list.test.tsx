@@ -42,7 +42,11 @@ describe("unified transaction reconciliation list", () => {
     expect(within(table).getByText("已关联", { exact: true })).toBeVisible();
     expect(within(table).getByText("2 条已撤销关联")).toBeVisible();
     expect(within(table).getByRole("link", { name: "查看订单：" + groupedLedger.active_match!.merchant_order_no })).toBeVisible();
-    expect(within(table).getByText(groupedLedger.active_match!.product_name)).toBeVisible();
+    const product = within(table).getByText(groupedLedger.active_match!.product_name);
+    expect(product).toBeVisible();
+    expect(product).toHaveClass("ledger-order-line");
+    expect(product).toHaveAttribute("title", groupedLedger.active_match!.product_name);
+    expect(within(table).getByRole("link", { name: "查看订单：" + groupedLedger.active_match!.merchant_order_no })).toHaveClass("ledger-order-line");
     expect(requests.map(request => new URL(request.url).pathname)).toEqual(["/api/admin/v1/ledger/entries"]);
     expect(new URL(requests[0]!.url).searchParams.has("association_status")).toBe(false);
     expect(requests.every(request => request.method === "GET")).toBe(true);

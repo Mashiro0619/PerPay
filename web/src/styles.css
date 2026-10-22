@@ -526,6 +526,18 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .reconciliation-related-amount { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .reconciliation-related-link:hover .reconciliation-related-title { text-decoration: underline; text-underline-offset: 0.18em; }
 .list-identity-meta .reconciliation-related-record { padding-block: 0.0625rem; }
+.ledger-table td[data-column-id="order"] .business-cell-stack { gap: 0.125rem; }
+/* Wrapping lets the auto-layout column shrink before long identities are clamped. */
+.ledger-table td[data-column-id="order"] .ledger-order-line {
+  display: -webkit-box;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
 .list-query-toolbar {
   display: grid;
   min-width: 0;
