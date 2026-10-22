@@ -66,7 +66,7 @@ export function DeliveryCard({
   const [snapshot, setSnapshot] = useState<DeliveryContext | null>(null);
   const [sent, setSent] = useState(false);
   const setMessage = useSuccessToast();
-  const finalFocus = useRef<HTMLButtonElement | null>(null);
+  const finalFocus = useRef<HTMLElement | null>(null);
   const delivery = detail.delivery;
   const last = latestAttempt(detail.attempts);
   const terminal =
@@ -189,6 +189,9 @@ export function DeliveryCard({
             )
           }
           onSuccess={() => {
+            // A successful redelivery creates a newer record and removes this
+            // action. Restore focus to content that remains on the page.
+            finalFocus.current = document.getElementById("main-content");
             setSnapshot(null);
             setSent(true);
             setMessage("已创建新投递，等待发送");

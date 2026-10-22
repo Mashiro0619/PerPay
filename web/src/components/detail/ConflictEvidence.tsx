@@ -1,5 +1,5 @@
 import { useWorkspaceApi } from "@/workspace";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { refreshOperationalData, result, type LedgerConflictDetail } from "@/api/client";
 import { dateTime } from "@/lib/format";
 import { ConflictComparison } from "./ConflictComparison";
@@ -36,6 +36,7 @@ export function ConflictCard({ detail }: { detail: LedgerConflictDetail }) {
   const api = useWorkspaceApi();
   const [confirm, setConfirm] = useState(false);
   const [completed, setCompleted] = useState(false);
+  const finalFocus = useRef<HTMLElement | null>(null);
   const setMessage = useSuccessToast();
   const conflict = detail.conflict;
   const existing = detail.existing_ledger_entry;
@@ -140,7 +141,13 @@ export function ConflictCard({ detail }: { detail: LedgerConflictDetail }) {
       {conflict.status === "OPEN" &&
         conflict.conflict_type !== "RAW_PAGE_VARIANT" && (
           <CardFooter>
-            <Button disabled={completed} onClick={() => setConfirm(true)}>
+            <Button
+              disabled={completed}
+              onClick={(event) => {
+                finalFocus.current = event.currentTarget;
+                setConfirm(true);
+              }}
+            >
               {label(action)}
             </Button>
           </CardFooter>
@@ -155,6 +162,7 @@ export function ConflictCard({ detail }: { detail: LedgerConflictDetail }) {
           }
           action="确认处理冲突"
           onClose={() => setConfirm(false)}
+          finalFocus={() => finalFocus.current}
           execute={(reason, operationId, signal) =>
             result(
               api.resolveLedgerConflict({
@@ -165,6 +173,9 @@ export function ConflictCard({ detail }: { detail: LedgerConflictDetail }) {
             )
           }
           onSuccess={() => {
+            // The action button disappears after the conflict refreshes.
+            // Move focus to the stable page content before closing the dialog.
+            finalFocus.current = document.getElementById("main-content");
             setConfirm(false);
             setCompleted(true);
             setMessage("处理已保存");
