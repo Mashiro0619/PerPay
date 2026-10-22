@@ -25,9 +25,9 @@ import { useQuery } from "@tanstack/react-query";
 import { RefreshCw, Link2, EyeOff } from "lucide-react";
 import { Navigate, useLocation, useSearchParams } from "react-router";
 import { Link, useNavigate } from "@/navigation";
-import { api, result } from "@/api/client";
+import { api, result, type ReconciliationIssueContext } from "@/api/client";
 import { useCursor } from "@/lib/cursor";
-import { resourceIdPattern } from "@/lib/format";
+import { money, resourceIdPattern, shortId } from "@/lib/format";
 import { label } from "@/lib/labels";
 import { StatusBadge } from "@/components/business-status";
 import { QueryView } from "@/components/request-state";
@@ -57,23 +57,137 @@ type ReconciliationRow = {
   merchantOrderNo: string | null;
   externalEventId: string | null;
   orderId: string | null;
+  rawPageId: string | null;
   reminderIgnored: boolean;
   status: string;
   createdAt: string;
+  context: ReconciliationIssueContext | null;
 };
 
 function RelatedOrderLink({ item }: { item: ReconciliationRow }) {
-  if (!item.orderId) return item.merchantOrderNo ?? "—";
-  const text = item.merchantOrderNo ?? "查看订单";
+  const merchantOrderNo = item.context?.order_summary?.merchant_order_no ?? item.merchantOrderNo;
+  const orderId = item.context?.order_summary?.order_id ?? item.orderId;
+  if (!orderId) return <span className="list-code">{merchantOrderNo ?? "—"}</span>;
+  const text = merchantOrderNo ?? "订单 " + shortId(orderId);
   return (
     <Link
       className="list-code reconciliation-order-link"
-      title={item.merchantOrderNo ?? undefined}
-      aria-label={item.merchantOrderNo ? "查看订单：" + item.merchantOrderNo : "查看订单"}
-      to={"/orders/" + item.orderId}
+      title={merchantOrderNo ?? undefined}
+      aria-label={"查看订单：" + (merchantOrderNo ?? shortId(orderId))}
+      to={"/orders/" + orderId}
     >
       {text}
     </Link>
+  );
+}
+
+function readableRawDirection(value: string | null): string | null {
+  if (!value) return null;
+  const normalized = value.trim().toUpperCase();
+  if (normalized === "CREDIT") return "收入";
+  if (normalized === "DEBIT") return "支出";
+  if (normalized === "UNKNOWN") return "方向未知";
+  return value;
+}
+
+function readableRawAmount(value: string | null): string | null {
+  if (!value) return null;
+  return /^\d+(?:\.\d{1,2})?$/.test(value.trim()) ? "¥" + value.trim() : value;
+}
+
+/** Identifies both the related order and the individual payment behind an issue. */
+function RelatedRecord({ item }: { item: ReconciliationRow }) {
+  const order = item.context?.order_summary;
+  const ledger = item.context?.ledger_entry_summary;
+  if (order) {
+    const site = order.site_name || order.api_client_id || null;
+    const ledgerDirection = ledger?.direction === "CREDIT" ? "收入流水" : "支出流水";
+    return (
+      <div className="reconciliation-related-record">
+        <Link
+          className="reconciliation-related-record reconciliation-related-link"
+          title={[order.product_name, order.merchant_order_no, site].filter(Boolean).join(" · ")}
+          aria-label={"查看订单：" + order.product_name + "（" + order.merchant_order_no + (site ? "，" + site : "") + "）"}
+          to={"/orders/" + order.order_id}
+        >
+          <span className="reconciliation-related-title" title={order.product_name}>{order.product_name}</span>
+          <span className="reconciliation-related-meta">
+            <span className="list-code" title={order.merchant_order_no}>{order.merchant_order_no}</span>
+            {site && <span className="reconciliation-related-detail" title={site}>{site}</span>}
+          </span>
+        </Link>
+        {ledger && (
+          <Link
+            className="reconciliation-related-record reconciliation-related-link"
+            title={ledgerDirection + " " + money(ledger.amount_cents) + " · " + ledger.external_event_id}
+            aria-label={"查看流水：" + ledgerDirection + " " + money(ledger.amount_cents) + "，流水号 " + ledger.external_event_id}
+            to={"/reconciliation/transactions/" + ledger.ledger_entry_id + "#source-" + ledger.ledger_entry_id}
+          >
+            <span className="reconciliation-related-meta flex-wrap">
+              <span className="reconciliation-related-amount">{ledgerDirection} {money(ledger.amount_cents)}</span>
+              <ListDateTime value={ledger.occurred_at} inline />
+            </span>
+            <span className="reconciliation-related-meta">
+              <span className="wrap-anywhere" title={ledger.external_event_id}>流水号 {ledger.external_event_id}</span>
+            </span>
+          </Link>
+        )}
+      </div>
+    );
+  }
+
+  if (item.orderId) {
+    return <div className="reconciliation-related-record"><RelatedOrderLink item={item} /></div>;
+  }
+
+  if (ledger) {
+    const direction = ledger.direction === "CREDIT" ? "收入流水" : "支出流水";
+    const reference = ledger.other_account || ledger.memo || "流水号 " + shortId(ledger.external_event_id);
+    return (
+      <Link
+        className="reconciliation-related-record reconciliation-related-link"
+        title={direction + " " + money(ledger.amount_cents) + " · " + ledger.external_event_id}
+        aria-label={"查看流水：" + direction + " " + money(ledger.amount_cents) + "，流水号 " + ledger.external_event_id}
+        to={"/reconciliation/transactions/" + ledger.ledger_entry_id + "#source-" + ledger.ledger_entry_id}
+      >
+        <span className="reconciliation-related-title">
+          {direction} <span className="reconciliation-related-amount">{money(ledger.amount_cents)}</span>
+        </span>
+        <span className="reconciliation-related-meta">
+          <ListDateTime value={ledger.occurred_at} inline />
+          <span className="reconciliation-related-detail" title={reference}>{reference}</span>
+        </span>
+      </Link>
+    );
+  }
+
+  const raw = item.context?.raw_event_summary;
+  if (raw) {
+    const reference = raw.other_account || raw.memo || null;
+    const rawReference = raw.external_event_id
+      ? "流水号 " + shortId(raw.external_event_id)
+      : "原始记录 " + shortId(raw.raw_event_id);
+    const summary = ["支付宝流水", readableRawDirection(raw.direction_text), readableRawAmount(raw.amount_text)]
+      .filter(Boolean)
+      .join(" · ");
+    return (
+      <div className="reconciliation-related-record">
+        <span className="reconciliation-related-title" title={summary}>{summary}</span>
+        <span className="reconciliation-related-meta">
+          <span title={raw.occurred_at_text ?? undefined}>{raw.occurred_at_text || "时间未知"}</span>
+          <span className="reconciliation-related-detail" title={reference ?? rawReference}>{reference ?? rawReference}</span>
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="reconciliation-related-record">
+      <span className="reconciliation-related-title">
+        {(item.rawPageId ? "支付宝流水页 #" : "记录 #") + (item.rawPageId ?? item.id).slice(0, 8)}
+      </span>
+      <span className="reconciliation-related-meta">暂无可关联的订单或单笔流水</span>
+    </div>
   );
 }
 
@@ -294,9 +408,11 @@ function ReconciliationList({
             merchantOrderNo: null,
             externalEventId: item.external_event_id,
             orderId: null,
+            rawPageId: item.raw_page_id,
             reminderIgnored: item.reminder_ignored,
             status: item.status,
             createdAt: item.created_at,
+            context: item.context ?? null,
           })),
         };
       }
@@ -319,9 +435,11 @@ function ReconciliationList({
             merchantOrderNo: null,
             externalEventId: null,
             orderId: item.order_id,
+            rawPageId: null,
             reminderIgnored: item.reminder_ignored,
             status: item.status,
             createdAt: item.created_at,
+            context: item.context ?? null,
           })),
         };
       }
@@ -337,12 +455,10 @@ function ReconciliationList({
       summaryDefault: true,
       cell: (item, context) => (
         <ListIdentity
-          meta={((!context.isColumnVisible("order") && (item.merchantOrderNo || item.orderId)) ||
+          meta={(!context.isColumnVisible("order") ||
             (section !== "conflicts" && item.externalEventId)) && (
             <ListMeta>
-              {!context.isColumnVisible("order") && (item.merchantOrderNo || item.orderId) && (
-                <span>{item.merchantOrderNo && "关联商户订单号（业务网站） "}<RelatedOrderLink item={item} /></span>
-              )}
+              {!context.isColumnVisible("order") && <RelatedRecord item={item} />}
               {section !== "conflicts" && item.externalEventId && (
                 <span className="list-code" title={item.externalEventId}>支付宝流水号 {item.externalEventId}</span>
               )}
@@ -375,11 +491,11 @@ function ReconciliationList({
     },
     {
       id: "order",
-      label: "关联商户订单号（业务网站）",
+      label: "关联记录",
       layout: "text",
       summaryDefault: false,
       responsive: { minWidthRem: 70, basis: "container" },
-      cell: (item) => <RelatedOrderLink item={item} />,
+      cell: (item) => <RelatedRecord item={item} />,
     },
     {
       id: "status",

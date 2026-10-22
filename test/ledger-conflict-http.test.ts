@@ -91,13 +91,31 @@ describe("ledger conflict HTTP operations", () => {
       });
       assert.equal(list.status, 200);
       const listed = await list.json() as {
-        data: Array<{ conflict_id: string; conflict_type: string; status: string }>;
+        data: Array<{
+          conflict_id: string;
+          conflict_type: string;
+          status: string;
+          external_event_id: string | null;
+          context: {
+            order_summary: unknown | null;
+            ledger_entry_summary: unknown | null;
+            raw_event_summary: {
+              raw_event_id: string;
+              external_event_id: string | null;
+              amount_text: string | null;
+            } | null;
+          };
+        }>;
         page: { next_cursor: string | null };
       };
       assert.equal(listed.data.length, 1);
       assert.equal(listed.data[0]?.conflict_id, conflict.conflictId);
       assert.equal(listed.data[0]?.conflict_type, "INVALID_AMOUNT");
       assert.equal(listed.data[0]?.status, "OPEN");
+      assert.equal(listed.data[0]?.context.order_summary, null);
+      assert.equal(listed.data[0]?.context.ledger_entry_summary, null);
+      assert.equal(listed.data[0]?.context.raw_event_summary?.external_event_id, "invalid-amount-http");
+      assert.equal(listed.data[0]?.context.raw_event_summary?.amount_text, "1.001");
       assert.equal(listed.page.next_cursor, null);
 
       const detail = await app.request(

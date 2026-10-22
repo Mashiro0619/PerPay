@@ -568,6 +568,34 @@ export type OrderIdentitySummary = {
     received_amount_cents: number | null;
     payment_confirmed_at: string | null;
 };
+export type ReconciliationLedgerEntrySummary = {
+    ledger_entry_id: ResourceId;
+    external_event_id: string;
+    occurred_at: string;
+    amount_cents: number;
+    direction: 'CREDIT' | 'DEBIT';
+    currency: 'CNY';
+    provider_order_no: string | null;
+    merchant_order_no: string | null;
+    memo: string | null;
+    other_account: string | null;
+};
+export type ReconciliationRawEventSummary = {
+    raw_event_id: ResourceId;
+    external_event_id: string | null;
+    occurred_at_text: string | null;
+    amount_text: string | null;
+    direction_text: string | null;
+    alipay_order_no: string | null;
+    merchant_order_no: string | null;
+    memo: string | null;
+    other_account: string | null;
+};
+export type ReconciliationIssueContext = {
+    order_summary: OrderIdentitySummary | null;
+    ledger_entry_summary: ReconciliationLedgerEntrySummary | null;
+    raw_event_summary: ReconciliationRawEventSummary | null;
+};
 export type AdminOrderNotificationSummary = {
     status: 'NOT_CONFIGURED' | 'NO_EVENT' | 'UNMATERIALIZED' | 'PENDING' | 'LEASED' | 'RETRY_WAIT' | 'ACKNOWLEDGED' | 'DEAD_LETTER';
     total_events: number;
@@ -772,6 +800,7 @@ export type LedgerConflict = {
     raw_event_id: ResourceId | null;
     existing_ledger_entry_id: ResourceId | null;
     external_event_id: string | null;
+    context?: ReconciliationIssueContext | null;
     existing_semantic_fingerprint: Sha256Fingerprint | null;
     incoming_semantic_fingerprint: Sha256Fingerprint | null;
     details: {
@@ -1107,6 +1136,7 @@ export type FinancialException = {
     order_id: ResourceId | null;
     candidate_id: ResourceId | null;
     context_key: string;
+    context?: ReconciliationIssueContext | null;
     details: {
         [key: string]: unknown;
     };

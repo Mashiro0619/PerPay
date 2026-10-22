@@ -6802,6 +6802,57 @@ components:
         payable_amount_cents: { type: integer }
         received_amount_cents: { type: [integer, 'null'] }
         payment_confirmed_at: { type: [string, 'null'], format: date-time }
+    ReconciliationLedgerEntrySummary:
+      type: object
+      additionalProperties: false
+      description: Bounded ledger identity used by reconciliation lists without loading full source evidence.
+      required: [ledger_entry_id, external_event_id, occurred_at, amount_cents, direction, currency, provider_order_no, merchant_order_no, memo, other_account]
+      properties:
+        ledger_entry_id: { $ref: '#/components/schemas/ResourceId' }
+        external_event_id: { type: string }
+        occurred_at: { type: string, format: date-time }
+        amount_cents: { type: integer }
+        direction:
+          type: string
+          enum: [CREDIT, DEBIT]
+        currency: { const: CNY }
+        provider_order_no: { type: [string, 'null'] }
+        merchant_order_no: { type: [string, 'null'] }
+        memo: { type: [string, 'null'] }
+        other_account: { type: [string, 'null'] }
+    ReconciliationRawEventSummary:
+      type: object
+      additionalProperties: false
+      description: Bounded incoming provider record used to identify a ledger conflict before it becomes a ledger entry.
+      required: [raw_event_id, external_event_id, occurred_at_text, amount_text, direction_text, alipay_order_no, merchant_order_no, memo, other_account]
+      properties:
+        raw_event_id: { $ref: '#/components/schemas/ResourceId' }
+        external_event_id: { type: [string, 'null'] }
+        occurred_at_text: { type: [string, 'null'] }
+        amount_text: { type: [string, 'null'] }
+        direction_text: { type: [string, 'null'] }
+        alipay_order_no: { type: [string, 'null'] }
+        merchant_order_no: { type: [string, 'null'] }
+        memo: { type: [string, 'null'] }
+        other_account: { type: [string, 'null'] }
+    ReconciliationIssueContext:
+      type: object
+      additionalProperties: false
+      description: Compact related-record identity for list rows; it intentionally omits full evidence histories and secrets.
+      required: [order_summary, ledger_entry_summary, raw_event_summary]
+      properties:
+        order_summary:
+          oneOf:
+            - $ref: '#/components/schemas/OrderIdentitySummary'
+            - type: 'null'
+        ledger_entry_summary:
+          oneOf:
+            - $ref: '#/components/schemas/ReconciliationLedgerEntrySummary'
+            - type: 'null'
+        raw_event_summary:
+          oneOf:
+            - $ref: '#/components/schemas/ReconciliationRawEventSummary'
+            - type: 'null'
     AdminOrderNotificationSummary:
       type: object
       additionalProperties: false
@@ -7384,6 +7435,10 @@ components:
             - $ref: '#/components/schemas/ResourceId'
             - type: 'null'
         external_event_id: { type: [string, 'null'] }
+        context:
+          oneOf:
+            - $ref: '#/components/schemas/ReconciliationIssueContext'
+            - type: 'null'
         existing_semantic_fingerprint:
           oneOf:
             - $ref: '#/components/schemas/Sha256Fingerprint'
@@ -8168,6 +8223,10 @@ components:
             - $ref: '#/components/schemas/ResourceId'
             - type: 'null'
         context_key: { type: string }
+        context:
+          oneOf:
+            - $ref: '#/components/schemas/ReconciliationIssueContext'
+            - type: 'null'
         details:
           type: object
           additionalProperties: true

@@ -10,6 +10,7 @@ import type { CheckoutVerification } from "../shared/checkout-verification.ts";
 import { adminAccessInputSchema, readAdminAccess, createAdminAccessPolicy } from "../settings/admin-access.ts";
 import { exportOrders, orderExportSchema } from "./order-export.ts";
 import { adminOrderIdentities, type OrderIdentitySummary } from "./admin-order-summary.ts";
+import { loadReconciliationIssueContexts, reconciliationIssueContext, type ReconciliationIssueContext } from "./reconciliation-issue-context.ts";
 import { adminOrderNotificationSummaries } from "./admin-order-notification-summary.ts";
 import { readManualCandidateQuery } from "./manual-candidates.ts";
 import type { ManualRecommendation } from "../reconciliation/manual-candidates.ts";
@@ -3766,10 +3767,21 @@ function serializeFinancialOperation(result: FinancialDecisionResult["operation"
 
 function serializeLedgerConflicts(conflicts: readonly LedgerConflict[], database: AppDatabase) {
   const ignored = adminIgnoredWorkItemIds(database, "LEDGER_CONFLICT", conflicts.map((item) => item.conflictId));
-  return conflicts.map((conflict) => serializeLedgerConflict(conflict, ignored.has(conflict.conflictId)));
+  const issueContexts = loadReconciliationIssueContexts(database, {
+    ledgerEntryIds: conflicts.map((item) => item.existingLedgerEntryId),
+    rawEventIds: conflicts.map((item) => item.rawEventId),
+  });
+  return conflicts.map((conflict) => serializeLedgerConflict(
+    conflict,
+    ignored.has(conflict.conflictId),
+    reconciliationIssueContext(issueContexts, {
+      ledgerEntryId: conflict.existingLedgerEntryId,
+      rawEventId: conflict.rawEventId,
+    }),
+  ));
 }
 
-function serializeLedgerConflict(conflict: LedgerConflict, reminderIgnored: boolean) {
+function serializeLedgerConflict(conflict: LedgerConflict, reminderIgnored: boolean, context: ReconciliationIssueContext) {
   return {
     conflict_id: conflict.conflictId,
     reminder_ignored: reminderIgnored,
@@ -3790,6 +3802,7 @@ function serializeLedgerConflict(conflict: LedgerConflict, reminderIgnored: bool
     conflict_fingerprint: conflict.conflictFingerprint,
     created_at: new Date(conflict.createdAt).toISOString(),
     resolved_at: nullableIsoTime(conflict.resolvedAt),
+    context,
   };
 }
 
@@ -3891,10 +3904,21 @@ function serializeFinancialDecision(result: FinancialDecisionResult) {
 
 function serializeFinancialExceptions(exceptions: readonly FinancialException[], database: AppDatabase) {
   const ignored = adminIgnoredWorkItemIds(database, "FINANCIAL_EXCEPTION", exceptions.map((item) => item.exceptionId));
-  return exceptions.map((exception) => serializeFinancialException(exception, ignored.has(exception.exceptionId)));
+  const issueContexts = loadReconciliationIssueContexts(database, {
+    orderIds: exceptions.map((item) => item.orderId),
+    ledgerEntryIds: exceptions.map((item) => item.ledgerEntryId),
+  });
+  return exceptions.map((exception) => serializeFinancialException(
+    exception,
+    ignored.has(exception.exceptionId),
+    reconciliationIssueContext(issueContexts, {
+      orderId: exception.orderId,
+      ledgerEntryId: exception.ledgerEntryId,
+    }),
+  ));
 }
 
-function serializeFinancialException(exception: FinancialException, reminderIgnored: boolean) {
+function serializeFinancialException(exception: FinancialException, reminderIgnored: boolean, context: ReconciliationIssueContext) {
   return {
     exception_id: exception.exceptionId,
     reminder_ignored: reminderIgnored,
@@ -3911,6 +3935,7 @@ function serializeFinancialException(exception: FinancialException, reminderIgno
     resolution: exception.resolution,
     created_at: new Date(exception.createdAt).toISOString(),
     resolved_at: nullableIsoTime(exception.resolvedAt),
+    context,
   };
 }
 

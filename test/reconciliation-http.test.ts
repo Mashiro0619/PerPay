@@ -65,6 +65,37 @@ describe("reconciliation HTTP contract", () => {
     });
   });
 
+  it("returns compact order and ledger identity with financial exceptions", async () => {
+    await withHttpFixture(async (fixture) => {
+      const auth = await login(fixture.app);
+      const order = fixture.createOrder("context-exception", 1_000);
+      const entry = fixture.recordCredit(
+        "context-exception-entry",
+        order.payableAmountCents + 1,
+        1,
+      );
+      const result = fixture.reconciliation.reconcileEntry(entry.ledgerEntryId);
+      assert.equal(result.kind, "unmatched");
+      if (result.kind !== "unmatched") throw new Error("expected an amount exception");
+
+      const response = await fixture.app.request(
+        "/api/admin/v1/reconciliation/exceptions?limit=10",
+        { headers: { cookie: auth.cookie } },
+      );
+      assert.equal(response.status, 200);
+      const items = await responseData<Array<Record<string, any>>>(response);
+      const item = items.find((candidate) => candidate.exception_id === result.exceptionId);
+      assert.ok(item);
+      assert.equal(item.order_id, order.orderId);
+      assert.equal(item.context.order_summary.order_id, order.orderId);
+      assert.equal(item.context.order_summary.merchant_order_no, order.merchantOrderNo);
+      assert.equal(item.context.order_summary.product_name, order.productName);
+      assert.equal(item.context.ledger_entry_summary.ledger_entry_id, entry.ledgerEntryId);
+      assert.equal(item.context.ledger_entry_summary.amount_cents, order.payableAmountCents + 1);
+      assert.equal(item.context.raw_event_summary, null);
+    });
+  });
+
   it("paginates settlement history with a status-bound cursor", async () => {
     await withHttpFixture(async (fixture) => {
       const settlements = [1_001, 2_001, 3_001].map((amount, index) =>
