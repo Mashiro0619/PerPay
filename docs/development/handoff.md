@@ -201,7 +201,7 @@ flowchart LR
 
 ### 6.1 环境与只读预览
 
-要求 Node.js `>=24.15.0 <25`。本次实际命令环境为 Node.js **24.15.0**、npm **12.0.2**；当前 CI 固定 Node.js **24.20.0**。部署目标为 Linux / Linux 容器；Windows 开发测试通过不等于 Linux 权限和容器验收通过。
+要求 Node.js `>=24.15.0 <25`，开发、CI 与 Docker 统一使用 Node.js **24.22.1**。部署目标为 Linux / Linux 容器；Windows 开发测试通过不等于 Linux 权限和容器验收通过。
 
 在仓库根目录执行；已有依赖不必为了阅读文档重复安装：
 

@@ -152,7 +152,7 @@ test("render-release-compose follows the package version channel without changin
 test("the application image contains only the pinned Node runtime and application", () => {
   assert.match(
     dockerfileText,
-    /node:24\.20\.0-alpine3\.24@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf/u,
+    /node:24\.22\.1-alpine3\.24@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53/u,
   );
   assert.doesNotMatch(dockerfileText, /GO_IMAGE|RESTIC|golang|--from=restic|third_party/iu);
   assert.match(dockerfileText, /org\.opencontainers\.image\.licenses="MIT"/u);
