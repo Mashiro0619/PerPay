@@ -162,44 +162,53 @@ describe("notification signing key rotation", () => {
   it.each(["timeout", "hidden"])(
     "clears only displayed plaintext on %s, without deleting the stored key",
     async (reason) => {
-      const timer = vi.spyOn(window, "setTimeout");
       const view = mountOnboarding({
         stage: 4,
         notificationKey: true,
         path: "/settings/onboarding/optional",
       });
-      const user = userEvent.setup();
-      await user.click(
-        await screen.findByRole("button", { name: "查看通知密钥" }),
-      );
-      const dialog = await screen.findByRole("dialog", {
-        name: "通知签名密钥",
-      });
-      await within(dialog).findByText(
-        "synthetic-onboarding-key-not-a-real-secret",
-      );
-      expect(within(dialog).getByText(SECRET_DISPLAY_NOTICE)).toBeVisible();
-      const before = structuredClone(view.saved);
-      const writes = view.writes().length;
-      if (reason === "timeout") {
-        const expire = timer.mock.calls.find(
-          ([, delay]) => delay === 60000,
-        )?.[0];
-        expect(typeof expire).toBe("function");
-        act(() => (expire as () => void)());
-      } else {
-        const hidden = vi
-          .spyOn(document, "hidden", "get")
-          .mockReturnValue(true);
-        fireEvent(document, new Event("visibilitychange"));
+      const reveal = await screen.findByRole("button", { name: "查看通知密钥" });
+      const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+      // Advance the real display lifetime instead of selecting a timeout by
+      // delay: the session query also schedules timers around sixty seconds.
+      vi.useFakeTimers();
+      try {
+        await act(async () => {
+          fireEvent.click(reveal);
+          await vi.advanceTimersByTimeAsync(0);
+        });
+        const dialog = screen.getByRole("dialog", { name: "通知签名密钥" });
+        expect(within(dialog).getByText(
+          "synthetic-onboarding-key-not-a-real-secret",
+        )).toBeVisible();
+        expect(within(dialog).getByText(SECRET_DISPLAY_NOTICE)).toBeVisible();
+        const before = structuredClone(view.saved);
+        const writes = view.writes().length;
+        if (reason === "timeout") {
+          await act(async () => {
+            await vi.advanceTimersByTimeAsync(59_999);
+          });
+          expect(dialog).toBeVisible();
+          expect(within(dialog).getByText(
+            "synthetic-onboarding-key-not-a-real-secret",
+          )).toBeVisible();
+          await act(async () => {
+            await vi.advanceTimersByTimeAsync(1);
+          });
+        } else {
+          hidden.mockReturnValue(true);
+          fireEvent(document, new Event("visibilitychange"));
+        }
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+        expect(screen.queryByText(
+          "synthetic-onboarding-key-not-a-real-secret",
+        )).not.toBeInTheDocument();
+        expect(view.saved).toEqual(before);
+        expect(view.writes()).toHaveLength(writes);
+      } finally {
+        vi.useRealTimers();
         hidden.mockRestore();
       }
-      timer.mockRestore();
-      await waitFor(() =>
-        expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
-      );
-      expect(view.saved).toEqual(before);
-      expect(view.writes()).toHaveLength(writes);
     },
   );
 });
