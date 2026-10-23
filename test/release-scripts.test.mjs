@@ -313,7 +313,7 @@ test("daily CI keeps bounded Linux checks and a separate Chromium regression job
   ]);
   assert.doesNotMatch(ciWorkflowText, /windows|docker build|trivy|compose up/iu);
   assert.equal(workflow.jobs.ui["runs-on"], "ubuntu-24.04");
-  assert.equal(workflow.jobs.ui["timeout-minutes"], 15);
+  assert.equal(workflow.jobs.ui["timeout-minutes"], 25);
   assert.deepEqual(workflow.jobs.ui.steps.map(step => step.run).filter(Boolean), [
     "npm ci --ignore-scripts", "npx playwright install --with-deps chromium", "npm run build", "npm run test:ui -- --project core",
   ]);
