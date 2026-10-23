@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
 
 ARG NODE_IMAGE=node:24.22.1-alpine3.24@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53
-ARG APP_VERSION=1.0.0
+ARG APP_VERSION=1.0.0-alpha.1
 
 FROM ${NODE_IMAGE} AS dependencies
 WORKDIR /app
