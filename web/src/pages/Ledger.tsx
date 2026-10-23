@@ -7,7 +7,7 @@ import { resourceIdPattern } from "@/lib/format";
 import { useCursor } from "@/lib/cursor";
 import { label } from "@/lib/labels";
 import { useListQuery } from "@/lib/list-query";
-import { LEDGER_ASSOCIATED_DATE_FIELDS, LEDGER_DATE_FIELDS, LEDGER_SORT_FIELDS, LEDGER_STATES, readLedgerFilters, ledgerAmountInput } from "@/lib/ledger-filters";
+import { DEFAULT_LEDGER_DIRECTION, LEDGER_ASSOCIATED_DATE_FIELDS, LEDGER_DATE_FIELDS, LEDGER_SORT_FIELDS, LEDGER_STATES, readLedgerFilters, ledgerAmountInput } from "@/lib/ledger-filters";
 import { retainListData } from "@/lib/list-placeholder";
 import { useOptionalSystemStatus } from "@/features/system-status";
 import { BusinessTable, type BusinessColumn } from "@/components/business-table";
@@ -28,7 +28,7 @@ import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 
-const directionOptions = [{ value: "", label: "全部收支" }, { value: "CREDIT", label: "收入" }, { value: "DEBIT", label: "支出" }];
+const directionOptions = [{ value: "ALL", label: "全部收支" }, { value: "CREDIT", label: "收入" }, { value: "DEBIT", label: "支出" }];
 const stateOptions = [{ value: "", label: "全部处理状态" }, ...LEDGER_STATES.map(value => ({ value, label: label(value) }))];
 const associationOptions = [{ value: "", label: "全部关联" }, { value: "UNMATCHED", label: "未关联" }, { value: "MATCHED", label: "已关联" }, { value: "MULTIPLE", label: "多笔关联" }];
 const reversalOptions = [{ value: "", label: "全部撤销记录" }, { value: "true", label: "有撤销记录" }, { value: "false", label: "无撤销记录" }];
@@ -48,6 +48,7 @@ export default function Ledger() {
 export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElement | null) => void }) {
   const navigate = useNavigate();
   const [search] = useSearchParams();
+  const direction = search.get("direction") || DEFAULT_LEDGER_DIRECTION;
   const control = useListQuery(LEDGER_SORT_FIELDS, "occurred_at", "desc", LEDGER_DATE_FIELDS);
   const associatedDates = useListQuery(LEDGER_SORT_FIELDS, "occurred_at", "desc", LEDGER_ASSOCIATED_DATE_FIELDS);
   const pagination = useCursor();
@@ -65,7 +66,7 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
   useLedgerListPosition(!!query.data && !query.isPlaceholderData && !query.isFetching);
   const listFilters: ListFilter[] = [
     { key: "association_status", label: "关联状态", value: search.get("association_status") ?? "", options: associationOptions },
-    { key: "direction", label: "收支方向", value: search.get("direction") ?? "", options: directionOptions },
+    { key: "direction", label: "收支方向", value: direction, defaultValue: DEFAULT_LEDGER_DIRECTION, options: directionOptions },
     { key: "state", label: "PerPay 处理状态", value: search.get("state") ?? "", options: stateOptions },
     { key: "has_reversals", label: "撤销记录", value: search.get("has_reversals") ?? "", options: reversalOptions },
   ];
@@ -92,7 +93,7 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
     { id: "handled_at", label: "最近处理时间", sortBy: "handled_at", layout: "datetime", align: "center", summaryDefault: false, responsive: { minWidthRem: 100, basis: "container" }, cell: entry => entry.last_handled_at ? <ListDateTime value={entry.last_handled_at} /> : "—" },
   ];
   const hasAmounts = search.has("min_amount_cents") || search.has("max_amount_cents");
-  const activeFilters = !!(control.query.q || control.query.createdFrom || control.query.createdTo || associatedDates.query.createdFrom || associatedDates.query.createdTo || search.get("direction") || search.get("state") || search.get("association_status") || search.has("has_reversals") || hasAmounts);
+  const activeFilters = !!(control.query.q || control.query.createdFrom || control.query.createdTo || associatedDates.query.createdFrom || associatedDates.query.createdTo || direction !== DEFAULT_LEDGER_DIRECTION || search.get("state") || search.get("association_status") || search.has("has_reversals") || hasAmounts);
   function refresh() { if (!filterError) void query.refetch(); if (system) void system.status.refetch(); }
   const refreshButton = <RefreshButton busy={query.isFetching} onClick={refresh} />;
   return <ListColumnsProvider><div className="flex min-w-0 flex-col gap-3" data-business-list="ledger">

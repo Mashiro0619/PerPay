@@ -9,8 +9,8 @@ describe("administrator ledger filters", () => {
   it.each(["-1", "+1", ".01", "1.", "1.001", "1e3", "Infinity", "NaN", "1,000", "10000000000", "9".repeat(500)])("rejects invalid or excessive amounts %s", value => {
     expect(() => parseLedgerAmount(value)).toThrow();
   });
-  it("queries all transaction dates in descending order by default", () => {
-    expect(readLedgerFilters(new URLSearchParams())).toEqual({ sort_by: "occurred_at", sort_order: "desc" });
+  it("queries income across all transaction dates in descending order by default", () => {
+    expect(readLedgerFilters(new URLSearchParams())).toEqual({ direction: "CREDIT", sort_by: "occurred_at", sort_order: "desc" });
   });
   it("forwards only ledger filters and keeps zero boundaries", () => {
     const selected = "q= 付款 &direction=DEBIT&state=IGNORED&occurred_from=2026-10-01&occurred_to=2026-10-21&min_amount_cents=0&max_amount_cents=999999999999&sort_order=asc&selected_site=site-a&created_from=bad&api_client_id=ignored";
@@ -18,7 +18,7 @@ describe("administrator ledger filters", () => {
   });
   it("keeps current association, reversal history, and both date ranges independent", () => {
     expect(readLedgerFilters(new URLSearchParams("association_status=MATCHED&has_reversals=true&occurred_from=2026-10-01&occurred_to=2026-10-02&associated_from=2026-10-03&associated_to=2026-10-04&sort_by=handled_at"))).toEqual({
-      association_status: "MATCHED", has_reversals: true, occurred_from: "2026-10-01", occurred_to: "2026-10-02", associated_from: "2026-10-03", associated_to: "2026-10-04", sort_by: "handled_at", sort_order: "desc",
+      direction: "CREDIT", association_status: "MATCHED", has_reversals: true, occurred_from: "2026-10-01", occurred_to: "2026-10-02", associated_from: "2026-10-03", associated_to: "2026-10-04", sort_by: "handled_at", sort_order: "desc",
     });
     expect(readLedgerFilters(new URLSearchParams("has_reversals=false"))).toHaveProperty("has_reversals", false);
   });

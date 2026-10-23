@@ -7,6 +7,7 @@ export const LEDGER_ASSOCIATED_DATE_FIELDS: ListDateFields = { from: "associated
 export const LEDGER_SORT_FIELDS = ["occurred_at", "associated_at", "handled_at", "amount_cents", "event_sequence"] as const;
 export const LEDGER_ASSOCIATION_STATES = ["UNMATCHED", "MATCHED", "MULTIPLE"] as const;
 export const LEDGER_DIRECTIONS = ["CREDIT", "DEBIT"] as const;
+export const DEFAULT_LEDGER_DIRECTION = "CREDIT";
 export const LEDGER_STATES = ["UNALLOCATED", "CANDIDATE", "ALLOCATED", "CONFLICT", "ISOLATED", "IGNORED"] as const;
 export const MAX_LEDGER_AMOUNT_CENTS = 999_999_999_999;
 
@@ -69,11 +70,11 @@ export function validateLedgerAmountRange(minimum: number | undefined, maximum: 
 export function readLedgerFilters(search: URLSearchParams) {
   const list = readListQuery(search, LEDGER_SORT_FIELDS, "occurred_at", "desc", LEDGER_DATE_FIELDS);
   const q = normalizeKeyword(list.query.q);
-  const direction = search.get("direction") || undefined;
+  const direction = search.get("direction") || DEFAULT_LEDGER_DIRECTION;
   const state = search.get("state") || undefined;
   const association = search.get("association_status") || undefined;
   const hasReversals = search.get("has_reversals");
-  if (direction && !LEDGER_DIRECTIONS.includes(direction as typeof LEDGER_DIRECTIONS[number])) throw new Error("收支方向无效，请重新选择筛选条件。");
+  if (direction !== "ALL" && !LEDGER_DIRECTIONS.includes(direction as typeof LEDGER_DIRECTIONS[number])) throw new Error("收支方向无效，请重新选择筛选条件。");
   if (state && !LEDGER_STATES.includes(state as typeof LEDGER_STATES[number])) throw new Error("PerPay 处理状态无效，请重新选择筛选条件。");
   if (association && !LEDGER_ASSOCIATION_STATES.includes(association as typeof LEDGER_ASSOCIATION_STATES[number])) throw new Error("关联状态无效，请重新选择筛选条件。");
   if (hasReversals !== null && hasReversals !== "true" && hasReversals !== "false") throw new Error("撤销记录筛选无效，请重新选择筛选条件。");
@@ -86,7 +87,7 @@ export function readLedgerFilters(search: URLSearchParams) {
   validateLedgerAmountRange(minimum, maximum);
   return {
     ...(q ? { q } : {}),
-    ...(direction ? { direction: direction as typeof LEDGER_DIRECTIONS[number] } : {}),
+    ...(direction !== "ALL" ? { direction: direction as typeof LEDGER_DIRECTIONS[number] } : {}),
     ...(state ? { state: state as typeof LEDGER_STATES[number] } : {}),
     ...(association ? { association_status: association as typeof LEDGER_ASSOCIATION_STATES[number] } : {}),
     ...(hasReversals !== null ? { has_reversals: hasReversals === "true" } : {}),
