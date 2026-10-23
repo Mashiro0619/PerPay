@@ -36,7 +36,6 @@ import { CopyValue } from "../components/copy-value";
 import {
   checkoutCopy,
   checkoutMoney,
-  checkoutPaymentBasisDescription,
   merchantReturnUrl,
   type CheckoutInitial,
 } from "../../../src/shared/checkout-view";
@@ -60,10 +59,6 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
   const order = state.order,
     copy = checkoutCopy[state.visual];
   const systemName = order?.display?.name ?? initial.systemName ?? "PerPay";
-  const paymentExplanation = state.visual === "CONFIRMED" && order
-    ? checkoutPaymentBasisDescription(order.payment.basis, systemName)
-    : null;
-  const detail = paymentExplanation ?? copy.detail;
   const showProductName = order?.display?.show_product_name ?? initial.showProductName;
   const awaitingStartup = state.visual === "UNPAID" && !state.initialized;
   const canPay =
@@ -277,7 +272,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                   }
                 >
                   {awaitingStartup
-                    ? "等待页面就绪"
+                    ? "加载中"
                     : state.suspended
                       ? "等待状态确认"
                       : copy.badge}
@@ -299,13 +294,13 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                 </Badge>
               </CardAction>
               {!canPay && paymentHeading}
-              {(awaitingStartup || state.suspended || detail) && (
+              {(awaitingStartup || state.suspended || copy.detail) && (
                 <CardDescription className="text-center">
                   {awaitingStartup
-                    ? "付款组件尚未就绪，暂不显示二维码。若一直停留在此，请启用 JavaScript 或刷新页面。"
+                    ? "请启用 JavaScript 或刷新页面后再付款。"
                     : state.suspended
                       ? "付款期限已到，请重新检查订单状态。"
-                      : detail}
+                      : copy.detail}
                 </CardDescription>
               )}
             </CardHeader>
@@ -479,7 +474,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                       className="hidden text-sm leading-relaxed text-muted-foreground md:block"
                       data-checkout-desktop-guide
                     >
-                      用支付宝扫描二维码。请在支付宝中核对收款方，按显示的准确金额付款；付款后可在此核对结果。
+                      用支付宝扫码，核对收款方并按准确金额付款。
                     </p>
                   )}
                 </CardContent>
@@ -501,7 +496,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
         )}
         <p className="sr-only" role="status" aria-live="polite">
           {awaitingStartup
-            ? "付款组件尚未就绪，请暂勿付款。"
+            ? "页面加载中，请暂勿付款。"
             : state.suspended
               ? "付款期限已到，请暂勿付款。"
               : copy.heading}

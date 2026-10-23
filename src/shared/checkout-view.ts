@@ -67,7 +67,7 @@ export const checkoutCopy: Record<
   DISPUTED: {
     badge: "付款待核实",
     heading: "付款待核实",
-    detail: "商家撤销了这笔收款确认。请先联系商家核实，不要重复付款。",
+    detail: "请联系商家核实，勿重复付款。",
   },
   CLOSED: {
     badge: "订单已关闭",
@@ -77,7 +77,7 @@ export const checkoutCopy: Record<
   EXPIRED: {
     badge: "订单已过期",
     heading: "订单已过期",
-    detail: "付款时间已结束。若已付款，请先查询付款状态；仍未确认时，请返回商家核查，勿重复付款。",
+    detail: "已付款请查询付款状态；若仍未确认，请联系商家，勿重复付款。",
   },
   NOT_FOUND: {
     badge: "订单不可用",
@@ -95,14 +95,6 @@ export const checkoutCopy: Record<
     detail: "收款服务暂不可用，请勿付款。页面会自动重试。",
   },
 };
-export function checkoutPaymentBasisDescription(
-  basis: CheckoutViewOrder["payment"]["basis"],
-  systemName: string,
-): string | null {
-  if (basis === "INFERRED") return `${systemName} 按支付宝流水的金额和付款时间推断，已确认这笔收款。`;
-  if (basis === "MANUAL") return "商家管理员已根据支付宝流水人工确认这笔收款。";
-  return null;
-}
 export function checkoutState(order: CheckoutViewOrder): CheckoutViewState {
   if (order.payment.status !== "UNPAID") return order.payment.status;
   if (order.checkout.status !== "OPEN") return order.checkout.status;

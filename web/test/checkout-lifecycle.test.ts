@@ -119,7 +119,7 @@ describe("checkout payment layout", () => {
       /data-qr-image|data-countdown|放大二维码|保存二维码/,
     );
     expect(html).toContain("请暂勿付款");
-    expect(html).toContain("付款组件尚未就绪");
+    expect(html).toContain("请启用 JavaScript 或刷新页面后再付款");
     expect(html).toContain('href="/checkout/pct1_test"');
     expect(html).toContain("data-checkout-reload");
     expect(html).toContain("刷新页面");
@@ -285,7 +285,7 @@ describe("checkout desktop composition", () => {
     expect(container.querySelectorAll("[data-countdown]")).toHaveLength(1);
     expect(
       summary.querySelector("[data-checkout-desktop-guide]"),
-    ).toHaveTextContent("支付宝扫描二维码");
+    ).toHaveTextContent("支付宝扫码");
   });
   it("keeps the same QR and in-flight read while resizing instead of mounting another checkout", async () => {
     const { fetch: read, finish } = pendingFetch();
@@ -1025,7 +1025,7 @@ describe("checkout merchant actions", () => {
         screen.queryByText("此订单不再收款，请勿付款。"),
       ).not.toBeInTheDocument();
       if (state === "EXPIRED")
-        expect(screen.getByText(/若已付款，请先查询付款状态/)).toBeVisible();
+        expect(screen.getByText(/已付款请查询付款状态/)).toBeVisible();
     },
   );
 

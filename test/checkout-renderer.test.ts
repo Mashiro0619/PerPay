@@ -56,11 +56,11 @@ describe("public checkout SSR", () => {
     assert.match(html, /data-payable-amount[^>]*>¥10\.01<\/strong>/);
     assert.doesNotMatch(html, /data-qr-image|data-countdown|放大二维码|保存二维码/);
     assert.match(checkoutText(html), /请暂勿付款/);
-    assert.match(checkoutText(html), /付款组件尚未就绪/);
+    assert.match(checkoutText(html), /请启用 JavaScript 或刷新页面后再付款/);
     assert.match(html, /<a[^>]+href="\/checkout\/pct1_test-token"[^>]+data-checkout-reload/);
     assert.match(checkoutText(html), /应付金额/);
     assert.doesNotMatch(checkoutText(html), /请勿修改|扫码付款/);
-    assert.match(checkoutText(html), /等待页面就绪/);
+    assert.match(checkoutText(html), /加载中/);
     assert.match(html, /data-brand="alipay"/);
     assert.match(html, /data-has-order="true"/);
     assert.match(html, /data-checkout-page/);
@@ -165,7 +165,7 @@ describe("public checkout SSR", () => {
     assert.equal(readCheckoutInitial(html).checkout?.refund.status, "PARTIAL");
     assert.match(checkoutText(html), /收款已确认/);
     assert.match(checkoutText(html), /历史退款记录：部分/);
-    assert.match(checkoutText(html), /PerPay 按支付宝流水的金额和付款时间推断/);
+    assert.doesNotMatch(checkoutText(html), /付款时间推断|人工确认这笔收款/);
     assert.doesNotMatch(html, /data-qr-image/);
   });
   it("hides return during active payment and renders a safe confirmed return target", () => {

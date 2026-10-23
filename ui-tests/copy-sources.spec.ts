@@ -253,17 +253,20 @@ test("a genuine default order summary keeps a contract-length synthetic merchant
   expect(writes).toEqual([]);
 });
 
-test("public checkout distinguishes inferred, manual and unavailable confirmation bases and historical refunds", async ({ page, manifest }, info) => {
+test("public checkout shows payment results and historical refunds without internal confirmation explanations", async ({ page, manifest }, info) => {
   test.setTimeout(180_000);
   const writes = observeWrites(page, manifest);
   const confirmedPath = manifest.checkouts.fullEvidence!;
   const confirmed = await data<PublicCheckoutEnvelope["data"]>(page, manifest, confirmedPath.replace("/checkout/", "/api/public/v1/checkouts/"));
   expect(confirmed.payment.status).toBe("CONFIRMED");
   expect(confirmed.payment.basis).toBe("INFERRED");
-  const confirmedExplanation = (confirmed.display?.name ?? "PerPay") + " " + automaticCheckoutCopy;
   const serverDocument = await page.request.get(manifest.origin + confirmedPath);
   expect(serverDocument.status()).toBe(200);
-  expect(await serverDocument.text()).toContain(confirmedExplanation);
+  const serverMarkup = await serverDocument.text();
+  expect(serverMarkup).toContain("收款已确认");
+  expect(serverMarkup).toContain("data-payable-amount");
+  expect(serverMarkup).not.toContain(automaticCheckoutCopy);
+  expect(serverMarkup).not.toContain(manualCheckoutCopy);
   await page.goto(manifest.origin + confirmedPath);
   const openPath = manifest.checkouts.open!;
   const publicApi = openPath.replace("/checkout/", "/api/public/v1/checkouts/");
@@ -277,7 +280,9 @@ test("public checkout distinguishes inferred, manual and unavailable confirmatio
     await presentation(page, width, theme);
     await page.goto(manifest.origin + confirmedPath);
     const payment = page.locator("[data-checkout-payment]");
-    await expect(payment.getByText(confirmedExplanation, { exact: true })).toBeVisible();
+    await expect(payment.getByRole("heading", { name: "收款已确认", exact: true })).toBeVisible();
+    await expect(payment.locator("[data-payable-amount]")).toBeVisible();
+    await expect(payment.getByText(automaticCheckoutCopy)).toHaveCount(0);
     await expect(payment.getByText(manualCheckoutCopy, { exact: true })).toHaveCount(0);
     await expect(page.locator("[data-qr-image]")).toHaveCount(0);
     await record(page, info, { feature: "copy-source-checkout", evidence: "isolated-local-domain-api-and-server-html", width, theme, basis: confirmed.payment.basis });
@@ -298,9 +303,8 @@ test("public checkout distinguishes inferred, manual and unavailable confirmatio
         await page.goto(manifest.origin + openPath);
         await page.clock.runFor(1600);
         await expect(page.getByRole("heading", { name: "收款已确认", exact: true })).toBeVisible();
-        await expect(payment.getByText((original.display?.name ?? "PerPay") + " " + automaticCheckoutCopy, { exact: true })).toHaveCount(0);
-        if (scenario.basis === "MANUAL") await expect(payment.getByText(manualCheckoutCopy, { exact: true })).toBeVisible();
-        else await expect(payment.getByText(manualCheckoutCopy, { exact: true })).toHaveCount(0);
+        await expect(payment.getByText(automaticCheckoutCopy)).toHaveCount(0);
+        await expect(payment.getByText(manualCheckoutCopy, { exact: true })).toHaveCount(0);
         const refund = page.getByRole("region", { name: "订单信息", exact: true }).getByRole("alert");
         await expect(refund).toContainText("历史退款记录：" + scenario.refundLabel);
         await expect(refund.getByText("此为历史退款记录，具体金额请联系商家。", { exact: true })).toBeVisible();

@@ -22,16 +22,21 @@ function markup(
   return renderToString(<CheckoutApp initial={initial} />);
 }
 
-describe("checkout explanations preserve the source of financial decisions", () => {
-  it("attributes automatic confirmation to the system's amount and time inference in the first render", () => {
+describe("checkout presents payment results without internal confirmation explanations", () => {
+  it("shows the confirmed result, amount and order without automatic inference details in the first render", () => {
     const html = markup("INFERRED");
-    expect(html).toContain("PerPay 按支付宝流水的金额和付款时间推断");
+    expect(html).toContain("收款已确认");
+    expect(html).toContain("¥10.01");
+    expect(html).toContain("merchant-source-number");
+    expect(html).not.toContain("按支付宝流水的金额和付款时间推断");
     expect(html).not.toContain("商家管理员已根据支付宝流水人工确认");
     expect(html).not.toContain("data-qr-image");
   });
-  it("attributes manual confirmation to the merchant administrator without claiming automatic inference", () => {
+  it("shows manual confirmation as the payment result without an internal explanation", () => {
     const html = markup("MANUAL");
-    expect(html).toContain("商家管理员已根据支付宝流水人工确认这笔收款");
+    expect(html).toContain("收款已确认");
+    expect(html).toContain("¥10.01");
+    expect(html).not.toContain("商家管理员已根据支付宝流水人工确认这笔收款");
     expect(html).not.toContain("付款时间推断");
   });
   it("does not invent a confirmation basis when it is unavailable", () => {
@@ -40,9 +45,11 @@ describe("checkout explanations preserve the source of financial decisions", () 
     expect(html).not.toContain("付款时间推断");
     expect(html).not.toContain("商家管理员已根据支付宝流水人工确认");
   });
-  it("keeps a reversed confirmation disputed instead of explaining it as a current successful receipt", () => {
+  it("keeps disputed payments actionable without describing internal reversal details", () => {
     const html = markup("INFERRED", "DISPUTED");
-    expect(html).toContain("商家撤销了这笔收款确认");
+    expect(html).toContain("付款待核实");
+    expect(html).toContain("请联系商家核实，勿重复付款。");
+    expect(html).not.toContain("商家撤销了这笔收款确认");
     expect(html).not.toContain("已确认这笔收款");
     expect(html).not.toContain("data-qr-image");
   });
@@ -53,7 +60,7 @@ describe("checkout explanations preserve the source of financial decisions", () 
     expect(html).not.toContain("款项已");
     expect(html).not.toContain("refund_mark");
   });
-  it("escapes the configured system name in the explanation", () => {
+  it("escapes the configured system name in the checkout identity", () => {
     const html = markup("INFERRED", "CONFIRMED", "NONE", "<script>example</script>");
     expect(html).toContain("&lt;script&gt;example&lt;/script&gt;");
     expect(html).not.toContain("<script>example</script>");
