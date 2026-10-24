@@ -63,7 +63,8 @@ describe("pending key continuity across onboarding steps", () => {
     expect(
       within(help).getByRole("heading", { name: "填回支付宝公钥" }),
     ).toBeVisible();
-    expect(within(help).getByText(/点击“验证并启用后继续”/)).toBeVisible();
+    expect(within(help).getByText(/上传后，将支付宝页面显示的支付宝公钥填入表单/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "验证并启用后继续" })).toBeEnabled();
     expect(
       screen.queryByText(/本页保存不会启用新密钥/),
     ).not.toBeInTheDocument();
@@ -227,7 +228,7 @@ describe("authoritative verification failure after an unknown response", () => {
     expect(await within(dialog).findByText(/支付宝验证未通过/)).toBeVisible();
     expect(input).toBeEnabled();
     expect(
-      within(dialog).queryByText(/上次操作结果尚未确认/),
+      within(dialog).queryByText(/上次结果未确认/),
     ).not.toBeInTheDocument();
     expect(
       within(dialog).queryByRole("button", { name: "重试上一次操作" }),
@@ -298,7 +299,7 @@ describe("authoritative verification failure after an unknown response", () => {
       );
       await within(dialog).findByText("此响应不证明先前操作未执行");
       expect(input).toBeDisabled();
-      expect(within(dialog).getByText(/上次操作结果尚未确认/)).toBeVisible();
+      expect(within(dialog).getByText(/上次结果未确认/)).toBeVisible();
       expect(unloadBlocked()).toBe(true);
       expect(await body(view, 1)).toEqual(await body(view, 0));
       expect(view.writes()).toHaveLength(2);

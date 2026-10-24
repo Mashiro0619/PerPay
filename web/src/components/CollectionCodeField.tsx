@@ -206,7 +206,7 @@ export function CollectionCodeField({
               ? "正在识别…"
               : dragging
                 ? "松开即可识别"
-                : "拖入经营码二维码"}
+                : "经营码图片"}
           </EmptyTitle>
           <EmptyDescription id={uploadHintId}>
             PNG、JPG、WebP，最大 10 MB

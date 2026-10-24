@@ -104,7 +104,7 @@ describe("bounded secret content", () => {
       expect(body).not.toContainElement(footer);
       expect(textbox).toHaveValue(longValue);
       expect(dialog).toHaveAccessibleDescription(
-        "60 秒后或离开当前浏览器标签页时，弹窗会关闭并清除页面中的密钥明文；服务端密钥不受影响，可再次查看。",
+        "60 秒后或离开此标签页时，弹窗关闭并清除页面明文；密钥仍可再次查看。",
       );
       await user.click(
         within(footer).getByRole("button", {

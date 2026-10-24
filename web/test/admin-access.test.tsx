@@ -64,7 +64,7 @@ describe("admin access settings", () => {
     await user.click(screen.getByRole("button", { name: "保存白名单" }));
     expect(requests.filter((r) => r.method === "PUT")).toHaveLength(0);
     const confirmation = screen.getByRole("dialog", { name: "确认保存访问规则？" });
-    const explanation = within(confirmation).getByText(/保存后立即生效/);
+    const explanation = within(confirmation).getByText(/保存立即生效/);
     expect(explanation.closest("[data-admin-dialog-body]")).not.toBeNull();
     expect(confirmation).toHaveAccessibleDescription(explanation.textContent ?? "");
     await user.click(screen.getByRole("button", { name: "确认保存" }));

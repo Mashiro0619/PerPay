@@ -32,14 +32,14 @@ async function regenerationButton(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("application public key generation and replacement", () => {
-  it("explains the key pair and only generates on an explicit first-use click", async () => {
+  it("explains key destinations and only generates on an explicit first-use click", async () => {
     const view = mountOnboarding();
     const user = userEvent.setup();
     expect(
       await screen.findByRole("heading", { name: "应用公钥", level: 2 }),
     ).toBeVisible();
     expect(
-      screen.getByText("应用公钥和应用私钥是一对，合称“应用密钥对”。"),
+      screen.getByText("应用私钥：保存在 PerPay，不要上传到支付宝。"),
     ).toBeVisible();
     expect(
       screen.getByRole("link", { name: "导入已有应用私钥" }),
@@ -101,7 +101,7 @@ describe("application public key generation and replacement", () => {
     await user.click(trigger);
     const dialog = await screen.findByRole("alertdialog", { name: "更换应用密钥对？",
     });
-    expect(within(dialog).getByText(/当前收款继续使用原密钥/)).toBeVisible();
+    expect(within(dialog).getByText(/当前收款仍使用原密钥/)).toBeVisible();
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "取消" })).toHaveFocus());
     expect(within(dialog).queryByRole("button", { name: "关闭" })).not.toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "生成新密钥对" })).toHaveClass("text-danger-foreground");
@@ -117,7 +117,7 @@ describe("application public key generation and replacement", () => {
     await user.click(await regenerationButton(user));
     const dialog = await screen.findByRole("alertdialog", { name: "更换应用密钥对？",
     });
-    expect(within(dialog).getByText(/替换尚未接入的原密钥对/)).toBeVisible();
+    expect(within(dialog).getByText(/原公私钥将被替换，请将新公钥重新上传到支付宝/)).toBeVisible();
     await user.click(
       within(dialog).getByRole("button", { name: "生成新密钥对" }),
     );
@@ -468,10 +468,12 @@ describe("application public key generation and replacement", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "放弃新公钥" }));
     const dialog = await screen.findByRole("dialog", { name: "放弃新公钥？" });
-    expect(within(dialog).getByText(/不会撤回支付宝侧的上传/)).toBeVisible();
+    expect(within(dialog).getByText(/不会撤回支付宝上传/)).toBeVisible();
     const submit = within(dialog).getByRole("button", { name: "确认放弃" });
     expect(submit).toBeDisabled();
-    await user.click(within(dialog).getByRole("checkbox"));
+    await user.click(within(dialog).getByRole("checkbox", {
+      name: "我确认新公钥未上传，或已恢复原配置并同步支付宝公钥。",
+    }));
     await user.click(submit);
     expect(
       await screen.findByText("已放弃待启用公钥，当前密钥未更换。"),
@@ -509,7 +511,7 @@ describe("application public key generation and replacement", () => {
       await screen.findByRole("button", { name: "导入已有应用私钥（可选）" }),
     );
     expect(screen.getByLabelText("应用私钥")).toBeVisible();
-    expect(screen.getByText(/首次接入可导入已有应用私钥/)).toBeVisible();
+    expect(screen.getByText(/可导入已有应用私钥/)).toBeVisible();
     expect(view.writes()).toHaveLength(0);
   });
 

@@ -59,7 +59,7 @@ describe("website-aware instance settings", () => {
   it("explains the retired notification page and links to websites", async () => {
     mount("/settings/notifications");
     expect(await screen.findByText("通知设置已迁移")).toBeVisible();
-    expect(screen.getByRole("link", { name: "前往业务网站" })).toHaveAttribute("href", "/sites");
+    expect(screen.getByRole("link", { name: "前往业务网站配置通知" })).toHaveAttribute("href", "/sites");
     expect(screen.queryByRole("switch", { name: "启用通知" })).not.toBeInTheDocument();
   });
 

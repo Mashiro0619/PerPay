@@ -76,7 +76,7 @@ describe("notification signing key rotation", () => {
       const view = mountOnboarding({ stage: 4, notificationKey: true, path });
       const user = userEvent.setup();
       const dialog = await openRotation(user);
-      expect(within(dialog).getByText(/新发送和重试的通知/)).toBeVisible();
+      expect(within(dialog).getByText(/新通知和重试将使用新密钥/)).toBeVisible();
       expect(view.writes()).toHaveLength(0);
       await user.click(within(dialog).getByRole("button", { name: "取消" }));
       await waitFor(() =>

@@ -31,12 +31,12 @@ describe("advanced checkout settings clarity", () => {
     const rotation = screen.getByLabelText("收银台链接密钥轮换周期（天）");
     expect(rotation).toHaveValue(90);
     expect(rotation).toHaveAccessibleDescription(
-      "自动更新用于生成收银台链接的内部密钥，不影响已有订单链接；通常无需修改。",
+      "不影响已有订单链接，通常无需修改。",
     );
     const queryWindow = screen.getByLabelText("结束后可查询时长（秒）");
     expect(queryWindow).toHaveValue(86400);
     expect(queryWindow).toHaveAccessibleDescription(
-      "收银台结束后，公开链接继续提供状态查询的时长；不延长付款期限，也不控制后台迟到账单处理。仅影响新订单。",
+      "仅影响新订单的公开状态查询，不延长付款期限，不影响后台处理迟到账单。",
     );
     expect(screen.queryByText(/继续观察迟到付款/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();

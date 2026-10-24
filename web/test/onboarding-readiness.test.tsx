@@ -111,7 +111,7 @@ describe("onboarding payment readiness", () => {
     const status = { ...completeStatus(), status: "degraded" as const };
     const { fetchMock } = mount(() => json({ data: status }));
     expect(await screen.findByText("收款服务就绪")).toBeVisible();
-    expect(screen.getByText("运行提醒（不是配置缺项）")).toBeVisible();
+    expect(screen.getByText("运行提醒")).toBeVisible();
     expect(
       screen.getByText(/系统返回了运行告警，但未提供可定位的原因/),
     ).toBeVisible();
@@ -140,11 +140,11 @@ describe("onboarding payment readiness", () => {
     expect(title.closest('[role="status"]')).not.toBeNull();
     expect(screen.getAllByText("已通过")).toHaveLength(4);
     expect(
-      screen.queryByText("运行提醒（不是配置缺项）"),
+      screen.queryByText("运行提醒"),
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/项业务待处理/)).not.toBeInTheDocument();
     expect(
-      screen.getByText(/通知未启用（可选），不影响收款/),
+      screen.getByText(/通知未启用，不影响收款/),
     ).toBeVisible();
     expect(screen.getByRole("link", { name: "进入控制台" })).toBeVisible();
   });
@@ -158,7 +158,7 @@ describe("onboarding payment readiness", () => {
     await screen.findByText("收款服务就绪");
     expect(screen.queryByText(/项业务待处理/)).not.toBeInTheDocument();
     expect(
-      screen.queryByText("运行提醒（不是配置缺项）"),
+      screen.queryByText("运行提醒"),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: "查看运行状态" }),
@@ -184,7 +184,7 @@ describe("onboarding payment readiness", () => {
       expect(screen.getByRole("link", { name: "进入控制台" })).toBeVisible();
       expect(screen.getByRole("link", { name: "获取接入凭证" })).toBeVisible();
       expect(
-        screen.queryByText("运行提醒（不是配置缺项）"),
+        screen.queryByText("运行提醒"),
       ).not.toBeInTheDocument();
     },
   );
@@ -298,7 +298,7 @@ describe("onboarding payment readiness", () => {
         screen.queryByText("收款服务就绪"),
       ).not.toBeInTheDocument();
       expect(
-        screen.queryByText("运行提醒（不是配置缺项）"),
+        screen.queryByText("运行提醒"),
       ).not.toBeInTheDocument();
       expect(screen.queryByText(/项业务待处理/)).not.toBeInTheDocument();
     },
@@ -319,13 +319,13 @@ describe("onboarding payment readiness", () => {
         ? apiError("internal_error", "temporary outage", 503)
         : json({ data: status }),
     );
-    await screen.findByText("运行提醒（不是配置缺项）");
+    await screen.findByText("运行提醒");
     expect(screen.queryByText(/项业务待处理/)).not.toBeInTheDocument();
     fail = true;
     await userEvent.setup().click(screen.getByRole("button", { name: "刷新" }));
     await screen.findByRole("alert");
     expect(
-      screen.queryByText("运行提醒（不是配置缺项）"),
+      screen.queryByText("运行提醒"),
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/项业务待处理/)).not.toBeInTheDocument();
     fail = false;
@@ -340,7 +340,7 @@ describe("onboarding payment readiness", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "刷新" }));
     await screen.findByText("收款服务就绪");
     expect(
-      screen.queryByText("运行提醒（不是配置缺项）"),
+      screen.queryByText("运行提醒"),
     ).not.toBeInTheDocument();
   });
   it.each(["settings_revision", "payment_revision"] as const)(

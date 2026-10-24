@@ -115,10 +115,10 @@ export default function Settings() {
         </Link>
         <RefreshButton disabled={settings.isFetching} onClick={refresh} busy={settings.isFetching} />
       </PageHeaderActions>
-      <PageHeading title="系统设置" description="支付宝接入、经营码、查账、通知、安全、备份和界面设置。" />
+      <PageHeading title="系统设置" />
       <QueryView query={settings}>
         {({ data }) => {
-          if (data.site_mode && requestedSection === "notifications") return <Alert><AlertTitle>通知设置已迁移</AlertTitle><AlertDescription>每个网站分别配置通知地址前缀、签名密钥和投递策略。<Link to="/sites">前往业务网站</Link></AlertDescription></Alert>;
+          if (data.site_mode && requestedSection === "notifications") return <Alert><AlertTitle>通知设置已迁移</AlertTitle><AlertDescription><Link to="/sites">前往业务网站配置通知</Link></AlertDescription></Alert>;
           const availableSections = data.site_mode ? sections.filter(([value]) => value !== "notifications") : sections;
           const section =
             availableSections.find(([value]) => value === requestedSection)?.[0] ??

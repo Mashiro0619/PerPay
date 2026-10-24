@@ -37,7 +37,7 @@ describe("adaptive ledger scan settings", () => {
     expect(active).toHaveAttribute("max", "3600");
     expect(active).toHaveAttribute("step", "1");
     expect(active).toHaveAccessibleDescription(
-      /有待付款订单时，隔多久查一次账；不能大于常规间隔/,
+      /有待付款订单时使用，不能大于常规间隔/,
     );
     expect(screen.queryByLabelText(/收尾.*秒/)).not.toBeInTheDocument();
     fireEvent.change(active, { target: { value: "4" } });

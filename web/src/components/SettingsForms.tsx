@@ -402,7 +402,7 @@ export function SettingsEditor({
           }
         />
         <FieldDescription id="setting-platform-key-hint">
-          从支付宝应用的接口加签设置复制，支持 Base64 或 PEM 格式。
+          从支付宝应用的接口加签设置复制。
         </FieldDescription>
         {fieldErrors.platform_public_key && (
           <FieldError id="setting-platform-key-error">
@@ -440,10 +440,10 @@ export function SettingsEditor({
               />
               <FieldDescription id="setting-private-key-hint">
                 {settings.provider || settings.provider_generations.length > 0
-                  ? "留空保留当前应用私钥。此导入入口不能替换当前应用的私钥；更换请使用下方“更换应用密钥对”，上传后再验证启用。"
+                  ? "留空保留当前私钥，此处不能更换。更换请用下方“更换应用密钥对”，上传后验证启用。"
                   : applicationKeyState(settings) === "missing"
-                    ? "首次接入可导入已有应用私钥，并将对应的应用公钥配置到支付宝；不导入则先生成应用密钥对。"
-                    : "已有应用私钥，留空即可复用。这里只接受与当前应用公钥匹配的私钥；需要更换时请使用下方“更换应用密钥对”。"}
+                    ? "可导入已有应用私钥，并将对应公钥配置到支付宝；否则先生成应用密钥对。"
+                    : "留空复用当前私钥；导入的私钥须与当前应用公钥匹配。更换请用下方“更换应用密钥对”。"}
               </FieldDescription>
               {fieldErrors.private_key && (
                 <FieldError id="setting-private-key-error">
@@ -556,7 +556,7 @@ export function SettingsEditor({
         }
         min={5}
         max={3600}
-        hint="没有待付款订单时，隔多久查一次账。"
+        hint="无待付款订单时使用。"
       />
       <NumberField
         name="active_scan_interval_seconds"
@@ -569,7 +569,7 @@ export function SettingsEditor({
         }
         min={5}
         max={3600}
-        hint="有待付款订单时，隔多久查一次账；不能大于常规间隔。"
+        hint="有待付款订单时使用，不能大于常规间隔。"
       />
       <NumberField
         name="minimum_scan_interval_seconds"
@@ -578,7 +578,7 @@ export function SettingsEditor({
         value={initialSettings.collection_policy?.minimum_scan_interval_seconds ?? initialSettings.provider?.minimum_scan_interval_seconds ?? initialSettings.collection_policy?.active_scan_interval_seconds ?? initialSettings.provider?.active_scan_interval_seconds ?? PROVIDER_TIMING_DEFAULTS.activeScanIntervalSeconds}
         min={5}
         max={3600}
-        hint="两轮查账之间至少等多久；手动核实也不能更早；不能大于活跃间隔。"
+        hint="也适用于手动核实，不能大于活跃间隔。"
       />
       <NumberField
         name="safety_lag_seconds"
@@ -590,7 +590,7 @@ export function SettingsEditor({
         }
         min={5}
         max={300}
-        hint="只查到 N 秒前的账单，等支付宝记录稳定，避免刚发生的交易被漏掉。"
+        hint="仅查询 N 秒前的账单，等待支付宝记录稳定。"
       />
       <NumberField
         name="maximum_success_age_seconds"
@@ -602,7 +602,7 @@ export function SettingsEditor({
         }
         min={10}
         max={86400}
-        hint="超过这个时间没有成功查账，所有网站都会暂停新订单，未付款的收银台也会暂不可用。"
+        hint="超出时限未成功查账时，所有网站暂停新订单，未付款收银台暂不可用。"
       />
     </FieldGroup>
   );
@@ -656,7 +656,7 @@ export function SettingsEditor({
               }
             />
             <FieldDescription id="setting-origin-hint">
-              例如 https://shop.example.com，只填域名部分，不含端口或路径。
+              例如 https://shop.example.com，不含端口或路径。
             </FieldDescription>
             {fieldErrors.allowed_origin && (
               <FieldError id="setting-origin-error">
@@ -852,7 +852,7 @@ export function SettingsEditor({
           value={initialSettings.advanced.checkout_key_rotation_days}
           min={1}
           max={3650}
-          hint="自动更新用于生成收银台链接的内部密钥，不影响已有订单链接；通常无需修改。"
+          hint="不影响已有订单链接，通常无需修改。"
         />
         <NumberField
           name="checkout_terminal_observation_seconds"
@@ -861,16 +861,16 @@ export function SettingsEditor({
           value={initialSettings.advanced.checkout_terminal_observation_seconds}
           min={60}
           max={604800}
-          hint="收银台结束后，公开链接继续提供状态查询的时长；不延长付款期限，也不控制后台迟到账单处理。仅影响新订单。"
+          hint="仅影响新订单的公开状态查询，不延长付款期限，不影响后台处理迟到账单。"
         />
       </FieldGroup>
     </FieldGroup>
   );
 
   const panels: Array<{ title: string; description?: string; fields: ReactNode }> =
-    section === "provider" ? [{ title: "开放平台应用", description: "应用身份、密钥与支付宝环境；查账策略在查账设置中单独调整。", fields: <FieldGroup>{providerIdentity}{providerEnvironment}</FieldGroup> }]
-    : section === "collection" ? [{ title: "经营码", description: "只管理二维码；订单规则在各业务网站中设置。", fields: collectionIdentity }]
-    : section === "collection-policy" ? [{ title: "PerPay 查账设置", description: "控制 PerPay 的查询频率与安全窗口，不属于支付宝官方应用配置。", fields: providerCollection }]
+    section === "provider" ? [{ title: "开放平台应用", fields: <FieldGroup>{providerIdentity}{providerEnvironment}</FieldGroup> }]
+    : section === "collection" ? [{ title: "经营码", fields: collectionIdentity }]
+    : section === "collection-policy" ? [{ title: "PerPay 查账设置", fields: providerCollection }]
     : section === "display" ? [{ title: "界面显示", fields: displayFields }]
     : [{ title: sections.find(([value]) => value === section)?.[1] ?? "设置", ...(section === "backup" ? { description: "恢复需要数据库备份和主密钥。" } : {}), fields: section === "notifications" ? notificationFields : section === "backup" ? backupFields : advancedFields }];
 

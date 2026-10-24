@@ -190,7 +190,7 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
     const close = dialog.getByRole("button", { name: "关闭对话框", exact: true });
     const closeGeometry = await reachable(close);
     const explanation = dialog.locator("[data-admin-dialog-body]");
-    await expect(explanation).toHaveText(/保存后立即生效/);
+    await expect(explanation).toHaveText(/保存立即生效/);
     const scroll = dialog.locator("[data-admin-dialog-scroll]");
     await expect.poll(() => scroll.evaluate(element => element.clientHeight)).toBeGreaterThanOrEqual(64);
     await scroll.evaluate(element => element.scrollTop = element.scrollHeight);

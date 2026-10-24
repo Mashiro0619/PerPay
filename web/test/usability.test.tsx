@@ -176,7 +176,7 @@ describe("short feedback and safe settings", () => {
     mountOnboarding({ stage: 4, path: "/settings/provider" });
     expect(await screen.findByLabelText("应用 ID（App ID）")).toBeVisible();
     expect(screen.getByLabelText("支付宝公钥")).toHaveAccessibleDescription(
-      "从支付宝应用的接口加签设置复制，支持 Base64 或 PEM 格式。",
+      "从支付宝应用的接口加签设置复制。",
     );
     expect(
       screen.queryByText(
@@ -207,7 +207,7 @@ describe("short feedback and safe settings", () => {
     ).not.toBeInTheDocument();
     expect(
       screen.getByLabelText("通知地址前缀"),
-    ).toHaveAccessibleDescription("例如 https://shop.example.com，只填域名部分，不含端口或路径。");
+    ).toHaveAccessibleDescription("例如 https://shop.example.com，不含端口或路径。");
     expect(screen.queryByText(/签名密钥在/)).not.toBeInTheDocument();
   });
   it("keeps normal runtime status concise without duplicate summaries or explanatory detail controls", async () => {

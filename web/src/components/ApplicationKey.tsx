@@ -92,7 +92,6 @@ export function ApplicationKey({
   onSaved: Saved;
   guided?: boolean;
 }) {
-  const systemName = useSystemName();
   const { requestDiscard } = useDraftGuard();
   const keyState = applicationKeyState(settings);
   const pending = settings.pending_application_key;
@@ -156,13 +155,13 @@ export function ApplicationKey({
           <>
             <CopyValue tooltip value={pending.public_key} label="复制待启用应用公钥" />
             <p className="text-sm text-muted-foreground">
-              当前仍使用原密钥。请将这把新公钥上传到支付宝应用{" "}
+              当前仍使用原密钥。请将新公钥上传到支付宝应用{" "}
               <span className="break-all">{pending.app_id}</span>（
               {pending.environment === "PRODUCTION" ? "生产环境" : "沙箱环境"}
               ）。
               {guided
-                ? "上传后点击下一步，填写支付宝公钥并验证启用。"
-                : `然后复制上传后显示的支付宝公钥，填回 ${systemName} 验证并启用。`}
+                ? "下一步填入支付宝公钥并验证启用。"
+                : "再填入支付宝页面显示的支付宝公钥，验证启用。"}
             </p>
             <div className="flex flex-wrap items-center gap-2">
               {!guided && (
@@ -200,7 +199,7 @@ export function ApplicationKey({
               </CollapsibleContent>
             </Collapsible>
             <p className="text-sm text-muted-foreground">
-              待启用密钥已保存，离开或刷新页面不会丢失，也不会自动启用。
+              待启用密钥已保存，离开或刷新不会丢失，也不会自动启用。
             </p>
           </>
         ) : current ? (
@@ -235,8 +234,8 @@ export function ApplicationKey({
                   <div className="flex min-w-0 flex-col items-start gap-3 pt-3">
                     <p className="text-sm text-muted-foreground">
                       {settings.provider
-                        ? "重新生成会同时生成配套私钥，验证启用前不会更换当前密钥。"
-                        : "重新生成会同时更换配套私钥；此前复制或上传的应用公钥需要更新。"}
+                        ? "验证启用前仍使用原密钥。"
+                        : "原公私钥将被替换，须重新上传公钥到支付宝。"}
                     </p>
                     <Button
                       variant="outline"
@@ -252,7 +251,7 @@ export function ApplicationKey({
               </Collapsible>
             ) : (
               <p className="text-sm text-muted-foreground">
-                请先在常规设置中恢复支付宝接入配置，再更换此应用的公钥。
+                请先恢复支付宝接入配置，再更换公钥。
               </p>
             )}
           </>
@@ -271,8 +270,7 @@ export function ApplicationKey({
               生成应用密钥对
             </Button>
             <p className="text-sm text-muted-foreground">
-              还没有生成应用密钥对。生成后，应用私钥由 {systemName}{" "}
-              加密保存；只需将公钥上传到支付宝。
+              生成后，将应用公钥上传到支付宝。
             </p>
           </>
         ) : (
@@ -466,11 +464,11 @@ function ApplicationKeyChange({
   const description =
     mode === "regenerate"
       ? settings.provider
-        ? "将生成一对新的应用公钥和私钥，并暂存为待启用状态。当前收款继续使用原密钥；上传到支付宝并验证通过后才会切换。"
-        : "将生成一对新的应用公钥和私钥，替换尚未接入的原密钥对。此前复制或上传的应用公钥需要重新上传，不能只更换公钥。"
+        ? "新密钥对生成后，当前收款仍使用原密钥。上传新公钥到支付宝并验证通过后才会切换。"
+        : "原公私钥将被替换，请将新公钥重新上传到支付宝。"
       : mode === "activate"
-        ? `上传新应用公钥后，请复制支付宝页面显示的支付宝公钥并填入下方。${systemName} 会用新私钥进行一次只读账单查询并验签，通过后才启用，不会发起支付。`
-        : `仅删除 ${systemName} 暂存的新密钥，不会撤回支付宝侧的上传。若已上传，请先在支付宝恢复当前应用公钥，并在 ${systemName} 的支付宝设置中同步恢复后获取的支付宝公钥，再放弃，以免影响查账。`;
+        ? "上传新应用公钥后，填入支付宝页面显示的支付宝公钥。只读账单查询和验签通过后才会启用，不会发起支付。"
+        : `仅删除待启用密钥，不会撤回支付宝上传。若已上传，请先恢复支付宝中的原应用公钥，并在 ${systemName} 同步恢复后获取的支付宝公钥，再放弃，以免影响查账。`;
   function submit() {
     if (
       operation.isBusy() ||
@@ -528,7 +526,7 @@ function ApplicationKeyChange({
             maxLength={16384}
             autoComplete="off"
             spellCheck={false}
-            placeholder="粘贴刚才上传新公钥后，支付宝页面显示的支付宝公钥"
+            placeholder="上传新公钥后获取的支付宝公钥"
             aria-invalid={Boolean(fieldError)}
             aria-describedby={
               fieldError
@@ -537,7 +535,7 @@ function ApplicationKeyChange({
             }
           />
           <FieldDescription id="activation-platform-hint">
-            必填。请从同一支付宝应用重新复制，不会自动沿用旧值。
+            请从同一支付宝应用重新复制。
           </FieldDescription>
           {fieldError && (
             <FieldError id="activation-platform-error">{fieldError}</FieldError>
@@ -553,7 +551,7 @@ function ApplicationKeyChange({
             disabled={locked}
           />
           <FieldLabel htmlFor="application-key-confirmed" className="min-h-11">
-            我确认支付宝侧未启用这把新公钥（未上传，或已恢复原配置并同步支付宝公钥）
+            我确认新公钥未上传，或已恢复原配置并同步支付宝公钥。
           </FieldLabel>
         </Field>
       )}
@@ -565,8 +563,8 @@ function ApplicationKeyChange({
       {operation.recovery && (
         <p className="text-sm text-muted-foreground">
           {guided
-            ? "上次启用结果尚未确认。重试会沿用同一个操作编号和同一把待启用密钥；也可刷新配置核对启用状态。"
-            : "上次操作结果尚未确认。重试会使用同一个操作，不会再生成另一把密钥；也可关闭后刷新状态。"}
+            ? "上次启用结果未确认。重试不会更换待启用密钥，也可刷新核对状态。"
+            : "上次结果未确认。重试不会生成其他密钥，也可关闭后刷新核对状态。"}
         </p>
       )}
       {operation.conflict && (
@@ -658,9 +656,6 @@ function ApplicationKeyChange({
                 </Field>
                 {fields}
               </FieldGroup>
-              <p className="text-sm text-muted-foreground">
-                本次只更新上述应用的密钥，保留当前查账参数。
-              </p>
               {feedback}
             </CardContent>
           </Card>

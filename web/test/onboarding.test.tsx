@@ -415,7 +415,7 @@ describe("first collection onboarding", () => {
     await pathIs(view, "check");
     expect(
       await screen.findByText(
-        "通知未启用（可选），不影响收款；业务系统后端需主动向 PerPay 查询订单状态。",
+        "通知未启用，不影响收款；业务系统需主动查询订单状态。",
       ),
     ).toBeVisible();
     expect(view.writes()).toHaveLength(0);

@@ -88,7 +88,7 @@ export function AdminAccessSettings({
       <CardHeader>
         <CardTitle>管理员 IP 白名单</CardTitle>
         <CardDescription>
-          可选的额外访问限制，不替代密码登录，不影响收银台和商户支付接口。
+          仅限制管理员访问，仍需密码登录。
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -131,8 +131,8 @@ export function AdminAccessSettings({
               placeholder={"192.0.2.10\n2001:db8::/64"}
             />
             <FieldDescription id="admin-access-help">
-              每行一个 IPv4、IPv6 或 CIDR，最多 100 条、8192 字节（8 KiB），不允许
-              /0。启用时必须允许当前 IP；关闭后保留已保存规则。
+              每行一个 IPv4、IPv6 或 CIDR，最多 100 条、8 KiB，禁止
+              /0。启用时须包含当前 IP；关闭保留规则。
             </FieldDescription>
             {fieldError && <FieldError>{fieldError}</FieldError>}
           </Field>
@@ -195,8 +195,8 @@ export function AdminAccessSettings({
           </DialogHeader>
           <DialogBody>
             <DialogDescription>
-              保存后立即生效。启用时新规则必须允许当前客户端
-              IP；其他不匹配的来源即使已经登录也会被拒绝。请确认你有服务器离线恢复权限。
+              保存立即生效。启用时须允许当前
+              IP；不匹配的来源即使已登录也会被拒绝。请确认有服务器离线恢复权限。
             </DialogDescription>
           </DialogBody>
           <DialogFooter>

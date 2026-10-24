@@ -38,14 +38,14 @@ describe("infrequent application-key maintenance", () => {
       expect(
         screen.queryByRole("button", { name: "更换应用密钥对" }),
       ).not.toBeInTheDocument();
-      expect(screen.queryByText(/重新生成会同时/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/原公私钥将被替换|验证启用前仍使用原密钥/)).not.toBeInTheDocument();
       toggle.focus();
       await user.keyboard("{Enter}");
       expect(toggle).toHaveAttribute("aria-expanded", "true");
       expect(
         screen.getByRole("button", { name: "更换应用密钥对" }),
       ).toBeVisible();
-      expect(screen.getByText(/重新生成会同时/)).toBeVisible();
+      expect(screen.getByText(/原公私钥将被替换|验证启用前仍使用原密钥/)).toBeVisible();
       expect(view.writes()).toHaveLength(0);
       await user.click(toggle);
       await waitFor(() =>
@@ -99,8 +99,9 @@ describe("non-blocking pending application keys", () => {
       .closest('[role="status"]')!;
     expect(warning).toHaveAttribute("data-slot", "alert");
     expect(
-      within(warning as HTMLElement).getByText(/其他配置可以继续修改/),
+      within(warning as HTMLElement).getByText(/当前仍使用原密钥。若已在支付宝上传新公钥，请尽快验证启用，以免影响查账/),
     ).toBeVisible();
+    expect(screen.getByLabelText("支付宝经营码内容")).toBeEnabled();
     expect(
       within(warning as HTMLElement).getByRole("link", {
         name: "前往验证启用",
