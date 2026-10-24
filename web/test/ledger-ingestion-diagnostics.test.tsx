@@ -32,8 +32,8 @@ describe("ingestion failure presentation", () => {
     const data = diagnostic(); data.latest_failure!.scan_kind = "COMPENSATION_1H";
     render(<LedgerIngestionDiagnostics diagnostics={data} />);
     fireEvent.click(screen.getByRole("button",{name:"失败详情"}));
-    expect(screen.getByText(/历史查账，不代表正常查账也已停止/)).toBeVisible();
-    expect(screen.queryByText(/最近失败属于正常查账/)).not.toBeInTheDocument();
+    expect(screen.getByText(/历史流水核对可能延迟，正常查账可能仍在运行/)).toBeVisible();
+    expect(screen.queryByText(/本次正常查账未完成/)).not.toBeInTheDocument();
   });
   it("does not show a scheduled time while running, or invent one when unknown", () => {
     const data = diagnostic(); data.in_flight = true;
@@ -41,7 +41,7 @@ describe("ingestion failure presentation", () => {
     expect(screen.getByText("正在查账，请等待本轮结果。")).toBeVisible();
     expect(screen.queryByText(/计划下次尝试/)).not.toBeInTheDocument();
     rerender(<LedgerIngestionDiagnostics diagnostics={{ ...data, in_flight: false, next_retry_at: null }} />);
-    expect(screen.getByText(/下次尝试时间尚未确定/)).toBeVisible();
+    expect(screen.getByText(/重试时间未定/)).toBeVisible();
   });
   it("clears the current alert on recovery, remains compatible with old responses, and distinguishes unavailable diagnostics", () => {
     const data = diagnostic(); data.consecutive_failures = 1;

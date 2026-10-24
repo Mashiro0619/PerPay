@@ -20,11 +20,11 @@ export function BackupStatus() {
     <div className="flex flex-col gap-2" role="group" aria-label="备份任务状态">
       <FieldDescription>
         {status.isError || !backup
-          ? "备份任务状态暂不可用；保存只修改策略。"
+          ? "备份状态暂不可用，保存仅更新策略。"
           : !backup.enabled
-            ? "备份任务未启用；保存策略不会启动备份进程。"
+            ? "备份未启用，保存策略不会启动任务。"
             : backup.configuration_mismatch
-              ? "备份配置与任务不一致，请检查服务器备份任务。"
+              ? "备份配置与任务不一致，请检查服务器任务。"
               : backup.last_error_stage
                 ? "最近备份失败（" +
                   backupFailureStageName(backup.last_error_stage) +

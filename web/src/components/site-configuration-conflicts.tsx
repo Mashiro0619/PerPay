@@ -18,7 +18,7 @@ export function SiteConfigurationConflicts({ conflicts, choices, onChoose, onApp
     <Card>
       <CardHeader>
         <CardTitle>同一字段存在不同修改</CardTitle>
-        <CardDescription>无冲突的修改已合并。请选择以下字段要保留的值，应用核对结果后再{saveLabel}。</CardDescription>
+        <CardDescription>无冲突项已合并。请选择冲突字段的值，应用后再{saveLabel}。</CardDescription>
       </CardHeader>
       <CardContent>
         <FieldGroup>
