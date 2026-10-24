@@ -790,7 +790,7 @@ describe("website selection on shared pages", () => {
     const nav = sidebar();
     await waitFor(() => expect(view.fetchMock.mock.calls.some(([request]) => new URL(request.url).pathname === "/api/admin/v1/sites/missing")).toBe(true));
     expect(row).toBeVisible();
-    expect(screen.queryByText("页面未能正常加载")).not.toBeInTheDocument();
+    expect(screen.queryByText("页面加载失败")).not.toBeInTheDocument();
     await userEvent.click(await within(nav).findByRole("link", { name: "网站 B" }));
     await waitFor(() => expect(new URLSearchParams(view.router.state.location.search).get("selected_site")).toBe("b"));
     expect(row).toBeVisible();
@@ -868,7 +868,7 @@ describe("website selection on shared pages", () => {
       "/api/admin/v1/reconciliation/matches/" + matchId + "/actions/reverse",
     ]);
     await act(async () => { await view.router.navigate("/sites/b/orders"); });
-    const confirmation = await screen.findByRole("alertdialog", { name: "操作结果尚未确认，仍要离开？" });
+    const confirmation = await screen.findByRole("alertdialog", { name: "结果未确认，仍要离开？" });
     expect(within(confirmation).getByText(original.financial_operation_id)).toBeVisible();
     await user.click(within(confirmation).getByRole("button", { name: "留在此页" }));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());

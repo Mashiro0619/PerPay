@@ -187,14 +187,14 @@ describe("non-blocking pending application keys", () => {
     await screen.findByRole("button", { name: "重试上一次操作" });
     await user.click(screen.getByRole("link", { name: "暂不启用，继续配置" }));
     let dialog = await screen.findByRole("alertdialog", {
-      name: "操作结果尚未确认，仍要离开？",
+      name: "结果未确认，仍要离开？",
     });
     await user.click(within(dialog).getByRole("button", { name: "留在此页" }));
     expect(input).toHaveValue("submitted-platform-key");
     expect(input).toBeDisabled();
     await user.click(screen.getByRole("link", { name: "暂不启用，继续配置" }));
     dialog = await screen.findByRole("alertdialog", {
-      name: "操作结果尚未确认，仍要离开？",
+      name: "结果未确认，仍要离开？",
     });
     await user.click(
       within(dialog).getByRole("button", { name: "离开并稍后核查" }),

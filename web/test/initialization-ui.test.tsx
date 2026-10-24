@@ -72,7 +72,7 @@ describe("first-deployment authentication presentation", () => {
       ).toBeVisible();
       expect(
         screen.getByText(
-          "首次部署，请先创建管理员。完成后登录，继续配置收款。",
+          "先创建管理员，再登录配置收款。",
         ),
       ).toBeVisible();
       expect(
@@ -136,7 +136,7 @@ describe("first-deployment authentication presentation", () => {
     await user.click(screen.getByRole("button", { name: "创建管理员" }));
     await screen.findByRole("heading", { name: "登录管理后台" });
     expect(
-      screen.getByText("此系统已完成初始化，请使用现有管理员密码登录。"),
+      screen.getByText("系统已初始化，请用现有管理员密码登录。"),
     ).toBeVisible();
     expect(screen.getByLabelText("管理员密码")).toHaveValue("");
     expect(screen.queryByLabelText("再次输入密码")).not.toBeInTheDocument();

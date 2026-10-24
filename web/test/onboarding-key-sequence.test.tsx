@@ -276,7 +276,7 @@ describe("sequential application-key onboarding", () => {
       expect(await body(view, 1)).toEqual(await body(view, 0));
       await user.click(screen.getByRole("link", { name: "上一步" }));
       const leave = await screen.findByRole("alertdialog", {
-        name: "操作结果尚未确认，仍要离开？",
+        name: "结果未确认，仍要离开？",
       });
       await user.click(within(leave).getByRole("button", { name: "留在此页" }));
       expect(view.router.state.location.pathname).toBe(providerPath);
@@ -378,7 +378,7 @@ describe("sequential application-key onboarding", () => {
     await fillAndSubmit(user);
     await user.click(screen.getByRole("link", { name: "上一步" }));
     const dialog = await screen.findByRole("alertdialog", {
-      name: "操作结果尚未确认，仍要离开？",
+      name: "结果未确认，仍要离开？",
     });
     await user.click(within(dialog).getByRole("button", { name: "留在此页" }));
     await waitFor(() =>
@@ -414,7 +414,7 @@ describe("sequential application-key onboarding", () => {
     expect(submit).toBeDisabled();
     await user.click(screen.getByRole("link", { name: "上一步" }));
     await screen.findByRole("alertdialog", {
-      name: "操作结果尚未确认，仍要离开？",
+      name: "结果未确认，仍要离开？",
     });
     await act(async () => {
       finish(json({ data: activatedSettings() }));

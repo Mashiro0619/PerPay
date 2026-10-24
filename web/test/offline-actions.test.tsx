@@ -88,9 +88,9 @@ describe("settings saves never wait in an offline queue", () => {
     fireEvent.submit(input.closest("form")!);
     await waitFor(() => expect(writes).toBe(1));
     await act(async () => { await view.router.navigate("/orders"); });
-    const dialog = await screen.findByRole("alertdialog");
+    const dialog = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
     expect(within(dialog).queryByText("此页面的修改不会保存。")).not.toBeInTheDocument();
-    expect(within(dialog).getByText(/已提交的保存可能继续执行/)).toBeVisible();
+    expect(within(dialog).getByText("已提交的保存可能仍在执行，请重新读取后核对结果。")).toBeVisible();
     await userEvent.click(within(dialog).getByRole("button", { name: "放弃修改并继续" }));
     await waitFor(() => expect(view.router.state.location.pathname).toBe("/orders"));
     await act(async () => { finish(); });

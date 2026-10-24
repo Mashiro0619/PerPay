@@ -22,7 +22,7 @@ export function siteEditorQueryOptions(clientId: string | undefined) {
       if (!clientId) throw new Error("缺少业务网站身份");
       const response = await result(api.getSite({ path: { clientId }, signal }));
       if (response.data.client_id !== clientId || response.data.deleted_at) {
-        throw new Error("业务网站身份与当前后台不一致，请重新加载。");
+        throw new Error("网站身份不匹配，请重新加载。");
       }
       return latestEditorSnapshot(response.data);
     },

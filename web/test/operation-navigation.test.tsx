@@ -115,7 +115,7 @@ describe("financial operation navigation protection", () => {
       await view.router.navigate(-1);
     });
     const confirmation = await screen.findByRole("alertdialog", {
-      name: "操作结果尚未确认，仍要离开？",
+      name: "结果未确认，仍要离开？",
     });
     expect(view.router.state.location.pathname).toBe("/operation");
     expect(signal.aborted).toBe(false);
@@ -283,7 +283,7 @@ describe("financial operation navigation protection", () => {
       await view.router.navigate(-1);
     });
     const confirmation = await screen.findByRole("alertdialog");
-    expect(within(confirmation).getByText(/未保存的修改/)).toBeVisible();
+    expect(within(confirmation).getByText("离开不会保存页面修改。")).toBeVisible();
     expect(
       screen.queryByRole("alertdialog", { name: "放弃未保存的修改？" }),
     ).not.toBeInTheDocument();

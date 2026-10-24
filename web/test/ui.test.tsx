@@ -235,7 +235,7 @@ describe("copyable secret content", () => {
     await user.click(screen.getByRole("button", { name: "复制编号" }));
     await waitFor(() =>
       expect(screen.getByRole("status")).toHaveTextContent(
-        "无法自动复制，请选中文本手动复制。",
+        "复制失败，请选中文本手动复制。",
       ),
     );
     expect(screen.getByText("short-identifier")).toBeVisible();

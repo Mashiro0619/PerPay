@@ -74,7 +74,7 @@ export function CopyValue({
         role="status"
         className={failed ? "text-sm text-destructive" : "sr-only"}
       >
-        {failed ? "无法自动复制，请选中文本手动复制。" : copied ? "已复制" : ""}
+        {failed ? "复制失败，请选中文本手动复制。" : copied ? "已复制" : ""}
       </span>
     </div>
   );

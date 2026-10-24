@@ -169,7 +169,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
             </CardTitle>
             {setup && (
               <CardDescription>
-                首次部署，请先创建管理员。完成后登录，继续配置收款。
+                先创建管理员，再登录配置收款。
               </CardDescription>
             )}
           </CardHeader>
@@ -178,7 +178,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
               <ErrorNotice
                 error={
                   new Error(
-                    "无法读取服务端的初始化状态，请确认服务正常后重试。",
+                    "无法读取初始化状态，请检查服务后重试。",
                   )
                 }
                 retry={() => window.location.reload()}
@@ -196,7 +196,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                       <AlertDescription>
                         {configured
                           ? "管理员已创建"
-                          : "此系统已完成初始化，请使用现有管理员密码登录。"}
+                          : "系统已初始化，请用现有管理员密码登录。"}
                       </AlertDescription>
                     </Alert>
                   )}

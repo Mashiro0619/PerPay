@@ -402,12 +402,12 @@ function AppFailure() {
       <Empty>
         <EmptyHeader>
           <EmptyTitle role="heading" aria-level={1}>
-            页面未能正常加载
+            页面加载失败
           </EmptyTitle>
           <EmptyDescription>重新加载会丢失未保存内容。</EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
-          <Button onClick={() => window.location.reload()}>重新加载页面</Button>
+          <Button onClick={() => window.location.reload()}>重新加载</Button>
         </EmptyContent>
       </Empty>
     </main>

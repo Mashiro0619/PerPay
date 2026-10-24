@@ -19,7 +19,7 @@ export function OperationNavigationDialog({
   pending,
   onLeave,
   finalFocus,
-  title = "操作结果尚未确认，仍要离开？",
+  title = "结果未确认，仍要离开？",
   description,
 }: {
   navigation: ReturnType<typeof useOperationNavigation>;
@@ -54,15 +54,15 @@ export function OperationNavigationDialog({
             {description ?? (
               <>
                 {pending
-                  ? "正在等待服务端响应。离开只会停止本页等待，操作仍可能完成。"
-                  : "本次操作可能已生效。离开不会撤销操作，但会关闭本页的原操作重试入口。"}
+                  ? "操作仍可能完成，离开仅停止本页等待。"
+                  : "操作可能已生效，离开会关闭本页的重试入口。"}
                 <p>
-                  建议留在此页找回结果。若要离开，请先保留操作编号，稍后核查相关记录，勿直接发起另一笔操作。
+                  离开不会撤销操作。请保留操作编号，核查结果后再操作。
                 </p>
               </>
             )}
             {navigation.hasDrafts && (
-              <p>此页面还有未保存的修改，离开后也不会保存。</p>
+              <p>离开不会保存页面修改。</p>
             )}
           </AlertDialogDescription>
           {operationId && (
