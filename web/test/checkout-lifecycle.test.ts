@@ -410,7 +410,7 @@ describe("checkout compact order summary", () => {
       expect(guide.closest('[data-slot="alert"]')).toBeNull();
       const actions = container.querySelector("[data-checkout-actions]");
       expect(actions).not.toHaveClass("mt-auto");
-      expect(actions).toHaveClass("md:col-start-3", "md:row-start-2");
+      expect(actions).toHaveClass("lg:col-start-3", "lg:row-start-2");
       expect(actions!.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(actions).toContainElement(
         screen.getByRole("button", { name: "查询付款状态" }),

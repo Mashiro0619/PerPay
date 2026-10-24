@@ -2,7 +2,7 @@ import { test, expect, record } from "./fixtures";
 import { screenshot } from "./audit";
 
 test.describe("touch and reduced motion", () => {
-  test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 664 } });
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 360, height: 560 } });
 
   test("payment actions retain 44px targets, scrolling and readable content at 200 percent text zoom", async ({ page, manifest }, info) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -14,7 +14,7 @@ test.describe("touch and reduced motion", () => {
     expect(targets.every(target => target.height >= 44 && target.width >= 44)).toBe(true);
     const query = page.getByRole("button", { name: "查询付款状态", exact: true });
     const bounds = (await query.boundingBox())!;
-    expect(bounds.y + bounds.height).toBeLessThanOrEqual(664);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(560);
     await record(page, info, { touch: true, targets, reducedMotion: true });
 
     await page.evaluate(() => document.documentElement.style.fontSize = "200%");
@@ -22,6 +22,14 @@ test.describe("touch and reduced motion", () => {
     expect(await page.locator("[data-payable-amount]").evaluate(element => element.scrollWidth > element.clientWidth + 1)).toBe(false);
     await query.scrollIntoViewIfNeeded();
     await expect(query).toBeInViewport();
+    await page.getByRole("button", { name: "放大二维码" }).click();
+    const dialog = page.getByRole("dialog", { name: "支付宝付款二维码" });
+    const close = dialog.getByRole("button", { name: "关闭对话框" });
+    await expect(close).toBeInViewport();
+    await dialog.locator("[data-qr-dialog-body]").evaluate(element => element.scrollTop = element.scrollHeight);
+    await expect(close).toBeInViewport();
+    await close.click();
+    await expect(page.getByRole("button", { name: "放大二维码" })).toBeFocused();
     await screenshot(page, info, "touch-text-zoom");
   });
 });
