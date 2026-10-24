@@ -38,11 +38,12 @@ export function CursorPagination({
           ? "正在读取第 " + page + " 页…"
           : "第 " + page + " 页 · 本页 " + count + " 条"}
       </p>
-      <PaginationContent>
-        <PaginationItem>
+      <PaginationContent className="min-w-0 max-w-full flex-wrap justify-end gap-2">
+        <PaginationItem className="min-w-0 max-w-full">
           <Button
             size="sm"
             variant="outline"
+            className="h-auto min-h-7 max-w-full whitespace-normal"
             aria-label={previousLabel}
             disabled={page <= 1 || pending}
             onClick={onPrevious}
@@ -51,10 +52,11 @@ export function CursorPagination({
             {previousLabel}
           </Button>
         </PaginationItem>
-        <PaginationItem>
+        <PaginationItem className="min-w-0 max-w-full">
           <Button
             size="sm"
             variant="outline"
+            className="h-auto min-h-7 max-w-full whitespace-normal"
             aria-label="下一页"
             disabled={!hasNext || pending}
             onClick={onNext}

@@ -71,11 +71,13 @@ export default function Notifications() {
     <div className="flex min-w-0 flex-col gap-3">
       <ToggleGroup
         variant="outline"
-        value={[status]}
-        onValueChange={(values) => changeStatus(values[0] ?? "")}
+        value={[status || "ALL"]}
+        onValueChange={(values) => changeStatus(values[0] === "ALL" ? null : values[0] ?? null)}
         aria-label="通知快捷筛选"
+        className="max-w-full flex-wrap"
+        data-notification-shortcuts
       >
-        <ToggleGroupItem value="">全部</ToggleGroupItem>
+        <ToggleGroupItem value="ALL">全部</ToggleGroupItem>
         <ToggleGroupItem value="RETRY_WAIT">等待重试</ToggleGroupItem>
         <ToggleGroupItem value="DEAD_LETTER">已停止重试</ToggleGroupItem>
       </ToggleGroup>
