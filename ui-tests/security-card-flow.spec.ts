@@ -175,8 +175,15 @@ test("security drafts, validation and card identity survive resize and content-w
   await whitelist.focus();
   await whitelist.evaluate(element => element.setAttribute("data-security-flow-draft", "whitelist"));
   const expanded = await settledGrid(page);
-  expect(expanded.items[0]!.height).toBeGreaterThan(before.items[0]!.height + 200);
-  expect(expanded.items.slice(1).some((item, index) => Math.abs(item.top - before.items[index + 1]!.top) > 1 || Math.abs(item.left - before.items[index + 1]!.left) > 1)).toBe(true);
+  expect(expanded.items[0]!.height, "long drafts stay within the bounded text area").toBeCloseTo(before.items[0]!.height, 1);
+  expect(expanded.items.slice(1).every((item, index) => Math.abs(item.top - before.items[index + 1]!.top) <= 1 && Math.abs(item.left - before.items[index + 1]!.left) <= 1), "typing a long whitelist does not displace the other cards").toBe(true);
+  const draftScroll = await whitelist.evaluate(element => {
+    element.scrollTop = element.scrollHeight;
+    return { height: element.clientHeight, scrollHeight: element.scrollHeight, scrollTop: element.scrollTop, maxHeight: Number.parseFloat(getComputedStyle(element).maxHeight) };
+  });
+  expect(draftScroll.scrollHeight).toBeGreaterThan(draftScroll.height);
+  expect(draftScroll.scrollTop, "the complete long draft remains reachable within its own text area").toBeGreaterThan(0);
+  expect(draftScroll.height).toBeLessThanOrEqual(draftScroll.maxHeight + 1);
   await expectRetained(page, retained);
   for (const [width, mode] of [[320, "compact"], [390, "full"], [1440, "compact"], [2190, "full"]] as const) {
     await page.setViewportSize({ width, height: 900 });

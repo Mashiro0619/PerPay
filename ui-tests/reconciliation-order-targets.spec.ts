@@ -10,6 +10,20 @@ for (const { width, hiddenOrder } of [{ width: 1440, hiddenOrder: false }, { wid
     }, hiddenOrder);
     const listUrl = manifest.origin + "/admin/reconciliation?association_status=MATCHED";
     await page.goto(listUrl);
+    if (hiddenOrder) {
+      await expect(page.getByRole("columnheader", { name: "当前关联订单", exact: true })).toHaveCount(0);
+      await expect(page.locator("[data-business-row]").getByRole("link", { name: /^查看订单：/ })).toHaveCount(0);
+      expect(await page.evaluate(() => JSON.parse(localStorage.getItem("perpay.table-columns.v2.administrator-ledger") ?? "{}").order)).toBe(false);
+      // A user may reveal the field again; the restored link remains a
+      // separate action from opening the underlying transaction record.
+      await page.getByRole("button", { name: "显示列", exact: true }).click();
+      const relatedColumn = page.getByRole("menuitemcheckbox", { name: "当前关联订单", exact: true });
+      await expect(relatedColumn).toHaveAttribute("aria-checked", "false");
+      await relatedColumn.click();
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("columnheader", { name: "当前关联订单", exact: true })).toBeVisible();
+      expect(await page.evaluate(() => JSON.parse(localStorage.getItem("perpay.table-columns.v2.administrator-ledger") ?? "{}").order)).toBe(true);
+    }
     // Multiple active associations deliberately have no single order target.
     const linkedRows = page.locator("[data-business-row]").filter({ has: page.getByRole("link", { name: /^查看订单：/ }) });
     const row = linkedRows.first();
@@ -17,8 +31,7 @@ for (const { width, hiddenOrder } of [{ width: 1440, hiddenOrder: false }, { wid
     const recordLink = row.locator("a[data-row-link]");
     await expect(relatedOrder).toBeVisible();
     const orderText = await relatedOrder.innerText();
-    if (hiddenOrder) await expect(row.locator(".list-identity-meta")).toContainText(orderText);
-    else if (width === 1440) await expect(row.locator('[data-column-id="order"]')).toContainText(orderText);
+    if (width === 1440) await expect(row.locator('[data-column-id="order"]')).toContainText(orderText);
     else await expect(row.locator(".business-summary-field").filter({ has: page.locator("dt", { hasText: "当前关联订单" }) })).toContainText(orderText);
 
     const orderHref = await relatedOrder.getAttribute("href");

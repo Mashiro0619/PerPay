@@ -2,10 +2,10 @@ import { test, expect, login, record } from "./fixtures";
 import { audit, screenshot } from "./audit";
 import type { SystemAnalytics } from "../web/src/api/generated/types.gen";
 
-test.describe("overview metric scroll access", () => {
+test.describe("overview metric reading access", () => {
   test.use({ hasTouch: true, isMobile: true });
 
-  test("large values remain readable and scrollable by keyboard on narrow cards", async ({ page, manifest }, info) => {
+  test("large values wrap completely and retain keyboard focus on narrow cards", async ({ page, manifest }, info) => {
     await page.route("**/api/admin/v1/system/analytics?*", async route => {
       const response = await route.fetch();
       const body = await response.json() as { data: SystemAnalytics };
@@ -16,25 +16,32 @@ test.describe("overview metric scroll access", () => {
     });
     await login(page, manifest);
 
-    for (const width of [320, 390]) for (const theme of ["light", "dark"]) {
+    for (const width of [320, 390]) for (const theme of ["light", "dark"]) for (const font of [100, 200]) {
       await page.setViewportSize({ width, height: 900 });
       await page.evaluate(theme => localStorage.setItem("perpay:theme", theme), theme);
       await page.goto(manifest.origin + "/admin/");
+      await page.evaluate(font => document.documentElement.style.fontSize = font + "%", font);
+      await page.clock.runFor(100);
       const amount = page.locator('[data-overview-kpis] [data-slot="card-title"]').first();
       await expect(amount).toHaveText("¥9,876,543,210.12");
-      const geometry = await amount.evaluate(element => ({
-        clientWidth: element.clientWidth,
-        scrollWidth: element.scrollWidth,
-        overflowX: getComputedStyle(element).overflowX,
-      }));
-      expect(geometry.scrollWidth).toBeGreaterThan(geometry.clientWidth);
-      expect(geometry.overflowX).toBe("auto");
+      const geometry = await amount.evaluate(element => {
+        const box = element.getBoundingClientRect(), range = document.createRange();
+        range.selectNodeContents(element);
+        return {
+          clientWidth: element.clientWidth, scrollWidth: element.scrollWidth,
+          width: box.width, height: box.height,
+          lines: [...range.getClientRects()].filter(line => line.width && line.height).map(line => ({
+            left: line.left - box.left, right: line.right - box.left,
+            top: line.top - box.top, bottom: line.bottom - box.top,
+          })),
+        };
+      });
+      expect(geometry.scrollWidth, "the complete value fits the card without horizontal scrolling").toBeLessThanOrEqual(geometry.clientWidth + 1);
+      expect(geometry.lines.length).toBeGreaterThan(0);
+      expect(geometry.lines.every(line => line.left >= -1 && line.right <= geometry.width + 1 && line.top >= -1 && line.bottom <= geometry.height + 1), "every rendered line of the amount remains readable").toBe(true);
       await amount.focus();
       await expect(amount).toBeFocused();
       await expect(amount).toHaveAccessibleName("今日确认金额：¥9,876,543,210.12");
-      await page.keyboard.press("ArrowRight");
-      await page.clock.runFor(250);
-      await expect.poll(() => amount.evaluate(element => element.scrollLeft)).toBeGreaterThan(0);
       const focused = await amount.evaluate(element => {
         const style = getComputedStyle(element);
         const box = element.getBoundingClientRect();
@@ -50,9 +57,9 @@ test.describe("overview metric scroll access", () => {
       expect(focused.outlineStyle).not.toBe("none");
       expect(focused.outlineWidth).toBeGreaterThanOrEqual(2);
       expect(focused.outlineContained).toBe(true);
-      await record(page, info, { width, theme, syntheticMetricValues: true, geometry, focused });
-      await screenshot(page, info, `metric-focus-${theme}-${width}`);
-      await audit(page, info, `metric-focus-${theme}-${width}`);
+      await record(page, info, { width, theme, font, syntheticMetricValues: true, geometry, focused });
+      await screenshot(page, info, `metric-focus-${theme}-${width}-${font}`);
+      await audit(page, info, `metric-focus-${theme}-${width}-${font}`);
     }
   });
 });

@@ -41,7 +41,18 @@ async function openOrder(page: Page, manifest: Manifest, path: string) {
   await page.goto(manifest.origin + "/admin" + path);
   await expect(page.locator("[data-detail-card-grid]")).toBeVisible();
   await expect(page.locator('#main-content [data-slot="skeleton"]')).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "刷新", exact: true })).toBeEnabled();
+  const pageActions = page.getByRole("button", { name: "页面操作", exact: true });
+  if (await pageActions.isVisible()) {
+    await pageActions.click();
+    const actions = page.getByRole("dialog", { name: "页面操作", exact: true });
+    await expect(actions).toBeVisible();
+    await expect(actions.getByRole("button", { name: "刷新", exact: true })).toBeEnabled();
+    await actions.getByRole("button", { name: "关闭对话框", exact: true }).click();
+    await expect(actions).toHaveCount(0);
+    await expect(pageActions).toBeFocused();
+  } else {
+    await expect(page.getByRole("button", { name: "刷新", exact: true })).toBeEnabled();
+  }
   await expect(page.locator("[data-detail-card-grid]")).toHaveAttribute("data-measured", "true");
 }
 async function gridGeometry(page: Page) {

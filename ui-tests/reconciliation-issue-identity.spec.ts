@@ -53,6 +53,21 @@ test("one order's different incoming payments keep distinct list identities and 
     await page.goto(listUrl);
     const rows = page.locator("[data-business-row]");
     await expect(rows).toHaveCount(2);
+    if (scenario.hiddenOrder) {
+      // Explicit choices suppress the associated column and its fallback.
+      // Restore it through the UI before exercising the independent targets.
+      await expect(page.getByRole("columnheader", { name: "关联记录", exact: true })).toHaveCount(0);
+      await expect(rows.getByRole("link", { name: /^查看订单：/ })).toHaveCount(0);
+      await expect(rows.getByRole("link", { name: /^查看流水：/ })).toHaveCount(0);
+      expect(await page.evaluate(() => JSON.parse(localStorage.getItem("perpay.table-columns.v2.reconciliation-exceptions") ?? "{}").order)).toBe(false);
+      await page.getByRole("button", { name: "显示列", exact: true }).click();
+      const relatedColumn = page.getByRole("menuitemcheckbox", { name: "关联记录", exact: true });
+      await expect(relatedColumn).toHaveAttribute("aria-checked", "false");
+      await relatedColumn.click();
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("columnheader", { name: "关联记录", exact: true })).toBeVisible();
+      expect(await page.evaluate(() => JSON.parse(localStorage.getItem("perpay.table-columns.v2.reconciliation-exceptions") ?? "{}").order)).toBe(true);
+    }
     for (const item of items) {
       const row = page.locator('[data-business-row="' + item.exception_id + '"]');
       await expect(row).toContainText(money(item.context.ledger_entry_summary.amount_cents));
