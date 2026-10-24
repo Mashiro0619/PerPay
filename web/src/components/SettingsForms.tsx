@@ -161,9 +161,10 @@ function BackupIntervalField({
   return (
     <Field data-invalid={!!error}>
       <FieldLabel htmlFor="setting-interval_seconds">备份间隔</FieldLabel>
-      <div className="flex max-w-xs items-center gap-2">
+      <div className="flex max-w-xs flex-wrap items-center gap-2">
         <Input
           id="setting-interval_seconds"
+          className="min-w-0 flex-1"
           name="interval_seconds"
           type="number"
           min={3600 / unit}
@@ -197,7 +198,7 @@ function BackupIntervalField({
             }
           }}
         >
-          <SelectTrigger aria-label="备份间隔单位">
+          <SelectTrigger aria-label="备份间隔单位" className="shrink-0">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -415,7 +416,7 @@ export function SettingsEditor({
           onOpenChange={setPrivateOpen}
           data-settings-private
         >
-          <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
+          <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="h-auto min-h-8 max-w-full justify-start whitespace-normal" />}>
             <ChevronDown data-icon="inline-start" />
             导入已有应用私钥（可选）
           </CollapsibleTrigger>
@@ -500,7 +501,7 @@ export function SettingsEditor({
         >
           <SelectTrigger
             id="setting-environment"
-            className="w-full"
+            className="w-full gap-1"
             aria-invalid={!!fieldErrors.environment}
             aria-describedby={
               fieldErrors.environment ? "setting-environment-error" : undefined
@@ -800,6 +801,7 @@ export function SettingsEditor({
           <ToggleGroup
             spacing={0}
             variant="outline"
+            className="min-w-0 max-w-full items-stretch"
             value={[chartType]}
             onValueChange={(values) => {
               const value = values[0];
@@ -808,15 +810,15 @@ export function SettingsEditor({
             }}
             aria-labelledby="dashboard-chart-type-label"
           >
-            <ToggleGroupItem value="AREA">
+            <ToggleGroupItem value="AREA" className="h-auto min-w-0 flex-1 shrink flex-wrap whitespace-normal">
               <ChartArea />
               面积图
             </ToggleGroupItem>
-            <ToggleGroupItem value="BAR">
+            <ToggleGroupItem value="BAR" className="h-auto min-w-0 flex-1 shrink flex-wrap whitespace-normal">
               <ChartColumn />
               柱状图
             </ToggleGroupItem>
-            <ToggleGroupItem value="LINE">
+            <ToggleGroupItem value="LINE" className="h-auto min-w-0 flex-1 shrink flex-wrap whitespace-normal">
               <ChartLine />
               折线图
             </ToggleGroupItem>
@@ -884,7 +886,7 @@ export function SettingsEditor({
         }
       />
       <Field orientation="horizontal" className="flex-wrap justify-end">
-        <Button type="submit" disabled={decoding || !canSave || save.isPending}>
+        <Button type="submit" className="h-auto min-h-8 max-w-full whitespace-normal" disabled={decoding || !canSave || save.isPending}>
           {save.isPending ? (
             <Spinner aria-hidden="true" data-icon="inline-start" />
           ) : (
