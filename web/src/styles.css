@@ -1082,6 +1082,10 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   .trend-header { grid-template-areas: "title period" "tabs tabs" "dates dates"; gap: 0.5rem 0.75rem; }
   .trend-dates { justify-self: start; }
 }
+@container card (max-width: 15rem) {
+  .trend-header { grid-template-columns: minmax(0, 1fr); grid-template-areas: "title" "period" "tabs" "dates"; align-items: start; }
+  .trend-period { justify-self: start; }
+}
 .daily-report {
   display: flex;
   width: 100%;

@@ -1,6 +1,6 @@
 import { DailyAnalytics } from "@/components/daily-analytics";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { useId, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "cn";
 import {
   Area,
@@ -86,6 +86,72 @@ export function ChartAreaInteractive({
   const [metric, setMetric] = useState("amount");
   const [view, setView] = useState("chart");
   const [dailyVisited, setDailyVisited] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [chartFontSize, setChartFontSize] = useState(12);
+  const [axisDimensions, setAxisDimensions] = useState({
+    yWidth: 60,
+    xHeight: 30,
+    dateInset: 24,
+  });
+  useLayoutEffect(() => {
+    const measure = () => {
+      const rem =
+        Number.parseFloat(getComputedStyle(document.documentElement).fontSize) ||
+        16;
+      setChartFontSize(rem * 0.75);
+      // Measure in SVG units: screen bounds can be scaled while ResponsiveContainer resizes.
+      const bounds = (selector: string) =>
+        [...(cardRef.current?.querySelectorAll<SVGGraphicsElement>(selector) ?? [])]
+          .map((label) =>
+            typeof label.getBBox === "function"
+              ? label.getBBox()
+              : label.getBoundingClientRect(),
+          )
+          .filter((label) => label.width > 0 && label.height > 0);
+      const yLabels = bounds(".recharts-yAxis-tick-labels text");
+      const xLabels = bounds(".recharts-xAxis-tick-labels text");
+      if (!yLabels.length || !xLabels.length) return;
+      // Include the 6px tick length, 8px gap and 4px of clearance around the labels.
+      const dimensions = {
+        yWidth: Math.ceil(Math.max(...yLabels.map((label) => label.width)) + 18),
+        xHeight: Math.ceil(Math.max(...xLabels.map((label) => label.height)) + 18),
+        dateInset: Math.ceil(
+          Math.max(...xLabels.map((label) => label.width)) / 2 + 4,
+        ),
+      };
+      setAxisDimensions((previous) =>
+        previous.yWidth === dimensions.yWidth &&
+        previous.xHeight === dimensions.xHeight &&
+        previous.dateInset === dimensions.dateInset
+          ? previous
+          : dimensions,
+      );
+    };
+    measure();
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(measure);
+    if (cardRef.current) observer?.observe(cardRef.current);
+    const labelsObserver =
+      typeof MutationObserver === "undefined"
+        ? null
+        : new MutationObserver(measure);
+    if (cardRef.current) {
+      labelsObserver?.observe(cardRef.current, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+        attributes: true,
+      });
+    }
+    window.addEventListener("resize", measure);
+    return () => {
+      observer?.disconnect();
+      labelsObserver?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
   const summaryId = useId();
   // Direct semantic tokens also work under our CSP, which forbids injected style blocks.
   const seriesColor = metric === "amount" ? "var(--chart-1)" : "var(--chart-2)";
@@ -103,7 +169,7 @@ export function ChartAreaInteractive({
       orders: day.orders_created,
     })) ?? [];
   return (
-    <Card className="@container/card min-w-0" aria-busy={pending}>
+    <Card ref={cardRef} className="@container/card min-w-0" aria-busy={pending}>
       <Tabs
         value={view}
         onValueChange={(value) => {
@@ -187,7 +253,7 @@ export function ChartAreaInteractive({
                 aria-label="统计周期"
                 className="@[650px]/card:hidden"
               >
-                <SelectValue />
+                <SelectValue className="min-w-0" />
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
@@ -244,12 +310,14 @@ export function ChartAreaInteractive({
                 spacing={0}
                 size="sm"
                 aria-label="趋势指标"
+                className="min-w-0 max-w-full items-stretch"
               >
                 {metrics.map((item) => (
                   <ToggleGroupItem
                     key={item.value}
                     value={item.value}
                     aria-describedby={summaryId + item.value}
+                    className="h-auto min-w-0 flex-1 shrink whitespace-normal"
                   >
                     {item.label}
                   </ToggleGroupItem>
@@ -294,7 +362,17 @@ export function ChartAreaInteractive({
                     : "每日新建订单，左右方向键查看日期"
                 }
               >
-                <Chart accessibilityLayer data={data}>
+                <Chart
+                  key={chartFontSize}
+                  accessibilityLayer
+                  data={data}
+                  margin={{
+                    top: chartFontSize,
+                    right: axisDimensions.dateInset,
+                    bottom: chartFontSize / 2,
+                    left: 0,
+                  }}
+                >
                   <defs>
                     <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                       <stop
@@ -315,7 +393,9 @@ export function ChartAreaInteractive({
                     tickLine={false}
                     axisLine={false}
                     tickMargin={8}
-                    minTickGap={32}
+                    minTickGap={chartFontSize * 3}
+                    height={axisDimensions.xHeight}
+                    fontSize={chartFontSize}
                     tickFormatter={(value: string) =>
                       value.slice(5).replace("-", "/")
                     }
@@ -324,7 +404,8 @@ export function ChartAreaInteractive({
                     tickLine={false}
                     axisLine={false}
                     tickMargin={8}
-                    width={60}
+                    width={axisDimensions.yWidth}
+                    fontSize={chartFontSize}
                     allowDecimals={metric === "amount"}
                     tickFormatter={(value: number) =>
                       (metric === "amount" ? "¥" : "") +
