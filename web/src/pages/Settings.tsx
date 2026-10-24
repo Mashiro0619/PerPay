@@ -30,6 +30,15 @@ import { QueryView } from "@/components/request-state";
 import { useSuccessToast } from "@/components/Feedback";
 import { buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { NotificationKeyActions, SecuritySettings } from "./SecuritySettings";
 
 const sectionIcons = {
@@ -47,10 +56,16 @@ export default function Settings() {
   const { section: requestedSection } = useParams();
   const navigate = useNavigate();
   const tabList = useRef<HTMLDivElement>(null);
+  const categoryTrigger = useRef<HTMLButtonElement>(null);
+  const isMobile = useIsMobile();
   const setSuccess = useSuccessToast();
   const [editorVersion, setEditorVersion] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
-  const { requestDiscard } = useDraftGuard();
+  const { requestDiscard, setDialogFinalFocus } = useDraftGuard();
+  useEffect(() => {
+    setDialogFinalFocus(null);
+    return () => setDialogFinalFocus(null);
+  }, [requestedSection, isMobile, setDialogFinalFocus]);
   const settings = useQuery({
     queryKey: ["settings"],
     queryFn: ({ signal }) => result(api.getRuntimeSettings({ signal })),
@@ -62,7 +77,7 @@ export default function Settings() {
     tabList.current
       ?.querySelector<HTMLElement>('[aria-selected="true"]')
       ?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [requestedSection, settings.isSuccess]);
+  }, [requestedSection, settings.isSuccess, isMobile]);
   function updated(data: RuntimeSettings) {
     queryClient.setQueryData(["settings"], { data });
     void refreshOperationalData();
@@ -110,6 +125,12 @@ export default function Settings() {
             (data.completion.complete ? "collection" : "provider");
           const changeSection = (value: string | null) => {
             if (!value) return;
+            // The selected option unmounts before a blocked navigation closes.
+            // Capture a stable return target for the unsaved-changes dialog.
+            if (isMobile) {
+              setDialogFinalFocus(categoryTrigger.current);
+              categoryTrigger.current?.focus({ preventScroll: true });
+            }
             setSuccess("");
             void navigate("/settings/" + value);
           };
@@ -119,35 +140,63 @@ export default function Settings() {
               onValueChange={changeSection}
               className="min-w-0 gap-6"
             >
-              <ScrollingTabs>
-                <TabsList
-                  ref={tabList}
-                  aria-label="设置分类"
-                  activateOnFocus={false}
-                  className="min-w-max justify-start"
+              {isMobile ? (
+                <Select
+                  value={section}
+                  onValueChange={changeSection}
+                  items={availableSections.map(([value, label]) => ({ value, label }))}
                 >
-                  {availableSections.map(([value, title]) => {
-                    const Icon = sectionIcons[value];
-                    return (
-                      <TabsTrigger
-                        key={value}
-                        value={value}
-                        className="shrink-0"
-                        onFocus={(event) =>
-                          event.currentTarget.scrollIntoView({
-                            block: "nearest",
-                            inline: "nearest",
-                          })
-                        }
-                      >
-                        <Icon />
-                        {title}
-                      </TabsTrigger>
-                    );
-                  })}
-                </TabsList>
-              </ScrollingTabs>
-              <TabsContent value={section}>
+                  <SelectTrigger ref={categoryTrigger} aria-label="设置分类" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false}>
+                    <SelectGroup>
+                      {availableSections.map(([value, title]) => {
+                        const Icon = sectionIcons[value];
+                        return (
+                          <SelectItem key={value} value={value}>
+                            <Icon />
+                            {title}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <ScrollingTabs>
+                  <TabsList
+                    ref={tabList}
+                    aria-label="设置分类"
+                    activateOnFocus={false}
+                    className="min-w-max justify-start"
+                  >
+                    {availableSections.map(([value, title]) => {
+                      const Icon = sectionIcons[value];
+                      return (
+                        <TabsTrigger
+                          key={value}
+                          value={value}
+                          className="shrink-0"
+                          onFocus={(event) =>
+                            event.currentTarget.scrollIntoView({
+                              block: "nearest",
+                              inline: "nearest",
+                            })
+                          }
+                        >
+                          <Icon />
+                          {title}
+                        </TabsTrigger>
+                      );
+                    })}
+                  </TabsList>
+                </ScrollingTabs>
+              )}
+              <TabsContent
+                value={section}
+                aria-label={isMobile ? availableSections.find(([value]) => value === section)?.[1] : undefined}
+              >
                 <div
                   data-settings-content
                   className="flex min-w-0 flex-col gap-4"

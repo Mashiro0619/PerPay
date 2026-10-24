@@ -1105,6 +1105,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-header-mobile-actions] a > span { display: inline; }
 [data-header-mobile-actions] [data-refresh-label] { display: inline; }
 [data-header-mobile-actions] .sr-only { position: static; width: auto; height: auto; padding: 0; margin: 0; overflow: visible; clip: auto; white-space: normal; }
+.settings-long-text { field-sizing: fixed; min-height: 6rem; height: 12rem; max-height: min(16rem, 40dvh); overflow-y: auto; }
 [data-list-display-body] .list-columns-slot { display: flex; align-items: stretch; flex-direction: column; }
 [data-list-mobile-actions] { flex-wrap: wrap; }
 [data-list-menu-feedback] { flex-basis: 100%; }
@@ -1123,4 +1124,5 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   [data-list-mobile-leading] [data-slot="toggle-group-item"] { flex: 1; }
   .business-summary-list :is(.list-code, .reconciliation-related-code, .reconciliation-related-title, .reconciliation-related-detail) { max-width: 100%; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
   .list-summary-heading:has(.list-money[data-wide="true"]) { flex-direction: column; align-items: flex-start; }
+  .settings-long-text { min-height: min(6rem, 30dvh); }
 }

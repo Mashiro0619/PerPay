@@ -25,6 +25,7 @@ import {
 const DraftContext = createContext({
   setDirty: (_id: string, _dirty: boolean) => undefined as void,
   requestDiscard: (action: () => void) => action(),
+  setDialogFinalFocus: (_element: HTMLElement | null) => undefined as void,
 });
 type NavigationCheck = () => boolean;
 const OperationNavigationContext = createContext({
@@ -42,6 +43,7 @@ export function DraftProvider({ children }: { children: ReactNode }) {
   const [protectionVersion, setProtectionVersion] = useState(0);
   const [dirty, setHasDrafts] = useState(false);
   const [action, setAction] = useState<(() => void) | null>(null);
+  const dialogFinalFocus = useRef<HTMLElement | null>(null);
   const protectedOperation = () =>
     [...protections.current].reverse().find(([, check]) => check())?.[0] ??
     null;
@@ -71,6 +73,17 @@ export function DraftProvider({ children }: { children: ReactNode }) {
     if (drafts.current.size > 0) setAction(() => pendingAction);
     else pendingAction();
   };
+  const setDialogFinalFocus = useCallback((element: HTMLElement | null) => {
+    dialogFinalFocus.current = element;
+  }, []);
+  const clearDialogFinalFocus = () => {
+    const target = dialogFinalFocus.current;
+    // Base UI reads finalFocus during the close cycle; clear it after that
+    // cycle so a later unrelated confirmation cannot reuse this target.
+    window.setTimeout(() => {
+      if (dialogFinalFocus.current === target) dialogFinalFocus.current = null;
+    }, 0);
+  };
   useEffect(() => {
     if (!dirty) return;
     const beforeUnload = (event: BeforeUnloadEvent) => {
@@ -97,6 +110,7 @@ export function DraftProvider({ children }: { children: ReactNode }) {
     operationWasBlocked.current = false;
     if (blocker.state === "blocked") blocker.reset();
     setAction(null);
+    clearDialogFinalFocus();
   }
   function proceedOperation(onLeave: () => void) {
     if (blocker.state !== "blocked") return;
@@ -105,7 +119,7 @@ export function DraftProvider({ children }: { children: ReactNode }) {
     blocker.proceed();
   }
   return (
-    <DraftContext value={{ setDirty, requestDiscard }}>
+    <DraftContext value={{ setDirty, requestDiscard, setDialogFinalFocus }}>
       <OperationNavigationContext
         value={{
           setProtection,
@@ -126,7 +140,10 @@ export function DraftProvider({ children }: { children: ReactNode }) {
           if (!open) cancel();
         }}
       >
-        <AlertDialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto">
+        <AlertDialogContent
+          finalFocus={dialogFinalFocus.current ? () => dialogFinalFocus.current : undefined}
+          className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto"
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>放弃未保存的修改？</AlertDialogTitle>
           </AlertDialogHeader>
@@ -134,12 +151,22 @@ export function DraftProvider({ children }: { children: ReactNode }) {
               尚未提交的修改将被放弃。已提交的保存可能继续执行，请重新读取后核对结果。
             </AlertDialogDescription></DialogBody>
           <AlertDialogFooter>
-            <AlertDialogCancel>继续编辑</AlertDialogCancel>
+            <AlertDialogCancel
+              onClick={() => {
+                const target = dialogFinalFocus.current;
+                window.setTimeout(() => {
+                  if (target?.isConnected) target.focus({ preventScroll: true });
+                }, 0);
+              }}
+            >
+              继续编辑
+            </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               onClick={() => {
                 const pendingAction = action;
                 setAction(null);
+                clearDialogFinalFocus();
                 if (blocker.state === "blocked") blocker.proceed();
                 else pendingAction?.();
               }}

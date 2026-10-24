@@ -238,31 +238,21 @@ describe("navigation and draft protection", () => {
     }
   });
 
-  it("keeps the same default tabs on narrow screens and activates explicitly", async () => {
+  it("uses a mobile category selector that navigates without implicitly saving", async () => {
     const view = mount({
       path: "/settings/display",
       configured: true,
       mobile: true,
     });
-    const list = await screen.findByRole("tablist", { name: "设置分类" });
-    expect(list).toHaveAttribute("data-variant", "default");
-    expect(list.closest("[data-settings-tabs-scroll]")).toHaveClass(
-      "no-scrollbar",
-      "overflow-x-auto",
-    );
-    const selector = screen.getByRole("tab", { name: "界面显示" });
-    expect(selector).toHaveAttribute("aria-selected", "true");
-    expect(
-      screen.queryByRole("combobox", { name: "设置分类" }),
-    ).not.toBeInTheDocument();
+    const selector = await screen.findByRole("combobox", { name: "设置分类" });
+    expect(selector).toHaveTextContent("界面显示");
+    expect(screen.queryByRole("tablist", { name: "设置分类" })).not.toBeInTheDocument();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "查账设置" }));
+    await user.click(selector);
+    await user.click(await screen.findByRole("option", { name: "查账设置" }));
     await screen.findByLabelText("查账有效时限（秒）");
     expect(view.router.state.location.pathname).toBe("/settings/collection-policy");
-    expect(screen.getByRole("tab", { name: "查账设置" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(screen.getByRole("combobox", { name: "设置分类" })).toHaveTextContent("查账设置");
     expect(
       view.fetchMock.mock.calls.some(([request]) => request.method !== "GET"),
     ).toBe(false);
@@ -294,7 +284,7 @@ describe("navigation and draft protection", () => {
     ).toBe(false);
   });
   it("moves tab focus with arrows without discarding drafts until Enter activates", async () => {
-    const view = mount({ mobile: true });
+    const view = mount();
     const { user, field } = await edit();
     const selected = screen.getByRole("tab", { name: "查账设置" });
     selected.focus();

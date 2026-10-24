@@ -384,6 +384,7 @@ export function SettingsEditor({
         <FieldLabel htmlFor="setting-platform-key">支付宝公钥</FieldLabel>
         <Textarea
           id="setting-platform-key"
+          className="settings-long-text"
           name="platform_public_key"
           rows={4}
           required
@@ -423,6 +424,7 @@ export function SettingsEditor({
               <FieldLabel htmlFor="setting-private-key">应用私钥</FieldLabel>
               <Textarea
                 id="setting-private-key"
+                className="settings-long-text"
                 name="private_key"
                 rows={4}
                 maxLength={16384}

@@ -1,29 +1,49 @@
 import { test, expect, login, record } from "./fixtures";
-test("settings categories expose horizontal scroll and retain manual keyboard activation", async ({ page, manifest }, info) => {
+test("settings use guarded category selection on phones and scrolling tabs on desktop", async ({ page, manifest }, info) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await login(page, manifest);
   for (const route of manifest.routes.filter(route => /^\/settings\/[^/]+$/.test(route))) {
     await page.goto(manifest.origin + "/admin" + route);
-    const list = page.getByRole("tablist", { name: "设置分类" });
-    await expect(list).toBeVisible();
-    const selected = list.locator('[aria-selected="true"]');
-    const scroll = page.locator("[data-settings-tabs-scroll]");
-    await expect.poll(async () => {
-      const bounds = await selected.boundingBox(), region = await scroll.boundingBox();
-      return bounds!.x >= region!.x - 1 && bounds!.x + bounds!.width <= region!.x + region!.width + 1;
-    }).toBe(true);
-    await selected.focus();
-    const before = page.url();
-    await page.keyboard.press("ArrowRight");
-    expect(page.url()).toBe(before);
-    await record(page, info, { route, selected: await selected.textContent() });
+    const category = page.getByRole("combobox", { name: "设置分类" });
+    await expect(category).toBeVisible();
+    await expect(page.getByRole("tablist", { name: "设置分类" })).toHaveCount(0);
+    await category.click();
+    const selected = page.getByRole("option", { selected: true });
+    await expect(selected).toBeVisible();
+    const selectedText = await selected.textContent();
+    await page.keyboard.press("Escape");
+    await expect(category).toBeFocused();
+    await record(page, info, { route, selected: selectedText });
   }
+  await page.goto(manifest.origin + "/admin/settings/display");
+  const name = page.getByRole("textbox", { name: "支付系统名称" });
+  await name.fill("手机草稿保留");
+  await page.getByRole("combobox", { name: "设置分类" }).click();
+  await page.getByRole("option", { name: "查账设置" }).click();
+  const guard = page.getByRole("alertdialog", { name: "放弃未保存的修改？" });
+  await expect(guard).toBeVisible();
+  await guard.getByRole("button", { name: "继续编辑" }).click();
+  await expect(name).toHaveValue("手机草稿保留");
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await expect(page.getByRole("tablist", { name: "设置分类" })).toBeVisible();
+  await expect(name).toHaveValue("手机草稿保留");
+  await page.reload();
   await page.goto(manifest.origin + "/admin/settings/provider");
+  const list = page.getByRole("tablist", { name: "设置分类" });
+  await expect(list).toBeVisible();
+  const selected = list.locator('[aria-selected="true"]');
+  await selected.focus();
+  const before = page.url();
+  await page.keyboard.press("ArrowRight");
+  expect(page.url()).toBe(before);
   const next = page.getByRole("button", { name: "向后滚动设置分类" });
-  await expect(next).toBeVisible();
   const scroll = page.locator("[data-settings-tabs-scroll]");
-  await next.click();
-  await expect.poll(() => scroll.evaluate(e => e.scrollLeft)).toBeGreaterThan(0);
+  const overflows = await scroll.evaluate(element => element.scrollWidth > element.clientWidth + 1);
+  if (overflows) {
+    await expect(next).toBeVisible();
+    await next.click();
+    await expect.poll(() => scroll.evaluate(e => e.scrollLeft)).toBeGreaterThan(0);
+  } else await expect(next).toBeHidden();
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(manifest.origin + "/admin/settings/display");
   const width = (await page.locator(".admin-settings-layout").boundingBox())!.width;

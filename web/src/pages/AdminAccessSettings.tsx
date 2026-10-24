@@ -27,6 +27,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogBody,
   DialogFooter,
 } from "@/components/admin-dialog";
 
@@ -115,6 +116,7 @@ export function AdminAccessSettings({
             </FieldLabel>
             <Textarea
               id="admin-access-cidrs"
+              className="settings-long-text"
               value={text}
               disabled={save.isPending}
               onChange={(event) =>
@@ -190,11 +192,13 @@ export function AdminAccessSettings({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>确认保存访问规则？</DialogTitle>
+          </DialogHeader>
+          <DialogBody>
             <DialogDescription>
               保存后立即生效。启用时新规则必须允许当前客户端
               IP；其他不匹配的来源即使已经登录也会被拒绝。请确认你有服务器离线恢复权限。
             </DialogDescription>
-          </DialogHeader>
+          </DialogBody>
           <DialogFooter>
             <Button
               variant="outline"
