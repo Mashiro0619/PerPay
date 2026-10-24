@@ -65,7 +65,7 @@ describe("official component visibility and motion", () => {
     );
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toContain("@media (pointer: coarse)");
-    expect(css).toContain("min-height: 44px");
+    expect(css).toContain("min-height: 48px");
     expect(css).not.toMatch(new RegExp("@import.*styles/|data-palette"));
   });
 });

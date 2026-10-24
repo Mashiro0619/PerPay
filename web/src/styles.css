@@ -171,30 +171,45 @@
   }
 }
 @media (pointer: coarse) {
-  /* Compact surfaces keep their touch area outside the painted button. */
+  /* Compact visuals reserve an independent 48px touch slot in normal flow. */
   [class~="group/button"],
-  [data-slot="toggle-group-item"],
-  [data-slot="tabs-trigger"] {
-    min-width: 36px;
+  [data-slot="toggle"],
+  [data-slot="toggle-group-item"] {
+    min-width: 48px;
     min-height: 36px;
+    margin-block: 6px;
+  }
+  [class~="touch-icon"] {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    margin-inline: 6px;
   }
   [class~="group/button"]::before,
+  [data-slot="toggle"]::before,
   [data-slot="toggle-group-item"]::before,
   [data-slot="tabs-trigger"]::before {
     content: "";
     position: absolute;
     top: 50%;
     left: 50%;
-    /* Percentage sizes use the padding box; include the controls' 1px borders. */
+    /* These outlined controls use a 1px border around the padding box. */
     width: calc(100% + 2px);
     height: calc(100% + 2px);
-    min-width: 44px;
-    min-height: 44px;
+    min-width: 48px;
+    min-height: 48px;
     transform: translate(-50%, -50%);
+  }
+  [data-slot="toggle"][data-variant="default"]::before,
+  [data-slot="toggle-group-item"][data-variant="default"]::before {
+    /* The default toggle has no border to include in the generated box. */
+    width: 100%;
+    height: 100%;
   }
   [class~="group/button"][type="submit"],
   :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"], [data-slot="sheet-footer"], [data-checkout-actions]) [class~="group/button"] {
     min-height: 40px;
+    margin-block: 4px;
   }
   [data-slot="select-trigger"],
   [data-slot="input"],
@@ -202,52 +217,60 @@
   [data-slot="input-group"] [class~="group/button"],
   [data-spacing="0"] > [data-slot="toggle-group-item"],
   [data-slot="sidebar-menu-button"],
+  [data-sidebar="menu-button"],
   .workspace-site-choice,
   [data-slot="dropdown-menu-item"],
+  [data-slot="dropdown-menu-sub-trigger"],
   [data-slot="dropdown-menu-checkbox-item"],
   [data-slot="dropdown-menu-radio-item"],
   [data-slot="select-item"],
   a.list-site-identity,
   a.list-secondary-link {
-    min-width: 44px;
-    min-height: 44px;
+    min-width: 48px;
+    min-height: 48px;
   }
-  /* Leave space around tab hit areas without painting 44px surfaces. */
+  [data-slot="input-group"] [class~="group/button"],
+  [data-spacing="0"] > [data-slot="toggle-group-item"] {
+    margin: 0;
+  }
+  /* Tabs and joined choices are compound controls, with a slot per choice. */
   [data-slot="tabs-list"] {
-    min-height: max(44px, calc(2rem + 8px));
+    min-height: max(48px, calc(2rem + 12px));
+    padding-block: 6px;
   }
   [data-slot="tabs-trigger"] {
-    min-width: 44px;
+    min-width: 48px;
+    min-height: 36px;
     height: max(36px, 2rem);
-  }
-  [data-slot="pagination-content"] [class~="group/button"] {
-    min-width: 44px;
   }
   [data-slot="input-group"] [class~="group/button"]::before,
   [data-slot="pagination-content"] [class~="group/button"]::before,
   [data-spacing="0"] > [data-slot="toggle-group-item"]::before,
   [data-slot="tabs-trigger"]::before {
-    /* Adjacent controls must not borrow horizontal space from each other. */
     min-width: 0;
   }
   [data-spacing="0"] > [data-slot="toggle-group-item"]::before {
     width: 100%;
   }
-  /* Composed controls own their height; enlarging only the button overflows. */
   [data-slot="input-group"] {
     height: auto;
-    min-height: 44px;
+    min-height: 48px;
   }
   [data-slot="input-group-addon"][data-align="inline-start"],
   [data-slot="input-group-addon"][data-align="inline-end"] {
     padding-block: 0;
   }
-  [data-admin-dialog-body] {
-    padding-top: 4px;
+  /* Only independently actionable groups with an existing sub-8px gap. */
+  .site-header > div,
+  .site-header > div > .ml-auto,
+  [data-page-header-actions],
+  [data-settings-tabs-navigation],
+  [data-slot="item-actions"],
+  [data-slot="sidebar-menu"] {
+    gap: 8px;
   }
-  [data-checkout-summary] {
-    padding-bottom: 4px;
-  }
+  [data-admin-dialog-body] { padding-top: 4px; }
+  [data-checkout-summary] { padding-bottom: 6px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -320,6 +343,12 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
   [data-slot="sidebar-inset"] :is(a, button, input, select, textarea, [tabindex]) {
     scroll-margin-block-start: calc(var(--admin-header-height, 3rem) + var(--list-toolbar-height, 0px) + 1rem);
     scroll-margin-block-end: 1rem;
+  }
+}
+@media (max-width: 1023px) {
+  #main-content :is(a, button, input, select, textarea, [tabindex]) {
+    scroll-margin-block-start: calc(var(--admin-header-height, 3.5rem) + 8px);
+    scroll-margin-block-end: 8px;
   }
 }
 .detail-fields-comfortable { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
@@ -609,7 +638,6 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .list-query-toolbar[data-compact="true"] > .list-columns-slot [data-list-columns-trigger] { height: 2rem; }
 
 @media (pointer: coarse) {
-  .business-table th button { min-height: 44px; }
   .business-summary-row, .record-list-row { scroll-margin-block: 5rem; }
   a.list-site-identity,
   a.list-secondary-link {
@@ -631,8 +659,8 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^="menuitem"], [role="tab"], [data-slot="item"], [data-slot="site-overview-card"], [data-row-link], [aria-disabled="true"], [data-disabled], [data-external-link])) {
     display: inline-flex;
     align-items: center;
-    min-width: 44px;
-    min-height: 44px;
+    min-width: 48px;
+    min-height: 48px;
   }
 }
 
@@ -962,8 +990,9 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .overview-work-order-context > .overview-work-product:focus-visible { outline-offset: -2px; }
 @media (pointer: coarse) {
   .overview-work-content [data-row-link],
-  .overview-work-order-context > .overview-work-product { min-width: 44px; min-height: 44px; }
-  .overview-work-list a.list-code { min-height: 44px; align-content: center; }
+  .overview-work-order-context > .overview-work-product { min-width: 48px; min-height: 48px; }
+  .overview-work-list a.list-code { min-height: 48px; align-content: center; }
+  .overview-work-content > [data-slot="item-header"] { margin-bottom: 8px; }
 }
 
 /* Runtime status uses a flat, aligned service table rather than nested surfaces. */
@@ -1116,6 +1145,11 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-overlay-viewport="dialog"] :is([data-slot="dialog-title"], [data-slot="dialog-description"], [data-slot="alert-dialog-description"]) { overflow-wrap: anywhere; }
 [data-overlay-viewport="dialog"] :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"]) { min-width: 0; }
 [data-overlay-viewport="dialog"] :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"]) button { white-space: normal; }
+[data-overlay-viewport="sheet"]:has(> :is([data-list-filter-scroll], [data-list-display-scroll], [data-header-mobile-actions])) { overflow: clip; }
+@media (pointer: coarse) {
+  /* The close slot ends at 60px; keep 8px before adjacent scrolling controls. */
+  [data-overlay-viewport="sheet"]:has(> :is([data-list-filter-scroll], [data-list-display-scroll], [data-header-mobile-actions])) > [data-slot="sheet-header"] { min-height: 68px; }
+}
 [data-overlay-viewport="sheet"] {
   min-width: 0;
   max-height: calc(var(--overlay-viewport-height, 100dvh) - 1rem);
@@ -1147,9 +1181,12 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-mobile="true"] [data-sidebar="header"] { padding-right: 3.5rem; }
 [data-mobile="true"] [data-sidebar="content"] { min-height: 0; }
 [data-mobile="true"] > [data-slot="sheet-close"] { top: max(0.5rem, env(safe-area-inset-top)); }
-[data-header-mobile-actions] { padding-top: 4px; padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+[data-header-mobile-actions] { padding-top: 4px; padding-bottom: max(1rem, env(safe-area-inset-bottom)); scroll-padding-block: 1rem; }
 [data-header-mobile-actions] [data-page-header-actions] { flex-direction: column; align-items: stretch; gap: 0.75rem; }
 [data-header-mobile-actions] :is([class~="group/button"], [data-slot="dropdown-menu-trigger"]) { width: 100%; justify-content: flex-start; }
+@media (pointer: coarse) {
+  [data-header-mobile-actions] [class~="touch-icon"] { min-width: 48px; margin-inline: 0; }
+}
 [data-header-mobile-actions] a > span { display: inline; }
 [data-header-mobile-actions] [data-refresh-label] { display: inline; }
 [data-header-mobile-actions] .sr-only { position: static; width: auto; height: auto; padding: 0; margin: 0; overflow: visible; clip: auto; white-space: normal; }
@@ -1158,13 +1195,13 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-list-mobile-actions] { flex-wrap: wrap; }
 [data-list-menu-feedback] { flex-basis: 100%; }
 [data-list-display-body], [data-list-filter-body] { overscroll-behavior: contain; }
-[data-list-columns-panel] [data-slot="field"][data-orientation="horizontal"] { min-height: 44px; }
-[data-list-columns-panel] [data-slot="field-label"] { flex: 1; min-height: 44px; align-content: center; }
+[data-list-columns-panel] [data-slot="field"][data-orientation="horizontal"] { min-height: 48px; }
+[data-list-columns-panel] [data-slot="field-label"] { flex: 1; min-height: 48px; align-content: center; }
 
 @media (pointer: coarse) {
-  [data-orientation="horizontal"]:has(> :is([data-slot="checkbox"], [data-slot="switch"])) { min-height: 44px; align-items: center; }
+  [data-orientation="horizontal"]:has(> :is([data-slot="checkbox"], [data-slot="switch"])) { min-height: 48px; align-items: center; }
   [data-orientation="horizontal"]:has(> :is([data-slot="checkbox"], [data-slot="switch"])) > [data-slot="field-label"] { align-self: stretch; display: flex; align-items: center; }
-  :is([data-slot="checkbox"], [data-slot="switch"])::after { top: 50%; left: 50%; right: auto; bottom: auto; min-width: 44px; min-height: 44px; transform: translate(-50%, -50%); }
+  :is([data-slot="checkbox"], [data-slot="switch"])::after { top: 50%; left: 50%; right: auto; bottom: auto; min-width: 48px; min-height: 48px; transform: translate(-50%, -50%); }
 }
 @media (max-width: 1023px) {
   [data-list-mobile-leading] { width: 100%; }

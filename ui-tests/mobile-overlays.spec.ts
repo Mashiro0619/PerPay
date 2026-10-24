@@ -42,6 +42,8 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
       await page.clock.runFor(200);
       const pageWidthBefore = await page.evaluate(() => document.documentElement.scrollWidth);
       const more = page.getByRole("button", { name: "更多订单操作", exact: true });
+      await more.evaluate(element => element.scrollIntoView({ block: "center", inline: "nearest" }));
+      await page.clock.runFor(100);
       await more.click();
       await page.getByRole("menuitem", { name: "列表显示", exact: true }).click();
       const display = page.getByRole("dialog", { name: "列表显示", exact: true });
@@ -54,8 +56,14 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
         await page.screenshot();
         await page.clock.runFor(100);
         const geometry = await reachable(target);
-        await reachable(close);
-        return geometry;
+        const closeGeometry = await reachable(close);
+        const boundary = await display.locator("[data-list-display-scroll]").boundingBox();
+        const closeToContent = boundary!.y - closeGeometry.y - closeGeometry.height;
+        expect(closeToContent, "the complete close target keeps 8px before the adjacent content scroller").toBeGreaterThanOrEqual(7.5);
+        const closeToControl = geometry.y - closeGeometry.y - closeGeometry.height;
+        expect(closeToControl, "the revealed content target remains separate from the close target").toBeGreaterThanOrEqual(7.5);
+        expect(await display.evaluate(element => element.scrollTop), "focus scrolling stays in the content region").toBe(0);
+        return { ...geometry, closeToContent, closeToControl };
       };
 
       const comfortable = display.getByRole("button", { name: "舒适", exact: true });
@@ -82,6 +90,9 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
 
       const done = display.getByRole("button", { name: "完成", exact: true });
       const doneGeometry = await scrollControl(done);
+      const displayBounds = (await display.boundingBox())!;
+      const doneBottomSpace = displayBounds.y + displayBounds.height - doneGeometry.y - doneGeometry.height;
+      expect(doneBottomSpace, "the final action's entire touch extension keeps 8px inside the popup edge").toBeGreaterThanOrEqual(7.5);
       const layout = await display.evaluate(element => {
         const scroll = element.querySelector<HTMLElement>("[data-list-display-scroll]")!;
         return {
@@ -96,7 +107,7 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
       expect(layout.popup.scrollWidth).toBeLessThanOrEqual(layout.popup.width + 1);
       expect(layout.pageWidth).toBeLessThanOrEqual(pageWidthBefore + 1);
       await info.attach("list-display-geometry", {
-        body: Buffer.from(JSON.stringify({ evidence: "browser touch viewport with enlarged text", width, height, font, pageWidthBefore, layout, density, field, resetGeometry, doneGeometry }, null, 2)),
+        body: Buffer.from(JSON.stringify({ evidence: "browser touch viewport with enlarged text", width, height, font, pageWidthBefore, layout, density, field, resetGeometry, doneGeometry, doneBottomSpace }, null, 2)),
         contentType: "application/json",
       });
       await info.attach(`list-display-${width}-${height}-${font}`, { body: await page.screenshot(), contentType: "image/png" });
@@ -133,15 +144,21 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
     const actionsClose = await reachable(close);
     const refresh = actions.getByRole("button", { name: "刷新", exact: true });
     await expect(refresh).toHaveText("刷新");
-    await scrollTo(actions.getByRole("button", { name: /外观，当前/ }), page);
+    const appearance = await scrollTo(actions.getByRole("button", { name: /外观，当前/ }), page);
+    const actionBounds = (await actions.boundingBox())!;
+    const appearanceBottomSpace = actionBounds.y + actionBounds.height - appearance.y - appearance.height;
+    expect(appearanceBottomSpace, "the last action's complete touch extension keeps 8px inside the popup edge").toBeGreaterThanOrEqual(7.5);
+    const contentBounds = (await actions.locator("[data-header-mobile-actions]").boundingBox())!;
+    const closeToContent = contentBounds.y - actionsClose.y - actionsClose.height;
+    expect(closeToContent, "header close and content scroller remain separated by at least 8px").toBeGreaterThanOrEqual(7.5);
     await reachable(close);
-    await record(page, info, { evidence: "browser synthetic visualViewport", area: panned, navigationClose, actionsClose });
+    await record(page, info, { evidence: "browser synthetic visualViewport", area: panned, navigationClose, actionsClose, appearance, appearanceBottomSpace, closeToContent });
     await close.click();
     await expect(more).toBeFocused();
     await expect(actions).toHaveCount(0);
   });
 
-  test("enlarged checkout QR keeps its 44px close usable after body scrolling", async ({ page, manifest }, info) => {
+  test("enlarged checkout QR keeps its complete close target usable after body scrolling", async ({ page, manifest }, info) => {
     await page.goto(manifest.origin + manifest.checkouts.open!);
     const trigger = page.getByRole("button", { name: "放大二维码", exact: true });
     await trigger.click();

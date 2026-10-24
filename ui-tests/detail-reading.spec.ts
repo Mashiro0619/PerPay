@@ -371,7 +371,7 @@ test("three detail types retain expanded facts across widths, themes and content
   expect(errors).toEqual([]);
 });
 
-test("coarse-pointer detail actions retain 44 pixel targets in both content modes", async ({ browser, manifest }, info) => {
+test("coarse-pointer detail actions retain 48 pixel targets in both content modes", async ({ browser, manifest }, info) => {
   test.setTimeout(180_000);
   const context = await browser.newContext({ hasTouch: true, isMobile: true, viewport: { width: 320, height: 900 }, locale: "zh-CN", timezoneId: "Asia/Shanghai" });
   try {
@@ -389,7 +389,9 @@ test("coarse-pointer detail actions retain 44 pixel targets in both content mode
         const targets = [];
         for (const button of await page.locator('#main-content [class~="group/button"], #main-content [data-slot="button"]').all()) {
           if (!await button.isVisible() || !await button.isEnabled()) continue;
-          await button.scrollIntoViewIfNeeded();
+          // Reveal the complete generated touch slot, including its margins.
+          await button.evaluate(element => element.scrollIntoView({ block: "center", inline: "nearest" }));
+          await page.clock.runFor(100);
           targets.push(await expectTouchTarget(button));
         }
         expect(targets.length).toBeGreaterThan(0);
