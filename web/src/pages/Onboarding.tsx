@@ -538,22 +538,22 @@ function OnboardingFooter({
 }) {
   const deferredState = { deferOnboardingFor: instanceId };
   return (
-    <footer className="flex min-w-0 flex-col gap-3" data-onboarding-actions>
+    <footer className="flex min-w-0 flex-col gap-3 @max-3xl/onboarding:[&_:is(a,button)]:h-auto @max-3xl/onboarding:[&_:is(a,button)]:min-h-8 @max-3xl/onboarding:[&_:is(a,button)]:max-w-full @max-3xl/onboarding:[&_:is(a,button)]:whitespace-normal" data-onboarding-actions>
       <Separator />
       <div
-        className="flex min-w-0 flex-wrap items-start justify-between gap-3"
+        className="flex min-w-0 flex-col items-stretch gap-3 @3xl/onboarding:flex-row @3xl/onboarding:items-start @3xl/onboarding:justify-between"
         data-onboarding-primary-actions
       >
         {index > 0 && (
           <Link
-            className={buttonVariants({ variant: "outline" })}
+            className={buttonVariants({ variant: "outline", className: "self-start" })}
             to={onboardingPath(onboardingSteps[index - 1]!.id)}
           >
             上一步
           </Link>
         )}
         <div
-          className="ml-auto flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2"
+          className="flex w-full min-w-0 flex-wrap items-center gap-3 @3xl/onboarding:ml-auto @3xl/onboarding:w-auto @3xl/onboarding:flex-1 @3xl/onboarding:justify-end"
           data-onboarding-next
         >
           {children}
@@ -781,7 +781,7 @@ export function ReadinessCheck({
   const runtimeWarnings =
     ready && status ? onboardingRuntimeWarnings(status) : [];
   const actions = (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex min-w-0 max-w-full flex-wrap items-center gap-3">
       {ready && (
         <>
           <Link className={buttonVariants()} to="/">
