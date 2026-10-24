@@ -1144,7 +1144,29 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-overlay-viewport="dialog"] > :not(button) { min-width: 0; }
 [data-overlay-viewport="dialog"] :is([data-slot="dialog-title"], [data-slot="dialog-description"], [data-slot="alert-dialog-description"]) { overflow-wrap: anywhere; }
 [data-overlay-viewport="dialog"] :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"]) { min-width: 0; }
-[data-overlay-viewport="dialog"] :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"]) button { white-space: normal; }
+[data-overlay-viewport="dialog"] :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"]) button { height: auto; min-height: 2rem; max-width: 100%; padding-block: 0.3125rem; white-space: normal; overflow-wrap: anywhere; }
+@media (pointer: coarse) {
+  [data-overlay-viewport="dialog"] :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"]) button { min-height: max(40px, 2rem); }
+}
+/* One scroll region preserves natural header, field and action heights even
+   when text zoom or the keyboard leaves only a short visible viewport. */
+[data-admin-dialog] { overflow: clip; gap: 0; }
+[data-admin-dialog]:has(> [data-admin-dialog-scroll][data-scrollable="true"]):has(> [data-slot="dialog-close"]) { padding-top: calc(1.5rem + 56px); }
+[data-admin-dialog-scroll] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: max-content;
+  min-width: 0;
+  min-height: 0;
+  gap: 1rem;
+  margin: -1rem;
+  padding: 1rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scroll-padding-block: 1rem;
+}
+[data-admin-dialog-scroll] > :is([data-admin-dialog-body], .overflow-auto),
+[data-admin-dialog-scroll] > form.contents > [data-slot="field-group"] { overflow: visible; }
 [data-overlay-viewport="sheet"]:has(> :is([data-list-filter-scroll], [data-list-display-scroll], [data-header-mobile-actions])) { overflow: clip; }
 @media (pointer: coarse) {
   /* The close slot ends at 60px; keep 8px before adjacent scrolling controls. */

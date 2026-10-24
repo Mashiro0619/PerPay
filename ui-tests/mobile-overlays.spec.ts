@@ -191,7 +191,10 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
     const closeGeometry = await reachable(close);
     const explanation = dialog.locator("[data-admin-dialog-body]");
     await expect(explanation).toHaveText(/保存后立即生效/);
-    await explanation.evaluate(element => element.scrollTop = element.scrollHeight);
+    const scroll = dialog.locator("[data-admin-dialog-scroll]");
+    await expect.poll(() => scroll.evaluate(element => element.clientHeight)).toBeGreaterThanOrEqual(64);
+    await scroll.evaluate(element => element.scrollTop = element.scrollHeight);
+    await expect.poll(() => scroll.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
     const confirmGeometry = await scrollTo(dialog.getByRole("button", { name: "确认保存", exact: true }), page);
     const cancel = dialog.getByRole("button", { name: "取消", exact: true });
     const cancelGeometry = await scrollTo(cancel, page);

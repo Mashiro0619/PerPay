@@ -198,7 +198,7 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
     await view.click();
     const dialog = page.getByRole("dialog", { name: "支付宝公钥", exact: true });
     await expect(dialog.getByRole("textbox", { name: "密钥内容", exact: true })).toHaveValue(syntheticPublicKey);
-    const body = dialog.locator("[data-admin-dialog-body]");
+    const body = dialog.locator("[data-admin-dialog-scroll]");
     await expect.poll(() => body.evaluate(element => element.scrollTop)).toBe(0);
     const copy = dialog.getByRole("button", { name: "复制支付宝公钥", exact: true });
     await dialog.getByRole("textbox", { name: "密钥内容", exact: true }).focus();

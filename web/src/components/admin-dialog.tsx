@@ -1,4 +1,4 @@
-import { createContext, useContext, useRef, useState, type ComponentProps } from "react";
+import { createContext, useContext, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from "react";
 import { cn } from "@/lib/utils";
 import { useWorkspaceSwitching } from "@/lib/workspace-navigation-state";
 import * as DialogUI from "@/components/ui/dialog";
@@ -34,16 +34,58 @@ export function AlertDialog(props: ComponentProps<typeof AlertUI.AlertDialog>) {
   return <RetainDialogContext value={state.requestedOpen}><AlertUI.AlertDialog {...props} {...state.root} /></RetainDialogContext>;
 }
 const content = "flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-[calc(100%-2rem)] flex-col overflow-hidden";
-export function DialogContent({ className, kind = "form", ...props }: ComponentProps<typeof DialogUI.DialogContent> & { kind?: "form" | "technical" }) {
+function DialogScroll({ children, scrollRef }: { children: ReactNode; scrollRef?: RefObject<HTMLDivElement | null> }) {
+  const localRef = useRef<HTMLDivElement>(null);
+  const element = scrollRef ?? localRef;
+  const [scrollable, setScrollable] = useState(false);
+  useLayoutEffect(() => {
+    const scroll = element.current!;
+    const measure = () => {
+      // Discount the close-control space so a small resize cannot toggle the
+      // reservation back and forth. Content that fits keeps its usual layout.
+      const popup = scroll.parentElement;
+      const popupStyle = popup && getComputedStyle(popup);
+      const reserved = scroll.dataset.scrollable === "true" && popup?.querySelector(":scope > [data-slot=dialog-close]") && popupStyle
+        ? Math.max(0, (Number.parseFloat(popupStyle.paddingTop) || 0) - (Number.parseFloat(popupStyle.paddingBottom) || 0)) : 0;
+      const next = scroll.scrollHeight > scroll.clientHeight + reserved + 1;
+      setScrollable(previous => previous === next ? previous : next);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(scroll);
+    for (const child of scroll.children) observer.observe(child);
+    return () => observer.disconnect();
+  }, [children]);
+  return <div ref={element} data-admin-dialog-scroll data-scrollable={scrollable}>{children}</div>;
+}
+export function DialogContent({ className, kind = "form", children, initialFocus, ...props }: ComponentProps<typeof DialogUI.DialogContent> & { kind?: "form" | "technical" }) {
   const keepMounted = useContext(RetainDialogContext);
   const switching = useWorkspaceSwitching();
-  return <DialogUI.DialogContent {...props} portalProps={{ ...props.portalProps, keepMounted: keepMounted || props.portalProps?.keepMounted, hidden: switching || props.portalProps?.hidden, inert: switching || props.portalProps?.inert }} data-admin-dialog={kind} className={cn(className, content, kind === "technical" ? "sm:max-w-3xl" : "sm:max-w-xl")} />;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  return <DialogUI.DialogContent {...props} initialFocus={openType => {
+    const scroll = scrollRef.current;
+    if (initialFocus === undefined && scroll && scroll.scrollHeight > scroll.clientHeight + 1) return scroll.parentElement;
+    if (typeof initialFocus === "function") return initialFocus(openType);
+    if (initialFocus && typeof initialFocus === "object") return initialFocus.current;
+    return initialFocus ?? true;
+  }} portalProps={{ ...props.portalProps, keepMounted: keepMounted || props.portalProps?.keepMounted, hidden: switching || props.portalProps?.hidden, inert: switching || props.portalProps?.inert }} data-admin-dialog={kind} className={cn(className, content, kind === "technical" ? "sm:max-w-3xl" : "sm:max-w-xl")}>
+    <DialogScroll scrollRef={scrollRef}>{children}</DialogScroll>
+  </DialogUI.DialogContent>;
 }
-export function AlertDialogContent({ className, initialFocus, ...props }: ComponentProps<typeof AlertUI.AlertDialogContent>) {
+export function AlertDialogContent({ className, initialFocus, children, ...props }: ComponentProps<typeof AlertUI.AlertDialogContent>) {
   const element = useRef<HTMLDivElement>(null);
   const keepMounted = useContext(RetainDialogContext);
   const switching = useWorkspaceSwitching();
-  return <AlertUI.AlertDialogContent {...props} portalProps={{ ...props.portalProps, keepMounted: keepMounted || props.portalProps?.keepMounted, hidden: switching || props.portalProps?.hidden, inert: switching || props.portalProps?.inert }} ref={element} initialFocus={initialFocus ?? (() => element.current?.querySelector<HTMLButtonElement>('[data-slot="alert-dialog-cancel"]') ?? element.current)} data-admin-dialog="confirm" className={cn(className, content, "data-[size=default]:max-w-[calc(100%-2rem)] data-[size=sm]:max-w-[calc(100%-2rem)] data-[size=default]:sm:max-w-lg")} />;
+  return <AlertUI.AlertDialogContent {...props} portalProps={{ ...props.portalProps, keepMounted: keepMounted || props.portalProps?.keepMounted, hidden: switching || props.portalProps?.hidden, inert: switching || props.portalProps?.inert }} ref={element} initialFocus={openType => {
+    const scroll = element.current?.querySelector<HTMLElement>("[data-admin-dialog-scroll]");
+    // Start long confirmations at their explanation instead of scrolling to
+    // the cancellation button before the user has read the operation.
+    if (initialFocus !== false && scroll && scroll.scrollHeight > scroll.clientHeight + 1) return element.current;
+    if (initialFocus && typeof initialFocus === "object") return initialFocus.current;
+    return typeof initialFocus === "function" ? initialFocus(openType) : initialFocus ?? element.current?.querySelector<HTMLButtonElement>('[data-slot="alert-dialog-cancel"]') ?? element.current;
+  }} data-admin-dialog="confirm" className={cn(className, content, "data-[size=default]:max-w-[calc(100%-2rem)] data-[size=sm]:max-w-[calc(100%-2rem)] data-[size=default]:sm:max-w-lg")}>
+    <DialogScroll>{children}</DialogScroll>
+  </AlertUI.AlertDialogContent>;
 }
 export function DialogHeader({ className, ...props }: ComponentProps<typeof DialogUI.DialogHeader>) {
   return <DialogUI.DialogHeader {...props} className={cn(className, "shrink-0 pr-8 text-left")} />;
