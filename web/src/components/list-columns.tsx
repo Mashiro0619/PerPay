@@ -7,12 +7,15 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { cn } from "cn";
 
 type ListColumnsHost = {
   target: HTMLDivElement | null;
   setTarget: (target: HTMLDivElement | null) => void;
   summary: boolean;
   setSummary: (summary: boolean) => void;
+  display: boolean;
+  setDisplay: (display: boolean) => void;
 };
 
 const ListColumnsContext = createContext<ListColumnsHost | null>(null);
@@ -21,7 +24,8 @@ const ListColumnsContext = createContext<ListColumnsHost | null>(null);
 export function ListColumnsProvider({ children }: { children: ReactNode }) {
   const [target, setTarget] = useState<HTMLDivElement | null>(null);
   const [summary, setSummary] = useState(false);
-  const value = useMemo(() => ({ target, setTarget, summary, setSummary }), [target, summary]);
+  const [display, setDisplay] = useState(false);
+  const value = useMemo(() => ({ target, setTarget, summary, setSummary, display, setDisplay }), [target, summary, display]);
   return <ListColumnsContext value={value}>{children}</ListColumnsContext>;
 }
 
@@ -29,12 +33,22 @@ export function useListSummary() {
   return useContext(ListColumnsContext)?.summary ?? false;
 }
 
-export function ListColumnsSlot({ children }: { children?: ReactNode }) {
+/** The compact host exposes fields directly inside its display sheet. */
+export function useListDisplay() {
+  return useContext(ListColumnsContext)?.display ?? false;
+}
+
+export function ListColumnsSlot({ children, display = false }: { children?: ReactNode; display?: boolean }) {
   const host = useContext(ListColumnsContext);
+  const setDisplay = host?.setDisplay;
+  useLayoutEffect(() => {
+    setDisplay?.(display);
+    return () => setDisplay?.(false);
+  }, [display, setDisplay]);
   return (
     <div
       ref={host?.setTarget}
-      className="list-columns-slot flex items-center gap-2 empty:hidden"
+      className={cn("list-columns-slot flex gap-2 empty:hidden", display ? "min-w-0 flex-col items-stretch gap-4" : "items-center")}
       data-list-columns-slot
     >{children}</div>
   );

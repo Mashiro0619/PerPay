@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useId,
   useMemo,
   useState,
   type ReactNode,
@@ -34,7 +35,8 @@ import {
 import { useCompactList } from "@/hooks/use-compact-list";
 import { useListSize } from "@/hooks/use-list-size";
 import { LinkedSummaryRow, LinkedTableRow } from "@/components/LinkedTableRow";
-import { ListColumnsMenu } from "@/components/list-columns";
+import { ListSummary } from "@/components/list-primitives";
+import { ListColumnsMenu, useListDisplay } from "@/components/list-columns";
 import { useListDensity } from "@/components/list-density";
 import {
   Table,
@@ -45,7 +47,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { ItemContent, ItemGroup } from "@/components/ui/item";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
+import { ItemGroup } from "@/components/ui/item";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -60,6 +64,8 @@ const features = tableFeatures({ columnVisibilityFeature, rowSortingFeature });
 export type BusinessCellContext = {
   isSummary: boolean;
   isColumnVisible: (id: string) => boolean;
+  /** Whether a selected field belongs in the always-visible part of a summary. */
+  isSummaryPrimary: (id: string) => boolean;
   showInSummary: (id: string) => boolean;
   visibleColumnCount: number;
 };
@@ -79,6 +85,8 @@ export type BusinessColumn<T> = ResponsiveColumn & {
   headerClassName?: string;
   align?: "left" | "center" | "right";
   layout?: BusinessColumnLayout;
+  /** Summary placement, independent of the user's selected field preferences. */
+  summaryPriority?: "primary" | "details";
 };
 type BusinessTableProps<T> = {
   id: string;
@@ -120,9 +128,22 @@ function DefaultBusinessSummary<T>({
     (column) => columnLayout(column, columns.indexOf(column)) === "identity",
   );
   const fields = visible.filter((column) => column !== identity);
+  const renderFields = (primary: boolean) => fields
+    .filter((column) => context.isSummaryPrimary(column.id) === primary)
+    .map((column) => (
+      <div
+        key={column.id}
+        className="business-summary-field"
+        data-column-layout={columnLayout(column, columns.indexOf(column))}
+        data-column-id={column.id}
+      >
+        <dt>{column.label}</dt>
+        <dd>{column.cell(item, context)}</dd>
+      </div>
+    ));
   return (
-    <ItemContent className="min-w-0">
-      {identity && (
+    <ListSummary
+      identity={identity && (
         <div
           className="business-summary-identity min-w-0"
           data-column-layout="identity"
@@ -131,22 +152,10 @@ function DefaultBusinessSummary<T>({
           {identity.cell(item, context)}
         </div>
       )}
-      {fields.length > 0 && (
-        <dl className="business-summary-fields">
-          {fields.map((column) => (
-            <div
-              key={column.id}
-              className="business-summary-field"
-              data-column-layout={columnLayout(column, columns.indexOf(column))}
-              data-column-id={column.id}
-            >
-              <dt>{column.label}</dt>
-              <dd>{column.cell(item, context)}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
-    </ItemContent>
+      details={renderFields(false)}
+    >
+      {renderFields(true)}
+    </ListSummary>
   );
 }
 // FlexRender must keep the component type stable across refreshes and column changes.
@@ -177,6 +186,8 @@ function BusinessTableView<T extends RowData>({
   "aria-label": ariaLabel,
 }: BusinessTableProps<T>) {
   const compact = useCompactList();
+  const inlineColumns = useListDisplay();
+  const columnsId = useId();
   const preference = useListDensity();
   const density = !requestedDensity || requestedDensity === "default" ? preference : requestedDensity;
   const { ref: container, size, isSummary } = useListSize();
@@ -208,11 +219,22 @@ function BusinessTableView<T extends RowData>({
     () => ({
       isSummary,
       isColumnVisible: (key) => visibility[key] === true,
+      isSummaryPrimary: (key) => {
+        if (!visibility[key]) return false;
+        const index = specs.findIndex((column) => column.id === key);
+        const column = specs[index];
+        if (!column) return false;
+        const layout = columnLayout(column, index);
+        if (layout === "identity" || layout === "actions") return true;
+        return column.summaryPriority
+          ? column.summaryPriority === "primary"
+          : column.summaryDefault === true;
+      },
       showInSummary: (key) =>
         !isSummary && visibility[key] === false && overrides[key] !== false,
       visibleColumnCount: Object.values(visibility).filter(Boolean).length,
     }),
-    [visibility, overrides, isSummary],
+    [visibility, overrides, isSummary, specs],
   );
   const sortColumn = control
     ? specs.find((column) => column.sortBy === control.query.sortBy)
@@ -256,7 +278,37 @@ function BusinessTableView<T extends RowData>({
       if (sort && field) control?.setSort(field, sort.desc ? "desc" : "asc");
     },
   });
-  const columnMenu = columnsMenu && (
+  const columnMenu = columnsMenu && (inlineColumns ? (
+    <FieldSet data-list-columns-panel>
+      <FieldLegend variant="label">
+        {isSummary ? "显示信息（标识与操作固定）" : "显示列（标识与操作固定）"}
+      </FieldLegend>
+      <FieldGroup>
+        {table.getAllLeafColumns().map((column) => (
+          <Field key={column.id} orientation="horizontal" data-disabled={!column.getCanHide() || undefined}>
+            <Checkbox
+              id={columnsId + "-" + column.id}
+              disabled={!column.getCanHide()}
+              checked={column.getIsVisible()}
+              onCheckedChange={(value) => column.toggleVisibility(value)}
+            />
+            <FieldLabel htmlFor={columnsId + "-" + column.id}>
+              {specs.find((spec) => spec.id === column.id)?.label}
+            </FieldLabel>
+          </Field>
+        ))}
+      </FieldGroup>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={Object.keys(overrides).length === 0}
+        onClick={() => setOverrides({})}
+      >
+        <RotateCcw data-icon="inline-start" />
+        恢复默认列
+      </Button>
+    </FieldSet>
+  ) : (
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
@@ -302,7 +354,7 @@ function BusinessTableView<T extends RowData>({
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
+  ));
   return (
     <div
       ref={container}

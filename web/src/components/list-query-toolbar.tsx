@@ -1,10 +1,11 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "cn";
-import { ChevronDown, Search, X } from "lucide-react";
+import { ChevronDown, Columns3, Search, X } from "lucide-react";
 import { normalizeKeyword, type ListQueryControl } from "@/lib/list-query";
 import { useCompactList } from "@/hooks/use-compact-list";
 import { ListColumnsSlot, useListSummary } from "@/components/list-columns";
-import { ListDensityControl } from "@/components/list-density";
+import { ListDensityControl, ListDensityOptions } from "@/components/list-density";
+import { ListActionsMenu, ListActionsProvider } from "@/components/list-actions-menu";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
@@ -23,12 +24,16 @@ import {
   DropdownMenuGroup,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import {
   ListFilterSheet,
   type ListFilter,
+  type ListFilterDraftControl,
 } from "@/components/list-filter-sheet";
-export type { ListFilter } from "@/components/list-filter-sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter, SheetClose } from "@/components/ui/sheet";
+import { Separator } from "@/components/ui/separator";
+export type { ListFilter, ListFilterDraftControl } from "@/components/list-filter-sheet";
 
 export type ListQueryLookup = {
   context?: (mode: string) => ReactNode;
@@ -59,6 +64,10 @@ export function ListQueryToolbar({
   mobileActions,
   desktopFilters,
   desktopActions,
+  desktopFilterContent,
+  mobileFilterContent,
+  mobileFilterSummary = [],
+  mobileFilterReset,
 }: {
   control: ListQueryControl;
   sorts: readonly { value: string; label: string }[];
@@ -71,6 +80,10 @@ export function ListQueryToolbar({
   mobileActions?: ReactNode;
   desktopFilters?: ReactNode;
   desktopActions?: ReactNode;
+  desktopFilterContent?: ReactNode;
+  mobileFilterContent?: (control: ListFilterDraftControl) => ReactNode;
+  mobileFilterSummary?: readonly string[];
+  mobileFilterReset?: Record<string, string | null>;
 }) {
   const compactViewport = useCompactList();
   const summary = useListSummary();
@@ -79,6 +92,11 @@ export function ListQueryToolbar({
   const [lookupDraft, setLookupDraft] = useState("");
   const [mode, setMode] = useState("");
   const [error, setError] = useState("");
+  const [displayOpen, setDisplayOpen] = useState(false);
+  const actionsTrigger = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (!compact) setDisplayOpen(false);
+  }, [compact]);
   useEffect(() => {
     setDraft(control.query.q);
     setError("");
@@ -97,6 +115,7 @@ export function ListQueryToolbar({
         (filter.options.find((option) => option.value === filter.value)
           ?.label ?? filter.value),
     ),
+    ...mobileFilterSummary,
   ];
   return (
     <div
@@ -261,7 +280,7 @@ export function ListQueryToolbar({
           </>
         )}
       </div>
-      <ListColumnsSlot><ListDensityControl compact={compact} /></ListColumnsSlot>
+      {!compact && <ListColumnsSlot><ListDensityControl compact={false} /></ListColumnsSlot>}
       {selectedMode && (
         <div className="list-toolbar-detail empty:hidden">
           <ErrorNotice error={lookup?.error} />
@@ -269,24 +288,39 @@ export function ListQueryToolbar({
       )}
       {compact && (
         <>
+          {mobileLeading && <div className="list-toolbar-detail flex min-w-0 flex-wrap items-center gap-2" data-list-mobile-leading>{mobileLeading}</div>}
           <div
-            className="flex min-w-0 items-center gap-2"
+            className="list-toolbar-detail flex min-w-0 items-center justify-between gap-2"
             data-list-mobile-actions
           >
-            {mobileLeading}
             <ListFilterSheet
               control={control}
               sorts={sorts}
               filters={filters}
               disabled={busy}
-              compact={!!mobileLeading}
+              content={mobileFilterContent}
+              activeContentCount={mobileFilterSummary.length}
             />
-            {mobileActions && (
-              <div className="ml-auto flex shrink-0 items-center gap-2">
-                {mobileActions}
-              </div>
-            )}
+            <ListActionsProvider triggerRef={actionsTrigger} items={<DropdownMenuItem onClick={() => setDisplayOpen(true)}><Columns3 />列表显示</DropdownMenuItem>}>
+              {mobileActions ?? <ListActionsMenu label="更多列表操作" disabled={busy} />}
+            </ListActionsProvider>
           </div>
+          <Sheet open={displayOpen} onOpenChange={setDisplayOpen}>
+            <SheetContent side="bottom" finalFocus={actionsTrigger} className="max-h-[calc(100dvh-2rem)]" data-list-display-sheet>
+              <SheetHeader className="shrink-0 pr-16">
+                <SheetTitle>列表显示</SheetTitle>
+                <SheetDescription>调整密度和显示字段，设置会自动保存。</SheetDescription>
+              </SheetHeader>
+              <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-1" data-list-display-body>
+                <ListDensityOptions />
+                <Separator />
+                <ListColumnsSlot display />
+              </div>
+              <SheetFooter className="shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                <SheetClose render={<Button type="button" className="min-h-11" />}>完成</SheetClose>
+              </SheetFooter>
+            </SheetContent>
+          </Sheet>
           {summaries.length > 0 && (
             <div
               className="list-toolbar-detail flex min-w-0 items-center gap-2"
@@ -316,6 +350,7 @@ export function ListQueryToolbar({
                 onClick={() =>
                   control.update({
                     q: null,
+                    ...mobileFilterReset,
                     ...Object.fromEntries(
                       filters.map((filter) => [
                         filter.key,
@@ -331,6 +366,7 @@ export function ListQueryToolbar({
           )}
         </>
       )}
+      {!compact && desktopFilterContent && <div className="list-toolbar-detail flex min-w-0 flex-wrap items-center gap-2">{desktopFilterContent}</div>}
       {children && (
         <div className="list-toolbar-detail flex flex-wrap items-center gap-2">
           {children}

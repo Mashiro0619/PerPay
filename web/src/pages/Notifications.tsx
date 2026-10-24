@@ -139,9 +139,9 @@ function DeliveryPage({
         <ListIdentity
           meta={
             <ListMeta>
-              {delivery.order_summary && <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
+              {delivery.order_summary && context.showInSummary("order") && <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
                 <span>商户订单号（业务网站）：</span>
-                <span className="list-code" title={delivery.order_summary.merchant_order_no}>{delivery.order_summary.merchant_order_no}</span>
+                <Link className="list-secondary-link list-code" title={delivery.order_summary.merchant_order_no} to={"/orders/" + delivery.event.order_id}>{delivery.order_summary.merchant_order_no}</Link>
               </span>}
               {delivery.order_summary && (
                 <span className="whitespace-nowrap tabular-nums">
@@ -179,7 +179,7 @@ function DeliveryPage({
       id: "order",
       label: "关联商户订单号（业务网站）",
       layout: "text",
-      summaryDefault: false,
+      summaryDefault: true,
       responsive: { minWidthRem: 75, basis: "container" },
       cell: (delivery) => (
         <Link
@@ -218,7 +218,7 @@ function DeliveryPage({
       label: "尝试次数",
       align: "center",
       layout: "number",
-      summaryDefault: false,
+      summaryDefault: true,
       responsive: { minWidthRem: 40, basis: "container" },
       cell: (delivery) => <span className="tabular-nums">{delivery.attempt_count}</span>,
     },
@@ -238,7 +238,7 @@ function DeliveryPage({
       label: "下次尝试",
       align: "center",
       layout: "datetime",
-      summaryDefault: false,
+      summaryDefault: true,
       responsive: { minWidthRem: 56, basis: "container" },
       cell: (delivery) => <ListDateTime value={delivery.next_attempt_at} />,
     },
@@ -254,6 +254,10 @@ function DeliveryPage({
         control={listQuery}
         label="通知关键词搜索"
         desktopFilters={filters}
+        desktopFilterContent={<CreatedDateFilter control={listQuery} />}
+        mobileFilterContent={draft => <CreatedDateFilter control={draft} />}
+        mobileFilterSummary={listQuery.query.createdFrom || listQuery.query.createdTo ? ["创建日期：" + (listQuery.query.createdFrom ?? "不限") + " 至 " + (listQuery.query.createdTo ?? "不限")] : []}
+        mobileFilterReset={{ created_from: null, created_to: null }}
         desktopActions={
           <>
             <Link
@@ -304,7 +308,6 @@ function DeliveryPage({
           { value: "next_attempt_at", label: "下次重试时间" },
         ]}
       />
-      <CreatedDateFilter control={listQuery} />
       </ListToolbarPart>
       <QueryView query={deliveries}>
         {(page) => (
@@ -319,9 +322,18 @@ function DeliveryPage({
                   control={listQuery}
                   columns={columns}
                   renderSummary={(delivery, context) => (
-                    <ListSummary identity={columns[0]!.cell(delivery, context)}>
+                    <ListSummary
+                      identity={columns[0]!.cell(delivery, context)}
+                      details={columns.filter((column) =>
+                        context.isColumnVisible(column.id) && !context.isSummaryPrimary(column.id),
+                      ).map((column) => (
+                        <ListSummaryField key={column.id} label={column.label}>
+                          {column.cell(delivery, context)}
+                        </ListSummaryField>
+                      ))}
+                    >
                       {columns.filter((column) =>
-                        column.id !== "identity" && context.isColumnVisible(column.id),
+                        column.id !== "identity" && context.isSummaryPrimary(column.id),
                       ).map((column) => (
                         <ListSummaryField key={column.id} label={column.label}>
                           {column.cell(delivery, context)}

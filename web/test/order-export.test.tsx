@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi } from "vitest";
 import { OrderExport } from "../src/components/order-export";
@@ -88,6 +88,50 @@ describe("order export", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "导出 CSV" }));
     expect(await screen.findByText(/10,000/)).toBeVisible();
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+  it("keeps a mobile menu export active after the menu closes and downloads the completed response once", async () => {
+    let finish!: (response: Response) => void;
+    const pending = new Promise<Response>(resolve => { finish = resolve; });
+    const fetch = vi.fn((_request: Request) => pending);
+    vi.stubGlobal("fetch", fetch);
+    const create = vi.fn((_blob: Blob) => "blob:menu-export");
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() }));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    render(<OrderExport menu query={query} payment="CONFIRMED" checkout="OPEN" />);
+    const user = userEvent.setup();
+    const more = screen.getByRole("button", { name: "更多订单操作" });
+    await user.click(more);
+    await user.click(await screen.findByRole("menuitem", { name: "导出 CSV" }));
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    const request = fetch.mock.calls[0]![0] as Request;
+    expect(request.signal.aborted).toBe(false);
+    expect(create).not.toHaveBeenCalled();
+    await user.click(more);
+    expect(await screen.findByRole("menuitem", { name: /导出 CSV/ })).toHaveAttribute("aria-disabled", "true");
+    await user.keyboard("{Escape}");
+    await act(async () => finish(new Response("csv", { headers: { "content-type": "text/csv;charset=utf-8" } })));
+    await waitFor(() => expect(create).toHaveBeenCalledOnce());
+    expect(click).toHaveBeenCalledOnce();
+    expect(fetch).toHaveBeenCalledOnce();
+    click.mockRestore();
+  });
+  it("aborts a mobile menu export when its applied filter scope changes and ignores its late result", async () => {
+    let finish!: (response: Response) => void;
+    const pending = new Promise<Response>(resolve => { finish = resolve; });
+    const fetch = vi.fn((_request: Request) => pending);
+    vi.stubGlobal("fetch", fetch);
+    const create = vi.fn((_blob: Blob) => "blob:stale-menu-export");
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() }));
+    const view = render(<OrderExport menu query={query} payment={undefined} checkout={undefined} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "更多订单操作" }));
+    await user.click(await screen.findByRole("menuitem", { name: "导出 CSV" }));
+    const request = fetch.mock.calls[0]![0] as Request;
+    view.rerender(<OrderExport menu query={{ ...query, q: "新关键词" }} payment={undefined} checkout={undefined} />);
+    expect(request.signal.aborted).toBe(true);
+    await act(async () => finish(new Response("csv", { headers: { "content-type": "text/csv;charset=utf-8" } })));
+    expect(create).not.toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledOnce();
   });
   it("drops decoded files from a previous administrator session", async () => {

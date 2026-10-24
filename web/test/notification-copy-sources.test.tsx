@@ -2,7 +2,7 @@ import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { queryClient, type AdminOrderDetail, type ReconciliationOrder, type WebhookDeliverySummary } from "../src/api/client";
 import Notifications, { NotificationDetail } from "../src/pages/Notifications";
@@ -22,6 +22,41 @@ function mount(children: ReactNode, path = "/", scoped = false) {
 }
 
 describe("order and notification copy follows its actual source", () => {
+  beforeEach(() => localStorage.clear());
+
+  it.each([false, true])("shows retry scheduling and its associated order once while honoring explicit mobile field choices (hidden: %s)", async hidden => {
+    mobileMedia(360);
+    const overrides = hidden ? { order: false, attempt_count: false, next_attempt_at: false } : {};
+    localStorage.setItem("perpay.table-columns.v2.notifications", JSON.stringify(overrides));
+    const summary: WebhookDeliverySummary = {
+      ...delivery.delivery, event: delivery.event, target: delivery.target,
+      order_summary: {
+        order_id: paidOrder.order_id, api_client_id: paidOrder.api_client_id, site_name: paidOrder.site_name ?? null,
+        product_name: paidOrder.product_name, merchant_order_no: paidOrder.merchant_order_no,
+        requested_amount_cents: paidOrder.requested_amount_cents, payable_amount_cents: paidOrder.payable_amount_cents,
+        received_amount_cents: paidOrder.received_amount_cents ?? null, payment_confirmed_at: null,
+      },
+    };
+    vi.stubGlobal("fetch", vi.fn(async () => json({ data: [summary], page: { next_cursor: null } })));
+    mount(<Notifications />, "/notifications");
+    const row = await screen.findByRole("listitem");
+    if (hidden) {
+      expect(within(row).queryByText("尝试次数")).not.toBeInTheDocument();
+      expect(within(row).queryByText("下次尝试")).not.toBeInTheDocument();
+      expect(within(row).queryByText(paidOrder.merchant_order_no)).not.toBeInTheDocument();
+      expect(within(row).queryByRole("link", { name: paidOrder.merchant_order_no })).not.toBeInTheDocument();
+      expect(within(row).queryByTitle("2026/09/06 08:02（北京时间）")).not.toBeInTheDocument();
+    } else {
+      const attempts = within(row).getByText("尝试次数").closest(".business-summary-field")!;
+      expect(attempts).toHaveTextContent("尝试次数1");
+      expect(within(row).getAllByTitle("2026/09/06 08:02（北京时间）")).toHaveLength(1);
+      expect(within(row).getAllByText(paidOrder.merchant_order_no)).toHaveLength(1);
+      expect(within(row).getByRole("link", { name: paidOrder.merchant_order_no })).toHaveAttribute("href", "/orders/" + paidOrder.order_id);
+    }
+    expect(within(row).getByText("创建时间")).toBeVisible();
+    expect(JSON.parse(localStorage.getItem("perpay.table-columns.v2.notifications")!)).toEqual(overrides);
+  });
+
   it.each([
     [1440, ""], [390, ""], [1440, "/sites/site_copy"], [390, "/sites/site_copy"],
   ] as const)("keeps notification type, merchant identity and payable amount visible at %i in %s", async (width, scope) => {
@@ -53,7 +88,8 @@ describe("order and notification copy follows its actual source", () => {
       .filter(row => within(row).queryByRole("link", { name: product }));
     expect(rows).toHaveLength(2);
     for (const row of rows) {
-      expect(within(row).getByText("商户订单号（业务网站）：")).toBeVisible();
+      expect(within(row).queryByText("商户订单号（业务网站）：") ??
+        within(width < 640 ? row : screen.getByRole("table")).getByText("关联商户订单号（业务网站）")).toBeVisible();
       expect(within(row).getAllByText(merchant).every(value => value.textContent === merchant)).toBe(true);
       expect(within(row).getByText("应付 ¥1.01")).toBeVisible();
       expect(within(row).queryByText(/¥3\.45/)).not.toBeInTheDocument();

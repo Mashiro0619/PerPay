@@ -259,6 +259,11 @@ function OrderPage({
         control={listQuery}
         label="订单关键词搜索"
         desktopFilters={desktopFilters}
+        desktopFilterContent={<CreatedDateFilter control={listQuery}><OrderExport clientId={clientId} query={listQuery.apiQuery} payment={payment} checkout={checkout} /></CreatedDateFilter>}
+        mobileFilterContent={draft => <CreatedDateFilter control={draft} />}
+        mobileFilterSummary={listQuery.query.createdFrom || listQuery.query.createdTo ? ["创建日期：" + (listQuery.query.createdFrom ?? "不限") + " 至 " + (listQuery.query.createdTo ?? "不限")] : []}
+        mobileFilterReset={{ created_from: null, created_to: null }}
+        mobileActions={<OrderExport menu clientId={clientId} query={listQuery.apiQuery} payment={payment} checkout={checkout} />}
         lookup={lookup}
         filters={[
           {
@@ -280,7 +285,6 @@ function OrderPage({
           { value: "received_amount_cents", label: "实收金额" },
         ]}
       />
-      <CreatedDateFilter control={listQuery}><OrderExport clientId={clientId} query={listQuery.apiQuery} payment={payment} checkout={checkout} /></CreatedDateFilter>
       </ListToolbarPart>
       <QueryView query={orders}>
         {(page) => (

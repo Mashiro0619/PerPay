@@ -73,7 +73,7 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
   const columns: BusinessColumn<AdminLedgerSummary>[] = [
     { id: "identity", label: "支付宝流水号", hideable: false, layout: "identity", summaryDefault: true,
       cell: (entry, context) => <ListIdentity
-        meta={!context.isColumnVisible("order") && <LedgerActiveOrder entry={entry} />}
+        meta={context.showInSummary("order") && <LedgerActiveOrder entry={entry} />}
         description={<ListMeta>
           {context.showInSummary("occurred_at") && (entry.occurred_at ? <ListDateTime value={entry.occurred_at} inline /> : <span>{entry.content_consistent ? "—" : "有争议"}</span>)}
           {context.showInSummary("other_account") && entry.other_account && <span>{entry.other_account}</span>}
@@ -86,19 +86,39 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
     { id: "amount_cents", label: "交易金额", sortBy: "amount_cents", layout: "amount", align: "center", summaryDefault: true, cell: entry => <LedgerMoney entry={entry} /> },
     { id: "association", label: "关联状态", layout: "status", align: "center", summaryDefault: true, cell: entry => <LedgerAssociationStatus entry={entry} /> },
     { id: "order", label: "当前关联订单", layout: "text", summaryDefault: true, responsive: { minWidthRem: 64, basis: "container" }, cell: entry => <LedgerActiveOrder entry={entry} /> },
-    { id: "other_account", label: "对方", layout: "text", summaryDefault: true, responsive: { minWidthRem: 58, basis: "container" }, cell: entry => <span className="wrap-anywhere">{ledgerFact(entry.other_account)}</span> },
+    { id: "other_account", label: "对方", layout: "text", summaryDefault: true, summaryPriority: "details", responsive: { minWidthRem: 58, basis: "container" }, cell: entry => <span className="wrap-anywhere">{ledgerFact(entry.other_account)}</span> },
     { id: "memo", label: "备注", layout: "text", summaryDefault: false, responsive: { minWidthRem: 78, basis: "container" }, cell: entry => <span className="wrap-anywhere">{ledgerFact(entry.memo)}</span> },
-    { id: "state", label: "PerPay 处理状态", layout: "status", align: "center", summaryDefault: false, responsive: { minWidthRem: 78, basis: "container" }, cell: entry => <LedgerStates entry={entry} /> },
+    { id: "state", label: "PerPay 处理状态", layout: "status", align: "center", summaryDefault: true, responsive: { minWidthRem: 78, basis: "container" }, cell: entry => <LedgerStates entry={entry} /> },
     { id: "associated_at", label: "最近关联时间", sortBy: "associated_at", layout: "datetime", align: "center", summaryDefault: false, responsive: { minWidthRem: 90, basis: "container" }, cell: entry => entry.last_associated_at ? <ListDateTime value={entry.last_associated_at} /> : "—" },
     { id: "handled_at", label: "最近处理时间", sortBy: "handled_at", layout: "datetime", align: "center", summaryDefault: false, responsive: { minWidthRem: 100, basis: "container" }, cell: entry => entry.last_handled_at ? <ListDateTime value={entry.last_handled_at} /> : "—" },
   ];
   const hasAmounts = search.has("min_amount_cents") || search.has("max_amount_cents");
+  const clearFilterValues = { q: null, direction: null, state: null, association_status: null, has_reversals: null, occurred_from: null, occurred_to: null, associated_from: null, associated_to: null, min_amount_cents: null, max_amount_cents: null, sort_by: null, sort_order: null };
+  const extraFilterSummaries = [
+    ...(control.query.createdFrom || control.query.createdTo ? ["交易日期：" + (control.query.createdFrom ?? "不限") + " 至 " + (control.query.createdTo ?? "不限")] : []),
+    ...(associatedDates.query.createdFrom || associatedDates.query.createdTo ? ["关联日期：" + (associatedDates.query.createdFrom ?? "不限") + " 至 " + (associatedDates.query.createdTo ?? "不限")] : []),
+    ...(hasAmounts ? ["金额：" + (ledgerAmountInput(search.get("min_amount_cents")) || "不限") + " 至 " + (ledgerAmountInput(search.get("max_amount_cents")) || "不限") + " 元"] : []),
+  ];
   const activeFilters = !!(control.query.q || control.query.createdFrom || control.query.createdTo || associatedDates.query.createdFrom || associatedDates.query.createdTo || direction !== DEFAULT_LEDGER_DIRECTION || search.get("state") || search.get("association_status") || search.has("has_reversals") || hasAmounts);
   function refresh() { if (!filterError) void query.refetch(); if (system) void system.status.refetch(); }
   const refreshButton = <RefreshButton busy={query.isFetching} onClick={refresh} />;
   return <ListColumnsProvider><div className="flex min-w-0 flex-col gap-3" data-business-list="ledger">
     <ListToolbarPart>
       <ListQueryToolbar control={control} label="支付宝流水关键词搜索" sorts={sortOptions} filters={listFilters}
+        mobileFilterContent={draft => <>
+          <CreatedDateFilter control={draft.withDates(LEDGER_DATE_FIELDS)} label="交易日期" fields={LEDGER_DATE_FIELDS} />
+          <CreatedDateFilter control={draft.withDates(LEDGER_ASSOCIATED_DATE_FIELDS)} label="关联日期" fields={LEDGER_ASSOCIATED_DATE_FIELDS} />
+          <LedgerAmountFilter control={draft} searchParams={draft.searchParams} />
+        </>}
+        mobileFilterSummary={extraFilterSummaries}
+        mobileFilterReset={{ occurred_from: null, occurred_to: null, associated_from: null, associated_to: null, min_amount_cents: null, max_amount_cents: null }}
+        desktopFilterContent={<>
+          <CreatedDateFilter control={control} label="交易日期" fields={LEDGER_DATE_FIELDS} />
+          <CreatedDateFilter control={associatedDates} label="关联日期" fields={LEDGER_ASSOCIATED_DATE_FIELDS} />
+          <LedgerAmountFilter control={control} />
+          {hasAmounts && <span className="text-xs text-muted-foreground">{ledgerAmountInput(search.get("min_amount_cents")) || "不限"} 至 {ledgerAmountInput(search.get("max_amount_cents")) || "不限"} 元</span>}
+          {activeFilters && <Button variant="ghost" size="sm" onClick={() => control.update(clearFilterValues)}>清除筛选</Button>}
+        </>}
         lookup={{
           modes: [{ value: "ledger", label: "内部流水编号（PerPay）", placeholder: "输入完整的 PerPay 内部流水编号", pattern: resourceIdPattern.source }],
           inputLabel: "内部流水编号（PerPay）", inputName: "ledger-lookup",
@@ -106,23 +126,22 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
         }}
         desktopFilters={listFilters.map(filter => <Select key={filter.key} items={filter.options} value={filter.value} onValueChange={value => { if (value !== null) control.update({ [filter.key]: value }); }}>
           <SelectTrigger aria-label={filter.label + "筛选"}><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{filter.options.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectGroup></SelectContent>
-        </Select>)} desktopActions={refreshButton} mobileActions={onManual ? <ListActionsMenu label="更多对账操作">{trigger => <>
-          <DropdownMenuItem onClick={() => onManual(trigger.current)}><Link2 />人工关联收款</DropdownMenuItem>
+        </Select>)} desktopActions={refreshButton} mobileActions={<ListActionsMenu label="更多对账操作">{trigger => <>
+          {onManual && <DropdownMenuItem onClick={() => onManual(trigger.current)}><Link2 />人工关联收款</DropdownMenuItem>}
           <DropdownMenuItem disabled={query.isFetching || !!filterError} onClick={refresh}><RefreshCw />刷新</DropdownMenuItem>
-        </>}</ListActionsMenu> : refreshButton}>
-        <CreatedDateFilter control={control} label="交易日期" fields={LEDGER_DATE_FIELDS} />
-        <CreatedDateFilter control={associatedDates} label="关联日期" fields={LEDGER_ASSOCIATED_DATE_FIELDS} />
-        <LedgerAmountFilter control={control} />
-        {hasAmounts && <span className="text-xs text-muted-foreground">{ledgerAmountInput(search.get("min_amount_cents")) || "不限"} 至 {ledgerAmountInput(search.get("max_amount_cents")) || "不限"} 元</span>}
-        {activeFilters && <Button variant="ghost" size="sm" onClick={() => control.update({ q: null, direction: null, state: null, association_status: null, has_reversals: null, occurred_from: null, occurred_to: null, associated_from: null, associated_to: null, min_amount_cents: null, max_amount_cents: null, sort_by: null, sort_order: null })}>清除筛选</Button>}
+        </>}</ListActionsMenu>}>
         <div className="basis-full"><LedgerFreshness value={system && !system.checking && !system.unavailable ? system.status.data?.data.ledger.last_success_at : undefined} /></div>
       </ListQueryToolbar>
     </ListToolbarPart>
     {filterError ? <ErrorNotice error={filterError} /> : <QueryView query={query}>{page => <>
       <div className="min-w-0" aria-busy={query.isFetching || query.isPlaceholderData}>
         {page.data.length ? <BusinessTable id="administrator-ledger" aria-label="支付宝流水" tableClassName="ledger-table" items={page.data} columns={columns} rowId={entry => entry.ledger_entry_id} control={control}
-          renderSummary={(entry, context) => <ListSummary identity={columns[0]!.cell(entry, context)} aside={context.isColumnVisible("amount_cents") && <LedgerMoney entry={entry} />}>
-            {columns.filter(column => !["identity", "amount_cents"].includes(column.id) && context.isColumnVisible(column.id)).map(column => <ListSummaryField key={column.id} label={column.label}>{column.cell(entry, context)}</ListSummaryField>)}
+          renderSummary={(entry, context) => <ListSummary
+            identity={columns[0]!.cell(entry, context)}
+            aside={context.isSummaryPrimary("amount_cents") && <LedgerMoney entry={entry} />}
+            details={columns.filter(column => context.isColumnVisible(column.id) && !context.isSummaryPrimary(column.id)).map(column => <ListSummaryField key={column.id} label={column.label}>{column.cell(entry, context)}</ListSummaryField>)}
+          >
+            {columns.filter(column => !["identity", "amount_cents"].includes(column.id) && context.isSummaryPrimary(column.id)).map(column => <ListSummaryField key={column.id} label={column.label}>{column.cell(entry, context)}</ListSummaryField>)}
           </ListSummary>} /> : <Empty kind={activeFilters ? "filtered" : "page"}><EmptyHeader><EmptyTitle role="heading" aria-level={2}>{activeFilters ? "暂无符合条件的流水" : "暂无支付宝流水"}</EmptyTitle><EmptyDescription>{activeFilters ? "调整筛选条件后重试。" : "已采集的支付宝流水会显示在这里。"}</EmptyDescription></EmptyHeader></Empty>}
       </div>
       <CursorPagination page={pagination.page} count={page.data.length} hasNext={!!page.page.next_cursor} pending={query.isFetching || query.isPlaceholderData} previousLabel={pagination.previousLabel} onPrevious={pagination.previous} onNext={() => pagination.next(page.page.next_cursor)} />

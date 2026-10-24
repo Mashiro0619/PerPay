@@ -89,6 +89,17 @@ describe("overview order progress", () => {
     expect(screen.getByText("收款已确认")).toBeVisible();
   });
 
+  it("honors its own explicit hidden time field on mobile while retaining payment and notification progress", () => {
+    mobileMedia(360);
+    localStorage.setItem("perpay.table-columns.v2.overview-recent-orders", JSON.stringify({ created_at: false }));
+    const view = mount();
+    expect(view.container.querySelector("time")).toBeNull();
+    expect(screen.getByRole("group", { name: "收款状态" })).toHaveTextContent("收款已确认");
+    expect(screen.getByRole("group", { name: "通知状态" })).toHaveTextContent("等待重试");
+    expect(screen.getByRole("link", { name: recent.product_name })).toBeVisible();
+    expect(JSON.parse(localStorage.getItem("perpay.table-columns.v2.overview-recent-orders")!)).toEqual({ created_at: false });
+  });
+
   it("groups statuses below 64rem, moves times below 48rem and retains the complete summary below 40rem", () => {
     let width = 767;
     const original = HTMLElement.prototype.getBoundingClientRect;

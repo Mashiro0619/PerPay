@@ -2,12 +2,14 @@ import type { AdminOrderSummary } from "@/api/client";
 import { Link } from "@/navigation";
 import { useWorkspace } from "@/workspace";
 import { useListSize } from "@/hooks/use-list-size";
-import { BusinessTable, type BusinessColumn } from "@/components/business-table";
+import { BusinessTable, type BusinessCellContext, type BusinessColumn } from "@/components/business-table";
 import { StatusBadge } from "@/components/business-status";
 import {
   ListDateTime,
   ListIdentity,
   ListMoney,
+  ListSummaryDetails,
+  ListSummaryField,
 } from "@/components/list-primitives";
 import { SiteIdentity } from "@/components/site-identity";
 import { Badge } from "@/components/ui/badge";
@@ -107,16 +109,28 @@ function OrderMeta({ order, showSite, showTimes = false }: { order: AdminOrderSu
   );
 }
 
-function RecentOrderSummary({ order, showSite }: { order: AdminOrderSummary; showSite: boolean }) {
+function RecentOrderSummary({ order, showSite, context, columns }: {
+  order: AdminOrderSummary;
+  showSite: boolean;
+  context: BusinessCellContext;
+  columns: BusinessColumn<AdminOrderSummary>[];
+}) {
   return (
     <ItemContent className="overview-order-summary">
       <ItemTitle className="list-identity-title"><OrderProductLink order={order} /></ItemTitle>
       <ItemActions className="overview-order-summary-progress">
-        <div className="overview-order-summary-amount"><OrderAmounts order={order} /></div>
-        <div role="group" aria-label="收款状态"><PaymentResult order={order} /></div>
-        <div role="group" aria-label="通知状态"><NotificationResult order={order} /></div>
+        {context.isSummaryPrimary("amounts") && <div className="overview-order-summary-amount"><OrderAmounts order={order} /></div>}
+        {context.isSummaryPrimary("payment") && <div role="group" aria-label="收款状态"><PaymentResult order={order} /></div>}
+        {context.isSummaryPrimary("payment") && <div role="group" aria-label="通知状态"><NotificationResult order={order} /></div>}
       </ItemActions>
-      <OrderMeta order={order} showSite={showSite} showTimes />
+      <OrderMeta order={order} showSite={showSite} showTimes={context.isSummaryPrimary("created_at")} />
+      <ListSummaryDetails>
+        {columns.filter((column) => context.isColumnVisible(column.id) && !context.isSummaryPrimary(column.id)).map((column) => (
+          <ListSummaryField key={column.id} label={column.label}>
+            {column.cell(order, context)}
+          </ListSummaryField>
+        ))}
+      </ListSummaryDetails>
     </ItemContent>
   );
 }
@@ -206,7 +220,7 @@ export function RecentOrders({ orders }: { orders: readonly AdminOrderSummary[] 
         embedded
         columnsMenu={false}
         tableClassName="overview-orders-table"
-        renderSummary={(order) => <RecentOrderSummary order={order} showSite={!clientId} />}
+        renderSummary={(order, context) => <RecentOrderSummary order={order} showSite={!clientId} context={context} columns={columns} />}
       />
     </div>
   );

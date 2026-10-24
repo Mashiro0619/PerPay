@@ -176,6 +176,7 @@ describe("mobile column controls", () => {
       </MemoryRouter>
     );
     const view = render(table("first"));
+    await userEvent.setup().click(screen.getByRole("button", { name: "展开信息" }));
     expect(
       within(screen.getByRole("listitem")).getByText("附加"),
     ).toBeVisible();

@@ -2,6 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { Rows3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 export type ListDensity = "compact" | "comfortable";
 export const LIST_DENSITY_KEY = "perpay:list-density";
@@ -28,6 +30,19 @@ export function ListDensityProvider({ children }: { children: ReactNode }) {
   return <DensityContext value={value}>{children}</DensityContext>;
 }
 export const useListDensity = () => useContext(DensityContext)?.density ?? "compact";
+export function ListDensityOptions() {
+  const context = useContext(DensityContext);
+  if (!context) return null;
+  return <Field>
+    <FieldLabel>列表密度</FieldLabel>
+    <ToggleGroup variant="outline" aria-label="列表密度" value={[context.density]} onValueChange={values => {
+      if (values[0] === "compact" || values[0] === "comfortable") context.setDensity(values[0]);
+    }}>
+      <ToggleGroupItem value="compact" className="min-h-11 flex-1">紧凑</ToggleGroupItem>
+      <ToggleGroupItem value="comfortable" className="min-h-11 flex-1">舒适</ToggleGroupItem>
+    </ToggleGroup>
+  </Field>;
+}
 export function ListDensityControl({ compact }: { compact: boolean }) {
   const context = useContext(DensityContext);
   if (!context) return null;

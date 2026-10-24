@@ -455,10 +455,10 @@ function ReconciliationList({
       summaryDefault: true,
       cell: (item, context) => (
         <ListIdentity
-          meta={(!context.isColumnVisible("order") ||
+          meta={(context.showInSummary("order") ||
             (section !== "conflicts" && item.externalEventId)) && (
             <ListMeta>
-              {!context.isColumnVisible("order") && <RelatedRecord item={item} />}
+              {context.showInSummary("order") && <RelatedRecord item={item} />}
               {section !== "conflicts" && item.externalEventId && (
                 <span className="list-code" title={item.externalEventId}>支付宝流水号 {item.externalEventId}</span>
               )}
@@ -493,7 +493,7 @@ function ReconciliationList({
       id: "order",
       label: "关联记录",
       layout: "text",
-      summaryDefault: false,
+      summaryDefault: true,
       responsive: { minWidthRem: 70, basis: "container" },
       cell: (item) => <RelatedRecord item={item} />,
     },
@@ -644,10 +644,17 @@ function ReconciliationList({
                   renderSummary={(item, context) => (
                     <ListSummary
                       identity={columns[0]!.cell(item, context)}
+                      details={columns.filter((column) =>
+                        context.isColumnVisible(column.id) && !context.isSummaryPrimary(column.id),
+                      ).map((column) => (
+                        <ListSummaryField key={column.id} label={column.label}>
+                          {column.cell(item, context)}
+                        </ListSummaryField>
+                      ))}
                     >
                       {columns.filter((column) =>
                         column.id !== "identity" &&
-                        context.isColumnVisible(column.id),
+                        context.isSummaryPrimary(column.id),
                       ).map((column) => (
                         <ListSummaryField key={column.id} label={column.label}>
                           {column.cell(item, context)}

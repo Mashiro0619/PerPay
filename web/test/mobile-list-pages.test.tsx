@@ -59,7 +59,7 @@ describe("mobile business list integration", () => {
     mobileMedia();
   });
   it.each([
-    ["/orders", <Orders />, null],
+    ["/orders", <Orders />, "更多订单操作"],
     ["/reconciliation", <Reconciliation />, "更多对账操作"],
     ["/notifications", <Notifications />, "更多通知操作"],
     ["/work-items", <WorkItems />, "更多提醒操作"],
@@ -77,14 +77,46 @@ describe("mobile business list integration", () => {
         screen.queryByLabelText("排序字段", { exact: true }),
       ).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: "筛选与排序" })).toBeVisible();
+      const actions = document.querySelector<HTMLElement>("[data-list-mobile-actions]")!;
+      expect(within(actions).getAllByRole("button")).toHaveLength(2);
+      expect(screen.queryByRole("combobox", { name: "创建日期范围" })).not.toBeInTheDocument();
       if (menu) {
         expect(screen.getByRole("button", { name: menu })).toBeVisible();
-      } else {
-        expect(screen.queryByRole("button", { name: "更多订单操作" })).not.toBeInTheDocument();
-        expect(screen.queryByRole("button", { name: "测试收款" })).not.toBeInTheDocument();
       }
+      expect(screen.queryByRole("button", { name: "测试收款" })).not.toBeInTheDocument();
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: menu! }));
+      await user.click(await screen.findByRole("menuitem", { name: "列表显示" }));
+      expect(await screen.findByRole("dialog", { name: "列表显示" })).toBeVisible();
     },
   );
+
+  it.each([
+    ["/orders", <Orders />],
+    ["/notifications", <Notifications />],
+  ] as const)("stages creation dates in the mobile filter sheet on %s", async (path, element) => {
+    const calls: Request[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+      calls.push(request);
+      return json({ data: [], page: { next_cursor: null } });
+    }));
+    mount(path + "?source=overview", element);
+    const user = userEvent.setup();
+    await screen.findByRole("search");
+    await waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    const initialReads = calls.length;
+    await user.click(screen.getByRole("button", { name: "筛选与排序" }));
+    await user.click(screen.getByRole("combobox", { name: "创建日期范围" }));
+    await user.click(await screen.findByRole("option", { name: "近 7 天" }));
+    expect(screen.getByLabelText("当前地址")).toHaveTextContent(path + "?source=overview");
+    expect(calls).toHaveLength(initialReads);
+    await user.click(screen.getByRole("button", { name: "应用" }));
+    await waitFor(() => expect(calls.length).toBe(initialReads + 1));
+    expect(screen.getByLabelText("当前地址")).toHaveTextContent("created_from=");
+    expect(screen.getByLabelText("当前地址")).toHaveTextContent("source=overview");
+    expect(screen.getByLabelText("当前查询条件")).toHaveTextContent("创建日期：");
+    expect(calls.every(request => request.method === "GET")).toBe(true);
+  });
 
   it.each([
     ["商户订单号（业务网站）", order.merchant_order_no],

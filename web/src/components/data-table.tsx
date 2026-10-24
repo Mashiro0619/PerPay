@@ -180,24 +180,31 @@ export function DataTable({
         renderSummary={(order, context) => (
           <ListSummary
             identity={columns[0]!.cell(order, context)}
-            aside={(context.isColumnVisible("payable_amount_cents") || context.isColumnVisible("received_amount_cents")) && (
+            aside={(context.isSummaryPrimary("payable_amount_cents") || context.isSummaryPrimary("received_amount_cents")) && (
               <dl className="flex flex-col items-end gap-3">
-                {context.isColumnVisible("payable_amount_cents") && <div className="flex flex-col items-end gap-1">
+                {context.isSummaryPrimary("payable_amount_cents") && <div className="flex flex-col items-end gap-1">
                   <dt className="text-xs text-muted-foreground">应付金额</dt>
                   <dd><ListMoney value={order.payable_amount_cents} label="应付金额" /></dd>
                 </div>}
-                {context.isColumnVisible("received_amount_cents") && <div className="flex flex-col items-end gap-1">
+                {context.isSummaryPrimary("received_amount_cents") && <div className="flex flex-col items-end gap-1">
                   <dt className="text-xs text-muted-foreground">实收金额</dt>
                   <dd><ReceivedAmount order={order} /></dd>
                 </div>}
               </dl>
             )}
+            details={columns.filter((column) =>
+              context.isColumnVisible(column.id) && !context.isSummaryPrimary(column.id),
+            ).map((column) => (
+              <ListSummaryField key={column.id} label={column.label}>
+                {column.cell(order, context)}
+              </ListSummaryField>
+            ))}
           >
             {columns.filter((column) =>
               column.id !== "identity" &&
               column.id !== "payable_amount_cents" &&
               column.id !== "received_amount_cents" &&
-              context.isColumnVisible(column.id),
+              context.isSummaryPrimary(column.id),
             ).map((column) => (
               <ListSummaryField key={column.id} label={column.label}>
                 {column.cell(order, context)}

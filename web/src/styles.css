@@ -448,6 +448,7 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .business-table td > .list-time:not(.list-time-inline) { display: flex; }
 
 .business-summary-list { min-width: 0; }
+.business-summary-list { container: summary / inline-size; }
 .list-summary-heading { min-width: 0; }
 .list-summary-identity { min-width: 0; flex: 1; }
 .list-summary-aside { max-width: 50%; flex: 0 0 auto; flex-direction: column; align-items: flex-end; }
@@ -461,6 +462,14 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
   margin: 0;
 }
 .business-summary-fields:empty { display: none; }
+.list-summary-details { width: 100%; min-width: 0; }
+.list-summary-toggle { margin-top: 0.25rem; }
+.list-summary-details [data-slot="collapsible-content"] { padding-block: 0.5rem; }
+@container summary (max-width: 19.999rem) {
+  .business-summary-fields { grid-template-columns: minmax(0, 1fr); }
+  .list-summary-heading { flex-wrap: wrap; }
+  .list-summary-aside { max-width: 100%; }
+}
 .business-summary-field { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: 0.25rem; }
 .business-summary-field dt { font-size: 0.75rem; line-height: 1.4; color: var(--muted-foreground); }
 .business-summary-field dd { min-width: 0; max-width: 100%; margin: 0; font-size: 0.8125rem; overflow-wrap: anywhere; }
@@ -549,8 +558,9 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .list-columns-slot:empty { display: none; }
 .list-toolbar-detail { min-width: 0; grid-column: 1 / -1; }
 .list-query-toolbar[data-compact="true"] > .list-toolbar-row { grid-column: 1 / -1; }
-.list-query-toolbar[data-compact="true"] > [data-list-mobile-actions] { grid-column: 1; grid-row: 2; }
-.list-query-toolbar[data-compact="true"] > .list-columns-slot { grid-column: 2; grid-row: 2; }
+.list-query-toolbar[data-compact="true"] > [data-list-mobile-leading],
+.list-query-toolbar[data-compact="true"] > [data-list-mobile-actions] { grid-column: 1 / -1; }
+.list-query-toolbar[data-compact="true"] > .list-columns-slot { display: none; }
 .list-query-toolbar[data-compact="true"] > .list-columns-slot [data-list-columns-trigger] { height: 2rem; }
 
 @media (pointer: coarse) {
@@ -1095,8 +1105,22 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-header-mobile-actions] a > span { display: inline; }
 [data-header-mobile-actions] [data-refresh-label] { display: inline; }
 [data-header-mobile-actions] .sr-only { position: static; width: auto; height: auto; padding: 0; margin: 0; overflow: visible; clip: auto; white-space: normal; }
+[data-list-display-body] .list-columns-slot { display: flex; align-items: stretch; flex-direction: column; }
+[data-list-mobile-actions] { flex-wrap: wrap; }
+[data-list-menu-feedback] { flex-basis: 100%; }
+[data-list-display-body], [data-list-filter-body] { overscroll-behavior: contain; }
+[data-list-columns-panel] [data-slot="field"][data-orientation="horizontal"] { min-height: 44px; }
+[data-list-columns-panel] [data-slot="field-label"] { flex: 1; min-height: 44px; align-content: center; }
+
 @media (pointer: coarse) {
   [data-orientation="horizontal"]:has(> :is([data-slot="checkbox"], [data-slot="switch"])) { min-height: 44px; align-items: center; }
   [data-orientation="horizontal"]:has(> :is([data-slot="checkbox"], [data-slot="switch"])) > [data-slot="field-label"] { align-self: stretch; display: flex; align-items: center; }
   :is([data-slot="checkbox"], [data-slot="switch"])::after { top: 50%; left: 50%; right: auto; bottom: auto; min-width: 44px; min-height: 44px; transform: translate(-50%, -50%); }
+}
+@media (max-width: 1023px) {
+  [data-list-mobile-leading] { width: 100%; }
+  [data-list-mobile-leading] > [data-slot="toggle-group"] { width: 100%; }
+  [data-list-mobile-leading] [data-slot="toggle-group-item"] { flex: 1; }
+  .business-summary-list :is(.list-code, .reconciliation-related-code, .reconciliation-related-title, .reconciliation-related-detail) { max-width: 100%; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+  .list-summary-heading:has(.list-money[data-wide="true"]) { flex-direction: column; align-items: flex-start; }
 }

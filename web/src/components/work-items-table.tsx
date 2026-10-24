@@ -181,11 +181,18 @@ export function WorkItemsTable({
         <ListSummary
           identity={columns[0]!.cell(item, context)}
           aside={columns.find((column) => column.id === "actions")!.cell(item, context)}
+          details={columns.filter((column) =>
+            context.isColumnVisible(column.id) && !context.isSummaryPrimary(column.id),
+          ).map((column) => (
+            <ListSummaryField key={column.id} label={column.label}>
+              {column.cell(item, context)}
+            </ListSummaryField>
+          ))}
         >
           {columns.filter((column) =>
             column.id !== "identity" &&
             column.id !== "actions" &&
-            context.isColumnVisible(column.id),
+            context.isSummaryPrimary(column.id),
           ).map((column) => (
             <ListSummaryField key={column.id} label={column.label}>
               {column.cell(item, context)}

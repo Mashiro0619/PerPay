@@ -6,6 +6,8 @@ import { createdDateRange } from "../../../src/shared/created-dates";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { ErrorNotice } from "@/components/request-state";
+import { ListActionsMenu } from "@/components/list-actions-menu";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import type { useListQuery } from "@/lib/list-query";
 import type { OrderSort } from "../../../src/shared/list-query";
 export function OrderExport({
@@ -13,11 +15,13 @@ export function OrderExport({
   payment,
   checkout,
   clientId = null,
+  menu = false,
 }: {
   query: ReturnType<typeof useListQuery<OrderSort>>["apiQuery"];
   payment: PaymentStatus | undefined;
   checkout: CheckoutStatus | undefined;
   clientId?: string | null;
+  menu?: boolean;
 }) {
   const api = useWorkspaceApi();
   const active = useRef<AbortController | null>(null);
@@ -87,7 +91,12 @@ export function OrderExport({
   }
   return (
     <>
-      <Button
+      {menu ? <ListActionsMenu label="更多订单操作">
+        {() => <DropdownMenuItem disabled={pending} onClick={() => void download()}>
+          {pending ? <Spinner /> : <Download />}
+          导出 CSV
+        </DropdownMenuItem>}
+      </ListActionsMenu> : <Button
         className="ml-auto"
         variant="outline"
         disabled={pending}
@@ -99,9 +108,9 @@ export function OrderExport({
           <Download data-icon="inline-start" />
         )}
         导出 CSV
-      </Button>
+      </Button>}
       {error && (
-        <div className="w-full">
+        <div className="w-full" data-list-menu-feedback={menu || undefined}>
           <ErrorNotice error={error} />
         </div>
       )}

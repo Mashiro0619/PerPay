@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/admin-dialog";
 
-export function LedgerAmountFilter({ control }: { control: ListQueryControl }) {
-  const [search] = useSearchParams();
+export function LedgerAmountFilter({ control, searchParams }: { control: ListQueryControl; searchParams?: URLSearchParams }) {
+  const [urlSearch] = useSearchParams();
+  const search = searchParams ?? urlSearch;
   const [open, setOpen] = useState(false);
   const [minimum, setMinimum] = useState("");
   const [maximum, setMaximum] = useState("");

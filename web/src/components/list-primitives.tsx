@@ -1,7 +1,10 @@
-import type { ReactNode } from "react";
+import { Children, useState, type ReactNode } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "cn";
 import { dateTime, money } from "@/lib/format";
 import { ItemActions, ItemContent, ItemHeader, ItemTitle } from "@/components/ui/item";
+import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 /** Shared typography for tables, overview rows and record summaries. */
 export function ListIdentity({
@@ -80,19 +83,43 @@ export function ListSummary({
   identity,
   aside,
   children,
+  details,
 }: {
   identity: ReactNode;
   aside?: ReactNode;
   children?: ReactNode;
+  /** Selected secondary fields; mounted only while this record is expanded. */
+  details?: ReactNode;
 }) {
+  const hasFields = Children.toArray(children).length > 0;
   return (
     <ItemContent className="min-w-0 w-full">
       <ItemHeader className="list-summary-heading">
         <div className="list-summary-identity">{identity}</div>
         {aside && <ItemActions className="list-summary-aside">{aside}</ItemActions>}
       </ItemHeader>
-      {children && <dl className="business-summary-fields">{children}</dl>}
+      {hasFields && <dl className="business-summary-fields">{children}</dl>}
+      <ListSummaryDetails>{details}</ListSummaryDetails>
     </ItemContent>
+  );
+}
+
+/** Also shared by overview records whose primary layout differs from ListSummary. */
+export function ListSummaryDetails({ children }: { children?: ReactNode }) {
+  const [expanded, setExpanded] = useState(false);
+  if (Children.toArray(children).length === 0) return null;
+  return (
+    <Collapsible open={expanded} onOpenChange={setExpanded} className="list-summary-details">
+      <CollapsibleTrigger
+        render={<Button type="button" variant="ghost" size="sm" className="list-summary-toggle" />}
+      >
+        {expanded ? "收起信息" : "展开信息"}
+        {expanded ? <ChevronUp data-icon="inline-end" /> : <ChevronDown data-icon="inline-end" />}
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <dl className="business-summary-fields">{children}</dl>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 

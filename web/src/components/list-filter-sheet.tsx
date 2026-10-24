@@ -1,6 +1,7 @@
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router";
 import { ArrowDown, ArrowUp, SlidersHorizontal } from "lucide-react";
-import type { ListQueryControl, SortOrder } from "@/lib/list-query";
+import { CREATED_DATE_FIELDS, type ListDateFields, type ListQueryControl, type SortOrder } from "@/lib/list-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -32,18 +33,28 @@ export type ListFilter = {
   options: readonly { value: string; label: string }[];
 };
 
+export type ListFilterDraftControl = ListQueryControl & {
+  /** Includes dates, amounts and other staged URL conditions. */
+  searchParams: URLSearchParams;
+  withDates: (fields: ListDateFields) => ListQueryControl;
+};
+
 export function ListFilterSheet({
   control,
   sorts,
   filters,
   disabled,
   compact = false,
+  content,
+  activeContentCount = 0,
 }: {
   control: ListQueryControl;
   sorts: readonly { value: string; label: string }[];
   filters: readonly ListFilter[];
   disabled: boolean;
   compact?: boolean;
+  content?: (control: ListFilterDraftControl) => ReactNode;
+  activeContentCount?: number;
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -52,9 +63,12 @@ export function ListFilterSheet({
   const [sortOrder, setSortOrder] = useState<SortOrder>(
     control.query.sortOrder,
   );
+  const [search] = useSearchParams();
+  const [initialSearch, setInitialSearch] = useState(() => new URLSearchParams(search));
+  const [contentDraft, setContentDraft] = useState<Record<string, string | null>>({});
   const count = filters.filter(
     (filter) => filter.value !== (filter.defaultValue ?? ""),
-  ).length;
+  ).length + activeContentCount;
   function changeOpen(next: boolean) {
     if (next) {
       setDraft(
@@ -62,9 +76,49 @@ export function ListFilterSheet({
       );
       setSortBy(control.query.sortBy);
       setSortOrder(control.query.sortOrder);
+      setInitialSearch(new URLSearchParams(search));
+      setContentDraft({});
     }
     setOpen(next);
   }
+  const stagedSearch = new URLSearchParams(initialSearch);
+  for (const [key, value] of Object.entries(contentDraft)) {
+    if (value) stagedSearch.set(key, value);
+    else stagedSearch.delete(key);
+  }
+  for (const filter of filters) {
+    const value = draft[filter.key] ?? filter.value;
+    if (value) stagedSearch.set(filter.key, value);
+    else stagedSearch.delete(filter.key);
+  }
+  stagedSearch.set("sort_by", sortBy);
+  stagedSearch.set("sort_order", sortOrder);
+  function stage(values: Record<string, string | null>) {
+    setContentDraft(current => ({ ...current, ...values }));
+    setDraft(current => ({ ...current, ...Object.fromEntries(filters.filter(filter => filter.key in values).map(filter => [filter.key, values[filter.key] ?? ""])) }));
+    if (values.sort_by) setSortBy(values.sort_by);
+    if (values.sort_order === "asc" || values.sort_order === "desc") setSortOrder(values.sort_order);
+  }
+  function withDates(fields: ListDateFields): ListQueryControl {
+    return {
+      query: {
+        q: stagedSearch.get("q") ?? "",
+        sortBy,
+        sortOrder,
+        ...(stagedSearch.has(fields.from) ? { createdFrom: stagedSearch.get(fields.from)! } : {}),
+        ...(stagedSearch.has(fields.to) ? { createdTo: stagedSearch.get(fields.to)! } : {}),
+      },
+      update: stage,
+      setKeyword: q => stage({ q }),
+      setSort: (sort_by, sort_order) => stage({ sort_by, sort_order }),
+      clear: () => stage({ q: null, sort_by: null, sort_order: null, [fields.from]: null, [fields.to]: null }),
+    };
+  }
+  const contentControl: ListFilterDraftControl = {
+    ...withDates(CREATED_DATE_FIELDS),
+    searchParams: stagedSearch,
+    withDates,
+  };
   return (
     <Sheet open={open} onOpenChange={changeOpen}>
       <SheetTrigger
@@ -73,6 +127,7 @@ export function ListFilterSheet({
             variant="outline"
             size={compact ? "icon" : "default"}
             disabled={disabled}
+            className="min-h-11"
           />
         }
         aria-label={count ? "筛选与排序，已选 " + count + " 项" : "筛选与排序"}
@@ -101,6 +156,9 @@ export function ListFilterSheet({
             const changed =
               sortBy !== control.query.sortBy ||
               sortOrder !== control.query.sortOrder ||
+              Object.entries(contentDraft).some(([key, value]) =>
+                (value || null) !== initialSearch.get(key),
+              ) ||
               filters.some(
                 (filter) =>
                   (draft[filter.key] ?? filter.value) !== filter.value,
@@ -108,6 +166,7 @@ export function ListFilterSheet({
             if (!changed) return;
             // One URL update preserves both filter and sort changes and resets the cursor once.
             control.update({
+              ...contentDraft,
               ...Object.fromEntries(
                 filters.map((filter) => [
                   filter.key,
@@ -119,7 +178,7 @@ export function ListFilterSheet({
             });
           }}
         >
-          <FieldGroup className="min-h-0 overflow-y-auto px-4 pb-1">
+          <FieldGroup className="min-h-0 overflow-y-auto px-4 pb-1" data-list-filter-body>
             {filters.map((filter) => (
               <Field key={filter.key}>
                 <FieldLabel htmlFor={id + filter.key}>
@@ -156,6 +215,7 @@ export function ListFilterSheet({
                 </Select>
               </Field>
             ))}
+            {content && <div className="flex min-w-0 flex-col gap-4" data-list-filter-content onSubmit={event => event.stopPropagation()}>{content(contentControl)}</div>}
             <Field>
               <FieldLabel htmlFor={id + "sort"}>排序字段</FieldLabel>
               <Select

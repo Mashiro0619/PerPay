@@ -106,7 +106,13 @@ describe("administrator ledger pages", () => {
     expect(within(summary).getByText("关联状态")).toBeVisible();
     expect(within(summary).getByRole("link", { name: externalEventId })).toHaveTextContent(externalEventId);
     expect(within(summary).getByRole("link", { name: "查看订单：real-order" })).toHaveAttribute("href", "/orders/" + orderId);
+    expect(within(summary).getByText("PerPay 处理状态")).toBeVisible();
+    expect(within(summary).queryByText("本地流水备注")).not.toBeInTheDocument();
+    await user.click(within(summary).getByRole("button", { name: "展开信息" }));
     expect(within(summary).getByText("本地流水备注")).toBeVisible();
+    expect(within(summary).getAllByText("本地流水备注")).toHaveLength(1);
+    expect(JSON.parse(localStorage.getItem("perpay.table-columns.v2.administrator-ledger")!)).toEqual({ memo: true });
+    expect(screen.getByLabelText("位置")).toHaveTextContent(/^\/reconciliation$/);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
