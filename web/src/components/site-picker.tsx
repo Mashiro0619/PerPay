@@ -48,7 +48,7 @@ export function SitePicker({
   });
   const named = selected ?? current.data?.data;
   return (
-    <Field className="w-full max-w-md" data-disabled={disabled}>
+    <Field className="w-full min-w-0 max-w-md" data-disabled={disabled}>
       <FieldLabel htmlFor={id}>业务网站</FieldLabel>
       <Select
         onOpenChange={(open) => {
@@ -60,8 +60,11 @@ export function SitePicker({
           if (next) onChange(next);
         }}
       >
-        <SelectTrigger id={id} className="w-full">
-          <SelectValue placeholder="请选择网站">
+        <SelectTrigger
+          id={id}
+          className="w-full min-w-0 gap-1 py-1 whitespace-normal data-[size=default]:h-auto data-[size=default]:min-h-8 *:data-[slot=select-value]:line-clamp-none *:data-[slot=select-value]:block"
+        >
+          <SelectValue className="min-w-0 whitespace-normal wrap-anywhere" placeholder="请选择网站">
             {value
               ? named
                 ? siteChoiceLabel(named, sites)
