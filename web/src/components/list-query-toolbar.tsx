@@ -306,19 +306,21 @@ export function ListQueryToolbar({
             </ListActionsProvider>
           </div>
           <Sheet open={displayOpen} onOpenChange={setDisplayOpen}>
-            <SheetContent side="bottom" finalFocus={actionsTrigger} className="max-h-[calc(100dvh-2rem)]" data-list-display-sheet>
-              <SheetHeader className="shrink-0 pr-16">
+            <SheetContent side="bottom" finalFocus={actionsTrigger} className="max-h-[calc(100dvh-2rem)] gap-0 overflow-hidden" data-list-display-sheet>
+              <SheetHeader className="shrink-0 pr-[calc(max(1.75rem,44px)+1.5rem)]">
                 <SheetTitle>列表显示</SheetTitle>
-                <SheetDescription>调整密度和显示字段，设置会自动保存。</SheetDescription>
               </SheetHeader>
-              <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-1" data-list-display-body>
-                <ListDensityOptions />
-                <Separator />
-                <ListColumnsSlot display />
+              <div className="flex min-h-0 flex-col gap-4 overflow-y-auto overscroll-contain" data-list-display-scroll>
+                <SheetDescription className="shrink-0 px-4">调整密度和显示字段，设置会自动保存。</SheetDescription>
+                <div className="flex shrink-0 flex-col gap-4 px-4 pb-1" data-list-display-body>
+                  <ListDensityOptions />
+                  <Separator />
+                  <ListColumnsSlot display />
+                </div>
+                <SheetFooter className="shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                  <SheetClose render={<Button type="button" className="min-h-11" />}>完成</SheetClose>
+                </SheetFooter>
               </div>
-              <SheetFooter className="shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
-                <SheetClose render={<Button type="button" className="min-h-11" />}>完成</SheetClose>
-              </SheetFooter>
             </SheetContent>
           </Sheet>
           {summaries.length > 0 && (

@@ -50,6 +50,88 @@ async function scrollTo(target: Locator, page: Page) {
 test.describe("mobile overlay regression with synthetic visible viewport", () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 360, height: 560 }, reducedMotion: "reduce" });
 
+  for (const [width, height, font] of [[640, 280, 150], [640, 280, 200], [320, 560, 200], [360, 560, 100]] as const) {
+    test(`list display remains operable at ${width}x${height} and ${font}% text`, async ({ page, manifest }, info) => {
+      await page.setViewportSize({ width, height });
+      await login(page, manifest);
+      await page.goto(manifest.origin + "/admin/orders");
+      await expect(page.getByRole("searchbox")).toBeVisible();
+      await page.evaluate(font => document.documentElement.style.fontSize = font + "%", font);
+      await page.clock.runFor(200);
+      const pageWidthBefore = await page.evaluate(() => document.documentElement.scrollWidth);
+      const more = page.getByRole("button", { name: "更多订单操作", exact: true });
+      await more.click();
+      await page.getByRole("menuitem", { name: "列表显示", exact: true }).click();
+      const display = page.getByRole("dialog", { name: "列表显示", exact: true });
+      await expect(display).toBeVisible();
+      const close = display.getByRole("button", { name: "关闭对话框", exact: true });
+      const scrollControl = async (target: Locator) => {
+        await target.evaluate(element => element.scrollIntoView({ block: "center", inline: "nearest" }));
+        await page.clock.runFor(200);
+        // Capture a rendered frame after focus can pan the mobile viewport.
+        await page.screenshot();
+        await page.clock.runFor(100);
+        const geometry = await reachable(target);
+        await reachable(close);
+        return geometry;
+      };
+
+      const comfortable = display.getByRole("button", { name: "舒适", exact: true });
+      const density = await scrollControl(comfortable);
+      await comfortable.click();
+      await expect(comfortable).toHaveAttribute("aria-pressed", "true");
+      expect(await page.evaluate(() => localStorage.getItem("perpay:list-density"))).toBe("comfortable");
+
+      const received = display.getByRole("checkbox", { name: "实收金额", exact: true });
+      await expect(received).toBeChecked();
+      const receivedLabel = display.locator('[data-slot="field-label"]').filter({ hasText: /^实收金额$/ });
+      const field = await scrollControl(receivedLabel);
+      // Tap the measured label without auto-scrolling its associated hidden input again.
+      const fieldBox = (await receivedLabel.boundingBox())!;
+      await page.touchscreen.tap(fieldBox.x + fieldBox.width / 2, fieldBox.y + fieldBox.height / 2);
+      await expect(received).not.toBeChecked();
+      await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("perpay.table-columns.v2.orders") ?? "{}").received_amount_cents)).toBe(false);
+
+      const reset = display.getByRole("button", { name: "恢复默认列", exact: true });
+      const resetGeometry = await scrollControl(reset);
+      await reset.click();
+      await expect(received).toBeChecked();
+      await expect.poll(() => page.evaluate(() => localStorage.getItem("perpay.table-columns.v2.orders"))).toBe("{}");
+
+      const done = display.getByRole("button", { name: "完成", exact: true });
+      const doneGeometry = await scrollControl(done);
+      const layout = await display.evaluate(element => {
+        const scroll = element.querySelector<HTMLElement>("[data-list-display-scroll]")!;
+        return {
+          viewport: { width: visualViewport!.width, height: visualViewport!.height },
+          popup: { width: element.clientWidth, scrollWidth: element.scrollWidth },
+          scroll: { width: scroll.clientWidth, scrollWidth: scroll.scrollWidth, height: scroll.clientHeight },
+          pageWidth: document.documentElement.scrollWidth,
+        };
+      });
+      expect(layout.scroll.height).toBeGreaterThanOrEqual(64);
+      expect(layout.scroll.scrollWidth).toBeLessThanOrEqual(layout.scroll.width + 1);
+      expect(layout.popup.scrollWidth).toBeLessThanOrEqual(layout.popup.width + 1);
+      expect(layout.pageWidth).toBeLessThanOrEqual(pageWidthBefore + 1);
+      await info.attach("list-display-geometry", {
+        body: Buffer.from(JSON.stringify({ evidence: "browser touch viewport with enlarged text", width, height, font, pageWidthBefore, layout, density, field, resetGeometry, doneGeometry }, null, 2)),
+        contentType: "application/json",
+      });
+      await info.attach(`list-display-${width}-${height}-${font}`, { body: await page.screenshot(), contentType: "image/png" });
+      await done.click();
+      await expect(display).toHaveCount(0);
+      await expect(more).toBeFocused();
+
+      await more.click();
+      await page.getByRole("menuitem", { name: "列表显示", exact: true }).click();
+      await scrollControl(display.getByRole("button", { name: "舒适", exact: true }));
+      await close.click();
+      await expect(display).toHaveCount(0);
+      await expect(more).toBeFocused();
+      expect(await page.evaluate(() => localStorage.getItem("perpay:list-density"))).toBe("comfortable");
+    });
+  }
+
   test("navigation and page actions sheets keep hit-tested close controls in a panned viewport", async ({ page, manifest }, info) => {
     await login(page, manifest);
     const navigation = page.getByRole("button", { name: "切换导航", exact: true });
