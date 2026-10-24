@@ -415,7 +415,7 @@ export function SecretDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{SECRET_DISPLAY_NOTICE}</DialogDescription>
         </DialogHeader>
-        <div className="-mx-4 flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-1">
+        <DialogBody>
           {name === "api_secret" && (
             <p className="text-sm text-muted-foreground">
               将此密钥复制到业务系统后端的 {systemName} 接入配置，不要放进浏览器代码。
@@ -435,7 +435,7 @@ export function SecretDialog({
                   }
             }
           />
-        </div>
+        </DialogBody>
         <DialogFooter className="shrink-0">
           <Button onClick={onClose}>关闭</Button>
         </DialogFooter>

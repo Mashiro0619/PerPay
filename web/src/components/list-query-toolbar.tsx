@@ -155,7 +155,7 @@ export function ListQueryToolbar({
             }
           }}
         >
-          <FieldGroup className="flex-row items-start gap-2">
+          <FieldGroup className="flex-row items-center gap-2">
             <Field
               className="min-w-0 flex-1"
               data-invalid={!!error}
@@ -318,7 +318,7 @@ export function ListQueryToolbar({
                   <ListColumnsSlot display />
                 </div>
                 <SheetFooter className="shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
-                  <SheetClose render={<Button type="button" className="min-h-11" />}>完成</SheetClose>
+                  <SheetClose render={<Button type="button" />}>完成</SheetClose>
                 </SheetFooter>
               </div>
             </SheetContent>

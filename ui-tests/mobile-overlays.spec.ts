@@ -1,5 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { test, expect, login, record } from "./fixtures";
+import { expectTouchTarget } from "./touch-targets";
 
 type VisibleArea = { width: number; height: number; left: number; top: number };
 const panned: VisibleArea = { width: 280, height: 260, left: 24, top: 32 };
@@ -19,26 +20,7 @@ async function visibleArea(page: Page, area: VisibleArea) {
 }
 
 async function reachable(target: Locator) {
-  await expect(target).toBeVisible();
-  const geometry = await target.evaluate(element => {
-    const bounds = element.getBoundingClientRect(), viewport = window.visualViewport!;
-    const points = [.25, .5, .75].flatMap(x => [.25, .5, .75].map(y => {
-      const hit = document.elementFromPoint(bounds.x + bounds.width * x, bounds.y + bounds.height * y);
-      return hit !== null && (hit === element || element.contains(hit));
-    }));
-    return {
-      width: bounds.width, height: bounds.height,
-      fits: bounds.left >= viewport.offsetLeft - 1 && bounds.top >= viewport.offsetTop - 1 &&
-        bounds.right <= viewport.offsetLeft + viewport.width + 1 &&
-        bounds.bottom <= viewport.offsetTop + viewport.height + 1,
-      hits: points.every(Boolean),
-    };
-  });
-  expect(geometry.width).toBeGreaterThanOrEqual(44);
-  expect(geometry.height).toBeGreaterThanOrEqual(44);
-  expect(geometry.fits, "entire target is inside the synthetic visible browser area").toBe(true);
-  expect(geometry.hits, "nine interior points hit the control or its children").toBe(true);
-  return geometry;
+  return expectTouchTarget(target);
 }
 
 async function scrollTo(target: Locator, page: Page) {

@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect, login, record, type Manifest } from "./fixtures";
 import { audit, screenshot } from "./audit";
+import { expectTouchTarget } from "./touch-targets";
 import type { AdminLedgerDetail, AdminOrderDetail, PaymentMatchDetail, WebhookAttempt, WebhookDeliveryDetail } from "../web/src/api/generated/types.gen";
 
 const scenarios = [
@@ -385,13 +386,13 @@ test("coarse-pointer detail actions retain 44 pixel targets in both content mode
       await layout(page, "dark", mode);
       for (const scenario of scenarios) {
         await openDetail(page, manifest, scenario.key);
-        const targets = await page.locator('#main-content [class~="group/button"], #main-content [data-slot="button"]').evaluateAll(elements => elements.flatMap(element => {
-          const bounds = element.getBoundingClientRect();
-          if (!bounds.width || !bounds.height || getComputedStyle(element).visibility === "hidden") return [];
-          return [{ label: element.getAttribute("aria-label") ?? element.textContent, width: bounds.width, height: bounds.height }];
-        }));
+        const targets = [];
+        for (const button of await page.locator('#main-content [class~="group/button"], #main-content [data-slot="button"]').all()) {
+          if (!await button.isVisible() || !await button.isEnabled()) continue;
+          await button.scrollIntoViewIfNeeded();
+          targets.push(await expectTouchTarget(button));
+        }
         expect(targets.length).toBeGreaterThan(0);
-        expect(targets.filter(target => target.width < 44 || target.height < 44)).toEqual([]);
         await record(page, info, { feature: "detail-touch-targets", width, mode, scenario: scenario.key, targets });
         await screenshot(page, info, `reading-touch-${scenario.key}-${width}-${mode}`);
       }

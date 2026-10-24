@@ -38,8 +38,8 @@ export function ListDensityOptions() {
     <ToggleGroup variant="outline" aria-label="列表密度" value={[context.density]} onValueChange={values => {
       if (values[0] === "compact" || values[0] === "comfortable") context.setDensity(values[0]);
     }}>
-      <ToggleGroupItem value="compact" className="min-h-11 flex-1">紧凑</ToggleGroupItem>
-      <ToggleGroupItem value="comfortable" className="min-h-11 flex-1">舒适</ToggleGroupItem>
+      <ToggleGroupItem value="compact" className="flex-1">紧凑</ToggleGroupItem>
+      <ToggleGroupItem value="comfortable" className="flex-1">舒适</ToggleGroupItem>
     </ToggleGroup>
   </Field>;
 }

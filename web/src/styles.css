@@ -171,14 +171,36 @@
   }
 }
 @media (pointer: coarse) {
-  /* Composed triggers replace data-slot; buttonVariants keeps this shared class. */
+  /* Compact surfaces keep their touch area outside the painted button. */
   [class~="group/button"],
-  [data-slot="button"],
+  [data-slot="toggle-group-item"],
+  [data-slot="tabs-trigger"] {
+    min-width: 36px;
+    min-height: 36px;
+  }
+  [class~="group/button"]::before,
+  [data-slot="toggle-group-item"]::before,
+  [data-slot="tabs-trigger"]::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    /* Percentage sizes use the padding box; include the controls' 1px borders. */
+    width: calc(100% + 2px);
+    height: calc(100% + 2px);
+    min-width: 44px;
+    min-height: 44px;
+    transform: translate(-50%, -50%);
+  }
+  [class~="group/button"][type="submit"],
+  :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"], [data-slot="sheet-footer"], [data-checkout-actions]) [class~="group/button"] {
+    min-height: 40px;
+  }
   [data-slot="select-trigger"],
   [data-slot="input"],
   input[data-slot="input-group-control"],
-  [data-slot="toggle-group-item"],
-  [data-slot="tabs-trigger"],
+  [data-slot="input-group"] [class~="group/button"],
+  [data-spacing="0"] > [data-slot="toggle-group-item"],
   [data-slot="sidebar-menu-button"],
   .workspace-site-choice,
   [data-slot="dropdown-menu-item"],
@@ -190,9 +212,26 @@
     min-width: 44px;
     min-height: 44px;
   }
-  /* Keep the 44px tabs inside the list's 3px padding on both sides. */
+  /* Leave space around tab hit areas without painting 44px surfaces. */
   [data-slot="tabs-list"] {
-    min-height: 50px;
+    min-height: max(44px, calc(2rem + 8px));
+  }
+  [data-slot="tabs-trigger"] {
+    min-width: 44px;
+    height: max(36px, 2rem);
+  }
+  [data-slot="pagination-content"] [class~="group/button"] {
+    min-width: 44px;
+  }
+  [data-slot="input-group"] [class~="group/button"]::before,
+  [data-slot="pagination-content"] [class~="group/button"]::before,
+  [data-spacing="0"] > [data-slot="toggle-group-item"]::before,
+  [data-slot="tabs-trigger"]::before {
+    /* Adjacent controls must not borrow horizontal space from each other. */
+    min-width: 0;
+  }
+  [data-spacing="0"] > [data-slot="toggle-group-item"]::before {
+    width: 100%;
   }
   /* Composed controls own their height; enlarging only the button overflows. */
   [data-slot="input-group"] {
@@ -202,6 +241,12 @@
   [data-slot="input-group-addon"][data-align="inline-start"],
   [data-slot="input-group-addon"][data-align="inline-end"] {
     padding-block: 0;
+  }
+  [data-admin-dialog-body] {
+    padding-top: 4px;
+  }
+  [data-checkout-summary] {
+    padding-bottom: 4px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1102,8 +1147,8 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-mobile="true"] [data-sidebar="header"] { padding-right: 3.5rem; }
 [data-mobile="true"] [data-sidebar="content"] { min-height: 0; }
 [data-mobile="true"] > [data-slot="sheet-close"] { top: max(0.5rem, env(safe-area-inset-top)); }
-[data-header-mobile-actions] { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
-[data-header-mobile-actions] [data-page-header-actions] { flex-direction: column; align-items: stretch; }
+[data-header-mobile-actions] { padding-top: 4px; padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+[data-header-mobile-actions] [data-page-header-actions] { flex-direction: column; align-items: stretch; gap: 0.75rem; }
 [data-header-mobile-actions] :is([class~="group/button"], [data-slot="dropdown-menu-trigger"]) { width: 100%; justify-content: flex-start; }
 [data-header-mobile-actions] a > span { display: inline; }
 [data-header-mobile-actions] [data-refresh-label] { display: inline; }

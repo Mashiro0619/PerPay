@@ -24,9 +24,11 @@ sheet.insertRule(css.slice(
   css.indexOf("@media (prefers-reduced-motion: reduce)"),
 ));
 const rules = Array.from((sheet.cssRules[0] as CSSMediaRule).cssRules) as CSSStyleRule[];
-function touchValue(element: Element, property: string) {
+function touchValue(element: Element, property: string, pseudo?: "before") {
   return rules.reduce((value, rule) =>
-    element.matches(rule.selectorText)
+    (pseudo
+      ? rule.selectorText.includes("::" + pseudo) && element.matches(rule.selectorText.replaceAll("::" + pseudo, ""))
+      : !rule.selectorText.includes("::") && element.matches(rule.selectorText))
       ? rule.style.getPropertyValue(property) || value
       : value,
   "");
@@ -43,7 +45,7 @@ describe("composed touch targets", () => {
       expect(touchValue(link, "min-width")).toBe("44px");
     }
   });
-  it("reserves the trigger height plus both list paddings for every TabsList", () => {
+  it("keeps tab visuals compact while reserving the expanded touch area", () => {
     const { container } = render(
       <Tabs defaultValue="all">
         <TabsList aria-label="记录类型">
@@ -55,9 +57,27 @@ describe("composed touch targets", () => {
     const list = screen.getByRole("tablist");
     const tab = screen.getByRole("tab", { name: "全部" });
     expect(list).toHaveClass("p-[3px]");
-    expect(touchValue(tab, "min-height")).toBe("44px");
-    expect(touchValue(list, "min-height")).toBe("50px");
+    expect(touchValue(tab, "min-height")).toBe("36px");
+    expect(touchValue(tab, "height").replaceAll(" ", "")).toBe("max(36px,2rem)");
+    expect(touchValue(tab, "min-height", "before")).toBe("44px");
+    expect(touchValue(list, "min-height").replaceAll(" ", "")).toBe("max(44px,8px+2rem)");
     expect(container.querySelector('[data-slot="tabs-list"]')).toBe(list);
+  });
+
+  it("separates compact button visuals from their touch region and submit emphasis", () => {
+    render(<>
+      <Button variant="outline">筛选</Button>
+      <Button type="submit">保存</Button>
+    </>);
+    const filter = screen.getByRole("button", { name: "筛选" });
+    const submit = screen.getByRole("button", { name: "保存" });
+    expect(touchValue(filter, "min-height")).toBe("36px");
+    expect(touchValue(submit, "min-height")).toBe("40px");
+    for (const button of [filter, submit]) {
+      expect(touchValue(button, "min-height", "before")).toBe("44px");
+      expect(touchValue(button, "min-width", "before")).toBe("44px");
+      expect(touchValue(button, "position", "before")).toBe("absolute");
+    }
   });
 
   it("grows the input group with its input and inline button, not only the button", () => {
@@ -91,7 +111,7 @@ describe("composed touch targets", () => {
     expect(touchValue(container.querySelector('[data-slot="input-group-addon"]')!, "padding-block")).toBe("");
   });
 
-  it("keeps composed triggers and checkbox menu items at the same touch minimum", async () => {
+  it("keeps menu rows full height while compacting the composed trigger visual", async () => {
     render(
       <DropdownMenu defaultOpen>
         <DropdownMenuTrigger render={<Button variant="outline" />}>显示列</DropdownMenuTrigger>
@@ -106,6 +126,8 @@ describe("composed touch targets", () => {
     const checkbox = await screen.findByRole("menuitemcheckbox", { name: "实收金额" });
     expect(touchValue(checkbox, "min-height")).toBe("44px");
     expect(touchValue(screen.getByRole("menuitem", { name: "普通操作" }), "min-height")).toBe("44px");
-    expect(touchValue(screen.getByRole("button", { name: "显示列" }), "min-height")).toBe("44px");
+    const trigger = screen.getByRole("button", { name: "显示列" });
+    expect(touchValue(trigger, "min-height")).toBe("36px");
+    expect(touchValue(trigger, "min-height", "before")).toBe("44px");
   });
 });

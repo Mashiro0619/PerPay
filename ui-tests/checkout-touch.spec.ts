@@ -1,5 +1,6 @@
 import { test, expect, record } from "./fixtures";
 import { screenshot } from "./audit";
+import { expectTouchTarget } from "./touch-targets";
 
 test.describe("touch and reduced motion", () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 360, height: 560 } });
@@ -8,10 +9,12 @@ test.describe("touch and reduced motion", () => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto(manifest.origin + manifest.checkouts.open!);
     await expect(page.locator("[data-qr-image]")).toBeVisible();
-    const targets = await page.getByRole("button").evaluateAll(elements => elements
-      .filter(element => element.getBoundingClientRect().width > 0)
-      .map(element => ({ text: element.textContent, height: element.getBoundingClientRect().height, width: element.getBoundingClientRect().width })));
-    expect(targets.every(target => target.height >= 44 && target.width >= 44)).toBe(true);
+    const targets = [];
+    for (const button of await page.getByRole("button").all()) {
+      if (!await button.isVisible() || !await button.isEnabled()) continue;
+      await button.scrollIntoViewIfNeeded();
+      targets.push(await expectTouchTarget(button));
+    }
     const query = page.getByRole("button", { name: "查询付款状态", exact: true });
     const bounds = (await query.boundingBox())!;
     expect(bounds.y + bounds.height).toBeLessThanOrEqual(560);

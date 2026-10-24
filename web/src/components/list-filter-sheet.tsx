@@ -127,7 +127,6 @@ export function ListFilterSheet({
             variant="outline"
             size={compact ? "icon" : "default"}
             disabled={disabled}
-            className="min-h-11"
           />
         }
         aria-label={count ? "筛选与排序，已选 " + count + " 项" : "筛选与排序"}

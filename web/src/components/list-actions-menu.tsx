@@ -49,7 +49,6 @@ export function ListActionsMenu({
             variant="outline"
             size="icon"
             disabled={disabled}
-            className="min-h-11 min-w-11"
           />
         }
         aria-label={label}
