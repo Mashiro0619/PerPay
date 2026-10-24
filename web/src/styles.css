@@ -923,6 +923,9 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 
 /* Runtime status uses a flat, aligned service table rather than nested surfaces. */
 .trend-plot { height: 12.5rem; min-height: 12.5rem; flex: none; }
+@container main (max-width: 19rem) {
+  [data-overview-kpis] { grid-template-columns: minmax(0, 1fr); }
+}
 @media (min-width: 768px) { .trend-plot { height: 14rem; min-height: 14rem; } }
 .system-page { display: flex; min-width: 0; flex-direction: column; gap: 1.25rem; container: runtime / inline-size; }
 .runtime-surface { display: flex; min-width: 0; flex-direction: column; gap: 0.875rem; }
@@ -994,7 +997,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   gap: 0.75rem 1rem;
 }
 .trend-title { grid-area: title; display: flex; min-width: 0; align-items: center; gap: 0.25rem; }
-.trend-tabs { grid-area: tabs; }
+.trend-tabs { grid-area: tabs; min-width: 0; width: max-content; }
 .trend-period { grid-area: period; justify-self: end; }
 .trend-dates { grid-area: dates; min-width: 0; justify-self: end; font-size: 0.75rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 @container card (min-width: 56rem) {
@@ -1126,6 +1129,10 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   .list-summary-heading:has(.list-money[data-wide="true"]) { flex-direction: column; align-items: flex-start; }
   .settings-long-text { min-height: min(6rem, 30dvh); }
   [data-qr-image] { width: clamp(180px, calc(100svh - 360px), 240px); max-width: 100%; height: auto; }
+  .trend-tabs { max-width: 100%; }
+  .trend-tabs [data-slot="tabs-trigger"] { flex: 0 0 auto; white-space: nowrap; }
+  .trend-period { min-width: 0; max-width: 100%; }
+  .trend-period [data-slot="select-trigger"] { max-width: 100%; }
 }
 @media (max-width: 1023px) and (max-height: 700px) {
   [data-checkout-page] > header { padding-block: 0.5rem; }

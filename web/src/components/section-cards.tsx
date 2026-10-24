@@ -49,7 +49,7 @@ export function SectionCards({
               tabIndex={pending || card.href || card.value === "—" ? undefined : 0}
               role={card.href ? undefined : "group"}
               aria-label={pending || card.href ? undefined : `${card.title}：${card.value}`}
-              className="overflow-x-auto text-xl font-semibold whitespace-nowrap tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              className="min-w-0 text-xl font-semibold whitespace-normal tabular-nums wrap-anywhere focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
               {pending ? (
                 <Skeleton className="h-7 w-3/4" />
