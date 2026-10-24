@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { ListFilterPanelContext } from "@/components/list-filter-context";
 import {
   Sheet,
   SheetTrigger,
@@ -139,15 +140,13 @@ export function ListFilterSheet({
           </>
         )}
       </SheetTrigger>
-      <SheetContent side="bottom" className="max-h-[calc(100dvh-2rem)]">
+      <SheetContent side="bottom" className="max-h-[calc(100dvh-2rem)] gap-0 overflow-hidden">
         <SheetHeader className="shrink-0 pr-16">
           <SheetTitle>筛选与排序</SheetTitle>
-          <SheetDescription>
-            点击应用后更新结果；取消不会更改当前条件。
-          </SheetDescription>
         </SheetHeader>
         <form
-          className="contents"
+          className="grid min-h-0 auto-rows-max gap-4 overflow-y-auto overscroll-contain"
+          data-list-filter-scroll
           onSubmit={(event) => {
             event.preventDefault();
             if (disabled) return;
@@ -177,7 +176,10 @@ export function ListFilterSheet({
             });
           }}
         >
-          <FieldGroup className="min-h-0 overflow-y-auto px-4 pb-1" data-list-filter-body>
+          <SheetDescription className="px-4">
+            点击应用后更新结果；取消不会更改当前条件。
+          </SheetDescription>
+          <FieldGroup className="px-4 py-1" data-list-filter-body>
             {filters.map((filter) => (
               <Field key={filter.key}>
                 <FieldLabel htmlFor={id + filter.key}>
@@ -214,7 +216,7 @@ export function ListFilterSheet({
                 </Select>
               </Field>
             ))}
-            {content && <div className="flex min-w-0 flex-col gap-4" data-list-filter-content onSubmit={event => event.stopPropagation()}>{content(contentControl)}</div>}
+            {content && <ListFilterPanelContext value><div className="flex min-w-0 flex-col gap-4" data-list-filter-content>{content(contentControl)}</div></ListFilterPanelContext>}
             <Field>
               <FieldLabel htmlFor={id + "sort"}>排序字段</FieldLabel>
               <Select
