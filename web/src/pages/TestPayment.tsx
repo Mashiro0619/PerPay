@@ -40,7 +40,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
   DialogFooter,
 } from "@/components/admin-dialog";
 
@@ -93,13 +92,13 @@ function TestPaymentForm({ dialog }: { dialog?: TestPaymentDialogProps }) {
   const form = (
     <form id={formId} onSubmit={submit}>
       <FieldGroup>
-        {request.fixedClientId ? <Field><FieldLabel>本次操作所属网站</FieldLabel><FieldDescription className="break-all">{request.fixedClientId}（已固定，切换后台不会改绑此请求）</FieldDescription></Field> : <SitePicker value={request.clientId} onChange={request.editSite} disabled={create.isPending || !!recovery || !!create.data} />}
+        {request.fixedClientId ? <Field><FieldLabel>本次操作所属网站</FieldLabel><FieldDescription className="break-all">{request.fixedClientId}</FieldDescription></Field> : <SitePicker value={request.clientId} onChange={request.editSite} disabled={create.isPending || !!recovery || !!create.data} />}
         {recovery && (
           <Alert>
             <AlertCircle />
             <AlertTitle>创建结果待确认</AlertTitle>
             <AlertDescription>
-              未收到完整结果，订单可能已创建。重试会沿用原金额和请求编号；已有订单会直接返回，若尚未创建则完成这一次创建。
+              订单可能已创建。重试将找回或完成原订单，请勿另建。
             </AlertDescription>
           </Alert>
         )}
@@ -134,7 +133,7 @@ function TestPaymentForm({ dialog }: { dialog?: TestPaymentDialogProps }) {
             id={recovery ? recoveryHintId : "test-payment-hint"}
           >
             {recovery
-              ? "原金额已锁定，请先恢复这笔订单，再创建另一笔。"
+              ? "请先找回本笔订单，再创建新订单。"
               : "真实付款，以收银台金额为准。"}
           </FieldDescription>
           {validation && (
@@ -150,7 +149,7 @@ function TestPaymentForm({ dialog }: { dialog?: TestPaymentDialogProps }) {
                 label="复制商户订单号"
               />
               <FieldDescription>
-                暂时关闭后仍可恢复。刷新页面或退出登录前，请复制此编号，之后可在订单列表核查。
+                刷新或退出前请复制编号，稍后可在订单列表核查。
               </FieldDescription>
             </Field>
             {create.error && (
@@ -234,9 +233,6 @@ function TestPaymentForm({ dialog }: { dialog?: TestPaymentDialogProps }) {
             <DialogTitle ref={dialogTitle} tabIndex={-1}>
               测试收款
             </DialogTitle>
-            <DialogDescription>
-              创建真实收款订单，付款以收银台金额为准。
-            </DialogDescription>
           </DialogHeader>
           {order ? (
             <TestPaymentResult workspaceClientId={request.fixedClientId}

@@ -119,7 +119,7 @@ export function LedgerFacts({
   if (!showHeading) return facts;
   return (
     <section className={cn("flex min-w-0 flex-col", comfortable ? "gap-4" : "gap-3")} aria-labelledby={titleId}>
-      <h3 id={titleId} className="text-sm font-medium">支付宝流水（来自支付宝账单）</h3>
+      <h3 id={titleId} className="text-sm font-medium">支付宝流水</h3>
       {facts}
     </section>
   );
@@ -244,9 +244,6 @@ export function MatchCard({
         <Card aria-label="收款关联记录" data-match-summary>
           <CardHeader>
             <CardTitle role="heading" aria-level={2}>关联摘要与订单</CardTitle>
-            <CardDescription>
-              {manual ? "管理员核对凭据后人工关联。" : "PerPay 按金额和付款时间推断。"}
-            </CardDescription>
             <CardAction className="flex flex-col items-end gap-2 @sm/card-header:flex-row @sm/card-header:items-center">
               <StatusBadge value={match.status} />
               <ReverseMatchAction match={match} inline includeOrderIdentifiers />
@@ -257,7 +254,6 @@ export function MatchCard({
         <Card aria-label="支付宝交易" data-match-ledger>
           <CardHeader>
             <CardTitle role="heading" aria-level={2}>支付宝交易</CardTitle>
-            <CardDescription>来自支付宝账单的交易信息。</CardDescription>
           </CardHeader>
           <CardContent><LedgerFacts entry={match.ledger_entry} density="comfortable" layout="flow" showHeading={false} /></CardContent>
         </Card>
@@ -397,23 +393,23 @@ export function CandidateCard({
     entry?.direction === "CREDIT" &&
     ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(entry.state) &&
     paymentStatus === "UNPAID";
-  let guidance = "当前订单或流水状态不支持人工关联，请查看详情。";
+  let guidance = "订单或流水当前不可人工关联。";
   if (candidate.status === "SELECTED") {
     guidance = paymentStatus === "CONFIRMED"
-      ? "这条匹配记录已被选用，关联订单的收款已确认。"
+      ? "已选用，订单收款已确认。"
       : paymentStatus === "DISPUTED"
-        ? "这条匹配记录曾被选用；关联订单的收款有争议，请查看收款关联记录。"
-        : "这条匹配记录已被选用，请以关联订单当前的收款状态为准。";
+        ? "曾被选用，收款有争议，请核对收款关联记录。"
+        : "已选用，请以订单当前收款状态为准。";
   } else if (candidate.status === "SUPERSEDED") {
-    guidance = "这条匹配记录已被替代，仅供查看历史。";
+    guidance = "已被替代，仅供查阅。";
   } else if (canAssociate) {
-    guidance = "请核对订单与流水，确认归属后可人工关联收款；可能匹配的记录不代表收款已确认。";
+    guidance = "仅为匹配建议，核对订单与流水后可人工关联，尚未确认收款。";
   } else if (!entry || !order) {
-    guidance = "订单或流水状态暂不可用，暂不能人工关联收款。";
+    guidance = "订单或流水状态未知，暂不能人工关联。";
   } else if (paymentStatus === "CONFIRMED") {
-    guidance = "关联订单的收款已确认，当前不能使用这条记录再次关联。";
+    guidance = "订单收款已确认，不能再次关联。";
   } else if (paymentStatus === "DISPUTED") {
-    guidance = "关联订单的收款有争议，请查看收款关联记录。";
+    guidance = "收款有争议，请核对收款关联记录。";
   }
   return (
     <Card size={embedded ? "sm" : "default"} data-density="compact" aria-label={candidateTitle}>
@@ -421,7 +417,7 @@ export function CandidateCard({
         <CardTitle className="record-list-title" role="heading" aria-level={2}>
           {candidateTitle}
         </CardTitle>
-        <CardDescription className="record-list-meta">PerPay 按金额和付款时间推测。{guidance}</CardDescription>
+        <CardDescription className="record-list-meta">{guidance}</CardDescription>
         <CardAction>
           <StatusBadge value={candidate.status} />
         </CardAction>

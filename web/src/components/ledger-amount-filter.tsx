@@ -56,7 +56,7 @@ function InlineLedgerAmountFilter({ control, searchParams }: LedgerAmountFilterP
   return (
     <FieldSet className="min-w-0" data-list-inline-amount>
       <FieldLegend variant="label">金额范围</FieldLegend>
-      <FieldDescription id={id + "-description"}>单位为人民币元，最多两位小数；留空表示不限。</FieldDescription>
+      <FieldDescription id={id + "-description"}>最多两位小数，留空不限。</FieldDescription>
       <FieldGroup>
         <Field data-invalid={!!minError}>
           <FieldLabel htmlFor={id + "-min"}>最低金额（元）</FieldLabel>
@@ -137,7 +137,7 @@ function LedgerAmountDialogFilter({ control, searchParams }: LedgerAmountFilterP
           } catch (reason) { setError(reason instanceof Error ? reason.message : "金额范围无效。"); }
         }}>
           <DialogBody>
-            <DialogDescription>单位为人民币元，最多两位小数；留空表示不限。</DialogDescription>
+            <DialogDescription>最多两位小数，留空不限。</DialogDescription>
             <FieldGroup>
               <Field data-invalid={!!error}>
                 <FieldLabel htmlFor={id + "-min"}>最低金额（元）</FieldLabel>

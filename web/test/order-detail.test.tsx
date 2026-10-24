@@ -545,7 +545,7 @@ describe("order detail work surface", () => {
     await user.click(await recordAction("标记已退款"));
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveAccessibleDescription(
-      /PerPay 不执行转账，也未验证退款/,
+      /PerPay 不执行实际退款，也未验证退款/,
     );
     await user.type(
       within(dialog).getByLabelText("备注（可选）"),

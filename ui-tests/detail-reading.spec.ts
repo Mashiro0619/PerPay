@@ -586,7 +586,7 @@ test("all genuine ledger versions and synthetic simultaneous associations remain
     if (key === "ledgerIdentical") { expect(entry.content_consistent).toBe(true); expect(entry.sources.length).toBeGreaterThan(1); }
     if (key === "ledgerDisputed") {
       expect(entry.content_consistent).toBe(false);
-      await expect(page.locator("[data-ledger-warning]")).toContainText("保存的账单信息出现过差异");
+      await expect(page.locator("[data-ledger-warning]")).toContainText("账单记录有差异");
       await expect(page.locator("[data-ledger-summary]")).toContainText("有争议");
       for (const source of entry.sources) {
         const card = page.locator(`[data-ledger-source="${source.ledger_entry_id}"]`);
@@ -621,8 +621,8 @@ test("all genuine ledger versions and synthetic simultaneous associations remain
   await page.route(manifest.origin + path, route => route.fulfill({ status: 200, json: { data: entry } }));
   await page.route(manifest.origin + "/api/admin/v1/reconciliation/matches/" + second.payment_match_id, route => route.fulfill({ status: 200, json: { data: secondDetail } }));
   await openDetail(page, manifest, "ledgerAssociated");
-  await expect(page.locator("[data-ledger-warning]")).toContainText(`有 ${entry.active_match_count} 条收款关联仍生效`);
-  await expect(page.locator("[data-ledger-warning]")).toContainText("无法确定唯一对应的订单");
+  await expect(page.locator("[data-ledger-warning]")).toContainText(`有 ${entry.active_match_count} 条有效关联`);
+  await expect(page.locator("[data-ledger-warning]")).toContainText("无法确定唯一订单");
   await expect(page.locator("[data-ledger-match]")).toHaveCount(entry.matches.length);
   await expect(page.getByText("当前实际关联", { exact: true })).toHaveCount(0);
   for (const match of [settled!, second]) {

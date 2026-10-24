@@ -115,7 +115,7 @@ describe("fixed command result recovery", () => {
     await screen.findByText("操作结果待确认");
     expect(input).toHaveAttribute("readonly");
     expect(input).toHaveAccessibleDescription(
-      expect.stringContaining("原操作"),
+      expect.stringContaining("重试沿用原理由与证据"),
     );
     expect(unloadBlocked()).toBe(true);
     const id = execute.mock.calls[0]![1];

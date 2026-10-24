@@ -233,7 +233,7 @@ export function FinancialDialog({
         <DialogHeader className="shrink-0 pr-8">
           <DialogTitle>人工关联收款</DialogTitle>
           <DialogDescription>
-            {clientId ? "在这里把一笔支付宝流水关联到本站订单。如果这笔流水涉及其他网站或账本冲突，请到「对账（全部网站）」处理。" : "将这笔支付宝收入关联到订单，并确认订单收款。"}
+            {clientId ? "仅可关联本站订单；跨站流水或账本冲突请到「对账（全部网站）」处理。" : "关联支付宝收入后确认订单收款。"}
           </DialogDescription>
         </DialogHeader>
         <form className="contents" onSubmit={submit}>
@@ -352,7 +352,7 @@ export function FinancialDialog({
                   />
                   {save.recovery ? (
                     <FieldDescription id={hintId}>
-                      原操作的理由、订单与流水已锁定，重试不会更换证据。
+                      重试沿用原订单、流水与理由。
                     </FieldDescription>
                   ) : (
                     validation && (

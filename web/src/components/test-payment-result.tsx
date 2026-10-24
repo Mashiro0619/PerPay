@@ -98,27 +98,27 @@ export function TestPaymentResult({
     ? current.isError
       ? {
           title: "最新状态暂不可用",
-          description: "已保留这笔订单。请刷新状态或查看订单，勿重复付款。",
+          description: "订单已保留，请刷新或查看订单，勿重复付款。",
         }
       : current.isPaused
         ? {
             title: "等待网络恢复",
-            description: "当前无法确认最新付款状态。订单已保留，勿重复付款。",
+            description: "订单已保留，勿重复付款。",
           }
         : {
             title: "正在更新订单状态",
-            description: "正在读取这笔订单的最新状态，不会重复创建订单。",
+            description: null,
           }
     : confirmed
       ? {
           title: "收款已确认",
-          description: "这笔订单已确认收款，无需再次付款。",
+          description: "无需再次付款。",
         }
       : disputed
         ? {
             title: "收款需要核查",
             description:
-              "当前收款有争议，请查看订单与收款关联记录，不要重复付款。",
+              "请核对订单与收款关联记录，勿重复付款。",
           }
         : order.checkout.status !== "OPEN"
           ? {
@@ -127,17 +127,17 @@ export function TestPaymentResult({
                   ? "收银台已过期"
                   : "收银台已关闭",
               description:
-                "请勿继续付款。如果已经付款，请等待状态更新或查看订单核查。",
+                "请勿付款；已付款请等待更新或查看订单。",
             }
           : !checkoutUrl
             ? {
                 title: "收银台地址不可用",
-                description: "请查看订单核查，不要为找回付款入口重复创建订单。",
+                description: "请查看订单，勿重复创建订单。",
               }
             : {
                 title: "等待付款确认",
                 description:
-                  "请按收银台金额付款。付款后会自动更新，勿重复付款。",
+                  "付款后等待状态更新，勿重复付款。",
               };
   const NoticeIcon = confirmed
     ? CheckCircle2
@@ -184,10 +184,10 @@ export function TestPaymentResult({
       >
         <NoticeIcon />
         <AlertTitle>{notice.title}</AlertTitle>
-        <AlertDescription>
+        {(current.isError || notice.description) && <AlertDescription>
           {current.isError && <p>{current.error.message}</p>}
-          <p>{notice.description}</p>
-        </AlertDescription>
+          {notice.description && <p>{notice.description}</p>}
+        </AlertDescription>}
       </Alert>
       <DetailFields items={fields} wide={["商户订单号"]} />
       <div className="flex flex-wrap items-center gap-2">

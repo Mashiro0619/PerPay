@@ -85,7 +85,7 @@ describe("uncertain test-payment creation recovery", () => {
     expect(amount).toHaveAttribute("readonly");
     expect(screen.getByRole("combobox", { name: "业务网站" })).toBeDisabled();
     expect(amount).toHaveAccessibleDescription(
-      expect.stringContaining("原金额已锁定"),
+      expect.stringContaining("请先找回本笔订单"),
     );
     const body = await view.requests()[0]!.clone().json();
     expect(body.api_client_id).toBe("site_test");

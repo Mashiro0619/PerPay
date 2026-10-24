@@ -93,7 +93,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
       setReview(null);
       setChoices({});
       clearDraft();
-      setFeedback("模板已保存，已有网站不受影响。");
+      setFeedback("模板已保存");
     },
     onError: error => {
       if (!(error instanceof ApiError) || error.status !== 409 || error.code !== "site_revision_conflict") return;
@@ -184,7 +184,7 @@ function DefaultsEditor({ initial }: { initial: DefaultsSnapshot }) {
         <Alert>
           <AlertTitle>默认模板已变更</AlertTitle>
           <AlertDescription>
-            <p>你的修改仍保留。读取最新模板后会合并各分组中无冲突的修改；同一字段的不同修改需要核对选择。读取和核对不会自动保存。</p>
+            <p>你的修改已保留。读取最新模板将合并无冲突项，冲突需核对；不会自动保存。</p>
             <Button variant="outline" disabled={busy} onClick={() => reload.mutate()}>
               {reload.isPending ? "正在读取…" : "读取最新模板并核对"}
             </Button>

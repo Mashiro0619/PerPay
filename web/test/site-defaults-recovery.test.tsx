@@ -171,7 +171,7 @@ describe("website default template conflict recovery", () => {
     expect(screen.getByLabelText("通知超时（秒）")).toHaveValue(5.1234);
     edit("通知超时（秒）", "5.124");
     await user.click(save());
-    await screen.findByText("模板已保存，已有网站不受影响。");
+    await screen.findByText("模板已保存");
     expect(view.puts).toHaveLength(1);
     expect(view.puts[0]).toMatchObject({ revision: 1, policy: {
       display: { checkout_name: "服务器收银台" }, notification_delivery: { timeout_milliseconds: 5124 },
@@ -223,7 +223,7 @@ describe("website default template conflict recovery", () => {
     expect(timeout).toBeValid();
     expect(save()).toBeEnabled();
     await user.click(save());
-    await screen.findByText("模板已保存，已有网站不受影响。");
+    await screen.findByText("模板已保存");
     expect(view.puts).toHaveLength(1);
     expect(view.puts[0]).toMatchObject({ revision: 1, policy: {
       notification_delivery: { timeout_milliseconds: milliseconds },
@@ -256,7 +256,7 @@ describe("website default template conflict recovery", () => {
     await user.click(save());
     await waitFor(() => expect(view.puts).toHaveLength(1));
     expect(view.puts[0]!.policy.notification_delivery.timeout_milliseconds).toBe(5123);
-    await screen.findByText("模板已保存，已有网站不受影响。");
+    await screen.findByText("模板已保存");
     edit("通知超时（秒）", "6.234");
     view.changeRemote(policy => { policy.notification_delivery.timeout_milliseconds = 5000; });
     await user.click(save());
@@ -299,7 +299,7 @@ describe("website default template conflict recovery", () => {
     await mergeLatest(user);
     expect(view.puts).toHaveLength(1);
     await user.click(save());
-    await screen.findByText("模板已保存，已有网站不受影响。");
+    await screen.findByText("模板已保存");
     const expected: SitePolicy = {
       orders: { ...initialPolicy.orders, order_ttl_seconds: 600, amount_reuse_cooldown_seconds: 1200 },
       display: { ...initialPolicy.display, checkout_name: "我的模板", checkout_help_url: "https://help.example.com" },
@@ -346,7 +346,7 @@ describe("website default template conflict recovery", () => {
     await group(user, "订单设置");
     expect(screen.getByLabelText("收银台有效期（秒）")).toHaveValue(ttl);
     await user.click(save());
-    await screen.findByText("模板已保存，已有网站不受影响。");
+    await screen.findByText("模板已保存");
     expect(view.puts).toHaveLength(2);
     expect(view.puts[1]).toEqual({ revision: 1, policy: {
       orders: { ...initialPolicy.orders, order_ttl_seconds: ttl },
@@ -382,7 +382,7 @@ describe("website default template conflict recovery", () => {
     await user.click(productName);
     expect(productName).toHaveAttribute("aria-checked", "false");
     await user.click(save());
-    await screen.findByText("模板已保存，已有网站不受影响。");
+    await screen.findByText("模板已保存");
     expect(view.puts[1]).toMatchObject({ revision: 1, policy: { display: {
       checkout_name: "我的模板", checkout_show_product_name: false,
     } } });
@@ -406,7 +406,7 @@ describe("website default template conflict recovery", () => {
     expect(view.puts).toHaveLength(1);
     expect(screen.getByLabelText("收银台名称")).toHaveValue("读取失败仍保留");
     await user.click(save());
-    await screen.findByText("模板已保存，已有网站不受影响。");
+    await screen.findByText("模板已保存");
     expect(view.puts[1]).toMatchObject({ revision: 1, policy: {
       display: { checkout_name: "读取失败仍保留" },
       notification_delivery: { maximum_attempts: 18 },
@@ -428,7 +428,7 @@ describe("website default template conflict recovery", () => {
     expect(screen.getByLabelText("收银台有效期（秒）")).toHaveValue(600);
     expect(screen.getByLabelText("待付款订单上限")).toHaveValue(7);
     await user.click(save());
-    await screen.findByText("模板已保存，已有网站不受影响。");
+    await screen.findByText("模板已保存");
     expect(view.puts.map(body => body.revision)).toEqual([0, 1, 2]);
     expect(view.snapshot()).toEqual({ revision: 3, policy: {
       orders: { ...initialPolicy.orders, order_ttl_seconds: 600, pending_order_limit: 7 },
@@ -447,7 +447,7 @@ describe("website default template conflict recovery", () => {
     await waitFor(() => expect(screen.getByLabelText("收银台有效期（秒）")).toHaveValue(900));
     edit("收银台有效期（秒）", "1200");
     await user.click(save());
-    await screen.findByText("模板已保存，已有网站不受影响。");
+    await screen.findByText("模板已保存");
     expect(view.puts).toHaveLength(1);
     expect(view.puts[0]).toMatchObject({ revision: 1, policy: { orders: { order_ttl_seconds: 1200 } } });
   });
@@ -461,14 +461,14 @@ describe("website default template conflict recovery", () => {
     await act(async () => { refresh = queryClient.invalidateQueries({ queryKey: ["site-defaults"] }); });
     await waitFor(() => expect(delayed.started()).toBe(true));
     await user.click(save());
-    await screen.findByText("模板已保存，已有网站不受影响。");
+    await screen.findByText("模板已保存");
     await act(async () => { delayed.release(); await refresh; });
     expect(screen.getByLabelText("收银台有效期（秒）")).toHaveValue(600);
     expect(queryClient.getQueryData<{ data: TemplateSnapshot }>(["site-defaults"])?.data).toEqual(view.snapshot());
     edit("收银台有效期（秒）", "900");
     await user.click(save());
     await waitFor(() => expect(view.puts).toHaveLength(2));
-    await screen.findByText("模板已保存，已有网站不受影响。");
+    await screen.findByText("模板已保存");
     expect(view.puts.map(body => body.revision)).toEqual([0, 1]);
     expect(view.snapshot().policy.orders.order_ttl_seconds).toBe(900);
   });
@@ -487,7 +487,7 @@ describe("website default template conflict recovery", () => {
     expect(screen.getByLabelText("收银台有效期（秒）")).toHaveValue(600);
     expect(view.puts).toHaveLength(1);
     await user.click(save());
-    await screen.findByText("模板已保存，已有网站不受影响。");
+    await screen.findByText("模板已保存");
     await act(async () => { await view.router.navigate("/sites"); });
     await waitFor(() => expect(view.router.state.location.pathname).toBe("/sites"));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
@@ -527,7 +527,7 @@ describe("website default template conflict recovery", () => {
     expect(view.puts).toHaveLength(0);
     expect(screen.getByLabelText("收银台有效期（秒）")).toHaveValue(600);
     await user.click(save());
-    await screen.findByText("模板已保存，已有网站不受影响。");
+    await screen.findByText("模板已保存");
     expect(view.puts).toHaveLength(1);
     expect(view.puts[0]).toMatchObject({ revision: 0, policy: { orders: { order_ttl_seconds: 600 } } });
   });
@@ -545,7 +545,7 @@ describe("website default template conflict recovery", () => {
     await mergeLatest(user);
     expect(view.puts).toHaveLength(0);
     await user.click(save());
-    await screen.findByText("模板已保存，已有网站不受影响。");
+    await screen.findByText("模板已保存");
     expect(view.puts).toHaveLength(1);
     expect(view.puts[0]).toMatchObject({ revision: 1, policy: {
       orders: { order_ttl_seconds: 600 }, display: { checkout_name: "后台更新的模板" },
@@ -582,7 +582,7 @@ describe("website default template conflict recovery", () => {
     await user.click(screen.getByRole("button", { name: "应用核对结果" }));
     expect(view.puts).toHaveLength(1);
     await user.click(save());
-    await screen.findByText("模板已保存，已有网站不受影响。");
+    await screen.findByText("模板已保存");
     expect(view.puts.map(body => body.revision)).toEqual([0, 2]);
     expect(view.snapshot()).toEqual({ revision: 3, policy: {
       orders: { ...initialPolicy.orders, order_ttl_seconds: 1200 },
@@ -613,7 +613,7 @@ describe("website default template conflict recovery", () => {
     expect(view.puts).toHaveLength(2);
     edit("最大重试间隔（秒）", "1200");
     await user.click(save());
-    await screen.findByText("模板已保存，已有网站不受影响。");
+    await screen.findByText("模板已保存");
     expect(view.puts.map(body => body.revision)).toEqual([0, 1, 1]);
     expect(view.snapshot().policy).toMatchObject({
       display: { checkout_name: "校验失败也保留" },

@@ -276,7 +276,7 @@ function SiteEditor({
           value: response.data.secret,
         });
       setFeedback(superseded
-        ? "密钥操作已完成，业务网站配置已有更新，请重新查看当前密钥。"
+        ? "密钥操作已完成，请重新查看当前密钥。"
         : "密钥已生成或轮换，请更新业务网站配置。");
     },
     onError: revisionConflict,
@@ -346,14 +346,14 @@ function SiteEditor({
       ? "暂停新订单，旧订单继续处理。"
       : "",
     saved?.configuration.notifications_enabled && !draft.notifications_enabled
-      ? "暂停后续通知发送；正在发送的通知可能继续完成。"
+      ? "暂停后续通知发送，正在发送的通知可能完成。"
       : "",
     saved &&
     saved.configuration.notification_origin !== draft.notification_origin
-      ? "通知地址前缀变更后，后续发送将按新前缀检查；旧通知地址可能不再允许发送。"
+      ? "后续通知按新前缀校验，旧地址可能无法发送。"
       : "",
     saved && saved.configuration.return_origin !== draft.return_origin
-      ? "返回地址前缀变更后，新订单的返回地址将按新前缀检查。"
+      ? "新订单的返回地址将按新前缀校验。"
       : "",
   ]
     .filter(Boolean)
@@ -389,7 +389,7 @@ function SiteEditor({
         <Alert>
           <AlertTitle>业务网站配置已变更</AlertTitle>
           <AlertDescription>
-            <p>你的修改仍保留。读取最新配置后会合并无冲突的字段；同一字段的不同修改需要核对选择。核对不会自动保存或重试密钥操作。</p>
+            <p>你的修改已保留。读取最新配置将合并无冲突项，冲突需核对；不会自动保存或重试密钥操作。</p>
             <Button variant="outline" disabled={busy} onClick={() => reload.mutate()}>
               {reload.isPending ? "正在读取…" : "读取最新配置并核对"}
             </Button>
@@ -519,7 +519,7 @@ function SiteEditor({
                       }
                     />
                     <FieldDescription>
-                      填 https://shop.example.com；不要带路径、端口或通配符。
+                      不含路径、端口或通配符。
                     </FieldDescription>
                   </>
                 )}
@@ -550,9 +550,6 @@ function SiteEditor({
         <Card>
           <CardHeader>
             <CardTitle>业务网站密钥</CardTitle>
-            <CardDescription>
-              API 密钥轮换后旧密钥立即失效。通知密钥轮换时，正在发送的通知仍可能使用旧签名，下一次投递尝试使用新密钥；接收端过渡期间应兼容新旧签名，密钥疑似泄露时应停止信任旧密钥。
-            </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             <Button
@@ -590,9 +587,6 @@ function SiteEditor({
         <Card>
           <CardHeader>
             <CardTitle>删除空业务网站</CardTitle>
-            <CardDescription>
-              有历史订单的网站只能暂停接单；删除后客户端 ID 不可复用。
-            </CardDescription>
           </CardHeader>
           <CardContent>
             <Button
@@ -610,7 +604,7 @@ function SiteEditor({
           <CardHeader>
             <CardTitle>{revealed.label}</CardTitle>
             <CardDescription>
-              仅在当前页面显示，请勿发送给其他网站。隐藏不会撤销已提交的生成或轮换操作。
+              仅供此网站使用，请勿泄露。
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -647,12 +641,12 @@ function SiteEditor({
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirmation === "delete"
-                ? "此操作不能撤销，客户端 ID 不会再次使用。有历史订单的网站只能暂停接单。"
+                ? "仅限无历史订单的网站。删除后不可恢复，客户端 ID 不可复用。"
                 : confirmation === "save"
                   ? impact
                   : confirmation === "webhook"
-                    ? "下一次通知发送尝试将使用新密钥，正在发送的通知仍可能使用旧签名。请在接收端过渡期间兼容新旧签名，密钥疑似泄露时应停止信任旧密钥。失败时不要盲目再次轮换，应先查看当前密钥。"
-                    : "如果已有 API 密钥，本次会使其立即失效。请同步更新对应业务网站，失败时不要盲目再次轮换，应先查看当前密钥。"}
+                    ? "下次发送使用新密钥，正在发送的通知可能仍用旧签名。接收端需短暂兼容新旧签名；疑似泄露时停止信任旧密钥。失败后先查看当前密钥，勿重复轮换。"
+                    : "已有 API 密钥将立即失效，请同步更新业务网站。失败后先查看当前密钥，勿重复轮换。"}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

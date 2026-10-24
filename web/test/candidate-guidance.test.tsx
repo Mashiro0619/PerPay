@@ -33,8 +33,8 @@ describe("candidate guidance follows the current payment and ledger state", () =
   ])("describes an automatically selected and confirmed $context as complete", ({ selectedOrder }) => {
     mount({ candidate, ledger: detailLedger, order: selectedOrder });
 
-    expect(screen.getByText(/这条匹配记录已被选用，关联订单的收款已确认/)).toBeVisible();
-    expect(screen.queryByText(/需要你确认|确认归属后可人工关联/)).not.toBeInTheDocument();
+    expect(screen.getByText(/已选用，订单收款已确认/)).toBeVisible();
+    expect(screen.queryByText(/需要你确认|核对订单与流水后可人工关联/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "人工关联收款" })).not.toBeInTheDocument();
   });
 
@@ -45,8 +45,8 @@ describe("candidate guidance follows the current payment and ledger state", () =
       order: { ...paidOrder, payment: { ...paidOrder.payment, status: "DISPUTED" } },
     });
 
-    expect(screen.getByText(/这条匹配记录曾被选用；关联订单的收款有争议/)).toBeVisible();
-    expect(screen.queryByText(/关联订单的收款已确认|确认归属后可人工关联/)).not.toBeInTheDocument();
+    expect(screen.getByText(/曾被选用，收款有争议/)).toBeVisible();
+    expect(screen.queryByText(/订单收款已确认|核对订单与流水后可人工关联/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "人工关联收款" })).not.toBeInTheDocument();
   });
 
@@ -57,8 +57,8 @@ describe("candidate guidance follows the current payment and ledger state", () =
       order,
     });
 
-    expect(screen.getByText(/这条匹配记录已被替代，仅供查看历史/)).toBeVisible();
-    expect(screen.queryByText(/需要你确认|确认归属后可人工关联/)).not.toBeInTheDocument();
+    expect(screen.getByText(/已被替代，仅供查阅/)).toBeVisible();
+    expect(screen.queryByText(/需要你确认|核对订单与流水后可人工关联/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "人工关联收款" })).not.toBeInTheDocument();
   });
 
@@ -67,8 +67,8 @@ describe("candidate guidance follows the current payment and ledger state", () =
     (state) => {
       mount({ candidate: eligibleCandidate, ledger: { ...detailLedger, state }, order });
 
-      expect(screen.getByText(/请核对订单与流水，确认归属后可人工关联收款/)).toBeVisible();
-      expect(screen.getByText(/可能匹配的记录不代表收款已确认/)).toBeVisible();
+      expect(screen.getByText(/仅为匹配建议，核对订单与流水后可人工关联/)).toBeVisible();
+      expect(screen.getByText(/尚未确认收款/)).toBeVisible();
       expect(screen.getByRole("button", { name: "人工关联收款" })).toBeEnabled();
     },
   );
@@ -79,14 +79,14 @@ describe("candidate guidance follows the current payment and ledger state", () =
   ])("does not invite association of an eligible $reason", ({ entry }) => {
     mount({ candidate: eligibleCandidate, ledger: entry, order });
 
-    expect(screen.getByText(/当前订单或流水状态不支持人工关联/)).toBeVisible();
-    expect(screen.queryByText(/需要你确认|确认归属后可人工关联/)).not.toBeInTheDocument();
+    expect(screen.getByText(/订单或流水当前不可人工关联/)).toBeVisible();
+    expect(screen.queryByText(/需要你确认|核对订单与流水后可人工关联/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "人工关联收款" })).not.toBeInTheDocument();
   });
 
   it.each([
-    { status: "CONFIRMED", guidance: /关联订单的收款已确认，当前不能使用这条记录再次关联/ },
-    { status: "DISPUTED", guidance: /关联订单的收款有争议，请查看收款关联记录/ },
+    { status: "CONFIRMED", guidance: /订单收款已确认，不能再次关联/ },
+    { status: "DISPUTED", guidance: /收款有争议，请核对收款关联记录/ },
   ] as const)("does not invite association when an eligible candidate's payment is $status", ({ status, guidance }) => {
     mount({
       candidate: eligibleCandidate,
@@ -95,7 +95,7 @@ describe("candidate guidance follows the current payment and ledger state", () =
     });
 
     expect(screen.getByText(guidance)).toBeVisible();
-    expect(screen.queryByText(/需要你确认|确认归属后可人工关联/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/需要你确认|核对订单与流水后可人工关联/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "人工关联收款" })).not.toBeInTheDocument();
   });
 
@@ -104,8 +104,8 @@ describe("candidate guidance follows the current payment and ledger state", () =
     mount({ candidate: eligibleCandidate });
 
     expect(await screen.findAllByRole("button", { name: "重试" })).toHaveLength(2);
-    expect(screen.getByText(/订单或流水状态暂不可用，暂不能人工关联收款/)).toBeVisible();
-    expect(screen.queryByText(/需要你确认|确认归属后可人工关联/)).not.toBeInTheDocument();
+    expect(screen.getByText(/订单或流水状态未知，暂不能人工关联/)).toBeVisible();
+    expect(screen.queryByText(/需要你确认|核对订单与流水后可人工关联/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "人工关联收款" })).not.toBeInTheDocument();
   });
 });

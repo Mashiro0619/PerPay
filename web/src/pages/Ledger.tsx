@@ -142,7 +142,7 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
             details={columns.filter(column => context.isColumnVisible(column.id) && !context.isSummaryPrimary(column.id)).map(column => <ListSummaryField key={column.id} label={column.label}>{column.cell(entry, context)}</ListSummaryField>)}
           >
             {columns.filter(column => !["identity", "amount_cents"].includes(column.id) && context.isSummaryPrimary(column.id)).map(column => <ListSummaryField key={column.id} label={column.label}>{column.cell(entry, context)}</ListSummaryField>)}
-          </ListSummary>} /> : <Empty kind={activeFilters ? "filtered" : "page"}><EmptyHeader><EmptyTitle role="heading" aria-level={2}>{activeFilters ? "暂无符合条件的流水" : "暂无支付宝流水"}</EmptyTitle><EmptyDescription>{activeFilters ? "调整筛选条件后重试。" : "已采集的支付宝流水会显示在这里。"}</EmptyDescription></EmptyHeader></Empty>}
+          </ListSummary>} /> : <Empty kind={activeFilters ? "filtered" : "page"}><EmptyHeader><EmptyTitle role="heading" aria-level={2}>{activeFilters ? "暂无符合条件的流水" : "暂无支付宝流水"}</EmptyTitle>{activeFilters && <EmptyDescription>调整筛选条件后重试。</EmptyDescription>}</EmptyHeader></Empty>}
       </div>
       <CursorPagination page={pagination.page} count={page.data.length} hasNext={!!page.page.next_cursor} pending={query.isFetching || query.isPlaceholderData} previousLabel={pagination.previousLabel} onPrevious={pagination.previous} onNext={() => pagination.next(page.page.next_cursor)} />
     </>}</QueryView>}

@@ -90,7 +90,7 @@ describe("administrator-only refund marks", () => {
       "shrink-0",
     );
     expect(within(dialog).getByText(longOrder.product_name)).toBeVisible();
-    expect(dialog).toHaveAccessibleDescription(/PerPay 不执行转账/);
+    expect(dialog).toHaveAccessibleDescription(/PerPay 不执行实际退款/);
     await userEvent
       .setup()
       .click(within(dialog).getByRole("button", { name: "取消" }));
@@ -123,7 +123,7 @@ describe("administrator-only refund marks", () => {
       );
       const dialog = screen.getByRole("dialog");
       expect(dialog).toHaveAccessibleDescription(
-        /仅记录外部已完成的退款。PerPay 不执行转账，也未验证退款。/,
+        /仅记录外部已完成的退款。PerPay 不执行实际退款，也未验证退款。/,
       );
       expect(within(dialog).getByLabelText("备注（可选）")).not.toBeRequired();
       expect(

@@ -23,12 +23,12 @@ const explanations: Record<string, string> = {
   DUPLICATE_EXTERNAL_ID: "同一支付宝流水号对应不同交易内容，已有流水未被覆盖。",
   RAW_PAGE_VARIANT: "同一查账窗口返回了不同内容。",
   MISSING_EXTERNAL_ID:
-    "这笔记录缺少可识别的支付宝流水号，已被隔离，不能参与收款分配。",
+    "缺少支付宝流水号，已隔离，不参与收款分配。",
   INVALID_AMOUNT:
-    "支付宝交易金额格式无法安全解析，已被隔离；不会把无效金额计入收款。",
+    "交易金额格式无效，已隔离，不计入收款。",
   INVALID_TIMESTAMP:
-    "支付宝交易时间无法安全解析，已被隔离；不会用于订单时间窗口匹配。",
-  INVALID_DIRECTION: "收支方向无法确认，已被隔离，不会用于自动收款匹配。",
+    "交易时间无效，已隔离，不参与订单时间窗口匹配。",
+  INVALID_DIRECTION: "收支方向未知，已隔离，不参与自动收款匹配。",
   INVALID_SHAPE: "原始记录结构不符合账本要求，已被隔离。",
 };
 

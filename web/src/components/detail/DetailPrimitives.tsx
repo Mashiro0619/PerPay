@@ -17,7 +17,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
   DialogFooter,
   DialogClose,
 } from "@/components/admin-dialog";
@@ -159,9 +158,6 @@ export function TechnicalDetailsDialog({
           <DialogTitle ref={title} tabIndex={-1}>
             技术详情
           </DialogTitle>
-          <DialogDescription>
-            当前记录的标识与原始数据，仅供排查，不会修改业务状态。
-          </DialogDescription>
         </DialogHeader>
         <div className="-mx-4 flex min-h-0 flex-col gap-4 overflow-auto px-4 pb-1">
           {identifiers.length > 0 && (

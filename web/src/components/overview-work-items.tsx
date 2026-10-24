@@ -9,7 +9,7 @@ import { ListDateTime, ListMoney } from "@/components/list-primitives";
 import { SiteIdentity } from "@/components/site-identity";
 import { Badge } from "@/components/ui/badge";
 import { ItemActions, ItemContent, ItemDescription, ItemGroup, ItemHeader, ItemTitle } from "@/components/ui/item";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 
 const workActions = {
   FINANCIAL_EXCEPTION: "核对异常",
@@ -48,7 +48,6 @@ export function OverviewWorkItems({ items }: { items: readonly AdminWorkItem[] }
       <Empty>
         <EmptyHeader>
           <EmptyTitle>暂无待处理提醒</EmptyTitle>
-          <EmptyDescription>当前没有需要处理的提醒。</EmptyDescription>
         </EmptyHeader>
       </Empty>
     );

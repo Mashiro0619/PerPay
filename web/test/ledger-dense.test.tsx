@@ -100,7 +100,7 @@ describe("unified transaction detail", () => {
       matches: [history, first, second], conflicts: [{ conflict_id: "conflict-id", conflict_type: "DUPLICATE_EXTERNAL_ID", status: "OPEN", existing_ledger_entry_id: secondSourceId, created_at: ledger.created_at, resolved_at: null }] });
     await screen.findByText("同一笔流水关联了多个订单");
     expect(screen.getAllByText("仍生效 · 存在多条关联")).toHaveLength(2);
-    expect(screen.getByText(/不能相加金额/)).toBeVisible();
+    expect(screen.getByText(/金额不可相加/)).toBeVisible();
     for (const match of [history, first, second]) {
       await screen.findByRole("link", { name: match.product_name });
       const card = document.querySelector<HTMLElement>('[data-ledger-match="' + match.payment_match_id + '"]')!;
@@ -144,7 +144,7 @@ describe("unified transaction detail", () => {
 
   it("explains expenses without offering receipt association", async () => {
     const fetchMock = mount({ ...detailFixture(), direction: "DEBIT", sources: [{ ...source(ledgerId), direction: "DEBIT" }] });
-    expect(await screen.findByText("这是支付宝支出流水，不对应收款订单。")).toBeVisible();
+    expect(await screen.findByText("支出流水不关联收款订单。")).toBeVisible();
     expect(screen.queryByRole("button", { name: "人工关联收款" })).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

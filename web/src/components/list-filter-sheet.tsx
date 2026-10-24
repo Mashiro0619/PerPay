@@ -21,7 +21,6 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
-  SheetDescription,
   SheetFooter,
   SheetClose,
 } from "@/components/ui/sheet";
@@ -176,9 +175,6 @@ export function ListFilterSheet({
             });
           }}
         >
-          <SheetDescription className="px-4">
-            点击应用后更新结果；取消不会更改当前条件。
-          </SheetDescription>
           <FieldGroup className="px-4 py-1" data-list-filter-body>
             {filters.map((filter) => (
               <Field key={filter.key}>

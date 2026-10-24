@@ -96,7 +96,7 @@ export function SitePolicyFields({
           />
           <NumberField
             label="应付金额复用等待（秒）"
-            hint="同一应付金额再次用于新订单前的最短等待时间。从收银台关闭时间起算，过期订单从原到期时间起算；修改仅影响之后创建的订单。"
+            hint="收银台关闭后等待此时长再复用同金额；过期按原到期时间起算，仅对新订单生效。"
             error={error("orders.amount_reuse_cooldown_seconds")}
             value={value.orders.amount_reuse_cooldown_seconds}
             min={60}

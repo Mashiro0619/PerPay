@@ -167,7 +167,7 @@ describe("reminder dismissal", () => {
       expect(within(dialog).getByRole("button", { name: "确认忽略" })).toHaveClass("text-danger-foreground", "bg-danger");
       await waitFor(() => expect(within(dialog).getByRole("button", { name: "取消" })).toHaveFocus());
       expect(dialog).toHaveAccessibleDescription(
-        /跨分页.*只会关闭提醒.*不会删除记录、处理冲突或停止通知重试/,
+        /跨页.*仅关闭现有提醒.*不删除记录、处理冲突或停止通知重试.*新增提醒不受影响/,
       );
       expect(within(dialog).queryByRole("textbox")).not.toBeInTheDocument();
       await user.click(

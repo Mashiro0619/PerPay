@@ -266,8 +266,8 @@ export function ManualCandidatePicker({
                   </EmptyTitle>
                   <EmptyDescription>
                     {view === "recommended"
-                      ? "推荐只包含同金额记录；其他可关联记录仍可人工核对。"
-                      : "可更换关键词或刷新，已关联记录不会再次列出。"}
+                      ? "仅推荐同金额记录，其他记录可搜索。"
+                      : "可更换关键词，已关联记录不再列出。"}
                   </EmptyDescription>
                 </EmptyHeader>
                 {view === "recommended" && (

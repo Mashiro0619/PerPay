@@ -100,8 +100,8 @@ describe("business website management", () => {
     fireEvent.change(screen.getByLabelText("返回地址前缀"), { target: { value: "https://shop.example.com" } });
     await user.click(screen.getByRole("button", { name: "保存业务网站" }));
     const confirmation = await screen.findByRole("alertdialog");
-    expect(confirmation).toHaveTextContent("通知地址前缀变更后，后续发送将按新前缀检查；旧通知地址可能不再允许发送。");
-    expect(confirmation).toHaveTextContent("返回地址前缀变更后，新订单的返回地址将按新前缀检查。");
+    expect(confirmation).toHaveTextContent("后续通知按新前缀校验，旧地址可能无法发送。");
+    expect(confirmation).toHaveTextContent("新订单的返回地址将按新前缀校验。");
     expect(view.writes).toHaveLength(0);
     await user.click(screen.getByRole("button", { name: "确认" }));
     await waitFor(() => expect(view.writes).toHaveLength(1));

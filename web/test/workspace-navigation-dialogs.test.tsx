@@ -66,7 +66,7 @@ describe("business dialogs during workspace navigation", () => {
     await waitFor(() => expect(view.router.state.navigation.state).toBe("idle"));
     expect(await screen.findByRole("alertdialog", { name: "确认删除业务网站？" })).toBe(dialog);
     expect(dialog).toBeVisible();
-    expect(dialog).toHaveAccessibleDescription("此操作不能撤销，客户端 ID 不会再次使用。有历史订单的网站只能暂停接单。");
+    expect(dialog).toHaveAccessibleDescription("仅限无历史订单的网站。删除后不可恢复，客户端 ID 不可复用。");
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "取消" })).toHaveFocus());
     expect(view.router.state.location.pathname).toBe("/sites/a/settings/basic");
     expect(view.writes()).toHaveLength(0);

@@ -291,7 +291,7 @@ it("fixes a test-payment request to A while switching to B and retries the origi
   });
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: "测试收款" }));
-  expect(await screen.findByText(/a（已固定/)).toBeVisible();
+  expect(await within(await screen.findByRole("dialog", { name: "测试收款" })).findByText("a", { exact: true })).toBeVisible();
   expect(screen.queryByLabelText("搜索业务网站")).not.toBeInTheDocument();
   const create = screen.getByRole("button", { name: "创建测试订单" });
   await waitFor(() => expect(create).toBeEnabled());
@@ -306,7 +306,7 @@ it("fixes a test-payment request to A while switching to B and retries the origi
   });
   await user.click(await screen.findByRole("button", { name: "测试收款" }));
   await screen.findByText("创建结果待确认");
-  expect(screen.getByText(/a（已固定/)).toBeVisible();
+  expect(within(screen.getByRole("dialog", { name: "测试收款" })).getByText("a", { exact: true })).toBeVisible();
   await user.click(screen.getByRole("button", { name: "重试上一次操作" }));
   await waitFor(() => expect(writes).toHaveLength(2));
   expect(writes.map((r) => new URL(r.url).pathname)).toEqual([

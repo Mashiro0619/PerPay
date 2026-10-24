@@ -31,7 +31,7 @@ test("template seconds drafts survive tabs, reject excess precision and save exa
     expect(saved.status()).toBe(200);
     expect(saved.request().postDataJSON().policy.notification_delivery.timeout_milliseconds).toBe(5123);
     expect(fixture.timeout()).toBe(5123);
-    await expect(page.getByText("模板已保存，已有网站不受影响。", { exact: true })).toBeVisible();
+    await expect(page.getByText("模板已保存", { exact: true })).toBeVisible();
     for (const width of [1440, 320]) {
       await page.setViewportSize({ width, height: 900 });
       await record(page, info, { feature: "notification-timeout", width });

@@ -165,7 +165,7 @@ export function ReasonDialog({
               />
               {mutation.recovery ? (
                 <FieldDescription id={hintId}>
-                  已锁定原操作的理由与证据，重试不会更改请求。
+                  重试沿用原理由与证据。
                 </FieldDescription>
               ) : (
                 validation && <FieldError id={hintId}>{validation}</FieldError>

@@ -104,9 +104,9 @@ function LedgerWarnings({ entry }: { entry: AdminLedgerDetail }) {
     <CircleAlert />
     <AlertTitle>{entry.active_match_count > 1 ? "同一笔流水关联了多个订单" : pending ? "有查账记录需要核对" : "账单信息存在不同版本"}</AlertTitle>
     <AlertDescription className="text-foreground!">
-      {entry.active_match_count > 1 && <p>有 {entry.active_match_count} 条收款关联仍生效，无法确定唯一对应的订单。下面列出全部关联，请核对后处理。</p>}
-      {!entry.content_consistent && <p>保存的账单信息出现过差异，不能把其中一份当作确定结果，也不能相加金额。下方保留各份查账记录{entry.conflicts.length > 0 ? "和冲突详情。" : "。"}</p>}
-      {pending > 0 && <p>还有 {pending} 条账本冲突待处理，请查看页面下方的冲突记录。</p>}
+      {entry.active_match_count > 1 && <p>有 {entry.active_match_count} 条有效关联，无法确定唯一订单，请核对下方记录。</p>}
+      {!entry.content_consistent && <p>账单记录有差异，请核对下方各版本；金额不可相加。</p>}
+      {pending > 0 && <p>有 {pending} 条账本冲突待处理。</p>}
     </AlertDescription>
   </Alert>;
 }
@@ -131,7 +131,6 @@ function LedgerSource({ source, index, consistent, hasMatch }: { source: AdminLe
   return <Card id={"source-" + source.ledger_entry_id} tabIndex={-1} className="scroll-mt-16" data-ledger-source={source.ledger_entry_id}>
     <CardHeader className="flex min-w-0 flex-col gap-2 @3xl/main:grid">
       <CardTitle role="heading" aria-level={3}>查账记录 {index + 1}</CardTitle>
-      <CardDescription>这份记录中保存的支付宝交易信息</CardDescription>
       <CardAction>{actions}</CardAction>
     </CardHeader>
     <CardContent className="flex min-w-0 flex-col gap-6">
@@ -175,7 +174,7 @@ function LedgerMatches({ entry }: { entry: AdminLedgerDetail }) {
     {entry.active_match_count === 0 && <Card data-ledger-unmatched>
       <CardHeader>
         <CardTitle role="heading" aria-level={3}>{history.length ? "当前没有对应的收款订单" : "未关联收款订单"}</CardTitle>
-        <CardDescription>{entry.direction === "DEBIT" ? "这是支付宝支出流水，不对应收款订单。" : "目前没有用这笔流水确认网站订单的收款。可在下方对应的查账记录中人工关联。"}{history.length > 0 && " 之前的关联已撤销，历史保留如下。"}</CardDescription>
+        <CardDescription>{entry.direction === "DEBIT" ? "支出流水不关联收款订单。" : "可在对应查账记录中人工关联。"}</CardDescription>
       </CardHeader>
     </Card>}
     {current.map(match => <LedgerMatch key={match.payment_match_id} match={match} index={entry.matches.indexOf(match)} multiple={entry.active_match_count > 1} />)}
@@ -204,7 +203,6 @@ function LedgerConflicts({ entry }: { entry: AdminLedgerDetail }) {
     {entry.conflicts.map(conflict => <Card key={conflict.conflict_id} data-ledger-conflict>
       <CardHeader className="flex min-w-0 flex-col gap-2 @3xl/main:grid">
         <CardTitle role="heading" aria-level={3}>{label(conflict.conflict_type)}</CardTitle>
-        <CardDescription>查账时发现的问题及其处理结果</CardDescription>
         <CardAction className="flex max-w-full flex-wrap items-center gap-2">
           <StatusBadge value={conflict.status} label={conflict.status === "OPEN" ? "待处理" : conflict.status === "IGNORED" ? "已确认隔离" : "已处理"} />
           <Link global to={"/reconciliation/conflicts/" + conflict.conflict_id} className={buttonVariants({ variant: "outline", size: "sm" })}>查看冲突记录</Link>

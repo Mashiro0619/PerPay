@@ -173,7 +173,7 @@ test("ledger tells the current order apart from reversed history without repeati
   await page.goto(manifest.origin + "/admin" + transactionDetail(reversed.ledger_entry_id));
   if (reversed.active_match_count === 0) {
     await expect(page.locator("[data-ledger-unmatched]")).toContainText("当前没有对应的收款订单");
-    await expect(page.locator("[data-ledger-unmatched]")).toContainText("之前的关联已撤销");
+    await expect(page.locator("[data-ledger-unmatched]")).toContainText("可在对应查账记录中人工关联。");
   }
   const reversedHistory = reversed.matches.filter(match => match.status === "REVERSED");
   await expect(page.getByRole("heading", { name: `已撤销的历史关联（${reversedHistory.length}）`, exact: true })).toBeVisible();
@@ -218,7 +218,7 @@ test("closed ledger conflicts remain history while only open conflicts require a
     await expect(page.locator("#ledger-conflicts-heading")).toHaveText("账本冲突记录（1）");
     await expect(conflict.getByText(visibleStatus, { exact: true })).toBeVisible();
     await expect(conflict.getByRole("link", { name: "查看冲突记录", exact: true })).toHaveAttribute("href", "/admin/reconciliation/conflicts/" + entry.conflicts[0]!.conflict_id);
-    if (status === "OPEN") await expect(page.locator("[data-ledger-warning]")).toContainText("还有 1 条账本冲突待处理");
+    if (status === "OPEN") await expect(page.locator("[data-ledger-warning]")).toContainText("有 1 条账本冲突待处理");
     else {
       await expect(page.locator("[data-ledger-warning]")).toHaveCount(0);
       await expect(page.locator("#main-content").getByText("待处理", { exact: true })).toHaveCount(0);

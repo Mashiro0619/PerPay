@@ -23,7 +23,6 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from "@/components/ui/card";
 export default function CreateSite() {
   const defaults = useQuery({
@@ -94,9 +93,6 @@ function CreateSiteForm({ policy }: { policy: SiteConfiguration["policy"] }) {
         <Card>
           <CardHeader>
             <CardTitle>创建业务网站</CardTitle>
-            <CardDescription>
-              其余设置使用默认模板，可在创建后调整。
-            </CardDescription>
           </CardHeader>
           <CardContent>
             <FieldGroup>

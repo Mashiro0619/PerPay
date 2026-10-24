@@ -200,7 +200,7 @@ describe("administrator ledger pages", () => {
     mount("/reconciliation/transactions/" + ledgerId);
     expect(await screen.findByText("同一笔流水关联了多个订单")).toBeVisible();
     expect(screen.getAllByText("有争议").length).toBeGreaterThanOrEqual(3);
-    expect(screen.getByText("有 2 条收款关联仍生效，无法确定唯一对应的订单。下面列出全部关联，请核对后处理。")).toBeVisible();
+    expect(screen.getByText("有 2 条有效关联，无法确定唯一订单，请核对下方记录。")).toBeVisible();
     expect(await screen.findAllByText("仍生效 · 存在多条关联", { exact: true })).toHaveLength(2);
     expect(screen.queryByText("已关联订单", { exact: true })).not.toBeInTheDocument();
     expect(screen.queryByText("当前实际关联")).not.toBeInTheDocument();

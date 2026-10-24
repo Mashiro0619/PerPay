@@ -109,7 +109,7 @@ function InlineCreatedDateFilter({
     <FieldSet className="min-w-0" data-list-inline-date>
       <FieldLegend variant="label">{label}</FieldLegend>
       <FieldDescription id={id + "-description"}>
-        按北京时间，包含开始和结束两天。
+        北京时间，含起止日期。
       </FieldDescription>
       <FieldGroup>
         <Field>
@@ -282,7 +282,7 @@ function CreatedDateDialogFilter({
           >
             <DialogBody>
             <DialogDescription>
-              按北京时间，包含开始和结束两天。
+              北京时间，含起止日期。
             </DialogDescription>
             <FieldGroup>
               <Field data-invalid={!!error}>

@@ -14,7 +14,7 @@ import {
 import { SiteIdentity } from "@/components/site-identity";
 import { Badge } from "@/components/ui/badge";
 import { ItemActions, ItemContent, ItemTitle } from "@/components/ui/item";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 
 function OrderAmounts({ order }: { order: AdminOrderSummary }) {
   const received = order.received_amount_cents;
@@ -144,7 +144,6 @@ export function RecentOrders({ orders }: { orders: readonly AdminOrderSummary[] 
       <div ref={ref} className="overview-orders"><Empty>
         <EmptyHeader>
           <EmptyTitle>暂无订单</EmptyTitle>
-          <EmptyDescription>新订单会显示在这里。</EmptyDescription>
         </EmptyHeader>
       </Empty></div>
     );

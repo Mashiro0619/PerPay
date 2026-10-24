@@ -279,9 +279,11 @@ describe("refund mark result recovery", () => {
   });
 
   it("keeps record-specific recovery and navigation language without implying a money movement", async () => {
+    const requests: Request[] = [];
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => {
+      vi.fn(async (request: Request) => {
+        requests.push(request.clone());
         throw new TypeError("offline");
       }),
     );
@@ -307,19 +309,28 @@ describe("refund mark result recovery", () => {
       </QueryClientProvider>,
     );
     const user = userEvent.setup();
+    const originalDialog = screen.getByRole("dialog", { name: "标记已退款" });
+    expect(originalDialog).toHaveAccessibleDescription(/不执行实际退款，也未验证退款/);
+    expect(within(originalDialog).getAllByText(/不执行实际退款/)).toHaveLength(1);
     await user.click(screen.getByRole("button", { name: "确认标记已退款" }));
     await screen.findByText("标记结果待确认", { exact: true });
+    expect(within(originalDialog).getAllByText(/不执行实际退款/)).toHaveLength(1);
     await act(async () => {
       await router.navigate("/other");
     });
     const leave = await screen.findByRole("alertdialog", {
       name: "标记结果尚未确认，仍要离开？",
     });
-    expect(within(leave).getByText(/不影响实际资金/)).toBeVisible();
+    expect(within(leave).getByText(/离开不会撤销标记/)).toBeVisible();
+    expect(within(leave).getByText(/保留操作编号.*在订单标记历史中核查/)).toBeVisible();
     await user.click(within(leave).getByRole("button", { name: "留在此页" }));
     await waitFor(() =>
       expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument(),
     );
     expect(screen.getByRole("button", { name: "重试原标记" })).toBeVisible();
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.method).toBe("PUT");
+    expect(new URL(requests[0]!.url).pathname).toBe("/api/admin/v1/orders/" + orderId + "/refund-mark");
+    expect(await requests[0]!.json()).toMatchObject({ marked: true, version: 0 });
   });
 });

@@ -31,7 +31,7 @@ import {
   type ListFilter,
   type ListFilterDraftControl,
 } from "@/components/list-filter-sheet";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter, SheetClose } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter, SheetClose } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 export type { ListFilter, ListFilterDraftControl } from "@/components/list-filter-sheet";
 
@@ -311,7 +311,6 @@ export function ListQueryToolbar({
                 <SheetTitle>列表显示</SheetTitle>
               </SheetHeader>
               <div className="flex min-h-0 flex-col gap-4 overflow-y-auto overscroll-contain" data-list-display-scroll>
-                <SheetDescription className="shrink-0 px-4">调整密度和显示字段，设置会自动保存。</SheetDescription>
                 <div className="flex shrink-0 flex-col gap-4 px-4 pb-1" data-list-display-body>
                   <ListDensityOptions />
                   <Separator />
@@ -373,11 +372,6 @@ export function ListQueryToolbar({
         <div className="list-toolbar-detail flex flex-wrap items-center gap-2">
           {children}
         </div>
-      )}
-      {!compact && control.query.q && (
-        <p className="list-toolbar-detail text-xs break-all text-muted-foreground">
-          当前关键词：{control.query.q} · 搜索全部匹配记录，不仅当前页
-        </p>
       )}
     </div>
   );

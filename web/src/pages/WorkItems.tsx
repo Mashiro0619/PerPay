@@ -173,7 +173,7 @@ export default function WorkItems() {
           </TabsList>
         </div>
         </ListToolbarPart>
-        {workspaceClientId !== null && <Alert><AlertTitle>这里只显示能确定属于本站的提醒</AlertTitle><AlertDescription>账本冲突和无法判断归属的异常，请回到「待处理（全部网站）」处理。</AlertDescription></Alert>}
+        {workspaceClientId !== null && <Alert><AlertTitle>仅显示本站提醒</AlertTitle><AlertDescription>账本冲突及归属未知的异常请到「待处理（全部网站）」处理。</AlertDescription></Alert>}
         <TabsContent value={type}>
           <WorkItemPage
             key={type + ":" + visibility}
@@ -224,17 +224,17 @@ export default function WorkItems() {
               {batch?.clientId && <>
                 {batch.siteName ? <>仅限业务网站“{batch.siteName}”</> : <>仅限当前业务网站</>}。
                 客户端 ID（PerPay）：<span className="font-mono wrap-anywhere">{batch.clientId}</span>。
-                不涉及其他网站及未归属提醒。
+                不含其他网站及未归属提醒。
               </>}
               {batch?.q ? (
                 <>
                   关键词“{batch.q}
-                  ”在此分类中的全部匹配项（跨分页），不影响其他提醒。
+                  ”在此分类中的全部匹配项（跨页）。
                 </>
               ) : (
-                <>此分类的全部匹配项（跨分页）。</>
+                <>此分类的全部匹配项（跨页）。</>
               )}
-              只会关闭提醒，不会删除记录、处理冲突或停止通知重试。之后新产生的提醒不会被一并忽略。
+              仅关闭现有提醒，不删除记录、处理冲突或停止通知重试；新增提醒不受影响。
             </AlertDialogDescription></DialogBody>
           <ErrorNotice error={ignore.error} />
           <AlertDialogFooter>

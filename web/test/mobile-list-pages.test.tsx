@@ -221,8 +221,9 @@ describe("mobile business list integration", () => {
     );
     const dialog = await screen.findByRole("alertdialog");
     expect(dialog).toHaveTextContent("kept");
-    expect(dialog).toHaveTextContent("跨分页");
-    expect(dialog).toHaveTextContent("不会删除记录");
+    expect(dialog).toHaveTextContent("跨页");
+    expect(dialog).toHaveTextContent("仅关闭现有提醒，不删除记录、处理冲突或停止通知重试");
+    expect(dialog).toHaveTextContent("新增提醒不受影响");
     await user.click(
       within(dialog).getByRole("button", { name: "取消" }),
     );
