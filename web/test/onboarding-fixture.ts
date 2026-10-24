@@ -14,6 +14,7 @@ import {
   type SystemStatus,
 } from "../src/api/client";
 import { apiError, json, settings } from "./fixtures";
+import { matchesTestMedia } from "./media-query";
 
 export const instanceId = "onboarding-test-instance";
 export const syntheticSecret = "synthetic-onboarding-key-not-a-real-secret";
@@ -153,6 +154,7 @@ export function mountOnboarding(
     signedIn?: boolean;
     pendingKey?: boolean;
     notificationKey?: boolean;
+    viewportWidth?: number;
     status?: (settings: RuntimeSettings) => SystemStatus;
     handle?: (request: Request) => Response | Promise<Response> | undefined;
   } = {},
@@ -167,8 +169,8 @@ export function mountOnboarding(
 
   vi.stubGlobal(
     "matchMedia",
-    vi.fn(() => ({
-      matches: false,
+    vi.fn((media: string) => ({
+      matches: options.viewportWidth !== undefined && matchesTestMedia(media, options.viewportWidth),
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
     })),

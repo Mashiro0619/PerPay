@@ -3,6 +3,7 @@ import { cleanup, configure } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 
 import { queryClient } from "../src/api/client";
+import { matchesTestMedia } from "./media-query";
 
 configure({ asyncUtilTimeout: 5000 });
 
@@ -46,7 +47,7 @@ beforeEach(() => {
     "matchMedia",
     vi.fn((media: string) => ({
       media,
-      matches: false,
+      get matches() { return matchesTestMedia(media, window.innerWidth, false); },
       onchange: null,
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),

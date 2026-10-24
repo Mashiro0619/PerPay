@@ -90,7 +90,7 @@ export function ContentWidthControl() {
         <Button
           variant="ghost"
           size="icon"
-          className="hidden md:inline-flex"
+          className="hidden lg:inline-flex"
           aria-label={label}
           aria-pressed={mode === "full"}
           onClick={toggle}

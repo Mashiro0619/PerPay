@@ -49,7 +49,7 @@ test("expanded admin geometry: widths, themes, sidebar, content width and densit
   test.setTimeout(600_000); await login(page, manifest);
   for (const [width, height] of [[320, 720], [390, 664], [639, 720], [640, 720], [767, 768], [768, 768], [1024, 768], [1280, 800], [1366, 768], [1920, 1080], [2560, 1440]] as const) {
     await page.setViewportSize({ width, height });
-    for (const theme of ["light", "dark"] as const) for (const mode of ["compact", "full"]) for (const density of ["compact", "comfortable"]) for (const expectedSidebar of width >= 768 ? ["expanded", "collapsed"] : ["drawer"]) {
+    for (const theme of ["light", "dark"] as const) for (const mode of ["compact", "full"]) for (const density of ["compact", "comfortable"]) for (const expectedSidebar of width >= 1024 ? ["expanded", "collapsed"] : ["drawer"]) {
       await page.emulateMedia({ colorScheme: theme });
       await page.evaluate(({ theme, mode, density }) => {
         localStorage.setItem("perpay:theme", theme); localStorage.setItem("perpay:content-width", mode); localStorage.setItem("perpay:list-density", density);
@@ -58,7 +58,7 @@ test("expanded admin geometry: widths, themes, sidebar, content width and densit
         await page.goto(manifest.origin + "/admin" + route);
         await expect(page.locator("[data-business-table]")).toBeVisible();
         await expect(page.locator("[data-business-row]").first()).toBeVisible();
-        const sidebar = width >= 768 ? page.locator('[data-slot="sidebar"][data-state]') : null;
+        const sidebar = width >= 1024 ? page.locator('[data-slot="sidebar"][data-state]') : null;
         if (sidebar) {
           if (await sidebar.getAttribute("data-state") !== expectedSidebar) await page.getByRole("button", { name: "切换导航", exact: true }).click();
           await expect(sidebar).toHaveAttribute("data-state", expectedSidebar);

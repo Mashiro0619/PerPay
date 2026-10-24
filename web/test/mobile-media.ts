@@ -1,7 +1,8 @@
 import { act } from "@testing-library/react";
 import { vi } from "vitest";
+import { matchesTestMedia } from "./media-query";
 
-export function mobileMedia(width = 390) {
+export function mobileMedia(width = 390, options: { coarse?: boolean } = {}) {
   const listeners = new Set<() => void>();
   vi.stubGlobal("innerWidth", width);
   vi.stubGlobal(
@@ -9,11 +10,7 @@ export function mobileMedia(width = 390) {
     vi.fn((media: string) => ({
       media,
       get matches() {
-        if (/max-width|pointer:\s*coarse|hover:\s*none/.test(media))
-          return window.innerWidth < 768;
-        if (/pointer:\s*fine|hover:\s*hover/.test(media))
-          return window.innerWidth >= 768;
-        return false;
+        return matchesTestMedia(media, window.innerWidth, options.coarse);
       },
       onchange: null,
       addEventListener: (_type: string, listener: () => void) =>

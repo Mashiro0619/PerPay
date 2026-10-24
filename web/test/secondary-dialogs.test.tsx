@@ -48,10 +48,8 @@ describe("context-preserving secondary dialogs", () => {
     const view = mountOnboarding({ stage: 4, path: "/" });
     const trigger = await screen.findByRole("button", { name: "测试收款" });
     expect(trigger).not.toHaveClass("hidden");
-    expect(within(trigger).getByText("测试收款")).toHaveClass(
-      "sr-only",
-      "sm:not-sr-only",
-    );
+    expect(trigger).toHaveAccessibleName("测试收款");
+    expect(trigger).toHaveTextContent("测试收款");
     const user = userEvent.setup();
     await user.click(trigger);
     const dialog = await screen.findByRole("dialog", { name: "测试收款" });

@@ -258,20 +258,19 @@
 a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 
 /* Settings have their own reading width, independent of wide tables/charts. */
-.site-header { height: 3.5rem; }
+.site-header { min-height: 3.5rem; height: 3.5rem; position: sticky; top: 0; z-index: 20; }
 [data-slot="sidebar-menu-button"][data-active="true"] {
   background-image: linear-gradient(var(--sidebar-foreground), var(--sidebar-foreground));
   background-size: 2px 60%;
   background-repeat: no-repeat;
   background-position: left center;
 }
-@media (min-width: 768px) { .site-header { height: 3rem; } }
+@media (min-width: 1024px) { .site-header { min-height: 3rem; height: 3rem; } }
 .list-layout, .list-toolbar, .list-toolbar-part { display: flex; min-width: 0; flex-direction: column; gap: 0.75rem; }
 .list-toolbar { background: var(--background); }
 .list-toolbar-part:empty,
 .list-toolbar:not(:has(.list-toolbar-part:not(:empty))) { display: none; }
-@media (min-width: 768px) {
-  .site-header { position: sticky; top: 0; z-index: 20; }
+@media (min-width: 1024px) {
   .list-toolbar { position: sticky; top: var(--admin-header-height, 3rem); z-index: 10; padding-block: 0.75rem; border-bottom: 1px solid var(--border); }
   [data-slot="sidebar-inset"] :is(a, button, input, select, textarea, [tabindex]) {
     scroll-margin-block-start: calc(var(--admin-header-height, 3rem) + var(--list-toolbar-height, 0px) + 1rem);
@@ -1082,6 +1081,20 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-overlay-viewport="sheet"][data-side="bottom"] {
   bottom: max(0px, calc(100dvh - var(--overlay-viewport-top, 0px) - var(--overlay-viewport-height, 100dvh)));
 }
+[data-mobile="true"][data-sidebar="sidebar"] {
+  width: min(var(--sidebar-width), calc(var(--overlay-viewport-width, 100vw) - 1rem));
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+[data-mobile="true"] [data-sidebar="header"] { padding-right: 3.5rem; }
+[data-mobile="true"] [data-sidebar="content"] { min-height: 0; }
+[data-mobile="true"] > [data-slot="sheet-close"] { top: max(0.5rem, env(safe-area-inset-top)); }
+[data-header-mobile-actions] { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+[data-header-mobile-actions] [data-page-header-actions] { flex-direction: column; align-items: stretch; }
+[data-header-mobile-actions] :is([class~="group/button"], [data-slot="dropdown-menu-trigger"]) { width: 100%; justify-content: flex-start; }
+[data-header-mobile-actions] a > span { display: inline; }
+[data-header-mobile-actions] [data-refresh-label] { display: inline; }
+[data-header-mobile-actions] .sr-only { position: static; width: auto; height: auto; padding: 0; margin: 0; overflow: visible; clip: auto; white-space: normal; }
 @media (pointer: coarse) {
   [data-orientation="horizontal"]:has(> :is([data-slot="checkbox"], [data-slot="switch"])) { min-height: 44px; align-items: center; }
   [data-orientation="horizontal"]:has(> :is([data-slot="checkbox"], [data-slot="switch"])) > [data-slot="field-label"] { align-self: stretch; display: flex; align-items: center; }

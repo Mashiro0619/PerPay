@@ -36,7 +36,7 @@ describe("administrator content width", () => {
     expect(content()).toHaveAttribute("data-content-width", "compact");
     expect(content()).toHaveClass("max-w-7xl", "@container/main", "mx-auto");
     expect(content().parentElement).toHaveClass("px-4", "lg:px-6");
-    expect(screen.getByRole("button", { name: "切换为全屏布局" })).toHaveClass("hidden", "md:inline-flex");
+    expect(screen.getByRole("button", { name: "切换为全屏布局" })).toHaveClass("hidden", "lg:inline-flex");
   });
   it("persists keyboard switches without remounting content or losing a focused draft", async () => {
     const mounted = vi.fn();

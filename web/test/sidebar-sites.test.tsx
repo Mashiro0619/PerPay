@@ -61,12 +61,12 @@ function mountSidebar({
   mobile?: boolean;
   handle?: (request: Request) => Response | Promise<Response> | undefined;
 } = {}) {
-  // The shared fixture stubs media-query listeners; useIsMobile reads the width.
   vi.stubGlobal("innerWidth", mobile ? 390 : 1440);
   const listReads: URL[] = [];
   const view = mountOnboarding({
     stage: 4,
     path,
+    viewportWidth: mobile ? 390 : 1440,
     handle(request) {
       const override = handle?.(request);
       if (override !== undefined) return override;
