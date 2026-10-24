@@ -32,7 +32,6 @@ export function LedgerAmountFilter({ control }: { control: ListQueryControl }) {
       <DialogContent finalFocus={trigger}>
         <DialogHeader>
           <DialogTitle>金额范围</DialogTitle>
-          <DialogDescription>单位为人民币元，最多两位小数；留空表示不限。</DialogDescription>
         </DialogHeader>
         <form className="contents" onSubmit={event => {
           event.preventDefault();
@@ -44,6 +43,7 @@ export function LedgerAmountFilter({ control }: { control: ListQueryControl }) {
           } catch (reason) { setError(reason instanceof Error ? reason.message : "金额范围无效。"); }
         }}>
           <DialogBody>
+            <DialogDescription>单位为人民币元，最多两位小数；留空表示不限。</DialogDescription>
             <FieldGroup>
               <Field data-invalid={!!error}>
                 <FieldLabel htmlFor={id + "-min"}>最低金额（元）</FieldLabel>

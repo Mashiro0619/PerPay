@@ -130,9 +130,6 @@ export function CreatedDateFilter({
         <DialogContent finalFocus={trigger}>
           <DialogHeader>
             <DialogTitle>自定义{label}</DialogTitle>
-            <DialogDescription>
-              按北京时间，包含开始和结束两天。
-            </DialogDescription>
           </DialogHeader>
           <form
             className="contents"
@@ -148,6 +145,9 @@ export function CreatedDateFilter({
             }}
           >
             <DialogBody>
+            <DialogDescription>
+              按北京时间，包含开始和结束两天。
+            </DialogDescription>
             <FieldGroup>
               <Field data-invalid={!!error}>
                 <FieldLabel htmlFor={id + "-from"}>开始日期</FieldLabel>
