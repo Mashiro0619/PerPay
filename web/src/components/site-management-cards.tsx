@@ -127,9 +127,9 @@ export function SiteManagementCards() {
               setSearch(next, { replace: true });
             }}
             variant="outline" size="sm" spacing={0} aria-label="经营统计周期"
-            className="min-w-0 max-w-full items-stretch"
+            className="site-management-periods min-w-0 max-w-full items-stretch"
           >
-            {[7, 30, 90].map((days) => <ToggleGroupItem key={days} value={String(days)} className="h-auto min-h-7 min-w-0 flex-1 shrink whitespace-normal">近 {days} 天</ToggleGroupItem>)}
+            {[7, 30, 90].map((days) => <ToggleGroupItem key={days} value={String(days)} className="site-management-period h-auto min-h-7 min-w-0 flex-1 shrink whitespace-normal">近 {days} 天</ToggleGroupItem>)}
           </ToggleGroup>
           <Popover>
             <PopoverTrigger render={<Button variant="ghost" size="icon-sm" aria-label="网站经营指标说明" />}><Info /></PopoverTrigger>

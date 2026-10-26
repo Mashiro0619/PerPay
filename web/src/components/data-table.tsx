@@ -181,7 +181,7 @@ export function DataTable({
           <ListSummary
             identity={columns[0]!.cell(order, context)}
             aside={(context.isSummaryPrimary("payable_amount_cents") || context.isSummaryPrimary("received_amount_cents")) && (
-              <dl className="flex flex-col items-end gap-3">
+              <dl className="order-summary-amounts flex flex-col items-end gap-3">
                 {context.isSummaryPrimary("payable_amount_cents") && <div className="flex flex-col items-end gap-1">
                   <dt className="text-xs text-muted-foreground">应付金额</dt>
                   <dd><ListMoney value={order.payable_amount_cents} label="应付金额" /></dd>

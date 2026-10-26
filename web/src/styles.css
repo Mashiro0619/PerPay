@@ -1235,6 +1235,63 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   .trend-tabs [data-slot="tabs-trigger"] { flex: 0 0 auto; white-space: nowrap; }
   .trend-period { min-width: 0; max-width: 100%; }
   .trend-period [data-slot="select-trigger"] { max-width: 100%; }
+
+  /* Full-page records share continuous rows on phones; desktop summaries and
+     embedded overview lists retain their existing layout and density. */
+  :is(
+    [data-business-table="orders"],
+    [data-business-table="work-items"],
+    [data-business-table="ignored-work-items"],
+    [data-business-table="administrator-ledger"],
+    [data-business-table="reconciliation-exceptions"],
+    [data-business-table="reconciliation-conflicts"]
+  ) {
+    .business-summary-list { gap: 0; }
+    .business-summary-row {
+      gap: 0.5rem;
+      padding: 0.75rem 0.25rem;
+      border-width: 0 0 1px;
+      border-color: var(--border);
+      border-radius: 0;
+    }
+    .business-summary-row:last-child { border-bottom-width: 0; }
+    .business-summary-list[data-density="comfortable"] .business-summary-row { padding-block: 1rem; }
+    .business-summary-row > [data-slot="item-content"] { gap: 0.5rem; }
+    .list-summary-heading { align-items: flex-start; }
+    .list-summary-identity { flex: 1 1 12rem; }
+    .business-summary-fields {
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+      gap: 0.375rem 1rem;
+    }
+    .business-summary-field {
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0.125rem 0.5rem;
+    }
+    .business-summary-field dt { flex: 0 1 auto; }
+    .business-summary-field dd { flex: 1 1 8rem; }
+    .business-summary-field .list-time { white-space: normal; }
+    .list-summary-toggle { margin-top: 0; }
+  }
+  [data-business-table="orders"] {
+    .list-summary-heading { flex-direction: column; align-items: stretch; }
+    .list-summary-identity { flex-basis: auto; }
+    .list-summary-aside { max-width: 100%; align-items: stretch; }
+    .order-summary-amounts { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 0.375rem 1rem; }
+    .order-summary-amounts > div { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 0.125rem 0.375rem; }
+  }
+  .site-management-toolbar > :first-child { max-width: 100%; }
+  .site-management-periods {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding: 4px;
+    margin: -4px;
+    border-radius: 0;
+    scroll-padding-inline: 4px;
+    scrollbar-width: thin;
+  }
+  .site-management-periods > .site-management-period { flex: 0 0 auto; white-space: nowrap; }
 }
 @media (max-width: 1023px) and (max-height: 700px) {
   [data-checkout-page] > header { padding-block: 0.5rem; }
