@@ -171,19 +171,19 @@
   }
 }
 @media (pointer: coarse) {
-  /* Compact visuals reserve an independent 48px touch slot in normal flow. */
+  /* Keep compact visuals within independent 40px touch slots. */
   [class~="group/button"],
   [data-slot="toggle"],
   [data-slot="toggle-group-item"] {
-    min-width: 48px;
-    min-height: 36px;
-    margin-block: 6px;
+    min-width: 40px;
+    min-height: 32px;
+    margin-block: 4px;
   }
   [class~="touch-icon"] {
-    width: 36px;
-    height: 36px;
-    min-width: 36px;
-    margin-inline: 6px;
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    margin-inline: 4px;
   }
   [class~="group/button"]::before,
   [data-slot="toggle"]::before,
@@ -196,8 +196,8 @@
     /* These outlined controls use a 1px border around the padding box. */
     width: calc(100% + 2px);
     height: calc(100% + 2px);
-    min-width: 48px;
-    min-height: 48px;
+    min-width: 40px;
+    min-height: 40px;
     transform: translate(-50%, -50%);
   }
   [data-slot="toggle"][data-variant="default"]::before,
@@ -208,8 +208,8 @@
   }
   [class~="group/button"][type="submit"],
   :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"], [data-slot="sheet-footer"], [data-checkout-actions]) [class~="group/button"] {
-    min-height: 40px;
-    margin-block: 4px;
+    min-height: 36px;
+    margin-block: 2px;
   }
   [data-slot="select-trigger"],
   [data-slot="input"],
@@ -226,8 +226,8 @@
   [data-slot="select-item"],
   a.list-site-identity,
   a.list-secondary-link {
-    min-width: 48px;
-    min-height: 48px;
+    min-width: 40px;
+    min-height: 40px;
   }
   [data-slot="input-group"] [class~="group/button"],
   [data-spacing="0"] > [data-slot="toggle-group-item"] {
@@ -235,13 +235,13 @@
   }
   /* Tabs and joined choices are compound controls, with a slot per choice. */
   [data-slot="tabs-list"] {
-    min-height: max(48px, calc(2rem + 12px));
-    padding-block: 6px;
+    min-height: max(40px, calc(2rem + 8px));
+    padding-block: 4px;
   }
   [data-slot="tabs-trigger"] {
-    min-width: 48px;
-    min-height: 36px;
-    height: max(36px, 2rem);
+    min-width: 40px;
+    min-height: 32px;
+    height: max(32px, 2rem);
   }
   [data-slot="input-group"] [class~="group/button"]::before,
   [data-slot="pagination-content"] [class~="group/button"]::before,
@@ -254,21 +254,22 @@
   }
   [data-slot="input-group"] {
     height: auto;
-    min-height: 48px;
+    min-height: 40px;
   }
   [data-slot="input-group-addon"][data-align="inline-start"],
   [data-slot="input-group-addon"][data-align="inline-end"] {
     padding-block: 0;
   }
-  /* Only independently actionable groups with an existing sub-8px gap. */
+  /* Preserve separation without imposing roomy spacing on every control. */
   .site-header > div,
   .site-header > div > .ml-auto,
   [data-page-header-actions],
   [data-settings-tabs-navigation],
-  [data-slot="item-actions"],
-  [data-slot="sidebar-menu"] {
-    gap: 8px;
+  [data-slot="item-actions"] {
+    gap: 4px;
   }
+  [data-slot="sidebar-menu"],
+  [data-slot="sidebar-menu-sub"] { gap: 2px; }
   [data-admin-dialog-body] { padding-top: 4px; }
   [data-checkout-summary] { padding-bottom: 6px; }
 }
@@ -659,8 +660,8 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^="menuitem"], [role="tab"], [data-slot="item"], [data-slot="site-overview-card"], [data-row-link], [aria-disabled="true"], [data-disabled], [data-external-link])) {
     display: inline-flex;
     align-items: center;
-    min-width: 48px;
-    min-height: 48px;
+    min-width: 40px;
+    min-height: 40px;
   }
 }
 
@@ -990,9 +991,9 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .overview-work-order-context > .overview-work-product:focus-visible { outline-offset: -2px; }
 @media (pointer: coarse) {
   .overview-work-content [data-row-link],
-  .overview-work-order-context > .overview-work-product { min-width: 48px; min-height: 48px; }
-  .overview-work-list a.list-code { min-height: 48px; align-content: center; }
-  .overview-work-content > [data-slot="item-header"] { margin-bottom: 8px; }
+  .overview-work-order-context > .overview-work-product { min-width: 40px; min-height: 40px; }
+  .overview-work-list a.list-code { min-height: 40px; align-content: center; }
+  .overview-work-content > [data-slot="item-header"] { margin-bottom: 4px; }
 }
 
 /* Runtime status uses a flat, aligned service table rather than nested surfaces. */
@@ -1150,7 +1151,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-overlay-viewport="dialog"] :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"]) { min-width: 0; }
 [data-overlay-viewport="dialog"] :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"]) button { height: auto; min-height: 2rem; max-width: 100%; padding-block: 0.3125rem; white-space: normal; overflow-wrap: anywhere; }
 @media (pointer: coarse) {
-  [data-overlay-viewport="dialog"] :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"]) button { min-height: max(40px, 2rem); }
+  [data-overlay-viewport="dialog"] :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"]) button { min-height: max(36px, 2rem); }
 }
 /* One scroll region preserves natural header, field and action heights even
    when text zoom or the keyboard leaves only a short visible viewport. */
@@ -1173,7 +1174,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-admin-dialog-scroll] > form.contents > [data-slot="field-group"] { overflow: visible; }
 [data-overlay-viewport="sheet"]:has(> :is([data-list-filter-scroll], [data-list-display-scroll])) { overflow: clip; }
 @media (pointer: coarse) {
-  /* The close slot ends at 60px; keep 8px before adjacent scrolling controls. */
+  /* Keep the close touch slot separate from adjacent scrolling controls. */
   [data-overlay-viewport="sheet"]:has(> :is([data-list-filter-scroll], [data-list-display-scroll], [data-header-mobile-actions])) > [data-slot="sheet-header"] { min-height: 68px; }
 }
 [data-overlay-viewport="sheet"] {
@@ -1213,13 +1214,13 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-list-mobile-actions] { flex-wrap: wrap; }
 [data-list-menu-feedback] { flex-basis: 100%; }
 [data-list-display-body], [data-list-filter-body] { overscroll-behavior: contain; }
-[data-list-columns-panel] [data-slot="field"][data-orientation="horizontal"] { min-height: 48px; }
-[data-list-columns-panel] [data-slot="field-label"] { flex: 1; min-height: 48px; align-content: center; }
+[data-list-columns-panel] [data-slot="field"][data-orientation="horizontal"] { min-height: 40px; }
+[data-list-columns-panel] [data-slot="field-label"] { flex: 1; min-height: 40px; align-content: center; }
 
 @media (pointer: coarse) {
-  [data-orientation="horizontal"]:has(> :is([data-slot="checkbox"], [data-slot="switch"])) { min-height: 48px; align-items: center; }
+  [data-orientation="horizontal"]:has(> :is([data-slot="checkbox"], [data-slot="switch"])) { min-height: 40px; align-items: center; }
   [data-orientation="horizontal"]:has(> :is([data-slot="checkbox"], [data-slot="switch"])) > [data-slot="field-label"] { align-self: stretch; display: flex; align-items: center; }
-  :is([data-slot="checkbox"], [data-slot="switch"])::after { top: 50%; left: 50%; right: auto; bottom: auto; min-width: 48px; min-height: 48px; transform: translate(-50%, -50%); }
+  :is([data-slot="checkbox"], [data-slot="switch"])::after { top: 50%; left: 50%; right: auto; bottom: auto; min-width: 40px; min-height: 40px; transform: translate(-50%, -50%); }
 }
 @media (max-width: 1023px) {
   [data-list-mobile-leading] { width: 100%; }

@@ -120,42 +120,44 @@ export function AppSidebar({
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
-      <SidebarContent className="group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:py-2 group-data-[collapsible=icon]:[&_[data-slot=sidebar-group]]:py-0">
-        <nav aria-label="主导航">
-          <NavMain items={items.slice(0, 4)} pathname={pathname} />
-        </nav>
-        <nav aria-label="网站选择">
-          <SidebarGroup>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <WorkspaceSwitcher
-                  open={siteMenu.open}
-                  onOpenChange={open => setSiteMenu({ context: siteMenuContext, open })}
-                />
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </nav>
-      </SidebarContent>
-      <SidebarFooter>
-        <nav aria-label="全局管理">
-          <NavSecondary
-            items={items.slice(5)}
-            pathname={pathname}
-            notice={statusNotice ?? null}
-            label="全局管理"
-            className="p-0"
-          />
-        </nav>
-        <nav aria-label="设置导航">
-          <NavSecondary
-            items={items.slice(4, 5)}
-            pathname={pathname}
-            className="p-0"
-          />
-        </nav>
-        <NavUser name={username} pending={logoutPending} onLogout={onLogout} />
-      </SidebarFooter>
+      <div data-sidebar-scroll-body className="no-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <SidebarContent className="flex-none overflow-visible group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:py-2 group-data-[collapsible=icon]:[&_[data-slot=sidebar-group]]:py-0">
+          <nav aria-label="主导航">
+            <NavMain items={items.slice(0, 4)} pathname={pathname} />
+          </nav>
+          <nav aria-label="网站选择">
+            <SidebarGroup>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <WorkspaceSwitcher
+                    open={siteMenu.open}
+                    onOpenChange={open => setSiteMenu({ context: siteMenuContext, open })}
+                  />
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </nav>
+        </SidebarContent>
+        <SidebarFooter className="mt-auto shrink-0">
+          <nav aria-label="全局管理">
+            <NavSecondary
+              items={items.slice(5)}
+              pathname={pathname}
+              notice={statusNotice ?? null}
+              label="全局管理"
+              className="p-0"
+            />
+          </nav>
+          <nav aria-label="设置导航">
+            <NavSecondary
+              items={items.slice(4, 5)}
+              pathname={pathname}
+              className="p-0"
+            />
+          </nav>
+          <NavUser name={username} pending={logoutPending} onLogout={onLogout} />
+        </SidebarFooter>
+      </div>
     </Sidebar>
   );
 }

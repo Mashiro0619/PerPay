@@ -371,7 +371,7 @@ test("three detail types retain expanded facts across widths, themes and content
   expect(errors).toEqual([]);
 });
 
-test("coarse-pointer detail actions retain 48 pixel targets in both content modes", async ({ browser, manifest }, info) => {
+test("coarse-pointer detail actions retain compact touch targets in both content modes", async ({ browser, manifest }, info) => {
   test.setTimeout(180_000);
   const context = await browser.newContext({ hasTouch: true, isMobile: true, viewport: { width: 320, height: 900 }, locale: "zh-CN", timezoneId: "Asia/Shanghai" });
   try {

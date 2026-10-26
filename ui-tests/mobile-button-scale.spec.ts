@@ -10,7 +10,7 @@ async function centered(target: Locator, page: Page) {
 
 async function tapMenuItemEdge(page: Page, target: Locator) {
   const geometry = await expectTouchTarget(target);
-  expect(geometry.visual.height).toBeCloseTo(48, 1);
+  expect(geometry.visual.height).toBeCloseTo(40, 1);
   expect(geometry.generated, "menu rows use their own complete touch area").toBe(false);
   const point = { x: geometry.visual.x + geometry.visual.width / 2, y: geometry.visual.y + 1 };
   expect(await target.evaluate((element, point) => {
@@ -25,7 +25,7 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 360, height: 560 }, reducedMotion: "reduce" });
 
   for (const width of [320, 360, 390, 430]) {
-    test(`${width}px: settings page menu rows use compact 48px touch areas`, async ({ page, manifest }, info) => {
+    test(`${width}px: settings page menu rows use compact 40px touch areas`, async ({ page, manifest }, info) => {
       await page.setViewportSize({ width, height: 560 });
       await login(page, manifest);
       await page.goto(manifest.origin + "/admin/settings/display");
@@ -40,7 +40,7 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
       const wizardGeometry = await expectTouchTarget(wizard);
       const refreshGeometry = await expectTouchTarget(refresh);
       for (const geometry of [wizardGeometry, refreshGeometry]) {
-        expect(geometry.visual.height).toBeCloseTo(48, 1);
+        expect(geometry.visual.height).toBeCloseTo(40, 1);
         expect(geometry.generated).toBe(false);
       }
       expect(refreshGeometry.y).toBeGreaterThanOrEqual(wizardGeometry.y + wizardGeometry.height - .5);
@@ -63,7 +63,7 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
       await info.attach("settings-wizard-edge-tap", { body: Buffer.from(JSON.stringify(wizardTap, null, 2)), contentType: "application/json" });
     });
 
-    test(`${width}px: toolbar, display controls and checkout use compact visuals with 48px touch slots`, async ({ page, manifest }, info) => {
+    test(`${width}px: toolbar, display controls and checkout use compact visuals with 40px touch slots`, async ({ page, manifest }, info) => {
       await page.setViewportSize({ width, height: 560 });
       await login(page, manifest);
       await page.goto(manifest.origin + "/admin/orders");
@@ -76,15 +76,15 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
       const searchGeometry = await expectTouchSlot(search);
       const filterGeometry = await expectTouchSlot(filter);
       const moreGeometry = await expectTouchSlot(more);
-      expect(searchGeometry.visual.height).toBeCloseTo(40, 1);
-      expect(filterGeometry.visual.height).toBeCloseTo(36, 1);
-      expect(moreGeometry.visual.height).toBeCloseTo(36, 1);
-      expect(moreGeometry.visual.width).toBeCloseTo(36, 1);
+      expect(searchGeometry.visual.height).toBeCloseTo(36, 1);
+      expect(filterGeometry.visual.height).toBeCloseTo(32, 1);
+      expect(moreGeometry.visual.height).toBeCloseTo(32, 1);
+      expect(moreGeometry.visual.width).toBeCloseTo(32, 1);
       await expectTouchGap(filter, more, "horizontal");
 
       // The input-group action retains its own layout space beside the editable input.
       const modeGeometry = await expectTouchTarget(mode);
-      expect(modeGeometry.visual.height).toBeGreaterThanOrEqual(48);
+      expect(modeGeometry.visual.height).toBeCloseTo(40, 1);
       const inputBox = (await keyword.boundingBox())!;
       const inputPoint = { x: inputBox.x + 3, y: inputBox.y + inputBox.height / 2 };
       expect(await keyword.evaluate((element, point) => document.elementFromPoint(point.x, point.y) === element, inputPoint)).toBe(true);
@@ -103,7 +103,7 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
       await expect(filters).toBeVisible();
       await expect(page.getByRole("menu")).toHaveCount(0);
       const filterClose = filters.getByRole("button", { name: "关闭对话框", exact: true });
-      expect((await expectTouchTarget(filterClose)).visual.height).toBeCloseTo(36, 1);
+      expect((await expectTouchTarget(filterClose)).visual.height).toBeCloseTo(32, 1);
       await tapOutsideVisible(page, filterClose, "left");
       await expect(filters).toHaveCount(0);
       await expect(filter).toBeFocused();
@@ -118,8 +118,8 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
       const comfortable = density.getByRole("button", { name: "舒适", exact: true });
       const compactGeometry = await centered(compact, page);
       const comfortableGeometry = await expectTouchTarget(comfortable);
-      expect(compactGeometry.visual.height).toBeCloseTo(36, 1);
-      expect(comfortableGeometry.visual.height).toBeCloseTo(36, 1);
+      expect(compactGeometry.visual.height).toBeCloseTo(32, 1);
+      expect(comfortableGeometry.visual.height).toBeCloseTo(32, 1);
       await expectTouchGap(compact, comfortable, "horizontal");
       await tapOutsideVisible(page, comfortable, "top");
       await expect(comfortable).toHaveAttribute("aria-pressed", "true");
@@ -129,7 +129,7 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
       await expect(comfortable).toHaveAttribute("aria-pressed", "false");
       const done = display.getByRole("button", { name: "完成", exact: true });
       const doneGeometry = await centered(done, page);
-      expect(doneGeometry.visual.height).toBeCloseTo(40, 1);
+      expect(doneGeometry.visual.height).toBeCloseTo(36, 1);
       await done.click();
       await expect(display).toHaveCount(0);
       await expect(more).toBeFocused();
@@ -147,9 +147,9 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
       const queryGeometry = await expectTouchSlot(query);
       const enlargeGeometry = await expectTouchSlot(enlarge);
       const saveGeometry = await expectTouchSlot(save);
-      expect(queryGeometry.visual.height).toBeCloseTo(40, 1);
-      expect(enlargeGeometry.visual.height).toBeCloseTo(36, 1);
-      expect(saveGeometry.visual.height).toBeCloseTo(36, 1);
+      expect(queryGeometry.visual.height).toBeCloseTo(36, 1);
+      expect(enlargeGeometry.visual.height).toBeCloseTo(32, 1);
+      expect(saveGeometry.visual.height).toBeCloseTo(32, 1);
       expect(queryGeometry.y + queryGeometry.height).toBeLessThanOrEqual(560);
       await expectTouchGap(enlarge, save, "horizontal");
       const download = page.waitForEvent("download");
@@ -175,7 +175,7 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
     const geometry = [];
     for (const choice of choices) {
       const target = await expectTouchTarget(choice);
-      expect(target.visual.height).toBeCloseTo(48, 1);
+      expect(target.visual.height).toBeCloseTo(40, 1);
       expect(target.x).toBeCloseTo(target.visual.x, 1);
       expect(target.width).toBeCloseTo(target.visual.width, 1);
       for (const x of [target.visual.x + 2, target.visual.x + target.visual.width - 2]) {
@@ -227,8 +227,8 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
     const tooltipBounds = (await tooltip.boundingBox())!;
     const overlapWidth = Math.min(copyGeometry.x + copyGeometry.width, tooltipBounds.x + tooltipBounds.width) - Math.max(copyGeometry.x, tooltipBounds.x);
     const overlapHeight = Math.min(copyGeometry.y + copyGeometry.height, tooltipBounds.y + tooltipBounds.height) - Math.max(copyGeometry.y, tooltipBounds.y);
-    expect(overlapWidth <= 0 || overlapHeight <= 0, "the open tooltip stays outside the complete 48px copy touch target").toBe(true);
-    expect(copyGeometry.visual.height).toBeCloseTo(36, 1);
+    expect(overlapWidth <= 0 || overlapHeight <= 0, "the open tooltip stays outside the complete 40px copy touch target").toBe(true);
+    expect(copyGeometry.visual.height).toBeCloseTo(32, 1);
     const bodyBox = (await body.boundingBox())!;
     expect(copyGeometry.y).toBeGreaterThanOrEqual(bodyBox.y);
     const copyTap = await tapOutsideVisible(page, copy, "top");

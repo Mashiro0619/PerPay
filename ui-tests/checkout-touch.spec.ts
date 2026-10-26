@@ -5,7 +5,7 @@ import { expectTouchTarget } from "./touch-targets";
 test.describe("touch and reduced motion", () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 360, height: 560 } });
 
-  test("payment actions retain 44px targets, scrolling and readable content at 200 percent text zoom", async ({ page, manifest }, info) => {
+  test("payment actions retain compact 40px targets, scrolling and readable content at 200 percent text zoom", async ({ page, manifest }, info) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto(manifest.origin + manifest.checkouts.open!);
     await expect(page.locator("[data-qr-image]")).toBeVisible();

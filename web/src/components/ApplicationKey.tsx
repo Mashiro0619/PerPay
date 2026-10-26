@@ -550,7 +550,7 @@ function ApplicationKeyChange({
             onCheckedChange={setConfirmed}
             disabled={locked}
           />
-          <FieldLabel htmlFor="application-key-confirmed" className="min-h-11">
+          <FieldLabel htmlFor="application-key-confirmed" className="min-h-10">
             我确认新公钥未上传，或已恢复原配置并同步支付宝公钥。
           </FieldLabel>
         </Field>

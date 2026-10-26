@@ -43,8 +43,8 @@ describe("composed touch targets", () => {
       <a href="/orders/example" className="list-secondary-link">关联订单</a>
     </MemoryRouter>);
     for (const link of screen.getAllByRole("link")) {
-      expect(touchValue(link, "min-height")).toBe("48px");
-      expect(touchValue(link, "min-width")).toBe("48px");
+      expect(touchValue(link, "min-height")).toBe("40px");
+      expect(touchValue(link, "min-width")).toBe("40px");
     }
   });
   it("keeps tab visuals compact while reserving the expanded touch area", () => {
@@ -59,11 +59,11 @@ describe("composed touch targets", () => {
     const list = screen.getByRole("tablist");
     const tab = screen.getByRole("tab", { name: "全部" });
     expect(list).toHaveClass("p-[3px]");
-    expect(touchValue(tab, "min-height")).toBe("36px");
-    expect(touchValue(tab, "height").replaceAll(" ", "")).toBe("max(36px,2rem)");
-    expect(touchValue(tab, "min-height", "before")).toBe("48px");
-    expect(touchValue(list, "min-height").replaceAll(" ", "")).toBe("max(48px,12px+2rem)");
-    expect(touchValue(list, "padding-block")).toBe("6px");
+    expect(touchValue(tab, "min-height")).toBe("32px");
+    expect(touchValue(tab, "height").replaceAll(" ", "")).toBe("max(32px,2rem)");
+    expect(touchValue(tab, "min-height", "before")).toBe("40px");
+    expect(touchValue(list, "min-height").replaceAll(" ", "")).toBe("max(40px,8px+2rem)");
+    expect(touchValue(list, "padding-block")).toBe("4px");
     expect(container.querySelector('[data-slot="tabs-list"]')).toBe(list);
   });
 
@@ -74,13 +74,13 @@ describe("composed touch targets", () => {
     </>);
     const filter = screen.getByRole("button", { name: "筛选" });
     const submit = screen.getByRole("button", { name: "保存" });
-    expect(touchValue(filter, "min-height")).toBe("36px");
-    expect(touchValue(submit, "min-height")).toBe("40px");
-    expect(touchValue(filter, "margin-block")).toBe("6px");
-    expect(touchValue(submit, "margin-block")).toBe("4px");
+    expect(touchValue(filter, "min-height")).toBe("32px");
+    expect(touchValue(submit, "min-height")).toBe("36px");
+    expect(touchValue(filter, "margin-block")).toBe("4px");
+    expect(touchValue(submit, "margin-block")).toBe("2px");
     for (const button of [filter, submit]) {
-      expect(touchValue(button, "min-height", "before")).toBe("48px");
-      expect(touchValue(button, "min-width", "before")).toBe("48px");
+      expect(touchValue(button, "min-height", "before")).toBe("40px");
+      expect(touchValue(button, "min-width", "before")).toBe("40px");
       expect(touchValue(button, "position", "before")).toBe("absolute");
     }
   });
@@ -89,12 +89,12 @@ describe("composed touch targets", () => {
     render(<Button size="icon-sm" aria-label="关闭">×</Button>);
     const icon = screen.getByRole("button", { name: "关闭" });
     expect(icon).toHaveClass("touch-icon");
-    expect(touchValue(icon, "width")).toBe("36px");
-    expect(touchValue(icon, "height")).toBe("36px");
-    expect(touchValue(icon, "margin-block")).toBe("6px");
-    expect(touchValue(icon, "margin-inline")).toBe("6px");
-    expect(touchValue(icon, "min-height", "before")).toBe("48px");
-    expect(touchValue(icon, "min-width", "before")).toBe("48px");
+    expect(touchValue(icon, "width")).toBe("32px");
+    expect(touchValue(icon, "height")).toBe("32px");
+    expect(touchValue(icon, "margin-block")).toBe("4px");
+    expect(touchValue(icon, "margin-inline")).toBe("4px");
+    expect(touchValue(icon, "min-height", "before")).toBe("40px");
+    expect(touchValue(icon, "min-width", "before")).toBe("40px");
   });
 
   it("reserves independent toggle slots and keeps joined choices inside their own layout cells", () => {
@@ -111,13 +111,13 @@ describe("composed touch targets", () => {
     </>);
     const toggle = screen.getByRole("button", { name: "独立开关" });
     expect(toggle).toHaveAttribute("data-variant", "default");
-    expect(touchValue(toggle, "margin-block")).toBe("6px");
+    expect(touchValue(toggle, "margin-block")).toBe("4px");
     expect(touchValue(toggle, "width", "before")).toBe("100%");
     const independent = screen.getByRole("button", { name: "第一项" });
-    expect(touchValue(independent, "min-height")).toBe("36px");
-    expect(touchValue(independent, "margin-block")).toBe("6px");
+    expect(touchValue(independent, "min-height")).toBe("32px");
+    expect(touchValue(independent, "margin-block")).toBe("4px");
     const joined = screen.getByRole("button", { name: "第三项" });
-    expect(touchValue(joined, "min-height")).toBe("48px");
+    expect(touchValue(joined, "min-height")).toBe("40px");
     expect(touchValue(joined, "margin")).toBe("0px");
     expect(touchValue(joined, "width", "before")).toBe("100%");
   });
@@ -135,11 +135,11 @@ describe("composed touch targets", () => {
     const addon = container.querySelector('[data-slot="input-group-addon"]')!;
     const input = screen.getByLabelText("管理员密码");
     expect(input).toHaveAttribute("data-slot", "input-group-control");
-    expect(touchValue(input, "min-height")).toBe("48px");
-    expect(touchValue(screen.getByRole("button"), "min-height")).toBe("48px");
+    expect(touchValue(input, "min-height")).toBe("40px");
+    expect(touchValue(screen.getByRole("button"), "min-height")).toBe("40px");
     expect(touchValue(screen.getByRole("button"), "margin")).toBe("0px");
     expect(touchValue(group, "height")).toBe("auto");
-    expect(touchValue(group, "min-height")).toBe("48px");
+    expect(touchValue(group, "min-height")).toBe("40px");
     expect(Number.parseFloat(touchValue(addon, "padding-block"))).toBe(0);
   });
 
@@ -167,10 +167,10 @@ describe("composed touch targets", () => {
       </DropdownMenu>,
     );
     const checkbox = await screen.findByRole("menuitemcheckbox", { name: "实收金额" });
-    expect(touchValue(checkbox, "min-height")).toBe("48px");
-    expect(touchValue(screen.getByRole("menuitem", { name: "普通操作" }), "min-height")).toBe("48px");
+    expect(touchValue(checkbox, "min-height")).toBe("40px");
+    expect(touchValue(screen.getByRole("menuitem", { name: "普通操作" }), "min-height")).toBe("40px");
     const trigger = screen.getByRole("button", { name: "显示列" });
-    expect(touchValue(trigger, "min-height")).toBe("36px");
-    expect(touchValue(trigger, "min-height", "before")).toBe("48px");
+    expect(touchValue(trigger, "min-height")).toBe("32px");
+    expect(touchValue(trigger, "min-height", "before")).toBe("40px");
   });
 });

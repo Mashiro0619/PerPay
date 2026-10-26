@@ -268,7 +268,7 @@ export function WorkspaceSwitcher({
         render={
           <SidebarMenuButton
             tooltip="业务网站"
-            className="pointer-coarse:min-h-11"
+            className="pointer-coarse:min-h-10"
             aria-label={open ? "收起业务网站" : "展开业务网站"}
             aria-describedby={currentNameId}
           />

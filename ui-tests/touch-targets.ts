@@ -51,14 +51,18 @@ export function measureTouchTarget(element: Element) {
     width: viewport?.width ?? innerWidth, height: viewport?.height ?? innerHeight,
   };
   // Probe the full extension on compact controls. Native rounded controls may
-  // be much wider/taller: verify an actual central 48px target within them,
+  // be much wider/taller: verify an actual central 40px target within them,
   // avoiding curved corners outside that target.
-  const probeWidth = generated ? right - left : Math.min(48, right - left);
-  const probeHeight = generated ? bottom - top : Math.min(48, bottom - top);
+  const probeWidth = generated ? right - left : Math.min(40, right - left);
+  const probeHeight = generated ? bottom - top : Math.min(40, bottom - top);
   const probeLeft = (left + right - probeWidth) / 2;
   const probeTop = (top + bottom - probeHeight) / 2;
-  const points = [.02, .5, .98].flatMap(x => [.02, .5, .98].map(y => {
-    const point = { x: probeLeft + probeWidth * x, y: probeTop + probeHeight * y };
+  // Subpixel points less than 1 CSS px from a shared edge can be rounded
+  // into the adjacent row by Chromium's hit test.
+  const insetX = Math.max(1, probeWidth * .02);
+  const insetY = Math.max(1, probeHeight * .02);
+  const points = [insetX, probeWidth / 2, probeWidth - insetX].flatMap(x => [insetY, probeHeight / 2, probeHeight - insetY].map(y => {
+    const point = { x: probeLeft + x, y: probeTop + y };
     const hit = document.elementFromPoint(point.x, point.y);
     return {
       ...point,
@@ -85,8 +89,8 @@ export async function expectTouchTarget(target: Locator, { hitTest = true } = {}
   await expect(target).toBeVisible();
   const geometry = await target.evaluate(measureTouchTarget);
   const diagnostic = `${geometry.label ?? "unlabelled target"}: ${JSON.stringify(geometry)}`;
-  expect(geometry.width, `effective touch width; ${diagnostic}`).toBeGreaterThanOrEqual(47.5);
-  expect(geometry.height, `effective touch height; ${diagnostic}`).toBeGreaterThanOrEqual(47.5);
+  expect(geometry.width, `effective touch width; ${diagnostic}`).toBeGreaterThanOrEqual(39.5);
+  expect(geometry.height, `effective touch height; ${diagnostic}`).toBeGreaterThanOrEqual(39.5);
   expect(geometry.fits, `entire touch target is inside the visible browser area; ${diagnostic}`).toBe(true);
   if (hitTest) expect(geometry.hits, `nine near-edge points hit the control or its children; ${diagnostic}`).toBe(true);
   return geometry;
@@ -106,7 +110,7 @@ export async function expectTouchGap(first: Locator, second: Locator, axis: "hor
   const before = await expectTouchTarget(first);
   const after = await expectTouchTarget(second);
   const gap = axis === "horizontal" ? after.x - before.x - before.width : after.y - before.y - before.height;
-  expect(gap, `space between independent touch targets: ${before.label} / ${after.label}`).toBeGreaterThanOrEqual(7.5);
+  expect(gap, `space between independent touch targets: ${before.label} / ${after.label}`).toBeGreaterThanOrEqual(3.5);
   return gap;
 }
 
@@ -118,7 +122,7 @@ export async function tapOutsideVisible(page: Page, target: Locator, edge: "top"
     : edge === "top" ? visual.y - geometry.y
     : geometry.y + geometry.height - visual.y - visual.height;
   expect(expansion, "the requested edge has a generated extension outside the visible control").toBeGreaterThan(1);
-  // Exercise the outer 48px region, including pixels beyond the old 44px area.
+  // Exercise the extension outside the compact visible control.
   const offset = Math.min(5, expansion - .75);
   const point = {
     x: edge === "left" ? visual.x - offset : edge === "right" ? visual.x + visual.width + offset : visual.x + visual.width / 2,
