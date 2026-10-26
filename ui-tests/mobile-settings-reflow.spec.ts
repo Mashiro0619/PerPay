@@ -3,8 +3,8 @@ import { test, expect, login, record } from "./fixtures";
 import { expectTouchTarget } from "./touch-targets";
 
 async function completeSelectValue(trigger: Locator, page: Page) {
-  await trigger.evaluate(element => element.scrollIntoView({ block: "center", inline: "nearest" }));
   await page.clock.runFor(100);
+  await trigger.scrollIntoViewIfNeeded();
   const touch = await expectTouchTarget(trigger);
   const text = await trigger.locator('[data-slot="select-value"]').evaluate(element => {
     const box = element.getBoundingClientRect();
@@ -23,8 +23,8 @@ async function completeSelectValue(trigger: Locator, page: Page) {
 }
 
 async function completeButtonLabel(button: Locator, page: Page) {
-  await button.evaluate(element => element.scrollIntoView({ block: "center", inline: "nearest" }));
   await page.clock.runFor(100);
+  await button.scrollIntoViewIfNeeded();
   const touch = await expectTouchTarget(button);
   const text = await button.evaluate(element => {
     const box = element.getBoundingClientRect(), range = document.createRange();
@@ -70,6 +70,24 @@ test.describe("narrow settings controls preserve their selected labels", () => {
       values.push(await completeSelectValue(environment, page));
     }
     await record(page, info, { evidence: "desktop browser touch emulation", rootFont: 200, providerEnvironmentValues: values, disclosureGeometry });
+  });
+
+  test("a delayed text reflow keeps the provider disclosure fully reachable", async ({ page, manifest }, info) => {
+    await login(page, manifest);
+    await page.goto(manifest.origin + "/admin/settings/provider");
+    const disclosure = page.getByRole("button", { name: "导入已有应用私钥（可选）", exact: true });
+    await expect(disclosure).toBeVisible();
+    await page.evaluate(() => {
+      window.setTimeout(() => document.documentElement.style.fontSize = "200%", 50);
+    });
+    const geometry = await completeButtonLabel(disclosure, page);
+    await disclosure.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)));
+    await expectTouchTarget(disclosure);
+    await expect(page.locator("html")).toHaveCSS("font-size", "32px");
+    await disclosure.tap();
+    await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByRole("textbox", { name: "应用私钥", exact: true })).toBeVisible();
+    await record(page, info, { evidence: "desktop browser touch emulation", rootFont: 200, delayedReflow: true, disclosureGeometry: geometry });
   });
 
   for (const font of [100, 200]) {
