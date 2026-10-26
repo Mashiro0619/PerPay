@@ -1,5 +1,6 @@
 import { Link } from "@/navigation";
 import { AdminAccessSettings } from "./AdminAccessSettings";
+import { AdministratorSessions } from "@/components/administrator-sessions";
 import { DialogBody } from "@/components/admin-dialog";
 import { useSystemName } from "@/branding";
 import {
@@ -24,7 +25,7 @@ import {
   MIN_ADMIN_PASSWORD_CHARACTERS,
   validatePassword,
 } from "@/lib/format";
-import { useDirtyDraft, useDraftGuard } from "@/drafts";
+import { useDirtyDraft } from "@/drafts";
 import { CopyValue } from "@/components/copy-value";
 import { StatusBadge } from "@/components/business-status";
 import { ListDateTime } from "@/components/list-primitives";
@@ -46,7 +47,6 @@ import {
   CardHeader,
   CardTitle,
   CardDescription,
-  CardAction,
   CardContent,
   CardFooter,
 } from "@/components/ui/card";
@@ -104,18 +104,10 @@ export function SecuritySettings({
     ["provider_private_key", "应用私钥", `${systemName} 请求支付宝`],
     ["provider_public_key", "支付宝公钥", "验证支付宝返回的数据"],
   ];
-  const { requestDiscard } = useDraftGuard();
   const [reveal, setReveal] = useState<RuntimeSecretName | null>(null);
   const [rotate, setRotate] = useState(false);
-  const [revoke, setRevoke] = useState(false);
-  const session = useSession();
   const dialogOrigin = useRef<HTMLButtonElement | null>(null);
   const rotateTrigger = useRef<HTMLButtonElement | null>(null);
-  const revokeTrigger = useRef<HTMLButtonElement | null>(null);
-  const revokeAll = useMutation({
-    mutationFn: () => result(api.revokeAllAdministratorSessions({ body: {} })),
-    onSuccess: session.forget,
-  });
   return (
     <>
       <DetailCardGrid className="security-settings-card-grid">
@@ -231,40 +223,8 @@ export function SecuritySettings({
           </CardContent>
         </Card>
         <PasswordForm key="password" />
-          <Card key="sessions">
-            <CardHeader>
-              <CardTitle role="heading" aria-level={2}>
-                登录会话
-              </CardTitle>
-              <CardAction>
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <Button
-                        ref={revokeTrigger}
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label="会话操作"
-                      />
-                    }
-                  >
-                    <MoreHorizontal />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuGroup>
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onClick={() => requestDiscard(() => setRevoke(true))}
-                      >
-                        注销全部会话
-                      </DropdownMenuItem>
-                    </DropdownMenuGroup>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </CardAction>
-            </CardHeader>
-          </Card>
       </DetailCardGrid>
+      <AdministratorSessions />
       {reveal && (
         <SecretDialog
           finalFocus={() => dialogOrigin.current}
@@ -281,43 +241,6 @@ export function SecuritySettings({
           onClose={() => setRotate(false)}
         />
       )}
-      <AlertDialog
-        open={revoke}
-        onOpenChange={(open, event) => {
-          if (!open && revokeAll.isPending) event.cancel();
-          else setRevoke(open);
-        }}
-      >
-        <AlertDialogContent
-          finalFocus={() => revokeTrigger.current}
-          className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto"
-        >
-          <AlertDialogHeader>
-            <AlertDialogTitle>注销全部会话？</AlertDialogTitle>
-          </AlertDialogHeader>
-          <DialogBody><AlertDialogDescription>
-              包括当前设备，所有管理员都需要重新登录。
-            </AlertDialogDescription></DialogBody>
-          <ErrorNotice error={revokeAll.error} />
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={revokeAll.isPending}>
-              取消
-            </AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              disabled={revokeAll.isPending}
-              onClick={() => {
-                if (!revokeAll.isPending) revokeAll.mutate();
-              }}
-            >
-              {revokeAll.isPending && (
-                <Spinner aria-hidden="true" data-icon="inline-start" />
-              )}
-              注销全部会话
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   );
 }

@@ -40,6 +40,7 @@ function mount(
   if (options.configured) saved.completion.complete = true;
   const fetchMock = vi.fn(async (request: Request) => {
     const path = new URL(request.url).pathname;
+    if (path === "/api/admin/v1/sessions") return json({ data: [] });
     if (path === "/api/admin/v1/session")
       return json({
         data: {

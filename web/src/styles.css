@@ -385,6 +385,39 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 
 .admin-settings-layout { width: 100%; max-width: 56rem; }
 .admin-settings-layout[data-settings-section="security"] { max-width: none; }
+.administrator-sessions-card,
+.administrator-sessions-header { min-width: 0; }
+.administrator-sessions-header { column-gap: 1rem; }
+.administrator-sessions-actions { flex-wrap: wrap; max-width: 100%; }
+.administrator-session-row { flex-wrap: nowrap; gap: 1rem; padding-inline: 0; }
+.administrator-session-content { flex: 1 1 0%; }
+.administrator-session-icon {
+  align-self: center;
+  transform: none;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  border-radius: 0.75rem;
+  background: var(--muted);
+}
+.administrator-session-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.125rem 0.75rem;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+}
+.administrator-session-meta > span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+@container settings (max-width: 40rem) {
+  .administrator-sessions-header { grid-template-columns: minmax(0, 1fr); }
+  .administrator-sessions-actions { grid-column: 1; grid-row: 3; justify-self: start; margin-top: 0.5rem; }
+}
+@container settings (max-width: 30rem) {
+  .administrator-session-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.5rem 0.75rem; }
+  .administrator-session-icon { align-self: start; }
+  .administrator-session-content,
+  .administrator-session-action { grid-column: 2; }
+  .administrator-session-action { justify-self: end; }
+}
 @container settings (min-width: 48rem) {
   .security-settings-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

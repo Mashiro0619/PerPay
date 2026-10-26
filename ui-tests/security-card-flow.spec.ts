@@ -4,7 +4,7 @@ import { test, expect, login, record, type Manifest } from "./fixtures";
 import { audit } from "./audit";
 
 const gridSelector = ".security-settings-card-grid";
-const cardLabels = ["管理员 IP 白名单", "密钥", "修改密码", "登录会话"];
+const cardLabels = ["管理员 IP 白名单", "密钥", "修改密码"];
 const evidenceDirectory = ".ui-audit/security-card-flow-20261021";
 
 async function configure(page: Page, theme: "light" | "dark", mode: "compact" | "full") {
@@ -150,6 +150,14 @@ test("security cards keep natural heights and DOM order across themes and conten
     }));
     expect(layout.maxWidth).toBe("none");
     expect(Math.abs(layout.width - geometry.width)).toBeLessThanOrEqual(1);
+    const sessions = await page.locator("[data-login-sessions]").evaluate(element => {
+      const box = element.getBoundingClientRect();
+      const grid = element.parentElement!.querySelector(".security-settings-card-grid")!.getBoundingClientRect();
+      return { width: box.width, top: box.top, gridBottom: grid.bottom, inGrid: !!element.closest(".security-settings-card-grid") };
+    });
+    expect(sessions.inGrid).toBe(false);
+    expect(Math.abs(sessions.width - layout.width)).toBeLessThanOrEqual(1);
+    expect(sessions.top).toBeGreaterThanOrEqual(sessions.gridBottom + 15);
     await record(page, info, { feature: "security-natural-card-flow", width, theme, mode, geometry, layout,
       evidence: "isolated-synthetic-settings-fixture" });
     await capture(page, info, `security-flow-${width}-${theme}-${mode}`);

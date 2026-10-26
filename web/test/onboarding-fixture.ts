@@ -186,6 +186,7 @@ export function mountOnboarding(
     if (override !== undefined) return override;
     const url = new URL(request.url);
     const endpoint = url.pathname;
+    if (endpoint === "/api/admin/v1/sessions") return json({ data: [] });
     if (endpoint === "/api/admin/v1/sites/overview") {
       const days = Number(url.searchParams.get("range") ?? 30);
       const last = Date.parse("2026-10-10T12:00:00.000Z");

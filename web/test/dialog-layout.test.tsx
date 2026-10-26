@@ -11,7 +11,7 @@ import {
   SecuritySettings,
 } from "../src/pages/SecuritySettings";
 import { recordAction } from "./menu-helper";
-import { json, settings } from "./fixtures";
+import { json, settings, withSessionList } from "./fixtures";
 
 const longValue = [
   "-----BEGIN PRIVATE KEY-----",
@@ -121,7 +121,7 @@ it("bounds the session confirmation without changing its cancel behavior", async
   queryClient.setQueryData(["admin-access-source"], {data:{revision:settings.revision,...settings.admin_access,current_ip:"192.0.2.1"}});
 
   const fetchMock = vi.fn();
-  vi.stubGlobal("fetch", fetchMock);
+  vi.stubGlobal("fetch", withSessionList(fetchMock));
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>

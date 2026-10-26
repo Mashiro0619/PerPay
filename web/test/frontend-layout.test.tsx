@@ -10,7 +10,7 @@ import { SettingsEditor } from "../src/components/SettingsForms";
 import { SidebarProvider } from "../src/components/ui/sidebar";
 import { OrderDetail } from "../src/pages/OrderDetail";
 import { SecuritySettings } from "../src/pages/SecuritySettings";
-import { order, orderId, settings } from "./fixtures";
+import { json, order, orderId, settings, withSessionList } from "./fixtures";
 
 describe("official block composition", () => {
   beforeEach(() => {
@@ -122,6 +122,7 @@ describe("official block composition", () => {
   );
 
   it("keeps security cards independent and password submission in the same form as its fields", () => {
+    vi.stubGlobal("fetch", withSessionList(vi.fn(async () => json({ data: settings }))));
     const { container } = render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter>
@@ -135,8 +136,11 @@ describe("official block composition", () => {
     const submit = screen.getByRole("button", { name: "修改并重新登录" });
     const grid = container.querySelector(".security-settings-card-grid")!;
     expect([...grid.children].map(item => item.querySelector("[data-slot=card-title]")?.textContent)).toEqual([
-      "管理员 IP 白名单", "密钥", "修改密码", "登录会话",
+      "管理员 IP 白名单", "密钥", "修改密码",
     ]);
+    const sessions = screen.getByRole("heading", { name: "登录会话" }).closest("[data-slot=card]");
+    expect(grid).not.toContainElement(sessions as HTMLElement);
+    expect(grid.nextElementSibling).toBe(sessions);
     expect(submit.closest("[data-slot=card-footer]")).not.toBeNull();
     expect(submit.closest("[data-slot=card]")).toBe(card);
     expect(submit.closest("form")).toBe(

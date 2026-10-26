@@ -40,6 +40,14 @@ export function json(data: unknown, status = 200, headers: Record<string, string
   return Response.json(data, { status, headers });
 }
 
+/** Keep the independent session-list read outside unrelated mutation spies. */
+export function withSessionList(fetcher: (request: Request) => Response | Promise<Response>) {
+  return (request: Request): Promise<Response> =>
+    request.method === "GET" && new URL(request.url).pathname === "/api/admin/v1/sessions"
+      ? Promise.resolve(json({ data: [] }))
+      : Promise.resolve(fetcher(request));
+}
+
 export function apiError(code: string, message: string, status = 409): Response {
   return json({ error: { code, message, request_id: "test-request-id" } }, status);
 }

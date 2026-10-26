@@ -13,7 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 import { queryClient } from "../src/api/client";
 import { SecuritySettings } from "../src/pages/SecuritySettings";
 import { recordAction } from "./menu-helper";
-import { json, settings } from "./fixtures";
+import { json, settings, withSessionList } from "./fixtures";
 
 const syntheticSecret = "synthetic-test-key-never-real";
 
@@ -33,7 +33,7 @@ describe("secret visibility lifecycle", () => {
           finish = resolve;
         });
       });
-      vi.stubGlobal("fetch", fetchMock);
+      vi.stubGlobal("fetch", withSessionList(fetchMock));
       const configured = {
         ...settings,
         completion: { ...settings.completion, api: true },
@@ -123,12 +123,12 @@ describe("secret visibility lifecycle", () => {
       let finish: (response: Response) => void = () => {};
       vi.stubGlobal(
         "fetch",
-        vi.fn(
+        withSessionList(vi.fn(
           () =>
             new Promise<Response>((resolve) => {
               finish = resolve;
             }),
-        ),
+        )),
       );
       const configured = {
         ...settings,
@@ -188,7 +188,7 @@ it("still clears a displayed multiline key after sixty seconds", async () => {
     "-----BEGIN PRIVATE KEY-----\nsynthetic-private-key\n-----END PRIVATE KEY-----";
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => json({ data: { value } })),
+    withSessionList(vi.fn(async () => json({ data: { value } }))),
   );
   const configured = {
     ...settings,

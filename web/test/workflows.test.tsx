@@ -29,9 +29,11 @@ import {
   order,
   orderId,
   settings,
+  withSessionList,
 } from "./fixtures";
 
 function renderPage(children: ReactNode, path = "/") {
+  vi.stubGlobal("fetch", withSessionList(globalThis.fetch));
   // This suite tests other security controls; keep the read-only IP lookup cached.
   queryClient.setQueryData(["admin-access-source"], {data:{revision:settings.revision,...settings.admin_access,current_ip:"192.0.2.1"}});
 
