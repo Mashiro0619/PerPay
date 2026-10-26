@@ -44,10 +44,10 @@ async function openOrder(page: Page, manifest: Manifest, path: string) {
   const pageActions = page.getByRole("button", { name: "页面操作", exact: true });
   if (await pageActions.isVisible()) {
     await pageActions.click();
-    const actions = page.getByRole("dialog", { name: "页面操作", exact: true });
+    const actions = page.getByRole("menu", { name: "页面操作", exact: true });
     await expect(actions).toBeVisible();
-    await expect(actions.getByRole("button", { name: "刷新", exact: true })).toBeEnabled();
-    await actions.getByRole("button", { name: "关闭对话框", exact: true }).click();
+    await expect(actions.getByRole("menuitem", { name: "刷新", exact: true })).toBeEnabled();
+    await page.keyboard.press("Escape");
     await expect(actions).toHaveCount(0);
     await expect(pageActions).toBeFocused();
   } else {

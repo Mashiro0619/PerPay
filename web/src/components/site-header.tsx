@@ -4,7 +4,7 @@ import { isGlobalNavigationPage } from "@/lib/navigation-selection";
 import { Link } from "@/navigation";
 import { RefreshButton } from "@/components/refresh-button";
 import { ContentWidthControl } from "@/components/content-width";
-import { PageHeaderActionsSlot } from "@/components/page-header-actions";
+import { PageHeaderActionsSlot, PageHeaderMenuContent, usePageHeaderMenu } from "@/components/page-header-actions";
 import { useIsFetching } from "@tanstack/react-query";
 import { refreshOperationalData } from "@/api/client";
 import { ThemeControl } from "@/theme";
@@ -19,12 +19,11 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { TestPaymentButton } from "@/components/test-payment-provider";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMeasuredHeight } from "@/components/list-layout";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 export function SiteHeader({
   title,
@@ -43,9 +42,8 @@ export function SiteHeader({
     ? (scope.site?.data?.data.configuration.name ?? scope.clientId)
     : isGlobalNavigationPage(pathname) ? "全局" : "全部网站";
   const fetching = useIsFetching({ queryKey: ["analytics"] }) > 0;
-  const mobile = useIsMobile();
-  const [actionsOpen, setActionsOpen] = useState(false);
-  useEffect(() => setActionsOpen(false), [pathname, workspaceName]);
+  const menu = usePageHeaderMenu();
+  const mobile = menu?.mobile ?? false;
   const actions = <>
     {overview && <>
       <RefreshButton disabled={fetching} onClick={() => void refreshOperationalData()} busy={fetching} />
@@ -87,13 +85,15 @@ export function SiteHeader({
           </BreadcrumbList>
         </Breadcrumb>
         <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2" inert={busy}>
-          {mobile ? <Sheet open={actionsOpen} onOpenChange={setActionsOpen}>
-            <SheetTrigger render={<Button variant="ghost" size="icon" aria-label="页面操作" />}><MoreHorizontal /></SheetTrigger>
-            <SheetContent side="bottom">
-              <SheetHeader className="shrink-0 pr-16"><SheetTitle>页面操作</SheetTitle></SheetHeader>
-              <div data-header-mobile-actions className="flex min-h-0 flex-col gap-3 overflow-y-auto px-4 pb-4" inert={busy}>{actions}</div>
-            </SheetContent>
-          </Sheet> : actions}
+          {mobile ? <>
+            <DropdownMenuTrigger render={<Button ref={menu?.triggerRef} variant="ghost" size="icon" aria-label="页面操作" disabled={busy} />}><MoreHorizontal /></DropdownMenuTrigger>
+            {!menu?.hasPageActions && <PageHeaderMenuContent busy={busy}>
+              {overview && <>
+                <RefreshButton disabled={fetching} onClick={() => void refreshOperationalData()} busy={fetching} />
+                <TestPaymentButton>测试收款</TestPaymentButton>
+              </>}
+            </PageHeaderMenuContent>}
+          </> : actions}
         </div>
       </div>
     </header>

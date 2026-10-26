@@ -8,41 +8,56 @@ async function centered(target: Locator, page: Page) {
   return expectTouchTarget(target);
 }
 
+async function tapMenuItemEdge(page: Page, target: Locator) {
+  const geometry = await expectTouchTarget(target);
+  expect(geometry.visual.height).toBeCloseTo(48, 1);
+  expect(geometry.generated, "menu rows use their own complete touch area").toBe(false);
+  const point = { x: geometry.visual.x + geometry.visual.width / 2, y: geometry.visual.y + 1 };
+  expect(await target.evaluate((element, point) => {
+    const hit = document.elementFromPoint(point.x, point.y);
+    return hit !== null && (hit === element || element.contains(hit));
+  }, point)).toBe(true);
+  await page.touchscreen.tap(point.x, point.y);
+  return { geometry, point };
+}
+
 test.describe("compact mobile button visuals and separate touch targets", () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 360, height: 560 }, reducedMotion: "reduce" });
 
   for (const width of [320, 360, 390, 430]) {
-    test(`${width}px: settings page actions keep their complete touch regions at the scroll start`, async ({ page, manifest }, info) => {
+    test(`${width}px: settings page menu rows use compact 48px touch areas`, async ({ page, manifest }, info) => {
       await page.setViewportSize({ width, height: 560 });
       await login(page, manifest);
       await page.goto(manifest.origin + "/admin/settings/display");
       const more = page.getByRole("button", { name: "页面操作", exact: true });
       await more.click();
-      const actions = page.getByRole("dialog", { name: "页面操作", exact: true });
-      const scroller = actions.locator("[data-header-mobile-actions]");
-      const wizard = actions.getByRole("link", { name: "配置向导", exact: true });
-      const refresh = actions.getByRole("button", { name: "刷新", exact: true });
+      const actions = page.getByRole("menu", { name: "页面操作", exact: true });
+      const wizard = actions.getByRole("menuitem", { name: "配置向导", exact: true });
+      const refresh = actions.getByRole("menuitem", { name: "刷新", exact: true });
       await expect(refresh).toBeEnabled();
-      await expect.poll(() => scroller.evaluate(element => element.scrollTop)).toBe(0);
+      await expect.poll(() => actions.evaluate(element => element.scrollTop)).toBe(0);
 
-      // Measure before scrolling: the first action's extension must fit inside
-      // the scroller, and stacked actions must not claim the same tap points.
-      const wizardGeometry = await expectTouchSlot(wizard);
-      const refreshGeometry = await expectTouchSlot(refresh);
-      expect(wizardGeometry.visual.height).toBeCloseTo(36, 1);
-      expect(refreshGeometry.visual.height).toBeCloseTo(36, 1);
-      await expectTouchGap(wizard, refresh, "vertical");
+      const wizardGeometry = await expectTouchTarget(wizard);
+      const refreshGeometry = await expectTouchTarget(refresh);
+      for (const geometry of [wizardGeometry, refreshGeometry]) {
+        expect(geometry.visual.height).toBeCloseTo(48, 1);
+        expect(geometry.generated).toBe(false);
+      }
+      expect(refreshGeometry.y).toBeGreaterThanOrEqual(wizardGeometry.y + wizardGeometry.height - .5);
 
       const response = page.waitForResponse(response => response.request().method() === "GET" &&
         new URL(response.url()).pathname === "/api/admin/v1/settings");
-      const refreshTap = await tapOutsideVisible(page, refresh, "top");
+      const refreshTap = await tapMenuItemEdge(page, refresh);
       await response;
+      await expect(actions).toHaveCount(0);
+      await expect(more).toBeFocused();
+      await more.click();
       await expect(refresh).toBeEnabled();
       await expect(actions).toBeVisible();
       await expect(page).toHaveURL(manifest.origin + "/admin/settings/display");
       await record(page, info, { evidence: "browser touch viewport", buttonScale: { requestedWidth: width, wizardGeometry, refreshGeometry, refreshTap } });
 
-      const wizardTap = await tapOutsideVisible(page, wizard, "top");
+      const wizardTap = await tapMenuItemEdge(page, wizard);
       await expect(page.locator("[data-onboarding-workspace]")).toBeVisible();
       await expect(actions).toHaveCount(0);
       await info.attach("settings-wizard-edge-tap", { body: Buffer.from(JSON.stringify(wizardTap, null, 2)), contentType: "application/json" });

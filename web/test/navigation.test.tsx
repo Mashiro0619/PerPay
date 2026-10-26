@@ -309,17 +309,16 @@ describe("navigation and draft protection", () => {
     const more = screen.getByRole("button", { name: "页面操作" });
     expect(screen.queryByRole("button", { name: "测试收款" })).not.toBeInTheDocument();
     await user.click(more);
-    const actions = await screen.findByRole("dialog", { name: "页面操作" });
-    const testPayment = within(actions).getByRole("button", { name: "测试收款" });
+    const actions = await screen.findByRole("menu", { name: "页面操作" });
+    const testPayment = within(actions).getByRole("menuitem", { name: "测试收款" });
     await user.click(testPayment);
     const payment = await screen.findByRole("dialog", { name: "测试收款" });
     expect(within(payment).getByLabelText("测试金额（元）")).toBeVisible();
     await user.click(within(payment).getByRole("button", { name: "取消" }));
-    await waitFor(() => expect(testPayment).toHaveFocus());
+    await waitFor(() => expect(more).toHaveFocus());
+    expect(screen.queryByRole("menu", { name: "页面操作" })).not.toBeInTheDocument();
     expect(view.router.state.location.pathname).toBe("/");
     expect(view.fetchMock.mock.calls.some(([request]) => request.method !== "GET")).toBe(false);
-    await user.keyboard("{Escape}");
-    await waitFor(() => expect(more).toHaveFocus());
   });
   it("uses the official account menu without duplicate branding or palette controls", async () => {
     const { container, fetchMock } = mount();
@@ -639,10 +638,10 @@ describe("page actions in the shared header", () => {
         expect(within(header).queryByRole("link", { name: "配置向导" })).not.toBeInTheDocument();
         await userEvent.click(within(header).getByRole("button", { name: "页面操作" }));
       }
-      const actions = mobile ? await screen.findByRole("dialog", { name: "页面操作" }) : header;
-      const wizard = within(actions).getByRole("link", { name: "配置向导" });
-      const refresh = within(actions).getByRole("button", { name: "刷新" });
-      const theme = within(actions).getByRole("button", { name: /外观/ });
+      const actions = mobile ? await screen.findByRole("menu", { name: "页面操作" }) : header;
+      const wizard = within(actions).getByRole(mobile ? "menuitem" : "link", { name: "配置向导" });
+      const refresh = within(actions).getByRole(mobile ? "menuitem" : "button", { name: "刷新" });
+      const theme = within(actions).getByRole(mobile ? "menuitem" : "button", { name: /外观/ });
       expect(
         wizard.compareDocumentPosition(theme) &
           Node.DOCUMENT_POSITION_FOLLOWING,
@@ -651,8 +650,8 @@ describe("page actions in the shared header", () => {
         refresh.compareDocumentPosition(theme) &
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
-      expect(screen.getAllByRole("button", { name: "刷新" })).toHaveLength(1);
-      expect(screen.getAllByRole("link", { name: "配置向导" })).toHaveLength(1);
+      expect(screen.getAllByRole(mobile ? "menuitem" : "button", { name: "刷新" })).toHaveLength(1);
+      expect(screen.getAllByRole(mobile ? "menuitem" : "link", { name: "配置向导" })).toHaveLength(1);
       await act(async () => {
         await router.navigate("/system");
       });
@@ -679,7 +678,7 @@ describe("page actions in the shared header", () => {
         within(header).queryByRole("link", { name: "配置向导" }),
       ).not.toBeInTheDocument();
       const emptyActions = header.querySelector("[data-page-header-actions]");
-      if (mobile) expect(screen.queryByRole("dialog", { name: "页面操作" })).not.toBeInTheDocument();
+      if (mobile) expect(within(header).getByRole("button", { name: "页面操作" })).toHaveAttribute("aria-expanded", "false");
       else expect(emptyActions).toBeEmptyDOMElement();
       await act(async () => {
         await router.navigate("/orders");

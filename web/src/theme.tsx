@@ -7,6 +7,9 @@ import {
   DropdownMenuContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
 } from "./components/ui/dropdown-menu";
 export type ThemePreference = "light" | "dark" | "system";
 declare global {
@@ -26,13 +29,20 @@ const modes = [
   { value: "dark", label: "深色", icon: Moon },
   { value: "system", label: "跟随系统", icon: Monitor },
 ] as const;
-export function ThemeControl({ className }: { className?: string }) {
+export function ThemeControl({ className, submenu = false }: { className?: string; submenu?: boolean }) {
   const preference = useSyncExternalStore(
     subscribe,
     getPreference,
     () => "system",
   );
   const Icon = modes.find((mode) => mode.value === preference)?.icon ?? Monitor;
+  const choices = <DropdownMenuRadioGroup value={preference} onValueChange={(value) => window.perpayTheme?.setPreference(value as ThemePreference)}>
+    {modes.map((mode) => <DropdownMenuRadioItem key={mode.value} value={mode.value} closeOnClick={submenu}><mode.icon />{mode.label}</DropdownMenuRadioItem>)}
+  </DropdownMenuRadioGroup>;
+  if (submenu) return <DropdownMenuSub>
+    <DropdownMenuSubTrigger aria-label={"外观，当前" + modes.find((mode) => mode.value === preference)?.label}><Icon />外观</DropdownMenuSubTrigger>
+    <DropdownMenuSubContent className="w-44 max-w-[calc(100vw-2rem)]">{choices}</DropdownMenuSubContent>
+  </DropdownMenuSub>;
   return (
     <div className={className}>
       <DropdownMenu>
@@ -51,19 +61,7 @@ export function ThemeControl({ className }: { className?: string }) {
           <span className="sr-only sm:not-sr-only">外观</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuRadioGroup
-            value={preference}
-            onValueChange={(value) =>
-              window.perpayTheme?.setPreference(value as ThemePreference)
-            }
-          >
-            {modes.map((mode) => (
-              <DropdownMenuRadioItem key={mode.value} value={mode.value}>
-                <mode.icon />
-                {mode.label}
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
+          {choices}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

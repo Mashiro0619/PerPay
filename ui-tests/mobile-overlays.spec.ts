@@ -125,7 +125,7 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
     });
   }
 
-  test("navigation and page actions sheets keep hit-tested close controls in a panned viewport", async ({ page, manifest }, info) => {
+  test("navigation close and page action menus remain reachable in a panned viewport", async ({ page, manifest }, info) => {
     await login(page, manifest);
     const navigation = page.getByRole("button", { name: "切换导航", exact: true });
     await navigation.click();
@@ -139,21 +139,21 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
 
     const more = page.getByRole("button", { name: "页面操作", exact: true });
     await more.click();
-    const actions = page.getByRole("dialog", { name: "页面操作", exact: true });
-    const close = actions.getByRole("button", { name: "关闭对话框", exact: true });
-    const actionsClose = await reachable(close);
-    const refresh = actions.getByRole("button", { name: "刷新", exact: true });
+    const actions = page.getByRole("menu", { name: "页面操作", exact: true });
+    const refresh = actions.getByRole("menuitem", { name: "刷新", exact: true });
     await expect(refresh).toHaveText("刷新");
-    const appearance = await scrollTo(actions.getByRole("button", { name: /外观，当前/ }), page);
-    const actionBounds = (await actions.boundingBox())!;
-    const appearanceBottomSpace = actionBounds.y + actionBounds.height - appearance.y - appearance.height;
-    expect(appearanceBottomSpace, "the last action's complete touch extension keeps 8px inside the popup edge").toBeGreaterThanOrEqual(7.5);
-    const contentBounds = (await actions.locator("[data-header-mobile-actions]").boundingBox())!;
-    const closeToContent = contentBounds.y - actionsClose.y - actionsClose.height;
-    expect(closeToContent, "header close and content scroller remain separated by at least 8px").toBeGreaterThanOrEqual(7.5);
-    await reachable(close);
-    await record(page, info, { evidence: "browser synthetic visualViewport", area: panned, navigationClose, actionsClose, appearance, appearanceBottomSpace, closeToContent });
-    await close.click();
+    const refreshTarget = await scrollTo(refresh, page);
+    const appearanceTrigger = actions.getByRole("menuitem", { name: /^外观/ });
+    const appearance = await scrollTo(appearanceTrigger, page);
+    await appearanceTrigger.click();
+    const system = page.getByRole("menuitemradio", { name: "跟随系统", exact: true });
+    const systemTarget = await scrollTo(system, page);
+    await record(page, info, { evidence: "browser synthetic visualViewport", area: panned, navigationClose, refreshTarget, appearance, systemTarget });
+    await page.keyboard.press("Escape");
+    await expect(system).toHaveCount(0);
+    await expect(actions).toBeVisible();
+    await expect(appearanceTrigger).toBeFocused();
+    await page.keyboard.press("Escape");
     await expect(more).toBeFocused();
     await expect(actions).toHaveCount(0);
   });

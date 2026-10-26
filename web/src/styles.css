@@ -1171,7 +1171,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 }
 [data-admin-dialog-scroll] > :is([data-admin-dialog-body], .overflow-auto),
 [data-admin-dialog-scroll] > form.contents > [data-slot="field-group"] { overflow: visible; }
-[data-overlay-viewport="sheet"]:has(> :is([data-list-filter-scroll], [data-list-display-scroll], [data-header-mobile-actions])) { overflow: clip; }
+[data-overlay-viewport="sheet"]:has(> :is([data-list-filter-scroll], [data-list-display-scroll])) { overflow: clip; }
 @media (pointer: coarse) {
   /* The close slot ends at 60px; keep 8px before adjacent scrolling controls. */
   [data-overlay-viewport="sheet"]:has(> :is([data-list-filter-scroll], [data-list-display-scroll], [data-header-mobile-actions])) > [data-slot="sheet-header"] { min-height: 68px; }
@@ -1207,15 +1207,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-mobile="true"] [data-sidebar="header"] { padding-right: 3.5rem; }
 [data-mobile="true"] [data-sidebar="content"] { min-height: 0; }
 [data-mobile="true"] > [data-slot="sheet-close"] { top: max(0.5rem, env(safe-area-inset-top)); }
-[data-header-mobile-actions] { padding-top: 4px; padding-bottom: max(1rem, env(safe-area-inset-bottom)); scroll-padding-block: 1rem; }
-[data-header-mobile-actions] [data-page-header-actions] { flex-direction: column; align-items: stretch; gap: 0.75rem; }
-[data-header-mobile-actions] :is([class~="group/button"], [data-slot="dropdown-menu-trigger"]) { width: 100%; justify-content: flex-start; }
-@media (pointer: coarse) {
-  [data-header-mobile-actions] [class~="touch-icon"] { min-width: 48px; margin-inline: 0; }
-}
 [data-header-mobile-actions] a > span { display: inline; }
-[data-header-mobile-actions] [data-refresh-label] { display: inline; }
-[data-header-mobile-actions] .sr-only { position: static; width: auto; height: auto; padding: 0; margin: 0; overflow: visible; clip: auto; white-space: normal; }
 .settings-long-text { field-sizing: fixed; min-height: 6rem; height: 12rem; max-height: min(16rem, 40dvh); overflow-y: auto; }
 [data-list-display-body] .list-columns-slot { display: flex; align-items: stretch; flex-direction: column; }
 [data-list-mobile-actions] { flex-wrap: wrap; }

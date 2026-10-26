@@ -77,8 +77,9 @@ test.describe("enlarged admin dialogs keep fields and decisions reachable", () =
       await page.evaluate(font => document.documentElement.style.fontSize = font + "%", font);
       const actions = page.getByRole("button", { name: "页面操作", exact: true });
       await actions.click();
-      const paymentTrigger = page.getByRole("button", { name: "测试收款", exact: true });
+      const paymentTrigger = page.getByRole("menuitem", { name: "测试收款", exact: true });
       await paymentTrigger.click();
+      await expect(page.getByRole("menu", { name: "页面操作", exact: true })).toHaveCount(0);
       const payment = page.getByRole("dialog", { name: "测试收款", exact: true });
       const amount = payment.getByRole("textbox", { name: "测试金额（元）", exact: true });
       await expect(amount).toBeVisible();
@@ -94,7 +95,7 @@ test.describe("enlarged admin dialogs keep fields and decisions reachable", () =
       await expectTouchTarget(payment.getByRole("button", { name: "关闭对话框", exact: true }));
       await cancelPayment.tap();
       await expect(payment).toHaveCount(0);
-      await expect(paymentTrigger).toBeFocused();
+      await expect(actions).toBeFocused();
 
       await page.goto(manifest.origin + "/admin" + manifest.details.matchManual);
       await page.evaluate(font => document.documentElement.style.fontSize = font + "%", font);

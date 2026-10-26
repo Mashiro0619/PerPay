@@ -24,9 +24,11 @@ test.describe("payment site identity stays readable with enlarged text", () => {
       await login(page, manifest);
       await page.goto(manifest.origin + "/admin/");
       await page.evaluate(font => document.documentElement.style.fontSize = font + "%", font);
-      await page.getByRole("button", { name: "页面操作", exact: true }).click();
-      const opener = page.getByRole("button", { name: "测试收款", exact: true });
+      const actions = page.getByRole("button", { name: "页面操作", exact: true });
+      await actions.click();
+      const opener = page.getByRole("menuitem", { name: "测试收款", exact: true });
       await opener.click();
+      await expect(page.getByRole("menu", { name: "页面操作", exact: true })).toHaveCount(0);
       const dialog = page.getByRole("dialog", { name: "测试收款", exact: true });
       const picker = dialog.getByRole("combobox", { name: "业务网站", exact: true });
       await picker.click();
@@ -53,7 +55,7 @@ test.describe("payment site identity stays readable with enlarged text", () => {
       await expectTouchTarget(cancel);
       await cancel.tap();
       await expect(dialog).toHaveCount(0);
-      await expect(opener).toBeFocused();
+      await expect(actions).toBeFocused();
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1);
     });
   }

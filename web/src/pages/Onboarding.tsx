@@ -1,5 +1,5 @@
 import { RefreshButton } from "@/components/refresh-button";
-import { PageHeaderActions } from "@/components/page-header-actions";
+import { PageHeaderActionLink, PageHeaderActions } from "@/components/page-header-actions";
 import { useSystemName } from "@/branding";
 import { TestPaymentButton } from "@/components/test-payment-provider";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -102,7 +102,7 @@ export default function Onboarding() {
       data-onboarding-workspace
     >
       <PageHeaderActions>
-        <a
+        <PageHeaderActionLink><a
           data-external-link
           className={buttonVariants({ variant: "ghost", size: "sm" })}
           href="https://github.com/Mashiro0619/PerPay/blob/main/docs/alipay-setup.md"
@@ -113,7 +113,7 @@ export default function Onboarding() {
         >
           <BookOpen data-icon="inline-start" />
           <span className="hidden sm:inline">图文教程</span>
-        </a>
+        </a></PageHeaderActionLink>
         <RefreshButton disabled={
             refreshing ||
             settings.isFetching ||

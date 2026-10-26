@@ -17,6 +17,8 @@ import {
   useTestPaymentRequest,
 } from "@/lib/test-payment-request";
 import { Button } from "@/components/ui/button";
+import { usePageActionMenu } from "@/components/page-header-actions";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 
 const TestPaymentContext = createContext<
   ((trigger: HTMLButtonElement) => void) | null
@@ -69,7 +71,11 @@ export function TestPaymentButton({
   "children" | "className" | "size" | "variant" | "title"
 >) {
   const show = useContext(TestPaymentContext);
+  const menu = usePageActionMenu();
   if (!show) throw new Error("TestPaymentButton requires TestPaymentProvider");
+  if (menu) return <DropdownMenuItem aria-haspopup="dialog" onClick={() => {
+    if (menu.current) show(menu.current);
+  }}><ScanLine />{children}</DropdownMenuItem>;
   return (
     <Button
       type="button"
