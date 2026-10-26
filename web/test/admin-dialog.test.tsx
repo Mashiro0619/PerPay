@@ -19,9 +19,11 @@ describe("administrator dialog presentation", () => {
     stubConfirmationViewport(true);
     render(<Dialog open><DialogContent><DialogHeader><DialogTitle>查看支付宝公钥</DialogTitle></DialogHeader><DialogBody><p>阅读查看范围和时限后再复制。</p><button>复制公钥</button></DialogBody></DialogContent></Dialog>);
     const dialog = screen.getByRole("dialog", { name: "查看支付宝公钥" });
-    await waitFor(() => expect(dialog).toHaveFocus());
+    const scroll = dialog.querySelector<HTMLElement>("[data-admin-dialog-scroll]")!;
+    await waitFor(() => expect(scroll).toHaveFocus());
+    expect(scroll).toHaveAttribute("tabindex", "0");
     expect(within(dialog).getByRole("button", { name: "复制公钥" })).not.toHaveFocus();
-    expect(dialog.querySelector<HTMLElement>("[data-admin-dialog-scroll]")!.scrollTop).toBe(0);
+    expect(scroll.scrollTop).toBe(0);
   });
   it("uses confirmation semantics and focuses cancellation without an icon", async () => {
     render(<AlertDialog open><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>确认操作</AlertDialogTitle></AlertDialogHeader><DialogBody><AlertDialogDescription>操作说明</AlertDialogDescription></DialogBody><AlertDialogFooter><AlertDialogCancel>取消</AlertDialogCancel><AlertDialogAction variant="destructive">确认</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>);
@@ -41,7 +43,8 @@ describe("administrator dialog presentation", () => {
 
     const dialog = screen.getByRole("alertdialog", { name: "确认保存访问规则？" });
     const scroll = dialog.querySelector<HTMLElement>("[data-admin-dialog-scroll]")!;
-    await waitFor(() => expect(dialog).toHaveFocus());
+    await waitFor(() => expect(scroll).toHaveFocus());
+    expect(scroll).toHaveAttribute("tabindex", "0");
     expect(cancel.current).not.toHaveFocus();
     expect(scroll.scrollTop).toBe(0);
     expect(within(dialog).getByText(/^保存后立即生效/)).toBeVisible();
@@ -53,6 +56,7 @@ describe("administrator dialog presentation", () => {
 
     const dialog = screen.getByRole("alertdialog", { name: "确认保存？" });
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "暂不保存" })).toHaveFocus());
+    expect(dialog.querySelector("[data-admin-dialog-scroll]")).toHaveAttribute("tabindex", "-1");
     expect(dialog).not.toHaveFocus();
   });
   it.each(["form", "technical"] as const)("has an explicit %s size without changing the dialog role", kind => {

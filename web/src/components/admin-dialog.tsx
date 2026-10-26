@@ -56,7 +56,7 @@ function DialogScroll({ children, scrollRef }: { children: ReactNode; scrollRef?
     for (const child of scroll.children) observer.observe(child);
     return () => observer.disconnect();
   }, [children]);
-  return <div ref={element} data-admin-dialog-scroll data-scrollable={scrollable}>{children}</div>;
+  return <div ref={element} tabIndex={scrollable ? 0 : -1} data-admin-dialog-scroll data-scrollable={scrollable}>{children}</div>;
 }
 export function DialogContent({ className, kind = "form", children, initialFocus, ...props }: ComponentProps<typeof DialogUI.DialogContent> & { kind?: "form" | "technical" }) {
   const keepMounted = useContext(RetainDialogContext);
@@ -64,7 +64,7 @@ export function DialogContent({ className, kind = "form", children, initialFocus
   const scrollRef = useRef<HTMLDivElement>(null);
   return <DialogUI.DialogContent {...props} initialFocus={openType => {
     const scroll = scrollRef.current;
-    if (initialFocus === undefined && scroll && scroll.scrollHeight > scroll.clientHeight + 1) return scroll.parentElement;
+    if (initialFocus === undefined && scroll && scroll.scrollHeight > scroll.clientHeight + 1) return scroll;
     if (typeof initialFocus === "function") return initialFocus(openType);
     if (initialFocus && typeof initialFocus === "object") return initialFocus.current;
     return initialFocus ?? true;
@@ -80,7 +80,7 @@ export function AlertDialogContent({ className, initialFocus, children, ...props
     const scroll = element.current?.querySelector<HTMLElement>("[data-admin-dialog-scroll]");
     // Start long confirmations at their explanation instead of scrolling to
     // the cancellation button before the user has read the operation.
-    if (initialFocus !== false && scroll && scroll.scrollHeight > scroll.clientHeight + 1) return element.current;
+    if (initialFocus !== false && scroll && scroll.scrollHeight > scroll.clientHeight + 1) return scroll;
     if (initialFocus && typeof initialFocus === "object") return initialFocus.current;
     return typeof initialFocus === "function" ? initialFocus(openType) : initialFocus ?? element.current?.querySelector<HTMLButtonElement>('[data-slot="alert-dialog-cancel"]') ?? element.current;
   }} data-admin-dialog="confirm" className={cn(className, content, "data-[size=default]:max-w-[calc(100%-2rem)] data-[size=sm]:max-w-[calc(100%-2rem)] data-[size=default]:sm:max-w-lg")}>

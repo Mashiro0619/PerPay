@@ -1170,6 +1170,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   overscroll-behavior: contain;
   scroll-padding-block: 1rem;
 }
+[data-admin-dialog-scroll]:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 [data-admin-dialog-scroll] > :is([data-admin-dialog-body], .overflow-auto),
 [data-admin-dialog-scroll] > form.contents > [data-slot="field-group"] { overflow: visible; }
 [data-overlay-viewport="sheet"]:has(> :is([data-list-filter-scroll], [data-list-display-scroll])) { overflow: clip; }
