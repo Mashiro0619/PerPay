@@ -88,8 +88,25 @@ export function measureTouchTarget(element: Element) {
   };
 }
 
-export async function expectTouchTarget(target: Locator, { hitTest = true } = {}) {
+/** Let finite entrance animations finish before measuring a control or its transformed parents. */
+export async function waitForControlAnimations(target: Locator) {
   await expect(target).toBeVisible();
+  await target.evaluate(async element => {
+    const transitions = [];
+    for (let current: Element | null = element; current; current = current.parentElement) {
+      for (const animation of current.getAnimations()) {
+        const end = animation.effect?.getComputedTiming().endTime;
+        if (animation.playState === "running" && animation.playbackRate !== 0 && end !== undefined && Number.isFinite(end)) {
+          transitions.push(animation.finished.catch(() => undefined));
+        }
+      }
+    }
+    await Promise.all(transitions);
+  });
+}
+
+export async function expectTouchTarget(target: Locator, { hitTest = true } = {}) {
+  await waitForControlAnimations(target);
   const geometry = await target.evaluate(measureTouchTarget);
   const diagnostic = `${geometry.label ?? "unlabelled target"}: ${JSON.stringify(geometry)}`;
   expect(geometry.width, `effective touch width; ${diagnostic}`).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_SIZE);

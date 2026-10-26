@@ -1,6 +1,6 @@
 import type { Locator } from "@playwright/test";
 import { test, expect, login, record } from "./fixtures";
-import { expectTouchTarget, tapOutsideVisible } from "./touch-targets";
+import { expectTouchTarget, tapOutsideVisible, waitForControlAnimations } from "./touch-targets";
 
 async function readableText(target: Locator) {
   const geometry = await target.evaluate(element => {
@@ -168,6 +168,7 @@ test.describe("desktop control density", () => {
     expect(appearanceHeight).toBeCloseTo(32, 1);
     await appearance.click();
     const light = page.getByRole("menuitemradio", { name: "浅色", exact: true });
+    await waitForControlAnimations(light);
     const menuHeight = (await light.boundingBox())!.height;
     expect(menuHeight).toBeCloseTo(28, 1);
     await light.click();
