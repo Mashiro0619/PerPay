@@ -334,6 +334,23 @@ export type AdminSessionEnvelope = {
         absolute_expires_at: string;
     };
 };
+export type AdminLoginSessionListEnvelope = {
+    data: Array<AdminLoginSession>;
+};
+export type AdminLoginSession = {
+    session_id: string;
+    is_current: boolean;
+    user_agent: string | null;
+    ip_address: string | null;
+    auth_method: 'password';
+    last_seen_at: string;
+    expires_at: string;
+};
+export type AdminRevokeOthersEnvelope = {
+    data: {
+        revoked_sessions: number;
+    };
+};
 export type AdminPasswordChangeRequest = {
     new_password: string;
 };
@@ -1493,6 +1510,23 @@ export type GetAdministratorSessionResponses = {
     200: AdminSessionEnvelope;
 };
 export type GetAdministratorSessionResponse = GetAdministratorSessionResponses[keyof GetAdministratorSessionResponses];
+export type ListAdministratorSessionsData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/admin/v1/sessions';
+};
+export type ListAdministratorSessionsErrors = {
+    401: ErrorEnvelope;
+};
+export type ListAdministratorSessionsError = ListAdministratorSessionsErrors[keyof ListAdministratorSessionsErrors];
+export type ListAdministratorSessionsResponses = {
+    200: AdminLoginSessionListEnvelope;
+};
+export type ListAdministratorSessionsResponse = ListAdministratorSessionsResponses[keyof ListAdministratorSessionsResponses];
 export type GetAdministratorSystemStatusData = {
     body?: never;
     headers?: {
@@ -1705,6 +1739,56 @@ export type LogoutAdministratorSessionResponses = {
     204: void;
 };
 export type LogoutAdministratorSessionResponse = LogoutAdministratorSessionResponses[keyof LogoutAdministratorSessionResponses];
+export type RevokeAdministratorSessionData = {
+    body: AdminEmptyRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        session_id: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/sessions/{session_id}/revoke';
+};
+export type RevokeAdministratorSessionErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type RevokeAdministratorSessionError = RevokeAdministratorSessionErrors[keyof RevokeAdministratorSessionErrors];
+export type RevokeAdministratorSessionResponses = {
+    204: void;
+};
+export type RevokeAdministratorSessionResponse = RevokeAdministratorSessionResponses[keyof RevokeAdministratorSessionResponses];
+export type RevokeOtherAdministratorSessionsData = {
+    body: AdminEmptyRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/admin/v1/sessions/revoke-others';
+};
+export type RevokeOtherAdministratorSessionsErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type RevokeOtherAdministratorSessionsError = RevokeOtherAdministratorSessionsErrors[keyof RevokeOtherAdministratorSessionsErrors];
+export type RevokeOtherAdministratorSessionsResponses = {
+    200: AdminRevokeOthersEnvelope;
+};
+export type RevokeOtherAdministratorSessionsResponse = RevokeOtherAdministratorSessionsResponses[keyof RevokeOtherAdministratorSessionsResponses];
 export type RevokeAllAdministratorSessionsData = {
     body: AdminEmptyRequest;
     headers?: {

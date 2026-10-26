@@ -181,6 +181,28 @@ paths:
               schema:
                 $ref: '#/components/schemas/AdminSessionEnvelope'
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
+  /api/admin/v1/sessions:
+    get:
+      tags: [Admin Session]
+      operationId: listAdministratorSessions
+      summary: List every active administrator login session
+      description: >-
+        Returns the current session first, followed by other sessions ordered by most recent
+        activity. Revoked, expired and superseded generations are excluded. Client metadata is
+        captured only at login; sessions created before metadata recording contain null values.
+        IP addresses are resolved using the configured trusted proxy policy. This endpoint
+        never returns session tokens, token digests or CSRF credentials.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: All currently valid login sessions
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminLoginSessionListEnvelope' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
   /api/admin/v1/system/status:
     get:
       tags: [System]
@@ -505,6 +527,72 @@ paths:
             schema: { $ref: '#/components/schemas/AdminEmptyRequest' }
       responses:
         '204': { description: Active session revoked and authentication cookies cleared }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/AdminForbidden' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/AdminUnavailable' }
+  /api/admin/v1/sessions/{session_id}/revoke:
+    post:
+      tags: [Admin Session]
+      operationId: revokeAdministratorSession
+      summary: Revoke one administrator login session
+      description: >-
+        Repeated revocation, including an unknown well-formed session ID, succeeds without
+        changing any other session. Revoking the current session clears authentication cookies.
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+        - name: session_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminEmptyRequest' }
+      responses:
+        '204': { description: Target session revoked; current-session cookies cleared when applicable }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '403': { $ref: '#/components/responses/AdminForbidden' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/AdminUnavailable' }
+  /api/admin/v1/sessions/revoke-others:
+    post:
+      tags: [Admin Session]
+      operationId: revokeOtherAdministratorSessions
+      summary: Revoke every other active administrator login session
+      description: Preserves the initiating session, its generation and authentication cookies.
+      x-perpay-requires-same-origin: true
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminEmptyRequest' }
+      responses:
+        '200':
+          description: Number of other active sessions revoked, possibly zero
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminRevokeOthersEnvelope' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
         '403': { $ref: '#/components/responses/AdminForbidden' }
@@ -6137,6 +6225,48 @@ components:
             csrf_token_required: { const: true }
             idle_expires_at: { type: string, format: date-time }
             absolute_expires_at: { type: string, format: date-time }
+    AdminLoginSessionListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/AdminLoginSession' }
+    AdminLoginSession:
+      type: object
+      additionalProperties: false
+      required: [session_id, is_current, user_agent, ip_address, auth_method, last_seen_at, expires_at]
+      properties:
+        session_id: { type: string, format: uuid }
+        is_current: { type: boolean }
+        user_agent:
+          type: [string, 'null']
+          x-perpay-max-utf8-bytes: 1024
+          description: User-Agent captured at login, or null if unavailable or invalid.
+        ip_address:
+          type: [string, 'null']
+          description: Normalized source IP at login, or null if unavailable.
+        auth_method: { type: string, enum: [password] }
+        last_seen_at:
+          type: string
+          format: date-time
+          description: Most recent authenticated activity, recorded at approximately one-minute resolution.
+        expires_at:
+          type: string
+          format: date-time
+          description: Earlier of the idle and absolute expiry at the time of this response.
+    AdminRevokeOthersEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [revoked_sessions]
+          properties:
+            revoked_sessions: { type: integer, minimum: 0 }
     AdminPasswordChangeRequest:
       type: object
       additionalProperties: false

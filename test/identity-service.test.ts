@@ -499,6 +499,146 @@ describe("IdentityService", () => {
     }
   });
 
+  it("lists only active sessions with their original login metadata and the current session first", async () => {
+    const test = await fixture();
+    try {
+      const login = await test.identity.login(adminPassword, {
+        sourceAddress: "2001:0db8:0:0:0:0:0:7",
+        userAgent: "Chrome Windows",
+      }, { remember: true });
+      const current = test.identity.authenticate(login.sessionToken)!;
+      const normal = await test.identity.login(adminPassword);
+      const normalId = test.identity.authenticate(normal.sessionToken)!.session.sessionId;
+      const obsolete = await test.identity.login(adminPassword, {}, { remember: true });
+      const obsoleteId = test.identity.authenticate(obsolete.sessionToken)!.session.sessionId;
+      test.database.write((connection) => connection.prepare(
+        "UPDATE admin_sessions SET generation = generation + 1 WHERE session_id = ?",
+      ).run(obsoleteId));
+      const revoked = await test.identity.login(adminPassword, {}, { remember: true });
+      test.identity.logout(test.identity.authenticate(revoked.sessionToken)!);
+      test.clock.now += IDENTITY_LIMITS.sessionIdleMs + 1;
+      const older = await test.identity.login(adminPassword, { sourceAddress: "198.51.100.9" }, { remember: true });
+      const olderId = test.identity.authenticate(older.sessionToken)!.session.sessionId;
+      test.clock.now += 60_000;
+      const newest = await test.identity.login(adminPassword, { sourceAddress: "203.0.113.8" }, { remember: true });
+      const newestId = test.identity.authenticate(newest.sessionToken)!.session.sessionId;
+      test.clock.now += 60_000;
+      assert.ok(test.identity.authenticate(login.sessionToken));
+
+      const sessions = test.identity.listSessions(current);
+      assert.deepEqual(sessions.map((entry) => entry.sessionId), [current.session.sessionId, newestId, olderId]);
+      assert.deepEqual(sessions[0], {
+        sessionId: current.session.sessionId,
+        isCurrent: true,
+        userAgent: "Chrome Windows",
+        ipAddress: "2001:db8::7",
+        authMethod: "password",
+        lastSeenAt: test.clock.now,
+        expiresAt: login.absoluteExpiresAt,
+      });
+      assert.equal(sessions[1]!.isCurrent, false);
+      assert.equal(sessions.some((entry) => entry.sessionId === normalId), false);
+      assert.equal(sessions.some((entry) => entry.sessionId === obsoleteId), false);
+      const raw = test.database.read((connection) => connection.prepare(
+        "SELECT source_address, user_agent FROM admin_sessions WHERE session_id = ?",
+      ).get(current.session.sessionId));
+      assert.equal(raw?.source_address, "2001:db8::7");
+      assert.equal(raw?.user_agent, "Chrome Windows");
+    } finally {
+      test.close();
+    }
+  });
+
+  it("keeps absent or abnormal user agents and unknown IPs nullable without rejecting login", async () => {
+    const test = await fixture();
+    try {
+      for (const userAgent of [undefined, "", " \t ", "x\u0000y", "\ud800", "é".repeat(513)]) {
+        const login = await test.identity.login(adminPassword, { userAgent, sourceAddress: "unknown" });
+        const current = test.identity.authenticate(login.sessionToken)!;
+        const entry = test.identity.listSessions(current)[0]!;
+        assert.equal(entry.userAgent, null);
+        assert.equal(entry.ipAddress, null);
+      }
+      const login = await test.identity.login(adminPassword, {
+        userAgent: "é".repeat(512), sourceAddress: "::ffff:198.51.100.7",
+      });
+      const current = test.identity.authenticate(login.sessionToken)!;
+      const entry = test.identity.listSessions(current)[0]!;
+      assert.equal(entry.userAgent, "é".repeat(512));
+      assert.equal(entry.ipAddress, "198.51.100.7");
+      assert.equal(entry.expiresAt, login.idleExpiresAt);
+    } finally {
+      test.close();
+    }
+  });
+
+  it("revokes individual and other active sessions without replacing the current generation or CSRF token", async () => {
+    const test = await fixture();
+    try {
+      const login = await test.identity.login(adminPassword, {}, { remember: true });
+      const current = test.identity.authenticate(login.sessionToken)!;
+      const other = await test.identity.login(adminPassword, {}, { remember: true });
+      const otherSession = test.identity.authenticate(other.sessionToken)!;
+      const generation = current.session.generation;
+      test.identity.revokeSession(current, otherSession.session.sessionId, { requestId: "revoke-one" });
+      assert.equal(test.identity.authenticate(other.sessionToken), undefined);
+      assert.equal(test.identity.verifyCsrf(otherSession, other.csrfToken), false);
+      const audits = test.identity.store.read((transaction) => transaction.auditEvents()).length;
+      test.identity.revokeSession(current, otherSession.session.sessionId);
+      test.identity.revokeSession(current, "00000000-0000-4000-8000-000000000000");
+      assert.equal(test.identity.store.read((transaction) => transaction.auditEvents()).length, audits);
+
+      const second = await test.identity.login(adminPassword, {}, { remember: true });
+      const third = await test.identity.login(adminPassword, {}, { remember: true });
+      const expired = await test.identity.login(adminPassword);
+      test.clock.now += IDENTITY_LIMITS.sessionIdleMs + 1;
+      assert.equal(test.identity.revokeOtherSessions(current, { requestId: "revoke-others" }), 2);
+      assert.equal(test.identity.authenticate(second.sessionToken), undefined);
+      assert.equal(test.identity.authenticate(third.sessionToken), undefined);
+      assert.equal(test.identity.authenticate(expired.sessionToken), undefined);
+      assert.equal(test.identity.authenticate(login.sessionToken)!.session.generation, generation);
+      assert.equal(test.identity.verifyCsrf(current, login.csrfToken), true);
+      assert.equal(test.identity.revokeOtherSessions(current), 0);
+      assert.equal(test.identity.store.read((transaction) => transaction.adminIdentity())!.sessionGeneration, generation);
+      const actions = test.database.read((connection) => connection.prepare(
+        "SELECT action, details_json FROM audit_events WHERE request_id IN ('revoke-one', 'revoke-others') ORDER BY sequence",
+      ).all());
+      assert.deepEqual(actions.map((row) => row.action), ["admin.session_revoked", "admin.sessions_revoke_others"]);
+      assert.equal(actions[1]!.details_json, '{"revoked_count":2}');
+      test.identity.revokeSession(current, current.session.sessionId);
+      assert.equal(test.identity.authenticate(login.sessionToken), undefined);
+    } finally {
+      test.close();
+    }
+  });
+
+  it("rechecks the acting session before listing or revoking and rolls revocation back with audit failure", async () => {
+    const test = await fixture();
+    try {
+      const login = await test.identity.login(adminPassword);
+      const current = test.identity.authenticate(login.sessionToken)!;
+      const other = await test.identity.login(adminPassword);
+      const otherId = test.identity.authenticate(other.sessionToken)!.session.sessionId;
+      test.database.write((connection) => connection.exec(
+        "CREATE TRIGGER injected_session_audit_failure BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT, 'injected audit failure'); END;",
+      ));
+      assert.throws(() => test.identity.revokeSession(current, otherId), /injected audit failure/);
+      assert.ok(test.identity.authenticate(other.sessionToken));
+      assert.throws(() => test.identity.revokeOtherSessions(current), /injected audit failure/);
+      assert.ok(test.identity.authenticate(other.sessionToken));
+      test.database.write((connection) => connection.exec("DROP TRIGGER injected_session_audit_failure"));
+      test.identity.logout(current);
+      const invalidSession = (error: unknown) => error instanceof IdentityError && error.code === "session_invalid";
+      assert.throws(() => test.identity.listSessions(current), invalidSession);
+      assert.throws(() => test.identity.revokeSession(current, otherId), invalidSession);
+      assert.throws(() => test.identity.revokeOtherSessions(current), invalidSession);
+      assert.ok(test.identity.authenticate(other.sessionToken));
+    } finally {
+      test.database.write((connection) => connection.exec("DROP TRIGGER IF EXISTS injected_session_audit_failure"));
+      test.close();
+    }
+  });
+
   it("rechecks session expiry after asynchronous password verification", async () => {
     const test = await fixture();
     try {

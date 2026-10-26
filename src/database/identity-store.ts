@@ -41,6 +41,15 @@ export interface AdminSession {
   readonly username: string;
 }
 
+export interface ActiveAdminSession {
+  readonly sessionId: string;
+  readonly userAgent: string | null;
+  readonly sourceAddress: string | null;
+  readonly lastSeenAt: number;
+  readonly idleExpiresAt: number;
+  readonly absoluteExpiresAt: number;
+}
+
 export interface ApiClientKey {
   readonly clientId: string;
   readonly keyVersion: number;
@@ -145,6 +154,36 @@ export class IdentityReadTransaction {
         }
       | undefined;
     return row ? mapSession(row) : undefined;
+  }
+
+  activeSessions(currentSessionId: string, now: number): ActiveAdminSession[] {
+    const rows = this.connection.prepare(
+      `SELECT s.session_id, s.user_agent, s.source_address,
+              s.last_seen_at, s.idle_expires_at, s.absolute_expires_at
+         FROM admin_sessions AS s
+         JOIN admin_identity AS a ON a.singleton_key = s.admin_key
+        WHERE s.revoked_at IS NULL
+          AND s.generation = a.session_generation
+          AND s.idle_expires_at > ?
+          AND s.absolute_expires_at > ?
+        ORDER BY (s.session_id = ?) DESC, s.last_seen_at DESC,
+                 s.created_at DESC, s.session_id ASC`,
+    ).all(now, now, currentSessionId) as Array<{
+      session_id: string;
+      user_agent: string | null;
+      source_address: string | null;
+      last_seen_at: bigint | number;
+      idle_expires_at: bigint | number;
+      absolute_expires_at: bigint | number;
+    }>;
+    return rows.map((row) => ({
+      sessionId: row.session_id,
+      userAgent: row.user_agent,
+      sourceAddress: row.source_address,
+      lastSeenAt: Number(row.last_seen_at),
+      idleExpiresAt: Number(row.idle_expires_at),
+      absoluteExpiresAt: Number(row.absolute_expires_at),
+    }));
   }
 
   activeApiClient(clientId: string): ApiClientKey | undefined {
@@ -313,13 +352,15 @@ export class IdentityTransaction extends IdentityReadTransaction {
     readonly createdAt: number;
     readonly idleExpiresAt: number;
     readonly absoluteExpiresAt: number;
+    readonly userAgent: string | null;
+    readonly sourceAddress: string | null;
   }): void {
     this.connection
       .prepare(
         `INSERT INTO admin_sessions(
            session_id, token_digest, csrf_digest, generation, created_at,
-           last_seen_at, idle_expires_at, absolute_expires_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           last_seen_at, idle_expires_at, absolute_expires_at, user_agent, source_address
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.sessionId,
@@ -330,6 +371,8 @@ export class IdentityTransaction extends IdentityReadTransaction {
         input.createdAt,
         input.idleExpiresAt,
         input.absoluteExpiresAt,
+        input.userAgent,
+        input.sourceAddress,
       );
   }
 
@@ -356,6 +399,28 @@ export class IdentityTransaction extends IdentityReadTransaction {
       )
       .run(now, reason, sessionId);
     return Number(result.changes) === 1;
+  }
+
+  revokeActiveSession(sessionId: string, now: number): boolean {
+    const result = this.connection.prepare(
+      `UPDATE admin_sessions
+          SET revoked_at = ?, revoke_reason = 'admin_requested'
+        WHERE session_id = ? AND revoked_at IS NULL
+          AND generation = (SELECT session_generation FROM admin_identity WHERE singleton_key = 1)
+          AND idle_expires_at > ? AND absolute_expires_at > ?`,
+    ).run(now, sessionId, now, now);
+    return Number(result.changes) === 1;
+  }
+
+  revokeOtherSessions(currentSessionId: string, now: number): number {
+    const result = this.connection.prepare(
+      `UPDATE admin_sessions
+          SET revoked_at = ?, revoke_reason = 'admin_requested'
+        WHERE session_id != ? AND revoked_at IS NULL
+          AND generation = (SELECT session_generation FROM admin_identity WHERE singleton_key = 1)
+          AND idle_expires_at > ? AND absolute_expires_at > ?`,
+    ).run(now, currentSessionId, now, now);
+    return Number(result.changes);
   }
 
   revokeAllSessions(input: {

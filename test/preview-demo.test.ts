@@ -56,6 +56,9 @@ describe("isolated documentation preview", () => {
         ["PUT", "/api/admin/v1/settings/provider"],
         ["POST", "/api/admin/v1/sites"],
         ["POST", "/api/admin/v1/settings/provider/verify"],
+        ["POST", "/api/admin/v1/sessions/00000000-0000-4000-8000-000000000001/revoke"],
+        ["POST", "/api/admin/v1/sessions/revoke-others"],
+        ["POST", "/api/admin/v1/sessions/revoke-all"],
         ["POST", "/api/admin/v1/webhooks/deliveries/example/actions/replay"],
         ["PUT", "/api/admin/v1/orders/" + demo.featured + "/refund-mark"],
         ["DELETE", "/api/admin/v1/session"],
@@ -87,6 +90,11 @@ describe("isolated documentation preview", () => {
       assert.ok(nextTime>firstTime,"demo clock must keep advancing after seeding");
       const headers = { cookie, Origin: demo.origin, "Content-Type": "application/json", "x-csrf-token": loginBody.data.csrf_token };
       const before = demo.database.read(connection => connection.prepare("SELECT * FROM payment_orders").all());
+      const sessions = await app.request("/api/admin/v1/sessions", { headers });
+      assert.equal(sessions.status, 200);
+      const activeSessions = (await sessions.json() as { data: { session_id: string; is_current: boolean }[] }).data;
+      assert.equal(activeSessions.length, 1);
+      assert.equal(activeSessions[0]!.is_current, true);
       // Valid session + CSRF must not bypass the demo's read-only wrapper.
       for (const [method, path] of blockedRequests) {
         const response = await app.request(demo.origin + path, { method, headers, body: "{}" });
@@ -94,6 +102,8 @@ describe("isolated documentation preview", () => {
         assert.equal((await response.json() as { error: { code: string } }).error.code, "demo_read_only");
       }
       assert.deepEqual(demo.database.read(connection => connection.prepare("SELECT * FROM payment_orders").all()), before);
+      assert.equal((await app.request("/api/admin/v1/session", { headers })).status, 200,
+        "blocked session operations must preserve the demo login");
       const sites = (await (await app.request("/api/admin/v1/sites", { headers })).json() as { data: { client_id: string }[] }).data;
       assert.equal(sites.length, Object.keys(demo.scenarios.sites).length);
       const clientId = demo.scenarios.sites.store;

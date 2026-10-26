@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import type { AppDatabase } from "../database/database.ts";
+import { normalizeIpAddress } from "../infrastructure/network/ip-policy.ts";
 import { aggregateRateLimitSource } from "../infrastructure/network/rate-limit-source.ts";
 import {
   ADMIN_USERNAME,
@@ -13,6 +14,7 @@ import {
   SESSION_IDLE_TTL_MS,
   type AdminSession,
   type AuthLimit,
+  type IdentityReadTransaction,
 } from "../database/identity-store.ts";
 import {
   PasswordInputError,
@@ -29,6 +31,7 @@ const PASSWORD_WORK_TOTAL_LIMIT = PASSWORD_WORK_QUEUE_LIMIT + 1;
 const PASSWORD_WORK_ANONYMOUS_LIMIT = 1;
 const SESSION_TOUCH_INTERVAL_MS = 60 * 1000;
 const SOURCE_MAX_LENGTH = 256;
+const SESSION_USER_AGENT_MAX_BYTES = 1024;
 export const MIN_ADMIN_PASSWORD_CHARACTERS = 6;
 
 export function assertNewPasswordLength(password: string): void {
@@ -64,6 +67,17 @@ export class IdentityError extends Error {
 export interface IdentityContext {
   readonly requestId?: string;
   readonly sourceAddress?: string;
+  readonly userAgent?: string | undefined;
+}
+
+export interface AdminSessionSummary {
+  readonly sessionId: string;
+  readonly isCurrent: boolean;
+  readonly userAgent: string | null;
+  readonly ipAddress: string | null;
+  readonly authMethod: "password";
+  readonly lastSeenAt: number;
+  readonly expiresAt: number;
 }
 
 export interface LoginResult {
@@ -253,6 +267,8 @@ export class IdentityService {
         createdAt: authenticatedAt,
         idleExpiresAt,
         absoluteExpiresAt,
+        userAgent: normalizeSessionUserAgent(context.userAgent),
+        sourceAddress: normalizeIpAddress(context.sourceAddress) ?? null,
       });
       transaction.appendAudit({
         occurredAt: authenticatedAt,
@@ -323,6 +339,65 @@ export class IdentityService {
           requestId: context.requestId,
         });
       }
+    });
+  }
+
+  listSessions(session: AuthenticatedSession): AdminSessionSummary[] {
+    const now = this.#clock();
+    return this.#store.read((transaction) => {
+      const current = this.#requireCurrentSession(transaction, session, now);
+      return transaction.activeSessions(current.sessionId, now).map((entry) => ({
+        sessionId: entry.sessionId,
+        isCurrent: entry.sessionId === current.sessionId,
+        userAgent: entry.userAgent,
+        ipAddress: entry.sourceAddress,
+        authMethod: "password",
+        lastSeenAt: entry.lastSeenAt,
+        expiresAt: Math.min(entry.idleExpiresAt, entry.absoluteExpiresAt),
+      }));
+    });
+  }
+
+  revokeSession(
+    session: AuthenticatedSession,
+    targetSessionId: string,
+    context: IdentityContext = {},
+  ): void {
+    const now = this.#clock();
+    this.#store.transaction((transaction) => {
+      const current = this.#requireCurrentSession(transaction, session, now);
+      if (!transaction.revokeActiveSession(targetSessionId, now)) return;
+      transaction.appendAudit({
+        occurredAt: now,
+        actorType: "ADMIN",
+        actorId: current.username,
+        action: "admin.session_revoked",
+        outcome: "SUCCESS",
+        subjectType: "admin_session",
+        subjectId: targetSessionId,
+        requestId: context.requestId,
+        remoteAddressHash: this.sourceHash(context.sourceAddress),
+      });
+    });
+  }
+
+  revokeOtherSessions(session: AuthenticatedSession, context: IdentityContext = {}): number {
+    const now = this.#clock();
+    return this.#store.transaction((transaction) => {
+      const current = this.#requireCurrentSession(transaction, session, now);
+      const count = transaction.revokeOtherSessions(current.sessionId, now);
+      transaction.appendAudit({
+        occurredAt: now,
+        actorType: "ADMIN",
+        actorId: current.username,
+        action: "admin.sessions_revoke_others",
+        outcome: "SUCCESS",
+        subjectType: "admin_sessions",
+        requestId: context.requestId,
+        remoteAddressHash: this.sourceHash(context.sourceAddress),
+        details: { revoked_count: count },
+      });
+      return count;
     });
   }
 
@@ -523,6 +598,27 @@ export class IdentityService {
     return current?.sessionId === session.session.sessionId ? current : undefined;
   }
 
+  #requireCurrentSession(
+    transaction: IdentityReadTransaction,
+    session: AuthenticatedSession,
+    now: number,
+  ): AdminSession {
+    let tokenDigest: string;
+    try {
+      tokenDigest = digestSessionToken(session.token);
+    } catch {
+      throw new IdentityError("session_invalid", "会话不存在或已过期");
+    }
+    const current = transaction.activeSession(tokenDigest, now);
+    if (
+      !current || tokenDigest !== session.session.tokenDigest ||
+      current.sessionId !== session.session.sessionId
+    ) {
+      throw new IdentityError("session_invalid", "会话不存在或已过期");
+    }
+    return current;
+  }
+
   async #verifyCredentialPassword(
     password: string,
     encodedHash: string,
@@ -581,6 +677,14 @@ function normalizeSource(sourceAddress: string | undefined): string {
   const normalized = sourceAddress.trim();
   if (normalized.length === 0) return "unknown";
   return normalized.slice(0, SOURCE_MAX_LENGTH);
+}
+
+function normalizeSessionUserAgent(value: string | undefined): string | null {
+  if (
+    typeof value !== "string" || !value.isWellFormed() ||
+    /\p{Cc}/u.test(value) || Buffer.byteLength(value, "utf8") > SESSION_USER_AGENT_MAX_BYTES
+  ) return null;
+  return value.trim() || null;
 }
 
 class PasswordWorkBusyError extends Error {

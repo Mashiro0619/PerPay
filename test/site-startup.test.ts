@@ -6,6 +6,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "node:test";
 import { AppDatabase } from "../src/database/database.ts";
+import { DATABASE_COMPATIBILITY } from "../src/version.ts";
 import { RuntimeSettingsStore } from "../src/settings/store.ts";
 import { SiteStore } from "../src/sites/store.ts";
 import { createOrderRequestSchema } from "../src/orders/model.ts";
@@ -39,7 +40,7 @@ it("boots the current schema without an implicit website and persists independen
   try {
     let { sites } = stores(database, masterKey);
     assert.deepEqual(sites.list(), []);
-    assert.equal(database.read(db => db.prepare("SELECT max(version) AS version FROM schema_migrations").get()?.version), 35n);
+    assert.equal(database.read(db => db.prepare("SELECT max(version) AS version FROM schema_migrations").get()?.version), BigInt(DATABASE_COMPATIBILITY.maximum));
     const created = ["网站 A", "网站 B"].map(name => sites.create({ operation_id: randomUUID(), configuration: {
       name, accepting_orders: true, notifications_enabled: false, notification_origin: null, return_origin: null, policy: sites.defaults().policy,
     } }, audit));

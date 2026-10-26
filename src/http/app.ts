@@ -202,6 +202,7 @@ const loginSchema = z.object({ password: passwordValueSchema, remember_me: z.boo
 const setupSchema = z.object({ password: newPasswordValueSchema }).strict();
 const settingsRevisionSchema = z.object({ revision: z.number().int().nonnegative() }).strict();
 const emptyObjectSchema = z.object({}).strict();
+const sessionIdSchema = z.uuid();
 const runtimeSecretNames = new Set<string>(RUNTIME_SECRET_NAMES);
 
 const testPaymentRequestSchema = z.object({
@@ -617,6 +618,21 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     });
   });
 
+  app.get("/api/admin/v1/sessions", adminSession, (context) => {
+    const sessions = dependencies.identity.listSessions(context.get("adminSession"));
+    return context.json({
+      data: sessions.map((session) => ({
+        session_id: session.sessionId,
+        is_current: session.isCurrent,
+        user_agent: session.userAgent,
+        ip_address: session.ipAddress,
+        auth_method: session.authMethod,
+        last_seen_at: new Date(session.lastSeenAt).toISOString(),
+        expires_at: new Date(session.expiresAt).toISOString(),
+      })),
+    });
+  });
+
   app.get("/api/admin/v1/system/status", adminSession, async (context) =>
     context.json({ data: await systemStatus(dependencies, true) }),
   );
@@ -697,6 +713,40 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     );
     clearAuthenticationCookies(context, dependencies.config.secureCookies);
     return context.json({ data: { revoked_sessions: revoked } });
+  });
+
+  app.post("/api/admin/v1/sessions/revoke-others", adminSession, async (context) => {
+    requireJsonContentType(context);
+    requireSameOrigin(context, dependencies.config.publicOrigin);
+    requireCsrf(context, dependencies.identity, dependencies.config.secureCookies);
+    await readJson(context, emptyObjectSchema, MAX_JSON_BODY_BYTES);
+    if (dependencies.demoMode) throw new HttpApiError(403, "demo_read_only", "只读演示不执行写操作");
+    const revoked = dependencies.identity.revokeOtherSessions(
+      context.get("adminSession"),
+      identityContext(context, dependencies.config.trustedProxy),
+    );
+    return context.json({ data: { revoked_sessions: revoked } });
+  });
+
+  app.post("/api/admin/v1/sessions/:session_id/revoke", adminSession, async (context) => {
+    requireJsonContentType(context);
+    requireSameOrigin(context, dependencies.config.publicOrigin);
+    requireCsrf(context, dependencies.identity, dependencies.config.secureCookies);
+    const target = sessionIdSchema.safeParse(context.req.param("session_id"));
+    if (!target.success) throw new HttpApiError(422, "validation_failed", "会话标识必须是有效的 UUID");
+    await readJson(context, emptyObjectSchema, MAX_JSON_BODY_BYTES);
+    if (dependencies.demoMode) throw new HttpApiError(403, "demo_read_only", "只读演示不执行写操作");
+    const session = context.get("adminSession");
+    const targetSessionId = target.data.toLowerCase();
+    dependencies.identity.revokeSession(
+      session,
+      targetSessionId,
+      identityContext(context, dependencies.config.trustedProxy),
+    );
+    if (targetSessionId === session.session.sessionId) {
+      clearAuthenticationCookies(context, dependencies.config.secureCookies);
+    }
+    return context.body(null, 204);
   });
 
   app.post("/api/admin/v1/password", adminSession, async (context) => {
@@ -2227,10 +2277,12 @@ function identityContext(
 ): {
   readonly requestId: string;
   readonly sourceAddress: string;
+  readonly userAgent: string | undefined;
 } {
   return {
     requestId: context.get("requestId"),
     sourceAddress: remoteAddress(context, trustedProxy),
+    userAgent: context.req.header("user-agent"),
   };
 }
 
