@@ -1,5 +1,8 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
+/** A 40px touch target allows half a CSS pixel for fractional layout rounding. */
+export const MIN_TOUCH_TARGET_SIZE = 39.5;
+
 /** Measure the visible control and its generated touch extension, then probe the real hit area. */
 export function measureTouchTarget(element: Element) {
   const bounds = element.getBoundingClientRect();
@@ -89,8 +92,8 @@ export async function expectTouchTarget(target: Locator, { hitTest = true } = {}
   await expect(target).toBeVisible();
   const geometry = await target.evaluate(measureTouchTarget);
   const diagnostic = `${geometry.label ?? "unlabelled target"}: ${JSON.stringify(geometry)}`;
-  expect(geometry.width, `effective touch width; ${diagnostic}`).toBeGreaterThanOrEqual(39.5);
-  expect(geometry.height, `effective touch height; ${diagnostic}`).toBeGreaterThanOrEqual(39.5);
+  expect(geometry.width, `effective touch width; ${diagnostic}`).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_SIZE);
+  expect(geometry.height, `effective touch height; ${diagnostic}`).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_SIZE);
   expect(geometry.fits, `entire touch target is inside the visible browser area; ${diagnostic}`).toBe(true);
   if (hitTest) expect(geometry.hits, `nine near-edge points hit the control or its children; ${diagnostic}`).toBe(true);
   return geometry;

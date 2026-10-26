@@ -1,5 +1,6 @@
 import { test, expect, login, record } from "./fixtures";
 import { audit, screenshot } from "./audit";
+import { MIN_TOUCH_TARGET_SIZE } from "./touch-targets";
 import type { AdminWorkItem } from "../web/src/api/generated/types.gen";
 
 test.describe("touch overview links", () => {
@@ -23,7 +24,7 @@ test.describe("touch overview links", () => {
         return { label: link.getAttribute("aria-label") ?? link.textContent, width: bounds.width, height: bottom - top };
       }));
       expect(targets.length).toBeGreaterThan(0);
-      expect(targets.filter(target => target.width < 44 || target.height < 44)).toEqual([]);
+      expect(targets.filter(target => target.width < MIN_TOUCH_TARGET_SIZE || target.height < MIN_TOUCH_TARGET_SIZE)).toEqual([]);
       await record(page, info, { width, touchTargets: targets });
       await audit(page, info, "overview-touch-" + width);
     }
