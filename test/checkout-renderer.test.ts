@@ -99,7 +99,7 @@ describe("public checkout SSR", () => {
     assert.equal(initial.showProductName, false);
     assert.equal(initial.checkout?.product_name, "");
     assert.doesNotMatch(html, /data-product-name|测试订单/);
-    assert.match(html, /md:max-w-3xl/);
+    assert.match(html, /lg:max-w-3xl/);
     assert.doesNotMatch(html, /data-checkout-desktop-guide/);
     assert.match(checkoutText(html), /刷新页面.*商家订单号/);
     assert.doesNotMatch(html, /data-qr-image/);
