@@ -398,6 +398,9 @@ export function ignoreAllAdminWorkItems(
     ...(q ? { q } : {}),
   });
   return database.write((connection) => {
+    if (context.expectedClientId !== undefined && parsed.api_client_id !== context.expectedClientId) {
+      throw new AdminOperationError(409, "site_scope_conflict", "批量忽略范围与当前网站不一致");
+    }
     const replay = replayAdminOperation<IgnoreAllResult>(
       connection,
       parsed.operation_id,

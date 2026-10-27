@@ -84,6 +84,57 @@ describe("administrator work item projection", () => {
       assert.throws(() => ignoreAllAdminWorkItems(database, { ...command, api_client_id: "site_b" }, { actorId: "admin", now: 5000 }), AdminOperationError);
     });
   });
+  for (const scenario of [
+    { name: "cross-site new calls", scope: "site_b", expectedScope: "site_a", replay: false },
+    { name: "new calls without a scope", scope: undefined, expectedScope: "site_a", replay: false },
+    { name: "cross-site replays", scope: "site_a", expectedScope: "site_b", replay: true },
+    { name: "unscoped replays", scope: undefined, expectedScope: "site_a", replay: true },
+  ] as const) {
+    it(`rejects ${scenario.name} at the bulk ignore site boundary without changing records`, () => {
+      withSiteWorkItemsFixture(({ database, connection }) => {
+        const seed = {
+          operation_id: randomUUID(), type: "ALL" as const,
+          ...(scenario.replay && scenario.scope === undefined ? {} : { api_client_id: "site_a" }),
+        };
+        ignoreAllAdminWorkItems(database, seed, { actorId: "admin", expectedClientId: seed.api_client_id, now: 1000 });
+        const command = scenario.replay ? seed : {
+          operation_id: randomUUID(), type: "ALL" as const,
+          ...(scenario.scope === undefined ? {} : { api_client_id: scenario.scope }),
+        };
+        const before = adminOperationSnapshot(connection);
+        assert.throws(
+          () => ignoreAllAdminWorkItems(database, command, { actorId: "admin", expectedClientId: scenario.expectedScope, now: 2000 }),
+          (error: unknown) => error instanceof AdminOperationError && error.status === 409 && error.code === "site_scope_conflict",
+        );
+        assert.deepEqual(adminOperationSnapshot(connection), before);
+      });
+    });
+  }
+
+  it("preserves same-site and global bulk ignore success and replay semantics", () => {
+    withSiteWorkItemsFixture(({ database, connection }) => {
+      const command = { operation_id: randomUUID(), type: "ALL" as const, api_client_id: "site_a" };
+      const result = ignoreAllAdminWorkItems(database, command, { actorId: "admin", expectedClientId: "site_a", now: 1000 });
+      assert.equal(result.ignored_count, 3);
+      assert.equal(adminWorkItemSummary(database, "site_a").total, 0);
+      assert.equal(adminWorkItemSummary(database, "site_b").total, 1);
+      connection.prepare("INSERT INTO financial_exceptions VALUES (?, 'primary', 'UNMATCHED_CREDIT', NULL, 'order-exception-lower', NULL, 'OPEN', 1500)").run(randomUUID());
+      const beforeReplay = adminOperationSnapshot(connection);
+      assert.deepEqual(ignoreAllAdminWorkItems(database, command, { actorId: "admin", expectedClientId: "site_a", now: 2000 }), result);
+      assert.deepEqual(ignoreAllAdminWorkItems(database, command, { actorId: "admin", now: 2000 }), result);
+      assert.deepEqual(adminOperationSnapshot(connection), beforeReplay);
+      assert.equal(adminWorkItemSummary(database, "site_a").total, 1);
+      assert.equal(adminWorkItemSummary(database, "site_b").total, 1);
+      const globalCommand = { operation_id: randomUUID(), type: "ALL" as const };
+      const globalResult = ignoreAllAdminWorkItems(database, globalCommand, { actorId: "admin", now: 3000 });
+      assert.equal(globalResult.ignored_count, 4);
+      assert.equal(adminWorkItemSummary(database).total, 0);
+      const beforeGlobalReplay = adminOperationSnapshot(connection);
+      assert.deepEqual(ignoreAllAdminWorkItems(database, globalCommand, { actorId: "admin", now: 4000 }), globalResult);
+      assert.deepEqual(adminOperationSnapshot(connection), beforeGlobalReplay);
+    });
+  });
+
   it("runs against the current empty application schema", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-admin-work-items-"));
     const database = await AppDatabase.open(join(directory, "perpay.sqlite3"));
@@ -691,6 +742,24 @@ function withFixture(
   } finally {
     connection.close();
   }
+}
+
+function withSiteWorkItemsFixture(operation: Parameters<typeof withFixture>[0]): void {
+  withFixture((context) => {
+    context.connection.exec("ALTER TABLE payment_orders ADD COLUMN api_client_id TEXT NOT NULL DEFAULT 'site_a'");
+    context.connection.prepare("UPDATE payment_orders SET api_client_id = 'site_b' WHERE order_id = ?").run(IDS.orderFallback);
+    context.connection.exec("INSERT INTO payment_orders(order_id, collection_profile_id, api_client_id) VALUES ('order-exception-lower', 'profile-linked', 'site_a')");
+    operation(context);
+  });
+}
+
+function adminOperationSnapshot(connection: DatabaseSync) {
+  return {
+    operations: connection.prepare("SELECT * FROM admin_operation_log ORDER BY operation_id").all(),
+    members: connection.prepare("SELECT * FROM admin_work_item_operations ORDER BY operation_id, kind, item_id").all(),
+    states: connection.prepare("SELECT * FROM admin_work_item_states ORDER BY kind, item_id").all(),
+    audit: connection.prepare("SELECT * FROM audit_events ORDER BY sequence").all(),
+  };
 }
 
 function createSchema(connection: DatabaseSync): void {
