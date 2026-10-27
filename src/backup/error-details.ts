@@ -100,6 +100,15 @@ const SAFE_ERROR_NAMES = new Set(["BackupCycleError", "StorageCapacityError", "M
 
 /** Emits only reviewed local messages and fixed diagnostics, never arbitrary error text or paths. */
 export function backupErrorDetails(error: unknown): BackupErrorDetails {
+  try {
+    return collectBackupErrorDetails(error);
+  } catch {
+    // Proxy traps and revoked proxies can throw even during type checks.
+    return { message: UNKNOWN_MESSAGE, error_type: "unknown_error" };
+  }
+}
+
+function collectBackupErrorDetails(error: unknown): BackupErrorDetails {
   const queue: unknown[] = [error];
   const visited = new Set<Error>();
   const messages = new Set<string>();

@@ -138,4 +138,55 @@ describe("safe backup failure details", () => {
     assert.equal(reads, 0);
     assert.doesNotThrow(() => backupErrorDetails({ toString() { throw new Error(syntheticKey); } }));
   });
+
+  const hostileProxies = [
+    ["revoked", () => {
+      const { proxy, revoke } = Proxy.revocable(new Error(syntheticResponse), {});
+      revoke();
+      return proxy;
+    }],
+    ["throwing getPrototypeOf", () => new Proxy(new Error(syntheticResponse), {
+      getPrototypeOf() {
+        throw new Error(`${syntheticKey}\n${syntheticPem}\n${syntheticResponse}\n/secret/synthetic-private-trap`);
+      },
+    })],
+  ] as const;
+  const proxyLocations = [
+    ["top level", (proxy: Error) => proxy],
+    ["cause", (proxy: Error) => Object.assign(new Error("backup SHA-256 does not match the expected value", { cause: proxy }), { code: "EACCES" })],
+    ["nested aggregate child", (proxy: Error) => new AggregateError([
+      new AggregateError([proxy], "database restore failed during cleanup"),
+    ], "database restore failed while releasing maintenance locks")],
+    ["nested aggregate cause", (proxy: Error) => new AggregateError([
+      new AggregateError([new Error(syntheticPem, { cause: proxy })], "database restore failed during cleanup"),
+    ], "database restore failed while releasing maintenance locks")],
+  ] as const;
+  for (const [proxyKind, createProxy] of hostileProxies) {
+    for (const [location, wrap] of proxyLocations) {
+      it(`returns fixed safe details for a ${proxyKind} Proxy at ${location}`, () => {
+        assertFixedFallback(wrap(createProxy()));
+      });
+    }
+  }
+
+  it("returns fixed safe details when an aggregate errors array is a revoked Proxy", () => {
+    const { proxy, revoke } = Proxy.revocable([new Error(syntheticResponse)], {});
+    const error = Object.assign(new AggregateError([], "database restore failed during cleanup"), {
+      errors: proxy, code: "ENOSPC",
+    });
+    revoke();
+    assertFixedFallback(error);
+  });
 });
+
+function assertFixedFallback(error: unknown): void {
+  const details = backupErrorDetails(error);
+  assert.deepEqual(details, {
+    message: "Backup operation failed; inspect the reported stage and local service configuration.",
+    error_type: "unknown_error",
+  });
+  const serialized = JSON.stringify(details);
+  for (const secret of [syntheticKey, syntheticPem, syntheticResponse, "synthetic-", "/secret/"]) {
+    assert.equal(serialized.includes(secret), false);
+  }
+}
