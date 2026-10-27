@@ -32,6 +32,8 @@ base64url nonce
 
 发送 `X-PerPay-Client-Id`、`X-PerPay-Timestamp`、`X-PerPay-Nonce`、`X-PerPay-Signature-Version: v1`、`X-PerPay-Signature`；JSON 正文使用 `Content-Type: application/json`。GET 的正文按零字节计算摘要。
 
+实现其他语言的签名时，先用[固定签名测试向量](signature-vectors.md)核对原始字节和预期签名。
+
 可以复用已测试的 [PerPayClient](../examples/node-client/perpay.mjs)。以下导入路径按仓库根目录中的 Node.js 模块编写：
 
 ```js
