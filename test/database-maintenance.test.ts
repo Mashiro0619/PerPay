@@ -14,7 +14,7 @@ import fs, {
 } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "node:test";
 
@@ -703,13 +703,22 @@ describe("database migration backup maintenance", () => {
     targetDatabase.close();
     const replacementPath = join(targetDirectory, ".operational-target-replacement.tmp");
     const originalLstatSync = fs.lstatSync;
-    let targetLstatCalls = 0;
+    const originalRmSync = fs.rmSync;
+    let probeFinished = false;
     let targetReplaced = false;
+    const hookedRmSync = ((...arguments_: Parameters<typeof fs.rmSync>) => {
+      const result = Reflect.apply(originalRmSync, fs, arguments_);
+      const removed = arguments_[0];
+      if (typeof removed === "string" && dirname(removed) === targetDirectory &&
+        basename(removed).startsWith(".perpay-unreadable-probe-")) probeFinished = true;
+      return result;
+    }) as typeof fs.rmSync;
     const hookedLstatSync = ((...arguments_: Parameters<typeof fs.lstatSync>) => {
       const requestedPath = arguments_[0];
-      if (typeof requestedPath === "string" && resolve(requestedPath) === targetPath) {
-        targetLstatCalls += 1;
-        if (!targetReplaced && targetLstatCalls === 4) {
+      if (probeFinished && typeof requestedPath === "string" && resolve(requestedPath) === targetPath) {
+        // The first original-path stat after the disposable probe is the
+        // identity check following claimAndQuiesceApplicationDatabase.
+        if (!targetReplaced) {
           copyFileSync(targetPath, replacementPath);
           const replacement = new DatabaseSync(replacementPath, { readBigInts: true });
           try {
@@ -725,6 +734,7 @@ describe("database migration backup maintenance", () => {
       }
       return Reflect.apply(originalLstatSync, fs, arguments_);
     }) as typeof fs.lstatSync;
+    assert.equal(Reflect.set(fs, "rmSync", hookedRmSync), true);
     assert.equal(Reflect.set(fs, "lstatSync", hookedLstatSync), true);
     syncBuiltinESMExports();
     try {
@@ -740,10 +750,12 @@ describe("database migration backup maintenance", () => {
         /application database path identity changed while the database restore was being prepared/u,
       );
     } finally {
+      assert.equal(Reflect.set(fs, "rmSync", originalRmSync), true);
       assert.equal(Reflect.set(fs, "lstatSync", originalLstatSync), true);
       syncBuiltinESMExports();
     }
 
+    assert.equal(probeFinished, true);
     assert.equal(targetReplaced, true);
     assert.equal(existsSync(databaseMaintenanceLockPath(targetPath)), false);
     assert.equal(existsSync(publicationLockPath(backupDirectory)), false);
@@ -779,16 +791,17 @@ describe("database migration backup maintenance", () => {
     const targetDatabase = await openTestDatabase(targetPath);
     targetDatabase.close();
     const replacementPath = join(targetDirectory, ".operational-post-validation-replacement.tmp");
-    const originalLstatSync = fs.lstatSync;
-    let targetLstatCalls = 0;
+    const originalCopyFileSync = fs.copyFileSync;
     let targetReplaced = false;
-    const hookedLstatSync = ((...arguments_: Parameters<typeof fs.lstatSync>) => {
-      const result = Reflect.apply(originalLstatSync, fs, arguments_);
-      const requestedPath = arguments_[0];
-      if (typeof requestedPath === "string" && resolve(requestedPath) === targetPath) {
-        targetLstatCalls += 1;
-        if (!targetReplaced && targetLstatCalls === 6) {
-          copyFileSync(targetPath, replacementPath);
+    const hookedCopyFileSync = ((...arguments_: Parameters<typeof fs.copyFileSync>) => {
+      const result = Reflect.apply(originalCopyFileSync, fs, arguments_);
+      const [source, destination] = arguments_;
+      if (source === join(backupDirectory, backup.name) && typeof destination === "string" &&
+        basename(destination).startsWith(".perpay.sqlite3.restore-")) {
+        // The verified backup is copied only after the live target's path
+        // identity has been checked. Replace it before the quarantine copy.
+        if (!targetReplaced) {
+          originalCopyFileSync(targetPath, replacementPath);
           const replacement = new DatabaseSync(replacementPath, { readBigInts: true });
           try {
             replacement.prepare(
@@ -802,8 +815,8 @@ describe("database migration backup maintenance", () => {
         }
       }
       return result;
-    }) as typeof fs.lstatSync;
-    assert.equal(Reflect.set(fs, "lstatSync", hookedLstatSync), true);
+    }) as typeof fs.copyFileSync;
+    assert.equal(Reflect.set(fs, "copyFileSync", hookedCopyFileSync), true);
     syncBuiltinESMExports();
     try {
       assert.throws(
@@ -818,7 +831,7 @@ describe("database migration backup maintenance", () => {
         /application database changed while it was being copied/u,
       );
     } finally {
-      assert.equal(Reflect.set(fs, "lstatSync", originalLstatSync), true);
+      assert.equal(Reflect.set(fs, "copyFileSync", originalCopyFileSync), true);
       syncBuiltinESMExports();
     }
 

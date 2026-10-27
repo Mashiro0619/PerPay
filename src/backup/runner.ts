@@ -56,6 +56,7 @@ const BACKUP_STATE_VERSION = 2;
 const RETRY_DELAY_MILLISECONDS = 5 * 60 * 1_000;
 const RESTORE_CONFIRMATION_ARGUMENT = "--confirm-replace-current-database";
 const REBUILD_STATE_ARGUMENT = "--rebuild-state";
+const QUARANTINE_UNREADABLE_ARGUMENT = "--quarantine-unreadable-current";
 const CLEAR_LOCK_CONFIRMATION_ARGUMENT = "--confirm-no-backup-process";
 const CLEAR_PUBLICATION_LOCK_CONFIRMATION_ARGUMENT = "--confirm-no-maintenance-process";
 const FORCE_UNREADABLE_LOCK_ARGUMENT = "--force-unreadable-lock";
@@ -166,6 +167,7 @@ export interface BackupOperations {
     expectedSha256: string,
     expectedInstanceId: string | undefined,
     now: number,
+    quarantineUnreadableCurrent?: boolean,
   ): Readonly<{
     backupName: string;
     restoredSchemaVersion: number;
@@ -271,7 +273,11 @@ export async function runBackupCommand(
   }
 
   const baseConfig = loadBackupConfig(environment);
-  const config = command === "restore" ? withRestorePolicy(baseConfig) : withCurrentPolicy(baseConfig);
+  const restoreFlags = arguments_.slice(4);
+  const quarantineUnreadableCurrent = restoreFlags.includes(QUARANTINE_UNREADABLE_ARGUMENT);
+  const config = command === "restore"
+    ? withRestorePolicy(baseConfig)
+    : withCurrentPolicy(baseConfig);
   ensurePrivateDirectory(config.backupDirectory);
   if (arguments_.length === 1 && command === "run-once") {
     const result = await runTrackedCycle(config, operations);
@@ -359,10 +365,11 @@ export async function runBackupCommand(
     return 0;
   }
   if (
-    (arguments_.length === 4 || arguments_.length === 5) &&
+    arguments_.length >= 4 && arguments_.length <= 6 &&
     command === "restore" &&
     arguments_[3] === RESTORE_CONFIRMATION_ARGUMENT &&
-    (arguments_.length === 4 || arguments_[4] === REBUILD_STATE_ARGUMENT)
+    new Set(restoreFlags).size === restoreFlags.length &&
+    restoreFlags.every(flag => flag === REBUILD_STATE_ARGUMENT || flag === QUARANTINE_UNREADABLE_ARGUMENT)
   ) {
     const restoreConfig = Object.freeze({
       ...config,
@@ -380,7 +387,7 @@ export async function runBackupCommand(
       }
       const previousState = readBackupStateForRestore(
         config.backupDirectory,
-        arguments_.length === 5,
+        restoreFlags.includes(REBUILD_STATE_ARGUMENT),
       );
       const selected = operations.inspect(
         config.backupDirectory,
@@ -408,6 +415,7 @@ export async function runBackupCommand(
           expectedSha256,
           selected.instanceId,
           startedAt,
+          quarantineUnreadableCurrent,
         );
         const succeededAt = Math.max(Date.now(), startedAt);
         state = Object.freeze({
@@ -445,7 +453,7 @@ export async function runBackupCommand(
     `clear-stale-publication-lock LOCK_TOKEN ${CLEAR_PUBLICATION_LOCK_CONFIRMATION_ARGUMENT}|` +
     `clear-stale-publication-lock ${FORCE_UNREADABLE_LOCK_ARGUMENT} ` +
     `${CLEAR_PUBLICATION_LOCK_CONFIRMATION_ARGUMENT}|` +
-    `restore BACKUP_NAME SHA256 ${RESTORE_CONFIRMATION_ARGUMENT} [${REBUILD_STATE_ARGUMENT}]>`,
+    `restore BACKUP_NAME SHA256 ${RESTORE_CONFIRMATION_ARGUMENT} [${REBUILD_STATE_ARGUMENT}] [${QUARANTINE_UNREADABLE_ARGUMENT}]>`,
   );
 }
 
@@ -514,20 +522,16 @@ function withCurrentPolicy(config: BackupConfig): BackupConfig {
 }
 
 function withRestorePolicy(config: BackupConfig): BackupConfig {
-  try {
-    return withCurrentPolicy(config);
-  } catch {
-    // Recovery must reach its own database preflight even when the current
-    // policy is unreadable. Do not use this fallback for backup or retention.
-    process.stderr.write(`${JSON.stringify({
-      level: "warn",
-      event: "backup_restore_policy_fallback",
-      message: "Current database backup policy is unavailable; restore is using the startup backup interval and retention settings.",
-      interval_milliseconds: config.intervalMilliseconds,
-      keep_count: config.keepCount,
-    })}\n`);
-    return config;
-  }
+  // Even a read-only SQLite connection may change sidecars. No restore command
+  // may open the current database before the locked evidence-preserving probe.
+  process.stderr.write(`${JSON.stringify({
+    level: "warn",
+    event: "backup_restore_policy_skipped",
+    message: "Restore is using startup backup interval and retention settings without reading the current database policy.",
+    interval_milliseconds: config.intervalMilliseconds,
+    keep_count: config.keepCount,
+  })}\n`);
+  return config;
 }
 
 function resolveBackupDirectoryForLock(environment: NodeJS.ProcessEnv): string {

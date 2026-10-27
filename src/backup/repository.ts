@@ -404,6 +404,7 @@ export function restoreLocalBackup(
   expectedSha256: string,
   expectedInstanceId?: string,
   now: number = Date.now(),
+  quarantineUnreadableCurrent: boolean = false,
 ): RestoreOperationalBackupResult {
   if (!SHA256_PATTERN.test(expectedSha256)) {
     throw new TypeError("expected backup SHA-256 must be 64 lowercase hexadecimal characters");
@@ -430,6 +431,7 @@ export function restoreLocalBackup(
     backupName,
     expectedSha256,
     confirmReplaceCurrentDatabase: true,
+    quarantineUnreadableCurrent,
     masterKey: config.masterKey,
     now: clock,
   });

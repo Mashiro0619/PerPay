@@ -6,6 +6,7 @@ import {
   fsyncSync,
   linkSync,
   lstatSync,
+  mkdirSync,
   openSync,
   readFileSync,
   readSync,
@@ -59,6 +60,7 @@ const RESTORE_CONFIRMATION_ARGUMENT = "--confirm-replace-current-database";
 const MAX_LISTED_BACKUP_ARTIFACTS = 4_096;
 const MAX_PRE_RESTORE_QUARANTINES = 4_096;
 const MAX_QUARANTINE_ERROR_LENGTH = 256;
+const CURRENT_SQLITE_SUFFIXES = ["", "-wal", "-shm", "-journal"] as const;
 
 class MaintenanceLeaseClaimedError extends Error {
   readonly leaseClaimed = true;
@@ -95,6 +97,8 @@ export interface RestoreOperationalBackupOptions {
   readonly backupName: string;
   readonly expectedSha256: string;
   readonly confirmReplaceCurrentDatabase: boolean;
+  /** Explicit operator confirmation to preserve an unreadable current database after stopping all writers. */
+  readonly quarantineUnreadableCurrent?: boolean | undefined;
   /** Deployment key used to verify the selected backup before swap. */
   readonly masterKey: Uint8Array;
   readonly now?: number | undefined;
@@ -215,6 +219,18 @@ interface FileIdentity {
   readonly inode: bigint;
   readonly size: bigint;
   readonly modifiedAtNanoseconds: bigint;
+}
+
+interface CurrentSqliteArtifact {
+  readonly suffix: typeof CURRENT_SQLITE_SUFFIXES[number];
+  readonly identity: FileIdentity;
+  readonly sha256: string;
+}
+
+interface RestoreDirectory {
+  readonly path: string;
+  readonly device: bigint;
+  readonly inode: bigint;
 }
 
 interface ParsedBackupArtifactName {
@@ -953,7 +969,9 @@ export function restoreOperationalBackup(
     throw new RangeError("maintenance clock is invalid");
   }
 
-  const directory = inspectDataDirectory(options.dataDirectory);
+  // Do not chmod any current SQLite artifacts before probing and preserving
+  // them. The restore-specific checks below validate files without mutation.
+  const directory = inspectDataDirectory(options.dataDirectory, false, true);
   const backupDirectory = options.backupDirectory === undefined
     ? directory
     : inspectBackupDirectory(options.backupDirectory);
@@ -1020,19 +1038,28 @@ export function restoreOperationalBackup(
   const quarantineStaging = `${quarantine}.staging`;
   let quarantinedDatabaseName: string | null = null;
   let targetIdentity: FileIdentity | null = null;
+  let unreadableArtifacts: readonly CurrentSqliteArtifact[] | null = null;
 
   try {
     if (pathEntryExists(target)) {
-      const preQuiesceTargetIdentity = inspectOrdinaryFile(target, "application database");
-      maintenanceLeaseClaimed = claimAndQuiesceApplicationDatabase(target, now, lock.token);
-      targetIdentity = assertFilePathIdentity(
-        target,
-        preQuiesceTargetIdentity,
-        "application database",
-        true,
-        "the database restore was being prepared",
-      );
-      assertSelfContainedSqlite(target, "application database");
+      const inspected = inspectCurrentSqliteForRestore(target, now);
+      if (inspected.unreadable) {
+        if (!options.quarantineUnreadableCurrent) {
+          throw new Error("application database is unreadable; explicit isolation is required after stopping all writers");
+        }
+        unreadableArtifacts = inspected.artifacts;
+      } else {
+        const preQuiesceTargetIdentity = inspected.artifacts[0]!.identity;
+        maintenanceLeaseClaimed = claimAndQuiesceApplicationDatabase(target, now, lock.token);
+        targetIdentity = assertFilePathIdentity(
+          target,
+          preQuiesceTargetIdentity,
+          "application database",
+          true,
+          "the database restore was being prepared",
+        );
+        assertSelfContainedSqlite(target, "application database");
+      }
     } else {
       try {
         assertSelfContainedSqlite(target, "fresh restore target");
@@ -1085,6 +1112,20 @@ export function restoreOperationalBackup(
     assertSelfContainedSqlite(staging, "restored database staging file");
     syncFile(staging);
 
+    if (unreadableArtifacts !== null) {
+      assertCurrentSqliteArtifacts(target, unreadableArtifacts);
+      const unreadableDirectory = createRestoreDirectory(
+        directory,
+        `perpay-unreadable-before-restore-${timestamp.toISOString().replaceAll(":", "-")}-${transactionId}`,
+      );
+      assertCurrentSqliteArtifacts(target, unreadableArtifacts);
+      // A multi-file move cannot be atomic. Persist the existing maintenance
+      // barrier throughout every partial state; never undo a completed move.
+      retainMaintenanceLock = true;
+      moveUnreadableSqliteArtifacts(target, unreadableArtifacts, unreadableDirectory);
+      quarantinedDatabaseName = basename(unreadableDirectory.path);
+    }
+
     if (targetIdentity !== null) {
       assertFileIdentity(target, targetIdentity, "application database");
       const targetHash = sha256File(target);
@@ -1126,6 +1167,10 @@ export function restoreOperationalBackup(
       syncDirectory(directory);
     }
     replacementDurable = true;
+    if (unreadableArtifacts !== null) {
+      assertSelfContainedSqlite(target, "restored application database");
+      retainMaintenanceLock = false;
+    }
 
     return Object.freeze({
       backupName: options.backupName,
@@ -1162,6 +1207,12 @@ export function restoreOperationalBackup(
     restoreFailure = cleanupErrors.length > 0
       ? new AggregateError([error, ...cleanupErrors], "database restore failed during cleanup")
       : error;
+    if (unreadableArtifacts !== null && retainMaintenanceLock) {
+      restoreFailure = new Error(
+        "unreadable database isolation or publication failed; preserve original files, quarantine directory, and maintenance lock before recovery",
+        { cause: restoreFailure },
+      );
+    }
     throw restoreFailure;
   } finally {
     const releaseErrors: unknown[] = [];
@@ -1188,6 +1239,180 @@ export function restoreOperationalBackup(
       if (failures.length === 1) throw failures[0];
       throw new AggregateError(failures, "database restore failed while releasing maintenance locks");
     }
+  }
+}
+
+function inspectCurrentSqliteForRestore(
+  target: string,
+  now: number,
+): { readonly artifacts: readonly CurrentSqliteArtifact[]; readonly unreadable: boolean } {
+  const artifacts: CurrentSqliteArtifact[] = [];
+  for (const suffix of CURRENT_SQLITE_SUFFIXES) {
+    const path = target + suffix;
+    if (!pathEntryExists(path)) {
+      if (suffix === "") throw new Error("application database disappeared before its restore probe");
+      continue;
+    }
+    const identity = inspectCurrentSqliteArtifact(path);
+    const sha256 = sha256File(path);
+    assertCurrentSqliteIdentity(path, identity);
+    artifacts.push({ suffix, identity, sha256 });
+  }
+  assertCurrentSqliteArtifacts(target, artifacts);
+  const probe = createRestoreDirectory(dirname(target), `.perpay-unreadable-probe-${randomUUID()}`);
+  try {
+    for (const artifact of artifacts) {
+      assertRestoreDirectory(probe, dirname(target));
+      const source = target + artifact.suffix;
+      const copy = join(probe.path, basename(source));
+      assertCurrentSqliteIdentity(source, artifact.identity);
+      copyFileSync(source, copy, fsConstants.COPYFILE_EXCL);
+      hardenExistingPrivateFile(copy);
+      inspectCurrentSqliteArtifact(copy);
+      if (sha256File(copy) !== artifact.sha256) {
+        throw new Error("application database restore probe bytes changed while copying");
+      }
+      assertCurrentSqliteIdentity(source, artifact.identity);
+    }
+    assertCurrentSqliteArtifacts(target, artifacts);
+    // Even a read-only SQLite connection can update WAL/SHM files. Only open
+    // the disposable copy so diagnosis never changes the preserved evidence.
+    const unreadable = probeSqliteDamage(join(probe.path, DATABASE_NAME), now, artifacts[0]!.identity.size === 0n);
+    assertCurrentSqliteArtifacts(target, artifacts);
+    return { artifacts, unreadable };
+  } finally {
+    assertRestoreDirectory(probe, dirname(target));
+    rmSync(probe.path, { recursive: true });
+    syncDirectory(dirname(target));
+  }
+}
+
+function probeSqliteDamage(path: string, now: number, emptyMain: boolean): boolean {
+  let database: DatabaseSync | undefined;
+  try {
+    database = new DatabaseSync(path, {
+      // Recovery may need to update a hot journal before the copy can be
+      // diagnosed. The original database is never opened by this probe.
+      readOnly: false,
+      enableForeignKeyConstraints: true,
+      timeout: SQLITE_TIMEOUT_MILLISECONDS,
+      readBigInts: true,
+      defensive: true,
+    });
+    if (hasLiveLease(database, now)) {
+      throw new Error("application database is still owned; stop the app service before restore");
+    }
+    const rows = database.prepare("PRAGMA quick_check").all();
+    if (rows.length === 0 || rows.some(row => typeof row.quick_check !== "string")) {
+      throw new Error("application database restore probe returned an unknown integrity result");
+    }
+    return emptyMain || rows.some(row => row.quick_check !== "ok");
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ERR_SQLITE_ERROR" &&
+      "errcode" in error && typeof error.errcode === "number" && Number.isInteger(error.errcode) && error.errcode >= 0 &&
+      [11, 26].includes(error.errcode & 0xff)) {
+      return true;
+    }
+    throw error;
+  } finally {
+    database?.close();
+  }
+}
+
+function inspectCurrentSqliteArtifact(path: string): FileIdentity {
+  const stat = lstatSync(path, { bigint: true });
+  if (stat.isSymbolicLink() || !stat.isFile() || stat.nlink !== 1n) {
+    throw new Error("application database and sidecars must be ordinary files with one link");
+  }
+  return { device: stat.dev, inode: stat.ino, size: stat.size, modifiedAtNanoseconds: stat.mtimeNs };
+}
+
+function assertCurrentSqliteIdentity(path: string, expected: FileIdentity): void {
+  const actual = inspectCurrentSqliteArtifact(path);
+  if (actual.device !== expected.device || actual.inode !== expected.inode ||
+    actual.size !== expected.size || actual.modifiedAtNanoseconds !== expected.modifiedAtNanoseconds) {
+    throw new Error("application database or sidecar identity changed during restore");
+  }
+}
+
+function assertCurrentSqliteArtifacts(
+  target: string,
+  artifacts: readonly CurrentSqliteArtifact[],
+  moved: ReadonlySet<string> = new Set(),
+): void {
+  for (const suffix of CURRENT_SQLITE_SUFFIXES) {
+    const path = target + suffix;
+    const expected = artifacts.find(artifact => artifact.suffix === suffix);
+    if (!expected || moved.has(suffix)) {
+      if (pathEntryExists(path)) throw new Error("application database or sidecar appeared during restore");
+      continue;
+    }
+    assertCurrentSqliteIdentity(path, expected.identity);
+    if (sha256File(path) !== expected.sha256) throw new Error("application database or sidecar bytes changed during restore");
+    assertCurrentSqliteIdentity(path, expected.identity);
+  }
+}
+
+function createRestoreDirectory(parent: string, name: string): RestoreDirectory {
+  const path = resolve(parent, name);
+  if (basename(name) !== name || dirname(path) !== parent) {
+    throw new Error("restore evidence directory escaped the data directory");
+  }
+  mkdirSync(path, { mode: 0o700 });
+  hardenExistingPrivateDirectory(path);
+  const stat = lstatSync(path, { bigint: true });
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new Error("restore evidence directory must be an ordinary directory");
+  }
+  const directory = { path, device: stat.dev, inode: stat.ino };
+  assertRestoreDirectory(directory, parent);
+  syncDirectory(parent);
+  return directory;
+}
+
+function assertRestoreDirectory(directory: RestoreDirectory, parent: string): void {
+  if (dirname(resolve(directory.path)) !== parent) throw new Error("restore evidence directory escaped the data directory");
+  const stat = lstatSync(directory.path, { bigint: true });
+  if (stat.isSymbolicLink() || !stat.isDirectory() || stat.dev !== directory.device || stat.ino !== directory.inode) {
+    throw new Error("restore evidence directory identity changed during restore");
+  }
+  assertPrivateMode(Number(stat.mode), "restore evidence directory");
+}
+
+function moveUnreadableSqliteArtifacts(
+  target: string,
+  artifacts: readonly CurrentSqliteArtifact[],
+  directory: RestoreDirectory,
+): void {
+  const parent = dirname(target);
+  const moved = new Set<string>();
+  for (const artifact of artifacts) {
+    assertRestoreDirectory(directory, parent);
+    assertCurrentSqliteArtifacts(target, artifacts, moved);
+    const source = target + artifact.suffix;
+    const destination = join(directory.path, basename(source));
+    if (pathEntryExists(destination)) throw new Error("restore evidence destination already exists");
+    renameSync(source, destination);
+    moved.add(artifact.suffix);
+    assertCurrentSqliteIdentity(destination, artifact.identity);
+    if (sha256File(destination) !== artifact.sha256) throw new Error("isolated database or sidecar bytes changed during restore");
+    assertCurrentSqliteIdentity(destination, artifact.identity);
+    syncFile(destination);
+    syncDirectory(directory.path);
+    syncDirectory(parent);
+  }
+  assertRestoreDirectory(directory, parent);
+  assertCurrentSqliteArtifacts(target, artifacts, moved);
+  const expectedNames = artifacts.map(artifact => DATABASE_NAME + artifact.suffix).sort();
+  const actualNames = readdirSync(directory.path).sort();
+  if (actualNames.length !== expectedNames.length || actualNames.some((name, index) => name !== expectedNames[index])) {
+    throw new Error("isolated SQLite artifact set changed during restore");
+  }
+  for (const artifact of artifacts) {
+    const destination = join(directory.path, DATABASE_NAME + artifact.suffix);
+    assertCurrentSqliteIdentity(destination, artifact.identity);
+    if (sha256File(destination) !== artifact.sha256) throw new Error("isolated database or sidecar bytes changed during restore");
+    assertCurrentSqliteIdentity(destination, artifact.identity);
   }
 }
 
@@ -1571,7 +1796,7 @@ function assertExpectedSha256(value: string): void {
   }
 }
 
-function inspectDataDirectory(input: string, readOnly = false): string {
+function inspectDataDirectory(input: string, readOnly = false, preserveCurrentEvidence = false): string {
   hardenProcessFileCreation();
   const directory = resolve(input);
   const stat = lstatSync(directory);
@@ -1583,7 +1808,7 @@ function inspectDataDirectory(input: string, readOnly = false): string {
     validateReadOnlySqliteArtifacts(join(directory, DATABASE_NAME));
   } else {
     hardenExistingPrivateDirectory(directory);
-    hardenSqliteArtifacts(join(directory, DATABASE_NAME));
+    if (!preserveCurrentEvidence) hardenSqliteArtifacts(join(directory, DATABASE_NAME));
   }
   return directory;
 }

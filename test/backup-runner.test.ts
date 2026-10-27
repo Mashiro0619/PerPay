@@ -160,6 +160,50 @@ function fakeOperations(
 }
 
 describe("local backup state and scheduling", () => {
+  for (const flags of [
+    ["--quarantine-unreadable-current"],
+    ["--rebuild-state", "--quarantine-unreadable-current"],
+    ["--quarantine-unreadable-current", "--rebuild-state"],
+  ]) {
+    it(`forwards explicit unreadable isolation with ${flags.join(" ")}`, async context => {
+      const config = configuration();
+      const fake = fakeOperations(config, {
+        restore(_config, _name, _hash, _instanceId, _now, quarantine) {
+          assert.equal(quarantine, true);
+          return { backupName, restoredSchemaVersion: DATABASE_COMPATIBILITY.maximum, sha256, quarantinedDatabaseName: "perpay-unreadable-before-restore-test" };
+        },
+      });
+      await runTrackedCycle(config, fake.operations);
+      if (flags.includes("--rebuild-state")) {
+        writeFileSync(join(config.backupDirectory, "perpay-local-backup-state.json"), "{damaged");
+      }
+      context.mock.method(process.stderr, "write", () => true);
+      const output = await captureStandardOutput(() => runBackupCommand([
+        "restore", backupName, sha256, "--confirm-replace-current-database", ...flags,
+      ], {
+        PERPAY_DATA_DIR: config.dataDirectory, PERPAY_BACKUP_DIR: config.backupDirectory,
+        PERPAY_MASTER_KEY: RESTORE_MASTER_KEY_HEX,
+      }, fake.operations));
+      assert.equal(JSON.parse(output).quarantinedDatabaseName, "perpay-unreadable-before-restore-test");
+    });
+  }
+
+  for (const flags of [
+    ["--quarantine-unreadable-current", "--quarantine-unreadable-current"],
+    ["--rebuild-state", "--rebuild-state"],
+    ["--quarantine-unreadable-current", "--unknown"],
+  ]) {
+    it(`rejects invalid restore flags ${flags.join(" ")} before running recovery`, async () => {
+      const config = configuration();
+      const fake = fakeOperations(config);
+      await assert.rejects(runBackupCommand([
+        "restore", backupName, sha256, "--confirm-replace-current-database", ...flags,
+      ], { PERPAY_DATA_DIR: config.dataDirectory, PERPAY_BACKUP_DIR: config.backupDirectory }, fake.operations), /usage:/u);
+      assert.deepEqual(fake.calls, []);
+      assert.equal(existsSync(join(config.backupDirectory, "perpay-local-backup-state.json")), false);
+    });
+  }
+
   for (const [label, startupPolicy, expectedInterval, expectedKeepCount] of [
     ["default", {}, 86_400_000, 7],
     ["explicit startup", { PERPAY_BACKUP_INTERVAL_SECONDS: "7200", PERPAY_BACKUP_KEEP_COUNT: "3" }, 7_200_000, 3],
@@ -201,8 +245,8 @@ describe("local backup state and scheduling", () => {
       assert.equal(JSON.parse(output).backupName, backupName);
       assert.deepEqual(JSON.parse(warnings), {
         level: "warn",
-        event: "backup_restore_policy_fallback",
-        message: "Current database backup policy is unavailable; restore is using the startup backup interval and retention settings.",
+        event: "backup_restore_policy_skipped",
+        message: "Restore is using startup backup interval and retention settings without reading the current database policy.",
         interval_milliseconds: expectedInterval,
         keep_count: expectedKeepCount,
       });
@@ -217,7 +261,7 @@ describe("local backup state and scheduling", () => {
     });
   }
 
-  it("keeps a readable current policy for restore without a fallback warning", async (context) => {
+  it("uses startup restore policy without opening a readable current database", async (context) => {
     const config = configuration();
     const database = await AppDatabase.open(join(config.dataDirectory, "perpay.sqlite3"));
     new RuntimeSettingsStore(database, RESTORE_MASTER_KEY).initialize();
@@ -228,8 +272,8 @@ describe("local backup state and scheduling", () => {
     });
     const fake = fakeOperations(config, {
       restore(actual) {
-        assert.equal(actual.intervalMilliseconds, config.intervalMilliseconds);
-        assert.equal(actual.keepCount, config.keepCount);
+        assert.equal(actual.intervalMilliseconds, 7_200_000);
+        assert.equal(actual.keepCount, 3);
         return { backupName, restoredSchemaVersion: DATABASE_COMPATIBILITY.maximum, sha256, quarantinedDatabaseName: null };
       },
     });
@@ -239,7 +283,7 @@ describe("local backup state and scheduling", () => {
       PERPAY_MASTER_KEY: RESTORE_MASTER_KEY_HEX,
       PERPAY_BACKUP_INTERVAL_SECONDS: "7200", PERPAY_BACKUP_KEEP_COUNT: "3",
     }, fake.operations));
-    assert.equal(warnings, "");
+    assert.equal(JSON.parse(warnings).event, "backup_restore_policy_skipped");
   });
 
   it("keeps run-once and schedule closed when the current backup policy cannot be read", async () => {
@@ -254,7 +298,7 @@ describe("local backup state and scheduling", () => {
       encoding: "utf8", windowsHide: true, timeout: 5_000,
     });
     assert.equal(scheduled.status, 1, scheduled.stderr);
-    assert.equal(scheduled.stderr.includes("backup_restore_policy_fallback"), false);
+    assert.equal(scheduled.stderr.includes("backup_restore_policy_skipped"), false);
     assert.equal(existsSync(join(config.backupDirectory, "perpay-local-backup-state.json")), false);
   });
 

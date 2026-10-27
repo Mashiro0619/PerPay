@@ -178,7 +178,7 @@ node dist/backup/runner.js health
 
 ## 恢复数据库
 
-恢复会覆盖当前数据库。先保留当前数据副本，并确认原 `perpay-secrets` 卷仍在。
+恢复会覆盖当前数据库。先保留当前数据副本，并确认原 `perpay-secrets` 卷仍在。停止应用、自动备份及所有其他会打开该数据库的进程；`docker compose stop app backup` 不会停止另行启动的维护容器。
 
 1. 停止应用和自动备份，列出可用备份：
 
@@ -198,6 +198,22 @@ node dist/backup/runner.js health
    ```sh
    docker compose up -d
    ```
+
+### 主库损坏时隔离原始文件
+
+主库被确认损坏（SQLite `CORRUPT`、`NOTADB` 或完整性检查失败），或已变成零字节时，可以显式请求隔离后恢复：
+
+```sh
+docker compose --profile maintenance run --rm maintenance restore BACKUP_NAME SHA256 --confirm-replace-current-database --quarantine-unreadable-current
+```
+
+使用 `--quarantine-unreadable-current` 表示已经停止所有可能访问数据库的进程。损坏的库可能无法读取租约，工具无法据此证明进程已停止；可读取的活动应用租约仍会阻止恢复。权限、I/O 或数据库繁忙等错误不会被当成损坏来绕过。
+
+工具先校验所选备份的摘要、schema 和原主密钥，在维护锁内复制当前主库及 `-wal`、`-shm`、`-journal` 到临时副本检查，避免 SQLite 探测改写原始文件。已校验的恢复文件落盘后，才将原文件逐个移入数据目录下独立的 `perpay-unreadable-before-restore-…` 私有目录。请预留复制当前数据库及恢复文件所需的磁盘空间。
+
+成功结果的 `quarantinedDatabaseName` 是隔离目录名，请完整保留这个目录。已有的旧主库单文件清理不会删除它。若隔离或发布中断，原始文件可能分布在数据目录与隔离目录中，维护锁会继续阻止应用启动；保留两处文件与锁，先核对失败阶段和文件，再处理恢复，不能直接删锁或重启。
+
+所有恢复命令均不读取当前库的备份策略，暂用启动配置中的间隔和保留份数，并输出警告，以免首次不带隔离参数的尝试就改动原文件。若备份状态文件也损坏或缺失，核对选中备份后另外添加 `--rebuild-state`；它与主库隔离是独立确认，可同时使用。恢复成功后检查后台备份设置和新的备份结果；定时备份仍读取恢复后数据库中的实际策略。
 
 ## 清理遗留维护锁
 
