@@ -46,6 +46,25 @@ npm run dev:admin
 
 公开资源在 `web-dist/admin/` 和 `web-dist/checkout/`；`web-dist/checkout-ssr/renderer.cjs` 是私有产物，打包了 SSR 所需的前端依赖。只按清单提供公开资源，必须将 SSR、源码、source map 和清单文件留在私有构建目录。服务端编译结果在 `dist/`；必须将文档、发布材料和业务数据的唯一副本保存在构建目录之外。
 
+## 浏览器支持
+
+后台和公开收银台以以下版本作为浏览器支持基线，建议使用仍获得安全更新的版本：
+
+| 浏览器 | 最低版本 |
+| --- | --- |
+| Chrome | 111 |
+| Edge（Chromium） | 111 |
+| Safari / iOS Safari | 16.4 |
+| Firefox | 128 |
+
+此基线结合了 [Tailwind CSS 4 的浏览器要求](https://tailwindcss.com/docs/compatibility#browser-support)和 [Vite 8 的浏览器兼容说明](https://v8.vite.dev/guide/build#browser-compatibility)。Tailwind 的核心 CSS 功能要求 Chrome 111、Safari 16.4 和 Firefox 128；仅降低 JavaScript 构建目标不能兼容缺少这些 CSS 功能的浏览器。
+
+[后台配置](vite.config.ts)与[收银台配置](vite.checkout.config.ts)均使用 `build.target: "es2022"`，控制 JavaScript 语法转换。[Vite 默认不补齐运行时 API](https://v8.vite.dev/guide/build#browser-compatibility)；新增 API 时应核对上述浏览器基线，或提供局部回退。每日统计和投递记录通过复制数组后 `sort()` 排序，保留原数据且不依赖 `Array.prototype.toSorted`。
+
+IE、旧 EdgeHTML 及低于上述基线的 WebView 不在支持范围。手机与内置浏览器按实际内核判断，微信等应用内浏览器的资源加载、剪贴板和下载还需单独验收。
+
+上述版本是工程支持基线，不是逐版本实测清单。当前 [Playwright 配置](../playwright.config.ts)运行 Chromium；jsdom 单测和缺少 `toSorted` 的回归只验证对应 JavaScript 行为，不能代替 Safari、Firefox 或实体设备验收。实际验证范围以各次测试记录为准。
+
 ## 组件与布局
 
 构建仅使用仓库中的组件源码和样式，不依赖 `shadcn` CLI。`web/src/vendor/shadcn-tailwind.css` 是 npm 包 `shadcn@4.21.4` 中 `dist/tailwind.css` 的原样副本（上游原文件 SHA-256：`4c371f7a1ff5d219ae2f7ff28bd256b4346fd546fe46fbae22092e57db2f0fae`），许可见 [NOTICE](../NOTICE)。这避免仅为引入 CSS 而安装整套 CLI 及其依赖；CI 仍审计全部锁定依赖，不豁免开发依赖。
