@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const documents = ["README.md", "USAGE.md", "web/README.md", "examples/node-client/README.md", ...globSync("docs/**/*.md", { cwd: root })];
+const documents = ["README.md", "CHANGELOG.md", "USAGE.md", "web/README.md", "examples/node-client/README.md", ...globSync("docs/**/*.md", { cwd: root })];
 const contents = new Map(documents.map(file => [resolve(root, file), readFileSync(resolve(root, file), "utf8")]));
 const withoutFences = (text: string) => text.replace(/^```[^\n]*\n[\s\S]*?^```[ \t]*$/gm, "");
 
