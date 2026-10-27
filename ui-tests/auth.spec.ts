@@ -79,6 +79,12 @@ test("initialization form exposes validation in the same shell using a synthetic
   });
   await page.goto(manifest.origin + "/admin/");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(/初始化/);
+  const token = page.getByLabel("一次性初始化令牌", { exact: true });
+  await page.getByRole("button", { name: "创建管理员", exact: true }).click();
+  await expect(token).toHaveAttribute("aria-invalid", "true");
+  await expect(token).toBeFocused();
+  await expect(page.getByText("请输入服务器启动日志中的初始化令牌。", { exact: true })).toBeVisible();
+  await token.fill("e".repeat(64));
   await page.locator("#password").fill("123456");
   await page.locator('input[name="password-confirmation"]').fill("different");
   await page.getByRole("button", { name: /初始化|创建管理员/ }).click();

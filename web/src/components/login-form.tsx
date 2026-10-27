@@ -55,13 +55,15 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
         : "登录管理后台";
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
+  const [setupToken, setSetupToken] = useState("");
+  const tokenInput = useRef<HTMLInputElement | null>(null);
   const [visible, setVisible] = useState(false);
   const [remember, setRemember] = useState(false);
   const [pending, setPending] = useState(false);
   const submitting = useRef(false);
   const [error, setError] = useState<unknown>(null);
   const [invalidField, setInvalidField] = useState<
-    "password" | "confirmation" | null
+    "token" | "password" | "confirmation" | null
   >(null);
   const [configured, setConfigured] = useState(false);
   const [alreadyInitialized, setAlreadyInitialized] = useState(false);
@@ -70,6 +72,14 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
       ? "管理员密码不正确，请检查后重试。"
       : null;
   const passwordInvalid = invalidField === "password" || passwordError !== null;
+  const tokenError = setup && error instanceof ApiError && error.code === "setup_token_invalid"
+    ? "初始化令牌无效或已失效，请从服务器最新启动日志重新获取。"
+    : null;
+  const tokenInvalid = invalidField === "token" || tokenError !== null;
+
+  useEffect(() => {
+    if (tokenError && !pending) tokenInput.current?.focus();
+  }, [tokenError, pending]);
 
   useEffect(() => {
     document.title = `${title} · ${systemName}`;
@@ -77,6 +87,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
     setInvalidField(null);
     setPassword("");
     setConfirmation("");
+    setSetupToken("");
     setRemember(false);
   }, [title, systemName]);
 
@@ -92,6 +103,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
     setInitialized(true);
     setPassword("");
     setConfirmation("");
+    setSetupToken("");
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -101,6 +113,12 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
     setError(null);
     setInvalidField(null);
     if (setup) {
+      if (!setupToken.trim()) {
+        setInvalidField("token");
+        setError(new Error("请输入服务器启动日志中的初始化令牌。"));
+        tokenInput.current?.focus();
+        return;
+      }
       const validation = validatePassword(password);
       if (validation || confirmation !== password) {
         const field = validation ? "password" : "confirmation";
@@ -118,7 +136,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
     setPending(true);
     try {
       if (setup) {
-        await result(api.setupAdministrator({ body: { password } }));
+        await result(api.setupAdministrator({ body: { password, setup_token: setupToken.trim() } }));
         markInitialized();
         setConfigured(true);
         navigate("/login", { replace: true });
@@ -185,6 +203,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
               />
             ) : (
               <form
+                noValidate={setup}
                 onSubmit={(event) => {
                   void submit(event);
                 }}
@@ -199,6 +218,39 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                           : "系统已初始化，请用现有管理员密码登录。"}
                       </AlertDescription>
                     </Alert>
+                  )}
+                  {setup && (
+                    <Field data-invalid={tokenInvalid} data-disabled={pending}>
+                      <FieldLabel htmlFor="setup-token">一次性初始化令牌</FieldLabel>
+                      <Input
+                        ref={tokenInput}
+                        id="setup-token"
+                        name="setup-token"
+                        type="password"
+                        autoComplete="off"
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        maxLength={256}
+                        required
+                        value={setupToken}
+                        disabled={pending}
+                        aria-invalid={tokenInvalid}
+                        aria-describedby={tokenInvalid ? "setup-token-error" : "setup-token-hint"}
+                        onChange={(event) => {
+                          setSetupToken(event.target.value);
+                          setError(null);
+                          setInvalidField(null);
+                        }}
+                      />
+                      <FieldDescription id="setup-token-hint">
+                        从服务器启动日志获取；Docker 部署执行 <code>docker compose logs app</code>，复制最新的 <code>setup_token</code>。未初始化时重启服务会更换令牌。
+                      </FieldDescription>
+                      {tokenInvalid && (
+                        <FieldError id="setup-token-error">
+                          {tokenError ?? (error instanceof Error ? error.message : null)}
+                        </FieldError>
+                      )}
+                    </Field>
                   )}
                   <Field data-invalid={passwordInvalid}>
                     <FieldLabel htmlFor="password">
@@ -298,7 +350,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                     </Field>
                   )}
                   <ErrorNotice
-                    error={invalidField || passwordError ? null : error}
+                    error={invalidField || passwordError || tokenError ? null : error}
                     showDiagnostics={
                       !(error instanceof ApiError &&
                         ["auth_rate_limited", "password_work_busy"].includes(error.code))

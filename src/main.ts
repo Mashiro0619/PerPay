@@ -65,6 +65,13 @@ const app = createApp({
   config,
   database,
   identity,
+  onSetupToken: (token) => {
+    console.log(JSON.stringify({
+      level: "info",
+      event: "administrator_setup_required",
+      setup_token: token,
+    }));
+  },
   settings,
   sites,
   runtimeStatus: () => runtime.status(),

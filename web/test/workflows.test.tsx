@@ -65,6 +65,7 @@ describe("administrator authentication", () => {
         screen.queryByText("设置此系统的管理员密码。"),
       ).not.toBeInTheDocument();
       expect(screen.getByText("至少 6 个字符。")).toBeVisible();
+      await user.type(screen.getByLabelText("一次性初始化令牌"), "e".repeat(64));
       await user.type(screen.getByLabelText(/设置管理员密码/), "short");
       await user.type(screen.getByLabelText("再次输入密码"), "short");
       await user.click(screen.getByRole("button", { name: "创建管理员" }));

@@ -27,6 +27,7 @@ export const HTTP_ERROR_CODES = Object.freeze([
   "idempotency_conflict",
   "identity_already_initialized",
   "identity_not_initialized",
+  "setup_token_invalid",
   "internal_error",
   "invalid_content_length",
   "invalid_credentials",

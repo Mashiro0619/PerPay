@@ -57,6 +57,7 @@ describe("first collection onboarding", () => {
     document.head.append(meta);
     const view = mountOnboarding({ signedIn: false, path: "/setup" });
     await screen.findByLabelText("设置管理员密码");
+    edit("一次性初始化令牌", "e".repeat(64));
     edit("设置管理员密码", "isolated-onboarding-password");
     edit("再次输入密码", "isolated-onboarding-password");
     const user = userEvent.setup();

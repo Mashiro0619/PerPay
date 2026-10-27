@@ -357,11 +357,17 @@ jobs:
 
           export PERPAY_SMOKE_ISOLATED=1
           export PERPAY_SMOKE_PASSWORD="$(openssl rand -hex 32)"
+          PERPAY_SMOKE_SETUP_TOKEN="$(compose logs --no-color --no-log-prefix app |
+            jq -Rr 'fromjson? | select(.event == "administrator_setup_required") | .setup_token | select(type == "string")' | tail -n 1)"
+          test -n "$PERPAY_SMOKE_SETUP_TOKEN"
+          echo "::add-mask::$PERPAY_SMOKE_SETUP_TOKEN"
+          export PERPAY_SMOKE_SETUP_TOKEN
           admin_smoke() {
-            compose exec -T -e PERPAY_SMOKE_ISOLATED -e PERPAY_SMOKE_PASSWORD app \
+            compose exec -T -e PERPAY_SMOKE_ISOLATED -e PERPAY_SMOKE_PASSWORD -e PERPAY_SMOKE_SETUP_TOKEN app \
               node --input-type=module - "$1" < scripts/admin-smoke.mjs
           }
           admin_smoke initialize
+          unset PERPAY_SMOKE_SETUP_TOKEN
 
           instance_before="$(compose exec -T app node --input-type=module -e \
             "import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync('/data/perpay.sqlite3',{readOnly:true});try{console.log(db.prepare(\"SELECT value FROM system_metadata WHERE key = 'instance_id'\").get().value)}finally{db.close()}" | tr -d '\r')"

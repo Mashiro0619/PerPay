@@ -99,7 +99,12 @@ paths:
       summary: Set the administrator password on an uninitialized instance
       description: |
         This endpoint is available only until the first administrator password is stored.
-        The administrator name is fixed as `admin`; the request contains only the password.
+        The administrator name is fixed as `admin`. The request must include the password and
+        the one-time `setup_token` from the server's latest `administrator_setup_required`
+        startup log. The random 32-byte token is delivered only through that log; the server
+        retains only its digest. It changes if an uninitialized instance restarts. A failed
+        initialization does not consume it. A missing token is a validation error; an incorrect
+        or stale token returns `403 / setup_token_invalid` without performing password work.
         A successful setup closes this endpoint permanently but does not create a session. The
         administrator must then use the regular login endpoint. The request `Origin` must exactly
         equal the configured public origin.
@@ -117,7 +122,11 @@ paths:
         '204':
           description: Administrator password stored and setup permanently closed; no session is created
         '400': { $ref: '#/components/responses/BadRequest' }
-        '403': { $ref: '#/components/responses/AdminForbidden' }
+        '403':
+          description: Administrator access or request origin is not allowed, or the one-time initialization token is incorrect or stale (`setup_token_invalid`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
         '409': { $ref: '#/components/responses/SetupAlreadyInitialized' }
         '413': { $ref: '#/components/responses/TooLarge' }
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
@@ -6161,12 +6170,17 @@ components:
     AdminSetupRequest:
       type: object
       additionalProperties: false
-      required: [password]
+      required: [password, setup_token]
       properties:
         password:
           type: string
           minLength: 6
           x-perpay-max-utf8-bytes: 1024
+        setup_token:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: One-time token from the latest startup log; generated as 64 lowercase hexadecimal characters. Do not place it in URLs or browser storage.
     AdminLoginEnvelope:
       type: object
       additionalProperties: false
@@ -8798,6 +8812,7 @@ components:
         - idempotency_conflict
         - identity_already_initialized
         - identity_not_initialized
+        - setup_token_invalid
         - internal_error
         - invalid_content_length
         - invalid_credentials

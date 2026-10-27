@@ -2,6 +2,8 @@
 
 以下示例使用 Nginx。先配置自己的域名及有效 TLS 证书；首次启动时限制访问，创建管理员后再开放。PerPay 的公开地址必须与浏览器使用的 HTTPS origin 一致。
 
+首次初始化还需要服务器启动日志中的一次性令牌：在部署目录执行 `docker compose logs --tail=100 app`，复制最新 `administrator_setup_required` 事件的 `setup_token`，通过自己的 HTTPS 管理页面提交。创建管理员后令牌失效；未初始化时重启服务须重新读取令牌。详细步骤见 [初始化](../README.md#初始化)。
+
 ## 宿主机代理
 
 保留 Compose 的 `127.0.0.1:6190:6190` 端口映射；宿主机 Nginx 转发到回环地址：

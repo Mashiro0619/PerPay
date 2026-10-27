@@ -14,6 +14,7 @@ import {
 } from "./http-fixture.ts";
 import { disableAdministratorAllowlist } from "../src/identity/allowlist-recovery.ts";
 import { AppDatabase } from "../src/database/database.ts";
+import { IdentityService } from "../src/identity/service.ts";
 import { RuntimeSettingsStore } from "../src/settings/store.ts";
 const audit = {
   actorId: "admin",
@@ -334,6 +335,7 @@ describe("administrator IP allowlist", () => {
       const app = createApp({
         ...services,
         database: reopened,
+        identity: new IdentityService(reopened),
         settings: undefined,
         startedAt: new Date(),
       });

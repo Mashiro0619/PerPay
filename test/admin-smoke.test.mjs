@@ -24,7 +24,9 @@ async function open(directory, clock = Date.now) {
   settings.initialize();
   const orders = new OrderService(database, () => settings.instanceSnapshot());
   orders.initialize();
-  return { database, identity, app: createApp({ config, database, identity, settings, orders, startedAt: new Date() }) };
+  let setupToken;
+  const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(), onSetupToken: token => { setupToken = token; } });
+  return { database, identity, app, setupToken };
 }
 
 function cleanup(directory) {
@@ -40,10 +42,11 @@ describe("production administrator smoke", () => {
     let services = await open(directory);
     try {
       const options = { baseUrl: origin, password, isolated: true, assets: listAdminAssets() };
-      const first = await runAdminSmoke({ ...options, initialize: true, request: (url, init) => services.app.request(url, init) });
+      const first = await runAdminSmoke({ ...options, initialize: true, setupToken: services.setupToken, request: (url, init) => services.app.request(url, init) });
       assert.ok(first.assetsChecked > 10);
       services.database.close();
       services = await open(directory);
+      assert.equal(services.setupToken, undefined, "initialized instances must not issue another setup token");
       const restarted = await runAdminSmoke({ ...options, request: (url, init) => services.app.request(url, init) });
       assert.equal(restarted.instanceId, first.instanceId);
     } finally { services.database.close(); cleanup(directory); }
@@ -69,5 +72,10 @@ describe("production administrator smoke", () => {
     const request = () => { throw new Error("must not send"); };
     await assert.rejects(runAdminSmoke({ baseUrl: origin, password: "x".repeat(32), request }), /isolated/);
     await assert.rejects(runAdminSmoke({ baseUrl: "https://pay.example.com", password: "x".repeat(32), isolated: true, request }), /loopback/);
+  });
+
+  it("requires an initialization token before sending any setup smoke requests", async () => {
+    const request = () => { throw new Error("must not send"); };
+    await assert.rejects(runAdminSmoke({ baseUrl: origin, password: "x".repeat(32), isolated: true, initialize: true, request }), /setup token/);
   });
 });

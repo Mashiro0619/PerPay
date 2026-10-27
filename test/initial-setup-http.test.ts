@@ -17,6 +17,74 @@ const MASTER_KEY = "0123456789abcdef".repeat(4);
 const ADMIN_PASSWORD = "first-run-admin-password";
 
 describe("first-run administrator HTTP flow", () => {
+  for (const [token, status, code] of [
+    [undefined, 422, "validation_failed"],
+    ["wrong-setup-token", 403, "setup_token_invalid"],
+    ["0".repeat(64), 403, "setup_token_invalid"],
+  ] as const) {
+    it(`rejects a ${token === undefined ? "missing" : token.length === 64 ? "wrong" : "malformed"} setup token before creating an administrator`, async () => {
+      const fixture = await createFixture();
+      try {
+        const response = await fixture.app.request("/api/admin/v1/setup", {
+          method: "POST",
+          headers: jsonHeaders(),
+          body: JSON.stringify({ password: ADMIN_PASSWORD, setup_token: token }),
+        });
+        assert.equal(response.status, status);
+        assert.equal((await response.json() as { error: { code: string } }).error.code, code);
+        assert.equal(fixture.identity.isInitialized(), false);
+        assert.equal(fixture.identity.store.read((transaction) =>
+          transaction.authLimit(fixture.identity.sourceHash("unknown"))), undefined);
+      } finally {
+        fixture.close();
+      }
+    });
+  }
+
+  it("issues a token only to the startup callback and rotates it when an uninitialized app restarts", async () => {
+    const fixture = await createFixture();
+    try {
+      assert.equal(fixture.issuedTokens.length, 1);
+      const firstToken = fixture.issuedTokens[0]!;
+      assert.match(firstToken, /^[0-9a-f]{64}$/);
+      for (const path of ["/admin/", "/admin/setup", "/healthz", "/readyz"]) {
+        const response = await fixture.app.request(path);
+        assert.equal((await response.text()).includes(firstToken), false, path);
+      }
+      assert.equal(fixture.issuedTokens.length, 1);
+      const restarted = fixture.recreateApp();
+      const nextToken = fixture.issuedTokens[1]!;
+      assert.match(nextToken, /^[0-9a-f]{64}$/);
+      assert.notEqual(nextToken, firstToken);
+      const stale = await restarted.request("/api/admin/v1/setup", {
+        method: "POST", headers: jsonHeaders(),
+        body: JSON.stringify({ password: ADMIN_PASSWORD, setup_token: firstToken }),
+      });
+      assert.equal(stale.status, 403);
+      const failureText = await stale.text();
+      assert.equal(failureText.includes(firstToken), false);
+      assert.equal(failureText.includes(nextToken), false);
+      const setup = await restarted.request("/api/admin/v1/setup", {
+        method: "POST", headers: jsonHeaders(),
+        body: JSON.stringify({ password: ADMIN_PASSWORD, setup_token: nextToken }),
+      });
+      assert.equal(setup.status, 204);
+      assert.deepEqual(setup.headers.getSetCookie(), []);
+      const initialized = fixture.recreateApp();
+      assert.equal(fixture.issuedTokens.length, 2, "initialized startup must not issue a token");
+      for (const token of [firstToken, nextToken, undefined]) {
+        const response = await initialized.request("/api/admin/v1/setup", {
+          method: "POST", headers: jsonHeaders(),
+          body: JSON.stringify({ password: ADMIN_PASSWORD, setup_token: token }),
+        });
+        assert.equal(response.status, 409);
+        assert.equal((await response.json() as { error: { code: string } }).error.code, "identity_already_initialized");
+      }
+    } finally {
+      fixture.close();
+    }
+  });
+
   for (const [name, password, replacement] of [
     ["ASCII", "aB3!xY", "bC4!yZ"],
     ["Unicode code point", "🔐".repeat(6), "密".repeat(6)],
@@ -26,11 +94,11 @@ describe("first-run administrator HTTP flow", () => {
       try {
         const short = Array.from(password).slice(0, 5).join("");
         const invalidSetup = await fixture.app.request("/api/admin/v1/setup", {
-          method: "POST", headers: jsonHeaders(), body: JSON.stringify({ password: short }),
+          method: "POST", headers: jsonHeaders(), body: JSON.stringify({ password: short, setup_token: fixture.setupToken }),
         });
         assert.equal(invalidSetup.status, 422);
         const setup = await fixture.app.request("/api/admin/v1/setup", {
-          method: "POST", headers: jsonHeaders(), body: JSON.stringify({ password }),
+          method: "POST", headers: jsonHeaders(), body: JSON.stringify({ password, setup_token: fixture.setupToken }),
         });
         assert.equal(setup.status, 204);
         assert.deepEqual(setup.headers.getSetCookie(), []);
@@ -78,14 +146,14 @@ describe("first-run administrator HTTP flow", () => {
       const unexpectedField = await fixture.app.request("/api/admin/v1/setup", {
         method: "POST",
         headers: jsonHeaders(),
-        body: JSON.stringify({ password: ADMIN_PASSWORD, code: "not-used" }),
+        body: JSON.stringify({ password: ADMIN_PASSWORD, setup_token: fixture.setupToken, code: "not-used" }),
       });
       assert.equal(unexpectedField.status, 422);
 
       const tooShortUnicodePassword = await fixture.app.request("/api/admin/v1/setup", {
         method: "POST",
         headers: jsonHeaders(),
-        body: JSON.stringify({ password: "🔐".repeat(5) }),
+        body: JSON.stringify({ password: "🔐".repeat(5), setup_token: fixture.setupToken }),
       });
       assert.equal(tooShortUnicodePassword.status, 422);
       assert.equal(
@@ -96,7 +164,7 @@ describe("first-run administrator HTTP flow", () => {
       const setup = await fixture.app.request("/api/admin/v1/setup", {
         method: "POST",
         headers: jsonHeaders(),
-        body: JSON.stringify({ password: ADMIN_PASSWORD }),
+        body: JSON.stringify({ password: ADMIN_PASSWORD, setup_token: fixture.setupToken }),
       });
       assert.equal(setup.status, 204);
       assert.deepEqual(setup.headers.getSetCookie(), []);
@@ -145,12 +213,12 @@ describe("first-run administrator HTTP flow", () => {
         fixture.app.request("/api/admin/v1/setup", {
           method: "POST",
           headers: jsonHeaders(),
-          body: JSON.stringify({ password: ADMIN_PASSWORD }),
+          body: JSON.stringify({ password: ADMIN_PASSWORD, setup_token: fixture.setupToken }),
         }),
         fixture.app.request("/api/admin/v1/setup", {
           method: "POST",
           headers: jsonHeaders(),
-          body: JSON.stringify({ password: "competing-first-run-password" }),
+          body: JSON.stringify({ password: "competing-first-run-password", setup_token: fixture.setupToken }),
         }),
       ]);
       assert.equal(responses.filter((response) => response.status === 204).length, 1);
@@ -162,6 +230,38 @@ describe("first-run administrator HTTP flow", () => {
         1,
       );
     } finally {
+      fixture.close();
+    }
+  });
+
+  it("keeps the same token usable after the administrator transaction rolls back", async () => {
+    const fixture = await createFixture();
+    try {
+      fixture.database.write((connection) => connection.exec(`
+        CREATE TRIGGER injected_retryable_setup_failure
+        BEFORE INSERT ON admin_identity
+        BEGIN
+          SELECT RAISE(ABORT, 'injected retryable setup failure');
+        END;
+      `));
+      const request = {
+        method: "POST", headers: jsonHeaders(),
+        body: JSON.stringify({ password: ADMIN_PASSWORD, setup_token: fixture.setupToken }),
+      };
+      assert.equal((await fixture.app.request("/api/admin/v1/setup", request)).status, 500);
+      assert.equal(fixture.identity.isInitialized(), false);
+      fixture.database.write((connection) => connection.exec("DROP TRIGGER injected_retryable_setup_failure"));
+      const retried = await fixture.app.request("/api/admin/v1/setup", request);
+      assert.equal(retried.status, 204);
+      assert.deepEqual(retried.headers.getSetCookie(), []);
+      assert.equal((await fixture.app.request("/api/admin/v1/setup", request)).status, 409);
+      assert.equal(fixture.issuedTokens.length, 1, "retry must not issue a replacement token");
+      const audit = fixture.database.read((connection) => connection.prepare(
+        "SELECT details_json FROM audit_events WHERE action = 'admin.initialized'",
+      ).all());
+      assert.equal(JSON.stringify(audit).includes(fixture.setupToken), false);
+    } finally {
+      fixture.database.write((connection) => connection.exec("DROP TRIGGER IF EXISTS injected_retryable_setup_failure"));
       fixture.close();
     }
   });
@@ -189,7 +289,7 @@ describe("first-run administrator HTTP flow", () => {
       const failed = await fixture.app.request("/api/admin/v1/setup", {
         method: "POST",
         headers: jsonHeaders(),
-        body: JSON.stringify({ password: ADMIN_PASSWORD }),
+        body: JSON.stringify({ password: ADMIN_PASSWORD, setup_token: fixture.setupToken }),
       });
       assert.equal(failed.status, 500);
       assert.equal(fixture.identity.isInitialized(), false);
@@ -203,7 +303,7 @@ describe("first-run administrator HTTP flow", () => {
       const limited = await fixture.app.request("/api/admin/v1/setup", {
         method: "POST",
         headers: jsonHeaders(),
-        body: JSON.stringify({ password: ADMIN_PASSWORD }),
+        body: JSON.stringify({ password: ADMIN_PASSWORD, setup_token: fixture.setupToken }),
       });
       assert.equal(limited.status, 429);
       assert.equal(limited.headers.get("retry-after") !== null, true);
@@ -236,16 +336,22 @@ async function createFixture(clock: () => number = Date.now) {
   });
   settings.initialize();
   const orders = new OrderService(database, () => settings.instanceSnapshot());
-  const app = createApp({
+  const issuedTokens: string[] = [];
+  const recreateApp = () => createApp({
     config,
     database,
     identity,
     settings,
     orders,
     startedAt: new Date(0),
+    onSetupToken: (token: string) => issuedTokens.push(token),
   });
+  const app = recreateApp();
   return {
     app,
+    issuedTokens,
+    recreateApp,
+    setupToken: issuedTokens[0]!,
     database,
     identity,
     close() {

@@ -1,11 +1,13 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import { queryClient } from "../src/api/client";
 import { AuthPage } from "../src/auth";
 import { apiError } from "./fixtures";
+
+const setupToken = "synthetic-initialization-token";
 
 function mount(initialized: string | null, path = "/login") {
   if (initialized !== null) {
@@ -54,6 +56,7 @@ describe("first-deployment authentication presentation", () => {
         screen.getByRole("heading", { name: "登录管理后台" }),
       ).toBeVisible();
       expect(screen.getByLabelText("管理员密码")).toBeRequired();
+      expect(screen.queryByLabelText("一次性初始化令牌")).not.toBeInTheDocument();
       expect(
         screen.queryByRole("link", { name: /初始化|已有管理员/ }),
       ).not.toBeInTheDocument();
@@ -80,6 +83,7 @@ describe("first-deployment authentication presentation", () => {
       ).toHaveAttribute("type", "submit");
       expect(screen.getByLabelText("设置管理员密码")).toBeRequired();
       expect(screen.getByLabelText("再次输入密码")).toBeRequired();
+      expect(screen.getByLabelText("一次性初始化令牌")).toBeRequired();
       expect(
         screen.queryByRole("link", { name: /初始化|已有管理员/ }),
       ).not.toBeInTheDocument();
@@ -89,6 +93,67 @@ describe("first-deployment authentication presentation", () => {
       ).not.toBeInTheDocument();
     },
   );
+
+  it("requires an initialization token before sending credentials to setup", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    mount("false", "/setup");
+    const user = userEvent.setup();
+    const token = screen.getByLabelText("一次性初始化令牌");
+    expect(token).toHaveAttribute("type", "password");
+    expect(token).toHaveAttribute("autocomplete", "off");
+    expect(token).toHaveAccessibleDescription(/服务器启动日志.*docker compose logs app.*setup_token/);
+    fireEvent.change(screen.getByLabelText("设置管理员密码"), { target: { value: "new-admin-password" } });
+    fireEvent.change(screen.getByLabelText("再次输入密码"), { target: { value: "new-admin-password" } });
+    await user.click(screen.getByRole("button", { name: "创建管理员" }));
+    expect(token).toHaveAttribute("aria-invalid", "true");
+    expect(token).toHaveAccessibleDescription("请输入服务器启动日志中的初始化令牌。");
+    expect(token).toHaveFocus();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("associates a rejected token with its field and retries without persisting it or forwarding it to login", async () => {
+    const requests: Request[] = [];
+    let rejectToken = true;
+    vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+      requests.push(request);
+      if (new URL(request.url).pathname.endsWith("/setup") && rejectToken) {
+        rejectToken = false;
+        return apiError("setup_token_invalid", "初始化令牌无效", 403);
+      }
+      return new Response(null, { status: 204 });
+    }));
+    const { onLogin } = mount("false", "/setup");
+    const user = userEvent.setup();
+    const token = screen.getByLabelText("一次性初始化令牌");
+    fireEvent.change(token, { target: { value: "synthetic-stale-token" } });
+    fireEvent.change(screen.getByLabelText("设置管理员密码"), { target: { value: "new-admin-password" } });
+    fireEvent.change(screen.getByLabelText("再次输入密码"), { target: { value: "new-admin-password" } });
+    await user.click(screen.getByRole("button", { name: "创建管理员" }));
+    await waitFor(() => expect(token).toHaveAccessibleDescription("初始化令牌无效或已失效，请从服务器最新启动日志重新获取。"));
+    expect(token).toHaveFocus();
+    expect(token).toBeEnabled();
+    expect(token).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("设置管理员密码")).toHaveValue("new-admin-password");
+    expect(screen.queryByRole("button", { name: "错误详情" })).not.toBeInTheDocument();
+    expect(document.querySelector('meta[name="perpay-initialized"]')).toHaveAttribute("content", "false");
+
+    fireEvent.change(token, { target: { value: setupToken } });
+    expect(token).not.toHaveAttribute("aria-invalid", "true");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "创建管理员" }));
+    await screen.findByRole("heading", { name: "登录管理后台" });
+    expect(screen.queryByLabelText("一次性初始化令牌")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("管理员密码")).toHaveValue("");
+    expect(onLogin).not.toHaveBeenCalled();
+    expect(await requests[1]!.clone().json()).toEqual({ password: "new-admin-password", setup_token: setupToken });
+    expect(requests.every(request => !request.url.includes(setupToken))).toBe(true);
+    expect(JSON.stringify({ ...localStorage, ...sessionStorage })).not.toContain(setupToken);
+    fireEvent.change(screen.getByLabelText("管理员密码"), { target: { value: "new-admin-password" } });
+    await user.click(screen.getByRole("button", { name: "登录" }));
+    await waitFor(() => expect(onLogin).toHaveBeenCalledOnce());
+    expect(await requests[2]!.json()).toEqual({ password: "new-admin-password" });
+  });
 
   it.each([null, "", "__PERPAY_INITIALIZED__", "unknown"])(
     "does not infer initialization from an unknown state: %s",
@@ -125,6 +190,7 @@ describe("first-deployment authentication presentation", () => {
     );
     const { onLogin } = mount("false", "/setup");
     const user = userEvent.setup();
+    await user.type(screen.getByLabelText("一次性初始化令牌"), setupToken);
     await user.type(
       screen.getByLabelText("设置管理员密码"),
       "new-admin-password",
@@ -140,6 +206,7 @@ describe("first-deployment authentication presentation", () => {
     ).toBeVisible();
     expect(screen.getByLabelText("管理员密码")).toHaveValue("");
     expect(screen.queryByLabelText("再次输入密码")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("一次性初始化令牌")).not.toBeInTheDocument();
     expect(screen.queryByText("管理员已创建")).not.toBeInTheDocument();
     expect(
       document.querySelector('meta[name="perpay-initialized"]'),
@@ -167,6 +234,7 @@ describe("first-deployment authentication presentation", () => {
     );
     mount("false", "/login");
     const user = userEvent.setup();
+    await user.type(screen.getByLabelText("一次性初始化令牌"), setupToken);
     await user.type(
       screen.getByLabelText("设置管理员密码"),
       "new-admin-password",
@@ -183,6 +251,7 @@ describe("first-deployment authentication presentation", () => {
     expect(screen.getByLabelText("设置管理员密码")).toHaveValue(
       "new-admin-password",
     );
+    expect(screen.getByLabelText("一次性初始化令牌")).toHaveValue(setupToken);
     expect(
       document.querySelector('meta[name="perpay-initialized"]'),
     ).toHaveAttribute("content", "false");

@@ -31,6 +31,7 @@ import type { BackupHealth } from "../backup/runner.ts";
 import type { AppConfig } from "../config.ts";
 import type { AppDatabase } from "../database/database.ts";
 import { IdentityError, IdentityService, MIN_ADMIN_PASSWORD_CHARACTERS, type AuthenticatedSession } from "../identity/service.ts";
+import { SetupToken } from "../identity/setup-token.ts";
 import {
   LedgerConflictError,
   type LedgerConflict,
@@ -199,7 +200,10 @@ const newPasswordValueSchema = z.string().refine(
 );
 
 const loginSchema = z.object({ password: passwordValueSchema, remember_me: z.boolean().optional() }).strict();
-const setupSchema = z.object({ password: newPasswordValueSchema }).strict();
+const setupSchema = z.object({
+  password: newPasswordValueSchema,
+  setup_token: z.string().min(1).max(256),
+}).strict();
 const settingsRevisionSchema = z.object({ revision: z.number().int().nonnegative() }).strict();
 const emptyObjectSchema = z.object({}).strict();
 const sessionIdSchema = z.uuid();
@@ -230,6 +234,8 @@ export interface AppDependencies {
   readonly config: AppConfig;
   readonly database: AppDatabase;
   readonly identity: IdentityService;
+  /** Delivers the first-run capability to the startup log, never to an HTTP response. */
+  readonly onSetupToken?: ((token: string) => void) | undefined;
   readonly settings?: RuntimeSettingsService | undefined;
   readonly runtimeStatus?: (() => PaymentRuntimeStatus) | undefined;
   readonly orders: OrderService;
@@ -325,6 +331,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   const sites = dependencies.sites ?? dependencies.settings?.siteStore();
   if (sites && !dependencies.sites) dependencies = { ...dependencies, sites };
   const app = new Hono<AppEnvironment>();
+  const setupToken = dependencies.identity.isInitialized() ? null : new SetupToken(dependencies.onSetupToken);
   const publicCheckoutBudget = new PublicCheckoutRateLimiter();
   const manualCheckoutBudget = new PublicCheckoutRateLimiter({sourceBurst:5,sourceRequestsPerSecond:1,globalBurst:30,globalRequestsPerSecond:10});
   const collectionCodeCache = new CollectionCodeSvgCache();
@@ -570,11 +577,19 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   app.post("/api/admin/v1/setup", async (context) => {
     requireJsonContentType(context);
     requireSameOrigin(context, dependencies.config.publicOrigin);
+    if (dependencies.identity.isInitialized()) {
+      setupToken?.consume();
+      throw new HttpApiError(409, "identity_already_initialized", "管理员身份已经初始化");
+    }
     const body = await readJson(context, setupSchema, MAX_JSON_BODY_BYTES);
+    if (!setupToken?.matches(body.setup_token)) {
+      throw new HttpApiError(403, "setup_token_invalid", "初始化令牌无效或已失效，请从服务器最新启动日志重新获取。");
+    }
     await dependencies.identity.setupAdmin(
       body.password,
       identityContext(context, dependencies.config.trustedProxy),
     );
+    setupToken.consume();
     return context.body(null, 204);
   });
 
