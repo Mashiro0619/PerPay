@@ -18,6 +18,7 @@ import {
   type BackupConfig,
 } from "./config.ts";
 import { readBackupPolicy } from "./policy.ts";
+import { backupErrorDetails } from "./error-details.ts";
 import {
   BACKUP_CYCLE_TIMEOUT_MILLISECONDS,
   acquireBackupLock,
@@ -476,7 +477,7 @@ async function schedule(config: BackupConfig, operations: BackupOperations): Pro
               level: "warn",
               event: "backup_retention_recovery_failed",
               stage: error instanceof BackupCycleError ? error.stage : "unknown",
-              error_type: error instanceof Error ? error.name : "unknown_error",
+              ...backupErrorDetails(error),
             })}\n`);
           }
           reconcileBeforeDelay = false;
@@ -498,7 +499,7 @@ async function schedule(config: BackupConfig, operations: BackupOperations): Pro
           level: "error",
           event: "backup_cycle_failed",
           stage: error instanceof BackupCycleError ? error.stage : "unknown",
-          error_type: error instanceof Error ? error.name : "unknown_error",
+          ...backupErrorDetails(error),
         })}\n`);
         await waitFor(
           Math.min(activeConfig.intervalMilliseconds, RETRY_DELAY_MILLISECONDS),
@@ -1265,7 +1266,7 @@ if (entryPoint !== undefined && import.meta.url === pathToFileURL(resolve(entryP
       process.stderr.write(`${JSON.stringify({
         error: "backup_runner_failed",
         stage: error instanceof BackupCycleError ? error.stage : "startup",
-        error_type: error instanceof Error ? error.name : "unknown_error",
+        ...backupErrorDetails(error),
       })}\n`);
       process.exitCode = 1;
     },
