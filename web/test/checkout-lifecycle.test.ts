@@ -284,7 +284,7 @@ describe("checkout desktop composition", () => {
     expect(container.querySelectorAll("[data-payable-amount]")).toHaveLength(1);
     expect(container.querySelectorAll("[data-countdown]")).toHaveLength(1);
     expect(
-      summary.querySelector("[data-checkout-desktop-guide]"),
+      summary.querySelector("[data-checkout-payment-guide]"),
     ).toHaveTextContent("支付宝扫码");
   });
   it("keeps the same QR and in-flight read while resizing instead of mounting another checkout", async () => {
@@ -326,7 +326,7 @@ describe("checkout desktop composition", () => {
     expect(container.querySelector("[data-checkout-actions]")).toContainElement(
       screen.getByRole("link", { name: "返回商家" }),
     );
-    expect(container.querySelector("[data-checkout-desktop-guide]")).toBeNull();
+    expect(container.querySelector("[data-checkout-payment-guide]")).toBeNull();
     expect(container.querySelector("[data-qr-image]")).toBeNull();
     expect(container.querySelector("[data-countdown]")).toBeNull();
   });
@@ -355,7 +355,7 @@ describe("checkout desktop composition", () => {
         "false",
       );
       expect(
-        container.querySelector("[data-checkout-desktop-guide]"),
+        container.querySelector("[data-checkout-payment-guide]"),
       ).toBeNull();
       expect(container.querySelector("[data-qr-image]")).toBeNull();
       expect(container.querySelector("[data-payable-amount]")).toBeNull();
@@ -405,8 +405,9 @@ describe("checkout compact order summary", () => {
         createElement(CheckoutApp, { initial: initial({ showProductName }) }),
       );
       const summary = screen.getByRole("region", { name: "订单信息" });
-      const guide = summary.querySelector("[data-checkout-desktop-guide]")!;
-      expect(guide.tagName).toBe("P");
+      const guide = summary.querySelector("[data-checkout-payment-guide]")!;
+      expect(guide.tagName).toBe("DIV");
+      expect(guide).not.toHaveClass("hidden");
       expect(guide.closest('[data-slot="alert"]')).toBeNull();
       const actions = container.querySelector("[data-checkout-actions]");
       expect(actions).not.toHaveClass("mt-auto");
