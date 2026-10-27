@@ -103,7 +103,7 @@ export function orderSnapshot(order, origin) {
   if (order.checkout?.checkout_url) {
     const url = new URL(order.checkout.checkout_url);
     if (url.origin !== origin || url.username || url.password || url.search || url.hash || !/^\/checkout\/pct1_[A-Za-z0-9_-]{43}$/.test(url.pathname)) {
-      throw new DemoError(502, '收银台地址不是配置的 PerPay 来源，请核对 PERPAY_PUBLIC_URL。');
+      throw new DemoError(502, '收银台地址不是配置的 PerPay 来源，请核对 PERPAY_URL。');
     }
     checkoutUrl = url.href;
   }

@@ -11,7 +11,7 @@ const directory = fileURLToPath(new URL('.', import.meta.url));
 export function readConfig(env = process.env) {
   const port = Number(env.DEMO_PORT ?? '6196');
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('DEMO_PORT 必须是 1–65535 的整数。');
-  const url = perpayOrigin(env.PERPAY_URL ?? 'http://127.0.0.1:6190');
+  const url = perpayOrigin(env.PERPAY_URL ?? 'http://localhost:6190');
   const clientId = validateClientId(env.PERPAY_CLIENT_ID);
   const secret = env.PERPAY_API_SECRET ?? '';
   decodeKey(secret, 'PERPAY_API_SECRET');

@@ -81,6 +81,16 @@ describe('standalone PerPay caller demo', () => {
       assert.throws(() => readConfig({ ...env, DEMO_NOTIFY_URL: notifyUrl, PERPAY_WEBHOOK_SECRET: secret.toString('base64url') }));
     }
   });
+  it('defaults to the server localhost origin and still accepts an explicit loopback IP', () => {
+    const env = { PERPAY_CLIENT_ID: config.clientId, PERPAY_API_SECRET: secret.toString('base64url'), DEMO_NOTIFY_URL: config.notifyUrl, PERPAY_WEBHOOK_SECRET: secret.toString('base64url') };
+    const configured = readConfig(env);
+    assert.equal(configured.url, 'http://localhost:6190');
+    assert.equal(readConfig({ ...env, PERPAY_URL: origin }).url, origin);
+    const current = snapshot();
+    const checkoutUrl = 'http://localhost:6190/checkout/pct1_' + 'a'.repeat(43);
+    const order = { ...current, payment: { status: current.payment_status }, refund: { status: current.refund_status }, checkout: { checkout_url: checkoutUrl, status: 'OPEN' } };
+    assert.equal(orderSnapshot(order, configured.url).checkout_url, checkoutUrl);
+  });
   it('disables redirects and signs exactly the body passed to fetch', async () => {
     let observed;
     const client = new PerPayClient({ ...config, fetchImpl: async (url, options) => { observed = { url, options }; return Response.json({ data: { ok: true } }); } });
@@ -167,7 +177,8 @@ describe('standalone PerPay caller demo', () => {
     } finally { store.close(); if (dirname(resolve(directory)) !== resolve(tmpdir()) || !basename(directory).startsWith('perpay-demo-test-')) throw new Error('unsafe cleanup'); rmSync(directory, { recursive: true }); }
   });
   it('rejects off-origin checkout URLs', () => {
-    assert.throws(() => orderSnapshot({ checkout: { checkout_url: 'https://evil.example/checkout/pct1_' + 'a'.repeat(43) } }, origin));
+    assert.throws(() => orderSnapshot({ checkout: { checkout_url: 'https://evil.example/checkout/pct1_' + 'a'.repeat(43) } }, origin),
+      error => error instanceof DemoError && error.status === 502 && error.message.includes('PERPAY_URL') && !error.message.includes('PERPAY_PUBLIC_URL'));
   });
   it('requires local host, same origin and an anti-CSRF token for order creation', async t => {
     const { base, headers, store } = await serverFixture(t);
