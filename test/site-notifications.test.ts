@@ -1,6 +1,6 @@
 import { systemAnalytics } from "../src/http/system-analytics.ts";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { describe, it } from "node:test";
 import { LedgerStore } from "../src/ledger/store.ts";
 import { ReconciliationStore } from "../src/reconciliation/store.ts";
@@ -47,6 +47,67 @@ function networkFailure(): never {
 }
 
 describe("website notification processing", () => {
+  it("retries an initial HTTP 401 only after backoff and acknowledges the same delivery on its second attempt", async () => {
+    const f = await createSitePaymentFixture();
+    try {
+      const site = configure(f, "Retry");
+      createEvent(f, site.clientId, "https://retry.example.com/notify");
+      const webhooks = new WebhookStore(f.database);
+      const sent: { deliveryId: string; eventId: string; attempt: number }[] = [];
+      const processor = new SiteWebhookProcessor({
+        sites: f.sites, webhooks, clock: f.now,
+        transport: () => ({
+          async post(input) {
+            const deliveryId = input.headers["x-perpay-webhook-delivery-id"]!;
+            const eventId = input.headers["x-perpay-webhook-event-id"]!;
+            sent.push({ deliveryId, eventId, attempt: Number(input.headers["x-perpay-webhook-attempt"]) });
+            const body = Buffer.from(sent.length === 1 ? "receiver credentials unavailable" : JSON.stringify({
+              schema: "perpay:webhook-ack:v1", ack: true, event_id: eventId, delivery_id: deliveryId,
+            }));
+            return {
+              status: sent.length === 1 ? 401 : 200,
+              contentType: "application/json", contentEncoding: null, body,
+              responseFingerprint: createHash("sha256").update(body).digest("hex"),
+              resolvedAddressesFingerprint: "a".repeat(64), connectedAddress: "8.8.8.8",
+            };
+          },
+        }),
+      });
+
+      const first = await processor.processOne();
+      assert.equal(first.status, "RETRY_WAIT");
+      assert.equal(first.outcome, "RETRYABLE_FAILURE");
+      assert.ok(first.deliveryId);
+      assert.equal(sent.length, 1);
+      const pending = webhooks.delivery(first.deliveryId)!;
+      assert.equal(pending.delivery.attemptCount, 1);
+      assert.equal(pending.attempts[0]?.httpStatus, 401);
+      assert.ok(pending.delivery.nextAttemptAt > f.now());
+
+      f.setNow(pending.delivery.nextAttemptAt - 1);
+      assert.equal((await processor.processOne()).processed, false);
+      assert.equal(sent.length, 1);
+      assert.equal(webhooks.delivery(first.deliveryId)!.attempts.length, 1);
+
+      f.setNow(pending.delivery.nextAttemptAt);
+      const retried = await processor.processOne();
+      assert.equal(retried.status, "ACKNOWLEDGED");
+      assert.equal(retried.outcome, "ACKNOWLEDGED");
+      assert.equal(retried.deliveryId, first.deliveryId);
+      assert.deepEqual(sent, [
+        { deliveryId: first.deliveryId, eventId: pending.event.eventId, attempt: 1 },
+        { deliveryId: first.deliveryId, eventId: pending.event.eventId, attempt: 2 },
+      ]);
+      const completed = webhooks.delivery(first.deliveryId)!;
+      assert.equal(completed.delivery.attemptCount, 2);
+      assert.equal(completed.delivery.acknowledgedAt, f.now());
+      assert.deepEqual(completed.attempts.map(attempt => [attempt.attemptNumber, attempt.httpStatus, attempt.outcome]), [
+        [1, 401, "RETRYABLE_FAILURE"], [2, 200, "ACKNOWLEDGED"],
+      ]);
+      assert.equal(f.database.read(countSiteDomainViolations), 0);
+    } finally { f.close(); }
+  });
+
   it("rejects a cross-site signing reference at insertion and detects it if update protections were bypassed", async () => {
     const f = await createSitePaymentFixture();
     try {

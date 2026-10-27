@@ -529,7 +529,7 @@ function requestPinnedAddresses(input: {
         finishError(new WebhookTransportError({
           code: certificate ? "tls_verification_failed" : "transport_network",
           message: certificate ? "通知 TLS 证书校验失败" : "通知连接失败",
-          retryable: !certificate,
+          retryable: true,
           resolvedAddressesFingerprint: input.addressesFingerprint,
           cause,
         }));

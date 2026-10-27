@@ -5149,6 +5149,14 @@ webhooks:
         A delivery is acknowledged only by HTTP 200, an absent or `identity` Content-Encoding,
         `application/json` optionally followed by `charset=utf-8`, and the exact strict ACK object
         below. Redirects are not followed and any additional ACK field is rejected.
+
+        Network and TLS certificate errors, HTTP 201-204, all 3xx, 401, 403, 404, 408,
+        409, 419, 422, 425, 429 and 5xx are retried using the configured backoff and attempt
+        limit. Invalid HTTP 200 ACKs are also retried, except unsupported Content-Encoding.
+        Certificate verification remains strict on every retry. HTTP 410 means the recipient
+        explicitly refuses delivery and is not retried. Origin or address policy violations,
+        including `target_address_forbidden` and `webhook_target_not_allowed`, remain permanent
+        failures. Exhausted retries enter dead letter; retry does not guarantee delivery.
       security:
         - WebhookSignature: []
       parameters:

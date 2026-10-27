@@ -132,6 +132,36 @@ describe("webhook outbound transport", () => {
     assert.match(result.resolvedAddressesFingerprint, /^[0-9a-f]{64}$/);
   });
 
+  for (const [code, transportCode] of [
+    ["CERT_HAS_EXPIRED", "tls_verification_failed"],
+    ["DEPTH_ZERO_SELF_SIGNED_CERT", "tls_verification_failed"],
+    ["UNABLE_TO_VERIFY_LEAF_SIGNATURE", "tls_verification_failed"],
+    ["ERR_TLS_CERT_ALTNAME_INVALID", "tls_verification_failed"],
+    ["ERR_TLS_CERT_ALTNAME_FORMAT", "tls_verification_failed"],
+    ["SELF_SIGNED_CERT_IN_CHAIN", "transport_network"],
+    ["CERT_NOT_YET_VALID", "transport_network"],
+  ] as const) {
+    it(`keeps strict TLS enabled and permits retry after ${code}`, async () => {
+      const harness = createHarness();
+      const cause = Object.assign(new Error("synthetic TLS certificate failure"), { code });
+      const rejection = assert.rejects(harness.transport.post(postInput()), (error: unknown) => {
+        assert.ok(error instanceof WebhookTransportError);
+        assert.equal(error.code, transportCode);
+        assert.equal(error.retryable, true);
+        assert.equal(error.cause, cause);
+        assert.match(error.resolvedAddressesFingerprint ?? "", /^[0-9a-f]{64}$/);
+        return true;
+      });
+      await harness.created;
+      assert.equal(harness.options?.rejectUnauthorized, true);
+      assert.equal(harness.options?.minVersion, "TLSv1.2");
+      assert.equal(harness.options?.servername, "hooks.example.test");
+      harness.client.emit("error", cause);
+      await rejection;
+      assert.equal(harness.client.destroyErrors.length, 1);
+    });
+  }
+
   it("does not allow extension headers to replace transport headers", async () => {
     for (const name of ["host", "Host", "content-length", "Connection", "transfer-encoding"]) {
       const harness = createHarness();

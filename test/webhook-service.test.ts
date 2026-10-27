@@ -175,13 +175,13 @@ describe("WebhookDeliveryService", () => {
         outcome: "PERMANENT_FAILURE",
         code: "ack_content_encoding_invalid",
       },
-      ...[408, 425, 429, 500, 503].map((status) => ({
+      ...[201, 202, 203, 204, 300, 301, 302, 303, 304, 307, 308, 399, 401, 403, 404, 408, 409, 419, 422, 425, 429, 500, 503].map((status) => ({
         name: `retryable HTTP ${status}`,
         response: response({ status, body: Buffer.alloc(0) }),
         outcome: "RETRYABLE_FAILURE" as const,
         code: "http_status_not_ack",
       })),
-      ...[400, 401, 403, 404, 422].map((status) => ({
+      ...[205, 206, 299, 400, 402, 405, 410, 415, 451].map((status) => ({
         name: `permanent HTTP ${status}`,
         response: response({ status, body: Buffer.alloc(0) }),
         outcome: "PERMANENT_FAILURE" as const,

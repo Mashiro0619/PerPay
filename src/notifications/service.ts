@@ -207,7 +207,8 @@ function isUncertainTransportOutcome(code: WebhookTransportErrorCode): boolean {
 }
 
 function isRetryableAckFailure(status: number, code: string): boolean {
-  if (status === 408 || status === 425 || status === 429 || status >= 500) return true;
+  if ((status >= 201 && status <= 204) || (status >= 300 && status < 400) || status >= 500) return true;
+  if ([401, 403, 404, 408, 409, 419, 422, 425, 429].includes(status)) return true;
   return status === 200 && code !== "ack_content_encoding_invalid";
 }
 
