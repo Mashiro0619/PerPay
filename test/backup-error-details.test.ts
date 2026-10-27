@@ -92,6 +92,14 @@ describe("safe backup failure details", () => {
     assert.match(backupErrorDetails(new Error("usage: backup-runner <run-once|restore>")).message, /command|arguments/i);
   });
 
+  it("preserves local restore parameter validation instructions", () => {
+    for (const message of [
+      "expected backup SHA-256 must be 64 lowercase hexadecimal characters",
+      "backup name is invalid",
+      "operational backup name is invalid",
+    ]) assert.equal(backupErrorDetails(new TypeError(message)).message, message);
+  });
+
   it("never returns arbitrary messages, names, codes, credentials or upstream payloads", () => {
     for (const message of [syntheticKey, syntheticPem, syntheticResponse, "https://synthetic-user:synthetic-password@upstream.example/raw"]) {
       const error = Object.assign(new Error(message), { name: message, code: message, request: { body: message } });

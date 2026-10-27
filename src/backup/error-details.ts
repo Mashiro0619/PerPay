@@ -9,6 +9,9 @@ export interface BackupErrorDetails {
 const UNKNOWN_MESSAGE = "Backup operation failed; inspect the reported stage and local service configuration.";
 const ISOLATION_REQUIRED = "application database is unreadable; explicit isolation is required after stopping all writers";
 const SAFE_MESSAGES = new Set([
+  "expected backup SHA-256 must be 64 lowercase hexadecimal characters",
+  "backup name is invalid",
+  "operational backup name is invalid",
   "backup SHA-256 does not match the expected value",
   "operational backup SHA-256 does not match the expected value",
   "backup artifact SHA-256 does not match the expected value",
