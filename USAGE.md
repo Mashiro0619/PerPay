@@ -6,6 +6,8 @@
 
 首次接入可先阅读[快速接入指南](docs/integration-quickstart.md)，按签名、下单、跳转、收通知、验签和履约的顺序完成接入。
 
+排查调用问题时参阅[签名测试向量](docs/signature-vectors.md)和[业务错误码与重试建议](docs/integration-errors.md)。
+
 ## 收款方式与适用范围
 
 PerPay 不用在手机上运行监听软件，服务器需持续运行。收款需要支付宝经营码和具备账务明细查询权限的开放平台应用，具体开通条件以支付宝为准。

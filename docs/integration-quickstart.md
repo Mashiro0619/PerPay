@@ -68,6 +68,8 @@ const client = new PerPayClient({
 
 超时或响应丢失时，先用 `client.getByMerchantNo("SHOP-1001")` 查询；也可用已取得的 `order_id` 调用 `client.getOrder(orderId)`。重试下单保持原单号、幂等键和参数，每次重新签名，不能把未知结果当成失败直接换单。业务侧按错误及 `Retry-After` 退避，设定最大等待时间。
 
+具体响应分类见[业务错误码与重试建议](integration-errors.md)。
+
 确认旧单收银台已关闭或过期且仍未付款后，新付款尝试使用新商户订单号和新幂等键。保留旧单及原参数，继续处理旧单后续的合法通知；收银台过期不等于可以忽略迟到的收款确认。
 
 ## 3. 跳转收银台
