@@ -4,23 +4,21 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import type { SQLInputValue } from "node:sqlite";
 import { withHttpFixture, login } from "../test/reconciliation-http-fixture.ts";
+import { configureTestSiteNotifications } from "../test/site-notification-fixture.ts";
 
 // All records live in the fixture's temporary database. No provider/notification workers run.
 const count = Number(process.argv[2] ?? 10000);
 if (!Number.isInteger(count) || count < 100 || count > 20000)
   throw new Error("count must be between 100 and 20000");
 await withHttpFixture(async (f) => {
-  const secret = Buffer.alloc(32, 91).toString("base64url");
-  f.services.settingsStore.saveWebhook(
+  const site = configureTestSiteNotifications(f.services.sites, "default",
     {
-      revision: f.services.settings.snapshot().revision,
       enabled: true,
       allowed_origin: "https://bench.example.test",
       timeout_milliseconds: 5000,
       maximum_attempts: 3,
       retry_base_seconds: 10,
       retry_maximum_seconds: 60,
-      secret,
     },
     {
       actorId: "admin",
@@ -28,11 +26,6 @@ await withHttpFixture(async (f) => {
       remoteAddressHash: "0".repeat(64),
     },
   );
-  f.webhooks.syncSigningKey({
-    secretFingerprint:
-      f.services.settings.snapshot().webhook.signingKeyFingerprint!,
-    now: Date.now(),
-  });
   const seed = performance.now();
   const template = f.createSettlement(
     "bench-template",
@@ -43,6 +36,8 @@ await withHttpFixture(async (f) => {
   const reminderBenchmark = process.argv[3] === "work-items";
   if (reminderBenchmark) {
     const claim = f.webhooks.claimNext({
+      clientId: site.clientId,
+      siteRevision: site.revision,
       now: Date.now(),
       leaseMilliseconds: 30000,
       maximumAttempts: 3,
