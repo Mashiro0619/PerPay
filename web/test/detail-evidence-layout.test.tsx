@@ -106,7 +106,7 @@ function mountConflict(existing: boolean) {
   );
 }
 describe("always-visible detail evidence", () => {
-  it("shows all attempts newest-first in pages of ten without changing source evidence", async () => {
+  it("shows all attempts newest-first in pages of ten without toSorted or changing source evidence", async () => {
     const attempts: WebhookAttempt[] = Array.from({ length: 21 }, (_, i) => ({
       ...failedAttempt,
       attempt_id: String(i + 1),
@@ -114,34 +114,42 @@ describe("always-visible detail evidence", () => {
       started_at: new Date(Date.parse(time) + i * 1000).toISOString(),
     }));
     const original = structuredClone(attempts);
-    const user = userEvent.setup();
-    render(<DeliveryAttempts attempts={attempts} available />);
-    const table = screen.getByRole("table", { name: "投递尝试（21）" });
-    expect(within(table).getAllByRole("row")).toHaveLength(11);
-    expect(within(table).getAllByRole("row")[1]).toHaveTextContent("第 21 次");
-    expect(
-      screen.queryByRole("button", { name: "投递尝试（21）" }),
-    ).not.toBeInTheDocument();
-    const seen: number[] = [];
-    for (let page = 1; page <= 3; page++) {
-      seen.push(
-        ...within(table)
-          .getAllByRole("row")
-          .slice(1)
-          .map((row) => Number(/第 (\d+) 次/.exec(row.textContent!)![1])),
-      );
-      if (page < 3)
-        await user.click(
-          screen.getByRole("button", { name: "投递尝试下一页" }),
+    for (const attempt of attempts) Object.freeze(attempt);
+    Object.freeze(attempts);
+    const toSorted = Object.getOwnPropertyDescriptor(Array.prototype, "toSorted");
+    Reflect.deleteProperty(Array.prototype, "toSorted");
+    try {
+      const user = userEvent.setup();
+      render(<DeliveryAttempts attempts={attempts} available />);
+      const table = screen.getByRole("table", { name: "投递尝试（21）" });
+      expect(within(table).getAllByRole("row")).toHaveLength(11);
+      expect(within(table).getAllByRole("row")[1]).toHaveTextContent("第 21 次");
+      expect(
+        screen.queryByRole("button", { name: "投递尝试（21）" }),
+      ).not.toBeInTheDocument();
+      const seen: number[] = [];
+      for (let page = 1; page <= 3; page++) {
+        seen.push(
+          ...within(table)
+            .getAllByRole("row")
+            .slice(1)
+            .map((row) => Number(/第 (\d+) 次/.exec(row.textContent!)![1])),
         );
+        if (page < 3)
+          await user.click(
+            screen.getByRole("button", { name: "投递尝试下一页" }),
+          );
+      }
+      expect(seen).toEqual(Array.from({ length: 21 }, (_, i) => 21 - i));
+      expect(
+        screen.getByRole("button", { name: "投递尝试下一页" }),
+      ).toBeDisabled();
+      expect(attempts).toEqual(original);
+      await user.click(screen.getByRole("button", { name: "投递尝试上一页" }));
+      expect(screen.getByRole("status")).toHaveTextContent("第 2 / 3 页");
+    } finally {
+      if (toSorted) Object.defineProperty(Array.prototype, "toSorted", toSorted);
     }
-    expect(seen).toEqual(Array.from({ length: 21 }, (_, i) => 21 - i));
-    expect(
-      screen.getByRole("button", { name: "投递尝试下一页" }),
-    ).toBeDisabled();
-    expect(attempts).toEqual(original);
-    await user.click(screen.getByRole("button", { name: "投递尝试上一页" }));
-    expect(screen.getByRole("status")).toHaveTextContent("第 2 / 3 页");
   });
   it("orders equal attempt times deterministically and clamps a shortened read", async () => {
     const attempts = Array.from({ length: 12 }, (_, i) => ({

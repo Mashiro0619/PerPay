@@ -26,7 +26,7 @@ export function dailyWeekday(date: string): string {
 }
 
 export function buildDailyReport(analytics: SystemAnalytics): DailyReport {
-  const days = analytics.daily.toSorted((a, b) => b.date.localeCompare(a.date));
+  const days = [...analytics.daily].sort((a, b) => b.date.localeCompare(a.date));
   // The response includes its current Beijing day and ends at the next midnight.
   const today = new Date(
     Date.parse(analytics.to) - 1 + BEIJING_OFFSET_MILLISECONDS,

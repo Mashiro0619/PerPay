@@ -111,7 +111,7 @@ describe("daily report calendar and comparisons", () => {
     expect(empty).toMatchObject({ days: [], maximum: 0, averageCents: null, peak: null });
   });
 
-  it("sorts shuffled dates without mutating the response or its day records", () => {
+  it("sorts shuffled dates without toSorted or mutations to the response and its day records", () => {
     const input = analytics([
       day("2026-10-10", 10), day("2026-10-12", 30), day("2026-10-11", 20),
     ], "2026-10-12T16:00:00Z");
@@ -120,9 +120,16 @@ describe("daily report calendar and comparisons", () => {
     Object.freeze(input.daily);
     Object.freeze(input);
 
-    const report = buildDailyReport(input);
-    expect(input).toEqual(before);
-    expect(report.days.map((value) => value.date)).toEqual(["2026-10-12", "2026-10-11", "2026-10-10"]);
+    const toSorted = Object.getOwnPropertyDescriptor(Array.prototype, "toSorted");
+    Reflect.deleteProperty(Array.prototype, "toSorted");
+    try {
+      const report = buildDailyReport(input);
+      expect(input).toEqual(before);
+      expect(report.days.map((value) => value.date)).toEqual(["2026-10-12", "2026-10-11", "2026-10-10"]);
+      expect(report.days).not.toBe(input.daily);
+    } finally {
+      if (toSorted) Object.defineProperty(Array.prototype, "toSorted", toSorted);
+    }
   });
 
   it("formats short calendar dates and Chinese weekdays without local time conversion", () => {

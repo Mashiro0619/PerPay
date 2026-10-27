@@ -38,7 +38,7 @@ export function DeliveryAttempts({
   const titleId = useId();
   const { ref, isSummary } = useListSize<HTMLElement>();
   const [requestedPage, setPage] = useState(1);
-  const ordered = attempts.toSorted(
+  const ordered = [...attempts].sort(
     (a, b) =>
       Date.parse(b.started_at) - Date.parse(a.started_at) ||
       b.attempt_number - a.attempt_number ||
