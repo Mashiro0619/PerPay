@@ -323,6 +323,13 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
                   >
                     {checkoutMoney(cents)}
                   </strong>
+                  {canPay && (
+                    <CopyValue
+                      value={(cents / 100).toFixed(2)}
+                      label="复制应付金额"
+                      buttonOnly
+                    />
+                  )}
                 </div>
                 {canPay && (
                   <>

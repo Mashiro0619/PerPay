@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CheckoutApp } from "../src/checkout/CheckoutApp";
 import type { CheckoutInitial } from "../../src/shared/checkout-view";
@@ -40,5 +40,31 @@ describe("checkout payment guidance", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
     expect(screen.queryByText(/请输入准确金额/)).not.toBeInTheDocument();
     expect(screen.queryByText(/付款后会自动查账确认/)).not.toBeInTheDocument();
+  });
+});
+
+describe("checkout payable amount copy", () => {
+  it.each([[1001, "10.01", "10.01"], [1099, "10.99", "10.99"], [123456789, "1234567.89", "1,234,567.89"]])("copies exact payable cents %i as %s without currency markup", async (cents, expected, displayed) => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText }, onLine: true });
+    render(<CheckoutApp initial={initial(cents)} />);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "复制应付金额" })); });
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(expected);
+    expect(screen.getByText("已复制")).toBeInTheDocument();
+    expect(document.querySelector('[data-checkout-amount]')).toHaveTextContent("¥" + displayed);
+    expect(document.querySelectorAll('[data-payable-amount]')).toHaveLength(1);
+  });
+  it("keeps the amount readable when clipboard permission is denied", async () => {
+    vi.stubGlobal("navigator", { clipboard: { writeText: vi.fn().mockRejectedValue(new Error("denied")) }, onLine: true });
+    render(<CheckoutApp initial={initial()} />);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "复制应付金额" })); });
+    expect(screen.getByText("复制失败，请选中文本手动复制。")).toBeVisible();
+    expect(document.querySelector('[data-payable-amount]')).toHaveTextContent("¥10.01");
+  });
+  it("does not offer a stale payable amount after the payment deadline", async () => {
+    render(<CheckoutApp initial={initial()} />);
+    expect(screen.getByRole("button", { name: "复制应付金额" })).toBeVisible();
+    await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
+    expect(screen.queryByRole("button", { name: "复制应付金额" })).not.toBeInTheDocument();
   });
 });

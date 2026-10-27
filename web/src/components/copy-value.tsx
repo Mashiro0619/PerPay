@@ -8,11 +8,13 @@ export function CopyValue({
   label,
   secret = false,
   tooltip = false,
+  buttonOnly = false,
 }: {
   value: string;
   label?: string;
   secret?: boolean;
   tooltip?: boolean;
+  buttonOnly?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -52,7 +54,7 @@ export function CopyValue({
   ) : button;
   return (
     <div className="relative flex min-w-0 flex-wrap items-center gap-1">
-      {block ? (
+      {buttonOnly ? action : block ? (
         <div className="flex w-full flex-col gap-2">
           <div className="flex justify-end">{action}</div>
           <Textarea

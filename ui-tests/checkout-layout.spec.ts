@@ -46,3 +46,15 @@ test("checkout keeps one query before order information on phones and scales the
   await page.getByRole("button", { name: "保存二维码" }).click();
   expect((await download).suggestedFilename()).toMatch(/\.png$/);
 });
+
+test("checkout copies the exact payable amount on phone and desktop", async ({ page, manifest }) => {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: manifest.origin });
+  for (const width of [320, 1024]) {
+    await page.setViewportSize({ width, height: 720 });
+    await page.goto(manifest.origin + manifest.checkouts.open!);
+    const amount = (await page.locator("[data-payable-amount]").innerText()).replace(/[¥,]/g, "");
+    await page.getByRole("button", { name: "复制应付金额", exact: true }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(amount);
+    await expect(page.getByText("已复制", { exact: true })).toHaveCount(1);
+  }
+});
