@@ -292,6 +292,118 @@ describe("database migration backup maintenance", () => {
     }
   });
 
+  it("keeps the starting online backup snapshot while every copy step writes", () => {
+    const directory = temporaryDirectory();
+    // node:sqlite's ESM backup binding is not updated by syncBuiltinESMExports.
+    // Install the wrapper before the child's first application module import.
+    const script = join(directory, "online-backup-snapshot.mjs");
+    fs.writeFileSync(script,
+      String.raw`
+        import assert from "node:assert/strict";
+        import { createRequire, syncBuiltinESMExports } from "node:module";
+        import { join } from "node:path";
+
+        const sqlite = createRequire(import.meta.url)("node:sqlite");
+        const { DatabaseSync, backup: originalBackup } = sqlite;
+        let database;
+        let writer;
+        let active = false;
+        let hookCalls = 0;
+        let progressCalls = 0;
+        let maximumSteps = 0;
+        const hookedBackup = (source, target, options) => {
+          if (!active) return originalBackup(source, target, options);
+          hookCalls += 1;
+          assert.equal(options?.rate, 100);
+          return originalBackup(source, target, {
+            ...options,
+            progress(progress) {
+              progressCalls += 1;
+              writer.prepare(
+                "INSERT INTO system_metadata(key, value, updated_at) VALUES (?, 'after-snapshot', '2026-10-27T00:00:00.000Z')",
+              ).run("online_backup_step_" + progressCalls);
+              assert.ok(
+                progressCalls <= maximumSteps,
+                "online backup exceeded its fixed step budget",
+              );
+              options?.progress?.(progress);
+            },
+          });
+        };
+        assert.equal(Reflect.set(sqlite, "backup", hookedBackup), true);
+        try {
+          const { AppDatabase } = await import(process.argv[2]);
+          const { createOperationalBackup } = await import(process.argv[3]);
+          const databasePath = join(process.argv[4], "perpay.sqlite3");
+          database = await AppDatabase.open(databasePath);
+          database.write((connection) => {
+            const insert = connection.prepare(
+              "INSERT INTO system_metadata(key, value, updated_at) VALUES (?, ?, '2026-10-27T00:00:00.000Z')",
+            );
+            const payload = "x".repeat(64 * 1024);
+            for (let row = 0; row < 24; row += 1) {
+              insert.run("online_backup_seed_" + row, payload);
+            }
+          });
+          writer = new DatabaseSync(databasePath);
+          const initialRows = writer.prepare("SELECT count(*) AS count FROM system_metadata").get().count;
+          const pages = writer.prepare("PRAGMA page_count").get().page_count;
+          maximumSteps = Math.ceil(pages / 100) + 2;
+          active = true;
+          const backup = await createOperationalBackup({ dataDirectory: process.argv[4] });
+          active = false;
+          const copy = new DatabaseSync(join(process.argv[4], backup.name), { readOnly: true });
+          try {
+            console.log(JSON.stringify({
+              hookCalls,
+              progressCalls,
+              maximumSteps,
+              initialRows,
+              copiedRows: copy.prepare("SELECT count(*) AS count FROM system_metadata").get().count,
+              sourceRows: writer.prepare("SELECT count(*) AS count FROM system_metadata").get().count,
+              integrity: copy.prepare("PRAGMA integrity_check").get().integrity_check,
+            }));
+          } finally {
+            copy.close();
+          }
+        } finally {
+          active = false;
+          assert.equal(Reflect.set(sqlite, "backup", originalBackup), true);
+          syncBuiltinESMExports();
+          try {
+            writer?.close();
+          } finally {
+            database?.close();
+          }
+        }
+      `);
+    const result = spawnSync(process.execPath, [
+      "--experimental-strip-types",
+      script,
+      new URL("../src/database/database.ts", import.meta.url).href,
+      new URL("../src/database/maintenance.ts", import.meta.url).href,
+      directory,
+    ], { encoding: "utf8", windowsHide: true, timeout: 30_000 });
+
+    assert.equal(result.status, 0, result.error?.message ?? result.stderr);
+    const outcome = JSON.parse(result.stdout) as {
+      hookCalls: number;
+      progressCalls: number;
+      maximumSteps: number;
+      initialRows: number;
+      copiedRows: number;
+      sourceRows: number;
+      integrity: string;
+    };
+    assert.equal(outcome.hookCalls, 1);
+    assert.ok(outcome.progressCalls > 1);
+    assert.ok(outcome.progressCalls <= outcome.maximumSteps);
+    assert.equal(outcome.copiedRows, outcome.initialRows);
+    assert.equal(outcome.sourceRows, outcome.initialRows + outcome.progressCalls);
+    assert.equal(outcome.integrity, "ok");
+  });
+
+
   it("rejects and removes an unpublished online backup if restore replaces the database", async () => {
     const directory = temporaryDirectory();
     const databasePath = join(directory, "perpay.sqlite3");

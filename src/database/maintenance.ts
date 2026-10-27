@@ -504,8 +504,14 @@ export async function createOperationalBackup(
       defensive: true,
     });
     let databaseClosed = false;
+    let snapshotActive = false;
     let targetPublished = false;
     try {
+    // A pinned WAL read snapshot prevents other connections' writes from
+    // restarting the online backup at each copy step.
+    database.exec("BEGIN");
+    snapshotActive = true;
+    database.prepare("SELECT 1 FROM sqlite_schema LIMIT 1").get();
     const backup = await createVerifiedDatabaseBackup(
       database,
       source,
@@ -513,6 +519,8 @@ export async function createOperationalBackup(
       options.signal,
     );
     options.signal?.throwIfAborted();
+    database.exec("COMMIT");
+    snapshotActive = false;
     database.close();
     databaseClosed = true;
     const stagingIdentity = inspectOrdinaryFile(staging, "operational backup staging file");
@@ -554,10 +562,14 @@ export async function createOperationalBackup(
       lock?.release();
     }
     } catch (error) {
-      removeSqliteArtifacts(staging);
-      if (targetPublished) {
-        removeSqliteArtifacts(target);
-        syncDirectory(backupDirectory);
+      try {
+        if (snapshotActive) database.exec("ROLLBACK");
+      } finally {
+        removeSqliteArtifacts(staging);
+        if (targetPublished) {
+          removeSqliteArtifacts(target);
+          syncDirectory(backupDirectory);
+        }
       }
       throw error;
     } finally {
