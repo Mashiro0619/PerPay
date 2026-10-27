@@ -185,7 +185,8 @@ export function SitePolicyFields({
           open={advanced}
           onOpenChange={setAdvanced}
           onInvalidCapture={(event) => {
-            const target = event.target as HTMLElement;
+            const target = event.target as HTMLInputElement;
+            if (!isFirstInvalidControl(target)) return;
             setAdvanced(true);
             requestAnimationFrame(() => target.focus());
           }}
@@ -287,17 +288,19 @@ function NumberField({
 }) {
   const errorId = useId(),
     inputId = errorId + "-input";
+  const [requiredChecked, setRequiredChecked] = useState(false);
+  const fieldError = error || (requiredChecked && !Number.isFinite(value) ? `请输入${label}。` : undefined);
   return (
-    <Field data-invalid={!!error}>
+    <Field data-invalid={!!fieldError}>
       <FieldLabel htmlFor={inputId}>{label}</FieldLabel>
       <Input
         id={inputId}
         aria-describedby={
-          [hint && errorId + "-hint", error && errorId]
+          [hint && errorId + "-hint", fieldError && errorId]
             .filter(Boolean)
             .join(" ") || undefined
         }
-        aria-invalid={!!error}
+        aria-invalid={!!fieldError}
         aria-label={label}
         required
         type="number"
@@ -305,6 +308,12 @@ function NumberField({
         max={max}
         step={1}
         value={Number.isFinite(value) ? value : ""}
+        onInvalid={(event) => {
+          if (!event.currentTarget.validity.valueMissing) return;
+          event.preventDefault();
+          setRequiredChecked(true);
+          if (isFirstInvalidControl(event.currentTarget)) event.currentTarget.focus();
+        }}
         onChange={(e) =>
           onChange(e.target.value === "" ? Number.NaN : Number(e.target.value))
         }
@@ -312,7 +321,7 @@ function NumberField({
       {hint && (
         <FieldDescription id={errorId + "-hint"}>{hint}</FieldDescription>
       )}
-      {error && <FieldError id={errorId}>{error}</FieldError>}
+      {fieldError && <FieldError id={errorId}>{fieldError}</FieldError>}
     </Field>
   );
 }
@@ -338,25 +347,40 @@ export function SiteTextField({
 }) {
   const id = useId(),
     errorId = id + "-error";
+  const [requiredChecked, setRequiredChecked] = useState(false);
+  const missingRequired = !!required && value.trim().length === 0;
+  const fieldError = error || (requiredChecked && missingRequired ? `请输入${label}。` : undefined);
   return (
     <Field
       className={type === "text" ? "max-w-md" : undefined}
-      data-invalid={!!error}
+      data-invalid={!!fieldError}
     >
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <Input
         id={id}
         aria-label={label}
-        aria-invalid={!!error}
-        aria-describedby={error ? errorId : undefined}
+        aria-invalid={!!fieldError}
+        aria-describedby={fieldError ? errorId : undefined}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         type={type}
         required={required}
+        pattern={required ? ".*\\S.*" : undefined}
+        onInvalid={(event) => {
+          if (!missingRequired) return;
+          event.preventDefault();
+          setRequiredChecked(true);
+          if (isFirstInvalidControl(event.currentTarget)) event.currentTarget.focus();
+        }}
         maxLength={maxLength}
         placeholder={placeholder}
       />
-      {error && <FieldError id={errorId}>{error}</FieldError>}
+      {fieldError && <FieldError id={errorId}>{fieldError}</FieldError>}
     </Field>
   );
+}
+
+function isFirstInvalidControl(input: HTMLInputElement): boolean {
+  const first = input.form?.querySelector("input:invalid, select:invalid, textarea:invalid");
+  return !first || first === input;
 }

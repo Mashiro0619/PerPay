@@ -93,6 +93,78 @@ function mount(path = "/sites/site_test/settings/basic", failSave = false, field
 afterEach(() => onlineManager.setOnline(true));
 
 describe("business website management", () => {
+  it("rejects a whitespace-only name before sending a website update", async () => {
+    const view = mount(), user = userEvent.setup();
+    const input = await screen.findByLabelText("业务网站名称");
+    fireEvent.change(input, { target: { value: "   " } });
+    await user.click(screen.getByRole("button", { name: "保存业务网站" }));
+    expect(view.writes).toHaveLength(0);
+    expect(input).toHaveAccessibleDescription("请输入业务网站名称。");
+  });
+
+  it.each([
+    { path: "/sites/new", label: "业务网站名称", button: "创建业务网站" },
+    { path: "/sites/site_test/settings/basic", label: "业务网站名称", button: "保存业务网站" },
+    { path: "/sites/site_test/settings/display", label: "收银台名称", button: "保存业务网站" },
+    { path: "/sites/defaults", label: "收银台名称", button: "保存默认模板", tab: "收银台展示" },
+  ])("uses custom required feedback for empty and whitespace-only $label at $path", async ({ path, label, button, tab }) => {
+    const view = mount(path), user = userEvent.setup();
+    if (tab) await user.click(await screen.findByRole("tab", { name: tab }));
+    const input = await screen.findByLabelText(label);
+    const invalidEvents: Event[] = [];
+    input.addEventListener("invalid", event => invalidEvents.push(event));
+    for (const value of ["", "   ", "\u3000"]) {
+      fireEvent.change(input, { target: { value } });
+      await user.click(screen.getByRole("button", { name: button }));
+      expect(await screen.findByText(`请输入${label}。`)).toBeVisible();
+      expect(input).toHaveAttribute("aria-invalid", "true");
+      expect(input).toHaveAccessibleDescription(`请输入${label}。`);
+      expect(input.closest('[data-slot="field"]')).toHaveAttribute("data-invalid", "true");
+      expect(input).toHaveFocus();
+      expect(invalidEvents.length).toBeGreaterThan(0);
+      expect(invalidEvents[invalidEvents.length - 1]!.defaultPrevented).toBe(true);
+      expect(view.writes).toHaveLength(0);
+      fireEvent.change(input, { target: { value: "有效名称" } });
+      expect(input).not.toHaveAttribute("aria-invalid", "true");
+      expect(input).not.toHaveAttribute("aria-describedby");
+      expect(input).toBeValid();
+      expect(screen.queryByText(`请输入${label}。`)).not.toBeInTheDocument();
+    }
+  });
+
+  it.each(["/sites/site_test/settings/orders", "/sites/defaults"])("focuses the first missing policy number and exposes both custom errors at %s", async path => {
+    const view = mount(path), user = userEvent.setup();
+    const first = await screen.findByLabelText("收银台有效期（秒）");
+    const second = screen.getByLabelText("最大加价金额（分）");
+    fireEvent.change(first, { target: { value: "" } });
+    fireEvent.change(second, { target: { value: "" } });
+    await user.click(screen.getByRole("button", { name: path.endsWith("defaults") ? "保存默认模板" : "保存业务网站" }));
+    expect(await screen.findByText("请输入收银台有效期（秒）。")).toBeVisible();
+    expect(second).toHaveAccessibleDescription("请输入最大加价金额（分）。");
+    expect(first).toHaveFocus();
+    expect(first).toHaveAttribute("aria-invalid", "true");
+    expect(second).toHaveAttribute("aria-invalid", "true");
+    expect(view.writes).toHaveLength(0);
+    fireEvent.change(first, { target: { value: "300" } });
+    fireEvent.change(second, { target: { value: "99" } });
+    expect(first).not.toHaveAttribute("aria-invalid", "true");
+    expect(second).not.toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("reopens advanced notification settings for a missing required number", async () => {
+    const view = mount("/sites/site_test/settings/integration"), user = userEvent.setup();
+    const advanced = await screen.findByRole("button", { name: "高级设置" });
+    await user.click(advanced);
+    const attempts = screen.getByLabelText("最多发送次数");
+    fireEvent.change(attempts, { target: { value: "" } });
+    await user.click(advanced);
+    await user.click(screen.getByRole("button", { name: "保存业务网站" }));
+    expect(await screen.findByText("请输入最多发送次数。")).toBeVisible();
+    await waitFor(() => expect(attempts).toHaveFocus());
+    expect(attempts).toHaveAccessibleDescription("请输入最多发送次数。");
+    expect(view.writes).toHaveLength(0);
+  });
+
   it("explains notification and return prefix changes separately before saving", async () => {
     const view = mount("/sites/site_test/settings/integration");
     const user = userEvent.setup();
