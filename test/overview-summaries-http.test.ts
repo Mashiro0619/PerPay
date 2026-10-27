@@ -73,7 +73,13 @@ it("projects overview summaries through authenticated global and website HTTP ro
       fixture.setNow(fixture.now() + 2);
       return { order, delivery };
     };
-    const unlinked = reconciliation.reconcileEntry(credit(90_000).ledgerEntryId);
+    // Simulate wall-clock progress under full-suite load without advancing the fixture clock.
+    // This SQL function belongs only to this connection and is removed when the fixture closes.
+    const physicalNow = fixture.now() + 15_000;
+    fixture.database.read((connection) => {
+      connection.function("unixepoch", (_modifier) => physicalNow / 1000);
+    });
+    const unlinked = reconciliation.reconcileEntry(credit(90_000).ledgerEntryId, fixture.now() + 2_001);
     assert.equal(unlinked.kind, "unmatched");
     if (unlinked.kind !== "unmatched") throw new Error("Expected an unallocated financial reminder");
     fixture.setNow(fixture.now() + 2_002);
