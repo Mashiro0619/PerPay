@@ -58,7 +58,15 @@ describe("administrator frontend delivery", () => {
     const services = await createConfiguredHttpServices({ directory, apiSecret, collectionCodePayload: "https://qr.alipay.com/frontend-test" });
     try {
       const app = createApp({ ...services, startedAt: new Date() });
-      for (const path of ["/admin", "/admin/", "/admin/orders", "/admin/settings/security"]) {
+      for (const [path, target] of [["/admin", "/admin/"], ["/admin?view=orders&name=a%20b", "/admin/?view=orders&name=a%20b"]]) {
+        for (const method of ["GET", "HEAD"]) {
+          const redirect = await app.request(path!, { method });
+          assert.equal(redirect.status, 308);
+          assert.equal(redirect.headers.get("location"), target);
+          assert.equal(redirect.headers.get("cache-control"), "no-store");
+        }
+      }
+      for (const path of ["/admin/", "/admin/orders", "/admin/settings/security"]) {
         const response = await app.request(path);
         assert.equal(response.status, 200);
         assert.match(response.headers.get("content-type") ?? "", /text\/html/);

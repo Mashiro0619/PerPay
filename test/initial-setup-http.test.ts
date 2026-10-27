@@ -134,9 +134,12 @@ describe("first-run administrator HTTP flow", () => {
     try {
       const root = await fixture.app.request("/");
       assert.equal(root.status, 302);
-      assert.equal(root.headers.get("location"), "/admin");
+      assert.equal(root.headers.get("location"), "/admin/");
+      const canonical = await fixture.app.request("/admin");
+      assert.equal(canonical.status, 308);
+      assert.equal(canonical.headers.get("location"), "/admin/");
 
-      for (const path of ["/admin", "/admin/", "/admin/login", "/admin/setup"]) {
+      for (const path of ["/admin/", "/admin/login", "/admin/setup"]) {
         const page = await fixture.app.request(path);
         assert.equal(page.status, 200);
         assert.equal(page.headers.get("cache-control"), "no-store");
@@ -169,7 +172,7 @@ describe("first-run administrator HTTP flow", () => {
       assert.equal(setup.status, 204);
       assert.deepEqual(setup.headers.getSetCookie(), []);
 
-      for (const path of ["/admin", "/admin/", "/admin/login", "/admin/setup"]) {
+      for (const path of ["/admin/", "/admin/login", "/admin/setup"]) {
         const page = await fixture.app.request(path);
         assert.equal(page.status, 200);
         assert.equal(page.headers.get("cache-control"), "no-store");

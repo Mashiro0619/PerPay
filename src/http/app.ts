@@ -453,7 +453,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     });
   }
 
-  app.get("/", (context) => context.redirect("/admin", 302));
+  app.get("/", (context) => context.redirect("/admin/", 302));
   const serveAdmin: MiddlewareHandler<AppEnvironment> = async (context) => {
     if (!adminFrontend) {
       return context.text("管理前端尚未构建。请运行 npm run build，或使用 npm run dev:admin 开发入口。", 503);
@@ -474,7 +474,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     }
     return context.html(adminFrontend.render(dependencies.identity.isInitialized(), publicSystemName(dependencies)).replace("<html", dependencies.demoMode ? '<html data-perpay-demo="readonly"' : "<html"));
   };
-  app.get("/admin", serveAdmin);
+  app.get("/admin", (context) => context.redirect("/admin/" + new URL(context.req.url).search, 308));
   app.get("/admin/*", serveAdmin);
 
   app.get("/checkout/:token", (context) => {

@@ -76,7 +76,10 @@ describe("isolated documentation preview", () => {
       const loginBody = await login.json() as { data: { csrf_token: string } };
       const cookie = login.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
       assert.equal((await app.request("/api/admin/v1/orders", { headers: { cookie } })).status, 200);
-      const adminHtml=await (await app.request("/admin")).text();
+      const canonical = await app.request("/admin");
+      assert.equal(canonical.status, 308);
+      assert.equal(canonical.headers.get("location"), "/admin/");
+      const adminHtml=await (await app.request("/admin/")).text();
       assert.match(adminHtml,/data-perpay-demo="readonly"/);
       const analytics=await app.request("/api/admin/v1/system/analytics?range=30",{headers:{cookie}});
       assert.equal((await analytics.json() as {data:{orders:{created:number}}}).data.orders.created, stats.orders.created);

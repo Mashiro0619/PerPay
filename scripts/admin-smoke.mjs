@@ -16,8 +16,11 @@ export async function runAdminSmoke({ baseUrl, password, setupToken, initialize 
   const send = (path, options = {}) => request(new URL(path, origin).href, { redirect: "error", signal: AbortSignal.timeout(15000), ...options });
   const jsonHeaders = { "content-type": "application/json", origin: origin.origin };
   const checkedAssets = new Set(["/admin/theme.js", ...assets]);
+  const canonical = await send("/admin", { redirect: "manual" });
+  assert.equal(canonical.status, 308, "/admin must redirect to its canonical entry");
+  assert.equal(canonical.headers.get("location"), "/admin/");
   let entryHtml = "";
-  for (const path of ["/admin", "/admin/orders", "/admin/settings/security", "/admin/reconciliation", "/admin/notifications"]) {
+  for (const path of ["/admin/", "/admin/orders", "/admin/settings/security", "/admin/reconciliation", "/admin/notifications"]) {
     const response = await send(path);
     assert.equal(response.status, 200, `${path} must load`);
     assert.match(response.headers.get("content-type") ?? "", /text\/html/);
@@ -31,7 +34,7 @@ export async function runAdminSmoke({ baseUrl, password, setupToken, initialize 
     assert.match(html, /src="\/admin\/theme\.js"/);
     assert.match(html, /<link\b[^>]*rel="icon"[^>]*href="\/admin\/assets\/favicon-[A-Za-z0-9_-]+\.svg"/, "entry must reference its fingerprinted favicon");
     for (const match of html.matchAll(/(?:src|href)="(\/admin\/[^"?#]+\.(?:js|css|svg))"/g)) checkedAssets.add(match[1]);
-    if (path === "/admin") entryHtml = html;
+    if (path === "/admin/") entryHtml = html;
   }
   for (const path of checkedAssets) {
     const response = await send(path);
