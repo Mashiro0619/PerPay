@@ -135,6 +135,7 @@ docker compose up -d
 | [文案术语表](docs/glossary.md) | 收款、查账、通知及字段来源的统一用词 |
 | [调用端 Demo](examples/node-client/README.md) | 业务网站接入示例 |
 | [维护说明](docs/maintenance.md) | 备份恢复、版本升级、回滚与密码重设 |
+| [数据与隐私](docs/privacy.md) | 付款人相关字段、原始证据、会话信息与实际保留规则 |
 | [前端开发](web/README.md) · [OpenAPI](openapi.yaml) | 构建、测试与接口定义 |
 
 ## 许可证
