@@ -13,14 +13,14 @@ import { queryGhcrVersionTag } from "../scripts/registry-manifest-status.mjs";
 const compose = readFileSync(new URL("../docker-compose.yml", import.meta.url), "utf8");
 const dockerfile = readFileSync(new URL("../Dockerfile", import.meta.url), "utf8");
 
-function withVersionFiles(version, run) {
+function withVersionFiles(version, run, schemaMaximum = 26) {
   const root = mkdtempSync(join(tmpdir(), "perpay-release-policy-"));
   try {
     mkdirSync(join(root, "src"));
     writeFileSync(join(root, "package.json"), JSON.stringify({ version }));
     writeFileSync(join(root, "openapi.yaml"), JSON.stringify({ info: { version } }));
     writeFileSync(join(root, "package-lock.json"), JSON.stringify({ version, packages: { "": { version } } }));
-    writeFileSync(join(root, "src/version.ts"), 'export const APP_VERSION = ' + JSON.stringify(version) + ';\nexport const DATABASE_COMPATIBILITY = Object.freeze({ minimum: 24, maximum: 26 });\n');
+    writeFileSync(join(root, "src/version.ts"), 'export const APP_VERSION = ' + JSON.stringify(version) + ';\nexport const DATABASE_COMPATIBILITY = Object.freeze({ minimum: ' + Math.min(24, schemaMaximum) + ', maximum: ' + schemaMaximum + ' });\n');
     writeFileSync(join(root, "Dockerfile"), dockerfile.replace(/^ARG APP_VERSION=.+$/m, () => "ARG APP_VERSION=" + version));
     writeFileSync(join(root, "docker-compose.yml"), compose);
     return run(root);
@@ -35,12 +35,13 @@ function withVersionFiles(version, run) {
 
 for (const version of ["0.3.0-alpha.1", "0.3.0-beta.2", "0.3.0-rc.10", "0.3.0"]) {
   test("validates matching package, image and tag versions for " + version, () => {
+    const schemaMaximum = version === "0.3.0" ? 29 : 26;
     withVersionFiles(version, root => {
       assert.deepEqual(inspectVersionFiles(root, "v" + version), { version, errors: [] });
       assert.notEqual(inspectVersionFiles(root, "v9.0.0").errors.length, 0);
       const pre = version.includes("-");
       assert.deepEqual(readReleaseMetadata(root), {
-        version, prerelease: String(pre), compose_image_tag: pre ? version : "latest", database_minimum: "24", database_maximum: "26",
+        version, prerelease: String(pre), compose_image_tag: pre ? version : "latest", database_minimum: "24", database_maximum: String(schemaMaximum),
       });
       const rendered = renderReleaseCompose(compose, version);
       const expectedTag = pre ? version : "latest";
@@ -49,7 +50,7 @@ for (const version of ["0.3.0-alpha.1", "0.3.0-beta.2", "0.3.0-rc.10", "0.3.0"])
       assert.equal(releasePolicy(version).promoteLatest, !pre);
       if (!pre) assert.equal(rendered, compose);
       else assert.match(rendered, /固定镜像版本/u);
-    });
+    }, schemaMaximum);
   });
 }
 
@@ -99,4 +100,38 @@ test("registry requests accept prerelease tags without relaxing repository and r
     await assert.rejects(queryGhcrVersionTag("ghcr.io/mashiro0619/perpay", version, fetchImpl));
   }
   assert.equal(calls.length, 1);
+});
+
+const recordedSchemaMaximum = [
+  ["0.1.0", 19],
+  ["0.2.0", 19],
+  ["0.2.1", 19],
+  ["0.2.2", 23],
+  ["0.3.0", 29],
+  ["0.3.0-alpha.1", 26],
+  ["0.3.1", 31],
+  ["0.3.2", 33],
+  ["1.0.0-alpha.1", 35],
+  ["1.0.0-alpha.2", 36],
+];
+
+for (const [version, schemaMaximum] of recordedSchemaMaximum) {
+  test("freezes the schema ceiling recorded for " + version, () => {
+    withVersionFiles(version, root => {
+      assert.deepEqual(inspectVersionFiles(root).errors, []);
+      const source = join(root, "src/version.ts");
+      const unchanged = readFileSync(source, "utf8");
+      for (const changed of [schemaMaximum - 1, schemaMaximum + 1]) {
+        writeFileSync(source, unchanged.replace("maximum: " + schemaMaximum, "maximum: " + changed));
+        assert.ok(inspectVersionFiles(root).errors.some(error => error.includes("schema maximum=")),
+          "changing the schema without changing " + version + " must fail");
+      }
+    }, schemaMaximum);
+  });
+}
+
+test("permits a new schema ceiling with a new source version", () => {
+  withVersionFiles("1.0.0-alpha.3", root => {
+    assert.deepEqual(inspectVersionFiles(root).errors, []);
+  }, 37);
 });
