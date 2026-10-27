@@ -271,7 +271,7 @@ export async function runBackupCommand(
   }
 
   const baseConfig = loadBackupConfig(environment);
-  const config = withCurrentPolicy(baseConfig);
+  const config = command === "restore" ? withRestorePolicy(baseConfig) : withCurrentPolicy(baseConfig);
   ensurePrivateDirectory(config.backupDirectory);
   if (arguments_.length === 1 && command === "run-once") {
     const result = await runTrackedCycle(config, operations);
@@ -511,6 +511,23 @@ function withCurrentPolicy(config: BackupConfig): BackupConfig {
     intervalMilliseconds: policy.intervalMilliseconds,
     keepCount: policy.keepCount,
   });
+}
+
+function withRestorePolicy(config: BackupConfig): BackupConfig {
+  try {
+    return withCurrentPolicy(config);
+  } catch {
+    // Recovery must reach its own database preflight even when the current
+    // policy is unreadable. Do not use this fallback for backup or retention.
+    process.stderr.write(`${JSON.stringify({
+      level: "warn",
+      event: "backup_restore_policy_fallback",
+      message: "Current database backup policy is unavailable; restore is using the startup backup interval and retention settings.",
+      interval_milliseconds: config.intervalMilliseconds,
+      keep_count: config.keepCount,
+    })}\n`);
+    return config;
+  }
 }
 
 function resolveBackupDirectoryForLock(environment: NodeJS.ProcessEnv): string {
