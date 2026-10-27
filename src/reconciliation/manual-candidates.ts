@@ -102,7 +102,9 @@ export function readManualCandidates(
   if (paired) {
     from =
       "payment_orders o JOIN ledger_entries l ON " +
-      (orders ? "l.ledger_entry_id = ?" : "o.order_id = ?");
+      (orders ? "l.ledger_entry_id = ?" : "o.order_id = ?") +
+      // Each order has at most one slot. Reuse its covered fields for ranking and cursor filtering.
+      " LEFT JOIN amount_slots s INDEXED BY amount_slots_order_interval_idx ON s.order_id = o.order_id";
     parameters.push(query.contextId!);
     predicates.push(
       "l.direction = 'CREDIT'",
@@ -169,14 +171,16 @@ export function readManualCandidates(
     " AND l.occurred_at < " +
     end;
   const overlaps = paired
-    ? "EXISTS (SELECT 1 FROM amount_slots s WHERE s.order_id = o.order_id AND " +
+    ? "CASE WHEN " +
       validWindow +
       " AND " +
       overlap +
-      ")"
+      " THEN 1 ELSE 0 END"
     : "0";
   const distance = paired
-    ? "coalesce((SELECT min(CASE WHEN " +
+    ? "CASE WHEN " +
+      validWindow +
+      " THEN CASE WHEN " +
       overlap +
       " THEN 0 WHEN l.occurred_at + l.occurred_at_precision_ms <= " +
       start +
@@ -184,9 +188,7 @@ export function readManualCandidates(
       start +
       " - (l.occurred_at + l.occurred_at_precision_ms) ELSE l.occurred_at - " +
       end +
-      " END) FROM amount_slots s WHERE s.order_id = o.order_id AND " +
-      validWindow +
-      "), abs(l.occurred_at - o.created_at))"
+      " END ELSE abs(l.occurred_at - o.created_at) END"
     : "0";
   let seek = "";
   if (query.position) {
