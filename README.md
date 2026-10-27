@@ -18,7 +18,8 @@
   <a href="#界面预览">界面预览</a> ·
   <a href="#部署">快速部署</a> ·
   <a href="docs/alipay-setup.md">支付宝配置</a> ·
-  <a href="USAGE.md">接入文档</a>
+  <a href="USAGE.md">接入文档</a> ·
+  <a href="CHANGELOG.md">变更日志</a>
 </p>
 
 ## 功能
