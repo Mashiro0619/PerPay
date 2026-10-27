@@ -92,16 +92,35 @@ export function measureTouchTarget(element: Element) {
 export async function waitForControlAnimations(target: Locator) {
   await expect(target).toBeVisible();
   await target.evaluate(async element => {
-    const transitions = [];
-    for (let current: Element | null = element; current; current = current.parentElement) {
-      for (const animation of current.getAnimations()) {
-        const end = animation.effect?.getComputedTiming().endTime;
-        if (animation.playState === "running" && animation.playbackRate !== 0 && end !== undefined && Number.isFinite(end)) {
-          transitions.push(animation.finished.catch(() => undefined));
+    const started = performance.now();
+    let previous: number[] | undefined;
+    let stableFrames = 0;
+    while (stableFrames < 2) {
+      let transitionPending = false;
+      for (let current: Element | null = element; current; current = current.parentElement) {
+        // Base UI may retain these styles across frames before registering an animation.
+        if (current.hasAttribute("data-starting-style") || current.hasAttribute("data-ending-style")) transitionPending = true;
+        // Starting styles and newly queued CSS transitions must be resolved before inspection.
+        void getComputedStyle(current).transform;
+        current.getBoundingClientRect();
+        for (const animation of current.getAnimations()) {
+          const end = animation.effect?.getComputedTiming().endTime;
+          if ((animation.playState === "running" || animation.pending) && animation.playbackRate !== 0 &&
+            end !== undefined && Number.isFinite(end)) {
+            transitionPending = true;
+          }
         }
       }
+      const bounds = element.getBoundingClientRect();
+      const geometry = [bounds.x, bounds.y, bounds.width, bounds.height];
+      stableFrames = !transitionPending && previous && geometry.every((value, index) => Math.abs(value - previous![index]!) < .01)
+        ? stableFrames + 1 : 0;
+      previous = transitionPending ? undefined : geometry;
+      if (stableFrames >= 2) return;
+      if (performance.now() - started >= 10_000) throw new Error("Touch target animations or geometry did not settle within 10 seconds");
+      // Recheck after every frame: finishing one animation can start another, or remove a starting style.
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
     }
-    await Promise.all(transitions);
   });
 }
 
