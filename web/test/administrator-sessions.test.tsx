@@ -68,6 +68,8 @@ describe("administrator login sessions", () => {
     const element = await card();
     const items = within(element).getAllByRole("listitem");
     expect(items.map(row => row.dataset.sessionId)).toEqual([currentId, mobileId, legacyId]);
+    const list = within(element).getByRole("list", { name: "登录会话列表" });
+    expect(within(list).queryAllByRole("separator")).toHaveLength(0);
     expect(within(items[0]!).getByText("当前")).toBeVisible();
     expect(within(items[0]!).getByRole("button", { name: "退出登录" })).toBeVisible();
     expect(items[1]).toHaveTextContent(`登录 IP：${ipv6}`);

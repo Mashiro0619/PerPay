@@ -137,7 +137,7 @@ export function AdministratorSessions() {
                   const DeviceIcon = device.kind === "phone" ? Smartphone : device.kind === "tablet" ? Tablet : device.kind === "computer" ? Laptop : Monitor;
                   return (
                     <Fragment key={row.session_id}>
-                      {index > 0 && <ItemSeparator />}
+                      {index > 0 && <ItemSeparator role="presentation" aria-hidden="true" />}
                       <Item className="administrator-session-row record-list-row" role="listitem" size="sm" data-session-id={row.session_id}>
                         <ItemMedia variant="icon" className="administrator-session-icon" aria-hidden="true"><DeviceIcon /></ItemMedia>
                         <ItemContent className="administrator-session-content min-w-0">
