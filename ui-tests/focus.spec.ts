@@ -28,6 +28,8 @@ for (const theme of ["light", "dark"] as const) test(`${theme}: form controls re
     await route.fulfill({ response, body });
   });
   await page.goto(manifest.origin + "/admin/");
+  // Supply the prerequisite so these local password checks reach their intended fields.
+  await page.getByLabel("一次性初始化令牌", { exact: true }).fill("a".repeat(64));
   const password = page.getByLabel("设置管理员密码", { exact: true });
   const confirmation = page.getByLabel("再次输入密码", { exact: true });
   const group = page.locator('[data-slot="input-group"]');
