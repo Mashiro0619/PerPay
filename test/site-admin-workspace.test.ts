@@ -357,3 +357,248 @@ it('isolates notification attempts, redelivery and reminder restoration includin
         f.close();
     }
 });
+
+type SiteRouteKey<Route = (typeof SITE_ADMIN_ROUTES)[number]> =
+    Route extends readonly [infer Method extends string, infer Path extends string] ? `${Method} ${Path}` : never;
+interface SiteScopeCase {
+    readonly path: string;
+    readonly body?: object;
+    readonly conflict?: boolean;
+    /** Collection routes have no foreign path ID; their ordinary scope gets a separate control below. */
+    readonly queryBoundaryOnly?: boolean;
+    readonly successStatus?: number;
+}
+
+it('covers every registered site route with real foreign resources and scoped positive controls', async () => {
+    const f = await fixture();
+    try {
+        f.setNow(Date.now());
+        const a = f.createSite('Matrix A'), b = f.createSite('Matrix B');
+        const credit = (amount: number) => {
+            const entry = f.credit(amount);
+            f.setNow(entry.updatedAt + 1);
+            return entry;
+        };
+        const seed = (clientId: string, prefix: string, amount: number) => {
+            f.sites.rotateSecret(clientId, 'webhook_secret', 0, { actorId: 'admin' });
+            const site = f.sites.get(clientId)!;
+            f.sites.update(clientId, { revision: site.revision, configuration: {
+                ...site.configuration, notifications_enabled: true, notification_origin: 'https://matrix.example.com',
+            } }, { actorId: 'admin' });
+            const order = (suffix: string, offset: number, notify = false) => f.orders.forSite(clientId).create(createOrderRequestSchema.parse({
+                merchant_order_no: `${prefix}-${suffix}`, idempotency_key: `${prefix}-${suffix}`,
+                amount_cents: amount + offset, product_name: `${prefix}-${suffix}`,
+                ...(notify ? { notify_url: 'https://matrix.example.com/notify' } : {}),
+            })).order;
+            const paid = order('paid', 0, true), paidEntry = credit(paid.payableAmountCents);
+            const settled = f.reconciliation.reconcileEntry(paidEntry.ledgerEntryId, f.now());
+            assert.equal(settled.kind, 'auto_settled');
+            if (settled.kind !== 'auto_settled') throw new Error('matrix requires a real selected candidate and settlement');
+            const ended = order('ended', 1000);
+            f.orders.forSite(clientId).close(ended.orderId);
+            const lateEntry = credit(ended.payableAmountCents);
+            const late = f.reconciliation.reconcileEntry(lateEntry.ledgerEntryId, f.now());
+            assert.equal(late.kind, 'unmatched');
+            if (late.kind !== 'unmatched') throw new Error('matrix requires a real order-linked exception');
+            assert.equal(f.reconciliation.exception(late.exceptionId)?.orderId, ended.orderId);
+            const manual = order('manual', 2000), manualEntry = credit(manual.payableAmountCents);
+            f.orders.adminGet(manual.orderId);
+            f.webhookStore.materialize(10, f.now(), clientId);
+            const claim = f.webhookStore.claimNext({ clientId, siteRevision: f.sites.get(clientId)!.revision,
+                now: f.now(), leaseMilliseconds: 30000, maximumAttempts: 1 });
+            assert.ok(claim);
+            f.webhookStore.completeAttempt({ deliveryId: claim.delivery.deliveryId, attemptId: claim.attempt.attemptId,
+                leaseToken: claim.attempt.leaseToken, outcome: 'PERMANENT_FAILURE', now: f.now(), maximumAttempts: 1,
+                retryBaseMilliseconds: 1000, retryMaximumMilliseconds: 1000, errorCode: 'target_address_forbidden' });
+            return { paid, paidEntry, ended, manual, manualEntry, candidateId: settled.candidateId,
+                matchId: settled.paymentMatchId, exceptionId: late.exceptionId, deliveryId: claim.delivery.deliveryId };
+        };
+        const local = seed(a.clientId, 'matrix-a', 10000), foreign = seed(b.clientId, 'matrix-b', 20000);
+        const sharedEntry = credit(59999);
+        const timestamp = (value: number) => new Date(value + 8 * 3600000).toISOString().slice(0, 19).replace('T', ' ');
+        const conflictDetail = { accountLogId: sharedEntry.externalEventId, occurredAt: timestamp(sharedEntry.occurredAt),
+            amount: '600.00', direction: 'CREDIT', alipayOrderNo: sharedEntry.alipayOrderNo,
+            merchantOrderNo: null, transMemo: null, otherAccount: null,
+            raw: { account_log_id: sharedEntry.externalEventId, amount: '600.00' } };
+        for (let observation = 0; observation < 2; observation++) {
+            const run = f.ledger.startIngestRun({ start: timestamp(f.now() - 60000), end: timestamp(f.now() + 60000),
+                pageSize: 1, providerAccountKey: f.snapshot.activeProviderAccountKey!, now: f.now() });
+            f.ledger.recordPage({ ingestRunId: run.ingestRunId,
+                page: { pageNo: 1, pageSize: 1, totalSize: 1, hasMore: false, details: [conflictDetail] },
+                evidence: { httpStatus: 200, headers: {}, body: JSON.stringify(conflictDetail), traceId: 'matrix-conflict', signatureVerified: true },
+                now: f.now() + 1 });
+            f.setNow(f.now() + 2);
+        }
+        const sharedConflict = f.ledger.conflictPage(f.snapshot.activeProviderAccountKey!, 'OPEN').conflicts
+            .find(conflict => conflict.existingLedgerEntryId === sharedEntry.ledgerEntryId);
+        assert.ok(sharedConflict);
+        const healthy = () => ({ enabled: true, state: 'healthy' as const, inFlight: false,
+            lastAttemptAt: f.now(), lastSuccessAt: f.now(), lastErrorCode: null, consecutiveFailures: 0 });
+        const app = createApp({ ...f.deps, ledgerHealth: healthy,
+            reconciliationHealth: () => ({ ...healthy(), pendingOrders: 0, continuationPending: false }) });
+        const request = (clientId: string, path: string, method = 'GET', body?: object) =>
+            app.request(`/api/admin/v1/sites/${clientId}${path}`, { method, headers: f.headers,
+                ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+        const data = async <T,>(path: string, clientId = a.clientId): Promise<T> => {
+            const response = await request(clientId, path);
+            assert.equal(response.status, 200, `${path}: ${await response.clone().text()}`);
+            return (await response.json() as { data: T }).data;
+        };
+        // Authentication may refresh session activity; financial records and command results must not change.
+        const domainState = () => f.database.read(db => JSON.stringify([
+            'payment_orders', 'order_events', 'amount_slots', 'payment_matches', 'match_candidates',
+            'financial_exceptions', 'financial_operations', 'ledger_entries', 'ledger_conflicts', 'outbox_events', 'webhook_targets',
+            'webhook_deliveries', 'webhook_attempts', 'admin_refund_marks', 'admin_refund_mark_events',
+            'admin_operation_log', 'admin_work_item_operations', 'admin_work_item_states',
+        ].map(table => [table, db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]),
+        (_key, value: unknown) => typeof value === 'bigint' ? value.toString() : value));
+        const denied = async (label: string, path: string, method: string, body: object | undefined,
+            status = 404, code = 'order_not_found') => {
+            const before = domainState();
+            const response = await request(a.clientId, path, method, body);
+            assert.equal(response.status, status, `${label}: ${await response.clone().text()}`);
+            assert.equal((await response.json() as { error: { code: string } }).error.code, code, label);
+            assert.equal(domainState(), before, `${label}: denied request changed financial data`);
+        };
+        const day = new Date(f.now() + 8 * 3600000).toISOString().slice(0, 10);
+        const exportBody = { created_from: day, created_to: day };
+        const ignore = { operation_id: randomUUID(), type: 'ALL' };
+        const mark = { operation_id: randomUUID(), version: 0, marked: true };
+        const restore = { operation_id: randomUUID() };
+        const redeliver = { redelivery_id: randomUUID(), reason: 'matrix receiver repaired' };
+        const manual = { financial_operation_id: randomUUID(), order_id: foreign.manual.orderId,
+            ledger_entry_id: foreign.manualEntry.ledgerEntryId, reason: 'matrix manual confirmation' };
+        const reverse = { financial_operation_id: randomUUID(), reason: 'matrix correction' };
+        const testPayment = { test_payment_id: randomUUID(), amount_cents: 100 };
+        const foreignOrderQuery = '?order_id=' + foreign.paid.orderId;
+        const cases = {
+            'GET /system/analytics': { path: '/system/analytics' + foreignOrderQuery, queryBoundaryOnly: true },
+            'GET /work-items': { path: '/work-items' + foreignOrderQuery, queryBoundaryOnly: true },
+            'GET /work-items/summary': { path: '/work-items/summary' + foreignOrderQuery, queryBoundaryOnly: true },
+            'POST /work-items/actions/ignore-all': { path: '/work-items/actions/ignore-all' + foreignOrderQuery, body: ignore, queryBoundaryOnly: true },
+            'POST /work-items/:type/:resourceId/actions/restore': { path: `/work-items/FINANCIAL_EXCEPTION/${foreign.exceptionId}/actions/restore`, body: restore },
+            'GET /orders': { path: '/orders' + foreignOrderQuery, queryBoundaryOnly: true },
+            'POST /orders/export': { path: '/orders/export' + foreignOrderQuery, body: exportBody, queryBoundaryOnly: true },
+            'POST /test-payments': { path: '/test-payments' + foreignOrderQuery, body: testPayment, queryBoundaryOnly: true },
+            'GET /orders/by-merchant-no/:merchantOrderNo': { path: '/orders/by-merchant-no/' + foreign.paid.merchantOrderNo },
+            'GET /orders/:orderId': { path: '/orders/' + foreign.paid.orderId },
+            'GET /orders/:orderId/checkout': { path: `/orders/${foreign.paid.orderId}/checkout`, successStatus: 302 },
+            'GET /orders/:orderId/notifications/deliveries': { path: `/orders/${foreign.paid.orderId}/notifications/deliveries` },
+            'PUT /orders/:orderId/refund-mark': { path: `/orders/${foreign.paid.orderId}/refund-mark`, body: mark },
+            'GET /webhooks/deliveries': { path: '/webhooks/deliveries' + foreignOrderQuery, queryBoundaryOnly: true },
+            'GET /webhooks/deliveries/:deliveryId': { path: '/webhooks/deliveries/' + foreign.deliveryId },
+            'GET /webhooks/deliveries/:deliveryId/attempts': { path: `/webhooks/deliveries/${foreign.deliveryId}/attempts` },
+            'POST /webhooks/deliveries/:deliveryId/actions/redeliver': { path: `/webhooks/deliveries/${foreign.deliveryId}/actions/redeliver`, body: redeliver, successStatus: 201 },
+            'GET /reconciliation/candidates/:candidateId': { path: '/reconciliation/candidates/' + foreign.candidateId },
+            'GET /reconciliation/matches/:paymentMatchId': { path: '/reconciliation/matches/' + foreign.matchId },
+            'GET /reconciliation/exceptions/:exceptionId': { path: '/reconciliation/exceptions/' + foreign.exceptionId },
+            'GET /reconciliation/ledger-entries/:ledgerEntryId': { path: '/reconciliation/ledger-entries/' + foreign.paidEntry.ledgerEntryId, conflict: true },
+            'GET /reconciliation/ledger-entries/:ledgerEntryId/candidates': { path: `/reconciliation/ledger-entries/${foreign.paidEntry.ledgerEntryId}/candidates`, conflict: true },
+            'GET /reconciliation/settlements/manual/ledger-entries': { path: '/reconciliation/settlements/manual/ledger-entries?order_id=' + foreign.manual.orderId },
+            'POST /reconciliation/settlements/manual': { path: '/reconciliation/settlements/manual', body: manual },
+            'POST /reconciliation/matches/:paymentMatchId/actions/reverse': { path: `/reconciliation/matches/${foreign.matchId}/actions/reverse`, body: reverse },
+        } satisfies Record<SiteRouteKey, SiteScopeCase>;
+        assert.deepEqual(Object.keys(cases).sort(), SITE_ADMIN_ROUTES.map(([method, path]) => `${method} ${path}`).sort(),
+            'every registered route needs an explicit scope scenario');
+        for (const [method, path] of SITE_ADMIN_ROUTES) {
+            const key = `${method} ${path}` as SiteRouteKey;
+            const scenario: SiteScopeCase = cases[key];
+            await denied(key, scenario.path, method, scenario.body,
+                scenario.conflict ? 409 : 404, scenario.conflict ? 'site_scope_conflict' : 'order_not_found');
+        }
+        // These variants must reach their specific path/body checks, not the foreign order query guard.
+        for (const suffix of ['', '/candidates']) {
+            await denied('foreign ledger with a valid local order', `/reconciliation/ledger-entries/${foreign.paidEntry.ledgerEntryId}${suffix}?order_id=${local.manual.orderId}`,
+                'GET', undefined, 409, 'site_scope_conflict');
+        }
+        await denied('manual settlement with local order and foreign ledger', '/reconciliation/settlements/manual', 'POST',
+            { ...manual, financial_operation_id: randomUUID(), order_id: local.manual.orderId, ledger_entry_id: foreign.paidEntry.ledgerEntryId }, 409, 'site_scope_conflict');
+        const notificationReminder = `/work-items/NOTIFICATION_FAILURE/${foreign.deliveryId}/actions/restore`;
+        const restoreNotification = { operation_id: randomUUID() };
+        await denied('foreign notification reminder', notificationReminder, 'POST', restoreNotification);
+        assert.equal((await request(b.clientId, notificationReminder, 'POST', restoreNotification)).status, 200);
+        await denied('foreign notification reminder replay', notificationReminder, 'POST', restoreNotification);
+        assert.equal((await request(b.clientId, notificationReminder, 'POST', restoreNotification)).status, 200);
+        assert.equal((await f.req('/ledger/conflicts/' + sharedConflict.conflictId)).status, 200);
+        await denied('shared conflicts have no site owner', `/work-items/LEDGER_CONFLICT/${sharedConflict.conflictId}/actions/restore`,
+            'POST', { operation_id: randomUUID() }, 404, 'work_item_not_found');
+
+        const localOrderIds = [local.paid.orderId, local.ended.orderId, local.manual.orderId].sort();
+        const foreignOrderIds = [foreign.paid.orderId, foreign.ended.orderId, foreign.manual.orderId];
+        const scopedControls: Record<string, () => Promise<void>> = {
+            'GET /system/analytics': async () => {
+                const localStats = await data<{ orders: { created: number } }>('/system/analytics');
+                assert.equal(localStats.orders.created, 3);
+                assert.equal((await data<{ orders: { created: number } }>('/system/analytics', b.clientId)).orders.created, 3);
+            },
+            'GET /work-items': async () => {
+                const rows = await data<{ resource_id: string; order_id: string }[]>('/work-items');
+                assert.deepEqual(rows.map(row => row.resource_id).sort(), [local.exceptionId, local.deliveryId].sort());
+                assert.ok(rows.every(row => localOrderIds.includes(row.order_id)));
+            },
+            'GET /work-items/summary': async () => {
+                assert.equal((await data<{ total: number }>('/work-items/summary')).total, 2);
+                assert.equal((await data<{ total: number }>('/work-items/summary', b.clientId)).total, 2);
+            },
+            'GET /orders': async () => {
+                const rows = await data<{ order_id: string; api_client_id: string }[]>('/orders');
+                assert.deepEqual(rows.map(row => row.order_id).sort(), localOrderIds);
+                assert.ok(rows.every(row => row.api_client_id === a.clientId));
+                assert.deepEqual(await data('/orders?q=' + foreign.paid.orderId), []);
+            },
+            'POST /orders/export': async () => {
+                const response = await request(a.clientId, '/orders/export', 'POST', exportBody);
+                assert.equal(response.status, 200);
+                const csv = await response.text();
+                for (const id of localOrderIds) assert.ok(csv.includes(id));
+                for (const id of foreignOrderIds) assert.equal(csv.includes(id), false);
+            },
+            'GET /webhooks/deliveries': async () => {
+                const rows = await data<{ delivery_id: string }[]>('/webhooks/deliveries');
+                assert.deepEqual(rows.map(row => row.delivery_id), [local.deliveryId]);
+            },
+            'POST /work-items/actions/ignore-all': async () => {
+                const foreignBefore = await data('/work-items', b.clientId);
+                const response = await request(a.clientId, '/work-items/actions/ignore-all', 'POST', ignore);
+                assert.equal(response.status, 200, await response.clone().text());
+                const result = (await response.json() as { data: { ignored_count: number; api_client_id: string } }).data;
+                assert.equal(result.ignored_count, 2);
+                assert.equal(result.api_client_id, a.clientId);
+                assert.deepEqual(await data('/work-items'), []);
+                assert.deepEqual(await data('/work-items', b.clientId), foreignBefore);
+            },
+            'POST /test-payments': async () => {
+                const foreignBefore = await data('/orders', b.clientId);
+                const response = await request(a.clientId, '/test-payments', 'POST', testPayment);
+                assert.equal(response.status, 201, await response.clone().text());
+                const created = (await response.json() as { data: { order_id: string } }).data;
+                assert.equal(f.database.read(db => db.prepare('SELECT api_client_id FROM payment_orders WHERE order_id = ?').get(created.order_id)?.api_client_id), a.clientId);
+                assert.deepEqual(await data('/orders', b.clientId), foreignBefore);
+            },
+        };
+        assert.deepEqual(Object.keys(scopedControls).sort(), Object.entries(cases)
+            .filter(([, value]) => 'queryBoundaryOnly' in value && value.queryBoundaryOnly).map(([key]) => key).sort(),
+        'collection query-guard cases also require an ordinary scoped control');
+        for (const control of Object.values(scopedControls)) await control();
+
+        // Each foreign ID must name a usable real resource in its own website. Successful
+        // commands are then replayed across sites to verify that idempotency cannot bypass scope.
+        for (const [method, path] of SITE_ADMIN_ROUTES) {
+            const key = `${method} ${path}` as SiteRouteKey;
+            const scenario: SiteScopeCase = cases[key];
+            if (scenario.queryBoundaryOnly) continue;
+            const response = await request(b.clientId, scenario.path, method, scenario.body);
+            assert.equal(response.status, scenario.successStatus ?? 200, `${key} owner control: ${await response.clone().text()}`);
+            if (key === 'GET /orders/:orderId/checkout') {
+                assert.equal(response.headers.get('location'), '/checkout/' + foreign.paid.checkoutToken);
+            }
+            if (method !== 'GET') {
+                await denied(key + ' foreign replay', scenario.path, method, scenario.body);
+                assert.equal((await request(b.clientId, scenario.path, method, scenario.body)).status, 200, key + ' owner replay');
+            }
+        }
+        const foreignIgnore = { operation_id: randomUUID(), type: 'ALL' };
+        assert.equal((await request(b.clientId, '/work-items/actions/ignore-all', 'POST', foreignIgnore)).status, 200);
+        await denied('bulk ignore foreign replay', '/work-items/actions/ignore-all', 'POST', foreignIgnore, 409, 'admin_operation_conflict');
+    } finally { f.close(); }
+});
