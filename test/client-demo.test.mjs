@@ -2,6 +2,7 @@ import { configureTestSiteNotifications } from './site-notification-fixture.ts';
 // SPDX-License-Identifier: MIT
 // All credentials, orders and provider health here are isolated test fixtures.
 import '../examples/node-client/test/demo.test.mjs';
+import '../examples/node-client/test/webhook-rotation.test.mjs';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';

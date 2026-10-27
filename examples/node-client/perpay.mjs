@@ -125,12 +125,15 @@ export function verifyWebhook(headers, bytes, secret, now = Date.now()) {
   const signature = headers.get('x-perpay-webhook-signature');
   if (version !== '1' || !UUID.test(keyId ?? '') || !UUID.test(deliveryId ?? '') || !UUID.test(eventId ?? '') ||
     !/^[1-9][0-9]*$/.test(timestamp ?? '') || !Number.isSafeInteger(Number(timestamp)) ||
-    Math.abs(now - Number(timestamp)) > 300000 || !/^[1-9][0-9]{0,8}$/.test(attempt ?? '') || !/^v1=[0-9a-f]{64}$/.test(signature ?? '')) {
-    throw new DemoError(401, '通知头部无效或投递时间偏差超过五分钟。注意时间戳单位是毫秒。');
+    !/^[1-9][0-9]{0,8}$/.test(attempt ?? '') || !/^v1=[0-9a-f]{64}$/.test(signature ?? '')) {
+    throw new DemoError(401, '通知头部无效。注意时间戳单位是毫秒。');
   }
+  if (Math.abs(now - Number(timestamp)) > 300000) throw new DemoError(503, '通知投递时间偏差超过五分钟，请校准服务器时间后重试。');
+  const signingSecret = secret instanceof Map ? secret.get(keyId) : secret;
+  if (signingSecret === undefined) throw new DemoError(503, '通知签名密钥尚未配置，请同步对应 key-id 的密钥后重试。');
   const digest = createHash('sha256').update(bytes).digest('hex');
   const material = ['perpay:webhook:v1', keyId, timestamp, deliveryId, eventId, attempt, digest].join('\n');
-  const expected = 'v1=' + createHmac('sha256', secret).update(material, 'utf8').digest('hex');
+  const expected = 'v1=' + createHmac('sha256', signingSecret).update(material, 'utf8').digest('hex');
   if (!timingSafeEqual(Buffer.from(expected, 'ascii'), Buffer.from(signature, 'ascii'))) throw new DemoError(401, '通知签名不正确。');
   let event;
   try { event = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }

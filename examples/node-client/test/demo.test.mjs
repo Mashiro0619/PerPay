@@ -90,6 +90,39 @@ describe('standalone PerPay caller demo', () => {
     assert.equal(observed.options.body.toString(), JSON.stringify(payload()));
     assert.equal(observed.options.headers['x-perpay-client-id'], 'default');
   });
+  it('loads at most two explicit webhook key IDs and rejects ambiguous or invalid configuration', () => {
+    const nextId = '33333333-3333-4333-8333-333333333333';
+    const previous = Buffer.alloc(32, 0x52);
+    const env = { PERPAY_CLIENT_ID: config.clientId, PERPAY_URL: origin, PERPAY_API_SECRET: secret.toString('base64url'), DEMO_NOTIFY_URL: config.notifyUrl,
+      PERPAY_WEBHOOK_KEYS: JSON.stringify({ [keyId]: secret.toString('base64url'), [nextId]: previous.toString('base64url') }) };
+    const configured = readConfig(env);
+    assert.deepEqual(configured.webhookKeys, new Map([[keyId, secret], [nextId, previous]]));
+    assert.equal(configured.webhookSecret, undefined);
+    assert.throws(() => readConfig({ ...env, PERPAY_WEBHOOK_SECRET: secret.toString('base64url') }), /二选一/);
+    for (const value of ['{', 'null', '[]', '{}', JSON.stringify({ bad: secret.toString('base64url') }), JSON.stringify({ [keyId]: 'invalid' }),
+      JSON.stringify({ [keyId]: secret.toString('base64url'), [nextId]: secret.toString('base64url'), ['44444444-4444-4444-8444-444444444444']: secret.toString('base64url') })]) {
+      assert.throws(() => readConfig({ ...env, PERPAY_WEBHOOK_KEYS: value }), /PERPAY_WEBHOOK_KEYS/);
+    }
+  });
+  it('returns retryable unknown-key and clock errors without applying an event', async t => {
+    const keys = new Map([['33333333-3333-4333-8333-333333333333', secret]]);
+    const { base, store } = await serverFixture(t, { webhookKeys: keys });
+    store.prepare(payload());
+    const signed = webhook();
+    const unknown = await fetch(base + '/webhooks/perpay', { method: 'POST', headers: signed.headers, body: signed.bytes });
+    assert.equal(unknown.status, 503);
+    assert.equal(store.events().length, 0);
+    assert.equal(store.get(no).snapshot, null);
+    keys.set(keyId, secret);
+    const old = webhook({ timestamp: Date.now() - 301000 });
+    const skewed = await fetch(base + '/webhooks/perpay', { method: 'POST', headers: old.headers, body: old.bytes });
+    assert.equal(skewed.status, 503);
+    assert.equal(store.events().length, 0);
+    const accepted = await fetch(base + '/webhooks/perpay', { method: 'POST', headers: signed.headers, body: signed.bytes });
+    assert.equal(accepted.status, 200);
+    assert.equal(store.events().length, 1);
+    assert.equal(store.get(no).snapshot.payment_status, 'CONFIRMED');
+  });
   it('keeps network exceptions and key material out of public errors', async () => {
     const client = new PerPayClient({ ...config, fetchImpl: async () => { throw new Error(secret.toString('base64url')); } });
     await assert.rejects(client.createOrder(payload()), error => error instanceof DemoError && !error.message.includes(secret.toString('base64url')));

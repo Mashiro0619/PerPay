@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DemoError, MERCHANT_NO, PerPayClient, decodeKey, orderSnapshot, perpayOrigin, validateClientId, verifyWebhook } from './perpay.mjs';
+import { DemoError, MERCHANT_NO, UUID, PerPayClient, decodeKey, orderSnapshot, perpayOrigin, validateClientId, verifyWebhook } from './perpay.mjs';
 import { DemoStore } from './store.mjs';
 
 const directory = fileURLToPath(new URL('.', import.meta.url));
@@ -16,12 +16,26 @@ export function readConfig(env = process.env) {
   const secret = env.PERPAY_API_SECRET ?? '';
   decodeKey(secret, 'PERPAY_API_SECRET');
   const notifyUrl = env.DEMO_NOTIFY_URL;
-  if (!notifyUrl || !env.PERPAY_WEBHOOK_SECRET) throw new Error('Demo 默认使用回调通知，请在 .env 填写 DEMO_NOTIFY_URL 和 PERPAY_WEBHOOK_SECRET，并在 PerPay 启用业务通知。');
-  const webhookSecret = decodeKey(env.PERPAY_WEBHOOK_SECRET, 'PERPAY_WEBHOOK_SECRET');
+  if (!notifyUrl || (!env.PERPAY_WEBHOOK_SECRET && !env.PERPAY_WEBHOOK_KEYS)) throw new Error('Demo 默认使用回调通知，请在 .env 填写 DEMO_NOTIFY_URL 和 PERPAY_WEBHOOK_SECRET（或 PERPAY_WEBHOOK_KEYS），并在 PerPay 启用业务通知。');
+  if (env.PERPAY_WEBHOOK_SECRET && env.PERPAY_WEBHOOK_KEYS) throw new Error('PERPAY_WEBHOOK_SECRET 与 PERPAY_WEBHOOK_KEYS 必须二选一。');
+  let webhookSecret, webhookKeys;
+  if (env.PERPAY_WEBHOOK_KEYS) {
+    let values;
+    try { values = JSON.parse(env.PERPAY_WEBHOOK_KEYS); } catch { throw new Error('PERPAY_WEBHOOK_KEYS 必须是 key-id 到签名密钥的 JSON 对象。'); }
+    if (!values || typeof values !== 'object' || Array.isArray(values)) throw new Error('PERPAY_WEBHOOK_KEYS 必须是 key-id 到签名密钥的 JSON 对象。');
+    const entries = Object.entries(values);
+    if (entries.length < 1 || entries.length > 2) throw new Error('PERPAY_WEBHOOK_KEYS 必须配置一把或两把通知密钥。');
+    webhookKeys = new Map(entries.map(([id, value]) => {
+      if (!UUID.test(id)) throw new Error('PERPAY_WEBHOOK_KEYS 的 key-id 必须是 PerPay 通知密钥的 UUID。');
+      return [id, decodeKey(value, 'PERPAY_WEBHOOK_KEYS')];
+    }));
+  } else {
+    webhookSecret = decodeKey(env.PERPAY_WEBHOOK_SECRET, 'PERPAY_WEBHOOK_SECRET');
+  }
   let notify;
   try { notify = new URL(notifyUrl); } catch { throw new Error('DEMO_NOTIFY_URL 不是完整 URL。'); }
   if (notify.protocol !== 'https:' || notify.username || notify.password || notify.port || notify.search || notify.hash || notify.pathname !== '/webhooks/perpay') throw new Error('DEMO_NOTIFY_URL 必须是公开 HTTPS 来源下的 /webhooks/perpay 地址，不带端口或查询参数。');
-  return { port, url, clientId, secret, notifyUrl, webhookSecret, database: join(resolve(directory, env.DEMO_DATA_DIR ?? 'data'), 'demo.sqlite3') };
+  return { port, url, clientId, secret, notifyUrl, webhookSecret, webhookKeys, database: join(resolve(directory, env.DEMO_DATA_DIR ?? 'data'), 'demo.sqlite3') };
 }
 function json(response, status, data) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
@@ -86,11 +100,12 @@ export function createDemoServer({ config, client = new PerPayClient(config), st
     response.setHeader('content-security-policy', "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     try {
       if (request.url === '/webhooks/perpay' && request.method === 'POST') {
-        if (!config.webhookSecret) throw new DemoError(404, '通知接收未启用。');
+        const keys = config.webhookKeys ?? config.webhookSecret;
+        if (!keys) throw new DemoError(404, '通知接收未启用。');
         const bytes = await bodyBytes(request, 256 * 1024);
         const headers = new Headers();
         for (const [key, value] of Object.entries(request.headers)) if (value !== undefined) headers.set(key, Array.isArray(value) ? value.join(',') : value);
-        const verified = verifyWebhook(headers, bytes, config.webhookSecret);
+        const verified = verifyWebhook(headers, bytes, keys);
         store.receive(verified);
         json(response, 200, { schema: 'perpay:webhook-ack:v1', ack: true, event_id: verified.event.event_id, delivery_id: verified.deliveryId });
         return;
