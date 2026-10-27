@@ -124,7 +124,7 @@ test("ledger credentials keep genuine Alipay, website and PerPay identities dist
         await sourceLink.click();
         await expect(page.locator('[data-ledger-source="' + match.ledger_entry_id + '"]')).toBeFocused();
         await expect(card.getByText("支付宝交易金额", { exact: true })).toHaveCount(0);
-        const trigger = card.getByRole("button", { name: "收款关联记录操作", exact: true });
+        const trigger = card.getByRole("button", { name: "更多操作，收款关联记录操作", exact: true });
         await trigger.click();
         await page.getByRole("menuitem", { name: "技术详情", exact: true }).click();
         const technical = page.getByRole("dialog", { name: "技术详情", exact: true });

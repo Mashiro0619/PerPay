@@ -8,7 +8,7 @@ test("refund notes accept 500 emoji and reject 501 ordinary Chinese characters",
     await page.route("**/*", route => new URL(route.request().url()).origin === fixture.origin ? route.continue() : route.abort("blockedbyclient"));
     await page.context().addCookies(fixture.cookies);
     await page.goto(fixture.origin + "/admin/orders/" + orderId);
-    await page.getByRole("button", { name: "订单操作", exact: true }).click();
+    await page.getByRole("button", { name: "更多操作，订单操作", exact: true }).click();
     await page.getByRole("menuitem", { name: "标记已退款", exact: true }).click();
     const note = page.getByLabel("备注（可选）", { exact: true });
     await expect(note).toHaveAttribute("maxlength", "1000");

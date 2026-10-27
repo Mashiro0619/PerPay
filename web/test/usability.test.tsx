@@ -42,6 +42,21 @@ function theme() {
 }
 
 describe("official record action menus", () => {
+  it("starts its accessible name with the visible action while preserving the record context", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <RecordTools data={{}} label="订单操作" />
+      </MemoryRouter>,
+    );
+    const trigger = screen.getByRole("button", { name: "更多操作，订单操作" });
+    expect(trigger).toHaveTextContent("更多操作");
+    trigger.focus();
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("menuitem", { name: "技术详情" })).toBeVisible();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
   it("supports keyboard opening, Home, End and Escape without performing an action", async () => {
     const selected = vi.fn();
     const user = userEvent.setup();

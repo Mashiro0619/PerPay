@@ -214,7 +214,7 @@ describe("always-visible detail evidence", () => {
     expect(
       screen.queryByText("仅在技术详情查看的原始证据"),
     ).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "冲突记录操作" }));
+    await user.click(screen.getByRole("button", { name: "更多操作，冲突记录操作" }));
     await user.click(await screen.findByRole("menuitem", { name: "技术详情" }));
     expect(
       await screen.findByRole("dialog", { name: "技术详情" }),

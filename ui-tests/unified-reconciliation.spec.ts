@@ -347,7 +347,7 @@ test("merged financial actions keep the chosen source and match identity without
   const match = await matchDetail(page, manifest.origin, manifest.details.matchManual!);
   await page.goto(manifest.origin + "/admin" + detailPath(match.ledger_entry_id));
   const matchCard = page.locator('[data-ledger-match="' + match.payment_match_id + '"]');
-  const tools = matchCard.getByRole("button", { name: "收款关联记录操作", exact: true });
+  const tools = matchCard.getByRole("button", { name: "更多操作，收款关联记录操作", exact: true });
   await tools.click();
   await page.getByRole("menuitem", { name: "撤销错误关联", exact: true }).click();
   const reversal = page.getByRole("dialog", { name: "撤销收款关联？", exact: true });

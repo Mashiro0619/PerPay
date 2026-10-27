@@ -19,7 +19,7 @@ describe("context-preserving secondary dialogs", () => {
         />
       </MemoryRouter>,
     );
-    const trigger = screen.getByRole("button", { name: "记录操作" });
+    const trigger = screen.getByRole("button", { name: "更多操作，记录操作" });
     await user.click(await recordAction("技术详情", "记录操作"));
     const dialog = await screen.findByRole("dialog", { name: "技术详情" });
     expect(within(dialog).getByLabelText("技术详情")).toHaveTextContent(

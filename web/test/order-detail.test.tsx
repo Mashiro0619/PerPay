@@ -187,7 +187,7 @@ describe("order detail work surface", () => {
       mockData({ ...order, checkout: { ...order.checkout, status } }, []);
       mount();
       expect(await screen.findByText("此订单未设置通知地址")).toBeVisible();
-      fireEvent.click(screen.getByRole("button", { name: "订单操作" }));
+      fireEvent.click(screen.getByRole("button", { name: "更多操作，订单操作" }));
       expect(
         screen.queryByRole("menuitem", { name: "标记已退款" }),
       ).not.toBeInTheDocument();
@@ -292,7 +292,7 @@ describe("order detail work surface", () => {
     expect(await screen.findByText("撤销时间")).toBeVisible();
     expect(screen.getByText("平台记录归属不符")).toBeVisible();
     expect(screen.getByText("对照交易号确认")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "收款关联记录操作" }));
+    fireEvent.click(screen.getByRole("button", { name: "更多操作，收款关联记录操作" }));
     expect(
       screen.queryByRole("menuitem", { name: "撤销错误关联" }),
     ).not.toBeInTheDocument();
@@ -325,7 +325,7 @@ describe("order detail work surface", () => {
     });
     mount();
     const user = userEvent.setup();
-    await screen.findByRole("button", { name: "收款关联记录操作" });
+    await screen.findByRole("button", { name: "更多操作，收款关联记录操作" });
     await user.click(await recordAction("撤销错误关联", "收款关联记录操作"));
     await confirmReason(user, "测试撤销原因", "确认撤销关联");
     expect(await screen.findByText("测试撤销原因")).toBeVisible();
@@ -357,7 +357,7 @@ describe("order detail work surface", () => {
     });
     mount();
     const user = userEvent.setup();
-    await screen.findByRole("button", { name: "通知记录操作" });
+    await screen.findByRole("button", { name: "更多操作，通知记录操作" });
     await user.click(await screen.findByRole("button", { name: "重新发送" }));
     await confirmReason(user, "业务已修复", "确认重新发送");
     await screen.findByText("操作结果待确认");
@@ -394,7 +394,7 @@ describe("order detail work surface", () => {
           </MemoryRouter>
         </Toaster></QueryClientProvider>,
       );
-      fireEvent.click(screen.getByRole("button", { name: "通知记录操作" }));
+      fireEvent.click(screen.getByRole("button", { name: "更多操作，通知记录操作" }));
       expect(
         screen.queryByRole("menuitem", { name: "重新发送" }),
       ).not.toBeInTheDocument();
@@ -500,7 +500,7 @@ describe("order detail work surface", () => {
     expect(requests).toHaveLength(2);
     await user.click(screen.getByRole("button", { name: "下一页" }));
     expect(await screen.findByText(/历史投递/)).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "通知记录操作" }));
+    fireEvent.click(screen.getByRole("button", { name: "更多操作，通知记录操作" }));
     expect(
       screen.queryByRole("menuitem", { name: "重新发送" }),
     ).not.toBeInTheDocument();
@@ -541,7 +541,7 @@ describe("order detail work surface", () => {
     });
     mount();
     const user = userEvent.setup();
-    await screen.findByRole("button", { name: "订单操作" });
+    await screen.findByRole("button", { name: "更多操作，订单操作" });
     await user.click(await recordAction("标记已退款"));
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveAccessibleDescription(
@@ -625,7 +625,7 @@ describe("payment provenance", () => {
       reconciliation: { ...paidOrder.reconciliation, matches: basis === "NONE" ? [] : [match] },
     });
     mount();
-    await screen.findByRole("button", { name: "订单操作" });
+    await screen.findByRole("button", { name: "更多操作，订单操作" });
     const currentPayment = within(screen.getByRole("group", { name: "PerPay 收款状态" }));
     const inferred = currentPayment.queryAllByText(/PerPay 按金额和付款时间推断/);
     const manual = currentPayment.queryAllByText(/管理员人工关联/);

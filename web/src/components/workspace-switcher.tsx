@@ -269,7 +269,7 @@ export function WorkspaceSwitcher({
           <SidebarMenuButton
             tooltip="业务网站"
             className="pointer-coarse:min-h-10"
-            aria-label={open ? "收起业务网站" : "展开业务网站"}
+            aria-label={`业务网站 ${selectedName}，${open ? "收起" : "展开"}`}
             aria-describedby={currentNameId}
           />
         }

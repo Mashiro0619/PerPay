@@ -37,7 +37,7 @@ export function NavUser({
             render={
               <SidebarMenuButton
                 size="lg"
-                aria-label="账户菜单"
+                aria-label={`${name.slice(0, 2).toUpperCase()} ${name} 管理员，账户菜单`}
                 tooltip={`账户菜单 · ${name}`}
                 className="aria-expanded:bg-muted"
               />
@@ -47,9 +47,9 @@ export function NavUser({
               <AvatarFallback className="rounded-lg">
                 {name.slice(0, 2).toUpperCase()}
               </AvatarFallback>
-            </Avatar>
+            </Avatar>{" "}
             <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
-              <span className="truncate font-medium">{name}</span>
+              <span className="truncate font-medium">{name}</span>{" "}
               <span className="truncate text-xs text-muted-foreground">
                 管理员
               </span>

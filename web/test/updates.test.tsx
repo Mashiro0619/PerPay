@@ -138,7 +138,7 @@ describe("automatic official update checks", () => {
     expect(
       screen.queryByRole("status", { name: "官方版本更新" }),
     ).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "账户菜单" }));
+    await user.click(screen.getByRole("button", { name: /账户菜单$/ }));
     await user.click(await screen.findByRole("menuitem", { name: "退出登录" }));
     await screen.findByRole("heading", { name: "登录管理后台" });
     expect(queryClient.getQueryData(officialUpdateKey)).toBeUndefined();

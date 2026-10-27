@@ -359,7 +359,7 @@ describe("administrator-only refund marks", () => {
       expect(
         screen.getByRole("region", { name: "管理员退款标记" }),
       ).toBeVisible();
-      fireEvent.click(screen.getByRole("button", { name: "订单操作" }));
+      fireEvent.click(screen.getByRole("button", { name: "更多操作，订单操作" }));
       if (marked)
         expect(
           screen.getByRole("menuitem", { name: "撤销退款标记" }),

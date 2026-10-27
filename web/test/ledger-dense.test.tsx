@@ -77,7 +77,7 @@ describe("unified transaction detail", () => {
     const writeText = vi.spyOn(navigator.clipboard, "writeText");
     await screen.findByRole("heading", { name: "查账记录（2）" });
     expect(screen.queryByText("raw-" + secondSourceId)).not.toBeInTheDocument();
-    const trigger = screen.getByRole("button", { name: "查账记录 2 操作" });
+    const trigger = screen.getByRole("button", { name: "更多操作，查账记录 2 操作" });
     trigger.focus();
     await user.keyboard("{Enter}");
     await user.click(await screen.findByRole("menuitem", { name: "技术详情" }));

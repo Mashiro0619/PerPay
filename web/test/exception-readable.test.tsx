@@ -71,7 +71,7 @@ describe("readable financial exception detail", () => {
     expect(within(card).getByText("发现时间")).toBeVisible();
     expect(within(card).getByRole("heading", { name: "匹配依据" })).toBeVisible();
     const associate = within(card).getByRole("button", { name: "人工关联收款" });
-    const tools = within(card).getByRole("button", { name: "异常记录操作" });
+    const tools = within(card).getByRole("button", { name: "更多操作，异常记录操作" });
     expect(associate.closest('[data-slot="card-action"]')).not.toBeNull();
     expect(tools.closest('[data-slot="card-action"]')).not.toBeNull();
     expect(card.querySelector('[data-slot="card-footer"]')).toBeNull();
@@ -131,7 +131,7 @@ describe("readable financial exception detail", () => {
     const card = await screen.findByRole("group", { name: "账务异常记录" });
     const failure = await within(card).findByRole("alert");
     expect(within(card).getByText("发现时间")).toBeVisible();
-    expect(within(card).getByRole("button", { name: "异常记录操作" })).toBeVisible();
+    expect(within(card).getByRole("button", { name: "更多操作，异常记录操作" })).toBeVisible();
     state.failure = undefined;
     await userEvent.setup().click(within(failure).getByRole("button", { name: "重试" }));
     if (resource === "order") expect(await within(card).findByRole("link", { name: order.product_name })).toBeVisible();
@@ -176,7 +176,7 @@ describe("readable financial exception detail", () => {
     expect(screen.queryByRole("region", { name: "核对凭据" })).not.toBeInTheDocument();
     expect(container.querySelector('[data-layout="flow"]')).toBeNull();
     expect(within(card).getByRole("button", { name: "人工关联收款" }).closest('[data-slot="card-footer"]')).not.toBeNull();
-    expect(within(card).getByRole("button", { name: "异常记录操作" }).closest('[data-slot="card-content"]')).not.toBeNull();
+    expect(within(card).getByRole("button", { name: "更多操作，异常记录操作" }).closest('[data-slot="card-content"]')).not.toBeNull();
     if (embedded) expect(await recordAction("单独打开", "异常记录操作")).toHaveAttribute("href", "/reconciliation/exceptions/" + exceptionId);
   });
 

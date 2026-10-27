@@ -233,7 +233,7 @@ test("order menus and an unsaved refund declaration retain identity and focus th
   page.on("request", request => { if (!["GET", "HEAD", "OPTIONS"].includes(request.method())) writes.push(request.method() + " " + new URL(request.url()).pathname); });
   await openOrder(page, manifest, path);
   const retained = await retainItems(page);
-  const trigger = page.getByRole("button", { name: "订单操作", exact: true });
+  const trigger = page.getByRole("button", { name: "更多操作，订单操作", exact: true });
   await trigger.evaluate(element => element.setAttribute("data-order-flow-trigger", "original"));
   await trigger.focus();
   await page.keyboard.press("Enter");

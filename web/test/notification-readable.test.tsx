@@ -70,7 +70,7 @@ describe("readable standalone notification detail", () => {
     expect(information.querySelector(".record-list-meta,.record-list-title")).toBeNull();
     expect(information.querySelectorAll('[data-detail-fields][data-layout="flow"]')).toHaveLength(1);
     expect(history.querySelector('[data-detail-fields][data-layout="flow"]')).toBeNull();
-    expect(screen.getAllByRole("button", { name: "通知记录操作" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "更多操作，通知记录操作" })).toHaveLength(1);
     expect(requests.filter((request) => new URL(request.url).pathname.includes("/orders/"))).toHaveLength(1);
     expect(requests.every((request) => request.method === "GET")).toBe(true);
     if (site) expect(requests.every((request) => new URL(request.url).pathname.startsWith("/api/admin/v1/sites/site_dense"))).toBe(true);
@@ -139,7 +139,7 @@ describe("readable standalone notification detail", () => {
     const user = userEvent.setup();
     const trigger = status === "DEAD_LETTER"
       ? screen.getByRole("button", { name: "重新发送" })
-      : screen.getByRole("button", { name: "通知记录操作" });
+      : screen.getByRole("button", { name: "更多操作，通知记录操作" });
     await user.click(status === "DEAD_LETTER" ? trigger : await recordAction("重新发送", "通知记录操作"));
     const dialog = await screen.findByRole("dialog", { name: "重新发送通知" });
     expect(within(dialog).getByText(delivery.target.target_url)).toBeVisible();
@@ -181,7 +181,7 @@ describe("readable standalone notification detail", () => {
     expect(container.querySelector('[data-detail-fields][data-layout="flow"]')).toBeNull();
     expect(within(card).getByRole("table", { name: "投递尝试（1）" })).toBeVisible();
     expect(within(card).getByText(delivery.target.target_url)).toBeVisible();
-    expect(within(card).getByRole("button", { name: "通知记录操作" }).closest('[data-slot="card-content"]')).not.toBeNull();
+    expect(within(card).getByRole("button", { name: "更多操作，通知记录操作" }).closest('[data-slot="card-content"]')).not.toBeNull();
     await userEvent.setup().click(await recordAction("技术详情", "通知记录操作"));
     const dialog = await screen.findByRole("dialog", { name: "技术详情" });
     expect(within(dialog).getByText(delivery.delivery.delivery_id, { exact: true })).toBeVisible();

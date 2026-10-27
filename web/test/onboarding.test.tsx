@@ -197,7 +197,7 @@ describe("first collection onboarding", () => {
     expect(
       view.router.state.location.state?.deferOnboardingFor,
     ).toBeUndefined();
-    await user.click(screen.getByRole("button", { name: "账户菜单" }));
+    await user.click(screen.getByRole("button", { name: /账户菜单$/ }));
     await user.click(await screen.findByRole("menuitem", { name: "退出登录" }));
     await screen.findByRole("heading", { name: "登录管理后台" });
     expect(isOnboardingDeferred(instanceId)).toBe(false);

@@ -101,7 +101,7 @@ test("icon rail keeps navigation, website scope and account actions reachable", 
     await choice.click();
     await expect(page).toHaveURL(new RegExp(sitePath + "[?#]?$"));
     const selectedGeometry = await expectAlignedIcons(rail);
-    await page.getByRole("button", { name: "账户菜单", exact: true }).click();
+    await page.getByRole("button", { name: /账户菜单$/, exact: true }).click();
     await expect(page.getByRole("menuitem", { name: "账户与安全" })).toBeVisible();
     await page.keyboard.press("Escape");
     await record(page, info, { theme, expandedGeometry, geometry, selectedGeometry });

@@ -99,7 +99,7 @@ test.describe("enlarged admin dialogs keep fields and decisions reachable", () =
 
       await page.goto(manifest.origin + "/admin" + manifest.details.matchManual);
       await page.evaluate(font => document.documentElement.style.fontSize = font + "%", font);
-      const operations = page.getByRole("button", { name: "收款关联记录操作", exact: true });
+      const operations = page.getByRole("button", { name: "更多操作，收款关联记录操作", exact: true });
       await operations.click();
       await page.getByRole("menuitem", { name: "撤销错误关联", exact: true }).click();
       const reasonDialog = page.getByRole("dialog", { name: "撤销收款关联？", exact: true });

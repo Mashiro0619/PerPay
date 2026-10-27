@@ -1,5 +1,42 @@
 import { test, expect, login, record } from "./fixtures";
 import { audit } from "./audit";
+import AxeBuilder from "@axe-core/playwright";
+import { waitForControlAnimations } from "./touch-targets";
+
+test("sidebar and record menu names include their visible labels", async ({ page, manifest }, info) => {
+  const order = manifest.routes.find(route => /^\/orders\/[^/]+$/.test(route))!;
+  for (const mode of ["expanded", "collapsed", "mobile"] as const) {
+    await page.setViewportSize(mode === "mobile" ? { width: 390, height: 844 } : { width: 1440, height: 900 });
+    await login(page, manifest);
+    await page.goto(manifest.origin + "/admin" + order);
+    await expect(page.locator('#main-content [data-slot="skeleton"]')).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /订单操作$/ })).toBeVisible();
+    if (mode === "mobile" || mode === "collapsed") {
+      await page.getByRole("button", { name: "切换导航", exact: true }).click();
+    }
+    const account = page.getByRole("button", { name: /账户菜单$/ });
+    await page.clock.runFor(50);
+    await waitForControlAnimations(account);
+    if (mode === "mobile") {
+      const website = page.getByRole("button", { name: /^业务网站 .*，(?:收起|展开)$/ });
+      await website.scrollIntoViewIfNeeded();
+      const result = await new AxeBuilder({ page }).withRules(["label-content-name-mismatch"]).analyze();
+      await info.attach("mobile-website-label-content-name", { body: JSON.stringify(result), contentType: "application/json" });
+      expect.soft(result.violations, "mobile website").toEqual([]);
+      expect(result.passes.some(rule => rule.id === "label-content-name-mismatch")).toBe(true);
+    }
+    await account.scrollIntoViewIfNeeded();
+    // This WCAG 2.1 A rule is not covered by the general audit's AA tag list.
+    const result = await new AxeBuilder({ page }).withRules(["label-content-name-mismatch"]).analyze();
+    await info.attach(`${mode}-label-content-name`, { body: JSON.stringify(result), contentType: "application/json" });
+    expect.soft(result.violations, mode).toEqual([]);
+    expect(result.passes.some(rule => rule.id === "label-content-name-mismatch")).toBe(true);
+    if (mode === "collapsed") {
+      await page.getByRole("button", { name: "切换导航", exact: true }).click();
+    }
+  }
+});
+
 test("chart, avatar, amount list and dangerous action semantics stay accessible in both themes", async ({ page, manifest }, info) => {
   await login(page, manifest);
   for (const theme of ["light", "dark"] as const) {

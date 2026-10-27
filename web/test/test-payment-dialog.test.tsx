@@ -156,7 +156,7 @@ describe("test-payment dialog lifecycle", () => {
       within(dialog).getByRole("button", { name: "创建测试订单" }),
     );
     await screen.findByRole("heading", { name: "测试订单已创建" });
-    const menu = within(dialog).getByRole("button", { name: "记录操作" });
+    const menu = within(dialog).getByRole("button", { name: "更多操作，记录操作" });
     await user.click(await recordAction("技术详情", "记录操作"));
     const technical = await screen.findByRole("dialog", { name: "技术详情" });
     expect(within(technical).getByLabelText("技术详情")).toHaveTextContent(

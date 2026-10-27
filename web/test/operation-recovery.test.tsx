@@ -151,7 +151,7 @@ describe("reversal focus after success", () => {
         </main>,
       );
       const user = userEvent.setup();
-      const trigger = screen.getByRole("button", { name: "收款关联记录操作" });
+      const trigger = screen.getByRole("button", { name: "更多操作，收款关联记录操作" });
       await user.click(await recordAction("撤销错误关联", "收款关联记录操作"));
       const dialog = screen.getByRole("dialog");
       await user.type(

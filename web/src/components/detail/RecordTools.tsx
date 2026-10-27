@@ -47,7 +47,7 @@ export function RecordTools({
                 ref={trigger}
                 variant="ghost"
                 size="sm"
-                aria-label={label}
+                aria-label={label === "更多操作" ? label : `更多操作，${label}`}
               />
             }
           >

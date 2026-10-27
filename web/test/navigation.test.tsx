@@ -332,7 +332,8 @@ describe("navigation and draft protection", () => {
       ),
     ).toBeNull();
     expect(screen.queryByText("个人收款系统")).not.toBeInTheDocument();
-    const account = screen.getByRole("button", { name: "账户菜单" });
+    const account = screen.getByRole("button", { name: /账户菜单$/ });
+    expect(account).toHaveAccessibleName("AD admin 管理员，账户菜单");
     await user.click(account);
     expect(
       await screen.findByRole("menuitem", { name: "退出登录" }),
@@ -508,7 +509,7 @@ describe("navigation and draft protection", () => {
   it("waits for discard confirmation before logout and clears protected data on success", async () => {
     const { fetchMock } = mount();
     const { user } = await edit();
-    await user.click(screen.getByRole("button", { name: "账户菜单" }));
+    await user.click(screen.getByRole("button", { name: /账户菜单$/ }));
     await user.click(await screen.findByRole("menuitem", { name: "退出登录" }));
     expect(
       fetchMock.mock.calls.some(([request]) => request.url.endsWith("/logout")),
@@ -524,7 +525,7 @@ describe("navigation and draft protection", () => {
   it("keeps the editor and dirty guard if logout fails", async () => {
     mount({ logoutFailure: true });
     const { user, field } = await edit();
-    await user.click(screen.getByRole("button", { name: "账户菜单" }));
+    await user.click(screen.getByRole("button", { name: /账户菜单$/ }));
     await user.click(await screen.findByRole("menuitem", { name: "退出登录" }));
     await user.click(screen.getByRole("button", { name: "放弃修改并继续" }));
     expect(await screen.findByText(/服务处理失败/)).toBeVisible();

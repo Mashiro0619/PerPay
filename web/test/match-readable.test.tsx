@@ -72,7 +72,7 @@ describe("readable payment match detail", () => {
       expect(within(card).getByRole("link", { name: paymentMatch.order.product_name })).toHaveAttribute("href", scope + "/orders/" + orderId);
       expect(within(screen.getByRole("group", { name: "匹配依据与处理记录" })).getByRole("heading", { name: "匹配依据" })).toBeVisible();
       expect(screen.queryByText("撤销时间")).not.toBeInTheDocument();
-      expect(within(card).getByRole("button", { name: "收款关联记录操作" }).closest('[data-slot="card-action"]')).not.toBeNull();
+      expect(within(card).getByRole("button", { name: "更多操作，收款关联记录操作" }).closest('[data-slot="card-action"]')).not.toBeNull();
       await user.click(await recordAction("技术详情", "收款关联记录操作"));
       const technical = await screen.findByRole("dialog", { name: "技术详情" });
       await user.click(within(technical).getByRole("button", { name: "复制关联编号" }));
@@ -147,7 +147,7 @@ describe("readable payment match detail", () => {
   it("restores the inline menu trigger after cancelling a reversal with Escape", async () => {
     mount(<MatchCard match={paymentMatch} density="comfortable" />);
     const user = userEvent.setup();
-    const trigger = screen.getByRole("button", { name: "收款关联记录操作" });
+    const trigger = screen.getByRole("button", { name: "更多操作，收款关联记录操作" });
     trigger.focus();
     await user.keyboard("{Enter}");
     await user.click(await screen.findByRole("menuitem", { name: "撤销错误关联" }));
@@ -184,7 +184,7 @@ describe("readable payment match detail", () => {
   it.each([undefined, "comfortable"] as const)("preserves the embedded layout and independent detail action (density=%s)", async (density) => {
     const { container } = mount(<MatchCard match={paymentMatch} embedded {...(density ? { density } : {})} />);
     expect(screen.queryByRole("link", { name: paymentMatch.order.product_name })).not.toBeInTheDocument();
-    const trigger = screen.getByRole("button", { name: "收款关联记录操作" });
+    const trigger = screen.getByRole("button", { name: "更多操作，收款关联记录操作" });
     expect(trigger.closest('[data-slot="card-content"]')).not.toBeNull();
     expect(container.querySelectorAll('[data-slot="card"]')).toHaveLength(1);
     expect(screen.queryByRole("heading", { name: "关联摘要与订单" })).not.toBeInTheDocument();

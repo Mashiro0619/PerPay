@@ -5,9 +5,9 @@ import { expectTouchTarget } from "./touch-targets";
 import type { AdminLedgerDetail, AdminOrderDetail, PaymentMatchDetail, WebhookAttempt, WebhookDeliveryDetail } from "../web/src/api/generated/types.gen";
 
 const scenarios = [
-  { key: "notificationDns", kind: "notification", heading: "通知详情", tools: "通知记录操作" },
-  { key: "matchSite", kind: "match", heading: "收款关联详情", tools: "收款关联记录操作" },
-  { key: "ledgerAssociated", kind: "ledger", heading: "流水与对账详情", tools: "支付宝流水记录操作" },
+  { key: "notificationDns", kind: "notification", heading: "通知详情", tools: "更多操作，通知记录操作" },
+  { key: "matchSite", kind: "match", heading: "收款关联详情", tools: "更多操作，收款关联记录操作" },
+  { key: "ledgerAssociated", kind: "ledger", heading: "流水与对账详情", tools: "更多操作，支付宝流水记录操作" },
 ] as const;
 const layoutScenarios = [
   ...scenarios,
@@ -240,7 +240,7 @@ test("detail pages separate standard cards into a readable business sequence", a
     if (scenario.kind === "notification") {
       await expect(headings).toHaveText(["关联订单", "通知信息", "投递历史"]);
       await expect(page.getByRole("group", { name: "关联订单", exact: true }).locator("[data-detail-order-summary]")).toBeVisible();
-      await expect(page.getByRole("group", { name: "通知信息", exact: true }).getByRole("button", { name: "通知记录操作", exact: true })).toBeVisible();
+      await expect(page.getByRole("group", { name: "通知信息", exact: true }).getByRole("button", { name: "更多操作，通知记录操作", exact: true })).toBeVisible();
       await expect(page.getByRole("group", { name: "投递历史", exact: true }).getByRole("heading", { name: "投递尝试（1）", exact: true })).toBeVisible();
     } else if (scenario.kind === "match") {
       await expect(headings).toHaveText(["关联摘要与订单", "支付宝交易", "匹配依据与处理记录"]);
@@ -423,7 +423,7 @@ test("named notification scenarios retain delivery facts and safe resend recover
     if (key === "notificationHistory") {
       expect(detail.is_latest).toBe(false);
       await expect(card.getByText(/历史投递/)).toBeVisible();
-      await card.getByRole("button", { name: "通知记录操作", exact: true }).click();
+      await card.getByRole("button", { name: "更多操作，通知记录操作", exact: true }).click();
       await expect(page.getByRole("menuitem", { name: "重新发送", exact: true })).toHaveCount(0);
       await page.keyboard.press("Escape");
       await expect(page.getByRole("menu")).toHaveCount(0);
@@ -549,12 +549,12 @@ test("automatic, manual and reversed matches keep full evidence in unified and s
       await fields(page, ["撤销时间", "撤销操作人", "撤销理由"]);
       expect(match.resolution_operation?.reason).toBeTruthy();
       await expect(evidence.locator("dd").filter({ hasText: match.resolution_operation!.reason! })).toBeVisible();
-      await card.getByRole("button", { name: "收款关联记录操作", exact: true }).click();
+      await card.getByRole("button", { name: "更多操作，收款关联记录操作", exact: true }).click();
       await expect(page.getByRole("menuitem", { name: "撤销错误关联", exact: true })).toHaveCount(0);
       await page.keyboard.press("Escape");
       await expect(page.getByRole("menu")).toHaveCount(0);
     } else {
-      const trigger = card.getByRole("button", { name: "收款关联记录操作", exact: true });
+      const trigger = card.getByRole("button", { name: "更多操作，收款关联记录操作", exact: true });
       await trigger.click();
       await page.getByRole("menuitem", { name: "撤销错误关联", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "撤销收款关联？", exact: true });
@@ -644,10 +644,10 @@ test("technical record identifiers remain copyable without crowding the business
   expect(ledger.sources.length).toBeGreaterThan(0);
   const source = ledger.sources[0]!;
   const cases = [
-    { key: "notificationDns", tools: "通知记录操作", values: [["投递编号", notification.delivery.delivery_id], ["事件编号", notification.event.event_id]] },
-    { key: "matchInferred", tools: "收款关联记录操作", values: [["关联编号", match.payment_match_id], ["流水编号", match.ledger_entry_id]] },
-    { key: "ledgerAssociated", tools: "支付宝流水记录操作", values: [["内部流水编号（PerPay）", ledger.ledger_entry_id]] },
-    { key: "ledgerAssociated", tools: "查账记录 1 操作", values: [["支付宝 App ID", source.app_id], ["采集来源标识", source.provider_account_key]] },
+    { key: "notificationDns", tools: "更多操作，通知记录操作", values: [["投递编号", notification.delivery.delivery_id], ["事件编号", notification.event.event_id]] },
+    { key: "matchInferred", tools: "更多操作，收款关联记录操作", values: [["关联编号", match.payment_match_id], ["流水编号", match.ledger_entry_id]] },
+    { key: "ledgerAssociated", tools: "更多操作，支付宝流水记录操作", values: [["内部流水编号（PerPay）", ledger.ledger_entry_id]] },
+    { key: "ledgerAssociated", tools: "更多操作，查账记录 1 操作", values: [["支付宝 App ID", source.app_id], ["采集来源标识", source.provider_account_key]] },
   ];
   for (const scenario of cases) {
     await openDetail(page, manifest, scenario.key);

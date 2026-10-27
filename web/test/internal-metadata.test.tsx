@@ -87,7 +87,7 @@ describe("ordinary administrator views", () => {
         return undefined;
       },
     });
-    await screen.findByRole("button", { name: "订单操作" });
+    await screen.findByRole("button", { name: "更多操作，订单操作" });
     expect(await recordAction("撤销退款标记")).toBeEnabled();
     await userEvent.setup().click(screen.getByText("标记历史"));
     expect(screen.getAllByText(/admin ·/).length).toBeGreaterThan(0);

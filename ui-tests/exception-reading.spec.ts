@@ -90,7 +90,7 @@ async function geometry(page: Page, mode: "compact" | "full") {
   const card = page.locator("[data-financial-exception]");
   await expect(card).toHaveAttribute("data-size", "default");
   await expect(card.locator('[data-slot="card-footer"]')).toHaveCount(0);
-  await expect(card.locator('[data-slot="card-action"]').getByRole("button", { name: "异常记录操作", exact: true })).toBeVisible();
+  await expect(card.locator('[data-slot="card-action"]').getByRole("button", { name: "更多操作，异常记录操作", exact: true })).toBeVisible();
   await expect(main.locator("[data-detail-identifier]")).toHaveCount(0);
   return { frame, groups };
 }
@@ -216,7 +216,7 @@ test("exception inline tools and manual confirmation preserve copy, scope and ke
   for (const key of ["exceptionOpen", "exceptionSite"]) {
     const exception = await read<FinancialException>(page, manifest, endpoint(manifest, key));
     const card = await open(page, manifest, key);
-    const tools = card.getByRole("button", { name: "异常记录操作", exact: true });
+    const tools = card.getByRole("button", { name: "更多操作，异常记录操作", exact: true });
     await tools.focus();
     await page.keyboard.press("Enter");
     await page.getByRole("menuitem", { name: "技术详情", exact: true }).click();
