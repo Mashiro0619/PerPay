@@ -18,6 +18,24 @@ docker compose --profile maintenance run --rm maintenance health
 
 公开探针的深度数据库结构校验及就绪状态聚合结果最多缓存 1 秒，维护锁、租约、时钟和存储空间等运行条件仍逐次检查。该缓存不用于下单、管理操作或维护工具的严格数据库检查；探针正常不替代实际请求的收款准入校验。
 
+## 外部监控
+
+在独立于 PerPay 宿主的监控服务中配置告警，避免宿主失联时监控也一起停止。以 Uptime Kuma 为例，新建 **HTTP(s) - Keyword** 监控，URL 填实际公网 HTTPS 地址的 `/readyz`，关键字完整填写 `"status":"ready"`（包含双引号）。设置请求超时、检查间隔及通知渠道；响应不是成功状态、超时或缺少该关键字时均告警。
+
+`degraded` 可能仍返回 HTTP 200，例如最近一次查账成功尚未过期，但后续任务已经失败。因此不能只检查 HTTP 状态码，也不能只匹配 `ready` 子串；`degraded` 和 `not_ready` 都应触发告警。首次配置、升级及计划维护期间，可在监控服务中设置有截止时间的静默。
+
+`/readyz` 不包含自动备份的健康状态。还需在宿主上定期检查 `backup` 容器，并将非零退出码作为告警；外部监控同时检查这项定时任务是否按时上报。以下命令在部署目录执行，只有容器正在运行且 Docker 健康状态为 `healthy` 才成功：
+
+```sh
+backup_container="$(docker compose ps --all --quiet backup)" &&
+test -n "$backup_container" &&
+test "$(docker inspect --format '{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$backup_container")" = 'true healthy'
+```
+
+容器不存在、已停止、缺少健康检查、处于 `starting` 或 `unhealthy` 时均不能视为备份正常。当前 Compose 每 5 分钟检查一次，超时为 10 秒，启动宽限为 10 分钟，连续失败 3 次标记为 `unhealthy`；监控侧应结合启动宽限设置告警延迟。
+
+排查时可执行 `docker compose exec -T backup node dist/backup/runner.js health` 查看备份健康详情；返回 `ok: false` 时退出码为 1。保持 `backup` 的网络隔离，在宿主运行容器状态检查，不向应用或备份容器挂载 Docker Socket。
+
 <a id="采集持续失败"></a>
 
 ## 查账持续失败
