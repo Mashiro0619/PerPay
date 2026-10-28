@@ -16,7 +16,8 @@ export function useManualLedgerScan(data: SystemStatus | undefined) {
     retry: false,
     networkMode: "always",
     mutationFn: async (input: { source: string; controller: AbortController; previousRequestId: string | null }) => {
-      if (isReadOnlyDemo() || !navigator.onLine) throw new Error("当前无法提交查账请求，请恢复连接后重试。");
+      if (isReadOnlyDemo()) throw new Error("当前操作不可用。");
+      if (!navigator.onLine) throw new Error("当前无法提交查账请求，请恢复连接后重试。");
       const response = await result(api.requestLedgerScan({ body: {}, signal: input.controller.signal }));
       if (!mounted.current || input.controller.signal.aborted || currentSource.current !== input.source) {
         throw new DOMException("查账来源已变化，已忽略旧请求结果。", "AbortError");
@@ -83,11 +84,12 @@ export function useManualLedgerScan(data: SystemStatus | undefined) {
   const request = localRequest && (!serverRequest || (serverRequest.id !== localRequest.id && Date.parse(serverRequest.requested_at) < Date.parse(localRequest.requested_at)))
     ? localRequest : serverRequest;
   const capability = data?.ledger.manual_scan;
-  const unavailableReason = isReadOnlyDemo() ? manualScanUnavailable.demo_read_only
+  const demo = isReadOnlyDemo();
+  const unavailableReason = demo ? null
     : !capability ? "手动查账状态暂不可用，请刷新。"
       : !capability.available ? manualScanUnavailable[capability.unavailable_reason ?? "stopped"] : null;
   const submitting = sameSource && submission.isPending;
-  const disabled = !!unavailableReason || submitting || manualScanActive(request) || remaining > 0;
+  const disabled = demo || !capability?.available || submitting || manualScanActive(request) || remaining > 0;
   const submit = () => {
     if (disabled || pending.current || !source || Date.now() < retryAt) return;
     const controller = new AbortController();

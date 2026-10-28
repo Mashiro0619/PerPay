@@ -95,13 +95,16 @@ describe("manual ledger scan", () => {
     expect(view.writes().filter(isScan)).toHaveLength(0);
   });
 
-  it("disables the read-only demo even if the status claims manual scans are available", async () => {
-    document.documentElement.dataset.perpayDemo = "readonly";
-    const view = mountOnboarding({ stage: 4, path: "/system", status: () => ready() });
+  it.each(["bootstrap", "server"] as const)("keeps the %s demo restriction without displaying its identity", async source => {
+    const data = ready();
+    if (source === "bootstrap") document.documentElement.dataset.perpayDemo = "readonly";
+    else data.ledger.manual_scan = { available: false, unavailable_reason: "demo_read_only", request: null };
+    const view = mountOnboarding({ stage: 4, path: "/system", status: () => data });
     await screen.findByRole("table", { name: "运行环节" });
     const button = ledgerRow().getByRole("button", { name: "手动查账" });
     expect(button).toBeDisabled();
-    expect(button).toHaveAccessibleDescription("只读演示不执行手动查账。");
+    expect(button).not.toHaveAttribute("aria-describedby");
+    expect(screen.queryByText(/演示模式|只读演示/)).not.toBeInTheDocument();
     fireEvent.click(button);
     expect(view.writes().filter(isScan)).toHaveLength(0);
   });

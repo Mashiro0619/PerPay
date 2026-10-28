@@ -256,7 +256,7 @@ test("security key view and session cancellation keep focus through card reflow 
   await page.keyboard.press("Enter");
   const keyDialog = page.getByRole("dialog", { name: "支付宝公钥", exact: true });
   const closeKey = keyDialog.getByRole("button", { name: "关闭", exact: true });
-  await expect(keyDialog.getByRole("alert")).toContainText("只读演示");
+  await expect(keyDialog.getByRole("alert")).toContainText("当前操作不可用。");
   expect(reveals).toEqual([]);
   await closeKey.click();
   await expect(keyDialog).toHaveCount(0);

@@ -13,7 +13,7 @@ function updateFor(channel: OfficialUpdateChannel, epoch: number): OfficialUpdat
   };
 }
 
-for (const width of [390, 1440]) {
+for (const width of [390, 740, 1440]) {
   test(`${width}: update channels, automatic checks and browser preferences remain usable`, async ({ page }, info) => {
     const epoch = Date.now();
     const channels: OfficialUpdateChannel[] = [];
@@ -23,6 +23,10 @@ for (const width of [390, 1440]) {
     } } });
     try {
       await page.setViewportSize({ width, height: 960 });
+      if (width === 740) {
+        await page.emulateMedia({ colorScheme: "dark" });
+        await page.addInitScript(() => localStorage.setItem("perpay:theme", "dark"));
+      }
       await page.clock.install({ time: new Date(epoch) });
       await page.route("**/*", route => new URL(route.request().url()).origin === fixture.origin ? route.continue() : route.abort("blockedbyclient"));
       await page.context().addCookies(fixture.cookies);
@@ -34,7 +38,31 @@ for (const width of [390, 1440]) {
       await expect(panel).toContainText("1.1.0-alpha.1");
       await expect(channel).toContainText("包含预发布版");
       expect(channels).toEqual(["prerelease"]);
-      await expect(panel).toContainText("6 小时");
+      await expect(panel).not.toContainText(/偏好仅作用|6 小时|不会自动安装|只读演示|演示模式|上次检查时间|发布时间|官方预发布版|官方稳定版|当前版本高于/);
+      await expect(panel.getByRole("button", { name: "发布信息", exact: true })).toHaveCount(0);
+      const controls = panel.getByRole("group", { name: "更新检查设置", exact: true });
+      const manual = controls.getByRole("button", { name: "检查更新", exact: true });
+      await expect(manual).toBeVisible();
+      await expect(manual).toBeEnabled();
+      const alignment = await controls.evaluate(element => {
+        const center = (selector: string) => {
+          const target = element.querySelector(selector);
+          if (!target) throw new Error("Missing update control " + selector);
+          const box = target.getBoundingClientRect();
+          return box.y + box.height / 2;
+        };
+        return {
+          automatic: center('[role="switch"]'), channel: center('[role="combobox"]'),
+          automaticLabel: center('label[for="official-update-automatic"]'), channelLabel: center('label[for="official-update-channel"]'),
+          manual: center('.system-update-check'),
+        };
+      });
+      expect(Math.abs(alignment.automatic - alignment.automaticLabel)).toBeLessThanOrEqual(1);
+      expect(Math.abs(alignment.channel - alignment.channelLabel)).toBeLessThanOrEqual(1);
+      if (width >= 740) {
+        expect(Math.abs(alignment.automatic - alignment.channel)).toBeLessThanOrEqual(1);
+        expect(Math.abs(alignment.manual - alignment.channel)).toBeLessThanOrEqual(1);
+      }
 
       await channel.click();
       await expect(page.getByRole("option")).toHaveCount(2);
@@ -65,6 +93,7 @@ for (const width of [390, 1440]) {
       await expect(automatic).not.toBeChecked();
       await expect(channel).toContainText("包含预发布版");
       await expect(panel.getByRole("button", { name: "检查更新", exact: true })).toBeEnabled();
+      await expect(panel.locator("[role='status']")).toHaveCount(0);
       expect(channels.length).toBe(count + 1);
       if (width === 1440) {
         const other = await page.context().newPage();
@@ -91,11 +120,18 @@ for (const width of [390, 1440]) {
         expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(321);
         await panel.screenshot({ path: info.outputPath("update-preferences-320-200pct.png") });
       }
+      if (width === 740) {
+        await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true);
+        await expect(manual).toBeVisible();
+        await expect(manual).toBeEnabled();
+        await panel.screenshot({ path: info.outputPath("update-preferences-dark-200pct.png") });
+      }
     } finally { await fixture.close(); }
   });
 }
 
-test("the read-only preview explains update isolation without attempting checks", async ({ page }, info) => {
+test("the preview keeps manual version checks available without explanatory banners", async ({ page }, info) => {
   let checks = 0;
   const epoch = Date.now();
   const fixture = await createSettingsServer(epoch, { demoMode: true, updateChecker: { check: async (channel = "prerelease") => {
@@ -107,12 +143,18 @@ test("the read-only preview explains update isolation without attempting checks"
     await page.context().addCookies(fixture.cookies);
     await page.goto(fixture.origin + "/admin/system");
     const panel = page.getByRole("region", { name: "官方更新", exact: true });
-    await expect(panel).toContainText("演示模式未连接官方更新服务");
-    await expect(panel.getByRole("button", { name: "检查更新", exact: true })).toBeDisabled();
+    await expect(panel).toContainText("有可用更新：v1.1.0-alpha.1");
+    await expect(panel).not.toContainText(/只读演示|演示模式|偏好仅作用|不会自动安装/);
+    const manual = panel.getByRole("button", { name: "检查更新", exact: true });
+    await expect(manual).toBeEnabled();
+    await expect.poll(() => checks).toBe(1);
+    await manual.click();
+    await expect.poll(() => checks).toBe(2);
     await panel.getByRole("combobox", { name: "检查通道", exact: true }).click();
-    await page.getByRole("option", { name: "包含预发布版", exact: true }).click();
-    await expect(panel.getByRole("combobox", { name: "检查通道", exact: true })).toContainText("包含预发布版");
-    expect(checks).toBe(0);
+    await page.getByRole("option", { name: "仅稳定版", exact: true }).click();
+    await expect(panel.getByRole("combobox", { name: "检查通道", exact: true })).toContainText("仅稳定版");
+    await expect(panel).toContainText("有可用更新：v1.0.0");
+    expect(checks).toBe(3);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true);
     await panel.screenshot({ path: info.outputPath("demo-update-preferences.png") });
   } finally { await fixture.close(); }
@@ -131,7 +173,7 @@ test("manual update checks respect a failed request's retry delay and recover", 
     await page.goto(fixture.origin + "/admin/system");
     const panel = page.getByRole("region", { name: "官方更新", exact: true });
     const manual = panel.getByRole("button", { name: "检查更新", exact: true });
-    await expect(panel).toContainText("暂时无法检查更新，不影响收款");
+    await expect(panel).toContainText("暂时无法检查更新。");
     await expect(manual).toBeDisabled();
     expect(checks).toBe(1);
     await page.clock.fastForward(3_000);

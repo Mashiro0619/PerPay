@@ -228,7 +228,7 @@ test("read-only demo rejects new session revocation in both browser and server g
   await card.getByRole("button", { name: "退出其他会话", exact: true }).click();
   const dialog = page.getByRole("alertdialog", { name: "退出其他会话？", exact: true });
   await dialog.getByRole("button", { name: "退出其他会话", exact: true }).click();
-  await expect(dialog.getByRole("alert")).toContainText("只读演示");
+  await expect(dialog.getByRole("alert")).toContainText("当前操作不可用。");
   expect(state.writes).toEqual([]);
   const csrf = manifest.sessionCookies.find(cookie => cookie.name.includes("csrf"));
   expect(csrf).toBeDefined();

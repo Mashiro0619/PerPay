@@ -81,7 +81,7 @@ client.interceptors.request.use((request) => {
   if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
     const path = new URL(request.url).pathname;
     if (isReadOnlyDemo() && !["/api/admin/v1/session/login", "/api/admin/v1/session/logout", "/api/admin/v1/orders/export"].includes(path)) {
-      throw new ApiError(undefined, {error:{code:"demo_read_only",message:"只读演示：保存、密钥及财务操作不可用。"}});
+      throw new ApiError(undefined, {error:{code:"demo_read_only",message:"当前操作不可用。"}});
     }
     const token = readCsrfToken();
     if (token) request.headers.set("X-CSRF-Token", token);

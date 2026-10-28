@@ -402,7 +402,7 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
       const sessionAction = context.req.method === "POST" && ["/api/admin/v1/session/login", "/api/admin/v1/session/logout"].includes(context.req.path);
       const exportRead = context.req.method === "POST" && /^\/api\/admin\/v1\/(?:sites\/[^/]+\/)?orders\/export$/.test(context.req.path);
       if (!["GET", "HEAD"].includes(context.req.method) && !sessionAction && !exportRead) {
-        return context.json({ error: { code: "demo_read_only", message: "这是只读演示，不执行付款、设置或财务操作。" } }, 403);
+        return context.json({ error: { code: "demo_read_only", message: "当前操作不可用。" } }, 403);
       }
       await next();
     });

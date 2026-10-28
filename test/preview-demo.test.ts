@@ -66,7 +66,9 @@ describe("isolated documentation preview", () => {
       for (const [method, path] of blockedRequests) {
         const response = await app.request(path, { method });
         assert.equal(response.status, 403);
-        assert.equal((await response.json() as { error: { code: string } }).error.code, "demo_read_only");
+        const error = (await response.json() as { error: { code: string; message: string } }).error;
+        assert.equal(error.code, "demo_read_only");
+        assert.equal(error.message, "当前操作不可用。");
       }
       const login = await app.request(demo.origin + "/api/admin/v1/session/login", {
         method: "POST", headers: { "Content-Type": "application/json", Origin: demo.origin },

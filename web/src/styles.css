@@ -1062,22 +1062,18 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .runtime-row-actions button[aria-expanded="true"] > svg { transform: rotate(180deg); }
 .runtime-detail-row[hidden] { display: none; }
 .system-update-strip { min-width: 0; border-top: 1px solid var(--border); padding-top: 0.875rem; }
-.system-update-main { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 0.75rem 1.5rem; }
-.system-update-summary { display: flex; min-width: 0; flex: 1; flex-wrap: wrap; align-items: baseline; gap: 0.375rem 0.75rem; }
+.system-update-main { min-width: 0; }
+.system-update-summary { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 0.375rem 0.75rem; }
 .system-update-summary > h2 { flex: none; font-size: 0.75rem; font-weight: 500; }
 .system-update-current { min-width: 0; color: var(--muted-foreground); font-size: 0.75rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .system-update-status { min-width: 0; color: var(--muted-foreground); font-size: 0.75rem; overflow-wrap: anywhere; }
-.system-update-actions { display: flex; flex: 0 1 auto; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.125rem 0.25rem; margin-top: -0.25rem; }
-.system-update-note { color: var(--muted-foreground); font-size: 0.75rem; margin-top: 0.5rem; }
-.system-update-preferences { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.5rem; margin-top: 0.875rem; }
-.system-update-preferences > [data-slot="field"] { width: auto; max-width: 100%; flex-wrap: wrap; gap: 0.625rem; }
-.system-update-preferences [data-slot="field-label"] { flex: none; font-size: 0.75rem; }
-.system-update-preferences [data-slot="select-trigger"] { min-width: min(9.5rem, 100%); max-width: 100%; }
-.system-update-details:not([hidden]) { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem 1.5rem; padding-top: 0.75rem; color: var(--muted-foreground); font-size: 0.75rem; overflow-wrap: anywhere; }
-@container runtime (max-width: 47.999rem) {
-  .system-update-main { flex-direction: column; gap: 0.75rem; }
-  .system-update-actions { justify-content: flex-start; }
-}
+.system-update-actions { display: flex; min-width: 0; flex: 0 1 auto; flex-wrap: wrap; align-items: center; gap: 0.125rem 0.25rem; }
+.system-update-preferences { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0.625rem 1rem; margin-top: 0.75rem; }
+.system-update-preferences > [data-slot="field"] { display: flex; min-width: 0; width: auto; max-width: 100%; flex: 0 1 auto; flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 0.625rem; }
+.system-update-preferences [data-slot="field-label"] { display: inline-flex; flex: none; align-items: center; margin: 0; font-size: 0.75rem; }
+.system-update-preferences [data-slot="select-trigger"] { width: 9.5rem; min-width: 0; max-width: 100%; height: auto; min-height: 1.75rem; flex: 0 1 9.5rem; white-space: normal; }
+.system-update-preferences [data-slot="select-value"] { display: flex; min-width: 0; overflow: visible; -webkit-line-clamp: unset; white-space: normal; overflow-wrap: anywhere; }
+.system-update-check { flex: none; }
 @container runtime (max-width: 37.999rem) {
   .runtime-toolbar { align-items: flex-start; flex-wrap: wrap; }
   .runtime-checked { padding-top: 0.375rem; }

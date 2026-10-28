@@ -160,7 +160,7 @@ describe("order export", () => {
       const result = await api.createAdministratorTestPayment({
         body: {},
       } as never);
-      expect(result.error).toMatchObject({ code: "demo_read_only" });
+      expect(result.error).toMatchObject({ code: "demo_read_only", message: "当前操作不可用。" });
       expect(fetch).not.toHaveBeenCalled();
     } finally {
       delete document.documentElement.dataset.perpayDemo;

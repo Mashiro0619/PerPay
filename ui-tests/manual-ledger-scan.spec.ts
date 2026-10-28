@@ -126,7 +126,7 @@ for (const width of [390, 1440]) {
   });
 }
 
-test("manual scan availability explains stopped, transitioning, unconfigured, storage recovery and demo states", async ({ page }) => {
+test("manual scan availability explains failures and keeps the demo action disabled without mode copy", async ({ page }) => {
   const epoch = Date.now();
   const fixture = await createManualScanFixture(epoch);
   try {
@@ -149,7 +149,8 @@ test("manual scan availability explains stopped, transitioning, unconfigured, st
     await enter(page, demo);
     const row = page.getByRole("row").filter({ has: page.getByRole("rowheader", { name: "查账", exact: true }) });
     await expect(row.getByRole("button", { name: "手动查账", exact: true })).toBeDisabled();
-    await expect(row).toContainText(/演示/);
+    await expect(row).not.toContainText(/演示/);
+    await expect(row.getByRole("button", { name: "手动查账", exact: true })).not.toHaveAttribute("aria-describedby");
     expect(demo.requestCount()).toBe(0);
   } finally { await demo.close(); }
 });

@@ -1,14 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { isReleaseVersion, isPrereleaseVersion } from "../../src/shared/release-version";
-import { X, ArrowUpCircle, ChevronDown } from "lucide-react";
+import { X, ArrowUpCircle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError, queryClient, result, sessionKey } from "@/api/client";
-import { dateTime } from "@/lib/format";
-import { isReadOnlyDemo } from "@/demo-mode";
 import { isUpdateChannel, setUpdatePreferences, useUpdatePreferences, type UpdateChannel } from "@/lib/update-preferences";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -17,11 +14,6 @@ import {
   AlertTitle,
   AlertAction,
 } from "@/components/ui/alert";
-import {
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
-} from "@/components/ui/collapsible";
 export const officialUpdateKey = ["official-update", "prerelease"] as const;
 const checkInterval = 6 * 60 * 60 * 1000;
 const channels: { value: UpdateChannel; label: string }[] = [
@@ -39,7 +31,6 @@ function retryDeadline(error: unknown, updatedAt: number): number {
 function useUpdateOwner() {
   const preferences = useUpdatePreferences();
   const { channel, automatic } = preferences;
-  const demo = isReadOnlyDemo();
   const selection = useMemo(() => ({
     queryKey: ["official-update", channel] as const,
     active: false,
@@ -51,7 +42,7 @@ function useUpdateOwner() {
   const update = useQuery({
     queryKey: selection.queryKey,
     queryFn: async ({ signal }) => {
-      if (demo || queryClient.getQueryData(sessionKey) == null) {
+      if (queryClient.getQueryData(sessionKey) == null) {
         throw new DOMException("当前不能检查更新。", "AbortError");
       }
       const response = await result(api.checkOfficialUpdate({
@@ -87,7 +78,7 @@ function useUpdateOwner() {
   });
   const { refetch } = update;
   const check = useCallback(async () => {
-    if (!selection.active || selection.pending || demo || queryClient.getQueryData(sessionKey) == null) return;
+    if (!selection.active || selection.pending || queryClient.getQueryData(sessionKey) == null) return;
     const state = queryClient.getQueryState(selection.queryKey);
     if (Date.now() < retryDeadline(state?.error, state?.errorUpdatedAt ?? 0)) return;
     const attempt = {};
@@ -104,7 +95,7 @@ function useUpdateOwner() {
         selection.wake?.();
       }
     }
-  }, [demo, refetch, selection]);
+  }, [refetch, selection]);
 
   useEffect(() => {
     selection.active = true;
@@ -122,7 +113,7 @@ function useUpdateOwner() {
     let timer: number | undefined;
     const schedule = () => {
       window.clearTimeout(timer);
-      if (!automatic || demo || !selection.active || selection.pending ||
+      if (!automatic || !selection.active || selection.pending ||
         document.visibilityState === "hidden" || !navigator.onLine ||
         queryClient.getQueryData(sessionKey) == null) return;
       const state = queryClient.getQueryState(selection.queryKey);
@@ -150,9 +141,9 @@ function useUpdateOwner() {
       window.removeEventListener("online", schedule);
       window.removeEventListener("offline", schedule);
     };
-  }, [automatic, demo, selection, check]);
+  }, [automatic, selection, check]);
 
-  return { update, check, preferences, demo, checked: completedSelection === selection };
+  return { update, check, preferences, checked: completedSelection === selection };
 }
 
 const OfficialUpdateContext = createContext<ReturnType<typeof useUpdateOwner> | null>(null);
@@ -181,11 +172,11 @@ export function OfficialUpdateNotice({
   hidden?: boolean;
   className?: string | undefined;
 }) {
-  const { update, checked, demo, preferences } = useOfficialUpdate();
+  const { update, checked, preferences } = useOfficialUpdate();
   const [dismissedVersion, setDismissedVersion] = useState<string | null>(null);
   const data = update.data?.data;
   if (
-    hidden || demo || !checked ||
+    hidden || !checked ||
     update.isFetching ||
     update.isError ||
     data?.status !== "update_available" ||
@@ -225,17 +216,15 @@ export function OfficialUpdatePanel({ currentVersion }: { currentVersion?: strin
 }
 
 function UpdatePanel({ currentVersion }: { currentVersion?: string | undefined }) {
-  const { update, checked, check, demo, preferences } = useOfficialUpdate();
-  const checking = !demo && update.isFetching;
-  const failed = !demo && checked && update.isError;
-  const data = !demo && checked && !checking && !update.isError ? update.data?.data : undefined;
+  const { update, checked, check, preferences } = useOfficialUpdate();
+  const checking = update.isFetching;
+  const failed = checked && update.isError;
+  const data = checked && !checking && !update.isError ? update.data?.data : undefined;
   const lastKnownVersion = update.data?.data.current_version;
   const knownVersion = isReleaseVersion(currentVersion)
     ? currentVersion
     : isReleaseVersion(lastKnownVersion) ? lastKnownVersion : undefined;
-  const prereleaseChannel = preferences.channel === "prerelease";
   const latestIsPrerelease = isPrereleaseVersion(data?.latest_version);
-  const latestLabel = latestIsPrerelease ? "官方预发布版" : "官方稳定版";
   const [clock, setClock] = useState(Date.now);
   const retryAt = retryDeadline(update.error, update.errorUpdatedAt);
   const remaining = Math.max(0, Math.ceil((retryAt - Math.max(clock, update.errorUpdatedAt)) / 1000));
@@ -250,24 +239,15 @@ function UpdatePanel({ currentVersion }: { currentVersion?: string | undefined }
     timer = window.setTimeout(tick, Math.min(retryAt - Date.now(), retryAt - Date.now() > 60_000 ? 60_000 : 1000));
     return () => window.clearTimeout(timer);
   }, [retryAt]);
-  const checkedAt = demo ? undefined : failed && update.errorUpdatedAt
-    ? new Date(update.errorUpdatedAt).toISOString() : update.data?.data.checked_at;
-  const status = demo
-    ? "演示模式未连接官方更新服务"
-    : checking
+  const status = checking
     ? "正在检查更新…"
     : failed
-      ? "暂时无法检查更新，不影响收款。"
-      : !data
-        ? "尚未检查更新。"
+      ? "暂时无法检查更新。"
       : data?.status === "update_available"
         ? "有可用更新：v" + data.latest_version + (latestIsPrerelease ? "（预发布）" : "")
-        : data?.status === "ahead"
-          ? prereleaseChannel ? "当前版本高于官方已发布版本。" : "当前版本高于官方稳定版。"
-          : prereleaseChannel ? "已是当前通道最新版本。" : "已是最新稳定版。";
+        : null;
   return (
-    <section className="system-update-strip" aria-label="官方更新" data-update-state={demo ? "demo" : checking ? "checking" : failed ? "unavailable" : data?.status ?? "idle"}>
-      <Collapsible>
+    <section className="system-update-strip" aria-label="官方更新" data-update-state={checking ? "checking" : failed ? "unavailable" : data?.status ?? "idle"}>
         <div className="system-update-main">
           <div className="system-update-summary">
             <h2>官方更新</h2>
@@ -276,58 +256,15 @@ function UpdatePanel({ currentVersion }: { currentVersion?: string | undefined }
                 <span className="font-mono">{knownVersion ? `v${knownVersion}` : "未知"}</span>
                 {isPrereleaseVersion(knownVersion) && <span>（预发布）</span>}
               </span>
-            {knownVersion && <Separator orientation="vertical" className="h-4 data-vertical:self-center" />}
-            <p role="status" className="system-update-status">
+            {(status || remaining > 0) && <p role="status" className="system-update-status">
               <span>{status}</span>
-              {!demo && !checking && remaining > 0 && (
+              {!checking && remaining > 0 && (
                 <span> 请至少等待 {retryWait(remaining)}后重试。</span>
               )}
-            </p>
-          </div>
-          <div className="system-update-actions">
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={demo || update.isFetching || remaining > 0}
-              onClick={() => { void check(); }}
-            >
-              {update.isFetching && (
-                <Spinner aria-hidden="true" data-icon="inline-start" />
-              )}
-              检查更新
-            </Button>
-            {data && (
-              <>
-                <a
-                  data-external-link
-                  aria-label="查看发布说明"
-                  className={buttonVariants({ variant: "ghost", size: "sm" })}
-                  href={data.release_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  发布说明
-                </a>
-                <a
-                  data-external-link
-                  className={buttonVariants({ variant: "ghost", size: "sm" })}
-                  href={upgradeGuide}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  更新方法
-                </a>
-                <CollapsibleTrigger
-                  render={<Button variant="ghost" size="sm" className="group" />}
-                >
-                  发布信息
-                  <ChevronDown data-icon="inline-end" className="transition-transform group-aria-expanded:rotate-180" />
-                </CollapsibleTrigger>
-              </>
-            )}
+            </p>}
           </div>
         </div>
-        <FieldGroup className="system-update-preferences">
+        <FieldGroup className="system-update-preferences" role="group" aria-label="更新检查设置">
           <Field orientation="horizontal" className="system-update-auto">
             <FieldLabel htmlFor="official-update-automatic">自动检查更新</FieldLabel>
             <Switch id="official-update-automatic" checked={preferences.automatic} onCheckedChange={(automatic) => setUpdatePreferences({ automatic })} />
@@ -339,25 +276,19 @@ function UpdatePanel({ currentVersion }: { currentVersion?: string | undefined }
               <SelectContent><SelectGroup>{channels.map(({ value, label }) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectGroup></SelectContent>
             </Select>
           </Field>
+          <Button variant="outline" size="sm" className="system-update-check"
+            disabled={update.isFetching || remaining > 0} onClick={() => { void check(); }}>
+            {update.isFetching && <Spinner aria-hidden="true" data-icon="inline-start" />}
+            检查更新
+          </Button>
+          {data && <div className="system-update-actions">
+            <a data-external-link aria-label="查看发布说明"
+              className={buttonVariants({ variant: "ghost", size: "sm" })}
+              href={data.release_url} target="_blank" rel="noopener noreferrer">发布说明</a>
+            <a data-external-link className={buttonVariants({ variant: "ghost", size: "sm" })}
+              href={upgradeGuide} target="_blank" rel="noopener noreferrer">更新方法</a>
+          </div>}
         </FieldGroup>
-        <p className="system-update-note">偏好仅作用于当前浏览器；启用后登录时检查，页面可见且联网时每 6 小时检查一次，不会自动安装。</p>
-        <p className="system-update-note"><span>上次检查时间</span>{" "}{checkedAt ? <time dateTime={checkedAt}>{dateTime(checkedAt)}</time> : "尚未检查"}</p>
-        {data?.status === "update_available" && (
-          <p className="system-update-note">更新前请备份数据库和主密钥。</p>
-        )}
-        {data && (
-          <CollapsibleContent className="system-update-details">
-            <p>
-              <span>{latestLabel}</span>{" "}
-              <span className="font-mono">v{data.latest_version}</span>
-            </p>
-            <p>
-              <span>发布时间</span>{" "}
-              <time dateTime={data.published_at}>{dateTime(data.published_at)}</time>
-            </p>
-          </CollapsibleContent>
-        )}
-      </Collapsible>
     </section>
   );
 }

@@ -663,7 +663,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     if (new URL(context.req.url).searchParams.size !== 0) {
       throw new HttpApiError(422, "validation_failed", "手动查账不接受查询参数");
     }
-    if (dependencies.demoMode) throw new HttpApiError(403, "demo_read_only", "只读演示不执行手动查账");
+    if (dependencies.demoMode) throw new HttpApiError(403, "demo_read_only", "当前操作不可用。");
     if (!currentLedgerManualScan(dependencies, dependencies.database.health().ok).available || !dependencies.requestLedgerScan) {
       throw new HttpApiError(503, "ledger_scan_unavailable", "当前无法发起手动查账，请稍后重试");
     }
@@ -760,7 +760,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     requireSameOrigin(context, dependencies.config.publicOrigin);
     requireCsrf(context, dependencies.identity, dependencies.config.secureCookies);
     await readJson(context, emptyObjectSchema, MAX_JSON_BODY_BYTES);
-    if (dependencies.demoMode) throw new HttpApiError(403, "demo_read_only", "只读演示不执行写操作");
+    if (dependencies.demoMode) throw new HttpApiError(403, "demo_read_only", "当前操作不可用。");
     const revoked = dependencies.identity.revokeOtherSessions(
       context.get("adminSession"),
       identityContext(context, dependencies.config.trustedProxy),
@@ -775,7 +775,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const target = sessionIdSchema.safeParse(context.req.param("session_id"));
     if (!target.success) throw new HttpApiError(422, "validation_failed", "会话标识必须是有效的 UUID");
     await readJson(context, emptyObjectSchema, MAX_JSON_BODY_BYTES);
-    if (dependencies.demoMode) throw new HttpApiError(403, "demo_read_only", "只读演示不执行写操作");
+    if (dependencies.demoMode) throw new HttpApiError(403, "demo_read_only", "当前操作不可用。");
     const session = context.get("adminSession");
     const targetSessionId = target.data.toLowerCase();
     dependencies.identity.revokeSession(
@@ -897,7 +897,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       return parsed.data;
     };
     const siteWrite = (context: Context<AppEnvironment>) => {
-      if (dependencies.demoMode) throw new HttpApiError(403, "demo_read_only", "只读演示不允许修改网站配置。");
+      if (dependencies.demoMode) throw new HttpApiError(403, "demo_read_only", "当前操作不可用。");
       requireCurrentSession(context, dependencies.identity);
       return settingsAuditContext(context, dependencies);
     };
@@ -954,7 +954,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   app.get("/api/admin/v1/settings/collection-policy", adminSession, context => context.json({ data: requireSettingsService(dependencies).collectionPolicy() }));
   app.put("/api/admin/v1/settings/collection-policy", adminSession, financialWrite, async context => {
     const body = await readJson(context, collectionPolicyInputSchema, MAX_JSON_BODY_BYTES);
-    if (dependencies.demoMode) throw new HttpApiError(403, "demo_read_only", "只读演示不允许修改查账设置。");
+    if (dependencies.demoMode) throw new HttpApiError(403, "demo_read_only", "当前操作不可用。");
     requireCurrentSession(context, dependencies.identity);
     const data = await settingsOperation(() => requireSettingsService(dependencies).saveCollectionPolicy(body, settingsAuditContext(context, dependencies)));
     return context.json({ data: data });
@@ -1697,7 +1697,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
 
   app.post("/api/public/v1/checkouts/:token/check", async (context) => {
     requireSameOrigin(context, dependencies.config.publicOrigin);
-    if (dependencies.demoMode) throw new HttpApiError(403, "origin_not_allowed", "只读演示不能发起支付宝查账");
+    if (dependencies.demoMode) throw new HttpApiError(403, "origin_not_allowed", "当前操作不可用。");
     if (!manualCheckoutBudget.take(remoteAddress(context, dependencies.config.trustedProxy))) {
       throw new HttpApiError(429, "public_checkout_rate_limited", "手动核实过于频繁，请稍后重试", 5);
     }
@@ -1759,7 +1759,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       if (!siteClientIdSchema.safeParse(clientId).success || !dependencies.sites!.get(clientId)) throw new HttpApiError(404, "site_not_found", "业务网站不存在");
       const values = new URL(context.req.url).searchParams;
       if (values.has("api_client_id")) throw new HttpApiError(422, "validation_failed", "网站身份只能由路径指定");
-      if (dependencies.demoMode && !["GET", "HEAD"].includes(context.req.method) && !context.req.path.endsWith("/orders/export")) throw new HttpApiError(403, "demo_read_only", "只读演示不执行写操作");
+      if (dependencies.demoMode && !["GET", "HEAD"].includes(context.req.method) && !context.req.path.endsWith("/orders/export")) throw new HttpApiError(403, "demo_read_only", "当前操作不可用。");
       context.set("adminSiteId", clientId);
       dependencies.database.read(db => {
         for (const [param, kind] of [["orderId", "order"], ["deliveryId", "delivery"], ["paymentMatchId", "match"], ["candidateId", "candidate"], ["exceptionId", "exception"]] as const) {
