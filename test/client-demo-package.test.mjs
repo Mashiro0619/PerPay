@@ -56,7 +56,10 @@ describe('caller demo distribution', () => {
     const content = entries(archive);
     assert.deepEqual([...content.keys()], DEMO_FILES.map(name => 'perpay-client-demo/' + name));
     for (const name of DEMO_FILES) assert.deepEqual(content.get('perpay-client-demo/' + name), await readFile(join(source, name)));
-    assert.equal(JSON.parse(content.get('perpay-client-demo/package.json').toString()).dependencies, undefined);
+    const demoPackage = JSON.parse(content.get('perpay-client-demo/package.json').toString());
+    const releasePackage = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+    assert.equal(demoPackage.version, releasePackage.version, 'release attachment must identify the same release as the application');
+    assert.equal(demoPackage.dependencies, undefined);
   });
   it('never includes local environment files, databases, logs or private keys', async t => {
     const directory = await copyFixture(t);
