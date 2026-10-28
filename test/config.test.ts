@@ -17,6 +17,7 @@ describe("deployment configuration", () => {
     assert.equal(config.port, 6190);
     assert.equal(config.publicOrigin, "http://localhost:6190");
     assert.equal(config.secureCookies, false);
+    assert.equal(config.setupTokenEnabled, false);
     assert.deepEqual(config.trustedProxy.cidrs, []);
     assert.deepEqual(config.masterKey, Buffer.from(MASTER_KEY, "hex"));
     assert.equal(config.masterKey.byteLength, 32);
@@ -32,8 +33,18 @@ describe("deployment configuration", () => {
       "port",
       "publicOrigin",
       "secureCookies",
+      "setupTokenEnabled",
       "trustedProxy",
     ]);
+  });
+
+  it("enables initialization tokens only through an explicit valid deployment flag", () => {
+    for (const value of ["true", "false"] as const) {
+      assert.equal(loadConfig({ PERPAY_MASTER_KEY: MASTER_KEY, PERPAY_SETUP_TOKEN_ENABLED: value }).setupTokenEnabled, value === "true");
+    }
+    for (const value of ["", "yes", "no", "1", "0", "TRUE", "flase"]) {
+      assert.throws(() => loadConfig({ PERPAY_MASTER_KEY: MASTER_KEY, PERPAY_SETUP_TOKEN_ENABLED: value }), /PERPAY_SETUP_TOKEN_ENABLED/);
+    }
   });
 
   it("requires a canonical 32-byte hexadecimal master key", () => {

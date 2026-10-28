@@ -5,7 +5,7 @@ import {
 } from "../dev/initialization";
 
 const html =
-  '<html><head><meta name="perpay-initialized" content="__PERPAY_INITIALIZED__" /></head><body>Vite application</body></html>';
+  '<html><head><meta name="perpay-initialized" content="__PERPAY_INITIALIZED__" /><meta name="perpay-setup-token-required" content="__PERPAY_SETUP_TOKEN_REQUIRED__" /></head><body>Vite application</body></html>';
 const backend = "http://127.0.0.1:6190";
 const stateHtml = (state: string) =>
   '<html><head><meta name="perpay-initialized" content="' +
@@ -48,6 +48,26 @@ describe("Vite administrator initialization bridge", () => {
     );
     expect(request).toHaveBeenCalledTimes(2);
   });
+
+  it.each(["true", "false"])(
+    "forwards the backend's explicit setup token requirement: %s",
+    async (required) => {
+      const response = stateHtml("false").replace("</head>", `<meta name="perpay-setup-token-required" content="${required}" /></head>`);
+      expect(await withBackendInitialization(html, backend, vi.fn(async () => new Response(response)))).toBe(
+        html.replace("__PERPAY_INITIALIZED__", "false").replace("__PERPAY_SETUP_TOKEN_REQUIRED__", required),
+      );
+    },
+  );
+
+  it.each(["", "unknown", "false-ish", "FALSE", "__PERPAY_SETUP_TOKEN_REQUIRED__"])(
+    "does not infer disabled token protection from malformed metadata: %s",
+    async (required) => {
+      const response = stateHtml("false").replace("</head>", `<meta name="perpay-setup-token-required" content="${required}" /></head>`);
+      expect(await withBackendInitialization(html, backend, vi.fn(async () => new Response(response)))).toBe(
+        html.replace("__PERPAY_INITIALIZED__", "false"),
+      );
+    },
+  );
 
   it.each(["__PERPAY_INITIALIZED__", "unknown", "true-ish", "", "FALSE"])(
     "preserves unknown state for malformed backend metadata: %s",

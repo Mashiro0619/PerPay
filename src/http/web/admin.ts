@@ -5,7 +5,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import type { WebAsset } from "./assets.ts";
 
 export interface AdminFrontend {
-  readonly render: (initialized: boolean, systemName?: string) => string;
+  readonly render: (initialized: boolean, systemName?: string, setupTokenEnabled?: boolean) => string;
   readonly assets: ReadonlyMap<string, WebAsset>;
 }
 
@@ -35,8 +35,9 @@ export function loadAdminFrontend(root = new URL("../../../web-dist/admin/", imp
     }));
   }
   return {
-    render: (initialized, systemName = DEFAULT_SYSTEM_NAME) => template
+    render: (initialized, systemName = DEFAULT_SYSTEM_NAME, setupTokenEnabled = false) => template
       .replace("__PERPAY_INITIALIZED__", String(initialized))
+      .replace("__PERPAY_SETUP_TOKEN_REQUIRED__", String(!initialized && setupTokenEnabled))
       .replaceAll(SYSTEM_NAME_MARKER, () => escapeSystemName(systemName)),
     assets,
   };

@@ -47,8 +47,11 @@ test("Compose contract accepts the default services and profile-gated maintenanc
   const parsed = parse(validCompose);
   assert.equal(parsed.services.app.environment.PERPAY_PUBLIC_URL, "https://pay.example.com");
   assert.equal(parsed.services.app.environment.PERPAY_SECRETS_DIR, "/run/perpay-secrets");
+  assert.equal(parsed.services.app.environment.PERPAY_SETUP_TOKEN_ENABLED, "false");
   assert.equal(parsed.services.app.environment.PERPAY_BACKUP_INTERVAL_SECONDS, undefined);
   assert.equal(parsed.services.backup.environment.PERPAY_BACKUP_INTERVAL_SECONDS, undefined);
+  assert.equal(parsed.services.backup.environment.PERPAY_SETUP_TOKEN_ENABLED, undefined);
+  assert.equal(parsed.services.maintenance.environment.PERPAY_SETUP_TOKEN_ENABLED, undefined);
   assert.equal(parsed.services.backup.healthcheck.interval, "5m");
   assert.equal(parsed.services.backup.healthcheck.timeout, "10s");
   assert.deepEqual(parsed.services.app.volumes, [
@@ -86,12 +89,21 @@ test("Compose contract rejects duplicate keys, unexpected services, and renamed 
 test("Compose release template rejects locally filled configuration", () => {
   for (const [placeholder, configured] of [
     ["https://pay.example.com", "https://pay.example.test"],
+    ['&perpay-setup-token-enabled "false"', '&perpay-setup-token-enabled "true"'],
   ]) {
     assert.throws(
       () => inspectComposeContract(validCompose.replace(placeholder, configured)),
       /must retain its anchored template value/u,
     );
   }
+});
+
+test("Compose exposes the initialization-token option as a string anchor and preserves the disabled release default", () => {
+  const enabled = validCompose.replace('&perpay-setup-token-enabled "false"', '&perpay-setup-token-enabled "true"');
+  assert.equal(parse(enabled).services.app.environment.PERPAY_SETUP_TOKEN_ENABLED, "true");
+  assert.equal(parse(renderReleaseCompose(validCompose, "1.0.0-alpha.3")).services.app.environment.PERPAY_SETUP_TOKEN_ENABLED, "false");
+  assert.throws(() => inspectComposeContract(validCompose.replace('PERPAY_SETUP_TOKEN_ENABLED: *perpay-setup-token-enabled', 'PERPAY_SETUP_TOKEN_ENABLED: "false"')), /must reference the perpay-setup-token-enabled anchor/u);
+  assert.throws(() => inspectComposeContract(validCompose.replace('&perpay-setup-token-enabled "false"', '&perpay-setup-token-enabled false')), /must retain its anchored template value/u);
 });
 
 test("Compose keeps backup policy out of service environments", () => {
@@ -321,6 +333,14 @@ test("daily CI keeps bounded Linux checks and a separate Chromium regression job
   assert.equal(artifact.if, "failure()");
   assert.equal(artifact.with.path, ".ui-audit/runs/");
   assert.equal(artifact.with["include-hidden-files"], true);
+});
+
+test("container smoke reads the initialization-token setting before requiring a startup token", () => {
+  for (const workflow of [parse(releaseWorkflowText), parse(validationWorkflowText)]) {
+    const steps = Object.values(workflow.jobs).flatMap(job => job.steps);
+    const smoke = steps.find(step => /Exercise .*Compose, backup, restore, and persistence/.test(step.name));
+    assert.match(smoke.run, /if \[ "\$\(compose config --format json \| jq -r '\.services\.app\.environment\.PERPAY_SETUP_TOKEN_ENABLED'\)" = true \]; then\s+test -n "\$PERPAY_SMOKE_SETUP_TOKEN"\s+echo "::add-mask::\$PERPAY_SMOKE_SETUP_TOKEN"\s+else\s+test -z "\$PERPAY_SMOKE_SETUP_TOKEN"\s+fi/u);
+  }
 });
 
 test("container validation is manual and exercises the real deployment lifecycle", () => {

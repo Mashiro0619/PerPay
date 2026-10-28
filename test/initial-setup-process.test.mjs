@@ -9,7 +9,8 @@ import { basename, dirname, join, resolve } from "node:path";
 import { it } from "node:test";
 import { listAdminAssets, runAdminSmoke } from "../scripts/admin-smoke.mjs";
 
-it("delivers a startup-only setup token through the real process and closes setup across restarts", { timeout: 90_000 }, async () => {
+for (const setupTokenEnabled of [undefined, true]) {
+it(`runs first setup through the real process with token ${setupTokenEnabled ? "enabled" : "disabled by default"} and closes setup across restarts`, { timeout: 90_000 }, async () => {
   const directory = mkdtempSync(join(tmpdir(), "perpay-setup-process-"));
   const masterKey = randomBytes(32).toString("hex");
   const password = randomBytes(32).toString("hex");
@@ -45,7 +46,8 @@ it("delivers a startup-only setup token through the real process and closes setu
       cwd: resolve(import.meta.dirname, ".."),
       execArgv: ["--experimental-strip-types"],
       env: { ...environment, PERPAY_HOST: "127.0.0.1", PERPAY_PORT: String(port), PERPAY_PUBLIC_URL: baseUrl,
-        PERPAY_DATA_DIR: join(directory, "data"), PERPAY_BACKUP_DIR: join(directory, "backups"), PERPAY_MASTER_KEY: masterKey },
+        PERPAY_DATA_DIR: join(directory, "data"), PERPAY_BACKUP_DIR: join(directory, "backups"), PERPAY_MASTER_KEY: masterKey,
+        ...(setupTokenEnabled === undefined ? {} : { PERPAY_SETUP_TOKEN_ENABLED: String(setupTokenEnabled) }) },
       stdio: ["ignore", "pipe", "pipe", "ipc"],
     });
     // Keep startup secrets in this test's memory, never in test diagnostics.
@@ -71,17 +73,19 @@ it("delivers a startup-only setup token through the real process and closes setu
   }
   try {
     const first = await start();
-    assert.equal(first.tokens.length, 1);
-    assert.equal(/^[0-9a-f]{64}$/.test(first.tokens[0]), true, "startup token must carry 32 random bytes");
+    assert.equal(first.tokens.length, setupTokenEnabled ? 1 : 0);
+    if (setupTokenEnabled) assert.equal(/^[0-9a-f]{64}$/.test(first.tokens[0]), true, "startup token must carry 32 random bytes");
     await stop();
     const next = await start();
-    assert.equal(next.tokens.length, 1);
-    assert.equal(first.tokens[0] === next.tokens[0], false, "uninitialized restart must rotate the token");
-    const stale = await fetch(next.baseUrl + "/api/admin/v1/setup", { method: "POST",
-      headers: { origin: next.baseUrl, "content-type": "application/json" },
-      body: JSON.stringify({ password, setup_token: first.tokens[0] }),
-    });
-    assert.equal(stale.status, 403);
+    assert.equal(next.tokens.length, setupTokenEnabled ? 1 : 0);
+    if (setupTokenEnabled) {
+      assert.equal(first.tokens[0] === next.tokens[0], false, "uninitialized restart must rotate the token");
+      const stale = await fetch(next.baseUrl + "/api/admin/v1/setup", { method: "POST",
+        headers: { origin: next.baseUrl, "content-type": "application/json" },
+        body: JSON.stringify({ password, setup_token: first.tokens[0] }),
+      });
+      assert.equal(stale.status, 403);
+    }
     const firstSmoke = await runAdminSmoke({ baseUrl: next.baseUrl, password, setupToken: next.tokens[0], initialize: true, isolated: true, assets: listAdminAssets() });
     await stop();
     const initialized = await start();
@@ -95,3 +99,4 @@ it("delivers a startup-only setup token through the real process and closes setu
     rmSync(directory, { recursive: true, force: true });
   }
 });
+}

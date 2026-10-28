@@ -359,8 +359,12 @@ jobs:
           export PERPAY_SMOKE_PASSWORD="$(openssl rand -hex 32)"
           PERPAY_SMOKE_SETUP_TOKEN="$(compose logs --no-color --no-log-prefix app |
             jq -Rr 'fromjson? | select(.event == "administrator_setup_required") | .setup_token | select(type == "string")' | tail -n 1)"
-          test -n "$PERPAY_SMOKE_SETUP_TOKEN"
-          echo "::add-mask::$PERPAY_SMOKE_SETUP_TOKEN"
+          if [ "$(compose config --format json | jq -r '.services.app.environment.PERPAY_SETUP_TOKEN_ENABLED')" = true ]; then
+            test -n "$PERPAY_SMOKE_SETUP_TOKEN"
+            echo "::add-mask::$PERPAY_SMOKE_SETUP_TOKEN"
+          else
+            test -z "$PERPAY_SMOKE_SETUP_TOKEN"
+          fi
           export PERPAY_SMOKE_SETUP_TOKEN
           admin_smoke() {
             compose exec -T -e PERPAY_SMOKE_ISOLATED -e PERPAY_SMOKE_PASSWORD -e PERPAY_SMOKE_SETUP_TOKEN app \

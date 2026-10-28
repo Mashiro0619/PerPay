@@ -15,8 +15,9 @@ import { OrderService } from "../src/orders/service.ts";
 import { RuntimeSettingsService, RuntimeSettingsStore } from "../src/settings/index.ts";
 
 const origin = "http://localhost:6190";
-async function open(directory, clock = Date.now) {
-  const config = loadConfig({ PERPAY_MASTER_KEY: "0123456789abcdef".repeat(4), PERPAY_DATA_DIR: join(directory, "data"), PERPAY_BACKUP_DIR: join(directory, "backups"), PERPAY_PUBLIC_URL: origin });
+async function open(directory, clock = Date.now, setupTokenEnabled) {
+  const config = loadConfig({ PERPAY_MASTER_KEY: "0123456789abcdef".repeat(4), PERPAY_DATA_DIR: join(directory, "data"), PERPAY_BACKUP_DIR: join(directory, "backups"), PERPAY_PUBLIC_URL: origin,
+    ...(setupTokenEnabled === undefined ? {} : { PERPAY_SETUP_TOKEN_ENABLED: String(setupTokenEnabled) }) });
   const database = await AppDatabase.open(config.databasePath);
   const identity = new IdentityService(database, clock);
   await identity.initialize();
@@ -36,21 +37,29 @@ function cleanup(directory) {
 }
 
 describe("production administrator smoke", () => {
-  it("uses real Hono, SQLite and build assets through setup, auth, conflicts and restart", async () => {
+  for (const setupTokenEnabled of [undefined, true]) {
+  it(`uses real Hono, SQLite and build assets through setup, auth, conflicts and restart with token ${setupTokenEnabled ? "enabled" : "disabled by default"}`, async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-admin-smoke-"));
     const password = randomBytes(32).toString("hex");
-    let services = await open(directory);
+    let services = await open(directory, Date.now, setupTokenEnabled);
     try {
+      assert.equal(typeof services.setupToken === "string", setupTokenEnabled === true);
       const options = { baseUrl: origin, password, isolated: true, assets: listAdminAssets() };
-      const first = await runAdminSmoke({ ...options, initialize: true, setupToken: services.setupToken, request: (url, init) => services.app.request(url, init) });
+      const first = await runAdminSmoke({ ...options, initialize: true, setupToken: services.setupToken, request: (url, init) => {
+        if (new URL(url).pathname === "/api/admin/v1/setup") {
+          assert.equal(Object.hasOwn(JSON.parse(init.body), "setup_token"), setupTokenEnabled === true);
+        }
+        return services.app.request(url, init);
+      } });
       assert.ok(first.assetsChecked > 10);
       services.database.close();
-      services = await open(directory);
+      services = await open(directory, Date.now, setupTokenEnabled);
       assert.equal(services.setupToken, undefined, "initialized instances must not issue another setup token");
       const restarted = await runAdminSmoke({ ...options, request: (url, init) => services.app.request(url, init) });
       assert.equal(restarted.instanceId, first.instanceId);
     } finally { services.database.close(); cleanup(directory); }
   });
+  }
 
   it("expires real sessions rather than relying on a browser mock", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-admin-smoke-"));
@@ -74,8 +83,16 @@ describe("production administrator smoke", () => {
     await assert.rejects(runAdminSmoke({ baseUrl: "https://pay.example.com", password: "x".repeat(32), isolated: true, request }), /loopback/);
   });
 
-  it("requires an initialization token before sending any setup smoke requests", async () => {
-    const request = () => { throw new Error("must not send"); };
-    await assert.rejects(runAdminSmoke({ baseUrl: origin, password: "x".repeat(32), isolated: true, initialize: true, request }), /setup token/);
+  it("requires an initialization token only when the server requires it, before sending a setup request", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-admin-smoke-"));
+    const services = await open(directory, Date.now, true);
+    try {
+      const request = (url, init) => {
+        assert.notEqual(new URL(url).pathname, "/api/admin/v1/setup", "missing token must be rejected before the setup request");
+        return services.app.request(url, init);
+      };
+      await assert.rejects(runAdminSmoke({ baseUrl: origin, password: "x".repeat(32), isolated: true, initialize: true, request }), /setup token/);
+      assert.equal(services.identity.isInitialized(), false);
+    } finally { services.database.close(); cleanup(directory); }
   });
 });

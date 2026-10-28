@@ -4,6 +4,7 @@ const TEMPLATE_EXTENSIONS = Object.freeze({
   "x-perpay-host-port": ["perpay-host-port", "127.0.0.1:6190:6190"],
   "x-perpay-public-url": ["perpay-public-url", "https://pay.example.com"],
   "x-perpay-trusted-proxy-cidrs": ["perpay-trusted-proxy-cidrs", ""],
+  "x-perpay-setup-token-enabled": ["perpay-setup-token-enabled", "false"],
 });
 const TOP_LEVEL_KEYS = new Set(["name", ...Object.keys(TEMPLATE_EXTENSIONS), "services", "volumes"]);
 const APP_KEYS = new Set(["image", "environment", "ports", "volumes", "user", "restart", "stop_grace_period", "read_only", "tmpfs", "security_opt", "cap_drop", "init", "healthcheck", "logging"]);
@@ -67,10 +68,11 @@ export function inspectComposeContract(source) {
 
   const app = root.services.app;
   exactKeys(app, APP_KEYS, "Compose app service");
-  serviceEnvironment(app.environment, { PERPAY_SECRETS_DIR: "/run/perpay-secrets", PERPAY_PUBLIC_URL: "https://pay.example.com", PERPAY_TRUSTED_PROXY_CIDRS: "" }, "Compose app.environment");
+  serviceEnvironment(app.environment, { PERPAY_SECRETS_DIR: "/run/perpay-secrets", PERPAY_PUBLIC_URL: "https://pay.example.com", PERPAY_TRUSTED_PROXY_CIDRS: "", PERPAY_SETUP_TOKEN_ENABLED: "false" }, "Compose app.environment");
   alias(document, ["services", "app", "ports", 0], "perpay-host-port", "app.ports[0]");
   alias(document, ["services", "app", "environment", "PERPAY_PUBLIC_URL"], "perpay-public-url", "app.environment.PERPAY_PUBLIC_URL");
   alias(document, ["services", "app", "environment", "PERPAY_TRUSTED_PROXY_CIDRS"], "perpay-trusted-proxy-cidrs", "app.environment.PERPAY_TRUSTED_PROXY_CIDRS");
+  alias(document, ["services", "app", "environment", "PERPAY_SETUP_TOKEN_ENABLED"], "perpay-setup-token-enabled", "app.environment.PERPAY_SETUP_TOKEN_ENABLED");
   array(app.ports, ["127.0.0.1:6190:6190"], "Compose app.ports");
   array(app.volumes, ["perpay-data:/data", "perpay-backups:/backups:ro", "perpay-secrets:/run/perpay-secrets"], "Compose app.volumes");
   checkCommon(app, "app");

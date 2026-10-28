@@ -99,11 +99,14 @@ paths:
       summary: Set the administrator password on an uninitialized instance
       description: |
         This endpoint is available only until the first administrator password is stored.
-        The administrator name is fixed as `admin`. The request must include the password and
-        the one-time `setup_token` from the server's latest `administrator_setup_required`
-        startup log. The random 32-byte token is delivered only through that log; the server
+        The administrator name is fixed as `admin`. The request must include the password.
+        When `PERPAY_SETUP_TOKEN_ENABLED=true` (default: false), it must also include the
+        one-time `setup_token` from the server's latest `administrator_setup_required`
+        startup log. The admin HTML exposes this requirement through the non-secret
+        `perpay-setup-token-required` meta flag. When disabled, no token is generated or checked.
+        The random 32-byte token is delivered only through the startup log; the server
         retains only its digest. It changes if an uninitialized instance restarts. A failed
-        initialization does not consume it. A missing token is a validation error; an incorrect
+        initialization does not consume it. When enabled, a missing token is a validation error; an incorrect
         or stale token returns `403 / setup_token_invalid` without performing password work.
         A successful setup closes this endpoint permanently but does not create a session. The
         administrator must then use the regular login endpoint. The request `Origin` must exactly
@@ -6272,7 +6275,7 @@ components:
     AdminSetupRequest:
       type: object
       additionalProperties: false
-      required: [password, setup_token]
+      required: [password]
       properties:
         password:
           type: string
@@ -6282,7 +6285,7 @@ components:
           type: string
           minLength: 1
           maxLength: 256
-          description: One-time token from the latest startup log; generated as 64 lowercase hexadecimal characters. Do not place it in URLs or browser storage.
+          description: Required only when PERPAY_SETUP_TOKEN_ENABLED=true (default false). One-time token from the latest startup log; generated as 64 lowercase hexadecimal characters. Do not place it in URLs or browser storage.
     AdminLoginEnvelope:
       type: object
       additionalProperties: false

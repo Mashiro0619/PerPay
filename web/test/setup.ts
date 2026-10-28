@@ -69,6 +69,7 @@ afterEach(() => {
   cleanup();
   queryClient.clear();
   document.querySelector('meta[name="perpay-initialized"]')?.remove();
+  document.querySelector('meta[name="perpay-setup-token-required"]')?.remove();
   document.querySelector('meta[name="perpay-system-name"]')?.remove();
   vi.unstubAllGlobals();
   vi.useRealTimers();

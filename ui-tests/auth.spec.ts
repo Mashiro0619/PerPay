@@ -74,7 +74,9 @@ test("login retry guidance stays concise while service and configuration failure
 test("initialization form exposes validation in the same shell using a synthetic bootstrap state", async ({ page, manifest }, info) => {
   await page.route("**/admin/", async route => {
     const response = await route.fetch();
-    const body = (await response.text()).replace(/(name="perpay-initialized" content=")true/, "$1false");
+    const body = (await response.text())
+      .replace(/(name="perpay-initialized" content=")true/, "$1false")
+      .replace(/(name="perpay-setup-token-required" content=")(true|false)/, "$1true");
     await route.fulfill({ response, body });
   });
   await page.goto(manifest.origin + "/admin/");
@@ -91,4 +93,34 @@ test("initialization form exposes validation in the same shell using a synthetic
   await expect(page.getByText("两次输入的密码不一致。")).toBeVisible();
   await record(page, info, { state: "synthetic initialization validation", write: false });
   await audit(page, info, "initialization");
+});
+
+test("initialization without token protection creates an administrator using only the password", async ({ page, manifest }, info) => {
+  await page.route("**/admin/", async route => {
+    const response = await route.fetch();
+    const body = (await response.text())
+      // The setup POST below is intercepted; allow this synthetic page to exercise the request body.
+      .replace(' data-perpay-demo="readonly"', "")
+      .replace(/(name="perpay-initialized" content=")true/, "$1false")
+      .replace(/(name="perpay-setup-token-required" content=")(true|false)/, "$1false");
+    await route.fulfill({ response, body });
+  });
+  const requests: unknown[] = [];
+  await page.route("**/api/admin/v1/setup", async route => {
+    requests.push(route.request().postDataJSON());
+    await route.fulfill({ status: 204 });
+  });
+  await page.goto(manifest.origin + "/admin/");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(/初始化/);
+  await expect(page.getByLabel("一次性初始化令牌", { exact: true })).toHaveCount(0);
+  await page.locator("#password").fill("new-admin-password");
+  await page.locator('input[name="password-confirmation"]').fill("different");
+  await page.getByRole("button", { name: "创建管理员", exact: true }).click();
+  await expect(page.getByText("两次输入的密码不一致。")).toBeVisible();
+  expect(requests).toEqual([]);
+  await page.locator('input[name="password-confirmation"]').fill("new-admin-password");
+  await page.getByRole("button", { name: "创建管理员", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("登录管理后台");
+  expect(requests).toEqual([{ password: "new-admin-password" }]);
+  await record(page, info, { state: "synthetic initialization without token", write: false });
 });

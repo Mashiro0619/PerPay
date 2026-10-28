@@ -203,8 +203,9 @@ const newPasswordValueSchema = z.string().refine(
 const loginSchema = z.object({ password: passwordValueSchema, remember_me: z.boolean().optional() }).strict();
 const setupSchema = z.object({
   password: newPasswordValueSchema,
-  setup_token: z.string().min(1).max(256),
+  setup_token: z.string().min(1).max(256).optional(),
 }).strict();
+const tokenProtectedSetupSchema = setupSchema.required({ setup_token: true });
 const settingsRevisionSchema = z.object({ revision: z.number().int().nonnegative() }).strict();
 const emptyObjectSchema = z.object({}).strict();
 const sessionIdSchema = z.uuid();
@@ -334,7 +335,9 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   const sites = dependencies.sites ?? dependencies.settings?.siteStore();
   if (sites && !dependencies.sites) dependencies = { ...dependencies, sites };
   const app = new Hono<AppEnvironment>();
-  const setupToken = dependencies.identity.isInitialized() ? null : new SetupToken(dependencies.onSetupToken);
+  const setupToken = dependencies.config.setupTokenEnabled && !dependencies.identity.isInitialized()
+    ? new SetupToken(dependencies.onSetupToken)
+    : null;
   const publicCheckoutBudget = new PublicCheckoutRateLimiter();
   const manualCheckoutBudget = new PublicCheckoutRateLimiter({sourceBurst:5,sourceRequestsPerSecond:1,globalBurst:30,globalRequestsPerSecond:10});
   const collectionCodeCache = new CollectionCodeSvgCache();
@@ -475,7 +478,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     if (path.startsWith("/admin/assets/") || /\.[^/]+$/.test(path)) {
       throw new HttpApiError(404, "asset_not_found", "静态资源不存在");
     }
-    return context.html(adminFrontend.render(dependencies.identity.isInitialized(), publicSystemName(dependencies)).replace("<html", dependencies.demoMode ? '<html data-perpay-demo="readonly"' : "<html"));
+    return context.html(adminFrontend.render(dependencies.identity.isInitialized(), publicSystemName(dependencies), dependencies.config.setupTokenEnabled).replace("<html", dependencies.demoMode ? '<html data-perpay-demo="readonly"' : "<html"));
   };
   app.get("/admin", (context) => context.redirect("/admin/" + new URL(context.req.url).search, 308));
   app.get("/admin/*", serveAdmin);
@@ -584,15 +587,15 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       setupToken?.consume();
       throw new HttpApiError(409, "identity_already_initialized", "管理员身份已经初始化");
     }
-    const body = await readJson(context, setupSchema, MAX_JSON_BODY_BYTES);
-    if (!setupToken?.matches(body.setup_token)) {
+    const body = await readJson(context, dependencies.config.setupTokenEnabled ? tokenProtectedSetupSchema : setupSchema, MAX_JSON_BODY_BYTES);
+    if (dependencies.config.setupTokenEnabled && !setupToken?.matches(body.setup_token ?? "")) {
       throw new HttpApiError(403, "setup_token_invalid", "初始化令牌无效或已失效，请从服务器最新启动日志重新获取。");
     }
     await dependencies.identity.setupAdmin(
       body.password,
       identityContext(context, dependencies.config.trustedProxy),
     );
-    setupToken.consume();
+    setupToken?.consume();
     return context.body(null, 204);
   });
 

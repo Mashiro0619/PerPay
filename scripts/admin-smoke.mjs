@@ -12,7 +12,6 @@ export async function runAdminSmoke({ baseUrl, password, setupToken, initialize 
   assert.equal(isolated, true, "admin smoke requires an explicitly isolated instance");
   assert.ok(origin.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(origin.hostname), "admin smoke only accepts loopback HTTP");
   assert.ok(typeof password === "string" && password.length >= 24, "provide a random temporary administrator password");
-  assert.ok(!initialize || (typeof setupToken === "string" && setupToken.length > 0), "provide the current setup token from the isolated instance startup log");
   const send = (path, options = {}) => request(new URL(path, origin).href, { redirect: "error", signal: AbortSignal.timeout(15000), ...options });
   const jsonHeaders = { "content-type": "application/json", origin: origin.origin };
   const checkedAssets = new Set(["/admin/theme.js", ...assets]);
@@ -30,7 +29,7 @@ export async function runAdminSmoke({ baseUrl, password, setupToken, initialize 
     assert.match(policy, /style-src-attr 'none'/);
     assert.doesNotMatch(policy, /unsafe-inline|unsafe-eval/);
     const html = await response.text();
-    assert.doesNotMatch(html, /__PERPAY_INITIALIZED__|<script(?![^>]*\bsrc=)/);
+    assert.doesNotMatch(html, /__PERPAY_INITIALIZED__|__PERPAY_SETUP_TOKEN_REQUIRED__|<script(?![^>]*\bsrc=)/);
     assert.match(html, /src="\/admin\/theme\.js"/);
     assert.match(html, /<link\b[^>]*rel="icon"[^>]*href="\/admin\/assets\/favicon-[A-Za-z0-9_-]+\.svg"/, "entry must reference its fingerprinted favicon");
     for (const match of html.matchAll(/(?:src|href)="(\/admin\/[^"?#]+\.(?:js|css|svg))"/g)) checkedAssets.add(match[1]);
@@ -50,10 +49,13 @@ export async function runAdminSmoke({ baseUrl, password, setupToken, initialize 
   assert.equal((await send("/api/admin/v1/orders")).status, 401);
   if (initialize) {
     assert.match(entryHtml, /name="perpay-initialized" content="false"/, "refusing to initialize an existing administrator");
-    const setup = await send("/api/admin/v1/setup", { method: "POST", headers: jsonHeaders, body: JSON.stringify({ password, setup_token: setupToken }) });
+    const tokenRequired = !/name="perpay-setup-token-required" content="false"/.test(entryHtml);
+    assert.ok(!tokenRequired || (typeof setupToken === "string" && setupToken.length > 0), "provide the current setup token from the isolated instance startup log");
+    const setupBody = { password, ...(tokenRequired ? { setup_token: setupToken } : {}) };
+    const setup = await send("/api/admin/v1/setup", { method: "POST", headers: jsonHeaders, body: JSON.stringify(setupBody) });
     assert.equal(setup.status, 204);
     assert.equal(setup.headers.getSetCookie().length, 0);
-    const repeated = await send("/api/admin/v1/setup", { method: "POST", headers: jsonHeaders, body: JSON.stringify({ password, setup_token: setupToken }) });
+    const repeated = await send("/api/admin/v1/setup", { method: "POST", headers: jsonHeaders, body: JSON.stringify(setupBody) });
     assert.equal(repeated.status, 409);
   } else {
     assert.match(entryHtml, /name="perpay-initialized" content="true"/);

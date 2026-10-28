@@ -17,6 +17,73 @@ const MASTER_KEY = "0123456789abcdef".repeat(4);
 const ADMIN_PASSWORD = "first-run-admin-password";
 
 describe("first-run administrator HTTP flow", () => {
+  for (const mode of [null, "false"] as const) {
+    it(`initializes without a token when the deployment flag is ${mode ?? "unset"}`, async () => {
+      const fixture = await createFixture(Date.now, mode);
+      try {
+        assert.deepEqual(fixture.issuedTokens, [], "disabled setup must not issue a token");
+        for (const path of ["/admin/", "/admin/login", "/admin/setup"]) {
+          const page = await fixture.app.request(path);
+          assert.equal(page.headers.get("cache-control"), "no-store");
+          assert.match(await page.text(), /name="perpay-setup-token-required" content="false"/);
+        }
+        const wrongOrigin = await fixture.app.request("/api/admin/v1/setup", {
+          method: "POST", headers: { ...jsonHeaders(), origin: "https://other.example" },
+          body: JSON.stringify({ password: ADMIN_PASSWORD }),
+        });
+        assert.equal(wrongOrigin.status, 403, "disabling tokens must preserve the origin check");
+        const shortPassword = await fixture.app.request("/api/admin/v1/setup", {
+          method: "POST", headers: jsonHeaders(), body: JSON.stringify({ password: "short" }),
+        });
+        assert.equal(shortPassword.status, 422);
+        const setup = await fixture.app.request("/api/admin/v1/setup", {
+          method: "POST", headers: jsonHeaders(), body: JSON.stringify({ password: ADMIN_PASSWORD }),
+        });
+        assert.equal(setup.status, 204);
+        assert.deepEqual(setup.headers.getSetCookie(), []);
+        assert.equal(fixture.identity.isInitialized(), true);
+        for (const enabled of [false, true]) {
+          const restarted = fixture.recreateApp(enabled);
+          assert.deepEqual(fixture.issuedTokens, [], "changing the flag must not reopen an initialized instance");
+          const page = await restarted.request("/admin/");
+          assert.match(await page.text(), /name="perpay-setup-token-required" content="false"/);
+          const repeated = await restarted.request("/api/admin/v1/setup", {
+            method: "POST", headers: jsonHeaders(), body: JSON.stringify({ password: "replacement-password" }),
+          });
+          assert.equal(repeated.status, 409);
+          const login = await restarted.request("/api/admin/v1/session/login", {
+            method: "POST", headers: jsonHeaders(), body: JSON.stringify({ password: ADMIN_PASSWORD }),
+          });
+          assert.equal(login.status, 200);
+        }
+      } finally {
+        fixture.close();
+      }
+    });
+  }
+
+  it("uses the current deployment flag when an uninitialized instance restarts", async () => {
+    const fixture = await createFixture(Date.now, null);
+    try {
+      const protectedApp = fixture.recreateApp(true);
+      assert.equal(fixture.issuedTokens.length, 1);
+      assert.match(await (await protectedApp.request("/admin/")).text(), /name="perpay-setup-token-required" content="true"/);
+      const missingToken = await protectedApp.request("/api/admin/v1/setup", {
+        method: "POST", headers: jsonHeaders(), body: JSON.stringify({ password: ADMIN_PASSWORD }),
+      });
+      assert.equal(missingToken.status, 422);
+      assert.equal(fixture.identity.isInitialized(), false);
+      const unprotectedApp = fixture.recreateApp(false);
+      assert.equal(fixture.issuedTokens.length, 1, "disabled restart must not issue another token");
+      const setup = await unprotectedApp.request("/api/admin/v1/setup", {
+        method: "POST", headers: jsonHeaders(), body: JSON.stringify({ password: ADMIN_PASSWORD }),
+      });
+      assert.equal(setup.status, 204);
+    } finally {
+      fixture.close();
+    }
+  });
+
   for (const [token, status, code] of [
     [undefined, 422, "validation_failed"],
     ["wrong-setup-token", 403, "setup_token_invalid"],
@@ -323,13 +390,14 @@ describe("first-run administrator HTTP flow", () => {
   });
 });
 
-async function createFixture(clock: () => number = Date.now) {
+async function createFixture(clock: () => number = Date.now, tokenMode: "true" | "false" | null = "true") {
   const directory = mkdtempSync(join(tmpdir(), "perpay-initial-setup-http-"));
   const config = loadConfig({
     PERPAY_MASTER_KEY: MASTER_KEY,
     PERPAY_DATA_DIR: join(directory, "data"),
     PERPAY_BACKUP_DIR: join(directory, "backups"),
     PERPAY_PUBLIC_URL: PUBLIC_ORIGIN,
+    ...(tokenMode === null ? {} : { PERPAY_SETUP_TOKEN_ENABLED: tokenMode }),
   });
   const database = await AppDatabase.open(config.databasePath);
   const identity = new IdentityService(database, clock);
@@ -340,8 +408,8 @@ async function createFixture(clock: () => number = Date.now) {
   settings.initialize();
   const orders = new OrderService(database, () => settings.instanceSnapshot());
   const issuedTokens: string[] = [];
-  const recreateApp = () => createApp({
-    config,
+  const recreateApp = (setupTokenEnabled = config.setupTokenEnabled) => createApp({
+    config: { ...config, setupTokenEnabled },
     database,
     identity,
     settings,

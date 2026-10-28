@@ -47,6 +47,9 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
     return value === "true" ? true : value === "false" ? false : null;
   });
   const setup = initialized === false;
+  const [setupTokenRequired] = useState(() =>
+    document.querySelector('meta[name="perpay-setup-token-required"]')?.getAttribute("content") !== "false",
+  );
   const title =
     initialized === null
       ? "无法确认系统状态"
@@ -72,7 +75,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
       ? "管理员密码不正确，请检查后重试。"
       : null;
   const passwordInvalid = invalidField === "password" || passwordError !== null;
-  const tokenError = setup && error instanceof ApiError && error.code === "setup_token_invalid"
+  const tokenError = setup && setupTokenRequired && error instanceof ApiError && error.code === "setup_token_invalid"
     ? "初始化令牌无效或已失效，请从服务器最新启动日志重新获取。"
     : null;
   const tokenInvalid = invalidField === "token" || tokenError !== null;
@@ -113,7 +116,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
     setError(null);
     setInvalidField(null);
     if (setup) {
-      if (!setupToken.trim()) {
+      if (setupTokenRequired && !setupToken.trim()) {
         setInvalidField("token");
         setError(new Error("请输入服务器启动日志中的初始化令牌。"));
         tokenInput.current?.focus();
@@ -136,7 +139,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
     setPending(true);
     try {
       if (setup) {
-        await result(api.setupAdministrator({ body: { password, setup_token: setupToken.trim() } }));
+        await result(api.setupAdministrator({ body: setupTokenRequired ? { password, setup_token: setupToken.trim() } : { password } }));
         markInitialized();
         setConfigured(true);
         navigate("/login", { replace: true });
@@ -219,7 +222,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
                       </AlertDescription>
                     </Alert>
                   )}
-                  {setup && (
+                  {setup && setupTokenRequired && (
                     <Field data-invalid={tokenInvalid} data-disabled={pending}>
                       <FieldLabel htmlFor="setup-token">一次性初始化令牌</FieldLabel>
                       <Input

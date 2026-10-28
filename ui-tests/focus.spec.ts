@@ -24,7 +24,9 @@ for (const theme of ["light", "dark"] as const) test(`${theme}: form controls re
   });
   await page.route("**/admin/", async route => {
     const response = await route.fetch();
-    const body = (await response.text()).replace(/(name="perpay-initialized" content=")true/, "$1false");
+    const body = (await response.text())
+      .replace(/(name="perpay-initialized" content=")true/, "$1false")
+      .replace(/(name="perpay-setup-token-required" content=")(true|false)/, "$1true");
     await route.fulfill({ response, body });
   });
   await page.goto(manifest.origin + "/admin/");

@@ -37,6 +37,7 @@ const rawDeploymentConfigSchema = z.object({
   PERPAY_SECRETS_DIR: z.string().trim().min(1).optional(),
   PERPAY_PUBLIC_URL: z.string().trim().min(1).default("http://localhost:6190"),
   PERPAY_TRUSTED_PROXY_CIDRS: z.string().default(""),
+  PERPAY_SETUP_TOKEN_ENABLED: z.enum(["true", "false"]).default("false"),
   // Kept as a non-Compose compatibility fallback for local health probes.
   PERPAY_BACKUP_INTERVAL_SECONDS: z.coerce
     .number()
@@ -55,6 +56,7 @@ export interface DeploymentConfig {
   readonly masterKey: Buffer;
   readonly publicOrigin: string;
   readonly secureCookies: boolean;
+  readonly setupTokenEnabled: boolean;
   readonly trustedProxy: TrustedProxyPolicy;
   readonly backupIntervalMilliseconds: number;
 }
@@ -116,6 +118,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): Deploy
     masterKey,
     publicOrigin: publicUrl.origin,
     secureCookies: publicUrl.protocol === "https:",
+    setupTokenEnabled: parsed.data.PERPAY_SETUP_TOKEN_ENABLED === "true",
     trustedProxy,
     backupIntervalMilliseconds: parsed.data.PERPAY_BACKUP_INTERVAL_SECONDS * 1_000,
   });

@@ -9,11 +9,17 @@ import { apiError } from "./fixtures";
 
 const setupToken = "synthetic-initialization-token";
 
-function mount(initialized: string | null, path = "/login") {
+function mount(initialized: string | null, path = "/login", tokenRequired: string | null = "true") {
   if (initialized !== null) {
     const meta = document.createElement("meta");
     meta.name = "perpay-initialized";
     meta.content = initialized;
+    document.head.append(meta);
+  }
+  if (tokenRequired !== null) {
+    const meta = document.createElement("meta");
+    meta.name = "perpay-setup-token-required";
+    meta.content = tokenRequired;
     document.head.append(meta);
   }
   const onLogin = vi.fn();
@@ -110,6 +116,43 @@ describe("first-deployment authentication presentation", () => {
     expect(token).toHaveAccessibleDescription("请输入服务器启动日志中的初始化令牌。");
     expect(token).toHaveFocus();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([null, "", "unknown", "__PERPAY_SETUP_TOKEN_REQUIRED__", "FALSE"])(
+    "keeps the token required unless the backend explicitly disables it: %s",
+    (state) => {
+      mount("false", "/setup", state);
+      expect(screen.getByLabelText("一次性初始化令牌")).toBeRequired();
+    },
+  );
+
+  it("creates an administrator with only a password when token protection is disabled", async () => {
+    const requests: Request[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+      requests.push(request);
+      return new Response(null, { status: 204 });
+    }));
+    const { onLogin } = mount("false", "/setup", "false");
+    const user = userEvent.setup();
+    expect(screen.queryByLabelText("一次性初始化令牌")).not.toBeInTheDocument();
+    expect(screen.queryByText(/服务器启动日志/)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("设置管理员密码"), { target: { value: "12345" } });
+    fireEvent.change(screen.getByLabelText("再次输入密码"), { target: { value: "12345" } });
+    await user.click(screen.getByRole("button", { name: "创建管理员" }));
+    expect(screen.getByLabelText("设置管理员密码")).toHaveAttribute("aria-invalid", "true");
+    expect(requests).toHaveLength(0);
+    fireEvent.change(screen.getByLabelText("设置管理员密码"), { target: { value: "new-admin-password" } });
+    await user.click(screen.getByRole("button", { name: "创建管理员" }));
+    expect(screen.getByLabelText("再次输入密码")).toHaveAccessibleDescription("两次输入的密码不一致。");
+    expect(requests).toHaveLength(0);
+    fireEvent.change(screen.getByLabelText("再次输入密码"), { target: { value: "new-admin-password" } });
+    await user.click(screen.getByRole("button", { name: "创建管理员" }));
+    await screen.findByRole("heading", { name: "登录管理后台" });
+    expect(requests).toHaveLength(1);
+    expect(new URL(requests[0]!.url).pathname).toBe("/api/admin/v1/setup");
+    expect(await requests[0]!.json()).toEqual({ password: "new-admin-password" });
+    expect(onLogin).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("管理员密码")).toHaveValue("");
   });
 
   it("associates a rejected token with its field and retries without persisting it or forwarding it to login", async () => {

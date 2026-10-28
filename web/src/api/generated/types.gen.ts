@@ -326,7 +326,7 @@ export type AdminLoginRequest = {
 };
 export type AdminSetupRequest = {
     password: string;
-    setup_token: string;
+    setup_token?: string;
 };
 export type AdminLoginEnvelope = {
     data: {

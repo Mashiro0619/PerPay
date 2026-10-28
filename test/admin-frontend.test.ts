@@ -22,7 +22,10 @@ describe("administrator frontend delivery", () => {
     assert.ok(frontend, "run npm run build:admin before this test");
     assert.match(frontend.render(false), /name="perpay-initialized" content="false"/);
     assert.match(frontend.render(true), /name="perpay-initialized" content="true"/);
-    assert.doesNotMatch(frontend.render(true), /__PERPAY_INITIALIZED__|<script(?![^>]*\bsrc=)/);
+    assert.match(frontend.render(false), /name="perpay-setup-token-required" content="false"/);
+    assert.match(frontend.render(false, undefined, true), /name="perpay-setup-token-required" content="true"/);
+    assert.match(frontend.render(true, undefined, true), /name="perpay-setup-token-required" content="false"/);
+    assert.doesNotMatch(frontend.render(true), /__PERPAY_(?:INITIALIZED|SETUP_TOKEN_REQUIRED)__|<script(?![^>]*\bsrc=)/);
     assert.ok(frontend.assets.has(faviconPath(frontend.render(true))));
     assert.equal(frontend.assets.has("/admin/favicon.svg"), false);
     assert.ok(frontend.assets.has("/admin/theme.js"));
