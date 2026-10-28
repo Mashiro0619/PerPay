@@ -56,7 +56,11 @@ describe("persisted ingestion diagnostics", () => {
         database.close(); database = await AppDatabase.open(path); store = new LedgerStore(database);
         assert.equal(readLedgerFailureDiagnostic(database, "primary").consecutiveFailures, 3);
         bad = false; service = new LedgerIngestService({ provider, store, pageSize: 2, clock: () => now });
-        assert.equal((await service.run("recovered")).status, "COMPLETED");
+        const recovered = await service.run("recovered");
+        assert.equal(recovered.status, "PARTIAL");
+        assert.equal(recovered.errorCode, "normal_continuation");
+        assert.equal(recovered.normalCompleted, false);
+        assert.equal(store.getRun(recovered.ingestRunId!)?.status, "COMPLETED");
         assert.equal(new Set(windows).size, 1);
         assert.deepEqual(readLedgerFailureDiagnostic(database, "primary"), { consecutiveFailures: 0, latestFailure: null });
         const evidence = database.read(c => c.prepare("SELECT count(*) AS count, sum(raw_body IS NOT NULL) AS bodies FROM ingest_errors").get()) as { count: bigint; bodies: bigint };
@@ -188,9 +192,22 @@ describe("persisted ingestion diagnostics", () => {
       await tick(1); assert.equal(providerCalls, 2);
       assert.equal((await diagnostics()).in_flight, true);
       assert.equal((await diagnostics()).next_retry_at, null);
-      finishScan(); await manual;
+      finishScan(); const recovered = await manual;
+      assert.equal(recovered.status, "PARTIAL");
+      assert.equal(recovered.errorCode, "normal_continuation");
+      assert.equal(recovered.normalCompleted, false);
+      assert.equal((await diagnostics()).consecutive_failures, 0);
+      assert.equal(scheduler.health().lastSuccessAt, null);
+      assert.equal(scheduler.nextScanAt(), start + 120_000);
+      assert.equal((await diagnostics()).next_retry_at, new Date(start + 120_000).toISOString());
+      // The recovered historical root cleared the failure, but the current tail
+      // must still be scanned before normal cadence and freshness can resume.
+      await tick(0);
+      assert.equal(providerCalls, 3);
+      assert.equal(scheduler.health().lastSuccessAt, start + 120_000);
       assert.equal((await diagnostics()).consecutive_failures, 0);
       assert.equal(scheduler.nextScanAt(), start + 130_000);
+      assert.equal((await diagnostics()).next_retry_at, new Date(start + 130_000).toISOString());
       await scheduler.stop(); assert.equal((await diagnostics()).next_retry_at, null);
     } finally {
       writeFails = false; finishScan(); await scheduler?.stop();
