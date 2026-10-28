@@ -2,9 +2,9 @@ import CreateSite from "./CreateSite";
 import { SiteManagementCards } from "@/components/site-management-cards";
 import { CopyValue } from "@/components/copy-value";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useParams } from "react-router";
+import { useLocation, useNavigation, useParams } from "react-router";
 import { PageHeading } from "@/components/page-heading";
 import {
   api,
@@ -106,6 +106,12 @@ function SiteEditor({
   section: string;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const navigation = useNavigation();
+  const currentNavigation = useRef({ key: location.key, pending: navigation.state !== "idle" });
+  useLayoutEffect(() => {
+    currentNavigation.current = { key: location.key, pending: navigation.state !== "idle" };
+  }, [location.key, navigation.state]);
   const sections = [
     { value: "basic", label: "基本信息" },
     { value: "orders", label: "订单设置" },
@@ -125,7 +131,7 @@ function SiteEditor({
   const [choices, setChoices] = useState<SiteConflictChoices>({});
   const reloadController = useRef<AbortController | null>(null);
   const mounted = useRef(true);
-  useEffect(() => {
+  useLayoutEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
@@ -217,9 +223,11 @@ function SiteEditor({
       if (!saved) return;
       const path = { clientId: saved.client_id };
       if (kind === "delete") {
+        const originKey = currentNavigation.current.key;
         await result(
           api.deleteSite({ path, body: { revision: saved.revision } }),
         );
+        const returnToList = mounted.current && currentNavigation.current.key === originKey && !currentNavigation.current.pending;
         clearDraft();
         queryClient.removeQueries({
           queryKey: ["site-editor", saved.client_id],
@@ -230,7 +238,8 @@ function SiteEditor({
         void queryClient.invalidateQueries({ queryKey: ["site-overview"] });
         void queryClient.invalidateQueries({ queryKey: ["sites"] });
         void queryClient.invalidateQueries({ queryKey: ["settings"] });
-        void navigate("/sites");
+        // Clear shared data even after departure, but never replace a newer navigation.
+        if (returnToList) void navigate("/sites");
         return;
       }
       observeSecretRevision(latestEditorSnapshot(saved).site.revision);
