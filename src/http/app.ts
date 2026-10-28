@@ -7,6 +7,7 @@ import { collectionPolicyInputSchema } from "../settings/collection-policy.ts";
 import { readLedgerFailureDiagnostic, type LedgerDiagnostics } from "../ledger/diagnostics.ts";
 import { HealthProbeCache } from "../infrastructure/health-probe-cache.ts";
 import type { CheckoutVerification } from "../shared/checkout-verification.ts";
+import type { LedgerManualScanRequest, LedgerManualScanStatus } from "../shared/ledger-manual-scan.ts";
 import { adminAccessInputSchema, readAdminAccess, createAdminAccessPolicy } from "../settings/admin-access.ts";
 import { exportOrders, orderExportSchema } from "./order-export.ts";
 import { adminOrderIdentities, type OrderIdentitySummary } from "./admin-order-summary.ts";
@@ -246,6 +247,8 @@ export interface AppDependencies {
   readonly backupHealth?: (() => BackupHealth | PromiseLike<BackupHealth>) | undefined;
   readonly ledger?: LedgerStore | undefined;
   readonly ledgerNextRunAt?: (() => number | null) | undefined;
+  readonly ledgerManualScan?: (() => LedgerManualScanStatus) | undefined;
+  readonly requestLedgerScan?: (() => LedgerManualScanRequest) | undefined;
   readonly ledgerHealth?: (() => LedgerSchedulerHealth & {
     readonly enabled: boolean;
     readonly paymentRevision?: number | null;
@@ -651,6 +654,24 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   app.get("/api/admin/v1/system/status", adminSession, async (context) =>
     context.json({ data: await systemStatus(dependencies, true) }),
   );
+
+  app.post("/api/admin/v1/system/ledger/scan", adminSession, async (context) => {
+    requireJsonContentType(context);
+    requireSameOrigin(context, dependencies.config.publicOrigin);
+    requireCsrf(context, dependencies.identity, dependencies.config.secureCookies);
+    await readJson(context, emptyObjectSchema, MAX_JSON_BODY_BYTES);
+    if (new URL(context.req.url).searchParams.size !== 0) {
+      throw new HttpApiError(422, "validation_failed", "手动查账不接受查询参数");
+    }
+    if (dependencies.demoMode) throw new HttpApiError(403, "demo_read_only", "只读演示不执行手动查账");
+    if (!currentLedgerManualScan(dependencies, dependencies.database.health().ok).available || !dependencies.requestLedgerScan) {
+      throw new HttpApiError(503, "ledger_scan_unavailable", "当前无法发起手动查账，请稍后重试");
+    }
+    let request: LedgerManualScanRequest;
+    try { request = dependencies.requestLedgerScan(); }
+    catch { throw new HttpApiError(503, "ledger_scan_unavailable", "当前无法发起手动查账，请稍后重试"); }
+    return context.json({ data: request }, 202);
+  });
 
   app.get("/api/admin/v1/system/update", adminSession, async (context) => {
     const values = new URL(context.req.url).searchParams;
@@ -2423,6 +2444,7 @@ async function systemStatus(dependencies: AppDependencies, administrator = false
   const operations = operationalSummaries(dependencies, database.ok);
   // Capture diagnostics with the same synchronous runtime snapshot before awaiting backup I/O.
   const diagnostics = administrator ? ledgerDiagnostics(dependencies, runtime, ledger) : undefined;
+  const manualScan = administrator ? currentLedgerManualScan(dependencies, database.ok) : undefined;
   const backup = await currentBackupHealth(dependencies);
   const configured = dependencies.identity.isInitialized() && runtime.configured;
   const ready = database.ok && configured && !runtime.transitioning &&
@@ -2449,6 +2471,7 @@ async function systemStatus(dependencies: AppDependencies, administrator = false
     ledger: {
       ...serializeLedgerHealth(ledger, collection),
       ...(diagnostics ? { diagnostics } : {}),
+      ...(manualScan ? { manual_scan: manualScan } : {}),
       conflicts: serializeLedgerConflictSummary(operations.conflicts),
     },
     reconciliation: {
@@ -2460,6 +2483,18 @@ async function systemStatus(dependencies: AppDependencies, administrator = false
     ...(dependencies.settings ? { backup_policy: dependencies.settings.publicView().backup } : {}),
     backup,
   };
+}
+
+function currentLedgerManualScan(dependencies: AppDependencies, databaseOk: boolean): LedgerManualScanStatus {
+  let status: LedgerManualScanStatus;
+  try {
+    status = dependencies.ledgerManualScan?.() ?? { available: false, unavailable_reason: "not_configured", request: null };
+  } catch {
+    status = { available: false, unavailable_reason: "storage_unavailable", request: null };
+  }
+  const reason = dependencies.demoMode ? "demo_read_only" : !databaseOk ? "database_unavailable"
+    : !dependencies.requestLedgerScan && status.available ? "stopped" : status.unavailable_reason;
+  return { ...status, available: status.available && reason === null, unavailable_reason: reason };
 }
 
 function ledgerDiagnostics(

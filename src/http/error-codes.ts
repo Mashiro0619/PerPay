@@ -38,6 +38,7 @@ export const HTTP_ERROR_CODES = Object.freeze([
   "ledger_conflict_state_conflict",
   "ledger_entry_not_found",
   "ledger_unavailable",
+  "ledger_scan_unavailable",
   "match_not_found",
   "match_state_conflict",
   "merchant_order_no_conflict",

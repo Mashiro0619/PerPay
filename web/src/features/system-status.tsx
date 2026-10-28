@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "react-router";
-import { api, result } from "@/api/client";
+import { api, refreshOperationalData, result } from "@/api/client";
+import { isManualScanStatus, manualScanActive, manualScanSource } from "@/lib/manual-ledger-scan";
 import { useVisibleCheck } from "@/lib/use-visible-check";
 import { presentSystemStatus } from "@/lib/system-status";
 import { actualPageAddress } from "@/lib/navigation-selection";
@@ -10,6 +11,7 @@ function useStatusObservation() {
   const location = useLocation();
   const address = actualPageAddress(location);
   const observation = useRef({ address, epoch: view.epoch });
+  const completedScan = useRef<string | null>(null);
   const status = useQuery({
     queryKey: ["status", "shared", view.epoch],
     queryFn: async ({ signal }) => {
@@ -24,7 +26,8 @@ function useStatusObservation() {
       );
       if (!data || !validWorkItems || !["ready", "degraded", "not_ready"].includes(data.status) ||
           ![data.database, data.ledger, data.reconciliation, data.webhook, data.backup].every(value => value && typeof value === "object") ||
-          ![data.configured, data.database?.ok, data.ledger?.collection_ready, data.reconciliation?.confirmation_ready].every(value => typeof value === "boolean")) {
+          ![data.configured, data.database?.ok, data.ledger?.collection_ready, data.reconciliation?.confirmation_ready].every(value => typeof value === "boolean") ||
+          (data.ledger.manual_scan !== undefined && !isManualScanStatus(data.ledger.manual_scan))) {
         throw new Error("运行状态响应不完整，请重试。");
       }
       return response;
@@ -36,7 +39,9 @@ function useStatusObservation() {
     refetchOnMount: "always",
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
-    refetchInterval: view.active ? 30000 : false,
+    refetchInterval: query => view.active
+      ? manualScanActive(query.state.data?.data.ledger.manual_scan?.request) ? 2000 : 30000
+      : false,
     refetchIntervalInBackground: false,
   });
   const { refetch } = status;
@@ -49,6 +54,17 @@ function useStatusObservation() {
       void refetch();
     }
   }, [address, view.active, view.epoch, refetch]);
+  useEffect(() => {
+    const data = status.data?.data;
+    const request = data?.ledger.manual_scan?.request;
+    if (!view.active || !status.isSuccess || !data || !request || manualScanActive(request)) return;
+    const completed = `${manualScanSource(data)}:${request.id}:${request.state}:${request.finished_at}`;
+    if (completedScan.current === completed) return;
+    completedScan.current = completed;
+    // The server's terminal state, rather than the POST's 202 response, proves
+    // this attempt ended. Refresh ledger/summary views without polling status twice.
+    void refreshOperationalData({ includeStatus: false });
+  }, [status.data, status.isSuccess, view.active]);
   const unavailable = !view.active || status.isError || status.isPaused;
   const checking =
     unavailable || status.isPending || !status.isFetchedAfterMount;

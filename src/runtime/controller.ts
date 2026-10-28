@@ -1,6 +1,8 @@
 import { SiteWebhookProcessor } from "../notifications/site-processor.ts";
 import type { SiteStore } from "../sites/store.ts";
 import { CheckoutVerifier } from "./checkout-verification.ts";
+import { LedgerManualScanner } from "./ledger-manual-scan.ts";
+import type { LedgerManualScanRequest, LedgerManualScanStatus, LedgerManualScanUnavailableReason } from "../shared/ledger-manual-scan.ts";
 import { ledgerScanGate } from "../ledger/scan-gate.ts";
 import type { AppDatabase } from "../database/database.ts";
 import {
@@ -97,6 +99,7 @@ export class RuntimeController {
   readonly #sites: SiteStore | null;
   readonly #clock: () => number;
   readonly #checkoutVerifier: CheckoutVerifier;
+  readonly #ledgerManualScanner: LedgerManualScanner;
   #ledgerScheduler: LedgerIngestScheduler | null = null;
   #reconciliationScheduler: ReconciliationScheduler | null = null;
   #webhookScheduler: WebhookScheduler | null = null;
@@ -119,6 +122,7 @@ export class RuntimeController {
     this.#sites = options.sites ?? null;
     this.#clock = options.clock ?? (() => Date.now());
     this.#checkoutVerifier = new CheckoutVerifier(this.#clock);
+    this.#ledgerManualScanner = new LedgerManualScanner(this.#clock);
   }
 
   start(snapshot: PaymentRuntimeSnapshot): Promise<void> {
@@ -138,6 +142,7 @@ export class RuntimeController {
   beginPaymentTransition(): Promise<void> {
     if (this.#stopped) return Promise.reject(new Error("runtime controller is stopped"));
     this.#transitioning = true;
+    this.#ledgerManualScanner.invalidate();
     const operation = this.#mutation.catch(() => undefined).then(() => this.#pause());
     this.#mutation = operation;
     return operation;
@@ -149,6 +154,7 @@ export class RuntimeController {
       return;
     }
     this.#stopped = true;
+    this.#ledgerManualScanner.invalidate();
     await this.#mutation.catch(() => undefined);
     await this.#stopSchedulers();
   }
@@ -178,6 +184,24 @@ export class RuntimeController {
     if (!this.#ledgerScheduler || this.#transitioning) return null;
     const health = this.#ledgerScheduler.health();
     return health.inFlight || health.state === "stopped" ? null : this.#ledgerScheduler.nextScanAt();
+  }
+
+  ledgerManualScan(): LedgerManualScanStatus {
+    const scheduler = this.#ledgerScheduler;
+    let reason: LedgerManualScanUnavailableReason | null = null;
+    if (this.#stopped || !this.#started) reason = "stopped";
+    else if (this.#transitioning) reason = "transitioning";
+    else if (!scheduler || !this.#snapshot || !isPaymentConfigured(this.#snapshot)) reason = "not_configured";
+    else if (scheduler.health().state === "stopped") reason = "stopped";
+    else if (scheduler.health().lastErrorCode === "scan_schedule_unavailable") reason = "storage_unavailable";
+    return { available: reason === null, unavailable_reason: reason, request: this.#ledgerManualScanner.get() };
+  }
+
+  requestLedgerScan(): LedgerManualScanRequest {
+    const scheduler = this.#ledgerScheduler;
+    if (!scheduler || !this.ledgerManualScan().available) throw new Error("ledger scan unavailable");
+    return this.#ledgerManualScanner.request(scheduler,
+      () => !this.#stopped && !this.#transitioning && this.#ledgerScheduler === scheduler);
   }
 
   reconciliationHealth(): RevisionedReconciliationHealth {
@@ -403,6 +427,7 @@ export class RuntimeController {
   }
 
   async #stopPaymentSchedulers(): Promise<void> {
+    this.#ledgerManualScanner.invalidate();
     const ledger = this.#ledgerScheduler;
     const reconciliation = this.#reconciliationScheduler;
     const ledgerRevision = this.#ledgerRevision;

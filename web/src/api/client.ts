@@ -138,8 +138,8 @@ export const queryClient = new QueryClient({
   },
 });
 
-export async function refreshOperationalData(): Promise<void> {
-  await queryClient.invalidateQueries({ predicate: (query) => !["session", "settings", "official-update"].includes(String(query.queryKey[0])) });
+export async function refreshOperationalData({ includeStatus = true }: { includeStatus?: boolean } = {}): Promise<void> {
+  await queryClient.invalidateQueries({ predicate: (query) => !["session", "settings", "official-update", ...(!includeStatus ? ["status"] : [])].includes(String(query.queryKey[0])) });
 }
 
 // Retain public branding across logout while reacting to saved/refreshed settings.

@@ -19,8 +19,10 @@ import { RefreshButton } from "@/components/refresh-button";
 import { ErrorNotice, Loading, QueryView } from "@/components/request-state";
 import { TechnicalDetailsDialog } from "@/components/detail/DetailPrimitives";
 import { OfficialUpdatePanel } from "@/updates";
+import { useManualLedgerScan } from "@/features/manual-ledger-scan";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Spinner } from "@/components/ui/spinner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Table,
@@ -52,6 +54,7 @@ export default function System() {
 
 function SystemContent() {
   const { status, checking, unavailable } = useSystemStatus();
+  const manualScan = useManualLedgerScan(status.data?.data);
   const refresh = () => {
     void status.refetch();
   };
@@ -77,6 +80,7 @@ function SystemContent() {
               updatedAt={status.dataUpdatedAt}
               refreshing={status.isFetching}
               refresh={refresh}
+              manualScan={manualScan}
             />
           )}
         </QueryView>
@@ -91,15 +95,18 @@ function SystemSnapshot({
   updatedAt,
   refreshing,
   refresh,
+  manualScan,
 }: {
   data: SystemStatus;
   updatedAt: number;
   refreshing: boolean;
   refresh: () => void;
+  manualScan: ReturnType<typeof useManualLedgerScan>;
 }) {
   const state = presentSystemStatus(data);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const diagnosticTrigger = useRef<HTMLButtonElement>(null);
+  const manualScanFeedbackId = useId();
   const openDiagnostics = (trigger: HTMLButtonElement) => { diagnosticTrigger.current = trigger; setDiagnosticsOpen(true); };
   const explanation = !data.configured
     ? "收款配置未完成，请先完成接入。"
@@ -203,9 +210,19 @@ function SystemSnapshot({
             enabled={data.ledger.enabled}
             healthy={state.ledgerHealthy}
             lastSuccess={data.ledger.last_success_at}
-            metric={data.ledger.in_flight ? "正在查账" : undefined}
+            metric={<>
+              {data.ledger.in_flight && <p>正在查账</p>}
+              <ManualScanFeedback control={manualScan} id={manualScanFeedbackId} />
+            </>}
             action={
-              (!data.ledger.collection_ready ||
+              <>
+                <Button variant="outline" size="sm" disabled={manualScan.disabled}
+                  aria-describedby={manualScan.unavailableReason ? manualScanFeedbackId : undefined}
+                  aria-busy={manualScan.pending || undefined} onClick={manualScan.submit}>
+                  {manualScan.pending && <Spinner aria-hidden="true" data-icon="inline-start" />}
+                  手动查账
+                </Button>
+              {(!data.ledger.collection_ready ||
                 data.ledger.consecutive_failures > 0) && (
                 <Link
                   className={buttonVariants({ variant: "ghost", size: "sm" })}
@@ -213,7 +230,8 @@ function SystemSnapshot({
                 >
                   支付宝接入
                 </Link>
-              )
+              )}
+              </>
             }
           >
             {!data.ledger.collection_ready && (
@@ -382,6 +400,30 @@ function SystemSnapshot({
       />
     </section>
   );
+}
+
+function ManualScanFeedback({ control, id }: { control: ReturnType<typeof useManualLedgerScan>; id: string }) {
+  const request = control.request;
+  let message: ReactNode = null;
+  if (control.pending) message = "正在提交查账请求…";
+  else if (control.error) message = <>{control.error.message}{control.remaining > 0 && <> 请等待 {control.remaining} 秒后重试。</>}</>;
+  else if (request?.state === "WAITING") message = request.next_attempt_at
+    ? <>手动查账已排队，计划开始：<time dateTime={request.next_attempt_at}>{dateTime(request.next_attempt_at)}</time></>
+    : "手动查账已排队，等待调度。";
+  else if (request?.state === "RUNNING") message = <>正在执行手动查账，开始于：<time dateTime={request.started_at!}>{dateTime(request.started_at!)}</time></>;
+  else if (request) {
+    const outcome = request.state === "FAILED" || request.outcome === "FAILED"
+      ? "手动查账未完成。" : request.outcome === "COMPLETED"
+        ? "手动查账已完成。" : request.outcome === "PARTIAL"
+          ? "本轮查账部分完成，仍有待补查流水。" : "本轮未执行查账，请查看运行诊断。";
+    message = <>{outcome}{request.error_code && <> {request.error_code === "runtime_changed" ? "运行配置已变化，请核对后重新发起。" : runtimeErrorMessage("查账", request.error_code)}</>}
+      {request.finished_at && <> 结束于：<time dateTime={request.finished_at}>{dateTime(request.finished_at)}</time></>}</>;
+  }
+  if (!message && !control.unavailableReason) return null;
+  return <div className="runtime-manual-scan-feedback">
+    {message && <p role={control.error ? "alert" : "status"} aria-label="手动查账状态">{message}</p>}
+    {control.unavailableReason && <p id={id}>{control.unavailableReason}</p>}
+  </div>;
 }
 
 function RuntimeService({

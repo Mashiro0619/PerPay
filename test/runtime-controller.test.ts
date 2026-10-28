@@ -7,6 +7,7 @@ import { parseProviderKeys, type InstanceRuntimeSettingsSnapshot, type RuntimeSe
 import { LedgerIngestScheduler } from "../src/ledger/scheduler.ts";
 import { ReconciliationScheduler } from "../src/reconciliation/scheduler.ts";
 import { WebhookScheduler } from "../src/notifications/scheduler.ts";
+import type { LedgerScanResult } from "../src/ledger/service.ts";
 
 const unconfiguredSettings: RuntimeSettingsSnapshot = Object.freeze({
   adminAccess: { enabled: false, cidrs: [] },
@@ -257,4 +258,67 @@ it("does not replace a ledger worker that still cannot flush its stopped schedul
     assert.equal(oldStopAttempts, 3);
     assert.equal(runtime.status().transitioning, false);
   } finally { blocked = false; await runtime.stop(); }
+});
+
+it("gates manual scans on the active runtime and invalidates requests on transitions and shutdown", async t => {
+  const application = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const platform = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const provider = parseProviderKeys({
+    environment: "PRODUCTION", appId: "manual-runtime-test",
+    privateKey: application.privateKey.export({ format: "pem", type: "pkcs8" }).toString(),
+    publicKey: platform.publicKey.export({ format: "pem", type: "spki" }).toString(),
+    timeoutMilliseconds: 8000, scanIntervalMilliseconds: 30000, activeScanIntervalMilliseconds: 8000,
+    minimumScanIntervalMilliseconds: 5000, safetyLagMilliseconds: 10000, maximumSuccessAgeMilliseconds: 120000,
+  });
+  const snapshot: RuntimeSettingsSnapshot = { ...unconfiguredSettings, revision: 1, paymentRevision: 1, provider,
+    collection: { codePayload: "https://qr.alipay.com/manual-runtime", orderTtlSeconds: 300,
+      amountOffsetMaximumCents: 99, amountReuseCooldownSeconds: 600 }, activeProviderAccountKey: "primary" };
+  let finish!: (value: LedgerScanResult) => void, calls = 0, storageFailed = false;
+  t.mock.method(LedgerIngestScheduler.prototype, "start", () => {});
+  t.mock.method(ReconciliationScheduler.prototype, "start", async () => {});
+  t.mock.method(LedgerIngestScheduler.prototype, "trigger", (reason: string) => {
+    assert.equal(reason, "admin_manual"); calls++;
+    return new Promise<LedgerScanResult>(resolve => { finish = resolve; });
+  });
+  const originalHealth = LedgerIngestScheduler.prototype.health;
+  t.mock.method(LedgerIngestScheduler.prototype, "health", function(this: LedgerIngestScheduler) {
+    return { ...originalHealth.call(this), lastErrorCode: storageFailed ? "scan_schedule_unavailable" : null };
+  });
+  const runtime = new RuntimeController({ database: {} as never, orders: { initialize() {} } as never,
+    ledger: { activeProviderIdentity: () => ({ providerAccountKey: "primary", activatedAt: 1 }) } as never,
+    reconciliation: {} as never, webhooks: {} as never });
+  const completed = { status: "COMPLETED", errorCode: null, ingestRunId: "runtime-test" } as LedgerScanResult;
+  try {
+    assert.equal(runtime.ledgerManualScan().unavailable_reason, "stopped");
+    assert.throws(() => runtime.requestLedgerScan());
+    await runtime.start(unconfiguredSettings);
+    assert.equal(runtime.ledgerManualScan().unavailable_reason, "not_configured");
+    await runtime.apply(snapshot);
+    assert.equal(runtime.ledgerManualScan().available, true);
+    storageFailed = true;
+    assert.equal(runtime.ledgerManualScan().unavailable_reason, "storage_unavailable");
+    assert.throws(() => runtime.requestLedgerScan()); assert.equal(calls, 0);
+    storageFailed = false;
+    const accepted = runtime.requestLedgerScan();
+    assert.equal(runtime.requestLedgerScan().id, accepted.id); assert.equal(calls, 1);
+    const transition = runtime.beginPaymentTransition();
+    assert.equal(runtime.ledgerManualScan().unavailable_reason, "transitioning");
+    assert.equal(runtime.ledgerManualScan().request?.error_code, "runtime_changed");
+    assert.throws(() => runtime.requestLedgerScan());
+    await transition; finish(completed); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(runtime.ledgerManualScan().request?.state, "FAILED");
+    await runtime.apply({ ...snapshot, revision: 2, paymentRevision: 2 });
+    const newer = runtime.requestLedgerScan(); assert.notEqual(newer.id, accepted.id);
+    finish(completed); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(runtime.ledgerManualScan().request?.state, "COMPLETED");
+    await runtime.apply({ ...snapshot, revision: 3, paymentRevision: 3 });
+    assert.equal(runtime.ledgerManualScan().request, null, "old runtime success must not describe replacement workers");
+    runtime.requestLedgerScan();
+    const stopped = runtime.stop();
+    assert.equal(runtime.ledgerManualScan().unavailable_reason, "stopped");
+    assert.equal(runtime.ledgerManualScan().request?.error_code, "runtime_changed");
+    finish(completed); await stopped;
+    assert.equal(runtime.ledgerManualScan().request?.state, "FAILED");
+    assert.throws(() => runtime.requestLedgerScan());
+  } finally { await runtime.stop(); }
 });

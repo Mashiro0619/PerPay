@@ -82,6 +82,8 @@ const app = createApp({
   backupHealth,
   ledgerHealth: () => runtime.ledgerHealth(),
   ledgerNextRunAt: () => runtime.ledgerNextRunAt(),
+  ledgerManualScan: () => runtime.ledgerManualScan(),
+  requestLedgerScan: () => runtime.requestLedgerScan(),
   reconciliationHealth: () => runtime.reconciliationHealth(),
   webhookStore: webhooks,
   webhookHealth: () => runtime.webhookHealth(),

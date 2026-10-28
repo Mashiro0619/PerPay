@@ -230,6 +230,48 @@ paths:
               schema:
                 $ref: '#/components/schemas/SystemStatusEnvelope'
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
+  /api/admin/v1/system/ledger/scan:
+    post:
+      tags: [System]
+      operationId: requestLedgerScan
+      summary: 请求一次手动查账并读取其真实执行进度
+      description: >-
+        复用当前查账调度器，提前普通等待至允许的最短间隔；保留持久化保护期限、失败退避、
+        支付宝 Retry-After 与存储恢复保护。运行中或等待中的请求复用同一标识。
+        202 仅表示已接受，实际结果由管理员 system/status 的 ledger.manual_scan 返回。
+        本轮结束可能为 PARTIAL 或 SKIPPED，并不表示已确认收款。最近一次终态保存在内存，
+        直到下一次请求或运行配置更换；进程重启后可为空。运行期切换会将未完成请求标记为 FAILED/runtime_changed。
+        只接受空 JSON 对象，不接受查询参数。只读演示禁止执行。
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      x-perpay-requires-same-origin: true
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AdminOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmptyObjectRequest' }
+      responses:
+        '202':
+          description: 已接受的等待或执行中请求快照；不代表查账完成。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LedgerManualScanEnvelope' }
+        '401': { $ref: '#/components/responses/AdminUnauthorized' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/AdminForbidden' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503':
+          description: ledger_scan_unavailable；当前配置、调度或存储状态不允许发起手动查账。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
   /api/admin/v1/system/update:
     get:
       tags: [System]
@@ -5889,6 +5931,8 @@ components:
         - maximum_success_age_milliseconds
         - conflicts
       properties:
+        manual_scan:
+          $ref: '#/components/schemas/LedgerManualScanStatus'
         diagnostics:
           $ref: '#/components/schemas/LedgerDiagnostics'
         enabled:
@@ -5930,6 +5974,43 @@ components:
           description: Null while payment collection has not been configured.
         conflicts:
           $ref: '#/components/schemas/LedgerConflictSummary'
+    LedgerManualScanEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/LedgerManualScanRequest' }
+    LedgerManualScanRequest:
+      type: object
+      additionalProperties: false
+      required: [id, state, requested_at, started_at, finished_at, next_attempt_at, outcome, error_code, ingest_run_id]
+      properties:
+        id: { type: string, format: uuid }
+        state: { type: string, enum: [WAITING, RUNNING, COMPLETED, FAILED] }
+        requested_at: { type: string, format: date-time }
+        started_at: { type: [string, 'null'], format: date-time }
+        finished_at: { type: [string, 'null'], format: date-time }
+        next_attempt_at: { type: [string, 'null'], format: date-time }
+        outcome:
+          type: [string, 'null']
+          enum: [COMPLETED, PARTIAL, FAILED, SKIPPED, null]
+          description: 本轮调度器实际结果，PARTIAL/SKIPPED 不表示完整完成，任何状态都不单独证明订单已支付。
+        error_code: { type: [string, 'null'], description: 稳定错误码，不包含原始异常或账户凭据。 }
+        ingest_run_id: { type: [string, 'null'] }
+    LedgerManualScanStatus:
+      type: object
+      additionalProperties: false
+      description: 仅管理员系统状态返回；保留最近一次请求终态，进程重启后可清空。
+      required: [available, unavailable_reason, request]
+      properties:
+        available: { type: boolean }
+        unavailable_reason:
+          type: [string, 'null']
+          enum: [not_configured, transitioning, stopped, storage_unavailable, database_unavailable, demo_read_only, null]
+        request:
+          oneOf:
+            - { $ref: '#/components/schemas/LedgerManualScanRequest' }
+            - { type: 'null' }
     LedgerDiagnostics:
       type: object
       additionalProperties: false
@@ -8844,6 +8925,7 @@ components:
         - ledger_conflict_state_conflict
         - ledger_entry_not_found
         - ledger_unavailable
+        - ledger_scan_unavailable
         - match_not_found
         - match_state_conflict
         - merchant_order_no_conflict

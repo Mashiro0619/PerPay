@@ -1050,6 +1050,8 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .runtime-col-actions { width: 18%; }
 .runtime-status-table .runtime-service-row > th, .runtime-status-table .runtime-service-row > td { white-space: normal; overflow-wrap: anywhere; }
 .runtime-service-time, .runtime-service-info { font-variant-numeric: tabular-nums; }
+.runtime-manual-scan-feedback { display: flex; min-width: 0; flex-direction: column; gap: 0.375rem; font-size: 0.75rem; line-height: 1.5; }
+.runtime-manual-scan-feedback time { overflow-wrap: anywhere; }
 .runtime-service-time { color: var(--muted-foreground); }
 .runtime-empty { color: var(--muted-foreground); }
 .runtime-mobile-label { display: none; }

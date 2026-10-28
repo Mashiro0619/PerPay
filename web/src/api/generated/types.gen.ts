@@ -218,6 +218,7 @@ export type FinancialExceptionSummary = {
     total: number;
 } | null;
 export type LedgerHealth = {
+    manual_scan?: LedgerManualScanStatus;
     diagnostics?: LedgerDiagnostics;
     enabled: boolean;
     state: 'idle' | 'running' | 'healthy' | 'catching_up' | 'degraded' | 'stopped';
@@ -230,6 +231,25 @@ export type LedgerHealth = {
     last_success_age_milliseconds: number | null;
     maximum_success_age_milliseconds: number | null;
     conflicts: LedgerConflictSummary;
+};
+export type LedgerManualScanEnvelope = {
+    data: LedgerManualScanRequest;
+};
+export type LedgerManualScanRequest = {
+    id: string;
+    state: 'WAITING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+    requested_at: string;
+    started_at: string | null;
+    finished_at: string | null;
+    next_attempt_at: string | null;
+    outcome: 'COMPLETED' | 'PARTIAL' | 'FAILED' | 'SKIPPED' | null;
+    error_code: string | null;
+    ingest_run_id: string | null;
+};
+export type LedgerManualScanStatus = {
+    available: boolean;
+    unavailable_reason: 'not_configured' | 'transitioning' | 'stopped' | 'storage_unavailable' | 'database_unavailable' | 'demo_read_only' | null;
+    request: LedgerManualScanRequest | null;
 };
 export type LedgerDiagnostics = {
     available: boolean;
@@ -1314,7 +1334,7 @@ export type WebhookRedeliveryEnvelope = {
     };
 };
 export type Sha256Fingerprint = string;
-export type ErrorCode = 'admin_ip_not_allowed' | 'admin_operation_conflict' | 'refund_mark_version_conflict' | 'refund_mark_not_allowed' | 'refund_recording_retired' | 'work_item_not_found' | 'work_item_ended' | 'amount_slots_exhausted' | 'api_authentication_failed' | 'api_client_invalid' | 'api_nonce_replayed' | 'asset_not_found' | 'auth_rate_limited' | 'candidate_not_found' | 'candidate_set_changed' | 'checkout_code_generation_failed' | 'checkout_code_not_found' | 'checkout_not_found' | 'csrf_invalid' | 'duplicate_json_key' | 'event_not_found' | 'financial_clock_unavailable' | 'financial_exception_not_found' | 'forwarded_header_invalid' | 'idempotency_conflict' | 'identity_already_initialized' | 'identity_not_initialized' | 'setup_token_invalid' | 'internal_error' | 'invalid_content_length' | 'invalid_credentials' | 'invalid_json' | 'ledger_conflict_action_not_allowed' | 'ledger_conflict_not_found' | 'ledger_conflict_operation_conflict' | 'ledger_conflict_state_conflict' | 'ledger_entry_not_found' | 'ledger_unavailable' | 'match_not_found' | 'match_state_conflict' | 'merchant_order_no_conflict' | 'operation_conflict' | 'order_clock_unavailable' | 'order_not_found' | 'origin_not_allowed' | 'password_unchanged' | 'password_work_busy' | 'provider_application_key_missing' | 'provider_application_key_rotation_not_supported' | 'provider_application_key_change_pending' | 'provider_application_key_change_conflict' | 'provider_application_key_verification_failed' | 'provider_switch_blocked' | 'public_checkout_rate_limited' | 'reconciliation_not_ready' | 'reconciliation_unavailable' | 'request_body_too_large' | 'request_body_unreadable' | 'return_url_invalid' | 'return_url_not_allowed' | 'route_not_found' | 'secret_not_found' | 'session_invalid' | 'settings_not_configured' | 'settings_revision_conflict' | 'settings_unavailable' | 'settings_validation_failed' | 'system_not_configured' | 'system_not_ready' | 'unsupported_media_type' | 'update_check_unavailable' | 'validation_failed' | 'webhook_delivery_not_found' | 'webhook_delivery_state_conflict' | 'webhook_disabled' | 'webhook_event_not_found' | 'webhook_operation_conflict' | 'webhook_signing_key_rollback' | 'webhook_signing_key_unavailable' | 'webhook_target_inactive' | 'webhook_target_invalid' | 'webhook_target_not_allowed' | 'webhook_unavailable' | 'site_not_found' | 'site_scope_conflict' | 'site_revision_conflict' | 'site_operation_conflict' | 'site_has_history' | 'site_paused' | 'site_order_limit_exceeded' | 'site_secret_missing' | 'demo_read_only' | 'site_settings_moved';
+export type ErrorCode = 'admin_ip_not_allowed' | 'admin_operation_conflict' | 'refund_mark_version_conflict' | 'refund_mark_not_allowed' | 'refund_recording_retired' | 'work_item_not_found' | 'work_item_ended' | 'amount_slots_exhausted' | 'api_authentication_failed' | 'api_client_invalid' | 'api_nonce_replayed' | 'asset_not_found' | 'auth_rate_limited' | 'candidate_not_found' | 'candidate_set_changed' | 'checkout_code_generation_failed' | 'checkout_code_not_found' | 'checkout_not_found' | 'csrf_invalid' | 'duplicate_json_key' | 'event_not_found' | 'financial_clock_unavailable' | 'financial_exception_not_found' | 'forwarded_header_invalid' | 'idempotency_conflict' | 'identity_already_initialized' | 'identity_not_initialized' | 'setup_token_invalid' | 'internal_error' | 'invalid_content_length' | 'invalid_credentials' | 'invalid_json' | 'ledger_conflict_action_not_allowed' | 'ledger_conflict_not_found' | 'ledger_conflict_operation_conflict' | 'ledger_conflict_state_conflict' | 'ledger_entry_not_found' | 'ledger_unavailable' | 'ledger_scan_unavailable' | 'match_not_found' | 'match_state_conflict' | 'merchant_order_no_conflict' | 'operation_conflict' | 'order_clock_unavailable' | 'order_not_found' | 'origin_not_allowed' | 'password_unchanged' | 'password_work_busy' | 'provider_application_key_missing' | 'provider_application_key_rotation_not_supported' | 'provider_application_key_change_pending' | 'provider_application_key_change_conflict' | 'provider_application_key_verification_failed' | 'provider_switch_blocked' | 'public_checkout_rate_limited' | 'reconciliation_not_ready' | 'reconciliation_unavailable' | 'request_body_too_large' | 'request_body_unreadable' | 'return_url_invalid' | 'return_url_not_allowed' | 'route_not_found' | 'secret_not_found' | 'session_invalid' | 'settings_not_configured' | 'settings_revision_conflict' | 'settings_unavailable' | 'settings_validation_failed' | 'system_not_configured' | 'system_not_ready' | 'unsupported_media_type' | 'update_check_unavailable' | 'validation_failed' | 'webhook_delivery_not_found' | 'webhook_delivery_state_conflict' | 'webhook_disabled' | 'webhook_event_not_found' | 'webhook_operation_conflict' | 'webhook_signing_key_rollback' | 'webhook_signing_key_unavailable' | 'webhook_target_inactive' | 'webhook_target_invalid' | 'webhook_target_not_allowed' | 'webhook_unavailable' | 'site_not_found' | 'site_scope_conflict' | 'site_revision_conflict' | 'site_operation_conflict' | 'site_has_history' | 'site_paused' | 'site_order_limit_exceeded' | 'site_secret_missing' | 'demo_read_only' | 'site_settings_moved';
 export type ErrorEnvelope = {
     error: {
         code: ErrorCode;
@@ -1545,6 +1565,30 @@ export type GetAdministratorSystemStatusResponses = {
     200: SystemStatusEnvelope;
 };
 export type GetAdministratorSystemStatusResponse = GetAdministratorSystemStatusResponses[keyof GetAdministratorSystemStatusResponses];
+export type RequestLedgerScanData = {
+    body: EmptyObjectRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/admin/v1/system/ledger/scan';
+};
+export type RequestLedgerScanErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type RequestLedgerScanError = RequestLedgerScanErrors[keyof RequestLedgerScanErrors];
+export type RequestLedgerScanResponses = {
+    202: LedgerManualScanEnvelope;
+};
+export type RequestLedgerScanResponse = RequestLedgerScanResponses[keyof RequestLedgerScanResponses];
 export type CheckOfficialUpdateData = {
     body?: never;
     headers?: {
