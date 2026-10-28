@@ -1,6 +1,27 @@
 import type { Locator, Page } from "@playwright/test";
 import { test, expect, login, record } from "./fixtures";
 
+async function pressScrollKey(page: Page, scroll: Locator, key: "PageDown" | "ArrowDown" | "Home") {
+  const cleanup = await scroll.evaluateHandle(element => {
+    element.setAttribute("data-keyboard-scroll-ended", "false");
+    const ended = () => element.setAttribute("data-keyboard-scroll-ended", "true");
+    element.addEventListener("scrollend", ended, { once: true });
+    return () => {
+      element.removeEventListener("scrollend", ended);
+      element.removeAttribute("data-keyboard-scroll-ended");
+    };
+  });
+  try {
+    await page.keyboard.press(key);
+    // A positive scrollTop can still be the previous key's animation. Sending
+    // Home on its final frame can be ignored by Chromium's native scroller.
+    await expect(scroll, `${key} must finish native keyboard scrolling`).toHaveAttribute("data-keyboard-scroll-ended", "true");
+  } finally {
+    await cleanup.evaluate(dispose => dispose()).catch(() => {});
+    await cleanup.dispose();
+  }
+}
+
 async function readWithKeyboard(page: Page, dialog: Locator) {
   const scroll = dialog.locator("[data-admin-dialog-scroll]");
   await expect(scroll).toHaveAttribute("data-scrollable", "true");
@@ -19,16 +40,16 @@ async function readWithKeyboard(page: Page, dialog: Locator) {
 
   // Use the browser's keyboard scrolling. No scripted scrolling or focus
   // rescue is allowed: both previously failed at the popup's initial focus.
-  await page.keyboard.press("PageDown");
+  await pressScrollKey(page, scroll, "PageDown");
   await expect.poll(() => scroll.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
   const pageDown = await scroll.evaluate(element => element.scrollTop);
   await expect(scroll).toBeFocused();
-  await page.keyboard.press("Home");
+  await pressScrollKey(page, scroll, "Home");
   await expect.poll(() => scroll.evaluate(element => element.scrollTop)).toBe(0);
-  await page.keyboard.press("ArrowDown");
+  await pressScrollKey(page, scroll, "ArrowDown");
   await expect.poll(() => scroll.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
   const arrowDown = await scroll.evaluate(element => element.scrollTop);
-  await page.keyboard.press("Home");
+  await pressScrollKey(page, scroll, "Home");
   await expect.poll(() => scroll.evaluate(element => element.scrollTop)).toBe(0);
 
   await page.keyboard.press("Tab");
