@@ -327,9 +327,22 @@ test("container validation is manual and exercises the real deployment lifecycle
   const workflow = parse(validationWorkflowText);
   assert.deepEqual(workflow.on, { workflow_dispatch: null });
   assert.deepEqual(Object.keys(workflow.jobs), ["validate"]);
-  assert.equal(workflow.jobs.validate["runs-on"], "ubuntu-24.04");
+  assert.equal(workflow.jobs.validate["runs-on"], "${{ matrix.runner }}");
+  assert.equal(workflow.jobs.validate.strategy["fail-fast"], false);
+  assert.deepEqual(workflow.jobs.validate.strategy.matrix.include, [
+    { runner: "ubuntu-24.04", architecture: "amd64" },
+    { runner: "ubuntu-24.04-arm", architecture: "arm64" },
+  ]);
   const steps = workflow.jobs.validate.steps;
-  assert.ok(steps.some((step) => step.run?.includes("docker build")));
+  const build = steps.find(step => step.name === "Build the application image");
+  for (const required of [
+    'docker build --platform "linux/${ARCHITECTURE}"',
+    '--label "org.opencontainers.image.revision=${GITHUB_SHA}"',
+    'docker image inspect "$IMAGE"',
+    '.[0].Architecture == $architecture',
+    '.[0].Config.Labels["org.opencontainers.image.version"] == $version',
+    '.[0].Config.Labels["org.opencontainers.image.revision"] == $revision',
+  ]) assert.ok(build?.run.includes(required), `missing platform build verification: ${required}`);
   assert.ok(steps.some((step) => step.uses?.includes("aquasecurity/trivy-action@")));
   const smoke = steps.find(
     (step) => step.name === "Exercise Compose, backup, restore, and persistence",
