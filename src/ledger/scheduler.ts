@@ -159,7 +159,8 @@ export class LedgerIngestScheduler {
     // A manual trigger is an explicit operator action. Cancel a pending
     // automatic timer so it cannot race the requested scan.
     if (reason !== "scheduled") this.#clearTimer();
-    this.#lastAttemptAt = safeNow(this.#clock());
+    const attemptStartedAt = safeNow(this.#clock());
+    this.#lastAttemptAt = attemptStartedAt;
     const previousState = this.#state;
     this.#state = "running";
     const operation = this.#service.run(reason)
@@ -168,7 +169,8 @@ export class LedgerIngestScheduler {
           this.#state = previousState;
         } else if (result.status === "COMPLETED") {
           this.#state = "healthy";
-          this.#lastSuccessAt = safeNow(this.#clock());
+          // The scan covers its starting safe tail; request time still ages it.
+          this.#lastSuccessAt = attemptStartedAt;
           this.#lastErrorCode = null;
           this.#consecutiveFailures = 0;
         } else if (result.status === "PARTIAL") {
@@ -176,7 +178,7 @@ export class LedgerIngestScheduler {
           this.#lastErrorCode = result.errorCode;
           this.#consecutiveFailures = 0;
           if (result.normalCompleted) {
-            this.#lastSuccessAt = safeNow(this.#clock());
+            this.#lastSuccessAt = attemptStartedAt;
           }
         } else {
           this.#state = "degraded";

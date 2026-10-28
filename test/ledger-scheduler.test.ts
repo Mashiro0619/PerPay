@@ -153,6 +153,25 @@ describe("adaptive ledger scheduler", () => {
       assert.equal(calls.length, 2);
     });
   });
+
+  for (const status of ["COMPLETED", "PARTIAL"] as const) {
+    it("ages a slow " + status + " normal scan from its attempt start", async () => {
+      let finish!: (value: LedgerScanResult) => void;
+      const pending = new Promise<LedgerScanResult>(resolve => { finish = resolve; });
+      await withScheduler(async ({ scheduler, timers, calls }) => {
+        assert.equal(scheduler.health().lastAttemptAt, START);
+        assert.equal(scheduler.health().lastSuccessAt, null);
+        await timers.advance(120_000);
+        finish(result({ status, normalCompleted: true,
+          errorCode: status === "PARTIAL" ? "compensation_continuation" : null }));
+        await flush();
+        assert.equal(calls.length, 1);
+        assert.equal(scheduler.health().lastSuccessAt, START);
+        assert.equal(timers.now - scheduler.health().lastSuccessAt!, 120_000);
+        assert.equal(scheduler.health().state, status === "PARTIAL" ? "catching_up" : "healthy");
+      }, [() => pending]);
+    });
+  }
 });
 
 class ManualTimers {

@@ -5895,7 +5895,10 @@ components:
         last_success_at:
           type: [integer, 'null']
           minimum: 0
-          description: Unix epoch milliseconds for the latest completed or skipped scan.
+          description: >-
+            Unix epoch milliseconds when the latest successful collection scan started.
+            Historical catch-up windows and skipped scans do not refresh this value.
+            Scan duration counts toward collection freshness; this is not the ledger coverage end time.
         last_error_code:
           type: [string, 'null']
           description: >-

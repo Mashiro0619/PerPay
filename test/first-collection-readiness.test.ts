@@ -72,3 +72,70 @@ it("blocks readiness and new payments until an actual provider scan succeeds", a
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+it("counts a slow successful scan against collection freshness before accepting payments", async (context) => {
+  const directory = mkdtempSync(join(tmpdir(), "perpay-slow-collection-"));
+  const services = await createConfiguredHttpServices({
+    directory, apiSecret: randomBytes(32).toString("base64url"), collectionCodePayload: "https://qr.alipay.com/slow-scan-test",
+  });
+  const ledger = new LedgerStore(services.database);
+  const reconciliation = new ReconciliationStore(services.database);
+  const webhooks = new WebhookStore(services.database);
+  let now = Date.now() + 30_000;
+  const startedAt = now;
+  let slow = true;
+  context.mock.method(AlipayLedgerProvider.prototype, "queryPage", async (input: Parameters<AlipayLedgerProvider["queryPage"]>[0]) => {
+    if (slow) { now += 90_000; slow = false; }
+    return {
+      pageNo: 1, pageSize: input.pageSize, totalSize: 0, hasMore: false, details: [], traceId: "slow-scan-test",
+      rawResponse: { status: 200, headers: {}, body: "{\"total_size\":0}", traceId: "slow-scan-test", signatureVerified: true },
+    };
+  });
+  const runtime = new RuntimeController({ database: services.database, orders: services.orders, ledger, reconciliation, webhooks, clock: () => now });
+  try {
+    const app = createApp({
+      ...services, ledger, reconciliation, webhookStore: webhooks, startedAt: new Date(startedAt), clock: () => now,
+      runtimeStatus: () => runtime.status(), ledgerHealth: () => runtime.ledgerHealth(),
+      reconciliationHealth: () => runtime.reconciliationHealth(), webhookHealth: () => runtime.webhookHealth(),
+    });
+    const login = await app.request("/api/admin/v1/session/login", {
+      method: "POST", headers: { origin: services.config.publicOrigin, "content-type": "application/json" },
+      body: JSON.stringify({ password: HTTP_TEST_ADMIN_PASSWORD }),
+    });
+    assert.equal(login.status, 200);
+    const authentication = await login.json() as { data: { csrf_token: string } };
+    const headers = {
+      origin: services.config.publicOrigin, "content-type": "application/json",
+      cookie: login.headers.getSetCookie().map(cookie => cookie.split(";")[0]).join("; "),
+      "x-csrf-token": authentication.data.csrf_token,
+    };
+    const create = () => app.request("/api/admin/v1/test-payments", {
+      method: "POST", headers, body: JSON.stringify({ amount_cents: 1, api_client_id: "default", test_payment_id: randomUUID() }),
+    });
+    await runtime.start(services.settings.instanceSnapshot());
+    for (let attempt = 0; attempt < 100 && runtime.ledgerHealth().lastSuccessAt === null; attempt++) {
+      await new Promise<void>(done => setImmediate(done));
+    }
+    await runtime.triggerReconciliation("after-slow-scan");
+    assert.equal(runtime.ledgerHealth().state, "healthy");
+    assert.equal((await app.request("/readyz")).status, 503, "scan duration exceeds the configured 60-second freshness limit");
+    assert.equal(runtime.ledgerHealth().lastSuccessAt, startedAt);
+    assert.equal((await create()).status, 503);
+
+    now = runtime.ledgerNextRunAt() ?? now + 10_000;
+    await runtime.beginPaymentTransition();
+    await runtime.apply(services.settings.instanceSnapshot());
+    for (let attempt = 0; attempt < 100 && runtime.ledgerHealth().lastSuccessAt !== now; attempt++) {
+      await new Promise<void>(done => setImmediate(done));
+    }
+    await runtime.triggerReconciliation("after-fresh-scan");
+    assert.equal(runtime.ledgerHealth().lastSuccessAt, now);
+    assert.equal((await app.request("/readyz")).status, 200);
+    assert.equal((await create()).status, 201);
+  } finally {
+    await runtime.stop();
+    services.database.close();
+    assert.equal(resolve(directory, ".."), resolve(tmpdir()));
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

@@ -73,7 +73,7 @@ export interface LedgerScanResult {
   readonly retryAfterSeconds: number | null;
   /** Whether the failed scan should use the scheduler backoff policy. */
   readonly retryable: boolean;
-  /** A normal tail completed even though durable compensation work remains. */
+  /** A normal scan covered this run's starting safe tail, even if compensation remains. */
   readonly normalCompleted: boolean;
   /** Returned without contacting the provider because a durable cooldown remains active. */
   readonly cooldownActive: boolean;
@@ -333,9 +333,16 @@ export class LedgerIngestService {
           const normalCursorAfter = this.#store.getCursor(this.#providerAccountKey, "NORMAL");
           const compensationPending = run.scanKind === "NORMAL" &&
             this.#store.getCursor(this.#providerAccountKey, "COMPENSATION")?.complete === false;
-          const normalPending = run.scanKind !== "NORMAL" &&
-            normalCursorAfter !== null &&
-            normalCursorBehind(normalCursorAfter, completedAt, this.#safetyLagMilliseconds);
+          // Completing one bounded historical window is not fresh collection.
+          // A normal scan targets the safe tail captured when this run started;
+          // moving that target during the request would make finite latency chase
+          // a perpetually newer tail. Compensation does not advance that cursor.
+          const normalPending = normalCursorAfter !== null &&
+            normalCursorBehind(
+              normalCursorAfter,
+              run.scanKind === "NORMAL" ? now : completedAt,
+              this.#safetyLagMilliseconds,
+            );
           const continuationPending = compensationPending || normalPending;
           return {
             status: continuationPending ? "PARTIAL" : "COMPLETED",
@@ -347,12 +354,12 @@ export class LedgerIngestService {
             duplicateEntries,
             isolatedDetails,
             conflicts,
-            errorCode: compensationPending
-              ? "compensation_continuation"
-              : normalPending ? "normal_continuation" : null,
+            errorCode: normalPending
+              ? "normal_continuation"
+              : compensationPending ? "compensation_continuation" : null,
             retryAfterSeconds: null,
             retryable: false,
-            normalCompleted: run.scanKind === "NORMAL",
+            normalCompleted: run.scanKind === "NORMAL" && !normalPending,
             cooldownActive: false,
           };
         }
@@ -751,7 +758,8 @@ function normalCursorBehind(
   if (!Number.isSafeInteger(end)) {
     throw new Error("durable ledger cursor contains an invalid window end");
   }
-  return end < now - safetyLagMilliseconds;
+  // Provider windows have whole-second bounds, including the requested tail.
+  return end < Math.floor((now - safetyLagMilliseconds) / 1_000) * 1_000;
 }
 
 function safeNow(value: number): number {

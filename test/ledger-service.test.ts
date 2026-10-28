@@ -19,6 +19,7 @@ import {
   type LedgerScanResult,
 } from "../src/ledger/service.ts";
 import { LedgerStore } from "../src/ledger/store.ts";
+import { parseOccurredAt } from "../src/ledger/model.ts";
 
 const NOW = Date.parse("2026-08-14T12:00:00+08:00");
 const PROVIDER_IDENTITY = {
@@ -96,7 +97,10 @@ describe("LedgerIngestService", () => {
         overlapMilliseconds: 10_000,
         clock: () => NOW + 10_000,
       }).run("new-interval-resume");
-      assert.equal(resumed.status, "COMPLETED");
+      assert.equal(resumed.status, "PARTIAL");
+      assert.equal(resumed.errorCode, "normal_continuation");
+      assert.equal(resumed.normalCompleted, false);
+      assert.equal(store.getCursor()?.complete, true);
       assert.equal(store.getCursor()?.overlapMilliseconds, 300_000);
 
       const nextProvider = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
@@ -244,7 +248,10 @@ describe("LedgerIngestService", () => {
           clock: () => NOW + 5_000,
         },
       ).run("variant-confirmed");
-      assert.equal(confirmed.status, "COMPLETED");
+      assert.equal(confirmed.status, "PARTIAL");
+      assert.equal(confirmed.errorCode, "normal_continuation");
+      assert.equal(confirmed.normalCompleted, false);
+      assert.equal(store.getRun(confirmed.ingestRunId ?? "")?.status, "COMPLETED");
       assert.equal(confirmed.ingestRunId, rejected.ingestRunId);
       assert.equal(confirmed.details, 1);
       assert.equal(confirmed.createdEntries, 1);
@@ -572,6 +579,88 @@ describe("LedgerIngestService", () => {
       }).run("bounded-catch-up");
       assert.equal(secondProvider.requests[0]?.startTime, "2026-08-14 11:55:00");
       assert.equal(secondProvider.requests[0]?.endTime, "2026-08-14 13:00:00");
+    });
+  });
+
+  it("keeps completed historical normal windows unready until the safe tail is covered", async () => {
+    await withDatabase(async ({ store }) => {
+      await serviceFor(new ScriptedProvider([providerPage(1, 1, 0, false, [])]), store, {
+        maxRequestsPerRun: 1,
+        windowMilliseconds: 24 * 60 * 60 * 1_000,
+        safetyLagMilliseconds: 10_000,
+      }).run("historical-baseline");
+      const now = NOW + 3 * 24 * 60 * 60 * 1_000 + 543;
+      const expectedTail = Math.floor((now - 10_000) / 1_000) * 1_000;
+      const provider = new ScriptedProvider(Array.from({ length: 6 }, () => providerPage(1, 1, 0, false, [])));
+      const scheduler = new LedgerIngestScheduler({
+        service: serviceFor(provider, store, {
+          maxRequestsPerRun: 1,
+          windowMilliseconds: 24 * 60 * 60 * 1_000,
+          safetyLagMilliseconds: 10_000,
+          clock: () => now,
+        }),
+        intervalMilliseconds: 10_000,
+        clock: () => now,
+        setTimeout: () => ({ unref() {} }) as NodeJS.Timeout,
+        clearTimeout: () => {},
+      });
+      try {
+        scheduler.start();
+        let result = await scheduler.trigger("restart-catch-up");
+        let historicalWindows = 0;
+        while (parseOccurredAt(store.getCursor()!.windowEnd) < expectedTail) {
+          historicalWindows++;
+          assert.ok(historicalWindows <= 5, "historical catch-up must make bounded progress");
+          assert.equal(result.status, "PARTIAL");
+          assert.equal(result.errorCode, "normal_continuation");
+          assert.equal(result.normalCompleted, false);
+          assert.equal(scheduler.health().state, "catching_up");
+          assert.equal(scheduler.health().lastSuccessAt, null);
+          result = await scheduler.trigger("next-historical-window");
+        }
+        assert.ok(historicalWindows >= 2);
+        assert.equal(parseOccurredAt(store.getCursor()!.windowEnd), expectedTail);
+        assert.equal(result.status, "COMPLETED");
+        assert.equal(result.normalCompleted, true);
+        assert.equal(scheduler.health().state, "healthy");
+        assert.equal(scheduler.health().lastSuccessAt, now);
+      } finally { await scheduler.stop(); }
+    });
+  });
+
+  it("does not count a resumed old normal root as fresh collection", async () => {
+    await withDatabase(async ({ store }) => {
+      const failure = new AlipayProviderError({ kind: "network", code: "transport_network", message: "interrupted historical scan" });
+      await serviceFor(new ScriptedProvider([failure]), store, { maxRequestsPerRun: 1 }).run("interrupted-root");
+      const historicalEnd = store.getCursor()!.windowEnd;
+      const result = await serviceFor(new ScriptedProvider([providerPage(1, 1, 0, false, [])]), store, {
+        maxRequestsPerRun: 1,
+        clock: () => NOW + 3 * 24 * 60 * 60 * 1_000,
+      }).run("resume-historical-root");
+      assert.equal(store.getCursor()!.windowEnd, historicalEnd);
+      assert.equal(store.getCursor()!.complete, true);
+      assert.equal(result.status, "PARTIAL");
+      assert.equal(result.errorCode, "normal_continuation");
+      assert.equal(result.normalCompleted, false);
+    });
+  });
+
+  it("finishes a current normal tail despite fractional seconds and finite scan duration", async () => {
+    await withDatabase(async ({ store }) => {
+      for (const startedAt of [NOW + 543, NOW + 10_543]) {
+        const completedAt = startedAt + 6_500;
+        const provider = new ScriptedProvider([providerPage(1, 1, 0, false, [])]);
+        const result = await serviceFor(provider, store, {
+          maxRequestsPerRun: 1,
+          safetyLagMilliseconds: 5_000,
+          clock: sequenceClock(startedAt, completedAt, completedAt),
+        }).run("current-tail-with-duration");
+        assert.equal(provider.requests.length, 1);
+        assert.equal(parseOccurredAt(store.getCursor()!.windowEnd), Math.floor((startedAt - 5_000) / 1_000) * 1_000);
+        assert.equal(result.status, "COMPLETED");
+        assert.equal(result.normalCompleted, true);
+        assert.equal(result.errorCode, null);
+      }
     });
   });
 
@@ -941,7 +1030,10 @@ describe("LedgerIngestService", () => {
         scanIntervalMilliseconds: 5_000,
         clock: () => NOW + 17_000,
       }).run("cooldown-recovered");
-      assert.equal(recovered.status, "COMPLETED");
+      assert.equal(recovered.status, "PARTIAL");
+      assert.equal(recovered.errorCode, "normal_continuation");
+      assert.equal(recovered.normalCompleted, false);
+      assert.equal(store.getRun(runId)?.status, "COMPLETED");
       assert.equal(recovered.ingestRunId, runId);
       assert.equal(store.getIngestScheduleState(), null);
     } finally {
