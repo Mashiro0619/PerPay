@@ -147,7 +147,13 @@ describe("isolated documentation preview", () => {
   });
 
   it("also seeds safely just after Beijing midnight without running the order clock backwards", async () => {
-    const demo = await createPreviewDemo({ now: midnight - day + 60_000 });
+    const checks: string[] = [];
+    const checkedAt = new Date().toISOString();
+    const expected = { status: "update_available" as const, current_version: "1.0.0-alpha.2", latest_version: "1.0.0",
+      release_url: "https://github.com/Mashiro0619/PerPay/releases/tag/v1.0.0", published_at: checkedAt, checked_at: checkedAt };
+    const demo = await createPreviewDemo({ now: midnight - day + 60_000, updateChecker: {
+      check: async channel => { checks.push(channel ?? "prerelease"); return expected; },
+    } });
     try {
       assert.equal(demo.password, "123456");
       const login = await demo.app.request(demo.origin + "/api/admin/v1/session/login", {
@@ -158,6 +164,11 @@ describe("isolated documentation preview", () => {
       assert.ok(demo.stats.orders.created > 478);
       assert.ok(demo.stats.pending.orders >= 4);
       assert.equal(demo.database.integrityCheck().ok, true);
+      const cookie = login.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
+      const updated = await demo.app.request("/api/admin/v1/system/update?channel=stable", { headers: { cookie } });
+      assert.equal(updated.status, 200);
+      assert.deepEqual((await updated.json() as { data: unknown }).data, expected);
+      assert.deepEqual(checks, ["stable"], "an explicitly supplied update checker serves the read-only metadata request");
     } finally { demo.dispose(); }
   });
 

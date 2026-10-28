@@ -6,6 +6,7 @@ import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { parseArgs } from "node:util";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 
@@ -22,7 +23,7 @@ import { assessWebhookAck } from "../src/notifications/model.ts";
 import { createApp } from "../src/http/app.ts";
 import { systemAnalytics } from "../src/http/system-analytics.ts";
 import { renderCollectionCodeSvg } from "../src/http/web/collection-code.ts";
-import { UpdateCheckUnavailable } from "../src/update/checker.ts";
+import { OfficialUpdateChecker, UpdateCheckUnavailable } from "../src/update/checker.ts";
 import type { SiteSnapshot } from "../src/sites/model.ts";
 import { seedFinancialScenarios } from "./preview-financial-scenarios.ts";
 import { seedNotificationScenarios } from "./preview-notification-scenarios.ts";
@@ -50,7 +51,7 @@ const sample = (day: number, key: string) => createHash("sha256").update("perpay
   .digest().readUInt32BE(0) / 0x1_0000_0000;
 const beijing = (time: number) => new Date(time + 8 * 3_600_000).toISOString().slice(0, 19).replace("T", " ");
 
-export async function createPreviewDemo(options: { port?: number; now?: number; clock?: () => number } = {}) {
+export async function createPreviewDemo(options: { port?: number; now?: number; clock?: () => number; updateChecker?: Pick<OfficialUpdateChecker, "check"> } = {}) {
   const port = options.port ?? 6192;
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("演示端口必须在 1024–65535 之间。");
   const capturedAt = options.now ?? Date.now();
@@ -393,8 +394,9 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
       ledgerHealth: healthy,
       reconciliationHealth: () => ({ ...healthy(), pendingOrders: systemAnalytics(db, 7, liveNow()).pending.orders, continuationPending: false }),
       webhookHealth: () => ({ ...healthy(), pendingDeliveries: webhooks.counts().pending, deadLetters: webhooks.counts().dead }),
-      // Never claim a real update check has succeeded and never contact GitHub.
-      updateChecker: { check: async () => { throw new UpdateCheckUnavailable(3600); } },
+      // Default fixtures stay offline. Interactive previews can explicitly supply
+      // the official metadata checker without starting any payment transports.
+      updateChecker: options.updateChecker ?? { check: async () => { throw new UpdateCheckUnavailable(3600); } },
     });
     const preview = new Hono();
     preview.use("*", async (context, next) => {
@@ -425,14 +427,16 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
 }
 
 async function main() {
-  const args = process.argv.slice(2);
-  if (args.length > 0 && (args.length !== 2 || args[0] !== "--port")) throw new Error("用法：npm run demo:preview -- [--port 6192]");
+  const { values } = parseArgs({ options: { port: { type: "string" }, "official-updates": { type: "boolean", default: false } } });
   for (const path of ["web-dist/admin/index.html", "web-dist/checkout/.vite/manifest.json"]) {
     if (!existsSync(resolve(path))) throw new Error("请先在仓库根目录执行 npm run build。");
   }
-  const demo = await createPreviewDemo(args.length ? { port: Number(args[1]) } : {});
+  const demo = await createPreviewDemo({
+    ...(values.port === undefined ? {} : { port: Number(values.port) }),
+    ...(values["official-updates"] ? { updateChecker: new OfficialUpdateChecker() } : {}),
+  });
   const server = serve({ fetch: demo.app.fetch, hostname: "127.0.0.1", port: Number(new URL(demo.origin).port) }, () => {
-    console.log("\nPerPay 只读演示 · 全部为合成数据 · 不向外部服务发请求");
+    console.log("\nPerPay 本地预览 · 官方更新查询" + (values["official-updates"] ? "已启用" : "未启用"));
     console.log(JSON.stringify({ origin: demo.origin, password: demo.password, capturedAt: demo.capturedAt, featured: demo.featured, retry: demo.retry, failed: demo.failed, checkout: demo.checkout, checkoutExpiresAt: new Date(demo.capturedAt + 22 * MINUTE).toISOString(), orders: demo.stats.orders, daily: demo.stats.daily, directory: demo.directory, scenarios: demo.scenarios }, null, 2));
     console.log("\n访问 " + demo.origin + "/admin/，按 Ctrl+C 退出并清理临时数据。");
   });
