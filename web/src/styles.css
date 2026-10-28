@@ -1067,6 +1067,10 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .system-update-status { min-width: 0; color: var(--muted-foreground); font-size: 0.75rem; overflow-wrap: anywhere; }
 .system-update-actions { display: flex; flex: 0 1 auto; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.125rem 0.25rem; margin-top: -0.25rem; }
 .system-update-note { color: var(--muted-foreground); font-size: 0.75rem; margin-top: 0.5rem; }
+.system-update-preferences { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.5rem; margin-top: 0.875rem; }
+.system-update-preferences > [data-slot="field"] { width: auto; max-width: 100%; flex-wrap: wrap; gap: 0.625rem; }
+.system-update-preferences [data-slot="field-label"] { flex: none; font-size: 0.75rem; }
+.system-update-preferences [data-slot="select-trigger"] { min-width: min(9.5rem, 100%); max-width: 100%; }
 .system-update-details:not([hidden]) { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem 1.5rem; padding-top: 0.75rem; color: var(--muted-foreground); font-size: 0.75rem; overflow-wrap: anywhere; }
 @container runtime (max-width: 47.999rem) {
   .system-update-main { flex-direction: column; gap: 0.75rem; }

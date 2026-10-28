@@ -1551,7 +1551,9 @@ export type CheckOfficialUpdateData = {
         'X-Request-Id'?: string;
     };
     path?: never;
-    query?: never;
+    query?: {
+        channel?: 'stable' | 'prerelease';
+    };
     url: '/api/admin/v1/system/update';
 };
 export type CheckOfficialUpdateErrors = {

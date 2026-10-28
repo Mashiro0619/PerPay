@@ -653,11 +653,15 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   );
 
   app.get("/api/admin/v1/system/update", adminSession, async (context) => {
-    if (new URL(context.req.url).searchParams.size !== 0) {
-      throw new HttpApiError(422, "validation_failed", "更新检查不接受自定义来源或查询参数");
+    const values = new URL(context.req.url).searchParams;
+    const channels = values.getAll("channel");
+    const channel = channels[0] ?? "prerelease";
+    if ([...values.keys()].some(key => key !== "channel") || channels.length > 1 ||
+      (channel !== "stable" && channel !== "prerelease")) {
+      throw new HttpApiError(422, "validation_failed", "更新检查只接受单个有效的 channel 参数");
     }
     try {
-      return context.json({ data: await updateChecker.check() });
+      return context.json({ data: await updateChecker.check(channel) });
     } catch (error) {
       if (!(error instanceof UpdateCheckUnavailable)) throw error;
       context.header("retry-after", String(error.retryAfterSeconds));

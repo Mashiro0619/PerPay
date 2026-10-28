@@ -1,21 +1,23 @@
 import { test, expect, login, record } from "./fixtures";
-test("runtime keeps healthy diagnostics collapsed and exposes abnormal causes and retry waits", async ({ page, manifest }, info) => {
-  await page.route("**/api/admin/v1/system/update", async route => {
-    const response = await route.fetch();
-    await route.fulfill({ response, headers: { ...response.headers(), "retry-after": "2" } });
+test("runtime keeps healthy diagnostics collapsed and explains demo update isolation", async ({ page, manifest }, info) => {
+  let updateRequests = 0;
+  await page.route("**/api/admin/v1/system/update*", async route => {
+    updateRequests++;
+    await route.continue();
   });
   await login(page, manifest);
   await page.goto(manifest.origin + "/admin/system");
   const healthy = page.getByRole("table", { name: "运行环节" });
   await expect(healthy).toBeVisible();
   await expect(page.locator(".runtime-service-row[data-attention]")).toHaveCount(0);
-  await expect(page.locator(".system-update-strip")).toHaveAttribute("data-update-state", "unavailable");
+  await expect(page.getByRole("region", { name: "官方更新", exact: true })).toContainText("演示模式未连接官方更新服务");
   const update = page.getByRole("button", { name: "检查更新", exact: true });
   await expect(update).toBeDisabled();
   await manifest.setTime(manifest.epoch + 3_000);
   await page.clock.setFixedTime(new Date(manifest.epoch + 3_000));
   await page.clock.fastForward(3_000);
-  await expect(update).toBeEnabled();
+  await expect(update).toBeDisabled();
+  expect(updateRequests).toBe(0);
   await page.route("**/api/admin/v1/system/status", async route => {
     const response = await route.fetch(), data = await response.json();
     data.data.status = "degraded";
@@ -30,5 +32,6 @@ test("runtime keeps healthy diagnostics collapsed and exposes abnormal causes an
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(diagnose).toBeFocused();
-  await record(page, info, { runtime: "confirmation failure", expectedUpdateDegradation: true });
+  expect(updateRequests).toBe(0);
+  await record(page, info, { runtime: "confirmation failure", updateMode: "isolated demo" });
 });

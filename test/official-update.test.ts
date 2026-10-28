@@ -39,7 +39,7 @@ describe("official update checks", () => {
       return Response.json(release(nextVersion, { body: "untrusted release HTML must not be returned", assets: [{ browser_download_url: "https://evil.invalid" }] }));
     } });
     assert.equal(calls, 0);
-    const result = await checker.check();
+    const result = await checker.check("stable");
     assert.deepEqual(result, { status: "update_available", current_version: CURRENT_VERSION, latest_version: nextVersion,
       release_url: "https://github.com/Mashiro0619/PerPay/releases/tag/v" + nextVersion,
       published_at: "2026-09-09T12:00:00.000Z", checked_at: new Date(now).toISOString() });
@@ -50,7 +50,7 @@ describe("official update checks", () => {
   it("distinguishes the current stable release from a newer local build", async () => {
     for (const [version, status] of [[CURRENT_VERSION, "up_to_date"], ["0.0.0", "ahead"]]) {
       const checker = new OfficialUpdateChecker({ currentVersion: CURRENT_VERSION, fetch: async () => Response.json(release(version)) });
-      assert.equal((await checker.check()).status, status);
+      assert.equal((await checker.check("stable")).status, status);
     }
   });
 
@@ -63,16 +63,131 @@ describe("official update checks", () => {
       if (calls === 1) return new Promise<Response>(done => { resolve = done; });
       return Response.json(release());
     } });
-    const first = checker.check(), second = checker.check();
+    const first = checker.check("stable"), second = checker.check("stable");
     assert.equal(calls, 1);
     resolve(Response.json(release()));
     const result = await first;
     assert.equal(await second, result);
     clock += 299_999;
-    assert.equal(await checker.check(), result);
+    assert.equal(await checker.check("stable"), result);
     assert.equal(calls, 1);
     clock += 1;
-    assert.equal((await checker.check()).checked_at, new Date(clock).toISOString());
+    assert.equal((await checker.check("stable")).checked_at, new Date(clock).toISOString());
+    assert.equal(calls, 2);
+  });
+
+  for (const current of ["0.2.2", "0.3.0-rc.1"] as const) {
+    it("coalesces the default with prerelease checks while stable runs independently for " + current, async () => {
+      const releases = "https://api.github.com/repos/Mashiro0619/PerPay/releases";
+      const responses: Array<(response: Response) => void> = [];
+      const calls: string[] = [];
+      const checker = new OfficialUpdateChecker({ currentVersion: current, clock: () => now, fetch: async url => {
+        calls.push(String(url));
+        if (url === releases + "/latest") return new Promise<Response>(resolve => responses.push(resolve));
+        assert.equal(url, releases + "?per_page=100&page=1");
+        return Response.json([release("0.4.0-rc.1", { prerelease: true })]);
+      } });
+      const automatic = checker.check();
+      const implicit = checker.check();
+      const same = checker.check("prerelease");
+      const other = checker.check("stable");
+      assert.equal(responses.length, 2, "different channels must not share the in-flight result");
+      responses[0]!(Response.json(release("0.3.0")));
+      responses[1]!(Response.json(release("0.3.0")));
+      const selected = await automatic;
+      assert.equal(await implicit, selected);
+      assert.equal(await same, selected);
+      assert.equal(selected.latest_version, "0.4.0-rc.1");
+      const independent = await other;
+      assert.equal(independent.latest_version, "0.3.0");
+      assert.equal(calls.filter(url => url.endsWith("/latest")).length, 2);
+      assert.equal(calls.filter(url => url.includes("?per_page=")).length, 1);
+      assert.equal(await checker.check(), selected);
+      assert.equal(await checker.check("prerelease"), selected);
+    });
+  }
+
+  it("isolates channel success expiry and failure cooldowns", async () => {
+    let clock = now, calls = 0, failList = true;
+    const checker = new OfficialUpdateChecker({ currentVersion: CURRENT_VERSION, clock: () => clock, fetch: async url => {
+      calls++;
+      if (String(url).endsWith("/latest")) return Response.json(release());
+      if (failList) throw new Error("private prerelease failure");
+      return Response.json([release("0.3.0-rc.1", { prerelease: true })]);
+    } });
+    const stable = await checker.check("stable");
+    await assert.rejects(checker.check("prerelease"), UpdateCheckUnavailable);
+    assert.equal(calls, 3);
+    clock += 30_000;
+    assert.equal(await checker.check("stable"), stable);
+    await assert.rejects(checker.check("prerelease"), error => error instanceof UpdateCheckUnavailable && error.retryAfterSeconds === 30);
+    await assert.rejects(checker.check(), error => error instanceof UpdateCheckUnavailable && error.retryAfterSeconds === 30);
+    assert.equal(calls, 3);
+    clock += 30_000; failList = false;
+    const preview = await checker.check("prerelease");
+    assert.equal(preview.latest_version, "0.3.0-rc.1");
+    assert.equal(preview.checked_at, new Date(clock).toISOString());
+    assert.equal(await checker.check("stable"), stable);
+    assert.equal(calls, 5);
+    clock = now + 300_000;
+    assert.notEqual(await checker.check("stable"), stable);
+    assert.equal(await checker.check("prerelease"), preview);
+    assert.equal(calls, 6);
+    clock += 60_000;
+    assert.notEqual(await checker.check("prerelease"), preview);
+    assert.equal(calls, 8);
+  });
+
+  it("keeps cached prereleases available after a separate stable check fails", async () => {
+    let fail = false, calls = 0;
+    const checker = new OfficialUpdateChecker({ currentVersion: CURRENT_VERSION, clock: () => now, fetch: async url => {
+      calls++;
+      if (fail) throw new Error("stable source unavailable");
+      return Response.json(String(url).endsWith("/latest") ? release() : [release("0.3.0-rc.1", { prerelease: true })]);
+    } });
+    const preview = await checker.check("prerelease");
+    fail = true;
+    await assert.rejects(checker.check("stable"), UpdateCheckUnavailable);
+    assert.equal(await checker.check("prerelease"), preview);
+    assert.equal(await checker.check(), preview);
+    assert.equal(calls, 3);
+  });
+
+  it("keeps a prerelease request coalesced while the stable channel fails", async () => {
+    let calls = 0, failStable = false;
+    let started!: () => void, finish!: (response: Response) => void;
+    const listStarted = new Promise<void>(resolve => { started = resolve; });
+    const checker = new OfficialUpdateChecker({ currentVersion: CURRENT_VERSION, clock: () => now, fetch: async url => {
+      calls++;
+      if (String(url).endsWith("/latest")) {
+        if (failStable) throw new Error("stable request failed");
+        return Response.json(release());
+      }
+      started();
+      return new Promise<Response>(resolve => { finish = resolve; });
+    } });
+    const first = checker.check("prerelease");
+    await listStarted;
+    failStable = true;
+    await assert.rejects(checker.check("stable"), UpdateCheckUnavailable);
+    const second = checker.check("prerelease");
+    assert.equal(calls, 3, "one channel finishing must not clear the other pending request");
+    finish(Response.json([release("0.3.0-rc.1", { prerelease: true })]));
+    assert.equal(await first, await second);
+    assert.equal(calls, 3);
+  });
+
+  it("rejects the removed auto channel before reading the network or cached results", async () => {
+    let calls = 0;
+    const checker = new OfficialUpdateChecker({ currentVersion: CURRENT_VERSION, fetch: async url => {
+      calls++;
+      return Response.json(String(url).endsWith("/latest") ? release() : []);
+    } });
+    await assert.rejects(checker.check("auto" as never), RangeError);
+    assert.equal(calls, 0);
+    await checker.check();
+    assert.equal(calls, 2);
+    await assert.rejects(checker.check("auto" as never), RangeError);
     assert.equal(calls, 2);
   });
 
@@ -83,17 +198,17 @@ describe("official update checks", () => {
       if (fail) throw new Error("sensitive upstream diagnostics");
       return Response.json(release(CURRENT_VERSION));
     } });
-    assert.equal((await checker.check()).status, "up_to_date");
+    assert.equal((await checker.check("stable")).status, "up_to_date");
     clock += 300_000; fail = true;
-    await assert.rejects(checker.check(), error => error instanceof UpdateCheckUnavailable && !error.message.includes("sensitive"));
+    await assert.rejects(checker.check("stable"), error => error instanceof UpdateCheckUnavailable && !error.message.includes("sensitive"));
     clock += 30_000;
-    await assert.rejects(checker.check(), error => error instanceof UpdateCheckUnavailable && error.retryAfterSeconds === 30);
+    await assert.rejects(checker.check("stable"), error => error instanceof UpdateCheckUnavailable && error.retryAfterSeconds === 30);
     assert.equal(calls, 2);
     clock += 30_000; fail = false;
-    assert.equal((await checker.check()).checked_at, new Date(clock).toISOString());
+    assert.equal((await checker.check("stable")).checked_at, new Date(clock).toISOString());
     assert.equal(calls, 3);
     clock -= 1_000;
-    await checker.check();
+    await checker.check("stable");
     assert.equal(calls, 4, "clock rollback must not extend the cached result indefinitely");
   });
 
@@ -117,7 +232,7 @@ describe("official update checks", () => {
   ] as const) {
     it("rejects " + name + " without claiming the instance is up to date", async () => {
       const checker = new OfficialUpdateChecker({ currentVersion: CURRENT_VERSION, fetch: async () => response() });
-      await assert.rejects(checker.check(), UpdateCheckUnavailable);
+      await assert.rejects(checker.check("stable"), UpdateCheckUnavailable);
     });
   }
 
@@ -127,7 +242,7 @@ describe("official update checks", () => {
       start(controller) { controller.enqueue(new Uint8Array(262145)); },
       cancel() { cancelled = true; },
     }), { headers: { "content-type": "application/json" } }) });
-    await assert.rejects(checker.check(), UpdateCheckUnavailable);
+    await assert.rejects(checker.check("stable"), UpdateCheckUnavailable);
     assert.equal(cancelled, true);
   });
 
@@ -139,7 +254,7 @@ describe("official update checks", () => {
       signal?.throwIfAborted();
       return Response.json(release());
     } });
-    await assert.rejects(checker.check(), UpdateCheckUnavailable);
+    await assert.rejects(checker.check("stable"), UpdateCheckUnavailable);
     assert.equal(signal?.aborted, true);
   });
 });

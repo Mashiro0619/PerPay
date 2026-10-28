@@ -26,14 +26,18 @@ test("official update checks require a session and never gate login or collectio
     settings.initialize();
     const orders = new OrderService(database, () => settings.instanceSnapshot());
     let requests = 0, clock = Date.now(), unavailable = false;
-    const updateChecker = new OfficialUpdateChecker({ currentVersion: CURRENT_VERSION, clock: () => clock, fetch: async () => {
+    const updateChecker = new OfficialUpdateChecker({ currentVersion: CURRENT_VERSION, clock: () => clock, fetch: async url => {
       requests++;
       if (unavailable) throw new Error("not returned to the browser");
+      if (String(url).includes("?per_page=")) return Response.json([{ tag_name: "v0.3.0-rc.1",
+        html_url: "https://github.com/Mashiro0619/PerPay/releases/tag/v0.3.0-rc.1",
+        draft: false, prerelease: true, published_at: "2026-09-09T09:00:00Z" }]);
       return Response.json({ tag_name: "v" + CURRENT_VERSION, html_url: "https://github.com/Mashiro0619/PerPay/releases/tag/v" + CURRENT_VERSION,
         draft: false, prerelease: false, published_at: "2026-09-09T09:00:00Z" });
     } });
     const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(), updateChecker });
     assert.equal((await app.request("/api/admin/v1/system/update")).status, 401);
+    assert.equal((await app.request("/api/admin/v1/system/update?channel=prerelease")).status, 401);
     const badLogin = await app.request("/api/admin/v1/session/login", { method: "POST", headers: { origin: config.publicOrigin, "content-type": "application/json" }, body: JSON.stringify({ password: "wrong-password" }) });
     assert.equal(badLogin.status, 401);
     assert.equal(requests, 0);
@@ -48,13 +52,35 @@ test("official update checks require a session and never gate login or collectio
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("cache-control"), "no-store");
     const result = await response.json() as { data: { status: string; current_version: string; latest_version: string } };
-    assert.equal(result.data.status, "up_to_date");
+    assert.equal(result.data.status, "update_available");
     assert.equal(result.data.current_version, CURRENT_VERSION);
-    assert.equal(result.data.latest_version, CURRENT_VERSION);
-    assert.equal(requests, 1);
-    assert.equal((await app.request("/api/admin/v1/system/update?url=https://evil.invalid", { headers })).status, 422);
-    assert.equal((await app.request("/api/admin/v1/system/update?force=true", { headers })).status, 422);
-    assert.equal(requests, 1);
+    assert.equal(result.data.latest_version, "0.3.0-rc.1", "omitted channel includes prereleases even on a stable installation");
+    assert.deepEqual(Object.keys(result.data).sort(), ["checked_at", "current_version", "latest_version", "published_at", "release_url", "status"]);
+    assert.equal(requests, 2);
+    for (const query of [
+      "url=https://evil.invalid", "force=true", "channel=", "channel=auto", "channel=preview", "channel=STABLE", "channel=%20stable",
+      "channel=stable&channel=stable", "channel=auto&channel=prerelease", "channel=stable&force=true",
+      "channel=prerelease&unknown=", "Channel=stable", "channel[]=stable",
+    ]) {
+      const invalid = await app.request("/api/admin/v1/system/update?" + query, { headers });
+      assert.equal(invalid.status, 422, query);
+      assert.equal((await invalid.json() as { error: { code: string } }).error.code, "validation_failed");
+    }
+    assert.equal(requests, 2);
+    const preview = await app.request("/api/admin/v1/system/update?channel=prerelease", { headers });
+    assert.equal(preview.status, 200);
+    assert.deepEqual(await preview.json(), result);
+    assert.equal(requests, 2, "omitted and explicit prerelease channels share the cache");
+    const stable = await app.request("/api/admin/v1/system/update?channel=stable", { headers });
+    assert.equal(stable.status, 200);
+    const stableResult = await stable.json() as { data: { status: string; latest_version: string } };
+    assert.equal(stableResult.data.status, "up_to_date");
+    assert.equal(stableResult.data.latest_version, CURRENT_VERSION);
+    assert.equal(requests, 3);
+    for (const query of ["", "?channel=prerelease", "?channel=stable"]) {
+      assert.equal((await app.request("/api/admin/v1/system/update" + query, { headers })).status, 200);
+    }
+    assert.equal(requests, 3);
 
     unavailable = true; clock += 300_000;
     const failed = await app.request("/api/admin/v1/system/update", { headers });
@@ -67,7 +93,7 @@ test("official update checks require a session and never gate login or collectio
     assert.deepEqual(settings.instanceView(), before);
     identity.revokeAllSessions(identity.authenticate(cookie.match(/perpay_session=([^;]+)/)![1]!)!);
     assert.equal((await app.request("/api/admin/v1/system/update", { headers })).status, 401);
-    assert.equal(requests, 2);
+    assert.equal(requests, 4);
   } finally {
     database.close();
     assert.equal(dirname(resolve(directory)), resolve(tmpdir()));

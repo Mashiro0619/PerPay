@@ -234,17 +234,27 @@ paths:
     get:
       tags: [System]
       operationId: checkOfficialUpdate
-      summary: 按当前版本通道检查官方更新，不执行更新
+      summary: 按所选通道检查官方更新，不执行更新
       description: >-
         仅查询 GitHub Mashiro0619/PerPay 的公开 Release，不发送实例配置、订单或密钥。
-        正式版仅检查最新稳定版；预发布版检查正式版及预发布版，按 SemVer 优先级选择最高版本。
+        channel 省略时默认 prerelease，包含正式版及预发布版，与已安装版本无关。
+        stable 仅检查稳定版；prerelease 按 SemVer 优先级选择正式版及预发布版中的最高版本。
         预发布列表分页读取有界，超出上限或读取失败时返回不可用，不把不完整结果当作最新版本。
-        并发检查合并，成功结果最多缓存 5 分钟，失败冷却 60 秒；不接受自定义来源或强制刷新参数。
+        两个通道独立合并并发检查和缓存，省略参数与显式 prerelease 共享；成功结果最多缓存 5 分钟，失败冷却 60 秒。
+        不接受 auto、重复 channel、自定义来源、强制刷新或其他查询参数。
         不影响收款就绪判定，也不下载或执行更新。
       security:
         - AdminSessionCookie: []
       parameters:
         - $ref: '#/components/parameters/RequestId'
+        - name: channel
+          in: query
+          required: false
+          description: stable 仅稳定版；prerelease 包含正式版及预发布版，省略时默认 prerelease。
+          schema:
+            type: string
+            enum: [stable, prerelease]
+            default: prerelease
       responses:
         '200':
           description: 官方版本、发布时间及实际检查时间

@@ -24,10 +24,39 @@ function fixture(current: string, versions: string[], stable: string | null = "0
 }
 
 describe("prerelease-aware official updates", () => {
-  it("keeps stable installations on the stable endpoint only", async () => {
+  it("uses only the stable endpoint when explicitly selected on a stable installation", async () => {
     const { checker, calls } = fixture("0.2.2", ["0.3.0-rc.1"], "0.2.3");
-    assert.equal((await checker.check()).latest_version, "0.2.3");
+    assert.equal((await checker.check("stable")).latest_version, "0.2.3");
     assert.deepEqual(calls, [root + "/latest"]);
+  });
+
+  it("defaults a stable installation to prereleases and keeps the explicit stable cache independent", async () => {
+    const { checker, calls } = fixture("0.2.2", ["0.3.0-rc.2"], "0.2.3");
+    const preview = await checker.check();
+    assert.equal(preview.latest_version, "0.3.0-rc.2");
+    const stable = await checker.check("stable");
+    assert.equal(stable.latest_version, "0.2.3");
+    assert.equal(await checker.check(), preview);
+    assert.equal(await checker.check("prerelease"), preview);
+    assert.deepEqual(calls, [root + "/latest", root + "?per_page=100&page=1", root + "/latest"]);
+  });
+
+  it("lets a preview installation select stable releases while the default remains prerelease", async () => {
+    const { checker, calls } = fixture("0.3.0-rc.1", ["0.4.0-alpha.1"], "0.3.0");
+    const stable = await checker.check("stable");
+    assert.equal(stable.latest_version, "0.3.0");
+    const preview = await checker.check();
+    assert.equal(preview.latest_version, "0.4.0-alpha.1");
+    assert.equal(await checker.check(), preview);
+    assert.equal(await checker.check("prerelease"), preview);
+    assert.equal(await checker.check("stable"), stable);
+    assert.deepEqual(calls, [root + "/latest", root + "/latest", root + "?per_page=100&page=1"]);
+  });
+
+  it("allows explicit prereleases before any stable release exists", async () => {
+    const { checker } = fixture("0.2.2", ["0.3.0-alpha.1"], null);
+    assert.equal((await checker.check("prerelease")).latest_version, "0.3.0-alpha.1");
+    await assert.rejects(checker.check("stable"), UpdateCheckUnavailable);
   });
 
   for (const [current, versions, stable, latest, status] of [

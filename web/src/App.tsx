@@ -26,7 +26,7 @@ import { api, result } from "@/api/client";
 import { AuthBoundary, useSession } from "@/auth";
 import { DraftProvider, useDraftGuard } from "@/drafts";
 import { Link, NavigationContext, useNavigate } from "@/navigation";
-import { OfficialUpdateNotice } from "@/updates";
+import { OfficialUpdateNotice, OfficialUpdateProvider } from "@/updates";
 import { deferOnboarding, deferredInstance } from "@/lib/onboarding";
 import { AppSidebar } from "@/components/app-sidebar";
 import { isGlobalNavigationPage, navigationSection, type NavigationSection } from "@/lib/navigation-selection";
@@ -205,6 +205,7 @@ export const appRoutes = createRoutesFromElements(
     hydrateFallbackElement={<main className="mx-auto flex min-h-svh max-w-md flex-col justify-center gap-6 p-6"><PageHeading title="正在打开页面" /><Loading label="正在打开页面…" /></main>}
     element={
       <AuthBoundary>
+        <OfficialUpdateProvider>
         <DraftProvider>
           <WorkspaceProvider>
             <WorkspaceNavigationProvider>
@@ -216,6 +217,7 @@ export const appRoutes = createRoutesFromElements(
             </WorkspaceNavigationProvider>
           </WorkspaceProvider>
         </DraftProvider>
+        </OfficialUpdateProvider>
       </AuthBoundary>
     }
   >

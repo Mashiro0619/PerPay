@@ -1,5 +1,5 @@
 import { APP_VERSION } from "../version.ts";
-import { compareReleaseVersions, isPrereleaseVersion, parseReleaseVersion } from "../shared/release-version.ts";
+import { compareReleaseVersions, parseReleaseVersion } from "../shared/release-version.ts";
 export { compareReleaseVersions } from "../shared/release-version.ts";
 
 const RELEASES_API = "https://api.github.com/repos/Mashiro0619/PerPay/releases";
@@ -11,6 +11,8 @@ const MAX_RESPONSE_BYTES = 256 * 1024;
 const MAX_RELEASE_LIST_BYTES = 2 * 1024 * 1024;
 const RELEASE_PAGE_SIZE = 100;
 const MAX_RELEASE_PAGES = 5;
+
+export type OfficialUpdateChannel = "stable" | "prerelease";
 
 export interface OfficialUpdate {
   readonly status: "update_available" | "up_to_date" | "ahead";
@@ -58,8 +60,8 @@ export class OfficialUpdateChecker {
   readonly #clock: () => number;
   readonly #timeoutMilliseconds: number;
   readonly #currentVersion: string;
-  #cache: { checkedAt: number; expiresAt: number; result: OfficialUpdate | null } | undefined;
-  #pending: Promise<OfficialUpdate> | undefined;
+  readonly #cache = new Map<OfficialUpdateChannel, { checkedAt: number; expiresAt: number; result: OfficialUpdate | null }>();
+  readonly #pending = new Map<OfficialUpdateChannel, Promise<OfficialUpdate>>();
 
   constructor(options: { fetch?: typeof fetch; clock?: () => number; timeoutMilliseconds?: number; currentVersion?: string } = {}) {
     this.#fetch = options.fetch ?? fetch;
@@ -68,16 +70,19 @@ export class OfficialUpdateChecker {
     this.#currentVersion = options.currentVersion ?? APP_VERSION;
   }
 
-  async check(): Promise<OfficialUpdate> {
+  async check(channel: OfficialUpdateChannel = "prerelease"): Promise<OfficialUpdate> {
+    if (channel !== "stable" && channel !== "prerelease") throw new RangeError("Invalid update channel");
     const now = this.#clock();
-    const cache = this.#cache;
+    const cache = this.#cache.get(channel);
     if (cache && now >= cache.checkedAt && now < cache.expiresAt) {
       if (cache.result) return cache.result;
       throw new UpdateCheckUnavailable(Math.max(1, Math.ceil((cache.expiresAt - now) / 1_000)));
     }
-    if (this.#pending) return this.#pending;
-    this.#pending = this.#load().finally(() => { this.#pending = undefined; });
-    return this.#pending;
+    const pending = this.#pending.get(channel);
+    if (pending) return pending;
+    const request = this.#load(channel).finally(() => { this.#pending.delete(channel); });
+    this.#pending.set(channel, request);
+    return request;
   }
 
   async #request(url: string, signal: AbortSignal, allowMissing = false): Promise<Response | null> {
@@ -131,11 +136,11 @@ export class OfficialUpdateChecker {
     throw new Error("Official release list exceeds the bounded lookup");
   }
 
-  async #load(): Promise<OfficialUpdate> {
+  async #load(channel: OfficialUpdateChannel): Promise<OfficialUpdate> {
     try {
       if (!parseReleaseVersion(this.#currentVersion)) throw new Error("Invalid current version");
       const signal = AbortSignal.timeout(this.#timeoutMilliseconds);
-      const release = await this.#latest(signal, isPrereleaseVersion(this.#currentVersion));
+      const release = await this.#latest(signal, channel === "prerelease");
       if (!release) throw new Error("No official release is available");
       const comparison = compareReleaseVersions(this.#currentVersion, release.version);
       signal.throwIfAborted();
@@ -148,12 +153,12 @@ export class OfficialUpdateChecker {
         published_at: release.publishedAt,
         checked_at: new Date(checkedAt).toISOString(),
       });
-      this.#cache = { checkedAt, expiresAt: checkedAt + SUCCESS_CACHE_MILLISECONDS, result };
+      this.#cache.set(channel, { checkedAt, expiresAt: checkedAt + SUCCESS_CACHE_MILLISECONDS, result });
       return result;
     } catch {
       const checkedAt = this.#clock();
       // A failed refresh replaces old success; callers must never infer "up to date" from it.
-      this.#cache = { checkedAt, expiresAt: checkedAt + FAILURE_CACHE_MILLISECONDS, result: null };
+      this.#cache.set(channel, { checkedAt, expiresAt: checkedAt + FAILURE_CACHE_MILLISECONDS, result: null });
       throw new UpdateCheckUnavailable(FAILURE_CACHE_MILLISECONDS / 1_000);
     }
   }
