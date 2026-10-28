@@ -64,13 +64,14 @@ curl -fsSLo docker-compose.yml https://raw.githubusercontent.com/Mashiro0619/Per
 
 ### 2. 修改配置
 
-编辑 `docker-compose.yml` 顶部的三项：
+编辑 `docker-compose.yml` 顶部的配置：
 
 | 配置项 | 怎么填 |
 | --- | --- |
 | `x-perpay-public-url` | 你的 HTTPS 地址，如 `https://pay.example.com`，不带路径。 |
 | `x-perpay-trusted-proxy-cidrs` | PerPay 容器实际看到的直连代理 IP 或网段，多个用逗号分隔；HTTPS 部署必填。 |
 | `x-perpay-host-port` | 默认 `127.0.0.1:6190:6190`，只允许从宿主机访问。 |
+| `x-perpay-setup-token-enabled` | 默认 `"false"`，首次只需设置管理员密码；改为 `"true"` 后，还需输入服务器启动日志中的一次性初始化令牌。 |
 
 反向代理安装在宿主机时，将域名转发到 `http://127.0.0.1:6190`，并通过 `X-Forwarded-For` 传递客户端 IP。Docker 转发后的代理来源可能是桥接网关，不要直接照填 `127.0.0.1`。宿主机与容器代理的完整示例见 [反向代理部署](docs/reverse-proxy.md)，不要信任所有来源。
 
@@ -90,10 +91,12 @@ docker compose ps
 
 ## 初始化
 
-默认镜像 `latest` 跟随稳定版，初始化方式可能与当前源码或预发布版本不同。以已安装版本的管理页面为准，首次创建管理员前继续限制访问。
+当前源码默认关闭初始化令牌，首次只需设置管理员密码。需要启用时，把 Compose 顶部的 `x-perpay-setup-token-enabled` 改为 `"true"`，执行 `docker compose up -d app`；源码部署设置 `PERPAY_SETUP_TOKEN_ENABLED=true` 后重启服务。该开关只接受 `true` 或 `false`，不影响已有管理员。
+
+已发布镜像的初始化方式以对应版本为准：`1.0.0-alpha.2` 固定要求令牌，尚不支持此开关；默认镜像 `latest` 跟随稳定版。首次创建管理员前继续限制访问。
 
 1. 访问 `https://你的域名/admin/`；本机试用访问 [http://localhost:6190/admin/](http://localhost:6190/admin/)。已初始化的实例直接登录。
-2. 如果页面要求**初始化令牌**，在部署目录运行 `docker compose logs --tail=100 app`，读取最近一次启动时 `administrator_setup_required` 事件中的 `setup_token`；源码部署从服务启动终端读取。未包含令牌功能的旧版页面只要求设置密码，也不会输出该事件，直接按页面设置即可。
+2. 如果页面要求**初始化令牌**，在部署目录运行 `docker compose logs --tail=100 app`，读取最近一次启动时 `administrator_setup_required` 事件中的 `setup_token`；源码部署从服务启动终端读取。关闭时不显示令牌输入框，也不生成或输出令牌。
 3. 按页面要求设置管理员密码，至少 6 个字符，建议使用更长的随机密码。创建成功后用该密码登录。带令牌的版本会立即使令牌失效；未完成初始化时重启服务会生成新令牌，请重新读取启动日志。
 4. 按 [支付宝配置图文教程](docs/alipay-setup.md) 完成向导，检查收款就绪。
 
