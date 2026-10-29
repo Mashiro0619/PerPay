@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ListDateTime, ListMoney, ListSummary, ListSummaryField } from "../src/components/list-primitives";
@@ -49,6 +49,7 @@ describe("summary details", () => {
     expand.focus();
     await user.keyboard("{Enter}");
     expect(navigate).not.toHaveBeenCalled();
+    expect(expand).toHaveFocus();
     expect(within(first!).getByRole("button", { name: "收起信息" })).toHaveAttribute("aria-expanded", "true");
     expect(within(first!).getAllByText("详细信息")).toHaveLength(1);
     expect(within(second!).getByRole("button", { name: "展开信息" })).toHaveAttribute("aria-expanded", "false");
@@ -57,9 +58,59 @@ describe("summary details", () => {
     expect(screen.getByRole("link", { name: "关联 first" })).toHaveFocus();
     await user.click(within(first!).getByRole("button", { name: "收起信息" }));
     await waitFor(() => expect(screen.queryByRole("link", { name: "关联 first" })).not.toBeInTheDocument());
+    expect(expand).toHaveFocus();
     expect(navigate).not.toHaveBeenCalled();
     await user.tab();
     expect(screen.getByRole("link", { name: "second" })).toHaveFocus();
+  });
+
+  it("keeps the expanded record and focused relationship link stable when its data refreshes", async () => {
+    const record = (status: string) => (
+      <ListSummary identity="订单" details={<ListSummaryField label="详细信息"><a href="/related/first">关联记录</a></ListSummaryField>}>
+        <ListSummaryField label="状态">{status}</ListSummaryField>
+      </ListSummary>
+    );
+    const view = render(record("待处理"));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "展开信息" }));
+    const relationship = screen.getByRole("link", { name: "关联记录" });
+    relationship.focus();
+
+    view.rerender(record("已处理"));
+
+    expect(screen.getByText("已处理")).toBeVisible();
+    expect(screen.getByRole("button", { name: "收起信息" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("link", { name: "关联记录" })).toBe(relationship);
+    expect(relationship).toHaveFocus();
+  });
+
+  it("returns focus before making closing details inert, then unmounts them when the transition finishes", async () => {
+    render(<ListSummary identity="订单" details={<ListSummaryField label="详细信息"><a href="/related/first">关联记录</a></ListSummaryField>} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "展开信息" }));
+    const relationship = screen.getByRole("link", { name: "关联记录" });
+    const panel = relationship.closest<HTMLElement>('[data-slot="collapsible-content"]')!;
+    // Supply browser geometry and a pending CSS transition; jsdom has neither.
+    panel.style.transitionDuration = "200ms";
+    Object.defineProperty(panel, "scrollHeight", { configurable: true, value: 80 });
+    let finishClose!: (animation: Animation) => void;
+    const finished = new Promise<Animation>((resolve) => { finishClose = resolve; });
+    const transition = { finished } as Animation;
+    const getAnimations = vi.fn(() => [transition]);
+    panel.getAnimations = getAnimations;
+    relationship.focus();
+
+    // A click does not move focus to buttons in every browser.
+    fireEvent.click(screen.getByRole("button", { name: "收起信息" }));
+
+    expect(screen.getByRole("button", { name: "展开信息" })).toHaveFocus();
+    expect(panel).toBeInTheDocument();
+    expect(panel).toHaveAttribute("inert");
+    expect(panel).toHaveAttribute("aria-hidden", "true");
+    expect(screen.queryByRole("link", { name: "关联记录" })).not.toBeInTheDocument();
+    await waitFor(() => expect(getAnimations).toHaveBeenCalled());
+    await act(async () => { finishClose(transition); });
+    await waitFor(() => expect(panel).not.toBeInTheDocument());
   });
 
   it("omits the expand control when no secondary fields are selected", () => {

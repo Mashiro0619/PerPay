@@ -572,7 +572,7 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .business-summary-fields:empty { display: none; }
 .list-summary-details { width: 100%; min-width: 0; }
 .list-summary-toggle { margin-top: 0.25rem; }
-.list-summary-details [data-slot="collapsible-content"] { padding-block: 0.5rem; }
+.list-summary-details [data-slot="collapsible-content"] > .business-summary-fields { padding-block: 0.5rem; }
 @container summary (max-width: 19.999rem) {
   .business-summary-fields { grid-template-columns: minmax(0, 1fr); }
   .list-summary-heading { flex-wrap: wrap; }

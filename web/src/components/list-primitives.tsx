@@ -1,5 +1,5 @@
-import { Children, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { Children, useRef, useState, type ReactNode } from "react";
+import { ChevronDown } from "lucide-react";
 import { cn } from "cn";
 import { dateTime, money } from "@/lib/format";
 import { ItemActions, ItemContent, ItemHeader, ItemTitle } from "@/components/ui/item";
@@ -88,7 +88,7 @@ export function ListSummary({
   identity: ReactNode;
   aside?: ReactNode;
   children?: ReactNode;
-  /** Selected secondary fields; mounted only while this record is expanded. */
+  /** Selected secondary fields; unmounted after this record finishes collapsing. */
   details?: ReactNode;
 }) {
   const hasFields = Children.toArray(children).length > 0;
@@ -107,17 +107,36 @@ export function ListSummary({
 /** Also shared by overview records whose primary layout differs from ListSummary. */
 export function ListSummaryDetails({ children }: { children?: ReactNode }) {
   const [expanded, setExpanded] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  function handleOpenChange(open: boolean) {
+    if (!open && panelRef.current?.contains(panelRef.current.ownerDocument.activeElement)) {
+      triggerRef.current?.focus();
+    }
+    setExpanded(open);
+  }
   if (Children.toArray(children).length === 0) return null;
   return (
-    <Collapsible open={expanded} onOpenChange={setExpanded} className="list-summary-details">
+    <Collapsible open={expanded} onOpenChange={handleOpenChange} className="list-summary-details">
       <CollapsibleTrigger
+        ref={triggerRef}
         render={<Button type="button" variant="ghost" size="sm" className="list-summary-toggle" />}
       >
         {expanded ? "收起信息" : "展开信息"}
-        {expanded ? <ChevronUp data-icon="inline-end" /> : <ChevronDown data-icon="inline-end" />}
+        <ChevronDown
+          data-icon="inline-end"
+          aria-hidden="true"
+          className={cn("transition-transform duration-[var(--console-motion,200ms)] ease-[var(--console-ease,cubic-bezier(0.22,1,0.36,1))] motion-reduce:transition-none", expanded && "rotate-180")}
+        />
       </CollapsibleTrigger>
-      <CollapsibleContent>
-        <dl className="business-summary-fields">{children}</dl>
+      <CollapsibleContent
+        ref={panelRef}
+        className="-mx-1 h-[var(--collapsible-panel-height)] overflow-hidden transition-[height] duration-[var(--console-motion,200ms)] ease-[var(--console-ease,cubic-bezier(0.22,1,0.36,1))] data-starting-style:h-0 data-ending-style:h-0 motion-reduce:transition-none"
+        inert={!expanded}
+        aria-hidden={!expanded || undefined}
+      >
+        {/* Leave room for link focus outlines without shifting the field columns. */}
+        <dl className="business-summary-fields px-1">{children}</dl>
       </CollapsibleContent>
     </Collapsible>
   );
