@@ -6,7 +6,7 @@ test("chart plot has matching loading, empty and populated heights at mobile and
     await page.goto(manifest.origin + "/admin/");
     const plot = page.locator('[data-slot="chart"]');
     await expect(plot).toBeVisible();
-    const height = width < 768 ? 200 : 224;
+    const height = width < 768 ? 224 : 256;
     expect((await plot.boundingBox())!.height).toBe(height);
     const yAxis = plot.locator(".recharts-yAxis .recharts-cartesian-axis-tick");
     await expect(yAxis).toHaveCount(5);

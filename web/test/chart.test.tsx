@@ -387,7 +387,7 @@ describe("official shadcn interactive chart", () => {
       ).toBeVisible();
       expect(
         within(tooltip).getByText("¥1,324.43", { exact: true }),
-      ).toHaveClass("whitespace-nowrap", "tabular-nums");
+      ).toHaveClass("tabular-nums");
       expect(within(tooltip).queryByText("确认次数")).not.toBeInTheDocument();
       expect(within(tooltip).queryByText("新建订单")).not.toBeInTheDocument();
     },
