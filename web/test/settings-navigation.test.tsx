@@ -77,6 +77,36 @@ describe("responsive settings category navigation", () => {
     expect(name).toHaveValue("旋转后保留");
   });
 
+  it("keeps the desktop selection indicator and draft when navigation is canceled", async () => {
+    mediaWidth(1440);
+    const router = mount();
+    const user = userEvent.setup();
+    const tabs = await screen.findByRole("tablist", { name: "设置分类" });
+    const display = within(tabs).getByRole("tab", { name: "界面显示" });
+    const policy = within(tabs).getByRole("tab", { name: "查账设置" });
+    const indicator = display.querySelector("[data-selection-indicator]");
+    const name = screen.getByRole("textbox", { name: "支付系统名称" });
+    expect(indicator).toBeInTheDocument();
+    display.focus();
+    await user.keyboard("{ArrowLeft}");
+    expect(router.state.location.pathname).toBe("/settings/display");
+    expect(display.querySelector("[data-selection-indicator]")).toBe(indicator);
+
+    fireEvent.change(name, { target: { value: "桌面草稿" } });
+    await user.click(policy);
+    const guard = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
+    expect(display).toHaveAttribute("aria-selected", "true");
+    expect(policy).toHaveAttribute("aria-selected", "false");
+    expect(policy.querySelector("[data-selection-indicator]")).toBeNull();
+    await user.click(within(guard).getByRole("button", { name: "继续编辑" }));
+    await waitFor(() => expect(guard).not.toBeInTheDocument());
+    expect(router.state.location.pathname).toBe("/settings/display");
+    expect(screen.getByRole("textbox", { name: "支付系统名称" })).toBe(name);
+    expect(name).toHaveValue("桌面草稿");
+    expect(display.querySelector("[data-selection-indicator]")).toBe(indicator);
+    expect(tabs.querySelectorAll("[data-selection-indicator]")).toHaveLength(1);
+  });
+
   it("omits migrated notification settings from the mobile selector", async () => {
     mediaWidth(360);
     mount(true);

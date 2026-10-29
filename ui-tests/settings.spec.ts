@@ -49,4 +49,21 @@ test("settings use guarded category selection on phones and scrolling tabs on de
   const width = (await page.locator(".admin-settings-layout").boundingBox())!.width;
   expect(width).toBeLessThanOrEqual(896);
   await expect(page.getByRole("button", { name: "向后滚动设置分类" })).toBeHidden();
+  await page.clock.runFor(250);
+  const indicator = list.locator('[aria-selected="true"] [data-selection-indicator]');
+  await expect(list.locator("[data-selection-indicator]")).toHaveCount(1);
+  const underline = await indicator.evaluate(element => {
+    const line = element.getBoundingClientRect();
+    const tab = element.parentElement!.getBoundingClientRect();
+    const viewport = element.closest("[data-settings-tabs-scroll]")!.getBoundingClientRect();
+    return { line: line.toJSON(), tab: tab.toJSON(), viewport: viewport.toJSON() };
+  });
+  expect(Math.abs(underline.line.left - underline.tab.left)).toBeLessThanOrEqual(1);
+  expect(Math.abs(underline.line.width - underline.tab.width)).toBeLessThanOrEqual(2);
+  expect(underline.line.bottom).toBeLessThanOrEqual(underline.viewport.bottom);
+  const stableName = await name.elementHandle();
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(indicator).toHaveAttribute("data-selection-mode", "static");
+  expect(await stableName!.evaluate(element => element.isConnected)).toBe(true);
+  await record(page, info, { feature: "settings-selection-motion", underline, reducedMotion: true });
 });

@@ -16,6 +16,7 @@ import {
 import { Navigate, useParams } from "react-router";
 import { PageHeading } from "@/components/page-heading";
 import { ScrollingTabs } from "@/components/scrolling-tabs";
+import { SelectionMotionGroup, SelectionMotionIndicator } from "@/components/selection-motion";
 import { Link, useNavigate } from "@/navigation";
 import { SettingsEditor, sections } from "@/components/SettingsForms";
 import {
@@ -168,32 +169,37 @@ export default function Settings() {
                 </Select>
               ) : (
                 <ScrollingTabs>
-                  <TabsList
-                    ref={tabList}
-                    aria-label="设置分类"
-                    activateOnFocus={false}
-                    className="min-w-max justify-start"
-                  >
-                    {availableSections.map(([value, title]) => {
-                      const Icon = sectionIcons[value];
-                      return (
-                        <TabsTrigger
-                          key={value}
-                          value={value}
-                          className="shrink-0"
-                          onFocus={(event) =>
-                            event.currentTarget.scrollIntoView({
-                              block: "nearest",
-                              inline: "nearest",
-                            })
-                          }
-                        >
-                          <Icon />
-                          {title}
-                        </TabsTrigger>
-                      );
-                    })}
-                  </TabsList>
+                  <SelectionMotionGroup>
+                    <TabsList
+                      ref={tabList}
+                      aria-label="设置分类"
+                      activateOnFocus={false}
+                      variant="line"
+                      data-selection-motion="underline"
+                      className="mb-1 min-w-max justify-start"
+                    >
+                      {availableSections.map(([value, title]) => {
+                        const Icon = sectionIcons[value];
+                        return (
+                          <TabsTrigger
+                            key={value}
+                            value={value}
+                            className="shrink-0"
+                            onFocus={(event) =>
+                              event.currentTarget.scrollIntoView({
+                                block: "nearest",
+                                inline: "nearest",
+                              })
+                            }
+                          >
+                            <SelectionMotionIndicator active={section === value} variant="underline" />
+                            <Icon />
+                            {title}
+                          </TabsTrigger>
+                        );
+                      })}
+                    </TabsList>
+                  </SelectionMotionGroup>
                 </ScrollingTabs>
               )}
               <TabsContent
