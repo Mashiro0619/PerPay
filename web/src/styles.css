@@ -1142,6 +1142,8 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-admin-console] [data-slot="sidebar-inset"] { background: var(--console-page); }
 [data-admin-console] .site-header { background: var(--console-page); border-bottom-color: var(--console-hairline); }
 [data-admin-console] .list-toolbar { background: var(--console-page); border-bottom-color: var(--console-hairline); }
+[data-admin-console] [data-account-list] { background: var(--card); border-color: var(--console-hairline); font-size: 0.875rem; }
+[data-admin-console] [data-account-list] > div { border-color: var(--console-hairline); }
 [data-admin-console] :is(.business-table [data-slot="table-row"], .business-summary-row, .record-list-row) {
   transition-duration: var(--console-motion-fast);
   transition-timing-function: var(--console-ease);
