@@ -271,7 +271,7 @@ function OnboardingFlow({
                       <ul className="flex list-inside list-disc flex-col gap-2 pt-3">
                         <li>使用收款账户创建“网页应用”。</li>
                         <li>账号默认拥有账务明细查询权限。</li>
-                        <li>支付宝搜索“经营码”申请，使用同一账户收款。</li>
+                        <li>支付宝搜索“收款码”申请，使用同一账户收款。</li>
                       </ul>
                     </CollapsibleContent>
                   </Collapsible>
@@ -431,9 +431,9 @@ function OnboardingFlow({
           {step === "collection" && (
             <OnboardingStepLayout
               help={
-                <OnboardingHelp title="确认经营码">
+                <OnboardingHelp title="确认收款码">
                   <p>
-                    经营码由所有业务网站共用。上传后请核对识别内容。
+                    收款码由所有业务网站共用。上传后请核对识别内容。
                   </p>
                   <p>
                     加价金额用于区分订单，付款人须按收银台应付金额付款。
@@ -588,7 +588,7 @@ function OptionalSettings({
         className="grid min-w-0 items-start gap-5 @3xl/onboarding:grid-cols-2"
         data-onboarding-optional
       >
-        {settings.site_mode ? <section className="flex flex-col gap-3"><h3 className="font-medium">业务网站（必需）</h3><p>各网站独立配置订单规则和接入密钥，共用经营码与查账。测试收款无需先签发 API 密钥。</p><div className="flex flex-wrap gap-2"><Link to="/sites/new" className={buttonVariants()}>创建业务网站</Link><Link to="/sites" className={buttonVariants({ variant: "outline" })}>管理业务网站</Link></div></section> : <>
+        {settings.site_mode ? <section className="flex flex-col gap-3"><h3 className="font-medium">业务网站（必需）</h3><p>各网站独立配置订单规则和接入密钥，共用收款码与查账。测试收款无需先签发 API 密钥。</p><div className="flex flex-wrap gap-2"><Link to="/sites/new" className={buttonVariants()}>创建业务网站</Link><Link to="/sites" className={buttonVariants({ variant: "outline" })}>管理业务网站</Link></div></section> : <>
         <section
           className="flex min-w-0 flex-col gap-3"
           aria-labelledby="onboarding-notifications-title"
@@ -694,7 +694,7 @@ export function ReadinessCheck({
   const missingConfiguration = [
     [settings.completion.application_key, "应用公钥"],
     [settings.completion.provider, "支付宝接入"],
-    [settings.completion.collection, "经营码"],
+    [settings.completion.collection, "收款码"],
   ]
     .filter(([complete]) => !complete)
     .map(([, name]) => name)

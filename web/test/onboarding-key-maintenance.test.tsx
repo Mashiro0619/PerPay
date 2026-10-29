@@ -88,12 +88,12 @@ describe("non-blocking pending application keys", () => {
       }),
     );
     await screen.findByText("synthetic-pending-application-public-key");
-    for (const name of ["经营码", "网站与备份", "收款检查"])
+    for (const name of ["收款码", "网站与备份", "收款检查"])
       expect(
         screen.getByRole("link", { name: new RegExp(name) }),
       ).not.toHaveAttribute("aria-disabled", "true");
-    await user.click(screen.getByRole("link", { name: /经营码/ }));
-    await screen.findByLabelText("支付宝经营码内容");
+    await user.click(screen.getByRole("link", { name: /收款码/ }));
+    await screen.findByLabelText("支付宝收款码内容");
     const warning = screen
       .getByText("新应用公钥尚未启用")
       .closest('[role="status"]')!;
@@ -101,7 +101,7 @@ describe("non-blocking pending application keys", () => {
     expect(
       within(warning as HTMLElement).getByText(/当前仍使用原密钥。若已在支付宝上传新公钥，请尽快验证启用，以免影响查账/),
     ).toBeVisible();
-    expect(screen.getByLabelText("支付宝经营码内容")).toBeEnabled();
+    expect(screen.getByLabelText("支付宝收款码内容")).toBeEnabled();
     expect(
       within(warning as HTMLElement).getByRole("link", {
         name: "前往验证启用",
@@ -119,7 +119,7 @@ describe("non-blocking pending application keys", () => {
     await user.click(
       await screen.findByRole("link", { name: "暂不启用，继续配置" }),
     );
-    const orderTtl = await screen.findByLabelText("支付宝经营码内容");
+    const orderTtl = await screen.findByLabelText("支付宝收款码内容");
     expect(screen.getByText("新应用公钥尚未启用")).toBeVisible();
     fireEvent.change(orderTtl, { target: { value: "https://qr.alipay.com/updated-during-key-change" } });
     await user.click(screen.getByRole("button", { name: "保存并继续" }));
@@ -148,7 +148,7 @@ describe("non-blocking pending application keys", () => {
     await user.click(
       within(form).getByRole("button", { name: "验证并启用后继续" }),
     );
-    await screen.findByLabelText("支付宝经营码内容");
+    await screen.findByLabelText("支付宝收款码内容");
     expect(await body(view, 2)).toEqual({
       revision: 5,
       change_id: pending!.change_id,
@@ -163,7 +163,7 @@ describe("non-blocking pending application keys", () => {
   it("preserves a later-step draft when cancelling the warning's navigation link", async () => {
     const view = mountOnboarding({ pendingKey: true, path: collectionPath });
     const user = userEvent.setup();
-    const input = await screen.findByLabelText("支付宝经营码内容");
+    const input = await screen.findByLabelText("支付宝收款码内容");
     fireEvent.change(input, { target: { value: "https://qr.alipay.com/updated-during-key-change" } });
     await user.click(screen.getByRole("link", { name: "前往验证启用" }));
     await user.click(await screen.findByRole("button", { name: "继续编辑" }));
@@ -200,7 +200,7 @@ describe("non-blocking pending application keys", () => {
     await user.click(
       within(dialog).getByRole("button", { name: "离开并稍后核查" }),
     );
-    await screen.findByLabelText("支付宝经营码内容");
+    await screen.findByLabelText("支付宝收款码内容");
     expect(screen.getByText("新应用公钥尚未启用")).toBeVisible();
     expect(view.writes()).toHaveLength(1);
   });

@@ -97,7 +97,7 @@ describe("pending key continuity across onboarding steps", () => {
     ).not.toBeInTheDocument();
     await user.type(screen.getByLabelText("支付宝公钥"), "latest-platform-key");
     await user.click(screen.getByRole("button", { name: "验证并启用后继续" }));
-    await screen.findByLabelText("支付宝经营码内容");
+    await screen.findByLabelText("支付宝收款码内容");
     expect(view.router.state.location.pathname).toBe(
       onboardingPath("collection"),
     );
@@ -177,7 +177,7 @@ describe("pending key continuity across onboarding steps", () => {
         expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
       );
       if (action === "activate") {
-        await screen.findByLabelText("支付宝经营码内容");
+        await screen.findByLabelText("支付宝收款码内容");
         await user.click(screen.getByRole("link", { name: /支付宝接入/ }));
       } else await user.click(screen.getByRole("button", { name: "下一步" }));
       await user.click(

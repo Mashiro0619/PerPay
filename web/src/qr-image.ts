@@ -12,7 +12,7 @@ export async function decodeQrImage(file: File, signal: AbortSignal): Promise<st
   }
   if (file.size === 0) throw new Error("图片为空，请重新选择。");
   if (file.size > maximumFileBytes) throw new Error("图片不能超过 10 MB，请压缩或裁剪后重试。");
-  if (typeof createImageBitmap !== "function") throw new Error("当前浏览器不支持图片识别，请更新浏览器或手动粘贴经营码内容。");
+  if (typeof createImageBitmap !== "function") throw new Error("当前浏览器不支持图片识别，请更新浏览器或手动粘贴收款码内容。");
 
   let bitmap: ImageBitmap;
   try { bitmap = await createImageBitmap(file); }
@@ -25,9 +25,9 @@ export async function decodeQrImage(file: File, signal: AbortSignal): Promise<st
       throw new Error("图片尺寸过大或无效，请裁剪到二维码区域后重试。");
     }
     const context = canvas.getContext("2d", { willReadFrequently: true });
-    if (!context) throw new Error("当前浏览器无法读取图片，请换一个浏览器或手动粘贴经营码内容。");
+    if (!context) throw new Error("当前浏览器无法读取图片，请换一个浏览器或手动粘贴收款码内容。");
     const { default: readQr } = await import("jsqr").catch(() => {
-      throw new Error("识别组件加载失败，请重试或手动粘贴经营码内容。");
+      throw new Error("识别组件加载失败，请重试或手动粘贴收款码内容。");
     });
     for (const edge of [1024, 2048]) {
       await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
@@ -44,9 +44,9 @@ export async function decodeQrImage(file: File, signal: AbortSignal): Promise<st
         const payload = code.data;
         if (Array.from(payload).length < 8 || /[\ud800-\udfff]/u.test(payload) ||
           payload !== payload.trim() || /[\u0000-\u001f\u007f]/.test(payload)) {
-          throw new Error("二维码内容格式不正确，请换一张经营码图片。");
+          throw new Error("二维码内容格式不正确，请换一张收款码图片。");
         }
-        if (new TextEncoder().encode(payload).length > 2331) throw new Error("二维码内容超过 2331 个 UTF-8 字节，请换一张经营码图片。");
+        if (new TextEncoder().encode(payload).length > 2331) throw new Error("二维码内容超过 2331 个 UTF-8 字节，请换一张收款码图片。");
         return payload;
       }
       if (longestEdge <= edge) break;

@@ -23,7 +23,7 @@ import {
 describe("minimal onboarding", () => {
   it.each([
     [1, "provider", "支付宝接入"],
-    [2, "collection", "支付宝经营码"],
+    [2, "collection", "支付宝收款码"],
   ] as const)(
     "uses one step heading and separate contextual help without routine warnings for %s",
     async (stage, step, title) => {

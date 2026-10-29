@@ -118,7 +118,7 @@ describe("onboarding workspace and credential handoff", () => {
 
   it.each([
     ["provider", "应用 ID（App ID）"],
-    ["collection", "支付宝经营码内容"],
+    ["collection", "支付宝收款码内容"],
   ] as const)(
     "keeps %s submission connected to its form and navigation outside its disabled fieldset",
     async (step, label) => {
@@ -180,7 +180,7 @@ describe("onboarding workspace and credential handoff", () => {
       stage: 4,
       path: onboardingPath("collection"),
     });
-    const input = await screen.findByLabelText("支付宝经营码内容");
+    const input = await screen.findByLabelText("支付宝收款码内容");
     fireEvent.change(input, {
       target: { value: "https://qr.alipay.com/unsaved-centered-layout" },
     });

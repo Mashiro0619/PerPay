@@ -111,10 +111,10 @@ describe("first collection onboarding", () => {
     const help = await screen.findByText("接入前准备");
     expect(help).toHaveAttribute("aria-expanded", "false");
     expect(
-      screen.queryByText(/支付宝搜索“经营码”申请/),
+      screen.queryByText(/支付宝搜索“收款码”申请/),
     ).not.toBeInTheDocument();
     await userEvent.setup().click(help);
-    expect(screen.getByText(/支付宝搜索“经营码”申请/)).toBeVisible();
+    expect(screen.getByText(/支付宝搜索“收款码”申请/)).toBeVisible();
     expect(screen.getByText("使用收款账户创建“网页应用”。")).toBeVisible();
     expect(screen.getByText("账号默认拥有账务明细查询权限。")).toBeVisible();
     expect(
@@ -208,13 +208,13 @@ describe("first collection onboarding", () => {
       stage: 2,
       path: onboardingPath("collection"),
     });
-    await screen.findByLabelText("支付宝经营码内容");
-    edit("支付宝经营码内容", "https://qr.alipay.com/draft");
+    await screen.findByLabelText("支付宝收款码内容");
+    edit("支付宝收款码内容", "https://qr.alipay.com/draft");
     const user = userEvent.setup();
     await user.click(screen.getByRole("link", { name: "稍后配置" }));
     await user.click(await screen.findByRole("button", { name: "继续编辑" }));
     expect(isOnboardingDeferred(instanceId)).toBe(false);
-    expect(screen.getByLabelText("支付宝经营码内容")).toHaveValue(
+    expect(screen.getByLabelText("支付宝收款码内容")).toHaveValue(
       "https://qr.alipay.com/draft",
     );
     await pathIs(view, "collection");
@@ -268,27 +268,27 @@ describe("first collection onboarding", () => {
           ? apiError("settings_revision_conflict", "configuration changed")
           : undefined,
     });
-    await screen.findByLabelText("支付宝经营码内容");
-    edit("支付宝经营码内容", "https://qr.alipay.com/conflict-draft");
+    await screen.findByLabelText("支付宝收款码内容");
+    edit("支付宝收款码内容", "https://qr.alipay.com/conflict-draft");
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "保存并继续" }));
     expect(await screen.findByRole("alert")).toBeVisible();
     await pathIs(view, "collection");
-    expect(screen.getByLabelText("支付宝经营码内容")).toHaveValue(
+    expect(screen.getByLabelText("支付宝收款码内容")).toHaveValue(
       "https://qr.alipay.com/conflict-draft",
     );
     expect(screen.getByText("未保存")).toBeVisible();
   });
   it("saves a manual collection payload with the current revision before continuing", async () => {
     const view = mountOnboarding({ stage: 2 });
-    const field = await screen.findByLabelText("支付宝经营码内容");
+    const field = await screen.findByLabelText("支付宝收款码内容");
     expect(
-      screen.queryByText("上传接入账户的经营码，核对识别结果后保存。"),
+      screen.queryByText("上传接入账户的收款码，核对识别结果后保存。"),
     ).not.toBeInTheDocument();
     expect(field).toHaveAttribute("rows", "2");
     expect(screen.getByRole("button", { name: "上传二维码" })).toBeVisible();
-    edit("支付宝经营码内容", "https://qr.alipay.com/onboarding");
+    edit("支付宝收款码内容", "https://qr.alipay.com/onboarding");
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "保存并继续" }));
@@ -446,13 +446,13 @@ describe("first collection onboarding", () => {
           ? apiError("internal_error", "temporary failure", 503)
           : undefined,
     });
-    const field = await screen.findByLabelText("支付宝经营码内容");
-    edit("支付宝经营码内容", "https://qr.alipay.com/retained");
+    const field = await screen.findByLabelText("支付宝收款码内容");
+    edit("支付宝收款码内容", "https://qr.alipay.com/retained");
     fail = true;
     await act(async () => {
       await queryClient.refetchQueries({ queryKey: sessionKey, exact: true });
     });
-    expect(screen.getByLabelText("支付宝经营码内容")).toBe(field);
+    expect(screen.getByLabelText("支付宝收款码内容")).toBe(field);
     expect(field).toHaveValue("https://qr.alipay.com/retained");
     await pathIs(view, "collection");
   });
@@ -467,8 +467,8 @@ describe("first collection onboarding", () => {
             })
           : undefined,
     });
-    await screen.findByLabelText("支付宝经营码内容");
-    edit("支付宝经营码内容", "https://qr.alipay.com/late");
+    await screen.findByLabelText("支付宝收款码内容");
+    edit("支付宝收款码内容", "https://qr.alipay.com/late");
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "保存并继续" }));
     await user.click(screen.getByRole("link", { name: "上一步" }));

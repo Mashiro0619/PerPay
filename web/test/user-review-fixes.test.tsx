@@ -123,7 +123,7 @@ describe("guided configuration field errors", () => {
       stage: 2,
       path: "/settings/onboarding/collection",
     });
-    const field = await screen.findByLabelText("支付宝经营码内容");
+    const field = await screen.findByLabelText("支付宝收款码内容");
     fireEvent.change(field, { target: { value: "not-a-payment-code" } });
     await userEvent
       .setup()

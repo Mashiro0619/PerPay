@@ -79,7 +79,7 @@ describe("official block composition", () => {
   );
 
   it.each([
-    ["collection", "经营码", "经营码"],
+    ["collection", "收款码", "收款码"],
     ["display", "界面显示", "首页图表样式"],
   ] as const)(
     "groups %s fields in one official card with fieldsets and a form-wide save footer",

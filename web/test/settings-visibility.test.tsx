@@ -15,7 +15,7 @@ const sections = [
     fields: ["应用 ID（App ID）", "支付宝公钥", "支付宝环境"],
   },
   { section: "collection-policy", fields: ["请求超时（秒）", "常规查账间隔（秒）", "活跃查账间隔（秒）", "查账最小间隔（秒）", "查账延迟（秒）", "查账有效时限（秒）"] },
-  { section: "collection", fields: ["支付宝经营码内容"] },
+  { section: "collection", fields: ["支付宝收款码内容"] },
   {
     section: "notifications",
     fields: [

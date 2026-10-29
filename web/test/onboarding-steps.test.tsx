@@ -78,7 +78,7 @@ describe("ordered onboarding navigation", () => {
     const nav = screen.getByRole("navigation", { name: "配置步骤" });
     const first = within(nav).getByRole("link", { name: /应用公钥/ });
     const current = within(nav).getByRole("link", { name: /支付宝接入/ });
-    const disabled = within(nav).getByRole("link", { name: /经营码/ });
+    const disabled = within(nav).getByRole("link", { name: /收款码/ });
     expect(disabled).toHaveAttribute("aria-disabled", "true");
     expect(disabled).not.toHaveAttribute("href");
     const user = userEvent.setup();
@@ -103,12 +103,12 @@ describe("ordered onboarding navigation", () => {
       stage: 4,
       path: onboardingPath("collection"),
     });
-    const input = await screen.findByLabelText("支付宝经营码内容");
+    const input = await screen.findByLabelText("支付宝收款码内容");
     fireEvent.change(input, {
       target: { value: "https://qr.alipay.com/unsaved-stepper" },
     });
     const nav = screen.getByRole("navigation", { name: "配置步骤" });
-    const current = within(nav).getByRole("link", { name: /经营码/ });
+    const current = within(nav).getByRole("link", { name: /收款码/ });
     const next = within(nav).getByRole("link", { name: /网站与备份/ });
     const user = userEvent.setup();
     act(() => current.focus());

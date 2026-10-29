@@ -560,7 +560,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     }
     const checkout = dependencies.orders.publicCheckout(context.req.param("token"));
     if (checkout.paymentInstructions === null) {
-      throw new HttpApiError(404, "checkout_code_not_found", "经营码不可用");
+      throw new HttpApiError(404, "checkout_code_not_found", "收款码不可用");
     }
     requirePaymentEntryReady(dependencies);
     let svg: string;
@@ -571,7 +571,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       throw new HttpApiError(
         503,
         "checkout_code_generation_failed",
-        "经营码暂时无法生成",
+        "收款码暂时无法生成",
         5,
       );
     }
@@ -2189,7 +2189,7 @@ function parseJsonBytes<T>(bytes: Uint8Array, schema: z.ZodType<T>): T {
   if (!parsed.success) {
     if ((schema as z.ZodType) === collectionSettingsInputSchema || (schema as z.ZodType) === collectionCodeInputSchema) {
       const issue = parsed.error.issues.find((item) => item.path[0] === "code_payload");
-      if (issue) throw new SettingsFieldError("code_payload", "请上传支付宝经营码，或粘贴 qr.alipay.com 开头的完整收款链接（最多 2331 字节）。");
+      if (issue) throw new SettingsFieldError("code_payload", "请上传支付宝收款码，或粘贴 qr.alipay.com 开头的完整收款链接（最多 2331 字节）。");
     }
     if ((schema as z.ZodType) === providerSettingsInputSchema || (schema as z.ZodType) === collectionPolicyInputSchema) {
       const timingHints = {

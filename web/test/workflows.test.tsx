@@ -180,7 +180,7 @@ describe("administrator authentication", () => {
     expect(container.querySelector(".auth-emblem")).toBeNull();
     expect(container.querySelector(".auth-process")).toBeNull();
     expect(
-      screen.queryByText(/经营码收款，账本自动核对/),
+      screen.queryByText(/收款码收款，账本自动核对/),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("你的系统，你的数据。")).not.toBeInTheDocument();
     expect(
@@ -387,7 +387,7 @@ describe("concise settings copy", () => {
     expect(screen.queryByText("未保存")).not.toBeInTheDocument();
     if (section === "collection") {
       expect(
-        screen.getByLabelText("支付宝经营码内容"),
+        screen.getByLabelText("支付宝收款码内容"),
       ).not.toHaveAccessibleDescription();
       expect(screen.getByRole("button", { name: "上传二维码" })).toBeVisible();
     }

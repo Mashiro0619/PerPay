@@ -16,8 +16,8 @@ export const onboardingSteps = [
   },
   {
     id: "collection",
-    title: "支付宝经营码",
-    description: "导入本系统共用的经营码，网站订单策略单独设置。",
+    title: "支付宝收款码",
+    description: "导入本系统共用的收款码，网站订单策略单独设置。",
   },
   {
     id: "optional",

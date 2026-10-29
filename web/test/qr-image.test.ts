@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { decodeQrImage } from "../src/qr-image";
 
 const paymentLink = "https://qr.alipay.com/fkx-local-test?value=a%2Fb&note=收款";
-const imageFile = () => new File(["image"], "经营码.png", { type: "image/png" });
+const imageFile = () => new File(["image"], "收款码.png", { type: "image/png" });
 
 function pixels(width: number, height: number, payload: string | null, inverted = false): ImageData {
   const data = new Uint8ClampedArray(width * height * 4).fill(255);
@@ -131,7 +131,7 @@ describe("local QR image decoding", () => {
 
   it("gives a manual-entry fallback when image decoding is unavailable", async () => {
     vi.stubGlobal("createImageBitmap", undefined);
-    await expect(decodeQrImage(imageFile(), new AbortController().signal)).rejects.toThrow("手动粘贴经营码内容");
+    await expect(decodeQrImage(imageFile(), new AbortController().signal)).rejects.toThrow("手动粘贴收款码内容");
   });
 
   it("releases the bitmap when canvas access is unavailable", async () => {

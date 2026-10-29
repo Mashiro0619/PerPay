@@ -206,7 +206,7 @@ export function CollectionCodeField({
               ? "正在识别…"
               : dragging
                 ? "松开即可识别"
-                : "经营码图片"}
+                : "收款码图片"}
           </EmptyTitle>
           <EmptyDescription id={uploadHintId}>
             PNG、JPG、WebP，最大 10 MB
@@ -219,7 +219,7 @@ export function CollectionCodeField({
             accept={qrImageAccept}
             hidden
             disabled={disabled}
-            aria-label="选择经营码二维码图片"
+            aria-label="选择收款码二维码图片"
             onChange={(event) => {
               void selectImage(event);
             }}
@@ -256,7 +256,7 @@ export function CollectionCodeField({
         </EmptyContent>
       </Empty>
       <Field data-invalid={!!error}>
-        <FieldLabel htmlFor={feedbackId + "-code"}>支付宝经营码内容</FieldLabel>
+        <FieldLabel htmlFor={feedbackId + "-code"}>支付宝收款码内容</FieldLabel>
         <Textarea
           ref={textarea}
           id={feedbackId + "-code"}
