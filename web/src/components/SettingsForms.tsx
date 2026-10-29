@@ -886,7 +886,7 @@ export function SettingsEditor({
         }
       />
       <Field orientation="horizontal" className="flex-wrap justify-end">
-        <Button type="submit" className="h-auto min-h-8 max-w-full whitespace-normal" disabled={decoding || !canSave || save.isPending}>
+        <Button type="submit" className="h-auto min-h-8 max-w-full whitespace-normal" disabled={decoding || !canSave || save.isPending} aria-busy={save.isPending}>
           {save.isPending ? (
             <Spinner aria-hidden="true" data-icon="inline-start" />
           ) : (

@@ -12,6 +12,7 @@ describe("shared administrator actions", () => {
     fireEvent.click(button); expect(click).toHaveBeenCalledTimes(1);
     view.rerender(<RefreshButton busy onClick={click} />);
     expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-busy", "true");
     fireEvent.click(button); expect(click).toHaveBeenCalledTimes(1);
   });
   it("only opts backend copies into custom tooltips", () => {
