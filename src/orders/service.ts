@@ -1,4 +1,6 @@
 import { SiteError, type SiteStore } from "../sites/store.ts";
+import type { AlipayAccountSnapshot } from "../alipay-accounts/model.ts";
+import { collectionCandidates } from "./account-allocation.ts";
 import { siteClientIdSchema, type SiteSnapshot } from "../sites/model.ts";
 import type { ListQuery, OrderSort } from "../shared/list-query.ts";
 import type { AppDatabase } from "../database/database.ts";
@@ -55,6 +57,7 @@ export type OrderErrorCode =
   | "checkout_not_found"
   | "order_clock_unavailable"
   | "system_not_configured"
+  | "alipay_accounts_unavailable"
   | "webhook_disabled"
   | "webhook_target_invalid"
   | "webhook_target_not_allowed"
@@ -93,6 +96,12 @@ interface ReturnUrlDecision {
   } | undefined;
 }
 
+export interface OrderAccountOptions {
+  readonly accounts: () => readonly AlipayAccountSnapshot[];
+  readonly available?: (accountId: string) => boolean;
+  readonly random?: () => number;
+}
+
 export class OrderService {
   readonly #store: OrderStore;
   readonly #settings: () => RuntimeSettingsSnapshot | InstanceRuntimeSettingsSnapshot;
@@ -100,6 +109,7 @@ export class OrderService {
   readonly #physicalClock: (() => number) | undefined;
   readonly #sites: SiteStore | undefined;
   readonly #clientId: string | undefined;
+  readonly #accounts: OrderAccountOptions | undefined;
 
   constructor(
     database: AppDatabase,
@@ -107,6 +117,7 @@ export class OrderService {
     physicalClock?: () => number,
     sites?: SiteStore,
     clientId?: string,
+    accounts?: OrderAccountOptions,
   ) {
     this.#store = new OrderStore(database, physicalClock);
     this.#settings = settings;
@@ -114,12 +125,13 @@ export class OrderService {
     this.#physicalClock = physicalClock;
     this.#sites = sites;
     this.#clientId = clientId;
+    this.#accounts = accounts;
   }
 
   forSite(clientId: string): OrderService {
     siteClientIdSchema.parse(clientId);
     if (!this.#sites) throw new Error("website order service is not configured");
-    return new OrderService(this.#database, this.#settings, this.#physicalClock, this.#sites, clientId);
+    return new OrderService(this.#database, this.#settings, this.#physicalClock, this.#sites, clientId, this.#accounts);
   }
 
   #owner(): string {
@@ -135,6 +147,12 @@ export class OrderService {
   }
 
   initialize(): SyncCollectionProfileResult | null {
+    if (this.#accounts) {
+      for (const account of this.#accounts.accounts()) {
+        if (account.codePayload && account.providerAccountKey) this.syncAccountCollectionProfile(account);
+      }
+      return null;
+    }
     const settings = this.#settings();
     if (settings.collection === null || settings.activeProviderAccountKey === null) return null;
     return this.syncCollectionProfile(settings.collection, settings.activeProviderAccountKey);
@@ -158,6 +176,14 @@ export class OrderService {
     );
   }
 
+  syncAccountCollectionProfile(account: AlipayAccountSnapshot): SyncCollectionProfileResult {
+    if (!account.codePayload || !account.providerAccountKey) throw new OrderError("system_not_configured", "支付宝账号还未完成配置。");
+    return this.#runStoreOperation(() => this.#store.syncCollectionProfile({
+      alipayAccountId: account.id, providerAccountKey: account.providerAccountKey!, codePayload: account.codePayload!,
+      ...fingerprintCollectionCodeProfile(account.codePayload!, account.providerAccountKey!), activate: false,
+    }));
+  }
+
   create(
     request: CreateOrderRequest,
     beforeCreate?: (() => void) | undefined,
@@ -166,13 +192,17 @@ export class OrderService {
     const settings = this.#configuredSettings(site);
     const clientId = site?.clientId ?? API_CLIENT_ID;
     const webhook = settings.webhook;
-    this.syncCollectionProfile(settings.collection, settings.providerAccountKey);
+    const candidates = this.#accounts && site ? collectionCandidates(site.configuration.collection,
+      this.#accounts.accounts(), this.#accounts.available ?? (() => true), this.#accounts.random) : null;
+    const collectionProfileIds = candidates?.map(account => this.syncAccountCollectionProfile(account).profile.profileId);
+    if (candidates === null) this.syncCollectionProfile(settings.collection, settings.providerAccountKey);
     const webhookTarget = this.#prepareWebhookTarget(request, webhook);
     const returnUrl = this.#prepareReturnUrl(request, site ? site.configuration.return_origin : webhook.allowedOrigin);
     const result = this.#runStoreOperation(() =>
       this.#store.createOrder(
         {
           apiClientId: clientId,
+          ...(collectionProfileIds ? { collectionProfileIds } : {}),
           ...(site ? { siteRevision: site.revision } : {}),
           request,
           idempotencyKeyDigest: digestIdempotencyKey(clientId, request.idempotency_key),
@@ -189,7 +219,10 @@ export class OrderService {
           returnUrl: returnUrl.url,
           returnUrlRejection: returnUrl.rejection,
         },
-        beforeCreate,
+        () => {
+          beforeCreate?.();
+          if (candidates?.length === 0) throw new OrderError("alipay_accounts_unavailable", "这个网站的收款账号当前都不可用，请检查账号配置和查账状态。", 30);
+        },
       ),
     );
     switch (result.kind) {
@@ -344,6 +377,9 @@ export class OrderService {
     return {
       orderId: aggregate.order.orderId,
       apiClientId: aggregate.order.apiClientId,
+      alipayAccountId: aggregate.order.alipayAccountId,
+      alipayAccountName: this.#accounts?.accounts().find(account => account.id === aggregate.order.alipayAccountId)?.name ?? null,
+      providerAccountKey: aggregate.order.providerAccountKey,
       merchantOrderNo: aggregate.order.merchantOrderNo,
       requestedAmountCents: aggregate.order.requestedAmountCents,
       payableAmountCents: aggregate.order.payableAmountCents,
@@ -391,11 +427,11 @@ export class OrderService {
     readonly advanced: RuntimeSettingsSnapshot["advanced"];
   } {
     const settings = this.#settings();
-    if (
+    if (!this.#accounts && (
       settings.collection === null ||
       settings.provider === null ||
       settings.activeProviderAccountKey === null
-    ) {
+    )) {
       throw new OrderError(
         "system_not_configured",
         "收款配置未完成",
@@ -404,8 +440,9 @@ export class OrderService {
     const policy = site?.configuration.policy;
     let collection: CollectionSettings;
     if (policy) {
-      collection = { codePayload: settings.collection.codePayload, orderTtlSeconds: policy.orders.order_ttl_seconds, amountOffsetMaximumCents: policy.orders.amount_offset_maximum_cents, amountReuseCooldownSeconds: policy.orders.amount_reuse_cooldown_seconds };
+      collection = { codePayload: settings.collection?.codePayload ?? "", orderTtlSeconds: policy.orders.order_ttl_seconds, amountOffsetMaximumCents: policy.orders.amount_offset_maximum_cents, amountReuseCooldownSeconds: policy.orders.amount_reuse_cooldown_seconds };
     } else if ("webhook" in settings) {
+      if (!settings.collection) throw new OrderError("system_not_configured", "收款配置未完成");
       collection = settings.collection;
     } else {
       throw new Error("website order policy is required");
@@ -419,7 +456,7 @@ export class OrderService {
     if (!webhook) throw new Error("website notification policy is required");
     return {
       collection,
-      providerAccountKey: settings.activeProviderAccountKey,
+      providerAccountKey: settings.activeProviderAccountKey ?? "primary",
       webhook,
       advanced: settings.advanced,
     };

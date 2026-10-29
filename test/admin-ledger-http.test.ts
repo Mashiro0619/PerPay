@@ -49,7 +49,7 @@ describe("administrator read-only ledger HTTP", () => {
       assert.equal(response.status, 200);
       assert.equal(response.headers.get("cache-control"), "no-store");
       const page = await response.json() as Page;
-      assert.equal(page.environment, "PRODUCTION");
+      assert.equal(page.environment, null);
       assert.equal(page.data.length, 2);
       const group = page.data.find(item => item.ledger_entry_id === settled.entry.ledgerEntryId)!;
       assert.equal(group.active_match?.order_id, settled.order.orderId);
@@ -195,7 +195,7 @@ describe("administrator read-only ledger HTTP", () => {
     assert.throws(() => readAdminLedgerPageQuery(new URLSearchParams(filters + "&cursor=" + legacy), "PRODUCTION"), /翻页信息无效/);
   });
 
-  it("uses configured environment, falls back through retained evidence, and resolves historical details by source", async () => {
+  it("lists all account environments, keeps legacy fallback, and resolves historical details by source", async () => {
     await withHttpFixture(async f => {
       const production = f.recordCredit("same-event", 1234, 0);
       const auth = await login(f.app);
@@ -208,8 +208,8 @@ describe("administrator read-only ledger HTTP", () => {
         Date.parse("2026-10-20T04:00:00Z"), now + 1, "CREDIT", key);
       const app = createApp({ ...f.services, ledger: f.ledger, startedAt: new Date(0) });
       const page = await (await app.request(PATH, { headers })).json() as Page;
-      assert.equal(page.environment, "PRODUCTION");
-      assert.deepEqual(page.data.map(item => item.ledger_entry_id), [production.ledgerEntryId]);
+      assert.equal(page.environment, null);
+      assert.deepEqual(new Set(page.data.map(item => item.ledger_entry_id)), new Set([production.ledgerEntryId, sandbox.ledgerEntryId]));
       for (const [id, environment, amount] of [[production.ledgerEntryId, "PRODUCTION", 1234], [sandbox.ledgerEntryId, "SANDBOX", 9900]] as const) {
         const response = await app.request(PATH + "/" + id, { headers });
         assert.equal(response.status, 200);

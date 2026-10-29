@@ -48,9 +48,7 @@ describe("business website HTTP boundaries", () => {
       assert.equal(mixed.status, 422);
       let revision = result.revision;
       const changes: Array<[string, object]> = [
-        ["collection", { code_payload: "https://qr.alipay.com/new-instance-code" }],
         ["collection-policy", { ...data.collection_policy, scan_interval_seconds: 30, maximum_success_age_seconds: 60 }],
-        ["provider", { environment: data.provider.environment, app_id: data.provider.app_id }],
         ["advanced", data.advanced],
         ["backup", data.backup],
       ];

@@ -17,6 +17,7 @@ export const orderExportSchema = z
   .object({
     q: z.string().optional(),
     api_client_id: siteClientIdSchema.optional(),
+    alipay_account_id: siteClientIdSchema.optional(),
     sort_by: z.enum(ORDER_SORT_FIELDS).optional(),
     sort_order: z.enum(["asc", "desc"]).optional(),
     payment_status: z.enum(["UNPAID", "CONFIRMED", "DISPUTED"]).optional(),
@@ -96,6 +97,9 @@ export function exportOrders(
   ];
   if (input.api_client_id) {
     where.push("orders.api_client_id = ?"); parameters.push(input.api_client_id);
+  }
+  if (input.alipay_account_id) {
+    where.push("orders.alipay_account_id = ?"); parameters.push(input.alipay_account_id);
   }
   if (input.payment_status) {
     where.push("orders.payment_status = ?");

@@ -32,6 +32,10 @@ it("upgrades schema 22 without rewriting historical money, refund evidence, queu
     const result = fixture.reconciliation.reconcileEntry(credit.ledgerEntryId); assert.equal(result.kind, "unmatched");
     assert.equal(fixture.webhooks.materialize(10, Date.now()), 2);
     const before = historicalSnapshot(fixture.database);
+    // Schema 37 adds ownership metadata; every existing financial field stays exact.
+    for (const table of ["payment_orders", "amount_slots"] as const) {
+      for (const row of before[table]!) row.alipay_account_id = "default";
+    }
     const databasePath = fixture.services.config.databasePath;
     fixture.database.close();
     const legacy = new DatabaseSync(databasePath, { enableForeignKeyConstraints: true, readBigInts: true });

@@ -164,7 +164,7 @@ describe("ledger conflict HTTP operations", () => {
         { open: 1, ignored: 0, total: 1 },
       );
       assert.deepEqual(statusBody.reconciliation.exceptions, {
-        provider_account_key: providerAccountKey,
+        provider_account_key: null,
         open: 0,
         resolved: 0,
         total: 0,

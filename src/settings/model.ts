@@ -354,7 +354,7 @@ export function parseProviderApplicationPrivateKey(value: string): ProviderAppli
   return providerApplicationKeyMaterial(privateKeyPem, publicKeyPem, privateKey);
 }
 
-function parsePlatformPublicKey(value: string): { publicKeyPem: string; publicKey: KeyObject } {
+export function parsePlatformPublicKey(value: string): { publicKeyPem: string; publicKey: KeyObject } {
   try {
     const publicKeyPem = normalizeProviderKey(value, "public");
     return { publicKeyPem, publicKey: parseRsaKey(publicKeyPem, "public") };
@@ -430,7 +430,7 @@ function normalizeProviderKey(value: string, kind: "private" | "public"): string
   return `-----BEGIN ${label}-----\n${lines}\n-----END ${label}-----`;
 }
 
-function publicKeyFingerprint(key: KeyObject): string {
+export function publicKeyFingerprint(key: KeyObject): string {
   return createHash("sha256")
     .update(key.export({ type: "spki", format: "der" }))
     .digest("hex");

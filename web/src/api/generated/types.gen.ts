@@ -3,6 +3,83 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 export type Webhooks = ReceivePaymentOrderWebhookWebhookRequest;
+export type SiteCollection = {
+    mode: 'FIXED' | 'RANDOM' | 'WEIGHTED';
+    accounts: Array<{
+        account_id: string;
+        weight?: number;
+    }>;
+};
+export type AlipayAccountCheck = {
+    ok: boolean;
+    checked_at: string;
+    message: string;
+};
+export type AlipayAccount = {
+    id: string;
+    revision: number;
+    name: string;
+    enabled: boolean;
+    code_payload: string | null;
+    environment: 'PRODUCTION' | 'SANDBOX';
+    app_id: string | null;
+    platform_public_key: string | null;
+    provider_account_key: string | null;
+    configured: boolean;
+    application_public_key: string | null;
+    application_key_fingerprint: string | null;
+    pending_application_key: null | {
+        change_id: string;
+        public_key: string;
+        fingerprint: string;
+        app_id: string;
+        environment: 'PRODUCTION' | 'SANDBOX';
+        created_at: string;
+    };
+    sites: Array<{
+        client_id: string;
+        name: string;
+    }>;
+    deletable: boolean;
+    last_check: null | AlipayAccountCheck;
+    created_at: string;
+    updated_at: string;
+    health?: {
+        state: string;
+        last_success_at: string | null;
+        last_error_code: string | null;
+        collection_ready: boolean;
+    };
+    manual_scan?: LedgerManualScanStatus;
+};
+export type AlipayAccountInput = {
+    name: string;
+    enabled?: boolean;
+    code_payload?: string | null;
+    environment?: 'PRODUCTION' | 'SANDBOX';
+    app_id?: string | null;
+    platform_public_key?: string | null;
+    private_key?: string;
+};
+export type UpdateAlipayAccountRequest = {
+    name: string;
+    enabled: boolean;
+    code_payload: string | null;
+    environment: 'PRODUCTION' | 'SANDBOX';
+    app_id: string | null;
+    platform_public_key?: string | null;
+    private_key?: string;
+    revision: number;
+};
+export type AlipayAccountEnvelope = {
+    data: AlipayAccount;
+};
+export type AlipayAccountListEnvelope = {
+    data: Array<AlipayAccount>;
+};
+export type AlipayAccountCheckEnvelope = {
+    data: AlipayAccountCheck;
+};
 export type ManualSettlementPageInfo = {
     next_cursor: string | null;
 };
@@ -52,6 +129,7 @@ export type SystemStatus = {
     backup_policy?: BackupSettings;
     backup: BackupHealth;
     work_items: AdminWorkItemSummary;
+    alipay_accounts?: Array<AlipayAccount>;
 };
 export type AdminWorkItemSummary = {
     total: number;
@@ -197,7 +275,7 @@ export type AdminNotificationFailureWorkItem = AdminWorkItemBase & {
     updated_at: string;
 };
 export type LedgerConflictSummary = {
-    provider_account_key: string;
+    provider_account_key: string | null;
     open: number;
     resolved: number;
     ignored: number;
@@ -212,7 +290,7 @@ export type LedgerConflictTypeSummary = {
     total: number;
 };
 export type FinancialExceptionSummary = {
-    provider_account_key: string;
+    provider_account_key: string | null;
     open: number;
     resolved: number;
     total: number;
@@ -659,6 +737,9 @@ export type AdminOrderSummary = {
     created_at: string;
     updated_at: string;
     version: number;
+    alipay_account_id?: string | null;
+    alipay_account_name?: string | null;
+    provider_account_key?: string | null;
 };
 export type AdminOrderDetail = {
     site_name?: string | null;
@@ -683,6 +764,9 @@ export type AdminOrderDetail = {
     created_at: string;
     updated_at: string;
     version: number;
+    alipay_account_id?: string | null;
+    alipay_account_name?: string | null;
+    provider_account_key?: string | null;
 };
 export type AdminOrderEvent = {
     event_id: ResourceId;
@@ -734,6 +818,8 @@ export type Order = {
     created_at: string;
     updated_at: string;
     version: number;
+    alipay_account_id?: string | null;
+    alipay_account_name?: string | null;
 };
 export type OrderNotification = {
     notify_url: NotifyUrl | null;
@@ -1025,7 +1111,10 @@ export type AdminLedgerGroupFields = {
     created_at: string;
     updated_at: string;
 };
-export type AdminLedgerSummary = AdminLedgerFacts & AdminLedgerGroupFields;
+export type AdminLedgerSummary = AdminLedgerFacts & AdminLedgerGroupFields & {
+    alipay_account_id?: string | null;
+    alipay_account_name?: string | null;
+};
 export type AdminLedgerMatch = {
     payment_match_id: ResourceId;
     ledger_entry_id: ResourceId;
@@ -1069,6 +1158,9 @@ export type AdminLedgerDetail = AdminLedgerFacts & AdminLedgerGroupFields & {
     sources: Array<AdminLedgerSource>;
     matches: Array<AdminLedgerMatch>;
     conflicts: Array<AdminLedgerConflict>;
+} & {
+    alipay_account_id?: string | null;
+    alipay_account_name?: string | null;
 };
 export type AdminLedgerPageEnvelope = {
     data: Array<AdminLedgerSummary>;
@@ -1334,7 +1426,7 @@ export type WebhookRedeliveryEnvelope = {
     };
 };
 export type Sha256Fingerprint = string;
-export type ErrorCode = 'admin_ip_not_allowed' | 'admin_operation_conflict' | 'refund_mark_version_conflict' | 'refund_mark_not_allowed' | 'refund_recording_retired' | 'work_item_not_found' | 'work_item_ended' | 'amount_slots_exhausted' | 'api_authentication_failed' | 'api_client_invalid' | 'api_nonce_replayed' | 'asset_not_found' | 'auth_rate_limited' | 'candidate_not_found' | 'candidate_set_changed' | 'checkout_code_generation_failed' | 'checkout_code_not_found' | 'checkout_not_found' | 'csrf_invalid' | 'duplicate_json_key' | 'event_not_found' | 'financial_clock_unavailable' | 'financial_exception_not_found' | 'forwarded_header_invalid' | 'idempotency_conflict' | 'identity_already_initialized' | 'identity_not_initialized' | 'setup_token_invalid' | 'internal_error' | 'invalid_content_length' | 'invalid_credentials' | 'invalid_json' | 'ledger_conflict_action_not_allowed' | 'ledger_conflict_not_found' | 'ledger_conflict_operation_conflict' | 'ledger_conflict_state_conflict' | 'ledger_entry_not_found' | 'ledger_unavailable' | 'ledger_scan_unavailable' | 'match_not_found' | 'match_state_conflict' | 'merchant_order_no_conflict' | 'operation_conflict' | 'order_clock_unavailable' | 'order_not_found' | 'origin_not_allowed' | 'password_unchanged' | 'password_work_busy' | 'provider_application_key_missing' | 'provider_application_key_rotation_not_supported' | 'provider_application_key_change_pending' | 'provider_application_key_change_conflict' | 'provider_application_key_verification_failed' | 'provider_switch_blocked' | 'public_checkout_rate_limited' | 'reconciliation_not_ready' | 'reconciliation_unavailable' | 'request_body_too_large' | 'request_body_unreadable' | 'return_url_invalid' | 'return_url_not_allowed' | 'route_not_found' | 'secret_not_found' | 'session_invalid' | 'settings_not_configured' | 'settings_revision_conflict' | 'settings_unavailable' | 'settings_validation_failed' | 'system_not_configured' | 'system_not_ready' | 'unsupported_media_type' | 'update_check_unavailable' | 'validation_failed' | 'webhook_delivery_not_found' | 'webhook_delivery_state_conflict' | 'webhook_disabled' | 'webhook_event_not_found' | 'webhook_operation_conflict' | 'webhook_signing_key_rollback' | 'webhook_signing_key_unavailable' | 'webhook_target_inactive' | 'webhook_target_invalid' | 'webhook_target_not_allowed' | 'webhook_unavailable' | 'site_not_found' | 'site_scope_conflict' | 'site_revision_conflict' | 'site_operation_conflict' | 'site_has_history' | 'site_paused' | 'site_order_limit_exceeded' | 'site_secret_missing' | 'demo_read_only' | 'site_settings_moved';
+export type ErrorCode = 'alipay_account_not_found' | 'alipay_accounts_unavailable' | 'alipay_account_revision_conflict' | 'alipay_account_in_use' | 'alipay_account_app_conflict' | 'alipay_account_not_configured' | 'alipay_settings_moved' | 'site_collection_required' | 'site_collection_invalid' | 'admin_ip_not_allowed' | 'admin_operation_conflict' | 'refund_mark_version_conflict' | 'refund_mark_not_allowed' | 'refund_recording_retired' | 'work_item_not_found' | 'work_item_ended' | 'amount_slots_exhausted' | 'api_authentication_failed' | 'api_client_invalid' | 'api_nonce_replayed' | 'asset_not_found' | 'auth_rate_limited' | 'candidate_not_found' | 'candidate_set_changed' | 'checkout_code_generation_failed' | 'checkout_code_not_found' | 'checkout_not_found' | 'csrf_invalid' | 'duplicate_json_key' | 'event_not_found' | 'financial_clock_unavailable' | 'financial_exception_not_found' | 'forwarded_header_invalid' | 'idempotency_conflict' | 'identity_already_initialized' | 'identity_not_initialized' | 'setup_token_invalid' | 'internal_error' | 'invalid_content_length' | 'invalid_credentials' | 'invalid_json' | 'ledger_conflict_action_not_allowed' | 'ledger_conflict_not_found' | 'ledger_conflict_operation_conflict' | 'ledger_conflict_state_conflict' | 'ledger_entry_not_found' | 'ledger_unavailable' | 'ledger_scan_unavailable' | 'match_not_found' | 'match_state_conflict' | 'merchant_order_no_conflict' | 'operation_conflict' | 'order_clock_unavailable' | 'order_not_found' | 'origin_not_allowed' | 'password_unchanged' | 'password_work_busy' | 'provider_application_key_missing' | 'provider_application_key_rotation_not_supported' | 'provider_application_key_change_pending' | 'provider_application_key_change_conflict' | 'provider_application_key_verification_failed' | 'provider_switch_blocked' | 'public_checkout_rate_limited' | 'reconciliation_not_ready' | 'reconciliation_unavailable' | 'request_body_too_large' | 'request_body_unreadable' | 'return_url_invalid' | 'return_url_not_allowed' | 'route_not_found' | 'secret_not_found' | 'session_invalid' | 'settings_not_configured' | 'settings_revision_conflict' | 'settings_unavailable' | 'settings_validation_failed' | 'system_not_configured' | 'system_not_ready' | 'unsupported_media_type' | 'update_check_unavailable' | 'validation_failed' | 'webhook_delivery_not_found' | 'webhook_delivery_state_conflict' | 'webhook_disabled' | 'webhook_event_not_found' | 'webhook_operation_conflict' | 'webhook_signing_key_rollback' | 'webhook_signing_key_unavailable' | 'webhook_target_inactive' | 'webhook_target_invalid' | 'webhook_target_not_allowed' | 'webhook_unavailable' | 'site_not_found' | 'site_scope_conflict' | 'site_revision_conflict' | 'site_operation_conflict' | 'site_has_history' | 'site_paused' | 'site_order_limit_exceeded' | 'site_secret_missing' | 'demo_read_only' | 'site_settings_moved';
 export type ErrorEnvelope = {
     error: {
         code: ErrorCode;
@@ -1365,6 +1457,7 @@ export type SitePolicy = {
     };
 };
 export type SiteConfiguration = {
+    collection?: SiteCollection;
     name: string;
     accepting_orders: boolean;
     notifications_enabled: boolean;
@@ -1464,6 +1557,280 @@ export type WebhookAttemptHeader = string;
 export type FinancialDecision = FinancialDecisionRequest;
 export type LinkedFinancialDecision = LinkedFinancialDecisionRequest;
 export type ManualSettlement = ManualSettlementRequest;
+export type ListAlipayAccountsData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/admin/v1/alipay-accounts';
+};
+export type ListAlipayAccountsErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type ListAlipayAccountsError = ListAlipayAccountsErrors[keyof ListAlipayAccountsErrors];
+export type ListAlipayAccountsResponses = {
+    200: AlipayAccountListEnvelope;
+};
+export type ListAlipayAccountsResponse = ListAlipayAccountsResponses[keyof ListAlipayAccountsResponses];
+export type CreateAlipayAccountData = {
+    body: AlipayAccountInput;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/admin/v1/alipay-accounts';
+};
+export type CreateAlipayAccountErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type CreateAlipayAccountError = CreateAlipayAccountErrors[keyof CreateAlipayAccountErrors];
+export type CreateAlipayAccountResponses = {
+    201: AlipayAccountEnvelope;
+};
+export type CreateAlipayAccountResponse = CreateAlipayAccountResponses[keyof CreateAlipayAccountResponses];
+export type DeleteAlipayAccountData = {
+    body: SettingsRevisionRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        accountId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/alipay-accounts/{accountId}';
+};
+export type DeleteAlipayAccountErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type DeleteAlipayAccountError = DeleteAlipayAccountErrors[keyof DeleteAlipayAccountErrors];
+export type DeleteAlipayAccountResponses = {
+    204: void;
+};
+export type DeleteAlipayAccountResponse = DeleteAlipayAccountResponses[keyof DeleteAlipayAccountResponses];
+export type GetAlipayAccountData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path: {
+        accountId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/alipay-accounts/{accountId}';
+};
+export type GetAlipayAccountErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type GetAlipayAccountError = GetAlipayAccountErrors[keyof GetAlipayAccountErrors];
+export type GetAlipayAccountResponses = {
+    200: AlipayAccountEnvelope;
+};
+export type GetAlipayAccountResponse = GetAlipayAccountResponses[keyof GetAlipayAccountResponses];
+export type UpdateAlipayAccountData = {
+    body: UpdateAlipayAccountRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        accountId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/alipay-accounts/{accountId}';
+};
+export type UpdateAlipayAccountErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type UpdateAlipayAccountError = UpdateAlipayAccountErrors[keyof UpdateAlipayAccountErrors];
+export type UpdateAlipayAccountResponses = {
+    200: AlipayAccountEnvelope;
+};
+export type UpdateAlipayAccountResponse = UpdateAlipayAccountResponses[keyof UpdateAlipayAccountResponses];
+export type CheckAlipayAccountData = {
+    body: EmptyObjectRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        accountId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/alipay-accounts/{accountId}/check';
+};
+export type CheckAlipayAccountErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type CheckAlipayAccountError = CheckAlipayAccountErrors[keyof CheckAlipayAccountErrors];
+export type CheckAlipayAccountResponses = {
+    200: AlipayAccountCheckEnvelope;
+};
+export type CheckAlipayAccountResponse = CheckAlipayAccountResponses[keyof CheckAlipayAccountResponses];
+export type GenerateAlipayAccountApplicationKeyData = {
+    body: SettingsRevisionRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        accountId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/alipay-accounts/{accountId}/application-key';
+};
+export type GenerateAlipayAccountApplicationKeyErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type GenerateAlipayAccountApplicationKeyError = GenerateAlipayAccountApplicationKeyErrors[keyof GenerateAlipayAccountApplicationKeyErrors];
+export type GenerateAlipayAccountApplicationKeyResponses = {
+    200: AlipayAccountEnvelope;
+};
+export type GenerateAlipayAccountApplicationKeyResponse = GenerateAlipayAccountApplicationKeyResponses[keyof GenerateAlipayAccountApplicationKeyResponses];
+export type RegenerateAlipayAccountApplicationKeyData = {
+    body: RegenerateProviderApplicationKeyRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        accountId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/alipay-accounts/{accountId}/application-key/regenerate';
+};
+export type RegenerateAlipayAccountApplicationKeyErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type RegenerateAlipayAccountApplicationKeyError = RegenerateAlipayAccountApplicationKeyErrors[keyof RegenerateAlipayAccountApplicationKeyErrors];
+export type RegenerateAlipayAccountApplicationKeyResponses = {
+    200: AlipayAccountEnvelope;
+};
+export type RegenerateAlipayAccountApplicationKeyResponse = RegenerateAlipayAccountApplicationKeyResponses[keyof RegenerateAlipayAccountApplicationKeyResponses];
+export type ActivateAlipayAccountApplicationKeyData = {
+    body: ActivateProviderApplicationKeyRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        accountId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/alipay-accounts/{accountId}/application-key/activate';
+};
+export type ActivateAlipayAccountApplicationKeyErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type ActivateAlipayAccountApplicationKeyError = ActivateAlipayAccountApplicationKeyErrors[keyof ActivateAlipayAccountApplicationKeyErrors];
+export type ActivateAlipayAccountApplicationKeyResponses = {
+    200: AlipayAccountEnvelope;
+};
+export type ActivateAlipayAccountApplicationKeyResponse = ActivateAlipayAccountApplicationKeyResponses[keyof ActivateAlipayAccountApplicationKeyResponses];
+export type DiscardAlipayAccountApplicationKeyData = {
+    body: ApplicationKeyChangeActionRequest;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path: {
+        accountId: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/alipay-accounts/{accountId}/application-key/discard';
+};
+export type DiscardAlipayAccountApplicationKeyErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    409: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type DiscardAlipayAccountApplicationKeyError = DiscardAlipayAccountApplicationKeyErrors[keyof DiscardAlipayAccountApplicationKeyErrors];
+export type DiscardAlipayAccountApplicationKeyResponses = {
+    200: AlipayAccountEnvelope;
+};
+export type DiscardAlipayAccountApplicationKeyResponse = DiscardAlipayAccountApplicationKeyResponses[keyof DiscardAlipayAccountApplicationKeyResponses];
 export type SetupAdministratorData = {
     body: AdminSetupRequest;
     headers?: {
@@ -1566,7 +1933,9 @@ export type GetAdministratorSystemStatusResponses = {
 };
 export type GetAdministratorSystemStatusResponse = GetAdministratorSystemStatusResponses[keyof GetAdministratorSystemStatusResponses];
 export type RequestLedgerScanData = {
-    body: EmptyObjectRequest;
+    body: {
+        alipay_account_id?: string;
+    };
     headers?: {
         'X-Request-Id'?: string;
         Origin?: string;
@@ -1944,6 +2313,7 @@ export type UpdateCollectionSettingsErrors = {
     401: ErrorEnvelope;
     403: ErrorEnvelope;
     409: ErrorEnvelope;
+    410: ErrorEnvelope;
     413: ErrorEnvelope;
     415: ErrorEnvelope;
     422: ErrorEnvelope;
@@ -1969,6 +2339,7 @@ export type UpdateProviderSettingsErrors = {
     401: ErrorEnvelope;
     403: ErrorEnvelope;
     409: ErrorEnvelope;
+    410: ErrorEnvelope;
     413: ErrorEnvelope;
     415: ErrorEnvelope;
     422: ErrorEnvelope;
@@ -1994,6 +2365,7 @@ export type GenerateProviderApplicationKeyErrors = {
     401: ErrorEnvelope;
     403: ErrorEnvelope;
     409: ErrorEnvelope;
+    410: ErrorEnvelope;
     413: ErrorEnvelope;
     415: ErrorEnvelope;
     422: ErrorEnvelope;
@@ -2020,6 +2392,7 @@ export type RegenerateProviderApplicationKeyErrors = {
     401: ErrorEnvelope;
     403: ErrorEnvelope;
     409: ErrorEnvelope;
+    410: ErrorEnvelope;
     413: ErrorEnvelope;
     415: ErrorEnvelope;
     422: ErrorEnvelope;
@@ -2046,6 +2419,7 @@ export type ActivateProviderApplicationKeyErrors = {
     401: ErrorEnvelope;
     403: ErrorEnvelope;
     409: ErrorEnvelope;
+    410: ErrorEnvelope;
     413: ErrorEnvelope;
     415: ErrorEnvelope;
     422: ErrorEnvelope;
@@ -2071,6 +2445,7 @@ export type DiscardProviderApplicationKeyErrors = {
     401: ErrorEnvelope;
     403: ErrorEnvelope;
     409: ErrorEnvelope;
+    410: ErrorEnvelope;
     413: ErrorEnvelope;
     415: ErrorEnvelope;
     422: ErrorEnvelope;
@@ -2338,6 +2713,7 @@ export type ListAdministratorOrdersData = {
     };
     path?: never;
     query?: {
+        alipay_account_id?: string;
         api_client_id?: string;
         created_from?: string;
         created_to?: string;
@@ -2551,6 +2927,7 @@ export type ListAdministratorLedgerEntriesData = {
     };
     path?: never;
     query?: {
+        alipay_account_id?: string;
         q?: string;
         direction?: 'CREDIT' | 'DEBIT';
         state?: AdminLedgerEntryState;
@@ -3468,6 +3845,7 @@ export type SiteListAdministratorOrdersData = {
         clientId: string;
     };
     query?: {
+        alipay_account_id?: string;
         created_from?: string;
         created_to?: string;
         checkout_status?: CheckoutStatus;

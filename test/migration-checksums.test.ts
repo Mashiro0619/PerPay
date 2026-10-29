@@ -43,6 +43,7 @@ const publishedMigrations = [
   { version: 34, name: "multi_business_websites", checksum: "7ac86c4d948f23c6ee1986b362ba3f9347291f034426f05e0b15b53aa3e130ea" },
   { version: 35, name: "administrator_ledger_event_query_indexes", checksum: "89fca4d60ccb10b8d8b72031bb83b169615ee20223c988a9c7db3733332de42d" },
   { version: 36, name: "administrator_login_session_metadata", checksum: "a2d35803417119fecd066bd82805545b1ed46f9d37ee30257b2203f3ccfd19cb" },
+  { version: 37, name: "multiple_alipay_accounts", checksum: "5e289d1b4609a1f491f5fd51f2e9b440c1fb8b2d553db19ec8025bde744811b7" },
 ] as const;
 
 describe("published migration catalog", () => {

@@ -12,9 +12,19 @@ export function countSiteDomainViolations(connection: DatabaseSync): number {
     catch { violations++; }
   }
   const sites = connection.prepare("SELECT client_id, configuration FROM sites").all() as Array<{ client_id: string; configuration: string }>;
+  const accountsAvailable = !!connection.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'alipay_accounts'").get();
   for (const row of sites) {
     if (!siteClientIdSchema.safeParse(row.client_id).success) violations++;
-    try { if (!siteConfigurationSchema.safeParse(JSON.parse(row.configuration)).success) violations++; }
+    try {
+      const parsed = siteConfigurationSchema.safeParse(JSON.parse(row.configuration));
+      if (!parsed.success) violations++;
+      else if (accountsAvailable) {
+        if (!parsed.data.collection) violations++;
+        else for (const account of parsed.data.collection.accounts) {
+          if (!connection.prepare("SELECT 1 FROM alipay_accounts WHERE account_id = ?").get(account.account_id)) violations++;
+        }
+      }
+    }
     catch { violations++; }
   }
   const count = (sql: string): number => Number((connection.prepare(sql).get() as { total: number | bigint }).total);

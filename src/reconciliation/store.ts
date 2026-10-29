@@ -85,7 +85,7 @@ export interface FinancialExceptionPage {
 }
 
 export interface FinancialExceptionSummary {
-  readonly providerAccountKey: string;
+  readonly providerAccountKey: string | null;
   readonly open: number;
   readonly resolved: number;
   readonly total: number;
@@ -951,8 +951,8 @@ export class ReconciliationStore {
     return this.openExceptionPage(providerAccountKey, null, limit).exceptions;
   }
 
-  exceptionSummary(providerAccountKey = "primary"): FinancialExceptionSummary {
-    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(providerAccountKey)) {
+  exceptionSummary(providerAccountKey: string | null = "primary"): FinancialExceptionSummary {
+    if (providerAccountKey !== null && !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(providerAccountKey)) {
       throw new RangeError("provider account key is invalid");
     }
     return this.#database.read((connection) => {
@@ -963,9 +963,9 @@ export class ReconciliationStore {
              SUM(CASE WHEN status = 'RESOLVED' THEN 1 ELSE 0 END) AS resolved_count,
              COUNT(*) AS total_count
              FROM financial_exceptions
-            WHERE provider_account_key = ?`,
+            ${providerAccountKey === null ? "" : "WHERE provider_account_key = ?"}`,
         )
-        .get(providerAccountKey) as {
+        .get(...(providerAccountKey === null ? [] : [providerAccountKey])) as {
           open_count: bigint | number | null;
           resolved_count: bigint | number | null;
           total_count: bigint | number;
@@ -982,12 +982,12 @@ export class ReconciliationStore {
   }
 
   openExceptionPage(
-    providerAccountKey = "primary",
+    providerAccountKey: string | null = "primary",
     cursor: FinancialExceptionCursor | null = null,
     limit = 100,
     options: { readonly excludeIgnoredReminders?: boolean; readonly query?: ListQuery<ExceptionSort> } = {},
   ): FinancialExceptionPage {
-    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(providerAccountKey)) {
+    if (providerAccountKey !== null && !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(providerAccountKey)) {
       throw new RangeError("provider account key is invalid");
     }
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1_000) {
@@ -1006,7 +1006,7 @@ export class ReconciliationStore {
     const rows = this.#database.read((connection) => connection
         .prepare(
           `${EXCEPTION_COLUMNS}
-            WHERE provider_account_key = ? AND status = 'OPEN'
+            WHERE ${providerAccountKey === null ? "" : "provider_account_key = ? AND"} status = 'OPEN'
               AND exception_type NOT IN ('UNMATCHED_DEBIT', 'UNLINKED_REFUND')
               AND (? = 0 OR NOT EXISTS (
                 SELECT 1 FROM admin_work_item_states AS reminder
@@ -1020,7 +1020,7 @@ export class ReconciliationStore {
             LIMIT ?`,
         )
         .all(
-          providerAccountKey,
+          ...(providerAccountKey === null ? [] : [providerAccountKey]),
           options.excludeIgnoredReminders ? 1 : 0,
           ...search.parameters, ...seek.parameters,
           limit + 1,

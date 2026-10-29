@@ -1,4 +1,5 @@
 import { SiteWebhookProcessor } from "../notifications/site-processor.ts";
+import type { AlipayAccountSnapshot } from "../alipay-accounts/model.ts";
 import type { SiteStore } from "../sites/store.ts";
 import { CheckoutVerifier } from "./checkout-verification.ts";
 import { LedgerManualScanner } from "./ledger-manual-scan.ts";
@@ -63,6 +64,20 @@ interface RuntimeControllerOptions {
   readonly webhooks: WebhookStore;
   readonly sites?: SiteStore | null;
   readonly clock?: (() => number) | undefined;
+  readonly accounts?: (() => readonly AlipayAccountSnapshot[]) | undefined;
+}
+
+interface AccountWorker {
+  readonly account: AlipayAccountSnapshot;
+  readonly scheduler: LedgerIngestScheduler;
+  readonly manualScanner: LedgerManualScanner;
+}
+
+export interface AccountRuntimeHealth {
+  readonly state: string;
+  readonly lastSuccessAt: number | null;
+  readonly lastErrorCode: string | null;
+  readonly collectionReady: boolean;
 }
 
 const disabledLedgerHealth: RevisionedLedgerHealth = Object.freeze({
@@ -100,6 +115,10 @@ export class RuntimeController {
   readonly #clock: () => number;
   readonly #checkoutVerifier: CheckoutVerifier;
   readonly #ledgerManualScanner: LedgerManualScanner;
+  readonly #accounts: (() => readonly AlipayAccountSnapshot[]) | undefined;
+  readonly #accountWorkers = new Map<string, AccountWorker>();
+  readonly #accountTransitions = new Set<string>();
+  readonly #pausedAccountHealth = new Map<string, RevisionedLedgerHealth>();
   #ledgerScheduler: LedgerIngestScheduler | null = null;
   #reconciliationScheduler: ReconciliationScheduler | null = null;
   #webhookScheduler: WebhookScheduler | null = null;
@@ -123,6 +142,7 @@ export class RuntimeController {
     this.#clock = options.clock ?? (() => Date.now());
     this.#checkoutVerifier = new CheckoutVerifier(this.#clock);
     this.#ledgerManualScanner = new LedgerManualScanner(this.#clock);
+    this.#accounts = options.accounts;
   }
 
   start(snapshot: PaymentRuntimeSnapshot): Promise<void> {
@@ -148,6 +168,47 @@ export class RuntimeController {
     return operation;
   }
 
+  beginAccountTransition(accountId: string): Promise<void> {
+    this.#accountTransitions.add(accountId);
+    const operation = this.#mutation.catch(() => undefined).then(async () => {
+      const worker = this.#accountWorkers.get(accountId);
+      if (!worker) return;
+      worker.manualScanner.invalidate();
+      await worker.scheduler.stop();
+      this.#pausedAccountHealth.set(accountId, { enabled: true, paymentRevision: worker.account.revision, ...worker.scheduler.health() });
+      this.#accountWorkers.delete(accountId);
+    });
+    this.#mutation = operation;
+    return operation;
+  }
+
+  applyAccounts(accountId: string): Promise<void> {
+    const operation = this.#mutation.catch(() => undefined).then(async () => {
+      this.#accountTransitions.delete(accountId);
+      this.#pausedAccountHealth.delete(accountId);
+      if (!this.#snapshot || this.#transitioning || this.#stopped) return;
+      await this.#applyMultiAccountSnapshot(this.#snapshot);
+    });
+    this.#mutation = operation;
+    return operation;
+  }
+
+  accountHealth(accountId: string): AccountRuntimeHealth {
+    const account = this.#accounts?.().find(account => account.id === accountId);
+    const worker = this.#accountWorkers.get(accountId);
+    const health = worker?.scheduler.health();
+    const lastSuccessAt = health?.lastSuccessAt ?? null;
+    const ready = Boolean(account?.enabled && account.configured && health &&
+      !this.#accountTransitions.has(accountId) && !this.#transitioning && !this.#stopped && health.state !== "stopped" &&
+      health.lastErrorCode === null && isFresh(lastSuccessAt, this.#clock(), account.provider!.maximumSuccessAgeMilliseconds));
+    return { state: this.#accountTransitions.has(accountId) ? "transitioning" : health?.state ?? "unconfigured",
+      lastSuccessAt, lastErrorCode: health?.lastErrorCode ?? null, collectionReady: ready };
+  }
+
+  accountStatuses(): readonly { accountId: string; name: string; enabled: boolean; health: AccountRuntimeHealth }[] {
+    return this.#accounts?.().map(account => ({ accountId: account.id, name: account.name, enabled: account.enabled, health: this.accountHealth(account.id) })) ?? [];
+  }
+
   async stop(): Promise<void> {
     if (this.#stopped) {
       await this.#mutation.catch(() => undefined);
@@ -161,17 +222,30 @@ export class RuntimeController {
 
   status(): PaymentRuntimeStatus {
     const snapshot = this.#snapshot;
+    const provider = this.#accounts?.().find(account => account.provider)?.provider ?? snapshot?.provider;
     return Object.freeze({
-      configured: snapshot !== null && isPaymentConfigured(snapshot),
+      configured: this.#accounts ? this.#accounts().some(account => account.configured && account.enabled) : snapshot !== null && isPaymentConfigured(snapshot),
       transitioning: this.#transitioning,
       paymentRevision: snapshot?.paymentRevision ?? 0,
       activeProviderAccountKey: snapshot?.activeProviderAccountKey ?? null,
-      scanIntervalMilliseconds: snapshot?.provider?.scanIntervalMilliseconds ?? null,
-      maximumSuccessAgeMilliseconds: snapshot?.provider?.maximumSuccessAgeMilliseconds ?? null,
+      scanIntervalMilliseconds: provider?.scanIntervalMilliseconds ?? null,
+      maximumSuccessAgeMilliseconds: provider?.maximumSuccessAgeMilliseconds ?? null,
     });
   }
 
   ledgerHealth(): RevisionedLedgerHealth {
+    if (this.#accounts) {
+      const workers = [...this.#accountWorkers.values()];
+      if (!workers.length) return disabledLedgerHealth;
+      const health = workers.map(worker => worker.scheduler.health());
+      return { enabled: true, paymentRevision: this.#snapshot?.paymentRevision ?? 0,
+        state: health.some(item => item.state === "degraded") ? "degraded" : health.some(item => item.inFlight) ? "running" : "idle",
+        inFlight: health.some(item => item.inFlight),
+        lastAttemptAt: maximumTimestamp(health.map(item => item.lastAttemptAt)),
+        lastSuccessAt: maximumTimestamp(health.map(item => item.lastSuccessAt)),
+        lastErrorCode: health.find(item => item.lastErrorCode)?.lastErrorCode ?? null,
+        consecutiveFailures: Math.max(...health.map(item => item.consecutiveFailures)) };
+    }
     if (!this.#ledgerScheduler) return disabledLedgerHealth;
     return Object.freeze({
       enabled: true,
@@ -181,27 +255,41 @@ export class RuntimeController {
   }
 
   ledgerNextRunAt(): number | null {
+    if (this.#accounts) {
+      const times = [...this.#accountWorkers.values()].flatMap(worker => {
+        const next = worker.scheduler.nextScanAt();
+        return worker.scheduler.health().inFlight || next === null ? [] : [next];
+      });
+      return times.length ? Math.min(...times) : null;
+    }
     if (!this.#ledgerScheduler || this.#transitioning) return null;
     const health = this.#ledgerScheduler.health();
     return health.inFlight || health.state === "stopped" ? null : this.#ledgerScheduler.nextScanAt();
   }
 
-  ledgerManualScan(): LedgerManualScanStatus {
-    const scheduler = this.#ledgerScheduler;
+  ledgerManualScan(accountId?: string): LedgerManualScanStatus {
+    const worker = this.#accounts ? this.#accountWorker(accountId) : null;
+    const scheduler = this.#accounts ? worker?.scheduler : this.#ledgerScheduler;
     let reason: LedgerManualScanUnavailableReason | null = null;
     if (this.#stopped || !this.#started) reason = "stopped";
     else if (this.#transitioning) reason = "transitioning";
-    else if (!scheduler || !this.#snapshot || !isPaymentConfigured(this.#snapshot)) reason = "not_configured";
+    else if (!scheduler || !this.#snapshot || (!this.#accounts && !isPaymentConfigured(this.#snapshot))) reason = "not_configured";
     else if (scheduler.health().state === "stopped") reason = "stopped";
     else if (scheduler.health().lastErrorCode === "scan_schedule_unavailable") reason = "storage_unavailable";
-    return { available: reason === null, unavailable_reason: reason, request: this.#ledgerManualScanner.get() };
+    return { available: reason === null, unavailable_reason: reason, request: (worker?.manualScanner ?? this.#ledgerManualScanner).get() };
   }
 
-  requestLedgerScan(): LedgerManualScanRequest {
-    const scheduler = this.#ledgerScheduler;
-    if (!scheduler || !this.ledgerManualScan().available) throw new Error("ledger scan unavailable");
-    return this.#ledgerManualScanner.request(scheduler,
-      () => !this.#stopped && !this.#transitioning && this.#ledgerScheduler === scheduler);
+  requestLedgerScan(accountId?: string): LedgerManualScanRequest {
+    const worker = this.#accounts ? this.#accountWorker(accountId) : null;
+    const scheduler = this.#accounts ? worker?.scheduler : this.#ledgerScheduler;
+    if (!scheduler || !this.ledgerManualScan(accountId).available) throw new Error("ledger scan unavailable");
+    return (worker?.manualScanner ?? this.#ledgerManualScanner).request(scheduler,
+      () => !this.#stopped && !this.#transitioning && (worker ? this.#accountWorkers.get(worker.account.id) === worker : this.#ledgerScheduler === scheduler));
+  }
+
+  #accountWorker(accountId?: string): AccountWorker | null {
+    if (accountId) return this.#accountWorkers.get(accountId) ?? null;
+    return this.#accountWorkers.size === 1 ? this.#accountWorkers.values().next().value! : null;
   }
 
   reconciliationHealth(): RevisionedReconciliationHealth {
@@ -232,16 +320,18 @@ export class RuntimeController {
   checkoutVerification(orderId: string) { return this.#checkoutVerifier.get(orderId); }
 
   requestCheckoutVerification(orderId: string) {
-    const scheduler = this.#ledgerScheduler, reconciliation = this.#reconciliationScheduler;
-    if (!scheduler || !reconciliation || this.#stopped || this.#transitioning) throw new Error("payment runtime unavailable");
     const order = this.#orders.adminGet(orderId);
+    const worker = this.#accounts ? this.#accountWorkers.get(order.alipayAccountId) : null;
+    const scheduler = this.#accounts ? worker?.scheduler : this.#ledgerScheduler, reconciliation = this.#reconciliationScheduler;
+    if (!scheduler || !reconciliation || this.#stopped || this.#transitioning) throw new Error("payment runtime unavailable");
     if (order.checkout.status !== "OPEN" || order.payment.status !== "UNPAID") return this.#checkoutVerifier.get(orderId);
     return this.#checkoutVerifier.request(orderId, scheduler, async () => { await reconciliation.verifyOrder(orderId); this.#orders.adminGet(orderId); },
-      () => !this.#stopped && !this.#transitioning && this.#ledgerScheduler === scheduler && this.#reconciliationScheduler === reconciliation);
+      () => !this.#stopped && !this.#transitioning && (worker ? this.#accountWorkers.get(order.alipayAccountId) === worker : this.#ledgerScheduler === scheduler) && this.#reconciliationScheduler === reconciliation);
   }
 
   async triggerOrder(orderId: string): Promise<void> {
-    this.#ledgerScheduler?.refreshSchedule();
+    if (this.#accounts) this.#accountWorkers.get(this.#orders.adminGet(orderId).alipayAccountId)?.scheduler.refreshSchedule();
+    else this.#ledgerScheduler?.refreshSchedule();
     await this.#reconciliationScheduler?.triggerOrder(orderId);
   }
 
@@ -256,6 +346,7 @@ export class RuntimeController {
   assertProviderSwitchAllowed(
     current: PaymentRuntimeSnapshot,
     accountKey = current.activeProviderAccountKey,
+    alipayAccountId?: string,
   ): void {
     if (!accountKey) return;
     const counts = this.#database.read((connection) => {
@@ -297,9 +388,12 @@ export class RuntimeController {
     if (counts.openOrders > 0) {
       throw providerSwitchBlocked("当前查账账户仍有未支付订单");
     }
-    const ledger = this.#pausedLedgerHealth ?? this.ledgerHealth();
+    const worker = alipayAccountId ? this.#accountWorkers.get(alipayAccountId) : null;
+    const ledger = alipayAccountId ? this.#pausedAccountHealth.get(alipayAccountId) ?? (worker
+      ? { enabled: true, paymentRevision: worker.account.revision, ...worker.scheduler.health() }
+      : disabledLedgerHealth) : this.#pausedLedgerHealth ?? this.ledgerHealth();
     const reconciliation = this.#pausedReconciliationHealth ?? this.reconciliationHealth();
-    if (counts.runningScans > 0 || ledger.inFlight || reconciliation.inFlight) {
+    if (counts.runningScans > 0 || ledger.inFlight || (!alipayAccountId && reconciliation.inFlight)) {
       throw providerSwitchBlocked("当前查账或自动确认收款任务尚未结束");
     }
     // No recorded income does not prove that the last order has no late-visible payment.
@@ -312,7 +406,7 @@ export class RuntimeController {
       !isFresh(ledger.lastSuccessAt, now, maximumAge) ||
       !isFresh(reconciliation.lastSuccessAt, now, maximumAge) ||
       ledger.paymentRevision !== current.paymentRevision ||
-      reconciliation.paymentRevision !== current.paymentRevision
+      (!alipayAccountId && reconciliation.paymentRevision !== current.paymentRevision)
     ) {
       throw providerSwitchBlocked("切换前需要当前查账账户完成近期查账和自动确认收款");
     }
@@ -329,7 +423,14 @@ export class RuntimeController {
     }
   }
 
+  assertAccountProviderSwitchAllowed(account: AlipayAccountSnapshot): void {
+    if (!this.#snapshot) throw providerSwitchBlocked("收款服务尚未启动，请稍后重试。");
+    this.assertProviderSwitchAllowed({ ...this.#snapshot, provider: account.provider,
+      activeProviderAccountKey: account.providerAccountKey, paymentRevision: account.revision }, account.providerAccountKey, account.id);
+  }
+
   async #applySnapshot(snapshot: PaymentRuntimeSnapshot): Promise<void> {
+    if (this.#accounts) return this.#applyMultiAccountSnapshot(snapshot);
     const previous = this.#snapshot;
     const paymentChanged = previous === null ||
       previous.paymentRevision !== snapshot.paymentRevision ||
@@ -386,6 +487,41 @@ export class RuntimeController {
     }
   }
 
+  async #applyMultiAccountSnapshot(snapshot: PaymentRuntimeSnapshot): Promise<void> {
+    const accounts = this.#accounts!();
+    const previous = this.#snapshot;
+    this.#orders.initialize();
+    for (const [id, worker] of this.#accountWorkers) {
+      const account = accounts.find(account => account.id === id);
+      if (account?.provider && account.providerAccountKey && account.revision === worker.account.revision &&
+        previous?.paymentRevision === snapshot.paymentRevision) continue;
+      worker.manualScanner.invalidate();
+      await worker.scheduler.stop();
+      this.#accountWorkers.delete(id);
+    }
+    if (!this.#reconciliationScheduler && this.#started && !this.#stopped) {
+      const reconciliation = this.#createReconciliationScheduler(snapshot.paymentRevision);
+      this.#reconciliationScheduler = reconciliation;
+      this.#reconciliationRevision = snapshot.paymentRevision;
+      void reconciliation.start().catch(error => logRuntimeError("reconciliation_scheduler_startup_failed", error));
+    }
+    this.#snapshot = snapshot;
+    for (const account of accounts) {
+      if (!account.provider || !account.providerAccountKey || this.#accountWorkers.has(account.id) ||
+        this.#accountTransitions.has(account.id) || this.#stopped) continue;
+      const accountSnapshot: PaymentRuntimeSnapshot = { ...snapshot,
+        provider: account.provider, activeProviderAccountKey: account.providerAccountKey,
+        paymentRevision: account.revision };
+      const scheduler = this.#createLedgerScheduler(accountSnapshot);
+      this.#accountWorkers.set(account.id, { account, scheduler, manualScanner: new LedgerManualScanner(this.#clock) });
+      scheduler.start();
+    }
+    const webhookConfigured = this.#sites !== null || isWebhookConfigured(snapshot);
+    if (!previous || (!this.#sites && !sameWebhookConfiguration(previous, snapshot))) await this.#stopWebhookScheduler();
+    if (webhookConfigured && !this.#webhookScheduler) await this.#installWebhookScheduler(snapshot);
+    this.#transitioning = false;
+  }
+
   async #pause(): Promise<void> {
     const ledger = this.#ledgerScheduler;
     const reconciliation = this.#reconciliationScheduler;
@@ -427,6 +563,12 @@ export class RuntimeController {
   }
 
   async #stopPaymentSchedulers(): Promise<void> {
+    for (const [id, worker] of this.#accountWorkers) {
+      worker.manualScanner.invalidate();
+      await worker.scheduler.stop();
+      this.#pausedAccountHealth.set(id, { enabled: true, paymentRevision: worker.account.revision, ...worker.scheduler.health() });
+      this.#accountWorkers.delete(id);
+    }
     this.#ledgerManualScanner.invalidate();
     const ledger = this.#ledgerScheduler;
     const reconciliation = this.#reconciliationScheduler;
@@ -507,7 +649,7 @@ export class RuntimeController {
     if (!providerSettings || !providerAccountKey) {
       throw new Error("payment runtime was started without provider settings");
     }
-    const activation = this.#ledger.activeProviderIdentity();
+    const activation = this.#accounts ? this.#ledger.providerIdentity(providerAccountKey) : this.#ledger.activeProviderIdentity();
     if (!activation || activation.providerAccountKey !== providerAccountKey) {
       throw new Error("active provider generation does not match runtime settings");
     }
@@ -539,7 +681,7 @@ export class RuntimeController {
       scanIntervalMilliseconds: providerSettings.scanIntervalMilliseconds,
       getScanIntervalMilliseconds: getIntervalMilliseconds,
       maxRequestsPerRun: 32,
-      initialWindowStartMilliseconds: activation.activatedAt,
+      initialWindowStartMilliseconds: "activatedAt" in activation ? activation.activatedAt as number : activation.boundAt,
       clock: this.#clock,
     });
     return new LedgerIngestScheduler({
@@ -569,7 +711,7 @@ export class RuntimeController {
           error_code: result.errorCode,
           consecutive_failures: health.consecutiveFailures,
         }));
-        if (this.#reconciliationRevision === snapshot.paymentRevision) {
+        if (this.#accounts || this.#reconciliationRevision === snapshot.paymentRevision) {
           void this.triggerReconciliation("ledger_scan").catch((error: unknown) => {
             logRuntimeError("reconciliation_sweep_trigger_failed", error);
           });
@@ -599,7 +741,8 @@ export class RuntimeController {
           continuation_pending: result.continuationPending,
           consecutive_failures: health.consecutiveFailures,
         }));
-        if (this.#ledgerRevision === paymentRevision) this.#ledgerScheduler?.refreshSchedule();
+        if (this.#accounts) for (const worker of this.#accountWorkers.values()) worker.scheduler.refreshSchedule();
+        else if (this.#ledgerRevision === paymentRevision) this.#ledgerScheduler?.refreshSchedule();
       },
       onAutoSettled: () => {
         void this.triggerWebhook("auto_settlement").catch((error: unknown) => {
@@ -710,6 +853,11 @@ function isFresh(lastSuccessAt: number | null, now: number, maximumAge: number):
   if (lastSuccessAt === null) return false;
   const age = now - lastSuccessAt;
   return Number.isSafeInteger(age) && age >= 0 && age <= maximumAge;
+}
+
+function maximumTimestamp(values: readonly (number | null)[]): number | null {
+  const timestamps = values.filter((value): value is number => value !== null);
+  return timestamps.length ? Math.max(...timestamps) : null;
 }
 
 function safeNow(value: number): number {

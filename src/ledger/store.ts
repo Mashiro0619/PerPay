@@ -341,6 +341,10 @@ export class LedgerStore {
     return this.#database.read((connection) => readActiveProviderIdentity(connection));
   }
 
+  providerIdentity(providerAccountKey: string): ProviderIdentityBinding | null {
+    return this.#database.read(connection => readProviderIdentityBinding(connection, providerAccountKey));
+  }
+
   providerIdentityHistory(): readonly ProviderIdentityActivation[] {
     return this.#database.read((connection) => Object.freeze(
       (connection.prepare(
@@ -378,7 +382,9 @@ export class LedgerStore {
       }
       assertProviderIdentityBindingIntegrity(binding);
       const active = readActiveProviderIdentity(connection);
-      if (active === null || active.providerAccountKey !== providerAccountKey) {
+      const hasAccounts = connection.prepare("SELECT 1 FROM sqlite_schema WHERE name = 'alipay_accounts'").get();
+      const account = hasAccounts && connection.prepare("SELECT account_id FROM alipay_accounts WHERE provider_account_key = ?").get(providerAccountKey);
+      if (!account && (active === null || active.providerAccountKey !== providerAccountKey)) {
         throw new Error("provider account must be active before ledger ingestion");
       }
       const running = readRunningRun(connection, providerAccountKey, scanLane);
@@ -959,13 +965,13 @@ export class LedgerStore {
   }
 
   conflictPage(
-    providerAccountKey = "primary",
+    providerAccountKey: string | null = "primary",
     status: LedgerConflictStatus | "ALL" = "OPEN",
     cursor: LedgerConflictCursor | null = null,
     limit = 100,
     options: { readonly excludeIgnoredReminders?: boolean; readonly query?: ListQuery<ConflictSort> } = {},
   ): LedgerConflictPage {
-    const account = normalizeProviderAccountKey(providerAccountKey);
+    const account = providerAccountKey === null ? null : normalizeProviderAccountKey(providerAccountKey);
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) {
       throw new RangeError("ledger conflict list limit is invalid");
     }
@@ -985,7 +991,7 @@ export class LedgerStore {
         .prepare(
           `SELECT ${CONFLICT_COLUMNS}
              FROM ledger_conflicts
-            WHERE provider_account_key = ?
+            WHERE ${account === null ? "1 = 1" : "provider_account_key = ?"}
               AND (? = 'ALL' OR status = ?)
               AND (? = 0 OR NOT EXISTS (
                 SELECT 1 FROM admin_work_item_states AS reminder
@@ -999,7 +1005,7 @@ export class LedgerStore {
             LIMIT ?`,
         )
         .all(
-          account,
+          ...(account === null ? [] : [account]),
           status,
           status,
           options.excludeIgnoredReminders ? 1 : 0,
@@ -1021,17 +1027,17 @@ export class LedgerStore {
     });
   }
 
-  conflictSummary(providerAccountKey = "primary"): LedgerConflictSummary {
-    const account = normalizeProviderAccountKey(providerAccountKey);
+  conflictSummary(providerAccountKey: string | null = "primary"): LedgerConflictSummary {
+    const account = providerAccountKey === null ? null : normalizeProviderAccountKey(providerAccountKey);
     return this.#database.read((connection) => {
       const rows = connection
         .prepare(
           `SELECT conflict_type, status, COUNT(*) AS conflict_count
              FROM ledger_conflicts
-            WHERE provider_account_key = ?
+            ${account === null ? "" : "WHERE provider_account_key = ?"}
             GROUP BY conflict_type, status`,
         )
-        .all(account) as unknown as ConflictSummaryRow[];
+        .all(...(account === null ? [] : [account])) as unknown as ConflictSummaryRow[];
       return summarizeConflicts(account, rows);
     });
   }
@@ -2298,7 +2304,7 @@ function confirmPageVariantConflict(
 }
 
 function summarizeConflicts(
-  providerAccountKey: string,
+  providerAccountKey: string | null,
   rows: readonly ConflictSummaryRow[],
 ): LedgerConflictSummary {
   const counts = new Map<LedgerConflictType, Record<"OPEN" | "RESOLVED" | "IGNORED", number>>();

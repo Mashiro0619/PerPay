@@ -44,14 +44,14 @@ export function seedHistoricalLedgerSource(ledger: LedgerStore, capturedAt: numb
 /** Observe the same event identities from the configured source, without new payments. */
 export function seedCurrentLedgerSourceCopies(ledger: LedgerStore, providerAccountKey: string,
   historical: ReturnType<typeof seedHistoricalLedgerSource>, now: number) {
-  assert.equal(ledger.activeProviderIdentity()?.providerAccountKey, providerAccountKey);
+  assert.equal(ledger.providerIdentity(providerAccountKey)?.providerAccountKey, providerAccountKey);
   const details = historical.details.map((detail, index) => index === 0 ? detail : {
     ...detail, amount: "731.30", raw: { ...(detail.raw as Record<string, unknown>), amount: "731.30" },
   });
   const copies = record(ledger, providerAccountKey, details, now);
   assert.equal(copies[0]!.semanticFingerprint, historical.entries[0]!.semanticFingerprint);
   assert.notEqual(copies[1]!.semanticFingerprint, historical.entries[1]!.semanticFingerprint);
-  assert.equal(ledger.activeProviderIdentity()?.providerAccountKey, providerAccountKey);
+  assert.equal(ledger.providerIdentity(providerAccountKey)?.providerAccountKey, providerAccountKey);
   return { identical: historical.entries[0]!.ledgerEntryId, identicalCopy: copies[0]!.ledgerEntryId,
     inconsistent: historical.entries[1]!.ledgerEntryId, inconsistentCopy: copies[1]!.ledgerEntryId };
 }

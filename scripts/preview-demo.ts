@@ -79,7 +79,7 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
       PERPAY_BACKUP_DIR: join(directory, "backups"),
       PERPAY_PUBLIC_URL: origin,
     });
-    const db = await AppDatabase.open(config.databasePath);
+    const db = await AppDatabase.open(config.databasePath, { masterKey: config.masterKey });
     database = db;
     let liveStarted: number | null = null;
     const liveNow = () => options.clock?.() ?? capturedAt + (liveStarted === null ? 0 : Math.floor(performance.now() - liveStarted));
@@ -96,17 +96,17 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
     const audit = { actorId: "admin", requestId: "documentation-fixture", remoteAddressHash: "0".repeat(64) };
     const application = generateKeyPairSync("rsa", { modulusLength: 2048 });
     const platform = generateKeyPairSync("rsa", { modulusLength: 2048 });
-    await settings.saveCollectionCode({
-      revision: settings.instanceView().revision,
+    const accounts = settings.accountService()!;
+    const account = await accounts.create({
+      name: "演示收款账号", enabled: true,
       code_payload: "https://qr.alipay.com/perpay-documentation-no-real-payment",
-    }, audit);
-    await settings.saveProvider({
-      revision: settings.instanceView().revision, environment: "SANDBOX", app_id: "2026000000000001",
+      environment: "SANDBOX", app_id: "2026000000000001",
       private_key: application.privateKey.export({ format: "pem", type: "pkcs8" }).toString(),
       platform_public_key: platform.publicKey.export({ format: "pem", type: "spki" }).toString(),
-      timeout_milliseconds: 8000, scan_interval_seconds: 60, active_scan_interval_seconds: 8,
-      safety_lag_seconds: 10, maximum_success_age_seconds: 120,
     }, audit);
+    // These two sources deliberately represent one account before and after an
+    // application change, so its duplicate-source examples keep one identity.
+    db.write(connection => connection.prepare("INSERT INTO alipay_account_generations (provider_account_key,account_id,created_at) VALUES (?,?,?)").run("preview-historical", account.id, capturedAt - 27 * DAY));
     const midnight = Math.floor((capturedAt + 8 * 3_600_000) / DAY) * DAY - 8 * 3_600_000;
     let now = midnight - (HISTORY_DAYS - 1) * DAY;
     // Rebase only the empty, newly migrated order clock before creating any financial facts.
@@ -126,6 +126,7 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
       const policy = sites.defaults().policy;
       const site = sites.create({ operation_id: randomUUID(), configuration: {
         name, accepting_orders: options.acceptingOrders ?? true, notifications_enabled: false,
+        collection: { mode: "FIXED", accounts: [{ account_id: account.id, weight: 1 }] },
         notification_origin: options.origin === undefined ? "https://shop.example.com" : options.origin,
         return_origin: options.origin === undefined ? "https://shop.example.com" : options.origin,
         policy: { ...policy, orders: { ...policy.orders, order_ttl_seconds: 1800,
@@ -146,13 +147,12 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
     const unconfiguredSite = createSite("橙页创意商店", { credentials: false, acceptingOrders: false, origin: null });
     const noNotificationSite = createSite("松果知识铺", { notifications: false, origin: null });
     const limitedSite = createSite("白帆数码商城", { pendingOrderLimit: 2 });
-    const orders = new OrderService(db, () => settings.instanceSnapshot(), () => liveStarted === null ? now : liveNow(), sites);
+    const orders = new OrderService(db, () => settings.instanceSnapshot(), () => liveStarted === null ? now : liveNow(), sites, undefined, { accounts: () => accounts.store().snapshots(), available: () => true });
     orders.initialize();
     const reconciliation = new ReconciliationStore(db);
     const webhooks = new WebhookStore(db);
-    const snapshot = settings.instanceSnapshot();
-    assert.ok(snapshot.activeProviderAccountKey);
-    const providerAccountKey = snapshot.activeProviderAccountKey;
+    assert.ok(account.provider_account_key);
+    const providerAccountKey = account.provider_account_key;
     let sequence = 0;
     let ledgerSequence = 0;
     function credit(cents: number, product: string) {
@@ -391,7 +391,11 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
     const app = createApp({
       config, database: db, identity, settings, sites, orders, ledger, reconciliation, webhookStore: webhooks,
       startedAt: new Date(capturedAt - 8 * DAY), clock: liveNow, demoMode: true,
+      runtimeStatus: () => ({ configured: true, transitioning: false,
+        paymentRevision: settings.instanceSnapshot().paymentRevision, activeProviderAccountKey: providerAccountKey,
+        scanIntervalMilliseconds: 60_000, maximumSuccessAgeMilliseconds: 120_000 }),
       ledgerHealth: healthy,
+      accountHealth: () => ({ state: "healthy", lastSuccessAt: liveNow() - 2000, lastErrorCode: null, collectionReady: true }),
       reconciliationHealth: () => ({ ...healthy(), pendingOrders: systemAnalytics(db, 7, liveNow()).pending.orders, continuationPending: false }),
       webhookHealth: () => ({ ...healthy(), pendingDeliveries: webhooks.counts().pending, deadLetters: webhooks.counts().dead }),
       // Default fixtures stay offline. Interactive previews can explicitly supply

@@ -22,7 +22,7 @@ interface SecretRow {
   secret_version: number | bigint; cipher_version: number | bigint; nonce: Uint8Array;
   ciphertext: Uint8Array; authentication_tag: Uint8Array; secret_fingerprint: string;
 }
-export type SiteErrorCode = "site_not_found" | "site_revision_conflict" | "site_operation_conflict" | "site_has_history" | "site_paused" | "site_order_limit_exceeded" | "site_secret_missing";
+export type SiteErrorCode = "site_not_found" | "site_revision_conflict" | "site_operation_conflict" | "site_has_history" | "site_paused" | "site_order_limit_exceeded" | "site_secret_missing" | "site_collection_required" | "site_collection_invalid";
 export class SiteError extends Error {
   readonly code: SiteErrorCode;
   readonly retryAfterSeconds: number | undefined;
@@ -89,9 +89,10 @@ export class SiteStore {
         if (!row) throw new Error("website creation record has no website");
         return mapSite(row);
       }
+      const configuration = resolveSiteCollection(connection, parsed.configuration);
       const clientId = generateSiteClientId();
       new IdentityTransaction(connection).ensureApiClientIdentity(clientId, now);
-      connection.prepare("INSERT INTO sites(client_id, revision, configuration, created_at, updated_at, deleted_at) VALUES (?, 0, ?, ?, ?, NULL)").run(clientId, serialized, now, now);
+      connection.prepare("INSERT INTO sites(client_id, revision, configuration, created_at, updated_at, deleted_at) VALUES (?, 0, ?, ?, ?, NULL)").run(clientId, JSON.stringify(configuration), now, now);
       connection.prepare("INSERT INTO site_creation_requests(operation_id, request_fingerprint, client_id, created_at) VALUES (?, ?, ?, ?)").run(parsed.operation_id, fingerprint, clientId, now);
       auditSite(connection, audit, "site.created", clientId, now, { revision: 0 });
       return requiredSite(connection, clientId);
@@ -104,11 +105,12 @@ export class SiteStore {
     return this.#database.write(connection => {
       const current = requiredSite(connection, clientId);
       checkRevision(current.revision, parsed.revision);
+      const configuration = resolveSiteCollection(connection, { ...parsed.configuration, collection: parsed.configuration.collection ?? current.configuration.collection });
       if (parsed.configuration.notifications_enabled && !readSecret(connection, clientId, "webhook_secret")) {
         throw new SiteError("site_secret_missing", "开启通知前请先生成通知签名密钥。");
       }
       changed(connection.prepare("UPDATE sites SET configuration = ?, revision = revision + 1, updated_at = max(updated_at, ?) WHERE client_id = ? AND revision = ? AND deleted_at IS NULL")
-        .run(JSON.stringify(parsed.configuration), now, clientId, parsed.revision).changes);
+        .run(JSON.stringify(configuration), now, clientId, parsed.revision).changes);
       auditSite(connection, audit, "site.updated", clientId, now, { revision: parsed.revision + 1 });
       return requiredSite(connection, clientId);
     });
@@ -238,6 +240,21 @@ function requiredSite(connection: DatabaseSync, clientId: string): SiteSnapshot 
 }
 function mapSite(row: SiteRow): SiteSnapshot {
   return { clientId: row.client_id, revision: integer(row.revision), configuration: siteConfigurationSchema.parse(JSON.parse(row.configuration)), createdAt: integer(row.created_at), updatedAt: integer(row.updated_at), deletedAt: row.deleted_at === null ? null : integer(row.deleted_at) };
+}
+function resolveSiteCollection(connection: DatabaseSync, configuration: SiteConfiguration): SiteConfiguration {
+  if (!connection.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'alipay_accounts'").get()) return configuration;
+  let collection = configuration.collection;
+  if (!collection) {
+    const rows = connection.prepare("SELECT account_id FROM alipay_accounts WHERE enabled = 1 ORDER BY account_id LIMIT 2").all() as Array<{ account_id: string }>;
+    if (rows.length !== 1) throw new SiteError("site_collection_required", "请为网站选择收款账号。");
+    collection = { mode: "FIXED", accounts: [{ account_id: rows[0]!.account_id, weight: 1 }] };
+  }
+  for (const account of collection.accounts) {
+    if (!connection.prepare("SELECT 1 FROM alipay_accounts WHERE account_id = ?").get(account.account_id)) {
+      throw new SiteError("site_collection_invalid", "所选收款账号不存在，请重新选择。");
+    }
+  }
+  return { ...configuration, collection };
 }
 function readDefaults(connection: DatabaseSync): { revision: number; policy: SitePolicy } {
   const row = connection.prepare("SELECT revision, policy FROM site_defaults WHERE singleton_key = 1").get() as { revision: number | bigint; policy: string } | undefined;

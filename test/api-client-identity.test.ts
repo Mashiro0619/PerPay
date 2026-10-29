@@ -83,6 +83,7 @@ describe("API client identity without credentials", () => {
         audit: connection.prepare("SELECT * FROM audit_events ORDER BY sequence").all(),
       }));
       const before = history(services.database);
+      for (const row of before.orders) row.alipay_account_id = "default";
       services.database.close();
       const legacy = new DatabaseSync(services.config.databasePath);
       try {

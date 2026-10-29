@@ -42,6 +42,7 @@ it("upgrades schema 20 without changing historical payment windows, events or au
     now = base + 60_000;
     orders.closeOrder("default", recent.aggregate.order.orderId);
     const before = history(services.database);
+    for (const row of before.slots) row.alipay_account_id = "default";
     services.database.close();
 
     // Remove only the additive security migrations from this isolated fixture,

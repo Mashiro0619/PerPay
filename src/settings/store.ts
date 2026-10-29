@@ -1,4 +1,5 @@
 import type { InstanceRuntimeSettingsSnapshot } from "./model.ts";
+import { AlipayAccountStore } from "../alipay-accounts/store.ts";
 import { SiteStore } from "../sites/store.ts";
 import { collectionPolicyInputSchema, type CollectionPolicyInput } from "./collection-policy.ts";
 import { collectionCodeInputSchema, type CollectionCodeInput } from "./model.ts";
@@ -137,15 +138,21 @@ export class RuntimeSettingsStore {
   readonly #database: AppDatabase;
   readonly #cipher: RuntimeSecretCipher;
   readonly #sites: SiteStore;
+  readonly #accounts: AlipayAccountStore;
 
   constructor(database: AppDatabase, masterKey: Uint8Array) {
     this.#database = database;
     this.#cipher = new RuntimeSecretCipher(masterKey, database.instanceId());
     this.#sites = new SiteStore(database, masterKey);
+    this.#accounts = new AlipayAccountStore(database, masterKey);
   }
 
   siteStore(): SiteStore | null {
     return this.#database.read(hasSiteSchema) ? this.#sites : null;
+  }
+
+  accountStore(): AlipayAccountStore | null {
+    return this.#accounts.available() ? this.#accounts : null;
   }
 
   initialize(): void {
@@ -158,7 +165,9 @@ export class RuntimeSettingsStore {
       const encryptedSecret = connection.prepare(
         `SELECT 1 AS present FROM runtime_secrets
          UNION ALL SELECT 1 FROM provider_application_key_changes WHERE state = 'PENDING'
-         ${hasSiteSchema(connection) ? "UNION ALL SELECT 1 FROM site_secrets" : ""} LIMIT 1`,
+         ${hasSiteSchema(connection) ? "UNION ALL SELECT 1 FROM site_secrets" : ""}
+         ${connection.prepare("SELECT 1 FROM sqlite_schema WHERE name='alipay_accounts' AND type='table'").get()
+           ? "UNION ALL SELECT 1 FROM alipay_account_secrets UNION ALL SELECT 1 FROM alipay_application_key_changes WHERE state = 'PENDING'" : ""} LIMIT 1`,
       ).get() as { present: number } | undefined;
       if (encryptedSecret) {
         throw new Error(
@@ -180,6 +189,7 @@ export class RuntimeSettingsStore {
       );
       if (Number(inserted.changes) !== 1) throw new Error("master key guard was not initialized");
     });
+    this.accountStore()?.verifySecrets();
   }
 
   /** Reads public presentation flags without loading or decrypting runtime secrets. */
@@ -259,19 +269,24 @@ export class RuntimeSettingsStore {
 
   status(): RuntimeSettingsStatus {
     const snapshot = this.paymentSnapshot();
-    const collectionConfigured = snapshot.collection !== null && collectionCodeError(snapshot.collection.codePayload) === null;
-    const providerConfigured = snapshot.provider !== null && snapshot.activeProviderAccountKey !== null;
+    const accountStore = this.accountStore();
+    const accounts = accountStore?.snapshots() ?? [];
+    const usesAccounts = accountStore !== null;
+    const collectionConfigured = usesAccounts ? accounts.some(account => account.enabled && account.codePayload !== null && collectionCodeError(account.codePayload) === null)
+      : snapshot.collection !== null && collectionCodeError(snapshot.collection.codePayload) === null;
+    const providerConfigured = usesAccounts ? accounts.some(account => account.enabled && account.provider !== null)
+      : snapshot.provider !== null && snapshot.activeProviderAccountKey !== null;
     const apiConfigured = "apiSecret" in snapshot && snapshot.apiSecret !== null;
     return {
       revision: snapshot.revision,
       paymentRevision: snapshot.paymentRevision,
       updatedAt: snapshot.updatedAt,
-      complete: collectionConfigured && providerConfigured,
+      complete: usesAccounts ? accounts.some(account => account.enabled && account.configured) : collectionConfigured && providerConfigured,
       collectionConfigured,
       providerConfigured,
       apiConfigured,
       notificationConfigured: !("webhook" in snapshot) || !snapshot.webhook.enabled || snapshot.webhook.secret !== null,
-      activeProviderAccountKey: snapshot.activeProviderAccountKey,
+      activeProviderAccountKey: usesAccounts ? (accounts.length === 1 ? accounts[0]!.providerAccountKey : null) : snapshot.activeProviderAccountKey,
     };
   }
 

@@ -8,6 +8,7 @@ import { describe, it } from "node:test";
 import { loadConfig } from "../src/config.ts";
 import { AppDatabase } from "../src/database/database.ts";
 import { createApp } from "../src/http/app.ts";
+import type { AlipayAccountView } from "../src/alipay-accounts/model.ts";
 import { IdentityService } from "../src/identity/service.ts";
 import { OrderService } from "../src/orders/service.ts";
 import { RuntimeSettingsService, RuntimeSettingsStore } from "../src/settings/index.ts";
@@ -18,6 +19,12 @@ import {
 
 const origin = "http://localhost:6190";
 const apiSecret = Buffer.alloc(32, 0x72).toString("base64url");
+
+function accountUpdate(account: AlipayAccountView) {
+  return { revision: account.revision, name: account.name, enabled: account.enabled,
+    code_payload: account.code_payload, environment: account.environment, app_id: account.app_id,
+    platform_public_key: account.platform_public_key };
+}
 
 describe("advanced settings HTTP contract", () => {
   it("separates instance readiness from API authentication when no credential exists", async () => {
@@ -223,7 +230,7 @@ describe("provider application key HTTP contract", () => {
       PERPAY_BACKUP_DIR: join(directory, "backups"),
       PERPAY_PUBLIC_URL: origin,
     });
-    const database = await AppDatabase.open(config.databasePath);
+    const database = await AppDatabase.open(config.databasePath, { masterKey: config.masterKey });
     const identity = new IdentityService(database);
     await identity.initialize();
     await identity.setupAdmin(HTTP_TEST_ADMIN_PASSWORD);
@@ -236,7 +243,7 @@ describe("provider application key HTTP contract", () => {
     const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
     try {
       const unauthenticated = await app.request(
-        "/api/admin/v1/settings/provider/application-key/actions/generate",
+        "/api/admin/v1/alipay-accounts/draft/application-key",
         {
           method: "POST",
           headers: { "content-type": "application/json", origin },
@@ -247,64 +254,59 @@ describe("provider application key HTTP contract", () => {
 
       const login = await loginOnly(app);
       const elevatedHeaders = login.headers;
+      const created = await app.request("/api/admin/v1/alipay-accounts", {
+        method: "POST", headers: elevatedHeaders, body: JSON.stringify({ name: "首次接入账号" }),
+      });
+      assert.equal(created.status, 201);
+      const account = (await created.json() as { data: AlipayAccountView }).data;
+      const keyPath = "/api/admin/v1/alipay-accounts/" + account.id + "/application-key";
       const generated = await app.request(
-        "/api/admin/v1/settings/provider/application-key/actions/generate",
+        keyPath,
         {
           method: "POST",
           headers: elevatedHeaders,
           body: JSON.stringify({ revision: 0 }),
         },
       );
-      assert.equal(generated.status, 201);
+      assert.equal(generated.status, 200);
       assert.equal(generated.headers.get("cache-control"), "no-store");
-      const body = await generated.json() as {
-        data: {
-          settings: {
-            revision: number;
-            payment_revision: number;
-            application_public_key: string;
-            application_key_fingerprint: string;
-          };
-          created: boolean;
-          public_key: string;
-          fingerprint: string;
-        };
-      };
-      assert.equal(body.data.created, true);
-      assert.equal(body.data.settings.revision, 1);
-      assert.equal(body.data.settings.payment_revision, 0);
-      assert.equal(body.data.settings.application_public_key, body.data.public_key);
-      assert.equal(body.data.settings.application_key_fingerprint, body.data.fingerprint);
+      const body = await generated.json() as { data: AlipayAccountView };
+      assert.equal(body.data.id, account.id);
+      assert.equal(body.data.revision, 1);
+      assert.equal(body.data.configured, false);
+      assert.ok(body.data.application_public_key);
+      assert.match(body.data.application_key_fingerprint!, /^[a-f0-9]{64}$/);
       assert.equal(JSON.stringify(body).includes("PRIVATE KEY"), false);
       assert.equal(JSON.stringify(body).includes("BEGIN RSA"), false);
 
-      const settingsResponse = await app.request("/api/admin/v1/settings", {
+      const settingsResponse = await app.request("/api/admin/v1/alipay-accounts/" + account.id, {
         headers: { cookie: elevatedHeaders.cookie },
       });
       assert.equal(settingsResponse.status, 200);
       const settingsBody = await settingsResponse.json() as {
         data: { application_public_key: string; application_key_fingerprint: string };
       };
-      assert.equal(settingsBody.data.application_public_key, body.data.public_key);
-      assert.equal(settingsBody.data.application_key_fingerprint, body.data.fingerprint);
+      assert.equal(settingsBody.data.application_public_key, body.data.application_public_key);
+      assert.equal(settingsBody.data.application_key_fingerprint, body.data.application_key_fingerprint);
 
       const repeated = await app.request(
-        "/api/admin/v1/settings/provider/application-key/actions/generate",
+        keyPath,
         {
           method: "POST",
           headers: elevatedHeaders,
           body: JSON.stringify({ revision: 0 }),
         },
       );
-      assert.equal(repeated.status, 200);
-      const repeatedBody = await repeated.json() as typeof body;
-      assert.equal(repeatedBody.data.created, false);
-      assert.equal(repeatedBody.data.settings.revision, 1);
-      assert.equal(repeatedBody.data.public_key, body.data.public_key);
-      assert.equal(repeatedBody.data.fingerprint, body.data.fingerprint);
+      assert.equal(repeated.status, 409);
+      assert.equal((await repeated.json() as { error: { code: string } }).error.code, "alipay_account_revision_conflict");
+      assert.equal(settings.accountService()!.get(account.id).application_public_key, body.data.application_public_key);
+      const existing = await app.request(keyPath, { method: "POST", headers: elevatedHeaders, body: JSON.stringify({ revision: 1 }) });
+      assert.equal(existing.status, 409);
+      assert.equal((await existing.json() as { error: { code: string } }).error.code, "provider_application_key_change_conflict");
+      assert.equal(settings.accountService()!.get(account.id).application_key_fingerprint, body.data.application_key_fingerprint);
 
       const future = await app.request(
-        "/api/admin/v1/settings/provider/application-key/actions/generate",
+        keyPath,
         {
           method: "POST",
           headers: elevatedHeaders,
@@ -314,11 +316,11 @@ describe("provider application key HTTP contract", () => {
       assert.equal(future.status, 409);
       assert.equal(
         (await future.json() as { error: { code: string } }).error.code,
-        "settings_revision_conflict",
+        "alipay_account_revision_conflict",
       );
       assert.equal(database.read((connection) => Number((connection.prepare(
         `SELECT COUNT(*) AS count FROM audit_events
-          WHERE action = 'settings.provider_application_key_generated'`,
+          WHERE action = 'alipay_account.application_key_generated'`,
       ).get() as { count: bigint | number }).count)), 1);
     } finally {
       database.close();
@@ -326,7 +328,7 @@ describe("provider application key HTTP contract", () => {
     }
   });
 
-  it("rejects regeneration after a provider application is active", async () => {
+  it("rejects initial key generation and direct private-key replacement after an account is configured", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-http-active-provider-key-"));
     const { config, database, identity, settings, orders } = await createConfiguredHttpServices({
       directory,
@@ -337,29 +339,28 @@ describe("provider application key HTTP contract", () => {
     const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
     try {
       const elevatedHeaders = await loginHeaders(app);
+      const account = settings.accountService()!.get("default");
       const response = await app.request(
-        "/api/admin/v1/settings/provider/application-key/actions/generate",
+        "/api/admin/v1/alipay-accounts/default/application-key",
         {
           method: "POST",
           headers: elevatedHeaders,
-          body: JSON.stringify({ revision: 3 }),
+          body: JSON.stringify({ revision: account.revision }),
         },
       );
       assert.equal(response.status, 409);
       assert.equal(
         (await response.json() as { error: { code: string } }).error.code,
-        "provider_application_key_rotation_not_supported",
+        "provider_application_key_change_conflict",
       );
 
       const replacementPrivateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
         .privateKey.export({ format: "pem", type: "pkcs8" }).toString();
-      const update = await app.request("/api/admin/v1/settings/provider", {
+      const update = await app.request("/api/admin/v1/alipay-accounts/default", {
         method: "PUT",
         headers: elevatedHeaders,
         body: JSON.stringify({
-          revision: 3,
-          environment: "PRODUCTION",
-          app_id: "2026000000000001",
+          ...accountUpdate(account),
           private_key: replacementPrivateKey,
         }),
       });
@@ -368,6 +369,7 @@ describe("provider application key HTTP contract", () => {
         (await update.json() as { error: { code: string } }).error.code,
         "provider_application_key_rotation_not_supported",
       );
+      assert.deepEqual(settings.accountService()!.get("default"), account);
     } finally {
       database.close();
       rmSync(directory, { recursive: true, force: true });
@@ -415,20 +417,19 @@ describe("actionable collection configuration errors", () => {
     const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
     try {
       const headers = await loginHeaders(app);
-      const original = settings.instanceView();
-      const invalid = await app.request("/api/admin/v1/settings/collection", { method: "PUT", headers, body: JSON.stringify({ revision: original.revision, code_payload: "not-a-payment-code" }) });
+      const original = settings.accountService()!.get("default");
+      const invalid = await app.request("/api/admin/v1/alipay-accounts/default", { method: "PUT", headers, body: JSON.stringify({ ...accountUpdate(original), code_payload: "not-a-payment-code" }) });
       assert.equal(invalid.status, 422);
       assert.ok((await invalid.json() as { error: { fields: Record<string, string> } }).error.fields.code_payload);
-      const { provider_account_key: _account, ...provider } = original.provider!;
       for (const platform_public_key of ["invalid-secret-key-test", original.application_public_key!]) {
-        const response = await app.request("/api/admin/v1/settings/provider", { method: "PUT", headers, body: JSON.stringify({ ...provider, revision: original.revision, platform_public_key }) });
+        const response = await app.request("/api/admin/v1/alipay-accounts/default", { method: "PUT", headers, body: JSON.stringify({ ...accountUpdate(original), platform_public_key }) });
         assert.equal(response.status, 422);
         const body = await response.json() as { error: { code: string; message: string; fields: Record<string, string> } };
         assert.equal(body.error.code, "settings_validation_failed");
         assert.match(body.error.fields.platform_public_key!, /支付宝.*公钥/);
         assert.equal(JSON.stringify(body).includes(platform_public_key), false);
       }
-      assert.deepEqual(settings.instanceView(), original);
+      assert.deepEqual(settings.accountService()!.get("default"), original);
     } finally {
       database.close();
       assert.ok(directory.startsWith(join(tmpdir(), "perpay-field-validation-")));
@@ -440,7 +441,10 @@ describe("actionable collection configuration errors", () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-legacy-code-"));
     const { database, settings, config, identity, orders } = await createConfiguredHttpServices({ directory, apiSecret, collectionCodePayload: "https://qr.alipay.com/legacy-test", publicUrl: origin });
     try {
-      database.write(connection => connection.prepare("UPDATE runtime_configuration SET collection_code_payload = 'not-a-payment-code', revision = revision + 1, payment_revision = payment_revision + 1 WHERE singleton_key = 1").run());
+      database.write(connection => connection.prepare("UPDATE alipay_accounts SET code_payload = 'not-a-payment-code', revision = revision + 1 WHERE account_id = 'default'").run());
+      const account = settings.accountService()!.get("default");
+      assert.equal(account.configured, false);
+      assert.equal(account.code_payload, "not-a-payment-code");
       const view = settings.instanceView();
       assert.equal(view.completion.collection, false); assert.equal(view.completion.complete, false);
       assert.equal(view.collection?.code_payload, "not-a-payment-code");
@@ -461,34 +465,33 @@ describe("saved Alipay public key visibility", () => {
     });
     const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
     try {
-      const before = settings.instanceView();
-      const snapshot = settings.instanceSnapshot();
-      const anonymous = await app.request("/api/admin/v1/settings");
+      const before = settings.accountService()!.get("default");
+      const snapshot = settings.accountService()!.store().snapshot("default");
+      const anonymous = await app.request("/api/admin/v1/alipay-accounts/default");
       assert.equal(anonymous.status, 401);
       assert.equal((await anonymous.text()).includes(snapshot.provider!.publicKeyPem), false);
       const headers = await loginHeaders(app);
       for (let index = 0; index < 2; index++) {
-        const response = await app.request("/api/admin/v1/settings", { headers });
+        const response = await app.request("/api/admin/v1/alipay-accounts/default", { headers });
         assert.equal(response.status, 200);
         assert.equal(response.headers.get("cache-control"), "no-store");
-        const { data } = await response.json() as { data: ReturnType<RuntimeSettingsService["view"]> };
-        assert.equal(data.provider!.platform_public_key, snapshot.provider!.publicKeyPem);
-        assert.match(data.provider!.platform_public_key, /^-----BEGIN PUBLIC KEY-----/);
-        assert.deepEqual(data, before);
+        const { data } = await response.json() as { data: AlipayAccountView };
+        assert.equal(data.platform_public_key, snapshot.provider!.publicKeyPem);
+        assert.match(data.platform_public_key!, /^-----BEGIN PUBLIC KEY-----/);
+        assert.deepEqual(settings.accountService()!.get("default"), before);
         const serialized = JSON.stringify(data);
         for (const secret of [snapshot.provider!.privateKeyPem, apiSecret, settings.siteStore()!.notificationSecret("default")]) {
           if (secret) assert.equal(serialized.includes(JSON.stringify(secret).slice(1, -1)), false);
         }
         assert.equal(serialized.includes("PRIVATE KEY"), false);
       }
-      const { provider_account_key: _account, ...provider } = before.provider!;
-      const response = await app.request("/api/admin/v1/settings/provider", {
-        method: "PUT", headers, body: JSON.stringify({ revision: before.revision, ...provider }),
+      const response = await app.request("/api/admin/v1/alipay-accounts/default", {
+        method: "PUT", headers, body: JSON.stringify(accountUpdate(before)),
       });
       assert.equal(response.status, 200);
-      const { data } = await response.json() as { data: ReturnType<RuntimeSettingsService["view"]> };
-      assert.equal(data.provider!.platform_public_key, snapshot.provider!.publicKeyPem);
-      assert.equal(settings.instanceSnapshot().provider!.privateKeyPem, snapshot.provider!.privateKeyPem);
+      const { data } = await response.json() as { data: AlipayAccountView };
+      assert.equal(data.platform_public_key, snapshot.provider!.publicKeyPem);
+      assert.equal(settings.accountService()!.store().snapshot("default").provider!.privateKeyPem, snapshot.provider!.privateKeyPem);
     } finally {
       database.close();
       assert.ok(directory.startsWith(join(tmpdir(), "perpay-public-key-visibility-")));

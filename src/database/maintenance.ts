@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { verifyAlipayAccountSecrets } from "../alipay-accounts/integrity.ts";
 import {
   closeSync,
   constants as fsConstants,
@@ -2086,7 +2087,9 @@ function assertBackupMasterKey(
       ciphertext: Buffer.from(guard.ciphertext),
       authenticationTag: Buffer.from(guard.authentication_tag),
     };
-    new RuntimeSecretCipher(masterKey, instance.value).verifyGuard(encrypted);
+    const cipher = new RuntimeSecretCipher(masterKey, instance.value);
+    cipher.verifyGuard(encrypted);
+    verifyAlipayAccountSecrets(database, cipher);
   } finally {
     database.close();
   }

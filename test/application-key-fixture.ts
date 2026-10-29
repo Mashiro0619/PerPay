@@ -1,4 +1,4 @@
-import { createLegacySettingsDatabase } from "./legacy-settings-fixture.ts";
+import { createLegacySettingsDatabase, openLegacySettingsDatabase } from "./legacy-settings-fixture.ts";
 import assert from "node:assert/strict";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -75,7 +75,7 @@ export async function withKeyFixture(
 async function createKeyFixture(active: boolean, legacyForMigration: boolean) {
   const directory = mkdtempSync(join(tmpdir(), "perpay-key-rotation-"));
   const databasePath = join(directory, "perpay.sqlite3");
-  const database = legacyForMigration ? createLegacySettingsDatabase(databasePath).owner : await AppDatabase.open(databasePath);
+  const database = createLegacySettingsDatabase(databasePath).owner;
   const events: string[] = [];
   const hooks: {
     verify?: ProviderKeyVerifier;
@@ -116,7 +116,9 @@ async function createKeyFixture(active: boolean, legacyForMigration: boolean) {
     hooks,
     async reopen(path = databasePath) {
       fixture.database.close();
-      fixture.database = await AppDatabase.open(path, { masterKey: keyMaster });
+      fixture.database = legacyForMigration
+        ? await AppDatabase.open(path, { masterKey: keyMaster })
+        : openLegacySettingsDatabase(path).owner;
       Object.assign(fixture, services(fixture.database));
     },
   };

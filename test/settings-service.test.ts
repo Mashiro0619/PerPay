@@ -1,4 +1,5 @@
 import { SiteStore, SiteError } from "../src/sites/store.ts";
+import { createLegacySettingsDatabase } from "./legacy-settings-fixture.ts";
 import { randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { createPrivateKey, createPublicKey, generateKeyPairSync } from "node:crypto";
@@ -32,6 +33,7 @@ describe("runtime settings", () => {
     const database = await AppDatabase.open(join(directory, "database.sqlite3"));
     try {
       const settings = service(database, masterKey), sites = new SiteStore(database, masterKey);
+      await settings.accountService()!.create({ name: "测试收款账号" }, audit("account"));
       const original = settings.instanceSnapshot(), template = sites.defaults();
       const site = sites.create({ operation_id: randomUUID(), configuration: { name: "A", accepting_orders: true, notifications_enabled: false, notification_origin: null, return_origin: null, policy: template.policy } }, audit("create"));
       assert.equal(site.configuration.policy.orders.amount_reuse_cooldown_seconds, 600);
@@ -54,6 +56,8 @@ describe("runtime settings", () => {
       const settings = service(database, masterKey), sites = new SiteStore(database, masterKey);
       await settings.saveCollectionCode({ revision: 0, code_payload: "https://qr.alipay.com/settings" }, audit("qr"));
       await settings.saveProvider(providerInput(1, "2026000000000001"), audit("provider"));
+      await settings.accountService()!.create({ name: "测试收款账号", app_id: "2026000000000001", code_payload: "https://qr.alipay.com/settings",
+        private_key: applicationPrivateKey, platform_public_key: platformPublicKey }, audit("account"));
       const site = sites.create({ operation_id: randomUUID(), configuration: { name: "A", accepting_orders: true, notifications_enabled: false, notification_origin: null, return_origin: null, policy: sites.defaults().policy } }, audit("create"));
       assert.equal(sites.credential(site.clientId), null);
       const rotated = sites.rotateSecret(site.clientId, "api_secret", site.revision, audit("api"));
@@ -122,7 +126,7 @@ describe("runtime settings", () => {
 
   it("generates and stages an encrypted application key for initial provider setup", async () => {
     const directory = mkdtempSync(join(tmpdir(), "perpay-settings-generated-provider-key-"));
-    const database = await AppDatabase.open(join(directory, "perpay.sqlite3"));
+    const database = createLegacySettingsDatabase(join(directory, "perpay.sqlite3")).owner;
     try {
       const settings = service(database, masterKey);
       assert.deepEqual(settings.instanceView().completion, {

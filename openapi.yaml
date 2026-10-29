@@ -39,6 +39,544 @@ tags:
   - name: System
     description: Public application probes and authenticated instance status.
 paths:
+  /api/admin/v1/alipay-accounts:
+    get:
+      tags:
+        - Admin Settings
+      operationId: listAlipayAccounts
+      summary: 列出支付宝收款账号
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: 列出支付宝收款账号
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlipayAccountListEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: 支付宝账号不存在。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
+    post:
+      tags:
+        - Admin Settings
+      operationId: createAlipayAccount
+      summary: 新增支付宝收款账号
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AlipayAccountInput"
+      responses:
+        "201":
+          description: 新增支付宝收款账号
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlipayAccountEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: 支付宝账号不存在。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
+  /api/admin/v1/alipay-accounts/{accountId}:
+    get:
+      tags:
+        - Admin Settings
+      operationId: getAlipayAccount
+      summary: 读取支付宝账号
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+      responses:
+        "200":
+          description: 读取支付宝账号
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlipayAccountEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: 支付宝账号不存在。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
+    put:
+      tags:
+        - Admin Settings
+      operationId: updateAlipayAccount
+      summary: 保存支付宝账号
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAlipayAccountRequest"
+      responses:
+        "200":
+          description: 保存支付宝账号
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlipayAccountEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: 支付宝账号不存在。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
+    delete:
+      tags:
+        - Admin Settings
+      operationId: deleteAlipayAccount
+      summary: 删除未使用的支付宝账号
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsRevisionRequest"
+      responses:
+        "204":
+          description: 删除未使用的支付宝账号
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: 支付宝账号不存在。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
+  /api/admin/v1/alipay-accounts/{accountId}/check:
+    post:
+      tags:
+        - Admin Settings
+      operationId: checkAlipayAccount
+      summary: 检查已保存账号的连接
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmptyObjectRequest"
+      responses:
+        "200":
+          description: 检查已保存账号的连接
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlipayAccountCheckEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: 支付宝账号不存在。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
+  /api/admin/v1/alipay-accounts/{accountId}/application-key:
+    post:
+      tags:
+        - Admin Settings
+      operationId: generateAlipayAccountApplicationKey
+      summary: 生成账号应用密钥
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsRevisionRequest"
+      responses:
+        "200":
+          description: 生成账号应用密钥
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlipayAccountEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: 支付宝账号不存在。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
+  /api/admin/v1/alipay-accounts/{accountId}/application-key/regenerate:
+    post:
+      tags:
+        - Admin Settings
+      operationId: regenerateAlipayAccountApplicationKey
+      summary: 准备更换账号应用密钥
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegenerateProviderApplicationKeyRequest"
+      responses:
+        "200":
+          description: 准备更换账号应用密钥
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlipayAccountEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: 支付宝账号不存在。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
+  /api/admin/v1/alipay-accounts/{accountId}/application-key/activate:
+    post:
+      tags:
+        - Admin Settings
+      operationId: activateAlipayAccountApplicationKey
+      summary: 验证并启用账号应用密钥
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivateProviderApplicationKeyRequest"
+      responses:
+        "200":
+          description: 验证并启用账号应用密钥
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlipayAccountEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: 支付宝账号不存在。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
+  /api/admin/v1/alipay-accounts/{accountId}/application-key/discard:
+    post:
+      tags:
+        - Admin Settings
+      operationId: discardAlipayAccountApplicationKey
+      summary: 放弃账号待启用密钥
+      security:
+        - AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplicationKeyChangeActionRequest"
+      responses:
+        "200":
+          description: 放弃账号待启用密钥
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlipayAccountEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        "404":
+          description: 支付宝账号不存在。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/SettingsConflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/SettingsValidationFailed"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
   /healthz:
     get:
       tags: [System]
@@ -235,46 +773,55 @@ paths:
         '401': { $ref: '#/components/responses/AdminUnauthorized' }
   /api/admin/v1/system/ledger/scan:
     post:
-      tags: [System]
+      tags:
+        - System
       operationId: requestLedgerScan
       summary: 请求一次手动查账并读取其真实执行进度
-      description: >-
-        复用当前查账调度器，提前普通等待至允许的最短间隔；保留持久化保护期限、失败退避、
-        支付宝 Retry-After 与存储恢复保护。运行中或等待中的请求复用同一标识。
-        202 仅表示已接受，实际结果由管理员 system/status 的 ledger.manual_scan 返回。
-        本轮结束可能为 PARTIAL 或 SKIPPED，并不表示已确认收款。最近一次终态保存在内存，
-        直到下一次请求或运行配置更换；进程重启后可为空。运行期切换会将未完成请求标记为 FAILED/runtime_changed。
-        只接受空 JSON 对象，不接受查询参数。只读演示禁止执行。
+      description: 复用当前查账调度器，提前普通等待至允许的最短间隔；保留持久化保护期限、失败退避、 支付宝 Retry-After 与存储恢复保护。运行中或等待中的请求复用同一标识。 202 仅表示已接受，实际结果由管理员 system/status 的 ledger.manual_scan 返回。 本轮结束可能为 PARTIAL 或 SKIPPED，并不表示已确认收款。最近一次终态保存在内存， 直到下一次请求或运行配置更换；进程重启后可为空。运行期切换会将未完成请求标记为 FAILED/runtime_changed。 只接受空 JSON 对象，不接受查询参数。只读演示禁止执行。
       security:
         - AdminSessionCookie: []
           AdminCsrfCookie: []
           AdminCsrfHeader: []
       x-perpay-requires-same-origin: true
       parameters:
-        - $ref: '#/components/parameters/RequestId'
-        - $ref: '#/components/parameters/AdminOrigin'
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/AdminOrigin"
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/EmptyObjectRequest' }
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                alipay_account_id:
+                  type: string
+                  pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
       responses:
-        '202':
+        "202":
           description: 已接受的等待或执行中请求快照；不代表查账完成。
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/LedgerManualScanEnvelope' }
-        '401': { $ref: '#/components/responses/AdminUnauthorized' }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '403': { $ref: '#/components/responses/AdminForbidden' }
-        '413': { $ref: '#/components/responses/TooLarge' }
-        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
-        '422': { $ref: '#/components/responses/ValidationFailed' }
-        '503':
+              schema:
+                $ref: "#/components/schemas/LedgerManualScanEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/AdminForbidden"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "503":
           description: ledger_scan_unavailable；当前配置、调度或存储状态不允许发起手动查账。
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /api/admin/v1/system/update:
     get:
       tags: [System]
@@ -805,6 +1352,7 @@ paths:
       tags:
         - Admin Settings
       operationId: updateCollectionSettings
+      deprecated: true
       summary: Save the collection QR code only
       description: "The supplied revision must equal the current settings revision. This payment-affecting mutation pauses payment readiness while the runtime is replaced. All responses use `Cache-Control: no-store`."
       x-perpay-requires-same-origin: true
@@ -822,6 +1370,12 @@ paths:
             schema:
               $ref: "#/components/schemas/CollectionSettingsRequest"
       responses:
+        "410":
+          description: 支付宝配置已迁移到支付宝账号，请使用 /api/admin/v1/alipay-accounts 下的对应账号接口。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "200":
           description: Collection settings saved and runtime settings returned
           headers:
@@ -852,6 +1406,7 @@ paths:
       tags:
         - Admin Settings
       operationId: updateProviderSettings
+      deprecated: true
       summary: Save Alipay Open Platform application settings only
       description: |
         The supplied revision must equal the current settings revision. During initial setup the
@@ -878,6 +1433,12 @@ paths:
             schema:
               $ref: "#/components/schemas/ProviderSettingsRequest"
       responses:
+        "410":
+          description: 支付宝配置已迁移到支付宝账号，请使用 /api/admin/v1/alipay-accounts 下的对应账号接口。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "200":
           description: Provider settings saved and runtime settings returned
           headers:
@@ -907,6 +1468,7 @@ paths:
     post:
       tags: [Admin Settings]
       operationId: generateProviderApplicationKey
+      deprecated: true
       summary: Generate the provider application RSA key pair before initial provider setup
       description: >-
         Ensures that one 2048-bit RSA application key pair exists for initial setup. The private
@@ -934,6 +1496,12 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/SettingsRevisionRequest' }
       responses:
+        "410":
+          description: 支付宝配置已迁移到支付宝账号，请使用 /api/admin/v1/alipay-accounts 下的对应账号接口。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         '200':
           description: Existing initial application public key returned without replacement
           headers:
@@ -960,6 +1528,7 @@ paths:
     post:
       tags: [Admin Settings]
       operationId: regenerateProviderApplicationKey
+      deprecated: true
       summary: Regenerate an initial application key or prepare a pending replacement
       description: >-
         Before any provider has been configured, replaces the staged application key pair immediately.
@@ -982,6 +1551,12 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/RegenerateProviderApplicationKeyRequest' }
       responses:
+        "410":
+          description: 支付宝配置已迁移到支付宝账号，请使用 /api/admin/v1/alipay-accounts 下的对应账号接口。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         '200':
           description: Application key operation result, including an idempotent retry
           headers:
@@ -1008,6 +1583,7 @@ paths:
     post:
       tags: [Admin Settings]
       operationId: activateProviderApplicationKey
+      deprecated: true
       summary: Verify and activate the pending application key
       description: >-
         Performs one bounded read-only account-log query signed with the pending private key and verifies
@@ -1034,6 +1610,12 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/ActivateProviderApplicationKeyRequest' }
       responses:
+        "410":
+          description: 支付宝配置已迁移到支付宝账号，请使用 /api/admin/v1/alipay-accounts 下的对应账号接口。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         '200':
           description: Application key operation result, including an idempotent retry
           headers:
@@ -1053,6 +1635,7 @@ paths:
     post:
       tags: [Admin Settings]
       operationId: discardProviderApplicationKey
+      deprecated: true
       summary: Discard a pending application key without changing the active key
       description: >-
         Discards only the pending encrypted key in PerPay; it does not undo an upload in the Alipay console.
@@ -1073,6 +1656,12 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/ApplicationKeyChangeActionRequest' }
       responses:
+        "410":
+          description: 支付宝配置已迁移到支付宝账号，请使用 /api/admin/v1/alipay-accounts 下的对应账号接口。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         '200':
           description: Application key operation result, including an idempotent retry
           headers:
@@ -1501,6 +2090,11 @@ paths:
       security:
         - AdminSessionCookie: []
       parameters:
+        - name: alipay_account_id
+          in: query
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
         - name: api_client_id
           in: query
           required: false
@@ -1861,6 +2455,11 @@ paths:
       security:
         - AdminSessionCookie: []
       parameters:
+        - name: alipay_account_id
+          in: query
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
         - $ref: '#/components/parameters/RequestId'
         - name: q
           in: query
@@ -3823,6 +4422,11 @@ paths:
       security:
         - AdminSessionCookie: []
       parameters:
+        - name: alipay_account_id
+          in: query
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
         - name: clientId
           in: path
           required: true
@@ -5443,6 +6047,297 @@ components:
           schema:
             $ref: '#/components/schemas/ManualSettlementRequest'
   schemas:
+    SiteCollection:
+      type: object
+      additionalProperties: false
+      required:
+        - mode
+        - accounts
+      properties:
+        mode:
+          type: string
+          enum:
+            - FIXED
+            - RANDOM
+            - WEIGHTED
+        accounts:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - account_id
+            properties:
+              account_id:
+                type: string
+                pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+              weight:
+                type: integer
+                minimum: 1
+                maximum: 1000000
+                default: 1
+    AlipayAccountCheck:
+      type: object
+      additionalProperties: false
+      required:
+        - ok
+        - checked_at
+        - message
+      properties:
+        ok:
+          type: boolean
+        checked_at:
+          type: string
+          format: date-time
+        message:
+          type: string
+    AlipayAccount:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - revision
+        - name
+        - enabled
+        - code_payload
+        - environment
+        - app_id
+        - platform_public_key
+        - provider_account_key
+        - configured
+        - application_public_key
+        - application_key_fingerprint
+        - pending_application_key
+        - sites
+        - deletable
+        - last_check
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+        revision:
+          type: integer
+          minimum: 0
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        enabled:
+          type: boolean
+        code_payload:
+          type:
+            - string
+            - "null"
+        environment:
+          type: string
+          enum:
+            - PRODUCTION
+            - SANDBOX
+        app_id:
+          type:
+            - string
+            - "null"
+        platform_public_key:
+          type:
+            - string
+            - "null"
+        provider_account_key:
+          type:
+            - string
+            - "null"
+        configured:
+          type: boolean
+        application_public_key:
+          type:
+            - string
+            - "null"
+        application_key_fingerprint:
+          type:
+            - string
+            - "null"
+        pending_application_key:
+          anyOf:
+            - type: "null"
+            - type: object
+              additionalProperties: false
+              required:
+                - change_id
+                - public_key
+                - fingerprint
+                - app_id
+                - environment
+                - created_at
+              properties:
+                change_id:
+                  type: string
+                  format: uuid
+                public_key:
+                  type: string
+                fingerprint:
+                  type: string
+                app_id:
+                  type: string
+                environment:
+                  type: string
+                  enum:
+                    - PRODUCTION
+                    - SANDBOX
+                created_at:
+                  type: string
+                  format: date-time
+        sites:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - client_id
+              - name
+            properties:
+              client_id:
+                type: string
+              name:
+                type: string
+        deletable:
+          type: boolean
+        last_check:
+          anyOf:
+            - type: "null"
+            - $ref: "#/components/schemas/AlipayAccountCheck"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        health:
+          type: object
+          additionalProperties: false
+          required:
+            - state
+            - last_success_at
+            - last_error_code
+            - collection_ready
+          properties:
+            state:
+              type: string
+            last_success_at:
+              type:
+                - string
+                - "null"
+              format: date-time
+            last_error_code:
+              type:
+                - string
+                - "null"
+            collection_ready:
+              type: boolean
+        manual_scan:
+          $ref: "#/components/schemas/LedgerManualScanStatus"
+    AlipayAccountInput:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        enabled:
+          type: boolean
+        code_payload:
+          type:
+            - string
+            - "null"
+        environment:
+          type: string
+          enum:
+            - PRODUCTION
+            - SANDBOX
+        app_id:
+          type:
+            - string
+            - "null"
+        platform_public_key:
+          type:
+            - string
+            - "null"
+        private_key:
+          type: string
+          minLength: 1
+          maxLength: 16384
+    UpdateAlipayAccountRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - revision
+        - name
+        - enabled
+        - code_payload
+        - environment
+        - app_id
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        enabled:
+          type: boolean
+        code_payload:
+          type:
+            - string
+            - "null"
+        environment:
+          type: string
+          enum:
+            - PRODUCTION
+            - SANDBOX
+        app_id:
+          type:
+            - string
+            - "null"
+        platform_public_key:
+          type:
+            - string
+            - "null"
+        private_key:
+          type: string
+          minLength: 1
+          maxLength: 16384
+        revision:
+          type: integer
+          minimum: 0
+    AlipayAccountEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/AlipayAccount"
+    AlipayAccountListEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlipayAccount"
+    AlipayAccountCheckEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/AlipayAccountCheck"
     ManualSettlementPageInfo:
       type: object
       additionalProperties: false
@@ -5544,37 +6439,50 @@ components:
       properties:
         status:
           type: string
-          enum: [ready, degraded, not_ready]
-          description: >-
-            Open ledger conflicts, financial exceptions, or an unhealthy backup degrade the
-            status without making the core service unready. These diagnostic totals include
-            ignored reminders; use work_items for administrator pending indicators.
-        version: { type: string }
-        instance_id: { type: string, pattern: '^[0-9a-f]{32}$' }
-        initialized: { type: boolean }
-        configured: { type: boolean }
+          enum:
+            - ready
+            - degraded
+            - not_ready
+          description: Open ledger conflicts, financial exceptions, or an unhealthy backup degrade the status without making the core service unready. These diagnostic totals include ignored reminders; use work_items for administrator pending indicators.
+        version:
+          type: string
+        instance_id:
+          type: string
+          pattern: ^[0-9a-f]{32}$
+        initialized:
+          type: boolean
+        configured:
+          type: boolean
         settings_revision:
-          type: [integer, 'null']
+          type:
+            - integer
+            - "null"
           minimum: 0
         payment_revision:
           type: integer
           minimum: 0
         provider_account_key:
-          type: [string, 'null']
+          type:
+            - string
+            - "null"
         database:
-          $ref: '#/components/schemas/DatabaseHealth'
+          $ref: "#/components/schemas/DatabaseHealth"
         ledger:
-          $ref: '#/components/schemas/LedgerHealth'
+          $ref: "#/components/schemas/LedgerHealth"
         reconciliation:
-          $ref: '#/components/schemas/ReconciliationHealth'
+          $ref: "#/components/schemas/ReconciliationHealth"
         webhook:
-          $ref: '#/components/schemas/WebhookHealth'
+          $ref: "#/components/schemas/WebhookHealth"
         backup_policy:
-          $ref: '#/components/schemas/BackupSettings'
+          $ref: "#/components/schemas/BackupSettings"
         backup:
-          $ref: '#/components/schemas/BackupHealth'
+          $ref: "#/components/schemas/BackupHealth"
         work_items:
-          $ref: '#/components/schemas/AdminWorkItemSummary'
+          $ref: "#/components/schemas/AdminWorkItemSummary"
+        alipay_accounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlipayAccount"
     AdminWorkItemSummary:
       type: [object, 'null']
       additionalProperties: false
@@ -5885,19 +6793,38 @@ components:
             updated_at: { type: string, format: date-time }
       unevaluatedProperties: false
     LedgerConflictSummary:
-      type: [object, 'null']
+      type:
+        - object
+        - "null"
       additionalProperties: false
-      required: [provider_account_key, open, resolved, ignored, total, by_type]
+      required:
+        - provider_account_key
+        - open
+        - resolved
+        - ignored
+        - total
+        - by_type
       properties:
-        provider_account_key: { type: string }
-        open: { type: integer, minimum: 0 }
-        resolved: { type: integer, minimum: 0 }
-        ignored: { type: integer, minimum: 0 }
-        total: { type: integer, minimum: 0 }
+        provider_account_key:
+          type:
+            - string
+            - "null"
+        open:
+          type: integer
+          minimum: 0
+        resolved:
+          type: integer
+          minimum: 0
+        ignored:
+          type: integer
+          minimum: 0
+        total:
+          type: integer
+          minimum: 0
         by_type:
           type: array
           items:
-            $ref: '#/components/schemas/LedgerConflictTypeSummary'
+            $ref: "#/components/schemas/LedgerConflictTypeSummary"
     LedgerConflictTypeSummary:
       type: object
       additionalProperties: false
@@ -5910,14 +6837,29 @@ components:
         ignored: { type: integer, minimum: 0 }
         total: { type: integer, minimum: 0 }
     FinancialExceptionSummary:
-      type: [object, 'null']
+      type:
+        - object
+        - "null"
       additionalProperties: false
-      required: [provider_account_key, open, resolved, total]
+      required:
+        - provider_account_key
+        - open
+        - resolved
+        - total
       properties:
-        provider_account_key: { type: string }
-        open: { type: integer, minimum: 0 }
-        resolved: { type: integer, minimum: 0 }
-        total: { type: integer, minimum: 0 }
+        provider_account_key:
+          type:
+            - string
+            - "null"
+        open:
+          type: integer
+          minimum: 0
+        resolved:
+          type: integer
+          minimum: 0
+        total:
+          type: integer
+          minimum: 0
     LedgerHealth:
       type: object
       additionalProperties: false
@@ -7141,32 +8083,79 @@ components:
         - updated_at
         - version
       properties:
-        site_name: { type: [string, 'null'], description: "Current site display name; null only for historical pre-site schema fixtures." }
-        payment_confirmed_at: { type: [string, 'null'], format: date-time }
-        notification_summary: { $ref: '#/components/schemas/AdminOrderNotificationSummary' }
-        order_id: { $ref: '#/components/schemas/ResourceId' }
+        site_name:
+          type:
+            - string
+            - "null"
+          description: Current site display name; null only for historical pre-site schema fixtures.
+        payment_confirmed_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        notification_summary:
+          $ref: "#/components/schemas/AdminOrderNotificationSummary"
+        order_id:
+          $ref: "#/components/schemas/ResourceId"
         api_client_id:
           type: string
           minLength: 3
           maxLength: 64
-          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$'
-        merchant_order_no: { $ref: '#/components/schemas/MerchantOrderNumber' }
-        requested_amount_cents: { type: integer, minimum: 1, maximum: 9999999998 }
-        payable_amount_cents: { type: integer, minimum: 2, maximum: 9999999999 }
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+        merchant_order_no:
+          $ref: "#/components/schemas/MerchantOrderNumber"
+        requested_amount_cents:
+          type: integer
+          minimum: 1
+          maximum: 9999999998
+        payable_amount_cents:
+          type: integer
+          minimum: 2
+          maximum: 9999999999
         received_amount_cents:
-          type: [integer, 'null']
+          type:
+            - integer
+            - "null"
           minimum: 1
           maximum: 9999999999
-        currency: { const: CNY }
-        product_name: { type: string, minLength: 1, maxLength: 200 }
-        checkout: { $ref: '#/components/schemas/CheckoutState' }
-        payment: { $ref: '#/components/schemas/PaymentState' }
-        refund: { $ref: '#/components/schemas/RefundState' }
-        refund_mark: { $ref: '#/components/schemas/AdminRefundMark' }
-        eligible_from: { type: string, format: date-time }
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
-        version: { type: integer, minimum: 1 }
+        currency:
+          const: CNY
+        product_name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        checkout:
+          $ref: "#/components/schemas/CheckoutState"
+        payment:
+          $ref: "#/components/schemas/PaymentState"
+        refund:
+          $ref: "#/components/schemas/RefundState"
+        refund_mark:
+          $ref: "#/components/schemas/AdminRefundMark"
+        eligible_from:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          minimum: 1
+        alipay_account_id:
+          type:
+            - string
+            - "null"
+        alipay_account_name:
+          type:
+            - string
+            - "null"
+        provider_account_key:
+          type:
+            - string
+            - "null"
     AdminOrderDetail:
       type: object
       additionalProperties: false
@@ -7193,39 +8182,89 @@ components:
         - updated_at
         - version
       properties:
-        site_name: { type: [string, 'null'], description: "Current name of the owning site." }
-        order_id: { $ref: '#/components/schemas/ResourceId' }
+        site_name:
+          type:
+            - string
+            - "null"
+          description: Current name of the owning site.
+        order_id:
+          $ref: "#/components/schemas/ResourceId"
         api_client_id:
           type: string
           minLength: 3
           maxLength: 64
-          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$'
-        merchant_order_no: { $ref: '#/components/schemas/MerchantOrderNumber' }
-        requested_amount_cents: { type: integer, minimum: 1, maximum: 9999999998 }
-        payable_amount_cents: { type: integer, minimum: 2, maximum: 9999999999 }
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$
+        merchant_order_no:
+          $ref: "#/components/schemas/MerchantOrderNumber"
+        requested_amount_cents:
+          type: integer
+          minimum: 1
+          maximum: 9999999998
+        payable_amount_cents:
+          type: integer
+          minimum: 2
+          maximum: 9999999999
         received_amount_cents:
-          type: [integer, 'null']
+          type:
+            - integer
+            - "null"
           minimum: 1
           maximum: 9999999999
-        currency: { const: CNY }
-        product_name: { type: string, minLength: 1, maxLength: 200 }
-        note: { type: [string, 'null'], maxLength: 500 }
-        checkout: { $ref: '#/components/schemas/CheckoutState' }
-        payment: { $ref: '#/components/schemas/PaymentState' }
-        refund: { $ref: '#/components/schemas/RefundState' }
-        refund_mark: { $ref: '#/components/schemas/AdminRefundMark' }
+        currency:
+          const: CNY
+        product_name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        note:
+          type:
+            - string
+            - "null"
+          maxLength: 500
+        checkout:
+          $ref: "#/components/schemas/CheckoutState"
+        payment:
+          $ref: "#/components/schemas/PaymentState"
+        refund:
+          $ref: "#/components/schemas/RefundState"
+        refund_mark:
+          $ref: "#/components/schemas/AdminRefundMark"
         refund_mark_history:
           type: array
-          items: { $ref: '#/components/schemas/AdminRefundMarkEvent' }
-        eligible_from: { type: string, format: date-time }
-        notification: { $ref: '#/components/schemas/OrderNotification' }
+          items:
+            $ref: "#/components/schemas/AdminRefundMarkEvent"
+        eligible_from:
+          type: string
+          format: date-time
+        notification:
+          $ref: "#/components/schemas/OrderNotification"
         events:
           type: array
-          items: { $ref: '#/components/schemas/AdminOrderEvent' }
-        reconciliation: { $ref: '#/components/schemas/AdminOrderReconciliation' }
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
-        version: { type: integer, minimum: 1 }
+          items:
+            $ref: "#/components/schemas/AdminOrderEvent"
+        reconciliation:
+          $ref: "#/components/schemas/AdminOrderReconciliation"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          minimum: 1
+        alipay_account_id:
+          type:
+            - string
+            - "null"
+        alipay_account_name:
+          type:
+            - string
+            - "null"
+        provider_account_key:
+          type:
+            - string
+            - "null"
     AdminOrderEvent:
       type: object
       additionalProperties: false
@@ -7361,33 +8400,66 @@ components:
         - updated_at
         - version
       properties:
-        order_id: { type: string, format: uuid }
-        merchant_order_no: { $ref: '#/components/schemas/MerchantOrderNumber' }
-        requested_amount_cents: { type: integer, minimum: 1, maximum: 9999999998 }
-        payable_amount_cents: { type: integer, minimum: 2, maximum: 9999999999 }
+        order_id:
+          type: string
+          format: uuid
+        merchant_order_no:
+          $ref: "#/components/schemas/MerchantOrderNumber"
+        requested_amount_cents:
+          type: integer
+          minimum: 1
+          maximum: 9999999998
+        payable_amount_cents:
+          type: integer
+          minimum: 2
+          maximum: 9999999999
         received_amount_cents:
-          type: [integer, 'null']
+          type:
+            - integer
+            - "null"
           minimum: 1
           maximum: 9999999999
-        currency: { const: CNY }
-        product_name: { type: string, minLength: 1, maxLength: 200 }
-        note: { type: [string, 'null'], maxLength: 500 }
+        currency:
+          const: CNY
+        product_name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        note:
+          type:
+            - string
+            - "null"
+          maxLength: 500
         return_url:
           description: Configured browser return target, or null when absent. Navigation is not proof of payment; checkout may offer this target for confirmed and non-success outcomes without adding success parameters.
           oneOf:
-            - $ref: '#/components/schemas/ReturnUrl'
-            - type: 'null'
+            - $ref: "#/components/schemas/ReturnUrl"
+            - type: "null"
         checkout:
-          $ref: '#/components/schemas/AuthenticatedCheckoutState'
+          $ref: "#/components/schemas/AuthenticatedCheckoutState"
         payment:
-          $ref: '#/components/schemas/PaymentState'
+          $ref: "#/components/schemas/PaymentState"
         refund:
-          $ref: '#/components/schemas/RefundState'
+          $ref: "#/components/schemas/RefundState"
         notification:
-          $ref: '#/components/schemas/OrderNotification'
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
-        version: { type: integer, minimum: 1 }
+          $ref: "#/components/schemas/OrderNotification"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          minimum: 1
+        alipay_account_id:
+          type:
+            - string
+            - "null"
+        alipay_account_name:
+          type:
+            - string
+            - "null"
     OrderNotification:
       type: object
       additionalProperties: false
@@ -8108,9 +9180,18 @@ components:
     AdminLedgerSummary:
       type: object
       allOf:
-        - $ref: '#/components/schemas/AdminLedgerFacts'
-        - $ref: '#/components/schemas/AdminLedgerGroupFields'
+        - $ref: "#/components/schemas/AdminLedgerFacts"
+        - $ref: "#/components/schemas/AdminLedgerGroupFields"
       unevaluatedProperties: false
+      properties:
+        alipay_account_id:
+          type:
+            - string
+            - "null"
+        alipay_account_name:
+          type:
+            - string
+            - "null"
     AdminLedgerMatch:
       type: object
       additionalProperties: false
@@ -8166,22 +9247,37 @@ components:
     AdminLedgerDetail:
       type: object
       allOf:
-        - $ref: '#/components/schemas/AdminLedgerFacts'
-        - $ref: '#/components/schemas/AdminLedgerGroupFields'
+        - $ref: "#/components/schemas/AdminLedgerFacts"
+        - $ref: "#/components/schemas/AdminLedgerGroupFields"
         - type: object
-          required: [sources, matches, conflicts]
+          required:
+            - sources
+            - matches
+            - conflicts
           properties:
             sources:
               type: array
               minItems: 1
-              items: { $ref: '#/components/schemas/AdminLedgerSource' }
+              items:
+                $ref: "#/components/schemas/AdminLedgerSource"
             matches:
               type: array
-              items: { $ref: '#/components/schemas/AdminLedgerMatch' }
+              items:
+                $ref: "#/components/schemas/AdminLedgerMatch"
             conflicts:
               type: array
-              items: { $ref: '#/components/schemas/AdminLedgerConflict' }
+              items:
+                $ref: "#/components/schemas/AdminLedgerConflict"
       unevaluatedProperties: false
+      properties:
+        alipay_account_id:
+          type:
+            - string
+            - "null"
+        alipay_account_name:
+          type:
+            - string
+            - "null"
     AdminLedgerPageEnvelope:
       type: object
       additionalProperties: false
@@ -8890,6 +9986,15 @@ components:
     ErrorCode:
       type: string
       enum:
+        - alipay_account_not_found
+        - alipay_accounts_unavailable
+        - alipay_account_revision_conflict
+        - alipay_account_in_use
+        - alipay_account_app_conflict
+        - alipay_account_not_configured
+        - alipay_settings_moved
+        - site_collection_required
+        - site_collection_invalid
         - admin_ip_not_allowed
         - admin_operation_conflict
         - refund_mark_version_conflict
@@ -9084,6 +10189,8 @@ components:
     SiteConfiguration:
       type: object
       properties:
+        collection:
+          $ref: "#/components/schemas/SiteCollection"
         name:
           type: string
           minLength: 1

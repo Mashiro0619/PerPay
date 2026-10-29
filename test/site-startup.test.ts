@@ -8,6 +8,7 @@ import { it } from "node:test";
 import { AppDatabase } from "../src/database/database.ts";
 import { DATABASE_COMPATIBILITY } from "../src/version.ts";
 import { RuntimeSettingsStore } from "../src/settings/store.ts";
+import { AlipayAccountService } from "../src/alipay-accounts/service.ts";
 import { SiteStore } from "../src/sites/store.ts";
 import { createOrderRequestSchema } from "../src/orders/model.ts";
 import { OrderService } from "../src/orders/service.ts";
@@ -34,15 +35,26 @@ function stores(database: AppDatabase, masterKey: Uint8Array) {
   return { settings, sites: new SiteStore(database, masterKey) };
 }
 
+function legacyFinancialRows(rows: Record<string, unknown>[]) {
+  return rows.map(row => {
+    if ("alipay_account_id" in row) assert.equal(row.alipay_account_id, "default");
+    const { alipay_account_id: _migratedAccount, ...originalColumns } = row;
+    return originalColumns;
+  });
+}
+
 it("boots the current schema without an implicit website and persists independent keys through two restarts and backup", async () => {
   const directory = temporary(), path = join(directory, "db.sqlite3"), masterKey = randomBytes(32);
   let database = await AppDatabase.open(path, { masterKey });
   try {
-    let { sites } = stores(database, masterKey);
+    const initialized = stores(database, masterKey);
+    let { sites } = initialized;
     assert.deepEqual(sites.list(), []);
+    const account = await new AlipayAccountService({ store: initialized.settings.accountStore()! }).create({ name: "收款账号" }, audit);
     assert.equal(database.read(db => db.prepare("SELECT max(version) AS version FROM schema_migrations").get()?.version), BigInt(DATABASE_COMPATIBILITY.maximum));
     const created = ["网站 A", "网站 B"].map(name => sites.create({ operation_id: randomUUID(), configuration: {
       name, accepting_orders: true, notifications_enabled: false, notification_origin: null, return_origin: null, policy: sites.defaults().policy,
+      collection: { mode: "FIXED", accounts: [{ account_id: account.id, weight: 1 }] },
     } }, audit));
     const secrets = created.map(site => {
       assert.equal(sites.credential(site.clientId), null);
@@ -83,7 +95,7 @@ it("rolls back a real 0.3.2 upgrade without the correct master key, then preserv
     const created = legacy.orders.create(createOrderRequestSchema.parse({ idempotency_key: "historical", merchant_order_no: "historical", product_name: "旧订单", amount_cents: 100 })).order;
     legacy.orders.close(created.orderId);
     const history = (db: Pick<AppDatabase, "read">) => db.read(connection => Object.fromEntries(
-      ["payment_orders", "amount_slots", "checkout_sessions", "order_events", "api_client_keys", "api_nonces", "collection_profiles", "audit_events"].map(table => [table, connection.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]),
+      ["payment_orders", "amount_slots", "checkout_sessions", "order_events", "api_client_keys", "api_nonces", "collection_profiles", "audit_events"].map(table => [table, legacyFinancialRows(connection.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all())]),
     ));
     const before = history(legacy.database);
     const encrypted = legacy.database.read(db => db.prepare("SELECT * FROM runtime_secrets ORDER BY secret_name").all());
@@ -123,7 +135,7 @@ it("preserves historical notification attempts and signature references before r
     const history = (db: Pick<AppDatabase, "read">) => db.read(connection => ({
       keys: connection.prepare("SELECT key_version, key_id, secret_fingerprint, activated_at, retired_at FROM webhook_signing_keys ORDER BY key_version").all(),
       ...Object.fromEntries(["outbox_events", "webhook_targets", "webhook_deliveries", "webhook_attempts", "payment_orders", "audit_events"].map(table =>
-        [table, connection.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])),
+        [table, legacyFinancialRows(connection.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all())])),
     }));
     const before = history(f.database), secret = f.services.settings.snapshot().webhook.secret;
     f.database.close();

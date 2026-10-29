@@ -1,4 +1,5 @@
 import { MULTI_SITE_SCHEMA_SQL } from "../sites/migrations/schema.ts";
+import { ALIPAY_ACCOUNTS_SCHEMA_SQL } from "../alipay-accounts/schema.ts";
 import { createHash } from "node:crypto";
 
 export interface Migration {
@@ -9,7 +10,8 @@ export interface Migration {
     | "upgrade_ledger_semantic_fingerprints_v2"
     | "backfill_evidence_fingerprints_v1"
     | "normalize_fixed_accounts_v1"
-    | "migrate_websites_v1";
+    | "migrate_websites_v1"
+    | "migrate_alipay_accounts_v1";
 }
 
 /** Stable catalog checksum used to detect edited migration definitions at startup. */
@@ -5021,4 +5023,5 @@ export const migrations: readonly Migration[] = [
         CHECK (source_address IS NULL OR length(source_address) BETWEEN 1 AND 45);
     `,
   },
+  { version: 37, name: "multiple_alipay_accounts", sql: ALIPAY_ACCOUNTS_SCHEMA_SQL, postApply: "migrate_alipay_accounts_v1" },
 ] as const;

@@ -123,7 +123,7 @@ for (const [version, schemaMaximum] of recordedSchemaMaximum) {
       const unchanged = readFileSync(source, "utf8");
       for (const changed of [schemaMaximum - 1, schemaMaximum + 1]) {
         writeFileSync(source, unchanged.replace("maximum: " + schemaMaximum, "maximum: " + changed));
-        assert.ok(inspectVersionFiles(root).errors.some(error => error.includes("schema maximum=")),
+        assert.ok(inspectVersionFiles(root, "v" + version).errors.some(error => error.includes("schema maximum=")),
           "changing the schema without changing " + version + " must fail");
       }
     }, schemaMaximum);
@@ -133,5 +133,12 @@ for (const [version, schemaMaximum] of recordedSchemaMaximum) {
 test("permits a new schema ceiling with a new source version", () => {
   withVersionFiles("1.0.0-alpha.3", root => {
     assert.deepEqual(inspectVersionFiles(root).errors, []);
+  }, 37);
+});
+
+test("accepts unreleased account migrations without rewriting a released tag's schema ceiling", () => {
+  withVersionFiles("1.0.0-alpha.2", root => {
+    assert.deepEqual(inspectVersionFiles(root).errors, []);
+    assert.ok(inspectVersionFiles(root, "v1.0.0-alpha.2").errors.some(error => error.includes("schema maximum=")));
   }, 37);
 });

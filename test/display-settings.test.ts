@@ -165,6 +165,7 @@ it("upgrades schema 23 with presentation defaults while preserving revisions, co
         ),
       );
     const evidence = snapshot(database);
+    for (const row of evidence[0]!) row.alipay_account_id = "default";
     database.close();
     const legacy = new DatabaseSync(services.config.databasePath);
     try {

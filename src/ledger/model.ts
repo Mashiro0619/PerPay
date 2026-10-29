@@ -319,7 +319,7 @@ export interface LedgerConflictTypeSummary {
 }
 
 export interface LedgerConflictSummary {
-  readonly providerAccountKey: string;
+  readonly providerAccountKey: string | null;
   readonly open: number;
   readonly resolved: number;
   readonly ignored: number;

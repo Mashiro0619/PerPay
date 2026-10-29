@@ -12,6 +12,22 @@ export const siteClientIdSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{2
 const revisionSchema = z.number().int().nonnegative();
 const nameSchema = displaySettingsInputSchema.shape.system_name.unwrap();
 
+export const siteCollectionSchema = z.object({
+  mode: z.enum(["FIXED", "RANDOM", "WEIGHTED"]),
+  accounts: z.array(z.object({
+    account_id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/),
+    weight: z.number().int().min(1).max(1_000_000).default(1),
+  }).strict()).min(1).max(100),
+}).strict().superRefine((input, context) => {
+  if (input.mode === "FIXED" && input.accounts.length !== 1) {
+    context.addIssue({ code: "custom", path: ["accounts"], message: "指定收款账号时请选择一个账号。" });
+  }
+  if (new Set(input.accounts.map(account => account.account_id)).size !== input.accounts.length) {
+    context.addIssue({ code: "custom", path: ["accounts"], message: "收款账号不能重复选择。" });
+  }
+});
+export type SiteCollection = z.infer<typeof siteCollectionSchema>;
+
 export const siteOrderPolicySchema = z.object({
   order_ttl_seconds: collectionSettingsInputSchema.shape.order_ttl_seconds,
   amount_offset_maximum_cents: collectionSettingsInputSchema.shape.amount_offset_maximum_cents,
@@ -58,6 +74,8 @@ export const siteConfigurationSchema = z.object({
   notifications_enabled: z.boolean(),
   notification_origin: originSchema,
   return_origin: originSchema,
+  // Older administrator clients may omit this; the store resolves a sole account.
+  collection: siteCollectionSchema.optional(),
   policy: sitePolicySchema,
 }).strict().superRefine((input, context) => {
   if (input.notifications_enabled && input.notification_origin === null) {

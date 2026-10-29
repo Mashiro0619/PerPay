@@ -1,11 +1,197 @@
 
 import { client } from './client.gen.js';
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client/index.js';
-import type { ActivateProviderApplicationKeyData, ActivateProviderApplicationKeyErrors, ActivateProviderApplicationKeyResponses, ChangeAdministratorPasswordData, ChangeAdministratorPasswordErrors, ChangeAdministratorPasswordResponses, CheckOfficialUpdateData, CheckOfficialUpdateErrors, CheckOfficialUpdateResponses, CreateAdministratorTestPaymentData, CreateAdministratorTestPaymentErrors, CreateAdministratorTestPaymentResponses, CreateManualSettlementData, CreateManualSettlementErrors, CreateManualSettlementResponses, CreateSiteData, CreateSiteErrors, CreateSiteResponses, DeleteSiteData, DeleteSiteErrors, DeleteSiteResponses, DiscardProviderApplicationKeyData, DiscardProviderApplicationKeyErrors, DiscardProviderApplicationKeyResponses, ExportAdministratorOrdersData, ExportAdministratorOrdersErrors, ExportAdministratorOrdersResponses, GenerateProviderApplicationKeyData, GenerateProviderApplicationKeyErrors, GenerateProviderApplicationKeyResponses, GetAdminAccessSettingsData, GetAdminAccessSettingsErrors, GetAdminAccessSettingsResponses, GetAdministratorLedgerEntryData, GetAdministratorLedgerEntryErrors, GetAdministratorLedgerEntryResponses, GetAdministratorOrderByMerchantNumberData, GetAdministratorOrderByMerchantNumberErrors, GetAdministratorOrderByMerchantNumberResponses, GetAdministratorOrderData, GetAdministratorOrderErrors, GetAdministratorOrderResponses, GetAdministratorSessionData, GetAdministratorSessionErrors, GetAdministratorSessionResponses, GetAdministratorSystemAnalyticsData, GetAdministratorSystemAnalyticsErrors, GetAdministratorSystemAnalyticsResponses, GetAdministratorSystemStatusData, GetAdministratorSystemStatusErrors, GetAdministratorSystemStatusResponses, GetAdministratorWorkItemSummaryData, GetAdministratorWorkItemSummaryErrors, GetAdministratorWorkItemSummaryResponses, GetCollectionPolicyData, GetCollectionPolicyErrors, GetCollectionPolicyResponses, GetFinancialExceptionData, GetFinancialExceptionErrors, GetFinancialExceptionResponses, GetLedgerConflictData, GetLedgerConflictErrors, GetLedgerConflictResponses, GetPaymentMatchData, GetPaymentMatchErrors, GetPaymentMatchResponses, GetReconciliationCandidateData, GetReconciliationCandidateErrors, GetReconciliationCandidateResponses, GetReconciliationLedgerEntryData, GetReconciliationLedgerEntryErrors, GetReconciliationLedgerEntryResponses, GetRuntimeSettingsData, GetRuntimeSettingsErrors, GetRuntimeSettingsResponses, GetSiteData, GetSiteDefaultsData, GetSiteDefaultsErrors, GetSiteDefaultsResponses, GetSiteErrors, GetSiteResponses, GetWebhookDeliveryData, GetWebhookDeliveryErrors, GetWebhookDeliveryResponses, IgnoreAllAdministratorWorkItemsData, IgnoreAllAdministratorWorkItemsErrors, IgnoreAllAdministratorWorkItemsResponses, ListAdministratorLedgerEntriesData, ListAdministratorLedgerEntriesErrors, ListAdministratorLedgerEntriesResponses, ListAdministratorOrdersData, ListAdministratorOrdersErrors, ListAdministratorOrdersResponses, ListAdministratorOrderWebhookDeliveriesData, ListAdministratorOrderWebhookDeliveriesErrors, ListAdministratorOrderWebhookDeliveriesResponses, ListAdministratorSessionsData, ListAdministratorSessionsErrors, ListAdministratorSessionsResponses, ListAdministratorWorkItemsData, ListAdministratorWorkItemsErrors, ListAdministratorWorkItemsResponses, ListLedgerConflictsData, ListLedgerConflictsErrors, ListLedgerConflictsResponses, ListLedgerEntryCandidatesData, ListLedgerEntryCandidatesErrors, ListLedgerEntryCandidatesResponses, ListManualSettlementLedgerEntriesData, ListManualSettlementLedgerEntriesErrors, ListManualSettlementLedgerEntriesResponses, ListManualSettlementOrdersData, ListManualSettlementOrdersErrors, ListManualSettlementOrdersResponses, ListOpenFinancialExceptionsData, ListOpenFinancialExceptionsErrors, ListOpenFinancialExceptionsResponses, ListPaymentMatchesData, ListPaymentMatchesErrors, ListPaymentMatchesResponses, ListSiteOverviewData, ListSiteOverviewErrors, ListSiteOverviewResponses, ListSitesData, ListSitesErrors, ListSitesResponses, ListWebhookDeliveriesData, ListWebhookDeliveriesErrors, ListWebhookDeliveriesResponses, ListWebhookDeliveryAttemptsData, ListWebhookDeliveryAttemptsErrors, ListWebhookDeliveryAttemptsResponses, LoginAdministratorData, LoginAdministratorErrors, LoginAdministratorResponses, LogoutAdministratorSessionData, LogoutAdministratorSessionErrors, LogoutAdministratorSessionResponses, OpenAdministratorOrderCheckoutData, OpenAdministratorOrderCheckoutErrors, RecordCollectedRefundDebitData, RecordCollectedRefundDebitErrors, RedeliverWebhookDeliveryData, RedeliverWebhookDeliveryErrors, RedeliverWebhookDeliveryResponses, RegenerateProviderApplicationKeyData, RegenerateProviderApplicationKeyErrors, RegenerateProviderApplicationKeyResponses, RequestLedgerScanData, RequestLedgerScanErrors, RequestLedgerScanResponses, ResolveLedgerConflictData, ResolveLedgerConflictErrors, ResolveLedgerConflictResponses, RestoreAdministratorWorkItemData, RestoreAdministratorWorkItemErrors, RestoreAdministratorWorkItemResponses, RevealRuntimeSecretData, RevealRuntimeSecretErrors, RevealRuntimeSecretResponses, ReversePaymentSettlementData, ReversePaymentSettlementErrors, ReversePaymentSettlementResponses, RevokeAdministratorSessionData, RevokeAdministratorSessionErrors, RevokeAdministratorSessionResponses, RevokeAllAdministratorSessionsData, RevokeAllAdministratorSessionsErrors, RevokeAllAdministratorSessionsResponses, RevokeOtherAdministratorSessionsData, RevokeOtherAdministratorSessionsErrors, RevokeOtherAdministratorSessionsResponses, RotateApiClientSecretData, RotateApiClientSecretErrors, RotateApiClientSecretResponses, RotateSiteApiSecretData, RotateSiteApiSecretErrors, RotateSiteApiSecretResponses, RotateSiteWebhookSecretData, RotateSiteWebhookSecretErrors, RotateSiteWebhookSecretResponses, RotateWebhookSigningSecretData, RotateWebhookSigningSecretErrors, RotateWebhookSigningSecretResponses, SetAdministratorRefundMarkData, SetAdministratorRefundMarkErrors, SetAdministratorRefundMarkResponses, SetupAdministratorData, SetupAdministratorErrors, SetupAdministratorResponses, SiteCreateAdministratorTestPaymentData, SiteCreateAdministratorTestPaymentErrors, SiteCreateAdministratorTestPaymentResponses, SiteCreateManualSettlementData, SiteCreateManualSettlementErrors, SiteCreateManualSettlementResponses, SiteExportAdministratorOrdersData, SiteExportAdministratorOrdersErrors, SiteExportAdministratorOrdersResponses, SiteGetAdministratorOrderByMerchantNumberData, SiteGetAdministratorOrderByMerchantNumberErrors, SiteGetAdministratorOrderByMerchantNumberResponses, SiteGetAdministratorOrderData, SiteGetAdministratorOrderErrors, SiteGetAdministratorOrderResponses, SiteGetAdministratorSystemAnalyticsData, SiteGetAdministratorSystemAnalyticsErrors, SiteGetAdministratorSystemAnalyticsResponses, SiteGetAdministratorWorkItemSummaryData, SiteGetAdministratorWorkItemSummaryErrors, SiteGetAdministratorWorkItemSummaryResponses, SiteGetFinancialExceptionData, SiteGetFinancialExceptionErrors, SiteGetFinancialExceptionResponses, SiteGetPaymentMatchData, SiteGetPaymentMatchErrors, SiteGetPaymentMatchResponses, SiteGetReconciliationCandidateData, SiteGetReconciliationCandidateErrors, SiteGetReconciliationCandidateResponses, SiteGetReconciliationLedgerEntryData, SiteGetReconciliationLedgerEntryErrors, SiteGetReconciliationLedgerEntryResponses, SiteGetWebhookDeliveryData, SiteGetWebhookDeliveryErrors, SiteGetWebhookDeliveryResponses, SiteIgnoreAllAdministratorWorkItemsData, SiteIgnoreAllAdministratorWorkItemsErrors, SiteIgnoreAllAdministratorWorkItemsResponses, SiteListAdministratorOrdersData, SiteListAdministratorOrdersErrors, SiteListAdministratorOrdersResponses, SiteListAdministratorOrderWebhookDeliveriesData, SiteListAdministratorOrderWebhookDeliveriesErrors, SiteListAdministratorOrderWebhookDeliveriesResponses, SiteListAdministratorWorkItemsData, SiteListAdministratorWorkItemsErrors, SiteListAdministratorWorkItemsResponses, SiteListLedgerEntryCandidatesData, SiteListLedgerEntryCandidatesErrors, SiteListLedgerEntryCandidatesResponses, SiteListManualSettlementLedgerEntriesData, SiteListManualSettlementLedgerEntriesErrors, SiteListManualSettlementLedgerEntriesResponses, SiteListWebhookDeliveriesData, SiteListWebhookDeliveriesErrors, SiteListWebhookDeliveriesResponses, SiteListWebhookDeliveryAttemptsData, SiteListWebhookDeliveryAttemptsErrors, SiteListWebhookDeliveryAttemptsResponses, SiteOpenAdministratorOrderCheckoutData, SiteOpenAdministratorOrderCheckoutErrors, SiteRedeliverWebhookDeliveryData, SiteRedeliverWebhookDeliveryErrors, SiteRedeliverWebhookDeliveryResponses, SiteRestoreAdministratorWorkItemData, SiteRestoreAdministratorWorkItemErrors, SiteRestoreAdministratorWorkItemResponses, SiteReversePaymentSettlementData, SiteReversePaymentSettlementErrors, SiteReversePaymentSettlementResponses, SiteSetAdministratorRefundMarkData, SiteSetAdministratorRefundMarkErrors, SiteSetAdministratorRefundMarkResponses, UpdateAdminAccessSettingsData, UpdateAdminAccessSettingsErrors, UpdateAdminAccessSettingsResponses, UpdateAdvancedSettingsData, UpdateAdvancedSettingsErrors, UpdateAdvancedSettingsResponses, UpdateBackupSettingsData, UpdateBackupSettingsErrors, UpdateBackupSettingsResponses, UpdateCollectionPolicyData, UpdateCollectionPolicyErrors, UpdateCollectionPolicyResponses, UpdateCollectionSettingsData, UpdateCollectionSettingsErrors, UpdateCollectionSettingsResponses, UpdateDisplaySettingsData, UpdateDisplaySettingsErrors, UpdateDisplaySettingsResponses, UpdateNotificationSettingsData, UpdateNotificationSettingsErrors, UpdateNotificationSettingsResponses, UpdateProviderSettingsData, UpdateProviderSettingsErrors, UpdateProviderSettingsResponses, UpdateSiteData, UpdateSiteDefaultsData, UpdateSiteDefaultsErrors, UpdateSiteDefaultsResponses, UpdateSiteErrors, UpdateSiteResponses, ViewSiteApiSecretData, ViewSiteApiSecretErrors, ViewSiteApiSecretResponses, ViewSiteWebhookSecretData, ViewSiteWebhookSecretErrors, ViewSiteWebhookSecretResponses } from './types.gen.js';
+import type { ActivateAlipayAccountApplicationKeyData, ActivateAlipayAccountApplicationKeyErrors, ActivateAlipayAccountApplicationKeyResponses, ActivateProviderApplicationKeyData, ActivateProviderApplicationKeyErrors, ActivateProviderApplicationKeyResponses, ChangeAdministratorPasswordData, ChangeAdministratorPasswordErrors, ChangeAdministratorPasswordResponses, CheckAlipayAccountData, CheckAlipayAccountErrors, CheckAlipayAccountResponses, CheckOfficialUpdateData, CheckOfficialUpdateErrors, CheckOfficialUpdateResponses, CreateAdministratorTestPaymentData, CreateAdministratorTestPaymentErrors, CreateAdministratorTestPaymentResponses, CreateAlipayAccountData, CreateAlipayAccountErrors, CreateAlipayAccountResponses, CreateManualSettlementData, CreateManualSettlementErrors, CreateManualSettlementResponses, CreateSiteData, CreateSiteErrors, CreateSiteResponses, DeleteAlipayAccountData, DeleteAlipayAccountErrors, DeleteAlipayAccountResponses, DeleteSiteData, DeleteSiteErrors, DeleteSiteResponses, DiscardAlipayAccountApplicationKeyData, DiscardAlipayAccountApplicationKeyErrors, DiscardAlipayAccountApplicationKeyResponses, DiscardProviderApplicationKeyData, DiscardProviderApplicationKeyErrors, DiscardProviderApplicationKeyResponses, ExportAdministratorOrdersData, ExportAdministratorOrdersErrors, ExportAdministratorOrdersResponses, GenerateAlipayAccountApplicationKeyData, GenerateAlipayAccountApplicationKeyErrors, GenerateAlipayAccountApplicationKeyResponses, GenerateProviderApplicationKeyData, GenerateProviderApplicationKeyErrors, GenerateProviderApplicationKeyResponses, GetAdminAccessSettingsData, GetAdminAccessSettingsErrors, GetAdminAccessSettingsResponses, GetAdministratorLedgerEntryData, GetAdministratorLedgerEntryErrors, GetAdministratorLedgerEntryResponses, GetAdministratorOrderByMerchantNumberData, GetAdministratorOrderByMerchantNumberErrors, GetAdministratorOrderByMerchantNumberResponses, GetAdministratorOrderData, GetAdministratorOrderErrors, GetAdministratorOrderResponses, GetAdministratorSessionData, GetAdministratorSessionErrors, GetAdministratorSessionResponses, GetAdministratorSystemAnalyticsData, GetAdministratorSystemAnalyticsErrors, GetAdministratorSystemAnalyticsResponses, GetAdministratorSystemStatusData, GetAdministratorSystemStatusErrors, GetAdministratorSystemStatusResponses, GetAdministratorWorkItemSummaryData, GetAdministratorWorkItemSummaryErrors, GetAdministratorWorkItemSummaryResponses, GetAlipayAccountData, GetAlipayAccountErrors, GetAlipayAccountResponses, GetCollectionPolicyData, GetCollectionPolicyErrors, GetCollectionPolicyResponses, GetFinancialExceptionData, GetFinancialExceptionErrors, GetFinancialExceptionResponses, GetLedgerConflictData, GetLedgerConflictErrors, GetLedgerConflictResponses, GetPaymentMatchData, GetPaymentMatchErrors, GetPaymentMatchResponses, GetReconciliationCandidateData, GetReconciliationCandidateErrors, GetReconciliationCandidateResponses, GetReconciliationLedgerEntryData, GetReconciliationLedgerEntryErrors, GetReconciliationLedgerEntryResponses, GetRuntimeSettingsData, GetRuntimeSettingsErrors, GetRuntimeSettingsResponses, GetSiteData, GetSiteDefaultsData, GetSiteDefaultsErrors, GetSiteDefaultsResponses, GetSiteErrors, GetSiteResponses, GetWebhookDeliveryData, GetWebhookDeliveryErrors, GetWebhookDeliveryResponses, IgnoreAllAdministratorWorkItemsData, IgnoreAllAdministratorWorkItemsErrors, IgnoreAllAdministratorWorkItemsResponses, ListAdministratorLedgerEntriesData, ListAdministratorLedgerEntriesErrors, ListAdministratorLedgerEntriesResponses, ListAdministratorOrdersData, ListAdministratorOrdersErrors, ListAdministratorOrdersResponses, ListAdministratorOrderWebhookDeliveriesData, ListAdministratorOrderWebhookDeliveriesErrors, ListAdministratorOrderWebhookDeliveriesResponses, ListAdministratorSessionsData, ListAdministratorSessionsErrors, ListAdministratorSessionsResponses, ListAdministratorWorkItemsData, ListAdministratorWorkItemsErrors, ListAdministratorWorkItemsResponses, ListAlipayAccountsData, ListAlipayAccountsErrors, ListAlipayAccountsResponses, ListLedgerConflictsData, ListLedgerConflictsErrors, ListLedgerConflictsResponses, ListLedgerEntryCandidatesData, ListLedgerEntryCandidatesErrors, ListLedgerEntryCandidatesResponses, ListManualSettlementLedgerEntriesData, ListManualSettlementLedgerEntriesErrors, ListManualSettlementLedgerEntriesResponses, ListManualSettlementOrdersData, ListManualSettlementOrdersErrors, ListManualSettlementOrdersResponses, ListOpenFinancialExceptionsData, ListOpenFinancialExceptionsErrors, ListOpenFinancialExceptionsResponses, ListPaymentMatchesData, ListPaymentMatchesErrors, ListPaymentMatchesResponses, ListSiteOverviewData, ListSiteOverviewErrors, ListSiteOverviewResponses, ListSitesData, ListSitesErrors, ListSitesResponses, ListWebhookDeliveriesData, ListWebhookDeliveriesErrors, ListWebhookDeliveriesResponses, ListWebhookDeliveryAttemptsData, ListWebhookDeliveryAttemptsErrors, ListWebhookDeliveryAttemptsResponses, LoginAdministratorData, LoginAdministratorErrors, LoginAdministratorResponses, LogoutAdministratorSessionData, LogoutAdministratorSessionErrors, LogoutAdministratorSessionResponses, OpenAdministratorOrderCheckoutData, OpenAdministratorOrderCheckoutErrors, RecordCollectedRefundDebitData, RecordCollectedRefundDebitErrors, RedeliverWebhookDeliveryData, RedeliverWebhookDeliveryErrors, RedeliverWebhookDeliveryResponses, RegenerateAlipayAccountApplicationKeyData, RegenerateAlipayAccountApplicationKeyErrors, RegenerateAlipayAccountApplicationKeyResponses, RegenerateProviderApplicationKeyData, RegenerateProviderApplicationKeyErrors, RegenerateProviderApplicationKeyResponses, RequestLedgerScanData, RequestLedgerScanErrors, RequestLedgerScanResponses, ResolveLedgerConflictData, ResolveLedgerConflictErrors, ResolveLedgerConflictResponses, RestoreAdministratorWorkItemData, RestoreAdministratorWorkItemErrors, RestoreAdministratorWorkItemResponses, RevealRuntimeSecretData, RevealRuntimeSecretErrors, RevealRuntimeSecretResponses, ReversePaymentSettlementData, ReversePaymentSettlementErrors, ReversePaymentSettlementResponses, RevokeAdministratorSessionData, RevokeAdministratorSessionErrors, RevokeAdministratorSessionResponses, RevokeAllAdministratorSessionsData, RevokeAllAdministratorSessionsErrors, RevokeAllAdministratorSessionsResponses, RevokeOtherAdministratorSessionsData, RevokeOtherAdministratorSessionsErrors, RevokeOtherAdministratorSessionsResponses, RotateApiClientSecretData, RotateApiClientSecretErrors, RotateApiClientSecretResponses, RotateSiteApiSecretData, RotateSiteApiSecretErrors, RotateSiteApiSecretResponses, RotateSiteWebhookSecretData, RotateSiteWebhookSecretErrors, RotateSiteWebhookSecretResponses, RotateWebhookSigningSecretData, RotateWebhookSigningSecretErrors, RotateWebhookSigningSecretResponses, SetAdministratorRefundMarkData, SetAdministratorRefundMarkErrors, SetAdministratorRefundMarkResponses, SetupAdministratorData, SetupAdministratorErrors, SetupAdministratorResponses, SiteCreateAdministratorTestPaymentData, SiteCreateAdministratorTestPaymentErrors, SiteCreateAdministratorTestPaymentResponses, SiteCreateManualSettlementData, SiteCreateManualSettlementErrors, SiteCreateManualSettlementResponses, SiteExportAdministratorOrdersData, SiteExportAdministratorOrdersErrors, SiteExportAdministratorOrdersResponses, SiteGetAdministratorOrderByMerchantNumberData, SiteGetAdministratorOrderByMerchantNumberErrors, SiteGetAdministratorOrderByMerchantNumberResponses, SiteGetAdministratorOrderData, SiteGetAdministratorOrderErrors, SiteGetAdministratorOrderResponses, SiteGetAdministratorSystemAnalyticsData, SiteGetAdministratorSystemAnalyticsErrors, SiteGetAdministratorSystemAnalyticsResponses, SiteGetAdministratorWorkItemSummaryData, SiteGetAdministratorWorkItemSummaryErrors, SiteGetAdministratorWorkItemSummaryResponses, SiteGetFinancialExceptionData, SiteGetFinancialExceptionErrors, SiteGetFinancialExceptionResponses, SiteGetPaymentMatchData, SiteGetPaymentMatchErrors, SiteGetPaymentMatchResponses, SiteGetReconciliationCandidateData, SiteGetReconciliationCandidateErrors, SiteGetReconciliationCandidateResponses, SiteGetReconciliationLedgerEntryData, SiteGetReconciliationLedgerEntryErrors, SiteGetReconciliationLedgerEntryResponses, SiteGetWebhookDeliveryData, SiteGetWebhookDeliveryErrors, SiteGetWebhookDeliveryResponses, SiteIgnoreAllAdministratorWorkItemsData, SiteIgnoreAllAdministratorWorkItemsErrors, SiteIgnoreAllAdministratorWorkItemsResponses, SiteListAdministratorOrdersData, SiteListAdministratorOrdersErrors, SiteListAdministratorOrdersResponses, SiteListAdministratorOrderWebhookDeliveriesData, SiteListAdministratorOrderWebhookDeliveriesErrors, SiteListAdministratorOrderWebhookDeliveriesResponses, SiteListAdministratorWorkItemsData, SiteListAdministratorWorkItemsErrors, SiteListAdministratorWorkItemsResponses, SiteListLedgerEntryCandidatesData, SiteListLedgerEntryCandidatesErrors, SiteListLedgerEntryCandidatesResponses, SiteListManualSettlementLedgerEntriesData, SiteListManualSettlementLedgerEntriesErrors, SiteListManualSettlementLedgerEntriesResponses, SiteListWebhookDeliveriesData, SiteListWebhookDeliveriesErrors, SiteListWebhookDeliveriesResponses, SiteListWebhookDeliveryAttemptsData, SiteListWebhookDeliveryAttemptsErrors, SiteListWebhookDeliveryAttemptsResponses, SiteOpenAdministratorOrderCheckoutData, SiteOpenAdministratorOrderCheckoutErrors, SiteRedeliverWebhookDeliveryData, SiteRedeliverWebhookDeliveryErrors, SiteRedeliverWebhookDeliveryResponses, SiteRestoreAdministratorWorkItemData, SiteRestoreAdministratorWorkItemErrors, SiteRestoreAdministratorWorkItemResponses, SiteReversePaymentSettlementData, SiteReversePaymentSettlementErrors, SiteReversePaymentSettlementResponses, SiteSetAdministratorRefundMarkData, SiteSetAdministratorRefundMarkErrors, SiteSetAdministratorRefundMarkResponses, UpdateAdminAccessSettingsData, UpdateAdminAccessSettingsErrors, UpdateAdminAccessSettingsResponses, UpdateAdvancedSettingsData, UpdateAdvancedSettingsErrors, UpdateAdvancedSettingsResponses, UpdateAlipayAccountData, UpdateAlipayAccountErrors, UpdateAlipayAccountResponses, UpdateBackupSettingsData, UpdateBackupSettingsErrors, UpdateBackupSettingsResponses, UpdateCollectionPolicyData, UpdateCollectionPolicyErrors, UpdateCollectionPolicyResponses, UpdateCollectionSettingsData, UpdateCollectionSettingsErrors, UpdateCollectionSettingsResponses, UpdateDisplaySettingsData, UpdateDisplaySettingsErrors, UpdateDisplaySettingsResponses, UpdateNotificationSettingsData, UpdateNotificationSettingsErrors, UpdateNotificationSettingsResponses, UpdateProviderSettingsData, UpdateProviderSettingsErrors, UpdateProviderSettingsResponses, UpdateSiteData, UpdateSiteDefaultsData, UpdateSiteDefaultsErrors, UpdateSiteDefaultsResponses, UpdateSiteErrors, UpdateSiteResponses, ViewSiteApiSecretData, ViewSiteApiSecretErrors, ViewSiteApiSecretResponses, ViewSiteWebhookSecretData, ViewSiteWebhookSecretErrors, ViewSiteWebhookSecretResponses } from './types.gen.js';
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     client?: Client;
     meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta;
 };
+export const listAlipayAccounts = <ThrowOnError extends boolean = false>(options?: Options<ListAlipayAccountsData, ThrowOnError>): RequestResult<ListAlipayAccountsResponses, ListAlipayAccountsErrors, ThrowOnError> => (options?.client ?? client).get<ListAlipayAccountsResponses, ListAlipayAccountsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: '__Host-perpay_session',
+            type: 'apiKey'
+        }],
+    url: '/api/admin/v1/alipay-accounts',
+    ...options
+});
+export const createAlipayAccount = <ThrowOnError extends boolean = false>(options: Options<CreateAlipayAccountData, ThrowOnError>): RequestResult<CreateAlipayAccountResponses, CreateAlipayAccountErrors, ThrowOnError> => (options.client ?? client).post<CreateAlipayAccountResponses, CreateAlipayAccountErrors, ThrowOnError>({
+    security: [
+        {
+            in: 'cookie',
+            name: '__Host-perpay_session',
+            type: 'apiKey'
+        },
+        {
+            in: 'cookie',
+            name: '__Host-perpay_csrf',
+            type: 'apiKey'
+        },
+        { name: 'X-CSRF-Token', type: 'apiKey' }
+    ],
+    url: '/api/admin/v1/alipay-accounts',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+export const deleteAlipayAccount = <ThrowOnError extends boolean = false>(options: Options<DeleteAlipayAccountData, ThrowOnError>): RequestResult<DeleteAlipayAccountResponses, DeleteAlipayAccountErrors, ThrowOnError> => (options.client ?? client).delete<DeleteAlipayAccountResponses, DeleteAlipayAccountErrors, ThrowOnError>({
+    security: [
+        {
+            in: 'cookie',
+            name: '__Host-perpay_session',
+            type: 'apiKey'
+        },
+        {
+            in: 'cookie',
+            name: '__Host-perpay_csrf',
+            type: 'apiKey'
+        },
+        { name: 'X-CSRF-Token', type: 'apiKey' }
+    ],
+    url: '/api/admin/v1/alipay-accounts/{accountId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+export const getAlipayAccount = <ThrowOnError extends boolean = false>(options: Options<GetAlipayAccountData, ThrowOnError>): RequestResult<GetAlipayAccountResponses, GetAlipayAccountErrors, ThrowOnError> => (options.client ?? client).get<GetAlipayAccountResponses, GetAlipayAccountErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: '__Host-perpay_session',
+            type: 'apiKey'
+        }],
+    url: '/api/admin/v1/alipay-accounts/{accountId}',
+    ...options
+});
+export const updateAlipayAccount = <ThrowOnError extends boolean = false>(options: Options<UpdateAlipayAccountData, ThrowOnError>): RequestResult<UpdateAlipayAccountResponses, UpdateAlipayAccountErrors, ThrowOnError> => (options.client ?? client).put<UpdateAlipayAccountResponses, UpdateAlipayAccountErrors, ThrowOnError>({
+    security: [
+        {
+            in: 'cookie',
+            name: '__Host-perpay_session',
+            type: 'apiKey'
+        },
+        {
+            in: 'cookie',
+            name: '__Host-perpay_csrf',
+            type: 'apiKey'
+        },
+        { name: 'X-CSRF-Token', type: 'apiKey' }
+    ],
+    url: '/api/admin/v1/alipay-accounts/{accountId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+export const checkAlipayAccount = <ThrowOnError extends boolean = false>(options: Options<CheckAlipayAccountData, ThrowOnError>): RequestResult<CheckAlipayAccountResponses, CheckAlipayAccountErrors, ThrowOnError> => (options.client ?? client).post<CheckAlipayAccountResponses, CheckAlipayAccountErrors, ThrowOnError>({
+    security: [
+        {
+            in: 'cookie',
+            name: '__Host-perpay_session',
+            type: 'apiKey'
+        },
+        {
+            in: 'cookie',
+            name: '__Host-perpay_csrf',
+            type: 'apiKey'
+        },
+        { name: 'X-CSRF-Token', type: 'apiKey' }
+    ],
+    url: '/api/admin/v1/alipay-accounts/{accountId}/check',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+export const generateAlipayAccountApplicationKey = <ThrowOnError extends boolean = false>(options: Options<GenerateAlipayAccountApplicationKeyData, ThrowOnError>): RequestResult<GenerateAlipayAccountApplicationKeyResponses, GenerateAlipayAccountApplicationKeyErrors, ThrowOnError> => (options.client ?? client).post<GenerateAlipayAccountApplicationKeyResponses, GenerateAlipayAccountApplicationKeyErrors, ThrowOnError>({
+    security: [
+        {
+            in: 'cookie',
+            name: '__Host-perpay_session',
+            type: 'apiKey'
+        },
+        {
+            in: 'cookie',
+            name: '__Host-perpay_csrf',
+            type: 'apiKey'
+        },
+        { name: 'X-CSRF-Token', type: 'apiKey' }
+    ],
+    url: '/api/admin/v1/alipay-accounts/{accountId}/application-key',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+export const regenerateAlipayAccountApplicationKey = <ThrowOnError extends boolean = false>(options: Options<RegenerateAlipayAccountApplicationKeyData, ThrowOnError>): RequestResult<RegenerateAlipayAccountApplicationKeyResponses, RegenerateAlipayAccountApplicationKeyErrors, ThrowOnError> => (options.client ?? client).post<RegenerateAlipayAccountApplicationKeyResponses, RegenerateAlipayAccountApplicationKeyErrors, ThrowOnError>({
+    security: [
+        {
+            in: 'cookie',
+            name: '__Host-perpay_session',
+            type: 'apiKey'
+        },
+        {
+            in: 'cookie',
+            name: '__Host-perpay_csrf',
+            type: 'apiKey'
+        },
+        { name: 'X-CSRF-Token', type: 'apiKey' }
+    ],
+    url: '/api/admin/v1/alipay-accounts/{accountId}/application-key/regenerate',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+export const activateAlipayAccountApplicationKey = <ThrowOnError extends boolean = false>(options: Options<ActivateAlipayAccountApplicationKeyData, ThrowOnError>): RequestResult<ActivateAlipayAccountApplicationKeyResponses, ActivateAlipayAccountApplicationKeyErrors, ThrowOnError> => (options.client ?? client).post<ActivateAlipayAccountApplicationKeyResponses, ActivateAlipayAccountApplicationKeyErrors, ThrowOnError>({
+    security: [
+        {
+            in: 'cookie',
+            name: '__Host-perpay_session',
+            type: 'apiKey'
+        },
+        {
+            in: 'cookie',
+            name: '__Host-perpay_csrf',
+            type: 'apiKey'
+        },
+        { name: 'X-CSRF-Token', type: 'apiKey' }
+    ],
+    url: '/api/admin/v1/alipay-accounts/{accountId}/application-key/activate',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+export const discardAlipayAccountApplicationKey = <ThrowOnError extends boolean = false>(options: Options<DiscardAlipayAccountApplicationKeyData, ThrowOnError>): RequestResult<DiscardAlipayAccountApplicationKeyResponses, DiscardAlipayAccountApplicationKeyErrors, ThrowOnError> => (options.client ?? client).post<DiscardAlipayAccountApplicationKeyResponses, DiscardAlipayAccountApplicationKeyErrors, ThrowOnError>({
+    security: [
+        {
+            in: 'cookie',
+            name: '__Host-perpay_session',
+            type: 'apiKey'
+        },
+        {
+            in: 'cookie',
+            name: '__Host-perpay_csrf',
+            type: 'apiKey'
+        },
+        { name: 'X-CSRF-Token', type: 'apiKey' }
+    ],
+    url: '/api/admin/v1/alipay-accounts/{accountId}/application-key/discard',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 export const setupAdministrator = <ThrowOnError extends boolean = false>(options: Options<SetupAdministratorData, ThrowOnError>): RequestResult<SetupAdministratorResponses, SetupAdministratorErrors, ThrowOnError> => (options.client ?? client).post<SetupAdministratorResponses, SetupAdministratorErrors, ThrowOnError>({
     url: '/api/admin/v1/setup',
     ...options,

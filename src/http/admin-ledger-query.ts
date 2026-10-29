@@ -22,6 +22,7 @@ const QUERY_KEYS = new Set([
   "q", "direction", "state", "occurred_from", "occurred_to", "min_amount_cents",
   "max_amount_cents", "sort_by", "sort_order", "limit", "cursor",
   "association_status", "has_reversals", "associated_from", "associated_to",
+  "alipay_account_id",
 ]);
 const STATES: readonly LedgerEntryState[] = [
   "UNALLOCATED", "CANDIDATE", "ALLOCATED", "CONFLICT", "ISOLATED", "IGNORED",
@@ -74,6 +75,8 @@ export function readAdminLedgerPageQuery(values: URLSearchParams, environment: P
     }
   }
   const sortBy = values.get("sort_by") ?? "occurred_at";
+  const alipayAccountId = values.get("alipay_account_id");
+  if (alipayAccountId !== null && !/^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/.test(alipayAccountId)) throw new ListQueryError("收款账号筛选无效，请重新选择");
   if (!ADMIN_LEDGER_SORT_FIELDS.includes(sortBy as AdminLedgerSort)) throw new ListQueryError("流水排序方式无效，请重新选择");
   const sortOrder = values.get("sort_order") ?? "desc";
   if (sortOrder !== "asc" && sortOrder !== "desc") throw new ListQueryError("流水排序方向无效，请重新选择");
@@ -107,6 +110,7 @@ export function readAdminLedgerPageQuery(values: URLSearchParams, environment: P
   const minAmountCents = amount("min_amount_cents"), maxAmountCents = amount("max_amount_cents");
   if (minAmountCents !== undefined && maxAmountCents !== undefined && minAmountCents > maxAmountCents) throw new ListQueryError("流水最小金额不能大于最大金额");
   const query: AdminLedgerPageQuery = {
+    ...(alipayAccountId !== null ? { alipayAccountId } : {}),
     environment, q: normalizeKeyword(values.get("q") ?? ""), sortBy: sortBy as AdminLedgerSort, sortOrder, limit: Number(limitText), cursor: null,
     ...(direction !== null ? { direction: direction as LedgerDirection } : {}),
     ...(state !== null ? { state: state as LedgerEntryState } : {}),
@@ -128,11 +132,12 @@ function fingerprint(query: AdminLedgerPageQuery, legacy = false): string {
     query.sortBy, query.sortOrder, query.limit,
   ];
   if (!legacy) values.push(query.associationStatus ?? null, query.hasReversals ?? null, query.associatedFrom ?? null, query.associatedTo ?? null);
+  if (query.alipayAccountId !== undefined) values.push(query.alipayAccountId);
   return createHash("sha256").update(JSON.stringify(values)).digest("hex");
 }
 
 function legacyQuery(query: AdminLedgerPageQuery): boolean {
-  return query.sortBy === "occurred_at" && query.associationStatus === undefined && query.hasReversals === undefined &&
+  return query.alipayAccountId === undefined && query.sortBy === "occurred_at" && query.associationStatus === undefined && query.hasReversals === undefined &&
     query.associatedFrom === undefined && query.associatedTo === undefined;
 }
 
@@ -156,7 +161,7 @@ function decodeAdminLedgerCursor(value: string, query: AdminLedgerPageQuery): Ad
   if ((legacy ? !legacyQuery(query) : parts[0] !== EXTENDED_CURSOR_PREFIX) || parts[1] !== fingerprint(query, legacy) ||
       (parts[2] !== null && (!Number.isSafeInteger(parts[2]) || parts[2] < 0)) ||
       (query.sortBy === "occurred_at" && parts[2] === null) || typeof parts[3] !== "string" ||
-      parts[3].length < 1 || parts[3].length > 256 || parts[3].includes("\0") || !parts[3].isWellFormed()) throw invalid();
+      parts[3].length < 1 || parts[3].length > (query.environment === null || query.alipayAccountId !== undefined ? 2048 : 256) || parts[3].includes("\0") || !parts[3].isWellFormed()) throw invalid();
   return query.sortBy === "occurred_at"
     ? { occurred_at_ms: parts[2], external_event_id: parts[3] }
     : { sort_value: parts[2], external_event_id: parts[3] };

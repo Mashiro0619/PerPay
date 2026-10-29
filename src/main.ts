@@ -1,4 +1,6 @@
 import { serve } from "@hono/node-server";
+import { AlipayAccountStore } from "./alipay-accounts/store.ts";
+import { AlipayAccountService } from "./alipay-accounts/service.ts";
 
 import { createAsyncBackupHealthProvider } from "./backup/health.ts";
 import { loadConfig } from "./config.ts";
@@ -28,20 +30,31 @@ const ledger = new LedgerStore(database);
 const reconciliation = new ReconciliationStore(database);
 const webhooks = new WebhookStore(database);
 const settingsStore = new RuntimeSettingsStore(database, config.masterKey);
+const accountStore = new AlipayAccountStore(database, config.masterKey);
 const sites = settingsStore.siteStore();
 if (!sites) throw new Error("schema 34 website configuration is required");
 let settings!: RuntimeSettingsService;
-const orders = new OrderService(database, () => settings.instanceSnapshot(), undefined, sites);
-const runtime = new RuntimeController({
+const orders: OrderService = new OrderService(database, () => settings.instanceSnapshot(), undefined, sites, undefined, {
+  accounts: () => accountStore.snapshots(), available: id => runtime.accountHealth(id).collectionReady,
+});
+const runtime: RuntimeController = new RuntimeController({
   database,
   orders,
   ledger,
   reconciliation,
   webhooks,
   sites,
+  accounts: () => accountStore.snapshots(),
+});
+const alipayAccounts = new AlipayAccountService({
+  store: accountStore,
+  onMutationStarted: id => runtime.beginAccountTransition(id),
+  onApplied: id => runtime.applyAccounts(id),
+  guardProviderSwitch: ({ current }) => runtime.assertAccountProviderSwitchAllowed(current),
 });
 settings = new RuntimeSettingsService({
   store: settingsStore,
+  alipayAccounts,
   guardProviderSwitch: ({ current, currentProviderAccountKey }) =>
     runtime.assertProviderSwitchAllowed(current, currentProviderAccountKey),
   onPaymentMutationStarted: () => runtime.beginPaymentTransition(),
@@ -73,6 +86,8 @@ const app = createApp({
     }));
   },
   settings,
+  alipayAccounts,
+  accountHealth: id => runtime.accountHealth(id),
   sites,
   runtimeStatus: () => runtime.status(),
   orders,
@@ -82,8 +97,8 @@ const app = createApp({
   backupHealth,
   ledgerHealth: () => runtime.ledgerHealth(),
   ledgerNextRunAt: () => runtime.ledgerNextRunAt(),
-  ledgerManualScan: () => runtime.ledgerManualScan(),
-  requestLedgerScan: () => runtime.requestLedgerScan(),
+  ledgerManualScan: (accountId?: string) => runtime.ledgerManualScan(accountId),
+  requestLedgerScan: (accountId?: string) => runtime.requestLedgerScan(accountId),
   reconciliationHealth: () => runtime.reconciliationHealth(),
   webhookStore: webhooks,
   webhookHealth: () => runtime.webhookHealth(),

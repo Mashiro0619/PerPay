@@ -26,7 +26,8 @@ export type AdminLedgerSort = (typeof ADMIN_LEDGER_SORT_FIELDS)[number];
 export type AdminLedgerAssociationStatus = "UNMATCHED" | "MATCHED" | "MULTIPLE";
 
 export interface AdminLedgerQuery {
-  readonly environment: ProviderEnvironment;
+  readonly environment: ProviderEnvironment | null;
+  readonly alipayAccountId?: string;
   readonly q?: string;
   readonly direction?: LedgerDirection;
   readonly state?: LedgerEntryState;
@@ -78,6 +79,8 @@ export interface AdminLedgerSummary extends AdminLedgerFacts {
   readonly ledger_entry_id: string;
   readonly external_event_id: string;
   readonly environment: ProviderEnvironment;
+  readonly alipay_account_id: string | null;
+  readonly alipay_account_name: string | null;
   readonly states: readonly LedgerEntryState[];
   readonly source_record_count: number;
   readonly content_consistent: boolean;
@@ -98,6 +101,8 @@ export interface AdminLedgerSource extends AdminLedgerFacts {
   readonly provider_account_key: string;
   readonly app_id: string;
   readonly environment: ProviderEnvironment;
+  readonly alipay_account_id: string | null;
+  readonly alipay_account_name: string | null;
   readonly raw_event_id: string;
   readonly semantic_fingerprint: string;
   readonly state: LedgerEntryState;
@@ -150,6 +155,9 @@ interface SourceRow {
   external_event_id: string;
   provider_account_key: string;
   app_id: string;
+  provider_endpoint: string;
+  alipay_account_id: string | null;
+  alipay_account_name: string | null;
   raw_event_id: string;
   semantic_fingerprint: string;
   state: LedgerEntryState;
@@ -196,9 +204,9 @@ export function readAdminLedgerPage(
 ): AdminLedgerPage {
   const normalized = normalizeQuery(query);
   const { limit, sortBy, includeDuplicateVariants } = normalized;
-  const statement = groupedQuery(normalized, limit + 1);
   const rows = database.read(db => {
     if (includeDuplicateVariants) registerDuplicateFacts(db);
+    const statement = groupedQuery(normalized, limit + 1, query.environment === null || query.alipayAccountId !== undefined);
     return db.prepare(statement.sql).all(...statement.parameters);
   }) as unknown as GroupRow[];
   const selected = rows.slice(0, limit);
@@ -218,21 +226,25 @@ export function readAdminLedgerDetail(
   database: AdminLedgerDatabase,
   environment: ProviderEnvironment,
   ledgerEntryId: string,
+  accounts = false,
 ): AdminLedgerDetail | null {
   const endpoint = environmentEndpoint(environment);
   if (!UUID.test(ledgerEntryId)) return null;
-  const statement = groupedQuery({
+  const row = database.read(db => {
+    const statement = groupedQuery({
     endpoint, where: ["entry.ledger_entry_id = ?"], parameters: [ledgerEntryId], order: "desc",
     sortBy: "occurred_at", cursor: null, includeDuplicateVariants: false, groupWhere: [], groupParameters: [],
     includeMatchMetrics: false,
-  }, 1);
-  const row = database.read(db => db.prepare(statement.sql).get(...statement.parameters)) as unknown as GroupRow | undefined;
+    }, 1, accounts);
+    return db.prepare(statement.sql).get(...statement.parameters);
+  }) as unknown as GroupRow | undefined;
   if (!row) return null;
   const { summary, sources, matches, conflicts } = summarize(row, environment);
   return { ...summary, sources, matches, conflicts };
 }
 
-function environmentEndpoint(environment: ProviderEnvironment): string {
+function environmentEndpoint(environment: ProviderEnvironment | null): string | null {
+  if (environment === null) return null;
   if (environment !== "PRODUCTION" && environment !== "SANDBOX") {
     throw new ListQueryError("支付宝环境无效");
   }
@@ -251,7 +263,7 @@ function normalizeQuery(query: AdminLedgerQuery) {
   if (!ADMIN_LEDGER_SORT_FIELDS.includes(sortBy)) throw new ListQueryError("流水排序方式无效");
   const keyword = normalizeKeyword(query.q ?? "");
   const search = listSearch([
-    "entry.ledger_entry_id", "entry.external_event_id", "entry.alipay_order_no",
+    "entry.ledger_entry_id", "entry.external_provider_event_id", "entry.alipay_order_no",
     "entry.merchant_order_no", "entry.other_account", "entry.trans_memo",
     "entry.provider_account_key", "binding.external_account_id",
   ], keyword);
@@ -264,6 +276,10 @@ function normalizeQuery(query: AdminLedgerQuery) {
     WHERE linked_match.ledger_entry_id = entry.ledger_entry_id AND ${orderSearch.where}
   ))`] : [];
   const parameters: Array<string | number> = [...search.parameters, ...orderSearch.parameters];
+  if (query.alipayAccountId !== undefined) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/.test(query.alipayAccountId)) throw new ListQueryError("收款账号筛选无效");
+    where.push("entry.alipay_account_id = ?"); parameters.push(query.alipayAccountId);
+  }
   try {
     const dates = listCreatedDates("entry.occurred_at", query.occurredFrom, query.occurredTo);
     if (dates.where) where.push(dates.where);
@@ -319,7 +335,7 @@ function normalizeQuery(query: AdminLedgerQuery) {
     (sortBy === "occurred_at" && cursorValue === null) ||
     (sortBy !== "occurred_at" && !("sort_value" in cursor)) ||
     typeof cursor.external_event_id !== "string" || cursor.external_event_id.length < 1 ||
-    cursor.external_event_id.length > 256 || cursor.external_event_id.includes("\0") ||
+    cursor.external_event_id.length > (query.environment === null || query.alipayAccountId !== undefined ? 2048 : 256) || cursor.external_event_id.includes("\0") ||
     !cursor.external_event_id.isWellFormed())) {
     throw new ListQueryError("流水分页游标无效");
   }
@@ -349,9 +365,22 @@ function registerDuplicateFacts(database: DatabaseSync) {
 function groupedQuery(
   options: Omit<ReturnType<typeof normalizeQuery>, "limit">,
   limit: number,
+  accounts: boolean,
 ) {
   const { endpoint, where: predicates, parameters: filterParameters, order, sortBy, cursor,
     includeDuplicateVariants, groupWhere, groupParameters, includeMatchMetrics } = options;
+  const scopedEntries = `account_entries AS NOT MATERIALIZED (
+    SELECT scoped_ledger.ledger_entry_id, scoped_ledger.provider_account_key, scoped_ledger.raw_event_id,
+           ${accounts ? "json_array(generation.account_id, identity.provider_endpoint, scoped_ledger.external_event_id)" : "scoped_ledger.external_event_id"} AS external_event_id,
+           scoped_ledger.external_event_id AS external_provider_event_id,
+           ${accounts ? "generation.account_id" : "NULL"} AS alipay_account_id,
+           ${accounts ? "account.name" : "NULL"} AS alipay_account_name,
+           scoped_ledger.semantic_fingerprint, scoped_ledger.occurred_at, scoped_ledger.occurred_at_precision_ms, scoped_ledger.amount_cents,
+           scoped_ledger.direction, scoped_ledger.currency, scoped_ledger.alipay_order_no, scoped_ledger.merchant_order_no,
+           scoped_ledger.trans_memo, scoped_ledger.other_account, scoped_ledger.state, scoped_ledger.created_at, scoped_ledger.updated_at
+      FROM ledger_entries AS scoped_ledger
+      ${accounts ? "LEFT JOIN alipay_account_generations AS generation ON generation.provider_account_key = scoped_ledger.provider_account_key LEFT JOIN alipay_accounts AS account ON account.account_id = generation.account_id JOIN provider_account_bindings AS identity ON identity.provider_account_key = scoped_ledger.provider_account_key" : ""}
+  ), `;
   const seek = listKeyset("sort_at", ["external_event_id"], order, cursor ? {
     value: "sort_value" in cursor ? cursor.sort_value! : cursor.occurred_at_ms!, keys: [cursor.external_event_id],
   } : null, sortBy !== "occurred_at");
@@ -390,11 +419,12 @@ function groupedQuery(
   // Eligibility selects event identities only. Hydration always includes every
   // source member, even when just one variant matched a date, amount or state.
   const duplicateCandidates = includeDuplicateVariants ? `duplicate_sources AS MATERIALIZED (
-    SELECT source.ledger_entry_id, source.provider_account_key, source.external_event_id, source.state
+    SELECT source.ledger_entry_id, source.provider_account_key, source.external_event_id, source.external_provider_event_id,
+           source.alipay_account_id, source.alipay_account_name, source.state
       FROM provider_account_bindings AS binding
-      CROSS JOIN ledger_entries AS source
+      CROSS JOIN account_entries AS source
      WHERE source.provider_account_key = binding.provider_account_key
-       AND binding.provider_endpoint = ?
+       AND ${endpoint === null ? "1 = 1" : "binding.provider_endpoint = ?"}
   ), duplicate_links AS MATERIALIZED (
     SELECT source.*, conflict.raw_event_id
       FROM duplicate_sources AS source CROSS JOIN ledger_conflicts AS conflict
@@ -404,10 +434,11 @@ function groupedQuery(
     SELECT source.*, conflict.raw_event_id
       FROM duplicate_sources AS source CROSS JOIN ledger_conflicts AS conflict
      WHERE conflict.provider_account_key = source.provider_account_key
-       AND conflict.external_event_id = source.external_event_id
+       AND conflict.external_event_id = source.external_provider_event_id
        AND conflict.conflict_type = 'DUPLICATE_EXTERNAL_ID'
   ), duplicate_inputs AS MATERIALIZED (
-    SELECT source.ledger_entry_id, source.provider_account_key, source.external_event_id, source.state,
+    SELECT source.ledger_entry_id, source.provider_account_key, source.external_event_id, source.external_provider_event_id,
+           source.alipay_account_id, source.alipay_account_name, source.state,
            raw.alipay_order_no, raw.merchant_order_no, raw.other_account, raw.trans_memo,
            perpay_admin_ledger_duplicate_facts(raw.amount_text, raw.occurred_at_text, raw.direction_text) AS facts
       FROM duplicate_links AS source
@@ -425,25 +456,25 @@ function groupedQuery(
       FROM provider_account_bindings AS binding
       CROSS JOIN duplicate_variants AS entry
      WHERE entry.provider_account_key = binding.provider_account_key
-       AND binding.provider_endpoint = ?${predicates.length ? " AND " + predicates.join(" AND ") : ""}` : "";
-  const sql = `WITH ${duplicateCandidates}eligible_ids AS MATERIALIZED (
+       AND ${endpoint === null ? "1 = 1" : "binding.provider_endpoint = ?"}${predicates.length ? " AND " + predicates.join(" AND ") : ""}` : "";
+  const sql = `WITH ${scopedEntries}${duplicateCandidates}eligible_ids AS MATERIALIZED (
     SELECT DISTINCT entry.external_event_id
       FROM provider_account_bindings AS binding
-      CROSS JOIN ledger_entries AS entry
+      CROSS JOIN account_entries AS entry
      WHERE entry.provider_account_key = binding.provider_account_key
-       AND binding.provider_endpoint = ?${predicates.length ? " AND " + predicates.join(" AND ") : ""}${duplicateEligibility}
+       AND ${endpoint === null ? "1 = 1" : "binding.provider_endpoint = ?"}${predicates.length ? " AND " + predicates.join(" AND ") : ""}${duplicateEligibility}
   ), members AS MATERIALIZED (
-    SELECT entry.*, binding.external_account_id AS app_id,
+    SELECT entry.*, binding.external_account_id AS app_id, binding.provider_endpoint,
            ROW_NUMBER() OVER (
              PARTITION BY entry.external_event_id
              ORDER BY activation.sequence IS NOT NULL, activation.sequence,
                       binding.bound_at, binding.provider_account_key
            ) AS source_rank
       FROM eligible_ids AS eligible
-      JOIN ledger_entries AS entry ON entry.external_event_id = eligible.external_event_id
+      JOIN account_entries AS entry ON entry.external_event_id = eligible.external_event_id
       JOIN provider_account_bindings AS binding ON binding.provider_account_key = entry.provider_account_key
       LEFT JOIN provider_account_activations AS activation ON activation.provider_account_key = binding.provider_account_key
-     WHERE binding.provider_endpoint = ?
+     WHERE ${endpoint === null ? "1 = 1" : "binding.provider_endpoint = ?"}
   ), ${matchMetrics}${amountMetrics}event_groups AS (
     -- Unactivated legacy bindings precede recorded generations. Generations
     -- activate once in append-only sequence order. A later source
@@ -460,8 +491,10 @@ function groupedQuery(
       JOIN selected_groups AS selected ON selected.external_event_id = member.external_event_id
   ), source_payloads AS (
     SELECT external_event_id, json_group_array(json_object(
-      'ledger_entry_id', ledger_entry_id, 'external_event_id', external_event_id,
+      'ledger_entry_id', ledger_entry_id, 'external_event_id', external_provider_event_id,
       'provider_account_key', provider_account_key, 'app_id', app_id,
+      'provider_endpoint', provider_endpoint,
+      'alipay_account_id', alipay_account_id, 'alipay_account_name', alipay_account_name,
       'raw_event_id', raw_event_id, 'semantic_fingerprint', semantic_fingerprint,
       'state', state, 'amount_cents', amount_cents, 'occurred_at', occurred_at,
       'occurred_at_precision_ms', occurred_at_precision_ms, 'direction', direction,
@@ -493,7 +526,7 @@ function groupedQuery(
       FROM selected_members AS member
       CROSS JOIN ledger_conflicts AS conflict
      WHERE conflict.provider_account_key = member.provider_account_key
-       AND conflict.external_event_id = member.external_event_id
+       AND conflict.external_event_id = member.external_provider_event_id
     UNION
     SELECT member.external_event_id, conflict.conflict_id
       FROM selected_members AS member
@@ -527,17 +560,19 @@ function groupedQuery(
     LEFT JOIN conflict_payloads AS conflicts ON conflicts.external_event_id = selected.external_event_id
    ORDER BY selected.sort_at ${order === "asc" ? "ASC" : "DESC"} NULLS LAST, selected.external_event_id ${order === "asc" ? "ASC" : "DESC"}`;
   return { sql, parameters: [
-    ...(includeDuplicateVariants ? [endpoint] : []), endpoint, ...filterParameters,
-    ...(includeDuplicateVariants ? [endpoint, ...filterParameters] : []),
-    endpoint, ...groupParameters, ...seek.parameters, limit,
+    ...(includeDuplicateVariants && endpoint !== null ? [endpoint] : []), ...(endpoint !== null ? [endpoint] : []), ...filterParameters,
+    ...(includeDuplicateVariants ? [...(endpoint !== null ? [endpoint] : []), ...filterParameters] : []),
+    ...(endpoint !== null ? [endpoint] : []), ...groupParameters, ...seek.parameters, limit,
   ] };
 }
 
-function summarize(row: GroupRow, environment: ProviderEnvironment) {
+function summarize(row: GroupRow, environment: ProviderEnvironment | null) {
   const sourceRows = JSON.parse(row.sources_json) as SourceRow[];
   const sources: AdminLedgerSource[] = sourceRows.map(source => ({
     ledger_entry_id: source.ledger_entry_id, external_event_id: source.external_event_id,
-    provider_account_key: source.provider_account_key, app_id: source.app_id, environment,
+    provider_account_key: source.provider_account_key, app_id: source.app_id,
+    environment: environment ?? (source.provider_endpoint === providerEndpoint("SANDBOX") ? "SANDBOX" : "PRODUCTION"),
+    alipay_account_id: source.alipay_account_id, alipay_account_name: source.alipay_account_name,
     raw_event_id: source.raw_event_id, semantic_fingerprint: source.semantic_fingerprint,
     state: source.state, amount_cents: safeInteger(source.amount_cents),
     occurred_at: iso(source.occurred_at), occurred_at_precision_milliseconds: source.occurred_at_precision_ms,
@@ -581,8 +616,9 @@ function summarize(row: GroupRow, environment: ProviderEnvironment) {
   const latest = (values: readonly string[]) => values.reduce<string | null>((last, value) => last === null || value > last ? value : last, null);
   const contentConsistent = duplicateConflicts.length === 0 && new Set(sources.map(source => source.semantic_fingerprint)).size === 1;
   const summary: AdminLedgerSummary = {
-    ...facts, ledger_entry_id: sources[0]!.ledger_entry_id, external_event_id: row.external_event_id,
-    environment, states: STATES.filter(state => sources.some(source => source.state === state)),
+    ...facts, ledger_entry_id: sources[0]!.ledger_entry_id, external_event_id: sources[0]!.external_event_id,
+    alipay_account_id: sources[0]!.alipay_account_id, alipay_account_name: sources[0]!.alipay_account_name,
+    environment: sources[0]!.environment, states: STATES.filter(state => sources.some(source => source.state === state)),
     source_record_count: sources.length, content_consistent: contentConsistent,
     has_conflicts: !contentConsistent || conflicts.length > 0 || active.length > 1,
     active_match_count: active.length, active_match: active.length === 1 ? active[0]! : null,
@@ -600,6 +636,7 @@ function safeInteger(value: bigint | number): number {
   if (!Number.isSafeInteger(result) || result < 0) throw new Error("ledger projection contains an invalid integer");
   return result;
 }
+
 
 function iso(value: bigint | number): string {
   return new Date(safeInteger(value)).toISOString();

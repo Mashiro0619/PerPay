@@ -1,4 +1,5 @@
 import { collectionPolicyInputSchema, type CollectionPolicyInput } from "./collection-policy.ts";
+import { AlipayAccountService } from "../alipay-accounts/service.ts";
 import { collectionCodeError } from "../shared/collection-code.ts";
 import { collectionCodeInputSchema, providerApplicationInputSchema, instanceDisplayInputSchema, type InstanceDisplayInput, type CollectionCodeInput, type ProviderApplicationInput } from "./model.ts";
 import { adminAccessInputSchema, createAdminAccessPolicy, type AdminAccessInput, type AdminAccess } from "./admin-access.ts";
@@ -162,6 +163,7 @@ export class RuntimeSettingsService {
   readonly #providerHistory: ProviderHistory;
   readonly #verifyProviderApplicationKey: ProviderKeyVerifier;
   #mutation: Promise<void> = Promise.resolve();
+  #accounts: AlipayAccountService | null = null;
 
   constructor(options: {
     readonly store: RuntimeSettingsStore;
@@ -171,6 +173,7 @@ export class RuntimeSettingsService {
     readonly onPaymentMutationStarted?: PaymentMutationStarted | undefined;
     readonly providerHistory?: ProviderHistory | undefined;
     readonly verifyProviderApplicationKey?: ProviderKeyVerifier | undefined;
+    readonly alipayAccounts?: AlipayAccountService | undefined;
   }) {
     this.#store = options.store;
     this.#guardProviderSwitch = options.guardProviderSwitch ?? (() => undefined);
@@ -179,6 +182,7 @@ export class RuntimeSettingsService {
     this.#onPaymentMutationStarted = options.onPaymentMutationStarted ?? (() => undefined);
     this.#providerHistory = options.providerHistory ?? (() => []);
     this.#verifyProviderApplicationKey = options.verifyProviderApplicationKey ?? verifyProviderApplicationKey;
+    this.#accounts = options.alipayAccounts ?? null;
   }
 
   initialize(): PaymentSettingsSnapshot {
@@ -205,10 +209,22 @@ export class RuntimeSettingsService {
 
   instanceView(): InstanceSettingsView {
     const snapshot = this.instanceSnapshot();
-    const applicationKey = this.#store.providerApplicationKey();
-    const pending = this.#store.pendingApplicationKey();
-    const collectionConfigured = snapshot.collection !== null && collectionCodeError(snapshot.collection.codePayload) === null;
-    const providerConfigured = snapshot.provider !== null && snapshot.activeProviderAccountKey !== null;
+    const accountStore = this.#store.accountStore();
+    const accounts = accountStore?.snapshots() ?? [];
+    const usesAccounts = accountStore !== null;
+    const single = accounts.length === 1 ? accounts[0]! : null;
+    const applicationKey = usesAccounts ? single?.applicationKey ?? null : this.#store.providerApplicationKey();
+    const pending = usesAccounts ? single?.pendingApplicationKey ?? null : this.#store.pendingApplicationKey();
+    const collectionConfigured = usesAccounts ? accounts.some(account => account.enabled && account.codePayload !== null && collectionCodeError(account.codePayload) === null)
+      : snapshot.collection !== null && collectionCodeError(snapshot.collection.codePayload) === null;
+    const providerConfigured = usesAccounts ? accounts.some(account => account.enabled && account.provider !== null)
+      : snapshot.provider !== null && snapshot.activeProviderAccountKey !== null;
+    const applicationKeyConfigured = usesAccounts ? accounts.some(account => account.applicationKey !== null) : applicationKey !== null;
+    const complete = usesAccounts ? accounts.some(account => account.enabled && account.configured) : collectionConfigured && providerConfigured;
+    const collection = usesAccounts ? (single?.codePayload ? { code_payload: single.codePayload } : null)
+      : snapshot.collection ? { code_payload: snapshot.collection.codePayload } : null;
+    const provider = usesAccounts ? single?.provider ?? null : snapshot.provider;
+    const providerAccountKey = usesAccounts ? single?.providerAccountKey ?? null : snapshot.activeProviderAccountKey;
     return {
       site_mode: true,
       revision: snapshot.revision,
@@ -217,19 +233,20 @@ export class RuntimeSettingsService {
       admin_access: snapshot.adminAccess,
       collection_policy: this.collectionPolicy(),
       completion: {
-        complete: collectionConfigured && providerConfigured,
-        application_key: applicationKey !== null,
+        complete,
+        application_key: applicationKeyConfigured,
         collection: collectionConfigured,
         provider: providerConfigured,
         sites: (this.siteStore()?.list(null, 1).length ?? 0) > 0,
-        next_step: configurationNextStep({ applicationKeyConfigured: applicationKey !== null, providerConfigured, collectionConfigured }),
+        next_step: usesAccounts ? (complete ? null : applicationKeyConfigured ? "CONFIGURE_PROVIDER" : "GENERATE_APPLICATION_KEY")
+          : configurationNextStep({ applicationKeyConfigured, providerConfigured, collectionConfigured }),
       },
-      collection: snapshot.collection ? { code_payload: snapshot.collection.codePayload } : null,
-      provider: snapshot.provider && snapshot.activeProviderAccountKey ? {
-        environment: snapshot.provider.environment,
-        app_id: snapshot.provider.appId,
-        platform_public_key: snapshot.provider.publicKeyPem,
-        provider_account_key: snapshot.activeProviderAccountKey,
+      collection,
+      provider: provider && providerAccountKey ? {
+        environment: provider.environment,
+        app_id: provider.appId,
+        platform_public_key: provider.publicKeyPem,
+        provider_account_key: providerAccountKey,
       } : null,
       application_public_key: applicationKey?.uploadPublicKey ?? null,
       application_key_fingerprint: applicationKey?.fingerprint ?? null,
@@ -238,7 +255,7 @@ export class RuntimeSettingsService {
         fingerprint: pending.newFingerprint, app_id: pending.appId!, environment: pending.environment!,
         created_at: new Date(pending.createdAt).toISOString(),
       } : null,
-      provider_generations: this.#providerHistory().map(generation => ({
+      provider_generations: usesAccounts ? accountStore!.generationViews() : this.#providerHistory().map(generation => ({
         provider_account_key: generation.providerAccountKey, app_id: generation.externalAccountId,
         environment: generation.endpoint === providerEndpoint("SANDBOX") ? "SANDBOX" : "PRODUCTION",
         activated_at: new Date(generation.activatedAt).toISOString(),
@@ -361,6 +378,14 @@ export class RuntimeSettingsService {
   }
 
   siteStore() { return this.#store.siteStore(); }
+
+  accountService(): AlipayAccountService | null {
+    if (this.#accounts) return this.#accounts;
+    const store = this.#store.accountStore();
+    if (!store) return null;
+    this.#accounts = new AlipayAccountService({ store, verifyProviderApplicationKey: this.#verifyProviderApplicationKey });
+    return this.#accounts;
+  }
 
   collectionPolicy(): CollectionPolicyInput {
     return this.#store.collectionPolicy();

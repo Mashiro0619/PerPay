@@ -7,6 +7,8 @@ import { it } from "node:test";
 
 import { AppDatabase, inspectDatabaseIntegrity } from "../src/database/database.ts";
 import { IdentityService } from "../src/identity/service.ts";
+import { createPreAccountDatabase } from "./legacy-settings-fixture.ts";
+import { DATABASE_COMPATIBILITY } from "../src/version.ts";
 
 it("upgrades schema 35 without invalidating old sessions and retains login metadata through backup and restore", async () => {
   const directory = mkdtempSync(join(tmpdir(), "perpay-session-migration-"));
@@ -15,7 +17,7 @@ it("upgrades schema 35 without invalidating old sessions and retains login metad
   const clock = { now: Date.parse("2026-10-25T12:00:00Z") };
   let database: AppDatabase | undefined;
   try {
-    database = await AppDatabase.open(path);
+    database = createPreAccountDatabase(path).owner;
     let identity = new IdentityService(database, () => clock.now);
     await identity.initialize();
     await identity.setupAdmin("session-migration-password");
@@ -47,7 +49,7 @@ it("upgrades schema 35 without invalidating old sessions and retains login metad
       lastSeenAt: oldSession.session.lastSeenAt,
       expiresAt: oldLogin.absoluteExpiresAt,
     });
-    const preMigrationPath = `${path}.pre-migration-v35-to-v36.sqlite3`;
+    const preMigrationPath = `${path}.pre-migration-v35-to-v${DATABASE_COMPATIBILITY.maximum}.sqlite3`;
     assert.equal(existsSync(preMigrationPath), true);
     const original = new DatabaseSync(preMigrationPath, { readOnly: true, readBigInts: true });
     try {

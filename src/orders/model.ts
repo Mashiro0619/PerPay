@@ -173,6 +173,8 @@ export type PaymentBasis = z.infer<typeof paymentBasisSchema>;
 export interface PaymentOrder {
   readonly orderId: string;
   readonly apiClientId: string;
+  readonly alipayAccountId: string;
+  readonly providerAccountKey: string;
   readonly merchantOrderNo: string;
   readonly idempotencyKeyDigest: string;
   readonly idempotencyKeyDigestVersion: typeof IDEMPOTENCY_KEY_DIGEST_VERSION;
@@ -263,6 +265,7 @@ export interface AdminOrderCursor {
 
 export interface AdminOrderFilters {
   readonly apiClientId?: string;
+  readonly alipayAccountId?: string;
   readonly checkoutStatus: CheckoutStatus | null;
   readonly paymentStatus: PaymentStatus | null;
 }
@@ -271,6 +274,9 @@ export interface AdminOrderFilters {
 export interface AdminOrderSummaryProjection {
   readonly orderId: string;
   readonly apiClientId: string;
+  readonly alipayAccountId: string;
+  readonly alipayAccountName: string | null;
+  readonly providerAccountKey: string;
   readonly merchantOrderNo: string;
   readonly requestedAmountCents: number;
   readonly payableAmountCents: number;

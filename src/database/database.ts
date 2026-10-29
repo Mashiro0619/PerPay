@@ -21,6 +21,8 @@ import { inspectAuditChain } from "./audit-chain.ts";
 import { countAdminOperationViolations } from "./admin-operation-integrity.ts";
 import { migrateSiteData } from "../sites/migrations/data.ts";
 import { countSiteDomainViolations } from "../sites/integrity.ts";
+import { migrateAlipayAccounts } from "../alipay-accounts/migration.ts";
+import { countAlipayAccountDomainViolations } from "../alipay-accounts/integrity.ts";
 import {
   conflictFingerprint,
   ledgerConflictOperationEvidence,
@@ -585,6 +587,8 @@ async function migrate(
         normalizeFixedAccounts(connection);
       } else if (migration.postApply === "migrate_websites_v1") {
         migrateSiteData(connection, masterKey);
+      } else if (migration.postApply === "migrate_alipay_accounts_v1") {
+        migrateAlipayAccounts(connection, masterKey);
       }
       insert.run(migration.version, migration.name, migrationChecksum(migration));
       // A long migration owns SQLite's write lock, so renew in that same
@@ -1104,7 +1108,7 @@ function countDomainViolations(connection: DatabaseSync): number {
     countLedgerDomainViolations(connection) +
     countReconciliationDomainViolations(connection) +
     countWebhookDomainViolations(connection) +
-    countAdminOperationViolations(connection) + countSiteDomainViolations(connection);
+    countAdminOperationViolations(connection) + countSiteDomainViolations(connection) + countAlipayAccountDomainViolations(connection);
 }
 
 function countRuntimeSettingsDomainViolations(connection: DatabaseSync): number {
@@ -1198,6 +1202,14 @@ function countIdentityDomainViolations(connection: DatabaseSync): number {
 
 function countOrderDomainViolations(connection: DatabaseSync): number {
   if (!tableExists(connection, "payment_orders")) return 0;
+  const amountAccountPartition = columnExists(connection, "amount_slots", "alipay_account_id") ? "alipay_account_id, " : "";
+  // Multi-account orders select an immutable profile explicitly. Only the old
+  // singleton path requires an active profile shared by the whole instance.
+  const legacyProfilePredicate = amountAccountPartition
+    ? `WHERE NOT EXISTS (SELECT 1 FROM collection_profile_provider_accounts AS link
+         JOIN alipay_account_generations AS generation USING(provider_account_key)
+         WHERE link.profile_id = profile.profile_id AND generation.account_id = profile.alipay_account_id)`
+    : "";
   const checkoutTokenKeyPredicate = tableExists(connection, "checkout_token_keys")
     ? "(SELECT COUNT(*) FROM checkout_token_keys WHERE retired_at IS NULL) != 1"
     : tableExists(connection, "checkout_token_key")
@@ -1247,13 +1259,13 @@ function countOrderDomainViolations(connection: DatabaseSync): number {
                  generation,
                  occupied_from,
                  ROW_NUMBER() OVER (
-                   PARTITION BY payable_amount_cents ORDER BY generation
+                   PARTITION BY ${amountAccountPartition}payable_amount_cents ORDER BY generation
                  ) AS position,
                  LAG(generation) OVER (
-                   PARTITION BY payable_amount_cents ORDER BY generation
+                   PARTITION BY ${amountAccountPartition}payable_amount_cents ORDER BY generation
                  ) AS previous_generation,
                  LAG(released_at) OVER (
-                   PARTITION BY payable_amount_cents ORDER BY generation
+                   PARTITION BY ${amountAccountPartition}payable_amount_cents ORDER BY generation
                  ) AS previous_released_at
                FROM amount_slots
              ) AS ordered
@@ -1271,7 +1283,7 @@ function countOrderDomainViolations(connection: DatabaseSync): number {
            UNION ALL
 
            SELECT 'active_profile' AS subject
-            WHERE EXISTS (SELECT 1 FROM collection_profiles)
+            WHERE EXISTS (SELECT 1 FROM collection_profiles AS profile ${legacyProfilePredicate})
               AND NOT EXISTS (SELECT 1 FROM active_collection_profile WHERE singleton_key = 1)
 
            UNION ALL

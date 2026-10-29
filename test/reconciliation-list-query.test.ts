@@ -228,8 +228,7 @@ describe("reconciliation and reminder global queries", () => {
               .map((r) => r[key]),
           );
         }
-        const account =
-          f.services.settings.instanceSnapshot().activeProviderAccountKey!;
+        const account = first.data[0]!.provider_account_key as string;
         const legacy = Buffer.from(
           resource.includes("conflicts")
             ? "perpay:ledger-conflicts:v2\n" +
@@ -246,9 +245,10 @@ describe("reconciliation and reminder global queries", () => {
                 first.data[0]![key],
         ).toString("base64url");
         assert.equal(
-          (await c.request(resource + "?cursor=" + legacy)).status,
+          (await c.request(resource + "?provider_account_key=" + encodeURIComponent(account) + "&cursor=" + legacy)).status,
           200,
         );
+        assert.equal((await c.request(resource + "?cursor=" + legacy)).status, 422);
         assert.equal(
           (await c.request(resource + "?q=x&cursor=" + legacy)).status,
           422,

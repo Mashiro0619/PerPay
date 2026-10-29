@@ -1143,6 +1143,7 @@ describe("database migration backup maintenance", () => {
     const database = await openTestDatabase(databasePath);
     const settings = new RuntimeSettingsStore(database, TEST_MASTER_KEY);
     try {
+      settings.accountStore()!.create({ name: "维护测试账号", enabled: true, code_payload: null, environment: "PRODUCTION", app_id: null }, { actorId: "admin" });
       const sites = settings.siteStore()!;
       const site = sites.create({ operation_id: randomUUID(), configuration: { name: "维护测试", accepting_orders: true,
         notifications_enabled: false, notification_origin: null, return_origin: null, policy: sites.defaults().policy } }, { actorId: "admin" });
