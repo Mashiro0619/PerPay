@@ -93,3 +93,44 @@ test("an initial read failure has no invented data and retry restores the reques
   await expect(page.getByRole("heading", { name: "没有符合条件的订单" })).toBeVisible();
   await record(page, info, { feature: "initial-read-retry", inventedRows: false });
 });
+
+test("a real list refresh preserves the expanded record and exact values while the response is delayed", async ({ page, manifest }, info) => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  await login(page, manifest);
+  await page.goto(manifest.origin + "/admin/ledger");
+  const menu = page.getByRole("button", { name: "更多对账操作", exact: true });
+  await menu.click();
+  await page.getByRole("menuitem", { name: "列表显示", exact: true }).click();
+  const display = page.getByRole("dialog", { name: "列表显示", exact: true });
+  await display.getByRole("checkbox", { name: "备注", exact: true }).check();
+  await display.getByRole("button", { name: "完成", exact: true }).click();
+  const first = page.locator('[data-business-row]').first();
+  await first.getByRole("button", { name: "展开信息", exact: true }).click();
+  const panel = first.locator('[data-slot="collapsible-content"]');
+  const original = await panel.elementHandle();
+  const identity = await first.getAttribute("data-business-row");
+  const values = await first.locator(".list-money").allTextContents();
+  let release: (() => void) | undefined;
+  let readCount = 0;
+  await page.route("**/api/admin/v1/ledger/entries?*", async route => {
+    readCount++;
+    const response = await route.fetch();
+    await new Promise<void>(resolve => { release = resolve; });
+    await route.fulfill({ response });
+  });
+  try {
+    await menu.click();
+    await page.getByRole("menuitem", { name: "刷新", exact: true }).click();
+    await expect.poll(() => readCount).toBe(1);
+    await expect.poll(() => Boolean(release)).toBe(true);
+    await expect(first.getByRole("button", { name: "收起信息", exact: true })).toHaveAttribute("aria-expanded", "true");
+    expect(await panel.evaluate((node, previous) => node === previous, original)).toBe(true);
+    expect(await first.locator(".list-money").allTextContents()).toEqual(values);
+    release!();
+    await expect(first.locator('xpath=ancestor::*[@aria-busy][1]')).toHaveAttribute("aria-busy", "false");
+    expect(await first.getAttribute("data-business-row")).toBe(identity);
+    expect(await panel.evaluate((node, previous) => node === previous, original)).toBe(true);
+    expect(await first.locator(".list-money").allTextContents()).toEqual(values);
+    await record(page, info, { feature: "expanded-record-refresh", realRefreshControl: true, heldReadResponse: true, readCount, identity, values });
+  } finally { release?.(); }
+});
