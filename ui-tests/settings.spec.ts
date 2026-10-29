@@ -67,3 +67,24 @@ test("settings use guarded category selection on phones and scrolling tabs on de
   expect(await stableName!.evaluate(element => element.isConnected)).toBe(true);
   await record(page, info, { feature: "settings-selection-motion", underline, reducedMotion: true });
 });
+
+test("account list and detail retain their console hierarchy across themes and widths", async ({ page, manifest }, info) => {
+  await login(page, manifest);
+  for (const width of [1440, 390]) for (const theme of ["light", "dark"] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme: theme });
+    await page.evaluate(theme => localStorage.setItem("perpay:theme", theme), theme);
+    await page.goto(manifest.origin + "/admin/settings/accounts");
+    const accounts = page.locator("[data-account-list]");
+    await expect(accounts).toBeVisible();
+    const name = accounts.locator('a[href^="/admin/settings/accounts/"]').first();
+    expect(await name.evaluate(element => getComputedStyle(element).fontSize)).toBe("14px");
+    const href = await name.getAttribute("href");
+    await record(page, info, { feature: "account-list-polish", width, theme });
+    await name.click();
+    await expect(page).toHaveURL(manifest.origin + href);
+    await expect(page.locator("[data-account-key-card]")).toBeVisible();
+    await expect(page.getByLabel("密钥内容", { exact: true })).toHaveCount(0);
+    await record(page, info, { feature: "account-detail-polish", width, theme, keysRemainHidden: true });
+  }
+});
