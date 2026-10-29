@@ -65,6 +65,7 @@ function AppShell() {
   return (
     <Toaster timeout={4000}>
     <SidebarProvider
+      data-admin-console
       style={
         {
           "--sidebar-width": "calc(var(--spacing) * 72)",

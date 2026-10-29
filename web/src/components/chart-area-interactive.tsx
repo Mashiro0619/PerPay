@@ -7,6 +7,10 @@ import { dailyDateLabel } from "@/lib/daily-analytics";
 import { DailyAnalytics } from "@/components/daily-analytics";
 import { TrendPlot } from "@/components/trend-plot";
 import {
+  SelectionMotionGroup,
+  SelectionMotionIndicator,
+} from "@/components/selection-motion";
+import {
   Card,
   CardContent,
   CardDescription,
@@ -139,32 +143,53 @@ export function ChartAreaInteractive({
                 ? data[0]!.date + " — " + data.at(-1)!.date
                 : "暂无数据"}
           </CardDescription>
-          <TabsList
-            className="trend-tabs"
-            variant="line"
-            aria-label="收款趋势视图"
-          >
-            <TabsTrigger value="chart">图表</TabsTrigger>
-            <TabsTrigger value="daily">每日数据</TabsTrigger>
-          </TabsList>
-          <div className="trend-period">
-            <ToggleGroup
-              value={[String(range)]}
-              onValueChange={(value) => {
-                if (value[0]) onRangeChange(value[0]);
-              }}
-              variant="outline"
-              spacing={0}
-              size="sm"
-              className="hidden @[650px]/card:flex"
-              aria-label="统计周期"
+          <SelectionMotionGroup>
+            <TabsList
+              className="trend-tabs"
+              variant="line"
+              aria-label="收款趋势视图"
+              data-selection-motion="underline"
             >
-              {periods.map((item) => (
-                <ToggleGroupItem key={item.value} value={item.value}>
-                  {item.label}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
+              <TabsTrigger value="chart">
+                <SelectionMotionIndicator
+                  active={view === "chart"}
+                  variant="underline"
+                />
+                图表
+              </TabsTrigger>
+              <TabsTrigger value="daily">
+                <SelectionMotionIndicator
+                  active={view === "daily"}
+                  variant="underline"
+                />
+                每日数据
+              </TabsTrigger>
+            </TabsList>
+          </SelectionMotionGroup>
+          <div className="trend-period">
+            <SelectionMotionGroup>
+              <ToggleGroup
+                value={[String(range)]}
+                onValueChange={(value) => {
+                  if (value[0]) onRangeChange(value[0]);
+                }}
+                variant="outline"
+                spacing={0}
+                size="sm"
+                className="hidden @[650px]/card:flex"
+                aria-label="统计周期"
+                data-selection-motion="fill"
+              >
+                {periods.map((item) => (
+                  <ToggleGroupItem key={item.value} value={item.value}>
+                    <SelectionMotionIndicator
+                      active={String(range) === item.value}
+                    />
+                    {item.label}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            </SelectionMotionGroup>
             <Select
               items={periods}
               value={String(range)}
@@ -194,56 +219,64 @@ export function ChartAreaInteractive({
         <TabsContent value="chart">
           <CardContent className="trend-content">
             <div className="trend-toolbar">
-              <ToggleGroup
-                value={[metric]}
-                onValueChange={(value) => {
-                  if (value[0] === "amount" || value[0] === "orders")
-                    setMetric(value[0]);
-                }}
-                variant="outline"
-                spacing={0}
-                size="sm"
-                aria-label="趋势指标"
-                className="trend-metrics"
-              >
-                {metrics.map((item) => (
-                  <ToggleGroupItem
-                    key={item.value}
-                    value={item.value}
-                    aria-describedby={summaryId + item.value}
-                  >
-                    {item.label}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
-              <ToggleGroup
-                value={[effectiveType]}
-                onValueChange={(value) => {
-                  if (
-                    value[0] === "AREA" ||
-                    value[0] === "BAR" ||
-                    value[0] === "LINE"
-                  )
-                    setSelectedType(value[0]);
-                }}
-                variant="outline"
-                spacing={0}
-                size="sm"
-                aria-label="图表类型"
-                className="trend-types"
-              >
-                {chartTypes.map(({ value, label, icon: Icon }) => (
-                  <ToggleGroupItem
-                    key={value}
-                    value={value}
-                    aria-label={label}
-                    title={label}
-                  >
-                    <Icon data-icon="inline-start" />
-                    <span>{label}</span>
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
+              <SelectionMotionGroup>
+                <ToggleGroup
+                  value={[metric]}
+                  onValueChange={(value) => {
+                    if (value[0] === "amount" || value[0] === "orders")
+                      setMetric(value[0]);
+                  }}
+                  variant="outline"
+                  spacing={0}
+                  size="sm"
+                  aria-label="趋势指标"
+                  className="trend-metrics"
+                  data-selection-motion="fill"
+                >
+                  {metrics.map((item) => (
+                    <ToggleGroupItem
+                      key={item.value}
+                      value={item.value}
+                      aria-describedby={summaryId + item.value}
+                    >
+                      <SelectionMotionIndicator active={metric === item.value} />
+                      {item.label}
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+              </SelectionMotionGroup>
+              <SelectionMotionGroup>
+                <ToggleGroup
+                  value={[effectiveType]}
+                  onValueChange={(value) => {
+                    if (
+                      value[0] === "AREA" ||
+                      value[0] === "BAR" ||
+                      value[0] === "LINE"
+                    )
+                      setSelectedType(value[0]);
+                  }}
+                  variant="outline"
+                  spacing={0}
+                  size="sm"
+                  aria-label="图表类型"
+                  className="trend-types"
+                  data-selection-motion="fill"
+                >
+                  {chartTypes.map(({ value, label, icon: Icon }) => (
+                    <ToggleGroupItem
+                      key={value}
+                      value={value}
+                      aria-label={label}
+                      title={label}
+                    >
+                      <SelectionMotionIndicator active={effectiveType === value} />
+                      <Icon data-icon="inline-start" />
+                      <span>{label}</span>
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+              </SelectionMotionGroup>
             </div>
             <dl
               className="trend-summary"

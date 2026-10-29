@@ -74,15 +74,74 @@ export function measureAxisContrast(element: Element) {
   };
 }
 
+/** Only the known opaque, settled background of a selected ToggleGroup is eligible. */
+export function measureSelectionContrast(element: Element) {
+  const control = element.closest<HTMLElement>('button[data-slot="toggle-group-item"][aria-pressed="true"]');
+  const group = control?.closest('[data-selection-motion="fill"]');
+  const indicator = control?.querySelector<HTMLElement>(':scope > [data-selection-indicator="fill"]');
+  if (!control || !group || !indicator || group.querySelectorAll('[data-selection-indicator="fill"]').length !== 1) return null;
+  const context = document.createElement("canvas").getContext("2d")!;
+  const rgba = (color: string) => {
+    context.clearRect(0, 0, 1, 1); context.fillStyle = color; context.fillRect(0, 0, 1, 1);
+    return [...context.getImageData(0, 0, 1, 1).data];
+  };
+  const text = getComputedStyle(control), paint = getComputedStyle(indicator);
+  const foreground = rgba(text.color), background = rgba(paint.backgroundColor);
+  const box = control.getBoundingClientRect(), fill = indicator.getBoundingClientRect();
+  const conflicts: string[] = [];
+  const identity = (transform: string) => transform === "none" || transform === "matrix(1, 0, 0, 1, 0, 0)";
+  for (let node: Element | null = indicator; node; node = node.parentElement) {
+    const style = getComputedStyle(node);
+    if (style.opacity !== "1" || style.filter !== "none" || style.backdropFilter !== "none" || style.mixBlendMode !== "normal" || !identity(style.transform)) conflicts.push("opacity, filter, blend or transform");
+    if (style.maskImage !== "none" || style.clipPath !== "none") conflicts.push("mask or clipping");
+  }
+  if (control.children.length !== 1 || control.firstElementChild !== indicator) conflicts.push("unexpected control content");
+  if (paint.position !== "absolute" || paint.zIndex !== "-1" || text.isolation !== "isolate" || text.position !== "relative") conflicts.push("unverified paint order");
+  if (paint.pointerEvents !== "none" || indicator.getAttribute("aria-hidden") !== "true" || indicator.tabIndex >= 0 || indicator.textContent?.trim()) conflicts.push("interactive decoration");
+  if (foreground[3] !== 255 || background[3] !== 255 || rgba(text.backgroundColor)[3] !== 0 || text.backgroundImage !== "none" || paint.backgroundImage !== "none") conflicts.push("non-opaque or layered paint");
+  if (paint.display === "none" || paint.visibility !== "visible" || text.visibility !== "visible" || indicator.getAnimations().some(animation => animation.playState === "running")) conflicts.push("hidden or moving decoration");
+  for (const pseudo of ["::before", "::after"]) {
+    const style = getComputedStyle(control, pseudo);
+    if (!["none", "normal"].includes(style.content) && (rgba(style.backgroundColor)[3]! > 0 || style.backgroundImage !== "none" || style.boxShadow !== "none")) conflicts.push("painted pseudo-element");
+  }
+  const fit = Math.abs(fill.left - box.left - control.clientLeft) <= 1 && Math.abs(fill.top - box.top - control.clientTop) <= 1 &&
+    Math.abs(fill.width - control.clientWidth) <= 1 && Math.abs(fill.height - control.clientHeight) <= 1;
+  const ranges = [...control.childNodes].filter(node => node.nodeType === Node.TEXT_NODE && node.textContent?.trim()).flatMap(node => {
+    const range = document.createRange(); range.selectNodeContents(node);
+    return [...range.getClientRects()].filter(line => line.width > 0 && line.height > 0);
+  });
+  const textContained = ranges.length > 0 && ranges.every(line => line.left >= fill.left && line.right <= fill.right && line.top >= fill.top && line.bottom <= fill.bottom);
+  const hits = ranges.map(line => {
+    const target = document.elementFromPoint((line.left + line.right) / 2, (line.top + line.bottom) / 2);
+    return target === control;
+  });
+  const overlappingControls = [...group.querySelectorAll('button[data-slot="toggle-group-item"]')].filter(node => node !== control).some(node => {
+    const other = node.getBoundingClientRect();
+    return Math.min(other.right, fill.right) - Math.max(other.left, fill.left) > 1 && Math.min(other.bottom, fill.bottom) - Math.max(other.top, fill.top) > 1;
+  });
+  const luminance = (channels: number[]) => channels.slice(0, 3).map(channel => channel / 255)
+    .map(channel => channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4)
+    .reduce((sum, channel, index) => sum + channel * [.2126, .7152, .0722][index]!, 0);
+  const a = luminance(foreground), b = luminance(background);
+  const fontSize = Number.parseFloat(text.fontSize), fontWeight = Number.parseFloat(text.fontWeight);
+  const requiredRatio = fontSize >= 24 || fontWeight >= 700 && fontSize >= 18.6667 ? 3 : 4.5;
+  const contrast = (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
+  return { kind: "opaque-selection-decoration", text: control.textContent?.trim(), foreground, background, contrast, requiredRatio,
+    controlBox: box.toJSON(), indicatorBox: fill.toJSON(), fit, textContained, hits, overlappingControls, conflicts,
+    passed: conflicts.length === 0 && fit && textContained && hits.every(Boolean) && !overlappingControls && contrast >= requiredRatio };
+}
+
 export async function resolveSvgContrast(page: Page, result: AxeResults) {
   const review = [];
   for (const rule of result.incomplete.filter(rule => rule.id === "color-contrast")) {
     for (const node of rule.nodes) {
       const selector = node.target.length === 1 && typeof node.target[0] === "string" ? node.target[0] : null;
       const keys = [...node.any, ...node.all, ...node.none].map(check => check.data?.messageKey);
-      const eligible = keys.length > 0 && keys.every(key => key === "imgNode");
-      const measurement = selector && eligible && await page.locator(selector).count() === 1
-        ? await page.locator(selector).evaluate(measureAxisContrast)
+      const svgEligible = keys.length > 0 && keys.every(key => key === "imgNode");
+      const selectionEligible = keys.length > 0 && keys.every(key => key === "bgOverlap");
+      const measurement = selector && await page.locator(selector).count() === 1
+        ? svgEligible ? await page.locator(selector).evaluate(measureAxisContrast)
+          : selectionEligible ? await page.locator(selector).evaluate(measureSelectionContrast) : null
         : null;
       review.push({ target: node.target, originalReasons: keys, resolved: measurement?.passed === true, measurement });
     }

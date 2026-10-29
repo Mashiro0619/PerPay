@@ -15,6 +15,7 @@ import type { DashboardChartType } from "@/api/client";
 import type { TrendDay, TrendMetric } from "@/lib/trend-analytics";
 import { money, count } from "@/lib/format";
 import { dailyWeekday } from "@/lib/daily-analytics";
+import { useChartSeriesMotion } from "@/components/selection-motion";
 import {
   ChartContainer,
   ChartTooltip,
@@ -45,6 +46,7 @@ export function TrendPlot({
   today: string;
 }) {
   const plotRef = useRef<HTMLDivElement>(null);
+  useChartSeriesMotion(plotRef, `${metric}:${chartType}`);
   const [fontSize, setFontSize] = useState(12);
   const [fixedTooltip, setFixedTooltip] = useState(true);
   const [axis, setAxis] = useState({ yWidth: 60, xHeight: 30, dateInset: 24 });
@@ -257,6 +259,7 @@ export function TrendPlot({
           />
           {chartType === "BAR" ? (
             <Bar
+              className="trend-series-motion"
               dataKey={metric}
               fill={seriesColor}
               fillOpacity={0.85}
@@ -267,6 +270,7 @@ export function TrendPlot({
             />
           ) : chartType === "LINE" ? (
             <Line
+              className="trend-series-motion"
               dataKey={metric}
               type="linear"
               stroke={seriesColor}
@@ -277,6 +281,7 @@ export function TrendPlot({
             />
           ) : (
             <Area
+              className="trend-series-motion"
               dataKey={metric}
               type="step"
               fill={"url(#" + gradientId + ")"}

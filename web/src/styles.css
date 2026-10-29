@@ -1126,6 +1126,69 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .trend-tooltip { min-width: 0; width: max-content; max-width: min(20rem, calc(100cqw - 2rem)); }
 .trend-tooltip-value { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1.5rem; }
 .trend-tooltip-value > span:last-child { overflow-wrap: anywhere; }
+
+/* Console candidates stay within the administrator shell. Public checkout
+   continues to use the unmodified Nova tokens and component defaults. */
+[data-admin-console] {
+  --console-motion-fast: 140ms;
+  --console-motion: 200ms;
+  --console-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --console-page: color-mix(in oklch, var(--background) 96%, var(--muted));
+  --console-hairline: color-mix(in oklch, var(--foreground) 9%, transparent);
+  --console-shadow: 0 1px 2px color-mix(in oklch, var(--foreground) 3%, transparent);
+  --console-stat-size: 1.75rem;
+  --console-stat-tracking: -0.035em;
+}
+[data-admin-console] [data-slot="sidebar-inset"] { background: var(--console-page); }
+[data-admin-console] .site-header { background: var(--console-page); border-bottom-color: var(--console-hairline); }
+[data-admin-console] [data-page-heading] > h1 { letter-spacing: -0.03em; }
+[data-admin-console] [data-overview-layout] :is(.trend-card, .overview-record-panel, .site-overview-card-surface),
+[data-admin-console] [data-overview-kpis] > [data-slot="card"] {
+  --tw-ring-color: var(--console-hairline);
+  --tw-shadow: var(--console-shadow);
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 transparent), var(--tw-ring-shadow, 0 0 transparent), var(--console-shadow);
+}
+[data-admin-console] [data-overview-kpis] > [data-slot="card"] { --card-spacing: 1.125rem; }
+[data-admin-console] [data-overview-kpis] [data-slot="card-header"] { gap: 0.625rem; }
+[data-admin-console] [data-overview-kpis] [data-slot="card-title"] {
+  font-size: var(--console-stat-size);
+  line-height: 1.25;
+  letter-spacing: var(--console-stat-tracking);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+[data-admin-console] .trend-card { --card-spacing: 1.25rem; }
+[data-admin-console] .trend-header { gap: 0.5rem 1rem; }
+[data-admin-console] .trend-content { gap: 1.5rem; }
+[data-admin-console] .trend-summary { align-items: start; }
+[data-admin-console] .trend-summary .trend-total > [data-metric-value] {
+  font-size: var(--console-stat-size);
+  line-height: 1.25;
+  letter-spacing: var(--console-stat-tracking);
+}
+[data-admin-console] .trend-caption { padding-top: 0.75rem; border-top: 1px solid var(--console-hairline); }
+[data-admin-console] .site-overview-card-surface { transition: box-shadow var(--console-motion-fast) var(--console-ease); }
+@media (hover: hover) {
+  [data-admin-console] .site-overview-card:hover .site-overview-card-surface {
+    --tw-ring-color: color-mix(in oklch, var(--foreground) 18%, transparent);
+    box-shadow: var(--tw-ring-offset-shadow, 0 0 transparent), var(--tw-ring-shadow, 0 0 transparent), 0 3px 10px color-mix(in oklch, var(--foreground) 5%, transparent);
+  }
+}
+@media (max-width: 639px) {
+  [data-admin-console] { --console-stat-size: 1.5rem; }
+  [data-admin-console] .trend-card { --card-spacing: 1rem; }
+  [data-admin-console] .trend-content { gap: 1.25rem; }
+  [data-admin-console] [data-overview-kpis] > [data-slot="card"] { --card-spacing: 1rem; }
+}
+
+/* Selection animation only decorates the existing Base UI controls. */
+[data-selection-motion] :is([data-slot="toggle-group-item"], [data-slot="tabs-trigger"]) { isolation: isolate; }
+[data-selection-motion="fill"] [data-slot="toggle-group-item"]:has([data-selection-mode="motion"]):is([aria-pressed="true"], [data-state="on"]) { background: transparent; }
+[data-selection-motion="underline"] [data-slot="tabs-trigger"]::after { display: none; }
+[data-selection-motion] [data-selection-indicator] { position: absolute; display: block; z-index: -1; pointer-events: none; }
+[data-selection-motion] [data-selection-indicator="fill"] { inset: 0; border-radius: inherit; background: var(--muted); }
+[data-selection-motion="fill"] [data-selection-indicator="fill"][data-selection-mode="static"] { display: none; }
+[data-selection-motion] [data-selection-indicator="underline"] { left: 0; right: 0; bottom: -5px; height: 2px; background: var(--foreground); }
+
 @media (pointer: coarse) {
   .trend-toolbar [data-slot="toggle-group-item"] { min-width: 40px; min-height: 40px; }
 }
