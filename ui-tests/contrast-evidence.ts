@@ -85,8 +85,14 @@ export function measureSelectionContrast(element: Element) {
     context.clearRect(0, 0, 1, 1); context.fillStyle = color; context.fillRect(0, 0, 1, 1);
     return [...context.getImageData(0, 0, 1, 1).data];
   };
-  const text = getComputedStyle(control), paint = getComputedStyle(indicator);
-  const foreground = rgba(text.color), background = rgba(paint.backgroundColor);
+  const contents = [...control.children].filter(child => child !== indicator);
+  const icon = contents.find(child => child.tagName.toLowerCase() === "svg");
+  const label = contents.find(child => child.tagName === "SPAN");
+  const labelledIcon = contents.length === 2 && icon?.getAttribute("aria-hidden") === "true" &&
+    !icon.querySelector("foreignObject, image, a, text") && label?.children.length === 0 && Boolean(label.textContent?.trim());
+  const textElement = labelledIcon ? label! : control;
+  const text = getComputedStyle(control), labelStyle = getComputedStyle(textElement), paint = getComputedStyle(indicator);
+  const foreground = rgba(labelStyle.color), background = rgba(paint.backgroundColor);
   const box = control.getBoundingClientRect(), fill = indicator.getBoundingClientRect();
   const conflicts: string[] = [];
   const identity = (transform: string) => transform === "none" || transform === "matrix(1, 0, 0, 1, 0, 0)";
@@ -95,26 +101,43 @@ export function measureSelectionContrast(element: Element) {
     if (style.opacity !== "1" || style.filter !== "none" || style.backdropFilter !== "none" || style.mixBlendMode !== "normal" || !identity(style.transform)) conflicts.push("opacity, filter, blend or transform");
     if (style.maskImage !== "none" || style.clipPath !== "none") conflicts.push("mask or clipping");
   }
-  if (control.children.length !== 1 || control.firstElementChild !== indicator) conflicts.push("unexpected control content");
+  if (contents.length !== 0 && !labelledIcon) conflicts.push("unexpected control content");
+  if (labelledIcon && [...control.childNodes].some(node => node.nodeType === Node.TEXT_NODE && node.textContent?.trim())) conflicts.push("unmeasured direct text");
+  const textFill = labelStyle.getPropertyValue("-webkit-text-fill-color");
+  if (textFill && rgba(textFill).some((channel, index) => channel !== foreground[index]) ||
+    labelStyle.textShadow !== "none" || Number.parseFloat(labelStyle.getPropertyValue("-webkit-text-stroke-width")) > 0) conflicts.push("unverified text paint");
+  if (labelledIcon) {
+    const iconStyle = getComputedStyle(icon!);
+    if (!["hidden", "clip"].includes(iconStyle.overflowX) || !["hidden", "clip"].includes(iconStyle.overflowY) ||
+      iconStyle.filter !== "none" || iconStyle.backdropFilter !== "none" || iconStyle.boxShadow !== "none" ||
+      iconStyle.mixBlendMode !== "normal" || !identity(iconStyle.transform) || iconStyle.pointerEvents !== "none" ||
+      [...icon!.querySelectorAll("*")].some(node => !["path", "line", "rect", "circle", "ellipse", "polyline", "polygon", "g"].includes(node.tagName.toLowerCase()))) conflicts.push("unverified icon paint");
+  }
+  if (textElement !== control && (labelStyle.opacity !== "1" || labelStyle.filter !== "none" || labelStyle.backdropFilter !== "none" ||
+    labelStyle.mixBlendMode !== "normal" || !identity(labelStyle.transform) || labelStyle.maskImage !== "none" || labelStyle.clipPath !== "none" ||
+    rgba(labelStyle.backgroundColor)[3] !== 0 || labelStyle.backgroundImage !== "none" || labelStyle.visibility !== "visible")) conflicts.push("unverified label paint");
   if (paint.position !== "absolute" || paint.zIndex !== "-1" || text.isolation !== "isolate" || text.position !== "relative") conflicts.push("unverified paint order");
   if (paint.pointerEvents !== "none" || indicator.getAttribute("aria-hidden") !== "true" || indicator.tabIndex >= 0 || indicator.textContent?.trim()) conflicts.push("interactive decoration");
   if (foreground[3] !== 255 || background[3] !== 255 || rgba(text.backgroundColor)[3] !== 0 || text.backgroundImage !== "none" || paint.backgroundImage !== "none") conflicts.push("non-opaque or layered paint");
   if (paint.display === "none" || paint.visibility !== "visible" || text.visibility !== "visible" || indicator.getAnimations().some(animation => animation.playState === "running")) conflicts.push("hidden or moving decoration");
-  for (const pseudo of ["::before", "::after"]) {
-    const style = getComputedStyle(control, pseudo);
+  for (const node of new Set([control, textElement])) for (const pseudo of ["::before", "::after"]) {
+    const style = getComputedStyle(node, pseudo);
     if (!["none", "normal"].includes(style.content) && (rgba(style.backgroundColor)[3]! > 0 || style.backgroundImage !== "none" || style.boxShadow !== "none")) conflicts.push("painted pseudo-element");
   }
   const fit = Math.abs(fill.left - box.left - control.clientLeft) <= 1 && Math.abs(fill.top - box.top - control.clientTop) <= 1 &&
     Math.abs(fill.width - control.clientWidth) <= 1 && Math.abs(fill.height - control.clientHeight) <= 1;
-  const ranges = [...control.childNodes].filter(node => node.nodeType === Node.TEXT_NODE && node.textContent?.trim()).flatMap(node => {
+  const ranges = [...textElement.childNodes].filter(node => node.nodeType === Node.TEXT_NODE && node.textContent?.trim()).flatMap(node => {
     const range = document.createRange(); range.selectNodeContents(node);
     return [...range.getClientRects()].filter(line => line.width > 0 && line.height > 0);
   });
   const textContained = ranges.length > 0 && ranges.every(line => line.left >= fill.left && line.right <= fill.right && line.top >= fill.top && line.bottom <= fill.bottom);
   const hits = ranges.map(line => {
     const target = document.elementFromPoint((line.left + line.right) / 2, (line.top + line.bottom) / 2);
-    return target === control;
+    return target === control || target === textElement;
   });
+  const iconBox = labelledIcon ? icon!.getBoundingClientRect() : null;
+  if (iconBox && ranges.some(line => Math.min(line.right, iconBox.right) - Math.max(line.left, iconBox.left) > 0.5 &&
+    Math.min(line.bottom, iconBox.bottom) - Math.max(line.top, iconBox.top) > 0.5)) conflicts.push("icon overlaps label");
   const overlappingControls = [...group.querySelectorAll('button[data-slot="toggle-group-item"]')].filter(node => node !== control).some(node => {
     const other = node.getBoundingClientRect();
     return Math.min(other.right, fill.right) - Math.max(other.left, fill.left) > 1 && Math.min(other.bottom, fill.bottom) - Math.max(other.top, fill.top) > 1;
@@ -123,11 +146,11 @@ export function measureSelectionContrast(element: Element) {
     .map(channel => channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4)
     .reduce((sum, channel, index) => sum + channel * [.2126, .7152, .0722][index]!, 0);
   const a = luminance(foreground), b = luminance(background);
-  const fontSize = Number.parseFloat(text.fontSize), fontWeight = Number.parseFloat(text.fontWeight);
+  const fontSize = Number.parseFloat(labelStyle.fontSize), fontWeight = Number.parseFloat(labelStyle.fontWeight);
   const requiredRatio = fontSize >= 24 || fontWeight >= 700 && fontSize >= 18.6667 ? 3 : 4.5;
   const contrast = (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
   return { kind: "opaque-selection-decoration", text: control.textContent?.trim(), foreground, background, contrast, requiredRatio,
-    controlBox: box.toJSON(), indicatorBox: fill.toJSON(), fit, textContained, hits, overlappingControls, conflicts,
+    controlBox: box.toJSON(), indicatorBox: fill.toJSON(), iconBox: iconBox?.toJSON() ?? null, fit, textContained, hits, overlappingControls, conflicts,
     passed: conflicts.length === 0 && fit && textContained && hits.every(Boolean) && !overlappingControls && contrast >= requiredRatio };
 }
 

@@ -336,6 +336,37 @@ if (phase === "final") {
     const indicatorGeometry = { from, target, during, after };
     const selectedPaint = await targetOrders.evaluate(measureSelectionContrast);
     expect(selectedPaint?.passed, "stable selection text remains readable on its verified opaque decoration").toBe(true);
+    const selectedType = typeGroup.locator('[aria-pressed="true"]');
+    const iconLabelPaint = await selectedType.evaluate(measureSelectionContrast);
+    expect(iconLabelPaint?.passed, "the icon and label have separately verified paint and geometry").toBe(true);
+    const typeLabel = selectedType.locator(':scope > span:not([data-selection-indicator])');
+    await typeLabel.evaluate(element => (element as HTMLElement).style.opacity = "0.5");
+    try {
+      const invalidPaint = await selectedType.evaluate(measureSelectionContrast);
+      expect(invalidPaint?.passed).toBe(false);
+      expect(invalidPaint?.conflicts).toContain("unverified label paint");
+    } finally {
+      await typeLabel.evaluate(element => (element as HTMLElement).style.removeProperty("opacity"));
+    }
+    await selectedType.evaluate(element => element.append(document.createTextNode("额外未测文字")));
+    try {
+      expect((await selectedType.evaluate(measureSelectionContrast))?.conflicts).toContain("unmeasured direct text");
+    } finally {
+      await selectedType.evaluate(element => element.lastChild!.remove());
+    }
+    await typeLabel.evaluate(element => (element as HTMLElement).style.setProperty("-webkit-text-fill-color", "transparent"));
+    try {
+      expect((await selectedType.evaluate(measureSelectionContrast))?.conflicts).toContain("unverified text paint");
+    } finally {
+      await typeLabel.evaluate(element => (element as HTMLElement).style.removeProperty("-webkit-text-fill-color"));
+    }
+    const typeIcon = selectedType.locator(":scope > svg");
+    await typeIcon.evaluate(element => (element as SVGElement).style.overflow = "visible");
+    try {
+      expect((await selectedType.evaluate(measureSelectionContrast))?.conflicts).toContain("unverified icon paint");
+    } finally {
+      await typeIcon.evaluate(element => (element as SVGElement).style.removeProperty("overflow"));
+    }
     await initialAmount.click({ force: true });
     await page.clock.runFor(300);
     for (const [name, expected] of [["新建订单", expectedOrders], ["确认金额", expectedAmount], ["新建订单", expectedOrders], ["确认金额", expectedAmount]] as const) {

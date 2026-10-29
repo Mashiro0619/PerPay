@@ -23,7 +23,7 @@ export async function audit(page: Page, info: TestInfo, id: string) {
     undetermined: result.incomplete, excluded: result.inapplicable.map(rule => rule.id), manualReviewEvidence: { svgAxes: axes,
       colorContrastIncomplete: { nodeCount: contrastReviews.length, resolvedCount: contrastReviews.length - unresolvedContrast.length,
         unresolvedCount: unresolvedContrast.length, nodes: contrastReviews },
-      note: "Raw axe incomplete results are retained. SVG imgNode cases use axis paint/geometry evidence. Plain HTML dialog descriptions with elmPartiallyObscuring use separate opaque-color, per-character hit and clipping evidence. Other uncertain nodes remain unresolved." } }, null, 2));
+      note: "Raw axe incomplete results are retained. SVG imgNode cases use axis paint/geometry evidence. Selected ToggleGroup bgOverlap cases require opaque, settled decoration and verified plain text or a non-overlapping decorative icon with a plain label. Plain HTML dialog descriptions with elmPartiallyObscuring use separate opaque-color, per-character hit and clipping evidence. Other uncertain nodes remain unresolved." } }, null, 2));
   await info.attach(id + "-accessibility", { path, contentType: "application/json" });
   expect.soft(result.violations, page.url()).toEqual([]);
   if (await page.locator(".recharts-surface").count()) expect.soft(axes.length, "SVG tick labels were measured").toBeGreaterThan(0);
