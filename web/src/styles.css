@@ -1187,6 +1187,11 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   [data-admin-console] [data-overview-kpis] > [data-slot="card"] { --card-spacing: 1rem; }
 }
 
+/* Copy confirmation decorates only the icon; the text and button stay stable. */
+[data-copy-feedback] { animation: copy-confirm var(--console-motion-fast, 140ms) var(--console-ease, cubic-bezier(0.22, 1, 0.36, 1)); }
+@keyframes copy-confirm { from { transform: scale(0.82); } to { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { [data-copy-feedback] { animation: none !important; } }
+
 /* Selection animation only decorates the existing Base UI controls. */
 [data-selection-motion] :is([data-slot="toggle-group-item"], [data-slot="tabs-trigger"]) { isolation: isolate; }
 [data-selection-motion="fill"] [data-slot="toggle-group-item"]:has([data-selection-mode="motion"]):is([aria-pressed="true"], [data-state="on"]) { background: transparent; }

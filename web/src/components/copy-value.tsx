@@ -25,6 +25,8 @@ export function CopyValue({
   }, [copied]);
   const block = secret || /[\r\n]/.test(value);
   const copy = () => {
+    setCopied(false);
+    setFailed(false);
     if (!navigator.clipboard) {
       setFailed(true);
       return;
@@ -35,18 +37,22 @@ export function CopyValue({
         setCopied(true);
         setFailed(false);
       })
-      .catch(() => setFailed(true));
+      .catch(() => {
+        setCopied(false);
+        setFailed(true);
+      });
   };
   const button = (
     <Button
       variant="ghost"
       size="icon-sm"
       type="button"
+      data-copy-state={failed ? "error" : copied ? "success" : "idle"}
       aria-label={label ?? "复制内容"}
       title={tooltip ? undefined : label ?? "复制内容"}
       onClick={copy}
     >
-      {copied ? <Check /> : <Copy />}
+      {copied ? <Check data-copy-feedback aria-hidden="true" /> : <Copy aria-hidden="true" />}
     </Button>
   );
   const action = tooltip ? (
