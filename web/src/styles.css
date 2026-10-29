@@ -1188,6 +1188,19 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-selection-motion] [data-selection-indicator="fill"] { inset: 0; border-radius: inherit; background: var(--muted); }
 [data-selection-motion="fill"] [data-selection-indicator="fill"][data-selection-mode="static"] { display: none; }
 [data-selection-motion] [data-selection-indicator="underline"] { left: 0; right: 0; bottom: -5px; height: 2px; background: var(--foreground); }
+[data-selection-motion="sidebar"] { position: relative; isolation: isolate; }
+[data-selection-motion="sidebar"] [data-slot="sidebar-menu-button"] { position: relative; overflow: visible; }
+[data-selection-motion="sidebar"] [data-slot="sidebar-menu-button"][data-active="true"] { background-image: none; }
+[data-selection-motion="sidebar"] [data-selection-indicator="sidebar"] { left: 0; top: 20%; width: 2px; height: 60%; border-radius: 999px; background: var(--sidebar-foreground); z-index: 1; }
+[data-admin-console] :is([data-slot="sidebar-gap"], [data-slot="sidebar-container"], [data-slot="sidebar-group-label"]) {
+  transition-duration: var(--console-motion);
+  transition-timing-function: var(--console-ease);
+}
+[data-admin-console] [data-slot="sidebar-menu-button"] {
+  transition-property: width, height, padding, background-color, color;
+  transition-duration: var(--console-motion-fast);
+  transition-timing-function: var(--console-ease);
+}
 
 @media (pointer: coarse) {
   .trend-toolbar [data-slot="toggle-group-item"] { min-width: 40px; min-height: 40px; }
