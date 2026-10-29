@@ -5,7 +5,7 @@ import { Link } from "@/navigation";
 import { useSiteOverview } from "@/hooks/use-site-overview";
 import { count, money } from "@/lib/format";
 import { siteChoiceLabel } from "@/lib/site-choice-label";
-import { ErrorNotice } from "@/components/request-state";
+import { ErrorNotice, ReadPausedNotice } from "@/components/request-state";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/admin-empty";
 import { SiteAmountBar } from "@/components/site-amount-bar";
 import {
@@ -130,11 +130,11 @@ export function SiteOverviewList({ range }: { range: 7 | 30 | 90 }) {
           </PopoverContent>
         </Popover>
       </div>
-      {pending ? <SiteOverviewSkeletons /> : query.data === undefined ? (
+      {pending ? query.isPaused ? <ReadPausedNotice /> : <SiteOverviewSkeletons /> : query.data === undefined ? (
         <ErrorNotice error={query.error} retry={refresh} />
       ) : (
         <>
-          {!query.isFetchNextPageError && <ErrorNotice error={query.error} retry={refresh} />}
+          {query.isPaused ? <ReadPausedNotice retainedData /> : !query.isFetchNextPageError && <ErrorNotice error={query.error} retry={refresh} retainedData />}
           {sites.length ? (
             <ul className="site-overview-grid" aria-label="各网站概览">
               {sites.map((site) => (

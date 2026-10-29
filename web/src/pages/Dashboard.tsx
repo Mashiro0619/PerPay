@@ -18,7 +18,8 @@ import { OverviewWorkItems } from "@/components/overview-work-items";
 import { SectionCards } from "@/components/section-cards";
 import { ChartAreaInteractive } from "@/components/chart-area-interactive";
 import { RecentOrders } from "@/components/recent-orders";
-import { ErrorNotice, QueryView } from "@/components/request-state";
+import { ErrorNotice, QueryView, ReadPausedNotice } from "@/components/request-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -40,6 +41,17 @@ function collectionReadinessReason(ledger: SystemStatus["ledger"]) {
   if (typeof age === "number" && typeof maximumAge === "number" && age > maximumAge)
     return "最近查账成功已超过有效时限，请查看运行状态";
   return "查账暂未就绪，请查看运行状态";
+}
+
+function OverviewRecordsLoading({ count }: { count: number }) {
+  return <div role="status" data-overview-record-loading className="flex flex-col gap-3">
+    <span className="sr-only">正在读取记录…</span>
+    {Array.from({ length: count }, (_, index) => <div key={index} aria-hidden="true" className="flex min-w-0 flex-col gap-2 py-2">
+      <div className="flex items-center justify-between gap-4"><Skeleton className="h-4 w-2/3" /><Skeleton className="h-4 w-14" /></div>
+      <Skeleton className="h-3 w-5/6" />
+      <Skeleton className="h-3 w-1/2" />
+    </div>)}
+  </div>;
 }
 
 export default function Dashboard() {
@@ -92,7 +104,7 @@ function DashboardContent() {
           ? "自动确认收款尚未就绪，请检查对账状态"
           : "服务尚未就绪";
   const data =
-    analytics.isPlaceholderData || analytics.isError
+    analytics.isPlaceholderData
       ? undefined
       : analytics.data?.data;
   const needsStatus = checking || blocked || settings.error;
@@ -168,16 +180,17 @@ function DashboardContent() {
         analytics={data}
         clientId={clientId}
         workItems={workTotal}
-        pending={analytics.isPending || analytics.isPlaceholderData}
+        pending={!analytics.isPaused && (analytics.isPending || analytics.isPlaceholderData)}
       />
       {clientId && <ErrorNotice error={workSummary.error} retry={() => { void workSummary.refetch(); }} />}
       <div className="flex min-w-0 flex-col gap-6">
-        <ErrorNotice
+        {analytics.isPaused ? <ReadPausedNotice retainedData={data !== undefined} /> : <ErrorNotice
           error={analytics.error}
+          retainedData={data !== undefined}
           retry={() => {
             void analytics.refetch();
           }}
-        />
+        />}
         <ChartAreaInteractive
           scopeKey={clientId ?? "all"}
           analytics={data}
@@ -186,7 +199,7 @@ function DashboardContent() {
           }
           range={range}
           onRangeChange={changeRange}
-          pending={analytics.isPending || analytics.isPlaceholderData}
+          pending={!analytics.isPaused && (analytics.isPending || analytics.isPlaceholderData)}
         />
       </div>
       {!clientId && <SiteOverviewList range={range} />}
@@ -210,7 +223,7 @@ function DashboardContent() {
             </CardAction>
           </CardHeader>
           <CardContent className="overview-records-content">
-            <QueryView query={work}>
+            <QueryView query={work} loading={<OverviewRecordsLoading count={4} />}>
               {(page) => <OverviewWorkItems items={page.data} />}
             </QueryView>
           </CardContent>
@@ -232,7 +245,7 @@ function DashboardContent() {
               </CardAction>
             </CardHeader>
             <CardContent className="overview-records-content">
-              <QueryView query={orders}>
+              <QueryView query={orders} loading={<OverviewRecordsLoading count={5} />}>
                 {(page) => <RecentOrders orders={page.data} />}
               </QueryView>
             </CardContent>

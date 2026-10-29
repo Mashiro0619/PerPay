@@ -294,12 +294,15 @@ test("daily data separates loading, failures, empty series and valid zero days t
   hold90 = false;
 
   const refresh = page.getByRole("button", { name: "刷新", exact: true });
+  const retainedDates = await current.locator(".daily-date time").allTextContents();
+  const retainedSummary = await current.locator("[data-daily-summary]").allTextContents();
   scenario = "error";
   await expect(refresh).toBeEnabled();
   await refresh.click();
   await expect(page.getByText("统计读取失败", { exact: true })).toBeVisible();
-  await expect(current.getByText("统计数据暂不可用", { exact: true })).toBeVisible();
-  await expect(current.locator(".daily-date time")).toHaveCount(0);
+  await expect(page.getByText("更新未完成，以下保留上次成功读取的内容。", { exact: true })).toBeVisible();
+  expect(await current.locator(".daily-date time").allTextContents()).toEqual(retainedDates);
+  expect(await current.locator("[data-daily-summary]").allTextContents()).toEqual(retainedSummary);
   scenario = "empty";
   await page.getByRole("button", { name: "重试", exact: true }).click();
   await expect(current.getByText("暂无每日数据", { exact: true })).toBeVisible();

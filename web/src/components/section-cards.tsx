@@ -52,7 +52,7 @@ export function SectionCards({
               className="min-w-0 text-xl font-semibold whitespace-normal tabular-nums wrap-anywhere focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
               {pending ? (
-                <Skeleton className="h-7 w-3/4" />
+                <Skeleton className="h-lh w-3/4" />
               ) : card.href ? (
                 <Link to={card.href}>{card.value}</Link>
               ) : (
