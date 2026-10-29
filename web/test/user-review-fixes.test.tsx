@@ -1,5 +1,6 @@
 import {
   act,
+  cleanup,
   fireEvent,
   screen,
   waitFor,
@@ -12,7 +13,14 @@ import { apiError, json, order, orderId } from "./fixtures";
 import { mountOnboarding, systemStatus } from "./onboarding-fixture";
 
 beforeEach(() => onlineManager.setOnline(true));
-afterEach(() => {
+afterEach(async () => {
+  if (vi.isFakeTimers()) {
+    // Unmount and finish queued animation frames before restoring real timers.
+    // Otherwise jsdom's pending frame loop can strand later focus callbacks.
+    cleanup();
+    await act(async () => { await vi.runOnlyPendingTimersAsync(); });
+    vi.useRealTimers();
+  }
   vi.restoreAllMocks();
   onlineManager.setOnline(true);
 });
