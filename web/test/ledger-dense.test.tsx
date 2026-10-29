@@ -52,7 +52,7 @@ describe("unified transaction detail", () => {
     await screen.findByRole("heading", { name: "查账记录（2）" });
     const summary = document.querySelector<HTMLElement>("[data-ledger-summary]")!;
     expect(screen.getByRole("heading", { name: "流水与对账详情" })).toBeVisible();
-    expect(within(summary).getAllByRole("term").map(item => item.textContent)).toEqual(["交易金额", "收支方向", "交易时间", "对方", "支付宝备注", "支付宝流水号", "支付宝订单号", "支付宝商户单号"]);
+    expect(within(summary).getAllByRole("term").map(item => item.textContent)).toEqual(["交易金额", "收款账号", "收支方向", "交易时间", "对方", "支付宝备注", "支付宝流水号", "支付宝订单号", "支付宝商户单号"]);
     for (const [name, value] of [["支付宝流水号", externalEventId], ["支付宝订单号", providerOrder], ["支付宝商户单号", merchantOrder]]) {
       expect(screen.getAllByText(value!, { exact: true })).toHaveLength(1);
       await user.click(within(summary).getByRole("button", { name: "复制" + name }));

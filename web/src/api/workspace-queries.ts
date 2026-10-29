@@ -75,11 +75,11 @@ export function orderFilters(search: URLSearchParams) {
   };
 }
 
-export function ordersQuery(clientId: string | null, list: ListRead<OrderSort>, cursor: string | undefined, payment: PaymentStatus | undefined, checkout: CheckoutStatus | undefined) {
+export function ordersQuery(clientId: string | null, list: ListRead<OrderSort>, cursor: string | undefined, payment: PaymentStatus | undefined, checkout: CheckoutStatus | undefined, accountId?: string) {
   const api = workspaceApi(clientId);
   return queryOptions({
-    ...retainListData(["orders", clientId, payment, checkout], list.query),
-    queryKey: ["orders", payment, checkout, cursor, list.scope, clientId] as QueryKey,
+    ...retainListData(["orders", clientId, payment, checkout, accountId], list.query),
+    queryKey: ["orders", payment, checkout, cursor, list.scope, clientId, accountId] as QueryKey,
     queryFn: ({ signal }) => result(api.listAdministratorOrders({
       signal,
       query: {
@@ -88,6 +88,7 @@ export function ordersQuery(clientId: string | null, list: ListRead<OrderSort>, 
         ...(clientId ? { api_client_id: clientId } : {}),
         ...(payment ? { payment_status: payment } : {}),
         ...(checkout ? { checkout_status: checkout } : {}),
+        ...(accountId ? { alipay_account_id: accountId } : {}),
         ...(cursor ? { cursor } : {}),
       },
     })),

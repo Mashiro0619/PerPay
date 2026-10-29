@@ -86,6 +86,7 @@ export function useManualLedgerScan(data: SystemStatus | undefined) {
   const capability = data?.ledger.manual_scan;
   const demo = isReadOnlyDemo();
   const unavailableReason = demo ? null
+    : (data?.alipay_accounts?.length ?? 0) > 1 ? "请在下方选择对应支付宝账号查账。"
     : !capability ? "手动查账状态暂不可用，请刷新。"
       : !capability.available ? manualScanUnavailable[capability.unavailable_reason ?? "stopped"] : null;
   const submitting = sameSource && submission.isPending;

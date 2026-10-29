@@ -200,6 +200,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
                 <h3 className="text-sm font-medium">PerPay 记录</h3>
                 <DetailFields compact className="@sm/detail-fields:grid-cols-1" items={[
                   ...(!clientId ? [["业务网站", <Link to={"/sites/" + encodeURIComponent(order.api_client_id)}>{order.site_name ?? "业务网站名称暂不可用"}</Link>] as const] : []),
+                  ["收款账号", <AlipayAccountIdentity id={order.alipay_account_id} name={order.alipay_account_name} />],
                   ["创建时间", dateTime(order.created_at)],
                   ...(confirmed ? [["PerPay 确认时间", dateTime(confirmed.occurred_at)] as const] : []),
                   ["收银台有效期至", dateTime(order.checkout.expires_at)],
@@ -430,3 +431,4 @@ function OrderTimeline({
     </div>
   );
 }
+import { AlipayAccountIdentity } from "@/components/alipay-account-identity";

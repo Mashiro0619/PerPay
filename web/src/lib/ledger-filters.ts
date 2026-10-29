@@ -86,6 +86,7 @@ export function readLedgerFilters(search: URLSearchParams) {
   const maximum = centsBoundary(search.get("max_amount_cents"));
   validateLedgerAmountRange(minimum, maximum);
   return {
+    ...(search.get("alipay_account_id") ? { alipay_account_id: search.get("alipay_account_id")! } : {}),
     ...(q ? { q } : {}),
     ...(direction !== "ALL" ? { direction: direction as typeof LEDGER_DIRECTIONS[number] } : {}),
     ...(state ? { state: state as typeof LEDGER_STATES[number] } : {}),

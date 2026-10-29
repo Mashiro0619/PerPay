@@ -123,8 +123,9 @@ export function SecuritySettings({
             </div>
           </CardHeader>
           <CardContent>
+            {settings.site_mode && <Link to="/settings/accounts">在支付宝账号中管理应用密钥</Link>}
             <ItemGroup className="record-list" data-density="compact" aria-label="密钥清单">
-                {secrets.filter(([name]) => !settings.site_mode || (name !== "api_secret" && name !== "webhook_secret")).map(([name, title, purpose]) => {
+                {secrets.filter(() => !settings.site_mode).map(([name, title, purpose]) => {
                   const metadata = settings.secrets[name];
                   if (!metadata) return null;
                   const status = (

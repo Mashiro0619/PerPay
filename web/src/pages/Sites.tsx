@@ -19,6 +19,7 @@ import { useDirtyDraft } from "@/drafts";
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import { useSuccessToast } from "@/components/Feedback";
 import { SitePolicyFields, SiteTextField } from "@/components/SitePolicyFields";
+import { SiteCollectionFields } from "@/components/site-collection-fields";
 import { siteTimeoutError, siteTimeoutSeconds } from "@/lib/site-timeout";
 import { SiteConfigurationConflicts } from "@/components/site-configuration-conflicts";
 import { mergeSiteConfiguration, resolveSiteConflicts, type SiteConflictChoices } from "@/lib/site-configuration";
@@ -80,7 +81,7 @@ function ExistingSiteEditor() {
   const query = useQuery(siteEditorQueryOptions(clientId));
   if (
     clientId &&
-    !["basic", "orders", "integration", "display"].includes(section)
+    !["basic", "collection", "orders", "integration", "display"].includes(section)
   )
     return <ErrorNotice error={new Error("网站设置分组不存在")} />;
   return (
@@ -114,6 +115,7 @@ function SiteEditor({
   }, [location.key, navigation.state]);
   const sections = [
     { value: "basic", label: "基本信息" },
+    { value: "collection", label: "收款账号" },
     { value: "orders", label: "订单设置" },
     { value: "integration", label: "接入与通知" },
     { value: "display", label: "收银台展示" },
@@ -532,6 +534,7 @@ function SiteEditor({
                     </FieldDescription>
                   </>
                 )}
+                {visible("collection") && <SiteCollectionFields value={draft.collection ?? { mode: "FIXED", accounts: [] }} disabled={busy || requiresReview} error={Object.entries(errors).find(([field]) => field.startsWith("configuration.collection"))?.[1]} onChange={collection => change(next => { next.collection = collection; })} />}
                 <SitePolicyFields
                   section={section === "all" ? undefined : section}
                   disabled={busy || requiresReview}

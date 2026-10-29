@@ -1,4 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
+import { alipayAccountsQuery } from "@/lib/alipay-accounts";
+import { AlipayAccountIdentity } from "@/components/alipay-account-identity";
 import { Link2, RefreshCw } from "lucide-react";
 import { useSearchParams } from "react-router";
 import { api, result, type AdminLedgerSummary } from "@/api/client";
@@ -53,6 +55,7 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
   const associatedDates = useListQuery(LEDGER_SORT_FIELDS, "occurred_at", "desc", LEDGER_ASSOCIATED_DATE_FIELDS);
   const pagination = useCursor();
   const system = useOptionalSystemStatus();
+  const accounts = useQuery(alipayAccountsQuery);
   let filters: ReturnType<typeof readLedgerFilters> | undefined;
   let filterError: Error | undefined;
   try { filters = readLedgerFilters(search); }
@@ -65,6 +68,7 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
   });
   useLedgerListPosition(!!query.data && !query.isPlaceholderData && !query.isFetching);
   const listFilters: ListFilter[] = [
+    { key: "alipay_account_id", label: "收款账号", value: search.get("alipay_account_id") ?? "", options: [{ value: "", label: "全部收款账号" }, ...(accounts.data?.data.map(account => ({ value: account.id, label: account.name })) ?? [])] },
     { key: "association_status", label: "关联状态", value: search.get("association_status") ?? "", options: associationOptions },
     { key: "direction", label: "收支方向", value: direction, defaultValue: DEFAULT_LEDGER_DIRECTION, options: directionOptions },
     { key: "state", label: "PerPay 处理状态", value: search.get("state") ?? "", options: stateOptions },
@@ -87,19 +91,20 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
     { id: "association", label: "关联状态", layout: "status", align: "center", summaryDefault: true, cell: entry => <LedgerAssociationStatus entry={entry} /> },
     { id: "order", label: "当前关联订单", layout: "text", summaryDefault: true, responsive: { minWidthRem: 64, basis: "container" }, cell: entry => <LedgerActiveOrder entry={entry} /> },
     { id: "other_account", label: "对方", layout: "text", summaryDefault: true, summaryPriority: "details", responsive: { minWidthRem: 58, basis: "container" }, cell: entry => <span className="wrap-anywhere">{ledgerFact(entry.other_account)}</span> },
+    { id: "alipay_account", label: "收款账号", layout: "text", summaryDefault: true, responsive: { minWidthRem: 58, basis: "container" }, cell: entry => <AlipayAccountIdentity id={entry.alipay_account_id} name={entry.alipay_account_name} /> },
     { id: "memo", label: "备注", layout: "text", summaryDefault: false, responsive: { minWidthRem: 78, basis: "container" }, cell: entry => <span className="wrap-anywhere">{ledgerFact(entry.memo)}</span> },
     { id: "state", label: "PerPay 处理状态", layout: "status", align: "center", summaryDefault: true, responsive: { minWidthRem: 78, basis: "container" }, cell: entry => <LedgerStates entry={entry} /> },
     { id: "associated_at", label: "最近关联时间", sortBy: "associated_at", layout: "datetime", align: "center", summaryDefault: false, responsive: { minWidthRem: 90, basis: "container" }, cell: entry => entry.last_associated_at ? <ListDateTime value={entry.last_associated_at} /> : "—" },
     { id: "handled_at", label: "最近处理时间", sortBy: "handled_at", layout: "datetime", align: "center", summaryDefault: false, responsive: { minWidthRem: 100, basis: "container" }, cell: entry => entry.last_handled_at ? <ListDateTime value={entry.last_handled_at} /> : "—" },
   ];
   const hasAmounts = search.has("min_amount_cents") || search.has("max_amount_cents");
-  const clearFilterValues = { q: null, direction: null, state: null, association_status: null, has_reversals: null, occurred_from: null, occurred_to: null, associated_from: null, associated_to: null, min_amount_cents: null, max_amount_cents: null, sort_by: null, sort_order: null };
+  const clearFilterValues = { q: null, alipay_account_id: null, direction: null, state: null, association_status: null, has_reversals: null, occurred_from: null, occurred_to: null, associated_from: null, associated_to: null, min_amount_cents: null, max_amount_cents: null, sort_by: null, sort_order: null };
   const extraFilterSummaries = [
     ...(control.query.createdFrom || control.query.createdTo ? ["交易日期：" + (control.query.createdFrom ?? "不限") + " 至 " + (control.query.createdTo ?? "不限")] : []),
     ...(associatedDates.query.createdFrom || associatedDates.query.createdTo ? ["关联日期：" + (associatedDates.query.createdFrom ?? "不限") + " 至 " + (associatedDates.query.createdTo ?? "不限")] : []),
     ...(hasAmounts ? ["金额：" + (ledgerAmountInput(search.get("min_amount_cents")) || "不限") + " 至 " + (ledgerAmountInput(search.get("max_amount_cents")) || "不限") + " 元"] : []),
   ];
-  const activeFilters = !!(control.query.q || control.query.createdFrom || control.query.createdTo || associatedDates.query.createdFrom || associatedDates.query.createdTo || direction !== DEFAULT_LEDGER_DIRECTION || search.get("state") || search.get("association_status") || search.has("has_reversals") || hasAmounts);
+  const activeFilters = !!(control.query.q || search.get("alipay_account_id") || control.query.createdFrom || control.query.createdTo || associatedDates.query.createdFrom || associatedDates.query.createdTo || direction !== DEFAULT_LEDGER_DIRECTION || search.get("state") || search.get("association_status") || search.has("has_reversals") || hasAmounts);
   function refresh() { if (!filterError) void query.refetch(); if (system) void system.status.refetch(); }
   const refreshButton = <RefreshButton busy={query.isFetching} onClick={refresh} />;
   return <ListColumnsProvider><div className="flex min-w-0 flex-col gap-3" data-business-list="ledger">

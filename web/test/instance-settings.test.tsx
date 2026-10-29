@@ -41,7 +41,8 @@ describe("website-aware instance settings", () => {
     expect(screen.queryByText("default", { exact: true })).not.toBeInTheDocument();
     expect(screen.queryByText("通知签名密钥", { exact: true })).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "通知" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "查看应用私钥" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "查看应用私钥" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "在支付宝账号中管理应用密钥" })).toHaveAttribute("href", "/settings/accounts");
   });
 
   it("saves only instance name and chart style without website display fields", async () => {
@@ -63,13 +64,14 @@ describe("website-aware instance settings", () => {
     expect(screen.queryByRole("switch", { name: "启用通知" })).not.toBeInTheDocument();
   });
 
-  it("takes fresh website-aware setup to website creation instead of global notification credentials", async () => {
+  it("takes website-aware setup to account assignment without global notification credentials or backup", async () => {
     mount("/settings/onboarding");
-    expect(await screen.findByRole("link", { name: "创建业务网站" })).toHaveAttribute("href", "/sites/new");
-    expect(screen.getByRole("heading", { name: "网站与备份" })).toBeVisible();
+    expect(await screen.findByRole("link", { name: "配置收款账号" })).toHaveAttribute("href", "/sites/site_test/settings/collection");
+    expect(screen.getByRole("heading", { name: "配置网站" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "保存通知" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "生成 API 密钥" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "请先创建业务网站" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "下一步：试收款" })).toBeDisabled();
+    expect(screen.queryByText("自动备份")).not.toBeInTheDocument();
   });
 
   it("returns from website creation with refreshed setup completion without generating API credentials", async () => {
@@ -85,6 +87,7 @@ describe("website-aware instance settings", () => {
       const path = new URL(request.url).pathname;
       if (request.method !== "GET") writes.push(path);
       if (path === "/api/admin/v1/settings") return json({ data });
+      if (path === "/api/admin/v1/sites" && request.method === "GET") return json({ data: site ? [site] : [], page: { next_cursor: null } });
       if (path.endsWith("/site-defaults")) return json({ data: { revision: 0, policy } });
       if (path === "/api/admin/v1/sites" && request.method === "POST") return request.json().then((body: { configuration: SiteConfiguration }) => {
         site = { client_id: "site_created", revision: 0, configuration: body.configuration, created_at: "2026-10-06T00:00:00.000Z", updated_at: "2026-10-06T00:00:00.000Z", deleted_at: null };
@@ -95,13 +98,12 @@ describe("website-aware instance settings", () => {
       return undefined;
     } });
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("link", { name: "创建业务网站" }));
     await user.type(await screen.findByRole("textbox", { name: "业务网站名称" }), "测试网站");
     await user.click(screen.getByRole("button", { name: "创建业务网站" }));
-    await waitFor(() => expect(view.router.state.location.pathname).toBe("/sites/site_created"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "下一步：试收款" })).toBeEnabled());
     await waitFor(() => expect(queryClient.getQueryState(["workspace-site", "site_created"])?.status).toBe("success"));
     await act(async () => { await view.router.navigate("/settings/onboarding/check"); });
-    expect(await screen.findByRole("heading", { name: "收款检查" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "试收款" })).toBeVisible();
     expect(writes).toEqual(["/api/admin/v1/sites"]);
   });
 });

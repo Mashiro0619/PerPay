@@ -41,7 +41,7 @@ describe("manual ledger scan", () => {
     const table = await screen.findByRole("table", { name: "运行环节" });
     const ledger = within(within(table).getByRole("rowheader", { name: "查账" }).closest("tr")!);
     expect(ledger.getByRole("button", { name: "手动查账" })).toBeEnabled();
-    expect(ledger.getByRole("link", { name: "支付宝接入" })).toBeVisible();
+    expect(ledger.getByRole("link", { name: "支付宝账号" })).toBeVisible();
     expect(ledger.getByRole("button", { name: "查账运行诊断" })).toBeVisible();
   });
 
@@ -77,7 +77,7 @@ describe("manual ledger scan", () => {
   });
 
   it.each([
-    ["not_configured", "请先完成支付宝接入配置。"],
+    ["not_configured", "请先完成支付宝账号配置。"],
     ["transitioning", "运行配置正在切换，请稍后再试。"],
     ["stopped", "查账任务已停用，请先启用查账服务。"],
     ["storage_unavailable", "查账进度暂不可用，请检查运行诊断。"],

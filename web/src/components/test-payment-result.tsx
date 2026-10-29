@@ -1,4 +1,5 @@
 import { workspaceApi } from "@/api/workspace";
+import { AlipayAccountIdentity } from "@/components/alipay-account-identity";
 import { useEffect, useRef, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle2, Clock3, RefreshCw } from "lucide-react";
@@ -153,6 +154,7 @@ export function TestPaymentResult({
     </div>
   );
   const fields: Array<[string, ReactNode]> = [
+    ["收款账号", <AlipayAccountIdentity id={order.alipay_account_id} name={order.alipay_account_name} />],
     ["测试金额", money(order.requested_amount_cents)],
     [
       "实际应付",

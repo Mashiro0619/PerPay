@@ -34,8 +34,8 @@ describe("page title ownership", () => {
     }
     const view = render(<PageHeadingProvider routeKey="application"><PageHeadingSlot title="向导" /><Wizard title="应用公钥" /></PageHeadingProvider>);
     const input = screen.getByRole("textbox"); input.focus();
-    view.rerender(<PageHeadingProvider routeKey="provider"><PageHeadingSlot title="向导" /><Wizard title="支付宝接入" /></PageHeadingProvider>);
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("支付宝接入");
+    view.rerender(<PageHeadingProvider routeKey="provider"><PageHeadingSlot title="向导" /><Wizard title="支付宝账号" /></PageHeadingProvider>);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("支付宝账号");
     expect(screen.getByRole("textbox")).toBe(input); expect(input).toHaveFocus();
     expect(mounted).toHaveBeenCalledTimes(1);
   });

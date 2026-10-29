@@ -356,6 +356,10 @@ export const appRoutes = createRoutesFromElements(
       />
     </Route>
     <Route
+      path="settings/accounts/:accountId"
+      lazy={() => import("@/pages/AlipayAccounts").then(module => ({ Component: module.default }))}
+    />
+    <Route
       path="settings/onboarding/:step?"
       lazy={async () => ({
         Component: (await import("./pages/Onboarding")).default,

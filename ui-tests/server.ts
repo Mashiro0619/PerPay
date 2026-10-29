@@ -37,7 +37,7 @@ const cookie = login.headers.getSetCookie().map(value => value.split(";")[0]).jo
 const firstId = (table: string, column: string) => demo.database.read(db =>
   (db.prepare(`SELECT ${column} AS id FROM ${table} LIMIT 1`).get() as { id: string }).id);
 const routes = ["/", "/orders", "/work-items", "/notifications", "/reconciliation", "/ledger", "/sites", "/sites/new", "/sites/defaults", "/system", "/test-payment",
-  ...["provider", "collection", "collection-policy", "security", "backup", "display", "advanced"].map(value => "/settings/" + value),
+  ...["accounts", "collection-policy", "security", "backup", "display", "advanced"].map(value => "/settings/" + value),
   "/settings/onboarding/check", "/orders/" + demo.featured,
   "/ledger/" + demo.scenarios.ledger.identical,
   "/ledger/" + demo.scenarios.ledger.inconsistent,
@@ -50,8 +50,8 @@ const routes = ["/", "/orders", "/work-items", "/notifications", "/reconciliatio
   ...["", "/orders", "/notifications", "/work-items", "/settings"].map(path => "/sites/" + demo.scenarios.sites.store + path),
 ];
 const extendedRoutes = [
-  ...["application", "provider", "collection", "optional"].map(step => "/settings/onboarding/" + step),
-  ...["orders", "integration", "display"].map(section => "/sites/" + demo.scenarios.sites.store + "/settings/" + section),
+  ...["accounts", "sites"].map(step => "/settings/onboarding/" + step),
+  ...["collection", "orders", "integration", "display"].map(section => "/sites/" + demo.scenarios.sites.store + "/settings/" + section),
   "/sites/" + demo.scenarios.sites.store + "/orders/" + demo.featured,
   "/sites/" + demo.scenarios.sites.notifications + "/notifications/" + Object.values(demo.scenarios.notifications.deliveries)[0],
   ...([ ["matches", "payment_matches", "payment_match_id"], ["candidates", "match_candidates", "candidate_id"] ] as const).map(([kind, table, key]) => demo.database.read(db => {

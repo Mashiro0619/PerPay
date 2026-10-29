@@ -50,12 +50,16 @@ export function CollectionCodeField({
   onDecoded,
   onPendingChange,
   disabled = false,
+  required = true,
+  onValueChange,
   error,
 }: {
   defaultValue: string;
   onDecoded: () => void;
   onPendingChange: (pending: boolean) => void;
   disabled?: boolean;
+  required?: boolean;
+  onValueChange?: (value: string) => void;
   error?: string | undefined;
 }) {
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -120,6 +124,7 @@ export function CollectionCodeField({
       const issue = collectionCodeError(payload);
       if (issue) throw new Error(issue);
       textarea.current.value = payload;
+      onValueChange?.(payload);
       onDecoded();
       setFeedback({ kind: "success" });
     } catch (error) {
@@ -262,12 +267,12 @@ export function CollectionCodeField({
           id={feedbackId + "-code"}
           name="code_payload"
           rows={2}
-          required
+          required={required}
           minLength={8}
           maxLength={2331}
           defaultValue={defaultValue}
           disabled={disabled}
-          onChange={cancelReading}
+          onChange={event => { cancelReading(); onValueChange?.(event.currentTarget.value); }}
           autoComplete="off"
           spellCheck={false}
           placeholder="https://qr.alipay.com/…"

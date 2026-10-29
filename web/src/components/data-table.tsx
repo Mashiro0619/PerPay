@@ -1,5 +1,6 @@
 import { useWorkspace } from "@/workspace";
 import { SiteIdentity } from "@/components/site-identity";
+import { AlipayAccountIdentity } from "@/components/alipay-account-identity";
 import type { AdminOrderSummary } from "@/api/client";
 import { Link } from "@/navigation";
 import type { ListQueryControl } from "@/lib/list-query";
@@ -79,6 +80,7 @@ export function DataTable({
               {!clientId && (
                 <SiteIdentity clientId={order.api_client_id} name={order.site_name} />
               )}
+              {order.alipay_account_id && <span>收款账号：<AlipayAccountIdentity id={order.alipay_account_id} name={order.alipay_account_name} /></span>}
             </ListMeta>
           }
           description={(

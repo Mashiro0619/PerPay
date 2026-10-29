@@ -12,6 +12,8 @@ import { useNavigate, Link } from "@/navigation";
 import { useFixedOperation } from "@/lib/fixed-operation";
 import { createOperationKey } from "@/lib/idempotency";
 import { SiteTextField } from "@/components/SitePolicyFields";
+import { CollectionChoices } from "@/components/site-collection-fields";
+import { alipayAccountsQuery, defaultSiteCollection, type AlipayAccount } from "@/lib/alipay-accounts";
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import { OperationRecoveryNotice } from "@/components/operation-recovery-notice";
 import { OperationNavigationDialog } from "@/components/operation-navigation-dialog";
@@ -24,7 +26,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-export default function CreateSite() {
+export default function CreateSite({ onCreated }: { onCreated?: (clientId: string) => void } = {}) {
+  const accounts = useQuery(alipayAccountsQuery);
   const defaults = useQuery({
     queryKey: ["site-create-defaults"],
     queryFn: ({ signal }) => result(api.getSiteDefaults({ signal })),
@@ -35,14 +38,16 @@ export default function CreateSite() {
   });
   return (
     <QueryView query={defaults}>
-      {(response) => <CreateSiteForm policy={response.data.policy} />}
+      {(response) => <QueryView query={accounts}>{accountResponse => <CreateSiteForm policy={response.data.policy} accounts={accountResponse.data} onCreated={onCreated} />}</QueryView>}
     </QueryView>
   );
 }
-function CreateSiteForm({ policy }: { policy: SiteConfiguration["policy"] }) {
+function CreateSiteForm({ policy, accounts, onCreated }: { policy: SiteConfiguration["policy"]; accounts: readonly AlipayAccount[]; onCreated?: (clientId: string) => void }) {
   const [template] = useState(() => structuredClone(policy)),
     [name, setName] = useState("");
-  const clear = useDirtyDraft(!!name),
+  const [initialCollection] = useState(() => defaultSiteCollection(accounts));
+  const [collection, setCollection] = useState(initialCollection);
+  const clear = useDirtyDraft(!!name || JSON.stringify(collection) !== JSON.stringify(initialCollection)),
     navigate = useNavigate(),
     key = useRef(createOperationKey()),
     form = useRef<HTMLFormElement>(null);
@@ -60,7 +65,8 @@ function CreateSiteForm({ policy }: { policy: SiteConfiguration["policy"] }) {
       void queryClient.invalidateQueries({ queryKey: ["sites"] });
       void queryClient.invalidateQueries({ queryKey: ["site-overview"] });
       void queryClient.invalidateQueries({ queryKey: ["settings"] });
-      void navigate("/sites/" + response.data.client_id);
+      if (onCreated) onCreated(response.data.client_id);
+      else void navigate("/sites/" + response.data.client_id);
     },
     isSafeRejection: (error) =>
       error instanceof ApiError && error.status === 422,
@@ -77,6 +83,7 @@ function CreateSiteForm({ policy }: { policy: SiteConfiguration["policy"] }) {
       notification_origin: null,
       return_origin: null,
       policy: template,
+      collection,
     };
     create.submit({ operation_id: key.current(configuration), configuration });
   }
@@ -84,7 +91,7 @@ function CreateSiteForm({ policy }: { policy: SiteConfiguration["policy"] }) {
     <div className="admin-settings-layout">
       <form
         ref={form}
-        className="max-w-md"
+        className="max-w-2xl"
         onSubmit={(event) => {
           event.preventDefault();
           submit();
@@ -113,6 +120,7 @@ function CreateSiteForm({ policy }: { policy: SiteConfiguration["policy"] }) {
                     create.reset();
                   }}
                 />
+                <CollectionChoices accounts={accounts} value={collection} onChange={value => { setCollection(value); create.reset(); }} disabled={create.isPending || !!create.recovery} error={create.error instanceof ApiError ? Object.entries(create.error.fields).find(([field]) => field.startsWith("configuration.collection"))?.[1] : undefined} />
               </FieldSet>
               {create.recovery && (
                 <OperationRecoveryNotice

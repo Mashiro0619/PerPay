@@ -193,7 +193,7 @@ const listCases = [
       ...groupedLedger,
       ledger_entry_id: recordId,
     },
-    columns: 10,
+    columns: 11,
   },
   {
     name: "ledger conflicts",

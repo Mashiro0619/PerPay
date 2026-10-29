@@ -50,7 +50,7 @@ describe("ordered onboarding navigation", () => {
     });
     expect(
       within(nav).getByRole("link", {
-        name: /第 2 步.*支付宝接入.*已配置.*当前步骤/,
+        name: /第 2 步.*支付宝账号.*已配置.*当前步骤/,
       }),
     ).toHaveAttribute("aria-current", "step");
     expect(nav.querySelectorAll('[aria-current="step"]')).toHaveLength(1);
@@ -77,7 +77,7 @@ describe("ordered onboarding navigation", () => {
     );
     const nav = screen.getByRole("navigation", { name: "配置步骤" });
     const first = within(nav).getByRole("link", { name: /应用公钥/ });
-    const current = within(nav).getByRole("link", { name: /支付宝接入/ });
+    const current = within(nav).getByRole("link", { name: /支付宝账号/ });
     const disabled = within(nav).getByRole("link", { name: /收款码/ });
     expect(disabled).toHaveAttribute("aria-disabled", "true");
     expect(disabled).not.toHaveAttribute("href");

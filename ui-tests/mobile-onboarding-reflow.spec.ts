@@ -63,8 +63,8 @@ test.describe("mobile onboarding reflow retains distinct actions", () => {
       expect(await previous.evaluate((element, point) => document.elementFromPoint(point.x, point.y)?.closest("a,button") === element, point)).toBe(true);
       await record(page, info, { evidence: "browser touch viewport with 200% root text", width, onboardingTargets: targets, previousTap: point });
       await page.touchscreen.tap(point.x, point.y);
-      await expect(page).toHaveURL(manifest.origin + "/admin/settings/onboarding/optional");
-      await expect(page.getByRole("heading", { name: "网站与备份", exact: true, level: 2 })).toBeFocused();
+      await expect(page).toHaveURL(manifest.origin + "/admin/settings/onboarding/sites");
+      await expect(page.getByRole("heading", { name: "配置网站", exact: true, level: 2 })).toBeFocused();
     });
 
   }

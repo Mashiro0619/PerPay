@@ -251,7 +251,7 @@ export function ApplicationKey({
               </Collapsible>
             ) : (
               <p className="text-sm text-muted-foreground">
-                请先恢复支付宝接入配置，再更换公钥。
+                请先恢复支付宝账号配置，再更换公钥。
               </p>
             )}
           </>
@@ -275,7 +275,7 @@ export function ApplicationKey({
           </>
         ) : (
           <p className="text-sm text-muted-foreground">
-            暂时无法读取应用公钥，请刷新配置；仍不可用时检查支付宝接入设置。
+            暂时无法读取应用公钥，请刷新配置；仍不可用时检查支付宝账号设置。
           </p>
         )}
         <ErrorNotice error={generate.error} />
@@ -692,8 +692,8 @@ function ApplicationKeyChange({
           }}
           description={
             operation.isPending
-              ? "正在等待启用结果。离开只会停止本页等待，不会撤销已完成的启用。稍后请返回“支付宝接入”刷新核对，不要直接再次换钥。"
-              : "本次启用可能已生效。离开会关闭原请求的重试入口；稍后请返回“支付宝接入”刷新核对。"
+              ? "正在等待启用结果。离开只会停止本页等待，不会撤销已完成的启用。稍后请返回“支付宝账号”刷新核对，不要直接再次换钥。"
+              : "本次启用可能已生效。离开会关闭原请求的重试入口；稍后请返回“支付宝账号”刷新核对。"
           }
         />
         <AlertDialog open={confirmRefresh} onOpenChange={setConfirmRefresh}>

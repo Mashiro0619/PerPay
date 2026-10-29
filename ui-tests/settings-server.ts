@@ -17,8 +17,8 @@ export async function createSettingsServer(epoch: number, options: {
   updateChecker?: Pick<OfficialUpdateChecker, "check">;
   demoMode?: boolean;
   clock?: () => number;
-  runtime?: (services: Awaited<ReturnType<typeof createConfiguredHttpServices>>) => Pick<AppDependencies,
-    "runtimeStatus" | "ledgerHealth" | "ledgerNextRunAt" | "ledgerManualScan" | "requestLedgerScan">;
+  runtime?: (services: Awaited<ReturnType<typeof createConfiguredHttpServices>>) => Partial<Pick<AppDependencies,
+    "runtimeStatus" | "ledgerHealth" | "ledgerNextRunAt" | "ledgerManualScan" | "requestLedgerScan" | "alipayAccounts" | "accountHealth" | "reconciliationHealth" | "orders">>;
 } = {}) {
   const probe = createServer();
   probe.listen(0, "127.0.0.1");

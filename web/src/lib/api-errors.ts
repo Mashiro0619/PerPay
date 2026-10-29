@@ -17,7 +17,7 @@ const messages: Record<string, string> = {
   settings_unavailable: "无法读取系统配置，请查看运行状态后重试。",
   settings_not_configured: "请先完成系统配置，再执行此操作。",
   provider_application_key_missing:
-    "尚未配置应用密钥对，请先在支付宝接入中生成密钥对，或导入已有应用私钥。",
+    "尚未配置应用密钥对，请先在支付宝账号中生成密钥对，或导入已有应用私钥。",
   provider_application_key_rotation_not_supported:
     "不能直接覆盖当前应用私钥。请使用“更换应用密钥对”，上传到支付宝后再验证启用。",
   provider_application_key_change_pending:

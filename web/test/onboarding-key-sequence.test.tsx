@@ -150,7 +150,7 @@ describe("sequential application-key onboarding", () => {
       }
       expect(
         within(
-          screen.getByRole("link", { name: /支付宝接入/ }),
+          screen.getByRole("link", { name: /支付宝账号/ }),
         ).queryByLabelText("已配置"),
       ).not.toBeInTheDocument();
       expect(view.writes()).toHaveLength(0);

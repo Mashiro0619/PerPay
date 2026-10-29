@@ -15,19 +15,21 @@ export function OrderExport({
   payment,
   checkout,
   clientId = null,
+  accountId,
   menu = false,
 }: {
   query: ReturnType<typeof useListQuery<OrderSort>>["apiQuery"];
   payment: PaymentStatus | undefined;
   checkout: CheckoutStatus | undefined;
   clientId?: string | null;
+  accountId?: string | undefined;
   menu?: boolean;
 }) {
   const api = useWorkspaceApi();
   const active = useRef<AbortController | null>(null);
   const [pending, setPending] = useState(false),
     [error, setError] = useState<Error | null>(null);
-  const scope = JSON.stringify([query, payment, checkout, clientId]);
+  const scope = JSON.stringify([query, payment, checkout, clientId, accountId]);
   useEffect(() => {
     setError(null);
     setPending(false);
@@ -64,6 +66,7 @@ export function OrderExport({
             created_to: query.created_to!,
             ...(payment ? { payment_status: payment } : {}),
             ...(checkout ? { checkout_status: checkout } : {}),
+            ...(accountId ? { alipay_account_id: accountId } : {}),
           },
         }),
       );

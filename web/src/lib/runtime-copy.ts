@@ -21,7 +21,7 @@ export function runtimeErrorMessage(task: RuntimeTask, code: string): string {
       case "response_invalid_shape":
         return "支付宝账单未通过校验，请保留失败记录并查看运行诊断。";
       case "scan_failed":
-        return "查账未完成，请检查网络、支付宝接入和运行诊断。";
+        return "查账未完成，请检查网络、支付宝账号和运行诊断。";
       default:
         return "查账任务运行异常，请查看运行诊断。";
     }

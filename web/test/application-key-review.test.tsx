@@ -178,7 +178,7 @@ describe("pending key continuity across onboarding steps", () => {
       );
       if (action === "activate") {
         await screen.findByLabelText("支付宝收款码内容");
-        await user.click(screen.getByRole("link", { name: /支付宝接入/ }));
+        await user.click(screen.getByRole("link", { name: /支付宝账号/ }));
       } else await user.click(screen.getByRole("button", { name: "下一步" }));
       await user.click(
         await screen.findByRole("button", { name: "查看应用公钥" }),

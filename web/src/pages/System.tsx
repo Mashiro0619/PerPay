@@ -15,6 +15,7 @@ import {
   backupIntervalLabel,
 } from "@/lib/format";
 import { LedgerIngestionDiagnostics } from "@/components/ledger-ingestion-diagnostics";
+import { AlipayAccountStatus } from "@/components/alipay-account-status";
 import { RefreshButton } from "@/components/refresh-button";
 import { ErrorNotice, Loading, QueryView } from "@/components/request-state";
 import { TechnicalDetailsDialog } from "@/components/detail/DetailPrimitives";
@@ -86,6 +87,7 @@ function SystemContent() {
         </QueryView>
       )}
       <OfficialUpdatePanel currentVersion={status.data?.data.version} />
+      {!checking && status.data?.data.alipay_accounts && <AlipayAccountStatus accounts={status.data.data.alipay_accounts} />}
     </div>
   );
 }
@@ -228,7 +230,7 @@ function SystemSnapshot({
                   className={buttonVariants({ variant: "ghost", size: "sm" })}
                   to="/settings/provider"
                 >
-                  支付宝接入
+                  支付宝账号
                 </Link>
               )}
               </>

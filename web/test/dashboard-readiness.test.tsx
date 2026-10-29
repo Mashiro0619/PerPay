@@ -75,7 +75,7 @@ describe("dashboard collection readiness guidance", () => {
     });
     const alert = await pausedAlert();
 
-    expect(alert.getByText("还没有成功查账，请检查支付宝接入")).toBeVisible();
+    expect(alert.getByText("还没有成功查账，请检查支付宝账号")).toBeVisible();
     expect(alert.queryByText(/查账任务未运行|超过有效时限/)).not.toBeInTheDocument();
     expect(view.container.querySelector("[data-ledger-freshness]")).toHaveTextContent("最近查账成功：暂无记录");
     expect(view.container.querySelector("[data-ledger-freshness] time")).not.toBeInTheDocument();

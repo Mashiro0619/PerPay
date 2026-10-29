@@ -490,7 +490,7 @@ describe("onboarding payment readiness", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "查账错误诊断" }));
     expect(screen.getByText("provider_authentication_failed")).toBeVisible();
     expect(
-      screen.getByRole("link", { name: "检查支付宝接入" }),
+      screen.getByRole("link", { name: "检查支付宝账号" }),
     ).toHaveAttribute("href", "/settings/onboarding/provider");
     expect(
       screen.queryByRole("link", { name: "小额真实测试" }),

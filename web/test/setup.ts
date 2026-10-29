@@ -4,6 +4,7 @@ import { afterEach, beforeEach, vi } from "vitest";
 
 import { queryClient } from "../src/api/client";
 import { matchesTestMedia } from "./media-query";
+import { alipayAccount } from "./fixtures";
 
 configure({ asyncUtilTimeout: 5000 });
 
@@ -58,6 +59,9 @@ beforeEach(() => {
   );
   document.querySelector('meta[name="perpay-system-name"]')?.remove();
   queryClient.clear();
+  // Unrelated page tests use the already loaded default account catalog. Tests
+  // exercising account reads clear or replace this fixture explicitly.
+  queryClient.setQueryData(["alipay-accounts"], { data: [structuredClone(alipayAccount)] });
   queryClient.setDefaultOptions({
     queries: { retry: false, staleTime: Infinity },
     mutations: { retry: false, gcTime: 0 },

@@ -40,7 +40,7 @@ function useStatusObservation() {
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     refetchInterval: query => view.active
-      ? manualScanActive(query.state.data?.data.ledger.manual_scan?.request) ? 2000 : 30000
+      ? manualScanActive(query.state.data?.data.ledger.manual_scan?.request) || query.state.data?.data.alipay_accounts?.some(account => manualScanActive(account.manual_scan?.request)) ? 2000 : 30000
       : false,
     refetchIntervalInBackground: false,
   });
@@ -56,9 +56,10 @@ function useStatusObservation() {
   }, [address, view.active, view.epoch, refetch]);
   useEffect(() => {
     const data = status.data?.data;
-    const request = data?.ledger.manual_scan?.request;
-    if (!view.active || !status.isSuccess || !data || !request || manualScanActive(request)) return;
-    const completed = `${manualScanSource(data)}:${request.id}:${request.state}:${request.finished_at}`;
+    if (!view.active || !status.isSuccess || !data) return;
+    const requests = [data.ledger.manual_scan?.request, ...(data.alipay_accounts?.map(account => account.manual_scan?.request) ?? [])].filter(request => request && !manualScanActive(request));
+    if (!requests.length) return;
+    const completed = `${manualScanSource(data)}:${requests.map(request => `${request!.id}:${request!.state}:${request!.finished_at}`).join("|")}`;
     if (completedScan.current === completed) return;
     completedScan.current = completed;
     // The server's terminal state, rather than the POST's 202 response, proves

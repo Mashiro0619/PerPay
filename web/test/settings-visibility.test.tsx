@@ -76,7 +76,7 @@ describe.each([false, true])("directly visible settings (guided: %s)", (guided) 
       expect(within(group).getByText(title)).toHaveClass("sr-only");
     }
     if (!guided && section === "provider") {
-      expect(screen.getAllByText("支付宝接入", { exact: true })).toHaveLength(1);
+      expect(screen.getAllByText("支付宝账号", { exact: true })).toHaveLength(1);
       expect(screen.getByRole("group", { name: "开放平台应用" })).toBeVisible();
       expect(screen.queryByLabelText("常规查账间隔（秒）")).not.toBeInTheDocument();
     }

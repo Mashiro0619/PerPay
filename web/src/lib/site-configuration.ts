@@ -1,11 +1,13 @@
 import type { SiteConfiguration, SitePolicy } from "@/api/client";
 import { siteTimeoutSeconds } from "./site-timeout";
+import type { SiteCollection } from "./alipay-accounts";
 
 // These are the fields editable in each website settings group. Merge only local
 // changes in that group; every other value must come from the latest snapshot.
 const fields = [
   ["basic", "name", "业务网站名称"],
   ["basic", "accepting_orders", "允许新订单"],
+  ["collection", "collection", "收款账号与分配方式"],
   ["orders", "policy.orders.order_ttl_seconds", "收银台有效期（秒）"],
   ["orders", "policy.orders.amount_offset_maximum_cents", "最大加价金额（分）"],
   ["orders", "policy.orders.amount_reuse_cooldown_seconds", "应付金额复用等待（秒）"],
@@ -23,7 +25,7 @@ const fields = [
 ] as const;
 
 type FieldPath = (typeof fields)[number][1];
-type FieldValue = string | number | boolean | null;
+type FieldValue = string | number | boolean | null | SiteCollection | undefined;
 export type SiteFieldConflict = {
   path: FieldPath;
   label: string;
@@ -57,8 +59,8 @@ function mergeFields<Configuration extends object>(
   const conflicts: SiteFieldConflict[] = [];
   for (const [, path, label] of selectedFields) {
     const before = read(base, path), local = read(draft, path), latest = read(remote, path);
-    if (Object.is(local, before)) continue;
-    if (!Object.is(latest, before) && !Object.is(latest, local)) {
+    if (JSON.stringify(local) === JSON.stringify(before)) continue;
+    if (JSON.stringify(latest) !== JSON.stringify(before) && JSON.stringify(latest) !== JSON.stringify(local)) {
       conflicts.push({ path, label, before, local, remote: latest,
         ...(path === "policy.notification_delivery.timeout_milliseconds"
           ? { format: (value: FieldValue) => typeof value === "number" ? siteTimeoutSeconds(value) : siteFieldValue(value) }
@@ -121,7 +123,8 @@ export function resolveSitePolicyConflicts(
 }
 
 export function siteFieldValue(value: FieldValue): string {
-  if (value === null || value === "") return "未设置";
+  if (value === null || value === undefined || value === "") return "未设置";
   if (typeof value === "boolean") return value ? "开启" : "关闭";
+  if (typeof value === "object") return ({ FIXED: "指定账号", RANDOM: "随机", WEIGHTED: "按权重" }[value.mode]) + "：" + value.accounts.map(account => account.account_id + (value.mode === "WEIGHTED" ? "（权重 " + account.weight + "）" : "")).join("、");
   return String(value);
 }

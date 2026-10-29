@@ -19,17 +19,17 @@ type NavigationLocation = {
 };
 
 const SELECTION_PARAMETER = "selected_site";
-const SITE_SETTINGS_SECTIONS = ["basic", "orders", "integration", "display"];
+const SITE_SETTINGS_SECTIONS = ["basic", "collection", "orders", "integration", "display"];
 const RECONCILIATION_SECTIONS = ["matches", "exceptions", "conflicts"];
 const LIST_QUERY_PARAMETERS = ["q", "sort_by", "sort_order"];
 const DATE_QUERY_PARAMETERS = ["created_from", "created_to"];
 const SECTION_QUERY_PARAMETERS: Record<NavigationSection, readonly string[]> = {
   overview: ["range"],
-  orders: ["payment", "checkout", ...LIST_QUERY_PARAMETERS, ...DATE_QUERY_PARAMETERS],
+  orders: ["payment", "checkout", "alipay_account_id", ...LIST_QUERY_PARAMETERS, ...DATE_QUERY_PARAMETERS],
   notifications: ["status", ...LIST_QUERY_PARAMETERS, ...DATE_QUERY_PARAMETERS],
   "work-items": ["type", "visibility", ...LIST_QUERY_PARAMETERS],
-  reconciliation: ["tab", "status", "provider_account_key", "direction", "state", "association_status", "has_reversals", "associated_from", "associated_to", "occurred_from", "occurred_to", "min_amount_cents", "max_amount_cents", ...LIST_QUERY_PARAMETERS],
-  ledger: ["direction", "state", "occurred_from", "occurred_to", "min_amount_cents", "max_amount_cents", ...LIST_QUERY_PARAMETERS],
+  reconciliation: ["tab", "status", "provider_account_key", "alipay_account_id", "direction", "state", "association_status", "has_reversals", "associated_from", "associated_to", "occurred_from", "occurred_to", "min_amount_cents", "max_amount_cents", ...LIST_QUERY_PARAMETERS],
+  ledger: ["direction", "state", "alipay_account_id", "occurred_from", "occurred_to", "min_amount_cents", "max_amount_cents", ...LIST_QUERY_PARAMETERS],
   settings: [],
   system: [],
   sites: [],

@@ -1,4 +1,12 @@
-import type { AdminOrderDetail, ReconciliationLedgerEntry, RuntimeSettings } from "../src/api/client";
+import type { AdminOrderDetail, AlipayAccount, ReconciliationLedgerEntry, RuntimeSettings } from "../src/api/client";
+
+export const alipayAccount: AlipayAccount = {
+  id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", revision: 1, name: "默认收款账号", enabled: true,
+  code_payload: "https://qr.alipay.com/test-fixture", environment: "PRODUCTION", app_id: "test-app-id",
+  platform_public_key: "synthetic-saved-alipay-public-key", provider_account_key: "synthetic-provider", configured: true,
+  application_public_key: "synthetic-application-public-key", application_key_fingerprint: "a".repeat(64), pending_application_key: null,
+  sites: [], deletable: true, last_check: null, created_at: "2026-10-29T00:00:00.000Z", updated_at: "2026-10-29T00:00:00.000Z",
+};
 
 export const orderId = "11111111-1111-4111-8111-111111111111";
 export const ledgerId = "22222222-2222-4222-8222-222222222222";

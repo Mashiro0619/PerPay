@@ -11,7 +11,7 @@ export const onboardingSteps = [
   },
   {
     id: "provider",
-    title: "支付宝接入",
+    title: "支付宝账号",
     description: "填写支付宝应用信息，建立账单查询连接。",
   },
   {
@@ -45,7 +45,7 @@ export function onboardingStepDescription(
     if (state === "configured")
       return "应用公钥已就绪。复制到支付宝的接口加签设置，已配置则直接下一步。";
     if (state === "unavailable")
-      return "此系统已有密钥或支付宝接入记录，不能按首次接入重新生成。";
+      return "此系统已有密钥或支付宝账号记录，不能按首次接入重新生成。";
   }
   if (step === "provider" && settings.pending_application_key)
     return "填写上传后获取的支付宝公钥，验证并启用新密钥。";

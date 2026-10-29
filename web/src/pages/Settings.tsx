@@ -13,7 +13,7 @@ import {
   Settings2,
   Wallet,
 } from "lucide-react";
-import { useParams } from "react-router";
+import { Navigate, useParams } from "react-router";
 import { PageHeading } from "@/components/page-heading";
 import { ScrollingTabs } from "@/components/scrolling-tabs";
 import { Link, useNavigate } from "@/navigation";
@@ -40,8 +40,10 @@ import {
 } from "@/components/ui/select";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { NotificationKeyActions, SecuritySettings } from "./SecuritySettings";
+import { AlipayAccountList } from "./AlipayAccounts";
 
 const sectionIcons = {
+  accounts: Wallet,
   provider: Wallet,
   "collection-policy": SlidersHorizontal,
   collection: QrCode,
@@ -89,8 +91,8 @@ export default function Settings() {
   function refresh() {
     requestDiscard(() => {
       setRefreshing(true);
-      void settings.refetch().then(
-        (response) => {
+      void Promise.all([settings.refetch(), queryClient.invalidateQueries({ queryKey: ["alipay-accounts"] })]).then(
+        ([response]) => {
           if (!response.isError) {
             setEditorVersion((value) => value + 1);
             setSuccess("");
@@ -119,10 +121,11 @@ export default function Settings() {
       <QueryView query={settings}>
         {({ data }) => {
           if (data.site_mode && requestedSection === "notifications") return <Alert><AlertTitle>通知设置已迁移</AlertTitle><AlertDescription><Link to="/sites">前往业务网站配置通知</Link></AlertDescription></Alert>;
-          const availableSections = data.site_mode ? sections.filter(([value]) => value !== "notifications") : sections;
+          if (data.site_mode && (requestedSection === "provider" || requestedSection === "collection")) return <Navigate to="/settings/accounts" replace />;
+          const availableSections = data.site_mode ? [["accounts", "支付宝账号"] as const, ...sections.filter(([value]) => !["notifications", "provider", "collection"].includes(value))] : sections;
           const section =
             availableSections.find(([value]) => value === requestedSection)?.[0] ??
-            (data.completion.complete ? "collection" : "provider");
+            (data.site_mode ? "accounts" : data.completion.complete ? "collection" : "provider");
           const changeSection = (value: string | null) => {
             if (!value) return;
             // The selected option unmounts before a blocked navigation closes.
@@ -203,7 +206,7 @@ export default function Settings() {
                   inert={refreshing}
                   aria-busy={refreshing}
                 >
-                  {section === "security" ? (
+                  {section === "accounts" ? <AlipayAccountList /> : section === "security" ? (
                     <SecuritySettings
                       key={"security:" + editorVersion}
                       settings={data}

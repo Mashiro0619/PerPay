@@ -158,7 +158,7 @@ describe("first collection onboarding", () => {
     expect(
       screen.queryByText(/应用网关|生成密钥文件|保存只完成配置/),
     ).not.toBeInTheDocument();
-    expect(screen.getAllByRole("heading", { name: "支付宝接入" })).toHaveLength(
+    expect(screen.getAllByRole("heading", { name: "支付宝账号" })).toHaveLength(
       1,
     );
     expect(view.writes()).toHaveLength(0);

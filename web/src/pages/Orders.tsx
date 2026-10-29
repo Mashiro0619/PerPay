@@ -1,4 +1,5 @@
 import { ListLayout, ListToolbarPart } from "@/components/list-layout";
+import { alipayAccountsQuery } from "@/lib/alipay-accounts";
 import { useState } from "react";
 import { SitePicker } from "@/components/site-picker";
 import { useWorkspace } from "@/workspace";
@@ -73,6 +74,7 @@ export default function Orders() {
       "api_client_id",
       "payment",
       "checkout",
+      "alipay_account_id",
       "cursor",
       "page",
       "q",
@@ -250,22 +252,27 @@ function OrderPage({
 }) {
   const { clientId } = useWorkspace();
   const pagination = useCursor();
+  const [search] = useSearchParams();
+  const accountId = search.get("alipay_account_id") ?? undefined;
+  const accounts = useQuery(alipayAccountsQuery);
+  const accountOptions = [{ value: "", label: "全部收款账号" }, ...(accounts.data?.data.map(account => ({ value: account.id, label: account.name })) ?? [])];
   const listQuery = useListQuery(ORDER_SORT_FIELDS, "created_at", "desc", true);
-  const orders = useQuery(ordersQuery(clientId, listQuery, pagination.cursor, payment, checkout));
+  const orders = useQuery(ordersQuery(clientId, listQuery, pagination.cursor, payment, checkout, accountId));
   return (
     <ListColumnsProvider>
       <ListToolbarPart>
       <ListQueryToolbar
         control={listQuery}
         label="订单关键词搜索"
-        desktopFilters={desktopFilters}
-        desktopFilterContent={<CreatedDateFilter control={listQuery}><OrderExport clientId={clientId} query={listQuery.apiQuery} payment={payment} checkout={checkout} /></CreatedDateFilter>}
+        desktopFilters={<>{desktopFilters}<Select items={accountOptions} value={accountId ?? ""} onValueChange={value => listQuery.update({ alipay_account_id: value })}><SelectTrigger aria-label="收款账号筛选"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{accountOptions.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectGroup></SelectContent></Select></>}
+        desktopFilterContent={<CreatedDateFilter control={listQuery}><OrderExport clientId={clientId} accountId={accountId} query={listQuery.apiQuery} payment={payment} checkout={checkout} /></CreatedDateFilter>}
         mobileFilterContent={draft => <CreatedDateFilter control={draft} />}
         mobileFilterSummary={listQuery.query.createdFrom || listQuery.query.createdTo ? ["创建日期：" + (listQuery.query.createdFrom ?? "不限") + " 至 " + (listQuery.query.createdTo ?? "不限")] : []}
         mobileFilterReset={{ created_from: null, created_to: null }}
-        mobileActions={<OrderExport menu clientId={clientId} query={listQuery.apiQuery} payment={payment} checkout={checkout} />}
+        mobileActions={<OrderExport menu clientId={clientId} accountId={accountId} query={listQuery.apiQuery} payment={payment} checkout={checkout} />}
         lookup={lookup}
         filters={[
+          { key: "alipay_account_id", label: "收款账号", value: accountId ?? "", options: accountOptions },
           {
             key: "payment",
             label: "付款状态",
@@ -294,6 +301,7 @@ function OrderPage({
               (pagination.page > 1 ||
                 payment ||
                 checkout ||
+                accountId ||
                 listQuery.query.q || listQuery.query.createdFrom) ? (
                 <Empty kind="filtered">
                   <EmptyHeader>

@@ -1,4 +1,5 @@
 import { useIsFetching, useQuery } from "@tanstack/react-query";
+import { AlipayAccountIdentity } from "@/components/alipay-account-identity";
 import { useLayoutEffect, useRef } from "react";
 import { CircleAlert } from "lucide-react";
 import { useLocation, useParams } from "react-router";
@@ -69,6 +70,7 @@ export default function LedgerDetail() {
         <CardContent className="flex min-w-0 flex-col gap-6">
           <DetailFields density="comfortable" layout="flow" wide={["支付宝备注"]} items={[
             ["交易金额", <LedgerMoney entry={data} />],
+            ["收款账号", <AlipayAccountIdentity id={data.alipay_account_id} name={data.alipay_account_name} />],
             ["收支方向", <LedgerDirection value={data.direction} disputed={!data.content_consistent} />],
             ["交易时间", data.occurred_at ? <ListDateTime value={data.occurred_at} inline /> : data.content_consistent ? "—" : "有争议"],
             ["对方", ledgerFact(data.other_account)],

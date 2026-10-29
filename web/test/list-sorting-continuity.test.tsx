@@ -13,7 +13,7 @@ import Reconciliation from "../src/pages/Reconciliation";
 import WorkItems from "../src/pages/WorkItems";
 import { delivery } from "./detail-fixtures";
 import { groupedLedger } from "./ledger-fixtures";
-import { json, order } from "./fixtures";
+import { alipayAccount, json, order } from "./fixtures";
 import { mobileMedia } from "./mobile-media";
 
 const resourceId = (number: number) => "10000000-0000-4000-8000-" + String(number).padStart(12, "0");
@@ -74,6 +74,7 @@ function respond(handler: (url: URL) => Response | Promise<Response>) {
   const requests: URL[] = [];
   vi.stubGlobal("fetch", vi.fn((request: Request) => {
     const url = new URL(request.url);
+    if (url.pathname === "/api/admin/v1/alipay-accounts") return json({ data: [alipayAccount] });
     requests.push(url);
     return handler(url);
   }));

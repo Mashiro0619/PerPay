@@ -61,6 +61,7 @@ import {
 import { NotificationKeyActions } from "./SecuritySettings";
 import { runtimeErrorMessage, type RuntimeTask } from "@/lib/runtime-copy";
 import { RuntimeErrorDetails } from "@/components/runtime-error-details";
+import { AccountOnboarding } from "./AccountOnboarding";
 export default function Onboarding() {
   const [editorVersion, setEditorVersion] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -134,14 +135,14 @@ export default function Onboarding() {
       <QueryView query={settings}>
         {({ data }) => (
           <div className="min-w-0" inert={refreshing} aria-busy={refreshing}>
-            <OnboardingFlow
+            {data.site_mode ? <AccountOnboarding instanceId={instance.data?.data.instance_id ?? null} /> : <OnboardingFlow
               key={editorVersion}
               settings={data}
               resolvingSettings={settings.isFetching}
               instanceId={instance.data?.data.instance_id ?? null}
               onReload={reload}
               onActivationLockChange={setActivationLocked}
-            />
+            />}
           </div>
         )}
       </QueryView>
@@ -693,7 +694,7 @@ export function ReadinessCheck({
   );
   const missingConfiguration = [
     [settings.completion.application_key, "应用公钥"],
-    [settings.completion.provider, "支付宝接入"],
+    [settings.completion.provider, "支付宝账号"],
     [settings.completion.collection, "收款码"],
   ]
     .filter(([complete]) => !complete)
@@ -749,7 +750,7 @@ export function ReadinessCheck({
             className={buttonVariants({ variant: "outline", size: "sm" })}
             to={onboardingPath("provider")}
           >
-            检查支付宝接入
+            检查支付宝账号
           </Link>
         ) : null,
       error: fresh && matches && !ready ? status?.ledger.last_error_code : null,

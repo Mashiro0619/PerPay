@@ -87,7 +87,7 @@ export type ConfigurationSection =
   | "advanced"
   | "display";
 export const sections = [
-  ["provider", "支付宝接入"],
+  ["provider", "支付宝账号"],
   ["collection", "收款码"],
   ["collection-policy", "查账设置"],
   ["notifications", "通知"],
