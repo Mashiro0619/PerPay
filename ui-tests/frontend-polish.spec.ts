@@ -6,6 +6,7 @@ import { performance as hostPerformance } from "node:perf_hooks";
 import { test, expect, login, record, type Manifest } from "./fixtures";
 import type { SystemAnalytics } from "../web/src/api/generated/types.gen";
 import { measureSelectionContrast } from "./contrast-evidence";
+import { setDateOnly } from "./fixed-date";
 
 const phase = process.env.PERPAY_POLISH_PHASE ?? "final";
 if (phase !== "baseline" && phase !== "final") throw new Error("PERPAY_POLISH_PHASE must be baseline or final");
@@ -161,7 +162,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       const url = new URL(request.url());
       if (url.pathname.startsWith("/api/")) requests.push({ path: url.pathname + url.search, method: request.method() });
     });
-    await page.clock.setFixedTime(new Date(manifest.epoch));
+    await setDateOnly(page, manifest.epoch);
     await page.route("**/*", route => new URL(route.request().url()).origin === manifest.origin ? route.continue() : route.abort("blockedbyclient"));
     await page.addInitScript(() => {
       if (!localStorage.getItem("perpay:theme")) localStorage.setItem("perpay:theme", "light");

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { test, expect, login, record } from "./fixtures";
 import { expectTouchTarget } from "./touch-targets";
+import { setDateOnly } from "./fixed-date";
 import type { AdminOrderDetailEnvelope, AdminOrderPageEnvelope } from "../web/src/api/generated/types.gen";
 
 const panelSelector = '[data-slot="collapsible-content"]';
@@ -93,7 +94,7 @@ test.describe("list summary motion", () => {
     const evidence: Record<string, unknown> = { viewport, buildAtStart, fixedDate: new Date(manifest.epoch).toISOString(), clock: "Only Date fixed; native rAF and timers", evidenceKind: "Chromium mobile viewport and touch emulation, not a physical device" };
     page.on("pageerror", error => errors.push(error.message));
     page.on("console", message => { if (message.type() === "error" && /content security|violat.*directive|refused to/i.test(message.text())) cspErrors.push(message.text()); });
-    await page.clock.setFixedTime(new Date(manifest.epoch));
+    await setDateOnly(page, manifest.epoch);
     await page.route("**/*", route => new URL(route.request().url()).origin === manifest.origin ? route.continue() : route.abort("blockedbyclient"));
     try {
       await login(page, manifest);
