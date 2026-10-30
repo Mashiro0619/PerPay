@@ -113,6 +113,7 @@ const recordedSchemaMaximum = [
   ["0.3.2", 33],
   ["1.0.0-alpha.1", 35],
   ["1.0.0-alpha.2", 36],
+  ["1.0.0-rc.1", 38],
 ];
 
 for (const [version, schemaMaximum] of recordedSchemaMaximum) {
@@ -136,9 +137,9 @@ test("permits a new schema ceiling with a new source version", () => {
   }, 37);
 });
 
-test("accepts unreleased account migrations without rewriting a released tag's schema ceiling", () => {
+test("rejects later account migrations under an already released version", () => {
   withVersionFiles("1.0.0-alpha.2", root => {
-    assert.deepEqual(inspectVersionFiles(root).errors, []);
+    assert.ok(inspectVersionFiles(root).errors.some(error => error.includes("schema maximum=")));
     assert.ok(inspectVersionFiles(root, "v1.0.0-alpha.2").errors.some(error => error.includes("schema maximum=")));
   }, 38);
 });
