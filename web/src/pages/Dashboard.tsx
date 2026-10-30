@@ -1,4 +1,5 @@
 import { LedgerFreshness } from "@/components/ledger-freshness";
+import { useState } from "react";
 import { SiteOverviewList } from "@/components/site-overview-list";
 import { SystemStatusBoundary } from "@/features/system-status";
 import {
@@ -75,6 +76,14 @@ function DashboardContent() {
     checking,
     changeRange,
   } = useOverview();
+  const [metricsAwaitingRefresh, setMetricsAwaitingRefresh] = useState(false);
+  // Keep current KPIs unknown through the reconnect request. Retained snapshots
+  // remain useful for the dated trend, but must not be relabelled as today.
+  const metricsUnavailable = analytics.isError || analytics.isPaused ||
+    (metricsAwaitingRefresh && analytics.isFetching);
+  if (metricsAwaitingRefresh !== metricsUnavailable) {
+    setMetricsAwaitingRefresh(metricsUnavailable);
+  }
   const location = useLocation();
   const instanceId = status.data?.data.instance_id;
   if (
@@ -177,7 +186,7 @@ function DashboardContent() {
       )}
       <LedgerFreshness value={!checking && !unavailable ? state?.ledger.last_success_at : undefined} />
       <SectionCards
-        analytics={data}
+        analytics={metricsUnavailable ? undefined : data}
         clientId={clientId}
         workItems={workTotal}
         pending={!analytics.isPaused && (analytics.isPending || analytics.isPlaceholderData)}
