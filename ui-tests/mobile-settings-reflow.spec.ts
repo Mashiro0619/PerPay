@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { test, expect, login, record } from "./fixtures";
+import { test, expect, login, record, type Manifest } from "./fixtures";
 import { expectTouchTarget } from "./touch-targets";
 
 async function completeSelectValue(trigger: Locator, page: Page) {
@@ -46,16 +46,31 @@ async function completeButtonLabel(button: Locator, page: Page) {
   return { touch, text };
 }
 
+async function openAccountDraft(page: Page, manifest: Manifest, legacySection: "provider" | "collection") {
+  const writes: string[] = [];
+  page.on("request", request => {
+    if (request.url().startsWith(manifest.origin + "/api/") && !["GET", "HEAD"].includes(request.method())) writes.push(request.method() + " " + new URL(request.url()).pathname);
+  });
+  // Preserve coverage of the old address, then enter the real account form
+  // through its current UI rather than expecting retired fields on the list.
+  await page.goto(manifest.origin + "/admin/settings/" + legacySection);
+  await expect(page).toHaveURL(manifest.origin + "/admin/settings/accounts");
+  await page.getByRole("link", { name: "添加支付宝账号", exact: true }).click();
+  await expect(page).toHaveURL(manifest.origin + "/admin/settings/accounts/new");
+  await expect(page.locator("[data-alipay-account-editor]")).toBeVisible();
+  return writes;
+}
+
 test.describe("narrow settings controls preserve their selected labels", () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 320, height: 560 }, reducedMotion: "reduce" });
 
-  test("the provider environment keeps both complete choices at 200% text", async ({ page, manifest }, info) => {
+  test("the account environment keeps both complete choices at 200% text after the legacy provider redirect", async ({ page, manifest }, info) => {
     await login(page, manifest);
-    await page.goto(manifest.origin + "/admin/settings/provider");
+    const writes = await openAccountDraft(page, manifest, "provider");
     const environment = page.getByRole("combobox", { name: "支付宝环境", exact: true });
     await expect(environment).toBeVisible();
     await page.evaluate(() => document.documentElement.style.fontSize = "200%");
-    const disclosure = page.getByRole("button", { name: "导入已有应用私钥（可选）", exact: true });
+    const disclosure = page.getByRole("button", { name: "导入已有应用私钥", exact: true });
     const disclosureGeometry = await completeButtonLabel(disclosure, page);
     await disclosure.tap();
     await expect(disclosure).toHaveAttribute("aria-expanded", "true");
@@ -69,13 +84,14 @@ test.describe("narrow settings controls preserve their selected labels", () => {
       await expect(environment.locator('[data-slot="select-value"]')).toHaveText(name);
       values.push(await completeSelectValue(environment, page));
     }
-    await record(page, info, { evidence: "desktop browser touch emulation", rootFont: 200, providerEnvironmentValues: values, disclosureGeometry });
+    expect(writes).toEqual([]);
+    await record(page, info, { evidence: "real account draft form with desktop browser touch emulation; no account submitted", rootFont: 200, accountEnvironmentValues: values, disclosureGeometry, legacyRedirect: "provider", writes });
   });
 
-  test("a delayed text reflow keeps the provider disclosure fully reachable", async ({ page, manifest }, info) => {
+  test("a delayed text reflow keeps the account disclosure fully reachable after the legacy collection redirect", async ({ page, manifest }, info) => {
     await login(page, manifest);
-    await page.goto(manifest.origin + "/admin/settings/provider");
-    const disclosure = page.getByRole("button", { name: "导入已有应用私钥（可选）", exact: true });
+    const writes = await openAccountDraft(page, manifest, "collection");
+    const disclosure = page.getByRole("button", { name: "导入已有应用私钥", exact: true });
     await expect(disclosure).toBeVisible();
     await page.evaluate(() => {
       window.setTimeout(() => document.documentElement.style.fontSize = "200%", 50);
@@ -87,7 +103,8 @@ test.describe("narrow settings controls preserve their selected labels", () => {
     await disclosure.tap();
     await expect(disclosure).toHaveAttribute("aria-expanded", "true");
     await expect(page.getByRole("textbox", { name: "应用私钥", exact: true })).toBeVisible();
-    await record(page, info, { evidence: "desktop browser touch emulation", rootFont: 200, delayedReflow: true, disclosureGeometry: geometry });
+    expect(writes).toEqual([]);
+    await record(page, info, { evidence: "real account draft form with desktop browser touch emulation; no account submitted", rootFont: 200, delayedReflow: true, disclosureGeometry: geometry, legacyRedirect: "collection", writes });
   });
 
   for (const font of [100, 200]) {

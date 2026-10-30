@@ -233,53 +233,14 @@ test("security drafts, validation and card identity survive resize and content-w
   expect(writes).toEqual([]);
 });
 
-test("security key view and session cancellation keep focus through card reflow without writes", async ({ page, manifest }, info) => {
-  const writes = await blockMutations(page), reveals: string[] = [];
-  // The read-only demo forbids the real reveal POST (which also writes an
-  // audit event). Fulfil this explicit view locally with a synthetic public
-  // key, so this layout test never sends a secret or a mutation to the store.
-  const syntheticPublicKey = "synthetic-public-key-for-security-card-flow";
-  await page.route("**/api/admin/v1/settings/secrets/provider_public_key/actions/reveal", async route => {
-    expect(route.request().method()).toBe("POST");
-    reveals.push(new URL(route.request().url()).pathname);
-    await route.fulfill({ json: { data: { value: syntheticPublicKey } }, headers: { "Cache-Control": "no-store" } });
-  });
+test("security session cancellation keeps focus through card reflow without writes", async ({ page, manifest }, info) => {
+  const writes = await blockMutations(page);
   await page.setViewportSize({ width: 2190, height: 900 });
   await login(page, manifest);
   await configure(page, "dark", "full");
   await openSecurity(page, manifest);
   await settledGrid(page);
   const retained = await retainItems(page);
-  const view = page.getByRole("button", { name: "查看支付宝公钥", exact: true });
-  await view.evaluate(element => element.setAttribute("data-security-flow-view", "original"));
-  await view.focus();
-  await page.keyboard.press("Enter");
-  const keyDialog = page.getByRole("dialog", { name: "支付宝公钥", exact: true });
-  const closeKey = keyDialog.getByRole("button", { name: "关闭", exact: true });
-  await expect(keyDialog.getByRole("alert")).toContainText("当前操作不可用。");
-  expect(reveals).toEqual([]);
-  await closeKey.click();
-  await expect(keyDialog).toHaveCount(0);
-  await expect(view).toBeFocused();
-  // Only this browser-side synthetic view bypasses the demo hint. The API
-  // mutation guard remains installed and the reveal response stays local.
-  await page.evaluate(() => delete document.documentElement.dataset.perpayDemo);
-  await page.keyboard.press("Enter");
-  await expect(keyDialog.getByLabel("密钥内容", { exact: true })).toHaveValue(syntheticPublicKey);
-  await keyDialog.evaluate(element => element.setAttribute("data-security-flow-dialog", "key"));
-  await closeKey.focus();
-  for (const [width, mode] of [[390, "compact"], [2190, "full"]] as const) {
-    await page.setViewportSize({ width, height: 900 });
-    await storageWidth(page, mode);
-    await settledGrid(page);
-    await expect(keyDialog).toHaveAttribute("data-security-flow-dialog", "key");
-    await expect(closeKey).toBeFocused();
-    await expectRetained(page, retained);
-  }
-  await closeKey.click();
-  await expect(keyDialog).toHaveCount(0);
-  await expect(view).toBeFocused();
-  await expect(view).toHaveAttribute("data-security-flow-view", "original");
   const session = page.getByRole("button", { name: "会话操作", exact: true });
   await session.evaluate(element => element.setAttribute("data-security-flow-session", "original"));
   await session.click();
@@ -304,10 +265,82 @@ test("security key view and session cancellation keep focus through card reflow 
   await expect(confirmation).toHaveCount(0);
   await expect(session).toBeFocused();
   await expect(session).toHaveAttribute("data-security-flow-session", "original");
-  expect(reveals).toEqual(["/api/admin/v1/settings/secrets/provider_public_key/actions/reveal"]);
   expect(writes).toEqual([]);
-  await record(page, info, { feature: "security-modal-focus-retained", reveals: "one locally fulfilled synthetic public-key view", writes });
+  await record(page, info, { feature: "security-session-modal-focus-retained", writes });
   await capture(page, info, "security-modal-focus-restored");
+});
+
+test("account key content, drafts and confirmation focus survive content-width changes without writes", async ({ page, manifest }, info) => {
+  const writes = await blockMutations(page);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (value: string) => {
+      (window as Window & { __copiedText?: string }).__copiedText = value;
+    } } });
+  });
+  await page.setViewportSize({ width: 2190, height: 900 });
+  await login(page, manifest);
+  await configure(page, "dark", "full");
+  await openSecurity(page, manifest);
+  const accountEntry = page.getByRole("link", { name: "在支付宝账号中管理应用密钥", exact: true });
+  await accountEntry.focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(manifest.origin + "/admin/settings/accounts");
+  const response = await page.request.get(manifest.origin + "/api/admin/v1/alipay-accounts");
+  expect(response.ok()).toBe(true);
+  const accounts = await response.json() as { data: { id: string; name: string; application_public_key: string | null }[] };
+  const account = accounts.data.find(item => item.application_public_key);
+  expect(account, "the isolated fixture has a configured account with a public key").toBeTruthy();
+  await page.getByRole("link", { name: "配置" + account!.name, exact: true }).click();
+  await expect(page).toHaveURL(manifest.origin + "/admin/settings/accounts/" + account!.id);
+  const keyCard = page.locator("[data-account-key-card]");
+  const publicKey = keyCard.getByText(account!.application_public_key!, { exact: true });
+  await expect(publicKey).toHaveText(account!.application_public_key!);
+  await keyCard.evaluate(element => element.setAttribute("data-security-flow-key-card", "original"));
+  const name = page.getByLabel("账号名称", { exact: true });
+  const draft = account!.name + " · 未保存的宽度验证";
+  await name.fill(draft);
+  await name.evaluate(element => element.setAttribute("data-security-flow-draft", "account"));
+  for (const [width, mode] of [[390, "compact"], [2190, "full"]] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await storageWidth(page, mode);
+    await expect(name).toHaveValue(draft);
+    await expect(name).toBeFocused();
+    await expect(name).toHaveAttribute("data-security-flow-draft", "account");
+    await expect(keyCard).toHaveAttribute("data-security-flow-key-card", "original");
+    await expect(publicKey).toHaveText(account!.application_public_key!);
+  }
+  await name.fill(account!.name);
+  const copy = keyCard.getByRole("button", { name: "复制应用公钥", exact: true });
+  await copy.focus();
+  await page.keyboard.press("Enter");
+  expect(await page.evaluate(() => (window as Window & { __copiedText?: string }).__copiedText)).toBe(account!.application_public_key);
+  await expect(copy).toBeFocused();
+  const regenerate = page.getByRole("button", { name: "更换应用密钥", exact: true });
+  await expect(regenerate).toBeEnabled();
+  await regenerate.evaluate(element => element.setAttribute("data-security-flow-view", "original"));
+  await regenerate.focus();
+  await page.keyboard.press("Enter");
+  const keyDialog = page.getByRole("alertdialog", { name: "生成新的应用密钥？", exact: true });
+  await keyDialog.evaluate(element => element.setAttribute("data-security-flow-dialog", "key-confirmation"));
+  const cancel = keyDialog.getByRole("button", { name: "取消", exact: true });
+  await cancel.focus();
+  for (const [width, mode] of [[390, "compact"], [2190, "full"]] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await storageWidth(page, mode);
+    await expect(keyDialog).toHaveAttribute("data-security-flow-dialog", "key-confirmation");
+    await expect(cancel).toBeFocused();
+    await expect(keyCard).toHaveAttribute("data-security-flow-key-card", "original");
+    await expect(name).toHaveAttribute("data-security-flow-draft", "account");
+    await expect(name).toHaveValue(account!.name);
+  }
+  await cancel.click();
+  await expect(keyDialog).toHaveCount(0);
+  await expect(regenerate).toBeFocused();
+  await expect(regenerate).toHaveAttribute("data-security-flow-view", "original");
+  await expect(publicKey).toHaveText(account!.application_public_key!);
+  expect(writes).toEqual([]);
+  await record(page, info, { feature: "account-key-content-and-modal-focus-retained", keyCharacters: account!.application_public_key!.length, writes, evidence: "real account reads from the isolated synthetic fixture; no secret reveal or key change" });
+  await capture(page, info, "account-key-modal-focus-restored");
 });
 
 test("other settings sections retain their existing 56rem maximum width", async ({ page, manifest }, info) => {
@@ -316,16 +349,18 @@ test("other settings sections retain their existing 56rem maximum width", async 
   await login(page, manifest);
   for (const mode of ["compact", "full"] as const) {
     await configure(page, "light", mode);
-    for (const section of ["provider", "collection-policy", "collection", "backup", "display", "advanced"]) {
+    for (const section of ["accounts", "collection-policy", "backup", "display", "advanced", "provider", "collection"]) {
       await page.goto(manifest.origin + "/admin/settings/" + section);
-      const layout = page.locator('.admin-settings-layout[data-settings-section="' + section + '"]');
+      const currentSection = ["provider", "collection"].includes(section) ? "accounts" : section;
+      await expect(page).toHaveURL(manifest.origin + "/admin/settings/" + currentSection);
+      const layout = page.locator('.admin-settings-layout[data-settings-section="' + currentSection + '"]');
       await expect(layout).toBeVisible();
       await expect(page.locator(gridSelector)).toHaveCount(0);
       const geometry = await layout.evaluate(element => ({ width: element.getBoundingClientRect().width,
         maxWidth: getComputedStyle(element).maxWidth, rem: parseFloat(getComputedStyle(document.documentElement).fontSize) }));
       expect(geometry.maxWidth).toBe(56 * geometry.rem + "px");
       expect(geometry.width).toBeLessThanOrEqual(56 * geometry.rem + 1);
-      await record(page, info, { feature: "non-security-settings-width-retained", section, mode, geometry });
+      await record(page, info, { feature: "non-security-settings-width-retained", section, currentSection, mode, geometry });
     }
   }
   expect(writes).toEqual([]);
