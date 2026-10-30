@@ -5,6 +5,47 @@ import { expectTouchTarget } from "./touch-targets";
 type VisibleArea = { width: number; height: number; left: number; top: number };
 const panned: VisibleArea = { width: 280, height: 260, left: 24, top: 32 };
 
+/** Text ranges exclude selection decoration; every painted character must still fit. */
+function measureTabText(element: Element) {
+  const bounds = element.getBoundingClientRect();
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  const characters: { text: string; y: number; contained: boolean }[] = [];
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    const parent = node.parentElement;
+    if (!node.textContent?.trim() || !parent || parent.closest('[aria-hidden="true"], [hidden], .sr-only')) continue;
+    const ancestors: Element[] = [];
+    for (let ancestor: Element | null = parent; ancestor; ancestor = ancestor.parentElement) ancestors.push(ancestor);
+    if (ancestors.some(ancestor => {
+      const style = getComputedStyle(ancestor);
+      return style.display === "none" || style.visibility !== "visible" || Number(style.opacity) === 0;
+    })) continue;
+    let offset = 0;
+    for (const text of node.textContent) {
+      const start = offset;
+      offset += text.length;
+      if (!text.trim()) continue;
+      const range = document.createRange();
+      range.setStart(node, start);
+      range.setEnd(node, offset);
+      const rects = [...range.getClientRects()].filter(rect => rect.width > 0 && rect.height > 0);
+      const contained = rects.length > 0 && rects.every(rect =>
+        rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1 && rect.top >= bounds.top - 1 && rect.bottom <= bounds.bottom + 1 &&
+        ancestors.every(ancestor => {
+          const style = getComputedStyle(ancestor), clip = ancestor.getBoundingClientRect();
+          const clipX = ["auto", "scroll", "hidden", "clip"].includes(style.overflowX);
+          const clipY = ["auto", "scroll", "hidden", "clip"].includes(style.overflowY);
+          return (!clipX || rect.left >= clip.left + ancestor.clientLeft - 1 && rect.right <= clip.left + ancestor.clientLeft + ancestor.clientWidth + 1) &&
+            (!clipY || rect.top >= clip.top + ancestor.clientTop - 1 && rect.bottom <= clip.top + ancestor.clientTop + ancestor.clientHeight + 1);
+        }));
+      characters.push({ text, y: rects[0]?.y ?? Number.NaN, contained });
+    }
+  }
+  return { text: characters.map(character => character.text).join(""),
+    lines: new Set(characters.filter(character => Number.isFinite(character.y)).map(character => Math.round(character.y))).size,
+    contained: characters.length > 0 && characters.every(character => character.contained) };
+}
+
 /** Synthetic geometry only: this does not stand in for Android IME or pinch testing. */
 async function visibleArea(page: Page, area: VisibleArea) {
   await page.evaluate(area => {
@@ -235,14 +276,10 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
       await page.goto(manifest.origin + "/admin/");
       const tabs = page.getByRole("tablist", { name: "收款趋势视图", exact: true });
       await expect(tabs).toBeVisible();
-      const geometry = await tabs.getByRole("tab").evaluateAll(elements => elements.map(element => {
-        const range = document.createRange();
-        range.selectNodeContents(element);
-        const lines = [...range.getClientRects()].filter(rect => rect.width > 0 && rect.height > 0);
-        return { text: element.textContent, lines: new Set(lines.map(rect => Math.round(rect.y))).size };
-      }));
-      expect(geometry).toHaveLength(2);
+      const geometry = await Promise.all((await tabs.getByRole("tab").all()).map(tab => tab.evaluate(measureTabText)));
+      expect(geometry.map(tab => tab.text)).toEqual(["图表", "每日数据"]);
       expect(geometry.every(tab => tab.lines === 1), "tab text occupies exactly one rendered line").toBe(true);
+      expect(geometry.every(tab => tab.contained), "every visible tab character fits without clipping").toBe(true);
       const daily = tabs.getByRole("tab", { name: "每日数据", exact: true });
       await daily.click();
       await expect(daily).toHaveAttribute("aria-selected", "true");
@@ -252,6 +289,47 @@ test.describe("mobile overlay regression with synthetic visible viewport", () =>
       await expect(chart).toHaveAttribute("aria-selected", "true");
       await expect(page.locator('[data-slot="chart"]')).toBeVisible();
       await record(page, info, { evidence: "browser touch viewport", width, trendTabs: geometry });
+    }
+  });
+
+  test("tab text measurement ignores decorative boxes but rejects wrapping and clipping", async ({ page, manifest }) => {
+    await login(page, manifest);
+    await page.evaluate(() => {
+      const probes = document.createElement("div");
+      probes.dataset.tabTextProbes = "";
+      Object.assign(probes.style, { position: "fixed", inset: "64px auto auto 16px", zIndex: "100", display: "grid", gap: "16px", background: "white", padding: "12px" });
+      for (const kind of ["decorated", "wrapped", "clipped"]) {
+        const button = document.createElement("button");
+        button.dataset.tabTextProbe = kind;
+        Object.assign(button.style, { position: "relative", display: "block", width: kind === "decorated" ? "160px" : "40px", height: kind === "wrapped" ? "60px" : "24px", padding: "0", border: "0", fontSize: "16px", lineHeight: "20px", whiteSpace: kind === "wrapped" ? "normal" : "nowrap", overflow: kind === "clipped" ? "hidden" : "visible", overflowWrap: "anywhere" });
+        button.textContent = "每日数据";
+        if (kind === "decorated") {
+          const decoration = document.createElement("span");
+          decoration.setAttribute("aria-hidden", "true");
+          Object.assign(decoration.style, { position: "absolute", left: "0", right: "0", bottom: "-5px", height: "2px", background: "black" });
+          button.prepend(decoration);
+          const hidden = document.createElement("span");
+          hidden.textContent = "未绘制文字";
+          hidden.style.display = "none";
+          button.append(hidden);
+        }
+        probes.append(button);
+      }
+      document.body.append(probes);
+    });
+    try {
+      const decorated = page.locator('[data-tab-text-probe="decorated"]');
+      const oldLineCount = await decorated.evaluate(element => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        return new Set([...range.getClientRects()].filter(rect => rect.width > 0 && rect.height > 0).map(rect => Math.round(rect.y))).size;
+      });
+      expect(oldLineCount, "the original element range incorrectly includes the underline box").toBeGreaterThan(1);
+      expect(await decorated.evaluate(measureTabText)).toEqual({ text: "每日数据", lines: 1, contained: true });
+      expect((await page.locator('[data-tab-text-probe="wrapped"]').evaluate(measureTabText)).lines).toBeGreaterThan(1);
+      expect(await page.locator('[data-tab-text-probe="clipped"]').evaluate(measureTabText)).toEqual({ text: "每日数据", lines: 1, contained: false });
+    } finally {
+      await page.locator("[data-tab-text-probes]").evaluate(element => element.remove());
     }
   });
 });

@@ -47,6 +47,7 @@ export function SelectionMotionIndicator({
   active: boolean;
   variant?: "fill" | "underline" | "sidebar";
 }) {
+  const controlId = useId();
   const reduced = useContext(ReducedSelectionMotion);
   if (reduced === null) {
     throw new Error("Selection indicators require SelectionMotionGroup");
@@ -70,6 +71,9 @@ export function SelectionMotionIndicator({
       data-selection-indicator={variant}
       data-selection-mode="motion"
       layoutId="selection"
+      // Query results may move the entire control group during first load.
+      // Only changing selection should animate this decoration between controls.
+      layoutDependency={controlId}
       initial={false}
       transition={selectionTransition}
     />
