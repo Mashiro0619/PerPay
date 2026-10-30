@@ -3,6 +3,9 @@ import { collectionCodeError } from "../shared/collection-code.ts";
 import type { ProviderApplicationKeyChange, ProviderSettings } from "../settings/model.ts";
 
 export const alipayAccountIdSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/);
+// Persisted namespace: the older singleton service generated primary/source:
+// identities. Keep this distinction when ordering migrated ledger generations.
+export const ALIPAY_ACCOUNT_GENERATION_PREFIX = "alipay:";
 const fields = {
   name: z.string().trim().min(1).max(80).regex(/^[^\u0000-\u001f\u007f-\u009f]+$/u),
   enabled: z.boolean(),

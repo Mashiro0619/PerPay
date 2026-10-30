@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 
 import type { AppDatabase } from "../database/database.ts";
+import { ALIPAY_ACCOUNT_GENERATION_PREFIX } from "../alipay-accounts/model.ts";
 import { listCreatedDates, listKeyset, listSearch } from "../database/list-query.ts";
 import { providerEndpoint, type ProviderEnvironment } from "../settings/model.ts";
 import { CreatedDateError } from "../shared/created-dates.ts";
@@ -375,6 +376,7 @@ function groupedQuery(
            scoped_ledger.external_event_id AS external_provider_event_id,
            ${accounts ? "generation.account_id" : "NULL"} AS alipay_account_id,
            ${accounts ? "account.name" : "NULL"} AS alipay_account_name,
+           ${accounts ? "generation.created_at" : "NULL"} AS account_generation_created_at,
            scoped_ledger.semantic_fingerprint, scoped_ledger.occurred_at, scoped_ledger.occurred_at_precision_ms, scoped_ledger.amount_cents,
            scoped_ledger.direction, scoped_ledger.currency, scoped_ledger.alipay_order_no, scoped_ledger.merchant_order_no,
            scoped_ledger.trans_memo, scoped_ledger.other_account, scoped_ledger.state, scoped_ledger.created_at, scoped_ledger.updated_at
@@ -457,6 +459,17 @@ function groupedQuery(
       CROSS JOIN duplicate_variants AS entry
      WHERE entry.provider_account_key = binding.provider_account_key
        AND ${endpoint === null ? "1 = 1" : "binding.provider_endpoint = ?"}${predicates.length ? " AND " + predicates.join(" AND ") : ""}` : "";
+  const newAccountSource = `binding.provider_account_key GLOB '${ALIPAY_ACCOUNT_GENERATION_PREFIX}*'`;
+  // Preserve the complete legacy comparator, including unactivated bindings.
+  // Native account generations follow that historical prefix and use their
+  // persisted logical creation time, independent of the currently active app.
+  const sourceOrder = accounts
+    ? `${newAccountSource},
+       CASE WHEN NOT (${newAccountSource}) THEN activation.sequence IS NOT NULL END,
+       CASE WHEN NOT (${newAccountSource}) THEN activation.sequence END,
+       CASE WHEN ${newAccountSource} THEN entry.account_generation_created_at END,
+       binding.bound_at, binding.provider_account_key`
+    : "activation.sequence IS NOT NULL, activation.sequence, binding.bound_at, binding.provider_account_key";
   const sql = `WITH ${scopedEntries}${duplicateCandidates}eligible_ids AS MATERIALIZED (
     SELECT DISTINCT entry.external_event_id
       FROM provider_account_bindings AS binding
@@ -467,8 +480,7 @@ function groupedQuery(
     SELECT entry.*, binding.external_account_id AS app_id, binding.provider_endpoint,
            ROW_NUMBER() OVER (
              PARTITION BY entry.external_event_id
-             ORDER BY activation.sequence IS NOT NULL, activation.sequence,
-                      binding.bound_at, binding.provider_account_key
+              ORDER BY ${sourceOrder}
            ) AS source_rank
       FROM eligible_ids AS eligible
       JOIN account_entries AS entry ON entry.external_event_id = eligible.external_event_id

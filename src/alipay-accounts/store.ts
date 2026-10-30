@@ -11,7 +11,7 @@ import {
 } from "../settings/model.ts";
 import { SettingsError, type SettingsAuditContext } from "../settings/store.ts";
 import { SettingsFieldError } from "../settings/validation.ts";
-import { AlipayAccountError, alipayAccountIdSchema, type AlipayAccountSnapshot, type AlipayAccountView } from "./model.ts";
+import { ALIPAY_ACCOUNT_GENERATION_PREFIX, AlipayAccountError, alipayAccountIdSchema, type AlipayAccountSnapshot, type AlipayAccountView } from "./model.ts";
 import { collectionCodeError } from "../shared/collection-code.ts";
 import { verifyAlipayAccountSecrets } from "./integrity.ts";
 
@@ -103,7 +103,7 @@ export class AlipayAccountStore {
       const providerKey=input.app_id?this.#newBinding(db,input,now):null;
       db.prepare(`INSERT INTO alipay_accounts(account_id,revision,name,enabled,code_payload,environment,app_id,provider_account_key,created_at,updated_at)
         VALUES (?,0,?,?,?,?,?,?,?,?)`).run(id,input.name,Number(input.enabled),input.code_payload,input.environment,input.app_id,providerKey,now,now);
-      if(providerKey)db.prepare("INSERT INTO alipay_account_generations VALUES (?,?,?)").run(providerKey,id,now);
+      if(providerKey)this.#appendGeneration(db,id,providerKey,now);
       this.#saveCredentials(db,id,input,null,now);
       this.#snapshot(db,this.#row(db,id));
       this.#audit(db,id,audit,"alipay_account.created",0,{name:input.name},now);
@@ -124,7 +124,7 @@ export class AlipayAccountStore {
       db.prepare("UPDATE alipay_accounts SET revision=revision+1,name=?,enabled=?,code_payload=?,environment=?,app_id=?,provider_account_key=?,updated_at=? WHERE account_id=?").run(
         input.name,Number(input.enabled),input.code_payload,input.environment,input.app_id,providerKey,now,id,
       );
-      if(identityChanged&&providerKey)db.prepare("INSERT INTO alipay_account_generations VALUES (?,?,?)").run(providerKey,id,now);
+      if(identityChanged&&providerKey)this.#appendGeneration(db,id,providerKey,now);
       this.#saveCredentials(db,id,input,identityChanged?null:current,now);
       if(identityChanged&&input.platform_public_key===undefined) db.prepare("DELETE FROM alipay_account_secrets WHERE account_id=? AND secret_name='public_key'").run(id);
       this.#snapshot(db,this.#row(db,id));
@@ -288,10 +288,18 @@ export class AlipayAccountStore {
   }
   #newBinding(db:DatabaseSync,input:AccountWrite,now:number):string {
     // Bind identity as soon as an App ID is saved; credentials may still be incomplete.
-    const key="alipay:"+randomUUID();
+    const key=ALIPAY_ACCOUNT_GENERATION_PREFIX+randomUUID();
     const identity=normalizeProviderIdentity({providerAccountKey:key,providerKind:"alipay",endpoint:providerEndpoint(input.environment),externalAccountId:input.app_id!});
     db.prepare("INSERT INTO provider_account_bindings VALUES (?,?,?,?,?,?,?)").run(key,identity.providerKind,identity.endpoint,identity.externalAccountId,identity.identityFingerprintVersion,identity.identityFingerprint,now);
     return key;
+  }
+  #appendGeneration(db:DatabaseSync,id:string,key:string,now:number):void {
+    const previous=db.prepare("SELECT max(created_at) AS created_at FROM alipay_account_generations WHERE account_id=?").get(id) as {created_at:Int|null};
+    // This account-local logical time orders generations even within one clock
+    // tick. Do not advance binding.bound_at: it defines the ledger scan window.
+    const createdAt=Math.max(now,previous.created_at===null?0:Number(previous.created_at)+1);
+    if(!Number.isSafeInteger(createdAt))throw new RangeError("Alipay account generation time is invalid");
+    db.prepare("INSERT INTO alipay_account_generations VALUES (?,?,?)").run(key,id,createdAt);
   }
   #advance(db:DatabaseSync,id:string,now:number):void {db.prepare("UPDATE alipay_accounts SET revision=revision+1,updated_at=? WHERE account_id=?").run(now,id);}
   #assertUnique(db:DatabaseSync,id:string,environment:string,appId:string|null):void {

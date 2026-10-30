@@ -392,6 +392,8 @@ describe("complete local preview scenarios", () => {
         assert.equal(duplicate.source_record_count, 2);
         assert.equal(duplicate.active_match_count, 0);
         assert.equal(duplicate.active_match, null);
+        assert.equal(duplicate.ledger_entry_id, preview.scenarios.ledger.identical,
+          "a native account binding must not displace the earlier historical source anchor");
         assert.deepEqual(new Set(duplicate.sources.map(source => source.ledger_entry_id)),
           new Set([preview.scenarios.ledger.identical, preview.scenarios.ledger.identicalCopy]));
         assert.equal(new Set(duplicate.sources.map(source => source.semantic_fingerprint)).size, 1);

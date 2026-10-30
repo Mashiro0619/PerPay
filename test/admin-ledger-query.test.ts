@@ -13,7 +13,7 @@ import {
   type AdminLedgerQuery,
 } from "../src/ledger/admin-query.ts";
 import { LedgerStore } from "../src/ledger/store.ts";
-import type { LedgerEntry } from "../src/ledger/model.ts";
+import { normalizeProviderIdentity, type LedgerEntry } from "../src/ledger/model.ts";
 import { fingerprintCollectionCodeProfile } from "../src/orders/collection-profile.ts";
 import { createOrderRequestSchema, digestIdempotencyKey, fingerprintCreateOrderRequest } from "../src/orders/model.ts";
 import { ReconciliationStore } from "../src/reconciliation/store.ts";
@@ -21,6 +21,9 @@ import { providerEndpoint, type ProviderEnvironment } from "../src/settings/mode
 import { beijingDate, createdDateRange } from "../src/shared/created-dates.ts";
 import { ListQueryError } from "../src/shared/list-query.ts";
 import { createSiteFixture } from "./site-fixture.ts";
+import type { AppDatabase } from "../src/database/database.ts";
+import { AlipayAccountService, AlipayAccountStore } from "../src/alipay-accounts/index.ts";
+import { migrateAlipayAccounts } from "../src/alipay-accounts/migration.ts";
 
 const BASE = Date.parse("2026-10-19T16:00:00.000Z");
 const ENVIRONMENT = "PRODUCTION" as const;
@@ -138,6 +141,15 @@ function fixture(indexes = true, initialTime = Date.now()) {
 
 function providerTimestamp(milliseconds: number, fractional = false) {
   return new Date(milliseconds + 8 * 3_600_000).toISOString().slice(0, fractional ? -1 : 19).replace("T", " ");
+}
+
+function migrateAccountQueries(f: ReturnType<typeof fixture>) {
+  f.owner.write(db => {
+    db.exec(migrations.find(migration => migration.version === 36)!.sql);
+    db.exec(migrations.find(migration => migration.version === 37)!.sql);
+    migrateAlipayAccounts(db, f.masterKey);
+    db.exec(migrations.find(migration => migration.version === 38)!.sql);
+  });
 }
 
 describe("administrator grouped ledger queries", () => {
@@ -428,6 +440,78 @@ describe("administrator grouped ledger queries", () => {
     } finally { f.close(); }
   });
 
+  it("keeps a migrated ledger anchor and pagination when a new multi-account binding adds conflicting copies", async t => {
+    const f = fixture();
+    try {
+      const originalKey = f.activate();
+      const originals = ["a", "b", "c"].map((id, index) => f.entry({ id, at: BASE + (index + 1) * 10_000 }));
+      const legacy = readAdminLedgerPage(f.owner, { environment: ENVIRONMENT, limit: 1 });
+      migrateAccountQueries(f);
+      const migrated = readAdminLedgerPage(f.owner, { environment: null, limit: 1 });
+      assert.equal(migrated.items[0]!.ledger_entry_id, legacy.items[0]!.ledger_entry_id);
+      const store = new AlipayAccountStore(f.owner as AppDatabase, f.masterKey);
+      const accounts = new AlipayAccountService({ store });
+      const account = store.view("default");
+      const updated = await accounts.update(account.id, { revision: account.revision, name: account.name,
+        enabled: account.enabled, environment: account.environment, code_payload: account.code_payload,
+        app_id: "new-multi-account-app" }, { actorId: "admin" });
+      const laterKey = updated.provider_account_key!;
+      const record = recorder(f.ledger, () => laterKey, f.tick);
+      assert.equal(record({ id: "c", at: BASE + 5_000 }).kind, "created");
+      assert.equal(record({ id: "b", at: BASE + 4_000 }).kind, "created");
+
+      const refreshed = readAdminLedgerPage(f.owner, { environment: null, limit: 1 });
+      assert.equal(refreshed.items[0]!.ledger_entry_id, originals[2]!.ledgerEntryId);
+      assert.equal(refreshed.next_cursor!.occurred_at_ms, migrated.next_cursor!.occurred_at_ms);
+      const remainder = readAdminLedgerPage(f.owner, { environment: null, limit: 10, cursor: migrated.next_cursor });
+      assert.deepEqual(remainder.items.map(item => item.external_event_id), ["b", "a"]);
+      const detail = readAdminLedgerDetail(f.owner, ENVIRONMENT, originals[2]!.ledgerEntryId, true)!;
+      assert.deepEqual(detail.sources.map(source => source.provider_account_key), [originalKey, laterKey]);
+      const ascending = readAdminLedgerPage(f.owner, { environment: null, sortOrder: "asc", limit: 10 });
+      assert.deepEqual(ascending.items.map(item => item.external_event_id), ["a", "b", "c"]);
+      const generationTime = (key: string) => Number(f.connection.prepare("SELECT created_at FROM alipay_account_generations WHERE provider_account_key=?").get(key)!.created_at);
+      const previousGenerationTime = generationTime(laterKey);
+      const previousBoundAt = f.ledger.providerIdentity(laterKey)!.boundAt;
+      t.mock.method(Date, "now", () => previousBoundAt - 1_000);
+      const next = await accounts.update(updated.id, { revision: updated.revision, name: updated.name,
+        enabled: updated.enabled, environment: updated.environment, code_payload: updated.code_payload,
+        app_id: "next-multi-account-app" }, { actorId: "admin" });
+      assert.ok(generationTime(next.provider_account_key!) > previousGenerationTime,
+        "new generations advance even when the device clock repeats or moves backward");
+      assert.equal(f.ledger.providerIdentity(next.provider_account_key!)!.boundAt, previousBoundAt,
+        "ordering must not move the provider's real ledger scan boundary");
+      assert.equal(recorder(f.ledger, () => next.provider_account_key!, f.tick)({ id: "c", at: BASE + 1_000 }).kind, "created");
+      assert.deepEqual(readAdminLedgerDetail(f.owner, ENVIRONMENT, originals[2]!.ledgerEntryId, true)!.sources.map(source => source.provider_account_key),
+        [originalKey, laterKey, next.provider_account_key]);
+    } finally { f.close(); }
+  });
+
+  it("preserves legacy activation order through account migration even when binding creation order differs", () => {
+    const f = fixture();
+    try {
+      const later = normalizeProviderIdentity({ providerAccountKey: "source:" + randomUUID(), providerKind: "alipay",
+        endpoint: providerEndpoint(ENVIRONMENT), externalAccountId: "later-legacy-app" });
+      f.owner.write(db => db.prepare("INSERT INTO provider_account_bindings VALUES (?,?,?,?,?,?,?)").run(
+        later.providerAccountKey, later.providerKind, later.endpoint, later.externalAccountId,
+        later.identityFingerprintVersion, later.identityFingerprint, BASE - 1_000));
+      const firstKey = f.activate();
+      const original = f.entry({ id: "activation-order", at: BASE + 30_000 });
+      f.entry({ id: "middle-event", at: BASE + 20_000 });
+      f.ledger.bindProviderIdentity(later, f.tick());
+      const copy = recorder(f.ledger, () => later.providerAccountKey, f.tick)({ id: "activation-order", at: BASE + 5_000 });
+      assert.equal(copy.kind, "created");
+      const originalOrder = readAdminLedgerDetail(f.owner, ENVIRONMENT, original.ledgerEntryId)!;
+      assert.deepEqual(originalOrder.sources.map(source => source.provider_account_key), [firstKey, later.providerAccountKey]);
+      migrateAccountQueries(f);
+      const migrated = readAdminLedgerDetail(f.owner, ENVIRONMENT, original.ledgerEntryId, true)!;
+      assert.equal(migrated.ledger_entry_id, original.ledgerEntryId);
+      assert.deepEqual(migrated.sources.map(source => source.provider_account_key), [firstKey, later.providerAccountKey]);
+      const page = readAdminLedgerPage(f.owner, { environment: null, limit: 1 });
+      assert.equal(page.items[0]!.ledger_entry_id, original.ledgerEntryId);
+      assert.equal(page.next_cursor!.occurred_at_ms, BASE + 30_000);
+    } finally { f.close(); }
+  });
+
   it("retains an unactivated legacy binding as the stable anchor when a recorded generation adds a copy", () => {
     const f = fixture();
     try {
@@ -455,6 +539,10 @@ describe("administrator grouped ledger queries", () => {
       assert.equal(second.next_cursor, null);
       const detail = readAdminLedgerDetail(f.owner, ENVIRONMENT, copy.ledgerEntryId)!;
       assert.deepEqual(detail.sources.map(source => source.provider_account_key), [legacyKey, laterKey]);
+      migrateAccountQueries(f);
+      const migrated = readAdminLedgerDetail(f.owner, ENVIRONMENT, copy.ledgerEntryId, true)!;
+      assert.equal(migrated.ledger_entry_id, original.ledgerEntryId);
+      assert.deepEqual(migrated.sources.map(source => source.provider_account_key), [legacyKey, laterKey]);
     } finally { f.close(); }
   });
 
