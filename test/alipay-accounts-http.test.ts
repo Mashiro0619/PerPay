@@ -57,6 +57,11 @@ describe("Alipay account management HTTP", () => {
       assert.equal((await f.request(`alipay-accounts/${data.id}`, "PUT", { ...update(data), revision: data.revision + 1 })).status, 409);
       assert.equal((await f.request(`alipay-accounts/${data.id}`, "DELETE", { revision: data.revision })).status, 204);
       assert.equal((await f.request(`alipay-accounts/${data.id}`)).status, 404);
+      assert.equal((await f.request(`alipay-accounts/${data.id}`, "DELETE", { revision: data.revision })).status, 404);
+      assert.equal((await f.request(`alipay-accounts/${data.id}`, "PUT", update(data))).status, 404);
+      assert.equal((await f.request(`alipay-accounts/${data.id}/check`, "POST", {})).status, 404);
+      assert.equal((await f.request(`alipay-accounts/${data.id}/application-key`, "POST", { revision: data.revision })).status, 404);
+      assert.equal((await (await f.request("alipay-accounts")).json() as { data: AlipayAccountView[] }).data.some(account => account.id === data.id), false);
     } finally { f.close(); }
   });
 

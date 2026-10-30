@@ -19,7 +19,7 @@ const versionSchemaMaximum = Object.freeze({
   "1.0.0-alpha.1": 35,
   "1.0.0-alpha.2": 36,
 });
-const currentSourceSchemaMaximum = Object.freeze({ "1.0.0-alpha.2": 37 });
+const currentSourceSchemaMaximum = Object.freeze({ "1.0.0-alpha.2": 38 });
 
 export function inspectVersionFiles(root, requestedTag) {
   const packageJson = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));

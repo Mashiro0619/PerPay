@@ -245,12 +245,12 @@ function resolveSiteCollection(connection: DatabaseSync, configuration: SiteConf
   if (!connection.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'alipay_accounts'").get()) return configuration;
   let collection = configuration.collection;
   if (!collection) {
-    const rows = connection.prepare("SELECT account_id FROM alipay_accounts WHERE enabled = 1 ORDER BY account_id LIMIT 2").all() as Array<{ account_id: string }>;
+    const rows = connection.prepare("SELECT account_id FROM alipay_accounts WHERE enabled = 1 AND deleted_at IS NULL ORDER BY account_id LIMIT 2").all() as Array<{ account_id: string }>;
     if (rows.length !== 1) throw new SiteError("site_collection_required", "请为网站选择收款账号。");
     collection = { mode: "FIXED", accounts: [{ account_id: rows[0]!.account_id, weight: 1 }] };
   }
   for (const account of collection.accounts) {
-    if (!connection.prepare("SELECT 1 FROM alipay_accounts WHERE account_id = ?").get(account.account_id)) {
+    if (!connection.prepare("SELECT 1 FROM alipay_accounts WHERE account_id = ? AND deleted_at IS NULL").get(account.account_id)) {
       throw new SiteError("site_collection_invalid", "所选收款账号不存在，请重新选择。");
     }
   }

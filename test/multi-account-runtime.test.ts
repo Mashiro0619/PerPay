@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, it } from "node:test";
 import { AppDatabase } from "../src/database/database.ts";
-import { AlipayAccountStore, AlipayAccountService, type AlipayAccountView } from "../src/alipay-accounts/index.ts";
+import { AlipayAccountStore, AlipayAccountService, AlipayAccountError, type AlipayAccountView } from "../src/alipay-accounts/index.ts";
 import { RuntimeSettingsStore } from "../src/settings/store.ts";
 import { OrderService, OrderError } from "../src/orders/service.ts";
 import { createOrderRequestSchema } from "../src/orders/model.ts";
@@ -123,6 +123,11 @@ describe("multi-account collection", () => {
       const original = scoped.create(request("qr-before"));
       await f.accounts.update(f.first.id, edit(f.first, { code_payload: code("changed"), enabled: false }), keyAudit());
       site = f.sites.update(site.clientId, { revision: site.revision, configuration: { ...site.configuration, collection: fixed(f.second.id) } }, keyAudit(), f.clock());
+      const used = f.accounts.get(f.first.id);
+      assert.equal(used.sites.length, 0);
+      assert.equal(used.deletable, false);
+      await assert.rejects(f.accounts.remove(used.id, { revision: used.revision }, keyAudit()),
+        error => error instanceof AlipayAccountError && error.code === "alipay_account_in_use");
       const repeated = scoped.create(request("qr-before"));
       assert.equal(repeated.created, false);
       assert.equal(repeated.order.orderId, original.order.orderId);
@@ -166,6 +171,9 @@ describe("multi-account collection", () => {
       const sandbox = await f.accounts.create({ name: "沙箱账号", app_id: "multi-account-a", environment: "SANDBOX",
         private_key: privatePem, platform_public_key: platformPem, code_payload: code("sandbox") }, keyAudit());
       credit(ledger, f.store.snapshot(sandbox.id).providerAccountKey!, "same-external-id", 2001, f.clock());
+      assert.equal(f.accounts.get(sandbox.id).deletable, false);
+      await assert.rejects(f.accounts.remove(sandbox.id, { revision: sandbox.revision }, keyAudit()),
+        error => error instanceof AlipayAccountError && error.code === "alipay_account_in_use");
       const environments = readAdminLedgerPage(f.database, { environment: null });
       assert.equal(environments.items.length, 3);
       assert.equal(environments.items.find(item => item.alipay_account_id === sandbox.id)!.environment, "SANDBOX");

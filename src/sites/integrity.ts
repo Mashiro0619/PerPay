@@ -11,8 +11,9 @@ export function countSiteDomainViolations(connection: DatabaseSync): number {
     try { if (!sitePolicySchema.safeParse(JSON.parse(row.policy)).success) violations++; }
     catch { violations++; }
   }
-  const sites = connection.prepare("SELECT client_id, configuration FROM sites").all() as Array<{ client_id: string; configuration: string }>;
+  const sites = connection.prepare("SELECT client_id, configuration, deleted_at FROM sites").all() as Array<{ client_id: string; configuration: string; deleted_at: number | bigint | null }>;
   const accountsAvailable = !!connection.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'alipay_accounts'").get();
+  const accountDeletionAvailable = accountsAvailable && connection.prepare("PRAGMA table_info(alipay_accounts)").all().some(column => column.name === "deleted_at");
   for (const row of sites) {
     if (!siteClientIdSchema.safeParse(row.client_id).success) violations++;
     try {
@@ -21,7 +22,10 @@ export function countSiteDomainViolations(connection: DatabaseSync): number {
       else if (accountsAvailable) {
         if (!parsed.data.collection) violations++;
         else for (const account of parsed.data.collection.accounts) {
-          if (!connection.prepare("SELECT 1 FROM alipay_accounts WHERE account_id = ?").get(account.account_id)) violations++;
+          // Deleted sites retain historical assignments, but active sites must
+          // never point to an account that has been removed from configuration.
+          const activeAccount = accountDeletionAvailable && row.deleted_at === null ? " AND deleted_at IS NULL" : "";
+          if (!connection.prepare(`SELECT 1 FROM alipay_accounts WHERE account_id = ?${activeAccount}`).get(account.account_id)) violations++;
         }
       }
     }

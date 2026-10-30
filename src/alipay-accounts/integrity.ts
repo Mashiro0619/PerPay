@@ -40,5 +40,14 @@ export function countAlipayAccountDomainViolations(connection: DatabaseSync): nu
     AND NOT EXISTS(SELECT 1 FROM runtime_master_key_guard WHERE singleton_key=1) THEN 1 ELSE 0 END AS total`);
   violations += count(`SELECT count(*) AS total FROM payment_orders AS orders JOIN collection_profiles AS profile ON profile.profile_id=orders.collection_profile_id
     JOIN amount_slots AS slot ON slot.order_id=orders.order_id WHERE orders.alipay_account_id != profile.alipay_account_id OR slot.alipay_account_id != orders.alipay_account_id`);
+  if (connection.prepare("PRAGMA table_info(alipay_accounts)").all().some(column => column.name === "deleted_at")) {
+    violations += count(`SELECT count(*) AS total FROM alipay_accounts AS account WHERE account.deleted_at IS NOT NULL AND (
+      EXISTS(SELECT 1 FROM alipay_account_secrets AS secret WHERE secret.account_id=account.account_id)
+      OR EXISTS(SELECT 1 FROM alipay_application_key_changes AS change WHERE change.account_id=account.account_id AND change.state='PENDING')
+      OR EXISTS(SELECT 1 FROM alipay_account_checks AS checks WHERE checks.account_id=account.account_id)
+      OR EXISTS(SELECT 1 FROM payment_orders AS orders WHERE orders.alipay_account_id=account.account_id)
+      OR EXISTS(SELECT 1 FROM ledger_entries AS entry JOIN alipay_account_generations AS generation USING(provider_account_key)
+        WHERE generation.account_id=account.account_id))`);
+  }
   return violations;
 }

@@ -140,5 +140,5 @@ test("accepts unreleased account migrations without rewriting a released tag's s
   withVersionFiles("1.0.0-alpha.2", root => {
     assert.deepEqual(inspectVersionFiles(root).errors, []);
     assert.ok(inspectVersionFiles(root, "v1.0.0-alpha.2").errors.some(error => error.includes("schema maximum=")));
-  }, 37);
+  }, 38);
 });

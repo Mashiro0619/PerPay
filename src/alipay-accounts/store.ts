@@ -45,7 +45,7 @@ export class AlipayAccountStore {
   available():boolean { return this.#database.read(db=>Boolean(db.prepare("SELECT 1 FROM sqlite_schema WHERE name='alipay_accounts' AND type='table'").get())); }
   verifySecrets():void {this.#database.read(db=>verifyAlipayAccountSecrets(db,this.#cipher));}
   snapshots():AlipayAccountSnapshot[] {
-    return this.#database.read(db=>(db.prepare("SELECT * FROM alipay_accounts ORDER BY created_at,account_id").all() as unknown as AccountRow[]).map(row=>this.#snapshot(db,row)));
+    return this.#database.read(db=>(db.prepare("SELECT * FROM alipay_accounts WHERE deleted_at IS NULL ORDER BY created_at,account_id").all() as unknown as AccountRow[]).map(row=>this.#snapshot(db,row)));
   }
   snapshot(id:string):AlipayAccountSnapshot {return this.#database.read(db=>this.#snapshot(db,this.#row(db,id)));}
   keyChange(id:string,changeId:string):ProviderApplicationKeyChange|null {
@@ -101,7 +101,8 @@ export class AlipayAccountStore {
       this.#assertUnique(db,id,input.environment,input.app_id);
       const now=Date.now();
       const providerKey=input.app_id?this.#newBinding(db,input,now):null;
-      db.prepare("INSERT INTO alipay_accounts VALUES (?,0,?,?,?,?,?,?,?,?)").run(id,input.name,Number(input.enabled),input.code_payload,input.environment,input.app_id,providerKey,now,now);
+      db.prepare(`INSERT INTO alipay_accounts(account_id,revision,name,enabled,code_payload,environment,app_id,provider_account_key,created_at,updated_at)
+        VALUES (?,0,?,?,?,?,?,?,?,?)`).run(id,input.name,Number(input.enabled),input.code_payload,input.environment,input.app_id,providerKey,now,now);
       if(providerKey)db.prepare("INSERT INTO alipay_account_generations VALUES (?,?,?)").run(providerKey,id,now);
       this.#saveCredentials(db,id,input,null,now);
       this.#snapshot(db,this.#row(db,id));
@@ -133,14 +134,18 @@ export class AlipayAccountStore {
   }
   remove(id:string,revision:number,audit:SettingsAuditContext):void {
     this.#database.write(db=>{
-      this.#revision(db,id,revision);
+      const current=this.#revision(db,id,revision);
       if(this.#sites(db,id).length||this.#hasHistory(db,id)) throw new AlipayAccountError("alipay_account_in_use","这个账号仍被网站或收款记录使用，不能删除。可以暂停接收新订单。");
+      const now=Math.max(Date.now(),Number(current.updated_at));
       db.prepare("DELETE FROM alipay_account_checks WHERE account_id=?").run(id);
-      db.prepare("DELETE FROM alipay_application_key_changes WHERE account_id=?").run(id);
+      db.prepare(`UPDATE alipay_application_key_changes SET state='DISCARDED',cipher_version=NULL,nonce=NULL,ciphertext=NULL,
+        authentication_tag=NULL,finished_revision=?,finished_at=? WHERE account_id=? AND state='PENDING'`).run(revision+1,now,id);
       db.prepare("DELETE FROM alipay_account_secrets WHERE account_id=?").run(id);
-      db.prepare("DELETE FROM alipay_account_generations WHERE account_id=?").run(id);
-      db.prepare("DELETE FROM alipay_accounts WHERE account_id=?").run(id);
-      this.#audit(db,id,audit,"alipay_account.deleted",revision,{},Date.now());
+      // Profiles and their provider links are immutable, including unused profiles
+      // created by runtime initialization. Retain their account/generation owner.
+      db.prepare(`UPDATE alipay_accounts SET revision=revision+1,enabled=0,code_payload=NULL,app_id=NULL,
+        provider_account_key=NULL,updated_at=?,deleted_at=? WHERE account_id=?`).run(now,now,id);
+      this.#audit(db,id,audit,"alipay_account.deleted",revision+1,{},now);
     });
   }
   saveInitialKey(id:string,revision:number,key:ProviderApplicationKeyMaterial,audit:SettingsAuditContext):AlipayAccountView {
@@ -194,7 +199,7 @@ export class AlipayAccountStore {
   }
   recordCheck(id:string,revision:number,ok:boolean,message:string,now:number):void {
     this.#database.write(db=>{
-      const account=db.prepare("SELECT revision FROM alipay_accounts WHERE account_id=?").get(id) as {revision:Int}|undefined;
+      const account=db.prepare("SELECT revision FROM alipay_accounts WHERE account_id=? AND deleted_at IS NULL").get(id) as {revision:Int}|undefined;
       if(!account||Number(account.revision)!==revision)return;
       db.prepare("INSERT INTO alipay_account_checks VALUES (?,?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET revision=excluded.revision,ok=excluded.ok,checked_at=excluded.checked_at,message=excluded.message").run(id,revision,Number(ok),now,message);
     });
@@ -210,7 +215,7 @@ export class AlipayAccountStore {
   }
   #row(db:DatabaseSync,id:string):AccountRow {
     alipayAccountIdSchema.parse(id);
-    const row=db.prepare("SELECT * FROM alipay_accounts WHERE account_id=?").get(id) as unknown as AccountRow|undefined;
+    const row=db.prepare("SELECT * FROM alipay_accounts WHERE account_id=? AND deleted_at IS NULL").get(id) as unknown as AccountRow|undefined;
     if(!row)throw new AlipayAccountError("alipay_account_not_found","没有找到这个支付宝账号。");
     return row;
   }
@@ -290,7 +295,7 @@ export class AlipayAccountStore {
   }
   #advance(db:DatabaseSync,id:string,now:number):void {db.prepare("UPDATE alipay_accounts SET revision=revision+1,updated_at=? WHERE account_id=?").run(now,id);}
   #assertUnique(db:DatabaseSync,id:string,environment:string,appId:string|null):void {
-    if(appId&&db.prepare("SELECT 1 FROM alipay_accounts WHERE environment=? AND app_id=? AND account_id!=?").get(environment,appId,id)) throw new AlipayAccountError("alipay_account_app_conflict","这个应用已用于另一个支付宝账号，请勿重复添加。");
+    if(appId&&db.prepare("SELECT 1 FROM alipay_accounts WHERE environment=? AND app_id=? AND account_id!=? AND deleted_at IS NULL").get(environment,appId,id)) throw new AlipayAccountError("alipay_account_app_conflict","这个应用已用于另一个支付宝账号，请勿重复添加。");
   }
   #sites(db:DatabaseSync,id:string):Array<{client_id:string;name:string}> {
     return db.prepare(`SELECT site.client_id,json_extract(site.configuration,'$.name') AS name FROM sites AS site
