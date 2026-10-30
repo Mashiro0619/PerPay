@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { ClipboardList, LayoutDashboard, Settings } from "lucide-react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -121,9 +121,9 @@ describe("official block composition", () => {
     },
   );
 
-  it("keeps security cards independent and password submission in the same form as its fields", () => {
+  it("keeps four security cards stable and password submission in the same form as its fields", () => {
     vi.stubGlobal("fetch", withSessionList(vi.fn(async () => json({ data: settings }))));
-    const { container } = render(
+    const { container, rerender } = render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter>
           <SecuritySettings settings={settings} onSaved={vi.fn()} />
@@ -135,12 +135,12 @@ describe("official block composition", () => {
       .closest("[data-slot=card]");
     const submit = screen.getByRole("button", { name: "修改并重新登录" });
     const grid = container.querySelector(".security-settings-card-grid")!;
+    const items = [...grid.children];
     expect([...grid.children].map(item => item.querySelector("[data-slot=card-title]")?.textContent)).toEqual([
-      "管理员 IP 白名单", "密钥", "修改密码",
+      "管理员 IP 白名单", "密钥", "修改密码", "登录会话",
     ]);
     const sessions = screen.getByRole("heading", { name: "登录会话" }).closest("[data-slot=card]");
-    expect(grid).not.toContainElement(sessions as HTMLElement);
-    expect(grid.nextElementSibling).toBe(sessions);
+    expect(items[3]).toContainElement(sessions as HTMLElement);
     expect(submit.closest("[data-slot=card-footer]")).not.toBeNull();
     expect(submit.closest("[data-slot=card]")).toBe(card);
     expect(submit.closest("form")).toBe(
@@ -153,6 +153,27 @@ describe("official block composition", () => {
     expect(submit).toBeDisabled();
     expect(screen.getAllByRole("button", { name: /^查看/ })).toHaveLength(4);
     expect(screen.getByRole("button", { name: "生成 API 密钥" })).toBeEnabled();
+    const whitelist = screen.getByLabelText("允许的 IP / 网段");
+    const password = screen.getByLabelText("新密码");
+    fireEvent.change(whitelist, { target: { value: "192.0.2.0/24\n2001:db8::/32" } });
+    fireEvent.change(password, { target: { value: "unsubmitted-password" } });
+    password.focus();
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SecuritySettings settings={{ ...settings, revision: settings.revision + 1 }} onSaved={vi.fn()} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(container.querySelector(".security-settings-card-grid")).toBe(grid);
+    expect(grid.children).toHaveLength(items.length);
+    items.forEach((item, index) => expect(grid.children[index]).toBe(item));
+    expect(screen.getByRole("heading", { name: "登录会话" }).closest("[data-slot=card]")).toBe(sessions);
+    expect(screen.getByLabelText("允许的 IP / 网段")).toBe(whitelist);
+    expect(whitelist).toHaveValue("192.0.2.0/24\n2001:db8::/32");
+    expect(screen.getByLabelText("新密码")).toBe(password);
+    expect(password).toHaveValue("unsubmitted-password");
+    expect(password).toHaveFocus();
   });
 
   it("keeps amount and order cards independent in the original reading order", async () => {

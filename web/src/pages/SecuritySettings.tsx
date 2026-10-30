@@ -224,8 +224,8 @@ export function SecuritySettings({
           </CardContent>
         </Card>
         <PasswordForm key="password" />
+        <AdministratorSessions key="sessions" />
       </DetailCardGrid>
-      <AdministratorSessions />
       {reveal && (
         <SecretDialog
           finalFocus={() => dialogOrigin.current}

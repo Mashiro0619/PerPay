@@ -4,7 +4,7 @@ import { test, expect, login, record, type Manifest } from "./fixtures";
 import { audit } from "./audit";
 
 const gridSelector = ".security-settings-card-grid";
-const cardLabels = ["管理员 IP 白名单", "密钥", "修改密码"];
+const cardLabels = ["管理员 IP 白名单", "密钥", "修改密码", "登录会话"];
 const evidenceDirectory = ".ui-audit/security-card-flow-20261021";
 
 async function configure(page: Page, theme: "light" | "dark", mode: "compact" | "full") {
@@ -43,32 +43,46 @@ async function gridGeometry(page: Page) {
       const content = item.querySelector<HTMLElement>(":scope > [data-detail-grid-content]")!;
       const card = content.querySelector<HTMLElement>('[data-slot="card"]')!;
       const box = content.getBoundingClientRect(), cardBox = card.getBoundingClientRect();
+      const itemStyle = getComputedStyle(item);
       return { index, label: card.querySelector('[data-slot="card-title"]')?.textContent,
         left: box.left - root.left, top: box.top - root.top, width: box.width, height: box.height,
         cardHeight: cardBox.height, cardContained: cardBox.top >= box.top - 1 && cardBox.bottom <= box.bottom + 1,
         clipped: content.scrollWidth > content.clientWidth + 1 || card.scrollWidth > card.clientWidth + 1,
-        span: getComputedStyle(item).gridRowEnd,
+        span: itemStyle.gridRowEnd,
+        columnSpan: Number.parseInt(itemStyle.gridColumnStart.match(/^span (\d+)$/)?.[1] ?? itemStyle.gridColumnEnd.match(/^span (\d+)$/)?.[1] ?? "1", 10),
       };
     });
     const cursors = widths.map(() => 0), previousBottoms: Array<number | null> = widths.map(() => null);
     const violations: string[] = [], verticalGaps: number[] = [];
     for (const item of items) {
-      const expectedTop = Math.min(...cursors), column = cursors.indexOf(expectedTop);
+      if (item.columnSpan < 1 || item.columnSpan > widths.length) {
+        violations.push(`item ${item.index} has an invalid column span`);
+        continue;
+      }
+      // A spanning card needs adjacent free tracks, so its earliest natural
+      // position follows the tallest occupied track within each candidate span.
+      const candidates = Array.from({ length: widths.length - item.columnSpan + 1 }, (_, column) =>
+        Math.max(...cursors.slice(column, column + item.columnSpan)));
+      const expectedTop = Math.min(...candidates), column = candidates.indexOf(expectedTop);
       const expectedLeft = widths.slice(0, column).reduce((sum, width) => sum + width, 0) + gap * column;
-      if (Math.abs(item.left - expectedLeft) > 1) violations.push(`item ${item.index} is not in the shortest column`);
+      const expectedWidth = widths.slice(column, column + item.columnSpan).reduce((sum, width) => sum + width, 0) + gap * (item.columnSpan - 1);
+      if (Math.abs(item.left - expectedLeft) > 1) violations.push(`item ${item.index} is not in the first available column span`);
       if (Math.abs(item.top - expectedTop) > 1) violations.push(`item ${item.index} leaves a vertical hole`);
-      if (Math.abs(item.width - widths[column]!) > 1) violations.push(`item ${item.index} does not fill one column`);
+      if (Math.abs(item.width - expectedWidth) > 1) violations.push(`item ${item.index} does not fill its column span`);
       if (Math.abs(item.cardHeight - item.height) > 1 || !item.cardContained) violations.push(`item ${item.index} stretches or clips its card`);
       if (item.clipped) violations.push(`item ${item.index} clips its content horizontally`);
-      if (previousBottoms[column] !== null) {
-        const actualGap = item.top - previousBottoms[column]!;
+      const occupiedBottoms = previousBottoms.slice(column, column + item.columnSpan).filter((bottom): bottom is number => bottom !== null);
+      if (occupiedBottoms.length) {
+        const actualGap = item.top - Math.max(...occupiedBottoms);
         verticalGaps.push(actualGap);
         if (actualGap < 16 - 0.02 || actualGap > 17 + 0.02) violations.push(`item ${item.index} has vertical gap ${actualGap}`);
       }
       const span = Math.max(1, Math.ceil(item.height + gap));
       if (Number.parseInt(item.span.replace("span", "").trim(), 10) !== span) violations.push(`item ${item.index} span does not match its natural height`);
-      cursors[column] = expectedTop + span;
-      previousBottoms[column] = item.top + item.height;
+      for (let track = column; track < column + item.columnSpan; track++) {
+        cursors[track] = expectedTop + span;
+        previousBottoms[track] = item.top + item.height;
+      }
       if (item.left < -1 || item.left + item.width > root.width + 1) violations.push(`item ${item.index} escapes the grid`);
     }
     for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
@@ -97,6 +111,7 @@ async function settledGrid(page: Page) {
   expect(geometry.rowGap).toBe(0);
   expect(geometry.columns).toBe(geometry.width >= 1280 ? 3 : geometry.width >= 768 ? 2 : 1);
   expect(geometry.items.map(item => item.label)).toEqual(cardLabels);
+  expect(geometry.items.map(item => item.columnSpan)).toEqual([1, 1, 1, geometry.columns === 3 ? 2 : 1]);
   return geometry;
 }
 
@@ -137,6 +152,7 @@ test("security cards keep natural heights and DOM order across themes and conten
   await login(page, manifest);
   const columns = new Set<number>();
   let shortestColumnWitness = false;
+  let rightSideSessionsWitness = false;
   for (const width of [320, 390, 1440, 2190]) for (const theme of ["light", "dark"] as const) for (const mode of ["compact", "full"] as const) {
     await page.setViewportSize({ width, height: 900 });
     await configure(page, theme, mode);
@@ -152,19 +168,29 @@ test("security cards keep natural heights and DOM order across themes and conten
     expect(Math.abs(layout.width - geometry.width)).toBeLessThanOrEqual(1);
     const sessions = await page.locator("[data-login-sessions]").evaluate(element => {
       const box = element.getBoundingClientRect();
-      const grid = element.parentElement!.querySelector(".security-settings-card-grid")!.getBoundingClientRect();
-      return { width: box.width, top: box.top, gridBottom: grid.bottom, inGrid: !!element.closest(".security-settings-card-grid") };
+      const grid = element.closest(".security-settings-card-grid")!.getBoundingClientRect();
+      const item = element.closest("[data-detail-grid-item]")!.getBoundingClientRect();
+      return { width: box.width, top: box.top - grid.top, left: box.left - grid.left,
+        itemWidth: item.width, inGrid: !!element.closest(".security-settings-card-grid") };
     });
-    expect(sessions.inGrid).toBe(false);
-    expect(Math.abs(sessions.width - layout.width)).toBeLessThanOrEqual(1);
-    expect(sessions.top).toBeGreaterThanOrEqual(sessions.gridBottom + 15);
-    await record(page, info, { feature: "security-natural-card-flow", width, theme, mode, geometry, layout,
+    expect(sessions.inGrid).toBe(true);
+    expect(Math.abs(sessions.width - sessions.itemWidth)).toBeLessThanOrEqual(1);
+    expect(Math.abs(sessions.top - geometry.items[3]!.top)).toBeLessThanOrEqual(1);
+    if (geometry.columns === 3) {
+      const [whitelist, keys, password] = geometry.items;
+      expect(Math.abs(sessions.left - keys!.left)).toBeLessThanOrEqual(1);
+      expect(sessions.top).toBeGreaterThanOrEqual(Math.max(keys!.top + keys!.height, password!.top + password!.height) + 15);
+      expect(sessions.top, "sessions fill the right-side space beside the taller whitelist").toBeLessThan(whitelist!.top + whitelist!.height);
+      rightSideSessionsWitness = true;
+    }
+    await record(page, info, { feature: "security-natural-card-flow", width, theme, mode, geometry, layout, sessions,
       evidence: "isolated-synthetic-settings-fixture" });
     await capture(page, info, `security-flow-${width}-${theme}-${mode}`);
     if (width === 320 && mode === "compact") await audit(page, info, "security-flow-" + theme);
   }
   expect([...columns].sort()).toEqual([1, 2, 3]);
   expect(shortestColumnWitness, "a later security card fills the shorter column before the taller card ends").toBe(true);
+  expect(rightSideSessionsWitness, "the three-column layout places sessions below the two shorter right-hand cards").toBe(true);
   expect(errors).toEqual([]);
   expect(writes).toEqual([]);
 });

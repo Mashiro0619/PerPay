@@ -83,6 +83,7 @@ test("session rows fill their own card across themes and narrow or wide content"
   await login(page, manifest);
   for (const [width, theme, mode] of [
     [320, "light", "compact"], [390, "dark", "full"],
+    [1180, "light", "full"],
     [1440, "light", "compact"], [1440, "dark", "full"],
     [2190, "light", "full"], [2190, "dark", "compact"],
   ] as const) {
@@ -103,18 +104,47 @@ test("session rows fill their own card across themes and narrow or wide content"
     await expect(card.locator(`[data-session-id="${mobileId}"]`)).toContainText("Android");
     await expect(card.getByText(ipv6, { exact: false })).toBeVisible();
     await expect(card.locator(`[data-session-id="${legacyId}"]`)).toContainText("未知");
+    await expect(page.locator(".security-settings-card-grid")).toHaveAttribute("data-measured", "true");
+    await page.clock.runFor(50);
     const geometry = await card.evaluate(element => {
-      const box = element.getBoundingClientRect(), grid = document.querySelector(".security-settings-card-grid")!.getBoundingClientRect();
-      return { width: box.width, top: box.top, gridWidth: grid.width, gridBottom: grid.bottom,
+      const box = element.getBoundingClientRect(), grid = element.closest(".security-settings-card-grid")!;
+      const item = element.closest<HTMLElement>("[data-detail-grid-item]")!, itemStyle = getComputedStyle(item);
+      const gridStyle = getComputedStyle(grid), widths = gridStyle.gridTemplateColumns.trim().split(/\s+/).map(Number.parseFloat);
+      const gap = Number.parseFloat(gridStyle.columnGap);
+      const columnSpan = Number.parseInt(itemStyle.gridColumnStart.match(/^span (\d+)$/)?.[1] ?? itemStyle.gridColumnEnd.match(/^span (\d+)$/)?.[1] ?? "1", 10);
+      const description = element.querySelector('[data-slot="card-description"]')!.getBoundingClientRect();
+      const actions = element.querySelector(".administrator-sessions-actions")!.getBoundingClientRect();
+      const list = element.querySelector('[aria-label="登录会话列表"]')!.getBoundingClientRect();
+      const rows = [...element.querySelectorAll<HTMLElement>("[data-session-id]")];
+      return { width: box.width, itemWidth: item.getBoundingClientRect().width,
+        columns: widths.length, columnSpan, itemIndex: [...grid.children].indexOf(item),
+        expectedWidth: widths.slice(0, columnSpan).reduce((sum, width) => sum + width, 0) + gap * (columnSpan - 1),
+        headerActionsStacked: actions.top >= description.bottom - 1,
+        rowDisplays: rows.map(row => getComputedStyle(row).display),
+        rowsFillCard: rows.every(row => Math.abs(row.getBoundingClientRect().width - list.width) <= 1),
         clipped: element.scrollWidth > element.clientWidth + 1,
-        clippedRows: [...element.querySelectorAll<HTMLElement>("[data-session-id]")].filter(row => row.scrollWidth > row.clientWidth + 1).length };
+        clippedRows: rows.filter(row => row.scrollWidth > row.clientWidth + 1).length,
+        clippedDetails: [...element.querySelectorAll<HTMLElement>(".administrator-session-meta, .administrator-session-action")]
+          .filter(detail => detail.scrollWidth > detail.clientWidth + 1 || detail.scrollHeight > detail.clientHeight + 1).length,
+        escapedDetails: rows.flatMap(row => {
+          const bounds = row.getBoundingClientRect();
+          return [...row.querySelectorAll<HTMLElement>(".administrator-session-content, .administrator-session-action")]
+            .filter(detail => { const rect = detail.getBoundingClientRect(); return rect.left < bounds.left - 1 || rect.right > bounds.right + 1 || rect.bottom > bounds.bottom + 1; });
+        }).length };
     });
-    expect(Math.abs(geometry.width - geometry.gridWidth)).toBeLessThanOrEqual(1);
-    expect(geometry.top).toBeGreaterThanOrEqual(geometry.gridBottom + 15);
+    expect(geometry.itemIndex).toBe(3);
+    expect(geometry.columnSpan).toBe(geometry.columns === 3 ? 2 : 1);
+    expect(Math.abs(geometry.width - geometry.itemWidth)).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.width - geometry.expectedWidth)).toBeLessThanOrEqual(1);
+    expect(geometry.headerActionsStacked).toBe(geometry.width <= 640);
+    expect(geometry.rowDisplays).toEqual(Array(3).fill(geometry.width <= 480 ? "grid" : "flex"));
+    expect(geometry.rowsFillCard).toBe(true);
     expect(geometry.clipped).toBe(false);
     expect(geometry.clippedRows).toBe(0);
+    expect(geometry.clippedDetails).toBe(0);
+    expect(geometry.escapedDetails).toBe(0);
     await record(page, info, { feature: "login-session-card", width, theme, mode, geometry, source: "synthetic-public-session-metadata" });
-    if (width === 320 || width === 390 || width === 1440) await screenshot(page, info, `sessions-${width}-${theme}`);
+    if (width === 320 || width === 390 || width === 1180 || width === 1440) await screenshot(page, info, `sessions-${width}-${theme}`);
   }
   expect(state.writes).toEqual([]);
   expect(state.unexpectedWrites).toEqual([]);
