@@ -10,13 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { onlineManager, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  ChartArea,
-  ChartColumn,
-  ChartLine,
-  ChevronDown,
-  Save,
-} from "lucide-react";
+import { ChevronDown, Save } from "lucide-react";
 import { collectionCodeError } from "../../../src/shared/collection-code";
 import { PROVIDER_TIMING_DEFAULTS } from "../../../src/shared/provider-defaults";
 import {
@@ -24,7 +18,6 @@ import {
   api,
   result,
   type RuntimeSettings,
-  type DashboardChartType,
 } from "@/api/client";
 import { Link } from "@/navigation";
 import { cn } from "@/lib/utils";
@@ -40,7 +33,6 @@ import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Select,
   SelectContent,
@@ -276,12 +268,9 @@ export function SettingsEditor({
   const [showProductName, setShowProductName] = useState(
     settings.display?.checkout_show_product_name ?? true,
   );
-  const [chartType, setChartType] = useState<DashboardChartType>(
-    settings.display?.dashboard_chart_type ?? "AREA",
-  );
   useEffect(() => {
     if (section === "display") draft.onChange();
-  }, [showProductName, chartType, section]);
+  }, [showProductName, section]);
   useEffect(() => {
     // Disabled optional fields enter/leave FormData after the checkbox's change event.
     if (section === "notifications") draft.onChange();
@@ -748,37 +737,6 @@ export function SettingsEditor({
         </FieldContent>
       </Field>
       </>}
-      <Field orientation="vertical" className={displayRowClassName}>
-        <FieldLabel id="dashboard-chart-type-label">首页图表样式</FieldLabel>
-        <FieldContent className="min-w-0 items-start">
-          <input type="hidden" name="dashboard_chart_type" value={chartType} />
-          <ToggleGroup
-            spacing={0}
-            variant="outline"
-            className="min-w-0 max-w-full items-stretch"
-            value={[chartType]}
-            onValueChange={(values) => {
-              const value = values[0];
-              if (value === "AREA" || value === "BAR" || value === "LINE")
-                setChartType(value);
-            }}
-            aria-labelledby="dashboard-chart-type-label"
-          >
-            <ToggleGroupItem value="AREA" className="h-auto min-w-0 flex-1 shrink flex-wrap whitespace-normal">
-              <ChartArea />
-              面积图
-            </ToggleGroupItem>
-            <ToggleGroupItem value="BAR" className="h-auto min-w-0 flex-1 shrink flex-wrap whitespace-normal">
-              <ChartColumn />
-              柱状图
-            </ToggleGroupItem>
-            <ToggleGroupItem value="LINE" className="h-auto min-w-0 flex-1 shrink flex-wrap whitespace-normal">
-              <ChartLine />
-              折线图
-            </ToggleGroupItem>
-          </ToggleGroup>
-        </FieldContent>
-      </Field>
       {!settings.site_mode && <>
       <Field orientation="vertical" className={displayRowClassName}>
         <FieldLabel htmlFor="checkout-show-product-name">
@@ -1067,12 +1025,6 @@ async function saveSettings(
     ).data;
   }
   if (section === "display") {
-    const chartType = text("dashboard_chart_type");
-    if (chartType !== "AREA" && chartType !== "BAR" && chartType !== "LINE")
-      throw new SettingsInputError(
-        "dashboard_chart_type",
-        "请选择有效的图表样式。",
-      );
     return (
       await result(
         api.updateDisplaySettings({
@@ -1080,7 +1032,7 @@ async function saveSettings(
             revision,
             system_name: text("system_name"),
             ...(settings.site_mode ? {} : { checkout_help_url: text("checkout_help_url") || null, checkout_show_product_name: form.has("checkout_show_product_name") }),
-            dashboard_chart_type: chartType,
+            dashboard_chart_type: settings.display?.dashboard_chart_type ?? "AREA",
           },
         }),
       )

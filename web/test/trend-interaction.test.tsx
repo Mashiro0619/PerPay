@@ -1,8 +1,11 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DashboardChartType, SystemAnalytics } from "../src/api/client";
 import { ChartAreaInteractive } from "../src/components/chart-area-interactive";
+import { CHART_TYPE_STORAGE_KEY } from "../src/hooks/use-chart-type";
+
+beforeEach(() => localStorage.removeItem(CHART_TYPE_STORAGE_KEY));
 
 function analytics(days: 7 | 30 | 90 = 7, amount = 12345): SystemAnalytics {
   return {
@@ -52,7 +55,7 @@ function expectSelectedType(
   else expect(plot).toBeNull();
 }
 
-describe("trend chart visit preferences", () => {
+describe("trend chart remembered preferences", () => {
   it("adopts a saved chart default that arrives after the initial loading render", () => {
     const onRangeChange = vi.fn();
     const { container, rerender } = render(
@@ -153,6 +156,124 @@ describe("trend chart visit preferences", () => {
     expectSelectedType("LINE", container);
   });
 
+  it("remembers a manual choice across page remounts and website changes without writing to the server", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const onRangeChange = vi.fn();
+    const first = render(
+      <ChartAreaInteractive analytics={analytics()} range={7} pending={false} onRangeChange={onRangeChange} chartType="AREA" />,
+    );
+    await userEvent.setup().click(screen.getByRole("button", { name: "柱状图" }));
+    expectSelectedType("BAR", first.container);
+    expect(localStorage.getItem(CHART_TYPE_STORAGE_KEY)).toBe("BAR");
+    first.unmount();
+
+    const next = render(
+      <ChartAreaInteractive analytics={analytics()} range={7} pending={false} onRangeChange={onRangeChange} chartType="LINE" scopeKey="site-a" />,
+    );
+    expectSelectedType("BAR", next.container);
+    next.rerender(
+      <ChartAreaInteractive analytics={analytics()} range={7} pending={false} onRangeChange={onRangeChange} chartType="AREA" scopeKey="site-b" />,
+    );
+    expectSelectedType("BAR", next.container);
+    expect(onRangeChange).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each(["AREA", "BAR", "LINE"] as const)("loads the remembered %s type before the server default arrives", (type) => {
+    localStorage.setItem(CHART_TYPE_STORAGE_KEY, type);
+    const onRangeChange = vi.fn();
+    const { container, rerender } = render(
+      <ChartAreaInteractive analytics={undefined} range={7} pending onRangeChange={onRangeChange} />,
+    );
+    expectSelectedType(type, container, false);
+    rerender(
+      <ChartAreaInteractive analytics={analytics()} range={7} pending={false} onRangeChange={onRangeChange} chartType={type === "AREA" ? "LINE" : "AREA"} />,
+    );
+    expectSelectedType(type, container);
+  });
+
+  it.each(["pie", '"LINE"', "null", ""])("ignores invalid stored type %j and continues following the server fallback", (invalid) => {
+    localStorage.setItem(CHART_TYPE_STORAGE_KEY, invalid);
+    const onRangeChange = vi.fn();
+    const { container, rerender } = render(
+      <ChartAreaInteractive analytics={analytics()} range={7} pending={false} onRangeChange={onRangeChange} chartType="BAR" />,
+    );
+    expectSelectedType("BAR", container);
+    rerender(
+      <ChartAreaInteractive analytics={analytics()} range={7} pending={false} onRangeChange={onRangeChange} chartType="LINE" />,
+    );
+    expectSelectedType("LINE", container);
+  });
+
+  it("synchronizes changes from another page and uses the current fallback after removal or clear", () => {
+    const onRangeChange = vi.fn();
+    const { container, rerender } = render(
+      <ChartAreaInteractive analytics={analytics()} range={7} pending={false} onRangeChange={onRangeChange} chartType="BAR" />,
+    );
+    function fromOtherPage(value: string | null, clear = false) {
+      act(() => {
+        if (clear) localStorage.clear();
+        else if (value === null) localStorage.removeItem(CHART_TYPE_STORAGE_KEY);
+        else localStorage.setItem(CHART_TYPE_STORAGE_KEY, value);
+        window.dispatchEvent(new StorageEvent("storage", { key: clear ? null : CHART_TYPE_STORAGE_KEY, newValue: value, storageArea: localStorage }));
+      });
+    }
+    fromOtherPage("LINE");
+    expectSelectedType("LINE", container);
+    fromOtherPage("invalid");
+    expectSelectedType("BAR", container);
+    rerender(
+      <ChartAreaInteractive analytics={analytics()} range={7} pending={false} onRangeChange={onRangeChange} chartType="AREA" />,
+    );
+    expectSelectedType("AREA", container);
+    fromOtherPage("BAR");
+    expectSelectedType("BAR", container);
+    fromOtherPage(null);
+    expectSelectedType("AREA", container);
+    fromOtherPage("LINE");
+    expectSelectedType("LINE", container);
+    fromOtherPage(null, true);
+    expectSelectedType("AREA", container);
+    expect(onRangeChange).not.toHaveBeenCalled();
+  });
+
+  it("ignores storage events for other preferences and other storage areas", () => {
+    localStorage.setItem(CHART_TYPE_STORAGE_KEY, "LINE");
+    const { container } = render(
+      <ChartAreaInteractive analytics={analytics()} range={7} pending={false} onRangeChange={vi.fn()} chartType="AREA" />,
+    );
+    act(() => {
+      window.dispatchEvent(new StorageEvent("storage", { key: "another-preference", newValue: "BAR", storageArea: localStorage }));
+    });
+    expectSelectedType("LINE", container);
+    act(() => {
+      window.dispatchEvent(new StorageEvent("storage", { key: CHART_TYPE_STORAGE_KEY, newValue: "BAR", storageArea: sessionStorage }));
+    });
+    expectSelectedType("LINE", container);
+  });
+
+  it("keeps manual choices usable during the current page when browser storage is unavailable", async () => {
+    const read = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("blocked"); });
+    const write = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("quota"); });
+    try {
+      const onRangeChange = vi.fn();
+      const { container, rerender } = render(
+        <ChartAreaInteractive analytics={analytics()} range={7} pending={false} onRangeChange={onRangeChange} chartType="BAR" />,
+      );
+      expectSelectedType("BAR", container);
+      await userEvent.setup().click(screen.getByRole("button", { name: "折线图" }));
+      expectSelectedType("LINE", container);
+      rerender(
+        <ChartAreaInteractive analytics={analytics()} range={7} pending={false} onRangeChange={onRangeChange} chartType="AREA" />,
+      );
+      expectSelectedType("LINE", container);
+    } finally {
+      read.mockRestore();
+      write.mockRestore();
+    }
+  });
+
   it("keeps a choice made while the saved default is still loading", async () => {
     const user = userEvent.setup();
     const onRangeChange = vi.fn();
@@ -193,6 +314,9 @@ describe("trend chart visit preferences", () => {
     await user.click(screen.getByRole("tab", { name: "每日数据" }));
     expect(
       screen.queryByRole("group", { name: "图表类型" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: "趋势指标" }),
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "下一页" }));
     expect(screen.getByRole("status")).toHaveTextContent(

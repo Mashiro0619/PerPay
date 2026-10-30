@@ -8,11 +8,15 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SystemAnalytics } from "../src/api/client";
 import { ChartAreaInteractive } from "../src/components/chart-area-interactive";
 import { DailyAnalytics } from "../src/components/daily-analytics";
 import { SectionCards as SummaryCards } from "../src/components/section-cards";
+import { CHART_TYPE_STORAGE_KEY } from "../src/hooks/use-chart-type";
+
+beforeEach(() => localStorage.removeItem(CHART_TYPE_STORAGE_KEY));
+
 function SectionCards(props: Parameters<typeof SummaryCards>[0]) {
   return (
     <MemoryRouter>
@@ -108,7 +112,9 @@ describe("official shadcn interactive chart", () => {
       ).toHaveAttribute("tabindex", "0");
       expect(container.querySelector("[data-slot=chart] style")).toBeNull();
       const metrics = screen.getByRole("group", { name: "趋势指标" });
-      expect(metrics.closest('[role="tabpanel"]')).not.toBeNull();
+      expect(screen.getAllByRole("group", { name: "趋势指标" })).toHaveLength(1);
+      const trend = screen.getByRole("heading", { name: "收款趋势" }).closest<HTMLElement>('[data-slot="card"]')!;
+      expect(within(trend).getByRole("group", { name: "趋势指标" })).toBeVisible();
       expect(
         within(metrics).getByRole("button", { name: "确认金额" }),
       ).toHaveAccessibleDescription("¥100.01");
@@ -818,7 +824,13 @@ describe("shared trend and daily views", () => {
     expect(
       screen.queryByRole("group", { name: "趋势指标" }),
     ).not.toBeInTheDocument();
-    expect(screen.getAllByText("2026-06-01 — 2026-06-30")).toHaveLength(1);
+    expect(
+      screen.queryByRole("group", { name: "图表类型" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByText(
+      (_, element) => element?.textContent === "2026-06-01 — 2026-06-30",
+      { selector: '[aria-live="polite"]' },
+    )).toHaveLength(1);
     await user.click(screen.getByRole("button", { name: "下一页" }));
     expect(screen.getByRole("status")).toHaveTextContent("第 2/3 页 · 共 30 天");
     const dates = dailyDates();

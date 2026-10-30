@@ -32,7 +32,7 @@ test.describe("mobile page action menus support real keyboard navigation", () =>
       await login(page, manifest);
 
       await page.goto(manifest.origin + "/admin/settings/display");
-      await expect(page.getByRole("group", { name: "首页图表样式", exact: true })).toBeVisible();
+      await expect(page.getByRole("textbox", { name: "支付系统名称", exact: true })).toBeVisible();
       await setTextSize(page, font);
       const settings = await openWithKeyboard(page);
       const wizard = settings.menu.getByRole("menuitem", { name: "配置向导", exact: true });
@@ -75,7 +75,7 @@ test.describe("mobile page action menus support real keyboard navigation", () =>
       await expect(settings.menu).toHaveCount(0);
       await expect(settings.trigger).toBeFocused();
       await page.reload();
-      await expect(page.getByRole("group", { name: "首页图表样式", exact: true })).toBeVisible();
+      await expect(page.getByRole("textbox", { name: "支付系统名称", exact: true })).toBeVisible();
       await setTextSize(page, font);
       await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
       expect(await page.evaluate(() => localStorage.getItem("perpay:theme"))).toBe("dark");

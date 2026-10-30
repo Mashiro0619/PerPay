@@ -66,8 +66,11 @@ test.describe("chart contrast and enlarged control readability", () => {
         await page.evaluate(font => document.documentElement.style.fontSize = font + "%", font);
         await page.clock.runFor(200);
         await page.evaluate(() => document.fonts.ready);
-        await page.locator(".trend-header").scrollIntoViewIfNeeded();
         const period = page.getByRole("combobox", { name: "统计周期", exact: true });
+        // At 200% text the header can exceed the viewport. Bring the actual
+        // target clear of the sticky page header before checking its hit area.
+        await period.evaluate(element => element.scrollIntoView({ block: "center", inline: "nearest" }));
+        await page.clock.runFor(100);
         const value = period.locator('[data-slot="select-value"]');
         const valueBox = (await value.boundingBox())!;
         const point = { x: valueBox.x + valueBox.width / 2, y: valueBox.y + valueBox.height / 2 };

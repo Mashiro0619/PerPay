@@ -76,7 +76,10 @@ function expectCurrent(amount: string, confirmations: string, pendingOrders: str
 function expectTrend(dates: string) {
   const card = screen.getByRole("heading", { name: "收款趋势" }).closest('[data-slot="card"]') as HTMLElement;
   const trend = within(card);
-  expect(trend.getByText(dates, { exact: true })).toBeVisible();
+  expect(trend.getByText(
+    (_, element) => element?.textContent === dates,
+    { selector: '[aria-live="polite"]' },
+  )).toBeVisible();
   expect(within(trend.getByLabelText("确认金额汇总")).getByText("¥154.01", { exact: true })).toBeVisible();
 }
 

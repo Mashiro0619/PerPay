@@ -26,7 +26,7 @@ function mount(path: string) {
     if (request.method === "GET") return json({ data });
     return request.json().then((body: Record<string, unknown>) => {
       writes.push(body);
-      data = { ...data, revision: data.revision + 1, display: { system_name: String(body.system_name), dashboard_chart_type: "BAR" } };
+      data = { ...data, revision: data.revision + 1, display: { ...data.display, system_name: String(body.system_name) } };
       return json({ data });
     });
   } });
@@ -45,16 +45,18 @@ describe("website-aware instance settings", () => {
     expect(screen.getByRole("link", { name: "在支付宝账号中管理应用密钥" })).toHaveAttribute("href", "/settings/accounts");
   });
 
-  it("saves only instance name and chart style without website display fields", async () => {
+  it("saves the instance name while preserving its chart default and omitting website display fields", async () => {
     const view = mount("/settings/display");
     const name = await screen.findByRole("textbox", { name: "支付系统名称" });
     expect(screen.queryByRole("textbox", { name: "商家帮助链接" })).not.toBeInTheDocument();
     expect(screen.queryByRole("switch", { name: "收银台显示商品名称" })).not.toBeInTheDocument();
     fireEvent.change(name, { target: { value: "新的后台" } });
-    await userEvent.click(screen.getByRole("button", { name: "柱状图" }));
+    expect(screen.queryByRole("group", { name: "首页图表样式" })).not.toBeInTheDocument();
+    expect(screen.getByText("未保存")).toBeVisible();
+    expect(view.writes).toHaveLength(0);
     fireEvent.submit(name.closest("form")!);
     await waitFor(() => expect(view.writes).toHaveLength(1));
-    expect(view.writes[0]).toEqual({ revision: expect.any(Number), system_name: "新的后台", dashboard_chart_type: "BAR" });
+    expect(view.writes[0]).toEqual({ revision: expect.any(Number), system_name: "新的后台", dashboard_chart_type: "AREA" });
   });
 
   it("explains the retired notification page and links to websites", async () => {

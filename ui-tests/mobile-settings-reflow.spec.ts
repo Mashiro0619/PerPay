@@ -107,19 +107,26 @@ test.describe("narrow settings and overview controls remain usable", () => {
   });
 
   for (const font of [100, 200]) {
-    test(`chart style choices preserve complete labels and keyboard selection at ${font}% text`, async ({ page, manifest }, info) => {
+    test(`overview chart choices preserve accessible touch targets and keyboard selection at ${font}% text`, async ({ page, manifest }, info) => {
       await login(page, manifest);
-      await page.goto(manifest.origin + "/admin/settings/display");
-      const group = page.getByRole("group", { name: "首页图表样式", exact: true });
+      const group = page.getByRole("group", { name: "图表类型", exact: true });
       await expect(group).toBeVisible();
       await page.evaluate(font => document.documentElement.style.fontSize = font + "%", font);
       const values = [];
       for (const [name, value] of [["面积图", "AREA"], ["柱状图", "BAR"], ["折线图", "LINE"]] as const) {
         const choice = group.getByRole("button", { name, exact: true });
-        const geometry = await completeButtonLabel(choice, page);
+        await expect(choice).toHaveAccessibleName(name);
+        await expect(choice).toHaveAttribute("title", name);
+        await choice.scrollIntoViewIfNeeded();
+        await page.clock.runFor(100);
+        // The outer rounded corners are transparent; target size, edge
+        // midpoints and the real tap below still verify usable touch areas.
+        const geometry = await expectTouchTarget(choice, { hitTest: false });
+        expect([1, 3, 4, 5, 7].every(index => geometry.points[index]!.hit), "the button center and four edge midpoints belong to that control").toBe(true);
+        await expect(choice.locator("svg")).toBeVisible();
         await choice.tap();
         await expect(choice).toHaveAttribute("aria-pressed", "true");
-        await expect(page.locator('input[name="dashboard_chart_type"]')).toHaveValue(value);
+        await expect(page.locator(".trend-plot[data-chart-type]")).toHaveAttribute("data-chart-type", value);
         values.push({ name, value, geometry });
       }
       const layout = await group.evaluate(element => {
@@ -143,8 +150,8 @@ test.describe("narrow settings and overview controls remain usable", () => {
       await expect(next).toBeFocused();
       await page.keyboard.press("Space");
       await expect(next).toHaveAttribute("aria-pressed", "true");
-      await expect(page.locator('input[name="dashboard_chart_type"]')).toHaveValue("BAR");
-      await record(page, info, { evidence: "desktop browser touch emulation", rootFont: font, chartStyleChoices: values, layout });
+      await expect(page.locator(".trend-plot[data-chart-type]")).toHaveAttribute("data-chart-type", "BAR");
+      await record(page, info, { evidence: "desktop browser touch emulation", rootFont: font, overviewChartChoices: values, layout });
     });
   }
 

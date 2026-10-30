@@ -1125,20 +1125,24 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 
 /* The trend header and weekly report have their own density, independent of business lists. */
 .trend-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas: "title period" "dates tabs";
-  align-items: center;
-  gap: 0.75rem 1rem;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.75rem;
 }
-.trend-title { grid-area: title; display: flex; min-width: 0; align-items: center; gap: 0.25rem; }
-.trend-tabs { grid-area: tabs; min-width: 0; width: max-content; justify-self: end; }
-.trend-period { grid-area: period; justify-self: end; }
-.trend-dates { grid-area: dates; min-width: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.trend-heading { display: flex; min-width: 0; width: 100%; flex-wrap: wrap; align-items: center; gap: 0.75rem 1rem; }
+.trend-title { display: flex; min-width: 0; align-items: center; gap: 0.25rem; }
+.trend-controls { display: flex; min-width: 0; max-width: 100%; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.75rem; margin-left: auto; }
+.trend-tabs { min-width: 0; max-width: 100%; width: fit-content; height: auto; }
+.trend-tabs [data-slot="tabs-trigger"] { min-width: 0; height: auto; min-height: 2rem; flex: 0 1 auto; white-space: normal; }
+.trend-period { min-width: 0; max-width: 100%; }
+.trend-period [data-slot="select-trigger"] { max-width: 100%; }
+.trend-context { display: flex; min-width: 0; width: 100%; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; }
+.trend-dates { min-width: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.trend-dates time { white-space: nowrap; }
 .trend-content { display: flex; min-width: 0; flex-direction: column; gap: 1.25rem; }
-.trend-toolbar { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; }
-.trend-toolbar [data-slot="toggle-group"] { min-width: 0; max-width: 100%; align-items: stretch; }
-.trend-toolbar [data-slot="toggle-group-item"] { min-width: 0; height: auto; min-height: 2rem; flex: 1; flex-wrap: wrap; white-space: normal; }
+.trend-header [data-slot="toggle-group"] { min-width: 0; max-width: 100%; align-items: stretch; }
+.trend-header [data-slot="toggle-group-item"] { min-width: 0; height: auto; min-height: 2rem; flex: 0 1 auto; flex-wrap: wrap; white-space: normal; }
 .trend-summary { display: grid; min-width: 0; grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr)); gap: 1.25rem; align-items: start; }
 .trend-summary > div { display: flex; min-width: 0; flex-direction: column; gap: 0.375rem; }
 .trend-summary dt, .trend-summary-note { color: var(--muted-foreground); font-size: 0.75rem; }
@@ -1189,7 +1193,6 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   font-variant-numeric: tabular-nums lining-nums;
 }
 [data-admin-console] .trend-card { --card-spacing: 1.25rem; }
-[data-admin-console] .trend-header { gap: 0.5rem 1rem; }
 [data-admin-console] .trend-content { gap: 1.5rem; }
 [data-admin-console] .trend-summary { align-items: start; }
 [data-admin-console] .trend-summary .trend-total > [data-metric-value] {
@@ -1240,24 +1243,17 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 }
 
 @media (pointer: coarse) {
-  .trend-toolbar [data-slot="toggle-group-item"] { min-width: 40px; min-height: 40px; }
+  .trend-header :is([data-slot="toggle-group-item"], [data-slot="tabs-trigger"]) { min-width: 40px; min-height: 40px; }
 }
 @container card (max-width: 28rem) {
-  .trend-header { grid-template-areas: "title period" "dates dates" "tabs tabs"; gap: 0.5rem 0.75rem; }
-  .trend-tabs { justify-self: start; }
-  .trend-dates { justify-self: start; }
-  .trend-toolbar { align-items: stretch; gap: 0.5rem; }
-  .trend-toolbar .trend-types { margin-left: auto; }
+  .trend-controls { justify-content: flex-start; margin-left: 0; }
   .trend-types span { display: none; }
-  .trend-toolbar .trend-types [data-slot="toggle-group-item"] { min-width: max(2rem, 40px); }
+  .trend-types [data-slot="toggle-group-item"] { min-width: max(2rem, 40px); }
   .trend-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 0.75rem; }
   .trend-total { grid-column: 1 / -1; }
   .trend-summary .trend-total > [data-metric-value] { font-size: 1.875rem; }
 }
 @container card (max-width: 15rem) {
-  .trend-header { grid-template-columns: minmax(0, 1fr); grid-template-areas: "title" "period" "tabs" "dates"; align-items: start; }
-  .trend-period { justify-self: start; }
-  .trend-toolbar .trend-types { margin-left: 0; }
   .trend-summary { grid-template-columns: minmax(0, 1fr); }
 }
 .daily-report {
@@ -1404,10 +1400,6 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   .list-summary-heading:has(.list-money[data-wide="true"]) { flex-direction: column; align-items: flex-start; }
   .settings-long-text { min-height: min(6rem, 30dvh); }
   [data-qr-image] { width: clamp(180px, calc(100svh - 360px), 240px); max-width: 100%; height: auto; }
-  .trend-tabs { max-width: 100%; }
-  .trend-tabs [data-slot="tabs-trigger"] { flex: 0 0 auto; white-space: nowrap; }
-  .trend-period { min-width: 0; max-width: 100%; }
-  .trend-period [data-slot="select-trigger"] { max-width: 100%; }
 
   /* Full-page records share continuous rows on phones; desktop summaries and
      embedded overview lists retain their existing layout and density. */

@@ -167,15 +167,19 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
     });
   }
 
-  test("joined choices keep their touch regions inside each horizontal slot", async ({ page, manifest }, info) => {
+  test("overview chart choices keep their touch regions inside each horizontal slot", async ({ page, manifest }, info) => {
     await login(page, manifest);
-    await page.goto(manifest.origin + "/admin/settings/display");
-    const group = page.getByRole("group", { name: "首页图表样式", exact: true });
+    const group = page.getByRole("group", { name: "图表类型", exact: true });
+    await expect(group).toBeVisible();
+    await group.scrollIntoViewIfNeeded();
+    await page.clock.runFor(100);
     const choices = ["面积图", "柱状图", "折线图"].map(name => group.getByRole("button", { name, exact: true }));
     const geometry = [];
     for (const choice of choices) {
-      const target = await expectTouchTarget(choice);
-      expect(target.visual.height).toBeCloseTo(40, 1);
+      // Group ends have transparent rounded corners; verify their full target
+      // size and the center/edge midpoints on the actual control surface.
+      const target = await expectTouchTarget(choice, { hitTest: false });
+      expect([1, 3, 4, 5, 7].every(index => target.points[index]!.hit), "the button center and four edge midpoints belong to that control").toBe(true);
       expect(target.x).toBeCloseTo(target.visual.x, 1);
       expect(target.width).toBeCloseTo(target.visual.width, 1);
       for (const x of [target.visual.x + 2, target.visual.x + target.visual.width - 2]) {
