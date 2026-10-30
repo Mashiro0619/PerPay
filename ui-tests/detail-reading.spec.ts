@@ -249,7 +249,7 @@ test("detail pages separate standard cards into a readable business sequence", a
     } else {
       await expect(headings).toHaveText(["支付宝交易", "对应订单", /^查账记录（\d+）$/]);
       await expect(page.locator('[data-detail-page] dt').filter({ hasText: /^支付宝 App ID$/ })).toHaveCount(0);
-      await expect(page.locator('[data-ledger-summary] [data-layout="flow"] dt')).toHaveText(["交易金额", "收支方向", "交易时间", "对方", "支付宝备注"]);
+      await expect(page.locator('[data-ledger-summary] [data-layout="flow"] dt')).toHaveText(["交易金额", "收款账号", "收支方向", "交易时间", "对方", "支付宝备注"]);
       await expect(page.locator('[data-ledger-summary] [data-detail-credentials] dt')).toHaveText(["支付宝流水号", "支付宝订单号", "支付宝商户单号"]);
       await expect(page.locator('[data-ledger-summary] dt').filter({ hasText: /业务网站|PerPay/ })).toHaveCount(0);
       await expect(page.locator("#ledger-conflicts-heading")).toHaveCount(0);

@@ -13,7 +13,7 @@ for (const theme of ["light", "dark"] as const) for (const viewport of [{ width:
       await expect(page.locator('#main-content [data-slot="skeleton"]')).toHaveCount(0);
       await expect(page.locator('#main-content h1, #main-content [role="heading"][aria-level="1"]')).toHaveCount(1);
       await expect(page.locator("#main-content")).not.toContainText(/未找到这条对账记录|记录不存在|订单不存在|分组不存在/);
-      if (route.includes("/onboarding/")) await expect(page.locator("#onboarding-step-heading")).toBeVisible();
+      if (route.includes("/onboarding/")) await expect(page.locator("[data-onboarding-step-heading]")).toBeVisible();
       else if (route.includes("/settings/")) await expect(page.locator('[role="tab"][aria-selected="true"]')).toBeVisible();
       await record(page, info, { route, requested: { theme, viewport } });
       await screenshot(page, info, `extended-${index}`);

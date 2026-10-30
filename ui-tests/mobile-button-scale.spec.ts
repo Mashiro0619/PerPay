@@ -194,34 +194,29 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
     await record(page, info, { evidence: "browser touch viewport", joinedChoices: geometry });
   });
 
-  test("the first secret-dialog copy action retains its full touch target at the scroll start", async ({ page, manifest }, info) => {
-    const syntheticPublicKey = "synthetic-public-key-for-mobile-touch-targets";
-    // Keep the reveal and clipboard entirely local; this case checks the
-    // scroller boundary and the copy action without reading a stored secret.
-    await page.route("**/api/admin/v1/settings/secrets/provider_public_key/actions/reveal", async route => {
-      expect(route.request().method()).toBe("POST");
-      await route.fulfill({ json: { data: { value: syntheticPublicKey } }, headers: { "Cache-Control": "no-store" } });
-    });
+  test("the first technical-detail copy action retains its full touch target at the scroll start", async ({ page, manifest }, info) => {
+    // The retired global secret dialog is no longer reachable. Exercise the
+    // same shared CopyValue control in a real synthetic ledger detail dialog.
     await page.addInitScript(() => {
-      Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async () => {} } });
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (value: string) => {
+        (window as Window & { __copiedText?: string }).__copiedText = value;
+      } } });
     });
     await login(page, manifest);
-    await page.goto(manifest.origin + "/admin/settings/security");
-    const view = page.getByRole("button", { name: "查看支付宝公钥", exact: true });
-    await expect(view).toBeEnabled();
-    await page.evaluate(() => delete document.documentElement.dataset.perpayDemo);
+    await page.goto(manifest.origin + "/admin" + manifest.details.ledgerAssociated);
+    const view = page.getByRole("button", { name: "更多操作，支付宝流水记录操作", exact: true });
     await view.click();
-    const dialog = page.getByRole("dialog", { name: "支付宝公钥", exact: true });
-    await expect(dialog.getByRole("textbox", { name: "密钥内容", exact: true })).toHaveValue(syntheticPublicKey);
+    await page.getByRole("menuitem", { name: "技术详情", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "技术详情", exact: true });
     const body = dialog.locator("[data-admin-dialog-scroll]");
     await expect.poll(() => body.evaluate(element => element.scrollTop)).toBe(0);
-    const copy = dialog.getByRole("button", { name: "复制支付宝公钥", exact: true });
-    await dialog.getByRole("textbox", { name: "密钥内容", exact: true }).focus();
-    await page.keyboard.press("Shift+Tab");
+    const copy = dialog.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true });
+    await expect(dialog.getByRole("heading", { name: "技术详情", exact: true })).toBeFocused();
+    await page.keyboard.press("Tab");
     await expect(copy).toBeFocused();
     await copy.hover();
     await page.clock.runFor(200);
-    const tooltip = page.locator('[data-slot="tooltip-content"]').filter({ hasText: /^复制支付宝公钥$/ });
+    const tooltip = page.locator('[data-slot="tooltip-content"]').filter({ hasText: /^复制内部流水编号（PerPay）$/ });
     await expect(tooltip).toBeVisible();
     const copyGeometry = await expectTouchSlot(copy);
     const tooltipBounds = (await tooltip.boundingBox())!;
@@ -232,8 +227,9 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
     const bodyBox = (await body.boundingBox())!;
     expect(copyGeometry.y).toBeGreaterThanOrEqual(bodyBox.y);
     const copyTap = await tapOutsideVisible(page, copy, "top");
-    await expect(dialog.getByRole("status")).toHaveText("已复制");
-    await record(page, info, { evidence: "browser touch viewport with synthetic public-key reveal and clipboard", buttonScale: { copyGeometry, copyTap, tooltipBounds } });
+    await expect(dialog.getByRole("status").filter({ hasText: "已复制" })).toHaveText("已复制");
+    expect(await page.evaluate(() => (window as Window & { __copiedText?: string }).__copiedText)).toBe(manifest.details.ledgerAssociated!.split("/").at(-1));
+    await record(page, info, { evidence: "real ledger technical dialog with synthetic domain data and clipboard", buttonScale: { copyGeometry, copyTap, tooltipBounds } });
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(dialog).toHaveCount(0);
     await expect(view).toBeFocused();
