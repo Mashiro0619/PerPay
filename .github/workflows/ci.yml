@@ -52,9 +52,9 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npx playwright install --with-deps chromium
       - run: npm run build
-      - run: npm run test:ui -- --project core
+      - run: npm run test:ui -- --project core --workers=2
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: failure()
+        if: failure() || cancelled()
         with:
           name: ui-evidence
           path: .ui-audit/runs/

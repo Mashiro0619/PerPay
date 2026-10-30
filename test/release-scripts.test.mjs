@@ -327,10 +327,10 @@ test("daily CI keeps bounded Linux checks and a separate Chromium regression job
   assert.equal(workflow.jobs.ui["runs-on"], "ubuntu-24.04");
   assert.equal(workflow.jobs.ui["timeout-minutes"], 25);
   assert.deepEqual(workflow.jobs.ui.steps.map(step => step.run).filter(Boolean), [
-    "npm ci --ignore-scripts", "npx playwright install --with-deps chromium", "npm run build", "npm run test:ui -- --project core",
+    "npm ci --ignore-scripts", "npx playwright install --with-deps chromium", "npm run build", "npm run test:ui -- --project core --workers=2",
   ]);
   const artifact = workflow.jobs.ui.steps.find(step => step.uses?.startsWith("actions/upload-artifact@"));
-  assert.equal(artifact.if, "failure()");
+  assert.equal(artifact.if, "failure() || cancelled()");
   assert.equal(artifact.with.path, ".ui-audit/runs/");
   assert.equal(artifact.with["include-hidden-files"], true);
 });
