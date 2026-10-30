@@ -466,6 +466,19 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .business-table td[data-column-layout="amount"] { overflow: visible; }
 .business-table:has(.list-money[data-wide="true"]) col[data-column-layout="amount"] { width: 13rem; }
 
+/* Give related business records room before secondary reminder timestamps. */
+.work-items-table col[data-column-layout="identity"] { width: auto; }
+.work-items-table col[data-column-id="related_record"] { width: 34%; }
+.work-items-table col[data-column-layout="amount"] { width: 7.5rem; }
+.work-items-table col[data-column-layout="actions"] { width: 7rem; }
+.business-summary-row .work-item-related-record > .list-identity {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 0.75rem;
+}
+.business-summary-row .work-item-related-record .list-identity-description { flex-basis: 100%; }
+
 /* Ledger identifiers need room before secondary columns share the remainder. */
 .ledger-table { table-layout: auto; }
 .ledger-table col[data-column-id="identity"] { width: 14rem; }

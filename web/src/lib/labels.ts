@@ -20,7 +20,14 @@ export function label(value: string | null | undefined): string { return value ?
 export function workItemTitle(item: AdminWorkItem): string {
   if (item.type === "FINANCIAL_EXCEPTION") return label(item.exception_type);
   if (item.type === "LEDGER_CONFLICT") return label(item.conflict_type);
-  return item.status === "DEAD_LETTER" ? "通知已停止重试" : "通知正在等待重试";
+  const titles = {
+    PENDING: "通知等待投递",
+    LEASED: "通知正在投递",
+    RETRY_WAIT: "通知正在等待重试",
+    ACKNOWLEDGED: "通知已确认",
+    DEAD_LETTER: "通知已停止重试",
+  };
+  return titles[item.status];
 }
 
 export function workItemHref(item: AdminWorkItem): string {

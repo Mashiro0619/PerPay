@@ -58,6 +58,7 @@ const lists = [
     data: [reminder],
     hiddenColumn: "创建时间",
     centeredColumns: ["actionable_at", "created_at", "actions"],
+    rightAlignedColumns: ["payable_amount_cents"],
   },
   {
     path: "/reconciliation",
@@ -114,14 +115,14 @@ async function chooseMode(
   await user.click(await screen.findByRole("menuitemradio", { name }));
 }
 
-function expectColumnAlignment(table: HTMLElement, centeredColumns: readonly string[], optionalCenteredColumns: readonly string[] = []) {
+function expectColumnAlignment(table: HTMLElement, centeredColumns: readonly string[], optionalCenteredColumns: readonly string[] = [], rightAlignedColumns: readonly string[] = []) {
   const headers = within(table).getAllByRole("columnheader");
   expect(headers.map((header) => header.getAttribute("data-column-id"))).toEqual(
-    expect.arrayContaining(["identity", ...centeredColumns]),
+    expect.arrayContaining(["identity", ...centeredColumns, ...rightAlignedColumns]),
   );
   for (const header of headers) {
     const columnId = header.getAttribute("data-column-id")!;
-    const alignment = [...centeredColumns, ...optionalCenteredColumns].includes(columnId) ? "center" : "left";
+    const alignment = [...centeredColumns, ...optionalCenteredColumns].includes(columnId) ? "center" : rightAlignedColumns.includes(columnId) ? "right" : "left";
     expect(header).toHaveAttribute("data-column-align", alignment);
     expect(table.querySelector(`tbody [data-column-id="${columnId}"]`)).toHaveAttribute("data-column-align", alignment);
   }
@@ -174,7 +175,7 @@ describe("desktop business list composition", () => {
 
   it.each(lists)(
     "keeps search, filters and the unique column menu grouped without duplicate desktop sorting on $path",
-    async ({ path, element, data, centeredColumns, optionalCenteredColumns }) => {
+    async ({ path, element, data, centeredColumns, optionalCenteredColumns, rightAlignedColumns }) => {
       pageResponse(data);
       const view = mount(path, element);
       const table = await screen.findByRole("table");
@@ -212,7 +213,7 @@ describe("desktop business list composition", () => {
       expect(view.container.querySelector("[data-business-list]")).toHaveClass("w-full", "min-w-0");
       expect(view.container.querySelector("[data-business-list]")).not.toHaveClass("max-w-[1600px]", "mx-auto");
       expect(table.querySelector("tbody td")).toHaveAttribute("data-column-layout", "identity");
-      expectColumnAlignment(table, centeredColumns, optionalCenteredColumns);
+      expectColumnAlignment(table, centeredColumns, optionalCenteredColumns, rightAlignedColumns);
       expect(table).toHaveAttribute("data-density", "compact");
       expect(table).toHaveClass("table-fixed");
       expect(table.querySelector("tbody td")).not.toHaveClass("py-2");
@@ -222,7 +223,7 @@ describe("desktop business list composition", () => {
 
   it.each(lists)(
     "uses the measured container and honors explicitly shown columns on $path",
-    async ({ path, element, data, hiddenColumn, centeredColumns, optionalCenteredColumns }) => {
+    async ({ path, element, data, hiddenColumn, centeredColumns, optionalCenteredColumns, rightAlignedColumns }) => {
       if (path === "/notifications") {
         localStorage.setItem("perpay.table-columns.v2.notifications", JSON.stringify({ order: false }));
       }
@@ -265,7 +266,7 @@ describe("desktop business list composition", () => {
       expect(table).toBeVisible();
       expect(screen.queryByRole("button", { name: /^筛选与排序/ })).not.toBeInTheDocument();
       expect(screen.queryByRole("combobox", { name: "排序字段" })).not.toBeInTheDocument();
-      expectColumnAlignment(table, centeredColumns, optionalCenteredColumns);
+      expectColumnAlignment(table, centeredColumns, optionalCenteredColumns, rightAlignedColumns);
       expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
       expect(screen.getByRole("columnheader", { name: hiddenColumn })).toBeVisible();
       width = 400;
