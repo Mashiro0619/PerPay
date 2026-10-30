@@ -46,14 +46,6 @@ import {
   FieldSet,
 } from "@/components/ui/field";
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -166,9 +158,6 @@ export function AlipayAccountList({
                         {accountState(account)}
                       </Badge>
                       <Badge variant="outline">{accountHealth(account)}</Badge>
-                      {account.environment === "SANDBOX" && (
-                        <Badge variant="outline">沙箱</Badge>
-                      )}
                     </div>
                     <p className="break-all text-sm text-muted-foreground">
                       {account.app_id
@@ -255,8 +244,6 @@ function accountConfiguration(account: AlipayAccount | null) {
     name: account?.name ?? "",
     enabled: account?.enabled ?? true,
     code_payload: account?.code_payload ?? "",
-    environment:
-      account?.environment ?? ("PRODUCTION" as "PRODUCTION" | "SANDBOX"),
     app_id: account?.app_id ?? "",
     platform_public_key: account?.platform_public_key ?? "",
   };
@@ -278,6 +265,7 @@ export function AlipayAccountEditor({
     checkFailure?: string;
   } | null;
   const [saved, setSaved] = useState(initial);
+  const historical = saved?.environment === "SANDBOX";
   const [draft, setDraft] = useState(() => accountConfiguration(initial));
   const [privateKey, setPrivateKey] = useState("");
   const [decoding, setDecoding] = useState(false);
@@ -321,8 +309,10 @@ export function AlipayAccountEditor({
   const check = useMutation({
     networkMode: "always",
     onMutate: () => setInitialCheckFailure(undefined),
-    mutationFn: (id: string) =>
-      result(api.checkAlipayAccount({ path: { accountId: id }, body: {} })),
+    mutationFn: (id: string) => {
+      if (historical) throw new Error("此账号仅保留历史记录，请添加已上线应用的支付宝账号。");
+      return result(api.checkAlipayAccount({ path: { accountId: id }, body: {} }));
+    },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: alipayAccountsKey });
       void queryClient.invalidateQueries({ queryKey: ["status"] });
@@ -331,8 +321,10 @@ export function AlipayAccountEditor({
   const save = useMutation({
     networkMode: "always",
     mutationFn: async (checkAfter: boolean) => {
+      if (historical) throw new Error("此账号仅保留历史记录，请添加已上线应用的支付宝账号。");
       const input = {
         ...draft,
+        environment: "PRODUCTION" as const,
         name: draft.name.trim(),
         code_payload: draft.code_payload.trim() || null,
         app_id: draft.app_id.trim() || null,
@@ -376,6 +368,7 @@ export function AlipayAccountEditor({
       action: "generate" | "regenerate" | "activate" | "discard",
     ) => {
       if (!saved) throw new Error("请先保存账号，再生成应用密钥。");
+      if (historical && action !== "discard") throw new Error("此账号仅保留历史记录，请添加已上线应用的支付宝账号。");
       const path = { accountId: saved.id };
       if (action === "generate")
         return result(
@@ -461,8 +454,8 @@ export function AlipayAccountEditor({
   }
   const error = save.error || key.error || remove.error;
   const pending = saved?.pending_application_key;
-  const checkResult = check.data?.data ?? (!dirty ? saved?.last_check : null);
-  const checkFailure = check.error?.message ?? initialCheckFailure;
+  const checkResult = historical ? null : check.data?.data ?? (!dirty ? saved?.last_check : null);
+  const checkFailure = historical ? undefined : check.error?.message ?? initialCheckFailure;
   return (
     <div className="flex min-w-0 flex-col gap-4" data-alipay-account-editor>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -483,6 +476,15 @@ export function AlipayAccountEditor({
         )}
       </div>
       <ErrorNotice error={error} />
+      {historical && (
+        <Alert>
+          <AlertTitle>旧版测试账号已停用</AlertTitle>
+          <AlertDescription>
+            <p>历史记录仍可查看。请添加状态为“已上线”的支付宝应用账号用于收款和查账。</p>
+            <Link to="/settings/accounts/new">添加支付宝账号</Link>
+          </AlertDescription>
+        </Alert>
+      )}
       {savedMessage && (
         <Alert role="status">
           <AlertTitle>{savedMessage}</AlertTitle>
@@ -521,13 +523,13 @@ export function AlipayAccountEditor({
         ref={form}
         onSubmit={(event) => {
           event.preventDefault();
-          if (!busy && !decoding) {
+          if (!busy && !decoding && !historical) {
             check.reset();
             save.mutate(true);
           }
         }}
       >
-        <FieldSet disabled={busy}>
+        <FieldSet disabled={busy || historical}>
           <Card>
             <CardHeader>
               <CardTitle>账号信息</CardTitle>
@@ -569,32 +571,9 @@ export function AlipayAccountEditor({
                 </Field>
                 <FieldSet>
                   <FieldLegend>开放平台应用</FieldLegend>
-                  <Field data-invalid={!!errors.environment}>
-                    <FieldLabel htmlFor="alipay-environment">
-                      支付宝环境
-                    </FieldLabel>
-                    <Select
-                      value={draft.environment}
-                      onValueChange={(value) => {
-                        if (value === "PRODUCTION" || value === "SANDBOX")
-                          change("environment", value);
-                      }}
-                      items={[
-                        { value: "PRODUCTION", label: "生产环境" },
-                        { value: "SANDBOX", label: "沙箱环境" },
-                      ]}
-                    >
-                      <SelectTrigger id="alipay-environment" className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          <SelectItem value="PRODUCTION">生产环境</SelectItem>
-                          <SelectItem value="SANDBOX">沙箱环境</SelectItem>
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </Field>
+                  <FieldDescription>
+                    请使用状态为“已上线”的支付宝应用；“开发中”的应用无法查账。
+                  </FieldDescription>
                   <Field data-invalid={!!errors.app_id}>
                     <FieldLabel htmlFor="alipay-app-id">
                       应用 ID（App ID）
@@ -692,14 +671,14 @@ export function AlipayAccountEditor({
               </FieldGroup>
             </CardContent>
             <CardFooter className="flex flex-wrap gap-2">
-              <Button type="submit" disabled={busy || decoding}>
+              <Button type="submit" disabled={busy || decoding || historical}>
                 {save.isPending && <Spinner data-icon="inline-start" />}
                 {save.isPending ? "正在保存…" : "保存并检查"}
               </Button>
               <Button
                 type="button"
                 variant="outline"
-                disabled={busy || decoding || (!dirty && !!saved)}
+                disabled={busy || decoding || historical || (!dirty && !!saved)}
                 onClick={() => {
                   if (form.current?.reportValidity()) {
                     check.reset();
@@ -713,7 +692,7 @@ export function AlipayAccountEditor({
                 <Button
                   type="button"
                   variant="ghost"
-                  disabled={busy || dirty}
+                  disabled={busy || dirty || historical}
                   onClick={() => check.mutate(saved.id)}
                 >
                   <RefreshCw data-icon="inline-start" />
@@ -732,7 +711,9 @@ export function AlipayAccountEditor({
           </CardDescription>
         </CardHeader>
         <CardContent className="flex min-w-0 flex-col gap-4">
-          {!saved ? (
+          {historical ? (
+            <p className="text-sm text-muted-foreground">此账号仅保留历史记录。</p>
+          ) : !saved ? (
             <p className="text-sm text-muted-foreground">
               先填写账号名称并保存草稿，即可生成应用密钥。
             </p>
@@ -808,7 +789,7 @@ export function AlipayAccountEditor({
               生成应用密钥
             </Button>
           )}
-          {saved && (
+          {saved && !historical && (
             <a
               data-external-link
               href={alipayApplicationUrl(saved.app_id)}
@@ -868,7 +849,7 @@ export function AlipayAccountEditor({
             </Button>
             {!saved.deletable && (
               <span className="ml-3 text-sm text-muted-foreground">
-                账号已被网站或订单使用，可暂停新订单。
+                {historical ? "账号已被网站或订单使用，保留历史记录。" : "账号已被网站或订单使用，可暂停新订单。"}
               </span>
             )}
           </CardFooter>

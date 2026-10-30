@@ -10,6 +10,7 @@ import type {
   RegenerateProviderApplicationKeyRequest,
 } from "@/api/generated";
 import { useDirtyDraft, useDraftGuard, useOperationNavigation } from "@/drafts";
+import { Link } from "@/navigation";
 import { OperationNavigationDialog } from "@/components/operation-navigation-dialog";
 import {
   alipayApplicationUrl,
@@ -62,6 +63,31 @@ import {
   AlertDialogTitle,
 } from "@/components/admin-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
+export function hasLegacyAlipayConfiguration(settings: RuntimeSettings) {
+  return settings.provider?.environment === "SANDBOX" ||
+    settings.pending_application_key?.environment === "SANDBOX" ||
+    settings.provider_generations.some((generation) => generation.active && generation.environment === "SANDBOX");
+}
+
+export function LegacyAlipayNotice({ settings }: { settings: RuntimeSettings }) {
+  const appId = (settings.provider?.environment === "SANDBOX" ? settings.provider.app_id : null) ??
+    (settings.pending_application_key?.environment === "SANDBOX" ? settings.pending_application_key.app_id : null) ??
+    settings.provider_generations.find((generation) => generation.active && generation.environment === "SANDBOX")?.app_id;
+  return (
+    <Alert role="status">
+      <AlertTitle>旧沙箱接入已停用</AlertTitle>
+      <AlertDescription>
+        <p>旧配置和历史记录已保留，不能继续保存、换钥或查账。请添加使用支付宝平台“已上线”应用的正式账号。</p>
+        {appId && <p className="break-all">原 App ID：{appId}</p>}
+        <Link to="/settings/accounts/new" className={buttonVariants({ variant: "outline", className: "w-fit" })}>
+          添加正式支付宝账号
+        </Link>
+      </AlertDescription>
+    </Alert>
+  );
+}
 
 type ChangeMode = "regenerate" | "activate" | "discard";
 type ChangeCommand =
@@ -105,12 +131,14 @@ export function ApplicationKey({
     onSaved(value, message);
   }
   const generate = useMutation({
-    mutationFn: () =>
-      result(
+    mutationFn: () => {
+      if (hasLegacyAlipayConfiguration(settings)) throw new Error("旧沙箱接入已停用，请添加正式支付宝账号。");
+      return result(
         api.generateProviderApplicationKey({
           body: { revision: settings.revision },
         }),
-      ),
+      );
+    },
     onSuccess: ({ data }) =>
       saved(
         data.settings,
@@ -118,6 +146,7 @@ export function ApplicationKey({
       ),
   });
   function open(mode: ChangeMode, origin: HTMLElement) {
+    if (hasLegacyAlipayConfiguration(settings)) return;
     dialogOrigin.current = origin;
     requestDiscard(() => {
       setSuccess("");
@@ -128,6 +157,7 @@ export function ApplicationKey({
   const currentKey = current ? (
     <CopyValue tooltip value={current} label="复制应用公钥" />
   ) : null;
+  if (hasLegacyAlipayConfiguration(settings)) return <LegacyAlipayNotice settings={settings} />;
   return (
     <Card data-application-key-card>
       <CardHeader>
@@ -156,9 +186,7 @@ export function ApplicationKey({
             <CopyValue tooltip value={pending.public_key} label="复制待启用应用公钥" />
             <p className="text-sm text-muted-foreground">
               当前仍使用原密钥。请将新公钥上传到支付宝应用{" "}
-              <span className="break-all">{pending.app_id}</span>（
-              {pending.environment === "PRODUCTION" ? "生产环境" : "沙箱环境"}
-              ）。
+              <span className="break-all">{pending.app_id}</span>。
               {guided
                 ? "下一步填入支付宝公钥并验证启用。"
                 : "再填入支付宝页面显示的支付宝公钥，验证启用。"}
@@ -316,6 +344,7 @@ export function ApplicationKeyActivation({
   onLockChange: (locked: boolean) => void;
   onContinue: () => void;
 }) {
+  if (hasLegacyAlipayConfiguration(settings)) return <LegacyAlipayNotice settings={settings} />;
   return (
     <ApplicationKeyChange
       mode="activate"
@@ -366,9 +395,7 @@ function ApplicationKeyChange({
     fingerprint: settings.application_key_fingerprint!,
     appId:
       settings.pending_application_key?.app_id ?? settings.provider?.app_id,
-    environment:
-      settings.pending_application_key?.environment ??
-      settings.provider?.environment,
+    legacy: hasLegacyAlipayConfiguration(settings),
   }));
   const [platformKey, setPlatformKey] = useState("");
   const [platformError, setPlatformError] = useState<string>();
@@ -379,6 +406,7 @@ function ApplicationKeyChange({
     { settings: RuntimeSettings; message: string }
   >({
     execute: async (command, signal) => {
+      if (initial.legacy || hasLegacyAlipayConfiguration(settings)) throw new Error("旧沙箱接入已停用，请添加正式支付宝账号。");
       if (command.mode === "regenerate") {
         const { data } = await result(
           api.regenerateProviderApplicationKey({ body: command.body, signal }),
@@ -471,6 +499,7 @@ function ApplicationKeyChange({
         : `仅删除待启用密钥，不会撤回支付宝上传。若已上传，请先恢复支付宝中的原应用公钥，并在 ${systemName} 同步恢复后获取的支付宝公钥，再放弃，以免影响查账。`;
   function submit() {
     if (
+      initial.legacy || hasLegacyAlipayConfiguration(settings) ||
       operation.isBusy() ||
       operation.conflict ||
       (mode === "discard" && !confirmed)
@@ -640,20 +669,6 @@ function ApplicationKeyChange({
                     readOnly
                   />
                 </Field>
-                <Field>
-                  <FieldLabel htmlFor="activation-environment">
-                    支付宝环境
-                  </FieldLabel>
-                  <Input
-                    id="activation-environment"
-                    value={
-                      initial.environment === "PRODUCTION"
-                        ? "生产环境"
-                        : "沙箱环境"
-                    }
-                    readOnly
-                  />
-                </Field>
                 {fields}
               </FieldGroup>
               {feedback}
@@ -755,8 +770,7 @@ function ApplicationKeyChange({
             <DialogBody>
           {initial.appId && (
               <p className="text-sm text-muted-foreground">
-                支付宝应用：<span className="break-all">{initial.appId}</span>（
-                {initial.environment === "PRODUCTION" ? "生产环境" : "沙箱环境"}）
+                支付宝应用：<span className="break-all">{initial.appId}</span>
               </p>
             )}
             {feedback}
@@ -800,8 +814,7 @@ function ApplicationKeyChange({
           <DialogBody>
           {initial.appId && (
             <p className="text-sm text-muted-foreground">
-              支付宝应用：<span className="break-all">{initial.appId}</span>（
-              {initial.environment === "PRODUCTION" ? "生产环境" : "沙箱环境"}）
+              支付宝应用：<span className="break-all">{initial.appId}</span>
             </p>
           )}
           {fields}

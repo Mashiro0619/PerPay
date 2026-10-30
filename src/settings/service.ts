@@ -23,6 +23,9 @@ import {
   parseWebhookOrigin,
   providerEndpoint,
   providerSettingsInputSchema,
+  isProductionProvider,
+  PRODUCTION_PROVIDER_ENDPOINT,
+  PRODUCTION_PROVIDER_REQUIRED_MESSAGE,
   webhookSettingsInputSchema,
   type AdvancedSettingsInput,
   type RegenerateProviderApplicationKeyInput,
@@ -215,11 +218,11 @@ export class RuntimeSettingsService {
     const single = accounts.length === 1 ? accounts[0]! : null;
     const applicationKey = usesAccounts ? single?.applicationKey ?? null : this.#store.providerApplicationKey();
     const pending = usesAccounts ? single?.pendingApplicationKey ?? null : this.#store.pendingApplicationKey();
-    const collectionConfigured = usesAccounts ? accounts.some(account => account.enabled && account.codePayload !== null && collectionCodeError(account.codePayload) === null)
+    const collectionConfigured = usesAccounts ? accounts.some(account => account.environment === "PRODUCTION" && account.enabled && account.codePayload !== null && collectionCodeError(account.codePayload) === null)
       : snapshot.collection !== null && collectionCodeError(snapshot.collection.codePayload) === null;
-    const providerConfigured = usesAccounts ? accounts.some(account => account.enabled && account.provider !== null)
-      : snapshot.provider !== null && snapshot.activeProviderAccountKey !== null;
-    const applicationKeyConfigured = usesAccounts ? accounts.some(account => account.applicationKey !== null) : applicationKey !== null;
+    const providerConfigured = usesAccounts ? accounts.some(account => account.enabled && isProductionProvider(account.provider))
+      : isProductionProvider(snapshot.provider) && snapshot.activeProviderAccountKey !== null;
+    const applicationKeyConfigured = usesAccounts ? accounts.some(account => account.environment === "PRODUCTION" && account.applicationKey !== null) : applicationKey !== null;
     const complete = usesAccounts ? accounts.some(account => account.enabled && account.configured) : collectionConfigured && providerConfigured;
     const collection = usesAccounts ? (single?.codePayload ? { code_payload: single.codePayload } : null)
       : snapshot.collection ? { code_payload: snapshot.collection.codePayload } : null;
@@ -259,7 +262,7 @@ export class RuntimeSettingsService {
         provider_account_key: generation.providerAccountKey, app_id: generation.externalAccountId,
         environment: generation.endpoint === providerEndpoint("SANDBOX") ? "SANDBOX" : "PRODUCTION",
         activated_at: new Date(generation.activatedAt).toISOString(),
-        active: generation.providerAccountKey === snapshot.activeProviderAccountKey,
+        active: generation.endpoint === PRODUCTION_PROVIDER_ENDPOINT && generation.providerAccountKey === snapshot.activeProviderAccountKey,
       })),
       advanced: { checkout_key_rotation_days: snapshot.advanced.checkoutKeyRotationDays, checkout_terminal_observation_seconds: snapshot.advanced.checkoutTerminalObservationSeconds },
       backup: { interval_seconds: snapshot.backup.intervalSeconds, keep_count: snapshot.backup.keepCount },
@@ -343,7 +346,7 @@ export class RuntimeSettingsService {
           ? "SANDBOX" as const
           : "PRODUCTION" as const,
         activated_at: new Date(generation.activatedAt).toISOString(),
-        active: generation.providerAccountKey === snapshot.activeProviderAccountKey,
+        active: generation.endpoint === PRODUCTION_PROVIDER_ENDPOINT && generation.providerAccountKey === snapshot.activeProviderAccountKey,
       }))),
       notifications: {
         enabled: snapshot.webhook.enabled,
@@ -469,12 +472,16 @@ export class RuntimeSettingsService {
         const parsed = providerSettingsInputSchema.parse(input);
         const current = this.#store.paymentSnapshot();
         if (current.revision !== parsed.revision) throw revisionConflict(parsed.revision, current.revision);
+        this.#store.assertProductionProviderEnvironment();
         const endpoint = providerEndpoint(parsed.environment);
         const historicalActive = latestProviderGeneration(this.#providerHistory());
         const currentProviderAccountKey = current.activeProviderAccountKey ??
           historicalActive?.providerAccountKey ?? null;
         const currentAppId = current.provider?.appId ?? historicalActive?.externalAccountId ?? null;
         const currentEndpoint = current.provider?.endpoint ?? historicalActive?.endpoint ?? null;
+        if (currentEndpoint !== null && currentEndpoint !== PRODUCTION_PROVIDER_ENDPOINT) {
+          throw new SettingsError("settings_not_configured", PRODUCTION_PROVIDER_REQUIRED_MESSAGE);
+        }
         const identityChanged = currentAppId !== parsed.app_id || currentEndpoint !== endpoint;
         if (identityChanged && this.#store.pendingApplicationKey()) {
           throw new SettingsError("provider_application_key_change_pending", "activate or discard the pending application key before switching applications");
@@ -594,6 +601,7 @@ export class RuntimeSettingsService {
   }> {
     return this.#exclusive(async () => {
       const current = this.#store.paymentSnapshot();
+      this.#store.assertProductionProviderEnvironment();
       if (
         current.provider !== null ||
         current.activeProviderAccountKey !== null ||
@@ -642,6 +650,7 @@ export class RuntimeSettingsService {
     return this.#exclusive(async () => {
       const parsed = regenerateProviderApplicationKeySchema.parse(input);
       const current = this.#store.paymentSnapshot();
+      this.#store.assertProductionProviderEnvironment();
       const currentKey = this.#store.providerApplicationKey();
       const replay = this.#store.applicationKeyChange(parsed.change_id);
       if (replay) {
@@ -679,6 +688,7 @@ export class RuntimeSettingsService {
     return this.#exclusive(async () => {
       const parsed = activateProviderApplicationKeySchema.parse(input);
       const current = this.#store.paymentSnapshot();
+      this.#store.assertProductionProviderEnvironment();
       const change = this.#store.applicationKeyChange(parsed.change_id);
       if (!change || !change.providerAccountKey) throw keyChangeConflict();
       if (change.state === "ACTIVATED") {

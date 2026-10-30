@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { providerSettingsInputSchema } from "../src/settings/model.ts";
+import { providerApplicationInputSchema, providerSettingsInputSchema } from "../src/settings/model.ts";
 
 const valid = {
   revision: 0, environment: "PRODUCTION", app_id: "test-app", timeout_milliseconds: 8_000,
@@ -10,6 +10,13 @@ const valid = {
 };
 
 describe("adaptive provider timing validation", () => {
+  it("defaults legacy omitted environments to production and rejects sandbox writes", () => {
+    const { environment: _environment, ...omitted } = valid;
+    assert.equal(providerSettingsInputSchema.parse(omitted).environment,"PRODUCTION");
+    assert.equal(providerApplicationInputSchema.parse({revision:0,app_id:"live-app"}).environment,"PRODUCTION");
+    assert.throws(()=>providerSettingsInputSchema.parse({...valid,environment:"SANDBOX"}),/不支持沙箱接入/);
+    assert.throws(()=>providerApplicationInputSchema.parse({revision:0,app_id:"old-app",environment:"SANDBOX"}),/不支持沙箱接入/);
+  });
   it("accepts distinct or equal intervals and legacy requests", () => {
     assert.deepEqual(providerSettingsInputSchema.parse(valid), valid);
     assert.equal(providerSettingsInputSchema.safeParse({ ...valid, active_scan_interval_seconds: 30 }).success, true);

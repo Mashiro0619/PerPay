@@ -23,6 +23,7 @@ import {
 } from "../notifications/model.ts";
 import {
   API_CLIENT_ID,
+  isProductionProvider,
   type CollectionSettings,
   type RuntimeSettingsSnapshot,
   type InstanceRuntimeSettingsSnapshot,
@@ -149,12 +150,12 @@ export class OrderService {
   initialize(): SyncCollectionProfileResult | null {
     if (this.#accounts) {
       for (const account of this.#accounts.accounts()) {
-        if (account.codePayload && account.providerAccountKey) this.syncAccountCollectionProfile(account);
+        if (account.environment === "PRODUCTION" && account.codePayload && account.providerAccountKey) this.syncAccountCollectionProfile(account);
       }
       return null;
     }
     const settings = this.#settings();
-    if (settings.collection === null || settings.activeProviderAccountKey === null) return null;
+    if (settings.collection === null || !isProductionProvider(settings.provider) || settings.activeProviderAccountKey === null) return null;
     return this.syncCollectionProfile(settings.collection, settings.activeProviderAccountKey);
   }
 
@@ -429,7 +430,7 @@ export class OrderService {
     const settings = this.#settings();
     if (!this.#accounts && (
       settings.collection === null ||
-      settings.provider === null ||
+      !isProductionProvider(settings.provider) ||
       settings.activeProviderAccountKey === null
     )) {
       throw new OrderError(

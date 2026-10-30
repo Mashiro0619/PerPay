@@ -7,11 +7,12 @@ import { RuntimeSecretCipher, type EncryptedSecret } from "../settings/crypto.ts
 import {
   parseProviderApplicationPrivateKey, parseProviderKeys, parsePlatformPublicKey,
   publicKeyFingerprint, providerEndpoint,
+  isProductionProvider, PRODUCTION_PROVIDER_ENDPOINT,
   type ProviderApplicationKeyMaterial, type ProviderApplicationKeyChange, type ProviderSettings,
 } from "../settings/model.ts";
 import { SettingsError, type SettingsAuditContext } from "../settings/store.ts";
 import { SettingsFieldError } from "../settings/validation.ts";
-import { ALIPAY_ACCOUNT_GENERATION_PREFIX, AlipayAccountError, alipayAccountIdSchema, type AlipayAccountSnapshot, type AlipayAccountView } from "./model.ts";
+import { ALIPAY_ACCOUNT_GENERATION_PREFIX, AlipayAccountError, alipayAccountIdSchema, assertProductionAlipayEnvironment, type AlipayAccountSnapshot, type AlipayAccountView } from "./model.ts";
 import { collectionCodeError } from "../shared/collection-code.ts";
 import { verifyAlipayAccountSecrets } from "./integrity.ts";
 
@@ -73,7 +74,7 @@ export class AlipayAccountStore {
         ORDER BY generation.created_at,generation.provider_account_key`).all() as Array<{provider_account_key:string;external_account_id:string;provider_endpoint:string;created_at:Int;current_key:string|null}>;
       return rows.map(row=>({provider_account_key:row.provider_account_key,app_id:row.external_account_id,
         environment:row.provider_endpoint===providerEndpoint("SANDBOX")?"SANDBOX":"PRODUCTION",
-        activated_at:new Date(Number(row.created_at)).toISOString(),active:row.current_key===row.provider_account_key}));
+        activated_at:new Date(Number(row.created_at)).toISOString(),active:row.current_key===row.provider_account_key&&row.provider_endpoint===PRODUCTION_PROVIDER_ENDPOINT}));
     });
   }
   view(id:string):AlipayAccountView {
@@ -96,6 +97,7 @@ export class AlipayAccountStore {
     });
   }
   create(input:AccountWrite,audit:SettingsAuditContext):AlipayAccountView {
+    assertProductionAlipayEnvironment(input.environment);
     const id="alipay_"+randomUUID();
     this.#database.write(db=>{
       this.#assertUnique(db,id,input.environment,input.app_id);
@@ -113,6 +115,8 @@ export class AlipayAccountStore {
   update(id:string,revision:number,input:AccountWrite,audit:SettingsAuditContext):AlipayAccountView {
     this.#database.write(db=>{
       const current=this.#snapshot(db,this.#revision(db,id,revision));
+      assertProductionAlipayEnvironment(current.environment);
+      assertProductionAlipayEnvironment(input.environment);
       this.#assertUnique(db,id,input.environment,input.app_id);
       const identityChanged=current.appId!==input.app_id||current.environment!==input.environment;
       if(identityChanged&&current.pendingApplicationKey) throw new SettingsError("provider_application_key_change_pending","请先启用或放弃待启用密钥，再切换应用。");
@@ -151,6 +155,7 @@ export class AlipayAccountStore {
   saveInitialKey(id:string,revision:number,key:ProviderApplicationKeyMaterial,audit:SettingsAuditContext):AlipayAccountView {
     this.#database.write(db=>{
       const current=this.#snapshot(db,this.#revision(db,id,revision));
+      assertProductionAlipayEnvironment(current.environment);
       if(current.applicationKey) throw new SettingsError("provider_application_key_change_conflict","此账号已有应用密钥，请使用更换应用密钥。");
       const now=Math.max(Date.now(),current.updatedAt);
       this.#secret(db,id,"private_key",key.privateKeyPem,key.fingerprint,now);
@@ -162,6 +167,7 @@ export class AlipayAccountStore {
   prepareKeyChange(id:string,revision:number,changeId:string,baseFingerprint:string,key:ProviderApplicationKeyMaterial,audit:SettingsAuditContext):AlipayAccountView {
     this.#database.write(db=>{
       const current=this.#snapshot(db,this.#revision(db,id,revision));
+      assertProductionAlipayEnvironment(current.environment);
       if(current.applicationKey?.fingerprint!==baseFingerprint) throw new SettingsError("provider_application_key_change_conflict","应用密钥已变化，请刷新后重试。");
       if(current.pendingApplicationKey) throw new SettingsError("provider_application_key_change_pending","此账号已有待启用密钥。");
       if(db.prepare("SELECT 1 FROM alipay_application_key_changes WHERE change_id=?").get(changeId)) throw new SettingsError("provider_application_key_change_conflict","这次换钥操作已经处理，请刷新后重试。");
@@ -181,6 +187,7 @@ export class AlipayAccountStore {
   finishKeyChange(id:string,revision:number,changeId:string,provider:ProviderSettings|null,audit:SettingsAuditContext):AlipayAccountView {
     this.#database.write(db=>{
       const current=this.#snapshot(db,this.#revision(db,id,revision));
+      if(provider) assertProductionAlipayEnvironment(current.environment);
       const pending=current.pendingApplicationKey;
       if(!pending?.key||pending.changeId!==changeId||pending.providerAccountKey!==current.providerAccountKey||pending.baseFingerprint!==current.applicationKey?.fingerprint||pending.appId!==current.appId||pending.environment!==current.environment) {
         throw new SettingsError("provider_application_key_change_conflict","待启用密钥已经变化，请刷新后重试。");
@@ -233,7 +240,7 @@ export class AlipayAccountStore {
     }):null;
     return {id:row.account_id,revision:Number(row.revision),name:row.name,enabled:Number(row.enabled)===1,codePayload:row.code_payload,
       environment:row.environment,appId:row.app_id,platformPublicKey:publicPem,providerAccountKey:row.provider_account_key,provider,
-      configured:provider!==null&&row.code_payload!==null&&collectionCodeError(row.code_payload)===null,applicationKey,pendingApplicationKey:this.#pending(db,row.account_id),
+      configured:isProductionProvider(provider)&&row.code_payload!==null&&collectionCodeError(row.code_payload)===null,applicationKey,pendingApplicationKey:this.#pending(db,row.account_id),
       createdAt:Number(row.created_at),updatedAt:Number(row.updated_at)};
   }
   #pending(db:DatabaseSync,id:string):ProviderApplicationKeyChange|null {

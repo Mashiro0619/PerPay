@@ -819,7 +819,7 @@ function service(database: AppDatabase, key: Uint8Array): RuntimeSettingsService
 function providerInput(revision: number, appId: string) {
   return {
     revision,
-    environment: "SANDBOX" as const,
+    environment: "PRODUCTION" as const,
     app_id: appId,
     private_key: applicationPrivateKey,
     platform_public_key: platformPublicKey,
@@ -833,7 +833,7 @@ function providerInput(revision: number, appId: string) {
 function providerInputWithoutPrivateKey(revision: number, appId: string) {
   return {
     revision,
-    environment: "SANDBOX" as const,
+    environment: "PRODUCTION" as const,
     app_id: appId,
     platform_public_key: platformPublicKey,
     timeout_milliseconds: 8_000,

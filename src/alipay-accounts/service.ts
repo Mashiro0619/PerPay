@@ -2,12 +2,14 @@ import {
   generateProviderApplicationKey, parseProviderKeys, providerEndpoint, parsePlatformPublicKey, publicKeyFingerprint,
   regenerateProviderApplicationKeySchema, activateProviderApplicationKeySchema, applicationKeyChangeActionSchema,
   type RegenerateProviderApplicationKeyInput, type ActivateProviderApplicationKeyInput, type ApplicationKeyChangeActionInput,
+  PRODUCTION_PROVIDER_REQUIRED_MESSAGE,
 } from "../settings/model.ts";
 import { verifyProviderApplicationKey, type ProviderKeyVerifier, type ProviderKeyVerificationOptions } from "../settings/provider-key-verification.ts";
 import { SettingsError, type SettingsAuditContext } from "../settings/store.ts";
 import { AlipayAccountStore } from "./store.ts";
 import {
   AlipayAccountError, createAlipayAccountInputSchema, updateAlipayAccountInputSchema, alipayAccountRevisionSchema,
+  assertProductionAlipayEnvironment,
   type CreateAlipayAccountInput, type UpdateAlipayAccountInput, type AlipayAccountSnapshot, type AlipayAccountView,
 } from "./model.ts";
 
@@ -36,6 +38,7 @@ export class AlipayAccountService {
       const parsed=updateAlipayAccountInputSchema.parse(input);
       const current=this.#store.snapshot(id);
       this.#revision(current,parsed.revision);
+      assertProductionAlipayEnvironment(current.environment);
       return this.#apply(id,async()=>{
         if(current.providerAccountKey&&(current.appId!==parsed.app_id||current.environment!==parsed.environment||parsed.platform_public_key===null)) {
           this.#store.assertProviderSwitchAllowed(id);
@@ -51,7 +54,9 @@ export class AlipayAccountService {
   generateApplicationKey(id:string,input:{revision:number},audit:SettingsAuditContext):Promise<AlipayAccountView>{
     return this.#exclusive(id,async()=>{
       const parsed=alipayAccountRevisionSchema.parse(input);
-      this.#revision(this.#store.snapshot(id),parsed.revision);
+      const current=this.#store.snapshot(id);
+      this.#revision(current,parsed.revision);
+      assertProductionAlipayEnvironment(current.environment);
       const key=await generateProviderApplicationKey();
       return this.#apply(id,()=>this.#store.saveInitialKey(id,parsed.revision,key,audit));
     });
@@ -59,6 +64,7 @@ export class AlipayAccountService {
   regenerateApplicationKey(id:string,input:RegenerateProviderApplicationKeyInput,audit:SettingsAuditContext):Promise<AlipayAccountView>{
     return this.#exclusive(id,async()=>{
       const parsed=regenerateProviderApplicationKeySchema.parse(input);
+      assertProductionAlipayEnvironment(this.#store.snapshot(id).environment);
       const existing=this.#store.keyChange(id,parsed.change_id);
       if(existing) {
         if(existing.requestedRevision!==parsed.revision||existing.baseFingerprint!==parsed.base_fingerprint)throw new SettingsError("provider_application_key_change_conflict","这次换钥操作与原请求不一致。");
@@ -73,6 +79,7 @@ export class AlipayAccountService {
     return this.#exclusive(id,async()=>{
       const parsed=activateProviderApplicationKeySchema.parse(input);
       const current=this.#store.snapshot(id);
+      assertProductionAlipayEnvironment(current.environment);
       const existing=this.#store.keyChange(id,parsed.change_id);
       if(existing?.state==="ACTIVATED"&&existing.finishedRevision===current.revision&&existing.finishedRevision===parsed.revision+1) {
         if(current.provider?.platformKeyFingerprint!==publicKeyFingerprint(parsePlatformPublicKey(parsed.platform_public_key).publicKey)) {
@@ -102,7 +109,8 @@ export class AlipayAccountService {
   async check(id:string,options:ProviderKeyVerificationOptions={}):Promise<{ok:boolean;checked_at:string;message:string}>{
     const current=this.#store.snapshot(id);
     let ok=false,message="请先填写 App ID、支付宝公钥，并生成或导入应用私钥。";
-    if(current.provider){
+    if(current.environment!=="PRODUCTION") message=PRODUCTION_PROVIDER_REQUIRED_MESSAGE;
+    else if(current.provider){
       try {await(this.#options.verifyProviderApplicationKey??verifyProviderApplicationKey)(current.provider,options);ok=true;message="已连接支付宝，账务明细查询正常。";}
       catch(error){message=error instanceof SettingsError?error.message.replace(/ 当前密钥未更换。$/u,""):"暂时无法连接支付宝，请稍后重试。";}
     }

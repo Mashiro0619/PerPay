@@ -61,14 +61,13 @@ async function openAccountDraft(page: Page, manifest: Manifest, legacySection: "
   return writes;
 }
 
-test.describe("narrow settings controls preserve their selected labels", () => {
+test.describe("narrow settings and overview controls remain usable", () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 320, height: 560 }, reducedMotion: "reduce" });
 
-  test("the account environment keeps both complete choices at 200% text after the legacy provider redirect", async ({ page, manifest }, info) => {
+  test("account configuration omits the environment selector and remains editable at 200% text after the legacy provider redirect", async ({ page, manifest }, info) => {
     await login(page, manifest);
     const writes = await openAccountDraft(page, manifest, "provider");
-    const environment = page.getByRole("combobox", { name: "支付宝环境", exact: true });
-    await expect(environment).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "支付宝环境", exact: true })).toHaveCount(0);
     await page.evaluate(() => document.documentElement.style.fontSize = "200%");
     const disclosure = page.getByRole("button", { name: "导入已有应用私钥", exact: true });
     const disclosureGeometry = await completeButtonLabel(disclosure, page);
@@ -77,15 +76,15 @@ test.describe("narrow settings controls preserve their selected labels", () => {
     await expect(page.getByRole("textbox", { name: "应用私钥", exact: true })).toBeVisible();
     await disclosure.tap();
     await expect(disclosure).toHaveAttribute("aria-expanded", "false");
-    const values = [];
-    for (const name of ["沙箱环境", "生产环境"]) {
-      await environment.click();
-      await page.getByRole("option", { name, exact: true }).click();
-      await expect(environment.locator('[data-slot="select-value"]')).toHaveText(name);
-      values.push(await completeSelectValue(environment, page));
-    }
+    const name = page.getByRole("textbox", { name: "账号名称", exact: true });
+    const appId = page.getByRole("textbox", { name: "应用 ID（App ID）", exact: true });
+    await name.fill("主收款账号");
+    await appId.fill("202610300001");
+    await expect(name).toHaveValue("主收款账号");
+    await expect(appId).toHaveValue("202610300001");
+    await expect(page.getByRole("button", { name: "保存草稿", exact: true })).toBeEnabled();
     expect(writes).toEqual([]);
-    await record(page, info, { evidence: "real account draft form with desktop browser touch emulation; no account submitted", rootFont: 200, accountEnvironmentValues: values, disclosureGeometry, legacyRedirect: "provider", writes });
+    await record(page, info, { evidence: "real account draft form with desktop browser touch emulation; no account submitted", rootFont: 200, disclosureGeometry, legacyRedirect: "provider", writes });
   });
 
   test("a delayed text reflow keeps the account disclosure fully reachable after the legacy collection redirect", async ({ page, manifest }, info) => {

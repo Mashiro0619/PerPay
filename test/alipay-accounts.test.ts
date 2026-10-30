@@ -11,11 +11,12 @@ import { createLegacySettingsDatabase } from "./legacy-settings-fixture.ts";
 import { createLocalBackup, restoreLocalBackup } from "../src/backup/repository.ts";
 import { OrderService } from "../src/orders/service.ts";
 import { keyMaster, privatePem, platformPem, nextPlatformPem, providerInput, keyAudit } from "./application-key-fixture.ts";
+import { seedHistoricalSandboxAccount, seedHistoricalSandboxProvider } from "./historical-sandbox-fixture.ts";
 
 const code="https://qr.alipay.com/account_test";
 const edit=(account:AlipayAccountView,patch:Record<string,unknown>={})=>({
   revision:account.revision,name:account.name,enabled:account.enabled,code_payload:account.code_payload,
-  environment:account.environment,app_id:account.app_id,...patch,
+  environment:"PRODUCTION" as const,app_id:account.app_id,...patch,
 });
 async function withAccounts(test:(context:{db:AppDatabase;store:AlipayAccountStore;service:AlipayAccountService;directory:string})=>Promise<void>) {
   const directory=mkdtempSync(join(tmpdir(),"perpay-alipay-accounts-"));
@@ -35,6 +36,7 @@ describe("Alipay account configuration",()=>{
     await withAccounts(async({db,store,service})=>{
       assert.deepEqual(service.list(),[]);
       let account=await service.create({name:"工作室"},keyAudit());
+      assert.equal(account.environment,"PRODUCTION");
       assert.equal(account.configured,false);
       assert.equal(account.application_public_key,null);
       account=await service.generateApplicationKey(account.id,{revision:account.revision},keyAudit());
@@ -58,11 +60,10 @@ describe("Alipay account configuration",()=>{
       assert.deepEqual(service.get(second.id),second);
       await assert.rejects(service.update(first.id,edit(first),keyAudit()),error=>error instanceof AlipayAccountError&&error.code==="alipay_account_revision_conflict");
       await assert.rejects(configured(service,"重复","app-b"),error=>error instanceof AlipayAccountError&&error.code==="alipay_account_app_conflict");
-      const sandbox=await service.create({name:"沙箱",environment:"SANDBOX",app_id:"app-b"},keyAudit());
-      assert.equal(sandbox.configured,false);
+      await assert.rejects(service.create({name:"沙箱",environment:"SANDBOX" as never,app_id:"app-b"},keyAudit()),/不支持沙箱接入/);
       const generations=new RuntimeSettingsService({store:new RuntimeSettingsStore(db,keyMaster)}).instanceView().provider_generations;
-      assert.equal(generations.length,3);
-      assert.equal(generations.filter(generation=>generation.active).length,3);
+      assert.equal(generations.length,2);
+      assert.equal(generations.filter(generation=>generation.active).length,2);
       assert.ok(generations.some(generation=>generation.provider_account_key===second.provider_account_key));
       assert.equal(db.integrityCheck().ok,true);
     });
@@ -78,6 +79,43 @@ describe("Alipay account configuration",()=>{
       assert.throws(()=>store.snapshot(second.id));
       assert.throws(()=>new RuntimeSettingsStore(db,keyMaster).initialize());
       assert.ok(store.snapshot(first.id).provider);
+    });
+  });
+  it("keeps historical sandbox accounts readable without allowing checks, key changes or silent conversion",async()=>{
+    await withAccounts(async({db,store,service})=>{
+      const account=await configured(service,"历史账号","historic-app");
+      await service.regenerateApplicationKey(account.id,{revision:account.revision,change_id:randomUUID(),base_fingerprint:account.application_key_fingerprint!},keyAudit());
+      seedHistoricalSandboxAccount(db,account.id);
+      const before=service.get(account.id);
+      assert.equal(before.environment,"SANDBOX");
+      assert.equal(before.configured,false);
+      assert.ok(before.pending_application_key);
+      let verifications=0;
+      const guarded=new AlipayAccountService({store,verifyProviderApplicationKey:async()=>{verifications++;}});
+      const unsupported=(error:unknown)=>error instanceof AlipayAccountError&&error.code==="alipay_account_not_configured"&&error.message.includes("已上线");
+      await assert.rejects(guarded.update(account.id,edit(before),keyAudit()),unsupported);
+      await assert.rejects(guarded.update(account.id,{...edit(before),environment:"SANDBOX" as never},keyAudit()),/不支持沙箱接入/);
+      assert.throws(()=>store.update(account.id,before.revision,edit(before),keyAudit()),unsupported);
+      await assert.rejects(guarded.generateApplicationKey(account.id,{revision:before.revision},keyAudit()),unsupported);
+      await assert.rejects(guarded.regenerateApplicationKey(account.id,{revision:before.revision,change_id:randomUUID(),base_fingerprint:before.application_key_fingerprint!},keyAudit()),unsupported);
+      await assert.rejects(guarded.activateApplicationKey(account.id,{revision:before.revision,change_id:before.pending_application_key!.change_id,platform_public_key:nextPlatformPem},keyAudit()),unsupported);
+      assert.deepEqual(guarded.get(account.id),before);
+      const check=await guarded.check(account.id);
+      assert.equal(check.ok,false);
+      assert.match(check.message,/已上线/);
+      assert.equal(verifications,0);
+      assert.equal(store.snapshot(account.id).provider!.endpoint,"https://openapi-sandbox.dl.alipaydev.com");
+      assert.equal(store.snapshot(account.id).providerAccountKey,before.provider_account_key);
+      const settings=new RuntimeSettingsService({store:new RuntimeSettingsStore(db,keyMaster),alipayAccounts:guarded});
+      assert.equal(settings.status().complete,false);
+      assert.equal(settings.status().providerConfigured,false);
+      assert.equal(settings.instanceView().completion.complete,false);
+      assert.equal(settings.instanceView().provider?.environment,"SANDBOX");
+      assert.ok(settings.instanceView().provider_generations.every(generation=>!generation.active));
+      await guarded.discardApplicationKey(account.id,{revision:before.revision,change_id:before.pending_application_key!.change_id},keyAudit());
+      assert.equal(guarded.get(account.id).pending_application_key,null);
+      assert.equal(guarded.get(account.id).application_key_fingerprint,before.application_key_fingerprint);
+      assert.equal(db.integrityCheck().ok,true);
     });
   });
   it("saves a configuration despite a failed check and records a retry result",async()=>{
@@ -159,6 +197,37 @@ describe("Alipay account configuration",()=>{
       assert.equal(db.integrityCheck().ok,true);
     });
   });
+  it("reads a legacy sandbox singleton and migrates it without changing its gateway or binding",async()=>{
+    const directory=mkdtempSync(join(tmpdir(),"perpay-historical-sandbox-"));
+    const path=join(directory,"state.sqlite3");
+    const legacy=createLegacySettingsDatabase(path);
+    const settingsStore=new RuntimeSettingsStore(legacy.owner,keyMaster);
+    const settings=new RuntimeSettingsService({store:settingsStore});
+    settings.initialize();
+    await settings.saveProvider(providerInput(0),keyAudit());
+    seedHistoricalSandboxProvider(legacy.owner);
+    const before=settings.snapshot();
+    const unsupported=(error:unknown)=>error instanceof SettingsError&&error.code==="settings_not_configured";
+    assert.equal(settings.status().providerConfigured,false);
+    assert.equal(settings.view().provider!.environment,"SANDBOX");
+    await assert.rejects(settings.saveProvider(providerInput(before.revision),keyAudit()),unsupported);
+    await assert.rejects(settings.generateProviderApplicationKey(before.revision,keyAudit()),unsupported);
+    await assert.rejects(settings.regenerateProviderApplicationKey({revision:before.revision,change_id:randomUUID(),base_fingerprint:settings.view().application_key_fingerprint!},keyAudit()),unsupported);
+    assert.equal(settings.snapshot().activeProviderAccountKey,before.activeProviderAccountKey);
+    legacy.owner.close();
+    let upgraded:AppDatabase|null=null;
+    try {
+      upgraded=await AppDatabase.open(path,{masterKey:keyMaster});
+      const accounts=new AlipayAccountStore(upgraded,keyMaster);
+      const historical=accounts.view("default");
+      assert.equal(historical.environment,"SANDBOX");
+      assert.equal(historical.configured,false);
+      assert.equal(historical.provider_account_key,before.activeProviderAccountKey);
+      assert.equal(accounts.snapshot("default").provider!.privateKeyPem,before.provider!.privateKeyPem);
+      assert.equal(accounts.snapshot("default").provider!.endpoint,before.provider!.endpoint);
+      assert.equal(upgraded.integrityCheck().ok,true);
+    } finally {upgraded?.close();assert.ok(resolve(directory).startsWith(resolve(tmpdir())));rmSync(directory,{recursive:true,force:true});}
+  });
   it("restores the account runtime when entering a configuration change fails",async()=>{
     await withAccounts(async({store,service})=>{
       const account=await configured(service,"A","pause-error-app");
@@ -168,6 +237,27 @@ describe("Alipay account configuration",()=>{
       assert.deepEqual(restored,[account.id]);
       assert.deepEqual(service.get(account.id),account);
     });
+  });
+  it("rejects legacy sandbox configuration and key operations even when its public key is missing",async()=>{
+    const directory=mkdtempSync(join(tmpdir(),"perpay-incomplete-sandbox-"));
+    const legacy=createLegacySettingsDatabase(join(directory,"state.sqlite3"));
+    try {
+      const store=new RuntimeSettingsStore(legacy.owner,keyMaster);
+      const settings=new RuntimeSettingsService({store});
+      settings.initialize();
+      await settings.generateProviderApplicationKey(0,keyAudit());
+      seedHistoricalSandboxProvider(legacy.owner,"incomplete-sandbox");
+      const before=settings.snapshot();
+      assert.equal(before.provider,null);
+      const unsupported=(error:unknown)=>error instanceof SettingsError&&error.code==="settings_not_configured";
+      await assert.rejects(settings.generateProviderApplicationKey(before.revision,keyAudit()),unsupported);
+      await assert.rejects(settings.regenerateProviderApplicationKey({revision:before.revision,change_id:randomUUID(),base_fingerprint:settings.view().application_key_fingerprint!},keyAudit()),unsupported);
+      await assert.rejects(settings.activateProviderApplicationKey({revision:before.revision,change_id:randomUUID(),platform_public_key:platformPem},keyAudit()),unsupported);
+      await assert.rejects(settings.saveProvider(providerInput(before.revision),keyAudit()),unsupported);
+      assert.equal(settings.snapshot().revision,before.revision);
+      assert.equal(settings.snapshot().activeProviderAccountKey,before.activeProviderAccountKey);
+      new RuntimeSettingsStore(legacy.owner,keyMaster).initialize();
+    } finally {legacy.owner.close();assert.ok(resolve(directory).startsWith(resolve(tmpdir())));rmSync(directory,{recursive:true,force:true});}
   });
   it("reports completion only when one enabled account has all required settings",async()=>{
     await withAccounts(async({db,service})=>{

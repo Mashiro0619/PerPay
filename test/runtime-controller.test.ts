@@ -8,6 +8,7 @@ import { LedgerIngestScheduler } from "../src/ledger/scheduler.ts";
 import { ReconciliationScheduler } from "../src/reconciliation/scheduler.ts";
 import { WebhookScheduler } from "../src/notifications/scheduler.ts";
 import type { LedgerScanResult } from "../src/ledger/service.ts";
+import { privatePem, platformPem } from "./application-key-fixture.ts";
 
 const unconfiguredSettings: RuntimeSettingsSnapshot = Object.freeze({
   adminAccess: { enabled: false, cidrs: [] },
@@ -36,6 +37,25 @@ const unconfiguredSettings: RuntimeSettingsSnapshot = Object.freeze({
 });
 
 describe("runtime settings controller", () => {
+  it("keeps a historical sandbox singleton offline without preventing startup",async t=>{
+    const provider=parseProviderKeys({environment:"SANDBOX",appId:"historical-runtime",privateKey:privatePem,publicKey:platformPem,
+      timeoutMilliseconds:8000,scanIntervalMilliseconds:30000,activeScanIntervalMilliseconds:8000,safetyLagMilliseconds:10000,maximumSuccessAgeMilliseconds:120000});
+    let started=0;
+    t.mock.method(LedgerIngestScheduler.prototype,"start",()=>{started++;});
+    const runtime=new RuntimeController({database:{} as never,orders:{initialize(){}} as never,
+      ledger:{} as never,reconciliation:{} as never,webhooks:{} as never});
+    try {
+      await runtime.start({...unconfiguredSettings,provider,activeProviderAccountKey:"historical-sandbox",
+        collection:{codePayload:"https://qr.alipay.com/historical",orderTtlSeconds:300,amountOffsetMaximumCents:99,amountReuseCooldownSeconds:600}});
+      assert.equal(started,0);
+      assert.equal(runtime.status().configured,false);
+      assert.equal(runtime.status().activeProviderAccountKey,null);
+      assert.equal(runtime.ledgerHealth().enabled,false);
+      assert.equal(runtime.ledgerManualScan().available,false);
+      assert.throws(()=>runtime.requestLedgerScan());
+      assert.equal(provider.environment,"SANDBOX");
+    } finally {await runtime.stop();}
+  });
   it("refreshes cadence before waiting for order reconciliation and replaces workers on timing updates", async (t) => {
     const applicationKey = generateKeyPairSync("rsa", { modulusLength: 2048 });
     const platformKey = generateKeyPairSync("rsa", { modulusLength: 2048 });

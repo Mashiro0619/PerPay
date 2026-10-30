@@ -51,9 +51,9 @@ it("deletes an unused account after real runtime profile creation and preserves 
     account = await current.accounts.generateApplicationKey(account.id, { revision: account.revision }, keyAudit());
     account = await current.accounts.update(account.id, { code_payload: "https://qr.alipay.com/unused-two",
       revision: account.revision, name: account.name, enabled: account.enabled, app_id: account.app_id,
-      environment: account.environment, platform_public_key: undefined }, keyAudit());
+      environment: "PRODUCTION", platform_public_key: undefined }, keyAudit());
     account = await current.accounts.update(account.id, { revision: account.revision, name: account.name,
-      enabled: account.enabled, code_payload: account.code_payload, app_id: "replacement-app", environment: account.environment }, keyAudit());
+      enabled: account.enabled, code_payload: account.code_payload, app_id: "replacement-app", environment: "PRODUCTION" }, keyAudit());
     const evidence = immutableEvidence(database);
     assert.equal(evidence.collection_profiles!.length, 3);
     assert.equal(current.accounts.get(account.id).deletable, true);

@@ -22,7 +22,7 @@ const apiSecret = Buffer.alloc(32, 0x72).toString("base64url");
 
 function accountUpdate(account: AlipayAccountView) {
   return { revision: account.revision, name: account.name, enabled: account.enabled,
-    code_payload: account.code_payload, environment: account.environment, app_id: account.app_id,
+    code_payload: account.code_payload, environment: "PRODUCTION" as const, app_id: account.app_id,
     platform_public_key: account.platform_public_key };
 }
 

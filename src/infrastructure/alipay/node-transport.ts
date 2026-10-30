@@ -22,7 +22,6 @@ import {
 const DEFAULT_ENDPOINT = "https://openapi.alipay.com";
 const ALLOWED_ENDPOINT_HOSTS = new Set([
   "openapi.alipay.com",
-  "openapi-sandbox.dl.alipaydev.com",
 ]);
 const ALLOWED_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]);
 const FORBIDDEN_REQUEST_HEADERS = new Set([
@@ -73,7 +72,7 @@ const defaultDependencies: NodeV3TransportDependencies = Object.freeze({
 });
 
 export interface NodeV3TransportOptions {
-  /** Only the official production or sandbox gateway is accepted. */
+  /** Only the official production gateway is accepted. */
   readonly endpoint?: string;
   readonly userAgent?: string;
 }

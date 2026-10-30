@@ -4,7 +4,7 @@ import {
   NodeV3Transport,
   type V3Transport,
 } from "../infrastructure/alipay/index.ts";
-import type { ProviderSettings } from "./model.ts";
+import { isProductionProvider, PRODUCTION_PROVIDER_REQUIRED_MESSAGE, type ProviderSettings } from "./model.ts";
 import { SettingsError } from "./store.ts";
 
 export interface ProviderKeyVerificationOptions {
@@ -26,6 +26,9 @@ export async function verifyProviderApplicationKey(
     readonly clock?: () => number;
   } = {},
 ): Promise<void> {
+  if (!isProductionProvider(provider)) {
+    throw new SettingsError("settings_not_configured", PRODUCTION_PROVIDER_REQUIRED_MESSAGE);
+  }
   const clock = dependencies.clock ?? Date.now;
   const timeoutMilliseconds = Math.min(provider.timeoutMilliseconds, 8_000);
   const signal = AbortSignal.any([
@@ -68,7 +71,7 @@ export async function verifyProviderApplicationKey(
         message =
           "支付宝未接受新私钥的签名，请确认已向同一应用上传新的应用公钥，并等待其生效。";
       else if (error.kind === "authorization")
-        message = "支付宝未允许账务明细查询，请检查此应用的查询权限。";
+        message = "支付宝未允许账务明细查询，请先确认应用已上线并具备账务明细查询权限。";
       else if (error.kind === "signature_invalid")
         message =
           "支付宝响应验签失败，请填写支付宝当前提供的支付宝公钥，不是应用公钥。";

@@ -23,6 +23,7 @@ import { loadConfig } from "../src/config.ts";
 import { IdentityService } from "../src/identity/service.ts";
 import type { SiteCollection } from "../src/sites/model.ts";
 import { keyMaster, privatePem, platformPem, keyAudit } from "./application-key-fixture.ts";
+import { seedHistoricalSandboxAccount } from "./historical-sandbox-fixture.ts";
 
 const BASE = 2_000_000_000_000;
 const code = (name: string) => "https://qr.alipay.com/" + name;
@@ -32,7 +33,7 @@ const request = (name: string, amount = 2000) => createOrderRequestSchema.parse(
 const fixed = (id: string): SiteCollection => ({ mode: "FIXED", accounts: [{ account_id: id, weight: 1 }] });
 const edit = (account: AlipayAccountView, patch: Record<string, unknown> = {}) => ({
   revision: account.revision, name: account.name, enabled: account.enabled, code_payload: account.code_payload,
-  app_id: account.app_id, environment: account.environment, ...patch,
+  app_id: account.app_id, environment: "PRODUCTION" as const, ...patch,
 });
 
 async function fixture() {
@@ -168,8 +169,10 @@ describe("multi-account collection", () => {
       const filtered = readAdminLedgerPage(f.database, { environment: null, alipayAccountId: f.first.id, q: "same-external", sortBy: "amount_cents" });
       assert.equal(filtered.items.length, 1); assert.equal(filtered.items[0]!.alipay_account_id, f.first.id);
       assert.equal(readAdminLedgerDetail(f.database, "PRODUCTION", entryA, true)!.sources.length, 1);
-      const sandbox = await f.accounts.create({ name: "沙箱账号", app_id: "multi-account-a", environment: "SANDBOX",
+      const historical = await f.accounts.create({ name: "历史账号", app_id: "historical-app",
         private_key: privatePem, platform_public_key: platformPem, code_payload: code("sandbox") }, keyAudit());
+      seedHistoricalSandboxAccount(f.database,historical.id,"multi-account-a");
+      const sandbox=f.accounts.get(historical.id);
       credit(ledger, f.store.snapshot(sandbox.id).providerAccountKey!, "same-external-id", 2001, f.clock());
       assert.equal(f.accounts.get(sandbox.id).deletable, false);
       await assert.rejects(f.accounts.remove(sandbox.id, { revision: sandbox.revision }, keyAudit()),
@@ -233,6 +236,35 @@ describe("multi-account collection", () => {
       assert.equal(started.length, 7);
       assert.equal(runtime.accountHealth(f.second.id).collectionReady, true);
     } finally { await runtime.stop(); f.close(); }
+  });
+  it("never starts a historical sandbox worker or allocates new orders to it",async t=>{
+    const f=await fixture();
+    seedHistoricalSandboxAccount(f.database,f.second.id);
+    let started=0;
+    t.mock.method(LedgerIngestScheduler.prototype,"start",()=>{started++;});
+    t.mock.method(ReconciliationScheduler.prototype,"start",async()=>{});
+    t.mock.method(WebhookScheduler.prototype,"start",async()=>{});
+    const runtime=new RuntimeController({database:f.database,orders:f.orders,ledger:new LedgerStore(f.database),
+      reconciliation:new ReconciliationStore(f.database),webhooks:new WebhookStore(f.database),sites:f.sites,
+      accounts:()=>f.store.snapshots(),clock:f.clock});
+    try {
+      const historical=f.store.snapshot(f.second.id);
+      assert.equal(historical.configured,false);
+      assert.deepEqual(collectionCandidates(fixed(f.second.id),[{...historical,configured:true}],()=>true),[]);
+      const site=f.site("历史账号网站",fixed(f.second.id));
+      const before=f.accounts.get(f.second.id);
+      assert.throws(()=>f.orders.forSite(site.clientId).create(request("no-sandbox-order")),error=>error instanceof OrderError&&error.code==="alipay_accounts_unavailable");
+      await runtime.start(f.settings.instanceSnapshot());
+      assert.equal(started,1);
+      assert.equal(runtime.accountHealth(f.second.id).state,"unsupported");
+      assert.equal(runtime.accountHealth(f.second.id).collectionReady,false);
+      assert.equal(runtime.ledgerManualScan(f.second.id).available,false);
+      assert.throws(()=>runtime.requestLedgerScan(f.second.id));
+      await runtime.applyAccounts(f.second.id);
+      assert.equal(started,1);
+      assert.deepEqual(f.accounts.get(f.second.id),before);
+      assert.equal(f.database.integrityCheck().ok,true);
+    } finally {await runtime.stop();f.close();}
   });
 });
 

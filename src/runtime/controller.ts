@@ -32,7 +32,7 @@ import {
   type ReconciliationSchedulerHealth,
   type ReconciliationStore,
 } from "../reconciliation/index.ts";
-import type { InstanceRuntimeSettingsSnapshot, RuntimeSettingsSnapshot } from "../settings/model.ts";
+import { isProductionProvider, type InstanceRuntimeSettingsSnapshot, type RuntimeSettingsSnapshot } from "../settings/model.ts";
 type PaymentRuntimeSnapshot = RuntimeSettingsSnapshot | InstanceRuntimeSettingsSnapshot;
 import { SettingsError } from "../settings/store.ts";
 import { collectionCodeError } from "../shared/collection-code.ts";
@@ -195,6 +195,9 @@ export class RuntimeController {
 
   accountHealth(accountId: string): AccountRuntimeHealth {
     const account = this.#accounts?.().find(account => account.id === accountId);
+    if (account && account.environment !== "PRODUCTION") {
+      return { state: "unsupported", lastSuccessAt: null, lastErrorCode: "provider_environment_unsupported", collectionReady: false };
+    }
     const worker = this.#accountWorkers.get(accountId);
     const health = worker?.scheduler.health();
     const lastSuccessAt = health?.lastSuccessAt ?? null;
@@ -222,12 +225,13 @@ export class RuntimeController {
 
   status(): PaymentRuntimeStatus {
     const snapshot = this.#snapshot;
-    const provider = this.#accounts?.().find(account => account.provider)?.provider ?? snapshot?.provider;
+    const provider = this.#accounts ? this.#accounts().find(account => isProductionProvider(account.provider))?.provider
+      : isProductionProvider(snapshot?.provider) ? snapshot.provider : null;
     return Object.freeze({
-      configured: this.#accounts ? this.#accounts().some(account => account.configured && account.enabled) : snapshot !== null && isPaymentConfigured(snapshot),
+      configured: this.#accounts ? this.#accounts().some(account => account.environment === "PRODUCTION" && account.configured && account.enabled && isProductionProvider(account.provider)) : snapshot !== null && isPaymentConfigured(snapshot),
       transitioning: this.#transitioning,
       paymentRevision: snapshot?.paymentRevision ?? 0,
-      activeProviderAccountKey: snapshot?.activeProviderAccountKey ?? null,
+      activeProviderAccountKey: isProductionProvider(snapshot?.provider) ? snapshot.activeProviderAccountKey : null,
       scanIntervalMilliseconds: provider?.scanIntervalMilliseconds ?? null,
       maximumSuccessAgeMilliseconds: provider?.maximumSuccessAgeMilliseconds ?? null,
     });
@@ -493,7 +497,7 @@ export class RuntimeController {
     this.#orders.initialize();
     for (const [id, worker] of this.#accountWorkers) {
       const account = accounts.find(account => account.id === id);
-      if (account?.provider && account.providerAccountKey && account.revision === worker.account.revision &&
+      if (account?.environment === "PRODUCTION" && isProductionProvider(account.provider) && account.providerAccountKey && account.revision === worker.account.revision &&
         previous?.paymentRevision === snapshot.paymentRevision) continue;
       worker.manualScanner.invalidate();
       await worker.scheduler.stop();
@@ -507,7 +511,7 @@ export class RuntimeController {
     }
     this.#snapshot = snapshot;
     for (const account of accounts) {
-      if (!account.provider || !account.providerAccountKey || this.#accountWorkers.has(account.id) ||
+      if (account.environment !== "PRODUCTION" || !isProductionProvider(account.provider) || !account.providerAccountKey || this.#accountWorkers.has(account.id) ||
         this.#accountTransitions.has(account.id) || this.#stopped) continue;
       const accountSnapshot: PaymentRuntimeSnapshot = { ...snapshot,
         provider: account.provider, activeProviderAccountKey: account.providerAccountKey,
@@ -646,7 +650,7 @@ export class RuntimeController {
   #createLedgerScheduler(snapshot: PaymentRuntimeSnapshot): LedgerIngestScheduler {
     const providerSettings = snapshot.provider;
     const providerAccountKey = snapshot.activeProviderAccountKey;
-    if (!providerSettings || !providerAccountKey) {
+    if (!isProductionProvider(providerSettings) || !providerAccountKey) {
       throw new Error("payment runtime was started without provider settings");
     }
     const activation = this.#accounts ? this.#ledger.providerIdentity(providerAccountKey) : this.#ledger.activeProviderIdentity();
@@ -813,7 +817,7 @@ export class RuntimeController {
 
 function isPaymentConfigured(snapshot: PaymentRuntimeSnapshot): boolean {
   return snapshot.collection !== null && collectionCodeError(snapshot.collection.codePayload) === null &&
-    snapshot.provider !== null &&
+    isProductionProvider(snapshot.provider) &&
     snapshot.activeProviderAccountKey !== null;
 }
 

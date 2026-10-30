@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import type { AccountLogDetail } from "../src/infrastructure/alipay/types.ts";
 import type { LedgerStore } from "../src/ledger/store.ts";
-import { SANDBOX_PROVIDER_ENDPOINT } from "../src/settings/model.ts";
+import { PRODUCTION_PROVIDER_ENDPOINT } from "../src/settings/model.ts";
 import { previewLedgerNumber, previewTradeNumber } from "./preview-identities.ts";
 
 const providerTime = (time: number) => new Date(time + 8 * 3_600_000).toISOString().slice(0, 19).replace("T", " ");
@@ -36,7 +36,7 @@ export function seedHistoricalLedgerSource(ledger: LedgerStore, capturedAt: numb
     return { ...fields, raw: { ...fields, synthetic: true } };
   });
   ledger.bindProviderIdentity({ providerAccountKey: "preview-historical", providerKind: "alipay",
-    endpoint: SANDBOX_PROVIDER_ENDPOINT, externalAccountId: "2026000000000002" }, occurredAt);
+    endpoint: PRODUCTION_PROVIDER_ENDPOINT, externalAccountId: "2026000000000002" }, occurredAt);
   const entries = record(ledger, "preview-historical", details, occurredAt);
   return { details, entries };
 }

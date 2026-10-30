@@ -44,6 +44,18 @@ const disabledWebhook: WebhookSettings = Object.freeze({
 });
 
 describe("order service", () => {
+  it("does not initialize collection profiles or create new orders for historical sandbox settings",async()=>{
+    await withDatabase("historical-sandbox",async database=>{
+      const settings=runtimeSettings();
+      const historical:RuntimeSettingsSnapshot={...settings,provider:{...settings.provider!,environment:"SANDBOX",endpoint:"https://openapi-sandbox.dl.alipaydev.com"}};
+      const orders=new OrderService(database,()=>historical);
+      const counts=()=>database.read(db=>db.prepare("SELECT (SELECT COUNT(*) FROM collection_profiles) AS profiles,(SELECT COUNT(*) FROM payment_orders) AS orders").get());
+      const before=counts();
+      assert.equal(orders.initialize(),null);
+      assert.throws(()=>orders.create(orderRequest("no-sandbox-order",2000)),error=>error instanceof OrderError&&error.code==="system_not_configured");
+      assert.deepEqual(counts(),before);
+    },false);
+  });
   it("allows administrator-side order service without a business API credential", async () => {
     await withDatabase("no-api-credential", async (database) => {
       const settings = runtimeSettings({ apiSecret: null, apiSecretFingerprint: null });

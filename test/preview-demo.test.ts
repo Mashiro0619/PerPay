@@ -5,6 +5,7 @@ import { describe, it } from "node:test";
 
 import { createPreviewDemo, DEMO_QR_TEXT } from "../scripts/preview-demo.ts";
 import { renderCollectionCodeSvg } from "../src/http/web/collection-code.ts";
+import { PRODUCTION_PROVIDER_ENDPOINT } from "../src/settings/model.ts";
 
 const day = 86_400_000;
 const midnight = Math.floor((Date.now() + 8 * 3_600_000) / day) * day - 8 * 3_600_000;
@@ -33,6 +34,12 @@ describe("isolated documentation preview", () => {
       assert.equal(stats.daily.reduce((sum, row) => sum + row.confirmed_amount_cents, 0), stats.confirmations.amount_cents);
       assert.equal(stats.daily.reduce((sum, row) => sum + row.orders_created, 0), stats.orders.created);
       assert.equal(demo.database.integrityCheck().ok, true);
+      const accounts = demo.database.read(connection => connection.prepare("SELECT account_id, environment FROM alipay_accounts").all());
+      assert.ok(accounts.length > 0);
+      assert.ok(accounts.every(account => account.environment === "PRODUCTION"), "Preview accounts use the supported official environment");
+      const accountId = String(accounts[0]!.account_id);
+      const endpoints = demo.database.read(connection => connection.prepare("SELECT DISTINCT provider_endpoint FROM provider_account_bindings").all());
+      assert.deepEqual(endpoints.map(binding => binding.provider_endpoint), [PRODUCTION_PROVIDER_ENDPOINT], "Current and historical fixture sources use the official gateway");
       assert.ok(Number(demo.database.read(db => db.prepare("SELECT count(DISTINCT api_client_id) AS total FROM payment_orders").get()?.total)) >= 6);
       const scenarioOrderIds = new Set([
         ...Object.values(demo.scenarios.lifecycle),
@@ -56,6 +63,9 @@ describe("isolated documentation preview", () => {
         ["PUT", "/api/admin/v1/settings/provider"],
         ["POST", "/api/admin/v1/sites"],
         ["POST", "/api/admin/v1/settings/provider/verify"],
+        ["POST", "/api/admin/v1/alipay-accounts/" + accountId + "/check"],
+        ["POST", "/api/admin/v1/alipay-accounts/" + accountId + "/application-key/activate"],
+        ["POST", "/api/admin/v1/system/ledger/scan"],
         ["POST", "/api/admin/v1/sessions/00000000-0000-4000-8000-000000000001/revoke"],
         ["POST", "/api/admin/v1/sessions/revoke-others"],
         ["POST", "/api/admin/v1/sessions/revoke-all"],

@@ -93,12 +93,13 @@ describe("V3 signing boundary", () => {
 });
 
 describe("Node V3 transport boundary", () => {
-  it("accepts only official HTTPS gateway origins on the default port", () => {
+  it("accepts only the official production HTTPS gateway on the default port", () => {
     assert.doesNotThrow(() => new NodeV3Transport());
     assert.doesNotThrow(() => new NodeV3Transport({
-      endpoint: "https://openapi-sandbox.dl.alipaydev.com",
+      endpoint: "https://openapi.alipay.com",
     }));
     for (const endpoint of [
+      "https://openapi-sandbox.dl.alipaydev.com",
       "http://openapi.alipay.com",
       "https://openapi.alipay.com:444",
       "https://openapi.alipay.com/path",

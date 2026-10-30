@@ -116,7 +116,8 @@ describe("first collection onboarding", () => {
     await userEvent.setup().click(help);
     expect(screen.getByText(/支付宝搜索“收款码”申请/)).toBeVisible();
     expect(screen.getByText("使用收款账户创建“网页应用”。")).toBeVisible();
-    expect(screen.getByText("账号默认拥有账务明细查询权限。")).toBeVisible();
+    expect(screen.getByText("在支付宝平台完成应用上线；“开发中”应用不能查账。")).toBeVisible();
+    expect(screen.getByText("确认应用具备对应收款账户的账务明细查询权限。")).toBeVisible();
     expect(
       screen.queryByText(/网页／移动应用|无需单独申请账务明细查询权限/),
     ).not.toBeInTheDocument();
@@ -150,7 +151,7 @@ describe("first collection onboarding", () => {
     const view = mountOnboarding({ stage: 1 });
     expect(await screen.findByLabelText("应用 ID（App ID）")).toBeVisible();
     expect(screen.getByLabelText("支付宝公钥")).toBeVisible();
-    expect(screen.getByLabelText("支付宝环境")).toBeVisible();
+    expect(screen.queryByLabelText("支付宝环境")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("请求超时（秒）")).not.toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "支付宝应用管理" }),
@@ -253,7 +254,9 @@ describe("first collection onboarding", () => {
     expect(screen.queryByRole("alertdialog", { name: "放弃未保存的修改？" })).not.toBeInTheDocument();
     expect(await view.writes()[0]!.clone().json()).toMatchObject({
       revision: 3,
+      environment: "PRODUCTION",
       app_id: "my-app",
+      platform_public_key: "synthetic-platform-public-key",
     });
     const unload = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(unload);

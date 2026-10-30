@@ -97,10 +97,12 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
     const application = generateKeyPairSync("rsa", { modulusLength: 2048 });
     const platform = generateKeyPairSync("rsa", { modulusLength: 2048 });
     const accounts = settings.accountService()!;
+    // Use official source identities; temporary stores and the read-only app
+    // isolate this fixture, and no provider or notification transport is created.
     const account = await accounts.create({
       name: "演示收款账号", enabled: true,
       code_payload: "https://qr.alipay.com/perpay-documentation-no-real-payment",
-      environment: "SANDBOX", app_id: "2026000000000001",
+      environment: "PRODUCTION", app_id: "2026000000000001",
       private_key: application.privateKey.export({ format: "pem", type: "pkcs8" }).toString(),
       platform_public_key: platform.publicKey.export({ format: "pem", type: "spki" }).toString(),
     }, audit);

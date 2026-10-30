@@ -32,7 +32,7 @@ import { applicationKeyState } from "@/lib/application-key";
 import { useFormDraft } from "@/drafts";
 import { useSuccessToast } from "@/components/Feedback";
 import { CollectionCodeField } from "@/components/CollectionCodeField";
-import { ApplicationKey } from "@/components/ApplicationKey";
+import { ApplicationKey, hasLegacyAlipayConfiguration, LegacyAlipayNotice } from "@/components/ApplicationKey";
 export { ApplicationKey } from "@/components/ApplicationKey";
 import { ErrorNotice } from "@/components/request-state";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -257,6 +257,8 @@ export function SettingsEditor({
   // Keep defaults stable for this mounted draft when a sibling form saves.
   // Explicit refreshes remount the editor; saves still use the latest revision.
   const [initialSettings] = useState(settings);
+  const legacyProvider = section === "provider" &&
+    (hasLegacyAlipayConfiguration(initialSettings) || hasLegacyAlipayConfiguration(settings));
   const [privateOpen, setPrivateOpen] = useState(false);
   function revealField(field: HTMLElement) {
     if (field.closest("[data-settings-private]")) setPrivateOpen(true);
@@ -266,13 +268,6 @@ export function SettingsEditor({
   }
   const draft = useFormDraft();
   const queryClient = useQueryClient();
-  const [environment, setEnvironment] = useState(
-    initialSettings.provider?.environment ?? "PRODUCTION",
-  );
-  useEffect(() => {
-    // Select updates its form input after committing the selected value.
-    if (section === "provider") draft.onChange();
-  }, [environment, section]);
   const [decoding, setDecoding] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [notificationEnabled, setNotificationEnabled] = useState(
@@ -296,11 +291,11 @@ export function SettingsEditor({
   // A parent that remounts this editor after saving keeps the same toast owner.
   const setSavedMessage = onFeedback ?? localFeedback;
   const submitting = useRef(false);
-  const canSave =
+  const canSave = !legacyProvider && (
     guided ||
     draft.dirty ||
     (section === "provider" && !settings.completion.provider) ||
-    (section === "collection" && !settings.completion.collection);
+    (section === "collection" && !settings.completion.collection));
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -311,6 +306,7 @@ export function SettingsEditor({
     networkMode: "always",
     retry: false,
     mutationFn: (form: FormData) => {
+      if (legacyProvider) throw new Error("旧沙箱接入已停用，请添加正式支付宝账号。");
       if (!onlineManager.isOnline() || !navigator.onLine)
         throw new Error("网络已断开，设置未提交。恢复连接后请重新提交。");
       return saveSettings(section, form, settings);
@@ -358,6 +354,8 @@ export function SettingsEditor({
     save.mutate(new FormData(event.currentTarget));
   }
 
+  if (legacyProvider) return <LegacyAlipayNotice settings={hasLegacyAlipayConfiguration(settings) ? settings : initialSettings} />;
+
   const providerIdentity = (
     <FieldGroup>
       <Field data-invalid={!!fieldErrors.app_id}>
@@ -372,9 +370,12 @@ export function SettingsEditor({
           autoComplete="off"
           aria-invalid={!!fieldErrors.app_id}
           aria-describedby={
-            fieldErrors.app_id ? "setting-app-id-error" : undefined
+            fieldErrors.app_id ? "setting-app-id-error setting-app-id-hint" : "setting-app-id-hint"
           }
         />
+        <FieldDescription id="setting-app-id-hint">
+          使用支付宝平台状态为“已上线”的应用；“开发中”应用不能查账。
+        </FieldDescription>
         {fieldErrors.app_id && (
           <FieldError id="setting-app-id-error">
             {fieldErrors.app_id}
@@ -476,53 +477,6 @@ export function SettingsEditor({
     setSavedMessage("");
     save.reset();
   }
-  const providerEnvironment = (
-      <Field data-invalid={!!fieldErrors.environment}>
-        <FieldLabel htmlFor="setting-environment">支付宝环境</FieldLabel>
-        <Select
-          name="environment"
-          value={environment}
-          disabled={save.isPending}
-          items={[
-            { value: "PRODUCTION", label: "生产环境" },
-            { value: "SANDBOX", label: "沙箱环境" },
-          ]}
-          onValueChange={(value) => {
-            if (value !== "PRODUCTION" && value !== "SANDBOX") return;
-            setEnvironment(value);
-            setSavedMessage("");
-            save.reset();
-            setFieldErrors((current) => {
-              const next = { ...current };
-              delete next.environment;
-              return next;
-            });
-          }}
-        >
-          <SelectTrigger
-            id="setting-environment"
-            className="w-full gap-1"
-            aria-invalid={!!fieldErrors.environment}
-            aria-describedby={
-              fieldErrors.environment ? "setting-environment-error" : undefined
-            }
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem value="PRODUCTION">生产环境</SelectItem>
-              <SelectItem value="SANDBOX">沙箱环境</SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        {fieldErrors.environment && (
-          <FieldError id="setting-environment-error">
-            {fieldErrors.environment}
-          </FieldError>
-        )}
-      </Field>
-  );
   const providerCollection = (
     <FieldGroup className="settings-fields">
       <Button
@@ -868,7 +822,7 @@ export function SettingsEditor({
   );
 
   const panels: Array<{ title: string; description?: string; fields: ReactNode }> =
-    section === "provider" ? [{ title: "开放平台应用", fields: <FieldGroup>{providerIdentity}{providerEnvironment}</FieldGroup> }]
+    section === "provider" ? [{ title: "开放平台应用", fields: providerIdentity }]
     : section === "collection" ? [{ title: "收款码", fields: collectionIdentity }]
     : section === "collection-policy" ? [{ title: "PerPay 查账设置", fields: providerCollection }]
     : section === "display" ? [{ title: "界面显示", fields: displayFields }]
@@ -1065,10 +1019,11 @@ async function saveSettings(
     ).data;
   }
   if (section === "provider") {
+    if (hasLegacyAlipayConfiguration(settings)) throw new Error("旧沙箱接入已停用，请添加正式支付宝账号。");
     const platformPublicKey = text("platform_public_key");
     if (!platformPublicKey) throw new SettingsInputError("platform_public_key", "请填写支付宝公钥。");
     return (await result(api.updateProviderSettings({ body: {
-      revision, environment: text("environment") === "SANDBOX" ? "SANDBOX" : "PRODUCTION",
+      revision, environment: "PRODUCTION",
       app_id: text("app_id"), platform_public_key: platformPublicKey,
       ...(text("private_key") ? { private_key: text("private_key") } : {}),
     } }))).data;

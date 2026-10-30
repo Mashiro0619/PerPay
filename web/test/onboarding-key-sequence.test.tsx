@@ -76,9 +76,8 @@ describe("sequential application-key onboarding", () => {
     expect(within(form).getByLabelText("应用 ID（App ID）")).toHaveValue(
       "test-app-id",
     );
-    expect(within(form).getByLabelText("支付宝环境")).toHaveAttribute(
-      "readonly",
-    );
+    expect(within(form).queryByLabelText("支付宝环境")).not.toBeInTheDocument();
+    expect(within(form).queryByRole("combobox", { name: "支付宝环境" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("请求超时（秒）")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "保存并继续" }),

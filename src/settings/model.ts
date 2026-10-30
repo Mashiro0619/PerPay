@@ -29,6 +29,11 @@ export const RUNTIME_SECRET_NAMES = [
 
 export type RuntimeSecretName = (typeof RUNTIME_SECRET_NAMES)[number];
 export type ProviderEnvironment = "PRODUCTION" | "SANDBOX";
+export const PRODUCTION_PROVIDER_REQUIRED_MESSAGE =
+  "PerPay 仅支持已上线的支付宝应用，请添加正式账号。历史沙箱记录仅供查看。";
+export const productionProviderEnvironmentSchema = z.literal("PRODUCTION", {
+  error: "PerPay 仅支持已上线支付宝应用的正式环境，不支持沙箱接入。",
+});
 
 export const DEFAULT_CHECKOUT_KEY_ROTATION_DAYS = 90;
 export const DEFAULT_CHECKOUT_TERMINAL_OBSERVATION_SECONDS = 86_400;
@@ -58,6 +63,11 @@ export interface ProviderSettings {
   readonly minimumScanIntervalMilliseconds?: number;
   readonly safetyLagMilliseconds: number;
   readonly maximumSuccessAgeMilliseconds: number;
+}
+
+/** Historical settings remain readable; only production credentials may be used live. */
+export function isProductionProvider(provider: ProviderSettings | null | undefined): provider is ProviderSettings {
+  return provider?.environment === "PRODUCTION" && provider.endpoint === PRODUCTION_PROVIDER_ENDPOINT;
 }
 
 export interface ProviderApplicationKeyMaterial {
@@ -200,12 +210,12 @@ export const collectionSettingsInputSchema = z.object({
 
 export const providerApplicationInputSchema = z.object({
   revision: z.number().int().nonnegative(),
-  environment: z.enum(["PRODUCTION", "SANDBOX"]),
+  environment: productionProviderEnvironmentSchema.default("PRODUCTION"),
   app_id: z.string().trim().regex(/^[A-Za-z0-9._-]{1,64}$/),
   private_key: z.string().min(1).max(16 * 1024).optional(),
   platform_public_key: z.string().min(1).max(16 * 1024).optional(),
 }).strict();
-export type ProviderApplicationInput = z.infer<typeof providerApplicationInputSchema>;
+export type ProviderApplicationInput = z.input<typeof providerApplicationInputSchema>;
 export const collectionCodeInputSchema = z.object({
   revision: z.number().int().nonnegative(),
   code_payload: collectionSettingsInputSchema.shape.code_payload,
@@ -264,7 +274,7 @@ export const backupSettingsInputSchema = z.object({
 }).strict();
 
 export type CollectionSettingsInput = z.infer<typeof collectionSettingsInputSchema>;
-export type ProviderSettingsInput = z.infer<typeof providerSettingsInputSchema>;
+export type ProviderSettingsInput = z.input<typeof providerSettingsInputSchema>;
 export type WebhookSettingsInput = z.infer<typeof webhookSettingsInputSchema>;
 export type AdvancedSettingsInput = z.infer<typeof advancedSettingsInputSchema>;
 export type BackupSettingsInput = z.infer<typeof backupSettingsInputSchema>;

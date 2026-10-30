@@ -6258,7 +6258,8 @@ components:
           type: string
           enum:
             - PRODUCTION
-            - SANDBOX
+          default: PRODUCTION
+          description: Only live Alipay applications using the production gateway are supported.
         app_id:
           type:
             - string
@@ -6279,7 +6280,6 @@ components:
         - name
         - enabled
         - code_payload
-        - environment
         - app_id
       properties:
         name:
@@ -6296,7 +6296,8 @@ components:
           type: string
           enum:
             - PRODUCTION
-            - SANDBOX
+          default: PRODUCTION
+          description: Only live Alipay applications using the production gateway are supported.
         app_id:
           type:
             - string
@@ -7757,7 +7758,8 @@ components:
           type: string
           enum:
             - PRODUCTION
-            - SANDBOX
+          default: PRODUCTION
+          description: Only live Alipay applications using the production gateway are supported.
         app_id:
           type: string
           pattern: ^[A-Za-z0-9._-]{1,64}$
@@ -7771,7 +7773,6 @@ components:
           maxLength: 16384
       required:
         - revision
-        - environment
         - app_id
       additionalProperties: false
     NotificationSettingsRequest:

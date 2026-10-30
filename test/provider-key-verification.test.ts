@@ -50,6 +50,12 @@ const failed = (error: unknown) =>
   error.code === "provider_application_key_verification_failed";
 
 describe("read-only application key verification", () => {
+  it("rejects historical sandbox credentials before invoking an injected transport",async()=>{
+    const transport=new FakeV3Transport([response()]);
+    await assert.rejects(verifyProviderApplicationKey({...provider,environment:"SANDBOX",endpoint:"https://openapi-sandbox.dl.alipaydev.com"},{},{transport,clock}),
+      error=>error instanceof SettingsError&&error.code==="settings_not_configured"&&error.message.includes("已上线"));
+    assert.equal(transport.requests.length,0);
+  });
   it("uses the candidate key for one signed GET with a bounded window, page size and timeout", async () => {
     const transport = new FakeV3Transport([response()]);
     await verifyProviderApplicationKey(

@@ -20,6 +20,9 @@ import {
   isCanonicalSecret,
   parseProviderApplicationPrivateKey,
   parseProviderKeys,
+  isProductionProvider,
+  PRODUCTION_PROVIDER_ENDPOINT,
+  PRODUCTION_PROVIDER_REQUIRED_MESSAGE,
   type AdvancedSettingsInput,
   type BackupSettingsInput,
   type DashboardChartType,
@@ -272,10 +275,10 @@ export class RuntimeSettingsStore {
     const accountStore = this.accountStore();
     const accounts = accountStore?.snapshots() ?? [];
     const usesAccounts = accountStore !== null;
-    const collectionConfigured = usesAccounts ? accounts.some(account => account.enabled && account.codePayload !== null && collectionCodeError(account.codePayload) === null)
+    const collectionConfigured = usesAccounts ? accounts.some(account => account.environment === "PRODUCTION" && account.enabled && account.codePayload !== null && collectionCodeError(account.codePayload) === null)
       : snapshot.collection !== null && collectionCodeError(snapshot.collection.codePayload) === null;
-    const providerConfigured = usesAccounts ? accounts.some(account => account.enabled && account.provider !== null)
-      : snapshot.provider !== null && snapshot.activeProviderAccountKey !== null;
+    const providerConfigured = usesAccounts ? accounts.some(account => account.enabled && isProductionProvider(account.provider))
+      : isProductionProvider(snapshot.provider) && snapshot.activeProviderAccountKey !== null;
     const apiConfigured = "apiSecret" in snapshot && snapshot.apiSecret !== null;
     return {
       revision: snapshot.revision,
@@ -286,8 +289,23 @@ export class RuntimeSettingsStore {
       providerConfigured,
       apiConfigured,
       notificationConfigured: !("webhook" in snapshot) || !snapshot.webhook.enabled || snapshot.webhook.secret !== null,
-      activeProviderAccountKey: usesAccounts ? (accounts.length === 1 ? accounts[0]!.providerAccountKey : null) : snapshot.activeProviderAccountKey,
+      activeProviderAccountKey: usesAccounts ? (accounts.length === 1 && isProductionProvider(accounts[0]!.provider) ? accounts[0]!.providerAccountKey : null)
+        : isProductionProvider(snapshot.provider) ? snapshot.activeProviderAccountKey : null,
     };
+  }
+
+  assertProductionProviderEnvironment(): void {
+    this.#database.read(connection => {
+      const current = connection.prepare(`SELECT config.provider_environment AS environment, binding.provider_endpoint AS endpoint
+        FROM runtime_configuration AS config LEFT JOIN provider_account_bindings AS binding
+          ON binding.provider_account_key = config.provider_account_key WHERE config.singleton_key = 1`).get() as
+        { environment: ProviderEnvironment | null; endpoint: string | null };
+      const pendingSandbox = connection.prepare("SELECT 1 FROM provider_application_key_changes WHERE state='PENDING' AND environment='SANDBOX' LIMIT 1").get();
+      if ((current.environment !== null && current.environment !== "PRODUCTION") ||
+        (current.endpoint !== null && current.endpoint !== PRODUCTION_PROVIDER_ENDPOINT) || pendingSandbox) {
+        throw new SettingsError("settings_not_configured", PRODUCTION_PROVIDER_REQUIRED_MESSAGE);
+      }
+    });
   }
 
   providerApplicationKey(): ProviderApplicationKeyMaterial | null {
@@ -373,6 +391,9 @@ export class RuntimeSettingsStore {
     readonly provider?: ProviderSettings;
     readonly audit: SettingsAuditContext;
   }): PaymentSettingsSnapshot {
+    if (input.provider && !isProductionProvider(input.provider)) {
+      throw new SettingsError("settings_not_configured", PRODUCTION_PROVIDER_REQUIRED_MESSAGE);
+    }
     return this.#database.write((connection) => {
       assertRevision(connection, input.expectedRevision);
       const current = this.#paymentSnapshot(connection);
@@ -474,9 +495,16 @@ export class RuntimeSettingsStore {
     readonly audit: SettingsAuditContext;
     readonly now?: number;
   }): PaymentSettingsSnapshot {
+    if (input.environment !== "PRODUCTION" || input.providerIdentity.endpoint !== PRODUCTION_PROVIDER_ENDPOINT) {
+      throw new SettingsError("settings_not_configured", PRODUCTION_PROVIDER_REQUIRED_MESSAGE);
+    }
     const now = input.now ?? Date.now();
     return this.#database.write((connection) => {
       assertRevision(connection, input.expectedRevision);
+      const current = connection.prepare("SELECT provider_environment FROM runtime_configuration WHERE singleton_key=1").get() as {provider_environment: ProviderEnvironment | null};
+      if (current.provider_environment !== null && current.provider_environment !== "PRODUCTION") {
+        throw new SettingsError("settings_not_configured", PRODUCTION_PROVIDER_REQUIRED_MESSAGE);
+      }
       const pending = readApplicationKeyChange(connection, this.#cipher);
       if (pending && (
         pending.providerAccountKey !== input.accountKey || pending.appId !== input.appId ||

@@ -75,9 +75,10 @@ function mount(element: React.ReactNode, path = "/settings/accounts/first") {
 }
 
 describe("支付宝账号设置", () => {
-  it("retains saved configuration when the subsequent connection check fails and retries only that account", async () => {
+  it("preserves the production configuration through saving and retrying only that account's connection check", async () => {
     const writes: Array<{ path: string; body: unknown }> = [];
-    let saved = structuredClone(first);
+    const initial = first;
+    let saved = structuredClone(initial);
     let checks = 0;
     vi.stubGlobal(
       "fetch",
@@ -101,7 +102,8 @@ describe("支付宝账号设置", () => {
         return json({ data: saved });
       }),
     );
-    mount(<AlipayAccountEditor initial={first} />);
+    mount(<AlipayAccountEditor initial={initial} />);
+    expect(screen.queryByLabelText("支付宝环境")).not.toBeInTheDocument();
     const user = userEvent.setup();
     await user.clear(screen.getByLabelText("账号名称"));
     await user.type(screen.getByLabelText("账号名称"), "主账号（更新）");
@@ -116,6 +118,38 @@ describe("支付宝账号设置", () => {
       "/api/admin/v1/alipay-accounts/" + first.id + "/check",
       "/api/admin/v1/alipay-accounts/" + first.id + "/check",
     ]);
+    expect(writes[0]!.body).toMatchObject({ environment: "PRODUCTION", revision: initial.revision });
+  });
+
+  it("keeps retired test accounts read-only and directs setup to a new live account", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const retired: AlipayAccount = {
+      ...first,
+      environment: "SANDBOX",
+      configured: false,
+      last_check: { ok: true, checked_at: first.created_at, message: "历史查询成功" },
+      pending_application_key: {
+        change_id: "33333333-3333-4333-8333-333333333333",
+        public_key: "retired-public-key",
+        fingerprint: "b".repeat(64),
+        app_id: first.app_id!,
+        environment: "SANDBOX",
+        created_at: first.created_at,
+      },
+    };
+    mount(<AlipayAccountEditor initial={retired} />);
+    expect(screen.getByText("旧版测试账号已停用")).toBeVisible();
+    expect(screen.queryByText("连接检查通过")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("账号名称")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存并检查" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "重新检查" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /验证并启用|生成应用密钥|更换应用密钥/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "添加支付宝账号" })).toHaveAttribute("href", "/settings/accounts/new");
+    fireEvent.submit(screen.getByLabelText("账号名称").closest("form")!);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(defaultSiteCollection([{ ...retired, configured: true }]).accounts).toEqual([]);
   });
 
   it("saves an incomplete account without a QR code or application data, then generates its own key", async () => {
@@ -148,6 +182,8 @@ describe("支付宝账号设置", () => {
       }),
     );
     mount(<AlipayAccountEditor initial={null} />);
+    expect(screen.queryByLabelText("支付宝环境")).not.toBeInTheDocument();
+    expect(screen.getByText(/请使用状态为“已上线”的支付宝应用/)).toBeVisible();
     const user = userEvent.setup();
     await user.type(screen.getByLabelText("账号名称"), "新账号");
     await user.click(screen.getByRole("button", { name: "保存草稿" }));
@@ -159,6 +195,7 @@ describe("支付宝账号设置", () => {
     ).toBeVisible();
     expect(writes[0]?.body).toMatchObject({
       name: "新账号",
+      environment: "PRODUCTION",
       code_payload: null,
       app_id: null,
       platform_public_key: null,

@@ -46,35 +46,23 @@ describe("minimal onboarding", () => {
     },
   );
 
-  it("shows an existing sandbox selection directly and preserves it when saving", async () => {
+  it.each(["application", "provider", "check"] as const)("keeps legacy sandbox configuration read-only on the %s step", async (step) => {
     const settings = configuredThrough(4);
     settings.provider = { ...settings.provider!, environment: "SANDBOX" };
     const view = mountOnboarding({
       stage: 4,
-      path: onboardingPath("provider"),
+      path: onboardingPath(step),
       handle: (request) =>
         request.url.endsWith("/settings")
           ? json({ data: settings })
           : undefined,
     });
-    const environment = await screen.findByLabelText("支付宝环境");
-    expect(environment).toBeVisible();
-    expect(environment).toHaveRole("combobox");
-    expect(environment).toHaveTextContent("沙箱环境");
-    expect(
-      screen.queryByRole("button", { name: /高级设置/ }),
-    ).not.toBeInTheDocument();
-    await userEvent
-      .setup()
-      .click(screen.getByRole("button", { name: "保存并继续" }));
-    await waitFor(() =>
-      expect(view.router.state.location.pathname).toBe(
-        onboardingPath("collection"),
-      ),
-    );
-    expect(await view.writes()[0]!.clone().json()).toMatchObject({
-      environment: "SANDBOX",
-    });
+    expect(await screen.findByText("旧沙箱接入已停用")).toBeVisible();
+    expect(screen.getByText("原 App ID：" + settings.provider!.app_id)).toBeVisible();
+    expect(screen.queryByLabelText("支付宝环境")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /保存并继续|生成应用密钥对|验证并启用|小额真实测试/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "添加正式支付宝账号" })).toHaveAttribute("href", "/settings/accounts/new");
+    expect(view.writes()).toHaveLength(0);
   });
 
   it("focuses a visible settings field returned as invalid by the server", async () => {

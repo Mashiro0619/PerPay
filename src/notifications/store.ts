@@ -9,6 +9,7 @@ import type { DatabaseSync } from "node:sqlite";
 
 import type { AppDatabase } from "../database/database.ts";
 import { appendAuditEvent } from "../database/identity-store.ts";
+import { LIVE_NOTIFICATION_TARGET } from "./live-target.ts";
 import {
   MAX_WEBHOOK_RESPONSE_BYTES,
   webhookDeliveryRequestFingerprint,
@@ -248,7 +249,8 @@ export class WebhookStore {
                   target.url_fingerprint, target.created_at AS target_created_at
              FROM outbox_events AS outbox
              JOIN webhook_targets AS target ON target.order_id = outbox.aggregate_id
-            WHERE (? IS NULL OR target.api_client_id = ?) AND NOT EXISTS (
+            WHERE (? IS NULL OR target.api_client_id = ?) AND ${LIVE_NOTIFICATION_TARGET}
+              AND NOT EXISTS (
                     SELECT 1 FROM webhook_deliveries AS delivery
                      WHERE delivery.outbox_event_id = outbox.outbox_event_id
                        AND delivery.target_id = target.target_id
@@ -350,6 +352,7 @@ export class WebhookStore {
              JOIN outbox_events AS outbox ON outbox.outbox_event_id = delivery.outbox_event_id
              JOIN webhook_targets AS target ON target.target_id = delivery.target_id
             WHERE (? IS NULL OR target.api_client_id = ?) AND delivery.status IN ('PENDING', 'RETRY_WAIT')
+              AND ${LIVE_NOTIFICATION_TARGET}
               AND delivery.next_attempt_at <= ?
               AND delivery.attempt_count < ?
             ORDER BY delivery.next_attempt_at, delivery.created_at, delivery.delivery_id
@@ -625,9 +628,13 @@ export class WebhookStore {
         return { delivery: mapDelivery(existing), replayed: true };
       }
       const target = connection
-        .prepare("SELECT allowed_origin, api_client_id FROM webhook_targets WHERE target_id = ?")
-        .get(original.target_id) as { allowed_origin: string; api_client_id: string } | undefined;
+        .prepare(`SELECT allowed_origin, api_client_id, ${LIVE_NOTIFICATION_TARGET} AS live
+                    FROM webhook_targets AS target WHERE target_id = ?`)
+        .get(original.target_id) as { allowed_origin: string; api_client_id: string; live: bigint | number } | undefined;
       if (!target) throw new Error("webhook delivery target cannot be read");
+      if (!Number(target.live)) {
+        throw new WebhookStoreError("webhook_delivery_state_conflict", "历史沙箱订单不支持重新发送通知。");
+      }
       // Modern replay reads the owner's current policy inside this transaction.
       // A caller's stale/global origin must never authorize another site's target.
       const siteMode = connection.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'sites'").get() !== undefined;
@@ -1094,10 +1101,12 @@ function readActiveSigningKey(connection: DatabaseSync, clientId?: string): Webh
 function recoverExpiredLeases(connection: DatabaseSync, now: number): number {
   const rows = connection
     .prepare(
-      `SELECT delivery_id, lease_token, attempt_count
-         FROM webhook_deliveries
-        WHERE status = 'LEASED' AND lease_expires_at <= ?
-        ORDER BY lease_expires_at, delivery_id`,
+      `SELECT delivery.delivery_id, delivery.lease_token, delivery.attempt_count
+         FROM webhook_deliveries AS delivery
+         JOIN webhook_targets AS target ON target.target_id = delivery.target_id
+        WHERE delivery.status = 'LEASED' AND delivery.lease_expires_at <= ?
+          AND ${LIVE_NOTIFICATION_TARGET}
+        ORDER BY delivery.lease_expires_at, delivery.delivery_id`,
     )
     .all(now) as Array<{
     delivery_id: string;
@@ -1143,6 +1152,7 @@ function deadLetterExhaustedDeliveries(
           SET status = 'DEAD_LETTER', dead_lettered_at = max(updated_at, ?),
               last_error_code = 'maximum_attempts_reached', updated_at = max(updated_at, ?)
         WHERE status IN ('PENDING', 'RETRY_WAIT')
+          AND target_id IN (SELECT target.target_id FROM webhook_targets AS target WHERE ${LIVE_NOTIFICATION_TARGET})
           AND attempt_count >= ?
           AND attempt_count >= 1
            AND (? IS NULL OR target_id IN (SELECT target_id FROM webhook_targets WHERE api_client_id = ?))`,

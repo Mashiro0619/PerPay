@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import { createPreviewDemo } from "../scripts/preview-demo.ts";
+import { PRODUCTION_PROVIDER_ENDPOINT } from "../src/settings/model.ts";
 import type {
   AdminLedgerDetail,
   AdminLedgerSummary,
@@ -381,11 +382,11 @@ describe("complete local preview scenarios", () => {
         assert.equal(new Set(identities).size, entries.length, "A provider event must occur once across all pages");
         const expected = preview.database.read(connection => connection.prepare(
           "SELECT DISTINCT entry.external_event_id FROM ledger_entries entry JOIN provider_account_bindings binding USING (provider_account_key) WHERE binding.provider_endpoint = ?",
-        ).all("https://openapi-sandbox.dl.alipaydev.com"));
+        ).all(PRODUCTION_PROVIDER_ENDPOINT));
         assert.deepEqual(new Set(identities), new Set(expected.map(row => String(row.external_event_id))));
         covers(entries.flatMap(entry => entry.states), ["UNALLOCATED", "ALLOCATED", "CONFLICT"], "Global ledger states");
         covers(entries.map(entry => entry.direction ?? "DISPUTED"), ["CREDIT", "DEBIT"], "Global ledger directions");
-        assert.ok(entries.every(entry => entry.environment === "SANDBOX"));
+        assert.ok(entries.every(entry => entry.environment === "PRODUCTION"));
 
         const duplicate = await data<AdminLedgerDetail>("/api/admin/v1/ledger/entries/" + preview.scenarios.ledger.identical);
         assert.equal(duplicate.content_consistent, true);

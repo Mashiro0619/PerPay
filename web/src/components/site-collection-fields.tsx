@@ -83,7 +83,7 @@ export function CollectionChoices({
 }) {
   const id = useId();
   const available = accounts.filter(
-    (account) => account.enabled && account.configured,
+    (account) => account.environment === "PRODUCTION" && account.enabled && account.configured,
   );
   const selected = new Set(value.accounts.map((account) => account.account_id));
   const choices = accounts.filter(

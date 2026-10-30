@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { collectionCodeError } from "../shared/collection-code.ts";
-import type { ProviderApplicationKeyChange, ProviderSettings } from "../settings/model.ts";
+import {
+  productionProviderEnvironmentSchema, PRODUCTION_PROVIDER_REQUIRED_MESSAGE,
+  type ProviderApplicationKeyChange, type ProviderSettings, type ProviderEnvironment,
+} from "../settings/model.ts";
 
 export const alipayAccountIdSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/);
 // Persisted namespace: the older singleton service generated primary/source:
@@ -10,7 +13,7 @@ const fields = {
   name: z.string().trim().min(1).max(80).regex(/^[^\u0000-\u001f\u007f-\u009f]+$/u),
   enabled: z.boolean(),
   code_payload: z.string().trim().refine(value => collectionCodeError(value) === null, "请填写有效的支付宝收款码内容。").nullable(),
-  environment: z.enum(["PRODUCTION", "SANDBOX"]),
+  environment: productionProviderEnvironmentSchema.default("PRODUCTION"),
   app_id: z.string().trim().regex(/^[A-Za-z0-9._-]{1,64}$/).nullable(),
   platform_public_key: z.string().trim().min(1).max(16 * 1024).nullable().optional(),
   private_key: z.string().trim().min(1).max(16 * 1024).optional(),
@@ -70,5 +73,11 @@ export class AlipayAccountError extends Error {
     super(message);
     this.name = "AlipayAccountError";
     this.code = code;
+  }
+}
+
+export function assertProductionAlipayEnvironment(environment: ProviderEnvironment): void {
+  if (environment !== "PRODUCTION") {
+    throw new AlipayAccountError("alipay_account_not_configured", PRODUCTION_PROVIDER_REQUIRED_MESSAGE);
   }
 }

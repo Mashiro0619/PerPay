@@ -2,7 +2,7 @@ import { assertSiteOrder, assertSiteResource, assertSiteLedger, SITE_ADMIN_ROUTE
 import { AlipayAccountError, alipayAccountIdSchema, createAlipayAccountInputSchema, updateAlipayAccountInputSchema, type AlipayAccountView } from "../alipay-accounts/model.ts";
 import type { AlipayAccountService } from "../alipay-accounts/service.ts";
 import { siteOverview } from "./site-overview.ts";
-import { collectionCodeInputSchema, providerApplicationInputSchema, instanceDisplayInputSchema } from "../settings/model.ts";
+import { collectionCodeInputSchema, providerApplicationInputSchema, instanceDisplayInputSchema, isProductionProvider } from "../settings/model.ts";
 import { SiteError, type SiteStore } from "../sites/store.ts";
 import { createSiteInputSchema, updateSiteInputSchema, updateSiteDefaultsInputSchema, siteClientIdSchema, type SiteSnapshot } from "../sites/model.ts";
 import { collectionPolicyInputSchema } from "../settings/collection-policy.ts";
@@ -2446,11 +2446,11 @@ function currentRuntimeStatus(dependencies: AppDependencies): PaymentRuntimeStat
   return {
     configured: snapshot !== undefined &&
       snapshot.collection !== null && collectionCodeError(snapshot.collection.codePayload) === null &&
-      snapshot.provider !== null &&
+      isProductionProvider(snapshot.provider) &&
       snapshot.activeProviderAccountKey !== null,
     transitioning: false,
     paymentRevision: snapshot?.paymentRevision ?? 0,
-    activeProviderAccountKey: snapshot?.activeProviderAccountKey ?? null,
+    activeProviderAccountKey: isProductionProvider(snapshot?.provider) ? snapshot.activeProviderAccountKey : null,
     scanIntervalMilliseconds: snapshot?.provider?.scanIntervalMilliseconds ?? null,
     maximumSuccessAgeMilliseconds:
       snapshot?.provider?.maximumSuccessAgeMilliseconds ?? null,

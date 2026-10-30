@@ -56,7 +56,7 @@ export type AlipayAccountInput = {
     name: string;
     enabled?: boolean;
     code_payload?: string | null;
-    environment?: 'PRODUCTION' | 'SANDBOX';
+    environment?: 'PRODUCTION';
     app_id?: string | null;
     platform_public_key?: string | null;
     private_key?: string;
@@ -65,7 +65,7 @@ export type UpdateAlipayAccountRequest = {
     name: string;
     enabled: boolean;
     code_payload: string | null;
-    environment: 'PRODUCTION' | 'SANDBOX';
+    environment?: 'PRODUCTION';
     app_id: string | null;
     platform_public_key?: string | null;
     private_key?: string;
@@ -581,7 +581,7 @@ export type CollectionSettingsRequest = {
 };
 export type ProviderSettingsRequest = {
     revision: number;
-    environment: 'PRODUCTION' | 'SANDBOX';
+    environment?: 'PRODUCTION';
     app_id: string;
     private_key?: string;
     platform_public_key?: string;

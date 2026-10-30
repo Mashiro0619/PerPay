@@ -1,5 +1,6 @@
 import type { AlipayAccountSnapshot } from "../alipay-accounts/model.ts";
 import type { SiteConfiguration } from "../sites/model.ts";
+import { isProductionProvider } from "../settings/model.ts";
 
 /** Each draw removes its winner, so failed candidates are never retried in the same order. */
 export function collectionCandidates(
@@ -11,7 +12,7 @@ export function collectionCandidates(
   if (!collection) return [];
   const candidates = collection.accounts.flatMap(candidate => {
     const account = accounts.find(account => account.id === candidate.account_id);
-    return account?.enabled && account.configured && available(account.id)
+    return account?.environment === "PRODUCTION" && account.enabled && account.configured && isProductionProvider(account.provider) && available(account.id)
       ? [{ account, weight: collection.mode === "WEIGHTED" ? candidate.weight : 1 }]
       : [];
   });

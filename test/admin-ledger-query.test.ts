@@ -453,7 +453,7 @@ describe("administrator grouped ledger queries", () => {
       const accounts = new AlipayAccountService({ store });
       const account = store.view("default");
       const updated = await accounts.update(account.id, { revision: account.revision, name: account.name,
-        enabled: account.enabled, environment: account.environment, code_payload: account.code_payload,
+        enabled: account.enabled, environment: "PRODUCTION", code_payload: account.code_payload,
         app_id: "new-multi-account-app" }, { actorId: "admin" });
       const laterKey = updated.provider_account_key!;
       const record = recorder(f.ledger, () => laterKey, f.tick);
@@ -474,7 +474,7 @@ describe("administrator grouped ledger queries", () => {
       const previousBoundAt = f.ledger.providerIdentity(laterKey)!.boundAt;
       t.mock.method(Date, "now", () => previousBoundAt - 1_000);
       const next = await accounts.update(updated.id, { revision: updated.revision, name: updated.name,
-        enabled: updated.enabled, environment: updated.environment, code_payload: updated.code_payload,
+        enabled: updated.enabled, environment: "PRODUCTION", code_payload: updated.code_payload,
         app_id: "next-multi-account-app" }, { actorId: "admin" });
       assert.ok(generationTime(next.provider_account_key!) > previousGenerationTime,
         "new generations advance even when the device clock repeats or moves backward");

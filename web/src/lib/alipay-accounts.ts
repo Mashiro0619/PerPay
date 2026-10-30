@@ -39,7 +39,7 @@ export function defaultSiteCollection(
   accounts: readonly AlipayAccount[],
 ): SiteCollection {
   const available = accounts.filter(
-    (account) => account.enabled && account.configured,
+    (account) => account.environment === "PRODUCTION" && account.enabled && account.configured,
   );
   return {
     mode: "FIXED",
@@ -51,11 +51,13 @@ export function defaultSiteCollection(
 }
 
 export function accountState(account: AlipayAccount): string {
+  if (account.environment !== "PRODUCTION") return "旧版账号已停用";
   if (!account.configured) return "配置未完成";
   return account.enabled ? "接收新订单" : "已暂停新订单";
 }
 
 export function accountHealth(account: AlipayAccount): string {
+  if (account.environment !== "PRODUCTION") return "不再查账";
   if (!account.configured) return "待完成配置";
   if (!account.health) return "尚未查账";
   if (

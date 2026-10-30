@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { LIVE_NOTIFICATION_TARGET } from "../notifications/live-target.ts";
 import type { DatabaseSync } from "node:sqlite";
 import type { AppDatabase } from "../database/database.ts";
 import { appendAuditEvent, IdentityTransaction } from "../database/identity-store.ts";
@@ -186,11 +187,11 @@ export class SiteStore {
           AND json_extract(site.configuration, '$.notifications_enabled') = 1
           AND (EXISTS (
             SELECT 1 FROM outbox_events AS event JOIN webhook_targets AS target ON target.order_id = event.aggregate_id
-            WHERE target.api_client_id = site.client_id AND NOT EXISTS (
+            WHERE target.api_client_id = site.client_id AND ${LIVE_NOTIFICATION_TARGET} AND NOT EXISTS (
               SELECT 1 FROM webhook_deliveries WHERE outbox_event_id = event.outbox_event_id AND target_id = target.target_id AND generation = 1))
           OR EXISTS (
             SELECT 1 FROM webhook_deliveries AS delivery JOIN webhook_targets AS target ON target.target_id = delivery.target_id
-            WHERE target.api_client_id = site.client_id AND (
+            WHERE target.api_client_id = site.client_id AND ${LIVE_NOTIFICATION_TARGET} AND (
               (delivery.status IN ('PENDING', 'RETRY_WAIT') AND delivery.next_attempt_at <= ?) OR
               (delivery.status = 'LEASED' AND delivery.lease_expires_at <= ?))))
           ORDER BY CASE WHEN ? IS NULL OR site.client_id > ? THEN 0 ELSE 1 END, site.client_id LIMIT 1`,

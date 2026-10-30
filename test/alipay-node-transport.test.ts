@@ -27,6 +27,25 @@ const publicAddresses = Object.freeze([
 ]);
 
 describe("Node V3 transport network behavior", () => {
+  it("rejects the retired sandbox gateway before DNS resolution or a request can start", () => {
+    let resolverCalls = 0;
+    let requestCalls = 0;
+    assert.throws(() => new NodeV3Transport({
+      endpoint: "https://openapi-sandbox.dl.alipaydev.com",
+    }, {
+      startHostnameResolution: () => {
+        resolverCalls++;
+        throw new Error("unexpected DNS resolution");
+      },
+      request: () => {
+        requestCalls++;
+        throw new Error("unexpected network request");
+      },
+    }), (error: unknown) => error instanceof AlipayProviderError && error.code === "configuration_invalid");
+    assert.equal(resolverCalls, 0);
+    assert.equal(requestCalls, 0);
+  });
+
   it("rejects unsafe custom user agents before resolving DNS", () => {
     let resolverCalls = 0;
     const dependencies: NodeV3TransportTestDependencies = {

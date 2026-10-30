@@ -18,7 +18,7 @@ async function fixture() {
   const request = (path: string, method = "GET", body?: unknown, custom = headers) => app.request("/api/admin/v1/" + path, { method, headers: custom, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) });
   return { ...f, app, headers, request, online: () => { fails = false; } };
 }
-const update = (account: AlipayAccountView, name = account.name) => ({ revision: account.revision, name, enabled: account.enabled, code_payload: account.code_payload, app_id: account.app_id, environment: account.environment, platform_public_key: account.platform_public_key });
+const update = (account: AlipayAccountView, name = account.name) => ({ revision: account.revision, name, enabled: account.enabled, code_payload: account.code_payload, app_id: account.app_id, environment: "PRODUCTION" as const, platform_public_key: account.platform_public_key });
 
 describe("Alipay account management HTTP", () => {
   it("keeps an existing checkout and its verification available when all accounts are paused", async () => {
@@ -48,10 +48,13 @@ describe("Alipay account management HTTP", () => {
     try {
       assert.equal((await f.app.request("/api/admin/v1/alipay-accounts")).status, 401);
       assert.equal((await f.request("alipay-accounts", "POST", { name: "账号 B" }, { ...f.headers, "x-csrf-token": "" })).status, 403);
+      assert.equal((await f.request("alipay-accounts", "POST", { name: "历史沙箱", environment: "SANDBOX" })).status, 422);
       const created = await f.request("alipay-accounts", "POST", { name: "账号 B" });
       assert.equal(created.status, 201);
       const { data } = await created.json() as { data: AlipayAccountView };
       assert.equal(data.configured, false);
+      assert.equal(data.environment,"PRODUCTION");
+      assert.equal((await f.request(`alipay-accounts/${data.id}`, "PUT", { ...update(data), environment: "SANDBOX" })).status, 422);
       assert.equal(data.deletable, true);
       assert.equal("private_key" in data, false);
       assert.equal((await f.request(`alipay-accounts/${data.id}`, "PUT", { ...update(data), revision: data.revision + 1 })).status, 409);

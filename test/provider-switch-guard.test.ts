@@ -60,7 +60,7 @@ describe("provider switch final collection guard", () => {
       new OrderStore(f.database, () => order.createdAt + 120_000).closeOrder("default", order.orderId);
       const provider = before.provider!;
       await assert.rejects(() => settings.saveProvider({
-        revision: before.revision, environment: provider.environment, app_id: "2026000000000002",
+        revision: before.revision, environment: "PRODUCTION", app_id: "2026000000000002",
         private_key: provider.privateKeyPem, platform_public_key: provider.publicKeyPem,
         timeout_milliseconds: provider.timeoutMilliseconds,
         scan_interval_seconds: provider.scanIntervalMilliseconds / 1000,
