@@ -37,10 +37,11 @@ export function DailyAnalytics(props: DailyAnalyticsProps) {
 function DailyDate({ day, today, includeYear }: { day: DailyDay; today: string; includeYear: boolean }) {
   return (
     <div className="daily-date">
-      <time dateTime={day.date} aria-label={`${day.date} ${dailyWeekday(day.date)}`} title={day.date}>
+      <time dateTime={day.date} title={day.date}>
+        {!includeYear && <span className="sr-only">{day.date.slice(0, 5)}</span>}
         {dailyDateLabel(day.date, includeYear)}
       </time>
-      <span className="daily-date-weekday" aria-hidden="true">{dailyWeekday(day.date)}</span>
+      <span className="daily-date-weekday">{dailyWeekday(day.date)}</span>
       {day.date === today && <Badge variant="secondary">今日</Badge>}
     </div>
   );

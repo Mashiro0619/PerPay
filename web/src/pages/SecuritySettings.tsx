@@ -124,8 +124,9 @@ export function SecuritySettings({
           </CardHeader>
           <CardContent>
             {settings.site_mode && <Link to="/settings/accounts">在支付宝账号中管理应用密钥</Link>}
-            <ItemGroup className="record-list" data-density="compact" aria-label="密钥清单">
-                {secrets.filter(() => !settings.site_mode).map(([name, title, purpose]) => {
+            {!settings.site_mode && (
+              <ItemGroup className="record-list" data-density="compact" aria-label="密钥清单">
+                {secrets.map(([name, title, purpose]) => {
                   const metadata = settings.secrets[name];
                   if (!metadata) return null;
                   const status = (
@@ -220,7 +221,8 @@ export function SecuritySettings({
                     </Item>
                   );
                 })}
-            </ItemGroup>
+              </ItemGroup>
+            )}
           </CardContent>
         </Card>
         <PasswordForm key="password" />

@@ -618,9 +618,13 @@ describe("paginated daily analytics report", () => {
       .toHaveTextContent("06-04");
     expect(screen.queryByText("区间金额含今日；日均与最高不含今日。"))
       .not.toBeInTheDocument();
-    const today = container.querySelector('time[datetime="2026-06-07"]')?.closest("tr");
+    const todayTime = container.querySelector('time[datetime="2026-06-07"]');
+    expect(todayTime).toHaveTextContent("2026-06-07");
+    expect(todayTime).not.toHaveAttribute("aria-label");
+    const today = todayTime?.closest("tr");
     expect(today).toHaveTextContent("今日");
     expect(today).toHaveTextContent("周日");
+    expect(today?.querySelector(".daily-date-weekday")).not.toHaveAttribute("aria-hidden");
   });
 
   it("shows no completed-day average or peak when the response only contains today", () => {

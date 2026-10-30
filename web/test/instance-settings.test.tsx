@@ -43,6 +43,7 @@ describe("website-aware instance settings", () => {
     expect(screen.queryByRole("tab", { name: "通知" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "查看应用私钥" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "在支付宝账号中管理应用密钥" })).toHaveAttribute("href", "/settings/accounts");
+    expect(screen.queryByRole("list", { name: "密钥清单" })).not.toBeInTheDocument();
   });
 
   it("saves the instance name while preserving its chart default and omitting website display fields", async () => {
@@ -50,8 +51,8 @@ describe("website-aware instance settings", () => {
     const name = await screen.findByRole("textbox", { name: "支付系统名称" });
     expect(screen.queryByRole("textbox", { name: "商家帮助链接" })).not.toBeInTheDocument();
     expect(screen.queryByRole("switch", { name: "收银台显示商品名称" })).not.toBeInTheDocument();
-    fireEvent.change(name, { target: { value: "新的后台" } });
     expect(screen.queryByRole("group", { name: "首页图表样式" })).not.toBeInTheDocument();
+    fireEvent.change(name, { target: { value: "新的后台" } });
     expect(screen.getByText("未保存")).toBeVisible();
     expect(view.writes).toHaveLength(0);
     fireEvent.submit(name.closest("form")!);
