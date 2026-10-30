@@ -789,6 +789,16 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   justify-content: space-between;
   gap: 1rem;
 }
+.site-management-periods {
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  padding: 4px;
+  margin: -4px;
+  border-radius: 0;
+  scroll-padding-inline: 4px;
+  scrollbar-width: thin;
+}
+.site-management-periods > .site-management-period { flex: 0 0 auto; white-space: nowrap; }
 .site-management-grid {
   display: grid;
   min-width: 0;
@@ -1429,17 +1439,6 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
     .order-summary-amounts { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 0.375rem 1rem; }
     .order-summary-amounts > div { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 0.125rem 0.375rem; }
   }
-  .site-management-toolbar > :first-child { max-width: 100%; }
-  .site-management-periods {
-    overflow-x: auto;
-    flex-wrap: nowrap;
-    padding: 4px;
-    margin: -4px;
-    border-radius: 0;
-    scroll-padding-inline: 4px;
-    scrollbar-width: thin;
-  }
-  .site-management-periods > .site-management-period { flex: 0 0 auto; white-space: nowrap; }
 }
 @media (max-width: 1023px) and (max-height: 700px) {
   [data-checkout-page] > header { padding-block: 0.5rem; }

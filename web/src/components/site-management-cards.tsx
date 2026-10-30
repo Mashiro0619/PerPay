@@ -116,7 +116,7 @@ export function SiteManagementCards() {
   return (
     <section className="site-management-section" aria-label="网站经营概况" aria-busy={pending}>
       <div className="site-management-toolbar">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <div className="flex min-w-0 max-w-full items-center gap-2">
           <ToggleGroup
             value={[String(range)]}
             onValueChange={(values) => {
@@ -129,10 +129,10 @@ export function SiteManagementCards() {
             variant="outline" size="sm" spacing={0} aria-label="经营统计周期"
             className="site-management-periods min-w-0 max-w-full items-stretch"
           >
-            {[7, 30, 90].map((days) => <ToggleGroupItem key={days} value={String(days)} className="site-management-period h-auto min-h-7 min-w-0 flex-1 shrink whitespace-normal">近 {days} 天</ToggleGroupItem>)}
+            {[7, 30, 90].map((days) => <ToggleGroupItem key={days} value={String(days)} className="site-management-period h-auto min-h-7">近 {days} 天</ToggleGroupItem>)}
           </ToggleGroup>
           <Popover>
-            <PopoverTrigger render={<Button variant="ghost" size="icon-sm" aria-label="网站经营指标说明" />}><Info /></PopoverTrigger>
+            <PopoverTrigger render={<Button variant="ghost" size="icon-sm" className="shrink-0" aria-label="网站经营指标说明" />}><Info /></PopoverTrigger>
             <PopoverContent align="start" className="flex flex-col gap-2">
               <p>实收与确认笔数按北京时间的 PerPay 确认时间统计，未扣退款和费用；今天尚未结束。</p>
               {latest && <p>统计区间：<time dateTime={latest.period.from}>{latest.period.from}</time> 至 <time dateTime={latest.period.to}>{latest.period.to}</time>。</p>}
