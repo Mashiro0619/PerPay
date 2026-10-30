@@ -67,9 +67,14 @@ for (const theme of ["light", "dark"] as const) test(`${theme}: form controls re
   await login(page, manifest);
   await page.goto(manifest.origin + "/admin/settings/security");
   const textarea = page.getByLabel("允许的 IP / 网段", { exact: true });
+  const addCurrentIp = page.getByRole("button", { name: "加入当前 IP", exact: true });
+  // Loading the client IP enables the next tab stop. Wait for that real read
+  // before checking a round trip through a stable keyboard order.
+  await expect(addCurrentIp).toBeEnabled();
   await textarea.click();
   await expectInputRing(textarea);
   await textarea.press("Tab");
+  await expect(addCurrentIp).toBeFocused();
   await page.keyboard.press("Shift+Tab");
   await expectInputRing(textarea);
   await screenshot(page, info, "textarea-focus-" + theme);
