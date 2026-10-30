@@ -59,7 +59,17 @@ test.describe("overview metric reading access", () => {
       expect(focused.outlineContained).toBe(true);
       await record(page, info, { width, theme, font, syntheticMetricValues: true, geometry, focused });
       await screenshot(page, info, `metric-focus-${theme}-${width}-${font}`);
-      await audit(page, info, `metric-focus-${theme}-${width}-${font}`);
+      const scroll = await page.evaluate(() => ({ x: scrollX, y: scrollY }));
+      try {
+        // At enlarged text sizes the trend controls are below the focused KPI.
+        // Their contrast evidence includes real viewport hit tests, so bring
+        // them into view without changing the KPI's keyboard focus.
+        await page.getByRole("group", { name: "趋势指标", exact: true }).scrollIntoViewIfNeeded();
+        await audit(page, info, `metric-focus-${theme}-${width}-${font}`);
+      } finally {
+        await page.evaluate(({ x, y }) => window.scrollTo({ left: x, top: y, behavior: "instant" }), scroll);
+      }
+      await expect(amount).toBeFocused();
     }
   });
 });
