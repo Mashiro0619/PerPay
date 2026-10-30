@@ -321,20 +321,55 @@ if (phase === "final") {
     await page.clock.runFor(300);
     const from = (await initialAmount.locator("[data-selection-indicator]").boundingBox())!;
     const target = (await targetOrders.boundingBox())!;
-    await targetOrders.click({ force: true });
-    expect(await targetOrders.getAttribute("aria-pressed")).toBe("true");
-    expect(await trend.locator("[data-metric-value]").innerText()).toBe(expectedOrders);
-    await page.clock.runFor(50);
-    const during = (await targetOrders.locator("[data-selection-indicator]").boundingBox())!;
-    expect(during.x, "indicator has left the old selection").toBeGreaterThan(from.x + 1);
-    expect(during.x, "indicator visibly travels before reaching its new selection").toBeLessThan(target.x - 1);
-    await page.clock.runFor(300);
+    // Sample from the selection commit inside the browser. A single read after
+    // several automation round trips can miss the middle of this 200ms motion.
+    const probe = await targetOrders.evaluateHandle(element => {
+      const samples: { x: number; y: number; width: number; height: number; elapsed: number; visible: boolean }[] = [];
+      let startedAt: number | undefined;
+      let frame: number | undefined;
+      let stopped = false;
+      const sample = () => {
+        if (stopped) return;
+        const indicator = element.querySelector("[data-selection-indicator]");
+        if (indicator) {
+          const box = indicator.getBoundingClientRect();
+          let visible = box.width > 0 && box.height > 0;
+          for (let parent: Element | null = indicator; visible && parent; parent = parent.parentElement) {
+            const style = getComputedStyle(parent);
+            visible = style.visibility === "visible" && Number(style.opacity) > 0;
+          }
+          samples.push({ x: box.x, y: box.y, width: box.width, height: box.height, elapsed: performance.now() - startedAt!, visible });
+        }
+        if (samples.length < 30) frame = requestAnimationFrame(sample);
+      };
+      const observer = new MutationObserver(() => {
+        if (startedAt !== undefined || element.getAttribute("aria-pressed") !== "true") return;
+        startedAt = performance.now();
+        observer.disconnect();
+        sample();
+      });
+      observer.observe(element, { attributes: true, attributeFilter: ["aria-pressed"], childList: true });
+      return { samples, stop() { stopped = true; observer.disconnect(); if (frame !== undefined) cancelAnimationFrame(frame); } };
+    });
+    let trajectory: { x: number; y: number; width: number; height: number; elapsed: number; visible: boolean }[];
+    try {
+      await targetOrders.click({ force: true });
+      expect(await targetOrders.getAttribute("aria-pressed")).toBe("true");
+      expect(await trend.locator("[data-metric-value]").innerText()).toBe(expectedOrders);
+      await page.clock.runFor(350);
+      trajectory = await probe.evaluate(state => state.samples);
+    } finally {
+      await probe.evaluate(state => state.stop());
+      await probe.dispose();
+    }
+    const during = trajectory.find(point => point.visible && point.x > from.x + 1 && point.x < target.x - 1);
+    expect(during, "indicator visibly travels through an intermediate position: " + JSON.stringify(trajectory)).toBeDefined();
     const after = (await targetOrders.locator("[data-selection-indicator]").boundingBox())!;
     expect(Math.abs(after.x - target.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(after.y - target.y)).toBeLessThanOrEqual(1);
     expect(Math.abs(after.width - target.width)).toBeLessThanOrEqual(2);
     expect(Math.abs(after.height - target.height)).toBeLessThanOrEqual(2);
-    const indicatorGeometry = { from, target, during, after };
+    const indicatorGeometry = { from, target, during, after, trajectory };
     const selectedPaint = await targetOrders.evaluate(measureSelectionContrast);
     expect(selectedPaint?.passed, "stable selection text remains readable on its verified opaque decoration").toBe(true);
     const selectedType = typeGroup.locator('[aria-pressed="true"]');
