@@ -193,6 +193,7 @@ test("release builds, scans, verifies, and publishes fixed and latest images", (
   const verifySteps = workflow.jobs.verify.steps;
   assert.ok(verifySteps.some((step) => step.name === "Verify version and release commit"));
   const gates = verifySteps.find((step) => step.name === "Run release checks");
+  assert.match(gates?.run ?? "", /npm run api:check/u);
   assert.match(gates?.run ?? "", /npm run typecheck/u);
   assert.match(gates?.run ?? "", /npm test/u);
   assert.match(gates?.run ?? "", /npm run build/u);

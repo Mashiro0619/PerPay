@@ -69,6 +69,7 @@ jobs:
 
       - name: Run release checks
         run: |
+          npm run api:check
           npm run typecheck
           npm test
           npm run build

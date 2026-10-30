@@ -17,6 +17,7 @@ describe("database startup lease heartbeat", () => {
     });
     const leaseToken = "startup-lease-test";
     try {
+      connection.exec("PRAGMA journal_mode = WAL;");
       connection.exec(`
         CREATE TABLE app_lease (
           lease_key INTEGER PRIMARY KEY,
