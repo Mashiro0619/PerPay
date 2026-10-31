@@ -123,7 +123,7 @@ function mount(path = "/") {
   return { ...rendered, router, startViewTransition };
 }
 
-describe("sidebar selection motion", () => {
+describe("sidebar navigation", () => {
   it("changes the active route without replacing links or invoking whole-page snapshots", async () => {
     const user = userEvent.setup();
     const { router, startViewTransition } = mount();
@@ -137,12 +137,9 @@ describe("sidebar selection motion", () => {
     expect(within(navigation).getByRole("link", { name: "订单" })).toBe(orders);
     expect(orders).toHaveFocus();
     expect(orders).toHaveAttribute("aria-current", "page");
-    expect(
-      orders.querySelector('[data-selection-indicator="sidebar"]'),
-    ).toHaveAttribute("aria-hidden", "true");
-    expect(
-      navigation.querySelectorAll("[data-selection-indicator]"),
-    ).toHaveLength(1);
+    expect(within(navigation).getAllByRole("link", { current: "page" })).toEqual([
+      orders,
+    ]);
     await user.click(work);
     await waitFor(() => expect(work).toHaveAttribute("aria-current", "page"));
     expect(orders).not.toHaveAttribute("aria-current");
@@ -169,10 +166,8 @@ describe("sidebar selection motion", () => {
     expect(status.querySelector("[data-runtime-notice] svg")).toBeInTheDocument();
     expect(status.querySelector("[data-slot=badge]")).not.toBeInTheDocument();
     expect(status).not.toHaveTextContent("有运行告警");
-    expect(main.querySelectorAll("[data-selection-indicator]")).toHaveLength(0);
-    expect(global.querySelectorAll("[data-selection-indicator]")).toHaveLength(
-      1,
-    );
+    expect(within(main).queryAllByRole("link", { current: "page" })).toHaveLength(0);
+    expect(within(global).getAllByRole("link", { current: "page" })).toEqual([status]);
     const reconciliation = within(global).getByRole("link", { name: "对账" });
     expect(reconciliation).toHaveAttribute(
       "href",
@@ -184,10 +179,10 @@ describe("sidebar selection motion", () => {
     );
     expect(router.state.location.search).toBe("?selected_site=site-a");
     expect(reconciliation).toHaveAttribute("aria-current", "page");
-    expect(main.querySelectorAll("[data-selection-indicator]")).toHaveLength(0);
-    expect(global.querySelectorAll("[data-selection-indicator]")).toHaveLength(
-      1,
-    );
+    expect(within(main).queryAllByRole("link", { current: "page" })).toHaveLength(0);
+    expect(within(global).getAllByRole("link", { current: "page" })).toEqual([
+      reconciliation,
+    ]);
     expect(startViewTransition).not.toHaveBeenCalled();
   });
 
@@ -201,9 +196,6 @@ describe("sidebar selection motion", () => {
     expect(collapsedStatus).toHaveAttribute("aria-current", "page");
     expect(collapsedStatus).toHaveAccessibleDescription("有运行告警");
     expect(collapsedStatus.querySelector("[data-runtime-notice] svg")).toBeInTheDocument();
-    expect(
-      collapsedStatus.querySelector('[data-selection-indicator="sidebar"]'),
-    ).not.toBeNull();
     await user.click(screen.getByRole("button", { name: "切换导航" }));
     expect(screen.getByRole("link", { name: "运行状态" })).toHaveAttribute(
       "aria-current",
@@ -212,21 +204,16 @@ describe("sidebar selection motion", () => {
     expect(screen.getByRole("link", { name: "运行状态" }).querySelector("[data-runtime-notice] svg")).toBeInTheDocument();
   });
 
-  it("stops only decoration on document hiding and preserves the selected link and focus", async () => {
+  it("preserves the selected link and focus when the document is hidden", async () => {
     const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(false);
     const user = userEvent.setup();
     mount();
     const orders = screen.getByRole("link", { name: "订单" });
     await user.click(orders);
     await waitFor(() => expect(orders).toHaveAttribute("aria-current", "page"));
-    const indicator = orders.querySelector("[data-selection-indicator]");
     hidden.mockReturnValue(true);
     act(() => document.dispatchEvent(new Event("visibilitychange")));
-    expect(indicator).not.toBeInTheDocument();
-    expect(orders.querySelector("[data-selection-indicator]")).toHaveAttribute(
-      "data-selection-mode",
-      "static",
-    );
+    expect(orders).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "订单" })).toBe(orders);
     expect(orders).toHaveFocus();
   });

@@ -45,7 +45,7 @@ export function SelectionMotionIndicator({
   variant = "fill",
 }: {
   active: boolean;
-  variant?: "fill" | "underline" | "sidebar";
+  variant?: "fill" | "underline";
 }) {
   const controlId = useId();
   const reduced = useContext(ReducedSelectionMotion);
