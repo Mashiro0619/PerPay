@@ -458,7 +458,7 @@ describe("short feedback and safe settings", () => {
       },
     });
     const runtime = within(await screen.findByRole("table", { name: "运行环节" }));
-    expect(within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: "运行状态" })).toHaveAccessibleDescription("待处理");
+    expect(within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: "运行状态" })).toHaveAccessibleDescription("有待处理提醒");
     expect(screen.getByRole("link", { name: "待处理" })).toHaveAttribute("href", "/work-items");
     expect(screen.queryByText("提醒数仅包含未忽略且仍需处理的提醒。")).not.toBeInTheDocument();
     const reconciliation = within(runtime.getByRole("rowheader", { name: "自动确认收款" }).closest("tr")!);

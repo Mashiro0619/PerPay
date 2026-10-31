@@ -165,7 +165,10 @@ describe("sidebar selection motion", () => {
     const main = screen.getByRole("navigation", { name: "主导航" });
     const global = screen.getByRole("navigation", { name: "全局管理" });
     const status = within(global).getByRole("link", { name: "运行状态" });
-    expect(status).toHaveAccessibleDescription("需关注");
+    expect(status).toHaveAccessibleDescription("有运行告警");
+    expect(status.querySelector("[data-runtime-notice] svg")).toBeInTheDocument();
+    expect(status.querySelector("[data-slot=badge]")).not.toBeInTheDocument();
+    expect(status).not.toHaveTextContent("有运行告警");
     expect(main.querySelectorAll("[data-selection-indicator]")).toHaveLength(0);
     expect(global.querySelectorAll("[data-selection-indicator]")).toHaveLength(
       1,
@@ -196,6 +199,8 @@ describe("sidebar selection motion", () => {
       name: "运行状态，有运行告警",
     });
     expect(collapsedStatus).toHaveAttribute("aria-current", "page");
+    expect(collapsedStatus).toHaveAccessibleDescription("有运行告警");
+    expect(collapsedStatus.querySelector("[data-runtime-notice] svg")).toBeInTheDocument();
     expect(
       collapsedStatus.querySelector('[data-selection-indicator="sidebar"]'),
     ).not.toBeNull();
@@ -204,6 +209,7 @@ describe("sidebar selection motion", () => {
       "aria-current",
       "page",
     );
+    expect(screen.getByRole("link", { name: "运行状态" }).querySelector("[data-runtime-notice] svg")).toBeInTheDocument();
   });
 
   it("stops only decoration on document hiding and preserves the selected link and focus", async () => {

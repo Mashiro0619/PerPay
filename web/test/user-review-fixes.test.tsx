@@ -4,6 +4,7 @@ import {
   fireEvent,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -65,7 +66,10 @@ describe("homepage collection health", () => {
           ? apiError("internal_error", "unavailable", 503)
           : undefined,
     });
-    expect(await screen.findByText("需关注")).toBeVisible();
+    const status = await within(await screen.findByRole("navigation", { name: "全局管理" })).findByRole("link", { name: "运行状态" });
+    await waitFor(() => expect(status).toHaveAccessibleDescription("有运行告警"));
+    expect(status.querySelector("[data-runtime-notice] svg")).toBeInTheDocument();
+    expect(status).not.toHaveTextContent("需关注");
     expect(screen.queryByText("可以收款，有运行告警")).not.toBeInTheDocument();
     expect(screen.queryByText("已暂停接收新订单")).not.toBeInTheDocument();
     fail = true;
@@ -75,7 +79,8 @@ describe("homepage collection health", () => {
       });
     });
     expect(await screen.findByText("暂时无法读取收款服务状态")).toBeVisible();
-    expect(screen.getByText("状态未知")).toBeVisible();
+    expect(status).toHaveAccessibleDescription("状态未知");
+    expect(status.querySelector("[data-runtime-notice] svg")).toBeInTheDocument();
     expect(screen.queryByText("可以收款，有运行告警")).not.toBeInTheDocument();
   });
   it("invalidates health immediately when offline", async () => {
@@ -85,11 +90,13 @@ describe("homepage collection health", () => {
       path: "/",
       status: (settings) => ({ ...systemStatus(settings), status: "degraded" }),
     });
-    await screen.findByText("需关注");
+    const status = await within(await screen.findByRole("navigation", { name: "全局管理" })).findByRole("link", { name: "运行状态" });
+    await waitFor(() => expect(status).toHaveAccessibleDescription("有运行告警"));
     online.mockReturnValue(false);
     fireEvent(window, new Event("offline"));
     expect(screen.getByText("暂时无法读取收款服务状态")).toBeVisible();
-    expect(screen.getByText("状态未知")).toBeVisible();
+    expect(status).toHaveAccessibleDescription("状态未知");
+    expect(status.querySelector("[data-runtime-notice] svg")).toBeInTheDocument();
     expect(screen.queryByText("可以收款，有运行告警")).not.toBeInTheDocument();
   });
   it("polls while visible, pauses while hidden, and reads afresh on return", async () => {

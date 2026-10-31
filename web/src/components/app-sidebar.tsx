@@ -62,12 +62,14 @@ export function AppSidebar({
   username,
   logoutPending,
   onLogout,
+  updateAvailable = false,
   ...props
 }: ComponentProps<typeof Sidebar> & {
   pathname: string;
   username: string;
   logoutPending: boolean;
   onLogout: () => void;
+  updateAvailable?: boolean;
 }) {
   const systemName = useSystemName();
   const selection = useNavigationWorkspace();
@@ -144,6 +146,7 @@ export function AppSidebar({
               items={items.slice(5)}
               pathname={pathname}
               notice={statusNotice ?? null}
+              updateAvailable={updateAvailable}
               label="全局管理"
               className="p-0"
             />
