@@ -10,7 +10,7 @@ import { createApp } from "../src/http/app.ts";
 import { IdentityService } from "../src/identity/service.ts";
 import { OrderService } from "../src/orders/service.ts";
 import { RuntimeSettingsService, RuntimeSettingsStore } from "../src/settings/index.ts";
-import { OfficialUpdateChecker } from "../src/update/checker.ts";
+import { OfficialUpdateChecker, type OfficialUpdate } from "../src/update/checker.ts";
 const CURRENT_VERSION = "0.2.2";
 
 test("official update checks require a session and never gate login or collection readiness", async () => {
@@ -25,10 +25,11 @@ test("official update checks require a session and never gate login or collectio
     const settings = new RuntimeSettingsService({ store: new RuntimeSettingsStore(database, config.masterKey) });
     settings.initialize();
     const orders = new OrderService(database, () => settings.instanceSnapshot());
-    let requests = 0, clock = Date.now(), unavailable = false;
+    let requests = 0, clock = Date.now(), unavailable = false, rateLimited = false;
     const updateChecker = new OfficialUpdateChecker({ currentVersion: CURRENT_VERSION, clock: () => clock, fetch: async url => {
       requests++;
       if (unavailable) throw new Error("not returned to the browser");
+      if (rateLimited) return new Response("private GitHub diagnostics", { status: 429, headers: { "retry-after": "3600" } });
       if (String(url).includes("?per_page=")) return Response.json([{ tag_name: "v0.3.0-rc.1",
         html_url: "https://github.com/Mashiro0619/PerPay/releases/tag/v0.3.0-rc.1",
         draft: false, prerelease: true, published_at: "2026-09-09T09:00:00Z" }]);
@@ -38,6 +39,7 @@ test("official update checks require a session and never gate login or collectio
     const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(), updateChecker });
     assert.equal((await app.request("/api/admin/v1/system/update")).status, 401);
     assert.equal((await app.request("/api/admin/v1/system/update?channel=prerelease")).status, 401);
+    assert.equal((await app.request("/api/admin/v1/system/update?channel=stable&refresh=true")).status, 401);
     const badLogin = await app.request("/api/admin/v1/session/login", { method: "POST", headers: { origin: config.publicOrigin, "content-type": "application/json" }, body: JSON.stringify({ password: "wrong-password" }) });
     assert.equal(badLogin.status, 401);
     assert.equal(requests, 0);
@@ -51,7 +53,8 @@ test("official update checks require a session and never gate login or collectio
     const response = await app.request("/api/admin/v1/system/update", { headers });
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("cache-control"), "no-store");
-    const result = await response.json() as { data: { status: string; current_version: string; latest_version: string } };
+    assert.equal(response.headers.get("x-perpay-update-refresh-after"), "60");
+    const result = await response.json() as { data: OfficialUpdate };
     assert.equal(result.data.status, "update_available");
     assert.equal(result.data.current_version, CURRENT_VERSION);
     assert.equal(result.data.latest_version, "0.3.0-rc.1", "omitted channel includes prereleases even on a stable installation");
@@ -61,6 +64,8 @@ test("official update checks require a session and never gate login or collectio
       "url=https://evil.invalid", "force=true", "channel=", "channel=auto", "channel=preview", "channel=STABLE", "channel=%20stable",
       "channel=stable&channel=stable", "channel=auto&channel=prerelease", "channel=stable&force=true",
       "channel=prerelease&unknown=", "Channel=stable", "channel[]=stable",
+      "refresh=", "refresh=1", "refresh=0", "refresh=TRUE", "refresh=%20true", "refresh[]=true",
+      "refresh=true&refresh=true", "refresh=true&refresh=false", "refresh=true&force=true", "Refresh=true",
     ]) {
       const invalid = await app.request("/api/admin/v1/system/update?" + query, { headers });
       assert.equal(invalid.status, 422, query);
@@ -82,18 +87,65 @@ test("official update checks require a session and never gate login or collectio
     }
     assert.equal(requests, 3);
 
+    clock += 30_000;
+    const early = await app.request("/api/admin/v1/system/update?channel=stable&refresh=true", { headers });
+    assert.equal(early.status, 429);
+    assert.equal(early.headers.get("retry-after"), "30");
+    const earlyError = await early.json() as { error: { code: string; message: string; request_id: string } };
+    assert.equal(earlyError.error.code, "update_check_rate_limited");
+    assert.deepEqual(Object.keys(earlyError.error).sort(), ["code", "message", "request_id"]);
+    assert.equal(requests, 3);
+    const cached = await app.request("/api/admin/v1/system/update?channel=stable&refresh=false", { headers });
+    assert.equal(cached.status, 200);
+    assert.equal(cached.headers.get("x-perpay-update-refresh-after"), "30");
+    assert.deepEqual(await cached.json(), stableResult);
+    clock += 30_000;
+    const refreshed = await app.request("/api/admin/v1/system/update?channel=stable&refresh=true", { headers });
+    assert.equal(refreshed.status, 200);
+    assert.equal(refreshed.headers.get("x-perpay-update-refresh-after"), "60");
+    const refreshedResult = await refreshed.json() as { data: OfficialUpdate };
+    assert.equal(refreshedResult.data.checked_at, new Date(clock).toISOString());
+    assert.deepEqual(Object.keys(refreshedResult.data).sort(), Object.keys(result.data).sort());
+    assert.equal(requests, 4, "manual refresh must visit the source before the five-minute cache expires");
+
     unavailable = true; clock += 300_000;
     const failed = await app.request("/api/admin/v1/system/update", { headers });
     assert.equal(failed.status, 503);
     assert.equal(failed.headers.get("retry-after"), "60");
     assert.equal((await failed.json() as { error: { code: string } }).error.code, "update_check_unavailable");
+    assert.equal(requests, 5);
+    unavailable = false; rateLimited = true; clock += 60_000;
+    const limited = await app.request("/api/admin/v1/system/update?refresh=true", { headers });
+    assert.equal(limited.status, 503);
+    assert.equal(limited.headers.get("retry-after"), "3600");
+    const limitedError = await limited.json() as { error: { code: string; message: string; request_id: string } };
+    assert.equal(limitedError.error.code, "update_check_unavailable");
+    assert.match(limitedError.error.message, /限制.*请求频率/);
+    assert.ok(!limitedError.error.message.includes("private"));
+    assert.deepEqual(Object.keys(limitedError.error).sort(), ["code", "message", "request_id"]);
+    const otherChannel = await app.request("/api/admin/v1/system/update?channel=stable&refresh=true", { headers });
+    assert.equal(otherChannel.status, 503);
+    assert.equal(otherChannel.headers.get("retry-after"), "3600");
+    assert.equal(requests, 6, "changing channels must not bypass the GitHub cooldown");
+
+    const fixtureApp = createApp({ config, database, identity, settings, orders, startedAt: new Date(), updateChecker: {
+      check: async (channel, options) => {
+        assert.equal(channel, "prerelease");
+        assert.deepEqual(options, { refresh: true });
+        return result.data;
+      },
+    } });
+    const fixtureResult = await fixtureApp.request("/api/admin/v1/system/update?refresh=true", { headers });
+    assert.equal(fixtureResult.status, 200, "check-only fixtures remain supported");
+    assert.equal(fixtureResult.headers.get("x-perpay-update-refresh-after"), "0");
+    assert.deepEqual(await fixtureResult.json(), result);
     assert.equal((await app.request("/api/admin/v1/session", { headers })).status, 200);
     assert.equal((await app.request("/healthz")).status, 200);
     assert.deepEqual(await (await app.request("/readyz")).json(), readiness);
     assert.deepEqual(settings.instanceView(), before);
     identity.revokeAllSessions(identity.authenticate(cookie.match(/perpay_session=([^;]+)/)![1]!)!);
     assert.equal((await app.request("/api/admin/v1/system/update", { headers })).status, 401);
-    assert.equal(requests, 4);
+    assert.equal(requests, 6);
   } finally {
     database.close();
     assert.equal(dirname(resolve(directory)), resolve(tmpdir()));

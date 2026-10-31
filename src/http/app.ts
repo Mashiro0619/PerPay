@@ -123,7 +123,7 @@ import {
 import { SettingsFieldError } from "../settings/validation.ts";
 import { collectionCodeError } from "../shared/collection-code.ts";
 import { APP_VERSION } from "../version.ts";
-import { OfficialUpdateChecker, UpdateCheckUnavailable } from "../update/checker.ts";
+import { OfficialUpdateChecker, UpdateCheckRateLimited, UpdateCheckUnavailable } from "../update/checker.ts";
 import { PublicCheckoutRateLimiter } from "./public-checkout-rate-limit.ts";
 import { parseStrictJson, StrictJsonError } from "./strict-json.ts";
 import {
@@ -248,7 +248,7 @@ export interface AppDependencies {
   readonly startedAt: Date;
   readonly clock?: (() => number) | undefined;
   readonly demoMode?: boolean;
-  readonly updateChecker?: Pick<OfficialUpdateChecker, "check"> | undefined;
+  readonly updateChecker?: (Pick<OfficialUpdateChecker, "check"> & Partial<Pick<OfficialUpdateChecker, "refreshAfterSeconds">>) | undefined;
   readonly backupHealth?: (() => BackupHealth | PromiseLike<BackupHealth>) | undefined;
   readonly ledger?: LedgerStore | undefined;
   readonly ledgerNextRunAt?: (() => number | null) | undefined;
@@ -686,17 +686,23 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   app.get("/api/admin/v1/system/update", adminSession, async (context) => {
     const values = new URL(context.req.url).searchParams;
     const channels = values.getAll("channel");
+    const refreshes = values.getAll("refresh");
     const channel = channels[0] ?? "prerelease";
-    if ([...values.keys()].some(key => key !== "channel") || channels.length > 1 ||
-      (channel !== "stable" && channel !== "prerelease")) {
-      throw new HttpApiError(422, "validation_failed", "更新检查只接受单个有效的 channel 参数");
+    const refresh = refreshes[0] ?? "false";
+    if ([...values.keys()].some(key => key !== "channel" && key !== "refresh") || channels.length > 1 || refreshes.length > 1 ||
+      (channel !== "stable" && channel !== "prerelease") || (refresh !== "true" && refresh !== "false")) {
+      throw new HttpApiError(422, "validation_failed", "更新检查只接受单个有效的 channel 和 refresh 参数");
     }
     try {
-      return context.json({ data: await updateChecker.check(channel) });
+      const data = await updateChecker.check(channel, { refresh: refresh === "true" });
+      context.header("x-perpay-update-refresh-after", String(updateChecker.refreshAfterSeconds?.(channel) ?? 0));
+      return context.json({ data });
     } catch (error) {
+      if (error instanceof UpdateCheckRateLimited) {
+        throw new HttpApiError(429, "update_check_rate_limited", error.message, error.retryAfterSeconds);
+      }
       if (!(error instanceof UpdateCheckUnavailable)) throw error;
-      context.header("retry-after", String(error.retryAfterSeconds));
-      throw new HttpApiError(503, "update_check_unavailable", error.message);
+      throw new HttpApiError(503, "update_check_unavailable", error.message, error.retryAfterSeconds);
     }
   });
 

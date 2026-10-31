@@ -72,6 +72,7 @@ const messages: Record<string, string> = {
   webhook_signing_key_unavailable: "通知签名密钥暂不可用，请检查通知设置。",
   update_check_unavailable:
     "暂时无法检查官方更新，请稍后重试。此检查不影响收款。",
+  update_check_rate_limited: "检查过于频繁，请稍后重试。",
   internal_error: "服务处理失败，请稍后重试。",
 };
 
