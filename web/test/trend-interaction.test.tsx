@@ -121,7 +121,8 @@ describe("trend chart remembered preferences", () => {
       "¥678.90",
     );
 
-    await user.click(screen.getByRole("button", { name: "近 30 天" }));
+    await user.click(screen.getByRole("combobox", { name: "统计周期" }));
+    await user.click(await screen.findByRole("option", { name: "近 30 天" }));
     expect(onRangeChange).toHaveBeenCalledExactlyOnceWith("30");
     rerender(
       <ChartAreaInteractive

@@ -385,7 +385,8 @@ describe("navigation and draft protection", () => {
     );
     await userEvent
       .setup()
-      .click(screen.getByRole("button", { name: "近 7 天" }));
+      .click(screen.getByRole("combobox", { name: "统计周期" }));
+    await userEvent.setup().click(await screen.findByRole("option", { name: "近 7 天" }));
     expect(await screen.findByText("正在读取近 7 天…")).toBeVisible();
     expect(container.querySelector("[data-slot=chart]")).toBeNull();
     await userEvent.click(screen.getByRole("tab", { name: "每日数据" }));
@@ -434,8 +435,10 @@ describe("navigation and draft protection", () => {
         : originalFetch(request);
     });
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "近 7 天" }));
-    await user.click(screen.getByRole("button", { name: "近 90 天" }));
+    await user.click(screen.getByRole("combobox", { name: "统计周期" }));
+    await user.click(await screen.findByRole("option", { name: "近 7 天" }));
+    await user.click(screen.getByRole("combobox", { name: "统计周期" }));
+    await user.click(await screen.findByRole("option", { name: "近 90 天" }));
     expect(await screen.findByText("正在读取近 90 天…")).toBeVisible();
     await act(async () => {
       pending.get("90")!(
@@ -461,10 +464,7 @@ describe("navigation and draft protection", () => {
       );
     });
     expect(screen.getByText("¥90.00")).toBeVisible();
-    expect(screen.getByRole("button", { name: "近 90 天" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    expect(screen.getByRole("combobox", { name: "统计周期" })).toHaveTextContent("近 90 天");
   });
   it("sends an unconfigured instance to its next required setup step", async () => {
     const { router } = mount({ path: "/" });

@@ -31,15 +31,16 @@ async function sameRow(targets: Locator[]) {
   return boxes;
 }
 
-async function containedControls(card: Locator) {
+async function containedControls(card: Locator, touch = false) {
   const geometry = await card.evaluate(element => {
     const rect = (target: Element) => {
       const value = target.getBoundingClientRect();
       return { left: value.left, right: value.right, top: value.top, bottom: value.bottom, width: value.width, height: value.height };
     };
     const frame = rect(element);
-    const containers = [...element.querySelectorAll(".trend-controls, .trend-context")].map(container => ({ name: container.className, ...rect(container) }));
-    const controls = [...element.querySelectorAll(".trend-controls button, .trend-context button")]
+    const header = element.querySelector('[data-slot="card-header"]')!;
+    const containers = [...header.querySelectorAll('[role="group"], [role="tablist"]')].map(container => ({ name: container.getAttribute("aria-label"), ...rect(container) }));
+    const controls = [...header.querySelectorAll("button")]
       .filter(control => control.getBoundingClientRect().width > 0 && control.getBoundingClientRect().height > 0)
       .map(control => {
         const box = rect(control);
@@ -53,7 +54,7 @@ async function containedControls(card: Locator) {
         }
         return { name: control.getAttribute("aria-label") ?? control.textContent, ...box, textLines: new Set(lines.map(line => Math.round(line.top))).size, textFits: lines.every(line => line.left >= box.left - 1 && line.right <= box.right + 1 && line.top >= box.top - 1 && line.bottom <= box.bottom + 1) };
       });
-    const dates = element.querySelector(".trend-context .trend-dates")!;
+    const dates = header.querySelector(".trend-dates")!;
     const dateBox = rect(dates);
     const range = document.createRange();
     range.selectNodeContents(dates);
@@ -63,10 +64,19 @@ async function containedControls(card: Locator) {
       token.selectNodeContents(date);
       return { date: date.textContent, textLines: new Set([...token.getClientRects()].map(line => Math.round(line.top))).size };
     });
-    return { frame, containers, controls, dateBox, dateTextFits, dateTokens };
+    const period = header.querySelector('[role="combobox"][aria-label="统计周期"]')!;
+    const value = period.querySelector('[data-slot="select-value"]')!;
+    const valueBox = rect(value);
+    const valueRange = document.createRange();
+    valueRange.selectNodeContents(value);
+    const valueLines = [...valueRange.getClientRects()].filter(line => line.width > 0 && line.height > 0);
+    const periodValueFits = valueLines.length > 0 && valueLines.every(line =>
+      line.left >= valueBox.left - 1 && line.right <= valueBox.right + 1 &&
+      line.top >= valueBox.top - 1 && line.bottom <= valueBox.bottom + 1);
+    return { frame, containers, controls, dateBox, dateTextFits, dateTokens,
+      period: rect(period), periodValue: { text: value.textContent, ...valueBox, fits: periodValueFits } };
   });
-  expect(geometry.containers).toHaveLength(2);
-  expect(geometry.controls.length).toBeGreaterThanOrEqual(8);
+  expect(geometry.controls.length).toBeGreaterThan(0);
   for (const control of [...geometry.containers, ...geometry.controls]) {
     expect(control.left, `${control.name}: stays within the card`).toBeGreaterThanOrEqual(geometry.frame.left - 1);
     expect(control.right, `${control.name}: stays within the card`).toBeLessThanOrEqual(geometry.frame.right + 1);
@@ -75,6 +85,8 @@ async function containedControls(card: Locator) {
   expect(geometry.dateTextFits, "the date range can wrap without clipping").toBe(true);
   expect(geometry.dateTokens).toHaveLength(2);
   expect(geometry.dateTokens.every(token => token.textLines === 1), "the range wraps between dates instead of splitting an individual date").toBe(true);
+  expect(geometry.periodValue.fits, "the complete selected period fits its value slot without an ellipsis").toBe(true);
+  if (touch) expect(geometry.period.height, "the period selector retains a 40px touch height").toBeGreaterThanOrEqual(40);
   for (let i = 0; i < geometry.controls.length; i++) for (let j = i + 1; j < geometry.controls.length; j++) {
     const first = geometry.controls[i]!, second = geometry.controls[j]!;
     const horizontal = Math.min(first.right, second.right) - Math.max(first.left, second.left);
@@ -100,22 +112,20 @@ async function activate(target: Locator, page: Page, touch: boolean) {
 
 async function exerciseControls(page: Page, card: Locator, touch: boolean) {
   const plot = card.locator('[data-slot="chart"]');
+  const select = card.getByRole("combobox", { name: "统计周期", exact: true });
+  await expect(select).toHaveCount(1);
+  await expect(card.getByRole("group", { name: "统计周期", exact: true })).toHaveCount(0);
   for (const [days, name] of periods) {
-    const select = card.getByRole("combobox", { name: "统计周期", exact: true });
-    if (await select.isVisible()) {
-      await activate(select, page, touch);
-      await activate(page.getByRole("option", { name, exact: true }), page, touch);
-      await expect(select).toContainText(name);
-    } else {
-      const choice = card.getByRole("group", { name: "统计周期", exact: true }).getByRole("button", { name, exact: true });
-      await activate(choice, page, touch);
-      await expect(choice).toHaveAttribute("aria-pressed", "true");
-    }
+    await activate(select, page, touch);
+    await activate(page.getByRole("option", { name, exact: true }), page, touch);
+    await expect(select).toContainText(name);
     await expect.poll(() => new URL(page.url()).searchParams.get("range")).toBe(String(days));
     await ready(page, card);
   }
   for (const [type, name] of chartTypes) {
     const choice = card.getByRole("group", { name: "图表类型", exact: true }).getByRole("button", { name, exact: true });
+    await expect(choice.locator("svg")).toBeVisible();
+    await expect(choice).not.toContainText(name);
     await activate(choice, page, touch);
     await expect(choice).toHaveAttribute("aria-pressed", "true");
     await expect(plot).toHaveAttribute("data-chart-type", type);
@@ -129,12 +139,14 @@ async function exerciseControls(page: Page, card: Locator, touch: boolean) {
   }
   await activate(card.getByRole("tab", { name: "每日数据", exact: true }), page, touch);
   await expect(card.getByRole("region", { name: "每日数据", exact: true })).toBeVisible();
+  await expect(card.getByRole("group", { name: "趋势指标", exact: true })).toHaveCount(0);
+  await expect(card.getByRole("group", { name: "图表类型", exact: true })).toHaveCount(0);
   await activate(card.getByRole("tab", { name: "图表", exact: true }), page, touch);
   await expect(plot).toHaveAttribute("data-chart-type", "LINE");
 }
 
 for (const width of [1440, 1920]) {
-  test(`${width}px: trend control groups and the date context share their own rows when space is available`, async ({ page, manifest }, info) => {
+  test(`${width}px: the trend identity and time controls lead a separate chart toolbar`, async ({ page, manifest }, info) => {
     await page.setViewportSize({ width, height: 1100 });
     await page.emulateMedia({ colorScheme: "dark" });
     await page.addInitScript(() => {
@@ -147,19 +159,22 @@ for (const width of [1440, 1920]) {
     await expect(sidebar).toHaveAttribute("data-state", "collapsed");
     const card = trendCard(page);
     await ready(page, card);
+    await capture(card, info, `trend-card-${width}`);
     const controls = card.locator(".trend-controls");
     const groups = await sameRow([
-      controls.getByRole("group", { name: "统计周期", exact: true }),
+      controls.getByRole("combobox", { name: "统计周期", exact: true }),
       controls.getByRole("tablist", { name: "收款趋势视图", exact: true }),
-      controls.getByRole("group", { name: "图表类型", exact: true }),
     ]);
-    const heading = await sameRow([card.locator(".trend-title"), controls]);
-    const context = card.locator(".trend-context");
-    const contextRow = await sameRow([context.locator(".trend-dates"), context.getByRole("group", { name: "趋势指标", exact: true })]);
+    const identity = await sameRow([card.locator(".trend-title"), card.locator(".trend-dates")]);
+    const heading = await sameRow([card.locator(".trend-identity"), controls]);
+    const toolbar = await sameRow([
+      card.getByRole("group", { name: "趋势指标", exact: true }),
+      card.getByRole("group", { name: "图表类型", exact: true }),
+    ]);
+    expect(Math.min(...toolbar.map(box => box.y)), "chart choices follow the identity and time controls").toBeGreaterThanOrEqual(Math.max(...heading.map(box => box.bottom)) - 1);
     const fit = await containedControls(card);
     expect(fit.controls.filter(control => control.textLines > 1), "wide controls retain their labels on one line instead of compressing the text").toEqual([]);
-    await capture(card, info, `trend-card-${width}`);
-    await record(page, info, { feature: "trend-controls-same-row", width, groups, heading, contextRow, fit });
+    await record(page, info, { feature: "trend-header-and-chart-toolbar", width, groups, identity, heading, toolbar, fit });
 
     if (width === 1440) {
       const writes: string[] = [];
@@ -187,11 +202,11 @@ test.describe("trend controls reflow on phones", () => {
       await ready(page, card);
       await page.evaluate(value => { document.documentElement.style.fontSize = value + "%"; }, font);
       await page.clock.runFor(100);
-      const fit = await containedControls(card);
+      const fit = await containedControls(card, true);
       await record(page, info, { feature: "trend-controls-mobile-reflow", width, font, fit });
       await capture(font === 200 ? card.locator(".trend-header") : card, info, `trend-${font === 200 ? "header" : "card"}-${width}-text-${font}`);
       await exerciseControls(page, card, true);
-      await containedControls(card);
+      await containedControls(card, true);
       await record(page, info, { feature: "trend-controls-mobile-after-actions", width, font });
     });
   }

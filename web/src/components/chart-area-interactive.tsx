@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Popover,
   PopoverContent,
@@ -101,64 +102,54 @@ export function ChartAreaInteractive({
       >
         <CardHeader className="trend-header">
           <div className="trend-heading">
-            <div className="trend-title">
-              <CardTitle role="heading" aria-level={2}>
-                收款趋势
-              </CardTitle>
-              <Popover>
-                <PopoverTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="统计口径"
-                    />
-                  }
-                >
-                  <Info />
-                </PopoverTrigger>
-                <PopoverContent
-                  align="start"
-                  aria-label="统计口径"
-                  className="flex flex-col gap-3"
-                >
-                  <p className="text-sm">
-                    按北京时间统计：订单按创建时间，收款按 PerPay 确认时间。
-                  </p>
-                  <p className="text-sm">
-                    确认金额不是支付宝账单合计，未扣退款和费用，非净结算收入。确认笔数按确认次数计，不等于当前已确认订单数。
-                  </p>
-                  <p className="text-sm">
-                    待付款仅统计当前开放的待付款订单。日均与单日最高不含今天，包含零值日期；图表与每日横条按完整区间（含今天）展示。
-                  </p>
-                </PopoverContent>
-              </Popover>
+            <div className="trend-identity">
+              <div className="trend-title">
+                <CardTitle role="heading" aria-level={2}>
+                  收款趋势
+                </CardTitle>
+                <Popover>
+                  <PopoverTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="统计口径"
+                      />
+                    }
+                  >
+                    <Info />
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="start"
+                    aria-label="统计口径"
+                    className="flex flex-col gap-3"
+                  >
+                    <p className="text-sm">
+                      按北京时间统计：订单按创建时间，收款按 PerPay 确认时间。
+                    </p>
+                    <p className="text-sm">
+                      确认金额不是支付宝账单合计，未扣退款和费用，非净结算收入。确认笔数按确认次数计，不等于当前已确认订单数。
+                    </p>
+                    <p className="text-sm">
+                      待付款仅统计当前开放的待付款订单。日均与单日最高不含今天，包含零值日期；图表与每日横条按完整区间（含今天）展示。
+                    </p>
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <CardDescription className="trend-dates" aria-live="polite">
+                {pending
+                  ? "正在读取近 " + range + " 天…"
+                  : hasDays
+                    ? <>
+                        <time dateTime={data[0]!.date}>{data[0]!.date}</time>
+                        {" — "}
+                        <time dateTime={data.at(-1)!.date}>{data.at(-1)!.date}</time>
+                      </>
+                    : "暂无数据"}
+              </CardDescription>
             </div>
             <div className="trend-controls">
               <div className="trend-period">
-                <SelectionMotionGroup>
-                  <ToggleGroup
-                    value={[String(range)]}
-                    onValueChange={(value) => {
-                      if (value[0]) onRangeChange(value[0]);
-                    }}
-                    variant="outline"
-                    spacing={0}
-                    size="sm"
-                    className="hidden @[650px]/card:flex"
-                    aria-label="统计周期"
-                    data-selection-motion="fill"
-                  >
-                    {periods.map((item) => (
-                      <ToggleGroupItem key={item.value} value={item.value}>
-                        <SelectionMotionIndicator
-                          active={String(range) === item.value}
-                        />
-                        {item.label}
-                      </ToggleGroupItem>
-                    ))}
-                  </ToggleGroup>
-                </SelectionMotionGroup>
                 <Select
                   items={periods}
                   value={String(range)}
@@ -169,7 +160,6 @@ export function ChartAreaInteractive({
                   <SelectTrigger
                     size="sm"
                     aria-label="统计周期"
-                    className="@[650px]/card:hidden"
                   >
                     <SelectValue className="min-w-0" />
                   </SelectTrigger>
@@ -184,78 +174,14 @@ export function ChartAreaInteractive({
                   </SelectContent>
                 </Select>
               </div>
-              <SelectionMotionGroup>
-                <TabsList
-                  className="trend-tabs"
-                  variant="line"
-                  aria-label="收款趋势视图"
-                  data-selection-motion="underline"
-                >
-                  <TabsTrigger value="chart">
-                    <SelectionMotionIndicator
-                      active={view === "chart"}
-                      variant="underline"
-                    />
-                    图表
-                  </TabsTrigger>
-                  <TabsTrigger value="daily">
-                    <SelectionMotionIndicator
-                      active={view === "daily"}
-                      variant="underline"
-                    />
-                    每日数据
-                  </TabsTrigger>
-                </TabsList>
-              </SelectionMotionGroup>
-              {view === "chart" && (
-                <SelectionMotionGroup>
-                  <ToggleGroup
-                    value={[effectiveType]}
-                    onValueChange={(value) => {
-                      if (
-                        value[0] === "AREA" ||
-                        value[0] === "BAR" ||
-                        value[0] === "LINE"
-                      )
-                        setSelectedType(value[0]);
-                    }}
-                    variant="outline"
-                    spacing={0}
-                    size="sm"
-                    aria-label="图表类型"
-                    className="trend-types"
-                    data-selection-motion="fill"
-                  >
-                    {chartTypes.map(({ value, label, icon: Icon }) => (
-                      <ToggleGroupItem
-                        key={value}
-                        value={value}
-                        aria-label={label}
-                        title={label}
-                      >
-                        <SelectionMotionIndicator active={effectiveType === value} />
-                        <Icon data-icon="inline-start" />
-                        <span>{label}</span>
-                      </ToggleGroupItem>
-                    ))}
-                  </ToggleGroup>
-                </SelectionMotionGroup>
-              )}
+              <TabsList className="trend-tabs" aria-label="收款趋势视图">
+                <TabsTrigger value="chart">图表</TabsTrigger>
+                <TabsTrigger value="daily">每日数据</TabsTrigger>
+              </TabsList>
             </div>
           </div>
-          <div className="trend-context">
-            <CardDescription className="trend-dates" aria-live="polite">
-              {pending
-                ? "正在读取近 " + range + " 天…"
-                : hasDays
-                  ? <>
-                      <time dateTime={data[0]!.date}>{data[0]!.date}</time>
-                      {" — "}
-                      <time dateTime={data.at(-1)!.date}>{data.at(-1)!.date}</time>
-                    </>
-                  : "暂无数据"}
-            </CardDescription>
-            {view === "chart" && (
+          {view === "chart" && (
+            <div className="trend-toolbar">
               <SelectionMotionGroup>
                 <ToggleGroup
                   value={[metric]}
@@ -263,8 +189,7 @@ export function ChartAreaInteractive({
                     if (value[0] === "amount" || value[0] === "orders")
                       setMetric(value[0]);
                   }}
-                  variant="outline"
-                  spacing={0}
+                  spacing={1}
                   size="sm"
                   aria-label="趋势指标"
                   className="trend-metrics"
@@ -282,8 +207,40 @@ export function ChartAreaInteractive({
                   ))}
                 </ToggleGroup>
               </SelectionMotionGroup>
-            )}
-          </div>
+              <SelectionMotionGroup>
+                <ToggleGroup
+                  value={[effectiveType]}
+                  onValueChange={(value) => {
+                    if (
+                      value[0] === "AREA" ||
+                      value[0] === "BAR" ||
+                      value[0] === "LINE"
+                    )
+                      setSelectedType(value[0]);
+                  }}
+                  spacing={1}
+                  size="sm"
+                  aria-label="图表类型"
+                  className="trend-types"
+                  data-selection-motion="fill"
+                >
+                  {chartTypes.map(({ value, label, icon: Icon }) => (
+                    <Tooltip key={value}>
+                      <ToggleGroupItem
+                        value={value}
+                        aria-label={label}
+                        render={<TooltipTrigger />}
+                      >
+                        <SelectionMotionIndicator active={effectiveType === value} />
+                        <Icon aria-hidden="true" />
+                      </ToggleGroupItem>
+                      <TooltipContent role="tooltip">{label}</TooltipContent>
+                    </Tooltip>
+                  ))}
+                </ToggleGroup>
+              </SelectionMotionGroup>
+            </div>
+          )}
         </CardHeader>
         <TabsContent value="chart">
           <CardContent className="trend-content">

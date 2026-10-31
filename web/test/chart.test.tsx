@@ -249,7 +249,8 @@ describe("official shadcn interactive chart", () => {
     );
     await userEvent
       .setup()
-      .click(screen.getByRole("button", { name: "近 30 天" }));
+      .click(screen.getByRole("combobox", { name: "统计周期" }));
+    await userEvent.setup().click(await screen.findByRole("option", { name: "近 30 天" }));
     expect(change).toHaveBeenCalledExactlyOnceWith("30");
   });
   it("switches counts and currency instead of stacking incompatible units", async () => {
@@ -849,7 +850,8 @@ describe("shared trend and daily views", () => {
     await user.click(dailyTab);
     expect(screen.getByRole("status")).toHaveTextContent("第 2/3 页 · 共 30 天");
     expect(dailyDates()).toEqual(dates);
-    await user.click(screen.getByRole("button", { name: "近 7 天" }));
+    await user.click(screen.getByRole("combobox", { name: "统计周期" }));
+    await user.click(await screen.findByRole("option", { name: "近 7 天" }));
     expect(change).toHaveBeenCalledExactlyOnceWith("7");
     rerender(
       <ChartAreaInteractive

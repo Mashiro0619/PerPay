@@ -116,7 +116,7 @@ test.describe("narrow settings and overview controls remain usable", () => {
       for (const [name, value] of [["面积图", "AREA"], ["柱状图", "BAR"], ["折线图", "LINE"]] as const) {
         const choice = group.getByRole("button", { name, exact: true });
         await expect(choice).toHaveAccessibleName(name);
-        await expect(choice).toHaveAttribute("title", name);
+        await expect(choice).not.toContainText(name);
         await choice.scrollIntoViewIfNeeded();
         await page.clock.runFor(100);
         // The outer rounded corners are transparent; target size, edge
@@ -139,8 +139,7 @@ test.describe("narrow settings and overview controls remain usable", () => {
       });
       expect(layout.scrollWidth).toBeLessThanOrEqual(layout.width + 1);
       expect(layout.choices.every(choice => choice.left >= -1 && choice.right <= layout.width + 1)).toBe(true);
-      expect(new Set(layout.choices.map(choice => Math.round(choice.top))).size, "the joined group keeps a horizontal row").toBe(1);
-      await expect(group).toHaveAttribute("data-spacing", "0");
+      expect(new Set(layout.choices.map(choice => Math.round(choice.top))).size, "the chart choices keep a horizontal row").toBe(1);
       await expect(group).toHaveAttribute("data-orientation", "horizontal");
       const first = group.getByRole("button", { name: "面积图", exact: true });
       await first.tap();
@@ -148,6 +147,8 @@ test.describe("narrow settings and overview controls remain usable", () => {
       await page.keyboard.press("ArrowRight");
       const next = group.getByRole("button", { name: "柱状图", exact: true });
       await expect(next).toBeFocused();
+      await page.clock.runFor(100);
+      await expect(page.getByRole("tooltip")).toContainText("柱状图");
       await page.keyboard.press("Space");
       await expect(next).toHaveAttribute("aria-pressed", "true");
       await expect(page.locator(".trend-plot[data-chart-type]")).toHaveAttribute("data-chart-type", "BAR");

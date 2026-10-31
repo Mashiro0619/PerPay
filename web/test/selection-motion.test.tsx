@@ -342,7 +342,7 @@ describe("chart series motion", () => {
     await user.click(screen.getByRole("button", { name: "新建订单" }));
     await waitFor(() => expect(animate).toHaveBeenCalled());
     for (const call of vi.mocked(animate).mock.calls) expect(call[0]).toBeInstanceOf(SVGElement);
-    for (const element of container.querySelectorAll<HTMLElement>('.trend-content, .trend-toolbar, .trend-summary, .recharts-cartesian-axis')) expect(element.style.opacity).toBe("");
+    for (const element of container.querySelectorAll<HTMLElement>('.trend-header, .trend-content, .trend-toolbar, .trend-summary, .recharts-cartesian-axis')) expect(element.style.opacity).toBe("");
     await user.click(screen.getByRole("tab", { name: "每日数据" }));
     expect(screen.getByRole("table", { name: "每日收款数据" })).toBeVisible();
     for (const element of container.querySelectorAll<HTMLElement>('[data-slot="card-content"], .daily-report')) expect(element.style.opacity).toBe("");

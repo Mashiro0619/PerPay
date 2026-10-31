@@ -51,7 +51,8 @@ async function visibleDates(page: Page) {
 }
 
 async function range(page: Page, days: number) {
-  await page.getByRole("button", { name: `近 ${days} 天`, exact: true }).click();
+  await page.getByRole("combobox", { name: "统计周期", exact: true }).click();
+  await page.getByRole("option", { name: `近 ${days} 天`, exact: true }).click();
   await expect(report(page).locator('[role="status"]')).toContainText(`共 ${days} 天`);
 }
 
@@ -283,7 +284,8 @@ test("daily data separates loading, failures, empty series and valid zero days t
   await current.getByRole("button", { name: "下一页", exact: true }).click();
   hold90 = true;
   holding90 = new Promise<void>(resolve => { release90 = resolve; });
-  await page.getByRole("button", { name: "近 90 天", exact: true }).click();
+  await page.getByRole("combobox", { name: "统计周期", exact: true }).click();
+  await page.getByRole("option", { name: "近 90 天", exact: true }).click();
   await expect(current).toHaveAttribute("aria-busy", "true");
   await expect(current.locator(".daily-date time")).toHaveCount(0);
   await expect(current.locator("[data-daily-summary]")).toHaveCount(0);

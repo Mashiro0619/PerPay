@@ -373,16 +373,18 @@ if (phase === "final") {
     const selectedPaint = await targetOrders.evaluate(measureSelectionContrast);
     expect(selectedPaint?.passed, "stable selection text remains readable on its verified opaque decoration").toBe(true);
     const selectedType = typeGroup.locator('[aria-pressed="true"]');
-    const iconLabelPaint = await selectedType.evaluate(measureSelectionContrast);
-    expect(iconLabelPaint?.passed, "the icon and label have separately verified paint and geometry").toBe(true);
-    const typeLabel = selectedType.locator(':scope > span:not([data-selection-indicator])');
-    await typeLabel.evaluate(element => (element as HTMLElement).style.opacity = "0.5");
+    const iconPaint = await selectedType.evaluate(measureSelectionContrast);
+    expect(iconPaint?.passed, "the named icon retains verified SVG ink contrast and geometry").toBe(true);
+    expect(iconPaint?.contentKind).toBe("icon");
+    expect(iconPaint?.iconPaints.some(paint => paint.channel === "stroke")).toBe(true);
+    expect(iconPaint?.iconContrast).toBeGreaterThanOrEqual(3);
+    await targetOrders.evaluate(element => (element as HTMLElement).style.opacity = "0.5");
     try {
-      const invalidPaint = await selectedType.evaluate(measureSelectionContrast);
+      const invalidPaint = await targetOrders.evaluate(measureSelectionContrast);
       expect(invalidPaint?.passed).toBe(false);
-      expect(invalidPaint?.conflicts).toContain("unverified label paint");
+      expect(invalidPaint?.conflicts).toContain("opacity, filter, blend or transform");
     } finally {
-      await typeLabel.evaluate(element => (element as HTMLElement).style.removeProperty("opacity"));
+      await targetOrders.evaluate(element => (element as HTMLElement).style.removeProperty("opacity"));
     }
     await selectedType.evaluate(element => element.append(document.createTextNode("额外未测文字")));
     try {
@@ -390,11 +392,11 @@ if (phase === "final") {
     } finally {
       await selectedType.evaluate(element => element.lastChild!.remove());
     }
-    await typeLabel.evaluate(element => (element as HTMLElement).style.setProperty("-webkit-text-fill-color", "transparent"));
+    await targetOrders.evaluate(element => (element as HTMLElement).style.setProperty("-webkit-text-fill-color", "transparent"));
     try {
-      expect((await selectedType.evaluate(measureSelectionContrast))?.conflicts).toContain("unverified text paint");
+      expect((await targetOrders.evaluate(measureSelectionContrast))?.conflicts).toContain("unverified text paint");
     } finally {
-      await typeLabel.evaluate(element => (element as HTMLElement).style.removeProperty("-webkit-text-fill-color"));
+      await targetOrders.evaluate(element => (element as HTMLElement).style.removeProperty("-webkit-text-fill-color"));
     }
     const typeIcon = selectedType.locator(":scope > svg");
     await typeIcon.evaluate(element => (element as SVGElement).style.overflow = "visible");
@@ -402,6 +404,31 @@ if (phase === "final") {
       expect((await selectedType.evaluate(measureSelectionContrast))?.conflicts).toContain("unverified icon paint");
     } finally {
       await typeIcon.evaluate(element => (element as SVGElement).style.removeProperty("overflow"));
+    }
+    const stroke = typeIcon.locator("path, line, rect, circle, ellipse, polyline, polygon").first();
+    await stroke.evaluate(element => (element as SVGElement).style.stroke = "transparent");
+    try {
+      const invalidPaint = await selectedType.evaluate(measureSelectionContrast);
+      expect(invalidPaint?.passed).toBe(false);
+      expect(invalidPaint?.iconContrast, "SVG stroke paint is measured independently from the button's text color").toBeLessThan(3);
+    } finally {
+      await stroke.evaluate(element => (element as SVGElement).style.removeProperty("stroke"));
+    }
+    const names = await selectedType.evaluate(element => {
+      const names = { label: element.getAttribute("aria-label"), labelledBy: element.getAttribute("aria-labelledby") };
+      element.removeAttribute("aria-label");
+      element.removeAttribute("aria-labelledby");
+      return names;
+    });
+    try {
+      const unnamedIcon = await selectedType.evaluate(measureSelectionContrast);
+      expect(unnamedIcon?.passed).toBe(false);
+      expect(unnamedIcon?.conflicts).toContain("missing accessible name");
+    } finally {
+      await selectedType.evaluate((element, names) => {
+        if (names.label !== null) element.setAttribute("aria-label", names.label);
+        if (names.labelledBy !== null) element.setAttribute("aria-labelledby", names.labelledBy);
+      }, names);
     }
     await initialAmount.click({ force: true });
     await page.clock.runFor(300);
@@ -471,6 +498,6 @@ if (phase === "final") {
     expect(insertedStyles).toEqual([]);
     expect(errors).toEqual([]);
     expect(cspErrors).toEqual([]);
-    await record(page, info, { phase, scenario: "selection-motion-continuity", indicatorGeometry, selectedPaint, expectedAmount, expectedOrders, retainedDates: dates, analyticsReads, insertedStyles, errors, cspErrors, runningAnimationsAfterReducedMotion: runningAnimations });
+    await record(page, info, { phase, scenario: "selection-motion-continuity", indicatorGeometry, selectedPaint, iconPaint, expectedAmount, expectedOrders, retainedDates: dates, analyticsReads, insertedStyles, errors, cspErrors, runningAnimationsAfterReducedMotion: runningAnimations });
   });
 }
