@@ -199,6 +199,7 @@ export function useOperationNavigation(
   return { blocked: blockedId === id, hasDrafts, stay, proceed };
 }
 export const useDraftGuard = () => useContext(DraftContext);
+export const useHasDirtyDrafts = () => useContext(OperationNavigationContext).hasDrafts;
 export function useDirtyDraft(dirty: boolean) {
   const id = useId();
   const { setDirty } = useDraftGuard();

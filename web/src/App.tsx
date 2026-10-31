@@ -26,7 +26,7 @@ import { api, result } from "@/api/client";
 import { AuthBoundary, useSession } from "@/auth";
 import { DraftProvider, useDraftGuard } from "@/drafts";
 import { Link, NavigationContext, useNavigate } from "@/navigation";
-import { OfficialUpdateNotice, OfficialUpdateProvider } from "@/updates";
+import { OfficialUpdateDialog, OfficialUpdateProvider, useOfficialUpdateAvailable } from "@/updates";
 import { deferOnboarding, deferredInstance } from "@/lib/onboarding";
 import { AppSidebar } from "@/components/app-sidebar";
 import { isGlobalNavigationPage, navigationSection, type NavigationSection } from "@/lib/navigation-selection";
@@ -86,6 +86,7 @@ function AppShell() {
 }
 function Workspace() {
   const systemName = useSystemName();
+  const updateAvailable = useOfficialUpdateAvailable();
   const scope = useWorkspace();
   const { switching } = useWorkspaceNavigation();
   const { setOpenMobile, toggleSidebar } = useSidebar();
@@ -161,6 +162,7 @@ function Workspace() {
   ]);
   return (
     <NavigationContext value={toggleSidebar}>
+      <OfficialUpdateDialog />
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:p-4"
@@ -170,6 +172,7 @@ function Workspace() {
       <AppSidebar
         variant="inset"
         pathname={location.pathname}
+        updateAvailable={updateAvailable}
         username={session.username}
         logoutPending={logout.isPending}
         onLogout={() => requestDiscard(() => logout.mutate())}
@@ -185,7 +188,6 @@ function Workspace() {
               <ErrorNotice error={session.error} retry={session.retry} />
             </div>
           )}
-          <OfficialUpdateNotice hidden={location.pathname === "/system"} />
           <WorkspaceOutlet />
         </AdminContent>
         </PageHeadingProvider>

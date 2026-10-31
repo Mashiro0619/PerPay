@@ -1,26 +1,23 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { isReleaseVersion, isPrereleaseVersion } from "../../src/shared/release-version";
-import { X, ArrowUpCircle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { api, ApiError, queryClient, result, sessionKey } from "@/api/client";
+import { api, ApiError, queryClient, result, sessionKey, type OfficialUpdate } from "@/api/client";
 import { isUpdateChannel, setUpdatePreferences, useUpdatePreferences, type UpdateChannel } from "@/lib/update-preferences";
+import { dismissUpdateVersion, restoreUpdateReminders, useUpdateReminder } from "@/lib/update-reminders";
+import { UpdateDialog, type UpdateDialogRequest } from "@/components/update-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Alert,
-  AlertTitle,
-  AlertAction,
-} from "@/components/ui/alert";
+import { toast } from "@/components/ui/toast";
 export const officialUpdateKey = ["official-update", "prerelease"] as const;
 const checkInterval = 6 * 60 * 60 * 1000;
 const channels: { value: UpdateChannel; label: string }[] = [
   { value: "stable", label: "仅稳定版" },
   { value: "prerelease", label: "包含预发布版" },
 ];
-const upgradeGuide =
+export const upgradeGuide =
   "https://github.com/Mashiro0619/PerPay/blob/main/README.md#更新";
 function retryDeadline(error: unknown, updatedAt: number): number {
   const seconds = error instanceof ApiError ? error.retryAfter : null;
@@ -28,27 +25,43 @@ function retryDeadline(error: unknown, updatedAt: number): number {
     ? updatedAt + seconds * 1000 : 0;
 }
 
+function refreshDeadline(raw: string | null | undefined): number {
+  if (!raw || !/^\d+$/.test(raw)) return 0;
+  const seconds = Number(raw);
+  const deadline = Date.now() + seconds * 1000;
+  return Number.isSafeInteger(seconds) && seconds > 0 && Number.isSafeInteger(deadline) ? deadline : 0;
+}
+
 function useUpdateOwner() {
   const preferences = useUpdatePreferences();
   const { channel, automatic } = preferences;
+  const toastId = useId();
   const selection = useMemo(() => ({
     queryKey: ["official-update", channel] as const,
     active: false,
-    pending: null as object | null,
+    pending: null as { manual: boolean } | null,
     wake: undefined as (() => void) | undefined,
     lastAttemptAt: null as number | null,
   }), [channel]);
   const [completedSelection, setCompletedSelection] = useState<typeof selection | null>(null);
+  const [dialogRequest, setDialogRequest] = useState<(UpdateDialogRequest & { selection: typeof selection }) | null>(null);
   const update = useQuery({
     queryKey: selection.queryKey,
     queryFn: async ({ signal }) => {
       if (queryClient.getQueryData(sessionKey) == null) {
         throw new DOMException("当前不能检查更新。", "AbortError");
       }
+      let refreshAfter = 0;
       const response = await result(api.checkOfficialUpdate({
         signal,
-        query: { channel },
+        query: { channel, ...(selection.pending?.manual ? { refresh: true } : {}) },
+      }).then((response) => {
+        // Read metadata locally, but only publish it after result() has validated
+        // the response and the administrator session generation.
+        refreshAfter = refreshDeadline(response.response?.headers.get("X-PerPay-Update-Refresh-After"));
+        return response;
       }));
+      signal.throwIfAborted();
       const data = response?.data;
       if (
         !data ||
@@ -64,7 +77,7 @@ function useUpdateOwner() {
       ) {
         throw new Error("官方更新响应无效，请稍后重试。");
       }
-      return response;
+      return { ...response, refreshAfter };
     },
     // Only this owner schedules requests; observers and global refreshes cannot start one.
     enabled: false,
@@ -77,17 +90,40 @@ function useUpdateOwner() {
     networkMode: "always",
   });
   const { refetch } = update;
-  const check = useCallback(async () => {
+  const showDetails = useCallback((data: OfficialUpdate, returnFocus: HTMLElement | null = null) => {
+    if (!selection.active || queryClient.getQueryData(sessionKey) == null || data.status !== "update_available") return;
+    setDialogRequest({ data, channel, returnFocus, selection });
+  }, [channel, selection]);
+  const clearDialogRequest = useCallback((request: UpdateDialogRequest) => {
+    setDialogRequest(previous => previous === request ? null : previous);
+  }, []);
+  const check = useCallback(async (manual = true, returnFocus: HTMLElement | null = null) => {
     if (!selection.active || selection.pending || queryClient.getQueryData(sessionKey) == null) return;
     const state = queryClient.getQueryState(selection.queryKey);
-    if (Date.now() < retryDeadline(state?.error, state?.errorUpdatedAt ?? 0)) return;
-    const attempt = {};
+    const cached = queryClient.getQueryData<{ refreshAfter: number }>(selection.queryKey);
+    if (Date.now() < Math.max(retryDeadline(state?.error, state?.errorUpdatedAt ?? 0), manual ? cached?.refreshAfter ?? 0 : 0)) return;
+    const previousAttemptAt = selection.lastAttemptAt;
+    const attempt = { manual };
     selection.pending = attempt;
     selection.lastAttemptAt = Date.now();
+    if (manual) toast.close(toastId);
     try {
       const outcome = await refetch();
       if (selection.active && selection.pending === attempt && outcome.status !== "pending" && outcome.error?.name !== "AbortError") {
+        // A request refused by the cooldown has not checked the upstream and
+        // must not postpone the next scheduled check for another six hours.
+        if (outcome.error instanceof ApiError && outcome.error.status === 429) selection.lastAttemptAt = previousAttemptAt;
         setCompletedSelection(selection);
+        if (manual && outcome.isSuccess) {
+          const data = outcome.data.data;
+          if (data.status === "update_available") showDetails(data, returnFocus);
+          else toast.add({
+            id: toastId,
+            title: data.status === "up_to_date" ? "已是当前通道最新版本。" : "当前版本高于此通道最新发布版本。",
+            type: data.status === "up_to_date" ? "success" : "info",
+            timeout: 4000,
+          });
+        }
       }
     } finally {
       if (selection.pending === attempt) {
@@ -95,7 +131,7 @@ function useUpdateOwner() {
         selection.wake?.();
       }
     }
-  }, [refetch, selection]);
+  }, [refetch, selection, showDetails, toastId]);
 
   useEffect(() => {
     selection.active = true;
@@ -105,9 +141,10 @@ function useUpdateOwner() {
       // attempt must neither suppress its replacement nor complete that replacement.
       if (selection.pending) selection.lastAttemptAt = null;
       selection.pending = null;
+      toast.close(toastId);
       void queryClient.cancelQueries({ queryKey: selection.queryKey, exact: true });
     };
-  }, [selection]);
+  }, [selection, toastId]);
 
   useEffect(() => {
     let timer: number | undefined;
@@ -123,7 +160,7 @@ function useUpdateOwner() {
       );
       const delay = next - Date.now();
       if (delay <= 0) {
-        void check();
+        void check(false);
       } else {
         // Browsers clamp larger delays to 1ms; bound unusually long Retry-After values.
         timer = window.setTimeout(schedule, Math.min(delay, 2_147_483_647));
@@ -143,7 +180,11 @@ function useUpdateOwner() {
     };
   }, [automatic, selection, check]);
 
-  return { update, check, preferences, checked: completedSelection === selection };
+  return {
+    update, check, preferences, checked: completedSelection === selection,
+    selection, showDetails, clearDialogRequest,
+    dialogRequest: dialogRequest?.selection === selection ? dialogRequest : null,
+  };
 }
 
 const OfficialUpdateContext = createContext<ReturnType<typeof useUpdateOwner> | null>(null);
@@ -165,45 +206,24 @@ function useOfficialUpdate() {
   return context;
 }
 
-export function OfficialUpdateNotice({
-  hidden = false,
-  className,
-}: {
-  hidden?: boolean;
-  className?: string | undefined;
-}) {
+export function OfficialUpdateDialog() {
+  const { update, checked, preferences, selection, dialogRequest, clearDialogRequest } = useOfficialUpdate();
+  return <UpdateDialog
+    channel={preferences.channel}
+    selection={selection}
+    candidate={checked && !selection.pending?.manual && !dialogRequest && !update.isFetching && !update.isError ? update.data?.data : undefined}
+    request={dialogRequest}
+    onRequestHandled={clearDialogRequest}
+    upgradeGuide={upgradeGuide}
+  />;
+}
+
+export function useOfficialUpdateAvailable(): boolean {
   const { update, checked, preferences } = useOfficialUpdate();
-  const [dismissedVersion, setDismissedVersion] = useState<string | null>(null);
   const data = update.data?.data;
-  if (
-    hidden || !checked ||
-    update.isFetching ||
-    update.isError ||
-    data?.status !== "update_available" ||
-    dismissedVersion === `${preferences.channel}:${data.latest_version}`
-  )
-    return null;
-  return (
-    <Alert className={className} role="status" aria-label="官方版本更新">
-      <ArrowUpCircle />
-      <AlertTitle>
-        有新版本 v{data.latest_version}{isPrereleaseVersion(data.latest_version) ? "（预发布）" : ""} ·{" "}
-        <a data-external-link href={data.release_url} target="_blank" rel="noopener noreferrer">
-          查看更新
-        </a>
-      </AlertTitle>
-      <AlertAction>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="关闭更新提示"
-          onClick={() => setDismissedVersion(`${preferences.channel}:${data.latest_version}`)}
-        >
-          <X />
-        </Button>
-      </AlertAction>
-    </Alert>
-  );
+  const reminder = useUpdateReminder(preferences.channel, data?.latest_version);
+  return checked && !update.isFetching && !update.isError &&
+    data?.status === "update_available" && !reminder.ignored;
 }
 function retryWait(seconds: number) {
   if (seconds > 0 && seconds % 3600 === 0) return `${seconds / 3600} 小时`;
@@ -216,7 +236,7 @@ export function OfficialUpdatePanel({ currentVersion }: { currentVersion?: strin
 }
 
 function UpdatePanel({ currentVersion }: { currentVersion?: string | undefined }) {
-  const { update, checked, check, preferences } = useOfficialUpdate();
+  const { update, checked, check, preferences, showDetails } = useOfficialUpdate();
   const checking = update.isFetching;
   const failed = checked && update.isError;
   const data = checked && !checking && !update.isError ? update.data?.data : undefined;
@@ -225,8 +245,9 @@ function UpdatePanel({ currentVersion }: { currentVersion?: string | undefined }
     ? currentVersion
     : isReleaseVersion(lastKnownVersion) ? lastKnownVersion : undefined;
   const latestIsPrerelease = isPrereleaseVersion(data?.latest_version);
+  const reminder = useUpdateReminder(preferences.channel, data?.latest_version);
   const [clock, setClock] = useState(Date.now);
-  const retryAt = retryDeadline(update.error, update.errorUpdatedAt);
+  const retryAt = Math.max(retryDeadline(update.error, update.errorUpdatedAt), update.data?.refreshAfter ?? 0);
   const remaining = Math.max(0, Math.ceil((retryAt - Math.max(clock, update.errorUpdatedAt)) / 1000));
   useEffect(() => {
     setClock(Date.now());
@@ -242,9 +263,9 @@ function UpdatePanel({ currentVersion }: { currentVersion?: string | undefined }
   const status = checking
     ? "正在检查更新…"
     : failed
-      ? "暂时无法检查更新。"
+      ? update.error instanceof ApiError ? update.error.message : "暂时无法检查更新。"
       : data?.status === "update_available"
-        ? "有可用更新：v" + data.latest_version + (latestIsPrerelease ? "（预发布）" : "")
+        ? "有可用更新：v" + data.latest_version + (latestIsPrerelease ? "（预发布）" : "") + (reminder.ignored ? "（已忽略）" : "")
         : null;
   return (
     <section className="system-update-strip" aria-label="官方更新" data-update-state={checking ? "checking" : failed ? "unavailable" : data?.status ?? "idle"}>
@@ -256,10 +277,10 @@ function UpdatePanel({ currentVersion }: { currentVersion?: string | undefined }
                 <span className="font-mono">{knownVersion ? `v${knownVersion}` : "未知"}</span>
                 {isPrereleaseVersion(knownVersion) && <span>（预发布）</span>}
               </span>
-            {(status || remaining > 0) && <p role="status" className="system-update-status">
-              <span>{status}</span>
+            {(status || remaining > 0) && <p className="system-update-status">
+              {status && <span role="status">{status}</span>}
               {!checking && remaining > 0 && (
-                <span> 请至少等待 {retryWait(remaining)}后重试。</span>
+                <span id="official-update-wait"> 请至少等待 {retryWait(remaining)}后重试。</span>
               )}
             </p>}
           </div>
@@ -277,17 +298,24 @@ function UpdatePanel({ currentVersion }: { currentVersion?: string | undefined }
             </Select>
           </Field>
           <Button variant="outline" size="sm" className="system-update-check"
-            disabled={update.isFetching || remaining > 0} onClick={() => { void check(); }}>
+            aria-describedby={remaining > 0 ? "official-update-wait" : undefined}
+            disabled={update.isFetching || remaining > 0} onClick={(event) => { void check(true, event.currentTarget); }}>
             {update.isFetching && <Spinner aria-hidden="true" data-icon="inline-start" />}
             检查更新
           </Button>
           {data && <div className="system-update-actions">
+            {data.status === "update_available" && <Button variant="ghost" size="sm" onClick={(event) => showDetails(data, event.currentTarget)}>查看更新</Button>}
+            {data.status === "update_available" && <Button variant="ghost" size="sm" onClick={() => {
+              if (reminder.ignored) restoreUpdateReminders(preferences.channel);
+              else dismissUpdateVersion(preferences.channel, data.latest_version);
+            }}>{reminder.ignored ? "恢复此通道更新提醒" : "忽略此版本"}</Button>}
             <a data-external-link aria-label="查看发布说明"
               className={buttonVariants({ variant: "ghost", size: "sm" })}
               href={data.release_url} target="_blank" rel="noopener noreferrer">发布说明</a>
             <a data-external-link className={buttonVariants({ variant: "ghost", size: "sm" })}
               href={upgradeGuide} target="_blank" rel="noopener noreferrer">更新方法</a>
           </div>}
+          {reminder.dismissedVersion !== null && (data?.status !== "update_available" || !reminder.ignored) && <Button variant="ghost" size="sm" onClick={() => restoreUpdateReminders(preferences.channel)}>恢复此通道更新提醒</Button>}
         </FieldGroup>
     </section>
   );

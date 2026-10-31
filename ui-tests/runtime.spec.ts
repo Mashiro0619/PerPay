@@ -10,7 +10,7 @@ test("runtime keeps healthy diagnostics collapsed and version check failures con
   const healthy = page.getByRole("table", { name: "运行环节" });
   await expect(healthy).toBeVisible();
   await expect(page.locator(".runtime-service-row[data-attention]")).toHaveCount(0);
-  await expect(page.getByRole("region", { name: "官方更新", exact: true })).toContainText("暂时无法检查更新。");
+  await expect(page.getByRole("region", { name: "官方更新", exact: true })).toContainText(/暂时无法检查(?:官方)?更新/);
   await expect(page.locator("body")).not.toContainText(/只读演示|演示模式/);
   const update = page.getByRole("button", { name: "检查更新", exact: true });
   await expect(update).toBeDisabled();

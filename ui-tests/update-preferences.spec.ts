@@ -1,9 +1,15 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { APP_VERSION } from "../src/version";
 import { UpdateCheckUnavailable, type OfficialUpdate, type OfficialUpdateChannel } from "../src/update/checker";
 import { createSettingsServer } from "./settings-server";
 
 const SIX_HOURS = 6 * 60 * 60 * 1_000;
+async function acknowledgeUpdate(page: Page) {
+  const dialog = page.getByRole("dialog", { name: "发现新版本", exact: true });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "知道了", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+}
 function updateFor(channel: OfficialUpdateChannel, epoch: number): OfficialUpdate {
   const latest = channel === "stable" ? "1.0.0" : "1.1.0-alpha.1";
   return {
@@ -31,6 +37,7 @@ for (const width of [390, 740, 1440]) {
       await page.route("**/*", route => new URL(route.request().url()).origin === fixture.origin ? route.continue() : route.abort("blockedbyclient"));
       await page.context().addCookies(fixture.cookies);
       await page.goto(fixture.origin + "/admin/system");
+      await acknowledgeUpdate(page);
       const panel = page.getByRole("region", { name: "官方更新", exact: true });
       const automatic = panel.getByRole("switch", { name: "自动检查更新", exact: true });
       const channel = panel.getByRole("combobox", { name: "检查通道", exact: true });
@@ -68,6 +75,7 @@ for (const width of [390, 740, 1440]) {
       await expect(page.getByRole("option")).toHaveCount(2);
       await expect(page.getByRole("option", { name: "跟随当前版本", exact: true })).toHaveCount(0);
       await page.getByRole("option", { name: "仅稳定版", exact: true }).click();
+      await acknowledgeUpdate(page);
       await expect(panel).toContainText("有可用更新：v1.0.0");
       expect(channels).toEqual(["prerelease", "stable"]);
       await channel.click();
@@ -86,6 +94,7 @@ for (const width of [390, 740, 1440]) {
       await page.clock.fastForward(SIX_HOURS + 1_000);
       expect(channels.length).toBe(count);
       await panel.getByRole("button", { name: "检查更新", exact: true }).click();
+      await acknowledgeUpdate(page);
       await expect.poll(() => channels.length).toBe(count + 1);
       await expect(panel).toContainText("1.1.0-alpha.1");
 
@@ -142,6 +151,7 @@ test("the preview keeps manual version checks available without explanatory bann
     await page.setViewportSize({ width: 390, height: 844 });
     await page.context().addCookies(fixture.cookies);
     await page.goto(fixture.origin + "/admin/system");
+    await acknowledgeUpdate(page);
     const panel = page.getByRole("region", { name: "官方更新", exact: true });
     await expect(panel).toContainText("有可用更新：v1.1.0-alpha.1");
     await expect(panel).not.toContainText(/只读演示|演示模式|偏好仅作用|不会自动安装/);
@@ -149,9 +159,11 @@ test("the preview keeps manual version checks available without explanatory bann
     await expect(manual).toBeEnabled();
     await expect.poll(() => checks).toBe(1);
     await manual.click();
+    await acknowledgeUpdate(page);
     await expect.poll(() => checks).toBe(2);
     await panel.getByRole("combobox", { name: "检查通道", exact: true }).click();
     await page.getByRole("option", { name: "仅稳定版", exact: true }).click();
+    await acknowledgeUpdate(page);
     await expect(panel.getByRole("combobox", { name: "检查通道", exact: true })).toContainText("仅稳定版");
     await expect(panel).toContainText("有可用更新：v1.0.0");
     expect(checks).toBe(3);
@@ -173,13 +185,14 @@ test("manual update checks respect a failed request's retry delay and recover", 
     await page.goto(fixture.origin + "/admin/system");
     const panel = page.getByRole("region", { name: "官方更新", exact: true });
     const manual = panel.getByRole("button", { name: "检查更新", exact: true });
-    await expect(panel).toContainText("暂时无法检查更新。");
+    await expect(panel).toContainText(/暂时无法检查(?:官方)?更新/);
     await expect(manual).toBeDisabled();
     expect(checks).toBe(1);
     await page.clock.fastForward(3_000);
     await expect(manual).toBeEnabled();
     expect(checks).toBe(1);
     await manual.click();
+    await acknowledgeUpdate(page);
     await expect(panel).toContainText("有可用更新：v1.1.0-alpha.1");
     expect(checks).toBe(2);
   } finally { await fixture.close(); }
@@ -205,6 +218,7 @@ test("legacy follow preferences become prerelease while explicit stable and auto
     await expect(panel.getByRole("switch", { name: "自动检查更新", exact: true })).not.toBeChecked();
     expect(channels).toEqual([]);
     await panel.getByRole("button", { name: "检查更新", exact: true }).click();
+    await acknowledgeUpdate(page);
     await expect(panel).toContainText("有可用更新：v1.1.0-alpha.1");
     expect(channels).toEqual(["prerelease"]);
     await channel.click();
@@ -216,6 +230,7 @@ test("legacy follow preferences become prerelease while explicit stable and auto
     await expect(panel.getByRole("switch", { name: "自动检查更新", exact: true })).not.toBeChecked();
     expect(channels).toEqual(["prerelease"]);
     await panel.getByRole("button", { name: "检查更新", exact: true }).click();
+    await acknowledgeUpdate(page);
     await expect(panel).toContainText("有可用更新：v1.0.0");
     expect(channels).toEqual(["prerelease", "stable"]);
   } finally { await fixture.close(); }

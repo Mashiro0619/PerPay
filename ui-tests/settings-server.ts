@@ -8,13 +8,13 @@ import { createApp, type AppDependencies } from "../src/http/app";
 import { LedgerStore } from "../src/ledger/store";
 import { createOrderRequestSchema } from "../src/orders/model";
 import { ReconciliationStore } from "../src/reconciliation/store";
-import { UpdateCheckUnavailable, type OfficialUpdateChecker } from "../src/update/checker";
+import { UpdateCheckUnavailable } from "../src/update/checker";
 import { createConfiguredHttpServices, HTTP_TEST_ADMIN_PASSWORD } from "../test/http-fixture";
 import { recordLedgerEntry } from "../test/reconciliation-http-fixture";
 
 /** Writable temporary SQLite fixture; no provider or notification transport runs. */
 export async function createSettingsServer(epoch: number, options: {
-  updateChecker?: Pick<OfficialUpdateChecker, "check">;
+  updateChecker?: AppDependencies["updateChecker"];
   demoMode?: boolean;
   clock?: () => number;
   runtime?: (services: Awaited<ReturnType<typeof createConfiguredHttpServices>>) => Partial<Pick<AppDependencies,

@@ -19,6 +19,8 @@ import {
 } from "../src/api/client";
 import { OfficialUpdatePanel, officialUpdateKey } from "../src/updates";
 import { setUpdatePreferences } from "../src/lib/update-preferences";
+import { restoreUpdateReminders } from "../src/lib/update-reminders";
+import { toast } from "../src/components/ui/toast";
 import { apiError, json } from "./fixtures";
 import { mountOnboarding, systemStatus } from "./onboarding-fixture";
 
@@ -34,17 +36,26 @@ const isUpdate = (request: Request) =>
   new URL(request.url).pathname === "/api/admin/v1/system/update";
 const preferencesKey = "perpay:update-preferences";
 const sixHours = 6 * 60 * 60 * 1000;
+const updateLinkName = /运行状态.*有更新/;
+const updateIndicator = () => document.querySelector("[data-update-indicator]");
 function preferences(automatic: boolean, channel = "prerelease") {
   localStorage.setItem(preferencesKey, JSON.stringify({ automatic, channel }));
   fireEvent(window, new StorageEvent("storage", { key: preferencesKey, newValue: localStorage.getItem(preferencesKey), storageArea: localStorage }));
 }
 beforeEach(() => {
+  // This suite exercises checking and the compact strip; foreground dialog
+  // behavior is covered separately in update-dialog.test.tsx.
+  vi.spyOn(document, "hasFocus").mockReturnValue(false);
+  restoreUpdateReminders("stable");
+  restoreUpdateReminders("prerelease");
   setUpdatePreferences({ automatic: true, channel: "prerelease" });
   localStorage.removeItem(preferencesKey);
   fireEvent(window, new StorageEvent("storage", { key: preferencesKey, newValue: null }));
 });
+
 afterEach(() => {
   delete document.documentElement.dataset.perpayDemo;
+  vi.restoreAllMocks();
 });
 function mountPanel(handle: (request: Request) => Response | Promise<Response> = () => json({ data: update }), currentVersion = update.current_version, strict = false) {
   // The standalone panel has no AuthBoundary observer pinning the active session.
@@ -341,7 +352,7 @@ describe("automatic official update checks", () => {
   it("shows real update failures in a preview without replacing them with a mode message", async () => {
     document.documentElement.dataset.perpayDemo = "readonly";
     mountPanel(() => apiError("update_check_unavailable", "更新服务暂不可用", 503));
-    await screen.findByText("暂时无法检查更新。");
+    await screen.findByText("更新服务暂不可用");
     expect(screen.queryByText(/演示模式|只读|未连接官方更新服务/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "检查更新" })).toBeEnabled();
   });
@@ -383,15 +394,13 @@ describe("automatic official update checks", () => {
     ).toHaveLength(0);
     rejectLogin = false;
     await user.click(screen.getByRole("button", { name: "登录" }));
-    const notice = await screen.findByRole("status", { name: "官方版本更新" });
-    expect(notice).toHaveTextContent("有新版本 v0.2.1");
-    expect(
-      within(notice).getByRole("link", { name: "查看更新" }),
-    ).toHaveAttribute("href", update.release_url);
-    expect(within(notice).getByRole("link")).toHaveAttribute(
-      "rel",
-      "noopener noreferrer",
-    );
+    const link = await screen.findByRole("link", { name: updateLinkName });
+    expect(within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: updateLinkName })).toBe(link);
+    expect(within(link).getByText("运行状态")).toBeVisible();
+    expect(link.querySelector("[data-update-indicator]")).toBeVisible();
+    expect(link).not.toHaveTextContent("有更新");
+    expect(screen.queryByRole("status", { name: "官方版本更新" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "忽略此版本" })).not.toBeInTheDocument();
     expect(
       view.fetchMock.mock.calls.filter(([request]) => isUpdate(request)),
     ).toHaveLength(1);
@@ -406,8 +415,7 @@ describe("automatic official update checks", () => {
       isUpdate(request) ? json({ data: update }) : undefined,
     );
     const user = userEvent.setup();
-    await screen.findByRole("status", { name: "官方版本更新" });
-    await user.click(screen.getByRole("link", { name: "运行状态" }));
+    await user.click(await screen.findByRole("link", { name: updateLinkName }));
     await screen.findByRole("heading", { name: "官方更新" });
     await screen.findByText("有可用更新：v0.2.1");
     const panel = within(screen.getByRole("region", { name: "官方更新" }));
@@ -423,6 +431,7 @@ describe("automatic official update checks", () => {
     expect(
       screen.queryByRole("status", { name: "官方版本更新" }),
     ).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: updateLinkName })).toBeVisible();
     await act(async () => {
       fireEvent(window, new Event("focus"));
       fireEvent(window, new Event("online"));
@@ -440,26 +449,44 @@ describe("automatic official update checks", () => {
     expect(view.writes()).toHaveLength(0);
   });
 
-  it("dismisses for this login only and checks again after logout and login", async () => {
+  it("ignores a version from runtime status, retains it after login, and restores its sidebar indicator", async () => {
     const view = mount((request) =>
       isUpdate(request) ? json({ data: update }) : undefined,
     );
     const user = userEvent.setup();
-    await screen.findByRole("status", { name: "官方版本更新" });
-    await user.click(screen.getByRole("button", { name: "关闭更新提示" }));
-    expect(
-      screen.queryByRole("status", { name: "官方版本更新" }),
-    ).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("link", { name: updateLinkName }));
+    const panel = within(await screen.findByRole("region", { name: "官方更新" }));
+    await user.click(panel.getByRole("button", { name: "忽略此版本" }));
+    expect(screen.queryByRole("link", { name: updateLinkName })).not.toBeInTheDocument();
+    expect(updateIndicator()).not.toBeInTheDocument();
+    expect(within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: "运行状态" })).toBeVisible();
+    expect(panel.queryByRole("button", { name: "忽略此版本" })).not.toBeInTheDocument();
+    expect(panel.getByRole("status")).toHaveTextContent("有可用更新：v0.2.1（已忽略）");
+    expect(panel.getByRole("button", { name: "恢复此通道更新提醒" })).toBeVisible();
+    expect(panel.getByRole("button", { name: "恢复此通道更新提醒" })).toHaveFocus();
+    expect(panel.getByRole("button", { name: "查看更新" })).toBeVisible();
     await user.click(screen.getByRole("button", { name: /账户菜单$/ }));
     await user.click(await screen.findByRole("menuitem", { name: "退出登录" }));
     await screen.findByRole("heading", { name: "登录管理后台" });
     expect(queryClient.getQueryData(officialUpdateKey)).toBeUndefined();
     await user.type(screen.getByLabelText("管理员密码"), "password");
     await user.click(screen.getByRole("button", { name: "登录" }));
-    await screen.findByRole("status", { name: "官方版本更新" });
-    expect(
+    await waitFor(() => expect(
       view.fetchMock.mock.calls.filter(([request]) => isUpdate(request)),
-    ).toHaveLength(2);
+    ).toHaveLength(2));
+    expect(screen.queryByRole("status", { name: "官方版本更新" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: updateLinkName })).not.toBeInTheDocument();
+    expect(updateIndicator()).not.toBeInTheDocument();
+    await user.click(within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: "运行状态" }));
+    const restoredPanel = within(await screen.findByRole("region", { name: "官方更新" }));
+    await user.click(restoredPanel.getByRole("button", { name: "恢复此通道更新提醒" }));
+    expect(await screen.findByRole("link", { name: updateLinkName })).toBeVisible();
+    expect(updateIndicator()).toBeVisible();
+    expect(screen.getByRole("link", { name: updateLinkName })).not.toHaveTextContent("有更新");
+    expect(restoredPanel.getByRole("button", { name: "忽略此版本" })).toBeVisible();
+    expect(restoredPanel.getByRole("button", { name: "忽略此版本" })).toHaveFocus();
+    expect(restoredPanel.queryByRole("button", { name: "恢复此通道更新提醒" })).not.toBeInTheDocument();
+    expect(view.fetchMock.mock.calls.filter(([request]) => isUpdate(request))).toHaveLength(2);
   });
 
   it("does not block navigation or editing while an update check is pending", async () => {
@@ -479,7 +506,7 @@ describe("automatic official update checks", () => {
     await act(async () => {
       finish(json({ data: update }));
     });
-    await screen.findByRole("status", { name: "官方版本更新" });
+    await screen.findByRole("link", { name: updateLinkName });
     expect(screen.getByLabelText("查账有效时限（秒）")).toBe(ttl);
     expect(ttl).toHaveValue(450);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -489,6 +516,29 @@ describe("automatic official update checks", () => {
     await act(async () => { finish(json({ data: update })); });
     expect(screen.getByLabelText("查账有效时限（秒）")).toBe(ttl);
     expect(ttl).toHaveValue(450);
+  });
+
+  it("keeps the sidebar reminder and runtime ignore state scoped to the selected channel", async () => {
+    const view = mount(request => isUpdate(request) ? json({ data: update }) : undefined, "/system");
+    const user = userEvent.setup();
+    await screen.findByRole("link", { name: updateLinkName });
+    const panel = within(screen.getByRole("region", { name: "官方更新" }));
+    await user.click(panel.getByRole("button", { name: "忽略此版本" }));
+    expect(screen.queryByRole("link", { name: updateLinkName })).not.toBeInTheDocument();
+    expect(updateIndicator()).not.toBeInTheDocument();
+    act(() => preferences(true, "stable"));
+    expect(await screen.findByRole("link", { name: updateLinkName })).toBeVisible();
+    expect(updateIndicator()).toBeVisible();
+    expect(panel.queryByText(/已忽略/)).not.toBeInTheDocument();
+    expect(panel.getByRole("button", { name: "忽略此版本" })).toBeVisible();
+    expect(panel.queryByRole("button", { name: "恢复此通道更新提醒" })).not.toBeInTheDocument();
+    act(() => preferences(true, "prerelease"));
+    expect(await panel.findByText("有可用更新：v0.2.1（已忽略）")).toBeVisible();
+    expect(screen.queryByRole("link", { name: updateLinkName })).not.toBeInTheDocument();
+    expect(updateIndicator()).not.toBeInTheDocument();
+    expect(panel.queryByRole("button", { name: "忽略此版本" })).not.toBeInTheDocument();
+    expect(panel.getByRole("button", { name: "恢复此通道更新提醒" })).toBeVisible();
+    expect(view.fetchMock.mock.calls.filter(([request]) => isUpdate(request))).toHaveLength(3);
   });
 
   it.each([
@@ -521,6 +571,7 @@ describe("automatic official update checks", () => {
       expect(
         screen.queryByRole("status", { name: "官方版本更新" }),
       ).not.toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: updateLinkName })).not.toBeInTheDocument();
       await act(async () => {
         fireEvent(window, new Event("focus"));
         fireEvent(window, new Event("online"));
@@ -532,7 +583,7 @@ describe("automatic official update checks", () => {
         .setup()
         .click(screen.getByRole("link", { name: "运行状态" }));
       expect(
-        await screen.findByText(/暂时无法检查更新/),
+        await screen.findByText(failure === "network" ? "无法连接服务，请检查网络后重试。" : "更新检查失败"),
       ).toBeVisible();
       const panel = within(screen.getByRole("region", { name: "官方更新" }));
       expect(await panel.findByText("v0.2.0")).toBeVisible();
@@ -571,6 +622,7 @@ describe("automatic official update checks", () => {
     expect(
       screen.queryByRole("status", { name: "官方版本更新" }),
     ).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: updateLinkName })).not.toBeInTheDocument();
   });
 
   it("hides stale release links while refreshing and after a failed manual check", async () => {
@@ -580,7 +632,7 @@ describe("automatic official update checks", () => {
       (request) =>
         isUpdate(request)
           ? ++calls === 1
-            ? json({ data: { ...update, status: "up_to_date" } })
+            ? json({ data: update })
             : new Promise<Response>((resolve) => {
                 finish = resolve;
               })
@@ -588,17 +640,20 @@ describe("automatic official update checks", () => {
       "/system",
     );
     await screen.findByRole("link", { name: "查看发布说明" });
+    expect(screen.getByRole("link", { name: updateLinkName })).toBeVisible();
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "检查更新" }));
     await screen.findByText("正在检查更新…");
+    expect(screen.queryByRole("link", { name: updateLinkName })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "查看发布说明" })).not.toBeInTheDocument();
     await act(async () => {
       finish(apiError("update_check_unavailable", "failed", 503));
     });
     expect(
-      await screen.findByText(/暂时无法检查更新/),
+      await screen.findByText("暂时无法检查官方更新，请稍后重试。此检查不影响收款。"),
     ).toBeVisible();
+    expect(screen.queryByRole("link", { name: updateLinkName })).not.toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "官方更新" })).getByText("v0.2.0")).toBeVisible();
     expect(screen.queryByText("已是当前通道最新版本。")).not.toBeInTheDocument();
     expect(
@@ -630,6 +685,7 @@ describe("automatic official update checks", () => {
       expect(
         screen.queryByRole("status", { name: "官方版本更新" }),
       ).not.toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: updateLinkName })).not.toBeInTheDocument();
       expect(
         screen.getByRole("link", { name: "查看发布说明" }),
       ).toHaveAttribute("href", update.release_url);
@@ -654,6 +710,7 @@ describe("automatic official update checks", () => {
     expect(
       screen.queryByRole("status", { name: "官方版本更新" }),
     ).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: updateLinkName })).not.toBeInTheDocument();
   });
   it.each([
     ["0.3.0-rc.2", "0.3.0-rc.10", "update_available", "有可用更新：v0.3.0-rc.10（预发布）"],
@@ -681,13 +738,14 @@ describe("automatic official update checks", () => {
     expect(view.fetchMock.mock.calls.filter(([request]) => isUpdate(request))).toHaveLength(1);
   });
 
-  it("labels a prerelease update in the nonblocking banner", async () => {
+  it("marks a prerelease update only in the runtime navigation while settings remain usable", async () => {
     mount(request => isUpdate(request) ? json({ data: {
       ...update, current_version: "0.3.0-alpha.1", latest_version: "0.3.0-rc.1",
       release_url: "https://github.com/Mashiro0619/PerPay/releases/tag/v0.3.0-rc.1",
     } }) : undefined);
-    const notice = await screen.findByRole("status", { name: "官方版本更新" });
-    expect(notice).toHaveTextContent("有新版本 v0.3.0-rc.1（预发布）");
+    expect(await screen.findByRole("link", { name: updateLinkName })).toBeVisible();
+    expect(screen.queryByRole("status", { name: "官方版本更新" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/有新版本 v/)).not.toBeInTheDocument();
     expect(screen.getByLabelText("查账有效时限（秒）")).toBeVisible();
   });
 
@@ -705,4 +763,127 @@ describe("automatic official update checks", () => {
     expect(screen.queryByRole("link", { name: "查看发布说明" })).not.toBeInTheDocument();
   });
 
+});
+
+describe("manual official update refresh", () => {
+  it.each([
+    ["up_to_date", "0.2.0", "已是当前通道最新版本。", "success"],
+    ["ahead", "0.1.9", "当前版本高于此通道最新发布版本。", "info"],
+  ] as const)("keeps automatic %s checks quiet and gives one result for an explicit refresh", async (status, latest, title, type) => {
+    const notices = vi.spyOn(toast, "add");
+    const data = { ...update, status, latest_version: latest, release_url: `https://github.com/Mashiro0619/PerPay/releases/tag/v${latest}` };
+    const view = mountPanel(() => json({ data }));
+    await screen.findByRole("link", { name: "查看发布说明" });
+    expect(view.fetchMock).toHaveBeenCalledTimes(1);
+    expect(new URL(view.fetchMock.mock.calls[0]![0].url).searchParams.has("refresh")).toBe(false);
+    expect(notices).not.toHaveBeenCalled();
+
+    const button = screen.getByRole("button", { name: "检查更新" });
+    act(() => { fireEvent.click(button); fireEvent.click(button); });
+    await waitFor(() => expect(notices).toHaveBeenCalledTimes(1));
+    expect(view.fetchMock).toHaveBeenCalledTimes(2);
+    expect(new URL(view.fetchMock.mock.calls[1]![0].url).searchParams.get("refresh")).toBe("true");
+    expect(notices).toHaveBeenLastCalledWith(expect.objectContaining({ title, type, timeout: 4000 }));
+    await act(async () => {
+      fireEvent(window, new Event("focus"));
+      fireEvent(window, new Event("online"));
+      await refreshOperationalData();
+    });
+    expect(notices).toHaveBeenCalledTimes(1);
+    expect(view.fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("disables manual checks for the server's successful-refresh interval without queuing a retry", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-31T03:00:00Z"));
+    preferences(false);
+    const data = { ...update, status: "up_to_date", latest_version: update.current_version,
+      release_url: `https://github.com/Mashiro0619/PerPay/releases/tag/v${update.current_version}` };
+    const view = mountPanel(() => json({ data }, 200, { "X-PerPay-Update-Refresh-After": "60" }));
+    const button = screen.getByRole("button", { name: "检查更新" });
+    act(() => fireEvent.click(button));
+    await advance(0);
+    expect(view.fetchMock).toHaveBeenCalledTimes(1);
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription("请至少等待 1 分钟后重试。");
+    expect(screen.getByText("请至少等待 1 分钟后重试。").closest('[role="status"]')).toBeNull();
+
+    await advance(59_999);
+    expect(button).toBeDisabled();
+    act(() => fireEvent.click(button));
+    expect(view.fetchMock).toHaveBeenCalledTimes(1);
+    await advance(1);
+    expect(button).toBeEnabled();
+    expect(view.fetchMock).toHaveBeenCalledTimes(1);
+    act(() => fireEvent.click(button));
+    await advance(0);
+    expect(view.fetchMock).toHaveBeenCalledTimes(2);
+    expect(view.fetchMock.mock.calls.every(([request]) => new URL(request.url).searchParams.get("refresh") === "true")).toBe(true);
+    expect(button).toBeDisabled();
+  });
+
+  it("retains the successful result after a local 429 and keeps the original six-hour deadline", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-31T03:00:00Z"));
+    const startedAt = Date.now();
+    const notices = vi.spyOn(toast, "add");
+    const view = mountPanel(request => new URL(request.url).searchParams.get("refresh") === "true"
+      ? json({ error: { code: "update_check_rate_limited", message: "刚刚检查过官方更新，请等待后重试。" } }, 429, { "Retry-After": "30" })
+      : json({ data: { ...update, checked_at: new Date(Date.now()).toISOString() } }));
+    await advance(0);
+    const previous = queryClient.getQueryData(officialUpdateKey);
+    expect(previous).toBeDefined();
+    expect(view.fetchMock).toHaveBeenCalledTimes(1);
+    await advance(sixHours - 60_000);
+    act(() => fireEvent.click(screen.getByRole("button", { name: "检查更新" })));
+    await advance(0);
+    expect(view.fetchMock).toHaveBeenCalledTimes(2);
+    expect(queryClient.getQueryData(officialUpdateKey)).toBe(previous);
+    expect(screen.getByRole("button", { name: "检查更新" })).toBeDisabled();
+    expect(notices).not.toHaveBeenCalled();
+
+    await advance(startedAt + sixHours - Date.now() - 1);
+    expect(view.fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("button", { name: "检查更新" })).toBeEnabled();
+    await advance(1);
+    expect(view.fetchMock).toHaveBeenCalledTimes(3);
+    expect(new URL(view.fetchMock.mock.calls[2]![0].url).searchParams.has("refresh")).toBe(false);
+    expect(notices).not.toHaveBeenCalled();
+  });
+
+  it.each(["up_to_date", "update_available"] as const)(
+    "drops a late manual %s result after a channel switch and after session expiry", async (status) => {
+      preferences(false);
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      const notices = vi.spyOn(toast, "add");
+      const pending: { request: Request; finish: (response: Response) => void }[] = [];
+      mount(request => isUpdate(request)
+        ? new Promise<Response>(finish => { pending.push({ request, finish }); })
+        : undefined, "/system");
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "检查更新" }));
+      await waitFor(() => expect(pending).toHaveLength(1));
+      expect(new URL(pending[0]!.request.url).searchParams.get("refresh")).toBe("true");
+      act(() => preferences(false, "stable"));
+      expect(pending[0]!.request.signal.aborted).toBe(true);
+      await user.click(screen.getByRole("button", { name: "检查更新" }));
+      await waitFor(() => expect(pending).toHaveLength(2));
+      expect(new URL(pending[1]!.request.url).searchParams.get("channel")).toBe("stable");
+      const latest = status === "update_available" ? "9.0.0" : update.current_version;
+      const data = { ...update, status, latest_version: latest,
+        release_url: `https://github.com/Mashiro0619/PerPay/releases/tag/v${latest}` };
+      await act(async () => { pending[0]!.finish(json({ data }, 200, { "X-PerPay-Update-Refresh-After": "60" })); });
+      expect(notices).not.toHaveBeenCalled();
+      expect(screen.queryByRole("dialog", { name: "发现新版本" })).not.toBeInTheDocument();
+      act(() => fireEvent(window, new Event("perpay:session-expired")));
+      await screen.findByRole("heading", { name: "登录管理后台" });
+      expect(pending[1]!.request.signal.aborted).toBe(true);
+      await act(async () => { pending[1]!.finish(json({ data }, 200, { "X-PerPay-Update-Refresh-After": "60" })); });
+      expect(notices).not.toHaveBeenCalled();
+      expect(screen.queryByRole("dialog", { name: "发现新版本" })).not.toBeInTheDocument();
+      expect(queryClient.getQueryData(officialUpdateKey)).toBeUndefined();
+      expect(queryClient.getQueryData(["official-update", "stable"])).toBeUndefined();
+      expect(queryClient.getQueryData(sessionKey)).toBeNull();
+    },
+  );
 });
