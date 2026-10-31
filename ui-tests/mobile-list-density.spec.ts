@@ -82,10 +82,22 @@ test.describe("mobile consecutive record rows", () => {
       await display.getByRole("button", { name: "完成", exact: true }).tap();
       await expect(display).toHaveCount(0);
       const listUrl = page.url();
-      await order.getByRole("button", { name: "展开信息", exact: true }).tap();
+      const expand = order.getByRole("button", { name: "展开信息", exact: true });
+      await expect(expand).toHaveAttribute("data-slot", "collapsible-trigger");
+      if (width === 320 && textPercent === 100) {
+        const path = info.outputPath("list-details-collapsed.png");
+        await order.screenshot({ path, animations: "disabled" });
+        await info.attach("list-details-collapsed", { path, contentType: "image/png" });
+      }
+      await expand.tap();
       await expect(page).toHaveURL(listUrl);
       await expect(order.getByRole("button", { name: "收起信息", exact: true })).toHaveAttribute("aria-expanded", "true");
       await completeText(order.getByText("PerPay 确认时间", { exact: true }));
+      if (width === 320 && textPercent === 100) {
+        const path = info.outputPath("list-details-expanded.png");
+        await order.screenshot({ path, animations: "disabled" });
+        await info.attach("list-details-expanded", { path, contentType: "image/png" });
+      }
       await order.getByRole("button", { name: "收起信息", exact: true }).tap();
       const orderTarget = await order.locator("a[data-row-link]").getAttribute("href");
       await order.click({ position: { x: 3, y: 3 } });

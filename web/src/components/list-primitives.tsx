@@ -5,6 +5,7 @@ import { dateTime, money } from "@/lib/format";
 import { ItemActions, ItemContent, ItemHeader, ItemTitle } from "@/components/ui/item";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 /** Shared typography for tables, overview rows and record summaries. */
 export function ListIdentity({
@@ -116,19 +117,23 @@ export function ListSummaryDetails({ children }: { children?: ReactNode }) {
     setExpanded(open);
   }
   if (Children.toArray(children).length === 0) return null;
+  const label = expanded ? "收起信息" : "展开信息";
   return (
     <Collapsible open={expanded} onOpenChange={handleOpenChange} className="list-summary-details">
-      <CollapsibleTrigger
-        ref={triggerRef}
-        render={<Button type="button" variant="ghost" size="sm" className="list-summary-toggle" />}
-      >
-        {expanded ? "收起信息" : "展开信息"}
-        <ChevronDown
-          data-icon="inline-end"
-          aria-hidden="true"
-          className={cn("transition-transform duration-[var(--console-motion,200ms)] ease-[var(--console-ease,cubic-bezier(0.22,1,0.36,1))] motion-reduce:transition-none", expanded && "rotate-180")}
-        />
-      </CollapsibleTrigger>
+      <Tooltip>
+        <CollapsibleTrigger
+          ref={triggerRef}
+          aria-label={label}
+          render={<TooltipTrigger render={<Button type="button" variant="ghost" size="icon-sm" className="list-summary-toggle" />} />}
+        >
+          <ChevronDown
+            data-icon="inline-end"
+            aria-hidden="true"
+            className={cn("transition-transform duration-[var(--console-motion,200ms)] ease-[var(--console-ease,cubic-bezier(0.22,1,0.36,1))] motion-reduce:transition-none", expanded && "rotate-180")}
+          />
+        </CollapsibleTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
       <CollapsibleContent
         ref={panelRef}
         className="-mx-1 h-[var(--collapsible-panel-height)] overflow-hidden transition-[height] duration-[var(--console-motion,200ms)] ease-[var(--console-ease,cubic-bezier(0.22,1,0.36,1))] data-starting-style:h-0 data-ending-style:h-0 motion-reduce:transition-none"

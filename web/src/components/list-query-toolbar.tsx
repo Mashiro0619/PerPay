@@ -9,6 +9,7 @@ import { ListActionsMenu, ListActionsProvider } from "@/components/list-actions-
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ErrorNotice } from "@/components/request-state";
 import { Field, FieldGroup, FieldError } from "@/components/ui/field";
 import {
@@ -94,6 +95,7 @@ export function ListQueryToolbar({
   const [error, setError] = useState("");
   const [displayOpen, setDisplayOpen] = useState(false);
   const actionsTrigger = useRef<HTMLButtonElement | null>(null);
+  const searchInput = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     if (!compact) setDisplayOpen(false);
   }, [compact]);
@@ -163,6 +165,7 @@ export function ListQueryToolbar({
             >
               <InputGroup>
                 <InputGroupInput
+                  ref={searchInput}
                   type="search"
                   aria-label={selectedMode ? lookup!.inputLabel : label}
                   name={selectedMode ? lookup!.inputName : "q"}
@@ -260,14 +263,24 @@ export function ListQueryToolbar({
               </div>
             )}
             {control.query.q && (
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={disabled}
-                onClick={() => control.setKeyword("")}
-              >
-                清除搜索
-              </Button>
+              <Tooltip>
+                <TooltipTrigger render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label="清除搜索"
+                    disabled={disabled}
+                    onClick={() => {
+                      control.setKeyword("");
+                      searchInput.current?.focus({ preventScroll: true });
+                    }}
+                  />
+                }>
+                  <X aria-hidden="true" />
+                </TooltipTrigger>
+                <TooltipContent>清除搜索</TooltipContent>
+              </Tooltip>
             )}
             {desktopActions && (
               <div

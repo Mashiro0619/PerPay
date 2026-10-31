@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export type ListDensity = "compact" | "comfortable";
 export const LIST_DENSITY_KEY = "perpay:list-density";
@@ -47,9 +48,14 @@ export function ListDensityControl({ compact }: { compact: boolean }) {
   const context = useContext(DensityContext);
   if (!context) return null;
   return <DropdownMenu>
-    <DropdownMenuTrigger aria-label="列表密度" title="列表密度" render={<Button variant={compact ? "ghost" : "outline"} size={compact ? "icon-sm" : "sm"} />}>
-      <Rows3 data-icon="inline-start" />{!compact && "密度"}
-    </DropdownMenuTrigger>
+    <Tooltip>
+      <TooltipTrigger render={
+        <DropdownMenuTrigger aria-label="列表密度" render={<Button variant={compact ? "ghost" : "outline"} size="icon-sm" />}>
+          <Rows3 data-icon="inline-start" aria-hidden="true" />
+        </DropdownMenuTrigger>
+      } />
+      <TooltipContent>列表密度</TooltipContent>
+    </Tooltip>
     <DropdownMenuContent align="end">
       <DropdownMenuGroup>
         <DropdownMenuLabel>列表密度</DropdownMenuLabel>

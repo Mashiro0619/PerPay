@@ -42,10 +42,30 @@ test("density changes preserve search drafts and geometry across the five busine
     expect(page.url()).toBe(url);
     await expect(page.getByRole("button", { name: "列表密度", exact: true })).toBeFocused();
     await record(page, info, { route, compact, comfortable });
+    if (route === "/orders") {
+      await trigger.evaluate(element => element.blur());
+      await page.mouse.move(0, 0);
+      await expect(page.getByRole("tooltip")).toHaveCount(0);
+      const path = info.outputPath("list-icon-toolbar.png");
+      await page.locator("[data-list-query-toolbar]").screenshot({ path, animations: "disabled" });
+      await info.attach("list-icon-toolbar", { path, contentType: "image/png" });
+    }
   }
   const other = await page.context().newPage();
   await other.goto(manifest.origin + "/admin/orders");
   await other.evaluate(() => localStorage.setItem("perpay:list-density", "compact"));
   await expect(page.locator("[data-business-table]").first()).toHaveAttribute("data-density", "compact");
   await other.close();
+  await page.goto(manifest.origin + "/admin/orders?q=UI");
+  const search = page.getByRole("searchbox").first();
+  await expect(search).toHaveValue("UI");
+  const clearToolbarPath = info.outputPath("list-icon-toolbar-applied-search.png");
+  await page.locator("[data-list-query-toolbar]").screenshot({ path: clearToolbarPath, animations: "disabled" });
+  await info.attach("list-icon-toolbar-applied-search", { path: clearToolbarPath, contentType: "image/png" });
+  await page.getByRole("button", { name: "清除搜索", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(search).toHaveValue("");
+  await expect(search).toBeFocused();
+  await page.keyboard.type("继续搜索");
+  await expect(search).toHaveValue("继续搜索");
 });

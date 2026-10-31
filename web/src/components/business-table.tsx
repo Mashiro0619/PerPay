@@ -50,6 +50,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { ItemGroup } from "@/components/ui/item";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -310,20 +311,23 @@ function BusinessTableView<T extends RowData>({
     </FieldSet>
   ) : (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant={compact ? "ghost" : "outline"}
-            size={compact ? "icon-sm" : "sm"}
-          />
-        }
-        aria-label="显示列"
-        title={isSummary ? "显示信息" : "显示列"}
-        data-list-columns-trigger
-      >
-        <Columns3 data-icon="inline-start" />
-        {!compact && (isSummary ? "显示信息" : "显示列")}
-      </DropdownMenuTrigger>
+      <Tooltip>
+        <TooltipTrigger render={
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant={compact ? "ghost" : "outline"}
+                size="icon-sm"
+              />
+            }
+            aria-label="显示列"
+            data-list-columns-trigger
+          >
+            <Columns3 data-icon="inline-start" aria-hidden="true" />
+          </DropdownMenuTrigger>
+        } />
+        <TooltipContent>{isSummary ? "显示信息" : "显示列"}</TooltipContent>
+      </Tooltip>
       <DropdownMenuContent align="end" className="min-w-48">
         <DropdownMenuGroup>
           <DropdownMenuLabel>

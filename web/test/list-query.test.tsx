@@ -261,6 +261,9 @@ describe("server-driven business queries", () => {
       expect(screen.getByLabelText("查询地址")).toHaveTextContent("source=overview");
       await user.click(screen.getByRole("button", { name: "清除搜索" }));
       await waitFor(() => expect(screen.getByRole("searchbox", { name: label })).toHaveValue(""));
+      expect(screen.getByRole("searchbox", { name: label })).toHaveFocus();
+      await user.keyboard("继续搜索");
+      expect(screen.getByRole("searchbox", { name: label })).toHaveValue("继续搜索");
       const cleared = new URLSearchParams(screen.getByLabelText("查询地址").textContent!.split("?")[1]);
       expect(cleared.has("q")).toBe(false);
       expect(cleared.get("sort_by")).toBe(field);
