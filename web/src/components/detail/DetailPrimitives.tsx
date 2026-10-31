@@ -287,6 +287,7 @@ export function RelatedOrder({ orderId, density = "default", layout = "columns" 
         <OrderFacts order={query.data.data} density={density} layout={layout} />
       ) : null}
       <ErrorNotice
+        scope="page"
         error={query.error}
         retry={() => {
           void query.refetch();

@@ -1,6 +1,7 @@
 import { createContext, useContext, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from "react";
 import { cn } from "@/lib/utils";
 import { useWorkspaceSwitching } from "@/lib/workspace-navigation-state";
+import { LocalRequestNotices } from "@/lib/request-notices";
 import * as DialogUI from "@/components/ui/dialog";
 import * as AlertUI from "@/components/ui/alert-dialog";
 export { DialogTrigger, DialogClose, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -69,7 +70,7 @@ export function DialogContent({ className, kind = "form", children, initialFocus
     if (initialFocus && typeof initialFocus === "object") return initialFocus.current;
     return initialFocus ?? true;
   }} portalProps={{ ...props.portalProps, keepMounted: keepMounted || props.portalProps?.keepMounted, hidden: switching || props.portalProps?.hidden, inert: switching || props.portalProps?.inert }} data-admin-dialog={kind} className={cn(className, content, kind === "technical" ? "sm:max-w-3xl" : "sm:max-w-xl")}>
-    <DialogScroll scrollRef={scrollRef}>{children}</DialogScroll>
+    <LocalRequestNotices><DialogScroll scrollRef={scrollRef}>{children}</DialogScroll></LocalRequestNotices>
   </DialogUI.DialogContent>;
 }
 export function AlertDialogContent({ className, initialFocus, children, ...props }: ComponentProps<typeof AlertUI.AlertDialogContent>) {
@@ -84,7 +85,7 @@ export function AlertDialogContent({ className, initialFocus, children, ...props
     if (initialFocus && typeof initialFocus === "object") return initialFocus.current;
     return typeof initialFocus === "function" ? initialFocus(openType) : initialFocus ?? element.current?.querySelector<HTMLButtonElement>('[data-slot="alert-dialog-cancel"]') ?? element.current;
   }} data-admin-dialog="confirm" className={cn(className, content, "data-[size=default]:max-w-[calc(100%-2rem)] data-[size=sm]:max-w-[calc(100%-2rem)] data-[size=default]:sm:max-w-lg")}>
-    <DialogScroll>{children}</DialogScroll>
+    <LocalRequestNotices><DialogScroll>{children}</DialogScroll></LocalRequestNotices>
   </AlertUI.AlertDialogContent>;
 }
 export function DialogHeader({ className, ...props }: ComponentProps<typeof DialogUI.DialogHeader>) {

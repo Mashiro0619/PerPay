@@ -169,6 +169,7 @@ export function AdminAccessSettings({
             </a>
           </FieldDescription>
           <ErrorNotice
+            scope="page"
             error={source.error}
             retry={() => void source.refetch()}
           />

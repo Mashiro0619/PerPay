@@ -45,7 +45,7 @@ describe("shared runtime presentation", () => {
     expect(screen.getByRole("table", { name: "运行环节" })).toBe(table);
     expect(screen.queryByText("正在读取运行状态…")).not.toBeInTheDocument();
     await act(async () => { finish(apiError("unavailable", "状态读取失败", 503)); });
-    expect(await screen.findByText("暂时无法确认运行状态")).toBeVisible();
+    expect(await screen.findByRole("alert", { name: "服务连接提示" })).toHaveTextContent("状态读取失败");
     expect(screen.queryByRole("table", { name: "运行环节" })).not.toBeInTheDocument();
   });
 
@@ -98,7 +98,9 @@ describe("shared runtime presentation", () => {
       await waitFor(() => expect(pending).toHaveLength(1));
       act(() => changeAvailability(false));
       expect(screen.queryByRole("table", { name: "运行环节" })).not.toBeInTheDocument();
-      expect(await screen.findByText("暂时无法确认运行状态")).toBeVisible();
+      if (kind === "network") {
+        expect(await screen.findByRole("status", { name: "服务连接提示" })).toHaveTextContent("等待网络恢复");
+      } else expect(await screen.findByText("暂时无法确认运行状态")).toBeVisible();
       await act(async () => { await view.router.navigate("/system?inspection=2"); });
       expect(pending).toHaveLength(1);
 
@@ -133,7 +135,7 @@ describe("shared runtime presentation", () => {
   ])("does not treat an incomplete or invalid reminder summary as zero (%j)", async workItems => {
     mountOnboarding({ stage: 4, path: "/system", handle: request => request.url.endsWith("/system/status")
       ? json({ data: { ...ready(), work_items: workItems } }) : undefined });
-    expect(await screen.findByText("暂时无法确认运行状态")).toBeVisible();
+    expect(await screen.findByRole("alert", { name: "服务连接提示" })).toHaveTextContent("运行状态响应不完整，请重试。");
     expect(within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: "运行状态" })).toHaveAccessibleDescription("状态未知");
     expect(screen.queryByRole("table", { name: "运行环节" })).not.toBeInTheDocument();
   });
@@ -405,7 +407,7 @@ describe("shared runtime presentation", () => {
     await act(async () => {
       await queryClient.invalidateQueries({ queryKey: ["status", "shared"] });
     });
-    expect(await screen.findByText("暂时无法确认运行状态")).toBeVisible();
+    expect(await screen.findByRole("alert", { name: "服务连接提示" })).toHaveTextContent("状态读取失败");
     expect(
       screen.queryByRole("table", { name: "运行环节" }),
     ).not.toBeInTheDocument();

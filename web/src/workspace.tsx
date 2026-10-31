@@ -99,7 +99,7 @@ export function WorkspaceOutlet() {
   // A failed metadata refresh hides actions but keeps an already loaded draft/command alive.
   return (
     <div key={clientId} className="flex min-w-0 flex-col gap-4">
-      <ErrorNotice error={site!.error} retry={() => void site!.refetch()} />
+      <ErrorNotice scope="page" error={site!.error} retry={() => void site!.refetch()} />
       <div hidden={site!.isError} inert={site!.isError}>
         <Outlet />
       </div>

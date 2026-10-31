@@ -108,6 +108,7 @@ export function SitePicker({
       </Select>
       {current.isError && !selected && (
         <ErrorNotice
+          scope="page"
           error={current.error}
           retry={() => void current.refetch()}
         />

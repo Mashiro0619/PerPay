@@ -146,10 +146,10 @@ export function SiteManagementCards() {
         </div>
       </div>
       {pending ? <SiteManagementSkeletons /> : query.data === undefined ? (
-        <ErrorNotice error={query.error} retry={refresh} />
+        <ErrorNotice scope="page" error={query.error} retry={refresh} />
       ) : (
         <>
-          {!query.isFetchNextPageError && <ErrorNotice error={query.error} retry={refresh} />}
+          {!query.isFetchNextPageError && <ErrorNotice scope="page" error={query.error} retry={refresh} />}
           {sites.length ? (
             <ul className="site-management-grid" aria-label="网站列表">
               {sites.map((site) => (
@@ -166,7 +166,7 @@ export function SiteManagementCards() {
               <EmptyHeader><EmptyTitle>暂无网站</EmptyTitle></EmptyHeader>
             </Empty>
           )}
-          {query.isFetchNextPageError ? <ErrorNotice error={query.error} retry={loadMore} /> : query.hasNextPage && (
+          {query.isFetchNextPageError ? <ErrorNotice scope="page" error={query.error} retry={loadMore} /> : query.hasNextPage && (
             <Button className="self-start" variant="outline" disabled={query.isFetching} onClick={loadMore}>
               {query.isFetchingNextPage && <Spinner data-icon="inline-start" aria-hidden="true" />}
               {query.isFetchingNextPage ? "正在加载更多网站…" : "加载更多网站"}

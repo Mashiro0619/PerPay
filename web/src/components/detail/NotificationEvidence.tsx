@@ -242,7 +242,7 @@ export function DeliveryCard({
         <CardDescription>{attemptDescription}{attemptsAvailable && detail.attempts.length > 0 ? " · 每页 10 条" : ""}</CardDescription>
       </CardHeader>
       <CardContent className="flex min-w-0 flex-col gap-4">
-        <ErrorNotice error={attemptsError} retry={retryAttempts} />
+        <ErrorNotice scope="page" error={attemptsError} retry={retryAttempts} />
         <DeliveryAttempts key={delivery.delivery_id} attempts={detail.attempts} available={attemptsAvailable} readState={attemptsReadState} density="comfortable" />
       </CardContent>
     </Card>
@@ -295,6 +295,7 @@ export function OrderNotifications({
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <ErrorNotice
+        scope="page"
         error={query.error}
         retry={() => {
           void query.refetch();

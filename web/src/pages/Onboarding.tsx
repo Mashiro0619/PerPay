@@ -127,6 +127,7 @@ export default function Onboarding() {
             readinessFetching} />
       </PageHeaderActions>
       <ErrorNotice
+        scope="page"
         error={instance.error}
         retry={() => {
           void instance.refetch();
@@ -805,6 +806,7 @@ export function ReadinessCheck({
     <>
       {!view.active && <p role="status">检查已暂停</p>}
       <ErrorNotice
+        scope="page"
         error={query.error}
         retry={() => {
           void query.refetch();

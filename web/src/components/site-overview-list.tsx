@@ -131,10 +131,10 @@ export function SiteOverviewList({ range }: { range: 7 | 30 | 90 }) {
         </Popover>
       </div>
       {pending ? query.isPaused ? <ReadPausedNotice /> : <SiteOverviewSkeletons /> : query.data === undefined ? (
-        <ErrorNotice error={query.error} retry={refresh} />
+        <ErrorNotice scope="page" error={query.error} retry={refresh} />
       ) : (
         <>
-          {query.isPaused ? <ReadPausedNotice retainedData /> : !query.isFetchNextPageError && <ErrorNotice error={query.error} retry={refresh} retainedData />}
+          {query.isPaused ? <ReadPausedNotice retainedData /> : !query.isFetchNextPageError && <ErrorNotice scope="page" error={query.error} retry={refresh} retainedData />}
           {sites.length ? (
             <ul className="site-overview-grid" aria-label="各网站概览">
               {sites.map((site) => (
@@ -154,7 +154,7 @@ export function SiteOverviewList({ range }: { range: 7 | 30 | 90 }) {
             </Empty>
           )}
           {query.isFetchNextPageError ? (
-            <ErrorNotice error={query.error} retry={loadMore} />
+            <ErrorNotice scope="page" error={query.error} retry={loadMore} />
           ) : query.hasNextPage && (
             <Button className="self-start" variant="outline" disabled={query.isFetching} onClick={loadMore}>
               {query.isFetchingNextPage && <Spinner data-icon="inline-start" aria-hidden="true" />}

@@ -78,7 +78,7 @@ describe("homepage collection health", () => {
         queryKey: ["status", "shared"],
       });
     });
-    expect(await screen.findByText("暂时无法读取收款服务状态")).toBeVisible();
+    expect(await screen.findByRole("alert", { name: "服务连接提示" })).toHaveTextContent("服务处理失败，请稍后重试。");
     expect(status).toHaveAccessibleDescription("状态未知");
     expect(status.querySelector("[data-runtime-notice] svg")).toBeInTheDocument();
     expect(screen.queryByText("可以收款，有运行告警")).not.toBeInTheDocument();
@@ -94,7 +94,7 @@ describe("homepage collection health", () => {
     await waitFor(() => expect(status).toHaveAccessibleDescription("有运行告警"));
     online.mockReturnValue(false);
     fireEvent(window, new Event("offline"));
-    expect(screen.getByText("暂时无法读取收款服务状态")).toBeVisible();
+    expect(screen.getByRole("status", { name: "服务连接提示" })).toHaveTextContent("等待网络恢复");
     expect(status).toHaveAccessibleDescription("状态未知");
     expect(status.querySelector("[data-runtime-notice] svg")).toBeInTheDocument();
     expect(screen.queryByText("可以收款，有运行告警")).not.toBeInTheDocument();

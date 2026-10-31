@@ -523,7 +523,7 @@ describe("business websites in the sidebar", () => {
     expect(longLink).toHaveAccessibleDescription("暂停接单 · 通知关闭");
   });
 
-  it("retries an initial list failure locally while keeping the current workspace usable", async () => {
+  it("retries an initial list failure from the shared notice while keeping the current workspace usable", async () => {
     let attempts = 0;
     const view = mountSidebar({
       path: "/sites/a/orders",
@@ -533,12 +533,13 @@ describe("business websites in the sidebar", () => {
     });
     await screen.findByRole("heading", { name: "本站订单", level: 1 });
     const nav = sidebar();
-    const failure = await within(nav).findByRole("alert");
+    const failure = await screen.findByRole("alert", { name: "服务连接提示" });
+    expect(within(nav).queryByRole("alert")).not.toBeInTheDocument();
     expect(within(nav).getByRole("link", { name: "网站 A" })).toHaveAttribute("aria-current", "location");
     expect(within(nav).getByRole("link", { name: "全部网站" })).toHaveAttribute("href", "/orders");
     await userEvent.click(within(failure).getByRole("button", { name: /重试/ }));
     await within(nav).findByRole("link", { name: "网站 B" });
-    expect(within(nav).queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert", { name: "服务连接提示" })).not.toBeInTheDocument();
     expect(view.listReads).toHaveLength(2);
     expect(view.router.state.location.pathname).toBe("/sites/a/orders");
     expect(view.writes()).toHaveLength(0);
@@ -557,10 +558,11 @@ describe("business websites in the sidebar", () => {
     expect(within(nav).getByRole("button", { name: /^业务网站 .*，收起$/ })).toHaveAttribute("aria-expanded", "true");
     await within(nav).findByRole("link", { name: "网站 A" });
     await userEvent.click(within(nav).getByRole("button", { name: "加载更多网站" }));
-    const failure = await within(nav).findByRole("alert");
+    const failure = await screen.findByRole("alert", { name: "服务连接提示" });
     expect(within(nav).getByRole("link", { name: "网站 A" })).toBeVisible();
     await userEvent.click(within(failure).getByRole("button", { name: /重试/ }));
     await within(nav).findByRole("link", { name: "网站 B" });
+    expect(screen.queryByRole("alert", { name: "服务连接提示" })).not.toBeInTheDocument();
     expect(within(nav).getAllByRole("link", { name: "网站 A" })).toHaveLength(1);
     expect(view.listReads.map((url) => url.searchParams.get("after"))).toEqual([null, "next", "next"]);
   });

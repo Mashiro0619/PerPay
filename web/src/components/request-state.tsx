@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { AlertCircle, WifiOff } from "lucide-react";
 import { ApiError } from "@/api/client";
+import { usePageRequestNotice } from "@/lib/request-notices";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,13 +18,16 @@ export function ErrorNotice({
   retry,
   showDiagnostics = true,
   retainedData = false,
+  scope = "local",
 }: {
   error: unknown;
   retry?: (() => void) | undefined;
   showDiagnostics?: boolean;
   retainedData?: boolean;
+  scope?: "local" | "page";
 }) {
-  if (!error) return null;
+  const shared = usePageRequestNotice(scope === "page" ? { error, retry, retainedData, showDiagnostics } : null);
+  if (!error || shared) return null;
   return (
     <Alert variant="destructive">
       <AlertCircle />
@@ -73,6 +77,8 @@ export function Loading({ label = "正在读取…" }: { label?: string }) {
 }
 
 export function ReadPausedNotice({ retainedData = false }: { retainedData?: boolean }) {
+  const shared = usePageRequestNotice({ paused: true, retainedData });
+  if (shared) return null;
   return <Alert role="status" data-read-paused>
     <WifiOff aria-hidden="true" />
     <AlertTitle>等待网络恢复</AlertTitle>
@@ -95,6 +101,7 @@ export function QueryView<T>({
   if (query.data === undefined)
     return (
       <ErrorNotice
+        scope="page"
         error={query.error}
         retry={() => {
           void query.refetch();
@@ -104,6 +111,7 @@ export function QueryView<T>({
   return (
     <>
       {query.isPaused ? <ReadPausedNotice retainedData /> : <ErrorNotice
+        scope="page"
         error={query.error}
         retainedData
         retry={() => {

@@ -128,7 +128,7 @@ export function AdministratorSessions() {
           </CardAction>
         </CardHeader>
         <CardContent className="flex min-w-0 flex-col gap-3">
-          <ErrorNotice error={sessions.error} retry={() => { void sessions.refetch(); }} />
+          <ErrorNotice scope="page" error={sessions.error} retry={() => { void sessions.refetch(); }} />
           {sessions.isPending ? <Loading label="正在读取登录会话…" /> : sessions.data && (
             rows.length ? (
               <ItemGroup className="record-list" aria-label="登录会话列表">

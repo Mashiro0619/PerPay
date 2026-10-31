@@ -7,7 +7,7 @@ import { PageHeaderActionsProvider } from "@/components/page-header-actions";
 import { ListDensityProvider } from "@/components/list-density";
 import { PageHeading, PageHeadingProvider, PageHeadingSlot } from "@/components/page-heading";
 import { useSystemName } from "@/branding";
-import { SystemStatusBoundary } from "@/features/system-status";
+import { SystemStatusBoundary, useSystemStatus } from "@/features/system-status";
 import {
   Component,
   useEffect,
@@ -34,6 +34,8 @@ import { SiteHeader } from "@/components/site-header";
 import { TestPaymentProvider } from "@/components/test-payment-provider";
 import TestPayment from "@/pages/TestPayment";
 import { ErrorNotice, Loading } from "@/components/request-state";
+import { RequestNoticeProvider } from "@/lib/request-notices";
+import { RequestNoticeBanner } from "@/components/request-notice-banner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/toast";
 import {
@@ -63,6 +65,7 @@ const globalPageTitles: Record<NavigationSection, string> = {
 
 function AppShell() {
   return (
+    <RequestNoticeProvider>
     <Toaster timeout={4000}>
     <SidebarProvider
       data-admin-console
@@ -82,6 +85,7 @@ function AppShell() {
       </ContentWidthProvider>
     </SidebarProvider>
     </Toaster>
+    </RequestNoticeProvider>
   );
 }
 function Workspace() {
@@ -91,6 +95,7 @@ function Workspace() {
   const { switching } = useWorkspaceNavigation();
   const { setOpenMobile, toggleSidebar } = useSidebar();
   const session = useSession();
+  const health = useSystemStatus();
   const location = useLocation();
   const localPath = scope.clientId
     ? location.pathname.slice(scope.base.length) || "/"
@@ -182,12 +187,10 @@ function Workspace() {
         <PageHeadingProvider routeKey={location.pathname}>
         <AdminContent busy={switching} layout={isReadableDetailPage(location.pathname) ? "detail" : "default"}>
           <PageHeadingSlot title={title} />
-          {(logout.error || session.error) && (
-            <div className="flex flex-col gap-4">
-              <ErrorNotice error={logout.error} />
-              <ErrorNotice error={session.error} retry={session.retry} />
-            </div>
-          )}
+          <RequestNoticeBanner />
+          <ErrorNotice error={logout.error} />
+          <ErrorNotice scope="page" error={session.error} retry={session.retry} />
+          <ErrorNotice scope="page" error={health.status.error} retry={() => { void health.status.refetch(); }} />
           <WorkspaceOutlet />
         </AdminContent>
         </PageHeadingProvider>

@@ -18,6 +18,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import { InlineEmpty } from "@/components/admin-empty";
 import { ErrorNotice, Loading } from "@/components/request-state";
+import { RequestNoticeBanner } from "@/components/request-notice-banner";
+import { RequestNoticeProvider } from "@/lib/request-notices";
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -202,8 +204,9 @@ export function WorkspaceSwitcher({
             </SidebarMenuSubItem>
           )}
           {sites.error && (
-            <SidebarMenuSubItem className="py-2">
+            <SidebarMenuSubItem className="py-2 empty:hidden">
               <ErrorNotice
+                scope="page"
                 error={sites.error}
                 retry={() => {
                   if (sites.isFetchNextPageError) void sites.fetchNextPage({ cancelRefetch: false });
@@ -234,9 +237,10 @@ export function WorkspaceSwitcher({
   );
   const metadata = <>
       <span role="status" className="sr-only">{switching ? `正在切换到${pendingName}…` : ""}</span>
-{metadataError && (
-        <div className="px-2 py-1">
+      {metadataError && (
+        <div className="px-2 py-1 empty:hidden">
           <ErrorNotice
+            scope="page"
             error={metadataError}
             retry={() => void site?.refetch({ cancelRefetch: false })}
           />
@@ -252,12 +256,15 @@ export function WorkspaceSwitcher({
       <PopoverContent side="right" align="start" className="max-h-[min(32rem,calc(100dvh-2rem))] overflow-y-auto">
         <PopoverTitle>业务网站</PopoverTitle>
         <p className="text-xs text-muted-foreground">当前：{selectedName}</p>
-        {metadata}
-        {menu}
+        <RequestNoticeProvider>
+          <RequestNoticeBanner showRuntimeLink={false} />
+          {metadata}
+          {menu}
+        </RequestNoticeProvider>
       </PopoverContent>
     </Popover>
   </SidebarMenuItem>;
-  return (
+  const content = (
     <Collapsible
       open={open}
       onOpenChange={onOpenChange}
@@ -286,10 +293,15 @@ export function WorkspaceSwitcher({
         </span>
         <ChevronRight aria-hidden="true" className="transition-transform group-data-open/collapsible:rotate-90" />
       </CollapsibleTrigger>
+      {sidebar.isMobile && <div className="px-2 py-1 empty:hidden">
+        <RequestNoticeBanner showRuntimeLink={false} />
+      </div>}
       {metadata}
       <CollapsibleContent>
         {menu}
       </CollapsibleContent>
     </Collapsible>
   );
+  // Overlay recovery stays in the active focus scope, with one notice for its reads.
+  return sidebar.isMobile ? <RequestNoticeProvider>{content}</RequestNoticeProvider> : content;
 }

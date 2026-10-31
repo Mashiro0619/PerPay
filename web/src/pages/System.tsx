@@ -17,7 +17,8 @@ import {
 import { LedgerIngestionDiagnostics } from "@/components/ledger-ingestion-diagnostics";
 import { AlipayAccountStatus } from "@/components/alipay-account-status";
 import { RefreshButton } from "@/components/refresh-button";
-import { ErrorNotice, Loading, QueryView } from "@/components/request-state";
+import { ErrorNotice, Loading, QueryView, ReadPausedNotice } from "@/components/request-state";
+import { useRequestConnectionOnline } from "@/lib/request-notices";
 import { TechnicalDetailsDialog } from "@/components/detail/DetailPrimitives";
 import { OfficialUpdatePanel } from "@/updates";
 import { useManualLedgerScan } from "@/features/manual-ledger-scan";
@@ -55,6 +56,7 @@ export default function System() {
 
 function SystemContent() {
   const { status, checking, unavailable } = useSystemStatus();
+  const online = useRequestConnectionOnline();
   const manualScan = useManualLedgerScan(status.data?.data);
   const refresh = () => {
     void status.refetch();
@@ -63,13 +65,9 @@ function SystemContent() {
     <div className="system-page">
       {checking ? (
         unavailable ? (
-          <div className="flex flex-col gap-3">
-            <Alert>
-              <CircleAlert />
-              <AlertTitle>暂时无法确认运行状态</AlertTitle>
-            </Alert>
-            <ErrorNotice error={status.error} retry={refresh} />
-          </div>
+          !online || status.isPaused ? <ReadPausedNotice />
+            : status.error ? <ErrorNotice scope="page" error={status.error} retry={refresh} />
+              : <p className="text-sm text-muted-foreground">暂时无法确认运行状态</p>
         ) : (
           <Loading label="正在读取运行状态…" />
         )

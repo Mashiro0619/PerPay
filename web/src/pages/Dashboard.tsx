@@ -20,7 +20,7 @@ import { ChartAreaInteractive } from "@/components/chart-area-interactive";
 import { RecentOrders } from "@/components/recent-orders";
 import { ErrorNotice, QueryView, ReadPausedNotice } from "@/components/request-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -115,7 +115,6 @@ function DashboardContent() {
     analytics.isPlaceholderData
       ? undefined
       : analytics.data?.data;
-  const needsStatus = checking || blocked || settings.error;
   const workTotal = !checking && !unavailable
     ? clientId
       ? !workSummary.isError && !workSummary.isPlaceholderData
@@ -128,60 +127,30 @@ function DashboardContent() {
       className="flex w-full min-w-0 flex-col gap-6"
       data-overview-layout
     >
-      {needsStatus && (
-        <div className="flex flex-col gap-4">
-          <ErrorNotice
-            error={settings.error}
-            retry={() => {
-              void settings.refetch();
-            }}
-          />
-          {checking ? (
-            <Alert>
-              <AlertCircle />
-              <AlertTitle>
-                {unavailable ? "暂时无法读取收款服务状态" : "正在检查收款服务状态…"}
-              </AlertTitle>
-              <AlertDescription>
-                <div className="flex items-center gap-2">
-                  {(status.isError || status.isPaused) && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        void status.refetch();
-                      }}
-                    >
-                      重试
-                    </Button>
-                  )}
-                  <Link to="/system">
-                    运行状态
-                  </Link>
-                </div>
-              </AlertDescription>
-            </Alert>
-          ) : blocked ? (
-            <Alert variant="destructive">
-              <AlertCircle />
-              <AlertTitle>{clientId ? "收款服务异常" : "已暂停接收新订单"}</AlertTitle>
-              <AlertDescription>
-                <p>{reason}</p>
-                <Link
-                  to={
-                    settings.data && !settings.data.data.completion.complete
-                      ? onboardingPath()
-                      : "/system"
-                  }
-                >
-                  {settings.data && !settings.data.data.completion.complete
-                    ? "继续配置"
-                    : "查看运行状态"}
-                </Link>
-              </AlertDescription>
-            </Alert>
-          ) : null}
-        </div>
+      <ErrorNotice
+        scope="page"
+        error={settings.error}
+        retry={() => { void settings.refetch(); }}
+      />
+      {!checking && blocked && (
+        <Alert variant="destructive">
+          <AlertCircle />
+          <AlertTitle>{clientId ? "收款服务异常" : "已暂停接收新订单"}</AlertTitle>
+          <AlertDescription>
+            <p>{reason}</p>
+            <Link
+              to={
+                settings.data && !settings.data.data.completion.complete
+                  ? onboardingPath()
+                  : "/system"
+              }
+            >
+              {settings.data && !settings.data.data.completion.complete
+                ? "继续配置"
+                : "查看运行状态"}
+            </Link>
+          </AlertDescription>
+        </Alert>
       )}
       <SectionCards
         analytics={metricsUnavailable ? undefined : data}
@@ -189,9 +158,10 @@ function DashboardContent() {
         workItems={workTotal}
         pending={!analytics.isPaused && (analytics.isPending || analytics.isPlaceholderData)}
       />
-      {clientId && <ErrorNotice error={workSummary.error} retry={() => { void workSummary.refetch(); }} />}
+      {clientId && <ErrorNotice scope="page" error={workSummary.error} retry={() => { void workSummary.refetch(); }} />}
       <div className="flex min-w-0 flex-col gap-6">
         {analytics.isPaused ? <ReadPausedNotice retainedData={data !== undefined} /> : <ErrorNotice
+          scope="page"
           error={analytics.error}
           retainedData={data !== undefined}
           retry={() => {

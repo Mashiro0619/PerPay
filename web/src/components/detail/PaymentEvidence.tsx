@@ -159,6 +159,7 @@ export function RelatedLedger({
       ) : null}
       {!known && (
         <ErrorNotice
+          scope="page"
           error={query.error}
           retry={() => {
             void query.refetch();
@@ -430,6 +431,7 @@ export function CandidateCard({
         ) : null}
         {!knownOrder && (
           <ErrorNotice
+            scope="page"
             error={orderQuery.error}
             retry={() => {
               void orderQuery.refetch();
@@ -443,6 +445,7 @@ export function CandidateCard({
         ) : null}
         {!ledger && (
           <ErrorNotice
+            scope="page"
             error={query.error}
             retry={() => {
               void query.refetch();
@@ -567,17 +570,17 @@ export function ExceptionCard({
         {order ? <OrderFacts order={order} density="comfortable" layout="flow" />
           : exception.order_id && orderQuery.isPending ? <Loading label="正在读取关联订单…" />
           : !exception.order_id ? <p className="text-sm text-muted-foreground">尚未关联订单</p> : null}
-        {!knownOrder && exception.order_id && <ErrorNotice error={orderQuery.error} retry={() => { void orderQuery.refetch(); }} />}
+        {!knownOrder && exception.order_id && <ErrorNotice scope="page" error={orderQuery.error} retry={() => { void orderQuery.refetch(); }} />}
         {entry ? <LedgerFacts entry={entry} density="comfortable" layout="flow" groupIdentifiers />
           : exception.ledger_entry_id && query.isPending ? <Loading label="正在读取关联流水…" /> : null}
-        {!ledger && exception.ledger_entry_id && <ErrorNotice error={query.error} retry={() => { void query.refetch(); }} />}
+        {!ledger && exception.ledger_entry_id && <ErrorNotice scope="page" error={query.error} retry={() => { void query.refetch(); }} />}
         <DetailFields density="comfortable" layout="flow" wide={["处理结果"]} items={[
           ["发现时间", dateTime(exception.created_at)],
           ...(exception.resolved_at ? [["处理时间", dateTime(exception.resolved_at)] as const] : []),
           ...(resolution ? [["处理结果", resolution] as const] : []),
         ]} />
         {candidate && <CandidateEvidence candidate={candidate} ledger={entry} density="comfortable" layout="flow" />}
-        {!knownCandidate && exception.candidate_id && <ErrorNotice error={candidateQuery.error} retry={() => { void candidateQuery.refetch(); }} />}
+        {!knownCandidate && exception.candidate_id && <ErrorNotice scope="page" error={candidateQuery.error} retry={() => { void candidateQuery.refetch(); }} />}
       </CardContent>
     </Card>
   );
@@ -606,6 +609,7 @@ export function ExceptionCard({
           ) : null)}
         {!knownOrder && exception.order_id && (
           <ErrorNotice
+            scope="page"
             error={orderQuery.error}
             retry={() => {
               void orderQuery.refetch();
@@ -619,6 +623,7 @@ export function ExceptionCard({
         ) : null}
         {!ledger && exception.ledger_entry_id && (
           <ErrorNotice
+            scope="page"
             error={query.error}
             retry={() => {
               void query.refetch();
@@ -639,6 +644,7 @@ export function ExceptionCard({
         )}
         {!knownCandidate && exception.candidate_id && (
           <ErrorNotice
+            scope="page"
             error={candidateQuery.error}
             retry={() => {
               void candidateQuery.refetch();

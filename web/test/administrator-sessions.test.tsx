@@ -127,13 +127,18 @@ describe("administrator login sessions", () => {
 
   it("keeps security controls usable after a list failure and retries only the list", async () => {
     const view = mount({ failReads: true });
-    expect(await screen.findByText("会话列表暂时不可用")).toBeVisible();
+    const failure = await screen.findByRole("alert", { name: "服务连接提示" });
+    expect(failure).toHaveTextContent("会话列表暂时不可用");
     const password = screen.getByLabelText("新密码");
     fireEvent.change(password, { target: { value: "retained-draft" } });
     view.state.failReads = false;
-    const failedCard = screen.getByRole("heading", { name: "登录会话" }).closest<HTMLElement>("[data-login-sessions]")!;
-    await userEvent.click(within(failedCard).getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+    const before = view.fetchMock.mock.calls.length;
+    await userEvent.click(within(failure).getByRole("button", { name: "重试" }));
     await card();
+    expect(screen.queryByRole("alert", { name: "服务连接提示" })).not.toBeInTheDocument();
+    expect(view.fetchMock.mock.calls.slice(before).map(([request]) => [request.method, new URL(request.url).pathname]))
+      .toEqual([["GET", "/api/admin/v1/sessions"]]);
     expect(screen.getByLabelText("新密码")).toBe(password);
     expect(password).toHaveValue("retained-draft");
     expect(view.writes()).toHaveLength(0);
