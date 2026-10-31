@@ -2,6 +2,7 @@ import type { SystemAnalytics } from "@/api/client";
 import { buildDailyReport, type DailyDay } from "@/lib/daily-analytics";
 
 export type TrendMetric = "amount" | "orders";
+export type TrendView = TrendMetric | "combined";
 
 export type TrendDay = DailyDay & {
   /** Amounts remain in cents until display formatting. */

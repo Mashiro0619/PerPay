@@ -3,7 +3,7 @@ import { ChartArea, ChartColumn, ChartLine, Info } from "lucide-react";
 import type { DashboardChartType, SystemAnalytics } from "@/api/client";
 import { useChartType } from "@/hooks/use-chart-type";
 import { money, count } from "@/lib/format";
-import { buildTrendReport, type TrendMetric } from "@/lib/trend-analytics";
+import { buildTrendReport, type TrendView } from "@/lib/trend-analytics";
 import { dailyDateLabel } from "@/lib/daily-analytics";
 import { DailyAnalytics } from "@/components/daily-analytics";
 import { TrendPlot } from "@/components/trend-plot";
@@ -43,10 +43,11 @@ const periods = [
   { value: "30", label: "近 30 天" },
   { value: "90", label: "近 90 天" },
 ];
-const metrics = [
+const individualMetrics = [
   { value: "amount", label: "确认金额" },
   { value: "orders", label: "新建订单" },
 ] as const;
+const metrics = [...individualMetrics, { value: "combined", label: "金额与订单" }] as const;
 const chartTypes = [
   { value: "AREA", label: "面积图", icon: ChartArea },
   { value: "BAR", label: "柱状图", icon: ChartColumn },
@@ -68,19 +69,20 @@ export function ChartAreaInteractive({
   pending: boolean;
   scopeKey?: string;
 }) {
-  const [metric, setMetric] = useState<TrendMetric>("amount");
+  const [metric, setMetric] = useState<TrendView>("amount");
   const [view, setView] = useState("chart");
   const [dailyVisited, setDailyVisited] = useState(false);
   const [effectiveType, setSelectedType] = useChartType(chartType);
   const summaryId = useId();
   const report = analytics && !pending ? buildTrendReport(analytics) : null;
-  const summary = report?.[metric];
+  const singleMetric = metric === "combined" ? null : metric;
+  const summary = singleMetric ? report?.[singleMetric] : undefined;
   const data = report?.data ?? [];
   const hasDays = data.length > 0;
   const includeYear =
     data[0]?.date.slice(0, 4) !== data.at(-1)?.date.slice(0, 4);
   const singleActiveDay =
-    summary?.activeDays === 1 ? data.find((day) => day[metric] > 0) : null;
+    singleMetric && summary?.activeDays === 1 ? data.find((day) => day[singleMetric] > 0) : null;
   const format = (value: number | null | undefined) =>
     value == null
       ? "—"
@@ -186,7 +188,7 @@ export function ChartAreaInteractive({
                 <ToggleGroup
                   value={[metric]}
                   onValueChange={(value) => {
-                    if (value[0] === "amount" || value[0] === "orders")
+                    if (value[0] === "amount" || value[0] === "orders" || value[0] === "combined")
                       setMetric(value[0]);
                   }}
                   spacing={1}
@@ -207,7 +209,7 @@ export function ChartAreaInteractive({
                   ))}
                 </ToggleGroup>
               </SelectionMotionGroup>
-              <SelectionMotionGroup>
+              {metric !== "combined" && <SelectionMotionGroup>
                 <ToggleGroup
                   value={[effectiveType]}
                   onValueChange={(value) => {
@@ -238,13 +240,27 @@ export function ChartAreaInteractive({
                     </Tooltip>
                   ))}
                 </ToggleGroup>
-              </SelectionMotionGroup>
+              </SelectionMotionGroup>}
             </div>
           )}
         </CardHeader>
         <TabsContent value="chart">
           <CardContent className="trend-content">
-            <dl
+            {metric === "combined" ? (
+              <dl className="trend-summary trend-summary-combined" aria-label="金额与订单汇总">
+                {individualMetrics.map(({ value, label }) => (
+                  <div className="trend-total" key={value}>
+                    <dt>{label}</dt>
+                    <dd id={summaryId + value} data-metric-value data-trend-metric={value}
+                      className="whitespace-normal wrap-anywhere leading-tight">
+                      {pending ? <Skeleton className="h-9 w-32" /> : !report ? "—"
+                        : value === "amount" ? money(report.amount.total) : `${count(report.orders.total)} 笔`}
+                    </dd>
+                    <dd className="trend-summary-note">含今天 · {value === "amount" ? "按确认时间" : "按创建时间"}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : <dl
               className="trend-summary"
               aria-label={metric === "amount" ? "确认金额汇总" : "新建订单汇总"}
             >
@@ -295,9 +311,9 @@ export function ChartAreaInteractive({
                   )}
                 </dd>
               </div>
-            </dl>
-            {metrics
-              .filter((item) => item.value !== metric)
+            </dl>}
+            {individualMetrics
+              .filter((item) => metric !== "combined" && item.value !== metric)
               .map((item) => (
                 <span
                   key={item.value}
@@ -311,6 +327,9 @@ export function ChartAreaInteractive({
                       : count(report.orders.total)}
                 </span>
               ))}
+            <span id={summaryId + "combined"} className="sr-only">
+              {!report ? "—" : `确认金额 ${money(report.amount.total)}，新建订单 ${count(report.orders.total)} 笔`}
+            </span>
             {pending ? (
               <Skeleton
                 className="trend-plot w-full"
@@ -334,18 +353,18 @@ export function ChartAreaInteractive({
                 />
                 <div className="trend-caption">
                   <p>
-                    {summary?.activeDays
+                    {metric === "combined" ? `共 ${data.length} 天` : summary?.activeDays
                       ? `${metric === "amount" ? "有收款" : "有新订单"} ${summary.activeDays} 天 / 共 ${data.length} 天`
                       : metric === "amount"
                         ? "这段时间暂无确认收款"
                         : "这段时间暂无新建订单"}
                   </p>
-                  {singleActiveDay ? (
+                  {singleActiveDay && singleMetric ? (
                     <p data-trend-sparse>
                       <time dateTime={singleActiveDay.date}>
                         {singleActiveDay.date}
                       </time>
-                      <span>{format(singleActiveDay[metric])}</span>
+                      <span>{format(singleActiveDay[singleMetric])}</span>
                     </p>
                   ) : (
                     <p>按日展示 · 今天仍在累计</p>
