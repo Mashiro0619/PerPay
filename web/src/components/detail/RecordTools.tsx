@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { MoreHorizontal, Code, ExternalLink } from "lucide-react";
 import { Link } from "@/navigation";
 import { cn } from "@/lib/utils";
+import { useOverlayContext } from "@/lib/overlay-context";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,7 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { TechnicalDetailsDialog } from "./DetailPrimitives";
+import { TechnicalDetails, TechnicalDetailsDialog } from "./DetailPrimitives";
 export type RecordAction = {
   label: string;
   danger?: boolean;
@@ -27,6 +28,7 @@ export function RecordTools({
   to,
   label = "记录操作",
   inline = false,
+  technical = true,
 }: {
   data: unknown;
   identifiers?: ReadonlyArray<readonly [string, string | null]>;
@@ -34,12 +36,15 @@ export function RecordTools({
   to?: string | undefined;
   label?: string;
   inline?: boolean;
+  technical?: boolean;
 }) {
+  const overlay = useOverlayContext();
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement | null>(null);
   return (
     <>
-      <div className={cn("flex justify-end", inline && "inline-flex shrink-0")}>
+      <div className={cn("flex min-w-0 flex-wrap justify-end gap-2", inline && "inline-flex shrink-0")} data-record-tools>
+        {((technical && !overlay) || actions.length > 0 || to) &&
         <DropdownMenu>
           <Tooltip><TooltipTrigger render={<DropdownMenuTrigger
             render={
@@ -70,31 +75,32 @@ export function RecordTools({
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuGroup>
-                <DropdownMenuSeparator />
+                {(to || (technical && !overlay)) && <DropdownMenuSeparator />}
               </>
             )}
             <DropdownMenuGroup>
-              <DropdownMenuItem onClick={() => setOpen(true)}>
+              {technical && !overlay && <DropdownMenuItem onClick={() => setOpen(true)}>
                 <Code />
                 技术详情
-              </DropdownMenuItem>
+              </DropdownMenuItem>}
               {to && (
                 <DropdownMenuItem render={<Link to={to} />}>
                   <ExternalLink />
-                  单独打开
+                  查看详情
                 </DropdownMenuItem>
               )}
             </DropdownMenuGroup>
           </DropdownMenuContent>
-        </DropdownMenu>
+        </DropdownMenu>}
+        {technical && overlay && <TechnicalDetails data={data} identifiers={identifiers} />}
       </div>
-      <TechnicalDetailsDialog
+      {technical && !overlay && <TechnicalDetailsDialog
         open={open}
         onOpenChange={setOpen}
         finalFocus={() => trigger.current}
         data={data}
         identifiers={identifiers}
-      />
+      />}
     </>
   );
 }

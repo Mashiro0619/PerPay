@@ -143,7 +143,7 @@ export function ListFilterSheet({
           </>
         )}
       </SheetTrigger>
-      <SheetContent side="bottom" className="max-h-[calc(100dvh-2rem)] gap-0 overflow-hidden">
+      <SheetContent side="bottom" className="h-dvh max-h-dvh gap-0 overflow-hidden rounded-none border-0">
         <SheetHeader className="shrink-0 pr-16">
           <SheetTitle>{panelTitle}</SheetTitle>
         </SheetHeader>

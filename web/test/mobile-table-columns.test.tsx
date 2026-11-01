@@ -44,7 +44,7 @@ describe("mobile column controls", () => {
       expect(within(aside as HTMLElement).getByText(received < order.payable_amount_cents ? "少收" : "多收")).toHaveAttribute("data-variant", "warning");
     } else expect(within(aside as HTMLElement).queryByText(/少收|多收/)).not.toBeInTheDocument();
   });
-  it("uses a single summary row and checks only information that is actually shown after migrating legacy defaults", async () => {
+  it("keeps one fixed mobile summary and no column or row-expansion controls after migrating legacy defaults", () => {
     localStorage.setItem(
       "perpay.table-columns.orders",
       JSON.stringify({
@@ -54,56 +54,36 @@ describe("mobile column controls", () => {
       }),
     );
     mountOrders();
-    const user = userEvent.setup();
-    expect(
-      screen.getByRole("button", { name: "显示列" }).closest("th"),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "显示列" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "展开信息" })).not.toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(document.querySelectorAll("[data-business-row]")).toHaveLength(1);
     expect(orderSummary()).toHaveAttribute("role", "listitem");
     expect(within(orderSummary()).getByText("状态")).toBeVisible();
     expect(within(orderSummary()).getByText("创建时间")).toBeVisible();
-    const popup = await menu(user);
-    expect(
-      within(popup).getByRole("menuitemcheckbox", { name: "订单 / 商品" }),
-    ).toHaveAttribute("aria-disabled", "true");
-    expect(
-      within(popup).getByRole("menuitemcheckbox", { name: "实收金额" }),
-    ).toHaveAttribute("aria-checked", "true");
     expect(within(orderSummary()).getByText("实收金额")).toBeVisible();
-    await user.click(within(popup).getByRole("menuitemcheckbox", { name: "实收金额" }));
-    expect(within(orderSummary()).queryByText("实收金额")).not.toBeInTheDocument();
-    await user.click(
-      within(popup).getByRole("menuitemcheckbox", { name: "实收金额" }),
-    );
-    expect(
-      within(orderSummary()).getByText("实收金额"),
-    ).toBeVisible();
-    expect(
-      screen.getByRole("menuitemcheckbox", { name: "实收金额" }),
-    ).toHaveAttribute("aria-checked", "true");
     expect(
       JSON.parse(localStorage.getItem("perpay.table-columns.v2.orders")!),
-    ).toEqual({ received_amount_cents: true });
+    ).toEqual({});
     expect(
       within(orderSummary()).getAllByText(money(order.received_amount_cents)),
     ).toHaveLength(1);
   });
   it("restores responsive defaults and compact summaries after explicit show/hide", async () => {
+    const media = mobileMedia(1440);
     mountOrders();
     const user = userEvent.setup();
     await menu(user);
     const amount = screen.getByRole("menuitemcheckbox", { name: "实收金额" });
     await user.click(amount);
     expect(
-      within(orderSummary()).queryByText("实收金额"),
-    ).not.toBeInTheDocument();
-    expect(
-      within(orderSummary()).queryByText(money(order.received_amount_cents)),
+      screen.queryByRole("columnheader", { name: "实收金额" }),
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole("menuitemcheckbox", { name: "创建时间" }));
-    expect(within(orderSummary()).queryByText("创建时间")).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "创建时间" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("menuitem", { name: "恢复默认列" }));
+    await user.keyboard("{Escape}");
+    media.resize(390);
     expect(
       within(orderSummary()).getByText("创建时间"),
     ).toBeVisible();
@@ -114,8 +94,8 @@ describe("mobile column controls", () => {
       JSON.parse(localStorage.getItem("perpay.table-columns.v2.orders")!),
     ).toEqual({});
   });
-  it("adapts untouched columns on resize but preserves explicit choices and reloads them", async () => {
-    const media = mobileMedia();
+  it("preserves desktop column preferences while mobile keeps its fixed key fields", async () => {
+    const media = mobileMedia(1280);
     const view = mountOrders();
     const user = userEvent.setup();
     await menu(user);
@@ -134,8 +114,8 @@ describe("mobile column controls", () => {
       within(orderSummary()).getByText("实收金额"),
     ).toBeVisible();
     expect(
-      within(orderSummary()).queryByText("状态"),
-    ).not.toBeInTheDocument();
+      within(orderSummary()).getByText("状态"),
+    ).toBeVisible();
     expect(
       within(orderSummary()).getByText("创建时间"),
     ).toBeVisible();
@@ -147,10 +127,13 @@ describe("mobile column controls", () => {
       within(orderSummary()).getByText("实收金额"),
     ).toBeVisible();
     expect(
-      within(orderSummary()).queryByText("状态"),
-    ).not.toBeInTheDocument();
+      within(orderSummary()).getByText("状态"),
+    ).toBeVisible();
+    media.resize(1280);
+    expect(screen.queryByRole("columnheader", { name: "状态" })).not.toBeInTheDocument();
   });
   it("keeps table preferences separate when the mounted table id changes", async () => {
+    mobileMedia(1440);
     localStorage.setItem("perpay.table-columns.v2.first", '{"extra":true}');
     const table = (id: string) => (
       <MemoryRouter>
@@ -168,7 +151,7 @@ describe("mobile column controls", () => {
             {
               id: "extra",
               label: "附加",
-              responsive: { minWidthRem: 40 },
+              defaultVisible: false,
               cell: () => "内容",
             },
           ]}
@@ -176,14 +159,11 @@ describe("mobile column controls", () => {
       </MemoryRouter>
     );
     const view = render(table("first"));
-    await userEvent.setup().click(screen.getByRole("button", { name: "展开信息" }));
-    expect(
-      within(screen.getByRole("listitem")).getByText("附加"),
-    ).toBeVisible();
+    expect(screen.getByRole("columnheader", { name: "附加" })).toBeVisible();
     view.rerender(table("second"));
     await waitFor(() =>
       expect(
-        within(screen.getByRole("listitem")).queryByText("附加"),
+        screen.queryByRole("columnheader", { name: "附加" }),
       ).not.toBeInTheDocument(),
     );
     expect(
@@ -191,6 +171,7 @@ describe("mobile column controls", () => {
     ).toEqual({});
   });
   it("falls back safely when browser storage is unavailable", async () => {
+    const media = mobileMedia(1440);
     const get = vi
       .spyOn(Storage.prototype, "getItem")
       .mockImplementation(() => {
@@ -207,6 +188,8 @@ describe("mobile column controls", () => {
       await menu(user);
       await user.click(screen.getByRole("menuitemcheckbox", { name: "实收金额" }));
       await user.click(screen.getByRole("menuitemcheckbox", { name: "实收金额" }));
+      await user.keyboard("{Escape}");
+      media.resize(390);
       expect(
         within(orderSummary()).getByText("实收金额"),
       ).toBeVisible();
@@ -226,13 +209,10 @@ describe("mobile column controls", () => {
           : original.call(this);
       });
     try {
+      localStorage.setItem("perpay.table-columns.v2.orders", '{"received_amount_cents":true}');
       mountOrders();
-      const user = userEvent.setup();
       expect(screen.queryByRole("table")).not.toBeInTheDocument();
-      await menu(user);
-      await user.click(screen.getByRole("menuitemcheckbox", { name: "实收金额" }));
-      await user.click(screen.getByRole("menuitemcheckbox", { name: "实收金额" }));
-      await user.keyboard("{Escape}");
+      expect(screen.queryByRole("button", { name: "显示列" })).not.toBeInTheDocument();
       expect(within(orderSummary()).getByText("实收金额")).toBeVisible();
       width = 640;
       act(() => window.dispatchEvent(new Event("resize")));

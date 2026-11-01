@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Children, Fragment, cloneElement, isValidElement, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { cn } from "cn";
 import { ChevronDown, Columns3, Search, X } from "lucide-react";
 import { normalizeKeyword, type ListQueryControl } from "@/lib/list-query";
 import { useCompactList } from "@/hooks/use-compact-list";
 import { ListColumnsSlot, useListSummary } from "@/components/list-columns";
-import { ListDensityControl, ListDensityOptions } from "@/components/list-density";
+import { ListDensityOptions } from "@/components/list-density";
+import { CreatedDateFilter } from "@/components/created-date-filter";
+import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { ListActionsMenu, ListActionsProvider } from "@/components/list-actions-menu";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +37,14 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter, SheetClose } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 export type { ListFilter, ListFilterDraftControl } from "@/components/list-filter-sheet";
+
+function filterControls(children: ReactNode, prefix: string): ReactNode[] {
+  return Children.toArray(children).flatMap((child, index) => {
+    const key = prefix + ":" + (isValidElement(child) ? child.key ?? index : index);
+    if (isValidElement<{ children?: ReactNode }>(child) && child.type === Fragment) return filterControls(child.props.children, key);
+    return [isValidElement(child) ? cloneElement(child, { key }) : child];
+  });
+}
 
 export type ListQueryLookup = {
   context?: (mode: string) => ReactNode;
@@ -94,6 +104,8 @@ export function ListQueryToolbar({
   const [mode, setMode] = useState("");
   const [error, setError] = useState("");
   const [displayOpen, setDisplayOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const advancedId = useId();
   const actionsTrigger = useRef<HTMLButtonElement | null>(null);
   const searchInput = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
@@ -119,6 +131,17 @@ export function ListQueryToolbar({
     ),
     ...mobileFilterSummary,
   ];
+  const controls = filterControls(desktopFilters, "primary");
+  const extras = filterControls(desktopFilterContent, "advanced");
+  const date = extras.find(child => isValidElement(child) && child.type === CreatedDateFilter);
+  const primaryCount = date ? 1 : 2;
+  const primaryControls = [...(date ? [date] : []), ...controls.slice(0, primaryCount)];
+  const advancedControls = [...controls.slice(primaryCount), ...extras.filter(child => child !== date)];
+  const clearFilters = () => control.update({
+    q: null,
+    ...mobileFilterReset,
+    ...Object.fromEntries(filters.map(filter => [filter.key, filter.defaultValue ?? null])),
+  });
   return (
     <div
       className="list-query-toolbar min-w-0"
@@ -254,12 +277,12 @@ export function ListQueryToolbar({
         </form>
         {!compact && (
           <>
-            {desktopFilters && (
+            {primaryControls.length > 0 && (
               <div
                 className="flex shrink-0 items-center gap-2"
                 data-list-desktop-filters
               >
-                {desktopFilters}
+                {primaryControls}
               </div>
             )}
             {control.query.q && (
@@ -290,10 +313,29 @@ export function ListQueryToolbar({
                 {desktopActions}
               </div>
             )}
+            {advancedControls.length > 0 && <Button type="button" variant="outline" disabled={busy}
+              aria-expanded={advancedOpen} aria-controls={advancedId} data-list-advanced-trigger
+              onClick={() => setAdvancedOpen(open => !open)}>
+              高级筛选<ChevronDown className={advancedOpen ? "rotate-180" : undefined} data-icon="inline-end" />
+            </Button>}
+            <Popover open={displayOpen} onOpenChange={setDisplayOpen}>
+              <PopoverTrigger render={<Button type="button" variant="outline" aria-label="列表显示" data-list-display-trigger />}>
+                <Columns3 data-icon="inline-start" />显示
+              </PopoverTrigger>
+              <PopoverContent align="end" className="max-h-[min(36rem,calc(100dvh-2rem))] overflow-y-auto" data-list-display-menu>
+                <PopoverTitle>列表显示</PopoverTitle>
+                <ListDensityOptions />
+                {!summary && <Separator />}
+                <ListColumnsSlot display />
+              </PopoverContent>
+            </Popover>
           </>
         )}
       </div>
-      {!compact && <ListColumnsSlot><ListDensityControl compact={false} /></ListColumnsSlot>}
+      {!compact && advancedOpen && advancedControls.length > 0 && <div id={advancedId}
+        className="list-toolbar-detail flex min-w-0 flex-wrap items-end gap-3" data-list-advanced-filters>
+        {advancedControls}
+      </div>}
       {selectedMode && (
         <div className="list-toolbar-detail empty:hidden">
           <ErrorNotice error={lookup?.error} />
@@ -319,15 +361,16 @@ export function ListQueryToolbar({
             </ListActionsProvider>
           </div>
           <Sheet open={displayOpen} onOpenChange={setDisplayOpen}>
-            <SheetContent side="bottom" finalFocus={actionsTrigger} className="max-h-[calc(100dvh-2rem)] gap-0 overflow-hidden" data-list-display-sheet>
+            <SheetContent side="bottom" finalFocus={actionsTrigger} className="h-dvh max-h-dvh gap-0 overflow-hidden rounded-none border-0" data-list-display-sheet>
               <SheetHeader className="shrink-0 pr-[calc(max(1.75rem,44px)+1.5rem)]">
                 <SheetTitle>列表显示</SheetTitle>
               </SheetHeader>
               <div className="flex min-h-0 flex-col gap-4 overflow-y-auto overscroll-contain" data-list-display-scroll>
                 <div className="flex shrink-0 flex-col gap-4 px-4 pb-1" data-list-display-body>
                   <ListDensityOptions />
-                  <Separator />
+                  {!summary && <Separator />}
                   <ListColumnsSlot display />
+                  {summary && <p className="text-sm text-muted-foreground">手机列表展示关键摘要，完整信息可打开详情查看。</p>}
                 </div>
                 <SheetFooter className="shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
                   <SheetClose render={<Button type="button" />}>完成</SheetClose>
@@ -361,18 +404,7 @@ export function ListQueryToolbar({
                 size="icon"
                 disabled={busy}
                 aria-label="清除搜索和筛选"
-                onClick={() =>
-                  control.update({
-                    q: null,
-                    ...mobileFilterReset,
-                    ...Object.fromEntries(
-                      filters.map((filter) => [
-                        filter.key,
-                        filter.defaultValue ?? null,
-                      ]),
-                    ),
-                  })
-                }
+                onClick={clearFilters}
               >
                 <X />
               </Button>
@@ -380,7 +412,10 @@ export function ListQueryToolbar({
           )}
         </>
       )}
-      {!compact && desktopFilterContent && <div className="list-toolbar-detail flex min-w-0 flex-wrap items-center gap-2">{desktopFilterContent}</div>}
+      {!compact && summaries.length > 0 && <div className="list-toolbar-detail flex min-w-0 items-center gap-2" aria-label="当前查询条件" data-list-applied-filters>
+        <div className="flex min-w-0 flex-1 flex-wrap gap-1" role="status">{summaries.map(text => <Badge key={text} variant="secondary" className="max-w-full" title={text}><span className="truncate">{text}</span></Badge>)}</div>
+        <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={clearFilters} aria-label="清除搜索和筛选">清除</Button>
+      </div>}
       {children && (
         <div className="list-toolbar-detail flex flex-wrap items-center gap-2">
           {children}

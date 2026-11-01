@@ -1,4 +1,4 @@
-import { Children, useRef, useState, type ReactNode } from "react";
+import { Children, createContext, useContext, useRef, useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "cn";
 import { dateTime, money } from "@/lib/format";
@@ -6,6 +6,12 @@ import { ItemActions, ItemContent, ItemHeader, ItemTitle } from "@/components/ui
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
+const CompactRowContext = createContext(false);
+/** Full details belong to the record surface; embedded summaries keep their own layout. */
+export function ListRowPresentation({ compact, children }: { compact: boolean; children: ReactNode }) {
+  return <CompactRowContext value={compact}>{children}</CompactRowContext>;
+}
 
 /** Shared typography for tables, overview rows and record summaries. */
 export function ListIdentity({
@@ -17,11 +23,12 @@ export function ListIdentity({
   meta?: ReactNode;
   description?: ReactNode;
 }) {
+  const compact = useContext(CompactRowContext);
   return (
     <div className="list-identity">
       <ItemTitle className="list-identity-title">{children}</ItemTitle>
-      {meta && <div className="list-identity-meta">{meta}</div>}
-      {description && <div className="list-identity-description">{description}</div>}
+      {!compact && meta && <div className="list-identity-meta">{meta}</div>}
+      {!compact && description && <div className="list-identity-description">{description}</div>}
     </div>
   );
 }
@@ -92,14 +99,16 @@ export function ListSummary({
   /** Selected secondary fields; unmounted after this record finishes collapsing. */
   details?: ReactNode;
 }) {
-  const hasFields = Children.toArray(children).length > 0;
+  const compact = useContext(CompactRowContext);
+  const fields = Children.toArray(children);
+  const shown = compact ? fields.slice(0, 3) : fields;
   return (
     <ItemContent className="min-w-0 w-full">
       <ItemHeader className="list-summary-heading">
         <div className="list-summary-identity">{identity}</div>
         {aside && <ItemActions className="list-summary-aside">{aside}</ItemActions>}
       </ItemHeader>
-      {hasFields && <dl className="business-summary-fields">{children}</dl>}
+      {shown.length > 0 && <dl className="business-summary-fields">{shown}</dl>}
       <ListSummaryDetails>{details}</ListSummaryDetails>
     </ItemContent>
   );
@@ -107,6 +116,7 @@ export function ListSummary({
 
 /** Also shared by overview records whose primary layout differs from ListSummary. */
 export function ListSummaryDetails({ children }: { children?: ReactNode }) {
+  const compact = useContext(CompactRowContext);
   const [expanded, setExpanded] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -116,7 +126,7 @@ export function ListSummaryDetails({ children }: { children?: ReactNode }) {
     }
     setExpanded(open);
   }
-  if (Children.toArray(children).length === 0) return null;
+  if (compact || Children.toArray(children).length === 0) return null;
   const label = expanded ? "收起信息" : "展开信息";
   return (
     <Collapsible open={expanded} onOpenChange={handleOpenChange} className="list-summary-details">

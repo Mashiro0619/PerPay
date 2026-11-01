@@ -8,6 +8,8 @@ import { Link } from "@/navigation";
 import { ListDateTime, ListMoney } from "@/components/list-primitives";
 import { cn } from "@/lib/utils";
 import { CopyValue } from "@/components/copy-value";
+import { useOverlayContext } from "@/lib/overlay-context";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { StatusBadge, paymentBasisDescription } from "@/components/business-status";
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -49,7 +51,7 @@ export function useDetailFetching() {
 export type DetailDensity = "default" | "comfortable";
 export type DetailFieldLayout = "columns" | "flow";
 export function DetailPage({ children }: { children: ReactNode }) {
-  return <div className="flex min-w-0 flex-col gap-6" data-detail-page data-detail-layout="readable">{children}</div>;
+  return <div className="flex min-w-0 flex-col gap-4" data-detail-page data-detail-layout="readable">{children}</div>;
 }
 export function DetailNavigation({ back, identifier, identifierLabel = "记录编号", global = false, children }: {
   back: { to: string; label: string; state?: unknown };
@@ -58,6 +60,8 @@ export function DetailNavigation({ back, identifier, identifierLabel = "记录�
   global?: boolean;
   children?: ReactNode;
 }) {
+  const overlay = useOverlayContext();
+  if (overlay) return children ? <div className="contents" data-detail-navigation>{children}</div> : null;
   return <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2" data-detail-navigation>
     <Link global={global} to={back.to} state={back.state} className={buttonVariants({ variant: "ghost", size: "sm" })}>
       <ArrowLeft data-icon="inline-start" />{back.label}
@@ -83,9 +87,10 @@ export function DetailFields({
   density?: DetailDensity;
   layout?: DetailFieldLayout;
 }) {
+  const overlay = useOverlayContext();
   if (!items.length) return null;
   return (
-    <div className="@container/detail-fields min-w-0" data-detail-fields data-density={density} data-layout={layout}>
+    <div className="@container/detail-fields min-w-0" data-detail-fields data-density={density} data-layout={layout} data-compact-fields={overlay ? "true" : undefined}>
     <dl
       className={cn(
         "min-w-0",
@@ -118,6 +123,26 @@ export function DetailFields({
     </dl>
     </div>
   );
+}
+export function TechnicalDetails({ data, identifiers = [], title = "技术信息", children }: {
+  data: unknown;
+  identifiers?: ReadonlyArray<readonly [string, string | null]>;
+  title?: string;
+  children?: ReactNode;
+}) {
+  return <Collapsible className="min-w-0" data-technical-information>
+    <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
+      {title}
+    </CollapsibleTrigger>
+    <CollapsibleContent>
+      <div className="flex min-w-0 flex-col gap-3 pt-3">
+        {children}
+        {identifiers.some(([, value]) => !!value) && <DetailFields items={identifiers.filter((entry): entry is readonly [string, string] => !!entry[1])
+          .map(([name, value]) => [name, <CopyValue value={value} label={"复制" + name} />])} />}
+        <pre tabIndex={0} aria-label={title} className="max-w-full overflow-x-auto rounded-md bg-muted p-3 text-xs whitespace-pre-wrap break-all">{JSON.stringify(data, null, 2)}</pre>
+      </div>
+    </CollapsibleContent>
+  </Collapsible>;
 }
 export function DetailCredentials({ items, title = "凭据编号", headingLevel = 3 }: {
   items: ReadonlyArray<readonly [string, ReactNode]>;
@@ -191,7 +216,7 @@ export function TechnicalDetailsDialog({
 }
 export function DetailLink({
   to,
-  label = "打开独立详情",
+  label = "查看详情",
 }: {
   to: string;
   label?: string;
@@ -229,7 +254,7 @@ export function OrderFacts({
       <DetailFields density="comfortable" layout={layout} wide={["商户订单号（业务网站）"]} items={[
         ["应付金额", <ListMoney value={order.payable_amount_cents} label="应付金额" />],
         ["实收金额", <ListMoney value={order.received_amount_cents} label="实收金额" />],
-        ["所属网站", <Link to={"/sites/" + encodeURIComponent(order.api_client_id)}>{order.site_name ?? "名称不可用"}</Link>],
+        ["所属网站", <Link global to={"/sites/" + encodeURIComponent(order.api_client_id) + "/summary"}>{order.site_name ?? "名称不可用"}</Link>],
         ["创建时间", <ListDateTime value={order.created_at} inline />],
         ["商户订单号（业务网站）", <CopyValue value={order.merchant_order_no} label="复制商户订单号" />],
       ]} />

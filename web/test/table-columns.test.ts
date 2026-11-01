@@ -14,6 +14,15 @@ const columns: ResponsiveColumn[] = [
 ];
 const small = { viewport: 390, container: 358, rem: 16 };
 describe("responsive column visibility", () => {
+  it("keeps optional technical columns hidden until chosen and retains that explicit choice on resize", () => {
+    const specs: ResponsiveColumn[] = [...columns, { id: "technical", defaultVisible: false }];
+    const wide = { viewport: 1440, container: 1100, rem: 16 };
+    const initial = resolveColumnVisibility(specs, {}, wide);
+    expect(initial.technical).toBe(false);
+    const selected = updateColumnOverrides(specs, {}, initial, { ...initial, technical: true });
+    expect(resolveColumnVisibility(specs, selected, small).technical).toBe(true);
+    expect(resolveColumnVisibility(specs, {}, wide).technical).toBe(false);
+  });
   it("uses the original rem thresholds and distinguishes viewport from container width", () => {
     expect(resolveColumnVisibility(columns, {}, small)).toEqual({
       identity: true,

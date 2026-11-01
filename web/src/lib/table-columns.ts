@@ -1,6 +1,8 @@
 export type ResponsiveColumn = {
   id: string;
   hideable?: boolean;
+  /** Whether an untouched desktop column is visible before responsive checks. */
+  defaultVisible?: boolean;
   /** Whether an untouched field belongs in the compact summary. */
   summaryDefault?: boolean;
   /** Tailwind-compatible rem breakpoint used only until a user explicitly chooses. */
@@ -51,9 +53,9 @@ export function resolveColumnVisibility(
       column.hideable === false
         ? true
         : (overrides[column.id] ??
-          (!column.responsive ||
+          (column.defaultVisible !== false && (!column.responsive ||
             size[column.responsive.basis ?? "viewport"] >=
-              column.responsive.minWidthRem * size.rem)),
+              column.responsive.minWidthRem * size.rem))),
     ]),
   );
 }
