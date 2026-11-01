@@ -1,4 +1,5 @@
 import type { LedgerScanGate } from "./scan-gate.ts";
+import type { ActivityRecorder } from "../audit/activity.ts";
 import { LedgerIngestService, type LedgerScanResult } from "./service.ts";
 
 export type LedgerSchedulerState =
@@ -27,6 +28,8 @@ interface PendingSchedule {
 }
 
 export interface LedgerIngestSchedulerOptions {
+  readonly activity?: ActivityRecorder | undefined;
+  readonly providerAccountKey?: string | undefined;
   readonly minimumIntervalMilliseconds?: number;
   readonly gate?: { read(): LedgerScanGate | null; write(state: LedgerScanGate): void };
   readonly service: LedgerIngestService;
@@ -44,6 +47,8 @@ export interface LedgerIngestSchedulerOptions {
 
 /** One timer and one in-flight promise own all automatic and manual scans. */
 export class LedgerIngestScheduler {
+  readonly #activity: ActivityRecorder | undefined;
+  readonly #providerAccountKey: string | undefined;
   readonly #minimumIntervalMilliseconds: number;
   readonly #gate: LedgerIngestSchedulerOptions["gate"];
   #lastGate: LedgerScanGate | null = null;
@@ -80,6 +85,8 @@ export class LedgerIngestScheduler {
   static readonly #nonRetryableDelayMilliseconds = 15 * 60 * 1_000;
 
   constructor(options: LedgerIngestSchedulerOptions) {
+    this.#activity = options.activity;
+    this.#providerAccountKey = options.providerAccountKey;
     if (
       !Number.isSafeInteger(options.intervalMilliseconds) ||
       options.intervalMilliseconds < 1_000 ||
@@ -163,7 +170,14 @@ export class LedgerIngestScheduler {
     this.#lastAttemptAt = attemptStartedAt;
     const previousState = this.#state;
     this.#state = "running";
-    const operation = this.#service.run(reason)
+    const scan = () => this.#service.run(reason);
+    const execution = this.#activity
+      ? this.#activity.runTask("ledger.scan", { subjectType: "provider_account", subjectId: this.#providerAccountKey, details: { reason } }, scan,
+        result => ({ outcome: result.status === "FAILED" ? "FAILURE" : "SUCCESS", aggregate: result.status === "SKIPPED",
+          details: { status: result.status, ingest_run_id: result.ingestRunId, pages: result.pages, created_entries: result.createdEntries,
+            duplicate_entries: result.duplicateEntries, isolated_details: result.isolatedDetails, conflicts: result.conflicts, error_code: result.errorCode } }))
+      : scan();
+    const operation = execution
       .then((result) => {
         if (result.status === "SKIPPED" || result.errorCode === "scan_aborted") {
           this.#state = previousState;

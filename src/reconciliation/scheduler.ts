@@ -1,4 +1,5 @@
 import { MAX_RECONCILIATION_BATCH_SIZE } from "./model.ts";
+import type { ActivityRecorder } from "../audit/activity.ts";
 import {
   ReconciliationStore,
   type ReconciliationSweepCursor,
@@ -32,6 +33,7 @@ export interface ReconciliationSchedulerHealth {
 }
 
 export interface ReconciliationSchedulerOptions {
+  readonly activity?: ActivityRecorder | undefined;
   readonly store: ReconciliationStore;
   readonly intervalMilliseconds?: number | undefined;
   readonly batchSize?: number | undefined;
@@ -64,6 +66,7 @@ const REASON_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
  * from starving later entries during long-term compensation sweeps.
  */
 export class ReconciliationScheduler {
+  readonly #activity: ActivityRecorder | undefined;
   readonly #store: ReconciliationStore;
   readonly #intervalMilliseconds: number;
   readonly #batchSize: number;
@@ -94,6 +97,7 @@ export class ReconciliationScheduler {
   #consecutiveFailures = 0;
 
   constructor(options: ReconciliationSchedulerOptions) {
+    this.#activity = options.activity;
     this.#store = options.store;
     this.#intervalMilliseconds = options.intervalMilliseconds ?? DEFAULT_INTERVAL_MILLISECONDS;
     this.#batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
@@ -227,7 +231,13 @@ export class ReconciliationScheduler {
 
   #ensureRun(reason: string): Promise<ReconciliationRunResult> {
     if (this.#inFlight) return this.#inFlight;
-    const operation = Promise.resolve().then(() => this.#run(reason));
+    const operation = Promise.resolve().then(() => this.#activity
+      ? this.#activity.runTask("reconciliation.sweep", { details: { reason } }, () => this.#run(reason), result => ({
+        outcome: result.failures > 0 ? "FAILURE" : "SUCCESS", aggregate: result.failures === 0 && result.processedEntries === 0 && result.processedOrders === 0,
+        details: { processed_entries: result.processedEntries, processed_orders: result.processedOrders, auto_settled: result.autoSettled,
+          failures: result.failures, continuation_pending: result.continuationPending },
+      }))
+      : this.#run(reason));
     this.#inFlight = operation.finally(() => {
       this.#inFlight = null;
       if (

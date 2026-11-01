@@ -1,6 +1,7 @@
 import {
   type WebhookProcessResult,
 } from "./service.ts";
+import type { ActivityRecorder } from "../audit/activity.ts";
 
 export type WebhookSchedulerState = "idle" | "running" | "healthy" | "degraded" | "stopped";
 
@@ -17,6 +18,7 @@ export interface WebhookSchedulerHealth {
 }
 
 export interface WebhookSchedulerOptions {
+  readonly activity?: ActivityRecorder | undefined;
   readonly service: WebhookProcessor;
   readonly store: WebhookCountStore;
   readonly intervalMilliseconds?: number | undefined;
@@ -43,6 +45,7 @@ export interface WebhookRunResult {
 }
 
 export class WebhookScheduler {
+  readonly #activity: ActivityRecorder | undefined;
   readonly #service: WebhookProcessor;
   readonly #store: WebhookCountStore;
   readonly #intervalMilliseconds: number;
@@ -62,6 +65,7 @@ export class WebhookScheduler {
   #abortController: AbortController | null = null;
 
   constructor(options: WebhookSchedulerOptions) {
+    this.#activity = options.activity;
     this.#service = options.service;
     this.#store = options.store;
     this.#intervalMilliseconds = options.intervalMilliseconds ?? 1_000;
@@ -100,7 +104,14 @@ export class WebhookScheduler {
     this.#lastAttemptAt = safeNow(this.#clock());
     this.#state = "running";
     this.#abortController = new AbortController();
-    const operation = this.#run(reason, this.#abortController.signal)
+    const runSignal = this.#abortController.signal;
+    const execution = this.#activity
+      ? this.#activity.runTask("webhook.dispatch", { details: { reason } }, () => this.#run(reason, runSignal), result => ({
+        outcome: result.failed > 0 ? "FAILURE" : "SUCCESS", aggregate: result.processed === 0 && result.failed === 0,
+        details: { processed: result.processed, acknowledged: result.acknowledged, failed: result.failed, pending: result.pending },
+      }))
+      : this.#run(reason, runSignal);
+    const operation = execution
       .then((result) => {
         const counts = this.#store.counts();
         if (result.failed > 0) {

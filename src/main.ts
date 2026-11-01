@@ -15,6 +15,8 @@ import { ReconciliationStore } from "./reconciliation/index.ts";
 import { RuntimeController } from "./runtime/index.ts";
 import { RuntimeSettingsService, RuntimeSettingsStore } from "./settings/index.ts";
 import { APP_VERSION } from "./version.ts";
+import { ActivityRecorder } from "./audit/activity.ts";
+import { ActivitySpoolImporter } from "./audit/spool.ts";
 
 hardenProcessFileCreation();
 const startedAt = new Date();
@@ -25,6 +27,8 @@ const backupHealth = createAsyncBackupHealthProvider({
   intervalMilliseconds: config.backupIntervalMilliseconds,
 });
 const database = await AppDatabase.open(config.databasePath, { masterKey: config.masterKey });
+const activity = new ActivityRecorder({ database });
+const activityImporter = new ActivitySpoolImporter({ database, recorder: activity, backupDirectory: config.backupDir });
 const identity = new IdentityService(database, config);
 const ledger = new LedgerStore(database);
 const reconciliation = new ReconciliationStore(database);
@@ -39,6 +43,7 @@ const orders: OrderService = new OrderService(database, () => settings.instanceS
 });
 const runtime: RuntimeController = new RuntimeController({
   database,
+  activity,
   orders,
   ledger,
   reconciliation,
@@ -69,7 +74,12 @@ try {
   await identity.initialize();
   const snapshot = settings.initialize();
   await runtime.start(settingsStore.siteStore() ? settingsStore.instanceSnapshot() : snapshot);
+  activity.prune();
+  activity.start();
+  activityImporter.start();
 } catch (error) {
+  activity.record({ action: "system.start_failed", sourceType: "INTERNAL", actorType: "SYSTEM", outcome: "FAILURE" });
+  activity.stop();
   database.close();
   throw error;
 }
@@ -77,6 +87,7 @@ try {
 const app = createApp({
   config,
   database,
+  activity,
   identity,
   onSetupToken: (token) => {
     console.log(JSON.stringify({
@@ -114,6 +125,7 @@ const app = createApp({
 
 let shuttingDown = false;
 let databaseClosed = false;
+let backgroundShutdownFailed = false;
 const server = serve(
   {
     fetch: app.fetch,
@@ -121,6 +133,7 @@ const server = serve(
     port: config.port,
   },
   (info) => {
+    activity.record({ action: "system.started", sourceType: "INTERNAL", actorType: "SYSTEM", subjectType: "instance", subjectId: database.instanceId(), details: { version: APP_VERSION } });
     console.log(JSON.stringify({
       level: "info",
       event: "server_started",
@@ -144,7 +157,8 @@ server.once("error", (error) => {
   if (shuttingDown) return;
   shuttingDown = true;
   logError("server_failed", error);
-  void runtime.stop().finally(() => {
+  activity.record({ action: "system.failed", sourceType: "INTERNAL", actorType: "SYSTEM", outcome: "FAILURE" });
+  void stopBackground().finally(() => {
     closeDatabase();
     process.exitCode = 1;
   });
@@ -154,7 +168,8 @@ function shutdown(signal: NodeJS.Signals): void {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(JSON.stringify({ level: "info", event: "shutdown_started", signal }));
-  const backgroundTasksStopped = runtime.stop();
+  activity.record({ action: "system.stopping", sourceType: "INTERNAL", actorType: "SYSTEM", details: { signal } });
+  const backgroundTasksStopped = stopBackground();
   let finalized = false;
   const finalize = (error?: Error) => {
     if (finalized) return;
@@ -179,10 +194,20 @@ function closeDatabase(): void {
   if (databaseClosed) return;
   databaseClosed = true;
   try {
+    // Called only after the listener has drained and background work has stopped.
+    // Keep capture alive until the final in-flight HTTP response has been recorded.
+    activity.record({ action: "system.stopped", sourceType: "INTERNAL", actorType: "SYSTEM", outcome: backgroundShutdownFailed ? "FAILURE" : "SUCCESS" });
+    activity.stop();
     database.close();
   } catch (error) {
     logError("database_close_failed", error);
   }
+}
+
+async function stopBackground(): Promise<void> {
+  const stopped = await Promise.allSettled([runtime.stop(), activityImporter.stop()]);
+  const failure = stopped.find(result => result.status === "rejected");
+  if (failure?.status === "rejected") { backgroundShutdownFailed = true; logError("background_shutdown_failed", failure.reason); process.exitCode = 1; }
 }
 
 function logError(event: string, error: unknown): void {

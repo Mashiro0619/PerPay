@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { ActivitySpoolWriter } from "../audit/spool.ts";
 
 import {
   loadBackupConfig,
@@ -225,6 +226,29 @@ export async function runBackupCommand(
   environment: NodeJS.ProcessEnv = process.env,
   operations: BackupOperations = defaultBackupOperations,
 ): Promise<number> {
+  const command = arguments_[0] ?? "schedule";
+  const activity = new ActivitySpoolWriter({ backupDirectory: environment.PERPAY_BACKUP_DIR ?? "/backups",
+    kind: command === "schedule" ? "backup" : "maintenance" });
+  const action = backupCommandAction(command);
+  const startedAt = Date.now();
+  try {
+    const code = await executeBackupCommand(arguments_, environment, operations, activity);
+    activity.record({ action, outcome: code === 0 ? "SUCCESS" : "FAILURE", durationMs: Math.max(0, Date.now() - startedAt),
+      details: { command: action, exit_code: code, rebuild_state: arguments_.includes(REBUILD_STATE_ARGUMENT),
+        quarantine_unreadable: arguments_.includes(QUARANTINE_UNREADABLE_ARGUMENT), force_unreadable_lock: arguments_.includes(FORCE_UNREADABLE_LOCK_ARGUMENT) } },
+    { permanent: ["restore", "delete-backup-file", "clear-lock", "clear-stale-publication-lock"].includes(command) });
+    return code;
+  } catch (error) {
+    activity.record({ action, outcome: "FAILURE", durationMs: Math.max(0, Date.now() - startedAt),
+      details: { command: action, stage: error instanceof BackupCycleError ? error.stage : "unknown" } },
+    { permanent: ["restore", "delete-backup-file", "clear-lock", "clear-stale-publication-lock"].includes(command) });
+    throw error;
+  } finally { activity.close(); }
+}
+
+async function executeBackupCommand(
+  arguments_: readonly string[], environment: NodeJS.ProcessEnv, operations: BackupOperations, activity: ActivitySpoolWriter,
+): Promise<number> {
   hardenProcessFileCreation();
   const command = arguments_[0] ?? "schedule";
 
@@ -281,7 +305,7 @@ export async function runBackupCommand(
     : withCurrentPolicy(baseConfig);
   ensurePrivateDirectory(config.backupDirectory);
   if (arguments_.length === 1 && command === "run-once") {
-    const result = await runTrackedCycle(config, operations);
+    const result = await runTrackedCycle(config, operations, undefined, activity);
     process.stdout.write(`${JSON.stringify(serializeResult(result))}\n`);
     return 0;
   }
@@ -442,7 +466,7 @@ export async function runBackupCommand(
     return 0;
   }
   if (arguments_.length === 1 && command === "schedule") {
-    await schedule(baseConfig, operations);
+    await schedule(baseConfig, operations, activity);
     return 0;
   }
   throw new Error(
@@ -458,7 +482,7 @@ export async function runBackupCommand(
   );
 }
 
-async function schedule(config: BackupConfig, operations: BackupOperations): Promise<void> {
+async function schedule(config: BackupConfig, operations: BackupOperations, activity: ActivitySpoolWriter): Promise<void> {
   const controller = new AbortController();
   const stop = () => controller.abort();
   process.once("SIGINT", stop);
@@ -470,7 +494,8 @@ async function schedule(config: BackupConfig, operations: BackupOperations): Pro
       try {
         if (reconcileBeforeDelay) {
           try {
-            await reconcileBackupRetention(activeConfig, operations, controller.signal);
+            await activity.run("backup.retention", {}, () => reconcileBackupRetention(activeConfig, operations, controller.signal),
+              { summarize: count => ({ deleted_backups: count }) });
           } catch (error) {
             if (controller.signal.aborted) break;
             process.stderr.write(`${JSON.stringify({
@@ -487,7 +512,7 @@ async function schedule(config: BackupConfig, operations: BackupOperations): Pro
           await waitFor(delayMilliseconds, controller.signal);
           if (controller.signal.aborted) break;
         }
-        const result = await runTrackedCycle(activeConfig, operations, controller.signal);
+        const result = await runTrackedCycle(activeConfig, operations, controller.signal, activity);
         process.stdout.write(`${JSON.stringify({
           level: "info",
           event: "backup_cycle_succeeded",
@@ -686,7 +711,18 @@ export async function runTrackedCycle(
   config: BackupConfig,
   operations: BackupOperations = defaultBackupOperations,
   signal?: AbortSignal,
+  activity?: ActivitySpoolWriter,
 ): Promise<BackupCycleResult> {
+  const writer = activity ?? new ActivitySpoolWriter({ backupDirectory: config.backupDirectory, kind: "backup" });
+  try {
+    return await writer.run("backup.cycle", {}, () => executeTrackedCycle(config, operations, signal), {
+      summarize: result => ({ backup_name: result.backup.name, instance_id: result.backup.instanceId, schema_version: result.backup.schemaVersion,
+        backup_size_bytes: result.backup.sizeBytes, deleted_backups: result.deletedBackups, recovered_temporary_files: result.recoveredTemporaryFiles }),
+    });
+  } finally { if (!activity) writer.close(); }
+}
+
+async function executeTrackedCycle(config: BackupConfig, operations: BackupOperations, signal?: AbortSignal): Promise<BackupCycleResult> {
   return withBackupLock(config, "backup-cycle", signal, async (cycleSignal) => {
     cycleSignal.throwIfAborted();
     const startedAt = Date.now();
@@ -840,6 +876,14 @@ export async function runTrackedCycle(
       throw error;
     }
   });
+}
+
+function backupCommandAction(command: string): string {
+  const actions: Record<string, string> = { schedule: "backup.scheduler", "run-once": "backup.run_once", health: "backup.health",
+    restore: "backup.restore", "delete-backup-file": "backup.delete", "clear-lock": "backup.lock.clear",
+    "clear-stale-publication-lock": "maintenance.publication_lock.clear", "list-backups": "backup.list",
+    "list-backup-files": "backup.files.list", "inspect-lock": "backup.lock.inspect", "inspect-publication-lock": "maintenance.publication_lock.inspect" };
+  return actions[command] ?? "backup.command.invalid";
 }
 
 export function inspectBackupHealth(

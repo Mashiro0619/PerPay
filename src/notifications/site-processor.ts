@@ -3,9 +3,11 @@ import type { SiteStore } from "../sites/store.ts";
 import { WebhookDeliveryService, type WebhookProcessResult } from "./service.ts";
 import type { WebhookStore } from "./store.ts";
 import { NodeWebhookTransport, type WebhookTransport } from "./transport.ts";
+import type { ActivityRecorder } from "../audit/activity.ts";
 
 /** One processor for the existing serial scheduler, not one worker per website. */
 export class SiteWebhookProcessor {
+  readonly #activity: ActivityRecorder | undefined;
   readonly #sites: SiteStore;
   readonly #webhooks: WebhookStore;
   readonly #clock: () => number;
@@ -13,10 +15,12 @@ export class SiteWebhookProcessor {
   #lastClientId: string | null = null;
 
   constructor(options: {
+    activity?: ActivityRecorder | undefined;
     sites: SiteStore; webhooks: WebhookStore;
     clock?: () => number;
     transport?: (clientId: string, origin: string) => WebhookTransport;
   }) {
+    this.#activity = options.activity;
     this.#sites = options.sites;
     this.#webhooks = options.webhooks;
     this.#clock = options.clock ?? Date.now;
@@ -35,6 +39,9 @@ export class SiteWebhookProcessor {
     const policy = site.configuration.policy.notification_delivery;
     const secretFingerprint = fingerprintSecret(secret, "webhook-signing-key");
     const service = new WebhookDeliveryService({
+      activity: this.#activity,
+      siteId: clientId,
+      siteName: site.configuration.name,
       store: {
         materialize: (limit, now) => this.#webhooks.materialize(limit, now, clientId),
         claimNext: input => this.#webhooks.claimNext({ ...input, clientId, siteRevision: site.revision, secretFingerprint }),

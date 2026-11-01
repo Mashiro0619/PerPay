@@ -12,6 +12,7 @@ import {
   type WebhookTransport,
   type WebhookTransportErrorCode,
 } from "./transport.ts";
+import type { ActivityRecorder } from "../audit/activity.ts";
 
 export interface WebhookDeliveryConfig {
   readonly secret: string;
@@ -30,6 +31,9 @@ export interface WebhookProcessResult {
 }
 
 export interface WebhookDeliveryServiceOptions {
+  readonly activity?: ActivityRecorder | undefined;
+  readonly siteId?: string | undefined;
+  readonly siteName?: string | undefined;
   readonly store: WebhookDeliveryStore;
   readonly config: WebhookDeliveryConfig;
   readonly transport: WebhookTransport;
@@ -48,6 +52,9 @@ export interface WebhookDeliveryStore {
 }
 
 export class WebhookDeliveryService {
+  readonly #activity: ActivityRecorder | undefined;
+  readonly #siteId: string | undefined;
+  readonly #siteName: string | undefined;
   readonly #store: WebhookDeliveryStore;
   readonly #config: WebhookDeliveryConfig;
   readonly #transport: WebhookTransport;
@@ -55,6 +62,9 @@ export class WebhookDeliveryService {
   readonly #leaseMilliseconds: number;
 
   constructor(options: WebhookDeliveryServiceOptions) {
+    this.#activity = options.activity;
+    this.#siteId = options.siteId;
+    this.#siteName = options.siteName;
     this.#store = options.store;
     this.#config = options.config;
     this.#transport = options.transport;
@@ -82,7 +92,12 @@ export class WebhookDeliveryService {
         errorCode: null,
       };
     }
-    return this.#deliver(claimed, signal);
+    return this.#activity ? this.#activity.runTask("webhook.delivery", {
+      subjectType: "webhook_delivery", subjectId: claimed.delivery.deliveryId, siteId: this.#siteId, siteName: this.#siteName,
+      details: { order_id: claimed.event.orderId, attempt_number: claimed.attempt.attemptNumber },
+    }, () => this.#deliver(claimed, signal), result => ({ outcome: result.outcome === "ACKNOWLEDGED" ? "SUCCESS" : "FAILURE",
+      details: { status: result.status, delivery_outcome: result.outcome, error_code: result.errorCode },
+    })) : this.#deliver(claimed, signal);
   }
 
   async #deliver(

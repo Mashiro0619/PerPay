@@ -106,7 +106,7 @@ it("persists validated display settings with CSRF, revisions and audit without c
     const storedContext = JSON.parse(audit[0]!.context_json) as StoredAuditContext;
     assert.equal(storedContext.version, 1);
     assert.equal(storedContext.request_id, response.headers.get("x-request-id"));
-    assert.equal(storedContext.activity_id, null);
+    assert.match(storedContext.activity_id!, /^[0-9a-f-]{36}$/);
     assert.equal(storedContext.site_id, null);
     assert.deepEqual(storedContext.changes, [
       { field: "system_name", kind: "value", before: original.display.system_name, after: input.system_name },

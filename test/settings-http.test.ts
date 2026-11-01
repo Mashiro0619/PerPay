@@ -154,7 +154,7 @@ describe("advanced settings HTTP contract", () => {
       const storedContext = JSON.parse(audit.context_json) as StoredAuditContext;
       assert.equal(storedContext.version, 1);
       assert.equal(storedContext.request_id, saved.headers.get("x-request-id"));
-      assert.equal(storedContext.activity_id, null);
+      assert.match(storedContext.activity_id!, /^[0-9a-f-]{36}$/);
       assert.equal(storedContext.site_id, null);
       assert.deepEqual(storedContext.changes, [
         { field: "checkout_key_rotation_days", kind: "value", before: String(originalAdvanced.checkoutKeyRotationDays), after: "30" },

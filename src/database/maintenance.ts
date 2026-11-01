@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { ActivitySpoolWriter } from "../audit/spool.ts";
 import { verifyAlipayAccountSecrets } from "../alipay-accounts/integrity.ts";
 import {
   closeSync,
@@ -2310,6 +2311,22 @@ function removeSqliteArtifacts(path: string): void {
 }
 
 async function runCommand(arguments_: readonly string[]): Promise<void> {
+  const command = arguments_[0] ?? "unknown";
+  const actions: Record<string, string> = { "clear-stale-publication-lock": "maintenance.publication_lock.clear",
+    "clear-stale-maintenance-lock": "maintenance.lock.clear", "delete-pre-restore-quarantine": "maintenance.quarantine.delete",
+    "prune-pre-restore-quarantines": "maintenance.quarantine.prune", "restore-migration-backup": "maintenance.restore",
+    "list-migration-backups": "maintenance.backups.list", "list-pre-restore-quarantines": "maintenance.quarantine.list",
+    "inspect-maintenance-lock": "maintenance.lock.inspect", "inspect-publication-lock": "maintenance.publication_lock.inspect" };
+  const activity = new ActivitySpoolWriter({ backupDirectory: process.env.PERPAY_BACKUP_DIR ?? "/backups", kind: "maintenance" });
+  try {
+    await activity.run(actions[command] ?? "maintenance.command.invalid", { command: actions[command] ?? "unknown",
+      force_unreadable_lock: arguments_.includes("--force-unreadable-lock"), force_abandon_lease: arguments_.includes("--force-abandon-maintenance-lease"),
+      finalize_interrupted_restore: arguments_.includes("--finalize-interrupted-fresh-restore") },
+    () => executeCommand(arguments_), { permanent: true });
+  } finally { activity.close(); }
+}
+
+async function executeCommand(arguments_: readonly string[]): Promise<void> {
   hardenProcessFileCreation();
   const dataDirectory = process.env.PERPAY_DATA_DIR ?? "/data";
   const backupDirectory = process.env.PERPAY_BACKUP_DIR ?? "/backups";
