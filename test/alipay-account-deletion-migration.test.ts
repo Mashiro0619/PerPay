@@ -12,6 +12,7 @@ import { AlipayAccountStore } from "../src/alipay-accounts/store.ts";
 import { RuntimeSettingsService, RuntimeSettingsStore } from "../src/settings/index.ts";
 import { createLegacySettingsDatabase } from "./legacy-settings-fixture.ts";
 import { keyAudit, keyMaster, providerInput } from "./application-key-fixture.ts";
+import { DATABASE_COMPATIBILITY } from "../src/version.ts";
 
 it("upgrades an actual schema 37 database without changing active or pending account keys and ownership evidence", async () => {
   const directory = mkdtempSync(join(tmpdir(), "perpay-account-deletion-migration-"));
@@ -38,13 +39,14 @@ it("upgrades an actual schema 37 database without changing active or pending acc
     assert.equal(legacy.owner.integrityCheck().ok, true);
     const beforeAccounts = legacy.connection.prepare("SELECT * FROM alipay_accounts ORDER BY account_id").all();
     const preservedTables = ["alipay_account_generations", "alipay_account_secrets", "alipay_application_key_changes",
-      "provider_account_bindings", "collection_profiles", "collection_profile_provider_accounts", "sites"];
+      "provider_account_bindings", "collection_profiles", "collection_profile_provider_accounts", "sites", "audit_events"];
     const before = new Map(preservedTables.map(table => [table, legacy.connection.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
     const previousMigrations = legacy.connection.prepare("SELECT * FROM schema_migrations ORDER BY version").all();
     legacy.owner.close();
 
     upgraded = await AppDatabase.open(path, { masterKey: keyMaster });
-    assert.equal(Number(upgraded.read(db => db.prepare("SELECT max(version) AS version FROM schema_migrations").get()!.version)), 38);
+    assert.equal(Number(upgraded.read(db => db.prepare("SELECT max(version) AS version FROM schema_migrations").get()!.version)), DATABASE_COMPATIBILITY.maximum);
+    assert.equal(Number(upgraded.read(db => db.prepare("SELECT COUNT(*) AS n FROM audit_event_context").get()!.n)), 0);
     assert.deepEqual(upgraded.read(db => db.prepare("SELECT * FROM alipay_accounts ORDER BY account_id").all().map(account => ({ ...account }))),
       beforeAccounts.map(account => ({ ...account, deleted_at: null })));
     for (const table of preservedTables) assert.deepEqual(upgraded.read(db => db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()), before.get(table), table);

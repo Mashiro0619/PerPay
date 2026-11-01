@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it, type TestContext } from "node:test";
 import { AppDatabase } from "../src/database/database.ts";
+import { auditContextFingerprint, type StoredAuditContext } from "../src/audit/context.ts";
 import { acquireDatabaseMaintenanceLock, hasDatabaseMaintenanceLock } from "../src/database/maintenance-lock.ts";
 import { IdentityService } from "../src/identity/service.ts";
 import { PasswordInputError } from "../src/identity/crypto.ts";
@@ -55,8 +56,21 @@ describe("offline administrator recovery", () => {
       assert.equal(identity.authenticate(login.sessionToken), undefined);
       await assert.rejects(identity.login(HTTP_TEST_ADMIN_PASSWORD));
       const next = await identity.login("新密码甲乙丙"); assert.ok(identity.authenticate(next.sessionToken));
-      const audit = reopened.read((connection) => connection.prepare("SELECT details_json FROM audit_events WHERE action = 'admin.password_recover'").get()) as { details_json: string };
-      assert.deepEqual(JSON.parse(audit.details_json), { session_generation: generation + 1, revoked_count: 1 });
+      const audit = reopened.read((connection) => connection.prepare(`SELECT event.details_json, context.context_json, context.context_fingerprint
+        FROM audit_events event JOIN audit_event_context context USING(event_id) WHERE event.action = 'admin.password_recover'`).get()) as
+        { details_json: string; context_json: string; context_fingerprint: string };
+      const { context_fingerprint: fingerprint, ...details } = JSON.parse(audit.details_json);
+      assert.match(fingerprint, /^[0-9a-f]{64}$/);
+      assert.equal(fingerprint, audit.context_fingerprint);
+      assert.equal(fingerprint, auditContextFingerprint(audit.context_json));
+      assert.deepEqual(details, { session_generation: generation + 1, revoked_count: 1 });
+      const storedContext = JSON.parse(audit.context_json) as StoredAuditContext;
+      assert.equal(storedContext.version, 1);
+      assert.equal(storedContext.request_id, null);
+      assert.equal(storedContext.source_address, null);
+      assert.equal(storedContext.user_agent, null);
+      assert.equal(storedContext.site_id, null);
+      assert.equal(audit.context_json.includes("新密码甲乙丙"), false);
       identity.store.read((transaction) => transaction.assertAuditChain());
     } finally { reopened.close(); }
   });

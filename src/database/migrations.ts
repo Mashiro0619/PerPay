@@ -1,6 +1,8 @@
 import { MULTI_SITE_SCHEMA_SQL } from "../sites/migrations/schema.ts";
 import { ALIPAY_ACCOUNTS_SCHEMA_SQL } from "../alipay-accounts/schema.ts";
 import { ALIPAY_ACCOUNT_DELETION_SCHEMA_SQL } from "../alipay-accounts/deletion-schema.ts";
+import { CORE_AUDIT_SCHEMA_SQL } from "../audit/core-schema.ts";
+import { ACTIVITY_SCHEMA_SQL } from "../audit/activity-schema.ts";
 import { createHash } from "node:crypto";
 
 export interface Migration {
@@ -5026,4 +5028,5 @@ export const migrations: readonly Migration[] = [
   },
   { version: 37, name: "multiple_alipay_accounts", sql: ALIPAY_ACCOUNTS_SCHEMA_SQL, postApply: "migrate_alipay_accounts_v1" },
   { version: 38, name: "alipay_account_deletion_tombstones", sql: ALIPAY_ACCOUNT_DELETION_SCHEMA_SQL },
+  { version: 39, name: "unified_audit_and_activity_history", sql: CORE_AUDIT_SCHEMA_SQL + ACTIVITY_SCHEMA_SQL },
 ] as const;

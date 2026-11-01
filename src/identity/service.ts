@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { redactedAuditChange } from "../audit/context.ts";
 
 import type { AppDatabase } from "../database/database.ts";
 import { normalizeIpAddress } from "../infrastructure/network/ip-policy.ts";
@@ -177,6 +178,7 @@ export class IdentityService {
           occurredAt: initializedAt,
           actorType: "ANONYMOUS",
           action: "admin.initialized",
+          context: { ...context, changes: [redactedAuditChange("password", false, true)] },
           outcome: "SUCCESS",
           subjectType: "admin_identity",
           subjectId: ADMIN_USERNAME,
@@ -229,6 +231,7 @@ export class IdentityService {
           actorType: "ANONYMOUS",
           action: "admin.login",
           outcome: "FAILURE",
+          context,
           subjectType: "admin_identity",
           requestId: context.requestId,
           remoteAddressHash: sourceHash,
@@ -276,6 +279,7 @@ export class IdentityService {
         actorId: identity.username,
         action: "admin.login",
         outcome: "SUCCESS",
+        context,
         subjectType: "admin_session",
         subjectId: sessionId,
         requestId: context.requestId,
@@ -333,6 +337,7 @@ export class IdentityService {
           actorType: "ADMIN",
           actorId: session.session.username,
           action: "admin.logout",
+          context,
           outcome: "SUCCESS",
           subjectType: "admin_session",
           subjectId: session.session.sessionId,
@@ -372,6 +377,7 @@ export class IdentityService {
         actorType: "ADMIN",
         actorId: current.username,
         action: "admin.session_revoked",
+        context,
         outcome: "SUCCESS",
         subjectType: "admin_session",
         subjectId: targetSessionId,
@@ -391,6 +397,7 @@ export class IdentityService {
         actorType: "ADMIN",
         actorId: current.username,
         action: "admin.sessions_revoke_others",
+        context,
         outcome: "SUCCESS",
         subjectType: "admin_sessions",
         requestId: context.requestId,
@@ -418,6 +425,7 @@ export class IdentityService {
         actorType: "ADMIN",
         actorId: session.session.username,
         action: "admin.sessions_revoke_all",
+        context,
         outcome: "SUCCESS",
         subjectType: "admin_sessions",
         requestId: context.requestId,
@@ -473,6 +481,7 @@ export class IdentityService {
         actorType: "ADMIN",
         actorId: identity.username,
         action: "admin.password_changed",
+        context: { ...context, changes: [redactedAuditChange("password")] },
         outcome: "SUCCESS",
         subjectType: "admin_identity",
         requestId: context.requestId,
@@ -517,9 +526,10 @@ export class IdentityService {
     this.#store.transaction((transaction) => {
       transaction.appendAudit({
         occurredAt: now,
-        actorType: "API_CLIENT",
-        actorId: input.clientId,
+        actorType: input.outcome === "SUCCESS" ? "API_CLIENT" : "ANONYMOUS",
+        actorId: input.outcome === "SUCCESS" ? input.clientId : undefined,
         action: input.action,
+        context: { siteId: input.outcome === "SUCCESS" ? input.clientId : null },
         outcome: input.outcome,
         subjectType: "api_client",
         subjectId: input.clientId,

@@ -41,7 +41,8 @@ import {
   type WebhookTargetFormat,
 } from "../notifications/model.ts";
 import type { AppDatabase } from "./database.ts";
-import { IdentityTransaction } from "./identity-store.ts";
+import { appendAuditEvent, IdentityTransaction } from "./identity-store.ts";
+import { auditContextAvailable, auditSiteContext, currentAuditContext } from "../audit/context.ts";
 
 const MAX_PAYABLE_AMOUNT_CENTS = MAX_REQUESTED_AMOUNT_CENTS + 1;
 const EXPIRY_SWEEP_LIMIT = 256;
@@ -1110,6 +1111,21 @@ function insertOrderEvent(
       orderEventDetailsFingerprint(detailsJson),
     );
   assertChangedOnce(result.changes, "order event insert");
+  if (auditContextAvailable(connection)) {
+    const order = connection.prepare("SELECT api_client_id, requested_amount_cents, payable_amount_cents, checkout_status FROM payment_orders WHERE order_id = ?").get(input.orderId)!;
+    const scope = currentAuditContext();
+    const automatic = input.type === "CHECKOUT_EXPIRED";
+    appendAuditEvent(connection, {
+      occurredAt: input.occurredAt,
+      actorType: automatic ? "SYSTEM" : scope?.actorType ?? "SYSTEM",
+      actorId: automatic ? undefined : scope?.actorId ?? undefined,
+      action: input.type === "CREATED" ? "orders.created" : input.type === "CHECKOUT_CLOSED" ? "orders.checkout_closed" : "orders.checkout_expired",
+      outcome: "SUCCESS", subjectType: "order", subjectId: input.orderId,
+      context: auditSiteContext(connection, String(order.api_client_id)),
+      details: { order_id: input.orderId, order_version: input.sequence,
+        requested_amount_cents: Number(order.requested_amount_cents), payable_amount_cents: Number(order.payable_amount_cents), checkout_status: order.checkout_status },
+    });
+  }
 }
 
 type AggregateRow = {

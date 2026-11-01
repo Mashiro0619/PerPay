@@ -604,7 +604,9 @@ describe("IdentityService", () => {
         "SELECT action, details_json FROM audit_events WHERE request_id IN ('revoke-one', 'revoke-others') ORDER BY sequence",
       ).all());
       assert.deepEqual(actions.map((row) => row.action), ["admin.session_revoked", "admin.sessions_revoke_others"]);
-      assert.equal(actions[1]!.details_json, '{"revoked_count":2}');
+      const { context_fingerprint: contextFingerprint, ...revokeDetails } = JSON.parse(String(actions[1]!.details_json));
+      assert.match(contextFingerprint, /^[0-9a-f]{64}$/);
+      assert.deepEqual(revokeDetails, { revoked_count: 2 });
       test.identity.revokeSession(current, current.session.sessionId);
       assert.equal(test.identity.authenticate(login.sessionToken), undefined);
     } finally {
@@ -926,6 +928,12 @@ describe("IdentityService", () => {
         ).get() as { sql: string } | undefined;
         assert.ok(trigger?.sql);
         connection.exec("DROP TRIGGER audit_events_no_delete");
+        assert.throws(() => connection.prepare("DELETE FROM audit_events WHERE sequence = (SELECT MAX(sequence) FROM audit_events)").run(), /FOREIGN KEY/);
+        const contextTrigger = connection.prepare("SELECT sql FROM sqlite_schema WHERE type = 'trigger' AND name = 'audit_event_context_no_delete'").get() as { sql: string };
+        assert.throws(() => connection.prepare("DELETE FROM audit_event_context WHERE event_id = (SELECT event_id FROM audit_events ORDER BY sequence DESC LIMIT 1)").run(), /append-only/);
+        connection.exec("DROP TRIGGER audit_event_context_no_delete");
+        connection.prepare("DELETE FROM audit_event_context WHERE event_id = (SELECT event_id FROM audit_events ORDER BY sequence DESC LIMIT 1)").run();
+        connection.exec(contextTrigger.sql);
         const deleted = connection.prepare(
           "DELETE FROM audit_events WHERE sequence = (SELECT MAX(sequence) FROM audit_events)",
         ).run();

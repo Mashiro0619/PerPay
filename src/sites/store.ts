@@ -3,6 +3,7 @@ import { LIVE_NOTIFICATION_TARGET } from "../notifications/live-target.ts";
 import type { DatabaseSync } from "node:sqlite";
 import type { AppDatabase } from "../database/database.ts";
 import { appendAuditEvent, IdentityTransaction } from "../database/identity-store.ts";
+import { auditChanges, auditSiteContext, redactedAuditChange, type AuditChange } from "../audit/context.ts";
 import { fingerprintApiSecret } from "../identity/service.ts";
 import { fingerprintSecret, isCanonicalSecret } from "../settings/model.ts";
 import type { SiteSecretPurpose } from "../settings/crypto.ts";
@@ -15,6 +16,11 @@ import {
 } from "./model.ts";
 
 type DatabaseOwner = Pick<AppDatabase, "read" | "write" | "instanceId">;
+const SITE_POLICY_AUDIT_FIELDS = ["orders.order_ttl_seconds", "orders.amount_offset_maximum_cents", "orders.amount_reuse_cooldown_seconds", "orders.pending_order_limit",
+  "display.checkout_name", "display.checkout_help_url", "display.checkout_show_product_name", "notification_delivery.timeout_milliseconds",
+  "notification_delivery.maximum_attempts", "notification_delivery.retry_base_seconds", "notification_delivery.retry_maximum_seconds"];
+const SITE_AUDIT_FIELDS = ["name", "accepting_orders", "notifications_enabled", "notification_origin", "return_origin", "collection.mode", "collection.accounts",
+  ...SITE_POLICY_AUDIT_FIELDS.map(field => "policy." + field)];
 interface SiteRow {
   client_id: string; revision: number | bigint; configuration: string;
   created_at: number | bigint; updated_at: number | bigint; deleted_at: number | bigint | null;
@@ -72,7 +78,7 @@ export class SiteStore {
         "UPDATE site_defaults SET revision = revision + 1, policy = ?, updated_at = max(updated_at, ?) WHERE singleton_key = 1 AND revision = ?",
       ).run(JSON.stringify(parsed.policy), now, parsed.revision);
       changed(updated.changes);
-      auditSite(connection, audit, "site_defaults.updated", "defaults", now, { revision: parsed.revision + 1 });
+      auditSite(connection, audit, "site_defaults.updated", "defaults", now, { revision: parsed.revision + 1 }, auditChanges(current.policy, readDefaults(connection).policy, SITE_POLICY_AUDIT_FIELDS));
       return readDefaults(connection);
     });
   }
@@ -95,7 +101,7 @@ export class SiteStore {
       new IdentityTransaction(connection).ensureApiClientIdentity(clientId, now);
       connection.prepare("INSERT INTO sites(client_id, revision, configuration, created_at, updated_at, deleted_at) VALUES (?, 0, ?, ?, ?, NULL)").run(clientId, JSON.stringify(configuration), now, now);
       connection.prepare("INSERT INTO site_creation_requests(operation_id, request_fingerprint, client_id, created_at) VALUES (?, ?, ?, ?)").run(parsed.operation_id, fingerprint, clientId, now);
-      auditSite(connection, audit, "site.created", clientId, now, { revision: 0 });
+      auditSite(connection, audit, "site.created", clientId, now, { revision: 0 }, auditChanges(null, requiredSite(connection, clientId).configuration, SITE_AUDIT_FIELDS));
       return requiredSite(connection, clientId);
     });
   }
@@ -112,7 +118,7 @@ export class SiteStore {
       }
       changed(connection.prepare("UPDATE sites SET configuration = ?, revision = revision + 1, updated_at = max(updated_at, ?) WHERE client_id = ? AND revision = ? AND deleted_at IS NULL")
         .run(JSON.stringify(configuration), now, clientId, parsed.revision).changes);
-      auditSite(connection, audit, "site.updated", clientId, now, { revision: parsed.revision + 1 });
+      auditSite(connection, audit, "site.updated", clientId, now, { revision: parsed.revision + 1 }, auditChanges(current.configuration, requiredSite(connection, clientId).configuration, SITE_AUDIT_FIELDS));
       return requiredSite(connection, clientId);
     });
   }
@@ -128,7 +134,7 @@ export class SiteStore {
       connection.prepare("UPDATE api_client_config SET enabled = 0, updated_at = max(updated_at, ?) WHERE client_id = ?").run(now, clientId);
       changed(connection.prepare("UPDATE sites SET deleted_at = max(updated_at, ?), updated_at = max(updated_at, ?), revision = revision + 1 WHERE client_id = ? AND revision = ? AND deleted_at IS NULL")
         .run(now, now, clientId, revision).changes);
-      auditSite(connection, audit, "site.deleted", clientId, now, { revision: revision + 1 });
+      auditSite(connection, audit, "site.deleted", clientId, now, { revision: revision + 1 }, auditChanges({ deleted: false }, { deleted: true }, ["deleted"]));
     });
   }
 
@@ -279,8 +285,10 @@ function changed(changes: number | bigint): void {
 function secretFingerprint(purpose: SiteSecretPurpose, value: string): string {
   return purpose === "api_secret" ? fingerprintApiSecret(value) : fingerprintSecret(value, "webhook-signing-key");
 }
-function auditSite(connection: DatabaseSync, audit: SettingsAuditContext, action: string, clientId: string, now: number, details: Record<string, unknown>): void {
-  appendAuditEvent(connection, { occurredAt: now, actorType: "ADMIN", actorId: audit.actorId, action, outcome: "SUCCESS", subjectType: "website", subjectId: clientId, requestId: audit.requestId, remoteAddressHash: audit.remoteAddressHash, details });
+function auditSite(connection: DatabaseSync, audit: SettingsAuditContext, action: string, clientId: string, now: number, details: Record<string, unknown>, changes: readonly AuditChange[] = []): void {
+  appendAuditEvent(connection, { occurredAt: now, actorType: "ADMIN", actorId: audit.actorId, action, outcome: "SUCCESS", subjectType: "website", subjectId: clientId, requestId: audit.requestId, remoteAddressHash: audit.remoteAddressHash, details,
+    context: { ...auditSiteContext(connection, clientId === "defaults" ? null : clientId), changes: action === "site.secret_rotated"
+      ? [redactedAuditChange(String(details.purpose), Number(details.version) > 1, true)] : changes } });
 }
 export function syncSiteSigningKey(connection: DatabaseSync, clientId: string, fingerprint: string, now: number): void {
   const active = connection.prepare("SELECT key_version, site_key_version, secret_fingerprint, activated_at FROM webhook_signing_keys WHERE client_id = ? AND retired_at IS NULL").get(clientId) as { key_version: number | bigint; site_key_version: number | bigint; secret_fingerprint: string; activated_at: number | bigint } | undefined;

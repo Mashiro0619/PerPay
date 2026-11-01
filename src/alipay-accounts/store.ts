@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { auditChanges, auditContextAvailable, currentAuditContext } from "../audit/context.ts";
 import type { DatabaseSync } from "node:sqlite";
 import type { AppDatabase } from "../database/database.ts";
-import { IdentityTransaction } from "../database/identity-store.ts";
+import { appendAuditEvent, IdentityTransaction } from "../database/identity-store.ts";
 import { normalizeProviderIdentity } from "../ledger/model.ts";
 import { RuntimeSecretCipher, type EncryptedSecret } from "../settings/crypto.ts";
 import {
@@ -17,6 +19,19 @@ import { collectionCodeError } from "../shared/collection-code.ts";
 import { verifyAlipayAccountSecrets } from "./integrity.ts";
 
 type Int = number | bigint;
+const ACCOUNT_AUDIT_FIELDS = ["name", "enabled", "code_payload", "environment", "app_id", "deleted", "private_key", "public_key", "pending_private_key"];
+const accountAuditSnapshots = new AsyncLocalStorage<{ connection: DatabaseSync; before: Record<string, unknown> }>();
+function accountAuditView(db: DatabaseSync, id: string): Record<string, unknown> {
+  const row = db.prepare("SELECT name, enabled, code_payload, environment, app_id, deleted_at FROM alipay_accounts WHERE account_id = ?").get(id);
+  if (!row) return {};
+  const view: Record<string, unknown> = { name: row.name, enabled: Number(row.enabled) === 1, code_payload: row.code_payload,
+    environment: row.environment, app_id: row.app_id, deleted: row.deleted_at !== null, private_key: null, public_key: null, pending_private_key: null };
+  for (const entry of db.prepare("SELECT secret_name, secret_fingerprint FROM alipay_account_secrets WHERE account_id = ?").all(id)) {
+    if (entry.secret_name === "private_key" || entry.secret_name === "public_key") view[entry.secret_name] = entry.secret_fingerprint;
+  }
+  view.pending_private_key = db.prepare("SELECT change_id FROM alipay_application_key_changes WHERE account_id = ? AND state = 'PENDING'").get(id)?.change_id ?? null;
+  return view;
+}
 interface AccountRow {
   account_id:string; revision:Int; name:string; enabled:Int; code_payload:string|null;
   environment:"PRODUCTION"|"SANDBOX"; app_id:string|null; provider_account_key:string|null; created_at:Int; updated_at:Int;
@@ -44,6 +59,9 @@ export class AlipayAccountStore {
     this.#cipher=new RuntimeSecretCipher(masterKey,database.instanceId());
   }
   available():boolean { return this.#database.read(db=>Boolean(db.prepare("SELECT 1 FROM sqlite_schema WHERE name='alipay_accounts' AND type='table'").get())); }
+  #write<T>(id: string, operation: (db: DatabaseSync) => T): T {
+    return this.#database.write(db => accountAuditSnapshots.run({ connection: db, before: accountAuditView(db, id) }, () => operation(db)));
+  }
   verifySecrets():void {this.#database.read(db=>verifyAlipayAccountSecrets(db,this.#cipher));}
   snapshots():AlipayAccountSnapshot[] {
     return this.#database.read(db=>(db.prepare("SELECT * FROM alipay_accounts WHERE deleted_at IS NULL ORDER BY created_at,account_id").all() as unknown as AccountRow[]).map(row=>this.#snapshot(db,row)));
@@ -99,7 +117,7 @@ export class AlipayAccountStore {
   create(input:AccountWrite,audit:SettingsAuditContext):AlipayAccountView {
     assertProductionAlipayEnvironment(input.environment);
     const id="alipay_"+randomUUID();
-    this.#database.write(db=>{
+    this.#write(id, db=>{
       this.#assertUnique(db,id,input.environment,input.app_id);
       const now=Date.now();
       const providerKey=input.app_id?this.#newBinding(db,input,now):null;
@@ -113,7 +131,7 @@ export class AlipayAccountStore {
     return this.view(id);
   }
   update(id:string,revision:number,input:AccountWrite,audit:SettingsAuditContext):AlipayAccountView {
-    this.#database.write(db=>{
+    this.#write(id, db=>{
       const current=this.#snapshot(db,this.#revision(db,id,revision));
       assertProductionAlipayEnvironment(current.environment);
       assertProductionAlipayEnvironment(input.environment);
@@ -137,7 +155,7 @@ export class AlipayAccountStore {
     return this.view(id);
   }
   remove(id:string,revision:number,audit:SettingsAuditContext):void {
-    this.#database.write(db=>{
+    this.#write(id, db=>{
       const current=this.#revision(db,id,revision);
       if(this.#sites(db,id).length||this.#hasHistory(db,id)) throw new AlipayAccountError("alipay_account_in_use","这个账号仍被网站或收款记录使用，不能删除。可以暂停接收新订单。");
       const now=Math.max(Date.now(),Number(current.updated_at));
@@ -153,7 +171,7 @@ export class AlipayAccountStore {
     });
   }
   saveInitialKey(id:string,revision:number,key:ProviderApplicationKeyMaterial,audit:SettingsAuditContext):AlipayAccountView {
-    this.#database.write(db=>{
+    this.#write(id, db=>{
       const current=this.#snapshot(db,this.#revision(db,id,revision));
       assertProductionAlipayEnvironment(current.environment);
       if(current.applicationKey) throw new SettingsError("provider_application_key_change_conflict","此账号已有应用密钥，请使用更换应用密钥。");
@@ -165,7 +183,7 @@ export class AlipayAccountStore {
     return this.view(id);
   }
   prepareKeyChange(id:string,revision:number,changeId:string,baseFingerprint:string,key:ProviderApplicationKeyMaterial,audit:SettingsAuditContext):AlipayAccountView {
-    this.#database.write(db=>{
+    this.#write(id, db=>{
       const current=this.#snapshot(db,this.#revision(db,id,revision));
       assertProductionAlipayEnvironment(current.environment);
       if(current.applicationKey?.fingerprint!==baseFingerprint) throw new SettingsError("provider_application_key_change_conflict","应用密钥已变化，请刷新后重试。");
@@ -185,7 +203,7 @@ export class AlipayAccountStore {
     return this.view(id);
   }
   finishKeyChange(id:string,revision:number,changeId:string,provider:ProviderSettings|null,audit:SettingsAuditContext):AlipayAccountView {
-    this.#database.write(db=>{
+    this.#write(id, db=>{
       const current=this.#snapshot(db,this.#revision(db,id,revision));
       if(provider) assertProductionAlipayEnvironment(current.environment);
       const pending=current.pendingApplicationKey;
@@ -205,10 +223,16 @@ export class AlipayAccountStore {
     return this.view(id);
   }
   recordCheck(id:string,revision:number,ok:boolean,message:string,now:number):void {
-    this.#database.write(db=>{
+    this.#write(id, db=>{
       const account=db.prepare("SELECT revision FROM alipay_accounts WHERE account_id=? AND deleted_at IS NULL").get(id) as {revision:Int}|undefined;
       if(!account||Number(account.revision)!==revision)return;
       db.prepare("INSERT INTO alipay_account_checks VALUES (?,?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET revision=excluded.revision,ok=excluded.ok,checked_at=excluded.checked_at,message=excluded.message").run(id,revision,Number(ok),now,message);
+      if (auditContextAvailable(db)) {
+        const scope = currentAuditContext();
+        appendAuditEvent(db, { occurredAt: now, actorType: scope?.actorType ?? "SYSTEM", actorId: scope?.actorId ?? undefined,
+          action: "alipay_account.checked", outcome: ok ? "SUCCESS" : "FAILURE", subjectType: "alipay_account", subjectId: id,
+          context: { siteId: null, siteName: null }, details: { revision, connected: ok } });
+      }
     });
   }
   timing():Omit<Parameters<typeof parseProviderKeys>[0],"environment"|"appId"|"privateKey"|"publicKey"> {
@@ -322,7 +346,9 @@ export class AlipayAccountStore {
       SELECT 1 FROM ledger_entries AS entry JOIN alipay_account_generations AS generation USING(provider_account_key) WHERE generation.account_id=? LIMIT 1`).get(id,id));
   }
   #audit(db:DatabaseSync,id:string,audit:SettingsAuditContext,action:string,revision:number,details:Record<string,unknown>,now:number):void {
+    const snapshot = accountAuditSnapshots.getStore();
     new IdentityTransaction(db).appendAudit({occurredAt:now,actorType:"ADMIN",actorId:audit.actorId,action,outcome:"SUCCESS",subjectType:"alipay_account",subjectId:id,
-      requestId:audit.requestId,remoteAddressHash:audit.remoteAddressHash,details:{...details,revision}});
+      requestId:audit.requestId,remoteAddressHash:audit.remoteAddressHash,details:{...details,revision},
+      context: { siteId: null, siteName: null, changes: snapshot?.connection === db ? auditChanges(snapshot.before, accountAuditView(db, id), ACCOUNT_AUDIT_FIELDS) : [] }});
   }
 }

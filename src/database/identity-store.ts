@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 
 import type { AppDatabase } from "./database.ts";
+import { auditContextAvailable, currentAuditContext, serializeAuditContext, type AuditContextInput } from "../audit/context.ts";
 import {
   assertAuditChainIntegrity,
   calculateAuditEventHash,
@@ -74,6 +75,7 @@ export interface AuditInput {
   readonly requestId?: string | undefined;
   readonly remoteAddressHash?: string | undefined;
   readonly details?: Readonly<Record<string, unknown>> | undefined;
+  readonly context?: AuditContextInput | undefined;
 }
 
 export interface AuditEvent {
@@ -709,7 +711,13 @@ export function appendAuditEvent(
   input: AuditInput,
 ): AuditEvent {
   validateAuditInput(input);
-  const detailsJson = serializeAuditDetails(input.details ?? {});
+  const scope = currentAuditContext();
+  const requestId = input.requestId ?? scope?.requestId ?? undefined;
+  const context = auditContextAvailable(connection) ? serializeAuditContext({
+    ...input.context,
+    requestId: input.context?.requestId ?? requestId,
+  }) : null;
+  const detailsJson = serializeAuditDetails({ ...(input.details ?? {}), ...(context ? { context_fingerprint: context.fingerprint } : {}) });
   const previous = connection
     .prepare("SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1")
     .get() as { event_hash: string } | undefined;
@@ -724,7 +732,7 @@ export function appendAuditEvent(
     outcome: input.outcome,
     subjectType: input.subjectType ?? null,
     subjectId: input.subjectId ?? null,
-    requestId: input.requestId ?? null,
+    requestId: requestId ?? null,
     remoteAddressHash: input.remoteAddressHash ?? null,
     detailsJson,
     previousHash,
@@ -746,13 +754,19 @@ export function appendAuditEvent(
       input.outcome,
       input.subjectType ?? null,
       input.subjectId ?? null,
-      input.requestId ?? null,
+      requestId ?? null,
       input.remoteAddressHash ?? null,
       detailsJson,
       previousHash,
       eventHash,
     );
   if (Number(result.changes) !== 1) throw new Error("audit event was not appended");
+  if (context) {
+    connection.prepare(`INSERT INTO audit_event_context(event_id, activity_id, source_address, user_agent, site_id, site_name, context_json, context_fingerprint)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(eventId, context.value.activity_id, context.value.source_address, context.value.user_agent,
+        context.value.site_id, context.value.site_name, context.json, context.fingerprint);
+    scope?.coreEventIds.push(eventId);
+  }
   const sequence = Number(result.lastInsertRowid);
   return { sequence, eventId, eventHash, previousHash };
 }

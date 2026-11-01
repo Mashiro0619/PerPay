@@ -3,6 +3,8 @@ import { readManualCandidates, type ManualCandidateQuery, type ManualCandidatePa
 import { normalizeListQuery, MATCH_SORT_FIELDS, EXCEPTION_SORT_FIELDS, type MatchSort, type ExceptionSort, type ListQuery, type ListPosition } from "../shared/list-query.ts";
 import { listKeyset, listSearch } from "../database/list-query.ts";
 import { randomUUID } from "node:crypto";
+import { auditContextAvailable, auditSiteContext } from "../audit/context.ts";
+import { appendAuditEvent } from "../database/identity-store.ts";
 import type { DatabaseSync } from "node:sqlite";
 
 import type { AppDatabase } from "../database/database.ts";
@@ -2022,6 +2024,19 @@ function insertFinancialOperation(
       ).changes,
     "financial operation insert",
   );
+  if (auditContextAvailable(connection)) {
+    const order = input.orderId ? connection.prepare("SELECT api_client_id FROM payment_orders WHERE order_id = ?").get(input.orderId) : undefined;
+    const entry = input.ledgerEntryId ? connection.prepare("SELECT amount_cents FROM ledger_entries WHERE ledger_entry_id = ?").get(input.ledgerEntryId) : undefined;
+    appendAuditEvent(connection, {
+      occurredAt: input.now, actorType: input.fingerprintInput.actorType, actorId: input.fingerprintInput.actorId ?? undefined,
+      action: "financial." + input.fingerprintInput.operationType.toLowerCase(), outcome: "SUCCESS",
+      subjectType: "financial_operation", subjectId: input.financialOperationId,
+      context: auditSiteContext(connection, typeof order?.api_client_id === "string" ? order.api_client_id : null),
+      details: { financial_operation_id: input.financialOperationId, operation_type: input.fingerprintInput.operationType,
+        order_id: input.orderId, ledger_entry_id: input.ledgerEntryId, reverses_operation_id: input.reversesOperationId,
+        amount_cents: entry?.amount_cents === undefined ? null : Number(entry.amount_cents) },
+    });
+  }
   return readOperation(connection, input.financialOperationId) ?? invalidState("inserted operation cannot be read");
 }
 

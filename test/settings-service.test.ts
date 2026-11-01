@@ -584,7 +584,9 @@ describe("runtime settings", () => {
         `SELECT details_json FROM audit_events
           WHERE action = 'settings.advanced_updated'`,
       ).get() as { details_json: string });
-      assert.deepEqual(JSON.parse(auditDetails.details_json), {
+      const { context_fingerprint: contextFingerprint, ...advancedDetails } = JSON.parse(auditDetails.details_json);
+      assert.match(contextFingerprint, /^[0-9a-f]{64}$/);
+      assert.deepEqual(advancedDetails, {
         checkout_key_rotation_days: 30,
         checkout_terminal_observation_seconds: 3_600,
         payment_revision_changed: false,

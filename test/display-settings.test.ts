@@ -6,6 +6,7 @@ import { it, mock } from "node:test";
 import { PublicCheckoutRateLimiter } from "../src/http/public-checkout-rate-limit.ts";
 import { OrderError } from "../src/orders/service.ts";
 import { AppDatabase } from "../src/database/database.ts";
+import { auditContextFingerprint, type StoredAuditContext } from "../src/audit/context.ts";
 import {
   RuntimeSecretCipher,
   RuntimeSettingsService,
@@ -88,15 +89,29 @@ it("persists validated display settings with CSRF, revisions and audit without c
     const audit = database.read((c) =>
       c
         .prepare(
-          "SELECT details_json FROM audit_events WHERE action = 'settings.display_updated'",
+          `SELECT event.details_json, context.context_json, context.context_fingerprint
+            FROM audit_events event JOIN audit_event_context context USING(event_id) WHERE event.action = 'settings.display_updated'`,
         )
         .all(),
-    ) as { details_json: string }[];
+    ) as { details_json: string; context_json: string; context_fingerprint: string }[];
     assert.equal(audit.length, 1);
-    assert.deepEqual(JSON.parse(audit[0]!.details_json), {
+    const { context_fingerprint: fingerprint, ...details } = JSON.parse(audit[0]!.details_json);
+    assert.match(fingerprint, /^[0-9a-f]{64}$/);
+    assert.equal(fingerprint, audit[0]!.context_fingerprint);
+    assert.equal(fingerprint, auditContextFingerprint(audit[0]!.context_json));
+    assert.deepEqual(details, {
       revision: saved.revision,
       payment_revision_changed: false,
     });
+    const storedContext = JSON.parse(audit[0]!.context_json) as StoredAuditContext;
+    assert.equal(storedContext.version, 1);
+    assert.equal(storedContext.request_id, response.headers.get("x-request-id"));
+    assert.equal(storedContext.activity_id, null);
+    assert.equal(storedContext.site_id, null);
+    assert.deepEqual(storedContext.changes, [
+      { field: "system_name", kind: "value", before: original.display.system_name, after: input.system_name },
+      { field: "dashboard_chart_type", kind: "value", before: original.display.dashboard_chart_type, after: input.dashboard_chart_type },
+    ]);
     database.close();
     const reopened = await AppDatabase.open(services.config.databasePath);
     try {

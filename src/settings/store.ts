@@ -9,6 +9,8 @@ import type { DatabaseSync } from "node:sqlite";
 import type { AppDatabase } from "../database/database.ts";
 import { IdentityTransaction } from "../database/identity-store.ts";
 import { fingerprintApiSecret } from "../identity/service.ts";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { auditChanges, type AuditChange } from "../audit/context.ts";
 import { collectionCodeError } from "../shared/collection-code.ts";
 import {
   bindProviderIdentityInTransaction,
@@ -42,6 +44,34 @@ import {
 import { RuntimeSecretCipher, type EncryptedSecret } from "./crypto.ts";
 
 export type PaymentSettingsSnapshot = RuntimeSettingsSnapshot | InstanceRuntimeSettingsSnapshot;
+
+const SETTINGS_AUDIT_FIELDS = [
+  "admin_access", "collection_code_payload", "order_ttl_seconds", "amount_offset_maximum_cents", "amount_reuse_cooldown_seconds",
+  "provider_environment", "provider_app_id", "provider_timeout_milliseconds", "provider_scan_interval_milliseconds",
+  "provider_minimum_scan_interval_milliseconds", "provider_active_scan_interval_milliseconds", "provider_safety_lag_milliseconds",
+  "provider_maximum_success_age_milliseconds", "webhook_enabled", "webhook_allowed_origin", "webhook_timeout_milliseconds",
+  "webhook_maximum_attempts", "webhook_retry_base_milliseconds", "webhook_retry_maximum_milliseconds",
+  "checkout_key_rotation_days", "checkout_terminal_observation_seconds", "backup_interval_seconds", "backup_keep_count",
+  "system_name", "checkout_help_url", "checkout_show_product_name", "dashboard_chart_type",
+  "api_secret", "webhook_secret", "provider_private_key", "provider_public_key", "pending_private_key",
+] as const;
+const settingsAuditSnapshots = new AsyncLocalStorage<{ connection: DatabaseSync; before: Record<string, unknown> }>();
+
+function settingsAuditView(connection: DatabaseSync): Record<string, unknown> {
+  const row = connection.prepare("SELECT * FROM runtime_configuration WHERE singleton_key = 1").get() ?? {};
+  const view: Record<string, unknown> = Object.fromEntries(SETTINGS_AUDIT_FIELDS.map(field => [field, row[field] ?? null]));
+  if (typeof view.admin_access === "string") view.admin_access = JSON.parse(view.admin_access);
+  for (const secret of connection.prepare("SELECT secret_name, secret_fingerprint FROM runtime_secrets").all()) {
+    if (SETTINGS_AUDIT_FIELDS.includes(String(secret.secret_name) as typeof SETTINGS_AUDIT_FIELDS[number])) view[String(secret.secret_name)] = secret.secret_fingerprint;
+  }
+  const pending = connection.prepare("SELECT change_id FROM provider_application_key_changes WHERE state = 'PENDING' LIMIT 1").get();
+  view.pending_private_key = pending?.change_id ?? null;
+  return view;
+}
+function settingsChanges(connection: DatabaseSync): AuditChange[] {
+  const snapshot = settingsAuditSnapshots.getStore();
+  return snapshot?.connection === connection ? auditChanges(snapshot.before, settingsAuditView(connection), SETTINGS_AUDIT_FIELDS) : [];
+}
 
 interface ConfigurationRow {
   readonly revision: bigint | number;
@@ -158,8 +188,12 @@ export class RuntimeSettingsStore {
     return this.#accounts.available() ? this.#accounts : null;
   }
 
+  #write<T>(operation: (connection: DatabaseSync) => T): T {
+    return this.#database.write(connection => settingsAuditSnapshots.run({ connection, before: settingsAuditView(connection) }, () => operation(connection)));
+  }
+
   initialize(): void {
-    this.#database.write((connection) => {
+    this.#write((connection) => {
       const existing = readGuard(connection);
       if (existing) {
         this.#cipher.verifyGuard(existing);
@@ -214,7 +248,7 @@ export class RuntimeSettingsStore {
   }
 
   saveAdminAccess(input: AdminAccessInput, audit: SettingsAuditContext): void {
-    this.#database.write(connection => {
+    this.#write(connection => {
       assertRevision(connection, input.revision);
       const now = Date.now();
       const updated = connection.prepare(
@@ -333,7 +367,7 @@ export class RuntimeSettingsStore {
     readonly audit: SettingsAuditContext;
   }): PaymentSettingsSnapshot {
     const key = parseProviderApplicationPrivateKey(input.key.privateKeyPem);
-    return this.#database.write((connection) => {
+    return this.#write((connection) => {
       assertRevision(connection, input.expectedRevision);
       const current = this.#paymentSnapshot(connection);
       const original = readSecret(connection, "provider_private_key");
@@ -394,7 +428,7 @@ export class RuntimeSettingsStore {
     if (input.provider && !isProductionProvider(input.provider)) {
       throw new SettingsError("settings_not_configured", PRODUCTION_PROVIDER_REQUIRED_MESSAGE);
     }
-    return this.#database.write((connection) => {
+    return this.#write((connection) => {
       assertRevision(connection, input.expectedRevision);
       const current = this.#paymentSnapshot(connection);
       const change = readApplicationKeyChange(connection, this.#cipher, input.changeId);
@@ -444,7 +478,7 @@ export class RuntimeSettingsStore {
     audit: SettingsAuditContext,
     now = Date.now(),
   ): RuntimeSettingsSnapshot {
-    return this.#database.write((connection) => {
+    return this.#write((connection) => {
       assertRevision(connection, input.revision);
       const updated = connection.prepare(
         `UPDATE runtime_configuration
@@ -499,7 +533,7 @@ export class RuntimeSettingsStore {
       throw new SettingsError("settings_not_configured", PRODUCTION_PROVIDER_REQUIRED_MESSAGE);
     }
     const now = input.now ?? Date.now();
-    return this.#database.write((connection) => {
+    return this.#write((connection) => {
       assertRevision(connection, input.expectedRevision);
       const current = connection.prepare("SELECT provider_environment FROM runtime_configuration WHERE singleton_key=1").get() as {provider_environment: ProviderEnvironment | null};
       if (current.provider_environment !== null && current.provider_environment !== "PRODUCTION") {
@@ -584,7 +618,7 @@ export class RuntimeSettingsStore {
       throw new RangeError("provider application key fingerprint does not match the private key");
     }
     const now = input.now ?? Date.now();
-    return this.#database.write((connection) => {
+    return this.#write((connection) => {
       assertRevision(connection, input.expectedRevision);
       const configuration = connection.prepare("SELECT provider_account_key FROM runtime_configuration WHERE singleton_key = 1").get() as { provider_account_key: string | null };
       const historicalProvider = connection.prepare(
@@ -639,7 +673,7 @@ export class RuntimeSettingsStore {
     now = Date.now(),
   ): RuntimeSettingsSnapshot {
     if (!isCanonicalSecret(secret)) throw new RangeError("API secret must contain exactly 32 random bytes");
-    return this.#database.write((connection) => {
+    return this.#write((connection) => {
       assertRevision(connection, expectedRevision);
       writeSecret(
         connection,
@@ -668,6 +702,7 @@ export class RuntimeSettingsStore {
         subjectId: API_CLIENT_ID,
         requestId: audit.requestId,
         remoteAddressHash: audit.remoteAddressHash,
+        context: { changes: settingsChanges(connection), siteId: null, siteName: null },
         details: {
           key_version: current.keyVersion,
           settings_revision: expectedRevision + 1,
@@ -679,7 +714,7 @@ export class RuntimeSettingsStore {
 
   rotateWebhookSecret(secret: string, expectedRevision: number, audit: SettingsAuditContext, now = Date.now()): RuntimeSettingsSnapshot {
     if (!isCanonicalSecret(secret)) throw new RangeError("notification secret must contain exactly 32 random bytes");
-    return this.#database.write((connection) => {
+    return this.#write((connection) => {
       assertRevision(connection, expectedRevision);
       if (!readSecret(connection, "webhook_secret")) throw new SettingsError("secret_not_found", "notification signing key has not been configured");
       writeSecret(connection, this.#cipher, "webhook_secret", secret, fingerprintSecret(secret, "webhook-signing-key"), now);
@@ -698,7 +733,7 @@ export class RuntimeSettingsStore {
     audit: SettingsAuditContext,
     now = Date.now(),
   ): RuntimeSettingsSnapshot {
-    return this.#database.write((connection) => {
+    return this.#write((connection) => {
       assertRevision(connection, input.revision);
       if (input.secret !== null) {
         if (!isCanonicalSecret(input.secret)) {
@@ -761,7 +796,7 @@ export class RuntimeSettingsStore {
 
   saveCollectionPolicy(input: CollectionPolicyInput, audit: SettingsAuditContext, now = Date.now()): PaymentSettingsSnapshot {
     const parsed = collectionPolicyInputSchema.parse(input);
-    return this.#database.write(connection => {
+    return this.#write(connection => {
       assertRevision(connection, parsed.revision);
       assertUpdated(connection.prepare(
         "UPDATE runtime_configuration SET revision = revision + 1, payment_revision = payment_revision + 1, provider_timeout_milliseconds = ?, provider_scan_interval_milliseconds = ?, provider_active_scan_interval_milliseconds = ?, provider_minimum_scan_interval_milliseconds = ?, provider_safety_lag_milliseconds = ?, provider_maximum_success_age_milliseconds = ?, updated_at = ? WHERE singleton_key = 1 AND revision = ?",
@@ -773,7 +808,7 @@ export class RuntimeSettingsStore {
 
   saveCollectionCode(input: CollectionCodeInput, audit: SettingsAuditContext, now = Date.now()): PaymentSettingsSnapshot {
     const parsed = collectionCodeInputSchema.parse(input);
-    return this.#database.write(connection => {
+    return this.#write(connection => {
       assertRevision(connection, parsed.revision);
       assertUpdated(connection.prepare("UPDATE runtime_configuration SET collection_code_payload = ?, revision = revision + 1, payment_revision = payment_revision + 1, updated_at = ? WHERE singleton_key = 1 AND revision = ?").run(parsed.code_payload, now, parsed.revision).changes);
       appendSettingsAudit(connection, audit, now, "settings.collection_code_updated", { revision: parsed.revision + 1, payment_revision_changed: true });
@@ -786,7 +821,7 @@ export class RuntimeSettingsStore {
     audit: SettingsAuditContext,
     now = Date.now(),
   ): PaymentSettingsSnapshot {
-    return this.#database.write((connection) => {
+    return this.#write((connection) => {
       assertRevision(connection, input.revision);
       const updated = connection.prepare(
         `UPDATE runtime_configuration
@@ -817,7 +852,7 @@ export class RuntimeSettingsStore {
     audit: SettingsAuditContext,
     now = Date.now(),
   ): PaymentSettingsSnapshot {
-    return this.#database.write((connection) => {
+    return this.#write((connection) => {
       assertRevision(connection, input.revision);
       const updated = connection.prepare(
         `UPDATE runtime_configuration
@@ -843,7 +878,7 @@ export class RuntimeSettingsStore {
   }
 
   saveInstanceDisplay(input: import("./model.ts").InstanceDisplayInput, audit: SettingsAuditContext, now = Date.now()): void {
-    this.#database.write(connection => {
+    this.#write(connection => {
       assertRevision(connection, input.revision);
       assertUpdated(connection.prepare("UPDATE runtime_configuration SET revision = revision + 1, system_name = COALESCE(?, system_name), dashboard_chart_type = ?, updated_at = max(updated_at, ?) WHERE singleton_key = 1 AND revision = ?")
         .run(input.system_name ?? null, input.dashboard_chart_type, now, input.revision).changes);
@@ -856,7 +891,7 @@ export class RuntimeSettingsStore {
     audit: SettingsAuditContext,
     now = Date.now(),
   ): RuntimeSettingsSnapshot {
-    return this.#database.write((connection) => {
+    return this.#write((connection) => {
       assertRevision(connection, input.revision);
       const updated = connection.prepare(
         `UPDATE runtime_configuration
@@ -890,7 +925,7 @@ export class RuntimeSettingsStore {
   }
 
   reveal(name: RuntimeSecretName, audit: SettingsAuditContext, now = Date.now()): string {
-    return this.#database.write((connection) => {
+    return this.#write((connection) => {
       const row = readSecret(connection, name);
       if (!row) throw new SettingsError("secret_not_found", "secret has not been configured");
       const plaintext = decryptSecret(this.#cipher, row);
@@ -1251,6 +1286,7 @@ function appendSettingsAudit(
   details: Readonly<Record<string, unknown>>,
 ): void {
   new IdentityTransaction(connection).appendAudit({
+    context: { changes: settingsChanges(connection), siteId: null, siteName: null },
     occurredAt,
     actorType: "ADMIN",
     actorId: audit.actorId,

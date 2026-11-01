@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
+import { auditContextFingerprint } from "../audit/context.ts";
 
 export interface AuditEventHashInput {
   readonly eventId: string;
@@ -119,6 +120,7 @@ export function inspectAuditChain(connection: DatabaseSync): AuditChainIntegrity
     lastSequence,
     previousHash,
   );
+  hashViolations += inspectAuditContexts(connection);
   return {
     eventCount,
     linkViolations,
@@ -126,6 +128,32 @@ export function inspectAuditChain(connection: DatabaseSync): AuditChainIntegrity
     anchorViolations,
     violations: linkViolations + hashViolations + anchorViolations,
   };
+}
+
+function inspectAuditContexts(connection: DatabaseSync): number {
+  if (!tableExists(connection, "audit_event_context")) {
+    // Historical databases have no context fingerprints. A missing v39 table
+    // must not silently turn newer authenticated contexts into historical ones.
+    return Number(connection.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE json_type(details_json, '$.context_fingerprint') IS NOT NULL").get()?.count ?? 0);
+  }
+  let violations = 0;
+  const rows = connection.prepare(`SELECT event.details_json, context.context_json, context.context_fingerprint,
+    context.activity_id, context.source_address, context.user_agent, context.site_id, context.site_name
+    FROM audit_events event LEFT JOIN audit_event_context context USING(event_id)
+    WHERE context.event_id IS NOT NULL OR json_type(event.details_json, '$.context_fingerprint') IS NOT NULL`).iterate();
+  for (const row of rows) {
+    try {
+      const expected = (JSON.parse(String(row.details_json)) as Record<string, unknown>).context_fingerprint;
+      const json = row.context_json;
+      if (typeof json !== "string" || expected !== row.context_fingerprint || expected !== auditContextFingerprint(json)) { violations++; continue; }
+      const context = JSON.parse(json) as Record<string, unknown>;
+      if (context.version !== 1 || !Array.isArray(context.changes) ||
+        ["activity_id", "source_address", "user_agent", "site_id", "site_name"].some(key => row[key] !== context[key])) violations++;
+    } catch { violations++; }
+  }
+  violations += Number(connection.prepare(`SELECT COUNT(*) AS count FROM audit_event_context context
+    LEFT JOIN audit_events event USING(event_id) WHERE event.event_id IS NULL`).get()?.count ?? 0);
+  return violations;
 }
 
 export function assertAuditChainIntegrity(connection: DatabaseSync): void {

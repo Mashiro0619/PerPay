@@ -7,6 +7,7 @@ import { describe, it } from "node:test";
 
 import { loadConfig } from "../src/config.ts";
 import { AppDatabase } from "../src/database/database.ts";
+import { auditContextFingerprint, type StoredAuditContext } from "../src/audit/context.ts";
 import { createApp } from "../src/http/app.ts";
 import type { AlipayAccountView } from "../src/alipay-accounts/model.ts";
 import { IdentityService } from "../src/identity/service.ts";
@@ -62,6 +63,7 @@ describe("advanced settings HTTP contract", () => {
     });
     const app = createApp({ config, database, identity, settings, orders, startedAt: new Date(0) });
     try {
+      const originalAdvanced = settings.instanceSnapshot().advanced;
       const elevatedHeaders = await loginHeaders(app);
       const revealed = await app.request(
         "/api/admin/v1/sites/default/secrets/api_secret/actions/view",
@@ -136,15 +138,28 @@ describe("advanced settings HTTP contract", () => {
       );
 
       const audit = database.read((connection) => connection.prepare(
-        `SELECT details_json FROM audit_events
-          WHERE action = 'settings.advanced_updated'`,
-      ).get() as { details_json: string });
-      assert.deepEqual(JSON.parse(audit.details_json), {
+        `SELECT event.details_json, context.context_json, context.context_fingerprint
+          FROM audit_events event JOIN audit_event_context context USING(event_id) WHERE event.action = 'settings.advanced_updated'`,
+      ).get() as { details_json: string; context_json: string; context_fingerprint: string });
+      const { context_fingerprint: fingerprint, ...details } = JSON.parse(audit.details_json);
+      assert.match(fingerprint, /^[0-9a-f]{64}$/);
+      assert.equal(fingerprint, audit.context_fingerprint);
+      assert.equal(fingerprint, auditContextFingerprint(audit.context_json));
+      assert.deepEqual(details, {
         checkout_key_rotation_days: 30,
         checkout_terminal_observation_seconds: 3_600,
         payment_revision_changed: false,
         revision: 4,
       });
+      const storedContext = JSON.parse(audit.context_json) as StoredAuditContext;
+      assert.equal(storedContext.version, 1);
+      assert.equal(storedContext.request_id, saved.headers.get("x-request-id"));
+      assert.equal(storedContext.activity_id, null);
+      assert.equal(storedContext.site_id, null);
+      assert.deepEqual(storedContext.changes, [
+        { field: "checkout_key_rotation_days", kind: "value", before: String(originalAdvanced.checkoutKeyRotationDays), after: "30" },
+        { field: "checkout_terminal_observation_seconds", kind: "value", before: String(originalAdvanced.checkoutTerminalObservationSeconds), after: "3600" },
+      ]);
     } finally {
       database.close();
       rmSync(directory, { recursive: true, force: true });
