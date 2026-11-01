@@ -1,12 +1,15 @@
 import { useWorkspaceApi } from "@/workspace";
 import { useSystemName } from "@/branding";
-import { useId, useRef, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
-import { refreshOperationalData, result, type AdminOrderDetail, type AdminRefundMarkRequest } from "@/api/client";
+import { result, type AdminOrderDetail, type AdminRefundMarkRequest } from "@/api/client";
+import { refreshOrderRecords } from "@/lib/record-refresh";
 import { useOperationKey } from "@/lib/idempotency";
 import { useFixedOperation } from "@/lib/fixed-operation";
 import { isRefundMarkReceipt, refundMarkNoteError } from "@/lib/refund-mark";
 import { useOperationNavigation } from "@/drafts";
+import { useOverlayContext } from "@/lib/overlay-context";
+import { OverlayActions } from "@/components/overlay-actions";
 import { OperationRecoveryNotice } from "@/components/operation-recovery-notice";
 import { OperationNavigationDialog } from "@/components/operation-navigation-dialog";
 import { StatusBadge } from "@/components/business-status";
@@ -49,10 +52,13 @@ import {
 export function RefundMarkPanel({
   order,
   includeOrderTools = false,
+  footerActions,
 }: {
   order: AdminOrderDetail;
   includeOrderTools?: boolean;
+  footerActions?: ReactNode;
 }) {
+  const overlay = useOverlayContext();
   const [draft, setDraft] = useState<{
     version: number;
     marked: boolean;
@@ -127,8 +133,10 @@ export function RefundMarkPanel({
           )}
         </section>
       )}
+      <OverlayActions>
       <RecordTools
         label="订单操作"
+        technical={!overlay || !includeOrderTools}
         data={order}
         identifiers={[["内部订单编号", order.order_id], ["客户端 ID", order.api_client_id]]}
         actions={
@@ -145,6 +153,8 @@ export function RefundMarkPanel({
             : []
         }
       />
+      {footerActions}
+      </OverlayActions>
       {draft && (
         <RefundMarkDialog
           order={order}
@@ -158,7 +168,7 @@ export function RefundMarkPanel({
               draft.marked ? "本次退款标记已保存" : "本次撤销标记已保存",
             );
             setDraft(null);
-            void refreshOperationalData();
+            void refreshOrderRecords(order.order_id);
           }}
         />
       )}
@@ -222,7 +232,7 @@ export function RefundMarkDialog({
   function close() {
     if (save.isBusy()) return;
     onClose();
-    if (needsRefresh) void refreshOperationalData();
+    if (needsRefresh) void refreshOrderRecords(context.orderId);
   }
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -393,7 +403,7 @@ export function RefundMarkDialog({
           finalFocus={() => content.current}
           onLeave={() => {
             save.stopWaiting();
-            void refreshOperationalData();
+            void refreshOrderRecords(context.orderId);
             onClose();
           }}
         />

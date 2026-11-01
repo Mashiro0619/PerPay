@@ -205,6 +205,7 @@ describe("order browsing", () => {
       await screen.findByRole("heading", { name: "没有符合条件的订单" }),
     ).toBeVisible();
     expect(screen.getByLabelText("付款状态筛选")).toHaveTextContent("未付款");
+    await user.click(screen.getByRole("button", { name: "高级筛选" }));
     expect(screen.getByLabelText("收银台状态筛选")).toHaveTextContent("开放中");
     await user.click(screen.getByRole("button", { name: "清除筛选" }));
     expect(

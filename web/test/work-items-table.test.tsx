@@ -75,8 +75,8 @@ const control: ListQueryControl = {
 function LocationProbe() {
   return <output aria-label="当前地址">{useLocation().pathname}</output>;
 }
-function mount(items: AdminWorkItem[], path = "/work-items", scoped = false) {
-  const content = <><WorkItemsTable items={items} control={control} /><LocationProbe /></>;
+function mount(items: AdminWorkItem[], path = "/work-items", scoped = false, embedded = false) {
+  const content = <><WorkItemsTable items={items} {...(embedded ? {} : { control })} /><LocationProbe /></>;
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[path]}>
@@ -95,7 +95,7 @@ beforeEach(() => {
 });
 
 describe("work item business context", () => {
-  it.each([1440, 390, 320])("distinguishes matching reminder states by their visible order, site and amount at %spx", (width) => {
+  it.each([1440, 390, 320])("distinguishes compact reminders by order and amount, with an independent desktop site field at %spx", (width) => {
     mobileMedia(width);
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
@@ -123,14 +123,16 @@ describe("work item business context", () => {
       const productLink = row.getByRole("link", { name: "查看订单：" + product });
       expect(productLink).toBeVisible();
       expect(productLink.closest('[aria-hidden="true"]')).toBeNull();
-      expect(row.getByText(merchantNumber)).toBeVisible();
-      expect(row.getByRole("link", { name: "订阅网站 · site_a" })).toBeVisible();
+      expect(row.queryByText(merchantNumber)).not.toBeInTheDocument();
+      if (width >= 640) expect(row.getByRole("link", { name: "订阅网站 · site_a" })).toBeVisible();
+      else expect(row.queryByRole("link", { name: "订阅网站 · site_a" })).not.toBeInTheDocument();
       expect(row.getByRole("group", { name: "应付金额 " + amount })).toBeVisible();
-      expect(row.getByText("请求超时")).toBeVisible();
+      expect(row.queryByText("请求超时")).not.toBeInTheDocument();
     }
     if (width >= 640) {
       expect(screen.getByRole("columnheader", { name: "关联记录" })).toBeVisible();
       expect(screen.getByRole("columnheader", { name: "应付金额" })).toBeVisible();
+      expect(screen.getByRole("columnheader", { name: "网站" })).toBeVisible();
     } else {
       expect(screen.getByRole("list", { name: "待处理提醒列表" })).toBeVisible();
       expect(screen.queryByRole("button", { name: "展开信息" })).not.toBeInTheDocument();
@@ -168,7 +170,7 @@ describe("work item business context", () => {
     if (item.type === "LEDGER_CONFLICT") expect(screen.queryByTitle(ledgerId)).not.toBeInTheDocument();
   });
 
-  it.each([1440, 320])("preserves reminder row navigation and separate order and site links at %spx", async (width) => {
+  it.each([1440, 320])("preserves reminder and order navigation with desktop site links at %spx", async (width) => {
     mobileMedia(width);
     const item = notification();
     mount([item]);
@@ -182,8 +184,10 @@ describe("work item business context", () => {
     expect(screen.getByLabelText("当前地址")).toHaveTextContent("/notifications/" + item.resource_id);
     await user.click(within(row).getByRole("link", { name: "查看订单：专业版订阅" }));
     expect(screen.getByLabelText("当前地址")).toHaveTextContent("/orders/" + orderId);
-    await user.click(within(row).getByRole("link", { name: "订阅网站 · site_a" }));
-    expect(screen.getByLabelText("当前地址")).toHaveTextContent("/sites/site_a");
+    if (width >= 640) {
+      await user.click(within(row).getByRole("link", { name: "订阅网站 · site_a" }));
+      expect(screen.getByLabelText("当前地址")).toHaveTextContent("/sites/site_a");
+    } else expect(within(row).queryByRole("link", { name: "订阅网站 · site_a" })).not.toBeInTheDocument();
   });
 
   it.each([false, true])("shows the site globally and keeps scoped order and reminder destinations (scoped: %s)", async (scoped) => {
@@ -208,8 +212,8 @@ describe("work item business context", () => {
     ["RETRY_WAIT", "通知正在等待重试", "下次重试"],
     ["ACKNOWLEDGED", "通知已确认", null],
     ["DEAD_LETTER", "通知已停止重试", null],
-  ] as const)("shows the actual %s state and only its applicable schedule and error", (status, title, schedule) => {
-    mount([notification({ status, ended: status === "ACKNOWLEDGED" })]);
+  ] as const)("keeps the actual %s schedule and error semantics in embedded reminders", (status, title, schedule) => {
+    mount([notification({ status, ended: status === "ACKNOWLEDGED" })], "/work-items", false, true);
     expect(screen.getByRole("link", { name: title })).toBeVisible();
     expect(screen.getByText("已尝试 3 次")).toBeVisible();
     expect(screen.getByText("通知事件：收款已确认")).toBeVisible();
@@ -222,9 +226,9 @@ describe("work item business context", () => {
     else expect(screen.getByText("请求超时")).toBeVisible();
   });
 
-  it("retains context for an ended ignored reminder without presenting a stale retry schedule", () => {
+  it("retains embedded context for an ended ignored reminder without presenting a stale retry schedule", () => {
     mobileMedia(320);
-    mount([notification({ ended: true, ignored_at: "2026-10-30T05:00:00.000Z", ignored_by: "审核员" })]);
+    mount([notification({ ended: true, ignored_at: "2026-10-30T05:00:00.000Z", ignored_by: "审核员" })], "/work-items", false, true);
     expect(screen.getByRole("link", { name: "查看订单：专业版订阅" })).toBeVisible();
     expect(screen.getByText("审核员已忽略", { exact: false })).toBeVisible();
     expect(screen.getByText("已结束")).toBeVisible();

@@ -27,12 +27,13 @@ import { RefreshCw, Settings2 } from "lucide-react";
 import { useParams, useSearchParams } from "react-router";
 import { PageHeading } from "@/components/page-heading";
 import { Link, useDetailBack } from "@/navigation";
-import { refreshOperationalData, result, type WebhookDeliveryStatus, type WebhookDeliverySummary } from "@/api/client";
+import { queryClient, result, type WebhookDeliveryStatus, type WebhookDeliverySummary } from "@/api/client";
 import { useCursor } from "@/lib/cursor";
 import { notificationErrorName } from "@/lib/detail-summary";
 import { label } from "@/lib/labels";
 import { DeliveryCard } from "@/components/detail/NotificationEvidence";
 import { DetailNavigation, DetailPage, RelatedOrder } from "@/components/detail/DetailPrimitives";
+import { DetailSections } from "@/components/detail/DetailSections";
 import { StatusBadge } from "@/components/business-status";
 import { QueryView } from "@/components/request-state";
 import { notificationStatus, notificationsQuery } from "@/api/workspace-queries";
@@ -179,9 +180,10 @@ function DeliveryPage({
     },
     {
       id: "order",
-      label: "关联商户订单号（业务网站）",
+      label: "商户订单号",
       layout: "text",
-      summaryDefault: true,
+      summaryDefault: false,
+      defaultVisible: false,
       responsive: { minWidthRem: 75, basis: "container" },
       cell: (delivery) => (
         <Link
@@ -201,7 +203,7 @@ function DeliveryPage({
       cell: (delivery, context) => (
         <div className="business-cell-stack flex flex-col items-start gap-1.5">
           <StatusBadge value={delivery.status} />
-          {delivery.last_error_code && (
+          {context.isSummary && delivery.last_error_code && (
             <span className="text-xs text-muted-foreground">
               {notificationErrorName(delivery.last_error_code)}
             </span>
@@ -230,7 +232,7 @@ function DeliveryPage({
       label: "创建时间",
       align: "center",
       layout: "datetime",
-      summaryDefault: true,
+      summaryDefault: false,
       responsive: { minWidthRem: 56, basis: "container" },
       cell: (delivery) => <ListDateTime value={delivery.created_at} />,
     },
@@ -245,6 +247,12 @@ function DeliveryPage({
       cell: (delivery) => <ListDateTime value={delivery.next_attempt_at} />,
     },
   ];
+  if (!clientId) columns.splice(1, 0, { id: "site", label: "网站", layout: "text", summaryDefault: false,
+    cell: delivery => <SiteIdentity clientId={delivery.order_summary?.api_client_id} name={delivery.order_summary?.site_name} /> });
+  columns.push(
+    { id: "event_type", label: "通知类型", layout: "text", defaultVisible: false, cell: delivery => label(delivery.event.event_type) },
+    { id: "payable_amount_cents", label: "应付金额", layout: "amount", defaultVisible: false, cell: delivery => delivery.order_summary ? money(delivery.order_summary.payable_amount_cents) : "未记录" },
+  );
   return (
     <ListColumnsProvider>
     <ListLayout
@@ -376,6 +384,8 @@ export function NotificationDetail() {
 }
 function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
   const api = useWorkspaceApi();
+  const [detailSearch] = useSearchParams();
+  const showAttempts = detailSearch.get("section") === "attempts";
   const back = useDetailBack("/notifications", "通知");
   const delivery = useQuery({
     queryKey: ["notification", deliveryId],
@@ -384,6 +394,7 @@ function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
   });
   const attempts = useQuery({
     queryKey: ["notification-attempts", deliveryId],
+    enabled: showAttempts,
     queryFn: ({ signal }) =>
       result(api.listWebhookDeliveryAttempts({ path: { deliveryId }, signal })),
   });
@@ -392,12 +403,14 @@ function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
       <PageHeading title="通知详情" />
       <DetailNavigation back={back}>
         <PageHeaderActions><RefreshButton disabled={delivery.isFetching || attempts.isFetching} onClick={() => {
-            void refreshOperationalData();
+            void delivery.refetch();
+            void queryClient.invalidateQueries({ predicate: query => query.queryKey.includes("notification-attempts") && query.queryKey.includes(deliveryId) });
           }} busy={delivery.isFetching || attempts.isFetching} /></PageHeaderActions>
       </DetailNavigation>
       <QueryView query={delivery}>
         {({ data }) => (
-          <>
+          <DetailSections label="通知详情分类" sections={[
+            { id: "overview", label: "概况", content: <>
             <Card aria-label="关联订单">
               <CardHeader>
                 <CardTitle role="heading" aria-level={2}>关联订单</CardTitle>
@@ -412,8 +425,17 @@ function DeliveryDetail({ deliveryId }: { deliveryId: string }) {
               attemptsError={attempts.error}
               retryAttempts={() => { void attempts.refetch(); }}
               density="comfortable"
+              section="overview"
             />
-          </>
+            </> },
+            { id: "attempts", label: "投递记录", content: <DeliveryCard
+              detail={{ ...data, attempts: attempts.data?.data ?? [] }}
+              attemptsAvailable={!!attempts.data}
+              attemptsError={attempts.error}
+              retryAttempts={() => { void attempts.refetch(); }}
+              density="comfortable" section="attempts"
+            /> },
+          ]} />
         )}
       </QueryView>
     </DetailPage>

@@ -265,7 +265,8 @@ function OrderPage({
         control={listQuery}
         label="订单关键词搜索"
         desktopFilters={<>{desktopFilters}<Select items={accountOptions} value={accountId ?? ""} onValueChange={value => listQuery.update({ alipay_account_id: value })}><SelectTrigger aria-label="收款账号筛选"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{accountOptions.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectGroup></SelectContent></Select></>}
-        desktopFilterContent={<CreatedDateFilter control={listQuery}><OrderExport clientId={clientId} accountId={accountId} query={listQuery.apiQuery} payment={payment} checkout={checkout} /></CreatedDateFilter>}
+        desktopFilterContent={<CreatedDateFilter control={listQuery} />}
+        desktopActions={<OrderExport clientId={clientId} accountId={accountId} query={listQuery.apiQuery} payment={payment} checkout={checkout} />}
         mobileFilterContent={draft => <CreatedDateFilter control={draft} />}
         mobileFilterSummary={listQuery.query.createdFrom || listQuery.query.createdTo ? ["创建日期：" + (listQuery.query.createdFrom ?? "不限") + " 至 " + (listQuery.query.createdTo ?? "不限")] : []}
         mobileFilterReset={{ created_from: null, created_to: null }}

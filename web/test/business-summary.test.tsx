@@ -175,31 +175,36 @@ describe("business summaries", () => {
     expect(screen.getByLabelText("当前地址").textContent).toBe("/related");
   });
 
-  it("keeps selected secondary fields in preferences while expanding each field once without navigation", async () => {
+  it("retains desktop preferences while keeping mobile summaries fixed and compact", () => {
     const preferences = { status: false, reference: true };
     localStorage.setItem(storageKey, JSON.stringify(preferences));
+    const media = mobileMedia(390);
     const view = mountSummary();
-    const user = userEvent.setup();
     expect(screen.getByText(record.amount)).toBeVisible();
-    expect(screen.queryByText(record.status)).not.toBeInTheDocument();
+    expect(screen.getByText(record.status)).toBeVisible();
     expect(screen.queryByText(record.reference)).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "展开信息" }));
+    expect(screen.queryByRole("button", { name: "展开信息" })).not.toBeInTheDocument();
+    media.resize(1440);
+    expect(screen.queryByRole("columnheader", { name: "状态" })).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "跟踪编号" })).toBeVisible();
     expect(screen.getAllByText(record.reference)).toHaveLength(1);
-    expect(screen.getByText(record.reference)).toBeVisible();
     expect(screen.getByLabelText("当前地址")).toHaveTextContent(/^\/records$/);
     expect(JSON.parse(localStorage.getItem(storageKey)!)).toEqual(preferences);
-    await user.click(screen.getByRole("button", { name: "收起信息" }));
+    media.resize(390);
+    expect(screen.getByText(record.status)).toBeVisible();
     expect(screen.queryByText(record.reference)).not.toBeInTheDocument();
     view.unmount();
     mountSummary();
-    expect(screen.getByRole("button", { name: "展开信息" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "展开信息" })).not.toBeInTheDocument();
+    expect(screen.getByText(record.status)).toBeVisible();
     expect(JSON.parse(localStorage.getItem(storageKey)!)).toEqual(preferences);
   });
 
-  it("allows placement overrides while identity and actions stay primary and visibility remains independent", async () => {
+  it("allows explicitly chosen summary fields while identity and actions stay primary", () => {
     localStorage.setItem(storageKey, JSON.stringify({ reference: true }));
     const specs = columns().map((column) => ({
       ...column,
+      summaryDefault: column.id === "reference" ? true : column.summaryDefault,
       summaryPriority: column.id === "reference" ? "primary" as const : "details" as const,
     }));
     mountSummary(vi.fn(), specs);
@@ -209,10 +214,8 @@ describe("business summaries", () => {
     expect(screen.getByText(record.reference)).toBeVisible();
     expect(screen.queryByText(record.amount)).not.toBeInTheDocument();
     expect(screen.queryByText(record.status)).not.toBeInTheDocument();
-    await userEvent.setup().click(screen.getByRole("button", { name: "展开信息" }));
-    for (const value of [record.reference, record.amount, record.status]) {
-      expect(screen.getAllByText(value)).toHaveLength(1);
-    }
+    expect(screen.queryByRole("button", { name: "展开信息" })).not.toBeInTheDocument();
+    expect(screen.getAllByText(record.reference)).toHaveLength(1);
     expect(JSON.parse(localStorage.getItem(storageKey)!)).toEqual({ reference: true });
   });
 
@@ -266,8 +269,9 @@ describe("business summaries", () => {
     expect(screen.getByLabelText("当前地址").textContent).toBe("/records");
   });
 
-  it("keeps an unsent search draft while sharing field choices between the mobile display sheet and desktop menu", async () => {
+  it("keeps unsent search drafts and desktop field choices across the mobile display sheet", async () => {
     const media = mobileMedia(1440);
+    localStorage.setItem(storageKey, JSON.stringify({ reference: false }));
     const initial = "/records?q=applied&cursor=next&page=3&source=overview";
     const view = render(
       <MemoryRouter initialEntries={[initial]}>
@@ -275,15 +279,21 @@ describe("business summaries", () => {
       </MemoryRouter>,
     );
     const user = userEvent.setup();
-    const trigger = screen.getByRole("button", { name: "显示列" });
-    expect(view.container.querySelector("[data-list-columns-slot]")).toContainElement(trigger);
+    const trigger = screen.getByRole("button", { name: "列表显示" });
+    expect(view.container.querySelector("[data-list-query-toolbar]")).toContainElement(trigger);
     expect(trigger.closest("th")).toBeNull();
     const search = screen.getByRole("searchbox");
     await user.clear(search);
     await user.type(search, "尚未提交的关键词");
+    await user.click(trigger);
+    const desktopDisplay = await screen.findByRole("dialog", { name: "列表显示" });
+    expect(within(desktopDisplay).getByRole("checkbox", { name: "记录" })).toHaveAttribute("aria-disabled", "true");
+    await user.click(within(desktopDisplay).getByRole("checkbox", { name: "状态" }));
+    await user.click(within(desktopDisplay).getByRole("checkbox", { name: "跟踪编号" }));
+    await user.keyboard("{Escape}");
 
     media.resize(390);
-    expect(screen.queryByRole("button", { name: "显示列" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "列表显示" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "更多列表操作" })).toHaveLength(1);
     expect(screen.getByRole("searchbox")).toHaveValue("尚未提交的关键词");
     expect(screen.getByRole("list", { name: "记录列表" })).toBeVisible();
@@ -292,35 +302,29 @@ describe("business summaries", () => {
     await user.click(await screen.findByRole("menuitem", { name: "列表显示" }));
     const sheet = await screen.findByRole("dialog", { name: "列表显示" });
     expect(document.querySelectorAll("[data-list-columns-slot]")).toHaveLength(1);
-    expect(within(sheet).getByRole("checkbox", { name: "状态" })).toHaveAttribute("aria-checked", "true");
-    expect(within(sheet).getByRole("checkbox", { name: "记录" })).toHaveAttribute("aria-disabled", "true");
-    await user.click(within(sheet).getByRole("checkbox", { name: "状态" }));
-    await user.click(within(sheet).getByRole("checkbox", { name: "跟踪编号" }));
+    expect(within(sheet).queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(within(sheet).queryByRole("button", { name: "恢复默认列" })).not.toBeInTheDocument();
+    expect(within(sheet).getByText("手机列表展示关键摘要，完整信息可打开详情查看。")).toBeVisible();
     expect(JSON.parse(localStorage.getItem(storageKey)!)).toEqual({
       status: false,
       reference: true,
     });
-    expect(screen.queryByText(record.status)).not.toBeInTheDocument();
-    expect(screen.queryByText(record.reference)).not.toBeInTheDocument();
     await user.click(within(sheet).getByRole("button", { name: "完成" }));
     expect(more).toHaveFocus();
-    await user.click(screen.getByRole("button", { name: "展开信息" }));
-    expect(screen.getByText(record.reference)).toBeVisible();
-    const reference = screen.getByText(record.reference).closest<HTMLElement>(".business-summary-field")!;
-    expect(within(reference).getByText("跟踪编号")).toBeVisible();
+    expect(screen.getByText(record.status)).toBeVisible();
+    expect(screen.queryByText(record.reference)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "展开信息" })).not.toBeInTheDocument();
     media.resize(1440);
     expect(screen.getByRole("table", { name: "记录列表" })).toBeVisible();
     expect(screen.queryByRole("columnheader", { name: "状态" })).not.toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "跟踪编号" })).toBeVisible();
-    expect(view.container.querySelectorAll("[data-list-columns-slot]")).toHaveLength(1);
     expect(screen.getByRole("searchbox")).toHaveValue("尚未提交的关键词");
     expect(screen.getByLabelText("当前地址").textContent).toBe(initial);
 
-    media.resize(390);
-    await user.click(screen.getByRole("button", { name: "更多列表操作" }));
-    await user.click(await screen.findByRole("menuitem", { name: "列表显示" }));
+    await user.click(screen.getByRole("button", { name: "列表显示" }));
     await user.click(await screen.findByRole("button", { name: "恢复默认列" }));
-    await user.click(screen.getByRole("button", { name: "完成" }));
+    await user.keyboard("{Escape}");
+    media.resize(390);
     expect(screen.getByText(record.status)).toBeVisible();
     expect(screen.queryByText(record.reference)).not.toBeInTheDocument();
     expect(JSON.parse(localStorage.getItem(storageKey)!)).toEqual({});

@@ -237,6 +237,10 @@ export function WorkItemsTable({
       ),
     },
   ];
+  if (!clientId) columns.splice(2, 0, {
+    id: "site", label: "网站", layout: "text", summaryDefault: false,
+    cell: item => <SiteIdentity clientId={item.order_summary?.api_client_id} name={item.order_summary?.site_name} />,
+  });
   return (
     <BusinessTable
       id={actions ? "ignored-work-items" : "work-items"}

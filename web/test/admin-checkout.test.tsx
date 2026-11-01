@@ -32,7 +32,7 @@ describe("administrator checkout entry", () => {
     ["CLOSED", "DISPUTED", "收银台已关闭"],
   ])(
     "links to the authenticated existing checkout for %s / %s without changing state",
-    async (checkoutStatus, paymentStatus, statusText) => {
+    async (checkoutStatus, paymentStatus) => {
       const requests: Request[] = [];
       const snapshot = {
         ...order,
@@ -66,8 +66,9 @@ describe("administrator checkout entry", () => {
       expect(link).toHaveAttribute("target", "_blank");
       expect(link).toHaveAttribute("rel", "noopener noreferrer");
       expect(link).toHaveAttribute("title", "在新标签页打开收银台");
-      const footer = link.closest('[data-slot="card-footer"]')! as HTMLElement;
-      expect(within(footer).getByText(statusText)).toBeVisible();
+      const information = screen.getByRole("region", { name: "订单信息" });
+      const checkout = within(information).getByText("收银台状态").closest("div")!;
+      expect(within(checkout).getByText({ OPEN: "开放中", CLOSED: "已关闭", EXPIRED: "已过期" }[checkoutStatus])).toBeVisible();
       expect(link).toHaveClass("group/button");
       expect(requests.every((request) => request.method === "GET")).toBe(true);
       expect(

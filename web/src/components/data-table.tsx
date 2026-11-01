@@ -24,14 +24,14 @@ const checkoutNames = {
   CLOSED: "收银台已关闭",
   EXPIRED: "收银台已过期",
 } as const;
-function OrderStatus({ order }: { order: AdminOrderSummary }) {
+function OrderStatus({ order, includeCheckout = true }: { order: AdminOrderSummary; includeCheckout?: boolean }) {
   return (
     <div className="business-cell-stack flex flex-col items-start gap-1.5">
       <div className="business-cell-badges flex flex-wrap gap-1">
         <StatusBadge value={order.payment.status} />
         {order.refund_mark.marked && <StatusBadge value="ADMIN_REFUND_MARK" />}
       </div>
-      {order.payment.status !== "CONFIRMED" && <span className="text-xs text-muted-foreground">{checkoutNames[order.checkout.status]}</span>}
+      {includeCheckout && order.payment.status !== "CONFIRMED" && <span className="text-xs text-muted-foreground">{checkoutNames[order.checkout.status]}</span>}
     </div>
   );
 }
@@ -148,7 +148,7 @@ export function DataTable({
       layout: "status",
       summaryDefault: true,
       responsive: { minWidthRem: 32, basis: "container" },
-      cell: (order) => <OrderStatus order={order} />,
+      cell: (order) => <OrderStatus order={order} includeCheckout={!control} />,
     },
     {
       id: "created_at",
@@ -161,6 +161,20 @@ export function DataTable({
       cell: (order) => <ListDateTime value={order.created_at} />,
     },
   ];
+  if (control) {
+    if (!clientId) columns.splice(1, 0, {
+      id: "site", label: "网站", layout: "text", summaryDefault: false,
+      cell: order => <SiteIdentity clientId={order.api_client_id} name={order.site_name} />,
+    });
+    columns.push(
+      { id: "checkout_status", label: "收银台状态", layout: "status", defaultVisible: false,
+        cell: order => <StatusBadge value={order.checkout.status} /> },
+      { id: "merchant_order_no", label: "商户订单号", layout: "text", defaultVisible: false,
+        cell: order => <span className="list-code" title={order.merchant_order_no}>{order.merchant_order_no}</span> },
+      { id: "alipay_account", label: "收款账号", layout: "text", defaultVisible: false,
+        cell: order => <AlipayAccountIdentity id={order.alipay_account_id} name={order.alipay_account_name} /> },
+    );
+  }
   if (control) columns.push({
     id: "payment_confirmed_at", label: "PerPay 确认时间",
     align: "center",

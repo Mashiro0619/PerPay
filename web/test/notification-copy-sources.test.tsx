@@ -40,20 +40,12 @@ describe("order and notification copy follows its actual source", () => {
     vi.stubGlobal("fetch", vi.fn(async () => json({ data: [summary], page: { next_cursor: null } })));
     mount(<Notifications />, "/notifications");
     const row = await screen.findByRole("listitem");
-    if (hidden) {
-      expect(within(row).queryByText("尝试次数")).not.toBeInTheDocument();
-      expect(within(row).queryByText("下次尝试")).not.toBeInTheDocument();
-      expect(within(row).queryByText(paidOrder.merchant_order_no)).not.toBeInTheDocument();
-      expect(within(row).queryByRole("link", { name: paidOrder.merchant_order_no })).not.toBeInTheDocument();
-      expect(within(row).queryByTitle("2026/09/06 08:02（北京时间）")).not.toBeInTheDocument();
-    } else {
-      const attempts = within(row).getByText("尝试次数").closest(".business-summary-field")!;
-      expect(attempts).toHaveTextContent("尝试次数1");
-      expect(within(row).getAllByTitle("2026/09/06 08:02（北京时间）")).toHaveLength(1);
-      expect(within(row).getAllByText(paidOrder.merchant_order_no)).toHaveLength(1);
-      expect(within(row).getByRole("link", { name: paidOrder.merchant_order_no })).toHaveAttribute("href", "/orders/" + paidOrder.order_id);
-    }
-    expect(within(row).getByText("创建时间")).toBeVisible();
+    const attempts = within(row).getByText("尝试次数").closest(".business-summary-field")!;
+    expect(attempts).toHaveTextContent("尝试次数1");
+    expect(within(row).getByText("等待重试")).toBeVisible();
+    expect(within(row).getAllByTitle("2026/09/06 08:02（北京时间）")).toHaveLength(1);
+    expect(within(row).queryByText(paidOrder.merchant_order_no)).not.toBeInTheDocument();
+    expect(within(row).queryByText("创建时间")).not.toBeInTheDocument();
     expect(JSON.parse(localStorage.getItem("perpay.table-columns.v2.notifications")!)).toEqual(overrides);
   });
 
@@ -61,6 +53,7 @@ describe("order and notification copy follows its actual source", () => {
     [1440, ""], [390, ""], [1440, "/sites/site_copy"], [390, "/sites/site_copy"],
   ] as const)("keeps notification type, merchant identity and payable amount visible at %i in %s", async (width, scope) => {
     mobileMedia(width);
+    localStorage.setItem("perpay.table-columns.v2.notifications", JSON.stringify({ order: true, event_type: true, payable_amount_cents: true }));
     const product = "同一商品的不同收款通知";
     const merchant = "BUSINESS-ORDER-20261021-" + "0123456789".repeat(10);
     const summaries: WebhookDeliverySummary[] = ["PAYMENT_CONFIRMED", "PAYMENT_DISPUTED"].map((eventType, index) => ({
@@ -82,20 +75,26 @@ describe("order and notification copy follows its actual source", () => {
       return json({ data: summaries, page: { next_cursor: null } });
     }));
     mount(<Notifications />, scope + "/notifications", true);
-    expect(await screen.findByText("通知类型：收款已确认")).toBeVisible();
-    expect(screen.getByText("通知类型：收款有争议")).toBeVisible();
+    await screen.findAllByRole("link", { name: product });
+    if (width >= 640) {
+      expect(screen.getByText("收款已确认")).toBeVisible();
+      expect(screen.getByText("收款有争议")).toBeVisible();
+    }
     const rows = screen.getAllByRole(width < 640 ? "listitem" : "row")
       .filter(row => within(row).queryByRole("link", { name: product }));
     expect(rows).toHaveLength(2);
     for (const row of rows) {
-      expect(within(row).queryByText("商户订单号（业务网站）：") ??
-        within(width < 640 ? row : screen.getByRole("table")).getByText("关联商户订单号（业务网站）")).toBeVisible();
-      expect(within(row).getAllByText(merchant).every(value => value.textContent === merchant)).toBe(true);
-      expect(within(row).getByText("应付 ¥1.01")).toBeVisible();
+      if (width >= 640) {
+        expect(within(row).getByText(merchant)).toBeVisible();
+        expect(within(row).getByText("¥1.01")).toBeVisible();
+      } else {
+        expect(within(row).queryByText(merchant)).not.toBeInTheDocument();
+        expect(within(row).getByText("等待重试")).toBeVisible();
+      }
       expect(within(row).queryByText(/¥3\.45/)).not.toBeInTheDocument();
     }
     expect(screen.getAllByRole("link", { name: product })[0]).toHaveAttribute("href", scope + "/notifications/" + delivery.delivery.delivery_id);
-    if (width >= 1200) expect(screen.getByRole("columnheader", { name: "关联商户订单号（业务网站）" })).toBeVisible();
+    if (width >= 1200) expect(screen.getByRole("columnheader", { name: "商户订单号" })).toBeVisible();
     expect(requests.every(request => request.method === "GET")).toBe(true);
   });
 
@@ -187,6 +186,7 @@ describe("order and notification copy follows its actual source", () => {
       return json({ data: { ...delivery, delivery: { ...delivery.delivery, attempt_count: 0 } } });
     }));
     mount(<Routes><Route path="/notifications/:deliveryId" element={<NotificationDetail />} /></Routes>, "/notifications/" + delivery.delivery.delivery_id);
+    await userEvent.setup().click(await screen.findByRole("tab", { name: "投递记录" }));
     const history = await screen.findByRole("group", { name: "投递历史" });
     expect(within(history).getByText("正在读取发送记录…")).toBeVisible();
     expect(within(history).queryByText("暂无尝试明细")).not.toBeInTheDocument();

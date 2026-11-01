@@ -89,18 +89,18 @@ describe("overview order progress", () => {
     expect(screen.getByText("收款已确认")).toBeVisible();
   });
 
-  it("honors its own explicit hidden time field on mobile while retaining payment and notification progress", () => {
+  it("keeps a fixed compact mobile summary independent of desktop column preferences", () => {
     mobileMedia(360);
     localStorage.setItem("perpay.table-columns.v2.overview-recent-orders", JSON.stringify({ created_at: false }));
     const view = mount();
-    expect(view.container.querySelector("time")).toBeNull();
+    expect(view.container.querySelectorAll("time")).toHaveLength(1);
     expect(screen.getByRole("group", { name: "收款状态" })).toHaveTextContent("收款已确认");
     expect(screen.getByRole("group", { name: "通知状态" })).toHaveTextContent("等待重试");
     expect(screen.getByRole("link", { name: recent.product_name })).toBeVisible();
     expect(JSON.parse(localStorage.getItem("perpay.table-columns.v2.overview-recent-orders")!)).toEqual({ created_at: false });
   });
 
-  it("groups statuses below 64rem, moves times below 48rem and retains the complete summary below 40rem", () => {
+  it("groups statuses in narrower tables without moving hidden columns into the title and uses compact mobile rows", () => {
     let width = 767;
     const original = HTMLElement.prototype.getBoundingClientRect;
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
@@ -117,8 +117,8 @@ describe("overview order progress", () => {
     expect(screen.getByRole("columnheader", { name: "收款 / 通知" })).toBeVisible();
     expect(screen.getByRole("group", { name: "收款状态" })).toHaveTextContent("收款已确认");
     expect(screen.getByRole("group", { name: "通知状态" })).toHaveTextContent("等待重试");
-    expect(screen.getByRole("table").querySelector('tbody [data-column-id="identity"]')).toContainElement(screen.getByText("创建"));
-    expect(view.container.querySelectorAll("time")).toHaveLength(2);
+    expect(screen.queryByText("创建", { exact: true })).not.toBeInTheDocument();
+    expect(view.container.querySelectorAll("time")).toHaveLength(0);
 
     resize(768);
     expect(screen.getAllByRole("columnheader")).toHaveLength(4);
@@ -149,7 +149,7 @@ describe("overview order progress", () => {
     expect(screen.queryByText("实收", { exact: true })).not.toBeInTheDocument();
     expect(screen.getByText("收款已确认")).toBeVisible();
     expect(screen.getByText("等待重试")).toBeVisible();
-    expect(view.container.querySelectorAll("time")).toHaveLength(2);
+    expect(view.container.querySelectorAll("time")).toHaveLength(1);
   });
 
   it.each([

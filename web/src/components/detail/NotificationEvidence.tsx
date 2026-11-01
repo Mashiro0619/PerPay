@@ -6,7 +6,8 @@ import { useRef, useState } from "react";
 import { Info } from "lucide-react";
 import { Link } from "@/navigation";
 
-import { refreshOperationalData, result, type OrderWebhookDeliveryDetail, type WebhookDeliveryDetail, type WebhookAttempt } from "@/api/client";
+import { result, type OrderWebhookDeliveryDetail, type WebhookDeliveryDetail, type WebhookAttempt } from "@/api/client";
+import { refreshNotificationRecords } from "@/lib/record-refresh";
 import { useCursor } from "@/lib/cursor";
 import {
   attemptResult,
@@ -52,6 +53,7 @@ export function DeliveryCard({
   density = "default",
   attemptsError,
   retryAttempts,
+  section = "all",
 }: {
   detail: DeliveryContext;
   embedded?: boolean;
@@ -60,6 +62,7 @@ export function DeliveryCard({
   density?: "default" | "comfortable";
   attemptsError?: unknown;
   retryAttempts?: (() => void) | undefined;
+  section?: "all" | "overview" | "attempts";
 }) {
   const api = useWorkspaceApi();
   const { clientId } = useWorkspace();
@@ -134,7 +137,7 @@ export function DeliveryCard({
   );
   const siteFields = !clientId
     ? [["所属网站", comfortable
-      ? <Link to={"/sites/" + encodeURIComponent(detail.target.api_client_id)} aria-label={(detail.target.site_name ?? "业务网站名称暂不可用") + " · " + detail.target.api_client_id}>{detail.target.site_name ?? "业务网站名称暂不可用"}</Link>
+      ? <Link global to={"/sites/" + encodeURIComponent(detail.target.api_client_id) + "/summary"} aria-label={(detail.target.site_name ?? "业务网站名称暂不可用") + " · " + detail.target.api_client_id}>{detail.target.site_name ?? "业务网站名称暂不可用"}</Link>
       : <SiteIdentity clientId={detail.target.api_client_id} name={detail.target.site_name} />] as const]
     : [];
   const targetField = [
@@ -195,7 +198,7 @@ export function DeliveryCard({
             setSnapshot(null);
             setSent(true);
             setMessage("已创建新投递，等待发送");
-            void refreshOperationalData();
+            void refreshNotificationRecords(detail.event.order_id, delivery.delivery_id);
           }}
         >
           <DetailFields
@@ -207,7 +210,7 @@ export function DeliveryCard({
         </ReasonDialog>
   );
   if (comfortable) return <>
-    <Card aria-label="通知信息" data-notification-information>
+    {section !== "attempts" && <Card aria-label="通知信息" data-notification-information>
       <CardHeader className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 flex-1 basis-48 flex-col gap-1">
           <CardTitle role="heading" aria-level={2}>{sectionTitle ?? "通知信息"}</CardTitle>
@@ -235,17 +238,17 @@ export function DeliveryCard({
           ]}
         />
       </CardContent>
-    </Card>
-    <Card aria-label="投递历史" data-notification-history>
+    </Card>}
+    {section !== "overview" && <Card aria-label="投递历史" data-notification-history>
       <CardHeader>
         <CardTitle role="heading" aria-level={2}>投递历史</CardTitle>
         <CardDescription>{attemptDescription}{attemptsAvailable && detail.attempts.length > 0 ? " · 每页 10 条" : ""}</CardDescription>
       </CardHeader>
       <CardContent className="flex min-w-0 flex-col gap-4">
         <ErrorNotice scope="page" error={attemptsError} retry={retryAttempts} />
-        <DeliveryAttempts key={delivery.delivery_id} attempts={detail.attempts} available={attemptsAvailable} readState={attemptsReadState} density="comfortable" />
+        <DeliveryAttempts key={delivery.delivery_id} attempts={detail.attempts} available={attemptsAvailable} readState={attemptsReadState} density="comfortable" pageKey={"attempts_" + delivery.delivery_id} />
       </CardContent>
-    </Card>
+    </Card>}
     {confirmation}
   </>;
   return (
@@ -262,7 +265,7 @@ export function DeliveryCard({
         {recovery && <p className="text-sm text-muted-foreground">{recovery}</p>}
         {resend}
         <DetailFields wide={["所属网站", "通知地址", "重发理由"]} items={[...siteFields, targetField, ...deliveryFields, ...reasonFields]} />
-        <DeliveryAttempts key={delivery.delivery_id} attempts={detail.attempts} available={attemptsAvailable} readState={attemptsReadState} />
+        <DeliveryAttempts key={delivery.delivery_id} attempts={detail.attempts} available={attemptsAvailable} readState={attemptsReadState} pageKey={"attempts_" + delivery.delivery_id} />
         {tools}
       </CardContent>
       {confirmation}
@@ -277,7 +280,7 @@ export function OrderNotifications({
   notifyUrl: string | null;
 }) {
   const api = useWorkspaceApi();
-  const pagination = useCursor();
+  const pagination = useCursor("notifications_cursor");
   const query = useQuery({
     queryKey: ["order-notifications", orderId, pagination.cursor],
     queryFn: ({ signal }) =>
