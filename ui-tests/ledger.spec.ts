@@ -1,12 +1,13 @@
 import { test, expect, login, record } from "./fixtures";
 import { audit, screenshot } from "./audit";
+import { settleOverlay } from "./overlay-fixtures";
 import type { AdminLedgerDetail, AdminLedgerPageEnvelope, PaymentMatchDetail } from "../web/src/api/generated/types.gen";
 
 const transactions = "/reconciliation";
 const transactionDetail = (id: string) => "/reconciliation/transactions/" + id;
 
 test("ledger pagination and keyboard links restore filters, page and scroll position", async ({ page, manifest }, info) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.setViewportSize({ width: 1440, height: 650 });
   await login(page, manifest);
   await page.goto(manifest.origin + "/admin" + transactions + "?direction=CREDIT");
   const rows = page.locator("[data-business-row]");
@@ -29,9 +30,12 @@ test("ledger pagination and keyboard links restore filters, page and scroll posi
   const detailHref = await recordLink.getAttribute("href");
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(manifest.origin + detailHref);
-  await expect(page.locator("#ledger-sources-heading")).toContainText("查账记录");
-  await page.locator("#main-content").getByRole("link", { name: /返回.*(?:流水|对账)|^对账$/ }).first().click();
+  const overlay = await settleOverlay(page);
+  await expect(overlay.getByRole("heading", { level: 1 })).toHaveText("流水与对账详情");
+  await overlay.locator('[data-slot="dialog-close"]').click();
   await expect(page).toHaveURL(listUrl);
+  await page.clock.runFor(250);
+  await expect(page.locator("[data-overlay-content]")).toHaveCount(0);
   await expect(rows.first().locator("a[data-row-link]")).toHaveAttribute("href", identity!);
   await expect.poll(() => page.evaluate(expected => Math.abs(scrollY - expected) < 5, scroll)).toBe(true);
   const order = rows.getByRole("link", { name: /^查看订单：/ }).first();
@@ -40,8 +44,10 @@ test("ledger pagination and keyboard links restore filters, page and scroll posi
   await order.focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(manifest.origin + orderHref);
-  await page.locator("#main-content").getByRole("link", { name: /返回.*(?:流水|对账)|^对账$/ }).first().click();
+  await (await settleOverlay(page)).locator('[data-slot="dialog-close"]').click();
   await expect(page).toHaveURL(listUrl);
+  await page.clock.runFor(250);
+  await expect(page.locator("[data-overlay-content]")).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "列表分页" })).toContainText("第 2 页");
   await record(page, info);
 });
@@ -50,6 +56,7 @@ test("ledger controls use transaction dates, exact amounts and reset pagination"
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, manifest);
   await page.goto(manifest.origin + "/admin" + transactions);
+  await page.locator("[data-list-advanced-trigger]").click();
   const date = page.getByRole("combobox", { name: "交易日期范围" });
   await expect(date).toContainText("全部");
   await date.click();
@@ -130,7 +137,11 @@ test("unified transactions render both themes and width modes at 320, 390, 1440 
     for (const path of [transactions, ...versions.map(entry => transactionDetail(entry.ledger_entry_id))]) {
       await page.goto(manifest.origin + "/admin" + path);
       if (path === transactions) await expect(page.locator("[data-business-row]")).toHaveCount(20);
-      else await expect(page.locator("#ledger-sources-heading")).toContainText("查账记录");
+      else {
+        const overlay = await settleOverlay(page);
+        await overlay.getByRole("tab", { name: /^采集记录/ }).click();
+        await expect(overlay.locator("#ledger-sources-heading")).toContainText("查账记录");
+      }
       await record(page, info, { width, theme, mode, source: "local-synthetic-unified-transactions" });
       await screenshot(page, info, `transactions-${width}-${theme}-${mode}-${path.split("/").at(-1)}`);
       if (width === 320) await audit(page, info, `ledger-${theme}-${path.split("/").at(-1)}`);
@@ -153,12 +164,15 @@ test("ledger tells the current order apart from reversed history without repeati
   await page.goto(manifest.origin + "/admin" + transactionDetail(entry.ledger_entry_id));
   const summary = page.locator("[data-ledger-summary]");
   const currentCard = page.locator('[data-ledger-match="' + current!.payment_match_id + '"]');
-  await expect(page.locator("#main-content").getByRole("heading", { name: "支付宝交易", exact: true })).toBeVisible();
-  await expect(page.locator("#ledger-matches-heading")).toBeVisible();
+  const overlay = await settleOverlay(page);
+  await expect(overlay.getByRole("heading", { name: "支付宝交易", exact: true })).toBeVisible();
   await expect(summary.getByText("已分配", { exact: true })).toHaveCount(0);
   await expect(summary.locator("dt").filter({ hasText: /商户订单号（业务网站）|内部流水编号/ })).toHaveCount(0);
+  await overlay.getByRole("tab", { name: "收款关联", exact: true }).click();
+  await expect(page.locator("#ledger-matches-heading")).toBeVisible();
   await expect(currentCard.getByText("已关联", { exact: true })).toBeVisible();
   await expect(currentCard.locator("dt").filter({ hasText: /^撤销时间$/ })).toHaveCount(0);
+  await overlay.getByRole("tab", { name: /^采集记录/ }).click();
   await expect(page.locator("[data-ledger-source]").first().locator("dt").filter({ hasText: /^(内部流水编号（PerPay）|保存时间)$/ })).toHaveCount(2);
   await expect(page.locator("#ledger-conflicts-heading")).toHaveCount(0);
   await screenshot(page, info, "ledger-current-order-reading");
@@ -171,6 +185,7 @@ test("ledger tells the current order apart from reversed history without repeati
   const reversed = (await reversedResponse.json() as { data: AdminLedgerDetail }).data;
   expect(reversed.matches.some(match => match.payment_match_id === oldMatch.payment_match_id && match.status === "REVERSED")).toBe(true);
   await page.goto(manifest.origin + "/admin" + transactionDetail(reversed.ledger_entry_id));
+  await (await settleOverlay(page)).getByRole("tab", { name: "收款关联", exact: true }).click();
   if (reversed.active_match_count === 0) {
     await expect(page.locator("[data-ledger-unmatched]")).toContainText("当前没有对应的收款订单");
     await expect(page.locator("[data-ledger-unmatched]")).toContainText("可在对应查账记录中人工关联。");
@@ -182,7 +197,8 @@ test("ledger tells the current order apart from reversed history without repeati
     const card = page.locator('[data-ledger-match="' + match.payment_match_id + '"]');
     await expect(card.locator("dt").filter({ hasText: /^撤销时间$/ })).toBeVisible();
     await expect(card.getByText("已撤销", { exact: true })).toBeVisible();
-    await expect(card.getByRole("link", { name: match.product_name, exact: true })).toHaveAttribute("href", "/admin/orders/" + match.order_id);
+    const href = await card.getByRole("link", { name: match.product_name, exact: true }).getAttribute("href");
+    expect(new URL(href!, manifest.origin).searchParams.get("overlay")).toBe("/orders/" + match.order_id);
   }
   await record(page, info, { feature: "ledger-current-versus-history", evidence: "real-isolated-synthetic-current-and-reversed-records", activeMatchCount: reversed.active_match_count, historicalCount: reversedHistory.length });
   await screenshot(page, info, "ledger-reversed-order-reading");
@@ -214,15 +230,19 @@ test("closed ledger conflicts remain history while only open conflicts require a
     entry.conflicts[0]!.status = status;
     entry.conflicts[0]!.resolved_at = status === "OPEN" ? null : new Date(manifest.epoch + 60_000).toISOString();
     await page.goto(manifest.origin + "/admin" + path);
+    const overlay = await settleOverlay(page);
+    await overlay.getByRole("tab", { name: /^冲突/ }).click();
     const conflict = page.locator("[data-ledger-conflict]");
     await expect(page.locator("#ledger-conflicts-heading")).toHaveText("账本冲突记录（1）");
     await expect(conflict.getByText(visibleStatus, { exact: true })).toBeVisible();
-    await expect(conflict.getByRole("link", { name: "查看冲突记录", exact: true })).toHaveAttribute("href", "/admin/reconciliation/conflicts/" + entry.conflicts[0]!.conflict_id);
+    const href = await conflict.getByRole("link", { name: "查看冲突记录", exact: true }).getAttribute("href");
+    expect(new URL(href!, manifest.origin).searchParams.get("overlay")).toBe("/reconciliation/conflicts/" + entry.conflicts[0]!.conflict_id);
     if (status === "OPEN") await expect(page.locator("[data-ledger-warning]")).toContainText("有 1 条账本冲突待处理");
     else {
       await expect(page.locator("[data-ledger-warning]")).toHaveCount(0);
-      await expect(page.locator("#main-content").getByText("待处理", { exact: true })).toHaveCount(0);
+      await expect(overlay.getByText("待处理", { exact: true })).toHaveCount(0);
     }
+    await overlay.getByRole("tab", { name: "收款关联", exact: true }).click();
     await expect(page.locator("[data-ledger-match]").getByText("已关联", { exact: true })).toBeVisible();
     await record(page, info, { feature: "ledger-conflict-reading-status", evidence: "synthetic-read-response-only", status, activeMatchCount: entry.active_match_count });
     await screenshot(page, info, "ledger-conflict-status-" + status.toLowerCase());

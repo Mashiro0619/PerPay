@@ -1,11 +1,10 @@
 import { test, expect, login, record } from "./fixtures";
+import { waitForAdminRoute } from "./admin-route-readiness";
 test("isolated admin routes expose actual records and preserve access boundaries", async ({ page, manifest }, info) => {
   await login(page, manifest);
   for (const route of ["/orders", "/notifications", ...manifest.routes.filter(path => path.startsWith("/reconciliation/"))]) {
     await page.goto(manifest.origin + "/admin" + route);
-    await expect(page.locator("#main-content")).toBeVisible();
-    await expect(page.locator("#main-content")).not.toContainText("未找到这条对账记录");
-    await expect(page.locator("#main-content")).not.toContainText("账务冲突不存在");
+    await waitForAdminRoute(page, route);
     await record(page, info);
   }
   const denied = await page.request.post(manifest.origin + "/api/v1/orders", { data: {} });

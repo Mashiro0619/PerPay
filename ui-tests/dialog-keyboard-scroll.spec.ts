@@ -1,5 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { test, expect, login, record } from "./fixtures";
+import { openRecord } from "./overlay-fixtures";
 
 async function pressScrollKey(page: Page, scroll: Locator, key: "PageDown" | "ArrowDown" | "Home") {
   const cleanup = await scroll.evaluateHandle(element => {
@@ -23,7 +24,7 @@ async function pressScrollKey(page: Page, scroll: Locator, key: "PageDown" | "Ar
 }
 
 async function readWithKeyboard(page: Page, dialog: Locator) {
-  const scroll = dialog.locator("[data-admin-dialog-scroll]");
+  const scroll = dialog.locator("[data-admin-dialog-scroll], [data-overlay-step-scroll]");
   await expect(scroll).toHaveAttribute("data-scrollable", "true");
   await expect(scroll).toBeFocused();
   await expect(scroll).toHaveAttribute("tabindex", "0");
@@ -33,6 +34,7 @@ async function readWithKeyboard(page: Page, dialog: Locator) {
     scrollHeight: element.scrollHeight,
     outline: getComputedStyle(element).outline,
   }));
+  expect(geometry.height, "the reading area remains large enough to read its explanation").toBeGreaterThanOrEqual(64);
   expect(geometry.scrollHeight).toBeGreaterThan(geometry.height + 1);
   await expect(scroll).toHaveCSS("outline-style", "solid");
   await expect(scroll).toHaveCSS("outline-width", "2px");
@@ -85,17 +87,20 @@ for (const size of [
           await route.fulfill({ status: 403, json: { error: { code: "keyboard_test_read_only", message: "只验证键盘阅读与取消" } } });
         });
         await login(page, manifest);
-        await page.goto(manifest.origin + "/admin/settings/security");
+        const editor = await openRecord(page, manifest, "/settings/security/access");
         await page.evaluate(() => document.documentElement.style.fontSize = "200%");
-        const rules = page.getByRole("textbox", { name: "允许的 IP / 网段", exact: true });
+        const rules = editor.getByRole("textbox", { name: "允许的 IP / 网段", exact: true });
         const initialRules = await rules.inputValue();
-        await rules.fill(Array.from({ length: 30 }, (_, index) => `192.0.2.${index + 1}`).join("\n"));
-        const save = page.getByRole("button", { name: "保存白名单", exact: true });
+        const draftRules = Array.from({ length: 30 }, (_, index) => `192.0.2.${index + 1}`).join("\n");
+        await rules.fill(draftRules);
+        const save = editor.getByRole("button", { name: "保存白名单", exact: true });
         await save.press("Enter");
-        const confirmation = page.getByRole("dialog", { name: "确认保存访问规则？", exact: true });
+        const confirmation = page.locator("[data-overlay-step]:visible");
         await expect(confirmation).toBeVisible();
+        await expect(confirmation).toHaveAccessibleName("确认保存访问规则？");
+        await expect(page.getByRole("dialog")).toHaveCount(1);
         if (!size.isMobile) {
-          const scroll = confirmation.locator("[data-admin-dialog-scroll]");
+          const scroll = confirmation.locator("[data-overlay-step-scroll]");
           await expect(scroll).toBeFocused();
           await expect(scroll).toHaveAttribute("tabindex", "0");
           await page.setViewportSize({ width: size.width, height: 900 });
@@ -110,7 +115,9 @@ for (const size of [
         const confirmationKeys = await readWithKeyboard(page, confirmation);
         await page.keyboard.press("Escape");
         await expect(confirmation).toHaveCount(0);
+        await expect(editor).toBeVisible();
         await expect(save).toBeFocused();
+        await expect(rules).toHaveValue(draftRules);
         await rules.fill(initialRules);
 
         await page.goto(manifest.origin + "/admin/work-items");

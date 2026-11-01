@@ -69,8 +69,7 @@ test.describe("mobile consecutive record rows", () => {
       const order = orders.first();
       await completeText(order.getByRole("group", { name: /^应付金额 / }));
       await completeText(order.getByRole("group", { name: /^实收金额 / }));
-      await completeText(order.getByText("状态", { exact: true }));
-      await completeText(order.getByText("创建时间", { exact: true }));
+      await completeText(order.locator('[data-slot="badge"]').first());
       await completeText(order.locator("time").first());
       await record(page, info, { feature: "mobile-consecutive-orders", width, textPercent, rows: orderGeometry });
       if (textPercent === 100) await capture(page, info, `mobile-orders-${width}`);
@@ -78,30 +77,19 @@ test.describe("mobile consecutive record rows", () => {
       await page.getByRole("button", { name: "更多订单操作", exact: true }).tap();
       await page.getByRole("menuitem", { name: "列表显示", exact: true }).tap();
       const display = page.getByRole("dialog", { name: "列表显示", exact: true });
-      await display.getByRole("checkbox", { name: "PerPay 确认时间", exact: true }).check();
+      await expect(display.getByRole("checkbox")).toHaveCount(0);
+      await expect(display.getByRole("group", { name: "列表密度", exact: true })).toBeVisible();
+      await expect(display).toContainText("完整信息可打开详情查看");
       await display.getByRole("button", { name: "完成", exact: true }).tap();
       await expect(display).toHaveCount(0);
-      const listUrl = page.url();
-      const expand = order.getByRole("button", { name: "展开信息", exact: true });
-      await expect(expand).toHaveAttribute("data-slot", "collapsible-trigger");
-      if (width === 320 && textPercent === 100) {
-        const path = info.outputPath("list-details-collapsed.png");
-        await order.screenshot({ path, animations: "disabled" });
-        await info.attach("list-details-collapsed", { path, contentType: "image/png" });
-      }
-      await expand.tap();
-      await expect(page).toHaveURL(listUrl);
-      await expect(order.getByRole("button", { name: "收起信息", exact: true })).toHaveAttribute("aria-expanded", "true");
-      await completeText(order.getByText("PerPay 确认时间", { exact: true }));
-      if (width === 320 && textPercent === 100) {
-        const path = info.outputPath("list-details-expanded.png");
-        await order.screenshot({ path, animations: "disabled" });
-        await info.attach("list-details-expanded", { path, contentType: "image/png" });
-      }
-      await order.getByRole("button", { name: "收起信息", exact: true }).tap();
+      await expect(order.getByRole("button", { name: "展开信息", exact: true })).toHaveCount(0);
       const orderTarget = await order.locator("a[data-row-link]").getAttribute("href");
       await order.click({ position: { x: 3, y: 3 } });
       await expect(page).toHaveURL(manifest.origin + orderTarget);
+      const overlay = page.locator("[data-overlay-content]");
+      await expect(overlay).toBeVisible();
+      await expect(overlay.getByText("商户订单号", { exact: true })).toBeVisible();
+      expect((await overlay.boundingBox())!.width).toBeCloseTo(width, 0);
 
       await show(page, manifest.origin, "/work-items", textPercent);
       const reminders = page.getByRole("list", { name: "待处理提醒列表", exact: true }).getByRole("listitem");
@@ -109,7 +97,6 @@ test.describe("mobile consecutive record rows", () => {
       const reminder = reminders.first();
       await expect(reminder.getByRole("link").first()).toHaveAccessibleName(/\S/);
       await completeText(reminder.locator('[data-slot="badge"]').first());
-      await completeText(reminder.getByText("提醒时间", { exact: true }));
       await completeText(reminder.locator("time").first());
       await record(page, info, { feature: "mobile-consecutive-reminders", width, textPercent, rows: reminderGeometry });
       if (textPercent === 100) await capture(page, info, `mobile-reminders-${width}`);
@@ -127,29 +114,36 @@ test.describe("mobile consecutive record rows", () => {
       await show(page, manifest.origin, "/reconciliation" + ledgerQuery, textPercent);
       const ledgerRows = page.getByRole("list", { name: "支付宝流水", exact: true }).getByRole("listitem");
       const ledgerGeometry = await continuousRows(ledgerRows);
-      const ledger = ledgerRows.filter({ has: page.locator('a[data-row-link][href$="/' + entry.ledger_entry_id + '"]') });
-      await completeText(ledger.getByRole("link", { name: entry.external_event_id, exact: true }));
-      await completeText(ledger.getByText("交易时间", { exact: true }));
+      const ledger = ledgerRows.filter({ has: page.getByRole("link", { name: entry.external_event_id, exact: true }) });
+      const ledgerPrimary = ledger.getByRole("link", { name: entry.external_event_id, exact: true });
+      await expect(ledgerPrimary).toHaveAttribute("title", entry.external_event_id);
       await completeText(ledger.locator("time").first());
-      await expect(ledger).toContainText(entry.active_match!.product_name);
-      const related = ledger.getByRole("link", { name: "查看订单：" + entry.active_match!.merchant_order_no, exact: true });
-      await completeText(related);
+      await completeText(ledger.locator(".list-money"));
+      await expect(ledger.getByRole("link", { name: /^查看订单：/ })).toHaveCount(0);
+      await expect(ledger.getByRole("button", { name: "展开信息", exact: true })).toHaveCount(0);
       await record(page, info, { feature: "mobile-consecutive-ledger", width, textPercent, rows: ledgerGeometry, linkedOrder: entry.active_match!.order_id });
       if (textPercent === 100) await capture(page, info, `mobile-ledger-${width}`);
+      await ledgerPrimary.tap();
+      await expect(overlay.getByRole("heading", { name: "支付宝交易", exact: true })).toBeVisible();
+      await overlay.getByRole("tab", { name: "收款关联", exact: true }).tap();
+      const related = overlay.locator('a[href*="' + entry.active_match!.order_id + '"]').first();
+      await expect(related).toBeVisible();
+      const relatedTarget = await related.getAttribute("href");
       await related.tap();
-      await expect(page).toHaveURL(manifest.origin + "/admin/orders/" + entry.active_match!.order_id);
+      await expect(page).toHaveURL(manifest.origin + relatedTarget);
+      await expect(overlay.getByRole("heading", { level: 1 })).toHaveText(entry.active_match!.product_name);
 
       await show(page, manifest.origin, "/reconciliation?tab=exceptions", textPercent);
       const exception = page.getByRole("list", { name: "账务异常", exact: true }).getByRole("listitem").first();
       await expect(exception.getByRole("link").first()).toHaveAccessibleName(/\S/);
-      await completeText(exception.getByText("PerPay 处理状态", { exact: true }));
+      await completeText(exception.locator('[data-slot="badge"]').first());
       await completeText(exception.locator("time").first());
       await record(page, info, { feature: "mobile-reconciliation-exception", width, textPercent });
     });
   }
 
   for (const width of [320, 360]) {
-    test(`${width}px at 200% text: the complete maximum-length merchant reference stays within the record`, async ({ page, manifest }, info) => {
+    test(`${width}px at 200% text: the complete maximum-length merchant reference is readable in the record overlay`, async ({ page, manifest }, info) => {
       await page.setViewportSize({ width, height: 800 });
       await login(page, manifest);
       const detail = await page.request.get(manifest.origin + "/api/admin/v1" + manifest.details.orderLong!);
@@ -162,13 +156,16 @@ test.describe("mobile consecutive record rows", () => {
         const payload = await response.json();
         await route.fulfill({ response, json: { ...payload, data: payload.data.map((item: { order_id: string }) => item.order_id === original.order_id ? { ...item, merchant_order_no: merchantOrderNo } : item) } });
       });
+      await page.route(manifest.origin + "/api/admin/v1/orders/" + original.order_id, route => route.fulfill({ json: { data: { ...original, merchant_order_no: merchantOrderNo } } }));
       await show(page, manifest.origin, "/orders?q=" + encodeURIComponent(original.product_name.slice(0, 24)), 200);
-      const order = page.getByRole("list", { name: "订单列表", exact: true }).getByRole("listitem").filter({ has: page.locator('a[data-row-link][href$="/' + original.order_id + '"]') });
-      const reference = order.getByText(merchantOrderNo, { exact: true });
+      const order = page.locator('[data-business-row="' + original.order_id + '"]');
+      await expect(order.getByText(merchantOrderNo, { exact: true })).toHaveCount(0);
+      await order.locator("a[data-row-link]").tap();
+      const reference = page.locator("[data-overlay-content]").getByText(merchantOrderNo, { exact: true });
       await expect(reference).toBeVisible();
       const geometry = await completeText(reference);
       expect(new Set(geometry.lines.map(line => Math.round(line.top))).size, "the maximum reference wraps instead of clipping").toBeGreaterThan(1);
-      await record(page, info, { feature: "mobile-list-complete-reference", width, textPercent: 200, evidence: "genuine-order-with-display-only-64-character-reference", geometry });
+      await record(page, info, { feature: "mobile-list-complete-reference-in-overlay", width, textPercent: 200, evidence: "genuine-order-with-synthetic-64-character-reference-in-list-and-detail", geometry });
     });
   }
 });

@@ -2,15 +2,20 @@ import { test, expect, login, record } from "./fixtures";
 import { audit } from "./audit";
 import AxeBuilder from "@axe-core/playwright";
 import { waitForControlAnimations } from "./touch-targets";
+import { openRecord } from "./overlay-fixtures";
 
 test("sidebar and record menu names include their visible labels", async ({ page, manifest }, info) => {
   const order = manifest.routes.find(route => /^\/orders\/[^/]+$/.test(route))!;
   for (const mode of ["expanded", "collapsed", "mobile"] as const) {
     await page.setViewportSize(mode === "mobile" ? { width: 390, height: 844 } : { width: 1440, height: 900 });
     await login(page, manifest);
-    await page.goto(manifest.origin + "/admin" + order);
-    await expect(page.locator('#main-content [data-slot="skeleton"]')).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /订单操作$/ })).toBeVisible();
+    const dialog = await openRecord(page, manifest, order);
+    await expect(dialog.getByRole("button", { name: /订单操作$/ })).toBeVisible();
+    const recordNames = await new AxeBuilder({ page }).withRules(["label-content-name-mismatch"]).analyze();
+    await info.attach(`${mode}-record-label-content-name`, { body: JSON.stringify(recordNames), contentType: "application/json" });
+    expect.soft(recordNames.violations, mode + " record").toEqual([]);
+    await dialog.getByRole("button", { name: "关闭对话框", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
     if (mode === "mobile" || mode === "collapsed") {
       await page.getByRole("button", { name: "切换导航", exact: true }).click();
     }
@@ -44,7 +49,8 @@ test("chart, avatar, amount list and dangerous action semantics stay accessible 
     const order = manifest.routes.find(route => /^\/orders\/[^/]+$/.test(route))!;
     const settings = manifest.routes.find(route => /^\/sites\/[^/]+\/settings$/.test(route))!;
     for (const [index, route] of ["/", order, settings].entries()) {
-      await page.goto(manifest.origin + "/admin" + route);
+      if (route === order) await openRecord(page, manifest, route);
+      else await page.goto(manifest.origin + "/admin" + route);
       await expect(page.locator("#main-content")).toBeVisible();
       await expect(page.locator('#main-content [data-slot="skeleton"]')).toHaveCount(0);
       if (route === "/") await expect(page.locator(".recharts-surface")).toBeVisible();
@@ -119,7 +125,12 @@ test("initial analytics loading keeps selection decorations on their controls an
         const loaded = samples.filter(sample => sample.ready);
         expect(loaded.length).toBeGreaterThan(2);
         expect(loaded.every(sample => sample.peak === expectedPeak), "financial text remains the exact final value").toBe(true);
-        expect(loaded.every(sample => sample.marks.length >= 4)).toBe(true);
+        // The period is a Select and the view tab paints its own background.
+        // The metric and chart-type indicators must stay on both selected controls.
+        const selectedControls = await page.locator('.trend-card [data-selection-motion] [aria-pressed="true"]')
+          .evaluateAll(elements => elements.map(element => element.getAttribute("aria-label") ?? element.textContent).sort());
+        expect(selectedControls).toEqual(["确认金额", "面积图"]);
+        for (const sample of loaded) expect(sample.marks.map(mark => mark.label).sort()).toEqual(selectedControls);
         expect(loaded.flatMap(sample => sample.marks).filter(mark => !mark.withinControl || mark.overlapsAmount), "data completion never projects decoration outside its control or onto an amount").toEqual([]);
       } finally {
         await monitor.evaluate(state => { state.active = false; });
@@ -139,7 +150,8 @@ test("sidebar footer stays fully visible on desktop and reachable on mobile", as
     if (width < 1024) await page.getByRole("button", { name: "切换导航", exact: true }).click();
     const footer = page.locator('[data-slot="sidebar-footer"]:visible');
     const targets = footer.locator("a, button");
-    await expect(targets).toHaveCount(5);
+    await expect(targets).toHaveCount(6);
+    await expect(footer.getByRole("link", { name: "审计日志", exact: true })).toBeVisible();
     const geometry = [];
     for (const target of await targets.all()) {
       if (width < 1024) await target.scrollIntoViewIfNeeded();

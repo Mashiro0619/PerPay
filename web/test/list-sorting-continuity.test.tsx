@@ -117,7 +117,7 @@ afterEach(() => { onlineManager.setOnline(true); });
 
 describe("business list sorting continuity", () => {
   it.each(lists.flatMap((list) => (["asc", "desc"] as const).map((direction) => ({ ...list, direction }))))(
-    "keeps $name rows and its column-menu portal mounted while changing $direction sorting",
+    "keeps $name rows and its display controls mounted while changing $direction sorting",
     async ({ name, path, endpoint, field, heading, data, direction }) => {
       const pending = deferredResponse();
       const initial = direction === "asc" ? data : [...data].reverse();
@@ -132,8 +132,8 @@ describe("business list sorting continuity", () => {
       const table = await screen.findByRole("table");
       const rows = bodyRows(table);
       expect(rows).toHaveLength(2);
-      const columns = screen.getByRole("button", { name: "显示列" });
-      const portalHost = columns.closest("[data-list-columns-slot]");
+      const columns = screen.getByRole("button", { name: "列表显示" });
+      const portalHost = columns.parentElement;
       expect(portalHost).not.toBeNull();
       const sort = within(table).getByRole("button", { name: heading });
       const commits: boolean[] = [];
@@ -146,7 +146,7 @@ describe("business list sorting continuity", () => {
         expect(screen.getByRole("table")).toBe(table);
         expect(table).toBeVisible();
         bodyRows(table).forEach((row, index) => expect(row).toBe(rows[index]));
-        expect(screen.getByRole("button", { name: "显示列" })).toBe(columns);
+        expect(screen.getByRole("button", { name: "列表显示" })).toBe(columns);
         expect(columns.parentElement).toBe(portalHost);
         expect(table.closest('[aria-busy="true"]')).not.toBeNull();
         if (name === "orders") expect(sort).toHaveFocus();
@@ -155,7 +155,7 @@ describe("business list sorting continuity", () => {
         await waitFor(() => expect(bodyRows(table)[0]).toBe(rows[1]));
         expect(bodyRows(table)[1]).toBe(rows[0]);
         expect(screen.getByRole("table")).toBe(table);
-        expect(screen.getByRole("button", { name: "显示列" })).toBe(columns);
+        expect(screen.getByRole("button", { name: "列表显示" })).toBe(columns);
         expect(table.closest('[aria-busy="true"]')).toBeNull();
         if (name === "orders") expect(sort).toHaveFocus();
         expect(commits.length).toBeGreaterThan(0);

@@ -53,6 +53,35 @@ test("audit reads actual saved events, opens a detail, and exports the matching 
   await screenshot(page, info, "audit-real-list");
 });
 
+test("narrow audit views keep direct selections and keyboard focus fully visible at 200% text", async ({ page, manifest }, info) => {
+  await login(page, manifest);
+  for (const width of [320, 390]) for (const zoom of [100, 200]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(manifest.origin + "/admin/audit?view=all");
+    await page.evaluate(value => { document.documentElement.style.fontSize = value + "%"; }, zoom);
+    const tabs = page.getByRole("tablist", { name: "审计视图" });
+    const fits = async (label: string) => {
+      await expect.poll(() => tabs.getByRole("tab", { name: label, exact: true }).evaluate(tab => {
+        const box = tab.getBoundingClientRect(), clip = tab.closest(".audit-view-scroll")!.getBoundingClientRect();
+        return box.left >= clip.left - 1 && box.right <= clip.right + 1;
+      })).toBe(true);
+    };
+    await expect(tabs.getByRole("tab", { name: "全部记录", exact: true })).toHaveAttribute("aria-selected", "true");
+    await fits("全部记录");
+    const scrollY = await page.evaluate(() => window.scrollY);
+    await tabs.getByRole("tab", { name: "全部记录", exact: true }).focus();
+    await page.keyboard.press("Home");
+    const labels = ["操作审计", "接口访问", "后台任务", "维护活动", "全部记录"];
+    for (const [index, label] of labels.entries()) {
+      if (index) await page.keyboard.press("ArrowRight");
+      await expect(tabs.getByRole("tab", { name: label, exact: true })).toBeFocused();
+      await fits(label);
+    }
+    expect(await page.evaluate(() => window.scrollY)).toBe(scrollY);
+    await record(page, info, { auditViews: "direct link and keyboard", width, textPercent: zoom });
+  }
+});
+
 test("audit summaries, source details and configuration changes stay readable across viewport sizes", async ({ page, manifest }, info) => {
   const at = (offset: number) => new Date(manifest.epoch + offset).toISOString();
   const core = { ...auditEvent, occurred_at: at(-5000), first_occurred_at: at(-5000), last_occurred_at: at(-5000), subject_id: "site-settings-" + "long-identifier-".repeat(10) };

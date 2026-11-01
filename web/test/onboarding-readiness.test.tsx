@@ -444,14 +444,18 @@ describe("onboarding payment readiness", () => {
   });
   it("invalidates old success immediately when offline", async () => {
     const online = vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
-    mount();
+    const { fetchMock } = mount();
     await screen.findByRole("link", { name: "进入控制台" });
     online.mockReturnValue(false);
     fireEvent(window, new Event("offline"));
     expect(
       screen.queryByRole("link", { name: "进入控制台" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "刷新" })).toBeDisabled();
+    const refresh = screen.getByRole("button", { name: "刷新" });
+    expect(refresh).toHaveAttribute("aria-disabled", "true");
+    const requests = fetchMock.mock.calls.length;
+    fireEvent.click(refresh);
+    expect(fetchMock).toHaveBeenCalledTimes(requests);
     online.mockReturnValue(true);
     fireEvent(window, new Event("online"));
     expect(

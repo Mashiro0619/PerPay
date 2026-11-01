@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { test, expect, login, record, type Manifest } from "./fixtures";
 import { screenshot } from "./audit";
+import { expectOverlayTarget, settleOverlay } from "./overlay-fixtures";
 import type {
   AdminLedgerDetail,
   AdminOrderDetail,
@@ -87,7 +88,8 @@ test("ledger credentials keep genuine Alipay, website and PerPay identities dist
     for (const scenario of cases) {
       const entry = scenario.entry;
       await page.goto(manifest.origin + "/admin" + scenario.path);
-      await expect(page).toHaveURL(manifest.origin + "/admin" + scenario.path.replace("/ledger/", "/reconciliation/transactions/"));
+      const overlay = await settleOverlay(page);
+      expect(new URL(page.url()).searchParams.get("overlay")).toMatch(/\/(?:ledger|reconciliation\/transactions)\//);
       const summary = page.locator("[data-ledger-summary]");
       await expect(summary).toBeVisible();
       await expect(summary.getByText("PerPay 处理状态", { exact: true })).toHaveCount(0);
@@ -95,8 +97,8 @@ test("ledger credentials keep genuine Alipay, website and PerPay identities dist
       await copyField(page, credentials, "支付宝流水号", entry.external_event_id);
       await optionalCopyField(page, credentials, "支付宝订单号", entry.provider_order_no, "复制支付宝订单号");
       await optionalCopyField(page, credentials, "支付宝商户单号", entry.merchant_order_no, "复制支付宝商户单号");
+      await overlay.getByRole("tab", { name: /^采集记录/ }).click();
       await expect(page.locator("[data-ledger-source]")).toHaveCount(entry.sources.length);
-      await expect(page.locator("[data-ledger-match]")).toHaveCount(entry.matches.length);
       for (const source of entry.sources) {
         const card = page.locator('[data-ledger-source="' + source.ledger_entry_id + '"]');
         await expect(card.getByText("PerPay 记录状态", { exact: true })).toBeVisible();
@@ -112,35 +114,38 @@ test("ledger credentials keep genuine Alipay, website and PerPay identities dist
         const actions = card.locator('[data-slot="item-actions"], [data-slot="card-action"]').first();
         await expect(actions.getByRole("button", { name: "人工关联收款", exact: true })).toHaveCount(eligible ? 1 : 0);
       }
+      await overlay.getByRole("tab", { name: "收款关联", exact: true }).click();
+      await expect(page.locator("[data-ledger-match]")).toHaveCount(entry.matches.length);
       for (const match of entry.matches) {
         const card = page.locator('[data-ledger-match="' + match.payment_match_id + '"]');
         await expect(card.locator("[data-match-evidence]").getByText(match.evidence_type === "MANUAL" ? "管理员人工关联" : "PerPay 按金额和付款时间推断", { exact: true })).toBeVisible();
         await copyField(page, card, "商户订单号（业务网站）", match.merchant_order_no, "复制商户订单号");
-        await expect(card.locator('[data-detail-order-summary] a[href*="/orders/"]')).toHaveAttribute("href", "/admin/orders/" + match.order_id);
+        const orderHref = await card.locator('[data-detail-order-summary]').getByRole("link", { name: match.product_name, exact: true }).getAttribute("href");
+        expect(new URL(orderHref!, manifest.origin).searchParams.get("overlay")).toBe("/orders/" + match.order_id);
         await copyField(page, card, "使用的查账记录", match.ledger_entry_id, "复制使用的查账记录编号");
         const sourceLink = card.getByRole("link", { name: "核对这份记录", exact: true });
-        await expect(sourceLink).toHaveAttribute("href", /#source-/);
-        expect(new URL((await sourceLink.getAttribute("href"))!, manifest.origin).hash).toBe("#source-" + match.ledger_entry_id);
+        const sourceTarget = new URL((await sourceLink.getAttribute("href"))!, manifest.origin).searchParams.get("overlay")!;
+        expect(new URL(sourceTarget, manifest.origin).hash).toBe("#source-" + match.ledger_entry_id);
         await sourceLink.click();
         await expect(page.locator('[data-ledger-source="' + match.ledger_entry_id + '"]')).toBeFocused();
+        await overlay.getByRole("tab", { name: "收款关联", exact: true }).click();
         await expect(card.getByText("支付宝交易金额", { exact: true })).toHaveCount(0);
-        const trigger = card.getByRole("button", { name: "更多操作，收款关联记录操作", exact: true });
+        const technical = card.locator("[data-technical-information]");
+        const trigger = technical.getByRole("button", { name: "技术信息", exact: true });
         await trigger.click();
-        await page.getByRole("menuitem", { name: "技术详情", exact: true }).click();
-        const technical = page.getByRole("dialog", { name: "技术详情", exact: true });
         await technical.getByRole("button", { name: "复制流水编号", exact: true }).click();
         await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(match.ledger_entry_id);
-        await technical.getByRole("button", { name: "关闭", exact: true }).click();
-        await expect(technical).toHaveCount(0);
+        await trigger.click();
+        await expect(trigger).toHaveAttribute("aria-expanded", "false");
         await expect(trigger).toBeFocused();
       }
       await record(page, info, { feature: "copy-source-ledger", evidence: "isolated-local-domain-api", width, theme, scenario: scenario.name, sources: entry.sources.length, matches: entry.matches.length });
       if (scenario.name === "inferred") await screenshot(page, info, "copy-source-ledger-" + width + "-" + theme);
       if (entry.active_match) {
         const active = entry.active_match;
-        await page.locator('[data-ledger-match="' + active.payment_match_id + '"] [data-detail-order-summary] a[href*="/orders/"]').click();
-        await expect(page).toHaveURL(manifest.origin + "/admin/orders/" + active.order_id);
-        const websiteOrder = page.getByRole("region", { name: "业务网站传入的订单信息", exact: true });
+        await page.locator('[data-ledger-match="' + active.payment_match_id + '"] [data-detail-order-summary]').getByRole("link", { name: active.product_name, exact: true }).click();
+        await expectOverlayTarget(page, "/orders/" + active.order_id);
+        const websiteOrder = page.getByRole("region", { name: "订单信息", exact: true });
         await copyField(page, websiteOrder, "商户订单号", active.merchant_order_no);
       }
     }
@@ -177,9 +182,11 @@ test("overview and normal notifications label payable amounts and actual events 
     await page.goto(manifest.origin + "/admin/notifications");
     const row = page.locator('[data-business-row="' + item.delivery_id + '"]');
     await expect(row.locator("a[data-row-link]")).toHaveText(order.product_name);
-    await expect(row.getByText("通知类型：收款已确认", { exact: true })).toBeVisible();
-    await expect(row.getByText("应付 " + amount, { exact: true })).toBeVisible();
-    await expect(row).toContainText(order.merchant_order_no);
+    await row.locator("a[data-row-link]").click();
+    const notificationOverlay = await settleOverlay(page);
+    await expect(notificationOverlay.getByRole("group", { name: "通知信息", exact: true }).getByText("收款已确认", { exact: true })).toBeVisible();
+    await expect(notificationOverlay).toContainText(order.merchant_order_no);
+    await expect(notificationOverlay.getByText(amount, { exact: true }).first()).toBeVisible();
     await record(page, info, { feature: "copy-source-notification", evidence: "isolated-local-domain-api", width, theme, eventType: item.event.event_type, payableAmountCents: order.payable_amount_cents });
     await screenshot(page, info, "copy-source-notification-" + width + "-" + theme);
 
@@ -246,8 +253,8 @@ test("a genuine default order summary keeps a contract-length synthetic merchant
       await record(page, info, { feature: "copy-source-default-order-reference", evidence: "synthetic-order-get-reference-only-within-64-character-contract", width, theme, measured });
       await screenshot(page, info, "copy-source-default-order-reference-" + width + "-" + theme);
       await card.getByRole("link", { name: original.product_name, exact: true }).click();
-      await expect(page).toHaveURL(manifest.origin + "/admin/orders/" + original.order_id);
-      await copyField(page, page.getByRole("region", { name: "业务网站传入的订单信息", exact: true }), "商户订单号", merchantOrderNo);
+      await expectOverlayTarget(page, "/orders/" + original.order_id);
+      await copyField(page, page.getByRole("region", { name: "订单信息", exact: true }), "商户订单号", merchantOrderNo);
     }
   } finally { await page.unroute(manifest.origin + orderApi); }
   expect(writes).toEqual([]);

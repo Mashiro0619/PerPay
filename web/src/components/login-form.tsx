@@ -173,9 +173,9 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
   }
 
   return (
-    <main className="flex min-h-svh items-center justify-center p-6 md:p-10">
+    <main className="flex min-h-svh items-center justify-center p-4 md:p-6" data-admin-auth>
       <ThemeControl className="absolute right-4 top-4" />
-      <div className="flex w-full max-w-sm flex-col gap-6">
+      <div className="flex w-full max-w-sm flex-col gap-5">
         <Link
           to="/"
           className="flex items-center justify-center gap-2 font-medium"

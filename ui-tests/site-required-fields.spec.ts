@@ -18,8 +18,8 @@ test("website required fields show custom feedback, suppress native bubbles and 
       await page.setViewportSize({ width, height: 900 });
       for (const form of [
         { path: "/sites/new", label: "业务网站名称", button: "创建业务网站" },
-        { path: "/sites/default/settings/basic", label: "业务网站名称", button: "保存业务网站" },
-        { path: "/sites/default/settings/display", label: "收银台名称", button: "保存业务网站" },
+        { path: "/sites/default/edit?section=basic", label: "业务网站名称", button: "保存业务网站" },
+        { path: "/sites/default/edit?section=display", label: "收银台名称", button: "保存业务网站" },
         { path: "/sites/defaults", label: "收银台名称", button: "保存默认模板", tab: "收银台展示" },
       ]) {
         await page.goto(fixture.origin + "/admin" + form.path);
@@ -47,7 +47,7 @@ test("website required fields show custom feedback, suppress native bubbles and 
         await input.fill(original);
       }
 
-      await page.goto(fixture.origin + "/admin/sites/default/settings/orders");
+      await page.goto(fixture.origin + "/admin/sites/default/edit?section=orders");
       const ttl = page.getByLabel("收银台有效期（秒）", { exact: true });
       const offset = page.getByLabel("最大加价金额（分）", { exact: true });
       const originalTtl = await ttl.inputValue(), originalOffset = await offset.inputValue();
@@ -61,7 +61,7 @@ test("website required fields show custom feedback, suppress native bubbles and 
       await ttl.fill(originalTtl);
       await offset.fill(originalOffset);
 
-      await page.goto(fixture.origin + "/admin/sites/default/settings/integration");
+      await page.goto(fixture.origin + "/admin/sites/default/edit?section=integration");
       const advanced = page.getByRole("button", { name: "高级设置", exact: true });
       await advanced.click();
       const attempts = page.getByLabel("最多发送次数", { exact: true });

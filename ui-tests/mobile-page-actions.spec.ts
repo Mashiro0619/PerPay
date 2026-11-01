@@ -18,7 +18,7 @@ test.describe("mobile page action menus support real keyboard navigation", () =>
   test.use({ hasTouch: true, isMobile: true, reducedMotion: "reduce" });
 
   for (const [width, height, font] of [[320, 560, 200], [390, 844, 100]] as const) {
-    test(`${width}x${height}, ${font}% text: route actions and appearance share the menu keyboard model`, async ({ page, manifest }, info) => {
+    test(`${width}x${height}, ${font}% text: page menus and local detail actions support keyboard navigation`, async ({ page, manifest }, info) => {
       await page.setViewportSize({ width, height });
       await page.addInitScript(() => {
         if (localStorage.getItem("perpay:theme") === null) localStorage.setItem("perpay:theme", "light");
@@ -32,7 +32,7 @@ test.describe("mobile page action menus support real keyboard navigation", () =>
       await login(page, manifest);
 
       await page.goto(manifest.origin + "/admin/settings/display");
-      await expect(page.getByRole("textbox", { name: "支付系统名称", exact: true })).toBeVisible();
+      await expect(page.getByRole("link", { name: "编辑界面显示", exact: true })).toBeVisible();
       await setTextSize(page, font);
       const settings = await openWithKeyboard(page);
       const wizard = settings.menu.getByRole("menuitem", { name: "配置向导", exact: true });
@@ -75,7 +75,7 @@ test.describe("mobile page action menus support real keyboard navigation", () =>
       await expect(settings.menu).toHaveCount(0);
       await expect(settings.trigger).toBeFocused();
       await page.reload();
-      await expect(page.getByRole("textbox", { name: "支付系统名称", exact: true })).toBeVisible();
+      await expect(page.getByRole("link", { name: "编辑界面显示", exact: true })).toBeVisible();
       await setTextSize(page, font);
       await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
       expect(await page.evaluate(() => localStorage.getItem("perpay:theme"))).toBe("dark");
@@ -109,24 +109,22 @@ test.describe("mobile page action menus support real keyboard navigation", () =>
       const orderPath = manifest.details.orderPaid;
       expect(orderPath).toMatch(/^\/orders\/[^/]+$/);
       await page.goto(manifest.origin + "/admin" + orderPath);
-      await expect(page.locator("[data-detail-card-grid]")).toBeVisible();
-      await expect(page.locator('#main-content [data-slot="skeleton"]')).toHaveCount(0);
+      const order = page.locator('[data-overlay-content]');
+      await expect(order.getByRole("tablist", { name: "订单详情分类", exact: true })).toBeVisible();
+      await expect(order.locator('[data-slot="skeleton"]')).toHaveCount(0);
       await setTextSize(page, font);
-      const order = await openWithKeyboard(page);
-      const orderRefresh = order.menu.getByRole("menuitem", { name: "刷新", exact: true });
-      const orderAppearance = order.menu.getByRole("menuitem", { name: /^外观/ });
+      const orderUrl = page.url();
+      expect(new URL(orderUrl).searchParams.get("overlay")).toBe(orderPath);
+      const orderRefresh = order.locator('[data-page-header-actions]').getByRole("button", { name: "刷新", exact: true });
       await expect(orderRefresh).toBeEnabled();
-      await expect(orderRefresh).toBeFocused();
-      await page.keyboard.press("ArrowDown");
-      await expect(orderAppearance).toBeFocused();
-      await page.keyboard.press("ArrowUp");
+      await orderRefresh.focus();
       await expect(orderRefresh).toBeFocused();
       const refreshed = page.waitForResponse(response => response.request().method() === "GET" &&
         new URL(response.url()).pathname === "/api/admin/v1" + orderPath);
       await page.keyboard.press("Enter");
       await refreshed;
-      await expect(order.menu).toHaveCount(0);
-      await expect(order.trigger).toBeFocused();
+      await expect(orderRefresh).toBeFocused();
+      await expect(page).toHaveURL(orderUrl);
       expect(writes, "menu navigation, appearance and refreshing never perform business writes").toEqual([]);
       await record(page, info, { feature: "mobile-page-actions-keyboard", width, height, font, route: "order", writes });
     });

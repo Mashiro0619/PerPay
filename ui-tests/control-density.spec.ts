@@ -160,9 +160,9 @@ test.describe("desktop control density", () => {
     expect(sidebarHeight).toBeCloseTo(32, 1);
     await orders.click();
     await expect(page).toHaveURL(manifest.origin + "/admin/orders");
-    const filter = page.getByRole("button", { name: "显示列", exact: true });
+    const filter = page.getByRole("button", { name: "列表显示", exact: true });
     const filterHeight = (await filter.boundingBox())!.height;
-    expect(filterHeight).toBeCloseTo(28, 1);
+    expect(filterHeight).toBeCloseTo(32, 1);
     const appearance = page.getByRole("button", { name: /^外观，当前/ });
     const appearanceHeight = (await appearance.boundingBox())!.height;
     expect(appearanceHeight).toBeCloseTo(32, 1);

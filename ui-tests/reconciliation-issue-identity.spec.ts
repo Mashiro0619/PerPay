@@ -60,8 +60,8 @@ test("one order's different incoming payments keep distinct list identities and 
       await expect(rows.getByRole("link", { name: /^查看订单：/ })).toHaveCount(0);
       await expect(rows.getByRole("link", { name: /^查看流水：/ })).toHaveCount(0);
       expect(await page.evaluate(() => JSON.parse(localStorage.getItem("perpay.table-columns.v2.reconciliation-exceptions") ?? "{}").order)).toBe(false);
-      await page.getByRole("button", { name: "显示列", exact: true }).click();
-      const relatedColumn = page.getByRole("menuitemcheckbox", { name: "关联记录", exact: true });
+      await page.getByRole("button", { name: "列表显示", exact: true }).click();
+      const relatedColumn = page.getByRole("checkbox", { name: "关联记录", exact: true });
       await expect(relatedColumn).toHaveAttribute("aria-checked", "false");
       await relatedColumn.click();
       await page.keyboard.press("Escape");
@@ -72,11 +72,11 @@ test("one order's different incoming payments keep distinct list identities and 
       const row = page.locator('[data-business-row="' + item.exception_id + '"]');
       await expect(row).toContainText(money(item.context.ledger_entry_summary.amount_cents));
       await expect(row).toContainText(item.context.ledger_entry_summary.external_event_id);
-      const orderLink = row.locator('a[href="/admin/orders/' + order.order_id + '"]');
+      const orderLink = row.locator('a[href*="' + order.order_id + '"]');
       await expect(orderLink).toBeVisible();
       await expect(row.locator("a a")).toHaveCount(0);
       const primary = row.locator("a[data-row-link]");
-      await expect(primary).toHaveAttribute("href", "/admin/reconciliation/exceptions/" + item.exception_id);
+      expect(new URL((await primary.getAttribute("href"))!, manifest.origin).searchParams.get("overlay")).toBe("/reconciliation/exceptions/" + item.exception_id);
       const targets = await row.locator("a").evaluateAll(links => links.map(link => {
         const rect = link.getBoundingClientRect();
         return { href: link.getAttribute("href"), width: rect.width, height: rect.height };
@@ -88,21 +88,25 @@ test("one order's different incoming payments keep distinct list identities and 
     await screenshot(page, info, "same-order-" + scenario.width + (scenario.hiddenOrder ? "-hidden-order" : ""));
     if (scenario.width === 390) await audit(page, info, "same-order-list");
 
-    const orderLink = rows.first().locator('a[href="/admin/orders/' + order.order_id + '"]');
+    const orderLink = rows.first().locator('a[href*="' + order.order_id + '"]');
+    const orderTarget = await orderLink.getAttribute("href");
     await orderLink.focus();
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(manifest.origin + "/admin/orders/" + order.order_id);
+    await expect(page).toHaveURL(manifest.origin + orderTarget);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(order.product_name);
     await expect(page.locator('[data-order-card="amount"]')).toBeVisible();
     await page.goto(listUrl);
     const ledger = items[0]!.context.ledger_entry_summary;
-    await rows.first().getByRole("link", { name: /查看流水：/ }).focus();
+    const ledgerLink = rows.first().getByRole("link", { name: /查看流水：/ });
+    const ledgerTarget = await ledgerLink.getAttribute("href");
+    await ledgerLink.focus();
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(manifest.origin + "/admin/reconciliation/transactions/" + ledger.ledger_entry_id + "#source-" + ledger.ledger_entry_id);
-    await expect(page.getByRole("heading", { name: "支付宝交易", exact: true })).toBeVisible();
+    await expect(page).toHaveURL(manifest.origin + ledgerTarget);
+    await expect(page.locator("[data-overlay-content]").locator("#source-" + ledger.ledger_entry_id)).toBeVisible();
     await page.goto(listUrl);
+    const exceptionTarget = await rows.first().locator("a[data-row-link]").getAttribute("href");
     await rows.first().locator("a[data-row-link]").click();
-    await expect(page).toHaveURL(manifest.origin + "/admin/reconciliation/exceptions/" + items[0]!.exception_id);
+    await expect(page).toHaveURL(manifest.origin + exceptionTarget);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("账务异常详情");
   }
 

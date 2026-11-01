@@ -111,7 +111,7 @@ function RecentOrderSummary({ order, showSite }: { order: AdminOrderSummary; sho
   return <ItemContent className="overview-order-summary">
     <div className="flex min-w-0 items-center justify-between gap-3">
       <ItemTitle className="list-identity-title min-w-0 flex-1"><OrderProductLink order={order} /></ItemTitle>
-      <div className="flex shrink-0 flex-wrap justify-end gap-1" aria-label="收款与通知状态">
+      <div role="group" className="flex shrink-0 flex-wrap justify-end gap-1" aria-label="收款与通知状态">
         <div role="group" aria-label="收款状态"><PaymentResult order={order} /></div>
         <div role="group" aria-label="通知状态"><NotificationResult order={order} /></div>
       </div>

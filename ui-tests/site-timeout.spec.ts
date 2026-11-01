@@ -47,7 +47,7 @@ browserTest("site timeout keeps invalid input through a concurrent key conflict 
     page.on("pageerror", error => pageErrors.push(error.message));
     await page.route("**/*", route => new URL(route.request().url()).origin === fixture.origin ? route.continue() : route.abort("blockedbyclient"));
     await page.context().addCookies(fixture.cookies);
-    await page.goto(fixture.origin + "/admin/sites/default/settings/integration");
+    await page.goto(fixture.origin + "/admin/sites/default/edit?section=integration");
     await page.getByRole("button", { name: "高级设置", exact: true }).click();
     const timeout = page.getByLabel("通知超时（秒）", { exact: true });
     const save = page.getByRole("button", { name: "保存业务网站", exact: true });

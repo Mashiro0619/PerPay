@@ -1,4 +1,5 @@
 import { test, expect, login, record } from "./fixtures";
+import type { AdminLedgerPageEnvelope } from "../web/src/api/generated/types.gen";
 
 for (const { width, hiddenOrder } of [{ width: 1440, hiddenOrder: false }, { width: 1440, hiddenOrder: true }, { width: 390, hiddenOrder: false }]) {
   test(`${width}${hiddenOrder ? " hidden order column" : ""}: related orders have separate usable targets and preserve record navigation`, async ({ page, manifest }, info) => {
@@ -10,14 +11,47 @@ for (const { width, hiddenOrder } of [{ width: 1440, hiddenOrder: false }, { wid
     }, hiddenOrder);
     const listUrl = manifest.origin + "/admin/reconciliation?association_status=MATCHED";
     await page.goto(listUrl);
+    if (width === 390) {
+      const response = await page.request.get(manifest.origin + "/api/admin/v1/ledger/entries?direction=CREDIT&association_status=MATCHED&limit=20");
+      expect(response.ok()).toBe(true);
+      const entry = (await response.json() as AdminLedgerPageEnvelope).data.find(entry => entry.active_match_count === 1 && entry.active_match);
+      expect(entry).toBeTruthy();
+      const row = page.locator('[data-business-row="' + entry!.ledger_entry_id + '"]');
+      const primary = row.locator("a[data-row-link]");
+      await expect(primary).toBeVisible();
+      await expect(row.getByRole("link", { name: /^查看订单：/ })).toHaveCount(0);
+      await expect(row.getByRole("button", { name: "展开信息", exact: true })).toHaveCount(0);
+      const recordHref = await primary.getAttribute("href");
+      await primary.focus();
+      await page.keyboard.press("Enter");
+      await expect(page).toHaveURL(manifest.origin + recordHref);
+      const overlay = page.locator("[data-overlay-content]");
+      await overlay.getByRole("tab", { name: "收款关联", exact: true }).click();
+      const relatedOrder = overlay.locator('a[href*="' + entry!.active_match!.order_id + '"]').first();
+      await expect(relatedOrder).toBeVisible();
+      const orderHref = await relatedOrder.getAttribute("href");
+      expect(new URL(orderHref!, manifest.origin).searchParams.get("overlay")).toContain("/orders/" + entry!.active_match!.order_id);
+      await relatedOrder.focus();
+      await page.keyboard.press("Enter");
+      await expect(page).toHaveURL(manifest.origin + orderHref);
+      await expect(overlay.getByRole("heading", { level: 1 })).toHaveText(entry!.active_match!.product_name);
+      await expect(page.getByRole("dialog")).toHaveCount(1);
+      await overlay.getByRole("button", { name: "返回上一步", exact: true }).click();
+      await expect(overlay.getByRole("heading", { name: "流水与对账详情", exact: true })).toBeVisible();
+      await overlay.locator('[data-slot="dialog-close"]').click();
+      await expect(page).toHaveURL(listUrl);
+      await expect(primary).toBeFocused();
+      await record(page, info, { width, hiddenOrder, recordHref, orderHref, relatedOrderInOverlay: true });
+      return;
+    }
     if (hiddenOrder) {
       await expect(page.getByRole("columnheader", { name: "当前关联订单", exact: true })).toHaveCount(0);
       await expect(page.locator("[data-business-row]").getByRole("link", { name: /^查看订单：/ })).toHaveCount(0);
       expect(await page.evaluate(() => JSON.parse(localStorage.getItem("perpay.table-columns.v2.administrator-ledger") ?? "{}").order)).toBe(false);
       // A user may reveal the field again; the restored link remains a
       // separate action from opening the underlying transaction record.
-      await page.getByRole("button", { name: "显示列", exact: true }).click();
-      const relatedColumn = page.getByRole("menuitemcheckbox", { name: "当前关联订单", exact: true });
+      await page.getByRole("button", { name: "列表显示", exact: true }).click();
+      const relatedColumn = page.getByRole("checkbox", { name: "当前关联订单", exact: true });
       await expect(relatedColumn).toHaveAttribute("aria-checked", "false");
       await relatedColumn.click();
       await page.keyboard.press("Escape");
@@ -31,13 +65,12 @@ for (const { width, hiddenOrder } of [{ width: 1440, hiddenOrder: false }, { wid
     const recordLink = row.locator("a[data-row-link]");
     await expect(relatedOrder).toBeVisible();
     const orderText = await relatedOrder.innerText();
-    if (width === 1440) await expect(row.locator('[data-column-id="order"]')).toContainText(orderText);
-    else await expect(row.locator(".business-summary-field").filter({ has: page.locator("dt", { hasText: "当前关联订单" }) })).toContainText(orderText);
+    await expect(row.locator('[data-column-id="order"]')).toContainText(orderText);
 
     const orderHref = await relatedOrder.getAttribute("href");
     const recordHref = await recordLink.getAttribute("href");
-    expect(orderHref).toMatch(/^\/admin\/orders\//);
-    expect(recordHref).toMatch(/^\/admin\/reconciliation\/transactions\//);
+    expect(new URL(orderHref!, manifest.origin).searchParams.get("overlay")).toMatch(/^\/orders\//);
+    expect(new URL(recordHref!, manifest.origin).searchParams.get("overlay")).toMatch(/^\/reconciliation\/transactions\//);
     expect(orderHref).not.toBe(recordHref);
 
     const targets = await linkedRows.evaluateAll(rows => rows.map(element => {

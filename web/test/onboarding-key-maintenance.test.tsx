@@ -23,8 +23,8 @@ describe("infrequent application-key maintenance", () => {
   it.each([
     [1, applicationPath],
     [4, applicationPath],
-    [1, "/settings/provider"],
-    [4, "/settings/provider"],
+    [1, "/settings/provider/edit"],
+    [4, "/settings/provider/edit"],
   ])(
     "keeps regeneration and its explanation collapsed at stage %s / %s",
     async (stage, path) => {

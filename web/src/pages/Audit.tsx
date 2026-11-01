@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import type { AuditEventItem } from "../../../src/shared/audit";
 import { auditEventsQuery, auditListKey, auditMetadataQuery, AUDIT_FILTER_KEYS, readAuditFilters } from "@/api/audit";
@@ -43,22 +43,26 @@ function AuditSummary({ event, deleted }: { event: AuditEventItem; deleted: bool
   </div>;
 }
 
+function revealAuditView(scroller: HTMLDivElement, selected: Element) {
+  if (!scroller.clientWidth) return;
+  const container = scroller.getBoundingClientRect(), tab = selected.getBoundingClientRect();
+  const inset = 4;
+  if (tab.left < container.left + inset) scroller.scrollLeft += tab.left - container.left - inset;
+  else if (tab.right > container.right - inset) scroller.scrollLeft += tab.right - container.right + inset;
+}
+
 export default function Audit() {
   const [search] = useSearchParams();
   const queryClient = useQueryClient();
   const filters = readAuditFilters(search);
   const view = selectedAuditView(filters);
-  const viewScroller = useRef<HTMLDivElement>(null);
+  const [viewScroller, setViewScroller] = useState<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
-    const scroller = viewScroller.current;
+    const scroller = viewScroller;
     if (!scroller) return;
     const reveal = () => {
       const selected = scroller.querySelector<HTMLElement>('[aria-selected="true"]');
-      if (!selected || !scroller.clientWidth) return;
-      const container = scroller.getBoundingClientRect(), tab = selected.getBoundingClientRect();
-      const inset = 4;
-      if (tab.left < container.left + inset) scroller.scrollLeft += tab.left - container.left - inset;
-      else if (tab.right > container.right - inset) scroller.scrollLeft += tab.right - container.right + inset;
+      if (selected) revealAuditView(scroller, selected);
     };
     reveal();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reveal);
@@ -66,7 +70,7 @@ export default function Audit() {
     if (scroller.firstElementChild) observer?.observe(scroller.firstElementChild);
     window.addEventListener("resize", reveal);
     return () => { observer?.disconnect(); window.removeEventListener("resize", reveal); };
-  }, [view?.id]);
+  }, [view?.id, viewScroller]);
   const pagination = useCursor();
   const baseControl = useListQuery(timeSort, "occurred_at", "desc", true);
   const update = (values: Record<string, string | null>) => {
@@ -142,7 +146,10 @@ export default function Audit() {
             const next = AUDIT_VIEWS.find(item => item.id === value);
             if (next && next.id !== view?.id) update(auditViewValues(next.id));
           }}>
-            <div ref={viewScroller} className="audit-view-scroll"><TabsList variant="line" aria-label="审计视图" className="audit-views">
+            <div ref={setViewScroller} className="audit-view-scroll" onFocusCapture={event => {
+              const focused = (event.target as HTMLElement).closest('[role="tab"]');
+              if (focused && event.currentTarget.contains(focused)) revealAuditView(event.currentTarget, focused);
+            }}><TabsList variant="line" aria-label="审计视图" className="audit-views">
               {AUDIT_VIEWS.map(item => <TabsTrigger key={item.id} value={item.id}>{item.label}</TabsTrigger>)}
             </TabsList></div>
           </Tabs>

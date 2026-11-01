@@ -74,7 +74,7 @@ async function syntheticSessions(page: Page, manifest: Manifest) {
 async function openSecurity(page: Page, manifest: Manifest, writable = false) {
   await page.goto(manifest.origin + "/admin/settings/security");
   await expect(page.locator(cardSelector)).toBeVisible();
-  await expect(page.getByLabel("允许的 IP / 网段", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "编辑管理员 IP 白名单", exact: true })).toBeVisible();
   if (writable) await page.evaluate(() => delete document.documentElement.dataset.perpayDemo);
 }
 
@@ -95,56 +95,39 @@ test("session rows fill their own card across themes and narrow or wide content"
     }, { theme, mode });
     await openSecurity(page, manifest);
     const card = page.locator(cardSelector);
-    await expect(card.locator("[data-session-id]")).toHaveCount(3);
-    expect(await card.locator("[data-session-id]").evaluateAll(rows => rows.map(row => row.getAttribute("data-session-id"))))
+    await expect(card.locator("[data-business-row]")).toHaveCount(3);
+    expect(await card.locator("[data-business-row]").evaluateAll(rows => rows.map(row => row.getAttribute("data-business-row"))))
       .toEqual([currentId, mobileId, legacyId]);
-    await expect(card.locator(`[data-session-id="${currentId}"]`)).toContainText("Chrome");
-    await expect(card.locator(`[data-session-id="${currentId}"]`)).toContainText("Windows");
-    await expect(card.locator(`[data-session-id="${currentId}"]`)).toContainText("当前");
-    await expect(card.locator(`[data-session-id="${mobileId}"]`)).toContainText("Android");
+    await expect(card.locator(`[data-business-row="${currentId}"]`)).toContainText("Chrome");
+    await expect(card.locator(`[data-business-row="${currentId}"]`)).toContainText("Windows");
+    await expect(card.locator(`[data-business-row="${currentId}"]`)).toContainText("当前");
+    await expect(card.locator(`[data-business-row="${mobileId}"]`)).toContainText("Android");
     await expect(card.getByText(ipv6, { exact: false })).toBeVisible();
-    await expect(card.locator(`[data-session-id="${legacyId}"]`)).toContainText("未知");
-    await expect(page.locator(".security-settings-card-grid")).toHaveAttribute("data-measured", "true");
+    await expect(card.locator(`[data-business-row="${legacyId}"]`)).toContainText("未知");
     await page.clock.runFor(50);
     const geometry = await card.evaluate(element => {
-      const box = element.getBoundingClientRect(), grid = element.closest(".security-settings-card-grid")!;
-      const item = element.closest<HTMLElement>("[data-detail-grid-item]")!, itemStyle = getComputedStyle(item);
-      const gridStyle = getComputedStyle(grid), widths = gridStyle.gridTemplateColumns.trim().split(/\s+/).map(Number.parseFloat);
-      const gap = Number.parseFloat(gridStyle.columnGap);
-      const columnSpan = Number.parseInt(itemStyle.gridColumnStart.match(/^span (\d+)$/)?.[1] ?? itemStyle.gridColumnEnd.match(/^span (\d+)$/)?.[1] ?? "1", 10);
-      const description = element.querySelector('[data-slot="card-description"]')!.getBoundingClientRect();
-      const actions = element.querySelector(".administrator-sessions-actions")!.getBoundingClientRect();
+      const box = element.getBoundingClientRect();
+      const summary = element.closest('[data-security-summary]')!.getBoundingClientRect();
       const list = element.querySelector('[aria-label="登录会话列表"]')!.getBoundingClientRect();
-      const rows = [...element.querySelectorAll<HTMLElement>("[data-session-id]")];
-      return { width: box.width, itemWidth: item.getBoundingClientRect().width,
-        columns: widths.length, columnSpan, itemIndex: [...grid.children].indexOf(item),
-        expectedWidth: widths.slice(0, columnSpan).reduce((sum, width) => sum + width, 0) + gap * (columnSpan - 1),
-        headerActionsStacked: actions.top >= description.bottom - 1,
-        rowDisplays: rows.map(row => getComputedStyle(row).display),
+      const rows = [...element.querySelectorAll<HTMLElement>("[data-business-row]")];
+      return { width: box.width, summaryWidth: summary.width,
+        layout: element.querySelector('[data-business-table]')!.getAttribute('data-list-layout'),
         rowsFillCard: rows.every(row => Math.abs(row.getBoundingClientRect().width - list.width) <= 1),
         clipped: element.scrollWidth > element.clientWidth + 1,
-        clippedRows: rows.filter(row => row.scrollWidth > row.clientWidth + 1).length,
-        clippedDetails: [...element.querySelectorAll<HTMLElement>(".administrator-session-meta, .administrator-session-action")]
-          .filter(detail => detail.scrollWidth > detail.clientWidth + 1 || detail.scrollHeight > detail.clientHeight + 1).length,
-        escapedDetails: rows.flatMap(row => {
-          const bounds = row.getBoundingClientRect();
-          return [...row.querySelectorAll<HTMLElement>(".administrator-session-content, .administrator-session-action")]
-            .filter(detail => { const rect = detail.getBoundingClientRect(); return rect.left < bounds.left - 1 || rect.right > bounds.right + 1 || rect.bottom > bounds.bottom + 1; });
-        }).length };
+        escapedRows: rows.filter(row => { const bounds = row.getBoundingClientRect(); return bounds.left < box.left - 1 || bounds.right > box.right + 1; }).length };
     });
-    expect(geometry.itemIndex).toBe(3);
-    expect(geometry.columnSpan).toBe(geometry.columns === 3 ? 2 : 1);
-    expect(Math.abs(geometry.width - geometry.itemWidth)).toBeLessThanOrEqual(1);
-    expect(Math.abs(geometry.width - geometry.expectedWidth)).toBeLessThanOrEqual(1);
-    expect(geometry.headerActionsStacked).toBe(geometry.width <= 640);
-    expect(geometry.rowDisplays).toEqual(Array(3).fill(geometry.width <= 480 ? "grid" : "flex"));
+    expect(Math.abs(geometry.width - geometry.summaryWidth)).toBeLessThanOrEqual(1);
     expect(geometry.rowsFillCard).toBe(true);
     expect(geometry.clipped).toBe(false);
-    expect(geometry.clippedRows).toBe(0);
-    expect(geometry.clippedDetails).toBe(0);
-    expect(geometry.escapedDetails).toBe(0);
+    expect(geometry.escapedRows).toBe(0);
     await record(page, info, { feature: "login-session-card", width, theme, mode, geometry, source: "synthetic-public-session-metadata" });
     if (width === 320 || width === 390 || width === 1180 || width === 1440) await screenshot(page, info, `sessions-${width}-${theme}`);
+    await card.getByRole("link", { name: "Chrome · Android", exact: true }).click();
+    const detail = page.getByRole("dialog", { name: "登录会话详情", exact: true });
+    await expect(detail.getByText(ipv6, { exact: true })).toBeVisible();
+    await expect(detail.getByText(state.rows[1]!.user_agent!, { exact: true })).toBeVisible();
+    await detail.locator('[data-overlay-actions]').getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(detail).toBeHidden();
   }
   expect(state.writes).toEqual([]);
   expect(state.unexpectedWrites).toEqual([]);
@@ -155,10 +138,10 @@ test("session confirmations cancel with restored focus and no session writes", a
   await login(page, manifest);
   await openSecurity(page, manifest, true);
   const card = page.locator(cardSelector);
-  await expect(card.locator("[data-session-id]")).toHaveCount(3);
+  await expect(card.locator("[data-business-row]")).toHaveCount(3);
   for (const [trigger, title] of [
     [card.getByRole("button", { name: "退出登录", exact: true }), "退出当前会话？"],
-    [card.locator(`[data-session-id="${mobileId}"]`).getByRole("button", { name: /^撤销/ }), "撤销此会话？"],
+    [card.locator(`[data-business-row="${mobileId}"]`).getByRole("button", { name: /^撤销/ }), "撤销此会话？"],
     [card.getByRole("button", { name: "退出其他会话", exact: true }), "退出其他会话？"],
   ] as const) {
     await trigger.click();
@@ -179,73 +162,83 @@ test("session confirmations cancel with restored focus and no session writes", a
   expect(state.unexpectedWrites).toEqual([]);
 });
 
-test("single and other-session revocation refresh only the session list and retain security drafts", async ({ page, manifest }, info) => {
+test("session revocation refreshes its rows and a later background refetch retains an open password draft", async ({ page, manifest }, info) => {
   const state = await syntheticSessions(page, manifest);
   await login(page, manifest);
   await openSecurity(page, manifest, true);
   const card = page.locator(cardSelector);
-  await expect(card.locator("[data-session-id]")).toHaveCount(3);
-  const whitelist = page.getByLabel("允许的 IP / 网段", { exact: true });
-  const password = page.getByLabel("新密码", { exact: true });
-  const draft = "192.0.2.0/24\n2001:db8::/32";
-  await whitelist.fill(draft);
-  await password.fill("synthetic-unsubmitted-password");
-  await password.evaluate(element => element.setAttribute("data-session-draft", "original"));
+  await expect(card.locator("[data-business-row]")).toHaveCount(3);
   const reads = state.reads;
-  await card.locator(`[data-session-id="${mobileId}"]`).getByRole("button", { name: /^撤销/ }).click();
+  await card.locator(`[data-business-row="${mobileId}"]`).getByRole("button", { name: /^撤销/ }).click();
   const revoke = page.getByRole("alertdialog", { name: "撤销此会话？", exact: true });
   await expect(revoke).toContainText(ipv6);
   await revoke.getByRole("button", { name: "撤销", exact: true }).click();
   await expect(revoke).toHaveCount(0);
-  await expect(card.locator("[data-session-id]")).toHaveCount(2);
+  await expect(card.locator("[data-business-row]")).toHaveCount(2);
   await expect.poll(() => state.reads).toBeGreaterThan(reads);
-  await expect(whitelist).toHaveValue(draft);
-  await expect(password).toHaveValue("synthetic-unsubmitted-password");
-  await expect(password).toHaveAttribute("data-session-draft", "original");
   await card.getByRole("button", { name: "退出其他会话", exact: true }).click();
   const others = page.getByRole("alertdialog", { name: "退出其他会话？", exact: true });
   await others.getByRole("button", { name: "退出其他会话", exact: true }).click();
   await expect(others).toHaveCount(0);
-  await expect(card.locator("[data-session-id]")).toHaveCount(1);
-  await expect(card.locator(`[data-session-id="${currentId}"]`)).toBeVisible();
+  await expect(card.locator("[data-business-row]")).toHaveCount(1);
+  await expect(card.locator(`[data-business-row="${currentId}"]`)).toBeVisible();
   await expect(card.getByRole("button", { name: "退出其他会话", exact: true })).toBeDisabled();
-  await expect(whitelist).toHaveValue(draft);
+  await page.getByRole("link", { name: "修改登录密码", exact: true }).click();
+  const password = page.getByLabel("新密码", { exact: true });
+  await password.fill("synthetic-unsubmitted-password");
+  await password.evaluate(element => element.setAttribute("data-session-draft", "original"));
+  const beforeRefocus = state.reads;
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange", { bubbles: true })));
+  await expect.poll(() => state.reads).toBeGreaterThan(beforeRefocus);
+  await expect(password).toHaveValue("synthetic-unsubmitted-password");
   await expect(password).toHaveAttribute("data-session-draft", "original");
-  await expect(page.getByRole("heading", { name: "系统设置", exact: true })).toBeVisible();
   expect(state.writes).toEqual([`/api/admin/v1/sessions/${mobileId}/revoke`, "/api/admin/v1/sessions/revoke-others"]);
   expect(state.unexpectedWrites).toEqual([]);
-  await record(page, info, { feature: "session-revocation-draft-retention", reads: state.reads, writes: state.writes, fixtureWrites: 0 });
+  await record(page, info, { feature: "session-refetch-password-draft-retention", reads: state.reads, writes: state.writes, fixtureWrites: 0 });
 });
 
-test("session read and revoke failures stay local and permit retry without losing a draft", async ({ page, manifest }) => {
+test("session failures remain scoped and retry without replacing an active password draft", async ({ page, manifest }) => {
   const state = await syntheticSessions(page, manifest);
   state.failedReads = 2;
   await login(page, manifest);
   await openSecurity(page, manifest, true);
   const card = page.locator(cardSelector);
-  await expect(card.getByRole("alert")).toContainText("合成会话列表暂不可用");
+  const failure = page.getByRole("alert", { name: "服务连接提示", exact: true });
+  await expect(failure).toContainText("合成会话列表暂不可用");
+  await page.getByRole("link", { name: "修改登录密码", exact: true }).click();
   const password = page.getByLabel("新密码", { exact: true });
   await password.fill("retained-through-read-error");
+  await password.evaluate(element => element.setAttribute("data-session-draft", "retained"));
   state.failedReads = 0;
-  await card.getByRole("button", { name: "重试", exact: true }).click();
-  await expect(card.locator("[data-session-id]")).toHaveCount(3);
-  await expect(card.getByRole("alert")).toHaveCount(0);
+  const before = state.reads;
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange", { bubbles: true })));
+  await expect.poll(() => state.reads).toBeGreaterThan(before);
+  await expect(card.locator("[data-business-row]")).toHaveCount(3);
+  await expect(password).toHaveValue("retained-through-read-error");
+  await expect(password).toHaveAttribute("data-session-draft", "retained");
+  await page.locator('[data-overlay-content] > [data-slot="dialog-close"]').click();
+  const guard = page.getByRole("alertdialog", { name: "放弃未保存的修改？", exact: true });
+  await guard.getByRole("button", { name: "放弃修改并继续", exact: true }).click();
+  await expect(page.locator('[data-overlay-content]')).toBeHidden();
+  await expect(failure).toHaveCount(0);
   state.failMutation = true;
-  await card.locator(`[data-session-id="${mobileId}"]`).getByRole("button", { name: /^撤销/ }).click();
+  await card.locator(`[data-business-row="${mobileId}"]`).getByRole("button", { name: /^撤销/ }).click();
   const dialog = page.getByRole("alertdialog", { name: "撤销此会话？", exact: true });
   await dialog.getByRole("button", { name: "撤销", exact: true }).click();
   await expect(dialog.getByRole("alert")).toContainText("合成会话撤销暂不可用");
-  await dialog.getByRole("button", { name: "取消", exact: true }).click();
-  await expect(card.locator("[data-session-id]")).toHaveCount(3);
+  await expect(card.locator("[data-business-row]")).toHaveCount(3);
+  state.failMutation = false;
+  await dialog.getByRole("button", { name: "撤销", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(card.locator("[data-business-row]")).toHaveCount(2);
   state.failedReads = 2;
   await card.getByRole("button", { name: "刷新", exact: true }).click();
-  await expect(card.getByRole("alert")).toContainText("合成会话列表暂不可用");
-  await expect(card.locator("[data-session-id]")).toHaveCount(3);
-  await expect(password).toHaveValue("retained-through-read-error");
+  await expect(failure).toContainText("合成会话列表暂不可用");
+  await expect(card.locator("[data-business-row]")).toHaveCount(2);
   state.failedReads = 0;
-  await card.getByRole("button", { name: "重试", exact: true }).click();
-  await expect(card.getByRole("alert")).toHaveCount(0);
-  await expect(password).toHaveValue("retained-through-read-error");
+  await failure.getByRole("button", { name: "重试", exact: true }).click();
+  await expect(failure).toHaveCount(0);
+  expect(state.writes).toEqual([`/api/admin/v1/sessions/${mobileId}/revoke`, `/api/admin/v1/sessions/${mobileId}/revoke`]);
   expect(state.unexpectedWrites).toEqual([]);
 });
 
@@ -254,7 +247,7 @@ test("read-only demo rejects new session revocation in both browser and server g
   await login(page, manifest);
   await openSecurity(page, manifest);
   const card = page.locator(cardSelector);
-  await expect(card.locator("[data-session-id]")).toHaveCount(3);
+  await expect(card.locator("[data-business-row]")).toHaveCount(3);
   await card.getByRole("button", { name: "退出其他会话", exact: true }).click();
   const dialog = page.getByRole("alertdialog", { name: "退出其他会话？", exact: true });
   await dialog.getByRole("button", { name: "退出其他会话", exact: true }).click();

@@ -206,6 +206,60 @@ describe("isolated documentation preview", () => {
     } finally { demo.dispose(); }
   });
 
+  it("edits only disposable administrator data with real guards, audit and honest offline checks", async () => {
+    const originalFetch = globalThis.fetch;
+    let fetchAttempts = 0;
+    globalThis.fetch = async () => { fetchAttempts++; throw new Error("Interactive preview must stay offline"); };
+    let demo: Awaited<ReturnType<typeof createPreviewDemo>> | undefined;
+    try {
+      demo = await createPreviewDemo({ interactive: true });
+      const { app, origin } = demo;
+      const network = { incoming: { socket: { remoteAddress: "127.0.0.1", remotePort: 12345, remoteFamily: "IPv4" } } };
+      const loginStartedAt = Date.now();
+      const login = await app.request(origin + "/api/admin/v1/session/login", {
+        method: "POST", headers: { "Content-Type": "application/json", Origin: origin, "X-Forwarded-For": "203.0.113.77" }, body: JSON.stringify({ password: demo.password }),
+      }, network);
+      assert.equal(login.status, 200);
+      const loginContext = demo.database.read(connection => connection.prepare("SELECT context.source_address, event.occurred_at FROM audit_event_context context JOIN audit_events event USING(event_id) WHERE event.action = 'admin.login' ORDER BY event.sequence DESC LIMIT 1").get());
+      assert.equal(loginContext?.source_address, "127.0.0.1", "forward the real connection bindings while retaining the trusted proxy rules");
+      assert.ok(Number(loginContext?.occurred_at) >= loginStartedAt && Number(loginContext?.occurred_at) <= Date.now(),
+        "live administrator audit timestamps must not lag behind by the demo seeding duration");
+      const { data: session } = await login.json() as { data: { csrf_token: string } };
+      const cookie = login.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
+      const headers = { cookie, Origin: origin, "Content-Type": "application/json", "x-csrf-token": session.csrf_token };
+      const initial = await (await app.request("/api/admin/v1/settings", { headers })).json() as { data: { revision: number } };
+      const body = JSON.stringify({ revision: initial.data.revision, system_name: "预览编辑验收", dashboard_chart_type: "BAR" });
+      const save = (requestHeaders: Record<string, string>) => app.request(origin + "/api/admin/v1/settings/display", { method: "PUT", headers: requestHeaders, body });
+      assert.equal((await save({ "Content-Type": "application/json", Origin: origin })).status, 401);
+      assert.equal((await save({ cookie, "Content-Type": "application/json", Origin: origin })).status, 403);
+      assert.equal((await save({ ...headers, Origin: "https://other.example" })).status, 403);
+      const saved = await save(headers);
+      assert.equal(saved.status, 200);
+      assert.match(saved.headers.get("x-perpay-demo")!, /interactive; storage=temporary/);
+      assert.equal((await saved.json() as { data: { display: { system_name: string } } }).data.display.system_name, "预览编辑验收");
+      assert.equal((await save(headers)).status, 409, "the same old revision must still fail");
+      const audit = await (await app.request("/api/admin/v1/audit-events?source=core&action=settings.display_updated", { headers })).json() as { data: { action: string }[] };
+      assert.ok(audit.data.some(item => item.action === "settings.display_updated"));
+      const accounts = await (await app.request("/api/admin/v1/alipay-accounts", { headers })).json() as { data: { id: string }[] };
+      const check = await app.request("/api/admin/v1/alipay-accounts/" + accounts.data[0]!.id + "/check", { method: "POST", headers, body: "{}" });
+      assert.equal(check.status, 200);
+      const checked = await check.json() as { data: { ok: boolean; message: string } };
+      assert.equal(checked.data.ok, false);
+      assert.match(checked.data.message, /本地演示未连接支付宝/);
+      assert.equal((await app.request("/api/v1/orders", { method: "POST", headers, body: "{}" })).status, 403);
+      assert.equal((await app.request("/api/public/v1/checkouts/" + demo.checkout + "/check", { method: "POST", headers, body: "{}" })).status, 403);
+      assert.equal(await (await app.request("/api/public/v1/checkouts/" + demo.checkout + "/qr.svg")).text(), renderCollectionCodeSvg(DEMO_QR_TEXT));
+      assert.doesNotMatch(await (await app.request("/admin/")).text(), /data-perpay-demo="readonly"/);
+      assert.ok(demo.database.integrityCheck().ok);
+      assert.equal(fetchAttempts, 0);
+    } finally {
+      globalThis.fetch = originalFetch;
+      demo?.dispose();
+    }
+    assert.ok(demo);
+    assert.equal(existsSync(demo.directory), false);
+  });
+
   it("rejects invalid ports and clocks before allocating a database", async () => {
     for (const port of [0, 80, 65536, NaN]) await assert.rejects(createPreviewDemo({ port }));
     await assert.rejects(createPreviewDemo({ now: NaN }));

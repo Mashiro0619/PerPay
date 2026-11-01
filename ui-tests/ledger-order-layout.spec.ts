@@ -1,5 +1,6 @@
 import { test, expect, login, record } from "./fixtures";
 import { screenshot } from "./audit";
+import { expectOverlayTarget, settleOverlay } from "./overlay-fixtures";
 import type { AdminLedgerPageEnvelope, AdminOrderDetailEnvelope } from "../web/src/api/generated/types.gen";
 
 const endpoint = "/api/admin/v1/ledger/entries";
@@ -48,7 +49,8 @@ for (const scenario of [
       const cells = table.locator('td[data-column-id="order"]');
       await expect(cells).toHaveCount(2);
       await expect(cells.nth(1).getByText(longOrder.product_name, { exact: true })).toHaveAttribute("title", longOrder.product_name);
-      await expect(cells.nth(1).getByRole("link", { name: "查看订单：" + longOrder.merchant_order_no })).toHaveAttribute("href", "/admin/orders/" + data[1]!.active_match.order_id);
+      const orderHref = await cells.nth(1).getByRole("link", { name: "查看订单：" + longOrder.merchant_order_no }).getAttribute("href");
+      expect(new URL(orderHref!, manifest.origin).searchParams.get("overlay")).toBe("/orders/" + data[1]!.active_match.order_id);
       await page.evaluate(() => document.fonts.ready);
 
       const measured = await table.evaluate(table => {
@@ -78,17 +80,16 @@ for (const scenario of [
       expect(measured.containerScrollWidth).toBeLessThanOrEqual(measured.containerWidth + 1);
       expect(measured.cells).toHaveLength(2);
       for (const cell of measured.cells) {
-        expect(cell.lines).toHaveLength(3);
+        expect(cell.lines).toHaveLength(1);
         for (const line of cell.lines) {
           expect(line.scrollWidth).toBeLessThanOrEqual(line.clientWidth + 1);
-          expect(line.height).toBeLessThanOrEqual(2 * line.lineHeight + line.padding + 1);
+          expect(line.height).toBeLessThanOrEqual(Math.max(24, line.lineHeight + line.padding) + 1);
         }
         // Keep the order link usable even when its identifier is clamped.
-        expect(cell.lines[1]!.width).toBeGreaterThanOrEqual(24);
-        expect(cell.lines[1]!.height).toBeGreaterThanOrEqual(24);
+        expect(cell.lines[0]!.width).toBeGreaterThanOrEqual(24);
+        expect(cell.lines[0]!.height).toBeGreaterThanOrEqual(24);
       }
-      expect(measured.cells[0]!.lines[0]!.height).toBeLessThanOrEqual(measured.cells[0]!.lines[0]!.lineHeight + 1);
-      expect(measured.cells[1]!.lines[0]!.height).toBeGreaterThan(measured.cells[1]!.lines[0]!.lineHeight);
+      expect(Math.abs(measured.cells[0]!.lines[0]!.height - measured.cells[1]!.lines[0]!.height)).toBeLessThanOrEqual(1);
       await record(page, info, { feature: "ledger-order-long-identity", scenario: scenario.name, width, mode, measured, evidence: "synthetic-display-fields-on-isolated-records" });
       await screenshot(page, info, `ledger-order-${scenario.name.split(" ")[0]}-${width}-${mode}`);
     }
@@ -96,12 +97,12 @@ for (const scenario of [
     const orderLink = page.getByRole("link", { name: "查看订单：" + longOrder.merchant_order_no });
     await orderLink.focus();
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(manifest.origin + "/admin/orders/" + targetOrder.order_id);
+    await expectOverlayTarget(page, "/orders/" + targetOrder.order_id);
     // The long list labels are synthetic; the target keeps its real fixture
     // identity. The generic heading exists only before its order query loads.
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText(targetOrder.product_name);
-    const identity = page.getByRole("region", { name: "业务网站传入的订单信息", exact: true });
-    await expect(identity.getByText(targetOrder.product_name, { exact: true })).toBeVisible();
+    const overlay = await settleOverlay(page);
+    await expect(overlay.getByRole("heading", { level: 1 })).toHaveText(targetOrder.product_name);
+    const identity = page.getByRole("region", { name: "订单信息", exact: true });
     await expect(identity.getByText(targetOrder.merchant_order_no, { exact: true })).toBeVisible();
     await expect(page.locator('[data-order-card="amount"]')).toBeVisible();
     await record(page, info, { feature: "ledger-order-keyboard-target", orderId: targetOrder.order_id, product: targetOrder.product_name, merchantOrderNo: targetOrder.merchant_order_no, evidence: "loaded-real-fixture-order-after-synthetic-list-link" });

@@ -61,7 +61,7 @@ describe("minimal onboarding", () => {
     expect(screen.getByText("原 App ID：" + settings.provider!.app_id)).toBeVisible();
     expect(screen.queryByLabelText("支付宝环境")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /保存并继续|生成应用密钥对|验证并启用|小额真实测试/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "添加正式支付宝账号" })).toHaveAttribute("href", "/settings/accounts/new");
+    expect(new URL(screen.getByRole<HTMLAnchorElement>("link", { name: "添加正式支付宝账号" }).href).searchParams.get("overlay")).toBe("/settings/accounts/new");
     expect(view.writes()).toHaveLength(0);
   });
 

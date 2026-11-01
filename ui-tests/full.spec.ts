@@ -1,25 +1,20 @@
 import { test, expect, login, record } from "./fixtures";
 import { audit, screenshot } from "./audit";
-for (const theme of ["light", "dark"] as const) for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
-  test(`${theme} ${viewport.width}: all valid admin routes`, async ({ page, manifest }, info) => {
-    test.setTimeout(600_000);
-    await page.setViewportSize(viewport);
-    await page.emulateMedia({ colorScheme: theme });
-    await page.addInitScript(theme => localStorage.setItem("perpay:theme", theme), theme);
-    await login(page, manifest);
-    for (const route of manifest.routes) {
-      await page.goto(manifest.origin + "/admin" + route);
-      await expect(page.locator("#main-content")).toBeVisible();
-      await expect(page.locator('#main-content [data-slot="skeleton"]')).toHaveCount(0);
-      await expect(page.locator('#main-content h1, #main-content [role="heading"][aria-level="1"]')).toHaveCount(1);
-      await expect(page.locator("#main-content")).not.toContainText("未找到这条对账记录");
-      await record(page, info, { route });
-      const id = route.replaceAll(/[^\w-]/g, "_") || "overview";
-      await screenshot(page, info, id);
-      await audit(page, info, id);
-    }
-  });
-}
+import { adminRouteCatalog, auditAdminRoutes } from "./admin-route-readiness";
+test.describe("admin route matrix", () => {
+  test.describe.configure({ mode: "parallel" });
+  for (const theme of ["light", "dark"] as const) for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    test(`${theme} ${viewport.width}: all valid admin routes`, async ({ page, manifest }, info) => {
+      test.setTimeout(600_000);
+      await page.setViewportSize(viewport);
+      await page.emulateMedia({ colorScheme: theme });
+      await page.addInitScript(theme => localStorage.setItem("perpay:theme", theme), theme);
+      await login(page, manifest);
+      const routes = await adminRouteCatalog(page, manifest);
+      await auditAdminRoutes(page, manifest, info, routes, "admin");
+    });
+  }
+});
 
 for (const theme of ["light", "dark"] as const) for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
   test(`${theme} ${viewport.width}: all checkout visual states`, async ({ page, manifest }, info) => {

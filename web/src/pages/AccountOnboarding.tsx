@@ -79,7 +79,7 @@ export function AccountOnboarding({
   if (accounts.isSuccess && sites.isSuccess && requested !== current.id)
     return <Navigate to={path} replace />;
   return (
-    <div className="flex min-w-0 flex-col gap-5" data-account-onboarding>
+    <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-4" data-account-onboarding>
       <nav aria-label="配置步骤">
         <ol className="grid grid-cols-3 gap-2">
           {steps.map((step, position) => (
@@ -154,7 +154,7 @@ export function AccountOnboarding({
                           {sites.data.data.map((site) => (
                             <div
                               key={site.client_id}
-                              className="flex min-w-0 flex-wrap items-center gap-3 p-4"
+                              className="flex min-w-0 flex-wrap items-center gap-3 px-3 py-2.5"
                             >
                               <div className="min-w-0 flex-1">
                                 <p className="font-medium">

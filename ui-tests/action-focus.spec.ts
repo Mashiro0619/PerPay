@@ -1,5 +1,6 @@
 import { test, expect, login, record } from "./fixtures";
 import type { LedgerConflictDetail, WebhookDeliveryDetail } from "../web/src/api/generated/types.gen";
+import { openRecord } from "./overlay-fixtures";
 
 for (const kind of ["conflict", "notification"] as const) {
   test(`${kind}: cancelling restores the action and success preserves keyboard position after it disappears`, async ({ page, manifest }, info) => {
@@ -47,17 +48,19 @@ for (const kind of ["conflict", "notification"] as const) {
       if (saved && pathname === apiPath) await route.fulfill({ status: 200, json: { data: completed } });
       else await route.continue();
     });
-    await page.goto(manifest.origin + "/admin" + path);
+    const recordDialog = await openRecord(page, manifest, path);
     const actionName = kind === "conflict" ? "保留已有流水" : "重新发送";
     const submitName = kind === "conflict" ? "确认处理冲突" : "确认重新发送";
-    const action = page.getByRole("button", { name: actionName, exact: true });
+    const action = recordDialog.getByRole("button", { name: actionName, exact: true });
     await expect(action).toBeVisible();
     await action.focus();
     await page.keyboard.press("Enter");
-    const dialog = page.getByRole("dialog");
+    const dialog = page.locator("[data-overlay-step]:visible");
     await expect(dialog).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(1);
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
+    await expect(recordDialog).toBeVisible();
     await expect(action).toBeFocused();
     expect(intercepted).toEqual([]);
 
@@ -71,10 +74,10 @@ for (const kind of ["conflict", "notification"] as const) {
     await expect(action).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => {
       const focused = document.activeElement;
-      return focused instanceof HTMLElement && focused !== document.body && !!focused.closest("#main-content");
+      return focused instanceof HTMLElement && !!focused.closest("[data-overlay-content]");
     })).toBe(true);
     await page.keyboard.press("Tab");
-    await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest("#main-content"))).toBe(true);
+    await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest("[data-overlay-content]"))).toBe(true);
     expect(intercepted).toEqual([actionPath]);
     // APIRequest bypasses page interception and proves the actual record did
     // not change while the browser displayed a completed synthetic response.

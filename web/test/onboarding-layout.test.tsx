@@ -217,12 +217,23 @@ it("refreshes both configuration and readiness through the only header action", 
   });
   await screen.findByText("收款服务就绪");
   const refresh = screen.getByRole("button", { name: "刷新" });
-  await waitFor(() => expect(refresh).toBeEnabled());
+  await waitFor(() => {
+    expect(refresh).toBeEnabled();
+    expect(refresh).not.toHaveAttribute("aria-disabled", "true");
+  });
   saved = { ...saved, revision: saved.revision + 1 };
   const before = view.fetchMock.mock.calls.length;
   defer = true;
   await userEvent.click(refresh);
-  await waitFor(() => expect(refresh).toBeDisabled());
+  await waitFor(() => expect(refresh).toHaveAttribute("aria-disabled", "true"));
+  await waitFor(() => expect(pending.length).toBeGreaterThan(0));
+  const inFlightCount = view.fetchMock.mock.calls.length;
+  const pendingCount = pending.length;
+  expect(refresh).toHaveFocus();
+  await userEvent.click(refresh);
+  await userEvent.keyboard("{Enter}");
+  expect(view.fetchMock).toHaveBeenCalledTimes(inFlightCount);
+  expect(pending).toHaveLength(pendingCount);
   expect(
     view.container.querySelector("[data-onboarding-workspace] [inert]"),
   ).not.toBeNull();
@@ -231,7 +242,10 @@ it("refreshes both configuration and readiness through the only header action", 
     for (const finish of pending) finish(json({ data: systemStatus(saved) }));
   });
   await screen.findByText("收款服务就绪");
-  await waitFor(() => expect(refresh).toBeEnabled());
+  await waitFor(() => {
+    expect(refresh).toBeEnabled();
+    expect(refresh).not.toHaveAttribute("aria-disabled", "true");
+  });
   expect(screen.getAllByRole("button", { name: "刷新" })).toHaveLength(1);
   expect(screen.queryByText("配置已变化")).not.toBeInTheDocument();
   const paths = view.fetchMock.mock.calls

@@ -56,7 +56,7 @@ async function openAccountDraft(page: Page, manifest: Manifest, legacySection: "
   await page.goto(manifest.origin + "/admin/settings/" + legacySection);
   await expect(page).toHaveURL(manifest.origin + "/admin/settings/accounts");
   await page.getByRole("link", { name: "添加支付宝账号", exact: true }).click();
-  await expect(page).toHaveURL(manifest.origin + "/admin/settings/accounts/new");
+  await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toBe("/settings/accounts/new");
   await expect(page.locator("[data-alipay-account-editor]")).toBeVisible();
   return writes;
 }
@@ -69,6 +69,7 @@ test.describe("narrow settings and overview controls remain usable", () => {
     const writes = await openAccountDraft(page, manifest, "provider");
     await expect(page.getByRole("combobox", { name: "支付宝环境", exact: true })).toHaveCount(0);
     await page.evaluate(() => document.documentElement.style.fontSize = "200%");
+    await page.getByRole("tab", { name: "应用信息", exact: true }).tap();
     const disclosure = page.getByRole("button", { name: "导入已有应用私钥", exact: true });
     const disclosureGeometry = await completeButtonLabel(disclosure, page);
     await disclosure.tap();
@@ -76,20 +77,30 @@ test.describe("narrow settings and overview controls remain usable", () => {
     await expect(page.getByRole("textbox", { name: "应用私钥", exact: true })).toBeVisible();
     await disclosure.tap();
     await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    await page.getByRole("tab", { name: "基本信息", exact: true }).tap();
     const name = page.getByRole("textbox", { name: "账号名称", exact: true });
     const appId = page.getByRole("textbox", { name: "应用 ID（App ID）", exact: true });
     await name.fill("主收款账号");
+    await page.getByRole("tab", { name: "应用信息", exact: true }).tap();
     await appId.fill("202610300001");
-    await expect(name).toHaveValue("主收款账号");
     await expect(appId).toHaveValue("202610300001");
-    await expect(page.getByRole("button", { name: "保存草稿", exact: true })).toBeEnabled();
+    await page.getByRole("tab", { name: "基本信息", exact: true }).tap();
+    await expect(name).toHaveValue("主收款账号");
+    const primaryGeometry = await completeButtonLabel(page.getByRole("button", { name: "保存并检查", exact: true }), page);
+    const more = page.getByRole("button", { name: "更多账号操作", exact: true });
+    const moreGeometry = await expectTouchTarget(more);
+    await more.tap();
+    await expect(page.getByRole("menuitem", { name: "保存草稿", exact: true })).toBeEnabled();
+    await page.keyboard.press("Escape");
+    await expect(more).toBeFocused();
     expect(writes).toEqual([]);
-    await record(page, info, { evidence: "real account draft form with desktop browser touch emulation; no account submitted", rootFont: 200, disclosureGeometry, legacyRedirect: "provider", writes });
+    await record(page, info, { evidence: "real account draft form with desktop browser touch emulation; no account submitted", rootFont: 200, disclosureGeometry, primaryGeometry, moreGeometry, legacyRedirect: "provider", writes });
   });
 
   test("a delayed text reflow keeps the account disclosure fully reachable after the legacy collection redirect", async ({ page, manifest }, info) => {
     await login(page, manifest);
     const writes = await openAccountDraft(page, manifest, "collection");
+    await page.getByRole("tab", { name: "应用信息", exact: true }).tap();
     const disclosure = page.getByRole("button", { name: "导入已有应用私钥", exact: true });
     await expect(disclosure).toBeVisible();
     await page.evaluate(() => {
@@ -159,7 +170,7 @@ test.describe("narrow settings and overview controls remain usable", () => {
   for (const [font, textSpacing] of [[200, false], [100, true]] as const) {
     test(`backup units remain complete and preserve the interval at ${font}% text, spacing=${textSpacing}`, async ({ page, manifest }, info) => {
       await login(page, manifest);
-      await page.goto(manifest.origin + "/admin/settings/backup");
+      await page.goto(manifest.origin + "/admin/settings/backup/edit");
       const units = page.getByRole("combobox", { name: "备份间隔单位", exact: true });
       const amount = page.getByRole("spinbutton", { name: "备份间隔", exact: true });
       await expect(units).toBeVisible();

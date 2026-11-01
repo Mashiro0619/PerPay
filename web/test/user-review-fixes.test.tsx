@@ -225,14 +225,14 @@ describe("list navigation continuity", () => {
     await screen.findByRole("link", { name: "第二页订单" });
     await userEvent
       .setup()
-      .click(screen.getByRole("button", { name: "清除筛选" }));
+      .click(screen.getByRole("button", { name: "清除搜索和筛选" }));
     expect(
       await screen.findByRole("link", { name: "第一页订单" }),
     ).toBeVisible();
     expect(view.router.state.location.search).toBe("?source=overview");
   });
 
-  it.each(["page link", "browser back"])(
+  it.each(["overlay close", "browser back"])(
     "restores page two and filters via %s",
     async (returnMethod) => {
       const view = mountOnboarding({
@@ -244,8 +244,8 @@ describe("list navigation continuity", () => {
       await user.click(await screen.findByRole("button", { name: "下一页" }));
       await user.click(await screen.findByRole("link", { name: "第二页订单" }));
       await screen.findByRole("heading", { name: order.product_name });
-      if (returnMethod === "page link")
-        await user.click(screen.getByRole("link", { name: "订单列表" }));
+      if (returnMethod === "overlay close")
+        await user.click(screen.getByRole("button", { name: "关闭对话框" }));
       else
         await act(async () => {
           await view.router.navigate(-1);
@@ -255,6 +255,7 @@ describe("list navigation continuity", () => {
       ).toBeVisible();
       expect(screen.getByText("第 2 页 · 本页 1 条")).toBeVisible();
       expect(screen.getByLabelText("付款状态筛选")).toHaveTextContent("未付款");
+      await user.click(screen.getByRole("button", { name: "高级筛选" }));
       expect(screen.getByLabelText("收银台状态筛选")).toHaveTextContent(
         "开放中",
       );

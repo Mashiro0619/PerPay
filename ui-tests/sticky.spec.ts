@@ -6,7 +6,7 @@ test("desktop keeps complete toolbars and mobile keeps its header, with one DOM 
     await page.goto(manifest.origin + "/admin" + route);
     await expect(page.locator("tbody tr").first()).toBeVisible();
     await expect(page.getByRole("searchbox")).toHaveCount(1);
-    await expect(page.getByRole("button", { name: "显示列", exact: true })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "列表显示", exact: true })).toHaveCount(1);
     await page.evaluate(() => scrollTo(0, 600));
     const header = page.locator(".site-header"), toolbar = page.locator("[data-list-toolbar]");
     await expect.poll(async () => (await header.boundingBox())!.y).toBe(0);
@@ -24,8 +24,8 @@ test("desktop keeps complete toolbars and mobile keeps its header, with one DOM 
       if (bounds) { expect(bounds.bottom).toBeGreaterThan(bounds.covered); expect(bounds.top).toBeLessThan(bounds.height); }
     }
     await page.keyboard.press("Shift+Tab");
-    await page.getByRole("button", { name: "显示列", exact: true }).click();
-    await expect(page.getByRole("menu")).toBeVisible();
+    await page.getByRole("button", { name: "列表显示", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "列表显示", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
     await record(page, info, { mode: "desktop sticky header and complete toolbar", route, header: await header.boundingBox(), toolbar: await toolbar.boundingBox() });
   }

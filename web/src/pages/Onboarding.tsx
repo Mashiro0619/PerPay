@@ -99,7 +99,7 @@ export default function Onboarding() {
 
   return (
     <div
-      className="admin-settings-layout @container/onboarding flex w-full min-w-0 flex-col gap-5"
+      className="admin-settings-layout @container/onboarding mx-auto flex w-full min-w-0 max-w-4xl flex-col gap-4"
       data-onboarding-workspace
     >
       <PageHeaderActions>

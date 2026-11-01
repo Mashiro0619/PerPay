@@ -255,15 +255,16 @@ test("an automatic update waits for a dirty form and its discard confirmation", 
   try {
     await page.setViewportSize({ width: 1440, height: 900 });
     await open(page, fixture, "/admin/settings/collection-policy");
+    await page.getByRole("link", { name: "编辑查账设置", exact: true }).click();
     const field = page.getByLabel("查账有效时限（秒）", { exact: true });
     await field.fill("450");
     const response = page.waitForResponse(value => new URL(value.url()).pathname === "/api/admin/v1/system/update");
     finish(update("1.1.0", epoch));
     await response;
-    await expect(updateLink(page)).toBeVisible();
+    await expect(updateIndicator(page)).toHaveCount(1);
     await expect(field).toHaveValue("450");
     await expect(dialog(page)).toHaveCount(0);
-    await updateLink(page).click();
+    await page.locator('[data-overlay-content] > [data-slot="dialog-close"]').click();
     const discard = page.getByRole("alertdialog", { name: "放弃未保存的修改？", exact: true });
     await expect(discard).toBeVisible();
     await expect(dialog(page)).toHaveCount(0);
@@ -271,6 +272,7 @@ test("an automatic update waits for a dirty form and its discard confirmation", 
     await expect(dialog(page)).toBeVisible();
     await expect(discard).not.toBeVisible();
     await acknowledge(page);
+    await updateLink(page).click();
     await expect(panel(page)).toContainText("v1.1.0");
   } finally { finish(update("1.1.0", epoch)); await fixture.close(); }
 });

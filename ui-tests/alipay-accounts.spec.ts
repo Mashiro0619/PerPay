@@ -74,20 +74,24 @@ for (const width of [390, 1440]) {
       await page.context().addCookies(fixture.cookies);
       await page.goto(fixture.origin + "/admin/settings/accounts/new");
       await page.getByLabel("账号名称", { exact: true }).fill("备用账号");
-      await page.getByRole("button", { name: "保存草稿", exact: true }).click();
+      await page.getByRole("button", { name: "更多账号操作", exact: true }).click();
+      await page.getByRole("menuitem", { name: "保存草稿", exact: true }).click();
       await expect(page.getByText("账号已保存", { exact: true })).toBeVisible();
-      await expect(page).toHaveURL(/\/admin\/settings\/accounts\/alipay_[0-9a-f-]+$/);
+      await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toMatch(/^\/settings\/accounts\/alipay_[0-9a-f-]+$/);
       await page.reload();
+      await page.getByRole("tab", { name: "应用密钥", exact: true }).click();
       await page
         .getByRole("button", { name: "生成应用密钥", exact: true })
         .click();
       await expect(
         page.getByRole("button", { name: "复制应用公钥", exact: true }),
       ).toBeVisible();
+      await page.getByRole("tab", { name: "应用信息", exact: true }).click();
       await page
         .getByLabel("应用 ID（App ID）", { exact: true })
         .fill("2026000000000002");
       await page.getByLabel("支付宝公钥", { exact: true }).fill(platformKey);
+      await page.getByRole("tab", { name: "收款码", exact: true }).click();
       await page
         .getByLabel("支付宝收款码内容", { exact: true })
         .fill("https://qr.alipay.com/browser-second-account");
@@ -143,11 +147,11 @@ for (const width of [390, 1440]) {
       await page
         .getByRole("button", { name: "创建业务网站", exact: true })
         .click();
-      await expect(page).toHaveURL(/\/admin\/sites\/site_/);
-      const siteId = new URL(page.url()).pathname.split("/").at(-1)!;
+      await expect.poll(() => new URL(page.url()).searchParams.get("overlay")).toMatch(/^\/sites\/site_[^/]+\/edit\?section=basic$/);
+      const siteId = new URL(new URL(page.url()).searchParams.get("overlay")!, fixture.origin).pathname.split("/")[2]!;
 
       await page.goto(
-        fixture.origin + "/admin/sites/" + siteId + "/settings/collection",
+        fixture.origin + "/admin/sites/" + siteId + "/edit?section=collection",
       );
       await page.getByRole("button", { name: "指定账号", exact: true }).click();
       await page
@@ -170,12 +174,10 @@ for (const width of [390, 1440]) {
       await page
         .getByRole("button", { name: "创建测试订单", exact: true })
         .click();
-      await expect(
-        page.getByRole("link", { name: "备用账号", exact: true }),
-      ).toHaveAttribute(
-        "href",
-        new RegExp("settings/accounts/" + secondary.id),
-      );
+      await expect.poll(async () => {
+        const href = await page.getByRole("link", { name: "备用账号", exact: true }).getAttribute("href");
+        return href ? new URL(href, fixture.origin).searchParams.get("overlay") : null;
+      }).toBe("/settings/accounts/" + secondary.id);
       await expect(
         page.getByText("测试订单已创建", { exact: true }),
       ).toBeVisible();
