@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { queryClient } from "../src/api/client";
 import { DraftProvider } from "../src/drafts";
-import Settings from "../src/pages/Settings";
+import { SettingsEditorOverlay as Settings } from "../src/pages/Settings";
 import { decodeQrImage } from "../src/qr-image";
 import { apiError, json, settings } from "./fixtures";
 
@@ -343,14 +343,14 @@ describe("collection QR image upload", () => {
 
   it("protects a decoded draft when navigating away", async () => {
     vi.mocked(decodeQrImage).mockResolvedValue(recognizedLink);
-    mount();
+    const { router } = mount();
     const user = userEvent.setup();
     await user.upload(
       await screen.findByLabelText("选择收款码二维码图片"),
       imageFile(),
     );
     await screen.findByText("已识别");
-    await user.click(screen.getByRole("tab", { name: "自动备份" }));
+    await act(async () => { await router.navigate("/settings/backup"); });
     expect(
       await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" }),
     ).toBeVisible();
@@ -358,7 +358,7 @@ describe("collection QR image upload", () => {
     expect(screen.getByLabelText("支付宝收款码内容")).toHaveValue(
       recognizedLink,
     );
-    await user.click(screen.getByRole("tab", { name: "自动备份" }));
+    await act(async () => { await router.navigate("/settings/backup"); });
     await user.click(
       await screen.findByRole("button", { name: "放弃修改并继续" }),
     );

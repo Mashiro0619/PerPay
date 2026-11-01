@@ -224,7 +224,7 @@ describe("application public key generation and replacement", () => {
   it("requires the newly retrieved Alipay public key without a redundant upload checkbox", async () => {
     const view = mountOnboarding({
       pendingKey: true,
-      path: "/settings/provider",
+      path: "/settings/provider/edit",
     });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "验证并启用" }));
@@ -270,7 +270,7 @@ describe("application public key generation and replacement", () => {
     );
   });
 
-  it.each([onboardingPath("provider"), "/settings/provider"])(
+  it.each([onboardingPath("provider"), "/settings/provider/edit"])(
     "rejects empty and whitespace-only activation keys with an accessible inline error at %s",
     async (path) => {
       const view = mountOnboarding({ pendingKey: true, path });
@@ -324,7 +324,7 @@ describe("application public key generation and replacement", () => {
     let attempts = 0;
     const view = mountOnboarding({
       pendingKey: true,
-      path: "/settings/provider",
+      path: "/settings/provider/edit",
       handle: (request) =>
         request.url.endsWith("/actions/activate") && ++attempts === 1
           ? apiError(
@@ -364,7 +364,7 @@ describe("application public key generation and replacement", () => {
   it("focuses invalid Alipay public-key input without locking corrections", async () => {
     const view = mountOnboarding({
       pendingKey: true,
-      path: "/settings/provider",
+      path: "/settings/provider/edit",
       handle: (request) =>
         request.url.endsWith("/actions/activate")
           ? json(
@@ -424,7 +424,7 @@ describe("application public key generation and replacement", () => {
     let attempts = 0;
     const view = mountOnboarding({
       pendingKey: true,
-      path: "/settings/provider",
+      path: "/settings/provider/edit",
       handle: (request) =>
         request.url.endsWith("/actions/activate") && ++attempts === 1
           ? Promise.reject(new Error("synthetic lost response"))
@@ -524,7 +524,7 @@ describe("application public key generation and replacement", () => {
   });
 
   it("keeps provider drafts when the discard prompt before regeneration is cancelled", async () => {
-    const view = mountOnboarding({ stage: 4, path: "/settings/provider" });
+    const view = mountOnboarding({ stage: 4, path: "/settings/provider/edit" });
     const input = await screen.findByLabelText("应用 ID（App ID）");
     fireEvent.change(input, { target: { value: "unsaved-provider" } });
     const user = userEvent.setup();

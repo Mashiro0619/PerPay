@@ -22,6 +22,7 @@ import { DraftProvider } from "../src/drafts";
 import { TestPaymentButton, TestPaymentProvider } from "../src/components/test-payment-provider";
 import { mountOnboarding, systemStatus } from "./onboarding-fixture";
 import { json, order, orderId } from "./fixtures";
+import { readOverlayTarget } from "../src/lib/overlay-navigation";
 const site = (id: string) => ({
   client_id: id,
   revision: 0,
@@ -300,10 +301,13 @@ it("fixes a test-payment request to A while switching to B and retries the origi
   await act(async () => {
     await view.router.navigate("/sites/b");
   });
+  expect(view.router.state.location.pathname).toBe("/sites/a");
   await act(async () => {
     reject(new TypeError("response lost"));
     await pending.catch(() => {});
   });
+  await screen.findByText("创建结果待确认");
+  await act(async () => { await view.router.navigate("/sites/b"); });
   await user.click(await screen.findByRole("button", { name: "测试收款" }));
   await screen.findByText("创建结果待确认");
   expect(within(screen.getByRole("dialog", { name: "测试收款" })).getByText("a", { exact: true })).toBeVisible();
@@ -473,10 +477,13 @@ it.each([
     await user.click(create);
     await waitFor(() => expect(writes).toHaveLength(1));
     await act(async () => { await view.router.navigate("/sites/b"); });
+    expect(view.router.state.location.pathname).toBe("/sites/a");
     await act(async () => {
       reject(new TypeError("response lost"));
       await pending.catch(() => {});
     });
+    await screen.findByText("创建结果待确认");
+    await act(async () => { await view.router.navigate("/sites/b"); });
     await user.click(await screen.findByRole("button", { name: "测试收款" }));
     await user.click(await screen.findByRole("button", { name: "重试上一次操作" }));
     await screen.findByText(notice);
@@ -488,8 +495,9 @@ it.each([
     expect(reads).toContain("/api/admin/v1/sites/a/orders/" + orderId);
     expect(reads).not.toContain("/api/admin/v1/sites/b/orders/" + orderId);
     const link = screen.getByRole("link", { name: "查看订单" });
-    expect(link).toHaveAttribute("href", "/sites/a/orders/" + orderId);
+    expect(link).toHaveAttribute("href", "/sites/b?overlay=" + encodeURIComponent("/sites/a/orders/" + orderId));
     await user.click(link);
-    await waitFor(() => expect(view.router.state.location.pathname).toBe("/sites/a/orders/" + orderId));
+    await waitFor(() => expect(readOverlayTarget(view.router.state.location.search)?.pathname).toBe("/sites/a/orders/" + orderId));
+    expect(view.router.state.location.pathname).toBe("/sites/b");
   },
 );

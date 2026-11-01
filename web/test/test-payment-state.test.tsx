@@ -94,8 +94,8 @@ describe("current test-payment state", () => {
     });
     await screen.findByText("收款已确认");
     expect(
-      screen.getByRole("dialog").querySelector("[data-slot=dialog-footer]"),
-    ).toHaveClass("shrink-0", "flex-row");
+      screen.getByRole("dialog").querySelector("[data-overlay-footer]"),
+    ).toHaveClass("shrink-0");
     expect(screen.getByText("收款已确认", { exact: true })).toBeVisible();
     expect(screen.getByText("实收金额")).toBeVisible();
     expect(
@@ -103,7 +103,7 @@ describe("current test-payment state", () => {
     ).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "查看订单" })).toHaveAttribute(
       "href",
-      "/orders/" + orderId,
+      "/?overlay=" + encodeURIComponent("/orders/" + orderId),
     );
     expect(view.reads()).toHaveLength(2);
     expect(view.writes()).toHaveLength(1);

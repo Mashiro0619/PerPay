@@ -8,7 +8,7 @@ const savedKey = "synthetic-saved-alipay-public-key";
 const providerPath = "/settings/onboarding/provider";
 
 describe("saved Alipay public key editing", () => {
-  it.each([providerPath, "/settings/provider"])(
+  it.each([providerPath, "/settings/provider/edit"])(
     "fills the saved public key without revealing secrets or creating a draft at %s",
     async (path) => {
       const view = mountOnboarding({ stage: 4, path });
@@ -17,7 +17,7 @@ describe("saved Alipay public key editing", () => {
       expect(input).toBeRequired();
       expect(screen.queryByText(/留空不变/)).not.toBeInTheDocument();
       expect(view.writes()).toHaveLength(0);
-      if (path === "/settings/provider")
+      if (path === "/settings/provider/edit")
         expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
       await userEvent
         .setup()

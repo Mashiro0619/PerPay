@@ -1,12 +1,8 @@
-import { QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it, vi } from "vitest";
-import { queryClient } from "../src/api/client";
-import { DraftProvider } from "../src/drafts";
-import Settings from "../src/pages/Settings";
-import { configuredThrough } from "./onboarding-fixture";
+import { json } from "./fixtures";
+import { configuredThrough, mountOnboarding } from "./onboarding-fixture";
 
 function mediaWidth(initial: number) {
   let width = initial;
@@ -28,79 +24,88 @@ function mediaWidth(initial: number) {
   });
 }
 
-function mount(siteMode = false) {
-  queryClient.setQueryData(["settings"], { data: { ...configuredThrough(4), site_mode: siteMode } });
-  const router = createMemoryRouter([{
-    path: "/settings/:section",
-    element: <DraftProvider><Settings /></DraftProvider>,
-  }], { initialEntries: ["/settings/display"] });
-  render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
-  return router;
+function mount(width: number, siteMode = false) {
+  const view = mountOnboarding({ stage: 4, path: "/settings/display", viewportWidth: width,
+    handle: request => new URL(request.url).pathname === "/api/admin/v1/settings"
+      ? json({ data: { ...configuredThrough(4), site_mode: siteMode } }) : undefined,
+  });
+  return { ...view, resize: mediaWidth(width) };
+}
+
+function closeEditor(dialog: HTMLElement) {
+  return within(dialog.querySelector<HTMLElement>("[data-overlay-actions]")!).getByRole("button", { name: "关闭" });
 }
 
 describe("responsive settings category navigation", () => {
   it.each([320, 360, 390, 430, 844, 1023])("uses a category select at %ipx and keeps guarded routes", async width => {
-    mediaWidth(width);
-    const router = mount();
+    const view = mount(width);
     const user = userEvent.setup();
     const category = await screen.findByRole("combobox", { name: "设置分类" });
     expect(category).toHaveTextContent("界面显示");
     expect(screen.queryByRole("tablist", { name: "设置分类" })).not.toBeInTheDocument();
-    const name = screen.getByRole("textbox", { name: "支付系统名称" });
+    expect(screen.queryByRole("textbox", { name: "支付系统名称" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("link", { name: "编辑界面显示" }));
+    const dialog = await screen.findByRole("dialog", { name: "编辑界面显示" });
+    const name = within(dialog).getByRole("textbox", { name: "支付系统名称" });
     fireEvent.change(name, { target: { value: "手机草稿" } });
-    await user.click(category);
-    await user.click(await screen.findByRole("option", { name: "查账设置" }));
+    await user.click(closeEditor(dialog));
     const guard = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
-    expect(router.state.location.pathname).toBe("/settings/display");
+    expect(view.router.state.location.pathname).toBe("/settings/display");
     await user.click(within(guard).getByRole("button", { name: "继续编辑" }));
-    await waitFor(() => expect(category).toHaveFocus());
+    await waitFor(() => expect(closeEditor(dialog)).toHaveFocus());
     expect(name).toHaveValue("手机草稿");
     expect(category).toHaveTextContent("界面显示");
+    await user.click(closeEditor(dialog));
+    await user.click(await screen.findByRole("button", { name: "放弃修改并继续" }));
+    await waitFor(() => expect(dialog).not.toBeInTheDocument());
     await user.click(category);
     await user.click(await screen.findByRole("option", { name: "查账设置" }));
-    await user.click(await screen.findByRole("button", { name: "放弃修改并继续" }));
-    await waitFor(() => expect(router.state.location.pathname).toBe("/settings/collection-policy"));
-    expect(screen.getByLabelText("常规查账间隔（秒）")).toBeVisible();
+    await waitFor(() => expect(view.router.state.location.pathname).toBe("/settings/collection-policy"));
+    expect(screen.getByRole("link", { name: "编辑查账设置" })).toBeVisible();
+    expect(view.writes()).toHaveLength(0);
   });
 
   it("switches navigation at 1024px without remounting the edited form", async () => {
-    const resize = mediaWidth(1023);
-    mount();
-    const name = await screen.findByRole("textbox", { name: "支付系统名称" });
+    const { resize } = mount(1023);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "编辑界面显示" }));
+    const dialog = await screen.findByRole("dialog", { name: "编辑界面显示" });
+    const name = within(dialog).getByRole("textbox", { name: "支付系统名称" });
     fireEvent.change(name, { target: { value: "旋转后保留" } });
     resize(1024);
-    expect(screen.getByRole("tablist", { name: "设置分类" })).toBeVisible();
-    expect(screen.queryByRole("combobox", { name: "设置分类" })).not.toBeInTheDocument();
+    expect(document.querySelector('[role="tablist"][aria-label="设置分类"]')).toBeInTheDocument();
+    expect(document.querySelector('[role="combobox"][aria-label="设置分类"]')).toBeNull();
     expect(screen.getByRole("textbox", { name: "支付系统名称" })).toBe(name);
     resize(430);
-    expect(screen.getByRole("combobox", { name: "设置分类" })).toBeVisible();
+    expect(document.querySelector('[role="combobox"][aria-label="设置分类"]')).toBeInTheDocument();
     expect(name).toHaveValue("旋转后保留");
   });
 
   it("keeps the desktop selection indicator and draft when navigation is canceled", async () => {
-    mediaWidth(1440);
-    const router = mount();
+    const view = mount(1440);
     const user = userEvent.setup();
     const tabs = await screen.findByRole("tablist", { name: "设置分类" });
     const display = within(tabs).getByRole("tab", { name: "界面显示" });
     const policy = within(tabs).getByRole("tab", { name: "查账设置" });
     const indicator = display.querySelector("[data-selection-indicator]");
-    const name = screen.getByRole("textbox", { name: "支付系统名称" });
     expect(indicator).toBeInTheDocument();
     display.focus();
     await user.keyboard("{ArrowLeft}");
-    expect(router.state.location.pathname).toBe("/settings/display");
+    expect(view.router.state.location.pathname).toBe("/settings/display");
     expect(display.querySelector("[data-selection-indicator]")).toBe(indicator);
 
+    await user.click(screen.getByRole("link", { name: "编辑界面显示" }));
+    const dialog = await screen.findByRole("dialog", { name: "编辑界面显示" });
+    const name = within(dialog).getByRole("textbox", { name: "支付系统名称" });
     fireEvent.change(name, { target: { value: "桌面草稿" } });
-    await user.click(policy);
+    await act(async () => { void view.router.navigate("/settings/collection-policy"); });
     const guard = await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" });
     expect(display).toHaveAttribute("aria-selected", "true");
     expect(policy).toHaveAttribute("aria-selected", "false");
     expect(policy.querySelector("[data-selection-indicator]")).toBeNull();
     await user.click(within(guard).getByRole("button", { name: "继续编辑" }));
     await waitFor(() => expect(guard).not.toBeInTheDocument());
-    expect(router.state.location.pathname).toBe("/settings/display");
+    expect(view.router.state.location.pathname).toBe("/settings/display");
     expect(screen.getByRole("textbox", { name: "支付系统名称" })).toBe(name);
     expect(name).toHaveValue("桌面草稿");
     expect(display.querySelector("[data-selection-indicator]")).toBe(indicator);
@@ -108,8 +113,7 @@ describe("responsive settings category navigation", () => {
   });
 
   it("omits migrated notification settings from the mobile selector", async () => {
-    mediaWidth(360);
-    mount(true);
+    mount(360, true);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("combobox", { name: "设置分类" }));
     await screen.findByRole("listbox");

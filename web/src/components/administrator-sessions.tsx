@@ -1,15 +1,21 @@
-import { Fragment, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { useParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Laptop, LogOut, Monitor, MoreHorizontal, Smartphone, Tablet } from "lucide-react";
+import { LogOut, MoreHorizontal } from "lucide-react";
+import { Link } from "@/navigation";
+import { BusinessTable, type BusinessColumn } from "@/components/business-table";
+import { OverlayActions } from "@/components/overlay-actions";
+import { useOverlayCloseGuard, useOverlayContext } from "@/lib/overlay-context";
 import { api, result, type AdminLoginSession } from "@/api/client";
 import { useSession } from "@/auth";
 import { useDraftGuard } from "@/drafts";
 import { dateTime } from "@/lib/format";
 import { sessionActivity, sessionDevice } from "@/lib/session-device";
 import { useSuccessToast } from "@/components/Feedback";
-import { ListDateTime } from "@/components/list-primitives";
 import { RefreshButton } from "@/components/refresh-button";
 import { ErrorNotice, Loading } from "@/components/request-state";
+import { PageHeading } from "@/components/page-heading";
+import { SettingsSummary } from "@/components/settings-summary";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,10 +32,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemSeparator, ItemTitle } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
 
 export const administratorSessionsKey = ["administrator-sessions"] as const;
+
+export function AdministratorSessionDetailOverlay() {
+  const { sessionId } = useParams();
+  return <AdministratorSessions detailSessionId={sessionId} />;
+}
 
 type SessionAction =
   | { kind: "logout" | "others" | "all" }
@@ -48,7 +58,8 @@ function confirmation(action: SessionAction) {
   }
 }
 
-export function AdministratorSessions() {
+export function AdministratorSessions({ detailSessionId }: { detailSessionId?: string } = {}) {
+  const overlay = useOverlayContext();
   const queryClient = useQueryClient();
   const session = useSession();
   const { requestDiscard } = useDraftGuard();
@@ -85,6 +96,7 @@ export function AdministratorSessions() {
     },
     onSettled: () => { sending.current = false; },
   });
+  useOverlayCloseGuard(() => sending.current || operation.isPending);
   const rows = [...(sessions.data?.data ?? [])].sort((left, right) =>
     Number(right.is_current) - Number(left.is_current) ||
     new Date(right.last_seen_at).getTime() - new Date(left.last_seen_at).getTime() ||
@@ -104,9 +116,31 @@ export function AdministratorSessions() {
   function restoreFocus() {
     return origin.current?.isConnected && !origin.current.disabled ? origin.current : heading.current;
   }
+  const selected = rows.find(row => row.session_id === detailSessionId);
+  const columns: BusinessColumn<AdminLoginSession>[] = [
+    { id: "device", label: "设备", layout: "identity", hideable: false, cell: row => <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <Link data-row-link to={"/settings/security/sessions/" + encodeURIComponent(row.session_id)}>{sessionDevice(row.user_agent).label}</Link>
+      {row.is_current && <Badge variant="secondary">当前</Badge>}
+    </div> },
+    { id: "ip", label: "登录 IP", summaryDefault: true, cell: row => row.ip_address ?? "未知" },
+    { id: "activity", label: "最近活跃", layout: "datetime", summaryDefault: true, cell: row => <time dateTime={row.last_seen_at} title={dateTime(row.last_seen_at) + "（北京时间）"}>{sessionActivity(row.last_seen_at)}</time> },
+    { id: "actions", label: "操作", layout: "actions", hideable: false, cell: row => <Button variant={row.is_current ? "outline" : "ghost"} size="sm" disabled={operation.isPending}
+      aria-label={row.is_current ? "退出登录" : `撤销 ${sessionDevice(row.user_agent).label} 会话`}
+      onClick={event => open(row.is_current ? { kind: "logout" } : { kind: "single", session: row }, event.currentTarget)}>{row.is_current ? "退出登录" : "撤销"}</Button> },
+  ];
   return (
     <>
-      <Card className="administrator-sessions-card" data-login-sessions>
+      {detailSessionId ? <div className="flex min-w-0 flex-col gap-4">
+        <PageHeading title="登录会话详情" />
+        <ErrorNotice error={sessions.error} retry={() => { void sessions.refetch(); }} />
+        {sessions.isPending ? <Loading label="正在读取登录会话…" /> : selected ? <SettingsSummary title={sessionDevice(selected.user_agent).label} rows={[
+          ["当前会话", selected.is_current ? "是" : "否"], ["登录 IP", selected.ip_address ?? "未记录"], ["最近活跃", dateTime(selected.last_seen_at)], ["到期时间", dateTime(selected.expires_at)], ["登录方式", "密码"], ["设备信息", selected.user_agent ?? "未记录"],
+        ]} /> : !sessions.error && <Empty><EmptyHeader><EmptyTitle>此会话已结束</EmptyTitle><EmptyDescription>已失效的会话不再出现在有效会话列表中。</EmptyDescription></EmptyHeader></Empty>}
+        <OverlayActions>
+          {overlay && <Button type="button" variant="outline" disabled={operation.isPending} onClick={() => overlay.requestClose()}>关闭</Button>}
+          {selected && <Button variant="destructive" disabled={operation.isPending} onClick={event => open(selected.is_current ? { kind: "logout" } : { kind: "single", session: selected }, event.currentTarget)}>{selected.is_current ? "退出当前会话" : "撤销此会话"}</Button>}
+        </OverlayActions>
+      </div> : <Card className="administrator-sessions-card" data-login-sessions>
         <CardHeader className="administrator-sessions-header">
           <CardTitle ref={heading} tabIndex={-1} role="heading" aria-level={2}>登录会话</CardTitle>
           <CardDescription>查看并退出当前正在使用此账号的登录会话。</CardDescription>
@@ -131,46 +165,13 @@ export function AdministratorSessions() {
           <ErrorNotice scope="page" error={sessions.error} retry={() => { void sessions.refetch(); }} />
           {sessions.isPending ? <Loading label="正在读取登录会话…" /> : sessions.data && (
             rows.length ? (
-              <ItemGroup className="record-list" aria-label="登录会话列表">
-                {rows.map((row, index) => {
-                  const device = sessionDevice(row.user_agent);
-                  const DeviceIcon = device.kind === "phone" ? Smartphone : device.kind === "tablet" ? Tablet : device.kind === "computer" ? Laptop : Monitor;
-                  return (
-                    <Fragment key={row.session_id}>
-                      {index > 0 && <ItemSeparator role="presentation" aria-hidden="true" />}
-                      <Item className="administrator-session-row record-list-row" role="listitem" size="sm" data-session-id={row.session_id}>
-                        <ItemMedia variant="icon" className="administrator-session-icon" aria-hidden="true"><DeviceIcon /></ItemMedia>
-                        <ItemContent className="administrator-session-content min-w-0">
-                          <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <ItemTitle>{device.label}</ItemTitle>
-                            {row.is_current && <Badge variant="secondary">当前</Badge>}
-                          </div>
-                          <ItemDescription className="administrator-session-meta record-list-meta">
-                            <span>登录 IP：{row.ip_address ?? "未知"}</span>
-                          </ItemDescription>
-                          <ItemDescription className="administrator-session-meta record-list-meta">
-                            <span>最近活跃于 <time dateTime={row.last_seen_at} title={dateTime(row.last_seen_at) + "（北京时间）"}>{sessionActivity(row.last_seen_at)}</time></span>
-                            <span>到期时间 <ListDateTime value={row.expires_at} inline /></span>
-                          </ItemDescription>
-                        </ItemContent>
-                        <ItemActions className="administrator-session-action ml-auto">
-                          <Button variant={row.is_current ? "outline" : "ghost"} size="sm" disabled={operation.isPending}
-                            aria-label={row.is_current ? "退出登录" : `撤销 ${device.label} 会话`}
-                            onClick={event => open(row.is_current ? { kind: "logout" } : { kind: "single", session: row }, event.currentTarget)}>
-                            {row.is_current ? "退出登录" : "撤销"}
-                          </Button>
-                        </ItemActions>
-                      </Item>
-                    </Fragment>
-                  );
-                })}
-              </ItemGroup>
+              <BusinessTable id="administrator-sessions" items={rows} columns={columns} rowId={row => row.session_id} density="compact" columnsMenu={false} aria-label="登录会话列表" />
             ) : (
               <Empty><EmptyHeader><EmptyTitle>没有可显示的登录会话</EmptyTitle><EmptyDescription>刷新后查看当前有效的登录会话。</EmptyDescription></EmptyHeader></Empty>
             )
           )}
         </CardContent>
-      </Card>
+      </Card>}
       <AlertDialog open={action !== null} onOpenChange={(open, event) => {
         if (!open && sending.current) event.cancel();
         else if (!open) setAction(null);

@@ -125,7 +125,7 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
   return <OverlayNavigationContext value={value}><InternalOverlayContext value={value}>{children}</InternalOverlayContext></OverlayNavigationContext>;
 }
 
-const views: Partial<Record<OverlayRouteKind, React.LazyExoticComponent<React.ComponentType>>> = {
+const views = {
   order: lazy(() => import("@/pages/OrderDetail").then(module => ({ default: module.OrderDetail }))),
   notification: lazy(() => import("@/pages/Notifications").then(module => ({ default: module.NotificationDetail }))),
   ledger: lazy(() => import("@/pages/LedgerDetail")),
@@ -136,7 +136,12 @@ const views: Partial<Record<OverlayRouteKind, React.LazyExoticComponent<React.Co
   "site-summary": lazy(() => import("@/pages/Sites").then(module => ({ default: module.SiteSummaryOverlay }))),
   "site-defaults": lazy(() => import("@/pages/Sites").then(module => ({ default: module.SiteDefaultsPage }))),
   account: lazy(() => import("@/pages/AlipayAccounts")),
-};
+  settings: lazy(() => import("@/pages/Settings").then(module => ({ default: module.SettingsEditorOverlay }))),
+  password: lazy(() => import("@/pages/SecuritySettings").then(module => ({ default: module.PasswordEditorPage }))),
+  "admin-access": lazy(() => import("@/pages/AdminAccessSettings").then(module => ({ default: module.AdminAccessEditorPage }))),
+  session: lazy(() => import("@/components/administrator-sessions").then(module => ({ default: module.AdministratorSessionDetailOverlay }))),
+  "test-payment": lazy(() => import("@/pages/TestPayment").then(module => ({ default: module.TestPaymentOverlay }))),
+} satisfies Record<OverlayRouteKind, React.LazyExoticComponent<React.ComponentType>>;
 
 class OverlayFailure extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
@@ -157,7 +162,7 @@ function OverlayRoutes({ location, children }: { location: Location; children?: 
     <UNSAFE_RouteContext value={{ matches: [], outlet: null, isDataRoute: false }}>
       <Routes location={location}>{children ?? overlayRouteDefinitions.map(definition => {
         const View = views[definition.kind];
-        return View ? <Route key={definition.pattern} path={definition.pattern} element={<View />} /> : null;
+        return <Route key={definition.pattern} path={definition.pattern} element={<View />} />;
       })}</Routes>
     </UNSAFE_RouteContext>
   </UNSAFE_NavigationContext>;

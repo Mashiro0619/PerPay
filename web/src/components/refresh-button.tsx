@@ -15,7 +15,7 @@ export function RefreshButton({ busy = false, disabled, ...props }: Omit<Compone
       刷新
     </DropdownMenuItem>;
   }
-  return <Tooltip><TooltipTrigger render={<Button {...props} variant={props.variant ?? "ghost"} size={props.size ?? "icon"} aria-label="刷新" aria-busy={busy} disabled={disabled || busy} />}>
+  return <Tooltip><TooltipTrigger render={<Button {...props} variant={props.variant ?? "ghost"} size={props.size ?? "icon"} aria-label="刷新" aria-busy={busy} disabled={disabled || busy} focusableWhenDisabled={busy || props.focusableWhenDisabled} />}>
     {busy ? <Spinner aria-hidden="true" /> : <RefreshCw />}
     <span data-refresh-label className="sr-only">刷新</span>
   </TooltipTrigger><TooltipContent>刷新</TooltipContent></Tooltip>;

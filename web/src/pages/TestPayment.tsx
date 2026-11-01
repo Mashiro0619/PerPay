@@ -3,6 +3,8 @@ import { useId, useRef, type FormEvent } from "react";
 import { ArrowLeft, AlertCircle } from "lucide-react";
 import { Link } from "@/navigation";
 import { useCurrentTestPayment } from "@/lib/test-payment-request";
+import { useOverlayCloseGuard, useOverlayContext } from "@/lib/overlay-context";
+import { OverlayActions } from "@/components/overlay-actions";
 import { CopyValue } from "@/components/copy-value";
 import {
   Collapsible,
@@ -74,7 +76,15 @@ export function TestPaymentDialog(props: TestPaymentDialogProps) {
   return <TestPaymentForm key={generation} dialog={props} />;
 }
 
-function TestPaymentForm({ dialog }: { dialog?: TestPaymentDialogProps }) {
+/** The same request and form are presented by the workspace's single overlay. */
+export function TestPaymentOverlay() {
+  const request = useCurrentTestPayment();
+  useOverlayCloseGuard(() => request.isSubmitting());
+  return <TestPaymentForm key={request.generation} overlay />;
+}
+
+function TestPaymentForm({ dialog, overlay = false }: { dialog?: TestPaymentDialogProps; overlay?: boolean }) {
+  const presentation = useOverlayContext();
   const request = useCurrentTestPayment();
   const { amount, validation, recovery, create, status, canCreate, startNew } =
     request;
@@ -213,6 +223,15 @@ function TestPaymentForm({ dialog }: { dialog?: TestPaymentDialogProps }) {
       {recovery ? "重试上一次操作" : "创建测试订单"}
     </Button>
   );
+
+  if (overlay) return order ? <TestPaymentResult workspaceClientId={request.fixedClientId}
+    created={order} onNew={startNew} onClose={presentation?.requestClose} /> : <>
+    <div className="min-w-0" data-test-payment-fields>{content}</div>
+    <OverlayActions>
+      <Button variant="outline" disabled={create.isPending} onClick={presentation?.requestClose}>{recovery ? "暂时关闭" : "取消"}</Button>
+      {primaryAction}
+    </OverlayActions>
+  </>;
 
   if (dialog)
     return (

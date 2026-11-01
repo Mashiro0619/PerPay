@@ -201,7 +201,7 @@ describe("authoritative verification failure after an unknown response", () => {
     let attempts = 0;
     const view = mountOnboarding({
       pendingKey: true,
-      path: "/settings/provider",
+      path: "/settings/provider/edit",
       handle: (request) => {
         if (!request.url.endsWith("/actions/activate")) return undefined;
         attempts++;
@@ -272,7 +272,7 @@ describe("authoritative verification failure after an unknown response", () => {
       let attempts = 0;
       const view = mountOnboarding({
         pendingKey: true,
-        path: "/settings/provider",
+        path: "/settings/provider/edit",
         handle: (request) => {
           if (!request.url.endsWith("/actions/activate")) return undefined;
           attempts++;
@@ -309,7 +309,7 @@ describe("authoritative verification failure after an unknown response", () => {
 
 describe.each([
   ["onboarding", applicationPath],
-  ["regular settings", "/settings/provider"],
+  ["regular settings", "/settings/provider/edit"],
 ] as const)("key operation completion feedback in %s", (_name, path) => {
   it.each([
     [

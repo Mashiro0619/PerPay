@@ -1,4 +1,3 @@
-import TestPayment from "@/pages/TestPayment";
 import { WorkspaceProvider, WorkspaceNavigationProvider, WorkspaceOutlet, useWorkspace, adminRoutePathname, useWorkspaceNavigation } from "@/workspace";
 import { workspaceScope } from "@/lib/workspace-scope";
 import { isReadableDetailPage } from "@/lib/detail-layout";
@@ -380,10 +379,10 @@ export const appRoutes = createRoutesFromElements(
         Component: (await import("./pages/Settings")).default,
       })}
     />
-
-
-
-
+    <Route path="settings/:section/edit" element={<LegacyOverlayRedirect />} />
+    <Route path="settings/security/password" element={<LegacyOverlayRedirect />} />
+    <Route path="settings/security/access" element={<LegacyOverlayRedirect />} />
+    <Route path="settings/security/sessions/:sessionId" element={<LegacyOverlayRedirect />} />
     <Route
       path="audit"
       lazy={async () => ({
@@ -401,7 +400,7 @@ export const appRoutes = createRoutesFromElements(
         Component: (await import("./pages/System")).default,
       })}
     />
-    <Route path="test-payment" element={<TestPayment />} />
+    <Route path="test-payment" element={<LegacyOverlayRedirect />} />
     <Route path="login" element={<Navigate to="/" replace />} />
     <Route path="setup" element={<Navigate to="/settings" replace />} />
     <Route

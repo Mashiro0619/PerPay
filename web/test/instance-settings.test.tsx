@@ -47,7 +47,7 @@ describe("website-aware instance settings", () => {
   });
 
   it("saves the instance name while preserving its chart default and omitting website display fields", async () => {
-    const view = mount("/settings/display");
+    const view = mount("/settings/display/edit");
     const name = await screen.findByRole("textbox", { name: "支付系统名称" });
     expect(screen.queryByRole("textbox", { name: "商家帮助链接" })).not.toBeInTheDocument();
     expect(screen.queryByRole("switch", { name: "收银台显示商品名称" })).not.toBeInTheDocument();

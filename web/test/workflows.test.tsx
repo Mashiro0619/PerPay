@@ -19,8 +19,8 @@ import { ReasonDialog } from "../src/components/ReasonDialog";
 import { DetailFields } from "../src/components/detail/DetailPrimitives";
 import { AssociateIncomeAction } from "../src/components/detail/FinancialActions";
 import { FinancialDialog } from "../src/pages/FinancialDialog";
-import { SecuritySettings } from "../src/pages/SecuritySettings";
-import Settings from "../src/pages/Settings";
+import { PasswordEditorPage, SecuritySettings } from "../src/pages/SecuritySettings";
+import Settings, { SettingsEditorOverlay } from "../src/pages/Settings";
 import {
   apiError,
   json,
@@ -96,7 +96,7 @@ describe("administrator authentication", () => {
   it("associates a mismatched password confirmation with its official field error", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    renderPage(<SecuritySettings settings={settings} onSaved={vi.fn()} />);
+    renderPage(<PasswordEditorPage />);
     const password = screen.getByLabelText("新密码");
     const confirmation = screen.getByLabelText("再次输入新密码");
     fireEvent.change(password, { target: { value: "test-password-one" } });
@@ -121,7 +121,7 @@ describe("administrator authentication", () => {
         async (_request: Request) => new Response(null, { status: 204 }),
       );
       vi.stubGlobal("fetch", fetchMock);
-      renderPage(<SecuritySettings settings={settings} onSaved={vi.fn()} />);
+      renderPage(<PasswordEditorPage />);
       const field = screen.getByLabelText("新密码");
       const confirmation = screen.getByLabelText("再次输入新密码");
       const short = Array.from(password).slice(0, 5).join("");
@@ -386,16 +386,13 @@ describe("concise settings copy", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText("未保存")).not.toBeInTheDocument();
     if (section === "collection") {
-      expect(
-        screen.getByLabelText("支付宝收款码内容"),
-      ).not.toHaveAccessibleDescription();
-      expect(screen.getByRole("button", { name: "上传二维码" })).toBeVisible();
+      expect(screen.queryByLabelText("支付宝收款码内容")).not.toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /编辑/ })).toHaveAttribute("href", "/settings/collection/edit");
     }
     if (section === "backup") {
       expect(
-        screen.getByRole("link", { name: "查看备份状态" }),
-      ).toHaveAttribute("href", "/system");
-      expect(screen.getByText(/恢复需要数据库备份和主密钥/)).toBeVisible();
+        screen.getByRole("link", { name: /编辑/ }),
+      ).toHaveAttribute("href", "/settings/backup/edit");
     }
   });
 
@@ -406,7 +403,7 @@ describe("concise settings copy", () => {
     );
     renderPage(
       <Routes>
-        <Route path="/settings/:section" element={<Settings />} />
+        <Route path="/settings/:section" element={<SettingsEditorOverlay />} />
       </Routes>,
       "/settings/collection-policy",
     );
@@ -522,7 +519,7 @@ describe("state-changing workflows", () => {
     const user = userEvent.setup();
     renderPage(
       <Routes>
-        <Route path="/settings/:section" element={<Settings />} />
+        <Route path="/settings/:section" element={<SettingsEditorOverlay />} />
       </Routes>,
       "/settings/collection-policy",
     );

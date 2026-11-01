@@ -137,7 +137,7 @@ describe("shared page request notices", () => {
 
   it("keeps the warning until every affected read recovers, including a later failed retry", async () => {
     const view = mountReads("/settings/display");
-    await screen.findByRole("textbox", { name: "支付系统名称" });
+    await screen.findByRole("link", { name: "编辑界面显示" });
     await settled();
     view.failed.add("settings");
     view.failed.add("status");
@@ -168,7 +168,7 @@ describe("shared page request notices", () => {
     await screen.findByRole("alert");
 
     await act(async () => { await view.router.navigate("/settings/display"); });
-    await screen.findByRole("textbox", { name: "支付系统名称" });
+    await screen.findByRole("link", { name: "编辑界面显示" });
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
     expect(queryClient.getQueryCache().findAll({ queryKey: ["orders"] })
       .some(query => query.state.status === "error" && !query.isActive())).toBe(true);
@@ -228,7 +228,7 @@ describe("shared page request notices", () => {
   });
 
   it.each([422, 503])("retains a local %s save failure and its draft when the shared read warning is retried", async status => {
-    const view = mountReads("/settings/display", request => request.method === "PUT"
+    const view = mountReads("/settings/display/edit", request => request.method === "PUT"
       ? json({ error: {
         code: status === 422 ? "validation_failed" : "synthetic_save_failure",
         message: "设置保存未完成",
@@ -239,20 +239,20 @@ describe("shared page request notices", () => {
     const form = name.closest("form")!;
     fireEvent.change(name, { target: { value: "需要保留的设置草稿" } });
     fireEvent.submit(form);
-    const local = await within(form).findByRole("alert");
+    const local = await within(status === 422 ? form : screen.getByRole("dialog").querySelector<HTMLElement>("[data-overlay-footer]")!).findByRole("alert");
     if (status === 422) {
       expect(name).toHaveAttribute("aria-invalid", "true");
       expect(name).toHaveAccessibleDescription("名称不符合要求");
     } else expect(local).toHaveTextContent("设置保存未完成");
 
-    view.failed.add("status");
-    await refresh("status");
+    view.failed.add("settings");
+    await refresh("settings");
     await waitFor(() => expect(screen.getAllByRole("alert")).toHaveLength(2));
-    const shared = screen.getAllByRole("alert").find(alert => !form.contains(alert))!;
+    const shared = screen.getAllByRole("alert").find(alert => alert !== local)!;
     view.failed.clear();
     await userEvent.click(within(shared).getByRole("button", { name: /重试/ }));
     await waitFor(() => expect(screen.getAllByRole("alert")).toHaveLength(1));
-    expect(within(form).getByRole("alert")).toBe(local);
+    expect(local).toBeVisible();
     expect(name).toHaveValue("需要保留的设置草稿");
     expect(view.writes()).toHaveLength(1);
     if (status === 422) expect(name).toHaveAccessibleDescription("名称不符合要求");

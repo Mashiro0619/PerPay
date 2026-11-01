@@ -34,7 +34,7 @@ async function leave(view: ReturnType<typeof mountOnboarding>) {
 
 describe("settings saves never wait in an offline queue", () => {
   it("does not send an abandoned save after route navigation and reconnection", async () => {
-    const view = mountOnboarding({ stage: 4, path: "/settings/display" });
+    const view = mountOnboarding({ stage: 4, path: "/settings/display/edit" });
     const input = await editName();
     await network(false);
     fireEvent.submit(input.closest("form")!);
@@ -45,7 +45,7 @@ describe("settings saves never wait in an offline queue", () => {
   });
 
   it("keeps the draft editable after offline rejection and requires an explicit online save", async () => {
-    const view = mountOnboarding({ stage: 4, path: "/settings/display" });
+    const view = mountOnboarding({ stage: 4, path: "/settings/display/edit" });
     const input = await editName();
     await network(false);
     fireEvent.submit(input.closest("form")!);
@@ -60,7 +60,7 @@ describe("settings saves never wait in an offline queue", () => {
   });
 
   it("rejects before dispatch when navigator is offline before QueryCore observes an event", async () => {
-    const view = mountOnboarding({ stage: 4, path: "/settings/display" });
+    const view = mountOnboarding({ stage: 4, path: "/settings/display/edit" });
     const input = await editName();
     online = false;
     expect(onlineManager.isOnline()).toBe(true);
@@ -72,10 +72,14 @@ describe("settings saves never wait in an offline queue", () => {
   it("does not promise cancellation of a dispatched save and refreshes settings after unmount", async () => {
     let saved = configuredThrough(4);
     let finish!: () => void;
+    let finishRead!: () => void;
+    let awaitFreshRead = false;
     let writes = 0;
-    const view = mountOnboarding({ stage: 4, path: "/settings/display", handle: request => {
+    const view = mountOnboarding({ stage: 4, path: "/settings/display/edit", handle: request => {
       const path = new URL(request.url).pathname;
-      if (path === "/api/admin/v1/settings") return json({ data: saved });
+      if (path === "/api/admin/v1/settings") return awaitFreshRead
+        ? new Promise<Response>(resolve => { finishRead = () => resolve(json({ data: saved })); })
+        : json({ data: saved });
       if (path.endsWith("/settings/display") && request.method === "PUT") {
         writes++;
         return request.json().then(body => new Promise<Response>(resolve => {
@@ -93,10 +97,16 @@ describe("settings saves never wait in an offline queue", () => {
     expect(within(dialog).getByText("已提交的保存可能仍在执行，请重新读取后核对结果。")).toBeVisible();
     await userEvent.click(within(dialog).getByRole("button", { name: "放弃修改并继续" }));
     await waitFor(() => expect(view.router.state.location.pathname).toBe("/orders"));
+    await waitFor(() => expect(input).not.toBeInTheDocument());
     await act(async () => { finish(); });
     await waitFor(() => expect(queryClient.getMutationCache().getAll().some(m => m.state.status === "pending")).toBe(false));
-    await act(async () => { await view.router.navigate("/settings/display"); });
+    awaitFreshRead = true;
+    await act(async () => { await view.router.navigate("/settings/display/edit"); });
+    await waitFor(() => expect(finishRead).toBeTypeOf("function"));
+    expect(screen.queryByRole("textbox", { name: "支付系统名称" })).not.toBeInTheDocument();
+    await act(async () => { finishRead(); });
     await waitFor(() => expect(screen.getByRole("textbox", { name: "支付系统名称" })).toHaveValue("明确保存的设置"));
+    expect(writes).toBe(1);
   });
 });
 

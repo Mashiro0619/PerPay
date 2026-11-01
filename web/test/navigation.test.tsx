@@ -10,6 +10,7 @@ import { appRoutes } from "../src/App";
 import { queryClient, type SystemAnalytics } from "../src/api/client";
 import { apiError, json, settings } from "./fixtures";
 import { systemStatus } from "./onboarding-fixture";
+import { readOverlayTarget } from "../src/lib/overlay-navigation";
 
 function mount(
   options: {
@@ -128,10 +129,11 @@ function mount(
 
 async function edit() {
   const user = userEvent.setup();
+  await user.click(await screen.findByRole("link", { name: "编辑查账设置" }));
   const field = await screen.findByLabelText("查账有效时限（秒）");
   await user.clear(field);
   await user.type(field, "450");
-  return { user, field };
+  return { user, field, dialog: screen.getByRole("dialog", { name: "编辑查账设置" }) };
 }
 
 function unloadIsBlocked() {
@@ -146,6 +148,7 @@ describe("navigation and draft protection", () => {
     async (source) => {
       const view = mount({ path: "/settings/security" });
       const user = userEvent.setup();
+      await user.click(await screen.findByRole("link", { name: "修改登录密码" }));
       await user.type(
         await screen.findByLabelText("新密码"),
         "offline-test-password",
@@ -178,7 +181,7 @@ describe("navigation and draft protection", () => {
             .getAll()
             .some((mutation) => mutation.state.isPaused),
         ).toBe(false);
-        await user.click(screen.getByRole("link", { name: "订单" }));
+        await act(async () => { await view.router.navigate("/orders"); });
         await user.click(
           await screen.findByRole("button", { name: "放弃修改并继续" }),
         );
@@ -204,6 +207,7 @@ describe("navigation and draft protection", () => {
   it("requires an explicit resubmit after an offline password failure", async () => {
     const view = mount({ path: "/settings/security" });
     const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "修改登录密码" }));
     await user.type(
       await screen.findByLabelText("新密码"),
       "resubmit-test-password",
@@ -251,7 +255,7 @@ describe("navigation and draft protection", () => {
     const user = userEvent.setup();
     await user.click(selector);
     await user.click(await screen.findByRole("option", { name: "查账设置" }));
-    await screen.findByLabelText("查账有效时限（秒）");
+    await screen.findByRole("link", { name: "编辑查账设置" });
     expect(view.router.state.location.pathname).toBe("/settings/collection-policy");
     expect(screen.getByRole("combobox", { name: "设置分类" })).toHaveTextContent("查账设置");
     expect(
@@ -259,11 +263,14 @@ describe("navigation and draft protection", () => {
     ).toBe(false);
   });
 
-  it("preserves a dirty form and the selected settings tab after cancelling navigation", async () => {
+  it("preserves a dirty editor and its parent category when dismissal is cancelled", async () => {
     const view = mount();
-    const { user, field } = await edit();
-    const selector = screen.getByRole("tab", { name: "界面显示" });
-    await user.click(selector);
+    const selected = await screen.findByRole("tab", { name: "查账设置" });
+    const { user, field, dialog } = await edit();
+    expect(document.querySelector("[data-admin-console]")).toHaveAttribute("inert");
+    expect(dialog.closest("[data-admin-console]")).toBeNull();
+    const close = within(dialog).getByRole("button", { name: "关闭" });
+    await user.click(close);
     const confirmation = await screen.findByRole("alertdialog");
     expect(confirmation).toBeVisible();
     expect(confirmation).toHaveClass(
@@ -274,33 +281,34 @@ describe("navigation and draft protection", () => {
     await user.click(screen.getByRole("button", { name: "继续编辑" }));
     expect(view.router.state.location.pathname).toBe("/settings/collection-policy");
     expect(field).toHaveValue(450);
-    expect(screen.getByRole("tab", { name: "查账设置" })).toHaveAttribute(
+    expect(selected).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    await waitFor(() => expect(selector).toHaveFocus());
+    expect(readOverlayTarget(view.router.state.location.search)?.pathname).toBe("/settings/collection-policy/edit");
+    await waitFor(() => expect(close).toHaveFocus());
     expect(unloadIsBlocked()).toBe(true);
     expect(
       view.fetchMock.mock.calls.some(([request]) => request.method !== "GET"),
     ).toBe(false);
   });
-  it("moves tab focus with arrows without discarding drafts until Enter activates", async () => {
+  it("moves category focus with arrows and opens the new summary only when Enter activates", async () => {
     const view = mount();
-    const { user, field } = await edit();
-    const selected = screen.getByRole("tab", { name: "查账设置" });
+    const user = userEvent.setup();
+    const selected = await screen.findByRole("tab", { name: "查账设置" });
     selected.focus();
     await user.keyboard("{ArrowRight}");
     const notifications = screen.getByRole("tab", { name: "通知" });
     expect(notifications).toHaveFocus();
     expect(selected).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
-    expect(field).toHaveValue(450);
-    await user.keyboard("{Enter}");
-    expect(await screen.findByRole("alertdialog")).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "继续编辑" }));
     expect(view.router.state.location.pathname).toBe("/settings/collection-policy");
-    expect(selected).toHaveAttribute("aria-selected", "true");
-    expect(field).toHaveValue(450);
+    await user.keyboard("{Enter}");
+    await screen.findByRole("link", { name: "编辑通知" });
+    expect(view.router.state.location.pathname).toBe("/settings/notifications");
+    expect(notifications).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(view.fetchMock.mock.calls.some(([request]) => request.method !== "GET")).toBe(false);
   });
 
   it("offers test payment through mobile page actions and restores its focus after cancellation", async () => {
@@ -323,7 +331,7 @@ describe("navigation and draft protection", () => {
   });
   it("uses the official account menu without duplicate branding or palette controls", async () => {
     const { container, fetchMock } = mount();
-    await screen.findByLabelText("查账有效时限（秒）");
+    await screen.findByRole("link", { name: "编辑查账设置" });
     const user = userEvent.setup();
     expect(screen.getByRole("link", { name: "PerPay" })).toBeVisible();
     expect(
@@ -477,14 +485,14 @@ describe("navigation and draft protection", () => {
     const { router } = mount();
     const { user, field } = await edit();
     expect(unloadIsBlocked()).toBe(true);
-    await user.click(screen.getByRole("tab", { name: "自动备份" }));
+    await act(async () => { await router.navigate("/settings/backup"); });
     expect(
       await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" }),
     ).toBeVisible();
     expect(router.state.location.pathname).toBe("/settings/collection-policy");
     await user.click(screen.getByRole("button", { name: "继续编辑" }));
     expect(field).toHaveValue(450);
-    await user.click(screen.getByRole("link", { name: "订单" }));
+    await act(async () => { await router.navigate("/orders"); });
     await user.click(screen.getByRole("button", { name: "放弃修改并继续" }));
     expect(
       await screen.findByRole("heading", { name: "全部订单", level: 1 }),
@@ -506,15 +514,17 @@ describe("navigation and draft protection", () => {
     expect(router.state.location.pathname).toBe("/settings/collection-policy");
   });
 
-  it("waits for discard confirmation before logout and clears protected data on success", async () => {
+  it("requires discarding the editor before logout and clears protected data on success", async () => {
     const { fetchMock } = mount();
-    const { user } = await edit();
-    await user.click(screen.getByRole("button", { name: /账户菜单$/ }));
-    await user.click(await screen.findByRole("menuitem", { name: "退出登录" }));
+    const { user, dialog } = await edit();
+    await user.click(within(dialog).getByRole("button", { name: "关闭" }));
     expect(
       fetchMock.mock.calls.some(([request]) => request.url.endsWith("/logout")),
     ).toBe(false);
     await user.click(screen.getByRole("button", { name: "放弃修改并继续" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: /账户菜单$/ }));
+    await user.click(await screen.findByRole("menuitem", { name: "退出登录" }));
     expect(
       await screen.findByRole("heading", { name: "登录管理后台" }),
     ).toBeVisible();
@@ -522,20 +532,26 @@ describe("navigation and draft protection", () => {
     expect(unloadIsBlocked()).toBe(false);
   });
 
-  it("keeps the editor and dirty guard if logout fails", async () => {
+  it("keeps cancelled edits, then preserves the saved settings summary when a later logout fails", async () => {
     mount({ logoutFailure: true });
-    const { user, field } = await edit();
-    await user.click(screen.getByRole("button", { name: /账户菜单$/ }));
-    await user.click(await screen.findByRole("menuitem", { name: "退出登录" }));
-    await user.click(screen.getByRole("button", { name: "放弃修改并继续" }));
-    expect(await screen.findByText(/服务处理失败/)).toBeVisible();
+    const { user, field, dialog } = await edit();
+    await user.click(within(dialog).getByRole("button", { name: "关闭" }));
+    await user.click(await screen.findByRole("button", { name: "继续编辑" }));
     expect(field).toHaveValue(450);
     expect(unloadIsBlocked()).toBe(true);
+    await user.click(within(dialog).getByRole("button", { name: "关闭" }));
+    await user.click(await screen.findByRole("button", { name: "放弃修改并继续" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: /账户菜单$/ }));
+    await user.click(await screen.findByRole("menuitem", { name: "退出登录" }));
+    expect(await screen.findByText(/服务处理失败/)).toBeVisible();
+    expect(screen.getByRole("link", { name: "编辑查账设置" })).toBeVisible();
+    expect(queryClient.getQueryData(["settings"])).toBeDefined();
   });
 
   it("clears dirty state after saving and does not prompt when values are reverted", async () => {
     mount();
-    const { user, field } = await edit();
+    const { user, field, dialog } = await edit();
     await user.clear(field);
     await user.type(field, "300");
     expect(unloadIsBlocked()).toBe(false);
@@ -544,7 +560,10 @@ describe("navigation and draft protection", () => {
     await user.click(screen.getByRole("button", { name: "保存" }));
     await screen.findByText(/已保存/);
     await waitFor(() => expect(unloadIsBlocked()).toBe(false));
+    await user.click(within(dialog).getByRole("button", { name: "关闭" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     await user.click(screen.getByRole("tab", { name: "自动备份" }));
+    await user.click(await screen.findByRole("link", { name: "编辑自动备份" }));
     expect(await screen.findByLabelText("备份间隔")).toBeVisible();
     expect(screen.queryByRole("alertdialog", { name: "放弃未保存的修改？" })).not.toBeInTheDocument();
   });
@@ -566,6 +585,7 @@ describe("navigation and draft protection", () => {
   it("does not let a draft block session expiry or retain password edits", async () => {
     mount({ path: "/settings/security" });
     const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "修改登录密码" }));
     await user.type(
       await screen.findByLabelText("新密码"),
       "unsaved-test-password",
@@ -586,7 +606,7 @@ describe("navigation and draft protection", () => {
 
   it("uses the official mobile sidebar and restores its trigger on Escape", async () => {
     mount({ mobile: true });
-    await screen.findByLabelText("查账有效时限（秒）");
+    await screen.findByRole("link", { name: "编辑查账设置" });
     const user = userEvent.setup();
     const trigger = screen.getByRole("button", { name: "切换导航" });
     await user.click(trigger);
@@ -634,7 +654,7 @@ describe("page actions in the shared header", () => {
     "places settings actions before appearance without duplicates (mobile: %s)",
     async (mobile) => {
       const { container, router } = mount({ mobile, configured: true });
-      await screen.findByLabelText("查账有效时限（秒）");
+      await screen.findByRole("link", { name: "编辑查账设置" });
       const header = container.querySelector("header")!;
       if (mobile) {
         expect(within(header).queryByRole("link", { name: "配置向导" })).not.toBeInTheDocument();
@@ -692,7 +712,7 @@ describe("page actions in the shared header", () => {
     },
   );
 
-  it("keeps dirty settings when header refresh or wizard navigation is cancelled", async () => {
+  it("keeps dirty settings when the local header refresh or a requested wizard navigation is cancelled", async () => {
     const { fetchMock, router } = mount();
     const { user, field } = await edit();
     const reads = () =>
@@ -702,14 +722,14 @@ describe("page actions in the shared header", () => {
       ).length;
     const before = reads();
     const refresh = screen.getByRole("button", { name: "刷新" });
-    expect(refresh.closest("header")).not.toBeNull();
+    expect(refresh.closest("[data-slot=dialog-header]")).not.toBeNull();
     await user.click(refresh);
     expect(await screen.findByRole("alertdialog")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "继续编辑" }));
     expect(field).toHaveValue(450);
     expect(reads()).toBe(before);
     await waitFor(() => expect(refresh).toHaveFocus());
-    await user.click(screen.getByRole("link", { name: "配置向导" }));
+    await act(async () => { await router.navigate("/settings/onboarding"); });
     await user.click(await screen.findByRole("button", { name: "继续编辑" }));
     expect(router.state.location.pathname).toBe("/settings/collection-policy");
     expect(field).toHaveValue(450);
@@ -729,7 +749,10 @@ describe("page actions in the shared header", () => {
         expect(refresh.closest("header")).toBeNull();
         expect(refresh.closest(".runtime-toolbar")).not.toBeNull();
       }
-      await waitFor(() => expect(refresh).toBeEnabled());
+      await waitFor(() => {
+        expect(refresh).toBeEnabled();
+        expect(refresh).not.toHaveAttribute("aria-disabled", "true");
+      });
       const original = fetchMock.getMockImplementation()!;
       let finish!: (value: Response) => void;
       let pendingRequest!: Request;
@@ -742,11 +765,24 @@ describe("page actions in the shared header", () => {
           : original(request),
       );
       await userEvent.click(refresh);
-      await waitFor(() => expect(refresh).toBeDisabled());
+      await waitFor(() => expect(refresh).toHaveAttribute("aria-disabled", "true"));
+      await waitFor(() => expect(pendingRequest).toBeDefined());
+      const signal = pendingRequest.signal;
+      const count = fetchMock.mock.calls.length;
+      expect(refresh).toHaveFocus();
+      await userEvent.click(refresh);
+      await userEvent.keyboard("{Enter}");
+      expect(fetchMock).toHaveBeenCalledTimes(count);
+      expect(pendingRequest.signal).toBe(signal);
+      expect(signal.aborted).toBe(false);
       await act(async () => {
         finish(await original(pendingRequest));
       });
-      await waitFor(() => expect(refresh).toBeEnabled());
+      await waitFor(() => {
+        expect(refresh).toBeEnabled();
+        expect(refresh).not.toHaveAttribute("aria-disabled", "true");
+      });
+      expect(refresh).toHaveFocus();
     },
   );
 });
@@ -756,18 +792,15 @@ describe("shared content width navigation", () => {
   beforeEach(() => localStorage.removeItem("perpay:content-width"));
   afterEach(() => localStorage.removeItem("perpay:content-width"));
 
-  it("keeps settings drafts, sidebar, focus, route and requests unchanged while switching", async () => {
+  it("keeps the active editor, draft, focus and requests when another tab changes content width", async () => {
     const { router, fetchMock, container } = mount({ configured: true });
     const { user, field } = await edit();
     const before = fetchMock.mock.calls.length;
     const location = router.state.location;
     const sidebar = container.querySelector("[data-slot=sidebar]");
     const sidebarState = sidebar?.getAttribute("data-state");
-    const control = screen.getByRole("button", { name: "切换为全屏布局" });
-    const appearance = screen.getByRole("button", { name: /外观/ });
-    expect(control.closest("header")).toBe(appearance.closest("header"));
-    expect(control.compareDocumentPosition(appearance) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    await user.click(control);
+    await user.click(field);
+    act(() => { window.dispatchEvent(new StorageEvent("storage", { key: "perpay:content-width", newValue: "full", storageArea: localStorage })); });
     expect(container.querySelector("[data-content-width]")).toHaveAttribute("data-content-width", "full");
     expect(screen.getByLabelText("查账有效时限（秒）")).toBe(field);
     expect(field).toHaveValue(450);
@@ -775,7 +808,7 @@ describe("shared content width navigation", () => {
     expect(router.state.location).toBe(location);
     expect(sidebar?.getAttribute("data-state")).toBe(sidebarState);
     expect(fetchMock).toHaveBeenCalledTimes(before);
-    expect(control).toHaveFocus();
+    expect(field).toHaveFocus();
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
@@ -827,7 +860,10 @@ describe("layout changes during active requests", () => {
   it("keeps a pending page refresh and its original signal without sending a second request", async () => {
     const { fetchMock } = mount({ path: "/system", configured: true });
     const refresh = await screen.findByRole("button", { name: "刷新" });
-    await waitFor(() => expect(refresh).toBeEnabled());
+    await waitFor(() => {
+      expect(refresh).toBeEnabled();
+      expect(refresh).not.toHaveAttribute("aria-disabled", "true");
+    });
     const original = fetchMock.getMockImplementation()!;
     let finish!: (response: Response) => void;
     let pendingRequest!: Request;
@@ -837,14 +873,25 @@ describe("layout changes during active requests", () => {
         : original(request),
     );
     await userEvent.click(refresh);
-    await waitFor(() => expect(refresh).toBeDisabled());
+    await waitFor(() => expect(refresh).toHaveAttribute("aria-disabled", "true"));
+    await waitFor(() => expect(pendingRequest).toBeDefined());
+    const signal = pendingRequest.signal;
     const count = fetchMock.mock.calls.length;
     await userEvent.click(screen.getByRole("button", { name: "切换为全屏布局" }));
     expect(screen.getByRole("button", { name: "刷新" })).toBe(refresh);
-    expect(refresh).toBeDisabled();
-    expect(pendingRequest.signal.aborted).toBe(false);
+    expect(refresh).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(refresh);
+    act(() => refresh.focus());
+    expect(refresh).toHaveFocus();
+    await userEvent.keyboard("{Enter}");
+    expect(pendingRequest.signal).toBe(signal);
+    expect(signal.aborted).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(count);
     await act(async () => { finish(json({ data: systemStatus() })); });
-    await waitFor(() => expect(refresh).toBeEnabled());
+    await waitFor(() => {
+      expect(refresh).toBeEnabled();
+      expect(refresh).not.toHaveAttribute("aria-disabled", "true");
+    });
+    expect(refresh).toHaveFocus();
   });
 });

@@ -90,7 +90,7 @@ describe("Alipay application shortcuts", () => {
   it.each([
     [onboardingPath("application"), "打开支付宝应用管理"],
     [onboardingPath("provider"), "支付宝应用管理"],
-    ["/settings/provider", "打开支付宝应用管理"],
+    ["/settings/provider/edit", "打开支付宝应用管理"],
   ])("targets the pending key's application at %s", async (path, name) => {
     const saved = pendingApplicationKey();
     saved.provider!.app_id = "saved-application";

@@ -292,7 +292,7 @@ function OnboardingFlow({
                           variant: "outline",
                           size: "sm",
                         })}
-                        to="/settings/provider"
+                        to="/settings/provider/edit"
                         state={deferredState}
                       >
                         导入已有应用私钥

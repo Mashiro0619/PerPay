@@ -10,7 +10,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { json, order, orderId } from "./fixtures";
 import { mountOnboarding } from "./onboarding-fixture";
-import { recordAction } from "./menu-helper";
+import { readOverlayTarget } from "../src/lib/overlay-navigation";
 
 const target = "/api/admin/v1/test-payments";
 const createdOrder = {
@@ -83,9 +83,8 @@ describe("test-payment dialog lifecycle", () => {
     );
     expect(view.writes()).toHaveLength(1);
     expect(within(dialog).getByRole("button", { name: "取消" })).toBeDisabled();
-    expect(
-      within(dialog).queryByRole("button", { name: "关闭对话框" }),
-    ).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "关闭对话框" }));
+    expect(dialog).toBeVisible();
     await user.keyboard("{Escape}");
     fireEvent.click(document.querySelector('[data-slot="dialog-overlay"]')!);
     expect(dialog).toBeVisible();
@@ -99,9 +98,7 @@ describe("test-payment dialog lifecycle", () => {
     );
     await user.click(trigger);
     const reopened = await screen.findByRole("dialog", { name: "测试收款" });
-    expect(
-      within(reopened).getByRole("link", { name: "查看订单" }),
-    ).toHaveAttribute("href", "/orders/" + orderId);
+    expect(within(reopened).getByRole("link", { name: "查看订单" })).toBeVisible();
     expect(view.writes()).toHaveLength(1);
   });
 
@@ -148,7 +145,7 @@ describe("test-payment dialog lifecycle", () => {
     );
   });
 
-  it("keeps the payment result beneath a nested technical dialog and restores focus within it", async () => {
+  it("keeps technical information inline with the payment result in the same business overlay", async () => {
     const view = mount();
     const user = userEvent.setup();
     const { dialog } = await open(user);
@@ -156,26 +153,17 @@ describe("test-payment dialog lifecycle", () => {
       within(dialog).getByRole("button", { name: "创建测试订单" }),
     );
     await screen.findByRole("heading", { name: "测试订单已创建" });
-    const menu = within(dialog).getByRole("button", { name: "更多操作，记录操作" });
-    await user.click(await recordAction("技术详情", "记录操作"));
-    const technical = await screen.findByRole("dialog", { name: "技术详情" });
-    expect(within(technical).getByLabelText("技术详情")).toHaveTextContent(
-      orderId,
-    );
-    await user.keyboard("{Escape}");
-    await waitFor(() =>
-      expect(
-        screen.queryByRole("dialog", { name: "技术详情" }),
-      ).not.toBeInTheDocument(),
-    );
-    expect(
-      await screen.findByRole("dialog", { name: "测试收款" }),
-    ).toBeVisible();
-    expect(menu).toHaveFocus();
+    const toggle = within(dialog).getByRole("button", { name: "技术信息" });
+    await user.click(toggle);
+    expect(within(dialog).getByLabelText("技术信息")).toHaveTextContent(orderId);
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    await user.click(toggle);
+    expect(toggle).toHaveFocus();
+    expect(within(dialog).getByRole("heading", { name: "测试订单已创建" })).toBeVisible();
     expect(view.writes()).toHaveLength(1);
   });
 
-  it("closes the modal when opening the created order and preserves overview-return navigation", async () => {
+  it("switches to the created order inside the same overlay and closes to the original overview", async () => {
     const view = mount((r) =>
       new URL(r.url).pathname === "/api/admin/v1/orders/" + orderId
         ? json({ data: order })
@@ -191,11 +179,14 @@ describe("test-payment dialog lifecycle", () => {
     await screen.findByRole("heading", { name: "测试订单已创建" });
     await user.click(within(dialog).getByRole("link", { name: "查看订单" }));
     await screen.findByRole("heading", { name: "订单信息" });
-    expect(view.router.state.location.pathname).toBe("/orders/" + orderId);
-    expect(view.router.state.location.state?.listReturn?.to).toBe("/");
+    expect(view.router.state.location.pathname).toBe("/");
+    expect(readOverlayTarget(view.router.state.location.search)?.pathname).toBe("/orders/" + orderId);
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "关闭对话框" }));
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
+    expect(view.router.state.location.search).not.toContain("overlay=");
   });
 
   it("unmounts the dialog on session expiry and never exposes its late checkout response", async () => {

@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { onlineManager, useMutation, useQuery } from "@tanstack/react-query";
-import { api, result, ApiError, type RuntimeSettings } from "@/api/client";
+import { api, result, ApiError, queryClient, type RuntimeSettings } from "@/api/client";
+import { PageHeading } from "@/components/page-heading";
+import { useSuccessToast } from "@/components/Feedback";
+import { OverlayActions } from "@/components/overlay-actions";
+import { useOverlayCloseGuard, useOverlayContext } from "@/lib/overlay-context";
 import { useDirtyDraft } from "@/drafts";
 import {
   Card,
@@ -20,7 +24,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { ErrorNotice } from "@/components/request-state";
+import { ErrorNotice, QueryView } from "@/components/request-state";
 import {
   Dialog,
   DialogContent,
@@ -31,6 +35,12 @@ import {
   DialogFooter,
 } from "@/components/admin-dialog";
 
+export function AdminAccessEditorPage() {
+  const success = useSuccessToast();
+  const settings = useQuery({ queryKey: ["settings"], queryFn: ({ signal }) => result(api.getRuntimeSettings({ signal })), staleTime: Infinity, refetchOnWindowFocus: false, refetchOnReconnect: false });
+  return <><PageHeading title="管理员 IP 白名单" /><QueryView query={settings}>{({ data }) => <AdminAccessSettings settings={data} onSaved={(next, message) => { queryClient.setQueryData(["settings"], { data: next }); if (message) success(message); }} />}</QueryView></>;
+}
+
 export function AdminAccessSettings({
   settings,
   onSaved,
@@ -38,6 +48,7 @@ export function AdminAccessSettings({
   settings: RuntimeSettings;
   onSaved: (settings: RuntimeSettings, message?: string) => void;
 }) {
+  const overlay = useOverlayContext();
   const initial = settings.admin_access;
   const [draft, setDraft] = useState<{
     enabled: boolean;
@@ -83,6 +94,7 @@ export function AdminAccessSettings({
   });
   const fieldError =
     save.error instanceof ApiError ? save.error.fields.cidrs : undefined;
+  useOverlayCloseGuard(() => save.isPending);
   return (
     <Card>
       <CardHeader>
@@ -177,12 +189,15 @@ export function AdminAccessSettings({
         </FieldGroup>
       </CardContent>
       <CardFooter>
+        <OverlayActions>
+        {overlay && <Button type="button" variant="outline" disabled={save.isPending} onClick={() => overlay.requestClose()}>关闭</Button>}
         <Button
           disabled={!dirty || save.isPending}
           onClick={() => setConfirm(true)}
         >
           保存白名单
         </Button>
+        </OverlayActions>
       </CardFooter>
       <Dialog
         open={confirm}

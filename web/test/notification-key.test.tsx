@@ -51,7 +51,7 @@ describe("notification signing key rotation", () => {
     await waitFor(() => expect(notification).toHaveFocus());
   });
 
-  it.each(["/settings/onboarding/optional", "/settings/notifications"])(
+  it.each(["/settings/onboarding/optional", "/settings/notifications/edit"])(
     "retains the normal outlined action in the form at %s",
     async (path) => {
       const view = mountOnboarding({ stage: 4, notificationKey: true, path });
@@ -68,7 +68,7 @@ describe("notification signing key rotation", () => {
   );
   it.each([
     "/settings/onboarding/optional",
-    "/settings/notifications",
+    "/settings/notifications/edit",
     "/settings/security",
   ])(
     "confirms explicitly, preserves focus and does not write on cancel at %s",
@@ -87,7 +87,7 @@ describe("notification signing key rotation", () => {
       expect(view.writes()).toHaveLength(0);
     },
   );
-  it.each(["/settings/onboarding/optional", "/settings/notifications"])(
+  it.each(["/settings/onboarding/optional", "/settings/notifications/edit"])(
     "rotates only the signing key and retains unsaved form input at %s",
     async (path) => {
       const view = mountOnboarding({ stage: 4, notificationKey: true, path });

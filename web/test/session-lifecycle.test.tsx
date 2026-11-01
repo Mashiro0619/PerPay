@@ -54,13 +54,14 @@ function mount() {
   );
   queryClient.setQueryData(sessionKey, session);
   const router = createMemoryRouter(appRoutes, {
-    initialEntries: ["/settings/collection-policy"],
+    initialEntries: ["/settings/collection-policy/edit"],
   });
-  return render(
+  const view = render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
+  return { ...view, router };
 }
 
 describe("administrator session lifecycle", () => {
@@ -79,7 +80,7 @@ describe("administrator session lifecycle", () => {
         return readResponse(request);
       });
       vi.stubGlobal("fetch", fetchMock);
-      mount();
+      const view = mount();
       const user = userEvent.setup();
       const ttl = await screen.findByLabelText("查账有效时限（秒）");
       await waitFor(() => expect(queryClient.isFetching()).toBe(0));
@@ -95,7 +96,7 @@ describe("administrator session lifecycle", () => {
       expect(screen.getByLabelText("查账有效时限（秒）")).toBe(ttl);
       expect(ttl).toHaveValue(450);
       expect(screen.getByText("未保存")).toBeVisible();
-      await user.click(screen.getByRole("tab", { name: "自动备份" }));
+      await act(async () => { await view.router.navigate("/settings/backup"); });
       expect(
         await screen.findByRole("alertdialog", { name: "放弃未保存的修改？" }),
       ).toBeVisible();

@@ -180,7 +180,7 @@ describe("official record action menus", () => {
     const trigger = screen.getByRole("button", { name: "更多操作" });
     await user.click(trigger);
     expect(
-      await screen.findByRole("menuitem", { name: "单独打开" }),
+      await screen.findByRole("menuitem", { name: "查看详情" }),
     ).toHaveAttribute("href", "/orders/example");
     await user.click(screen.getByRole("menuitem", { name: "技术详情" }));
     expect(await screen.findByText(/synthetic-evidence/)).toBeVisible();
@@ -188,7 +188,7 @@ describe("official record action menus", () => {
 });
 describe("short feedback and safe settings", () => {
   it("keeps field requirements without repeated provider and key-copy instructions", async () => {
-    mountOnboarding({ stage: 4, path: "/settings/provider" });
+    mountOnboarding({ stage: 4, path: "/settings/provider/edit" });
     expect(await screen.findByLabelText("应用 ID（App ID）")).toBeVisible();
     expect(screen.getByLabelText("支付宝公钥")).toHaveAccessibleDescription(
       "从支付宝应用的接口加签设置复制。",
@@ -326,7 +326,7 @@ describe("short feedback and safe settings", () => {
   });
   it("preserves a settings draft across brightness changes without issuing a write", async () => {
     const control = theme();
-    const view = mountOnboarding({ stage: 4, path: "/settings/collection-policy" });
+    const view = mountOnboarding({ stage: 4, path: "/settings/collection-policy/edit" });
     const field = await screen.findByLabelText("查账有效时限（秒）");
     fireEvent.change(field, { target: { value: "450" } });
     act(() => {
@@ -342,7 +342,7 @@ describe("short feedback and safe settings", () => {
     let finish: (response: Response) => void = () => {};
     const view = mountOnboarding({
       stage: 4,
-      path: "/settings/collection-policy",
+      path: "/settings/collection-policy/edit",
       handle: (request) =>
         loading && request.url.endsWith("/settings")
           ? new Promise<Response>((resolve) => {

@@ -18,6 +18,7 @@ import {
 } from "@/lib/test-payment-request";
 import { Button } from "@/components/ui/button";
 import { usePageActionMenu } from "@/components/page-header-actions";
+import { useOptionalOverlayNavigation } from "@/lib/overlay-context";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 
 const TestPaymentContext = createContext<
@@ -25,13 +26,14 @@ const TestPaymentContext = createContext<
 >(null);
 
 export function TestPaymentProvider({ children }: { children: ReactNode }) {
+  const overlay = useOptionalOverlayNavigation();
   const location = useLocation();
   const pageAddress = actualPageAddress(location);
   const { clientId } = useWorkspace();
   const [open, setOpen] = useState(false);
   const [started, setStarted] = useState(false);
   const standalone = useMatch("/test-payment") !== null;
-  const request = useTestPaymentRequest(open || standalone);
+  const request = useTestPaymentRequest((overlay ? overlay.target?.pathname === "/test-payment" : open) || standalone);
   const trigger = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     setOpen(false);
@@ -42,12 +44,13 @@ export function TestPaymentProvider({ children }: { children: ReactNode }) {
         trigger.current = element;
         request.bindSite(clientId);
         setStarted(true);
-        setOpen(true);
+        if (overlay) overlay.open("/test-payment", { trigger: element });
+        else setOpen(true);
       }}
     >
       <TestPaymentRequestContext value={request}>
         {children}
-        {started && !standalone && (
+        {started && !standalone && !overlay && (
           <TestPaymentDialog
             open={open}
             onOpenChange={setOpen}

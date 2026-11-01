@@ -56,11 +56,7 @@ describe("context-preserving secondary dialogs", () => {
     expect(within(dialog).getByLabelText("测试金额（元）")).toHaveValue(
       "0.01",
     );
-    expect(dialog.querySelector("[data-slot=dialog-footer]")).toHaveClass(
-      "shrink-0",
-      "flex-col-reverse",
-      "sm:flex-row",
-    );
+    expect(dialog.querySelector("[data-overlay-footer]")).toHaveClass("shrink-0");
     expect(view.router.state.location.pathname).toBe("/");
     expect(view.writes()).toHaveLength(0);
     await user.click(within(dialog).getByRole("button", { name: "取消" }));

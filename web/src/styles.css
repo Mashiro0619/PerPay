@@ -1627,3 +1627,15 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 .audit-mobile-meta > * { min-width: 0; max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .audit-mobile-meta > .list-time { flex: none; font-size: 0.75rem; }
 /* End console lists. */
+
+/* Root-owned overview and entry surfaces use the same compact reading rhythm. */
+[data-overview-layout] .overview-work-fields { display: flex; min-width: 0; flex-wrap: wrap; gap: 0.25rem 0.75rem; }
+[data-overview-layout] .overview-work-order-reference { display: none; }
+[data-overview-layout] .overview-work-item { padding-block: 0.625rem; }
+[data-overview-layout] .overview-work-content { gap: 0.25rem; }
+[data-overview-layout] .overview-order-summary { gap: 0.375rem; }
+[data-overview-layout] .overview-order-summary .overview-order-meta { display: flex; flex-wrap: nowrap; gap: 0.5rem; overflow: hidden; }
+[data-overview-layout] .overview-order-summary .overview-order-reference > span:first-child { display: none; }
+[data-overview-layout] .overview-order-summary .list-identity-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-overview-layout] .overview-order-summary .list-identity-title a { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-system-health-summary] { padding-block: 0.25rem 0.5rem; }

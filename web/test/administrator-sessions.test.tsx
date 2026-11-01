@@ -1,10 +1,16 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { createMemoryRouter, RouterProvider } from "react-router";
+import { describe, expect, it, vi } from "vitest";
 import { queryClient, sessionKey, type AdminLoginSession } from "../src/api/client";
+import { AuthBoundary } from "../src/auth";
+import { DraftProvider } from "../src/drafts";
 import { administratorSessionsKey } from "../src/components/administrator-sessions";
+import { Toaster } from "../src/components/ui/toast";
+import { PasswordEditorPage, SecuritySettings } from "../src/pages/SecuritySettings";
 import { apiError, json } from "./fixtures";
-import { mountOnboarding } from "./onboarding-fixture";
+import { configuredThrough } from "./onboarding-fixture";
 
 const currentId = "11111111-1111-4111-8111-111111111111";
 const mobileId = "22222222-2222-4222-8222-222222222222";
@@ -17,8 +23,15 @@ const rows: AdminLoginSession[] = [
 ];
 
 function mount(options: { failReads?: boolean; failMutation?: boolean } = {}) {
+  const initialized = document.createElement("meta");
+  initialized.name = "perpay-initialized";
+  initialized.content = "true";
+  document.head.append(initialized);
   const state = { rows: structuredClone(rows), reads: 0, authenticated: true, failReads: options.failReads ?? false, failMutation: options.failMutation ?? false };
-  const view = mountOnboarding({ stage: 4, path: "/settings/security", handle: request => {
+  const settings = configuredThrough(4);
+  queryClient.setQueryData(sessionKey, { data: { username: "admin" } });
+  queryClient.setQueryData(["settings"], { data: settings });
+  const fetchMock = vi.fn((request: Request) => {
     const path = new URL(request.url).pathname;
     if (path === "/api/admin/v1/settings/admin-access" && request.method === "GET") {
       return json({ data: { revision: 3, enabled: false, cidrs: [], current_ip: "192.0.2.25" } });
@@ -29,7 +42,7 @@ function mount(options: { failReads?: boolean; failMutation?: boolean } = {}) {
       if (!state.authenticated) return apiError("session_invalid", "会话失效", 401);
       return state.failReads ? apiError("internal_error", "会话列表暂时不可用", 503) : json({ data: state.rows });
     }
-    if (request.method !== "POST") return undefined;
+    if (request.method !== "POST") return apiError("route_not_found", "unexpected test request", 404);
     if (path === "/api/admin/v1/session/logout" || path === "/api/admin/v1/sessions/revoke-all") {
       state.authenticated = false;
       return path.endsWith("/logout") ? new Response(null, { status: 204 }) : json({ data: { revoked_sessions: state.rows.length } });
@@ -45,16 +58,28 @@ function mount(options: { failReads?: boolean; failMutation?: boolean } = {}) {
       state.rows = state.rows.filter(row => row.session_id !== target);
       return new Response(null, { status: 204 });
     }
-    return undefined;
-  } });
-  return { ...view, state };
+    return apiError("route_not_found", "unexpected test request", 404);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  // Compose the real password editor as a sibling to exercise draft/cache isolation.
+  // App routing and its password/session overlays are covered in settings-overlays.test.tsx.
+  const router = createMemoryRouter([{ path: "/settings/security", element: <AuthBoundary><DraftProvider>
+    <SecuritySettings settings={settings} onSaved={() => undefined} />
+    <PasswordEditorPage />
+  </DraftProvider></AuthBoundary> }], { initialEntries: ["/settings/security"] });
+  const view = render(<QueryClientProvider client={queryClient}><Toaster><RouterProvider router={router} /></Toaster></QueryClientProvider>);
+  return { ...view, state, router, fetchMock, writes: () => fetchMock.mock.calls.map(([request]) => request).filter(request => request.method !== "GET") };
 }
 
 async function card() {
   const title = await screen.findByRole("heading", { name: "登录会话" });
   const element = title.closest<HTMLElement>("[data-login-sessions]")!;
-  await within(element).findByRole("list", { name: "登录会话列表" });
+  await within(element).findByRole("table", { name: "登录会话列表" });
   return element;
+}
+
+function sessionRows(element: HTMLElement) {
+  return [...element.querySelectorAll<HTMLElement>("[data-business-row]")];
 }
 
 async function allConfirmation(user: ReturnType<typeof userEvent.setup>) {
@@ -66,16 +91,16 @@ describe("administrator login sessions", () => {
   it("orders the current session first and shows full IPv6 and missing metadata", async () => {
     mount();
     const element = await card();
-    const items = within(element).getAllByRole("listitem");
-    expect(items.map(row => row.dataset.sessionId)).toEqual([currentId, mobileId, legacyId]);
-    const list = within(element).getByRole("list", { name: "登录会话列表" });
+    const items = sessionRows(element);
+    expect(items.map(row => row.dataset.businessRow)).toEqual([currentId, mobileId, legacyId]);
+    const list = within(element).getByRole("table", { name: "登录会话列表" });
     expect(within(list).queryAllByRole("separator")).toHaveLength(0);
     expect(within(items[0]!).getByText("当前")).toBeVisible();
     expect(within(items[0]!).getByRole("button", { name: "退出登录" })).toBeVisible();
-    expect(items[1]).toHaveTextContent(`登录 IP：${ipv6}`);
+    expect(items[1]).toHaveTextContent(ipv6);
     expect(items[1]).toHaveTextContent("Chrome · Android");
     expect(items[2]).toHaveTextContent("未知浏览器 · 未知系统");
-    expect(items[2]).toHaveTextContent("登录 IP：未知");
+    expect(items[2]!.querySelector('[data-column-id="ip"]')).toHaveTextContent(/^未知$/);
   });
 
   it("cancels a targeted revocation without a write and restores its trigger focus", async () => {
@@ -89,7 +114,7 @@ describe("administrator login sessions", () => {
     await user.click(within(dialog).getByRole("button", { name: "取消" }));
     await waitFor(() => expect(trigger).toHaveFocus());
     expect(view.writes()).toHaveLength(0);
-    expect(within(element).getAllByRole("listitem")).toHaveLength(3);
+    expect(sessionRows(element)).toHaveLength(3);
   });
 
   it("revokes an individual session and only refreshes the list while keeping a password draft", async () => {
@@ -101,7 +126,7 @@ describe("administrator login sessions", () => {
     await user.click(within(element).getByRole("button", { name: "撤销 Chrome · Android 会话" }));
     const dialog = await screen.findByRole("alertdialog", { name: "撤销此会话？" });
     await user.click(within(dialog).getByRole("button", { name: "撤销" }));
-    await waitFor(() => expect(within(element).getAllByRole("listitem")).toHaveLength(2));
+    await waitFor(() => expect(sessionRows(element)).toHaveLength(2));
     expect(screen.getByLabelText("新密码")).toBe(password);
     expect(password).toHaveValue("unsaved-password");
     expect(view.state.reads).toBeGreaterThan(1);
@@ -118,7 +143,7 @@ describe("administrator login sessions", () => {
     await user.click(within(element).getByRole("button", { name: "退出其他会话" }));
     const dialog = await screen.findByRole("alertdialog", { name: "退出其他会话？" });
     await user.click(within(dialog).getByRole("button", { name: "退出其他会话" }));
-    await waitFor(() => expect(within(element).getAllByRole("listitem")).toHaveLength(1));
+    await waitFor(() => expect(sessionRows(element)).toHaveLength(1));
     expect(within(element).getByRole("button", { name: "退出其他会话" })).toBeDisabled();
     expect(within(element).getByText("当前")).toBeVisible();
     expect(queryClient.getQueryData(sessionKey)).not.toBeNull();
@@ -127,7 +152,7 @@ describe("administrator login sessions", () => {
 
   it("keeps security controls usable after a list failure and retries only the list", async () => {
     const view = mount({ failReads: true });
-    const failure = await screen.findByRole("alert", { name: "服务连接提示" });
+    const failure = await within(document.querySelector<HTMLElement>("[data-login-sessions]")!).findByRole("alert");
     expect(failure).toHaveTextContent("会话列表暂时不可用");
     const password = screen.getByLabelText("新密码");
     fireEvent.change(password, { target: { value: "retained-draft" } });
@@ -136,7 +161,7 @@ describe("administrator login sessions", () => {
     const before = view.fetchMock.mock.calls.length;
     await userEvent.click(within(failure).getByRole("button", { name: "重试" }));
     await card();
-    expect(screen.queryByRole("alert", { name: "服务连接提示" })).not.toBeInTheDocument();
+    expect(within(document.querySelector<HTMLElement>("[data-login-sessions]")!).queryByRole("alert")).not.toBeInTheDocument();
     expect(view.fetchMock.mock.calls.slice(before).map(([request]) => [request.method, new URL(request.url).pathname]))
       .toEqual([["GET", "/api/admin/v1/sessions"]]);
     expect(screen.getByLabelText("新密码")).toBe(password);
@@ -152,10 +177,10 @@ describe("administrator login sessions", () => {
     const dialog = await screen.findByRole("alertdialog", { name: "撤销此会话？" });
     await user.click(within(dialog).getByRole("button", { name: "撤销" }));
     expect(await within(dialog).findByText("会话撤销暂时不可用")).toBeVisible();
-    expect(within(element).getAllByRole("listitem", { hidden: true })).toHaveLength(3);
+    expect(sessionRows(element)).toHaveLength(3);
     view.state.failMutation = false;
     await user.click(within(dialog).getByRole("button", { name: "撤销" }));
-    await waitFor(() => expect(within(element).getAllByRole("listitem")).toHaveLength(2));
+    await waitFor(() => expect(sessionRows(element)).toHaveLength(2));
     expect(view.writes()).toHaveLength(2);
   });
 

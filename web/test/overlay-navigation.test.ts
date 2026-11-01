@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createPath } from "react-router";
-import { legacyOverlayLocation, overlayBackground, overlayOwner, parseOverlayTarget, readOverlayTarget, withOverlayTarget, withoutOverlaySearch } from "../src/lib/overlay-navigation";
+import { legacyOverlayLocation, overlayBackground, overlayOwner, overlayRoute, parseOverlayTarget, readOverlayTarget, withOverlayTarget, withoutOverlaySearch } from "../src/lib/overlay-navigation";
 
 describe("overlay addresses", () => {
   it("keeps parent filters and cursor separate from detail search and anchors", () => {
@@ -23,6 +23,14 @@ describe("overlay addresses", () => {
     expect(withoutOverlaySearch("?q=a%20b&overlay=%2Forders%2Fa&selected_site=s&cursor=x%2By")).toBe("?q=a%20b&selected_site=s&cursor=x%2By");
     const parent = { pathname: "/orders", search: "?q=a%20b&cursor=x%2By", hash: "#list" };
     expect(overlayBackground(withOverlayTarget(parent, parseOverlayTarget("/orders/order-1")!))).toEqual(parent);
+  });
+
+  it("uses explicit summary and editing routes without turning the daily settings page into a dialog", () => {
+    expect(overlayRoute("/sites/shop/summary")?.size).toBe("md");
+    expect(overlayRoute("/sites/shop/edit")?.parent).toBe("/sites/shop/settings/basic");
+    expect(overlayRoute("/settings/display/edit")?.parent).toBe("/settings/display");
+    expect(overlayRoute("/settings/security/sessions/session-1")?.kind).toBe("session");
+    expect(overlayRoute("/sites/shop/settings/basic")).toBeNull();
   });
 
   it("opens old detail links above a deterministic parent and preserves their target hash", () => {

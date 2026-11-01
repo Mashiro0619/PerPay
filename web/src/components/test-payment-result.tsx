@@ -5,6 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle2, Clock3, RefreshCw } from "lucide-react";
 import { queryClient, result, type Order } from "@/api/client";
 import { Link } from "@/navigation";
+import { useOverlayContext } from "@/lib/overlay-context";
+import { OverlayActions } from "@/components/overlay-actions";
 import { dateTime, money, safeCheckoutUrl } from "@/lib/format";
 import { StatusBadge } from "@/components/business-status";
 import { DetailFields } from "@/components/detail/DetailPrimitives";
@@ -33,6 +35,7 @@ export function TestPaymentResult({
   onNew: () => void;
   onClose?: () => void;
 }) {
+  const overlay = useOverlayContext();
   const api = workspaceApi(workspaceClientId);
   const orderHref = (workspaceClientId ? "/sites/" + encodeURIComponent(workspaceClientId) : "") + "/orders/" + created.order_id;
   const title = useRef<HTMLHeadingElement>(null);
@@ -248,6 +251,13 @@ export function TestPaymentResult({
         查看订单
       </Link>
     );
+  if (overlay) return <>
+    {content}
+    <OverlayActions>
+      <Button variant="outline" onClick={onClose ?? overlay.requestClose}>关闭</Button>
+      {action}
+    </OverlayActions>
+  </>;
   return onClose ? (
     <>
       <div className="-mx-4 min-h-0 overflow-auto px-4 pb-1">{content}</div>

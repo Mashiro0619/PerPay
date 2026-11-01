@@ -83,6 +83,11 @@ const mount = (
   status: (settings) => ({ ...systemStatus(settings), version: currentVersion }),
 });
 
+async function editPolicy() {
+  if (!screen.queryByLabelText("查账有效时限（秒）")) await userEvent.setup().click(await screen.findByRole("link", { name: /编辑/ }));
+  return screen.findByLabelText("查账有效时限（秒）");
+}
+
 describe("automatic official update checks", () => {
   it("completes the initial automatic check under StrictMode effect replay", async () => {
     const view = mountPanel(() => json({ data: update }), update.current_version, true);
@@ -404,7 +409,7 @@ describe("automatic official update checks", () => {
     expect(
       view.fetchMock.mock.calls.filter(([request]) => isUpdate(request)),
     ).toHaveLength(1);
-    expect(await screen.findByLabelText("查账有效时限（秒）")).toBeVisible();
+    expect(await editPolicy()).toBeVisible();
     expect(
       view.writes().every((request) => request.url.endsWith("/session/login")),
     ).toBe(true);
@@ -499,17 +504,17 @@ describe("automatic official update checks", () => {
         : undefined,
     );
     const user = userEvent.setup();
-    const ttl = await screen.findByLabelText("查账有效时限（秒）");
+    const ttl = await editPolicy();
     await user.clear(ttl);
     await user.type(ttl, "450");
     expect(ttl).toHaveValue(450);
     await act(async () => {
       finish(json({ data: update }));
     });
-    await screen.findByRole("link", { name: updateLinkName });
+    await screen.findByRole("link", { name: updateLinkName, hidden: true });
     expect(screen.getByLabelText("查账有效时限（秒）")).toBe(ttl);
     expect(ttl).toHaveValue(450);
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "发现新版本" })).not.toBeInTheDocument();
     act(() => preferences(true, "stable"));
     expect(screen.getByLabelText("查账有效时限（秒）")).toBe(ttl);
     expect(ttl).toHaveValue(450);
@@ -560,7 +565,7 @@ describe("automatic official update checks", () => {
               )
           : undefined,
       );
-      const ttl = await screen.findByLabelText("查账有效时限（秒）");
+      const ttl = await editPolicy();
       await waitFor(() =>
         expect(queryClient.getQueryState(officialUpdateKey)?.status).toBe(
           "error",
@@ -579,6 +584,7 @@ describe("automatic official update checks", () => {
       expect(
         view.fetchMock.mock.calls.filter(([request]) => isUpdate(request)),
       ).toHaveLength(1);
+      await userEvent.setup().click(screen.getByRole("button", { name: "关闭对话框" }));
       await userEvent
         .setup()
         .click(screen.getByRole("link", { name: "运行状态" }));
@@ -609,7 +615,7 @@ describe("automatic official update checks", () => {
           })
         : undefined,
     );
-    await screen.findByLabelText("查账有效时限（秒）");
+    await editPolicy();
     await waitFor(() => expect(oldRequest).toBeDefined());
     fireEvent(window, new Event("perpay:session-expired"));
     await screen.findByRole("heading", { name: "登录管理后台" });
@@ -746,6 +752,7 @@ describe("automatic official update checks", () => {
     expect(await screen.findByRole("link", { name: updateLinkName })).toBeVisible();
     expect(screen.queryByRole("status", { name: "官方版本更新" })).not.toBeInTheDocument();
     expect(screen.queryByText(/有新版本 v/)).not.toBeInTheDocument();
+    await editPolicy();
     expect(screen.getByLabelText("查账有效时限（秒）")).toBeVisible();
   });
 

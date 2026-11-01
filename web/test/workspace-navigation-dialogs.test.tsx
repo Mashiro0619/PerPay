@@ -35,7 +35,7 @@ describe("business dialogs during workspace navigation", () => {
     const delayed = new Promise<Response>(resolve => { release = resolve; });
     const view = mountOnboarding({
       stage: 4,
-      path: "/sites/b/settings/basic",
+      path: "/sites/b/settings/basic?overlay=%2Fsites%2Fb%2Fedit",
       handle(request) {
         const path = new URL(request.url).pathname;
         if (path === "/api/admin/v1/sites") return json({ data: sites, page: { next_cursor: null } });
@@ -47,18 +47,21 @@ describe("business dialogs during workspace navigation", () => {
     });
     const user = userEvent.setup();
     await screen.findByLabelText("业务网站名称");
-    await act(async () => { await view.router.navigate("/sites/a/settings/basic"); });
+    await act(async () => { await view.router.navigate("/sites/a/settings/basic?overlay=%2Fsites%2Fa%2Fedit"); });
     await waitFor(() => expect(screen.getByLabelText("业务网站名称")).toHaveValue("网站 A"));
+    await user.type(screen.getByLabelText("业务网站名称"), "（保留草稿）");
     await user.click(screen.getByRole("button", { name: "删除空业务网站" }));
     const dialog = await screen.findByRole("alertdialog", { name: "确认删除业务网站？" });
     expect(dialog.closest("main")).toBeNull();
 
     delayDestination = true;
     act(() => { void view.router.navigate(-1); });
+    await user.click(await screen.findByRole("button", { name: "放弃修改并继续" }));
     await waitFor(() => expect(view.router.state.navigation.state).toBe("loading"));
     await waitFor(() => expect(dialog).not.toBeVisible());
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     expect(view.router.state.location.pathname).toBe("/sites/a/settings/basic");
+    expect(screen.getByLabelText("业务网站名称")).toHaveValue("网站 A（保留草稿）");
     expect(view.writes()).toHaveLength(0);
     const currentSite = screen.getByRole("link", { name: "网站 A" });
     expect(currentSite).toBeVisible();

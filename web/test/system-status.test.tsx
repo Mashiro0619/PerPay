@@ -119,9 +119,9 @@ describe("shared runtime presentation", () => {
   });
 
   it("treats incomplete successful status responses as unavailable without crashing protected forms", async () => {
-    mountOnboarding({stage:4,path:"/settings/collection-policy",handle:r=>r.url.endsWith("/system/status") ? json({data:{status:"ready",configured:true,database:{ok:true}}}) : undefined});
+    mountOnboarding({stage:4,path:"/settings/collection-policy/edit",handle:r=>r.url.endsWith("/system/status") ? json({data:{status:"ready",configured:true,database:{ok:true}}}) : undefined});
     expect(await screen.findByLabelText("查账有效时限（秒）")).toBeVisible();
-    const status = within(screen.getByRole("navigation", { name: "全局管理" })).getByRole("link", { name: "运行状态" });
+    const status = within(screen.getByRole("navigation", { name: "全局管理", hidden: true })).getByRole("link", { name: "运行状态", hidden: true });
     await waitFor(() => expect(status).toHaveAccessibleDescription("状态未知"));
     expect(status.querySelector("[data-runtime-notice] svg")).toBeInTheDocument();
     expect(status).not.toHaveTextContent("状态未知");

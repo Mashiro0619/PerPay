@@ -76,10 +76,11 @@ describe("minimal test payment page", () => {
     );
     expect(screen.getByRole("link", { name: "查看订单" })).toHaveAttribute(
       "href",
-      "/orders/" + orderId,
+      "/?overlay=" + encodeURIComponent("/orders/" + orderId),
     );
     expect(screen.getByText("¥0.02")).toBeVisible();
-    expect(view.router.state.location.pathname).toBe("/test-payment");
+    expect(view.router.state.location.pathname).toBe("/");
+    expect(new URLSearchParams(view.router.state.location.search).get("overlay")).toBe("/test-payment");
     expect(
       view.container.querySelector(".test-payment-page .notice--success"),
     ).toBeNull();

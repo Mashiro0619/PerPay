@@ -22,7 +22,12 @@ const definitions: ReadonlyArray<{ pattern: string; kind: OverlayRouteKind; titl
   { pattern: "/sites/defaults", kind: "site-defaults", title: "网站默认配置", size: "lg" },
   { pattern: "/sites/:clientId/edit", kind: "site", title: "编辑业务网站", size: "lg" },
   { pattern: "/sites/:clientId/summary", kind: "site-summary", title: "网站概况", size: "md" },
+  { pattern: "/settings/:section/edit", kind: "settings", title: "编辑系统设置", size: "md" },
+  { pattern: "/settings/security/password", kind: "password", title: "修改管理员密码", size: "md" },
+  { pattern: "/settings/security/access", kind: "admin-access", title: "管理员访问规则", size: "lg" },
+  { pattern: "/settings/security/sessions/:sessionId", kind: "session", title: "登录会话详情", size: "md" },
   { pattern: "/settings/accounts/:accountId", kind: "account", title: "支付宝账号", size: "lg" },
+  { pattern: "/test-payment", kind: "test-payment", title: "测试收款", size: "md" },
 ];
 export const overlayRouteDefinitions = definitions;
 

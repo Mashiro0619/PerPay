@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type ReactNode } from "react";
+import { Children, isValidElement, useId, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, CircleAlert, Code2 } from "lucide-react";
 import type { SystemStatus } from "@/api/client";
 import { Link } from "@/navigation";
@@ -104,6 +104,7 @@ function SystemSnapshot({
   manualScan: ReturnType<typeof useManualLedgerScan>;
 }) {
   const state = presentSystemStatus(data);
+  const attentionCount = [state.ledgerHealthy, state.reconciliationHealthy, state.webhookHealthy, data.database.ok, state.backupHealthy].filter(healthy => !healthy).length;
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const diagnosticTrigger = useRef<HTMLButtonElement>(null);
   const manualScanFeedbackId = useId();
@@ -127,6 +128,10 @@ function SystemSnapshot({
     data.work_items !== null;
   return (
     <section className="runtime-surface" aria-label="服务运行状态">
+      <div className="flex flex-wrap items-center justify-between gap-2" data-system-health-summary>
+        <p className="text-sm font-medium">{state.canReceive ? "收款服务可用" : "收款服务需处理"}</p>
+        <Badge variant={attentionCount ? "warning" : "success"}>{attentionCount ? `${attentionCount} 项需关注` : "运行正常"}</Badge>
+      </div>
       <div className="runtime-toolbar">
         <p className="runtime-checked">
           更新于 <RuntimeTimestamp value={updatedAt} />
@@ -204,6 +209,7 @@ function SystemSnapshot({
           </TableRow>
         </TableHeader>
         <TableBody role="rowgroup">
+          <RuntimeServices>
           <RuntimeService
             onDiagnose={openDiagnostics}
             title="查账"
@@ -384,6 +390,7 @@ function SystemSnapshot({
               <p>暂无可用备份。</p>
             )}
           </RuntimeService>
+          </RuntimeServices>
         </TableBody>
       </Table>
       <TechnicalDetailsDialog
@@ -400,6 +407,14 @@ function SystemSnapshot({
       />
     </section>
   );
+}
+
+function RuntimeServices({ children }: { children: ReactNode }) {
+  // A problem and its explanation stay adjacent, ahead of healthy services.
+  return <>{Children.toArray(children).sort((left, right) => {
+    const rank = (item: ReactNode) => isValidElement<{ healthy: boolean }>(item) && item.props.healthy ? 1 : 0;
+    return rank(left) - rank(right);
+  })}</>;
 }
 
 function ManualScanFeedback({ control, id }: { control: ReturnType<typeof useManualLedgerScan>; id: string }) {
