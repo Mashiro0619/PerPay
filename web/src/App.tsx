@@ -1,7 +1,9 @@
+import TestPayment from "@/pages/TestPayment";
 import { WorkspaceProvider, WorkspaceNavigationProvider, WorkspaceOutlet, useWorkspace, adminRoutePathname, useWorkspaceNavigation } from "@/workspace";
 import { workspaceScope } from "@/lib/workspace-scope";
 import { isReadableDetailPage } from "@/lib/detail-layout";
 import { prepareWorkspaceNavigation } from "@/lib/workspace-navigation";
+import { OVERLAY_PARAMETER, readOverlayTarget } from "@/lib/overlay-navigation";
 import { AdminContent, ContentWidthProvider } from "@/components/content-width";
 import { PageHeaderActionsProvider } from "@/components/page-header-actions";
 import { ListDensityProvider } from "@/components/list-density";
@@ -32,7 +34,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { isGlobalNavigationPage, navigationSection, type NavigationSection } from "@/lib/navigation-selection";
 import { SiteHeader } from "@/components/site-header";
 import { TestPaymentProvider } from "@/components/test-payment-provider";
-import TestPayment from "@/pages/TestPayment";
+import { LegacyOverlayRedirect, OverlayHost, OverlayProvider } from "@/components/overlay-host";
 import { ErrorNotice, Loading } from "@/components/request-state";
 import { RequestNoticeProvider } from "@/lib/request-notices";
 import { RequestNoticeBanner } from "@/components/request-notice-banner";
@@ -65,11 +67,16 @@ const globalPageTitles: Record<NavigationSection, string> = {
 };
 
 function AppShell() {
+  const location = useLocation();
+  const { switching } = useWorkspaceNavigation();
+  const backgroundInactive = !switching && new URLSearchParams(location.search).has(OVERLAY_PARAMETER);
   return (
     <RequestNoticeProvider>
     <Toaster timeout={4000}>
     <SidebarProvider
       data-admin-console
+      data-overlay-background={backgroundInactive ? "inactive" : undefined}
+      inert={backgroundInactive}
       style={
         {
           "--sidebar-width": "calc(var(--spacing) * 72)",
@@ -193,6 +200,7 @@ function Workspace() {
           <ErrorNotice scope="page" error={session.error} retry={session.retry} />
           <ErrorNotice scope="page" error={health.status.error} retry={() => { void health.status.refetch(); }} />
           <WorkspaceOutlet />
+          <OverlayHost />
         </AdminContent>
         </PageHeadingProvider>
       </SidebarInset>
@@ -202,13 +210,25 @@ function Workspace() {
 export const appRoutes = createRoutesFromElements(
   <Route
     errorElement={<AppFailure />}
-    loader={({ request }) => {
+    loader={async ({ request }) => {
       const pathname = adminRoutePathname(new URL(request.url).pathname);
       const scope = workspaceScope(pathname);
       const localPath = scope.clientId ? pathname.slice(scope.base.length) || "/" : pathname;
-      return prepareWorkspaceNavigation(request, scope.clientId, localPath);
+      const target = readOverlayTarget(new URL(request.url).search);
+      const reads = [prepareWorkspaceNavigation(request, scope.clientId, localPath)];
+      if (target) {
+        const resource = workspaceScope(target.pathname);
+        if (resource.clientId && resource.clientId !== scope.clientId) {
+          const url = new URL(request.url);
+          url.pathname = target.pathname; url.search = target.search; url.hash = target.hash;
+          reads.push(prepareWorkspaceNavigation(new Request(url, { signal: request.signal }), resource.clientId, target.pathname.slice(resource.base.length) || "/"));
+        }
+      }
+      await Promise.all(reads);
+      return null;
     }}
-    shouldRevalidate={({ currentParams, nextParams }) => currentParams.clientId !== nextParams.clientId}
+    shouldRevalidate={({ currentParams, nextParams, currentUrl, nextUrl }) => currentParams.clientId !== nextParams.clientId ||
+      workspaceScope(readOverlayTarget(currentUrl.search)?.pathname ?? "/").clientId !== workspaceScope(readOverlayTarget(nextUrl.search)?.pathname ?? "/").clientId}
     hydrateFallbackElement={<main className="mx-auto flex min-h-svh max-w-md flex-col justify-center gap-6 p-6"><PageHeading title="正在打开页面" /><Loading label="正在打开页面…" /></main>}
     element={
       <AuthBoundary>
@@ -216,11 +236,13 @@ export const appRoutes = createRoutesFromElements(
         <DraftProvider>
           <WorkspaceProvider>
             <WorkspaceNavigationProvider>
+            <OverlayProvider>
             <TestPaymentProvider>
               <SystemStatusBoundary>
                 <AppShell />
               </SystemStatusBoundary>
             </TestPaymentProvider>
+            </OverlayProvider>
             </WorkspaceNavigationProvider>
           </WorkspaceProvider>
         </DraftProvider>
@@ -242,9 +264,7 @@ export const appRoutes = createRoutesFromElements(
     />
     <Route
       path="orders/:orderId"
-      lazy={async () => ({
-        Component: (await import("./pages/Orders")).OrderDetail,
-      })}
+      element={<LegacyOverlayRedirect />}
     />
     <Route
       path="work-items"
@@ -260,15 +280,11 @@ export const appRoutes = createRoutesFromElements(
     />
     <Route
       path="reconciliation/transactions/:ledgerEntryId"
-      lazy={async () => ({
-        Component: (await import("./pages/LedgerDetail")).default,
-      })}
+      element={<LegacyOverlayRedirect />}
     />
     <Route
       path="reconciliation/:kind/:resourceId"
-      lazy={async () => ({
-        Component: (await import("./pages/ReconciliationDetail")).default,
-      })}
+      element={<LegacyOverlayRedirect />}
     />
     <Route
       path="notifications"
@@ -284,15 +300,11 @@ export const appRoutes = createRoutesFromElements(
     />
     <Route
       path="ledger/:ledgerEntryId"
-      lazy={async () => ({
-        Component: (await import("./pages/ReconciliationRedirect")).LedgerDetailRedirect,
-      })}
+      element={<LegacyOverlayRedirect />}
     />
     <Route
       path="notifications/:deliveryId"
-      lazy={async () => ({
-        Component: (await import("./pages/Notifications")).NotificationDetail,
-      })}
+      element={<LegacyOverlayRedirect />}
     />
     <Route
       path="sites"
@@ -327,9 +339,7 @@ export const appRoutes = createRoutesFromElements(
       />
       <Route
         path="orders/:orderId"
-        lazy={async () => ({
-          Component: (await import("./pages/Orders")).OrderDetail,
-        })}
+        element={<LegacyOverlayRedirect />}
       />
       <Route
         path="notifications"
@@ -339,9 +349,7 @@ export const appRoutes = createRoutesFromElements(
       />
       <Route
         path="notifications/:deliveryId"
-        lazy={async () => ({
-          Component: (await import("./pages/Notifications")).NotificationDetail,
-        })}
+        element={<LegacyOverlayRedirect />}
       />
       <Route
         path="work-items"
@@ -351,16 +359,14 @@ export const appRoutes = createRoutesFromElements(
       />
       <Route
         path="reconciliation/:kind/:resourceId"
-        lazy={async () => ({
-          Component: (await import("./pages/ReconciliationDetail")).default,
-        })}
+        element={<LegacyOverlayRedirect />}
       />
       <Route
         path="settings/:section?"
-        lazy={async () => ({
-          Component: (await import("./pages/Sites")).SiteEditorPage,
-        })}
+        lazy={async () => ({ Component: (await import("./pages/Sites")).SiteEditorPage })}
       />
+
+
     </Route>
     <Route
       path="settings/accounts/:accountId"
@@ -378,6 +384,10 @@ export const appRoutes = createRoutesFromElements(
         Component: (await import("./pages/Settings")).default,
       })}
     />
+
+
+
+
     <Route
       path="audit"
       lazy={async () => ({
@@ -386,10 +396,9 @@ export const appRoutes = createRoutesFromElements(
     />
     <Route
       path="audit/:source/:eventId"
-      lazy={async () => ({
-        Component: (await import("./pages/AuditDetail")).default,
-      })}
+      element={<LegacyOverlayRedirect />}
     />
+
     <Route
       path="system"
       lazy={async () => ({

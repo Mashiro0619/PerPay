@@ -19,6 +19,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { ThemeControl } from "@/theme";
 import { useWorkspaceSwitching } from "@/lib/workspace-navigation-state";
+import { cn } from "@/lib/utils";
 
 type ActionsHost = {
   target: HTMLDivElement | null;
@@ -33,13 +34,21 @@ export const PageActionMenuContext = createContext<RefObject<HTMLButtonElement |
 export const usePageActionMenu = () => useContext(PageActionMenuContext);
 export const usePageHeaderMenu = () => useContext(ActionsContext);
 
+/** An overlay owns its actions instead of publishing them into the background header. */
+export function InlinePageHeaderActions({ children }: { children: ReactNode }) {
+  return <ActionsContext value={null}><PageActionMenuContext value={null}>{children}</PageActionMenuContext></ActionsContext>;
+}
+
 export function PageHeaderActionsProvider({
   children,
+  presentation = "responsive",
 }: {
   children: ReactNode;
+  presentation?: "responsive" | "inline";
 }) {
   const [target, setTarget] = useState<HTMLDivElement | null>(null);
-  const mobile = useIsMobile();
+  const isMobile = useIsMobile();
+  const mobile = presentation === "responsive" && isMobile;
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [open, setOpen] = useState(false);
   const [pageActions, setPageActions] = useState(0);
@@ -52,12 +61,13 @@ export function PageHeaderActionsProvider({
   </ActionsContext>;
 }
 
-export function PageHeaderActionsSlot() {
+export function PageHeaderActionsSlot({ className, ...props }: ComponentProps<"div">) {
   const host = useContext(ActionsContext);
   return (
     <div
+      {...props}
       ref={host?.setTarget}
-      className="flex items-center gap-1 empty:hidden sm:gap-2"
+      className={cn("flex items-center gap-1 empty:hidden sm:gap-2", className)}
       data-page-header-actions
     />
   );

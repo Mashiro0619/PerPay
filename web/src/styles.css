@@ -1318,6 +1318,39 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-overlay-viewport="dialog"] :is([data-slot="dialog-title"], [data-slot="dialog-description"], [data-slot="alert-dialog-description"]) { overflow-wrap: anywhere; }
 [data-overlay-viewport="dialog"] :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"]) { min-width: 0; }
 [data-overlay-viewport="dialog"] :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"]) button { height: auto; min-height: 2rem; max-width: 100%; padding-block: 0.3125rem; white-space: normal; overflow-wrap: anywhere; }
+[data-overlay-content][data-overlay-viewport="dialog"] { overflow: hidden; }
+@media (min-width: 48rem) {
+  [data-overlay-content][data-overlay-viewport="dialog"] {
+    width: calc(var(--overlay-viewport-width, 100vw) - 3rem);
+    max-width: 40rem;
+    max-height: calc(var(--overlay-viewport-height, 100dvh) - 3rem);
+  }
+  [data-overlay-content][data-overlay-viewport="dialog"][data-overlay-size="lg"] { max-width: 56rem; }
+  [data-overlay-content][data-overlay-viewport="dialog"][data-overlay-size="xl"] { max-width: 72rem; }
+}
+@media (max-width: 47.999rem) {
+  [data-overlay-viewport="dialog"]:is([data-overlay-content], [data-admin-dialog="form"], [data-admin-dialog="technical"]) {
+    top: var(--overlay-viewport-top, 0px);
+    left: var(--overlay-viewport-left, 0px);
+    right: auto;
+    bottom: auto;
+    width: var(--overlay-viewport-width, 100vw);
+    max-width: var(--overlay-viewport-width, 100vw);
+    height: var(--overlay-viewport-height, 100dvh);
+    max-height: var(--overlay-viewport-height, 100dvh);
+    translate: none;
+    transform: none;
+    border-radius: 0;
+    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-right: max(1rem, env(safe-area-inset-right));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    padding-left: max(1rem, env(safe-area-inset-left));
+  }
+  [data-overlay-viewport="dialog"]:is([data-overlay-content], [data-admin-dialog="form"], [data-admin-dialog="technical"]) > [data-slot="dialog-close"] {
+    top: max(0.5rem, env(safe-area-inset-top));
+    right: max(0.5rem, env(safe-area-inset-right));
+  }
+}
 @media (pointer: coarse) {
   [data-overlay-viewport="dialog"] :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"]) button { min-height: max(36px, 2rem); }
 }
@@ -1338,9 +1371,30 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   overscroll-behavior: contain;
   scroll-padding-block: 1rem;
 }
-[data-admin-dialog-scroll]:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+:is([data-admin-dialog-scroll], [data-overlay-step-scroll]):focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 [data-admin-dialog-scroll] > :is([data-admin-dialog-body], .overflow-auto),
 [data-admin-dialog-scroll] > form.contents > [data-slot="field-group"] { overflow: visible; }
+[data-overlay-step-host] > [data-slot="dialog-portal"]:not([hidden]) { display: contents; }
+[data-overlay-step] { max-height: 100%; max-width: 100%; }
+[data-overlay-step-layout] {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  gap: 1rem;
+  overflow: hidden;
+}
+[data-overlay-step-layout] > form { display: contents; }
+[data-overlay-step-layout] :is([data-slot="dialog-header"], [data-slot="dialog-footer"]) { flex-shrink: 0; }
+[data-overlay-step-layout] > :is([data-admin-dialog-body], [data-slot="field-group"], .overflow-auto),
+[data-overlay-step-layout] > form > :is([data-admin-dialog-body], [data-slot="field-group"], .overflow-auto) {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+[data-overlay-step-layout] [data-slot="dialog-footer"] { margin: 0; border-radius: 0; }
 [data-overlay-viewport="sheet"]:has(> :is([data-list-filter-scroll], [data-list-display-scroll])) { overflow: clip; }
 @media (pointer: coarse) {
   /* Keep the close touch slot separate from adjacent scrolling controls. */

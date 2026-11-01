@@ -10,8 +10,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useBlocker } from "react-router";
+import { UNSAFE_LocationContext, useBlocker, type Location } from "react-router";
 import { actualPageAddress } from "@/lib/navigation-selection";
+import { overlayBackground, overlayOwner, readOverlayTarget } from "@/lib/overlay-navigation";
+import { OverlayNavigationGuardContext, useOverlayContext } from "@/lib/overlay-context";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -23,13 +25,25 @@ import {
   AlertDialogAction,
 } from "@/components/admin-dialog";
 const DraftContext = createContext({
-  setDirty: (_id: string, _dirty: boolean) => undefined as void,
+  setDirty: (_id: string, _dirty: boolean, _owner?: string) => undefined as void,
   requestDiscard: (action: () => void) => action(),
   setDialogFinalFocus: (_element: HTMLElement | null) => undefined as void,
 });
 type NavigationCheck = () => boolean;
+function backgroundOwner(location: Pick<Location, "pathname" | "search" | "hash">) {
+  return "page:" + actualPageAddress(overlayBackground(location));
+}
+function retainedOwners(location: Pick<Location, "pathname" | "search" | "hash">) {
+  const target = readOverlayTarget(location.search);
+  return new Set([backgroundOwner(location), ...(target ? [overlayOwner(target)] : [])]);
+}
+function useDraftOwner() {
+  const location = useContext(UNSAFE_LocationContext)?.location;
+  const overlay = useOverlayContext();
+  return overlay ? overlayOwner(overlay.target) : location ? backgroundOwner(location) : "*";
+}
 const OperationNavigationContext = createContext({
-  setProtection: (_id: string, _check: NavigationCheck | null) =>
+  setProtection: (_id: string, _check: NavigationCheck | null, _owner?: string) =>
     undefined as void,
   blockedId: null as string | null,
   hasDrafts: false,
@@ -37,37 +51,52 @@ const OperationNavigationContext = createContext({
   proceed: (_onLeave: () => void) => undefined as void,
 });
 export function DraftProvider({ children }: { children: ReactNode }) {
-  const drafts = useRef(new Set<string>());
-  const protections = useRef(new Map<string, NavigationCheck>());
+  const drafts = useRef(new Map<string, string>());
+  const protections = useRef(new Map<string, { check: NavigationCheck; owner: string }>());
+  const dismissalGuards = useRef(new Map<string, { check: NavigationCheck; owner: string }>());
   const operationWasBlocked = useRef(false);
+  const dismissalWasBlocked = useRef(false);
   const [protectionVersion, setProtectionVersion] = useState(0);
   const [dirty, setHasDrafts] = useState(false);
   const [action, setAction] = useState<(() => void) | null>(null);
   const dialogFinalFocus = useRef<HTMLElement | null>(null);
-  const protectedOperation = () =>
-    [...protections.current].reverse().find(([, check]) => check())?.[0] ??
-    null;
+  const hasLeavingDrafts = (next: Location) => {
+    const retained = retainedOwners(next);
+    return [...drafts.current.values()].some(owner => !retained.has(owner));
+  };
+  const protectedOperation = (next: Location) => {
+    const retained = retainedOwners(next);
+    return [...protections.current].reverse().find(([, protection]) => !retained.has(protection.owner) && protection.check())?.[0] ?? null;
+  };
   // React Router supports one blocker. Keep submitted operations and drafts
   // in the same arbiter rather than letting either guard replace the other.
   const blocker = useBlocker(({ currentLocation, nextLocation }) => {
     if (actualPageAddress(currentLocation) === actualPageAddress(nextLocation))
       return false;
-    operationWasBlocked.current = protectedOperation() !== null;
-    return operationWasBlocked.current || drafts.current.size > 0;
+    const retained = retainedOwners(nextLocation);
+    dismissalWasBlocked.current = [...dismissalGuards.current.values()].some(guard => !retained.has(guard.owner) && guard.check());
+    if (dismissalWasBlocked.current) return true;
+    operationWasBlocked.current = protectedOperation(nextLocation) !== null;
+    return operationWasBlocked.current || hasLeavingDrafts(nextLocation);
   });
-  const blockedId = blocker.state === "blocked" ? protectedOperation() : null;
+  const blockedId = blocker.state === "blocked" && !dismissalWasBlocked.current ? protectedOperation(blocker.location) : null;
+  const leavingDrafts = blocker.state === "blocked" && hasLeavingDrafts(blocker.location);
   const setProtection = useCallback(
-    (id: string, check: NavigationCheck | null) => {
-      if (check) protections.current.set(id, check);
+    (id: string, check: NavigationCheck | null, owner = "*") => {
+      if (check) protections.current.set(id, { check, owner });
       else protections.current.delete(id);
       setProtectionVersion((version) => version + 1);
     },
     [],
   );
-  const setDirty = useCallback((id: string, value: boolean) => {
-    if (value) drafts.current.add(id);
+  const setDirty = useCallback((id: string, value: boolean, owner = "*") => {
+    if (value) drafts.current.set(id, owner);
     else drafts.current.delete(id);
     setHasDrafts(drafts.current.size > 0);
+  }, []);
+  const setDismissalGuard = useCallback((id: string, check: NavigationCheck | null, owner: string) => {
+    if (check) dismissalGuards.current.set(id, { check, owner });
+    else dismissalGuards.current.delete(id);
   }, []);
   const requestDiscard = (pendingAction: () => void) => {
     if (drafts.current.size > 0) setAction(() => pendingAction);
@@ -94,18 +123,24 @@ export function DraftProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("beforeunload", beforeUnload);
   }, [dirty]);
   useEffect(() => {
+    if (blocker.state === "blocked" && dismissalWasBlocked.current) {
+      dismissalWasBlocked.current = false;
+      operationWasBlocked.current = false;
+      blocker.reset();
+      return;
+    }
     // If the operation completes while the user is choosing, honor their
     // requested navigation without presenting a now-irrelevant warning.
     if (
       blocker.state === "blocked" &&
       operationWasBlocked.current &&
       !blockedId &&
-      !dirty
+      !leavingDrafts
     ) {
       operationWasBlocked.current = false;
       blocker.proceed();
     }
-  }, [blocker, blockedId, dirty, protectionVersion]);
+  }, [blocker, blockedId, leavingDrafts, protectionVersion]);
   function cancel() {
     operationWasBlocked.current = false;
     if (blocker.state === "blocked") blocker.reset();
@@ -124,16 +159,16 @@ export function DraftProvider({ children }: { children: ReactNode }) {
         value={{
           setProtection,
           blockedId,
-          hasDrafts: dirty,
+          hasDrafts: blocker.state === "blocked" ? leavingDrafts : dirty,
           stay: cancel,
           proceed: proceedOperation,
         }}
       >
-        {children}
+        <OverlayNavigationGuardContext value={setDismissalGuard}>{children}</OverlayNavigationGuardContext>
       </OperationNavigationContext>
       <AlertDialog
         open={
-          (blocker.state === "blocked" && blockedId === null && dirty) ||
+          (blocker.state === "blocked" && !dismissalWasBlocked.current && blockedId === null && leavingDrafts) ||
           action !== null
         }
         onOpenChange={(open) => {
@@ -185,6 +220,7 @@ export function useOperationNavigation(
   check: NavigationCheck,
 ) {
   const id = useId();
+  const owner = useDraftOwner();
   const latest = useRef(check);
   latest.current = check;
   const { setProtection, blockedId, hasDrafts, stay, proceed } = useContext(
@@ -193,8 +229,8 @@ export function useOperationNavigation(
   useLayoutEffect(() => {
     // Register a live check even before the first send so a same-event
     // navigation observes the synchronous sending ref, not a stale render.
-    setProtection(id, () => latest.current());
-  }, [id, active, setProtection]);
+    setProtection(id, () => latest.current(), owner);
+  }, [id, active, setProtection, owner]);
   useLayoutEffect(() => () => setProtection(id, null), [id, setProtection]);
   return { blocked: blockedId === id, hasDrafts, stay, proceed };
 }
@@ -202,10 +238,11 @@ export const useDraftGuard = () => useContext(DraftContext);
 export const useHasDirtyDrafts = () => useContext(OperationNavigationContext).hasDrafts;
 export function useDirtyDraft(dirty: boolean) {
   const id = useId();
+  const owner = useDraftOwner();
   const { setDirty } = useDraftGuard();
   useEffect(() => {
-    setDirty(id, dirty);
-  }, [id, dirty, setDirty]);
+    setDirty(id, dirty, owner);
+  }, [id, dirty, setDirty, owner]);
   useEffect(() => () => setDirty(id, false), [id, setDirty]);
   return () => setDirty(id, false);
 }

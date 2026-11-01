@@ -1,4 +1,4 @@
-import { useSearchParams } from "react-router";
+import { useLocation, useSearchParams } from "react-router";
 import type { ListQuery, SortOrder } from "../../../src/shared/list-query";
 export {
   ORDER_SORT_FIELDS,
@@ -58,6 +58,7 @@ export function useListQuery<S extends string>(
   defaultOrder: SortOrder,
   dates: boolean | ListDateFields = false,
 ) {
+  const location = useLocation();
   const [search, setSearch] = useSearchParams();
   const parsed = readListQuery(search, fields, defaultSort, defaultOrder, dates);
   const fieldsForDates = dateFields(dates);
@@ -73,7 +74,7 @@ export function useListQuery<S extends string>(
         next.delete("page");
         return next;
       },
-      { replace: true },
+      { replace: true, state: location.state },
     );
   }
   return {

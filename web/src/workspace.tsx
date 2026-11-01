@@ -11,6 +11,7 @@ import {
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import { navigationSelection } from "@/lib/navigation-selection";
 import { WorkspaceSwitchingContext } from "@/lib/workspace-navigation-state";
+import { readOverlayTarget } from "@/lib/overlay-navigation";
 
 type Workspace = WorkspaceScope & { site?: UseQueryResult<{ data: Site }> };
 const WorkspaceContext = createContext<Workspace>({ clientId: null, base: "" });
@@ -26,15 +27,18 @@ export function adminRoutePathname(pathname: string) {
 }
 export function useWorkspaceNavigation() {
   const { clientId } = useWorkspace();
+  const location = useLocation();
   const navigation = useNavigation();
   const nextLocation = navigation.location && {
     ...navigation.location,
     pathname: adminRoutePathname(navigation.location.pathname),
   };
   const next = nextLocation ? workspaceScope(nextLocation.pathname) : null;
+  const resource = workspaceScope(readOverlayTarget(location.search)?.pathname ?? location.pathname);
+  const nextResource = nextLocation ? workspaceScope(readOverlayTarget(nextLocation.search)?.pathname ?? nextLocation.pathname) : null;
   return {
-    switching: navigation.state === "loading" && next !== null && next.clientId !== clientId,
-    clientId: next?.clientId ?? null,
+    switching: navigation.state === "loading" && next !== null && (next.clientId !== clientId || nextResource?.clientId !== resource.clientId),
+    clientId: next?.clientId ?? nextResource?.clientId ?? null,
     selectedClientId: nextLocation ? navigationSelection(nextLocation).clientId : null,
   };
 }
@@ -105,4 +109,16 @@ export function WorkspaceOutlet() {
       </div>
     </div>
   );
+}
+
+/** Detail resources keep their own API scope without changing the background workspace. */
+export function ResourceWorkspaceProvider({ scope, children }: { scope: WorkspaceScope; children: ReactNode }) {
+  const site = useQuery(workspaceSiteQuery(scope.clientId));
+  const value = useMemo(() => ({ ...scope, site }), [scope.clientId, scope.base, site]);
+  return <WorkspaceContext value={value}><NavigationWorkspaceContext value={value}>
+    {scope.clientId && !site.data ? <QueryView query={site}>{() => null}</QueryView> : <>
+      {scope.clientId && <ErrorNotice scope="page" error={site.error} retainedData retry={() => void site.refetch()} />}
+      <div hidden={!!scope.clientId && site.isError} inert={!!scope.clientId && site.isError}>{children}</div>
+    </>}
+  </NavigationWorkspaceContext></WorkspaceContext>;
 }
