@@ -8,6 +8,7 @@ import { ActivityRecorder } from "../src/audit/activity.ts";
 import { createApp } from "../src/http/app.ts";
 import { createOrderRequestSchema } from "../src/orders/model.ts";
 import { OrderService } from "../src/orders/service.ts";
+import type { AuditMetadata } from "../src/shared/audit.ts";
 import { createConfiguredHttpServices, HTTP_TEST_ADMIN_PASSWORD } from "./http-fixture.ts";
 
 async function fixture() {
@@ -113,6 +114,22 @@ describe("HTTP activity capture at the real application boundary", () => {
       const core = test.database.read(db => db.prepare(`SELECT event.actor_type, context.source_address, context.activity_id FROM audit_events event
         JOIN audit_event_context context USING(event_id) WHERE event.action = 'orders.checkout_expired' AND event.subject_id = ?`).get(order.orderId))!;
       assert.equal(core.actor_type, "SYSTEM"); assert.equal(core.source_address, "203.0.113.20"); assert.equal(core.activity_id, captured.activity_id);
+    } finally { test.close(); }
+  });
+
+  it("keeps completed responses intact when activity persistence fails and reports the live gap", async () => {
+    const test = await fixture();
+    try {
+      const headers = await test.login(); test.activity.flush();
+      test.database.write(db => db.exec("CREATE TEMP TRIGGER reject_capture BEFORE INSERT ON activity_events BEGIN SELECT RAISE(ABORT, 'injected activity failure'); END;"));
+      assert.equal((await test.app.request("/api/admin/v1/session", { headers }, test.network)).status, 200);
+      assert.doesNotThrow(() => test.activity.flush());
+      const response = await test.app.request("/api/admin/v1/audit-events/meta", { headers }, test.network);
+      assert.equal(response.status, 200);
+      const metadata = await response.json() as { data: AuditMetadata };
+      assert.equal(metadata.data.capture.state, "degraded"); assert.ok(metadata.data.capture.write_failures > 0);
+      test.database.write(db => db.exec("DROP TRIGGER reject_capture"));
+      test.activity.flush(); assert.ok(test.activities().some(event => event.route === "/api/admin/v1/session"));
     } finally { test.close(); }
   });
 });

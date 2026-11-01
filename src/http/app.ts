@@ -141,6 +141,8 @@ import { adminRefundMarks, adminRefundMarkHistory, refundMarkRequestSchema, setA
 import type { ActivityRecorder } from "../audit/activity.ts";
 import { auditSiteContext, currentAuditContext } from "../audit/context.ts";
 import { appendAuditEvent } from "../database/identity-store.ts";
+import { auditExportSchema } from "../audit/query.ts";
+import { mountAuditRoutes } from "./audit-routes.ts";
 import { httpActivityMiddleware } from "./activity-middleware.ts";
 import {
   ADMIN_WORK_ITEM_TYPES,
@@ -655,6 +657,27 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   });
 
   const adminSession = requireAdminSession(dependencies.identity, dependencies.config.secureCookies);
+
+  mountAuditRoutes(app, {
+    database: dependencies.database, adminSession, clock: dependencies.clock,
+    captureState: () => dependencies.activity?.status(),
+    exportGuard: async (context, next) => {
+      requireJsonContentType(context);
+      requireSameOrigin(context, dependencies.config.publicOrigin);
+      requireCsrf(context, dependencies.identity, dependencies.config.secureCookies);
+      requireCurrentSession(context, dependencies.identity);
+      await next();
+    },
+    readExportBody: context => readJson(context, auditExportSchema, MAX_JSON_BODY_BYTES),
+    onExportGenerated: (context, summary) => {
+      const session = requireCurrentSession(context, dependencies.identity);
+      dependencies.database.write(connection => appendAuditEvent(connection, {
+        occurredAt: dependencies.clock?.() ?? Date.now(), actorType: "ADMIN", actorId: session.session.username,
+        action: "audit.export_generated", outcome: "SUCCESS", subjectType: "audit_export",
+        requestId: context.get("requestId"), details: { ...summary }, context: { siteId: null, siteName: null },
+      }));
+    },
+  });
 
   app.get("/api/admin/v1/session", adminSession, (context) => {
     const session = context.get("adminSession");

@@ -3,6 +3,144 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 export type Webhooks = ReceivePaymentOrderWebhookWebhookRequest;
+export type AuditJsonValue = string | number | boolean | null | Array<AuditJsonValue> | {
+    [key: string]: AuditJsonValue;
+};
+export type AuditChange = {
+    field: string;
+    kind: 'value' | 'redacted_change';
+    before?: AuditJsonValue;
+    after?: AuditJsonValue;
+    configured_before?: boolean;
+    configured_after?: boolean;
+};
+export type AuditEventItem = {
+    source: 'core' | 'activity';
+    event_id: string;
+    sequence: number;
+    occurred_at: string;
+    first_occurred_at: string;
+    last_occurred_at: string;
+    category: 'identity' | 'configuration' | 'orders' | 'reconciliation' | 'notifications' | 'requests' | 'background' | 'maintenance' | 'audit' | 'other';
+    action: string;
+    outcome: 'SUCCESS' | 'FAILURE';
+    actor_type: 'SYSTEM' | 'ANONYMOUS' | 'ADMIN' | 'API_CLIENT';
+    actor_id: string | null;
+    subject_type: string | null;
+    subject_id: string | null;
+    request_id: string | null;
+    activity_id: string | null;
+    site_id: string | null;
+    site_name: string | null;
+    source_address: string | null;
+    user_agent: string | null;
+    context_recorded: boolean;
+    source_type: 'CORE' | 'HTTP' | 'BACKGROUND' | 'MAINTENANCE' | 'INTERNAL';
+    event_count: number;
+    is_aggregate: boolean;
+    duration_ms: number | null;
+    http_method: string | null;
+    route: string | null;
+    http_status: number | null;
+};
+export type AuditRelatedEvent = {
+    source: 'core' | 'activity';
+    event_id: string;
+    action: string;
+    occurred_at: string;
+    outcome: 'SUCCESS' | 'FAILURE';
+};
+export type AuditEventDetail = {
+    source: 'core' | 'activity';
+    event_id: string;
+    sequence: number;
+    occurred_at: string;
+    first_occurred_at: string;
+    last_occurred_at: string;
+    category: 'identity' | 'configuration' | 'orders' | 'reconciliation' | 'notifications' | 'requests' | 'background' | 'maintenance' | 'audit' | 'other';
+    action: string;
+    outcome: 'SUCCESS' | 'FAILURE';
+    actor_type: 'SYSTEM' | 'ANONYMOUS' | 'ADMIN' | 'API_CLIENT';
+    actor_id: string | null;
+    subject_type: string | null;
+    subject_id: string | null;
+    request_id: string | null;
+    activity_id: string | null;
+    site_id: string | null;
+    site_name: string | null;
+    source_address: string | null;
+    user_agent: string | null;
+    context_recorded: boolean;
+    source_type: 'CORE' | 'HTTP' | 'BACKGROUND' | 'MAINTENANCE' | 'INTERNAL';
+    event_count: number;
+    is_aggregate: boolean;
+    duration_ms: number | null;
+    http_method: string | null;
+    route: string | null;
+    http_status: number | null;
+    details: {
+        [key: string]: AuditJsonValue;
+    };
+    changes: Array<AuditChange>;
+    event_hash: string | null;
+    previous_hash: string | null;
+    context_fingerprint: string | null;
+    remote_address_hash: string | null;
+    related_events: Array<AuditRelatedEvent>;
+    related_activity_available: boolean | null;
+};
+export type AuditEventPage = {
+    data: Array<AuditEventItem>;
+    page: {
+        next_cursor: string | null;
+        snapshot_at: string;
+    };
+};
+export type AuditEventEnvelope = {
+    data: AuditEventDetail;
+};
+export type AuditCaptureState = {
+    state: 'healthy' | 'degraded' | 'unavailable';
+    buffered_events: number;
+    dropped_events: number;
+    write_failures: number;
+    last_flush_at: string | null;
+    last_error_code: string | null;
+    spool_last_import_at: string | null;
+    spool_failures: number;
+    spool_gap_count: number;
+};
+export type AuditMetadata = {
+    actions: Array<{
+        action: string;
+        category: 'identity' | 'configuration' | 'orders' | 'reconciliation' | 'notifications' | 'requests' | 'background' | 'maintenance' | 'audit' | 'other';
+    }>;
+    sites: Array<{
+        site_id: string;
+        site_name: string | null;
+        deleted: boolean;
+    }>;
+    capture: AuditCaptureState;
+    retention: {
+        activity_days: 30;
+        core: 'indefinite';
+    };
+};
+export type AuditMetadataEnvelope = {
+    data: AuditMetadata;
+};
+export type AuditExportInput = {
+    source?: 'core' | 'activity';
+    category?: 'identity' | 'configuration' | 'orders' | 'reconciliation' | 'notifications' | 'requests' | 'background' | 'maintenance' | 'audit' | 'other';
+    action?: string;
+    outcome?: 'SUCCESS' | 'FAILURE';
+    actor_type?: 'SYSTEM' | 'ANONYMOUS' | 'ADMIN' | 'API_CLIENT';
+    site_id?: string;
+    source_address?: string;
+    created_from: string;
+    created_to: string;
+    q?: string;
+};
 export type SiteCollection = {
     mode: 'FIXED' | 'RANDOM' | 'WEIGHTED';
     accounts: Array<{
@@ -1426,7 +1564,7 @@ export type WebhookRedeliveryEnvelope = {
     };
 };
 export type Sha256Fingerprint = string;
-export type ErrorCode = 'alipay_account_not_found' | 'alipay_accounts_unavailable' | 'alipay_account_revision_conflict' | 'alipay_account_in_use' | 'alipay_account_app_conflict' | 'alipay_account_not_configured' | 'alipay_settings_moved' | 'site_collection_required' | 'site_collection_invalid' | 'admin_ip_not_allowed' | 'admin_operation_conflict' | 'refund_mark_version_conflict' | 'refund_mark_not_allowed' | 'refund_recording_retired' | 'work_item_not_found' | 'work_item_ended' | 'amount_slots_exhausted' | 'api_authentication_failed' | 'api_client_invalid' | 'api_nonce_replayed' | 'asset_not_found' | 'auth_rate_limited' | 'candidate_not_found' | 'candidate_set_changed' | 'checkout_code_generation_failed' | 'checkout_code_not_found' | 'checkout_not_found' | 'csrf_invalid' | 'duplicate_json_key' | 'event_not_found' | 'financial_clock_unavailable' | 'financial_exception_not_found' | 'forwarded_header_invalid' | 'idempotency_conflict' | 'identity_already_initialized' | 'identity_not_initialized' | 'setup_token_invalid' | 'internal_error' | 'invalid_content_length' | 'invalid_credentials' | 'invalid_json' | 'ledger_conflict_action_not_allowed' | 'ledger_conflict_not_found' | 'ledger_conflict_operation_conflict' | 'ledger_conflict_state_conflict' | 'ledger_entry_not_found' | 'ledger_unavailable' | 'ledger_scan_unavailable' | 'match_not_found' | 'match_state_conflict' | 'merchant_order_no_conflict' | 'operation_conflict' | 'order_clock_unavailable' | 'order_not_found' | 'origin_not_allowed' | 'password_unchanged' | 'password_work_busy' | 'provider_application_key_missing' | 'provider_application_key_rotation_not_supported' | 'provider_application_key_change_pending' | 'provider_application_key_change_conflict' | 'provider_application_key_verification_failed' | 'provider_switch_blocked' | 'public_checkout_rate_limited' | 'reconciliation_not_ready' | 'reconciliation_unavailable' | 'request_body_too_large' | 'request_body_unreadable' | 'return_url_invalid' | 'return_url_not_allowed' | 'route_not_found' | 'secret_not_found' | 'session_invalid' | 'settings_not_configured' | 'settings_revision_conflict' | 'settings_unavailable' | 'settings_validation_failed' | 'system_not_configured' | 'system_not_ready' | 'unsupported_media_type' | 'update_check_rate_limited' | 'update_check_unavailable' | 'validation_failed' | 'webhook_delivery_not_found' | 'webhook_delivery_state_conflict' | 'webhook_disabled' | 'webhook_event_not_found' | 'webhook_operation_conflict' | 'webhook_signing_key_rollback' | 'webhook_signing_key_unavailable' | 'webhook_target_inactive' | 'webhook_target_invalid' | 'webhook_target_not_allowed' | 'webhook_unavailable' | 'site_not_found' | 'site_scope_conflict' | 'site_revision_conflict' | 'site_operation_conflict' | 'site_has_history' | 'site_paused' | 'site_order_limit_exceeded' | 'site_secret_missing' | 'demo_read_only' | 'site_settings_moved';
+export type ErrorCode = 'audit_event_not_found' | 'audit_query_unavailable' | 'alipay_account_not_found' | 'alipay_accounts_unavailable' | 'alipay_account_revision_conflict' | 'alipay_account_in_use' | 'alipay_account_app_conflict' | 'alipay_account_not_configured' | 'alipay_settings_moved' | 'site_collection_required' | 'site_collection_invalid' | 'admin_ip_not_allowed' | 'admin_operation_conflict' | 'refund_mark_version_conflict' | 'refund_mark_not_allowed' | 'refund_recording_retired' | 'work_item_not_found' | 'work_item_ended' | 'amount_slots_exhausted' | 'api_authentication_failed' | 'api_client_invalid' | 'api_nonce_replayed' | 'asset_not_found' | 'auth_rate_limited' | 'candidate_not_found' | 'candidate_set_changed' | 'checkout_code_generation_failed' | 'checkout_code_not_found' | 'checkout_not_found' | 'csrf_invalid' | 'duplicate_json_key' | 'event_not_found' | 'financial_clock_unavailable' | 'financial_exception_not_found' | 'forwarded_header_invalid' | 'idempotency_conflict' | 'identity_already_initialized' | 'identity_not_initialized' | 'setup_token_invalid' | 'internal_error' | 'invalid_content_length' | 'invalid_credentials' | 'invalid_json' | 'ledger_conflict_action_not_allowed' | 'ledger_conflict_not_found' | 'ledger_conflict_operation_conflict' | 'ledger_conflict_state_conflict' | 'ledger_entry_not_found' | 'ledger_unavailable' | 'ledger_scan_unavailable' | 'match_not_found' | 'match_state_conflict' | 'merchant_order_no_conflict' | 'operation_conflict' | 'order_clock_unavailable' | 'order_not_found' | 'origin_not_allowed' | 'password_unchanged' | 'password_work_busy' | 'provider_application_key_missing' | 'provider_application_key_rotation_not_supported' | 'provider_application_key_change_pending' | 'provider_application_key_change_conflict' | 'provider_application_key_verification_failed' | 'provider_switch_blocked' | 'public_checkout_rate_limited' | 'reconciliation_not_ready' | 'reconciliation_unavailable' | 'request_body_too_large' | 'request_body_unreadable' | 'return_url_invalid' | 'return_url_not_allowed' | 'route_not_found' | 'secret_not_found' | 'session_invalid' | 'settings_not_configured' | 'settings_revision_conflict' | 'settings_unavailable' | 'settings_validation_failed' | 'system_not_configured' | 'system_not_ready' | 'unsupported_media_type' | 'update_check_rate_limited' | 'update_check_unavailable' | 'validation_failed' | 'webhook_delivery_not_found' | 'webhook_delivery_state_conflict' | 'webhook_disabled' | 'webhook_event_not_found' | 'webhook_operation_conflict' | 'webhook_signing_key_rollback' | 'webhook_signing_key_unavailable' | 'webhook_target_inactive' | 'webhook_target_invalid' | 'webhook_target_not_allowed' | 'webhook_unavailable' | 'site_not_found' | 'site_scope_conflict' | 'site_revision_conflict' | 'site_operation_conflict' | 'site_has_history' | 'site_paused' | 'site_order_limit_exceeded' | 'site_secret_missing' | 'demo_read_only' | 'site_settings_moved';
 export type ErrorEnvelope = {
     error: {
         code: ErrorCode;
@@ -1557,6 +1695,107 @@ export type WebhookAttemptHeader = string;
 export type FinancialDecision = FinancialDecisionRequest;
 export type LinkedFinancialDecision = LinkedFinancialDecisionRequest;
 export type ManualSettlement = ManualSettlementRequest;
+export type ListAuditEventsData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path?: never;
+    query?: {
+        source?: 'core' | 'activity';
+        category?: 'identity' | 'configuration' | 'orders' | 'reconciliation' | 'notifications' | 'requests' | 'background' | 'maintenance' | 'audit' | 'other';
+        action?: string;
+        outcome?: 'SUCCESS' | 'FAILURE';
+        actor_type?: 'SYSTEM' | 'ANONYMOUS' | 'ADMIN' | 'API_CLIENT';
+        site_id?: string;
+        source_address?: string;
+        created_from?: string;
+        created_to?: string;
+        q?: string;
+        limit?: number;
+        cursor?: string;
+    };
+    url: '/api/admin/v1/audit-events';
+};
+export type ListAuditEventsErrors = {
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type ListAuditEventsError = ListAuditEventsErrors[keyof ListAuditEventsErrors];
+export type ListAuditEventsResponses = {
+    200: AuditEventPage;
+};
+export type ListAuditEventsResponse = ListAuditEventsResponses[keyof ListAuditEventsResponses];
+export type GetAuditMetadataData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/admin/v1/audit-events/meta';
+};
+export type GetAuditMetadataErrors = {
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type GetAuditMetadataError = GetAuditMetadataErrors[keyof GetAuditMetadataErrors];
+export type GetAuditMetadataResponses = {
+    200: AuditMetadataEnvelope;
+};
+export type GetAuditMetadataResponse = GetAuditMetadataResponses[keyof GetAuditMetadataResponses];
+export type GetAuditEventData = {
+    body?: never;
+    headers?: {
+        'X-Request-Id'?: string;
+    };
+    path: {
+        source: 'core' | 'activity';
+        event_id: string;
+    };
+    query?: never;
+    url: '/api/admin/v1/audit-events/{source}/{event_id}';
+};
+export type GetAuditEventErrors = {
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    404: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type GetAuditEventError = GetAuditEventErrors[keyof GetAuditEventErrors];
+export type GetAuditEventResponses = {
+    200: AuditEventEnvelope;
+};
+export type GetAuditEventResponse = GetAuditEventResponses[keyof GetAuditEventResponses];
+export type ExportAuditEventsData = {
+    body: AuditExportInput;
+    headers?: {
+        'X-Request-Id'?: string;
+        Origin?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/admin/v1/audit-events/export';
+};
+export type ExportAuditEventsErrors = {
+    400: ErrorEnvelope;
+    401: ErrorEnvelope;
+    403: ErrorEnvelope;
+    413: ErrorEnvelope;
+    415: ErrorEnvelope;
+    422: ErrorEnvelope;
+    503: ErrorEnvelope;
+};
+export type ExportAuditEventsError = ExportAuditEventsErrors[keyof ExportAuditEventsErrors];
+export type ExportAuditEventsResponses = {
+    200: string;
+};
+export type ExportAuditEventsResponse = ExportAuditEventsResponses[keyof ExportAuditEventsResponses];
 export type ListAlipayAccountsData = {
     body?: never;
     headers?: {

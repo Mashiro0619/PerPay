@@ -16,6 +16,8 @@ info:
 servers:
   - url: /
 tags:
+  - name: Audit
+    description: Administrator audit history and operational activity with explicit retention.
   - name: Orders
     description: Authenticated order creation and lifecycle operations.
   - name: Checkout
@@ -39,6 +41,311 @@ tags:
   - name: System
     description: Public application probes and authenticated instance status.
 paths:
+  /api/admin/v1/audit-events:
+    get:
+      tags:
+        - "Audit"
+      operationId: "listAuditEvents"
+      summary: "查询审计记录"
+      description: "Authenticated global history combining permanent core facts and activity retained for 30 days. Fixed descending order by occurrence time, source and sequence. Snapshot cursors bind filters, page size and both source high-water marks. Minute aggregates retain their first occurrence timestamp while their counters may advance. Related core facts and execution results remain distinct records."
+      security:
+        -
+          AdminSessionCookie: []
+      parameters:
+        -
+          $ref: "#/components/parameters/RequestId"
+        -
+          name: "source"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            enum:
+              - "core"
+              - "activity"
+        -
+          name: "category"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            enum:
+              - "identity"
+              - "configuration"
+              - "orders"
+              - "reconciliation"
+              - "notifications"
+              - "requests"
+              - "background"
+              - "maintenance"
+              - "audit"
+              - "other"
+        -
+          name: "action"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        -
+          name: "outcome"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            enum:
+              - "SUCCESS"
+              - "FAILURE"
+        -
+          name: "actor_type"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            enum:
+              - "SYSTEM"
+              - "ANONYMOUS"
+              - "ADMIN"
+              - "API_CLIENT"
+        -
+          name: "site_id"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            maxLength: 128
+            description: "Historical website ID; unassociated selects only records without a recorded website association."
+        -
+          name: "source_address"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            maxLength: 128
+            description: "Exact IPv4 or IPv6 address; the server normalizes the address. Historical hashes are not IP addresses."
+        -
+          name: "created_from"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            format: "date"
+            description: "Inclusive first occurrence date in Asia/Shanghai."
+        -
+          name: "created_to"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            format: "date"
+            description: "Inclusive last occurrence date in Asia/Shanghai. Must accompany created_from."
+        -
+          name: "q"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            maxLength: 100
+            description: "Literal search across event/action/actor/subject/request/activity/site IDs, recorded site names, source IPs and route templates. Does not search raw bodies."
+        -
+          name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            minimum: 1
+            maximum: 100
+            default: 20
+        -
+          name: "cursor"
+          in: "query"
+          schema:
+            type: "string"
+            maxLength: 2048
+      responses:
+        200:
+          description: "Audit records and the next snapshot-bound cursor."
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditEventPage"
+        401:
+          $ref: "#/components/responses/AdminUnauthorized"
+        403:
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        422:
+          description: "Invalid or duplicate filters, unsupported parameters or a cursor belonging to a different query."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        503:
+          description: "Audit history is unavailable; no historical metadata is guessed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/admin/v1/audit-events/meta:
+    get:
+      tags:
+        - "Audit"
+      operationId: "getAuditMetadata"
+      summary: "读取审计筛选项与采集状态"
+      description: "Action and historical website options, including deleted websites, plus the live collector state and retention policy. Does not accept query parameters."
+      security:
+        -
+          AdminSessionCookie: []
+      parameters:
+        -
+          $ref: "#/components/parameters/RequestId"
+      responses:
+        200:
+          description: "Historical filter choices and current capture health."
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditMetadataEnvelope"
+        401:
+          $ref: "#/components/responses/AdminUnauthorized"
+        403:
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        422:
+          description: "Invalid or duplicate filters, unsupported parameters or a cursor belonging to a different query."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        503:
+          description: "Audit history is unavailable; no historical metadata is guessed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/admin/v1/audit-events/{source}/{event_id}:
+    get:
+      tags:
+        - "Audit"
+      operationId: "getAuditEvent"
+      summary: "读取审计详情"
+      description: "Returns safe metadata, recorded field changes, immutable core fingerprints and related core/activity records. Old events without source context remain explicitly unknown. Does not accept query parameters."
+      security:
+        -
+          AdminSessionCookie: []
+      parameters:
+        -
+          $ref: "#/components/parameters/RequestId"
+        -
+          name: "source"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            enum:
+              - "core"
+              - "activity"
+        -
+          name: "event_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            maxLength: 128
+      responses:
+        200:
+          description: "Safe detail for the requested audit record."
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditEventEnvelope"
+        401:
+          $ref: "#/components/responses/AdminUnauthorized"
+        403:
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        404:
+          description: "The record does not exist or activity history has expired."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        422:
+          description: "Invalid or duplicate filters, unsupported parameters or a cursor belonging to a different query."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        503:
+          description: "Audit history is unavailable; no historical metadata is guessed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/admin/v1/audit-events/export:
+    post:
+      tags:
+        - "Audit"
+      operationId: "exportAuditEvents"
+      summary: "导出审计记录 CSV"
+      description: "Exports at most 10,000 records over at most 366 inclusive Asia/Shanghai dates. A single SQLite read snapshot freezes both sources and current minute counters. Exceeding limits fails without truncation. UTF-8 BOM, quoted cells and spreadsheet formula escaping are applied. A core audit.export_generated event is recorded only after the CSV has been generated, before returning it; that event is excluded from this export snapshot. Does not accept query parameters."
+      security:
+        -
+          AdminSessionCookie: []
+          AdminCsrfCookie: []
+          AdminCsrfHeader: []
+      parameters:
+        -
+          $ref: "#/components/parameters/RequestId"
+        -
+          $ref: "#/components/parameters/AdminOrigin"
+      x-perpay-requires-same-origin: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuditExportInput"
+      responses:
+        200:
+          description: "Complete safe CSV; the recorded audit event confirms generation, not successful download by the client."
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+            Content-Disposition:
+              schema:
+                type: "string"
+          content:
+            text/csv:
+              schema:
+                type: "string"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/AdminUnauthorized"
+        403:
+          $ref: "#/components/responses/FinancialWriteForbidden"
+        413:
+          $ref: "#/components/responses/TooLarge"
+        415:
+          $ref: "#/components/responses/UnsupportedMediaType"
+        422:
+          description: "Invalid or duplicate filters, unsupported parameters or a cursor belonging to a different query."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        503:
+          description: "Audit history is unavailable; no historical metadata is guessed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /api/admin/v1/alipay-accounts:
     get:
       tags:
@@ -6071,6 +6378,634 @@ components:
           schema:
             $ref: '#/components/schemas/ManualSettlementRequest'
   schemas:
+    AuditJsonValue:
+      oneOf:
+        -
+          type:
+            - "string"
+            - "number"
+            - "boolean"
+            - "null"
+        -
+          type: "array"
+          items:
+            $ref: "#/components/schemas/AuditJsonValue"
+        -
+          type: "object"
+          additionalProperties:
+            $ref: "#/components/schemas/AuditJsonValue"
+    AuditChange:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "field"
+        - "kind"
+      properties:
+        field:
+          type: "string"
+        kind:
+          type: "string"
+          enum:
+            - "value"
+            - "redacted_change"
+        before:
+          $ref: "#/components/schemas/AuditJsonValue"
+        after:
+          $ref: "#/components/schemas/AuditJsonValue"
+        configured_before:
+          type: "boolean"
+        configured_after:
+          type: "boolean"
+      description: "Secret fields include only change/configured markers. Oversized non-sensitive values may be represented by a marked truncated preview, original bytes and SHA-256."
+    AuditEventItem:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "source"
+        - "event_id"
+        - "sequence"
+        - "occurred_at"
+        - "first_occurred_at"
+        - "last_occurred_at"
+        - "category"
+        - "action"
+        - "outcome"
+        - "actor_type"
+        - "actor_id"
+        - "subject_type"
+        - "subject_id"
+        - "request_id"
+        - "activity_id"
+        - "site_id"
+        - "site_name"
+        - "source_address"
+        - "user_agent"
+        - "context_recorded"
+        - "source_type"
+        - "event_count"
+        - "is_aggregate"
+        - "duration_ms"
+        - "http_method"
+        - "route"
+        - "http_status"
+      properties:
+        source:
+          type: "string"
+          enum:
+            - "core"
+            - "activity"
+        event_id:
+          type: "string"
+        sequence:
+          type: "integer"
+          minimum: 0
+        occurred_at:
+          type: "string"
+          format: "date-time"
+          description: "Immutable timestamp used for ordering and cursors. An open aggregate may later receive an earlier occurrence."
+        first_occurred_at:
+          type: "string"
+          format: "date-time"
+          description: "Earliest recorded occurrence, including late arrivals in an open aggregate. Equal to occurred_at for core records."
+        last_occurred_at:
+          type: "string"
+          format: "date-time"
+        category:
+          type: "string"
+          enum:
+            - "identity"
+            - "configuration"
+            - "orders"
+            - "reconciliation"
+            - "notifications"
+            - "requests"
+            - "background"
+            - "maintenance"
+            - "audit"
+            - "other"
+        action:
+          type: "string"
+        outcome:
+          type: "string"
+          enum:
+            - "SUCCESS"
+            - "FAILURE"
+        actor_type:
+          type: "string"
+          enum:
+            - "SYSTEM"
+            - "ANONYMOUS"
+            - "ADMIN"
+            - "API_CLIENT"
+        actor_id:
+          type:
+            - "string"
+            - "null"
+        subject_type:
+          type:
+            - "string"
+            - "null"
+        subject_id:
+          type:
+            - "string"
+            - "null"
+        request_id:
+          type:
+            - "string"
+            - "null"
+        activity_id:
+          type:
+            - "string"
+            - "null"
+        site_id:
+          type:
+            - "string"
+            - "null"
+        site_name:
+          type:
+            - "string"
+            - "null"
+        source_address:
+          type:
+            - "string"
+            - "null"
+        user_agent:
+          type:
+            - "string"
+            - "null"
+        context_recorded:
+          type: "boolean"
+          description: "False for historical core events without recorded request context."
+        source_type:
+          type: "string"
+          enum:
+            - "CORE"
+            - "HTTP"
+            - "BACKGROUND"
+            - "MAINTENANCE"
+            - "INTERNAL"
+        event_count:
+          type: "integer"
+          minimum: 1
+        is_aggregate:
+          type: "boolean"
+        duration_ms:
+          type:
+            - "integer"
+            - "null"
+          minimum: 0
+          description: "Total elapsed milliseconds for all occurrences. Divide by event_count for the mean."
+        http_method:
+          type:
+            - "string"
+            - "null"
+        route:
+          type:
+            - "string"
+            - "null"
+        http_status:
+          type:
+            - "integer"
+            - "null"
+          minimum: 100
+          maximum: 599
+    AuditRelatedEvent:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "source"
+        - "event_id"
+        - "action"
+        - "occurred_at"
+        - "outcome"
+      properties:
+        source:
+          type: "string"
+          enum:
+            - "core"
+            - "activity"
+        event_id:
+          type: "string"
+        action:
+          type: "string"
+        occurred_at:
+          type: "string"
+          format: "date-time"
+        outcome:
+          type: "string"
+          enum:
+            - "SUCCESS"
+            - "FAILURE"
+    AuditEventDetail:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "source"
+        - "event_id"
+        - "sequence"
+        - "occurred_at"
+        - "first_occurred_at"
+        - "last_occurred_at"
+        - "category"
+        - "action"
+        - "outcome"
+        - "actor_type"
+        - "actor_id"
+        - "subject_type"
+        - "subject_id"
+        - "request_id"
+        - "activity_id"
+        - "site_id"
+        - "site_name"
+        - "source_address"
+        - "user_agent"
+        - "context_recorded"
+        - "source_type"
+        - "event_count"
+        - "is_aggregate"
+        - "duration_ms"
+        - "http_method"
+        - "route"
+        - "http_status"
+        - "details"
+        - "changes"
+        - "event_hash"
+        - "previous_hash"
+        - "context_fingerprint"
+        - "remote_address_hash"
+        - "related_events"
+        - "related_activity_available"
+      properties:
+        source:
+          type: "string"
+          enum:
+            - "core"
+            - "activity"
+        event_id:
+          type: "string"
+        sequence:
+          type: "integer"
+          minimum: 0
+        occurred_at:
+          type: "string"
+          format: "date-time"
+          description: "Immutable timestamp used for ordering and cursors. An open aggregate may later receive an earlier occurrence."
+        first_occurred_at:
+          type: "string"
+          format: "date-time"
+          description: "Earliest recorded occurrence, including late arrivals in an open aggregate. Equal to occurred_at for core records."
+        last_occurred_at:
+          type: "string"
+          format: "date-time"
+        category:
+          type: "string"
+          enum:
+            - "identity"
+            - "configuration"
+            - "orders"
+            - "reconciliation"
+            - "notifications"
+            - "requests"
+            - "background"
+            - "maintenance"
+            - "audit"
+            - "other"
+        action:
+          type: "string"
+        outcome:
+          type: "string"
+          enum:
+            - "SUCCESS"
+            - "FAILURE"
+        actor_type:
+          type: "string"
+          enum:
+            - "SYSTEM"
+            - "ANONYMOUS"
+            - "ADMIN"
+            - "API_CLIENT"
+        actor_id:
+          type:
+            - "string"
+            - "null"
+        subject_type:
+          type:
+            - "string"
+            - "null"
+        subject_id:
+          type:
+            - "string"
+            - "null"
+        request_id:
+          type:
+            - "string"
+            - "null"
+        activity_id:
+          type:
+            - "string"
+            - "null"
+        site_id:
+          type:
+            - "string"
+            - "null"
+        site_name:
+          type:
+            - "string"
+            - "null"
+        source_address:
+          type:
+            - "string"
+            - "null"
+        user_agent:
+          type:
+            - "string"
+            - "null"
+        context_recorded:
+          type: "boolean"
+          description: "False for historical core events without recorded request context."
+        source_type:
+          type: "string"
+          enum:
+            - "CORE"
+            - "HTTP"
+            - "BACKGROUND"
+            - "MAINTENANCE"
+            - "INTERNAL"
+        event_count:
+          type: "integer"
+          minimum: 1
+        is_aggregate:
+          type: "boolean"
+        duration_ms:
+          type:
+            - "integer"
+            - "null"
+          minimum: 0
+          description: "Total elapsed milliseconds for all occurrences. Divide by event_count for the mean."
+        http_method:
+          type:
+            - "string"
+            - "null"
+        route:
+          type:
+            - "string"
+            - "null"
+        http_status:
+          type:
+            - "integer"
+            - "null"
+          minimum: 100
+          maximum: 599
+        details:
+          type: "object"
+          additionalProperties:
+            $ref: "#/components/schemas/AuditJsonValue"
+          description: "Only explicitly allowed safe metadata. Never a raw request or response."
+        changes:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/AuditChange"
+        event_hash:
+          type:
+            - "string"
+            - "null"
+        previous_hash:
+          type:
+            - "string"
+            - "null"
+        context_fingerprint:
+          type:
+            - "string"
+            - "null"
+        remote_address_hash:
+          type:
+            - "string"
+            - "null"
+        related_events:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/AuditRelatedEvent"
+        related_activity_available:
+          type:
+            - "boolean"
+            - "null"
+          description: "Null means no internal activity association was recorded. False includes retention or capture gaps; it does not prove that a request never happened."
+    AuditEventPage:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "data"
+        - "page"
+      properties:
+        data:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/AuditEventItem"
+        page:
+          type: "object"
+          additionalProperties: false
+          required:
+            - "next_cursor"
+            - "snapshot_at"
+          properties:
+            next_cursor:
+              type:
+                - "string"
+                - "null"
+            snapshot_at:
+              type: "string"
+              format: "date-time"
+    AuditEventEnvelope:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "data"
+      properties:
+        data:
+          $ref: "#/components/schemas/AuditEventDetail"
+    AuditCaptureState:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "state"
+        - "buffered_events"
+        - "dropped_events"
+        - "write_failures"
+        - "last_flush_at"
+        - "last_error_code"
+        - "spool_last_import_at"
+        - "spool_failures"
+        - "spool_gap_count"
+      properties:
+        state:
+          type: "string"
+          enum:
+            - "healthy"
+            - "degraded"
+            - "unavailable"
+        buffered_events:
+          type: "integer"
+          minimum: 0
+        dropped_events:
+          type: "integer"
+          minimum: 0
+        write_failures:
+          type: "integer"
+          minimum: 0
+        last_flush_at:
+          type:
+            - "string"
+            - "null"
+          format: "date-time"
+        last_error_code:
+          type:
+            - "string"
+            - "null"
+        spool_last_import_at:
+          type:
+            - "string"
+            - "null"
+          format: "date-time"
+        spool_failures:
+          type: "integer"
+          minimum: 0
+        spool_gap_count:
+          type: "integer"
+          minimum: 0
+    AuditMetadata:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "actions"
+        - "sites"
+        - "capture"
+        - "retention"
+      properties:
+        actions:
+          type: "array"
+          items:
+            type: "object"
+            additionalProperties: false
+            required:
+              - "action"
+              - "category"
+            properties:
+              action:
+                type: "string"
+              category:
+                type: "string"
+                enum:
+                  - "identity"
+                  - "configuration"
+                  - "orders"
+                  - "reconciliation"
+                  - "notifications"
+                  - "requests"
+                  - "background"
+                  - "maintenance"
+                  - "audit"
+                  - "other"
+        sites:
+          type: "array"
+          items:
+            type: "object"
+            additionalProperties: false
+            required:
+              - "site_id"
+              - "site_name"
+              - "deleted"
+            properties:
+              site_id:
+                type: "string"
+              site_name:
+                type:
+                  - "string"
+                  - "null"
+              deleted:
+                type: "boolean"
+        capture:
+          $ref: "#/components/schemas/AuditCaptureState"
+        retention:
+          type: "object"
+          additionalProperties: false
+          required:
+            - "activity_days"
+            - "core"
+          properties:
+            activity_days:
+              type: "integer"
+              const: 30
+            core:
+              type: "string"
+              const: "indefinite"
+    AuditMetadataEnvelope:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "data"
+      properties:
+        data:
+          $ref: "#/components/schemas/AuditMetadata"
+    AuditExportInput:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "created_from"
+        - "created_to"
+      properties:
+        source:
+          type: "string"
+          enum:
+            - "core"
+            - "activity"
+        category:
+          type: "string"
+          enum:
+            - "identity"
+            - "configuration"
+            - "orders"
+            - "reconciliation"
+            - "notifications"
+            - "requests"
+            - "background"
+            - "maintenance"
+            - "audit"
+            - "other"
+        action:
+          type: "string"
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        outcome:
+          type: "string"
+          enum:
+            - "SUCCESS"
+            - "FAILURE"
+        actor_type:
+          type: "string"
+          enum:
+            - "SYSTEM"
+            - "ANONYMOUS"
+            - "ADMIN"
+            - "API_CLIENT"
+        site_id:
+          type: "string"
+          maxLength: 128
+          description: "Historical website ID; unassociated selects only records without a recorded website association."
+        source_address:
+          type: "string"
+          maxLength: 128
+          description: "Exact IPv4 or IPv6 address; the server normalizes the address. Historical hashes are not IP addresses."
+        created_from:
+          type: "string"
+          format: "date"
+          description: "Inclusive first occurrence date in Asia/Shanghai."
+        created_to:
+          type: "string"
+          format: "date"
+          description: "Inclusive last occurrence date in Asia/Shanghai. Must accompany created_from."
+        q:
+          type: "string"
+          maxLength: 100
+          description: "Literal search across event/action/actor/subject/request/activity/site IDs, recorded site names, source IPs and route templates. Does not search raw bodies."
     SiteCollection:
       type: object
       additionalProperties: false
@@ -10011,6 +10946,8 @@ components:
     ErrorCode:
       type: string
       enum:
+        - audit_event_not_found
+        - audit_query_unavailable
         - alipay_account_not_found
         - alipay_accounts_unavailable
         - alipay_account_revision_conflict
