@@ -398,7 +398,7 @@ export const appRoutes = createRoutesFromElements(
       path="audit/:source/:eventId"
       element={<LegacyOverlayRedirect />}
     />
-
+    <Route path="audit/status" element={<LegacyOverlayRedirect />} />
     <Route
       path="system"
       lazy={async () => ({

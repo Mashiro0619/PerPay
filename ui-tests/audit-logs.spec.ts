@@ -19,12 +19,21 @@ test("audit reads actual saved events, opens a detail, and exports the matching 
   await page.goto(manifest.origin + "/admin/audit?source=core" + selection);
   await expect(page.getByRole("heading", { level: 1, name: "审计日志", exact: true })).toBeVisible();
   await expect(page.locator('[data-business-list="audit"]')).toBeVisible();
-  await expect(page.locator("[data-audit-retention]")).toContainText("活动记录保留 30 天");
+  await expect(page.locator("a[data-row-link]").first()).toBeVisible();
+  await expect(page.locator("[data-audit-retention]")).toHaveCount(0);
+  await page.locator("[data-audit-status-trigger]").click();
+  const status = page.locator("[data-overlay-content]");
+  await expect(page.getByRole("heading", { level: 1, name: "审计采集状态" })).toBeVisible();
+  await expect(status.locator("[data-audit-retention]")).toContainText("活动记录保留 30 天");
+  await expect(status).toContainText("列表读取时间");
+  await status.locator('[data-slot="dialog-close"]').click();
   // Select by the real API identity, independent of translated action labels.
-  await page.locator(`a[data-row-link][href*="/audit/core/${first.event_id}"]`).click();
+  await page.locator(`a[data-row-link][href*="${first.event_id}"]`).click();
+  const overlay = page.locator("[data-overlay-content]");
+  await expect(overlay).toBeVisible();
   await expect(page.getByRole("heading", { level: 1, name: "审计日志详情" })).toBeVisible();
   await expect(page.getByRole("group", { name: "日志概况", exact: true })).toBeVisible();
-  await page.locator("[data-detail-navigation]").getByRole("link", { name: "审计日志", exact: true }).click();
+  await overlay.locator('[data-slot="dialog-close"]').click();
   await expect(page).toHaveURL(/\/admin\/audit\?source=core/);
   if (selectedSite) expect(new URL(page.url()).searchParams.get("selected_site")).toBe(selectedSite);
   const date = new Date(new Date(first.occurred_at).getTime() + 8 * 3_600_000).toISOString().slice(0, 10);
@@ -33,7 +42,7 @@ test("audit reads actual saved events, opens a detail, and exports the matching 
   const downloadReady = page.waitForEvent("download");
   await page.getByRole("button", { name: "导出 CSV", exact: true }).click();
   const download = await downloadReady;
-  await expect(page.locator("[data-list-toolbar]").getByRole("status")).toHaveText("文件已生成");
+  await expect(page.locator("[data-list-toolbar]").getByRole("status").filter({ hasText: "文件已生成" })).toHaveText("文件已生成");
   expect(download.suggestedFilename()).toBe(`audit-${date}-${date}.csv`);
   const file = await download.path();
   expect(file).not.toBeNull();
@@ -63,8 +72,8 @@ test("audit summaries, source details and configuration changes stay readable ac
   for (const [width, theme] of [[320, "light"], [390, "dark"], [1280, "light"], [1680, "dark"]] as const) {
     await page.setViewportSize({ width, height: 900 });
     await page.evaluate(value => { localStorage.setItem("perpay:theme", value); }, theme);
-    await page.goto(manifest.origin + "/admin/audit");
-    await expect(page.getByText("分钟汇总 · 5 次", { exact: true })).toBeVisible();
+    await page.goto(manifest.origin + "/admin/audit?view=all");
+    await expect(page.getByText("5 次", { exact: true })).toBeVisible();
     await record(page, info, { auditSource: "synthetic edge cases", width, theme, view: "list" });
     if (width < 768) {
       await expect(page.getByRole("button", { name: "更多审计日志操作" })).toBeVisible();
@@ -73,15 +82,20 @@ test("audit summaries, source details and configuration changes stay readable ac
       await expect(page.getByRole("combobox", { name: "排序字段" })).toHaveCount(0);
       await page.getByRole("dialog", { name: "筛选", exact: true }).getByRole("button", { name: "取消", exact: true }).click();
     }
-    await page.locator(`a[data-row-link][href*="/audit/core/${core.event_id}"]`).click();
+    const link = page.locator(`a[data-row-link][href*="${core.event_id}"]`);
+    await link.click();
+    const overlay = page.locator("[data-overlay-content]");
+    await expect(overlay).toBeVisible();
     await expect(page.getByRole("group", { name: "配置变更", exact: true })).toBeVisible();
     await expect(page.getByText("已更换（值不记录）", { exact: true })).toBeVisible();
     await record(page, info, { auditSource: "synthetic edge cases", width, theme, view: "detail" });
     if (width === 390 || width === 1680) await screenshot(page, info, `audit-detail-${width}-${theme}`);
-    await page.getByRole("button", { name: "技术详情", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "技术详情", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "技术信息", exact: true }).click();
+    await expect(overlay.getByLabel("技术信息", { exact: true })).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(1);
     await page.keyboard.press("Escape");
-    await expect(page.getByRole("button", { name: "技术详情", exact: true })).toBeFocused();
+    await expect(overlay).not.toBeVisible();
+    await expect(link).toBeFocused();
   }
 });
 
@@ -93,18 +107,29 @@ test("audit export failures remain visible beside the sticky action after scroll
     if (path.endsWith("/export")) return route.fulfill({ status: 422, json: { error: { code: "validation_failed", message: "导出结果超过 10,000 行，请缩小筛选范围" } } });
     return route.fulfill({ json: auditPage(rows) });
   });
-  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, manifest);
   await page.goto(manifest.origin + "/admin/audit?created_from=2026-11-01&created_to=2026-11-01");
   await expect(page.locator("a[data-row-link]")).toHaveCount(20);
-  await page.evaluate(() => window.scrollTo(0, 700));
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(400);
+  await expect(page.locator("[data-list-advanced-filters]")).toHaveCount(0);
+  const tableSurface = page.locator('[data-business-table="audit"] .business-table-surface');
+  await expect.poll(() => tableSurface.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+  const visibleRows = await page.locator('[data-business-table="audit"] [data-business-row]').evaluateAll(rows => rows.filter(row => {
+    const rect = row.getBoundingClientRect();
+    return rect.height > 0 && rect.top >= 0 && rect.bottom <= innerHeight;
+  }).length);
+  expect(visibleRows).toBeGreaterThanOrEqual(10);
+  await record(page, info, { auditSource: "synthetic dense list", visibleRows });
+  await screenshot(page, info, "audit-dense-first-screen");
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await page.evaluate(() => window.scrollTo(0, 500));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(180);
   await page.getByRole("button", { name: "导出 CSV", exact: true }).click();
   const error = page.getByText("导出结果超过 10,000 行，请缩小筛选范围", { exact: true });
   await expect(error).toBeVisible();
   await expect(error).toBeInViewport();
   await expect(page.locator("[data-list-toolbar]")).toContainText("导出结果超过 10,000 行");
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(400);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(180);
   await record(page, info, { auditSource: "synthetic export limit", scrolled: true });
   await screenshot(page, info, "audit-export-sticky-error");
 });

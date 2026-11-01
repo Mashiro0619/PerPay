@@ -17,6 +17,7 @@ const definitions: ReadonlyArray<{ pattern: string; kind: OverlayRouteKind; titl
   { pattern: "/reconciliation/:kind/:resourceId", kind: "evidence", title: "对账详情", size: "lg" },
   { pattern: "/sites/:clientId/reconciliation/:kind/:resourceId", kind: "evidence", title: "对账详情", size: "lg" },
   { pattern: "/audit/:source/:eventId", kind: "audit", title: "审计日志详情", size: "md" },
+  { pattern: "/audit/status", kind: "audit-status", title: "审计记录状态", size: "md" },
 ];
 export const overlayRouteDefinitions = definitions;
 

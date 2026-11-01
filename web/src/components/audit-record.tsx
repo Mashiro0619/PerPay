@@ -2,7 +2,7 @@ import { Fragment } from "react";
 import type { AuditChange, AuditEventItem, AuditMetadata } from "../../../src/shared/audit";
 import { AUDIT_CATEGORY_LABELS } from "../../../src/shared/audit";
 import { Link } from "@/navigation";
-import { AUDIT_ACTOR_LABELS, AUDIT_RECORD_LABELS, auditChangeValues, auditClientLabel, auditContextUnavailable, auditDateTime, auditDuration } from "@/lib/audit";
+import { AUDIT_ACTOR_LABELS, AUDIT_RECORD_LABELS, auditChangeValues, auditClientLabel, auditContextUnavailable, auditDateTime, auditDuration, auditFieldLabel } from "@/lib/audit";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,13 +50,13 @@ export function AuditSourceInfo({ event }: { event: AuditEventItem }) {
 }
 
 export function AuditRetention() {
-  return <p className="text-sm text-muted-foreground" data-audit-retention>核心审计持续保留；活动记录保留 30 天。成功查询按分钟汇总。</p>;
+  return <p className="text-xs text-muted-foreground" data-audit-retention>核心审计持续保留；活动记录保留 30 天。成功查询按分钟汇总。</p>;
 }
 
-export function AuditCaptureNotice({ capture }: Pick<AuditMetadata, "capture">) {
+export function AuditCaptureNotice({ capture, compact = false }: Pick<AuditMetadata, "capture"> & { compact?: boolean }) {
   const gaps = capture.dropped_events > 0 || capture.spool_gap_count > 0;
   const errors = capture.write_failures > 0 || capture.spool_failures > 0;
-  if (capture.state === "healthy" && !gaps && !errors) return <div className="flex min-w-0 flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground" data-audit-capture>
+  if (capture.state === "healthy" && !gaps && !errors) return compact ? null : <div className="flex min-w-0 flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground" data-audit-capture>
     <span>采集正常 · {capture.last_flush_at ? <>最近成功写入：<AuditTime value={capture.last_flush_at} /></> : "等待首次成功写入"}</span>
     {capture.spool_last_import_at && <span>最近维护日志导入：<AuditTime value={capture.spool_last_import_at} /></span>}
     {capture.buffered_events > 0 && <span>等待写入：{capture.buffered_events.toLocaleString("zh-CN")} 条</span>}
@@ -72,9 +72,9 @@ export function AuditCaptureNotice({ capture }: Pick<AuditMetadata, "capture">) 
         {capture.spool_gap_count > 0 && <span>维护日志缺口：{capture.spool_gap_count.toLocaleString("zh-CN")} 处</span>}
         {capture.buffered_events > 0 && <span>等待写入：{capture.buffered_events.toLocaleString("zh-CN")} 条</span>}
       </div>
-      {capture.last_flush_at && <p>最近成功写入：<AuditTime value={capture.last_flush_at} /></p>}
-      {capture.spool_last_import_at && <p>最近维护日志导入：<AuditTime value={capture.spool_last_import_at} /></p>}
-      {capture.last_error_code && <p className="wrap-anywhere">错误代码：{capture.last_error_code}</p>}
+      {!compact && capture.last_flush_at && <p>最近成功写入：<AuditTime value={capture.last_flush_at} /></p>}
+      {!compact && capture.spool_last_import_at && <p>最近维护日志导入：<AuditTime value={capture.spool_last_import_at} /></p>}
+      {!compact && capture.last_error_code && <p className="wrap-anywhere">错误代码：{capture.last_error_code}</p>}
     </AlertDescription>
   </Alert>;
 }
@@ -84,13 +84,13 @@ export function AuditAggregation({ event }: { event: AuditEventItem }) {
   return <Card aria-label="分钟汇总">
     <CardHeader>
       <CardTitle role="heading" aria-level={2}>分钟汇总 · {event.event_count.toLocaleString("zh-CN")} 次</CardTitle>
-      <CardDescription>同类成功查询的统计记录；本条记录不对应一次独立请求。</CardDescription>
+      <CardDescription>同类成功活动的分钟统计；本条记录不对应一次独立请求。</CardDescription>
     </CardHeader>
     <CardContent>
-      <DetailFields density="comfortable" items={[
+      <DetailFields items={[
         ["首次发生", <AuditTime value={event.first_occurred_at} />],
         ["最后发生", <AuditTime value={event.last_occurred_at} />],
-        ["查询次数", event.event_count.toLocaleString("zh-CN")],
+        ["发生次数", event.event_count.toLocaleString("zh-CN")],
         ["累计耗时", auditDuration(event.duration_ms)],
         ["平均耗时", auditDuration(event.duration_ms === null || event.event_count <= 0 ? null : event.duration_ms / event.event_count)],
       ]} />
@@ -110,11 +110,11 @@ export function AuditChanges({ changes, category }: { changes: readonly AuditCha
         {changes.map((change, index) => {
           const [before, after] = auditChangeValues(change);
           return <Fragment key={change.field}>
-            {index > 0 && <ItemSeparator />}
-            <Item className="min-w-0 px-0">
+            {index > 0 && <ItemSeparator aria-hidden="true" />}
+            <Item role="listitem" className="min-w-0 px-0">
               <ItemContent className="min-w-0">
-                <ItemTitle className="wrap-anywhere">{change.field}</ItemTitle>
-                <DetailFields density="comfortable" items={[["变更前", before], ["变更后", after]]} />
+                <ItemTitle className="wrap-anywhere" title={change.field}>{auditFieldLabel(change.field)}</ItemTitle>
+                <DetailFields items={[["变更前", before], ["变更后", after]]} />
               </ItemContent>
             </Item>
           </Fragment>;

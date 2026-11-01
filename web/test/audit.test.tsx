@@ -8,6 +8,7 @@ import { auditActionLabel } from "../src/lib/audit";
 import { switchWorkspaceHref } from "../src/lib/navigation-selection";
 import Audit from "../src/pages/Audit";
 import AuditDetail from "../src/pages/AuditDetail";
+import AuditStatus from "../src/pages/AuditStatus";
 import { auditEvent, aggregateEvent, auditDetail, auditMetadata, auditPage } from "./audit-fixtures";
 import { json } from "./fixtures";
 import { mobileMedia } from "./mobile-media";
@@ -27,7 +28,7 @@ function Location() {
 }
 function mount(path = "/audit", state?: unknown) {
   return render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={[{ ...parsePath(path), state }]}>
-    <Routes><Route path="/audit" element={<Audit />} /><Route path="/audit/:source/:eventId" element={<AuditDetail />} /></Routes>
+    <Routes><Route path="/audit" element={<Audit />} /><Route path="/audit/status" element={<AuditStatus />} /><Route path="/audit/:source/:eventId" element={<AuditDetail />} /></Routes>
     <Location />
   </MemoryRouter></QueryClientProvider>);
 }
@@ -58,10 +59,74 @@ describe("audit log browsing", () => {
     expect(Object.fromEntries(query)).toEqual({ site_id: "site_b", category: "configuration", outcome: "SUCCESS", actor_type: "ADMIN", source: "core", action: "settings.display_updated", source_address: "192.0.2.25", created_from: "2026-11-01", created_to: "2026-11-01", q: "配置", limit: "20", cursor: "older" });
     expect(query.has("selected_site")).toBe(false);
     expect(query.has("sort_order")).toBe(false);
-    expect(screen.getByText(/核心审计持续保留/)).toBeVisible();
-    expect(screen.getByText(/采集正常/)).toBeVisible();
-    expect(screen.getByText("2026/11/01 10:03:59")).toBeVisible();
+    expect(screen.queryByText(/核心审计持续保留/)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "采集正常，查看采集状态" })).toBeVisible();
+    expect(screen.queryByText("2026/11/01 10:03:59")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "关联网站" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "高级筛选" }));
     expect(screen.getByRole("combobox", { name: "关联网站" })).toHaveTextContent("历史网站（已删除）");
+  });
+
+  it("opens capture and export information without changing the saved list snapshot or filters", async () => {
+    const calls = backend();
+    mount("/audit?view=all&outcome=SUCCESS&cursor=older&page=3&selected_site=site_a");
+    await screen.findByRole("link", { name: "更新显示设置" });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("link", { name: "采集正常，查看采集状态" }));
+    expect(await screen.findByRole("heading", { name: "审计采集状态" })).toBeVisible();
+    expect(screen.getByText("2026/11/01 10:03:59")).toBeVisible();
+    expect(screen.getByText("2026/11/01 10:04:00")).toBeVisible();
+    expect(screen.getByText(/核心审计持续保留/)).toBeVisible();
+    expect(screen.getByText(/最多 10,000 行/)).toBeVisible();
+    expect(listCalls(calls)).toHaveLength(1);
+    await user.click(screen.getByRole("link", { name: "审计日志" }));
+    await screen.findByRole("link", { name: "更新显示设置" });
+    expect(screen.getByLabelText("审计地址")).toHaveTextContent("/audit?view=all&outcome=SUCCESS&cursor=older&page=3&selected_site=site_a");
+    expect(listCalls(calls)).toHaveLength(1);
+    expect(listCalls(calls).every(request => !new URL(request.url).searchParams.has("snapshot_at"))).toBe(true);
+  });
+
+  it("defaults to core audit and switches all five views without sending the view marker to the API", async () => {
+    const calls = backend();
+    mount("/audit?selected_site=site_a");
+    await screen.findByRole("link", { name: "更新显示设置" });
+    expect(new URL(listCalls(calls)[0]!.url).searchParams.get("source")).toBe("core");
+    expect(screen.getByRole("tab", { name: "操作审计" })).toHaveAttribute("aria-selected", "true");
+    const user = userEvent.setup();
+    for (const [label, source, category] of [
+      ["接口访问", "activity", "requests"], ["后台任务", "activity", "background"],
+      ["维护活动", null, "maintenance"], ["全部记录", null, null],
+    ] as const) {
+      const previous = listCalls(calls).length;
+      await user.click(screen.getByRole("tab", { name: label }));
+      await waitFor(() => expect(listCalls(calls)).toHaveLength(previous + 1));
+      const query = new URL(listCalls(calls).at(-1)!.url).searchParams;
+      expect(query.get("source")).toBe(source);
+      expect(query.get("category")).toBe(category);
+      expect(query.has("view")).toBe(false);
+      expect(screen.getByLabelText("审计地址")).toHaveTextContent("selected_site=site_a");
+    }
+    expect(screen.getByLabelText("审计地址")).toHaveTextContent("view=all");
+  });
+
+  it("starts with eight columns and exposes optional technical fields through one display menu", async () => {
+    const calls = backend();
+    mount();
+    await screen.findByRole("link", { name: "更新显示设置" });
+    const table = screen.getByRole("table", { name: "审计日志列表" });
+    expect(within(table).getAllByRole("columnheader").map(cell => cell.textContent)).toEqual(["时间", "事件", "执行者", "网站", "IP", "客户端", "结果", "详情"]);
+    expect(screen.getByRole("combobox", { name: "发生日期范围" })).toBeVisible();
+    expect(screen.getByRole("combobox", { name: "操作结果" })).toBeVisible();
+    expect(screen.queryByRole("combobox", { name: "操作类别" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "显示列" })).not.toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "列表显示" }));
+    const display = await screen.findByRole("dialog", { name: "列表显示" });
+    await user.click(within(display).getByRole("checkbox", { name: "方法" }));
+    await user.keyboard("{Escape}");
+    expect(within(table).getByRole("columnheader", { name: "方法" })).toBeVisible();
+    expect(within(table).getByText("PUT")).toBeVisible();
+    expect(listCalls(calls)).toHaveLength(1);
   });
 
   it("restores the filtered cursor after detail navigation and refreshes back to the newest first page", async () => {
@@ -188,13 +253,31 @@ describe("audit log browsing", () => {
   it("does not claim a successful write before the first healthy capture flush", async () => {
     backend({ metadata: { ...auditMetadata, capture: { ...auditMetadata.capture, last_flush_at: null, buffered_events: 2 } } });
     mount();
-    expect(await screen.findByText("采集正常 · 等待首次成功写入")).toBeVisible();
-    expect(screen.getByText("等待写入：2 条")).toBeVisible();
-    expect(screen.queryByText(/最近成功写入：/)).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("link", { name: "采集正常，查看采集状态" }));
+    expect(await screen.findByText("等待首次成功写入")).toBeVisible();
+    expect(screen.getByText("等待写入").parentElement).toHaveTextContent("2 条");
+    expect(screen.getByText("最近成功写入").parentElement).toHaveTextContent("等待首次成功写入");
+    expect(screen.queryByText("2026/11/01 10:03:59")).not.toBeInTheDocument();
   });
 });
 
 describe("audit event details", () => {
+  it("keeps core record identifiers and absent request timings in the collapsed technical information", async () => {
+    const subjectId = "session-private-identifier";
+    backend({ detail: { ...auditDetail(), action: "admin.login", category: "identity", subject_type: "admin_session", subject_id: subjectId, duration_ms: null, http_method: null, route: null, http_status: null } });
+    mount(`/audit/core/${auditEvent.event_id}`);
+    const summary = await screen.findByRole("group", { name: "日志概况" });
+    expect(within(summary).getByText("登录会话")).toBeVisible();
+    expect(screen.queryByText(subjectId, { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByText("HTTP 方法")).not.toBeInTheDocument();
+    expect(screen.queryByText("耗时")).not.toBeInTheDocument();
+    expect(screen.queryByText(/客户端名称根据 User-Agent/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "技术信息" }));
+    expect(await screen.findByLabelText("技术信息")).toHaveTextContent(subjectId);
+    expect(screen.getByLabelText("技术信息")).toHaveTextContent('"duration_ms": null');
+    expect(screen.getByLabelText("技术信息")).toHaveTextContent('"http_method": null');
+    expect(screen.getByText(/客户端名称根据 User-Agent/)).toBeVisible();
+  });
   it.each([
     { source_type: "HTTP", http_status: 202, outcome: "SUCCESS", is_aggregate: false, label: "已接受" },
     { source_type: "BACKGROUND", http_status: null, outcome: "SUCCESS", is_aggregate: false, label: "本轮完成" },
@@ -224,13 +307,17 @@ describe("audit event details", () => {
     expect(await screen.findByText("旧名称")).toBeVisible();
     expect(screen.getByText("新名称")).toBeVisible();
     expect(screen.getByText("已更换（值不记录）")).toBeVisible();
+    const changes = screen.getByRole("group", { name: "配置变更" });
+    expect(within(changes).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(changes).queryByRole("separator")).not.toBeInTheDocument();
     expect(screen.getByText(/关联活动当前不可用/)).toBeVisible();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "技术详情" }));
-    expect(await screen.findByRole("dialog", { name: "技术详情" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "技术信息" }));
+    expect(await screen.findByLabelText("技术信息")).toBeVisible();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByText(/suppressed-before|suppressed-after/)).not.toBeInTheDocument();
-    await user.keyboard("{Escape}");
-    await waitFor(() => expect(screen.getByRole("button", { name: "技术详情" })).toHaveFocus());
+    await user.click(screen.getByRole("button", { name: "技术信息" }));
+    expect(screen.getByRole("button", { name: "技术信息" })).toHaveFocus();
   });
 
   it("does not turn a historical source hash into a real IP or claim that missing changes did not happen", async () => {
@@ -249,15 +336,17 @@ describe("audit event details", () => {
     expect(within(group).getByRole("heading", { name: "分钟汇总 · 5 次" })).toBeVisible();
     expect(within(group).getByText("100 ms")).toBeVisible();
     expect(within(group).getByText("20 ms")).toBeVisible();
-    expect(screen.getByText("分钟汇总，不对应单次请求")).toBeVisible();
+    expect(within(group).getByText(/本条记录不对应一次独立请求/)).toBeVisible();
     expect(screen.getByText("curl 客户端")).toBeVisible();
+    expect(screen.getByRole("link", { name: "示例网站" })).toHaveAttribute("href", "/sites/site_a");
     expect(within(group).getByText("2026/11/01 10:03:01")).toBeVisible();
     expect(within(group).getByText("2026/11/01 10:03:54")).toBeVisible();
     const summary = screen.getByRole("group", { name: "日志概况" });
     expect(within(summary).getByText("排序时间")).toBeVisible();
     expect(within(summary).getByText("2026/11/01 10:03:05")).toBeVisible();
-    await userEvent.click(screen.getByRole("button", { name: "技术详情" }));
-    const technical = await screen.findByRole("dialog", { name: "技术详情" });
+    await userEvent.click(screen.getByRole("button", { name: "技术信息" }));
+    expect(screen.getByText(/分钟汇总，不对应单次请求/)).toBeVisible();
+    const technical = (await screen.findByLabelText("技术信息")).closest<HTMLElement>("[data-technical-information]")!;
     expect(within(technical).getByText("汇总组编号")).toBeVisible();
     expect(within(technical).getByText("aggregate-group-identifier")).toBeVisible();
   });
@@ -269,8 +358,8 @@ describe("audit event details", () => {
     expect(within(source).getByText("192.0.2.25")).toBeVisible();
     expect(within(source).getByText("Chrome · Windows")).toBeVisible();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "技术详情" }));
-    expect(await screen.findByRole("dialog", { name: "技术详情" })).toHaveTextContent(auditEvent.user_agent!);
+    await user.click(screen.getByRole("button", { name: "技术信息" }));
+    expect(await screen.findByLabelText("技术信息")).toHaveTextContent(auditEvent.user_agent!);
   });
 
   it.each([

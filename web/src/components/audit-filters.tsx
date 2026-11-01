@@ -3,7 +3,6 @@ import { AUDIT_ACTOR_TYPES, AUDIT_CATEGORIES, AUDIT_CATEGORY_LABELS, AUDIT_UNASS
 import { AUDIT_ACTOR_LABELS, auditActionLabel } from "@/lib/audit";
 import type { ListQueryControl } from "@/lib/list-query";
 import type { ListFilter } from "@/components/list-query-toolbar";
-import { CreatedDateFilter } from "@/components/created-date-filter";
 import { Field, FieldGroup, FieldLabel, FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -52,11 +51,10 @@ export function AuditFilterSelect({ filter, control }: { filter: ListFilter; con
 
 export function AuditDesktopFilters({ filters, control, address }: { filters: readonly ListFilter[]; control: ListQueryControl; address: string }) {
   return <div className="flex min-w-0 w-full flex-col gap-3" data-audit-filters>
-    <FieldGroup className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+    <FieldGroup className="grid grid-cols-2 gap-3 lg:grid-cols-3">
       {filters.map(filter => <AuditFilterSelect key={filter.key} filter={filter} control={control} />)}
     </FieldGroup>
     <div className="flex min-w-0 flex-wrap items-end gap-x-5 gap-y-3">
-      <CreatedDateFilter control={control} label="发生日期" />
       <AuditAddressFilter control={control} value={address} />
     </div>
   </div>;

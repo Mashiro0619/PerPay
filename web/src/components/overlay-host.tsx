@@ -131,6 +131,7 @@ const views: Partial<Record<OverlayRouteKind, React.LazyExoticComponent<React.Co
   ledger: lazy(() => import("@/pages/LedgerDetail")),
   evidence: lazy(() => import("@/pages/ReconciliationDetail")),
   audit: lazy(() => import("@/pages/AuditDetail")),
+  "audit-status": lazy(() => import("@/pages/AuditStatus")),
 };
 
 class OverlayFailure extends Component<{ children: ReactNode }, { error: Error | null }> {

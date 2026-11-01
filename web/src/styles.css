@@ -1599,4 +1599,25 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-business-table][data-embedded="false"] .business-summary-field:has(.list-money[data-wide="true"]) { flex-basis: 100%; }
 [data-business-table][data-embedded="false"] .business-summary-field:has(.list-money[data-wide="true"]) dd { max-width: 100%; overflow: visible; }
 
+.audit-view-scroll { min-width: 0; overflow-x: auto; overflow-y: hidden; padding: 0.25rem; }
+.audit-views { min-width: max-content; gap: 0.25rem; }
+.audit-event-title { display: flex; min-width: 0; align-items: baseline; gap: 0.5rem; }
+.audit-event-title > a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audit-aggregate-count { flex: none; font-size: 0.6875rem; color: var(--muted-foreground); white-space: nowrap; }
+[data-business-table="audit"][data-embedded="false"] .business-table td[data-column-id="identity"] > .audit-event-title { display: flex; }
+[data-business-table="audit"][data-embedded="false"] .business-table col[data-column-id="occurred_at"] { width: 16%; }
+[data-business-table="audit"][data-embedded="false"] .business-table col[data-column-id="identity"] { width: 22%; }
+[data-business-table="audit"][data-embedded="false"] .business-table col[data-column-id="actor"] { width: 10%; }
+[data-business-table="audit"][data-embedded="false"] .business-table col[data-column-id="site"] { width: 11%; }
+[data-business-table="audit"][data-embedded="false"] .business-table col[data-column-id="source_address"] { width: 12%; }
+[data-business-table="audit"][data-embedded="false"] .business-table col[data-column-id="client"] { width: 12%; }
+[data-business-table="audit"][data-embedded="false"] .business-table col[data-column-id="outcome"] { width: 10%; }
+[data-business-table="audit"][data-embedded="false"] .business-table col[data-column-id="details"] { width: 7%; }
+.audit-mobile-record { display: flex; width: 100%; min-width: 0; flex-direction: column; gap: 0.375rem; }
+.audit-mobile-heading { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.audit-mobile-heading > .audit-event-title { flex: 1; }
+.audit-mobile-heading > [data-slot="badge"] { flex: none; }
+.audit-mobile-meta { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 0.75rem; color: var(--muted-foreground); font-size: 0.75rem; }
+.audit-mobile-meta > * { min-width: 0; max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audit-mobile-meta > .list-time { flex: none; font-size: 0.75rem; }
 /* End console lists. */

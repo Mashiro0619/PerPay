@@ -9,10 +9,12 @@ export const AUDIT_FILTER_KEYS = [
 
 /** URL values are validated by the API; only declared filter keys leave the page. */
 export function readAuditFilters(search: URLSearchParams): AuditFilters {
-  return Object.fromEntries(AUDIT_FILTER_KEYS.flatMap(key => {
+  const filters = Object.fromEntries(AUDIT_FILTER_KEYS.flatMap(key => {
     const value = search.get(key)?.trim();
     return value ? [[key, value]] : [];
   })) as AuditFilters;
+  return !search.has("source") && !search.has("category") && search.get("view") !== "all"
+    ? { source: "core", ...filters } : filters;
 }
 
 export const auditMetadataKey = ["audit-metadata"] as const;

@@ -1,4 +1,4 @@
-import type { AuditActorType, AuditChange, AuditEventItem, AuditJsonValue, AuditSource } from "../../../src/shared/audit";
+import type { AuditActorType, AuditCaptureState, AuditChange, AuditEventItem, AuditFilters, AuditJsonValue, AuditSource } from "../../../src/shared/audit";
 import { sessionDevice } from "./session-device";
 
 export const AUDIT_ACTOR_LABELS: Readonly<Record<AuditActorType, string>> = {
@@ -10,6 +10,57 @@ export const AUDIT_SOURCE_LABELS: Readonly<Record<AuditSource, string>> = {
 export const AUDIT_RECORD_LABELS: Readonly<Record<AuditEventItem["source_type"], string>> = {
   CORE: "核心审计", HTTP: "接口访问", BACKGROUND: "后台任务", MAINTENANCE: "维护与备份", INTERNAL: "系统活动",
 };
+
+export const AUDIT_VIEWS = [
+  { id: "core", label: "操作审计", source: "core", category: null },
+  { id: "requests", label: "接口访问", source: "activity", category: "requests" },
+  { id: "background", label: "后台任务", source: "activity", category: "background" },
+  { id: "maintenance", label: "维护活动", source: null, category: "maintenance" },
+  { id: "all", label: "全部记录", source: null, category: null },
+] as const;
+export type AuditView = (typeof AUDIT_VIEWS)[number]["id"];
+export function selectedAuditView(filters: AuditFilters) {
+  return AUDIT_VIEWS.find(view => view.source === (filters.source ?? null) && view.category === (filters.category ?? null));
+}
+export function auditViewValues(id: AuditView): Record<string, string | null> {
+  const view = AUDIT_VIEWS.find(view => view.id === id)!;
+  return { source: view.source, category: view.category, view: id === "all" ? "all" : null };
+}
+
+export function auditCaptureLabel(capture?: AuditCaptureState): string {
+  if (!capture) return "采集状态";
+  if (capture.dropped_events > 0 || capture.spool_gap_count > 0) return "采集有缺口";
+  if (capture.state === "unavailable") return "采集状态暂不可用";
+  if (capture.state === "degraded") return "采集异常";
+  if (capture.write_failures > 0 || capture.spool_failures > 0) return "曾有采集异常";
+  return "采集正常";
+}
+
+const fieldLabels: Readonly<Record<string, string>> = {
+  name: "名称", enabled: "启用状态", deleted: "删除状态", accepting_orders: "接收新订单", notifications_enabled: "付款通知",
+  notification_origin: "通知地址前缀", return_origin: "返回地址前缀", "collection.mode": "收款账号分配方式", "collection.accounts": "参与收款的账号",
+  system_name: "系统名称", checkout_name: "收银台名称", checkout_help_url: "收银台帮助链接", checkout_show_product_name: "展示商品名称", dashboard_chart_type: "总览图表类型",
+  order_ttl_seconds: "收银台有效期（秒）", amount_offset_maximum_cents: "最大加价（分）", amount_reuse_cooldown_seconds: "金额复用间隔（秒）", pending_order_limit: "待付款订单上限",
+  app_id: "应用编号（App ID）", environment: "支付宝环境", code_payload: "收款码", collection_code_payload: "收款码",
+  private_key: "应用私钥", provider_private_key: "应用私钥", public_key: "支付宝公钥", provider_public_key: "支付宝公钥", pending_private_key: "待启用应用私钥",
+  api_secret: "API 密钥", webhook_secret: "通知签名密钥", cidrs: "管理员 IP 白名单", admin_access_enabled: "管理员 IP 白名单开关",
+  timeout_milliseconds: "请求超时（毫秒）", provider_timeout_milliseconds: "查账请求超时（毫秒）", maximum_attempts: "最多发送次数",
+  retry_base_seconds: "首次重试间隔（秒）", retry_maximum_seconds: "最大重试间隔（秒）",
+  provider_scan_interval_milliseconds: "常规查账间隔（毫秒）", provider_active_scan_interval_milliseconds: "活跃查账间隔（毫秒）",
+  provider_minimum_scan_interval_milliseconds: "最小查账间隔（毫秒）", provider_safety_lag_milliseconds: "查账延迟（毫秒）", provider_maximum_success_age_milliseconds: "查账有效时限（毫秒）",
+  interval_seconds: "备份间隔（秒）", keep_count: "保留备份数量", backup_enabled: "自动备份开关", backup_interval_milliseconds: "备份间隔（毫秒）", backup_keep_count: "保留备份数量",
+  checkout_key_rotation_days: "收银台链接密钥轮换周期（天）", checkout_terminal_observation_seconds: "结束后可查询时长（秒）",
+};
+export function auditFieldLabel(field: string): string {
+  return fieldLabels[field] ?? fieldLabels[field.split(".").at(-1)!] ?? field;
+}
+const subjectLabels: Readonly<Record<string, string>> = {
+  settings: "系统设置", runtime_configuration: "系统设置", site: "业务网站", site_defaults: "网站默认模板", alipay_account: "收款账号",
+  admin: "管理员", administrator: "管理员", administrator_session: "登录会话", admin_session: "登录会话", api_client: "调用凭据",
+  order: "订单", payment_order: "订单", ledger_entry: "支付宝流水", payment_match: "收款关联", financial_exception: "账务异常",
+  webhook_delivery: "付款通知", notification: "付款通知", audit_export: "审计导出",
+};
+export function auditSubjectLabel(type: string | null): string { return type ? subjectLabels[type] ?? type : "未记录"; }
 
 const actions: Readonly<Record<string, string>> = {
   "admin.initialized": "初始化管理员", "admin.login": "管理员登录", "admin.logout": "退出登录",
