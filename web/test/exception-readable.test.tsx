@@ -177,7 +177,7 @@ describe("readable financial exception detail", () => {
     expect(container.querySelector('[data-layout="flow"]')).toBeNull();
     expect(within(card).getByRole("button", { name: "人工关联收款" }).closest('[data-slot="card-footer"]')).not.toBeNull();
     expect(within(card).getByRole("button", { name: "更多操作，异常记录操作" }).closest('[data-slot="card-content"]')).not.toBeNull();
-    if (embedded) expect(await recordAction("单独打开", "异常记录操作")).toHaveAttribute("href", "/reconciliation/exceptions/" + exceptionId);
+    if (embedded) expect(await recordAction("查看详情", "异常记录操作")).toHaveAttribute("href", "/reconciliation/exceptions/" + exceptionId);
   });
 
   it("does not group the identifiers in unrelated LedgerFacts callers", () => {

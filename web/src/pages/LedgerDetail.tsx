@@ -3,7 +3,7 @@ import { AlipayAccountIdentity } from "@/components/alipay-account-identity";
 import { useLayoutEffect, useRef } from "react";
 import { CircleAlert } from "lucide-react";
 import { useLocation, useParams } from "react-router";
-import { api, refreshOperationalData, result, type AdminLedgerDetail, type AdminLedgerMatch, type AdminLedgerSource } from "@/api/client";
+import { api, queryClient, result, type AdminLedgerDetail, type AdminLedgerMatch, type AdminLedgerSource } from "@/api/client";
 import { Link, useDetailBack } from "@/navigation";
 import { label } from "@/lib/labels";
 import { actualPageAddress } from "@/lib/navigation-selection";
@@ -15,7 +15,8 @@ import { QueryView } from "@/components/request-state";
 import { LedgerFreshness } from "@/components/ledger-freshness";
 import { LedgerDirection, LedgerMoney, ledgerFact } from "@/components/ledger-record";
 import { ListDateTime } from "@/components/list-primitives";
-import { DetailCredentials, DetailFields, DetailNavigation, DetailPage } from "@/components/detail/DetailPrimitives";
+import { DetailCredentials, DetailFields, DetailNavigation, DetailPage, TechnicalDetails } from "@/components/detail/DetailPrimitives";
+import { DetailSections } from "@/components/detail/DetailSections";
 import { RecordTools } from "@/components/detail/RecordTools";
 import { CandidateCard, MatchCard } from "@/components/detail/PaymentEvidence";
 import { AssociateIncomeAction } from "@/components/detail/FinancialActions";
@@ -36,11 +37,12 @@ export default function LedgerDetail() {
   const { ledgerEntryId = "" } = useParams();
   const back = useDetailBack("/reconciliation", "返回对账");
   const location = useLocation();
-  const fetching = useIsFetching();
   const positioned = useRef<string | null>(null);
   const address = actualPageAddress(location) + location.hash;
   const system = useOptionalSystemStatus();
   const query = useQuery({ queryKey: ["administrator-ledger-detail", ledgerEntryId], queryFn: ({ signal }) => result(api.getAdministratorLedgerEntry({ signal, path: { ledgerEntryId } })) });
+  const relatedIds = new Set([ledgerEntryId, ...query.data?.data.sources.map(source => source.ledger_entry_id) ?? [], ...query.data?.data.matches.map(match => match.payment_match_id) ?? [], ...query.data?.data.conflicts.map(conflict => conflict.conflict_id) ?? []]);
+  const fetching = useIsFetching({ predicate: item => item.queryKey.some(value => typeof value === "string" && relatedIds.has(value)) });
   useLayoutEffect(() => {
     if (!location.hash) { positioned.current = null; return; }
     if (!query.data || fetching || positioned.current === address) return;
@@ -55,16 +57,21 @@ export default function LedgerDetail() {
   return <DetailPage>
     <PageHeading title="流水与对账详情" />
     <DetailNavigation back={back} global>
-      <PageHeaderActions><RefreshButton busy={fetching > 0} onClick={() => { void refreshOperationalData(); }} /></PageHeaderActions>
+      <PageHeaderActions><RefreshButton busy={fetching > 0} onClick={() => {
+        void query.refetch();
+        void queryClient.invalidateQueries({ predicate: item => item.queryKey[0] !== "administrator-ledger-detail" && item.queryKey.some(value => typeof value === "string" && relatedIds.has(value)) });
+      }} /></PageHeaderActions>
     </DetailNavigation>
     <QueryView query={query}>{({ data }) => <>
       <LedgerWarnings entry={data} />
+      <DetailSections label="流水详情分类" sections={[
+        { id: "transaction", label: "交易", content: <>
       <Card data-ledger-summary>
         <CardHeader className="flex min-w-0 flex-col gap-2 @3xl/main:grid">
           <CardTitle role="heading" aria-level={2}>支付宝交易</CardTitle>
           <CardAction className="flex max-w-full flex-wrap items-center gap-2">
             <Badge variant="outline">{data.environment === "SANDBOX" ? "沙箱环境" : "生产环境"}</Badge>
-            <RecordTools inline data={data} identifiers={[["内部流水编号（PerPay）", data.ledger_entry_id], ["支付宝流水号", data.external_event_id]]} label="支付宝流水记录操作" />
+
           </CardAction>
         </CardHeader>
         <CardContent className="flex min-w-0 flex-col gap-6">
@@ -84,7 +91,10 @@ export default function LedgerDetail() {
           <LedgerFreshness size="default" value={system && !system.checking && !system.unavailable ? system.status.data?.data.ledger.last_success_at : undefined} />
         </CardContent>
       </Card>
-      <LedgerMatches entry={data} />
+      <TechnicalDetails data={data} identifiers={[["内部流水编号（PerPay）", data.ledger_entry_id], ["支付宝流水号", data.external_event_id]]} />
+        </> },
+        { id: "payments", label: "收款关联", content: <LedgerMatches entry={data} />, anchorPrefixes: ["match-"] },
+        { id: "sources", label: `采集记录 · ${data.sources.length}`, anchorPrefixes: ["source-", "candidate-"], content:
       <section className="flex min-w-0 flex-col gap-4" aria-labelledby="ledger-sources-heading">
         <div className="flex min-w-0 flex-col gap-2">
           <h2 id="ledger-sources-heading" className="text-base font-semibold">查账记录（{data.sources.length}）</h2>
@@ -93,8 +103,9 @@ export default function LedgerDetail() {
         {data.content_consistent
           ? <ItemGroup>{data.sources.map((source, index) => <LedgerSource key={source.ledger_entry_id} source={source} index={index} consistent hasMatch={data.matches.some(match => match.ledger_entry_id === source.ledger_entry_id)} />)}</ItemGroup>
           : data.sources.map((source, index) => <LedgerSource key={source.ledger_entry_id} source={source} index={index} consistent={false} hasMatch={data.matches.some(match => match.ledger_entry_id === source.ledger_entry_id)} />)}
-      </section>
-      <LedgerConflicts entry={data} />
+      </section> },
+        ...(data.conflicts.length ? [{ id: "conflicts", label: `冲突 · ${data.conflicts.length}`, content: <LedgerConflicts entry={data} />, anchorPrefixes: ["conflict-"] }] : []),
+      ]} />
     </>}</QueryView>
   </DetailPage>;
 }

@@ -63,6 +63,7 @@ describe("unified transaction reconciliation list", () => {
     const router = mount("/reconciliation?cursor=old&page=3&occurred_from=2026-10-01&occurred_to=2026-10-02&associated_from=2026-10-03&associated_to=2026-10-04");
     await screen.findByRole("table");
     const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "高级筛选" }));
     await user.click(screen.getByRole("combobox", { name: "关联状态筛选" }));
     await user.click(await screen.findByRole("option", { name: "已关联" }));
     await waitFor(() => expect(requests.at(-1)!.searchParams.get("association_status")).toBe("MATCHED"));
@@ -151,6 +152,7 @@ describe("unified transaction reconciliation list", () => {
     const old = await screen.findByRole("link", { name: groupedLedger.external_event_id });
     const user = userEvent.setup();
     try {
+      await user.click(screen.getByRole("button", { name: "高级筛选" }));
       await user.click(screen.getByRole("combobox", { name: "关联状态筛选" }));
       await user.click(await screen.findByRole("option", { name: "未关联" }));
       await waitFor(() => expect(old).not.toBeInTheDocument());

@@ -79,7 +79,7 @@ describe("administrator ledger pages", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps full identifiers and order navigation available when changing from the desktop table to narrow summaries", async () => {
+  it("keeps full identifiers and compact summaries while retaining desktop-only column preferences", async () => {
     mobileMedia(1440);
     let width = 1088;
     const original = HTMLElement.prototype.getBoundingClientRect;
@@ -96,8 +96,8 @@ describe("administrator ledger pages", () => {
     expect(within(table).getByText("1 条已撤销关联")).toBeVisible();
     expect(table.querySelector('thead [data-column-id="memo"]')).toBeNull();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "显示列" }));
-    await user.click(await screen.findByRole("menuitemcheckbox", { name: "备注" }));
+    await user.click(screen.getByRole("button", { name: "列表显示" }));
+    await user.click(await screen.findByRole("checkbox", { name: "备注" }));
     expect(within(table).getByRole("columnheader", { name: "备注" })).toBeVisible();
     await user.keyboard("{Escape}");
     act(() => { width = 600; window.dispatchEvent(new Event("resize")); });
@@ -105,12 +105,13 @@ describe("administrator ledger pages", () => {
     const summary = await screen.findByRole("listitem");
     expect(within(summary).getByText("关联状态")).toBeVisible();
     expect(within(summary).getByRole("link", { name: externalEventId })).toHaveTextContent(externalEventId);
-    expect(within(summary).getByRole("link", { name: "查看订单：real-order" })).toHaveAttribute("href", "/orders/" + orderId);
-    expect(within(summary).getByText("PerPay 处理状态")).toBeVisible();
+    expect(within(summary).getByText("交易时间")).toBeVisible();
+    expect(within(summary).getByText("收支")).toBeVisible();
+    expect(within(summary).queryByRole("link", { name: "查看订单：real-order" })).not.toBeInTheDocument();
+    expect(within(summary).queryByText("PerPay 处理状态")).not.toBeInTheDocument();
     expect(within(summary).queryByText("本地流水备注")).not.toBeInTheDocument();
-    await user.click(within(summary).getByRole("button", { name: "展开信息" }));
-    expect(within(summary).getByText("本地流水备注")).toBeVisible();
-    expect(within(summary).getAllByText("本地流水备注")).toHaveLength(1);
+    expect(within(summary).queryByRole("button", { name: "展开信息" })).not.toBeInTheDocument();
+    expect(summary.querySelectorAll(".business-summary-field")).toHaveLength(3);
     expect(JSON.parse(localStorage.getItem("perpay.table-columns.v2.administrator-ledger")!)).toEqual({ memo: true });
     expect(screen.getByLabelText("位置")).toHaveTextContent(/^\/reconciliation$/);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -120,6 +121,7 @@ describe("administrator ledger pages", () => {
     const router = mount("/reconciliation?cursor=page-two&page=2");
     await screen.findByRole("link", { name: entry.external_event_id });
     const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "高级筛选" }));
     await user.click(screen.getByRole("button", { name: "金额范围" }));
     const dialog = await screen.findByRole("dialog", { name: "金额范围" });
     await user.type(within(dialog).getByLabelText("最低金额（元）"), "0.001");
@@ -141,7 +143,7 @@ describe("administrator ledger pages", () => {
     mount("/reconciliation?min_amount_cents=1.01");
     expect(await screen.findByText("金额筛选无效，请重新设置金额范围。")).toBeVisible();
     expect(fetchMock).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
+    fireEvent.click(screen.getByRole("button", { name: "清除搜索和筛选" }));
     await screen.findByRole("link", { name: entry.external_event_id });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -160,7 +162,7 @@ describe("administrator ledger pages", () => {
     const link = await screen.findByRole("link", { name: entry.external_event_id });
     vi.stubGlobal("scrollY", 725);
     await user.click(link);
-    await screen.findByRole("heading", { name: "查账记录（2）" });
+    await screen.findByRole("heading", { name: "支付宝交易" });
     refreshFails = true;
     vi.stubGlobal("scrollY", 0);
     await user.click(screen.getByRole("link", { name: "对账" }));
@@ -171,11 +173,15 @@ describe("administrator ledger pages", () => {
 
   it("displays every source and reversed match with links to real evidence IDs", async () => {
     mount("/reconciliation/transactions/" + ledgerId);
+    await screen.findByRole("heading", { name: "支付宝交易" });
+    expect(document.querySelector("[data-ledger-summary]")).not.toHaveTextContent("real-order");
+    await userEvent.setup().click(screen.getByRole("tab", { name: "采集记录 · 2" }));
     expect(await screen.findByRole("heading", { name: "查账记录（2）" })).toBeVisible();
-    await screen.findByRole("heading", { name: "当前关联订单" });
-    await screen.findByRole("heading", { name: "已撤销的关联" });
     expect(document.getElementById("source-" + ledgerId)).toBeVisible();
     expect(document.getElementById("source-" + secondSourceId)).toBeVisible();
+    await userEvent.setup().click(screen.getByRole("tab", { name: "收款关联" }));
+    await screen.findByRole("heading", { name: "当前关联订单" });
+    await screen.findByRole("heading", { name: "已撤销的关联" });
     expect(screen.getByText("已撤销", { exact: true })).toBeVisible();
     expect(screen.getAllByRole("link", { name: "核对这份记录" }).every(link => link.getAttribute("href")?.endsWith("#source-" + secondSourceId))).toBe(true);
     expect(screen.queryByRole("button", { name: /人工关联收款|确认收款/ })).not.toBeInTheDocument();
@@ -189,7 +195,7 @@ describe("administrator ledger pages", () => {
       expect(within(card).getByRole("link", { name: "实际关联商品" })).toHaveAttribute("href", "/orders/" + orderId);
       expect(within(card).getByText("real-order", { exact: true })).toBeVisible();
     }
-    expect(document.querySelector("[data-ledger-summary]")).not.toHaveTextContent("real-order");
+    expect(document.querySelector("[data-ledger-summary]")).toBeNull();
     expect(screen.queryByText(/账本冲突记录（/)).not.toBeInTheDocument();
   });
 
@@ -201,9 +207,11 @@ describe("administrator ledger pages", () => {
     expect(await screen.findByText("同一笔流水关联了多个订单")).toBeVisible();
     expect(screen.getAllByText("有争议").length).toBeGreaterThanOrEqual(3);
     expect(screen.getByText("有 2 条有效关联，无法确定唯一订单，请核对下方记录。")).toBeVisible();
+    await userEvent.setup().click(screen.getByRole("tab", { name: "收款关联" }));
     expect(await screen.findAllByText("仍生效 · 存在多条关联", { exact: true })).toHaveLength(2);
     expect(screen.queryByText("已关联订单", { exact: true })).not.toBeInTheDocument();
     expect(screen.queryByText("当前实际关联")).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("tab", { name: "冲突 · 1" }));
     expect(screen.getByRole("link", { name: "查看冲突记录" })).toHaveAttribute("href", "/reconciliation/conflicts/66666666-6666-4666-8666-666666666666");
     expect(screen.queryByText("¥0.00")).not.toBeInTheDocument();
   });
@@ -218,6 +226,7 @@ describe("administrator ledger pages", () => {
     }
     expect(within(card).getAllByText("有争议")).toHaveLength(1);
     expect(screen.getByText("账单信息存在不同版本", { exact: true })).toBeVisible();
+    await userEvent.setup().click(screen.getByRole("tab", { name: "采集记录 · 2" }));
     expect(screen.getByText("各份采集记录存在差异，请逐份核对。")).toBeVisible();
     expect(screen.queryByText(/冲突详情/)).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "查看冲突记录" })).not.toBeInTheDocument();

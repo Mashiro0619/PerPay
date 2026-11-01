@@ -21,7 +21,7 @@ import { ListDateTime, ListIdentity, ListMeta, ListSummary, ListSummaryField } f
 import { CreatedDateFilter } from "@/components/created-date-filter";
 import { LedgerAmountFilter } from "@/components/ledger-amount-filter";
 import { LedgerFreshness } from "@/components/ledger-freshness";
-import { LedgerActiveOrder, LedgerAssociationStatus, LedgerDirection, LedgerMoney, LedgerStates, ledgerFact } from "@/components/ledger-record";
+import { LedgerActiveOrder, LedgerOrderLink, LedgerAssociationStatus, LedgerDirection, LedgerMoney, LedgerStates, ledgerFact } from "@/components/ledger-record";
 import { CursorPagination } from "@/components/cursor-pagination";
 import { QueryView, ErrorNotice } from "@/components/request-state";
 import { RefreshButton } from "@/components/refresh-button";
@@ -90,6 +90,10 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
     { id: "amount_cents", label: "交易金额", sortBy: "amount_cents", layout: "amount", align: "center", summaryDefault: true, cell: entry => <LedgerMoney entry={entry} /> },
     { id: "association", label: "关联状态", layout: "status", align: "center", summaryDefault: true, cell: entry => <LedgerAssociationStatus entry={entry} /> },
     { id: "order", label: "当前关联订单", layout: "text", summaryDefault: true, responsive: { minWidthRem: 64, basis: "container" }, cell: entry => <LedgerActiveOrder entry={entry} /> },
+    { id: "order_reference", label: "商户订单号", layout: "text", defaultVisible: false, summaryDefault: false, cell: entry => <LedgerOrderLink match={entry.active_match} /> },
+    { id: "site", label: "关联网站", layout: "text", defaultVisible: false, summaryDefault: false, cell: entry => entry.active_match?.api_client_id
+      ? <Link global to={"/sites/" + entry.active_match.api_client_id}>{entry.active_match.site_name ?? entry.active_match.api_client_id}</Link>
+      : entry.active_match ? "网站名称未保存" : "—" },
     { id: "other_account", label: "对方", layout: "text", summaryDefault: true, summaryPriority: "details", responsive: { minWidthRem: 58, basis: "container" }, cell: entry => <span className="wrap-anywhere">{ledgerFact(entry.other_account)}</span> },
     { id: "alipay_account", label: "收款账号", layout: "text", summaryDefault: true, responsive: { minWidthRem: 58, basis: "container" }, cell: entry => <AlipayAccountIdentity id={entry.alipay_account_id} name={entry.alipay_account_name} /> },
     { id: "memo", label: "备注", layout: "text", summaryDefault: false, responsive: { minWidthRem: 78, basis: "container" }, cell: entry => <span className="wrap-anywhere">{ledgerFact(entry.memo)}</span> },

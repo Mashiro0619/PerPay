@@ -43,13 +43,16 @@ function mount(detail = detailFixture(), failedMatch: boolean | (() => boolean) 
   render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
   return fetchMock;
 }
+async function selectSection(name: string | RegExp) {
+  await userEvent.setup().click(await screen.findByRole("tab", { name }));
+}
 
 describe("unified transaction detail", () => {
   it("shows identical facts once and all real sources with complete copyable credentials and inline actions", async () => {
     const fetchMock = mount();
     const user = userEvent.setup();
     const writeText = vi.spyOn(navigator.clipboard, "writeText");
-    await screen.findByRole("heading", { name: "查账记录（2）" });
+    await screen.findByRole("heading", { name: "支付宝交易" });
     const summary = document.querySelector<HTMLElement>("[data-ledger-summary]")!;
     expect(screen.getByRole("heading", { name: "流水与对账详情" })).toBeVisible();
     expect(within(summary).getAllByRole("term").map(item => item.textContent)).toEqual(["交易金额", "收款账号", "收支方向", "交易时间", "对方", "支付宝备注", "支付宝流水号", "支付宝订单号", "支付宝商户单号"]);
@@ -59,6 +62,7 @@ describe("unified transaction detail", () => {
       expect(writeText).toHaveBeenLastCalledWith(value);
     }
     expect(screen.getAllByText(memo, { normalizer: value => value })).toHaveLength(1);
+    await selectSection(/采集记录/);
     for (const id of [ledgerId, secondSourceId]) {
       const card = document.querySelector<HTMLElement>('[data-ledger-source="' + id + '"]')!;
       expect(card).toHaveAttribute("id", "source-" + id);
@@ -67,7 +71,8 @@ describe("unified transaction detail", () => {
       await user.click(within(card).getByRole("button", { name: "复制内部流水编号（PerPay）" }));
       expect(writeText).toHaveBeenLastCalledWith(id);
     }
-    expect(document.querySelector("#ledger-matches-heading")!.compareDocumentPosition(document.querySelector("#ledger-sources-heading")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(document.querySelector("#ledger-matches-heading")).toBeNull();
+    expect(document.querySelector("#ledger-sources-heading")).toBeVisible();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
   });
 
@@ -75,6 +80,7 @@ describe("unified transaction detail", () => {
     const fetchMock = mount();
     const user = userEvent.setup();
     const writeText = vi.spyOn(navigator.clipboard, "writeText");
+    await selectSection(/采集记录/);
     await screen.findByRole("heading", { name: "查账记录（2）" });
     expect(screen.queryByText("raw-" + secondSourceId)).not.toBeInTheDocument();
     const trigger = screen.getByRole("button", { name: "更多操作，查账记录 2 操作" });
@@ -99,6 +105,7 @@ describe("unified transaction detail", () => {
       sources: [{ ...source(ledgerId), state: "CONFLICT" }, { ...source(secondSourceId), state: "CONFLICT", amount_cents: 102, semantic_fingerprint: "b".repeat(64) }],
       matches: [history, first, second], conflicts: [{ conflict_id: "conflict-id", conflict_type: "DUPLICATE_EXTERNAL_ID", status: "OPEN", existing_ledger_entry_id: secondSourceId, created_at: ledger.created_at, resolved_at: null }] });
     await screen.findByText("同一笔流水关联了多个订单");
+    await selectSection("收款关联");
     expect(screen.getAllByText("仍生效 · 存在多条关联")).toHaveLength(2);
     expect(screen.getByText(/金额不可相加/)).toBeVisible();
     for (const match of [history, first, second]) {
@@ -111,7 +118,9 @@ describe("unified transaction detail", () => {
       expect(within(card).queryByText("支付宝交易金额")).not.toBeInTheDocument();
       if (match.status === "REVERSED") expect(within(card).getByText("原订单归属错误")).toBeVisible();
     }
+    await selectSection(/冲突/);
     expect(screen.getByRole("link", { name: "查看冲突记录" })).toHaveAttribute("href", "/reconciliation/conflicts/conflict-id?selected_site=remembered-site");
+    await selectSection(/采集记录/);
     for (const [id, amount] of [[ledgerId, "¥1.01"], [secondSourceId, "¥1.02"]]) {
       const card = document.querySelector<HTMLElement>('[data-ledger-source="' + id + '"]')!;
       expect(within(card).getByText("交易金额").parentElement).toHaveTextContent(amount!);
@@ -121,6 +130,7 @@ describe("unified transaction detail", () => {
   it.each(["AMOUNT_INFERRED", "MANUAL"] as const)("shows %s evidence without repeating the transaction", async evidence => {
     const match = { ...matchSummary("44444444-4444-4444-8444-444444444444", "SETTLED", secondSourceId), evidence_type: evidence, status: "SETTLED" as const };
     mount({ ...detailFixture(), active_match_count: 1, active_match: match, matches: [match] });
+    await selectSection("收款关联");
     await screen.findByRole("link", { name: match.product_name });
     const card = document.querySelector<HTMLElement>("[data-ledger-match]")!;
     expect(card).toHaveTextContent(evidence === "MANUAL" ? "管理员人工关联" : "PerPay 按金额和付款时间推断");
@@ -132,6 +142,7 @@ describe("unified transaction detail", () => {
     let failed = true;
     const match = matchSummary("44444444-4444-4444-8444-444444444444", "REVERSED");
     const fetchMock = mount({ ...detailFixture(), matches: [match], reversed_match_count: 1 }, () => failed);
+    await selectSection("收款关联");
     expect(await screen.findByText("关联依据读取失败")).toBeVisible();
     expect(screen.getByRole("button", { name: "重试" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "已撤销的历史关联（1）" })).toBeVisible();
@@ -144,6 +155,7 @@ describe("unified transaction detail", () => {
 
   it("explains expenses without offering receipt association", async () => {
     const fetchMock = mount({ ...detailFixture(), direction: "DEBIT", sources: [{ ...source(ledgerId), direction: "DEBIT" }] });
+    await selectSection("收款关联");
     expect(await screen.findByText("支出流水不关联收款订单。")).toBeVisible();
     expect(screen.queryByRole("button", { name: "人工关联收款" })).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -151,6 +163,7 @@ describe("unified transaction detail", () => {
 
   it.each(["RESOLVED", "IGNORED"] as const)("keeps a %s conflict without inventing a pending issue", async status => {
     mount({ ...detailFixture(), conflicts: [{ conflict_id: "conflict-id", conflict_type: "DUPLICATE_EXTERNAL_ID", status, existing_ledger_entry_id: secondSourceId, created_at: ledger.created_at, resolved_at: ledger.updated_at }] });
+    await selectSection(/冲突/);
     await screen.findByRole("heading", { name: "账本冲突记录（1）" });
     const card = document.querySelector<HTMLElement>("[data-ledger-conflict]")!;
     expect(within(card).getByText(status === "RESOLVED" ? "已处理" : "已确认隔离")).toBeVisible();

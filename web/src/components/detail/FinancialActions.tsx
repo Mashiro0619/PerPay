@@ -2,7 +2,8 @@ import { useWorkspace } from "@/workspace";
 import { Link } from "@/navigation";
 import { useWorkspaceApi } from "@/workspace";
 import { useRef, useState } from "react";
-import { refreshOperationalData, result, type PaymentMatchDetail } from "../../api/client";
+import { result, type PaymentMatchDetail } from "../../api/client";
+import { refreshFinancialRecords } from "@/lib/record-refresh";
 import { FinancialDialog } from "../../pages/FinancialDialog";
 import { ReasonDialog } from "../ReasonDialog";
 import { useSuccessToast } from "../Feedback";
@@ -138,7 +139,7 @@ export function ReverseMatchAction({
             setSnapshot(null);
             setSaved(true);
             setMessage("关联已撤销");
-            void refreshOperationalData();
+            void refreshFinancialRecords();
           }}
         >
           <DetailFields

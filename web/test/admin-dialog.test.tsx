@@ -62,6 +62,7 @@ describe("administrator dialog presentation", () => {
   it.each(["form", "technical"] as const)("has an explicit %s size without changing the dialog role", kind => {
     render(<Dialog open><DialogContent kind={kind}><DialogHeader><DialogTitle>查看内容</DialogTitle></DialogHeader><DialogBody>内容</DialogBody></DialogContent></Dialog>);
     const dialog = screen.getByRole("dialog", { name: "查看内容" });
+    expect(dialog).toHaveClass("max-md:translate-x-0", "max-md:translate-y-0");
     expect(dialog).toHaveClass(kind === "form" ? "sm:max-w-xl" : "sm:max-w-3xl");
     expect(dialog).toHaveAttribute("data-admin-dialog", kind);
   });

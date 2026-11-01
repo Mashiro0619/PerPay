@@ -9,6 +9,7 @@ import {
   type WebhookDeliverySummary,
 } from "../src/api/client";
 import { TestPaymentProvider } from "../src/components/test-payment-provider";
+import { ListDensityProvider } from "../src/components/list-density";
 import { DataTable } from "../src/components/data-table";
 import Orders from "../src/pages/Orders";
 import WorkItems from "../src/pages/WorkItems";
@@ -72,7 +73,7 @@ const lists = [
     path: "/notifications",
     element: <Notifications />,
     data: [notification],
-    hiddenColumn: "关联商户订单号（业务网站）",
+    hiddenColumn: "商户订单号",
     centeredColumns: ["status", "attempt_count", "created_at", "next_attempt_at"],
   },
 ];
@@ -85,6 +86,7 @@ function Location() {
 function mount(path: string, element: React.ReactNode) {
   return render(
     <QueryClientProvider client={queryClient}>
+      <ListDensityProvider>
       <MemoryRouter initialEntries={[path]}>
         <TestPaymentProvider>
           <Routes>
@@ -98,6 +100,7 @@ function mount(path: string, element: React.ReactNode) {
           <Location />
         </TestPaymentProvider>
       </MemoryRouter>
+      </ListDensityProvider>
     </QueryClientProvider>,
   );
 }
@@ -174,7 +177,7 @@ describe("desktop business list composition", () => {
   });
 
   it.each(lists)(
-    "keeps search, filters and the unique column menu grouped without duplicate desktop sorting on $path",
+    "keeps search, common filters and one display menu grouped without duplicate desktop sorting on $path",
     async ({ path, element, data, centeredColumns, optionalCenteredColumns, rightAlignedColumns }) => {
       pageResponse(data);
       const view = mount(path, element);
@@ -191,25 +194,25 @@ describe("desktop business list composition", () => {
       expect(row.querySelector("[data-list-desktop-sort]")).toBeNull();
       const actions = row.querySelector("[data-list-desktop-actions]");
       expect(filters.parentElement).toBe(row);
+      expect(within(filters as HTMLElement).queryAllByRole("combobox").length).toBeLessThanOrEqual(2);
+      expect(actions).not.toBeNull();
+      expect(actions!.parentElement).toBe(row);
+      expect(
+        filters.compareDocumentPosition(actions!) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
       if (path === "/orders") {
-        expect(actions).toBeNull();
         expect(screen.queryByRole("button", { name: "测试收款" })).not.toBeInTheDocument();
-      } else {
-        expect(actions).not.toBeNull();
-        expect(actions!.parentElement).toBe(row);
-        expect(
-          filters.compareDocumentPosition(actions!) &
-            Node.DOCUMENT_POSITION_FOLLOWING,
-        ).toBeTruthy();
       }
       expect(within(table).getAllByRole("button").length).toBeGreaterThan(0);
-      const columnMenu = screen.getByRole("button", { name: "显示列" });
-      expect(columnMenu.closest("th")).toBeNull();
-      expect(columnMenu.closest("[data-list-query-toolbar]")).toBe(
+      const displayMenu = screen.getByRole("button", { name: "列表显示" });
+      expect(displayMenu.closest("th")).toBeNull();
+      expect(displayMenu.closest("[data-list-query-toolbar]")).toBe(
         view.container.querySelector("[data-list-query-toolbar]"),
       );
-      expect(columnMenu.closest("[data-list-columns-slot]")).not.toBeNull();
-      expect(screen.getAllByRole("button", { name: "显示列" })).toHaveLength(1);
+      expect(screen.getAllByRole("button", { name: "列表显示" })).toHaveLength(1);
+      expect(screen.queryByRole("button", { name: "显示列" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "列表密度" })).not.toBeInTheDocument();
       expect(view.container.querySelector("[data-business-list]")).toHaveClass("w-full", "min-w-0");
       expect(view.container.querySelector("[data-business-list]")).not.toHaveClass("max-w-[1600px]", "mx-auto");
       expect(table.querySelector("tbody td")).toHaveAttribute("data-column-layout", "identity");
@@ -222,7 +225,7 @@ describe("desktop business list composition", () => {
   );
 
   it.each(lists)(
-    "uses the measured container and honors explicitly shown columns on $path",
+    "uses the measured container and keeps desktop column preferences separate from mobile summaries on $path",
     async ({ path, element, data, hiddenColumn, centeredColumns, optionalCenteredColumns, rightAlignedColumns }) => {
       if (path === "/notifications") {
         localStorage.setItem("perpay.table-columns.v2.notifications", JSON.stringify({ order: false }));
@@ -240,10 +243,10 @@ describe("desktop business list composition", () => {
       pageResponse(data);
       mount(path, element);
       const summary = await screen.findByRole("listitem");
+      const mobileContent = summary.textContent;
       expect(screen.queryByRole("table")).not.toBeInTheDocument();
-      expect(
-        within(summary).queryByText(hiddenColumn, { selector: "dt" }),
-      ).not.toBeInTheDocument();
+      expect(within(summary).queryByRole("button", { name: "展开信息" })).not.toBeInTheDocument();
+      expect(summary.querySelectorAll(".business-summary-field").length).toBeLessThanOrEqual(3);
       const user = userEvent.setup();
       await user.click(await screen.findByRole("button", { name: /^筛选与排序/ }));
       const sheet = await screen.findByRole("dialog", { name: "筛选与排序" });
@@ -253,13 +256,11 @@ describe("desktop business list composition", () => {
       await user.click(screen.getByRole("button", { name: /^更多.*操作$/ }));
       await user.click(await screen.findByRole("menuitem", { name: "列表显示" }));
       const display = await screen.findByRole("dialog", { name: "列表显示" });
-      await user.click(within(display).getByRole("checkbox", { name: hiddenColumn }));
+      expect(within(display).queryByRole("checkbox")).not.toBeInTheDocument();
+      expect(within(display).getByText("手机列表展示关键摘要，完整信息可打开详情查看。")).toBeVisible();
+      expect(within(display).getByText("紧凑")).toBeVisible();
       await user.click(within(display).getByRole("button", { name: "完成" }));
-      const expand = within(summary).queryByRole("button", { name: "展开信息" });
-      if (expand) await user.click(expand);
-      expect(
-        within(summary).getByText(hiddenColumn, { selector: "dt" }),
-      ).toBeVisible();
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "列表显示" })).not.toBeInTheDocument());
       width = 1300;
       act(() => window.dispatchEvent(new Event("resize")));
       const table = screen.getByRole("table");
@@ -268,16 +269,23 @@ describe("desktop business list composition", () => {
       expect(screen.queryByRole("combobox", { name: "排序字段" })).not.toBeInTheDocument();
       expectColumnAlignment(table, centeredColumns, optionalCenteredColumns, rightAlignedColumns);
       expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "列表显示" }));
+      const desktopDisplay = await screen.findByRole("dialog", { name: "列表显示" });
+      const column = within(desktopDisplay).getByRole("checkbox", { name: hiddenColumn });
+      if (within(table).queryByRole("columnheader", { name: hiddenColumn })) await user.click(column);
+      await user.click(column);
+      expect(column).toBeChecked();
+      await user.keyboard("{Escape}");
       expect(screen.getByRole("columnheader", { name: hiddenColumn })).toBeVisible();
       width = 400;
       act(() => window.dispatchEvent(new Event("resize")));
-      const expandAgain = within(screen.getByRole("listitem")).queryByRole("button", { name: "展开信息" });
-      if (expandAgain) await user.click(expandAgain);
-      expect(
-        within(screen.getByRole("listitem")).getByText(hiddenColumn, { selector: "dt" }),
-      ).toBeVisible();
+      expect(screen.getByRole("listitem").textContent).toBe(mobileContent);
+      expect(within(screen.getByRole("listitem")).queryByRole("button", { name: "展开信息" })).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: /^筛选与排序/ })).toBeVisible();
       expect(document.querySelectorAll("[data-business-row]")).toHaveLength(1);
+      width = 1300;
+      act(() => window.dispatchEvent(new Event("resize")));
+      expect(screen.getByRole("columnheader", { name: hiddenColumn })).toBeVisible();
     },
   );
 
@@ -354,29 +362,55 @@ describe("desktop business list composition", () => {
       mount(path, element);
       await screen.findByRole("table");
       expect(screen.queryByText(id, { exact: true })).not.toBeInTheDocument();
+      if (path === "/notifications") {
+        expect(screen.queryByRole("link", { name: relatedName })).not.toBeInTheDocument();
+        const user = userEvent.setup();
+        await user.click(screen.getByRole("button", { name: "列表显示" }));
+        await user.click(await screen.findByRole("checkbox", { name: "商户订单号" }));
+        await user.keyboard("{Escape}");
+      }
       const related = screen.getByRole("link", { name: relatedName });
       expect(related).toHaveAttribute("href", "/orders/" + orderId);
-      expect(screen.getByRole("columnheader", { name: path === "/reconciliation" ? "当前关联订单" : "关联商户订单号（业务网站）" })).toBeVisible();
+      expect(screen.getByRole("columnheader", { name: path === "/reconciliation" ? "当前关联订单" : "商户订单号" })).toBeVisible();
       expect(related).not.toHaveTextContent("…");
       if (path === "/reconciliation") {
-        expect(related).toHaveTextContent(order.merchant_order_no);
-        expect(screen.getAllByText(order.merchant_order_no, { exact: true })).toHaveLength(1);
+        expect(related).toHaveTextContent(order.product_name);
+        expect(related).toHaveAttribute("title", order.product_name);
+        expect(screen.queryByText(order.merchant_order_no, { exact: true })).not.toBeInTheDocument();
         expect(related.closest('[data-column-id="order"]')).not.toBeNull();
+        expect(screen.queryByRole("columnheader", { name: "商户订单号" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("columnheader", { name: "关联网站" })).not.toBeInTheDocument();
+        const user = userEvent.setup();
+        await user.click(screen.getByRole("button", { name: "列表显示" }));
+        await user.click(await screen.findByRole("checkbox", { name: "商户订单号" }));
+        await user.click(screen.getByRole("checkbox", { name: "关联网站" }));
+        await user.keyboard("{Escape}");
+        const table = screen.getByRole("table");
+        const reference = table.querySelector('tbody [data-column-id="order_reference"] a');
+        expect(reference).toHaveTextContent(order.merchant_order_no);
+        expect(reference).toHaveAttribute("href", "/orders/" + orderId);
+        expect(table.querySelector('tbody [data-column-id="site"] a')).toHaveAttribute("href", "/sites/" + order.api_client_id);
+        expect(table.querySelector('tbody [data-column-id="order"]')).toHaveTextContent(order.product_name);
+        expect(table.querySelector('tbody [data-column-id="order"]')).not.toHaveTextContent(order.merchant_order_no);
       }
     },
   );
 
-  it("keeps the selected order number and navigation in the mobile summary", async () => {
+  it("keeps the mobile ledger summary compact and opens the complete record through its primary link", async () => {
       mobileMedia(390);
       pageResponse([groupedLedger]);
       mount("/reconciliation", <Reconciliation />);
-      const related = await screen.findByRole("link", { name: "查看订单：" + order.merchant_order_no });
-      expect(related.closest('.business-summary-field')).toHaveTextContent("当前关联订单");
+      const primary = await screen.findByRole("link", { name: groupedLedger.external_event_id });
+      const summary = screen.getByRole("listitem");
+      expect(within(summary).getByText("交易时间")).toBeVisible();
+      expect(within(summary).getByText("收支")).toBeVisible();
+      expect(within(summary).getByText("关联状态")).toBeVisible();
+      expect(within(summary).queryByRole("button", { name: "展开信息" })).not.toBeInTheDocument();
       expect(screen.queryByRole("columnheader", { name: "当前关联订单" })).not.toBeInTheDocument();
-      expect(screen.getAllByText(order.merchant_order_no, { exact: true })).toHaveLength(1);
-      await userEvent.click(related);
-      expect(await screen.findByRole("heading", { name: "订单详情" })).toBeVisible();
-      expect(screen.getByLabelText("当前地址")).toHaveTextContent("/orders/" + orderId);
+      expect(screen.queryByRole("link", { name: "查看订单：" + order.merchant_order_no })).not.toBeInTheDocument();
+      await userEvent.click(primary);
+      expect(await screen.findByRole("heading", { name: "流水详情" })).toBeVisible();
+      expect(screen.getByLabelText("当前地址")).toHaveTextContent("/reconciliation/transactions/" + groupedLedger.ledger_entry_id);
   });
 
   it.each([1600, 390])("honors an explicit hidden associated-order field at %i pixels without reintroducing it in metadata", async width => {
@@ -391,15 +425,12 @@ describe("desktop business list composition", () => {
     expect(JSON.parse(localStorage.getItem("perpay.table-columns.v2.administrator-ledger")!)).toEqual({ order: false });
   });
 
-  it("retains complete merchant numbers in metadata and uses compact embedded overview rows", async () => {
+  it("keeps main identities compact while retaining full merchant numbers in embedded overview rows", async () => {
     pageResponse([longOrder]);
     const view = mount("/orders", <Orders />);
-    const number = await screen.findByText(longOrder.merchant_order_no, {
-      exact: true,
-    });
-    expect(number).toHaveClass("list-code");
-    expect(number).toHaveAttribute("title", longOrder.merchant_order_no);
-    expect(screen.getByRole("table")).toHaveAttribute("data-density", "compact");
+    const table = await screen.findByRole("table");
+    expect(table.querySelector('tbody [data-column-id="identity"]')).not.toHaveTextContent(longOrder.merchant_order_no);
+    expect(table).toHaveAttribute("data-density", "compact");
     view.unmount();
     render(
       <MemoryRouter>

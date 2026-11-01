@@ -33,12 +33,10 @@ export function LedgerOrderLink({ match }: { match: AdminLedgerMatch | null }) {
 export function LedgerActiveOrder({ entry }: { entry: Pick<AdminLedgerSummary, "active_match" | "active_match_count"> }) {
   if (entry.active_match_count > 1) return <span className="text-destructive">多条生效关联 · 请核查</span>;
   if (!entry.active_match) return <LedgerOrderLink match={null} />;
-  const siteName = entry.active_match.site_name ?? "网站名称未保存";
-  return <div className="business-cell-stack flex min-w-0 flex-col gap-1">
-    <span className="ledger-order-line" title={entry.active_match.product_name}>{entry.active_match.product_name}</span>
-    <LedgerOrderLink match={entry.active_match} />
-    <span className="ledger-order-line text-xs text-muted-foreground" title={siteName}>{siteName}</span>
-  </div>;
+  return <Link global className="reconciliation-order-link ledger-order-line" to={"/orders/" + entry.active_match.order_id}
+    aria-label={"查看订单：" + entry.active_match.merchant_order_no} title={entry.active_match.product_name}>
+    {entry.active_match.product_name}
+  </Link>;
 }
 
 export function LedgerAssociationStatus({ entry }: { entry: Pick<AdminLedgerSummary, "active_match_count" | "reversed_match_count" | "content_consistent" | "has_conflicts"> }) {

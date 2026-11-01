@@ -459,6 +459,7 @@ describe("administrator-only refund marks", () => {
       </QueryClientProvider>,
     );
     expect(await screen.findByText("支出")).toBeVisible();
+    await userEvent.setup().click(await screen.findByRole("tab", { name: /采集记录/ }));
     expect(await screen.findByText("PerPay 记录状态")).toBeVisible();
     expect(screen.queryByText(/支出仅作流水留存/)).not.toBeInTheDocument();
     expect(

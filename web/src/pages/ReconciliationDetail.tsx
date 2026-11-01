@@ -5,13 +5,14 @@ import { PageHeaderActions } from "@/components/page-header-actions";
 import { PageHeading } from "@/components/page-heading";
 import { RefreshButton } from "@/components/refresh-button";
 import { useSystemName } from "@/branding";
+import { useOverlayContext } from "@/lib/overlay-context";
 import { useEffect } from "react";
 
 import { ArrowLeft, FileQuestion } from "lucide-react";
 import { Navigate, useLocation, useParams } from "react-router";
 import { LedgerDetailRedirect } from "./ReconciliationRedirect";
 import { Link, useDetailBack } from "@/navigation";
-import { refreshOperationalData, result } from "@/api/client";
+import { queryClient, result } from "@/api/client";
 import { dateTime, money } from "@/lib/format";
 import { label } from "@/lib/labels";
 import { QueryView } from "@/components/request-state";
@@ -86,6 +87,7 @@ function EvidenceHeading({
   density?: DetailDensity;
 }) {
   const systemName = useSystemName();
+  const overlay = useOverlayContext();
   const { clientId, site } = useWorkspace();
   const { resourceId = "" } = useParams();
   const siteName = clientId ? site?.data?.data.configuration.name ?? clientId : "全部网站";
@@ -95,14 +97,14 @@ function EvidenceHeading({
   );
   const fetching = useDetailFetching();
   useEffect(() => {
-    document.title = title + ` · ${siteName} · ${systemName}`;
-  }, [title, systemName, siteName]);
+    if (!overlay) document.title = title + ` · ${siteName} · ${systemName}`;
+  }, [title, systemName, siteName, overlay]);
   return (
-    <><PageHeading title={loaded && density !== "comfortable" ? `${title} · ${resourceId}` : title} />
-    {density === "comfortable" ? (
+    <><PageHeading title={!overlay && loaded && density !== "comfortable" ? `${title} · ${resourceId}` : title} />
+    {density === "comfortable" || overlay ? (
       <DetailNavigation back={back}>
         <PageHeaderActions><RefreshButton disabled={fetching > 0} onClick={() => {
-          void refreshOperationalData();
+          void queryClient.invalidateQueries({ predicate: query => query.queryKey.includes(resourceId) });
         }} busy={fetching > 0} /></PageHeaderActions>
       </DetailNavigation>
     ) : (
@@ -116,7 +118,7 @@ function EvidenceHeading({
         {back.label}
       </Link>
       <PageHeaderActions><RefreshButton disabled={fetching > 0} onClick={() => {
-          void refreshOperationalData();
+          void queryClient.invalidateQueries({ predicate: query => query.queryKey.includes(resourceId) });
         }} busy={fetching > 0} /></PageHeaderActions>
     </div>)}
     </>

@@ -129,6 +129,8 @@ export function DialogContent({ className, kind = "form", size, children, initia
   }, [step?.id, step?.open, stepSize, register]);
   if (step && !steps?.portal) return null;
   const stepHidden = !!step && steps?.activeId !== step.id;
+  // Reset Tailwind's translation variables too: CSS minification can merge
+  // `translate: none` into `transform: none`, leaving the separate translate active.
   const detailClass = "max-md:inset-0 max-md:h-[100dvh] max-md:max-h-none max-md:w-full max-md:max-w-none max-md:translate-x-0 max-md:translate-y-0 max-md:rounded-none md:max-h-[calc(100dvh-3rem)] md:w-[calc(100%-3rem)] " +
     (size === "xl" ? "md:max-w-6xl" : size === "lg" ? "md:max-w-4xl" : "md:max-w-[40rem]");
   return <DialogUI.DialogContent {...props} aria-modal={step ? true : props["aria-modal"]} finalFocus={step && props.finalFocus !== false ? closeType => {
@@ -153,7 +155,7 @@ export function DialogContent({ className, kind = "form", size, children, initia
   }} presentation={step ? "step" : "dialog"} portalProps={{ ...props.portalProps, ...(step ? { container: steps!.portal } : {}), keepMounted: keepMounted || props.portalProps?.keepMounted,
     hidden: switching || stepHidden || props.portalProps?.hidden, inert: switching || stepHidden || props.portalProps?.inert }} data-admin-dialog={kind} data-overlay-step={step ? step.id : undefined}
     className={cn(className, step ? "flex min-h-0 max-h-full w-full flex-1 flex-col overflow-hidden" : content,
-      !step && (kind === "detail" ? detailClass : kind === "technical" ? "sm:max-w-3xl" : "sm:max-w-xl"))}>
+      !step && (kind === "detail" ? detailClass : "max-md:translate-x-0 max-md:translate-y-0 " + (kind === "technical" ? "sm:max-w-3xl" : "sm:max-w-xl")))}>
     <LocalRequestNotices>{kind === "detail" ? children : step
       ? <StepDialogLayout layoutRef={scrollRef}>{children}</StepDialogLayout>
       : <DialogScroll scrollRef={scrollRef}>{children}</DialogScroll>}</LocalRequestNotices>

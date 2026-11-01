@@ -121,7 +121,6 @@ export function ReasonDialog({
       >
         <DialogHeader className="shrink-0 pr-8">
           <DialogTitle>{snapshot.title}</DialogTitle>
-          <DialogDescription>{snapshot.description}</DialogDescription>
         </DialogHeader>
         <form
           className="contents"
@@ -131,6 +130,7 @@ export function ReasonDialog({
           }}
         >
           <FieldGroup className="-mx-4 min-h-0 w-auto overflow-y-auto px-4 pb-1">
+            <DialogDescription>{snapshot.description}</DialogDescription>
             {mutation.recovery && (
               <OperationRecoveryNotice
                 operationId={mutation.recovery.operationId}

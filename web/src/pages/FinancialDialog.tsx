@@ -9,7 +9,8 @@ import {
 } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { AlertCircle } from "lucide-react";
-import { ApiError, refreshOperationalData, result } from "@/api/client";
+import { ApiError, result } from "@/api/client";
+import { refreshFinancialRecords } from "@/lib/record-refresh";
 import { useOperationKey } from "@/lib/idempotency";
 import { operationReasonError, useFixedOperation } from "@/lib/fixed-operation";
 import { OperationRecoveryNotice } from "@/components/operation-recovery-notice";
@@ -141,7 +142,7 @@ export function FinancialDialog({
       signal,
     ) => result(api.createManualSettlement({ body, signal })),
     onSuccess: () => {
-      void refreshOperationalData();
+      void refreshFinancialRecords();
       onSuccess();
     },
   });
@@ -167,7 +168,7 @@ export function FinancialDialog({
     if (save.isBusy()) return;
     previewController.current?.abort();
     onClose();
-    if (needsRefresh) void refreshOperationalData();
+    if (needsRefresh) void refreshFinancialRecords();
   }
   function resetPreview() {
     if (save.conflict) recheckedConflict.current = true;
@@ -446,7 +447,7 @@ export function FinancialDialog({
           finalFocus={() => content.current}
           onLeave={() => {
             save.stopWaiting();
-            void refreshOperationalData();
+            void refreshFinancialRecords();
             onClose();
           }}
         />

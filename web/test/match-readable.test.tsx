@@ -194,7 +194,7 @@ describe("readable payment match detail", () => {
       expect(factGroup).toHaveAttribute("data-density", "default");
       expect(factGroup).toHaveAttribute("data-layout", "columns");
     }
-    expect(await recordAction("单独打开", "收款关联记录操作")).toHaveAttribute("href", "/reconciliation/matches/" + matchId);
+    expect(await recordAction("查看详情", "收款关联记录操作")).toHaveAttribute("href", "/reconciliation/matches/" + matchId);
   });
 
   it("restores focus after a unified association moves into history on successful reversal", async () => {

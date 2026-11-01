@@ -1,6 +1,7 @@
 import { useWorkspaceApi } from "@/workspace";
 import { useId, useRef, useState } from "react";
-import { refreshOperationalData, result, type LedgerConflictDetail } from "@/api/client";
+import { result, type LedgerConflictDetail } from "@/api/client";
+import { refreshFinancialRecords } from "@/lib/record-refresh";
 import { dateTime } from "@/lib/format";
 import { ConflictComparison } from "./ConflictComparison";
 import { label } from "@/lib/labels";
@@ -179,7 +180,7 @@ export function ConflictCard({ detail }: { detail: LedgerConflictDetail }) {
             setConfirm(false);
             setCompleted(true);
             setMessage("处理已保存");
-            void refreshOperationalData();
+            void refreshFinancialRecords();
           }}
         >
           <p className="text-sm break-all">

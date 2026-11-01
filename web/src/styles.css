@@ -652,8 +652,8 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .reconciliation-related-link:hover .reconciliation-related-title { text-decoration: underline; text-underline-offset: 0.18em; }
 .list-identity-meta .reconciliation-related-record { padding-block: 0.0625rem; }
 .ledger-table td[data-column-id="order"] .business-cell-stack { gap: 0.125rem; }
-/* Wrapping lets the auto-layout column shrink before long identities are clamped. */
-.ledger-table td[data-column-id="order"] .ledger-order-line {
+/* Wrapping lets the auto-layout column shrink before the title is clamped. */
+[data-business-table][data-embedded="false"] .ledger-table td[data-column-id="order"] > .ledger-order-line {
   display: -webkit-box;
   min-width: 0;
   max-width: 100%;
@@ -661,7 +661,7 @@ a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
   overflow-wrap: anywhere;
   white-space: normal;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
 }
 .list-query-toolbar {
   display: grid;
@@ -1318,12 +1318,18 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
 [data-overlay-viewport="dialog"] :is([data-slot="dialog-title"], [data-slot="dialog-description"], [data-slot="alert-dialog-description"]) { overflow-wrap: anywhere; }
 [data-overlay-viewport="dialog"] :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"]) { min-width: 0; }
 [data-overlay-viewport="dialog"] :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"]) button { height: auto; min-height: 2rem; max-width: 100%; padding-block: 0.3125rem; white-space: normal; overflow-wrap: anywhere; }
-[data-overlay-content][data-overlay-viewport="dialog"] { overflow: hidden; }
+[data-overlay-content][data-overlay-viewport="dialog"] {
+  --overlay-chrome-space: clamp(8px, calc(var(--overlay-viewport-height, 100dvh) * 0.04), 1rem);
+  --overlay-chrome-inset: clamp(8px, calc(var(--overlay-viewport-height, 100dvh) * 0.06), 1.5rem);
+  overflow: hidden;
+  padding-block: var(--overlay-chrome-space);
+}
+[data-overlay-primary] { gap: var(--overlay-chrome-space, 1rem); }
 @media (min-width: 48rem) {
   [data-overlay-content][data-overlay-viewport="dialog"] {
     width: calc(var(--overlay-viewport-width, 100vw) - 3rem);
     max-width: 40rem;
-    max-height: calc(var(--overlay-viewport-height, 100dvh) - 3rem);
+    max-height: calc(var(--overlay-viewport-height, 100dvh) - 2 * var(--overlay-chrome-inset));
   }
   [data-overlay-content][data-overlay-viewport="dialog"][data-overlay-size="lg"] { max-width: 56rem; }
   [data-overlay-content][data-overlay-viewport="dialog"][data-overlay-size="xl"] { max-width: 72rem; }
@@ -1341,9 +1347,9 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
     translate: none;
     transform: none;
     border-radius: 0;
-    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-top: max(var(--overlay-chrome-space, 1rem), env(safe-area-inset-top));
     padding-right: max(1rem, env(safe-area-inset-right));
-    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    padding-bottom: max(var(--overlay-chrome-space, 1rem), env(safe-area-inset-bottom));
     padding-left: max(1rem, env(safe-area-inset-left));
   }
   [data-overlay-viewport="dialog"]:is([data-overlay-content], [data-admin-dialog="form"], [data-admin-dialog="technical"]) > [data-slot="dialog-close"] {
@@ -1382,7 +1388,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   flex-direction: column;
   min-height: 0;
   min-width: 0;
-  gap: 1rem;
+  gap: var(--overlay-chrome-space, 1rem);
   overflow: hidden;
 }
 [data-overlay-step-layout] > form { display: contents; }
@@ -1394,7 +1400,7 @@ a[data-internal-link]:not(:where([class~="group/button"], [data-sidebar], [role^
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-[data-overlay-step-layout] [data-slot="dialog-footer"] { margin: 0; border-radius: 0; }
+[data-overlay-step-layout] [data-slot="dialog-footer"] { margin: 0; padding: var(--overlay-chrome-space, 1rem); border-radius: 0; }
 [data-overlay-viewport="sheet"]:has(> :is([data-list-filter-scroll], [data-list-display-scroll])) { overflow: clip; }
 @media (pointer: coarse) {
   /* Keep the close touch slot separate from adjacent scrolling controls. */
